@@ -511,12 +511,12 @@ Implementation scope (M, once design locks): extend `TestClaim` with `requires: 
 
 ### Lane 2 Stage 2a / Track 17a boundary
 
-**Deferral: `DerivedOpEffect` boundary collapse or classification (S).** PR #517 intentionally keeps `DerivedOpEffect { method, path_template, shape }` as Stage 2a bootstrap glue so the effects algebra can port cleanly without teaching Stage 2a to invent more substrate. That shape is acceptable only as a short-lived bridge. Before Track 17a REST wiring or Stage 2b workflow-idempotency consumers start depending on it, a follow-up PR must do one of two things:
+**Deferral: `DerivedOpEffect` / `ComposedEffect` boundary cleanup (S).** PR #517 intentionally keeps `DerivedOpEffect { method, path_template, shape }` as Stage 2a bootstrap glue so the effects algebra can port cleanly without teaching Stage 2a to invent more substrate, and it carries `ComposedEffect { operations, idempotent, breaking_operation }` forward as a temporary workflow summary shape. Both are acceptable only as short-lived bridges. Before Track 17a REST wiring or Stage 2b workflow-idempotency consumers start depending on them, a follow-up PR must:
 
-1. Collapse `DerivedOpEffect` into the durable authority carriers that actually need to cross the lane boundary, OR
-2. Classify it explicitly as scaffold debt with a named dissolution trigger and enforcement path.
+1. Collapse `DerivedOpEffect` into the durable authority carriers that actually need to cross the lane boundary, OR classify it explicitly as scaffold debt with a named dissolution trigger and enforcement path.
+2. Reshape `ComposedEffect` so workflow verdicts are structural rather than duplicated summary fields — at minimum drop redundant `idempotent`, or better encode "no breaker" versus "broken by operation X" in the type shape itself.
 
-The thing we must not do is let Track 17a treat the wider record as canonical by inertia. **Yellow-flag threshold:** this deferral must clear before any Track 17a consumer lands. Design anchor: [lane2-compile-time-proofs.md](../../docs/lane2-compile-time-proofs.md) Stage 2a / Stage 2b boundary note. No standalone DB yet; if the collapse needs a new durable carrier shape, write the DB in the follow-up PR instead of growing the scaffold ad hoc.
+The thing we must not do is let Track 17a treat either convenience record as canonical by inertia. **Yellow-flag threshold:** this deferral must clear before any Track 17a consumer lands. Design anchor: [lane2-compile-time-proofs.md](../../docs/lane2-compile-time-proofs.md) Stage 2a / Stage 2b boundary note. No standalone DB yet; if either cleanup needs a new durable carrier shape, write the DB in the follow-up PR instead of growing the scaffold ad hoc.
 
 ### Lane 1 Stage 1b
 

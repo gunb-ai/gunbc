@@ -42,7 +42,9 @@ This lane closes the "❌ not wired" gaps across six stages. After Lane 2 comple
 - collapse `DerivedOpEffect` into the existing authority carriers that actually survive the lane boundary, or
 - classify it explicitly as scaffold debt with a named dissolution trigger if it must persist longer.
 
-Lane 2 does not get to silently normalize around this wider record shape.
+`ComposedEffect { operations, idempotent, breaking_operation }` is also provisional. The workflow verdict must not harden around duplicated summary fields; before real Track 17a / Stage 2b consumers depend on it, the follow-up should either drop `idempotent` as redundant or replace the record with a sum-shaped result where "no breaker" versus "broken by operation X" is structural.
+
+Lane 2 does not get to silently normalize around either of these convenience shapes.
 
 Copy:
 - `EffectShape = ReadEffect | UpsertEffect | DeleteEffect | CreateEffect | AppendEffect`
@@ -87,7 +89,7 @@ Lens reads each operation's declared `idempotent` modifier AND derives from path
 
 **Escalation:** if workflow structure isn't representable cleanly — e.g., control flow in a pipeline doesn't map to a linear `List<OperationEffect>` — surface. Don't stretch `compose_effects` to handle branches silently; the algebra needs to reflect branch-wise composition, which is a legitimate design extension.
 
-**Pre-start gate:** Stage 2b does not start consuming `DerivedOpEffect` as if it were stable substrate. The Stage 2a follow-up above must land first: either the record collapses to the durable authority shape, or it gains an explicit scaffold classification plus a named dissolution trigger that bounds how long it can survive.
+**Pre-start gate:** Stage 2b does not start consuming `DerivedOpEffect` or `ComposedEffect` as if they were stable substrate. The Stage 2a follow-up above must land first: `DerivedOpEffect` must collapse to the durable authority shape or gain explicit scaffold accounting, and `ComposedEffect` must stop encoding workflow verdicts as duplicated summary fields.
 
 ### Stage 2c — Test obligation materialization (M)
 
