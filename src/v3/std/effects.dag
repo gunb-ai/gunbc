@@ -110,7 +110,7 @@ module std.effects
 
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.list { List, cons }
-import v3.std.substrate { NonEmptyList, NonSingletonList, PortId, Dag }
+import v3.std.substrate { NonEmptyList, NonSingletonList, PortId }
 
 // ── Path-template carriers ──────────────────────────────────────
 //
@@ -480,30 +480,8 @@ fn report_unsupported_workflow_variant(
   })
 }
 
-fn analyze_workflow(_d: Dag, workflow: WorkflowEffect) -> WorkflowIdempotencyReport {
-  match workflow {
-    LinearEffect { ops } =>
-      WorkflowCompositionVerdict(compose_effects(effects: nel_to_operation_effect_list(ops: ops)))
-    BranchEffect { arms } =>
-      report_unsupported_workflow_variant(
-        variant_name: "BranchEffect",
-        downstream_stage: "lane2_stage2b_idempotency_lens",
-        reason: "non-linear workflow; branch-wise idempotency composition is not in the Stage 2b algebra",
-      )
-    LoopEffect { body } =>
-      report_unsupported_workflow_variant(
-        variant_name: "LoopEffect",
-        downstream_stage: "lane2_stage2b_idempotency_lens",
-        reason: "non-linear workflow; loop-carried idempotency composition is not in the Stage 2b algebra",
-      )
-    ParallelEffect { branches } =>
-      report_unsupported_workflow_variant(
-        variant_name: "ParallelEffect",
-        downstream_stage: "lane2_stage2b_idempotency_lens",
-        reason: "non-linear workflow; parallel idempotency composition is not in the Stage 2b algebra",
-      )
-  }
-}
+// `analyze_workflow` lives in `src/v3/lenses/idempotency.dag` (Lane 2 Stage 2b
+// lens) — not here — so the name does not duplicate across bootstrap modules.
 
 // ── Effect derivation from transport facts ──────────────────────
 //
