@@ -1015,13 +1015,14 @@ fn parse_variant_payload_field_access_rule(
         });
     }
     let variants = dag.variant_payload_field_access_rule_variants();
-    let access_from_payload_binding = variants.access_from_payload_binding.ok_or(
-        EmitError::MalformedTargetSyntax {
+    let access_from_payload_binding =
+        variants
+            .access_from_payload_binding
+            .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail:
                 "VariantPayloadFieldAccessRule.AccessFromPayloadBinding declaration was not found",
-        },
-    )?;
+        })?;
     let override_named_fields_at_binding_site = variants
         .override_named_fields_at_binding_site
         .ok_or(EmitError::MalformedTargetSyntax {
@@ -3182,7 +3183,7 @@ impl<'a> Ctx<'a> {
             .get(&t.inputs[0])
             .and_then(|binding| binding.field(field_label))
         {
-                return self.render_binding(t.output, binding, mode);
+            return self.render_binding(t.output, binding, mode);
         }
         let parent_expr = self.render_input_use(
             InputConsumer::Transform(t),
@@ -3682,18 +3683,14 @@ impl<'a> Ctx<'a> {
         let wildcard = self.indexes.syntax.patterns.wildcard.clone();
         Ok(match shape {
             VariantPayloadShape::Empty => None,
-            VariantPayloadShape::PositionalSingle => {
-                Some(VariantPayloadBinding::Direct(LocalBinding::Borrowed(
-                    payload_binding_name,
-                )))
-            }
+            VariantPayloadShape::PositionalSingle => Some(VariantPayloadBinding::Direct(
+                LocalBinding::Borrowed(payload_binding_name),
+            )),
             VariantPayloadShape::NamedFields(field_labels) => {
                 match self.indexes.clean_emission.variant_payload_field_access {
-                    VariantPayloadFieldAccessRuleBinding::AccessFromPayloadBinding => {
-                        Some(VariantPayloadBinding::Direct(LocalBinding::Borrowed(
-                            payload_binding_name,
-                        )))
-                    }
+                    VariantPayloadFieldAccessRuleBinding::AccessFromPayloadBinding => Some(
+                        VariantPayloadBinding::Direct(LocalBinding::Borrowed(payload_binding_name)),
+                    ),
                     VariantPayloadFieldAccessRuleBinding::OverrideNamedFieldsAtBindingSite => {
                         let multiple_fields = field_labels.len() > 1;
                         let fields = field_labels
