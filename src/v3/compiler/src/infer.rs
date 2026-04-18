@@ -1135,6 +1135,7 @@ fn body_discharges(
                 expected_leaf,
                 actual_param,
                 expected_param,
+                &SubstStack::new(),
                 0,
             )
         })
@@ -1182,12 +1183,35 @@ fn predicate_info(dag: &Dag, pred_decl: DeclarationId) -> Option<(PortId, PortId
     None
 }
 
+/// DB-11 (3a.3) predicate-body structural equality, extended with
+/// DB-16 substitution threading. `lhs` is compared against `rhs` in
+/// lockstep over `Value` and `Transform` nodes, treating each side's
+/// parameter port as mutually equivalent.
+///
+/// **DB-16 (3a.3 closure) extension.** The `subst` stack is applied
+/// to the **rhs (expected/template)** side when comparing
+/// decl-level references inside `Transform` targets. DB-11 callers
+/// pass `&SubstStack::new()` — with an empty stack, every
+/// substitution lookup short-circuits to `None` and the function
+/// behaves exactly as it did pre-DB-16. DB-16's
+/// `find_equivalent_substituted_refined_decl` passes the active
+/// substitution so the template side's generic helper calls and
+/// generic-record projections land on concretized declarations
+/// before comparison.
+///
+/// Single equality authority: DB-16 does NOT introduce a parallel
+/// equivalence stack. This function and `refinement_targets_equal`
+/// are the sole predicate-body comparators, used by DB-11's
+/// `body_discharges` (with empty subst) and DB-16's
+/// `find_equivalent_substituted_refined_decl` (with non-empty
+/// subst).
 fn refinement_ports_equal(
     dag: &Dag,
     lhs_port: PortId,
     rhs_port: PortId,
     lhs_param: PortId,
     rhs_param: PortId,
+    subst: &SubstStack,
     depth: usize,
 ) -> bool {
     if depth >= WALK_DEPTH_LIMIT {
@@ -1207,44 +1231,72 @@ fn refinement_ports_equal(
     match (dag.node(lhs_nid), dag.node(rhs_nid)) {
         (Behavior::Value(lv), Behavior::Value(rv)) => lv.data == rv.data,
         (Behavior::Transform(lt), Behavior::Transform(rt)) => {
-            refinement_targets_equal(dag, &lt.target, &rt.target)
+            refinement_targets_equal(dag, &lt.target, &rt.target, subst)
                 && lt.inputs.len() == rt.inputs.len()
                 && lt.inputs.iter().zip(rt.inputs.iter()).all(|(l, r)| {
-                    refinement_ports_equal(dag, *l, *r, lhs_param, rhs_param, depth + 1)
+                    refinement_ports_equal(dag, *l, *r, lhs_param, rhs_param, subst, depth + 1)
                 })
         }
         _ => false,
     }
 }
 
-fn refinement_targets_equal(dag: &Dag, lhs: &TransformTarget, rhs: &TransformTarget) -> bool {
+/// DB-11 (3a.3) structural Transform-target equality, extended with
+/// DB-16 (3a.3 closure) substitution threading on the rhs
+/// (expected/template) side.
+///
+/// Call lowering materializes a fresh `Instantiation` declaration
+/// per call-site when the callee has retained template arguments
+/// (see `retained_template_arguments_for_target` in lower.rs). Two
+/// syntactically identical calls to a generic predicate from two
+/// different refinement contexts carry different `Callable(DeclarationId)`
+/// targets even though their template + argument values match.
+/// Nominal id equality would reject those as distinct; the
+/// authoritative identity is template + substituted arguments,
+/// which `declaration_shapes_equivalent` already walks through
+/// `Instantiation`/`ResolvedIdentifier` edges.
+///
+/// **DB-16 extension:** when `subst` is non-empty, the rhs side's
+/// `Callable(id)` and `FieldProject.field_child` are routed through
+/// `resolve_decl_with_subst` before comparison. Template-context
+/// references to outer TypeParams are concretized via the
+/// substitution, allowing lookup/dedup to use this same DB-11
+/// authority rather than a parallel stack. Empty subst = pre-DB-16
+/// behavior unchanged.
+fn refinement_targets_equal(
+    dag: &Dag,
+    lhs: &TransformTarget,
+    rhs: &TransformTarget,
+    subst: &SubstStack,
+) -> bool {
     match (lhs, rhs) {
-        // DB-11 (3a.3) structural callable identity. Call lowering
-        // materializes a fresh `Instantiation` declaration per
-        // call-site when the callee has retained template arguments
-        // (see `retained_template_arguments_for_target` in lower.rs).
-        // Two syntactically identical calls to a generic predicate
-        // (e.g., `is_eq(d, 0)`) from two different refinement
-        // contexts therefore carry different `Callable(DeclarationId)`
-        // targets even though their template + argument values match.
-        // Nominal id equality would reject those as distinct; the
-        // authoritative identity is template + substituted arguments,
-        // which `declaration_shapes_equivalent` already walks through
-        // `Instantiation`/`ResolvedIdentifier` edges.
         (TransformTarget::Callable(a), TransformTarget::Callable(b)) => {
-            declaration_shapes_equivalent(dag, *a, *b, 0)
+            let b_resolved = resolve_decl_with_subst(dag, *b, subst, 0).unwrap_or(*b);
+            declaration_shapes_equivalent(dag, *a, b_resolved, 0)
         }
         (TransformTarget::Operator(a), TransformTarget::Operator(b)) => a == b,
         (
             TransformTarget::FieldProject {
                 field_label: a_label,
-                ..
+                field_child: a_child,
             },
             TransformTarget::FieldProject {
                 field_label: b_label,
-                ..
+                field_child: b_child,
             },
-        ) => a_label == b_label,
+        ) => {
+            if a_label != b_label {
+                return false;
+            }
+            match (a_child, b_child) {
+                (None, None) => true,
+                (Some(a), Some(b)) => {
+                    let b_resolved = resolve_decl_with_subst(dag, *b, subst, 0).unwrap_or(*b);
+                    declaration_shapes_equivalent(dag, *a, b_resolved, 0)
+                }
+                _ => false,
+            }
+        }
         _ => false,
     }
 }
@@ -3005,12 +3057,14 @@ fn materialize_substituted_refined_decl(
 /// `concretize_decl_with_subst` (pre-allocation dedup) and
 /// `signature_type_shape` (consumer-side lookup gate).
 ///
-/// Given a template refined carrier and an active substitution, scans
-/// `dag.declarations()` for an already-materialized substituted-refined
-/// carrier whose base matches the substituted base AND whose predicate
-/// body walks structurally equal to what cloning the template's body
-/// with the given subst WOULD produce. Mirrors
-/// `find_equivalent_anonymous_instantiation`'s dedup pattern.
+/// Given a template refined carrier and an active substitution,
+/// scans `dag.declarations()` for an already-materialized refined
+/// carrier (either user-authored concrete or previously-materialized
+/// substituted form) whose base matches the substituted base AND
+/// whose predicate body walks structurally equal to the template's
+/// body under the substitution. Equivalence is decided by DB-11's
+/// `refinement_ports_equal` extended with the substitution stack —
+/// no parallel equality authority.
 ///
 /// Pure read; no allocation. `&Dag`.
 fn find_equivalent_substituted_refined_decl(
@@ -3053,11 +3107,17 @@ fn find_equivalent_substituted_refined_decl(
         let Some((cand_param, cand_body)) = outer_predicate_slots(dag, cand_pred_id) else {
             continue;
         };
-        if predicate_bodies_equal_under_subst(
+        // DB-11's `refinement_ports_equal` is the sole authoritative
+        // equivalence relation for predicate bodies. DB-16 passes the
+        // active substitution through so the template side's
+        // Transform-target decl-level references resolve to their
+        // concretized form before comparison — no parallel
+        // equality authority.
+        if refinement_ports_equal(
             dag,
             cand_body,
-            cand_param,
             template_body,
+            cand_param,
             template_param,
             subst,
             0,
@@ -3066,215 +3126,6 @@ fn find_equivalent_substituted_refined_decl(
         }
     }
     None
-}
-
-/// DB-16 (3a.3 closure): lockstep structural equality on two predicate
-/// bodies, threading the active substitution stack through the
-/// template side's Transform target decl-level references. Used by
-/// `find_equivalent_substituted_refined_decl` to compare a candidate
-/// materialized body against what cloning the template would produce.
-///
-/// Pure read; walks Value/Transform nodes, treats the parameter-slot
-/// on each side as equivalent. Mirrors `clone_predicate_body`'s shape
-/// exactly so the comparison is faithful to what cloning emits.
-fn predicate_bodies_equal_under_subst(
-    dag: &Dag,
-    cand_port: PortId,
-    cand_param: PortId,
-    template_port: PortId,
-    template_param: PortId,
-    subst: &SubstStack,
-    depth: usize,
-) -> bool {
-    if depth >= WALK_DEPTH_LIMIT {
-        return false;
-    }
-    let cand_is_param = cand_port == cand_param;
-    let template_is_param = template_port == template_param;
-    if cand_is_param != template_is_param {
-        return false;
-    }
-    if cand_is_param {
-        return true;
-    }
-
-    let cand_node_id = dag.port(cand_port).produced_by;
-    let template_node_id = dag.port(template_port).produced_by;
-    match (cand_node_id, template_node_id) {
-        (None, None) => cand_port == template_port,
-        (Some(cand_id), Some(template_id)) => match (dag.node(cand_id), dag.node(template_id)) {
-            (Behavior::Value(cand_v), Behavior::Value(template_v)) => {
-                cand_v.data == template_v.data
-            }
-            (Behavior::Transform(cand_t), Behavior::Transform(template_t)) => {
-                if !transform_targets_equal_under_subst(
-                    dag,
-                    &cand_t.target,
-                    &template_t.target,
-                    subst,
-                ) {
-                    return false;
-                }
-                if cand_t.inputs.len() != template_t.inputs.len() {
-                    return false;
-                }
-                cand_t
-                    .inputs
-                    .iter()
-                    .zip(template_t.inputs.iter())
-                    .all(|(c, t)| {
-                        predicate_bodies_equal_under_subst(
-                            dag,
-                            *c,
-                            cand_param,
-                            *t,
-                            template_param,
-                            subst,
-                            depth + 1,
-                        )
-                    })
-            }
-            _ => false,
-        },
-        _ => false,
-    }
-}
-
-fn transform_targets_equal_under_subst(
-    dag: &Dag,
-    cand: &TransformTarget,
-    template: &TransformTarget,
-    subst: &SubstStack,
-) -> bool {
-    match (cand, template) {
-        (TransformTarget::Operator(a), TransformTarget::Operator(b)) => a == b,
-        (TransformTarget::Callable(cand_id), TransformTarget::Callable(template_id)) => {
-            callable_decls_equal_under_subst(dag, *cand_id, *template_id, subst)
-        }
-        (
-            TransformTarget::FieldProject {
-                field_label: cand_label,
-                field_child: cand_child,
-            },
-            TransformTarget::FieldProject {
-                field_label: template_label,
-                field_child: template_child,
-            },
-        ) => {
-            if cand_label != template_label {
-                return false;
-            }
-            match (cand_child, template_child) {
-                (None, None) => true,
-                (Some(cand), Some(template)) => {
-                    callable_decls_equal_under_subst(dag, *cand, *template, subst)
-                }
-                _ => false,
-            }
-        }
-        _ => false,
-    }
-}
-
-/// DB-16 (3a.3 closure): structural equivalence between two declaration
-/// references under an active substitution stack. Used by
-/// `transform_targets_equal_under_subst` to compare Callable /
-/// FieldProject target decl-level references when one side is a
-/// template-context Instantiation (possibly carrying extra bindings
-/// for outer TypeParams) and the other is a concrete site
-/// Instantiation (only bindings for the callee's own TypeParams).
-///
-/// Strategy: normalize both sides to their template-own-type-param
-/// bindings (filtering out substitution-stack artifacts from the
-/// template side), resolve through the subst stack on the template
-/// side, then compare. Falls back to
-/// `declaration_shapes_equivalent` when either side isn't an
-/// Instantiation (direct decl id match).
-fn callable_decls_equal_under_subst(
-    dag: &Dag,
-    cand_id: DeclarationId,
-    template_id: DeclarationId,
-    subst: &SubstStack,
-) -> bool {
-    if cand_id == template_id {
-        return true;
-    }
-    // Fast path: resolve template through subst and compare directly.
-    let template_resolved =
-        resolve_decl_with_subst(dag, template_id, subst, 0).unwrap_or(template_id);
-    if cand_id == template_resolved
-        || declaration_shapes_equivalent(dag, cand_id, template_resolved, 0)
-    {
-        return true;
-    }
-    // Fallback: both are Instantiations, compare by template own-type-params.
-    let (Some(cand_norm), Some(template_norm)) = (
-        normalized_instantiation_args(dag, cand_id),
-        normalized_instantiation_args(dag, template_id),
-    ) else {
-        return false;
-    };
-    if cand_norm.template != template_norm.template {
-        return false;
-    }
-    if cand_norm.args.len() != template_norm.args.len() {
-        return false;
-    }
-    cand_norm
-        .args
-        .iter()
-        .zip(template_norm.args.iter())
-        .all(|(c_arg, t_arg)| {
-            c_arg.parameter == t_arg.parameter && {
-                let t_val =
-                    resolve_decl_with_subst(dag, t_arg.value, subst, 0).unwrap_or(t_arg.value);
-                c_arg.value == t_val || declaration_shapes_equivalent(dag, c_arg.value, t_val, 0)
-            }
-        })
-}
-
-struct NormalizedInstantiation {
-    template: DeclarationId,
-    args: Vec<TemplateArgument>,
-}
-
-/// DB-16 (3a.3 closure): normalize an `Instantiation` declaration by
-/// stripping **only** self-bindings (`arg.parameter == arg.value`).
-///
-/// Self-bindings are reattachment artifacts produced by
-/// `resolve_callable_target`'s unification when a generic call site
-/// is encountered under an outer generic scope: the outer TypeParam
-/// binds to itself in the callee's argument list because no concrete
-/// value has been inferred yet. Those self-bindings are no-op under
-/// substitution (`SubstStack::lookup` short-circuits to `None` on
-/// them) but inflate argument-length comparisons in strict
-/// structural checks.
-///
-/// Non-self bindings are NEVER stripped: retained callable-argument
-/// identities (per `retained_template_arguments_for_target`) carry
-/// semantic meaning that must survive DB-16's equivalence walk. Two
-/// Instantiations that differ only by a non-self retained binding
-/// are structurally distinct and must compare unequal.
-fn normalized_instantiation_args(
-    dag: &Dag,
-    decl: DeclarationId,
-) -> Option<NormalizedInstantiation> {
-    let TypeConnective::Instantiation {
-        template,
-        arguments,
-    } = &dag.declaration(decl).connective
-    else {
-        return None;
-    };
-    let filtered: Vec<TemplateArgument> = arguments
-        .iter()
-        .filter(|arg| arg.parameter != arg.value)
-        .cloned()
-        .collect();
-    Some(NormalizedInstantiation {
-        template: *template,
-        args: filtered,
-    })
 }
 
 fn find_equivalent_anonymous_conj(dag: &Dag, children: &[Field]) -> Option<DeclarationId> {
@@ -4121,13 +3972,41 @@ fn declaration_shapes_equivalent(
                 arguments: rhs_arguments,
             },
         ) => {
+            // DB-16 (3a.3 closure): strip self-bindings
+            // (`arg.parameter == arg.value`) from both sides before
+            // comparing arguments. Self-bindings are reattachment
+            // artifacts produced by `resolve_callable_target`'s
+            // unification under outer generic scopes — they bind a
+            // TypeParam to itself pending further inference. Under
+            // `SubstStack::lookup` they short-circuit to `None`
+            // (no-op), but strict argument-length comparison would
+            // otherwise reject structurally-equivalent Instantiations
+            // solely because one side carries a self-binding artifact.
+            // Non-self retained callable arguments (per
+            // `retained_template_arguments_for_target`) are preserved
+            // — two Instantiations that differ only by a non-self
+            // retained binding correctly compare unequal.
+            let lhs_effective: Vec<&TemplateArgument> = lhs_arguments
+                .iter()
+                .filter(|a| a.parameter != a.value)
+                .collect();
+            let rhs_effective: Vec<&TemplateArgument> = rhs_arguments
+                .iter()
+                .filter(|a| a.parameter != a.value)
+                .collect();
             declaration_shapes_equivalent(dag, *lhs_template, *rhs_template, depth + 1)
-                && lhs_arguments.len() == rhs_arguments.len()
-                && lhs_arguments
+                && lhs_effective.len() == rhs_effective.len()
+                && lhs_effective
                     .iter()
-                    .zip(rhs_arguments.iter())
+                    .zip(rhs_effective.iter())
                     .all(|(lhs_arg, rhs_arg)| {
-                        declaration_shapes_equivalent(dag, lhs_arg.value, rhs_arg.value, depth + 1)
+                        lhs_arg.parameter == rhs_arg.parameter
+                            && declaration_shapes_equivalent(
+                                dag,
+                                lhs_arg.value,
+                                rhs_arg.value,
+                                depth + 1,
+                            )
                     })
         }
         (
