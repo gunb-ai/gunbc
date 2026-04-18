@@ -380,8 +380,7 @@ fn parse_pattern_binding_rule(
     else {
         return Err(EmitPythonError::MalformedSpec {
             declaration,
-            detail:
-                "python_clean_emission.pattern_bindings must be a PatternBindingRule variant",
+            detail: "python_clean_emission.pattern_bindings must be a PatternBindingRule variant",
         });
     };
     if !payload.is_empty() {
@@ -391,12 +390,10 @@ fn parse_pattern_binding_rule(
         });
     }
     let variants = dag.pattern_binding_rule_variants();
-    let emit_always = variants
-        .emit_always
-        .ok_or(EmitPythonError::MalformedSpec {
-            declaration,
-            detail: "PatternBindingRule.EmitBindingAlways declaration was not found",
-        })?;
+    let emit_always = variants.emit_always.ok_or(EmitPythonError::MalformedSpec {
+        declaration,
+        detail: "PatternBindingRule.EmitBindingAlways declaration was not found",
+    })?;
     let emit_underscore = variants
         .emit_underscore
         .ok_or(EmitPythonError::MalformedSpec {
@@ -407,8 +404,7 @@ fn parse_pattern_binding_rule(
         .emit_prefixed
         .ok_or(EmitPythonError::MalformedSpec {
             declaration,
-            detail:
-                "PatternBindingRule.EmitPrefixedUnderscoreWhenUnused declaration was not found",
+            detail: "PatternBindingRule.EmitPrefixedUnderscoreWhenUnused declaration was not found",
         })?;
     let not_applicable = variants
         .not_applicable
