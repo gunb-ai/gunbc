@@ -48,7 +48,7 @@ When reading:
 
 ### Structural rule banked
 
-`feedback_substrate_principle_audit` (memo, 2026-04-18) — 6-question audit before any new substrate field/variant; structural recovery patterns named (Track 9 vocabulary). Cited so far: Q5 in the PR 2.5 brief, Q4 in the ComposedEffect reshape. Graduates to INVARIANTS.md after one more citation (the Python pilot brief in §3 makes it 3 → graduate after that dispatch).
+`feedback_substrate_principle_audit` (memo, 2026-04-18) — 6-question audit before any new substrate field/variant; structural recovery patterns named (Track 9 vocabulary). Currently cited from dispatch briefs (see §2, §3). Graduation to INVARIANTS.md is a separate follow-up, not tracked from this snapshot — counting citations inside a read-model doc would itself make the doc act as a second authority for a rule not yet in a canonical authority file.
 
 ### Coordination meta-observation
 
@@ -237,7 +237,6 @@ No migration needed for any row above — §3 briefs or ROADMAP's existing stanc
 |---|---|---|
 | Mutual-recursion planner vs `is_first` alignment | #519 ChatGPT non-blocking | Lane 3 Stage 3a.1 follow-up — §3 combined XS brief lands this |
 | Variant-payload field-access general model | #518 (multi-field) + #519 chat A (single-field) | New "infra debt" subsection OR Lane 1 follow-ups — needs a dedicated hygiene chat |
-| `feedback_substrate_principle_audit` → INVARIANTS.md graduation | This session's memo | INVARIANTS.md once cited ≥3 times in dispatches; Python pilot citation triggers graduation |
 | Lens-name-filter dissolution (#518 sites 2/4/5) | #518 broader migration | §3 brief handles; ROADMAP row added when that PR opens |
 | compiler.dag v2-path carryover (§6 Q3) | `hand_maintained_src` references `src/v2/stage0/src`, `cli_run.rs`, `v2_interpreter.rs` — v2 paths in a doc that should eventually key off v3 source | Lane 3 Stage 3c prerequisite OR downgrade to "open question until 3c starts" — needs director pre-clearance before migration |
 
