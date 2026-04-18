@@ -13,7 +13,7 @@
 
 Stage 2b's pre-DB-18 design (`lane2-compile-time-proofs.md` §Stage 2b) assumed a workflow is a linear `List<OperationEffect>` — `compose_effects` walks the list, composes effect shapes, emits a verdict. That shape is correct for the narrow case (GCP Secret Manager upsert → STS Exchange → IAM grant, all linear) but the escalation clause in the same section already names the extension: *"if workflow structure isn't representable cleanly — e.g., control flow in a pipeline doesn't map to a linear `List<OperationEffect>` — surface. Don't stretch `compose_effects` to handle branches silently; the algebra needs to reflect branch-wise composition, which is a legitimate design extension."*
 
-DB-18 is that legitimate design extension, moved up-front rather than deferred. The substrate gains **one new reflected type** (`WorkflowEffect`) with **one helper record** (`BranchArm`); the computation substrate is untouched (no new `Behavior` variant, no `LoopBound` change); the effect algebra (`compose_effects`, `CompositionVerdict`) is untouched. Stage 2b's lens matches on `LinearEffect` only and emits explicit diagnostics on the other three variants, each naming the downstream stage that will consume it. The diagnostic is a first-class `Diagnostic`, not a silent skip — the fail-closed contract from INVARIANTS §C-8 applies.
+DB-18 is that legitimate design extension, moved up-front rather than deferred. The substrate gains **one new reflected coproduct** (`WorkflowEffect`), **one helper record** (`BranchArm`), and **one Track 9-style typed opaque handle** (`BoolPortRef`, the R2 third Track 9 primitive after `ParamRef` and `TransformRef`). The computation substrate is untouched (no new `Behavior` variant, no `LoopBound` change); the effect algebra (`compose_effects`, `CompositionVerdict`) is untouched. The authority site for `WorkflowEffect` values is locked to user-declared `data` declarations typed `WorkflowEffect` — no new declaration kind, no sidecar table. Stage 2b's lens matches on `LinearEffect` only and emits explicit diagnostics on the other three variants, each naming the downstream stage that will consume it. The diagnostic is a first-class `Diagnostic`, not a silent skip — the fail-closed contract from INVARIANTS §C-8 applies. `bool_port_of` (the `BoolPortRef` constructor) returning `None` is a fail-closed boundary at the caller: lowering emits `Diagnostic::BranchConditionNotBool`, never silently absorbs the absence.
 
 `WorkflowEffect` is the input-structure carrier. `CompositionVerdict` (PR #529) is the output-verdict carrier. They meet at exactly one edge: Stage 2b's lens projects `LinearEffect { ops }` through `compose_effects(ops)` to obtain a `CompositionVerdict`; other `WorkflowEffect` variants produce diagnostics without invoking the algebra.
 
@@ -478,12 +478,13 @@ The director chat owns the call on each of these. Silent in-flight patches destr
 - `feedback_substrate_principle_audit` — Q1–Q6 (§"Substrate principle audit" cites all six).
 - `feedback_state_space_vs_behavioral_invariants` — cardinality invariants via `NonEmptyList` / `NonSingletonList`; rejected alternative R-alt-A.
 - `feedback_lenses_not_passes` — rejected alternative R0 (lens-level re-derivation).
-- `feedback_no_metadata_markers` — `BranchArm.condition: PortId` is a typed handle, not a string marker.
-- `feedback_fail_closed_discipline` — `report_unsupported_variant` produces a `Diagnostic`, not a silent skip.
-- DB-9 R2.1 (`design-mutual-recursion-lowering.md`) — worked example of the six-question audit; mirrors DB-18's format.
+- `feedback_no_metadata_markers` — `BranchArm.condition: BoolPortRef` is a typed opaque handle, not a string marker or raw index.
+- `feedback_fail_closed_discipline` — `report_unsupported_variant` produces a `Diagnostic`, not a silent skip; `bool_port_of` returning `None` must be surfaced as `Diagnostic::BranchConditionNotBool` at the caller (Part 2 Acceptance item 4).
+- `feedback_std_over_patterns` — authority-site decision reuses `data` rather than inventing `WorkflowDeclaration` (R-alt-F rejection).
+- DB-9 R2.1 (`design-mutual-recursion-lowering.md`) — worked example of the six-question audit; mirrors DB-18's format. Also: the `ParamRef` / `TransformRef` Track 9 primitive pattern that `BoolPortRef` follows (R2 third primitive graduation).
 - DB-16 (`design-db16-refined-generic-substitution.md`) — worked example of Part 1 design / Part 2 impl split; mirrors DB-18's scope discipline.
-- PR #529 (`design-composed-effect-reshape.md`) — `CompositionVerdict` authority that DB-18's `LinearEffect` path delegates to.
-- ROADMAP (`../ROADMAP.md` and `../src/v3/ROADMAP.md`) — Lane 2 Stage 2b entry; this DB advances the row from planned lens-only to substrate-carrier + lens per director escalation.
+- PR #529 (`design-composed-effect-reshape.md`) — `CompositionVerdict` authority that DB-18's `LinearEffect` path delegates to. Merged 2026-04-18 as `8c7e7acdd`.
+- ROADMAP (`../ROADMAP.md` and `../src/v3/ROADMAP.md`) — Lane 2 Stage 2b entry; this DB advances the row from planned lens-only to substrate-carrier + lens per director escalation. Track 9 line 763-772 references for primitive-graduation discipline.
 
 ---
 
