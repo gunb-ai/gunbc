@@ -2,7 +2,8 @@
 //!
 //! The v3 emitter cannot yet lower `match` on user-defined sums like
 //! `std.effects::WorkflowEffect` inside lens modules; the algebraic walk is
-//! implemented in [`crate::workflow_idempotency`] and re-exported here.
+//! implemented in [`crate::workflow_idempotency`]. Only [`analyze_workflow`] is
+//! exported at the crate root — composition helpers stay `pub(crate)` there.
 
 use crate::dag::{Dag, NodeId, WorkflowIdempotencyReport};
 

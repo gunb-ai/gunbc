@@ -134,9 +134,11 @@ pub(crate) mod workflow_idempotency;
 pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan};
 pub use emit_rust::EmitError;
-/// Lane 2 Stage 2b — **supported** public entry: delegates to `std.effects` algebra
-/// (`WorkflowIdempotencyReport`). Helpers inside [`crate::workflow_idempotency`] stay
-/// crate-private staging until the self-hosted lens consumes `WorkflowEffect` directly.
+/// Lane 2 Stage 2b — **supported** public entry: [`analyze_workflow`] is the only
+/// idempotency API exported from this crate. Composition helpers such as
+/// `compose_operation_effects` / `operation_to_breaker` are **not** re-exported:
+/// naming and algebra authority live in `src/v3/std/effects.dag`, and the Rust
+/// bridge must not become a parallel public implementation surface.
 pub use lens_idempotency::analyze_workflow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
