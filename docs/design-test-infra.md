@@ -199,7 +199,9 @@ Questions **1–3** from R2 draft are **resolved** by the shipped `src/v3/std/ve
 
 ---
 
-## Acceptance (for when this graduates from draft)
+## Acceptance — schema locked; execution follow-ups
+
+**R2 schema** (verification + minimal resources carriers) is **locked** — this section tracks **test-runner / generation** work, not unresolved design questions.
 
 - [x] Open questions 1–3 locked with explicit answers (see section above).
 - [x] Extensions to `src/v3/std/verification.dag` with field shapes (`requires`, `BehavioralObservation`, `MockBackedInvariant`, obligations).
@@ -214,7 +216,7 @@ Questions **1–3** from R2 draft are **resolved** by the shipped `src/v3/std/ve
 
 - **Compiler-as-dependency-analyzer thesis** (tonight's framing) — DB-15 is the testing-scope consequence. Tests are declarations; the dependency walk handles them like anything else.
 - **`src/v3/std/verification.dag`** — the existing authority DB-15 extends. `TestClaim`, `TestPredicate`, `TestSuite` stay as-authored.
-- **`dsl/std/resources.dag`** — the existing acquire/release model DB-15 references via `requires: List<ResourceReference>`. Prerequisite for consumption: reconcile into v3.
+- **`dsl/std/resources.dag`** — acquire/release authority; **`src/v3/std/resources.dag`** supplies bootstrap `ResourceHandle` / `ResourceReference` with **matching `ResourceHandle` field labels** until full `resource { }` / merged bootstrap is ROADMAP-tracked.
 - **Lane 2 Stage 2c** ([lane2-compile-time-proofs.md](./lane2-compile-time-proofs.md)) — forcing function; generates `TestClaim` declarations from lens outputs.
 - **`src/v3/compiler/pipeline.dag`** — analogous pattern for non-test declarations (compiler stages consume the dependency walk); DB-15 applies the same shape to test-scope declarations.
 - **E-9 (INVARIANTS.md)** — sibling invariant. DB-15 doesn't need a new invariant; the rule "tests are declarations that consume the dependency walk" is implied by the thesis. If a future PR wants to bank it load-bearingly, it would be something like E-10 "tests as first-class declarations."
