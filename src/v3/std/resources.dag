@@ -5,9 +5,10 @@
 // full resource grammar ports. Dissolution trigger: merge with dsl authority
 // when v3 parses `resource` items.
 //
-// Model fidelity: `ResourceHandle` matches `dsl/std/resources.dag` — including
-// `cap: Secret` so handles stay non-forgeable at the type layer (illegal state:
-// no minted capability proof).
+// Model fidelity: same logical fields as `dsl/std/resources.dag`'s
+// `ResourceHandle` — `resource_type`/`resource_key` spell the dsl `type`/`key`
+// slots (v3 record labels cannot use `type` — lexer keyword). `cap: Secret` is
+// required: the per-process forgery proof from `std.types`, matching dsl.
 
 module v3.std.resources
 

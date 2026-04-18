@@ -28,6 +28,7 @@ fn db15_obligation_surface_is_declared() {
 #[test]
 fn resource_handle_matches_dsl_authority_including_cap() {
     let dag = Dag::new();
+    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
     let decl = dag
         .declaration_by_name("ResourceHandle")
         .expect("ResourceHandle from v3.std.resources");
@@ -38,5 +39,16 @@ fn resource_handle_matches_dsl_authority_including_cap() {
     assert!(
         labels.contains(&"cap"),
         "ResourceHandle must carry cap: Secret per dsl/std/resources.dag — got {labels:?}"
+    );
+    let secret_decl = dag
+        .declaration_by_name("Secret")
+        .expect("Secret from std.types");
+    let cap_field = children
+        .iter()
+        .find(|c| c.label == "cap")
+        .expect("cap field");
+    assert_eq!(
+        cap_field.ty, secret_decl.id,
+        "cap field must resolve to std.types.Secret — the dsl/std/resources.dag forgery proof"
     );
 }
