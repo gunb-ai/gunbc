@@ -30,16 +30,27 @@ use crate::dag::{DeclarationId, FieldValue, LiteralBits};
 use crate::Dag;
 
 /// Typed read of `data <target>_clean_emission.post_emit_verifier`.
-/// Every field is a structural declaration on the contract — no
-/// defaults, no fallbacks; a missing or malformed field fires
-/// `VerifierParseError::MalformedSpec` at parse time so the spec-file
-/// drift surfaces loudly rather than silently hand the runner a
-/// partially-filled binding.
+/// Every field here is a structural declaration on the contract that
+/// the runner actively consults — no defaults, no fallbacks; a
+/// missing or malformed field fires `VerifierParseError::MalformedSpec`
+/// at parse time so the spec-file drift surfaces loudly rather than
+/// silently hand the runner a partially-filled binding.
+///
+/// The authored `PostEmitVerifier` record has a fifth field,
+/// `syntax_only: Bool`, which the current runner does not consume —
+/// it is metadata about the verifier's depth (shallow syntax check
+/// vs full compile) that downstream schedulers (per-PR CI vs
+/// nightly) will dispatch on. Per E-6, a spec field lands only with
+/// a same-PR consumer; this binding therefore does NOT parse
+/// `syntax_only` yet. The field remains in `std/clean_emission.dag`
+/// because the three existing target spec files already declare it
+/// (landed in PRs 1/2/3 alongside the rest of the contract shape);
+/// a follow-up PR that adds the first downstream consumer will
+/// add the parse + storage here atomically.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostEmitVerifierBinding {
     pub command: String,
     pub args: Vec<String>,
-    pub syntax_only: bool,
     pub expected_exit_code: i64,
     pub output_policy: VerifierOutputPolicyBinding,
 }
