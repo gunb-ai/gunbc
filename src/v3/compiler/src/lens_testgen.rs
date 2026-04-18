@@ -314,6 +314,7 @@ impl<'a> TestgenLens<'a> {
                     FieldValue::Literal(LiteralBits::String(file_name)),
                 ),
                 ("predicate".to_string(), predicate),
+                ("requires".to_string(), FieldValue::List(Vec::new())),
             ],
         ));
     }

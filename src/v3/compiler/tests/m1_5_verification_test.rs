@@ -74,7 +74,7 @@ fn bootstrap_loads_verification_authority_types() {
 
     assert_eq!(
         record_fields(&dag, "TestClaim"),
-        vec!["name", "source", "file_name", "predicate"]
+        vec!["name", "source", "file_name", "predicate", "requires"]
     );
     assert_eq!(record_fields(&dag, "TestSuite"), vec!["name", "claims"]);
     assert_eq!(

@@ -17,6 +17,7 @@
 module std.verification
 
 import std.list { List }
+import v3.spec.v3_l1 { DeclarationRef }
 import v3.std.substrate { ComparisonOp }
 
 // **🟡 Scaffold — DiagnosticKind.** This mirrors the compiler's native
@@ -58,6 +59,20 @@ type PortStateExpectation
   = Resolved
   | Unresolved
 
+// **🟡 Scaffold — ResourceReference.** Typed sentinel for compile-time
+// resource declaration references carried on `TestClaim.requires`.
+// Shape mirrors `DeclarationRef` (`src/v3/spec/v3_l1.dag:69`): an
+// identifier is accepted at the data-body parse site and resolved to
+// a `DeclarationId` during lowering. Kept distinct from `DeclarationRef`
+// so the accepted target set can narrow structurally once resources
+// land in v3 — today any declaration is accepted, post-port only
+// `resource` declarations are.
+// Dissolution trigger: `dsl/std/resources.dag` → `src/v3/std/resources.dag`
+// reconciliation (see `src/v3/ROADMAP.md` §Lane 2 Stage 2c
+// "Prerequisite deferral: `dsl/std/resources.dag` → v3
+// reconciliation"). DB-15 R2 §Prerequisite.
+type ResourceReference {}
+
 // **🟡 Scaffold — TestPredicate.** The remaining bootstrap carrier is
 // the outer "what property are we asserting?" coproduct. The
 // diagnostic, port-state, and cost-ordering sub-axes now flow through
@@ -65,6 +80,17 @@ type PortStateExpectation
 // Dissolution trigger: dissolve this outer sum once verification
 // predicates are modeled as ordinary surfaced substrate facts instead
 // of a bootstrap-local predicate envelope.
+//
+// **DB-15 R2 tautology-avoidance rule (structural):** no variant
+// verifies a fact by rerunning the producing lens. `BehavioralObservation`
+// asserts that running the `subject` on `input_sample` yields a value
+// structurally equal to `expected_output` — the oracle is a separately
+// declared value, not a second lens evaluation. `MockBackedInvariant`
+// asserts that `invariant` holds when `subject` is exercised against
+// `mock_transport` — again an independent predicate over an
+// observation, not a lens rerun. A hypothetical `LensSays { lens,
+// subject, expected }` variant is *not* in the coproduct and cannot
+// be added without re-opening tautology avoidance in DB-15.
 
 type TestPredicate
   = Compiles
@@ -79,15 +105,57 @@ type TestPredicate
       comparator: ComparisonOp
       bound: Int
     }
+  | BehavioralObservation {
+      subject: DeclarationRef
+      input_sample: DeclarationRef
+      expected_output: DeclarationRef
+    }
+  | MockBackedInvariant {
+      subject: DeclarationRef
+      mock_transport: ResourceReference
+      invariant: DeclarationRef
+    }
 
+// `requires` names the resource declarations a claim must acquire to
+// run. Per DB-15 R2 Open Question #1: per-claim (not per-predicate-
+// variant) — the execution-context needs of a single subject don't
+// duplicate across the predicate axes that exercise it. Compile-time
+// predicates (`Compiles`, `FailsWithDiagnostic`, `PortHasState`,
+// `CostBounded`) carry `requires: []`; runtime-backed predicates
+// (`BehavioralObservation`, `MockBackedInvariant`) typically carry a
+// non-empty list (test runner, mock transport, etc.).
 type TestClaim {
   name: String
   source: String
   file_name: String
   predicate: TestPredicate
+  requires: List<ResourceReference>
 }
 
 type TestSuite {
   name: String
   claims: List<TestClaim>
+}
+
+// **DB-15 R2 materialization entry point.**
+//
+// Surfaces a declared suite's obligations to a downstream runner. The
+// compiler's existing dependency walk has already:
+//   1. compiled each claim's `source` keyed on `(source, file_name)`
+//      — shared across claims with matching subject;
+//   2. evaluated any lens embedded in the claim's `predicate`
+//      (e.g. the static cost bound for `CostBounded`) keyed on
+//      `(dag_hash, lens_decl_id)` — shared across claims over the
+//      same subject;
+//   3. staged acquires for the resources in `requires` at the
+//      outermost shared scope across claims with matching resource
+//      keys — per `dsl/std/resources.dag`.
+//
+// This function is a structural projection: it does NOT re-derive the
+// compilation, lens evaluation, or acquire placement. The sharing /
+// caching / scoping facts fall out of the dependency walk; the
+// projection names what a runner consumes, nothing more. See
+// `docs/design-test-infra.md` R2 §"Minimal model" for the framing.
+fn materialize_obligations(suite: TestSuite) -> List<TestClaim> {
+  suite.claims
 }
