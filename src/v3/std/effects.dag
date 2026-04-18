@@ -74,6 +74,12 @@ import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 // bodies below, while `src/v3/std/` does not yet ship a separate
 // `http_path.dag`. Keep these definitions structurally aligned with
 // the v2 authority until the standalone v3 port lands.
+//
+// 🟡 SCAFFOLD during the inline `http_path` bridge. `UrlPathToken`
+// is not terminal in this file; it is a temporary local mirror of the
+// standalone path-token authority that will live in `std/http_path.dag`.
+// Dissolution trigger: the dedicated v3 `http_path.dag` port lands and
+// `std.effects` imports the token/path carriers instead of defining them.
 
 type UrlPathToken
   = LiteralToken { text: String }
