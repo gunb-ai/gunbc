@@ -87,6 +87,22 @@ Lens reads each operation's declared `idempotent` modifier AND derives from path
 
 **Escalation:** if workflow structure isn't representable cleanly — e.g., control flow in a pipeline doesn't map to a linear `List<OperationEffect>` — surface. Don't stretch `compose_effects` to handle branches silently; the algebra needs to reflect branch-wise composition, which is a legitimate design extension.
 
+**Input structure (DB-18) — `WorkflowEffect` substrate carrier.** The escalation clause above named the extension that DB-18 now locks in: workflow control-flow shape is promoted from "something the lens reconstructs from DAG shape at walk time" (a heuristic, which `feedback_lenses_not_passes` rejects) to a first-class substrate carrier `WorkflowEffect` that lowering produces and lenses read structurally. Shape:
+
+```
+type WorkflowEffect
+  = LinearEffect { ops: NonEmptyList<OperationEffect> }
+  | BranchEffect { arms: NonSingletonList<BranchArm> }
+  | LoopEffect { body: WorkflowEffect }
+  | ParallelEffect { branches: NonSingletonList<WorkflowEffect> }
+
+type BranchArm { condition: PortId; body: WorkflowEffect }
+```
+
+Stage 2b is the initial consumer with **`LinearEffect`-only scope**: the lens matches on `LinearEffect` and delegates to `compose_effects(ops |> to_list) -> CompositionVerdict` (post-PR #529). The other three variants emit explicit fail-closed diagnostics (C-8) naming the downstream stage that will consume them — `BranchEffect` → Stage 2d branch-wise composition, `LoopEffect` → Stage 2d fixpoint / body convergence, `ParallelEffect` → Stage 2e parallelism-as-lens with commutativity witness. No silent skip; a `WorkflowEffect` the Stage 2b lens cannot verdict produces a `Diagnostic` explaining which variant, which downstream stage, and why. The `analyze_workflow` signature above becomes `fn analyze_workflow(d: Dag, workflow: WorkflowEffect) -> WorkflowIdempotencyReport`; the NodeId-indexed form in the draft above is the pre-DB-18 sketch. `WorkflowEffect` and `CompositionVerdict` (post-PR #529) coexist on orthogonal axes — `WorkflowEffect` is the input-structure carrier, `CompositionVerdict` is the output-verdict carrier; no enclosing record pairs them (preserving the lesson PR #529 R3 locked).
+
+Design: [design-db18-workflow-effect-carrier.md](./design-db18-workflow-effect-carrier.md) — Part 1 locks the 4-variant shape, the `BranchArm` structural distinction, the Q4 dissolution receipt, and the Q1–Q6 substrate-principle audit. **Part 2 implementation is gated on PR #529 landing** (see Pre-start gate below); Part 2 ships `type WorkflowEffect` in `src/v3/std/effects.dag`, the Rust mirror in `src/v3/compiler/src/dag.rs`, the lens in `src/v3/lenses/idempotency.dag`, and reconciles `WorkflowIdempotencyReport` with `CompositionVerdict` (see DB-18 §Open questions).
+
 **Pre-start gate:** Stage 2b does not start consuming `ComposedEffect` as if it were stable substrate. The Stage 2a `DerivedOpEffect` collapse has landed (derivation now emits `OperationEffect`, which is the same shape `compose_effects` walks). The remaining Stage 2a follow-up is `ComposedEffect`: it must stop encoding workflow verdicts as duplicated summary fields before Stage 2b consumers depend on it.
 
 ### Stage 2c — Test obligation materialization (M)
