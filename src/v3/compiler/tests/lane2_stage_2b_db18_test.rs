@@ -34,14 +34,12 @@ fn branch_arm_of_requires_bool_port() {
     let binds: Vec<_> = dag.nodes().iter().filter_map(Behavior::as_bind).collect();
     let int_bind = binds.iter().find(|b| b.name == "x").expect("x");
     let bool_bind = binds.iter().find(|b| b.name == "y").expect("y");
-    let linear = || {
-        WorkflowEffect::LinearEffect {
-            ops: NonEmptyList::from_vec(vec![op(
-                "noop",
-                EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-            )])
-            .unwrap(),
-        }
+    let linear = || WorkflowEffect::LinearEffect {
+        ops: NonEmptyList::from_vec(vec![op(
+            "noop",
+            EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
+        )])
+        .unwrap(),
     };
     assert!(dag.branch_arm_of(int_bind.value, linear()).is_none());
     assert!(dag.branch_arm_of(bool_bind.value, linear()).is_some());
@@ -74,7 +72,9 @@ fn gcp_style_linear_chain_idempotent() {
     let r = analyze_workflow(&dag, &wf);
     assert!(matches!(
         r,
-        WorkflowIdempotencyReport::WorkflowCompositionVerdict(CompositionVerdict::IdempotentComposition)
+        WorkflowIdempotencyReport::WorkflowCompositionVerdict(
+            CompositionVerdict::IdempotentComposition
+        )
     ));
 }
 
@@ -102,10 +102,7 @@ fn append_effect_breaks_linear_chain() {
         panic!("expected BrokenBy");
     };
     assert_eq!(first_breaker.operation_name, "append_audit");
-    assert!(matches!(
-        first_breaker.shape,
-        BreakingShape::AppendEffect
-    ));
+    assert!(matches!(first_breaker.shape, BreakingShape::AppendEffect));
 }
 
 #[test]
@@ -130,11 +127,7 @@ fn post_create_is_breaking() {
 #[test]
 fn diagnostic_paths_name_stage2b() {
     let dag = compile_to_dag("let c = 1 < 2\nlet d = 2 < 3", "cd.v3").expect("compile");
-    let binds: Vec<_> = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .collect();
+    let binds: Vec<_> = dag.nodes().iter().filter_map(Behavior::as_bind).collect();
     let c = binds.iter().find(|b| b.name == "c").expect("c");
     let d = binds.iter().find(|b| b.name == "d").expect("d");
     let stage = "lane2_stage2b_idempotency_lens";
