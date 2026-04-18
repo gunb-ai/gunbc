@@ -131,9 +131,9 @@ mod tokenize;
 mod workflow_idempotency;
 
 pub use dag::Dag;
-pub use workflow_idempotency::{analyze_workflow, compose_operation_effects, operation_to_breaker};
 pub use diagnostics::{Diagnostic, SourceSpan};
 pub use emit_rust::EmitError;
+pub use workflow_idempotency::{analyze_workflow, compose_operation_effects, operation_to_breaker};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StageSnapshotKind {
