@@ -137,25 +137,3 @@ type TestSuite {
   claims: List<TestClaim>
 }
 
-// **DB-15 R2 materialization entry point.**
-//
-// Surfaces a declared suite's obligations to a downstream runner. The
-// compiler's existing dependency walk has already:
-//   1. compiled each claim's `source` keyed on `(source, file_name)`
-//      — shared across claims with matching subject;
-//   2. evaluated any lens embedded in the claim's `predicate`
-//      (e.g. the static cost bound for `CostBounded`) keyed on
-//      `(dag_hash, lens_decl_id)` — shared across claims over the
-//      same subject;
-//   3. staged acquires for the resources in `requires` at the
-//      outermost shared scope across claims with matching resource
-//      keys — per `dsl/std/resources.dag`.
-//
-// This function is a structural projection: it does NOT re-derive the
-// compilation, lens evaluation, or acquire placement. The sharing /
-// caching / scoping facts fall out of the dependency walk; the
-// projection names what a runner consumes, nothing more. See
-// `docs/design-test-infra.md` R2 §"Minimal model" for the framing.
-fn materialize_obligations(suite: TestSuite) -> List<TestClaim> {
-  suite.claims
-}
