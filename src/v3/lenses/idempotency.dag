@@ -1,9 +1,10 @@
 // lenses.idempotency — Lane 2 Stage 2b workflow idempotency lens (staging stub).
 //
 // Full `analyze_workflow` logic: `v3_compiler::analyze_workflow` (Rust), kept in
-// sync with `std.effects` carriers. Surface gap: user-module `match` on
-// `WorkflowEffect` is not yet emit-table in lens modules — see staging note
-// in repo history / DOWNSTREAM_REQUIREMENTS.md class-5 gaps.
+// sync with `std.effects` carriers. Workflow facts on `Dag` (`lane2_workflow`
+// on native Value/Bind) are not part of the reflected substrate vocabulary here —
+// this stub fails closed until emit-table `match` + substrate reflection land.
+// See ROADMAP Lane 2 Stage 2b “Reflection boundary” and class-5 gaps.
 
 module lenses.idempotency
 

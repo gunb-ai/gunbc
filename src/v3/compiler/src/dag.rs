@@ -719,8 +719,10 @@ pub struct ValueNode {
     pub data: LiteralBits,
     pub output: PortId,
     pub span: SourceSpan,
-    /// Lane 2 Stage 2b: idempotency projection for this node. Populated only by
-    /// lowering or the staging hook [`Dag::try_register_lane2_workflow_effect`];
+    /// Lane 2 Stage 2b: idempotency projection for this node. **Native Rust only**
+    /// — not part of the reflected `Behavior` surface in `substrate.dag`, so `.dag`
+    /// lenses cannot read it until a workflow fact is reflected + realized.
+    /// Populated by lowering or [`Dag::try_register_lane2_workflow_effect`];
     /// [`crate::workflow_idempotency::analyze_workflow`] reads it from the graph.
     pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
 }
@@ -1185,7 +1187,8 @@ pub struct BindNode {
     pub params: Vec<PortId>,
     pub span: SourceSpan,
     /// Lane 2 Stage 2b: idempotency projection for this bind. Same contract as
-    /// [`ValueNode::lane2_workflow`].
+    /// [`ValueNode::lane2_workflow`] (native Rust field; see that comment for the
+    /// substrate-reflection deferral).
     pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
 }
 
@@ -1850,11 +1853,13 @@ impl Dag {
         &self.clusters[id.index()]
     }
 
-    /// Staging hook: attach a [`WorkflowEffect`] on the substrate [`Behavior`] at
-    /// `root` (`Value` or `Bind` only). Returns `false` if `root` is missing or
-    /// not a node that carries lane-2 workflow facts. Downstream lowering should
-    /// populate the same fields so [`crate::workflow_idempotency::analyze_workflow`]
-    /// reads a single graph-local authority — not a parallel side table.
+    /// Staging hook: attach a [`WorkflowEffect`] on **native** [`Behavior`] nodes at
+    /// `root` (`Value` or `Bind` only). This does **not** populate a reflected
+    /// substrate field — `.dag` lens walkers still cannot see `lane2_workflow`.
+    /// Returns `false` if `root` is missing or not `Value`/`Bind`. Downstream
+    /// lowering should populate the same fields so
+    /// [`crate::workflow_idempotency::analyze_workflow`] reads one graph-local
+    /// store (not a parallel side table).
     pub fn try_register_lane2_workflow_effect(
         &mut self,
         root: NodeId,

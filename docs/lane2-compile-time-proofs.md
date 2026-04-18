@@ -89,7 +89,9 @@ type WorkflowIdempotencyReport
 // CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: BreakingOperation }
 ```
 
-**Single authority.** `analyze_workflow` does **not** take a caller-authored `WorkflowEffect`. Facts are read only from substrate `Value` / `Bind` nodes at `workflow_root` (`lane2_workflow` on those behaviors — populated by lowering or staging hooks, not a parallel `NodeId` map). The obsolete flat `{ idempotent: Bool, breaking_op: String?, … }` sketch below is superseded by the `CompositionVerdict` partition + explicit `IdempotencyUnsupported` carrier.
+**Single authority.** `analyze_workflow` does **not** take a caller-authored `WorkflowEffect`. Facts are read only from **native Rust** `Value` / `Bind` nodes at `workflow_root` (`lane2_workflow` on those behaviors — populated by lowering or staging hooks, not a parallel `NodeId` map). The obsolete flat `{ idempotent: Bool, breaking_op: String?, … }` sketch below is superseded by the `CompositionVerdict` partition + explicit `IdempotencyUnsupported` carrier.
+
+**Substrate reflection (follow-up).** `lane2_workflow` is **not** yet a field on the reflected `Behavior` facts that `substrate.dag` exposes to `.dag` lens walkers — the staged [`idempotency.dag`](../src/v3/lenses/idempotency.dag) stub delegates to Rust for that reason. ROADMAP tracks reflecting the same workflow fact for declarative self-inspection; until then the Rust analysis path is authoritative for Stage 2b consumers.
 
 Lens reads each operation's declared `idempotent` modifier AND derives from path+method, then cross-checks via `check_modifier_vs_derivation`. Diagnostic fires when:
 - Declared idempotent but derivation disagrees (`Disagrees` case)

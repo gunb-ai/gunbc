@@ -3,8 +3,10 @@
 //! Authority for the algebra lives in `src/v3/std/effects.dag`; these helpers
 //! are the compiler-side projection used by tests and native consumers until
 //! the emitted lens module is the sole entry point. Workflow structure for
-//! analysis is read from substrate `Value` / `Bind` fields on the [`Dag`], not
-//! from a free-floating `WorkflowEffect` argument or a parallel hash map.
+//! analysis is read from **native** `Value` / `Bind` fields on the [`Dag`]
+//! (`lane2_workflow`), not from a free-floating `WorkflowEffect` argument or a
+//! parallel hash map. That pocket is not yet reflected in `substrate.dag` for
+//! `.dag` lens introspection — see ROADMAP Lane 2 Stage 2b “Reflection boundary.”
 
 use crate::dag::{
     CompositionVerdict, Dag, EffectShape, IdempotencyUnsupportedDetail, NodeId, OperationEffect,
