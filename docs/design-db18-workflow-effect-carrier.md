@@ -318,9 +318,16 @@ This is deliberate. PR #529's R3 removed `ComposedEffect { operations, verdict }
 - `EffectShape` partitioning (`IdempotentShape` / `BreakingShape`). Per PR #529, already landed in Stage 2a follow-up.
 - `OperationEffect`, `BreakingOperation`, `CompositionVerdict`, `IdempotencyEvidence`, `ModifierCheck`. Untouched.
 - The computation substrate (`Behavior`, `LoopBound`, `Cluster`). Untouched. `Behavior` stays at five variants.
-- The reflected `Dag` record. Untouched. No new sidecar table.
+- The reflected `Dag` record. Untouched. No new sidecar table for workflows (per §"Authority site for `WorkflowEffect`" — data-declaration value slot is the host).
+- Existing Track 9 primitives (`NonEmptyList`, `NonSingletonList`, `ParamRef`, `TransformRef`). Untouched by shape change; `BoolPortRef` joins them as a new peer primitive without modifying any existing one.
 - `WorkflowEffectConcern` (existing record at `src/v3/std/effects.dag:669–673` post-PR #529; was `:565–569` pre-#529). This is a diagnostic-construction helper, not an input carrier; remains as-is. Part 2 may or may not project through it for the `LinearEffect` diagnostic construction.
 - V2 `dsl/std/effects.dag`. V3-only, per the same scope discipline PR #529 applied.
+
+### What DB-18 DOES add (summary)
+
+- `type WorkflowEffect` (new coproduct) and `type BranchArm` (new record) in `src/v3/std/effects.dag`.
+- `type BoolPortRef` (new Track 9 typed opaque handle) with `fn bool_port_of` and `fn port_of` in `src/v3/std/substrate.dag`. Third Track 9 primitive after `ParamRef` / `TransformRef`.
+- Authority-site convention: user-declared `data` typed `WorkflowEffect` is the host. No substrate-addition needed — the `data` declaration surface already exists.
 
 ---
 
@@ -340,13 +347,11 @@ Encoded as:
 
 ```
 WorkflowEffect::LinearEffect {
-  ops: NonEmptyList {
-    first: OperationEffect { operation_name: "Secret.upsert", shape: IsIdempotent(UpsertEffect{..}) }
-    rest: [
-      OperationEffect { operation_name: "STS.exchange", shape: IsIdempotent(ReadEffect) }
-      OperationEffect { operation_name: "IAM.grant", shape: IsIdempotent(UpsertEffect{..}) }
-    ]
-  }
+  ops: [
+    OperationEffect { operation_name: "Secret.upsert", shape: IsIdempotent(UpsertEffect{..}) }
+    OperationEffect { operation_name: "STS.exchange", shape: IsIdempotent(ReadEffect) }
+    OperationEffect { operation_name: "IAM.grant", shape: IsIdempotent(UpsertEffect{..}) }
+  ]
 }
 ```
 
