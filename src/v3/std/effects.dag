@@ -106,8 +106,6 @@
 module std.effects
 
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
-import std.list { List, cons }
-import v3.std.substrate_minimal { NonEmptyList, NonSingletonList, PortId }
 import std.list { List, cons, enumerate }
 import v3.std.substrate { ElementRef, NonSingletonList, PortId }
 

@@ -136,7 +136,10 @@ fn append_effect_breaks_linear_chain() {
         .operation_at(first_breaker)
         .expect("breaker ref should resolve into linear ops");
     assert_eq!(breaker.operation_name, "append_audit");
-    assert!(matches!(breaker.shape, EffectShape::IsBreaking(BreakingShape::AppendEffect)));
+    assert!(matches!(
+        breaker.shape,
+        EffectShape::IsBreaking(BreakingShape::AppendEffect)
+    ));
 }
 
 #[test]
