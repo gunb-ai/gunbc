@@ -314,6 +314,15 @@ impl Dag {
         }
         let decl = self.declaration(current);
         if decl.name.is_some() || decl.refinement.is_some() {
+            // The builder is read-only: unlike inference, it does not
+            // materialize substituted refined carriers. If this refined
+            // identity still depends on active template arguments, do not seed
+            // a stale template shape onto the output port.
+            if decl.refinement.is_some()
+                && self.refinement_base_requires_substitution(current, subst, depth + 1)
+            {
+                return None;
+            }
             return Some(TypeShape::new(current));
         }
         match &decl.connective {
@@ -412,6 +421,50 @@ impl Dag {
             }
         }
         None
+    }
+
+    fn refinement_base_requires_substitution(
+        &self,
+        current: DeclarationId,
+        subst: &[Vec<TemplateArgument>],
+        depth: usize,
+    ) -> bool {
+        let decl = self.declaration(current);
+        let TypeConnective::Atom(
+            AtomPayload::ResolvedByStructure(base) | AtomPayload::ResolvedByName(base),
+        ) = &decl.connective
+        else {
+            return false;
+        };
+        self.refinement_base_walk(*base, subst, depth)
+    }
+
+    fn refinement_base_walk(
+        &self,
+        current: DeclarationId,
+        subst: &[Vec<TemplateArgument>],
+        depth: usize,
+    ) -> bool {
+        if depth >= BUILDER_TYPE_WALK_DEPTH_LIMIT {
+            return false;
+        }
+        let decl = self.declaration(current);
+        match &decl.connective {
+            TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+                self.lookup_template_argument(current, subst).is_some()
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                self.refinement_base_walk(*next, subst, depth + 1)
+            }
+            TypeConnective::Instantiation { arguments, .. } => arguments
+                .iter()
+                .any(|arg| self.refinement_base_walk(arg.value, subst, depth + 1)),
+            TypeConnective::Cardinality { element, .. } => {
+                self.refinement_base_walk(*element, subst, depth + 1)
+            }
+            _ => false,
+        }
     }
 
     fn find_equivalent_decl_instantiation(
@@ -741,6 +794,78 @@ mod tests {
             dag.port(output).state(),
             &PortState::Resolved(TypeShape::new(list_of_int))
         );
+    }
+
+    #[test]
+    fn push_transform_leaves_refined_generic_output_uninferred_without_materialized_carrier() {
+        let mut dag = Dag::new();
+        let int_decl = dag
+            .declaration_by_name("Int")
+            .expect("bootstrap Int declaration")
+            .id;
+        let bool_decl = dag
+            .declaration_by_name("Bool")
+            .expect("bootstrap Bool declaration")
+            .id;
+        let input = dag.alloc_port_with_shape(TypeShape::new(int_decl));
+        let type_param = push_test_declaration(
+            &mut dag,
+            None,
+            TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
+            Vec::new(),
+        );
+        let predicate = push_test_declaration(
+            &mut dag,
+            None,
+            TypeConnective::Arrow {
+                inputs: vec![type_param],
+                output: bool_decl,
+                body: ArrowBody::NoBody,
+            },
+            Vec::new(),
+        );
+        let refined_type_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: refined_type_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(type_param)),
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: Some(predicate),
+            span: span(),
+        });
+        let generic_callable = push_test_declaration(
+            &mut dag,
+            Some("generic_refined"),
+            TypeConnective::Arrow {
+                inputs: vec![type_param],
+                output: refined_type_param,
+                body: ArrowBody::NoBody,
+            },
+            vec![type_param],
+        );
+        let specialized_callable = push_test_declaration(
+            &mut dag,
+            None,
+            TypeConnective::Instantiation {
+                template: generic_callable,
+                arguments: vec![TemplateArgument {
+                    parameter: type_param,
+                    value: int_decl,
+                }],
+            },
+            Vec::new(),
+        );
+
+        let output = dag.push_transform(
+            TransformTarget::Callable(specialized_callable),
+            vec![input],
+            span(),
+        );
+
+        assert_eq!(dag.port(output).state(), &PortState::Uninferred);
     }
 
     #[test]
