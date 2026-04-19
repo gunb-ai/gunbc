@@ -30,8 +30,8 @@ use crate::dag::{
     TypeConnective,
 };
 use crate::diagnostics::{
-    declaration_display_name, example_source_for_decl, witness_correction_for_decl, Diagnostic,
-    SourceSpan, Correction,
+    declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
+    Diagnostic, SourceSpan,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
@@ -3521,10 +3521,7 @@ fn resolve_field_project(
             .find(|field| field.label == field_label)
             .map(|field| field.ty)
         else {
-            let field_start = t
-                .span
-                .byte_end
-                .saturating_sub(field_label.len() as u32);
+            let field_start = t.span.byte_end.saturating_sub(field_label.len() as u32);
             let fixes = children
                 .iter()
                 .take(5)

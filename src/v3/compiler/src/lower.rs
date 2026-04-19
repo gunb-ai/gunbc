@@ -31,7 +31,7 @@ use crate::dag::{
     TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{
-    declaration_display_name, Diagnostic, SourceSpan, witness_correction_for_decl,
+    declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
 };
 use crate::infer::{concretize_decl_with_subst, SubstStack};
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
@@ -4542,9 +4542,10 @@ fn lower_expr(
             }
         },
         SurfaceExpr::Call { target, args, span } => {
-            let Some(base_target_decl) = resolve_expected_variant_constructor(dag, expected_decl, target)
-                .or_else(|| callable_scope.get(target).copied())
-                .or_else(|| symbols.get(target).copied())
+            let Some(base_target_decl) =
+                resolve_expected_variant_constructor(dag, expected_decl, target)
+                    .or_else(|| callable_scope.get(target).copied())
+                    .or_else(|| symbols.get(target).copied())
             else {
                 let port = dag.alloc_port(None);
                 let fixes = expected_decl
