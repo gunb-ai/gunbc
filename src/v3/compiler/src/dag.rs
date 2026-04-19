@@ -2391,7 +2391,10 @@ impl Dag {
     ) -> Option<TargetSyntaxBundle> {
         Some(TargetSyntaxBundle {
             language_spec,
-            clean_emission_spec: *self.target_syntax.clean_emission_by_language.get(&language_spec)?,
+            clean_emission_spec: *self
+                .target_syntax
+                .clean_emission_by_language
+                .get(&language_spec)?,
         })
     }
 
@@ -3014,10 +3017,7 @@ impl Default for Dag {
     }
 }
 
-fn binding_reference_field(
-    fields: &[(String, FieldValue)],
-    label: &str,
-) -> Option<DeclarationId> {
+fn binding_reference_field(fields: &[(String, FieldValue)], label: &str) -> Option<DeclarationId> {
     fields.iter().find_map(|(field_label, value)| {
         if field_label != label {
             return None;
