@@ -3402,47 +3402,30 @@ impl<'a> Ctx<'a> {
     fn render_vector_list_pattern_branch(
         &self,
         branch: &BranchNode,
-        disj_id: DeclarationId,
+        _disj_id: DeclarationId,
         binding: &PatternRealizationBinding,
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
-        // Debt receipt: this still reconstructs `Empty` / `Cons` by label from the
-        // structural list sum, then lowers that shape onto the realized `Vec<_>`
-        // carrier. The current authority is the spec-owned `PatternRealization`
-        // data in `rust.dag`; the remaining opacity gap is that the list-specific
-        // branch shape is still interpreted here rather than composed by a .dag
-        // emitter over target facts.
-        let TypeConnective::Disj { variants } = &self.dag.declaration(disj_id).connective else {
-            unreachable!("pattern realization target must walk to a Disj")
-        };
-        let empty_variant = variants
-            .iter()
-            .find(|variant| variant.label == "Empty")
-            .map(|variant| variant.ty)
-            .ok_or_else(|| {
+        // Role identity is a spec fact: `PatternRealization.empty_variant` /
+        // `cons_variant` are typed `DeclarationRef`s to the sum's variants
+        // (`List.Empty` / `List.Cons` in `rust.dag`). The emitter reads them
+        // — no label-matching on variant strings.
+        let empty_path = find_resolved_branch_path(branch, binding.empty_variant).ok_or_else(
+            || {
                 EmitError::UnsupportedBehavior(
-                    "vector-list pattern realization requires an `Empty` variant".to_string(),
+                    "vector-list pattern realization requires a branch arm for the declared empty_variant"
+                        .to_string(),
                 )
-            })?;
-        let cons_variant = variants
-            .iter()
-            .find(|variant| variant.label == "Cons")
-            .map(|variant| variant.ty)
-            .ok_or_else(|| {
+            },
+        )?;
+        let cons_path = find_resolved_branch_path(branch, binding.cons_variant).ok_or_else(
+            || {
                 EmitError::UnsupportedBehavior(
-                    "vector-list pattern realization requires a `Cons` variant".to_string(),
+                    "vector-list pattern realization requires a branch arm for the declared cons_variant"
+                        .to_string(),
                 )
-            })?;
-        let empty_path = find_resolved_branch_path(branch, empty_variant).ok_or_else(|| {
-            EmitError::UnsupportedBehavior(
-                "vector-list pattern realization requires an `Empty` branch arm".to_string(),
-            )
-        })?;
-        let cons_path = find_resolved_branch_path(branch, cons_variant).ok_or_else(|| {
-            EmitError::UnsupportedBehavior(
-                "vector-list pattern realization requires a `Cons` branch arm".to_string(),
-            )
-        })?;
+            },
+        )?;
         let scrutinee = self.render_input_use(
             InputConsumer::Branch(branch),
             InputSlot::BranchInput,

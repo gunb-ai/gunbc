@@ -84,6 +84,8 @@ enum PatternStrategyBinding {
 #[derive(Debug, Clone)]
 struct PatternRealizationBinding {
     strategy: PatternStrategyBinding,
+    empty_variant: DeclarationId,
+    cons_variant: DeclarationId,
     scrutinee: String,
     empty_pattern: String,
     cons_pattern: String,
@@ -1211,41 +1213,26 @@ impl<'a> Ctx<'a> {
     fn render_vector_list_pattern_branch(
         &self,
         branch: &BranchNode,
-        disj_id: DeclarationId,
+        _disj_id: DeclarationId,
         binding: &PatternRealizationBinding,
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
-        let TypeConnective::Disj { variants } = &self.dag.declaration(disj_id).connective else {
-            unreachable!("pattern realization target must walk to a Disj")
-        };
-        let empty_variant = variants
-            .iter()
-            .find(|variant| variant.label == "Empty")
-            .map(|variant| variant.ty)
-            .ok_or_else(|| {
+        let empty_path = find_resolved_branch_path(branch, binding.empty_variant).ok_or_else(
+            || {
                 EmitError::UnsupportedBehavior(
-                    "vector-list pattern realization requires Empty".to_string(),
+                    "vector-list pattern realization requires a branch arm for the declared empty_variant"
+                        .to_string(),
                 )
-            })?;
-        let cons_variant = variants
-            .iter()
-            .find(|variant| variant.label == "Cons")
-            .map(|variant| variant.ty)
-            .ok_or_else(|| {
+            },
+        )?;
+        let cons_path = find_resolved_branch_path(branch, binding.cons_variant).ok_or_else(
+            || {
                 EmitError::UnsupportedBehavior(
-                    "vector-list pattern realization requires Cons".to_string(),
+                    "vector-list pattern realization requires a branch arm for the declared cons_variant"
+                        .to_string(),
                 )
-            })?;
-        let empty_path = find_resolved_branch_path(branch, empty_variant).ok_or_else(|| {
-            EmitError::UnsupportedBehavior(
-                "vector-list pattern realization requires an Empty arm".to_string(),
-            )
-        })?;
-        let cons_path = find_resolved_branch_path(branch, cons_variant).ok_or_else(|| {
-            EmitError::UnsupportedBehavior(
-                "vector-list pattern realization requires a Cons arm".to_string(),
-            )
-        })?;
+            },
+        )?;
         let ret = self.go_type_name_for_port(branch.output)?;
         let scrutinee = self.render_port(branch.input, locals)?;
         let empty_body = self.render_path_body(empty_path, locals)?;
@@ -2430,6 +2417,8 @@ fn require_pattern_realization(
     }
     Ok(PatternRealizationBinding {
         strategy: PatternStrategyBinding::VectorList,
+        empty_variant: require_field_decl_ref(fields, "empty_variant", declaration)?,
+        cons_variant: require_field_decl_ref(fields, "cons_variant", declaration)?,
         scrutinee: require_field_string(fields, "scrutinee", declaration)?,
         empty_pattern: require_field_string(fields, "empty_pattern", declaration)?,
         cons_pattern: require_field_string(fields, "cons_pattern", declaration)?,
