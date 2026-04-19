@@ -6001,4 +6001,21 @@ mod tests {
             "declaration-ref lowering must fail closed when the name is not in scope"
         );
     }
+
+    #[test]
+    fn identifier_sweep_marks_name_keyed_resolution_provenance() {
+        let mut dag = Dag::new();
+        let user_start = dag.declarations().len();
+        let stub = alloc_identifier_stub(&mut dag, "Int", &test_span());
+
+        resolve_pending_identifiers_strict(&mut dag, user_start);
+
+        assert!(
+            matches!(
+                dag.declaration(stub).connective,
+                TypeConnective::Atom(AtomPayload::ResolvedByName(_))
+            ),
+            "strict identifier sweep must preserve name-fallback provenance on repaired stubs"
+        );
+    }
 }

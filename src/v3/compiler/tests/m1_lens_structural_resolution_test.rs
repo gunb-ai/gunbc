@@ -16,12 +16,19 @@
 // both leave the lens silent.
 
 use v3_compiler::compile_to_dag;
+use v3_compiler::inject_name_keyed_reference_for_test;
 use v3_compiler::inject_named_pending_arrow_for_test;
-use v3_compiler::lens_structural_resolution::{check, UnresolvedArrowBody};
+use v3_compiler::lens_structural_resolution::{
+    check, name_keyed_references, NameKeyedReference, UnresolvedArrowBody,
+};
 use v3_compiler::Dag;
 
 fn violations(dag: &Dag) -> Vec<UnresolvedArrowBody> {
     check(dag)
+}
+
+fn name_keyed(dag: &Dag) -> Vec<NameKeyedReference> {
+    name_keyed_references(dag)
 }
 
 #[test]
@@ -132,4 +139,20 @@ fn lens_survives_co_existing_injected_and_compiled_declarations() {
     );
     assert_eq!(found[0].declaration, leak_id);
     assert_eq!(found[0].name, "leaked");
+}
+
+#[test]
+fn lens_flags_injected_name_keyed_reference() {
+    let mut dag = Dag::new();
+    let int_id = dag.int_shape().expect("bootstrap Dag has Int").declaration;
+    let site_id = inject_name_keyed_reference_for_test(&mut dag, int_id);
+
+    let found = name_keyed(&dag);
+    assert_eq!(
+        found.len(),
+        1,
+        "expected exactly one name-keyed reference, got: {found:?}"
+    );
+    assert_eq!(found[0].declaration, site_id);
+    assert_eq!(found[0].resolved_to, int_id);
 }
