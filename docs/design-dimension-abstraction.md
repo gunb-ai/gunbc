@@ -303,11 +303,11 @@ Alternate ordering: implement Dimension first in 2a prep, then 2b/2d/2e use it f
 
 ## Acceptance (Lane 2 Stage 2f owns)
 
-- [ ] `std/dimensions.dag` declares `Dimension<C>`, `Witness<C>`, `DimensionReport<C>`, `analyze` with receipts 🟢
-- [ ] At least 3 built-in dimension instances (idempotency, symbolic cost, parallelism) implemented via Dimension
+- [x] `std/dimensions.dag` declares `Dimension<C>`, `Witness<C>`, `DimensionReport<C>`, `OptionalDiagnostic` 🟢 (`fn analyze<Carrier>` execution: `v3_compiler::analyze_symbolic_cost_dimension` interim; full `.dag` lowering deferred)
+- [ ] At least 3 built-in dimension instances (idempotency, symbolic cost, parallelism) implemented via Dimension — **symbolic cost:** analyze path ships; **parallelism:** explicitly out of scope per OQ §1; **idempotency:** follow-up rewrite
 - [ ] Lane 4 Stages 4b/4c add side effects and space bounds as Dimension instances with ~20 lines of lens code each (proving the abstraction)
-- [ ] A user-declared dimension example (e.g., `memory_bounded`) in a test fixture compiles and enforces correctly
-- [ ] Monoid laws documented as requirement on Dimension authors
+- [ ] A user-declared dimension example (e.g., `memory_bounded`) in a test fixture compiles and enforces correctly (blocked in part on class-5 `data` bodies for `Dimension` value declarations)
+- [x] Monoid laws documented as requirement on Dimension authors (see §Algebraic constraints)
 
 ---
 

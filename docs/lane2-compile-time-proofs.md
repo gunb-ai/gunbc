@@ -197,12 +197,12 @@ Emits diagnostic for unexpected complexity (e.g., hidden O(n²) via captured lis
 
 Type shape is **locked in [DB-3](./design-dimension-abstraction.md)** — `Dimension<Carrier>` with `name`, `witness_of`, `compose`, `identity`, `break_diagnostic` fields. See DB-3 for full signature, algebraic requirements (monoid laws on compose), and instance declarations.
 
-Ship idempotency (2b) and symbolic-cost (2d) as Dimension instances. **Parallelism (2e) is NOT a Dimension instance** — per DB-3's resolved Open Question §1, parallelism composes over dependency structure rather than per-operation monoidal evidence and therefore stays as an ordinary lens. Document how users declare new *monoidal* dimensions (e.g., "resource exhaustion" on cloud ops). Structural lenses that aren't monoidal stay as lenses without claiming the Dimension interface.
+**Landed (Lane C / core 2f):** `std/dimensions.dag` + `workflows.dag` terminal types; `v3_compiler::analyze_symbolic_cost_dimension` migrates symbolic cost onto `DimensionReport<SymbolicCost>`; `Dag::dimension_value_declarations()` enumerates `Dimension<Carrier>` `data` items (empty until class-5 bodies). **Parallelism (2e) is NOT a Dimension instance** — per DB-3 OQ §1, parallelism stays an ordinary lens.
 
-**Acceptance:**
+**Acceptance (remaining follow-ups):**
 - Idempotency lens (2b) rewritten to consume the `Dimension` abstraction — same behavior, less bespoke code
 - Example user dimension in a test: `memory_bounded: Dimension` on cloud ops, compile gate fires if workflow exceeds declared bound
-- Design doc for how to add a new Dimension
+- Generic `analyze<Carrier>` lowered from `.dag` when higher-order list folds are emission-complete
 
 **Escalation:** if the generalization requires significant rework of 2b's lens, defer to a follow-up — don't break 2b. This stage is the stretch; if it feels forced, ship 2b–2e as-is and write the design doc for future extension.
 
