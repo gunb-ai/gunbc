@@ -1,72 +1,18 @@
 module v3.compiler.runtime_mirrors
 
-import std.list { List }
-import v3.std.substrate { PortId, DeclarationId, TypeShape }
-
-type CompilerSourceSpan {
-  file: String
-  byte_start: Int
-  byte_end: Int
+import v3.std.diagnostics { Correction }
+import v3.std.substrate {
+  ClusterId,
+  DeclarationId,
+  NodeId,
+  NonEmptyList,
+  NonSingletonList,
+  ParamRef,
+  PortId,
+  SourceSpan,
+  TransformRef,
+  TypeShape
 }
-
-type CompilerCorrection {
-  description: String
-  span: CompilerSourceSpan
-  new_source: String
-}
-
-type CompilerDiagnostic
-  = TokenizerError {
-      message: String
-      span: CompilerSourceSpan
-      fixes: List<CompilerCorrection>
-    }
-  | ParseError {
-      message: String
-      span: CompilerSourceSpan
-      fixes: List<CompilerCorrection>
-    }
-  | TypeMismatch {
-      expected: TypeShape
-      actual: TypeShape
-      span: CompilerSourceSpan
-      fixes: List<CompilerCorrection>
-    }
-  | ArityMismatch {
-      function: String
-      expected: Int
-      actual: Int
-      span: CompilerSourceSpan
-      fixes: List<CompilerCorrection>
-    }
-  | ResolveError {
-      name: String
-      span: CompilerSourceSpan
-      fixes: List<CompilerCorrection>
-    }
-  | BranchConditionNotBool {
-      port: PortId
-      actual_type: TypeShape?
-      span: CompilerSourceSpan
-      fixes: List<CompilerCorrection>
-    }
-
-type CompilerDiagnosticStyleTarget
-  = Rust
-  | Go
-  | Python
-
-type CompilerDiagnosticRenderError
-  = MissingCleanEmissionContract(String)
-  | MalformedCleanEmissionContract {
-      declaration: DeclarationId
-      detail: String
-    }
-  | MissingCorrectionStyle(String)
-  | MalformedCorrectionStyle {
-      declaration: DeclarationId
-      detail: String
-    }
 
 type DagDifference {
   detail: String
@@ -95,7 +41,7 @@ type CompilerPortState
 type CompilerBranchPattern
   = UnresolvedVariant {
       name: String
-      span: CompilerSourceSpan
+      span: SourceSpan
     }
   | ResolvedVariant(DeclarationId)
 

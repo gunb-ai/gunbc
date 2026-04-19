@@ -427,31 +427,8 @@ def render_sum(
 
 
 def render_diagnostics_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
-    parts = [
-        SOURCE_SPAN_TEMPLATE.strip(),
-        CORRECTION_TEMPLATE.strip(),
-        render_sum(
-            "CompilerDiagnostic",
-            sums["CompilerDiagnostic"],
-            "#[derive(Debug, Clone)]",
-            output_name="Diagnostic",
-            overrides={"Int": "usize"},
-        ),
-        render_sum(
-            "CompilerDiagnosticStyleTarget",
-            sums["CompilerDiagnosticStyleTarget"],
-            "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
-            output_name="DiagnosticStyleTarget",
-        ),
-        render_sum(
-            "CompilerDiagnosticRenderError",
-            sums["CompilerDiagnosticRenderError"],
-            "#[derive(Debug, Clone, PartialEq, Eq)]",
-            output_name="DiagnosticRenderError",
-            overrides={"String": "&'static str"},
-        ),
-    ]
-    return "\n\n".join(parts)
+    del records, sums
+    return "\n\n".join([SOURCE_SPAN_TEMPLATE.strip(), CORRECTION_TEMPLATE.strip()])
 
 
 def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
@@ -538,7 +515,7 @@ def expected_outputs() -> dict[Path, str]:
             "src/v3/std/substrate.dag", TYPE_SHAPE_TEMPLATE
         ),
         SRC_DIR / "diagnostics_generated.rs": format_with_header(
-            "src/v3/compiler/runtime_mirrors.dag",
+            "src/v3/std/substrate.dag, src/v3/std/diagnostics.dag",
             render_diagnostics_module(records, sums),
         ),
         SRC_DIR / "serialize_generated.rs": format_with_header(

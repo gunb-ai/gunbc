@@ -60,7 +60,70 @@ use crate::dag::{
 };
 use crate::types::TypeShape;
 
+// `SourceSpan` / `Correction` are generated mirrors of std-owned
+// substrate/diagnostic carriers. The compiler-local `Diagnostic`
+// taxonomy below remains a narrow host shim until the staged compiler
+// adopts the shared std diagnostic record directly.
 include!("diagnostics_generated.rs");
+
+#[derive(Debug, Clone)]
+pub enum Diagnostic {
+    TokenizerError {
+        message: String,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
+    },
+    ParseError {
+        message: String,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
+    },
+    TypeMismatch {
+        expected: TypeShape,
+        actual: TypeShape,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
+    },
+    ArityMismatch {
+        function: String,
+        expected: usize,
+        actual: usize,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
+    },
+    ResolveError {
+        name: String,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
+    },
+    BranchConditionNotBool {
+        port: PortId,
+        actual_type: Option<TypeShape>,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticStyleTarget {
+    Rust,
+    Go,
+    Python,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiagnosticRenderError {
+    MissingCleanEmissionContract(&'static str),
+    MalformedCleanEmissionContract {
+        declaration: DeclarationId,
+        detail: &'static str,
+    },
+    MissingCorrectionStyle(&'static str),
+    MalformedCorrectionStyle {
+        declaration: DeclarationId,
+        detail: &'static str,
+    },
+}
 
 impl Diagnostic {
     pub fn span(&self) -> &SourceSpan {
