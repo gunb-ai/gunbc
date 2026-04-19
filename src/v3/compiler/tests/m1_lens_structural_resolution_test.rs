@@ -151,6 +151,8 @@ fn lens_flags_injected_name_keyed_reference() {
     let injected = found
         .iter()
         .find(|entry| entry.declaration == site_id)
-        .unwrap_or_else(|| panic!("expected injected site in name-keyed references, got: {found:?}"));
+        .unwrap_or_else(|| {
+            panic!("expected injected site in name-keyed references, got: {found:?}")
+        });
     assert_eq!(injected.resolved_to, int_id);
 }
