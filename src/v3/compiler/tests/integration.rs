@@ -97,6 +97,74 @@ mod thesis_parallelism_test;
 #[path = "integration/thesis_validation_test.rs"]
 mod thesis_validation_test;
 
+mod lane2_stage_2f_dimension_test {
+    use v3_compiler::analyze_symbolic_cost_dimension;
+    use v3_compiler::compile_to_dag;
+    use v3_compiler::dag::{Behavior, Dag, PortId, TypeConnective};
+    use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+
+    fn find_bind_port(dag: &Dag, name: &str) -> PortId {
+        dag.nodes()
+            .iter()
+            .filter_map(Behavior::as_bind)
+            .find(|bind| bind.name == name)
+            .unwrap_or_else(|| panic!("bind `{name}` not found"))
+            .value
+    }
+
+    fn find_bind_root(dag: &Dag, name: &str) -> v3_compiler::dag::NodeId {
+        dag.nodes()
+            .iter()
+            .find(|behavior| {
+                behavior
+                    .as_bind()
+                    .map(|bind| bind.name == name)
+                    .unwrap_or(false)
+            })
+            .map(|behavior| behavior.id())
+            .unwrap_or_else(|| panic!("bind `{name}` not found"))
+    }
+
+    #[test]
+    fn no_authored_dimension_carrier_constants_in_bootstrap_stdlib() {
+        let dag = Dag::new();
+        let dimension_template = dag
+            .declaration_by_name("Dimension")
+            .expect("bootstrap loads Dimension")
+            .id;
+        let count = dag
+            .declarations()
+            .iter()
+            .filter(|decl| {
+                decl.value_body.is_some()
+                    && matches!(
+                        &decl.connective,
+                        TypeConnective::Instantiation { template, .. }
+                            if *template == dimension_template
+                    )
+            })
+            .count();
+        assert_eq!(
+            count, 0,
+            "no `data _: Dimension<_> = ...` values ship until class-5 bodies unlock the receipt"
+        );
+    }
+
+    #[test]
+    fn analyze_symbolic_cost_composed_matches_lens_at_workflow_root() {
+        let dag = compile_to_dag("let x = 1 + 2", "lane2_2f_dim.v3").expect("compiles");
+        let root = find_bind_root(&dag, "x");
+        let report = analyze_symbolic_cost_dimension(&dag, root);
+        let lens = match symbolic_cost_of(&dag, &find_bind_port(&dag, "x")) {
+            SymbolicCostLookup::FoundCost { _0: cost } => cost,
+            SymbolicCostLookup::MissingCost => panic!("expected FoundCost"),
+        };
+        assert_eq!(report.composed, lens);
+        assert_eq!(report.dimension_name, "symbolic_cost");
+        assert_eq!(report.witnesses.len(), dag.nodes().len());
+    }
+}
+
 mod parse_corpus {
     use std::fs;
     use std::path::{Path, PathBuf};
