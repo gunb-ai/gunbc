@@ -48,3 +48,9 @@ data lens_unused_parameters_entry: LensRegistryEntry = {
   lens_file: "src/v3/lenses/unused_parameters.dag"
   generated_file: "src/v3/compiler/src/lens_unused_parameters_generated.rs"
 }
+
+data lens_cost_duplicate_entry: LensRegistryEntry = {
+  name: "cost"
+  lens_file: "src/v3/lenses/complexity.dag"
+  generated_file: "/tmp/dup_out.rs"
+}

@@ -83,7 +83,10 @@ fn read_registry_rows(dag: &Dag) -> Vec<RegistryRow> {
         .iter()
         .filter(|decl| decl.meta_tag == Some(entry_type_id))
         .map(|decl| {
-            let binding = decl.name.clone().unwrap_or_else(|| "<anonymous>".to_string());
+            let binding = decl
+                .name
+                .clone()
+                .unwrap_or_else(|| "<anonymous>".to_string());
             let fields = structural_fields(decl);
             RegistryRow {
                 binding: binding.clone(),
@@ -126,8 +129,10 @@ fn sg6_regen_dag_exposes_lens_registry_entries() {
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
 
-    let mut registry_names: Vec<String> =
-        read_registry_rows(&dag).into_iter().map(|row| row.name).collect();
+    let mut registry_names: Vec<String> = read_registry_rows(&dag)
+        .into_iter()
+        .map(|row| row.name)
+        .collect();
     registry_names.sort();
 
     let expected = vec![
@@ -211,7 +216,10 @@ fn sg6_lens_registry_names_resolve_to_singleton_entry() {
             1,
             "`--lens {name}` must resolve to exactly one entry, found {count}: {bindings:?}",
             count = matches.len(),
-            bindings = matches.iter().map(|row| row.binding.as_str()).collect::<Vec<_>>(),
+            bindings = matches
+                .iter()
+                .map(|row| row.binding.as_str())
+                .collect::<Vec<_>>(),
         );
     }
 }
