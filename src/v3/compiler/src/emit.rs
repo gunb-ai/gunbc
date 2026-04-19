@@ -654,14 +654,6 @@ fn emit_with_mode(
     Ok(EmittedSource { text, target, mode })
 }
 
-pub(crate) fn emit_go(dag: &Dag) -> Result<String, EmitError> {
-    emit_go_with_mode(dag, EmitMode::Program)
-}
-
-pub(crate) fn emit_go_module(dag: &Dag) -> Result<String, EmitError> {
-    emit_go_with_mode(dag, EmitMode::Module)
-}
-
 fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     let indexes = RealizationIndexes::build(dag)?;
     if indexes.execution_model.memory == MemoryModelBinding::OwnershipBased {
@@ -2763,7 +2755,9 @@ mod tests {
     fn go_struct_fields_render_with_separators() {
         let dag =
             compile_to_dag("type Pair { left: Int right: Int }", "pair.v3").expect("compiles");
-        let rendered = emit_go_module(&dag).expect("go emitter should render struct");
+        let rendered = emit_module(&dag, EmitTarget::Go)
+            .expect("go emitter should render struct")
+            .text;
         assert!(
             rendered.contains("type Pair struct { left int64; right int64 }"),
             "got: {rendered}"
@@ -2777,7 +2771,9 @@ mod tests {
             "program.v3",
         )
         .expect("compiles");
-        let rendered = emit_go(&dag).expect("go emitter should render program");
+        let rendered = emit(&dag, EmitTarget::Go)
+            .expect("go emitter should render program")
+            .text;
         assert!(!rendered.contains("parse_realization"), "got: {rendered}");
         assert!(!rendered.contains("DeclarationRef"), "got: {rendered}");
     }
@@ -2789,7 +2785,9 @@ mod tests {
             "fold_item_scope.v3",
         )
         .expect("compiles");
-        let rendered = emit_go(&dag).expect("go emitter should render fold");
+        let rendered = emit(&dag, EmitTarget::Go)
+            .expect("go emitter should render fold")
+            .text;
         assert!(
             rendered.contains("for _, __foldItem := range"),
             "got: {rendered}"
@@ -2811,7 +2809,9 @@ mod tests {
             "map_filter_loop_item.v3",
         )
         .expect("compiles");
-        let rendered = emit_go(&dag).expect("go emitter should render map/filter");
+        let rendered = emit(&dag, EmitTarget::Go)
+            .expect("go emitter should render map/filter")
+            .text;
         assert!(
             rendered.contains("for _, __mapItem := range") && rendered.contains("_ = __mapItem;"),
             "got: {rendered}"
@@ -2835,7 +2835,9 @@ mod tests {
             "variant_payload_binding.v3",
         )
         .expect("compiles");
-        let rendered = emit_go_module(&dag).expect("go emitter should render match");
+        let rendered = emit_module(&dag, EmitTarget::Go)
+            .expect("go emitter should render match")
+            .text;
         assert!(
             rendered.contains("case Cons: return (v).head"),
             "got: {rendered}"
@@ -2850,7 +2852,9 @@ mod tests {
             "variant_payload_named_single.v3",
         )
         .expect("compiles");
-        let rendered = emit_go_module(&dag).expect("go emitter should render match");
+        let rendered = emit_module(&dag, EmitTarget::Go)
+            .expect("go emitter should render match")
+            .text;
         assert!(
             rendered.contains("case Wrap: return ((v).inner).x"),
             "got: {rendered}"
