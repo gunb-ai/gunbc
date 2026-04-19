@@ -46,7 +46,7 @@ pub enum EmitPythonError {
 pub(crate) type EmitPythonMode = EmitMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PythonCallableStrategy {
+enum CallableStrategyBinding {
     Empty,
     Singleton,
     Cons,
@@ -122,12 +122,28 @@ enum PatternBindingRuleBinding {
     NotApplicable,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PatternStrategyBinding {
+    VectorList,
+}
+
+#[derive(Debug, Clone)]
+struct PatternRealizationBinding {
+    strategy: PatternStrategyBinding,
+    scrutinee: String,
+    empty_pattern: String,
+    cons_pattern: String,
+    head_expr: String,
+    tail_expr: String,
+}
+
 #[derive(Debug, Clone)]
 struct PythonIndexes {
     types: HashMap<DeclarationId, String>,
     type_instantiations: HashMap<DeclarationId, String>,
     operators: HashMap<(DeclarationId, DeclarationId), String>,
-    callables: HashMap<DeclarationId, PythonCallableStrategy>,
+    callables: HashMap<DeclarationId, CallableStrategyBinding>,
+    patterns: HashMap<DeclarationId, PatternRealizationBinding>,
     syntax: PythonSyntax,
     target: PythonTarget,
     /// The Python clean-emission contract loaded from `data
@@ -154,14 +170,29 @@ struct Ctx<'a> {
 
 impl PythonIndexes {
     fn build(dag: &Dag) -> Result<Self, EmitPythonError> {
-        let type_meta = named_decl(dag, "PythonTypeRealization")?;
-        let type_instantiation_meta = named_decl(dag, "PythonTypeInstantiationRealization")?;
-        let operator_meta = named_decl(dag, "PythonOperatorRealization")?;
-        let callable_meta = named_decl(dag, "PythonCallableRealization")?;
+        let type_meta = dag
+            .type_realization_meta()
+            .ok_or(EmitPythonError::MissingMeta("TypeRealization"))?;
+        let type_instantiation_meta = dag
+            .type_instantiation_realization_meta()
+            .ok_or(EmitPythonError::MissingMeta("TypeInstantiationRealization"))?;
+        let operator_meta = dag
+            .operator_realization_meta()
+            .ok_or(EmitPythonError::MissingMeta("OperatorRealization"))?;
+        let callable_meta = dag
+            .callable_realization_meta()
+            .ok_or(EmitPythonError::MissingMeta("CallableRealization"))?;
+        let pattern_meta = dag
+            .pattern_realization_meta()
+            .ok_or(EmitPythonError::MissingMeta("PatternRealization"))?;
+        let python_language = dag
+            .python_language_spec()
+            .ok_or(EmitPythonError::MissingSpec("python_language"))?;
         let mut types = HashMap::new();
         let mut type_instantiations = HashMap::new();
         let mut operators = HashMap::new();
         let mut callables = HashMap::new();
+        let mut patterns = HashMap::new();
 
         for decl in dag.declarations() {
             let Some(meta_tag) = decl.meta_tag else {
@@ -174,7 +205,8 @@ impl PythonIndexes {
             let is_realization_meta = meta_tag == type_meta
                 || meta_tag == type_instantiation_meta
                 || meta_tag == operator_meta
-                || meta_tag == callable_meta;
+                || meta_tag == callable_meta
+                || meta_tag == pattern_meta;
             if !is_realization_meta {
                 continue;
             }
@@ -190,13 +222,17 @@ impl PythonIndexes {
                         "realization data item has no Structural value_body — bootstrap inhabitance check missed a malformed spec entry",
                 });
             };
+            let language = require_field_decl_ref(fields, "language", decl.id)?;
+            if language != python_language {
+                continue;
+            }
             if meta_tag == type_meta {
                 let target = require_field_decl_ref(fields, "target", decl.id)?;
                 let carrier = require_field_string(fields, "carrier", decl.id)?;
                 if types.insert(target, carrier).is_some() {
                     return Err(EmitPythonError::DuplicateRealization {
                         declaration: decl.id,
-                        detail: "two PythonTypeRealization data items target the same declaration",
+                        detail: "two TypeRealization data items target the same declaration",
                     });
                 }
             } else if meta_tag == type_instantiation_meta {
@@ -205,7 +241,7 @@ impl PythonIndexes {
                 if type_instantiations.insert(target, carrier).is_some() {
                     return Err(EmitPythonError::DuplicateRealization {
                         declaration: decl.id,
-                        detail: "two PythonTypeInstantiationRealization data items target the same declaration",
+                        detail: "two TypeInstantiationRealization data items target the same declaration",
                     });
                 }
             } else if meta_tag == operator_meta {
@@ -216,7 +252,7 @@ impl PythonIndexes {
                     return Err(EmitPythonError::DuplicateRealization {
                         declaration: decl.id,
                         detail:
-                            "two PythonOperatorRealization data items share the same (target, op) pair",
+                            "two OperatorRealization data items share the same (target, op) pair",
                     });
                 }
             } else if meta_tag == callable_meta {
@@ -226,92 +262,107 @@ impl PythonIndexes {
                     return Err(EmitPythonError::DuplicateRealization {
                         declaration: decl.id,
                         detail:
-                            "two PythonCallableRealization data items target the same callable declaration",
+                            "two CallableRealization data items target the same callable declaration",
+                    });
+                }
+            } else {
+                let target = require_field_decl_ref(fields, "target", decl.id)?;
+                let binding = parse_pattern_realization(dag, fields, decl.id)?;
+                if patterns.insert(target, binding).is_some() {
+                    return Err(EmitPythonError::DuplicateRealization {
+                        declaration: decl.id,
+                        detail:
+                            "two PatternRealization data items target the same structural sum declaration",
                     });
                 }
             }
         }
 
-        let expressions = structural_fields_for_named(dag, "python_expressions")?;
-        let collections = structural_fields_for_named(dag, "python_collections")?;
-        let type_apps = structural_fields_for_named(dag, "python_type_applications")?;
-        let target_fields = structural_fields_for_named(dag, "python_target")?;
+        let language_fields = structural_fields_for_decl(dag, python_language)?;
+        let expressions = require_field_decl_ref(language_fields, "expressions", python_language)?;
+        let collections =
+            require_field_decl_ref(language_fields, "collection_ops", python_language)?;
+        let type_apps =
+            require_field_decl_ref(language_fields, "type_applications", python_language)?;
+        let target_decl = dag
+            .python_target_spec()
+            .ok_or(EmitPythonError::MissingSpec("python_target"))?;
+        let target_fields = structural_fields_for_decl(dag, target_decl)?;
 
         let syntax = PythonSyntax {
-            binary_op: require_field_string(
-                expressions,
-                "binary_op",
-                named_decl(dag, "python_expressions")?,
-            )?,
+            binary_op: require_field_string(structural_fields_for_decl(dag, expressions)?, "binary_op", expressions)?,
             field_access: require_field_string(
-                expressions,
+                structural_fields_for_decl(dag, expressions)?,
                 "field_access",
-                named_decl(dag, "python_expressions")?,
+                expressions,
             )?,
             function_call: require_field_string(
-                expressions,
+                structural_fields_for_decl(dag, expressions)?,
                 "function_call",
-                named_decl(dag, "python_expressions")?,
+                expressions,
             )?,
             closure: require_field_string(
-                expressions,
+                structural_fields_for_decl(dag, expressions)?,
                 "closure",
-                named_decl(dag, "python_expressions")?,
+                expressions,
             )?,
             empty_list: require_field_string(
-                collections,
+                structural_fields_for_decl(dag, collections)?,
                 "empty_list",
-                named_decl(dag, "python_collections")?,
+                collections,
             )?,
             list_literal: require_field_string(
-                collections,
+                structural_fields_for_decl(dag, collections)?,
                 "list_literal",
-                named_decl(dag, "python_collections")?,
+                collections,
             )?,
             cons: require_field_string(
-                collections,
+                structural_fields_for_decl(dag, collections)?,
                 "cons",
-                named_decl(dag, "python_collections")?,
+                collections,
             )?,
             concat: require_field_string(
-                collections,
+                structural_fields_for_decl(dag, collections)?,
                 "concat",
-                named_decl(dag, "python_collections")?,
+                collections,
             )?,
             length: require_field_string(
-                collections,
+                structural_fields_for_decl(dag, collections)?,
                 "length",
-                named_decl(dag, "python_collections")?,
+                collections,
             )?,
             is_empty: require_field_string(
-                collections,
+                structural_fields_for_decl(dag, collections)?,
                 "is_empty",
-                named_decl(dag, "python_collections")?,
+                collections,
             )?,
             fold: require_field_string(
-                collections,
+                structural_fields_for_decl(dag, collections)?,
                 "fold",
-                named_decl(dag, "python_collections")?,
-            )?,
-            map: require_field_string(collections, "map", named_decl(dag, "python_collections")?)?,
-            filter: require_field_string(
                 collections,
+            )?,
+            map: require_field_string(
+                structural_fields_for_decl(dag, collections)?,
+                "map",
+                collections,
+            )?,
+            filter: require_field_string(
+                structural_fields_for_decl(dag, collections)?,
                 "filter",
-                named_decl(dag, "python_collections")?,
+                collections,
             )?,
             contains: require_field_string(
-                collections,
+                structural_fields_for_decl(dag, collections)?,
                 "contains",
-                named_decl(dag, "python_collections")?,
+                collections,
             )?,
             optional: require_field_string(
-                type_apps,
+                structural_fields_for_decl(dag, type_apps)?,
                 "optional",
-                named_decl(dag, "python_type_applications")?,
+                type_apps,
             )?,
         };
 
-        let target_decl = named_decl(dag, "python_target")?;
         let target = PythonTarget {
             memory: require_memory_model(dag, target_fields, target_decl)?,
             scope: require_scope_model(dag, target_fields, target_decl)?,
@@ -324,6 +375,7 @@ impl PythonIndexes {
             type_instantiations,
             operators,
             callables,
+            patterns,
             syntax,
             target,
             clean_emission,
@@ -751,13 +803,13 @@ impl<'a> Ctx<'a> {
             let else_expr = self.render_path_body(else_path, locals)?;
             return Ok(format!("({then_expr} if {cond} else {else_expr})"));
         }
-        if let Some(rendered) = self.render_list_branch(branch, locals)? {
+        if let Some(rendered) = self.render_realized_pattern_branch(branch, locals)? {
             return Ok(rendered);
         }
         self.render_general_match(branch, locals)
     }
 
-    fn render_list_branch(
+    fn render_realized_pattern_branch(
         &self,
         branch: &BranchNode,
         locals: &RenderLocals,
@@ -766,38 +818,74 @@ impl<'a> Ctx<'a> {
         let Some(disj_id) = walk_to_disj(self.dag, scrutinee_type_id) else {
             return Ok(None);
         };
-        if !self.dag.list_template().is_some_and(|list| list == disj_id) {
+        let Some(binding) = self.indexes.patterns.get(&disj_id) else {
             return Ok(None);
+        };
+        match binding.strategy {
+            PatternStrategyBinding::VectorList => self
+                .render_vector_list_pattern_branch(branch, disj_id, binding, locals)
+                .map(Some),
         }
+    }
+
+    fn render_vector_list_pattern_branch(
+        &self,
+        branch: &BranchNode,
+        disj_id: DeclarationId,
+        binding: &PatternRealizationBinding,
+        locals: &RenderLocals,
+    ) -> Result<String, EmitPythonError> {
         let TypeConnective::Disj { variants } = &self.dag.declaration(disj_id).connective else {
-            return Ok(None);
+            unreachable!("pattern realization target must be a disjunction");
         };
-        let empty_variant = variants.iter().find(|v| v.label == "Empty").map(|v| v.ty);
-        let cons_variant = variants.iter().find(|v| v.label == "Cons").map(|v| v.ty);
-        let (Some(empty_variant), Some(cons_variant)) = (empty_variant, cons_variant) else {
-            return Ok(None);
-        };
-        let Some(empty_path) = find_resolved_branch_path(branch, empty_variant) else {
-            return Ok(None);
-        };
-        let Some(cons_path) = find_resolved_branch_path(branch, cons_variant) else {
-            return Ok(None);
-        };
+        let empty_variant = variants
+            .iter()
+            .find(|variant| variant.label == "Empty")
+            .map(|variant| variant.ty)
+            .ok_or_else(|| {
+                EmitPythonError::Unsupported(
+                    "vector-list pattern realization requires Empty".to_string(),
+                )
+            })?;
+        let cons_variant = variants
+            .iter()
+            .find(|variant| variant.label == "Cons")
+            .map(|variant| variant.ty)
+            .ok_or_else(|| {
+                EmitPythonError::Unsupported(
+                    "vector-list pattern realization requires Cons".to_string(),
+                )
+            })?;
+        let empty_path = find_resolved_branch_path(branch, empty_variant).ok_or_else(|| {
+            EmitPythonError::Unsupported(
+                "vector-list pattern realization requires an Empty arm".to_string(),
+            )
+        })?;
+        let cons_path = find_resolved_branch_path(branch, cons_variant).ok_or_else(|| {
+            EmitPythonError::Unsupported(
+                "vector-list pattern realization requires a Cons arm".to_string(),
+            )
+        })?;
         let scrutinee = self.render_port(branch.input, locals)?;
         let empty_body = self.render_path_body(empty_path, locals)?;
+        let realized_scrutinee = render_named_template(&binding.scrutinee, &[("expr", &scrutinee)]);
+        let empty_predicate = render_named_template(&binding.empty_pattern, &[("expr", "__match")]);
         let mut cons_locals = locals.clone();
         if let Some(binding) = &cons_path.binding {
+            let cons_expr = render_named_template(&binding.cons_pattern, &[("expr", "__match")]);
+            let head_expr = render_named_template(&binding.head_expr, &[("list", &cons_expr)]);
+            let tail_expr = render_named_template(&binding.tail_expr, &[("list", &cons_expr)]);
             cons_locals.payload_bindings.insert(
                 binding.payload_port,
-                VariantPayloadBinding::Direct(
-                    "types.SimpleNamespace(head=__match[0], tail=__match[1:])".to_string(),
-                ),
+                VariantPayloadBinding::Direct(format!(
+                    "types.SimpleNamespace(head={head_expr}, tail={tail_expr})"
+                )),
             );
         }
         let cons_body = self.render_port(cons_path.output, &cons_locals)?;
-        Ok(Some(format!(
-            "(lambda __match: ({empty_body} if len(__match) == 0 else {cons_body}))({scrutinee})"
-        )))
+        Ok(format!(
+            "(lambda __match: ({empty_body} if {empty_predicate} else {cons_body}))({realized_scrutinee})"
+        ))
     }
 
     fn render_general_match(
@@ -954,21 +1042,21 @@ impl<'a> Ctx<'a> {
     fn render_realized_callable(
         &self,
         template: DeclarationId,
-        strategy: PythonCallableStrategy,
+        strategy: CallableStrategyBinding,
         arguments: &[TemplateArgument],
         inputs: &[PortId],
         locals: &RenderLocals,
     ) -> Result<String, EmitPythonError> {
         match strategy {
-            PythonCallableStrategy::Empty => Ok(self.indexes.syntax.empty_list.clone()),
-            PythonCallableStrategy::Singleton => {
+            CallableStrategyBinding::Empty => Ok(self.indexes.syntax.empty_list.clone()),
+            CallableStrategyBinding::Singleton => {
                 let value = self.render_port(inputs[0], locals)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.list_literal,
                     &[("elements", &value)],
                 ))
             }
-            PythonCallableStrategy::Cons => {
+            CallableStrategyBinding::Cons => {
                 let head = self.render_port(inputs[0], locals)?;
                 let tail = self.render_port(inputs[1], locals)?;
                 Ok(render_named_template(
@@ -976,7 +1064,7 @@ impl<'a> Ctx<'a> {
                     &[("head", &head), ("tail", &tail)],
                 ))
             }
-            PythonCallableStrategy::Concat => {
+            CallableStrategyBinding::Concat => {
                 let left = self.render_port(inputs[0], locals)?;
                 let right = self.render_port(inputs[1], locals)?;
                 Ok(render_named_template(
@@ -984,21 +1072,21 @@ impl<'a> Ctx<'a> {
                     &[("left", &left), ("right", &right)],
                 ))
             }
-            PythonCallableStrategy::Length => {
+            CallableStrategyBinding::Length => {
                 let recv = self.render_port(inputs[0], locals)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.length,
                     &[("recv", &recv)],
                 ))
             }
-            PythonCallableStrategy::IsEmpty => {
+            CallableStrategyBinding::IsEmpty => {
                 let recv = self.render_port(inputs[0], locals)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.is_empty,
                     &[("recv", &recv)],
                 ))
             }
-            PythonCallableStrategy::Fold => {
+            CallableStrategyBinding::Fold => {
                 let fn_decl = bound_callable_argument(self.dag, template, arguments, 2)?;
                 let acc = "__fold_acc".to_string();
                 let item = "__fold_item".to_string();
@@ -1014,7 +1102,7 @@ impl<'a> Ctx<'a> {
                     &[("recv", &recv), ("init", &init), ("body", &body)],
                 ))
             }
-            PythonCallableStrategy::Map => {
+            CallableStrategyBinding::Map => {
                 let fn_decl = bound_callable_argument(self.dag, template, arguments, 1)?;
                 let item = "__map_item".to_string();
                 let body =
@@ -1025,7 +1113,7 @@ impl<'a> Ctx<'a> {
                     &[("recv", &recv), ("item", &item), ("body", &body)],
                 ))
             }
-            PythonCallableStrategy::Filter => {
+            CallableStrategyBinding::Filter => {
                 let fn_decl = bound_callable_argument(self.dag, template, arguments, 1)?;
                 let item = "__filter_item".to_string();
                 let predicate =
@@ -1041,7 +1129,7 @@ impl<'a> Ctx<'a> {
                     ],
                 ))
             }
-            PythonCallableStrategy::Contains => {
+            CallableStrategyBinding::Contains => {
                 let recv = self.render_port(inputs[0], locals)?;
                 let item = self.render_port(inputs[1], locals)?;
                 Ok(render_named_template(
