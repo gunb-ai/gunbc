@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, PortState,
@@ -65,6 +67,29 @@ fn callable_instantiation_arguments(
         .collect()
 }
 
+fn walk_instantiation_chain(
+    dag: &Dag,
+    start: DeclarationId,
+    subst: &mut HashMap<DeclarationId, DeclarationId>,
+) -> DeclarationId {
+    let mut current = start;
+    for _ in 0..16 {
+        match &dag.declaration(current).connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                for arg in arguments {
+                    subst.insert(arg.parameter, arg.value);
+                }
+                current = *template;
+            }
+            _ => return current,
+        }
+    }
+    current
+}
+
 #[test]
 fn operator_helpers_round_trip_from_dag_authority() {
     for (symbol, op, field_name) in [
@@ -85,6 +110,45 @@ fn operator_helpers_round_trip_from_dag_authority() {
         assert_eq!(v3_compiler::operators::symbol(op), symbol);
         assert_eq!(v3_compiler::operators::algebra_field_name(op), field_name);
     }
+}
+
+#[test]
+fn bootstrap_int_add_walk_reaches_ordered_ring_add_nobody_arrow() {
+    let dag = Dag::new();
+    let int_id = find_named(&dag, "Int");
+    let word64_id = find_named(&dag, "Word64");
+    let ordered_ring_id = find_named(&dag, "OrderedRing");
+
+    let mut subst = HashMap::new();
+    let algebra_id = walk_instantiation_chain(&dag, int_id, &mut subst);
+    assert_eq!(
+        algebra_id, ordered_ring_id,
+        "Int bootstrap chain should still terminate at OrderedRing"
+    );
+
+    let ordered_ring_fields = match &dag.declaration(ordered_ring_id).connective {
+        TypeConnective::Conj { children } => children,
+        other => panic!("OrderedRing should be a Conj, got {other:?}"),
+    };
+    let add_field = field(ordered_ring_fields, "add");
+    let (inputs, output, body) = match &dag.declaration(add_field.ty).connective {
+        TypeConnective::Arrow {
+            inputs,
+            output,
+            body,
+        } => (inputs, output, body),
+        other => panic!("OrderedRing.add should be an Arrow, got {other:?}"),
+    };
+    assert!(
+        matches!(body, ArrowBody::NoBody),
+        "bootstrap algebra arrows must stay NoBody so Pending remains an R13 leak signal"
+    );
+    assert_eq!(inputs.len(), 2, "OrderedRing.add should stay binary");
+
+    let substitute = |id: DeclarationId| -> DeclarationId { *subst.get(&id).unwrap_or(&id) };
+    assert_eq!(substitute(inputs[0]), word64_id);
+    assert_eq!(substitute(inputs[1]), word64_id);
+    assert_eq!(substitute(*output), word64_id);
 }
 
 #[test]
