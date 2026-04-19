@@ -86,8 +86,6 @@ mod m2_lens_unused_parameters_migration_test;
 mod m2_substrate_inhabitance_test;
 #[path = "integration/pipe_desugar.rs"]
 mod pipe_desugar;
-#[path = "integration/real_stdlib_parse_smoke.rs"]
-mod real_stdlib_parse_smoke;
 #[path = "integration/sg0_census_test.rs"]
 mod sg0_census_test;
 #[path = "integration/sg4_prep_infer_helpers_freshness_test.rs"]
@@ -98,3 +96,290 @@ mod sg6_hand_authored_census_test;
 mod thesis_parallelism_test;
 #[path = "integration/thesis_validation_test.rs"]
 mod thesis_validation_test;
+
+mod lane2_stage_2f_dimension_test {
+    use v3_compiler::analyze_symbolic_cost_dimension;
+    use v3_compiler::compile_to_dag;
+    use v3_compiler::dag::{Behavior, Dag, PortId, TypeConnective};
+    use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+
+    fn find_bind_port(dag: &Dag, name: &str) -> PortId {
+        dag.nodes()
+            .iter()
+            .filter_map(Behavior::as_bind)
+            .find(|bind| bind.name == name)
+            .unwrap_or_else(|| panic!("bind `{name}` not found"))
+            .value
+    }
+
+    fn find_bind_root(dag: &Dag, name: &str) -> v3_compiler::dag::NodeId {
+        dag.nodes()
+            .iter()
+            .find(|behavior| {
+                behavior
+                    .as_bind()
+                    .map(|bind| bind.name == name)
+                    .unwrap_or(false)
+            })
+            .map(|behavior| behavior.id())
+            .unwrap_or_else(|| panic!("bind `{name}` not found"))
+    }
+
+    #[test]
+    fn no_authored_dimension_carrier_constants_in_bootstrap_stdlib() {
+        let dag = Dag::new();
+        let dimension_template = dag
+            .declaration_by_name("Dimension")
+            .expect("bootstrap loads Dimension")
+            .id;
+        let count = dag
+            .declarations()
+            .iter()
+            .filter(|decl| {
+                decl.value_body.is_some()
+                    && matches!(
+                        &decl.connective,
+                        TypeConnective::Instantiation { template, .. }
+                            if *template == dimension_template
+                    )
+            })
+            .count();
+        assert_eq!(
+            count, 0,
+            "no `data _: Dimension<_> = ...` values ship until class-5 bodies unlock the receipt"
+        );
+    }
+
+    #[test]
+    fn analyze_symbolic_cost_composed_matches_lens_at_workflow_root() {
+        let dag = compile_to_dag("let x = 1 + 2", "lane2_2f_dim.v3").expect("compiles");
+        let root = find_bind_root(&dag, "x");
+        let report = analyze_symbolic_cost_dimension(&dag, root);
+        let lens = match symbolic_cost_of(&dag, &find_bind_port(&dag, "x")) {
+            SymbolicCostLookup::FoundCost { _0: cost } => cost,
+            SymbolicCostLookup::MissingCost => panic!("expected FoundCost"),
+        };
+        assert_eq!(report.composed, lens);
+        assert_eq!(report.dimension_name, "symbolic_cost");
+        assert_eq!(report.witnesses.len(), dag.nodes().len());
+    }
+}
+
+mod parse_stage4_prep {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    use v3_compiler::{parse_for_test, tokenize_for_test};
+
+    // SG-2 prep only: this module snapshots the incumbent handwritten
+    // `parse.rs` surface tree across the current parseable corpus. It is
+    // a ratchet for later `.dag` parity work, not proof that a `.dag`
+    // parser has matched or replaced the handwritten authority.
+    const PARSE_CORPUS_MANIFEST: &str = include_str!("integration/parse_corpus_manifest.txt");
+
+    fn compiler_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    }
+
+    fn repo_root() -> PathBuf {
+        compiler_root()
+            .parent()
+            .and_then(Path::parent)
+            .and_then(Path::parent)
+            .expect("src/v3/compiler has repo-root ancestors")
+            .to_path_buf()
+    }
+
+    fn collect_rel_paths(dir: &Path, rel_prefix: &str, ext: &str) -> Vec<String> {
+        let mut entries: Vec<String> = fs::read_dir(dir)
+            .unwrap_or_else(|err| panic!("read_dir {} failed: {err}", dir.display()))
+            .map(|entry| {
+                entry.unwrap_or_else(|err| panic!("read_dir entry {} failed: {err}", dir.display()))
+            })
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|value| value.to_str()) == Some(ext))
+            .map(|path| {
+                let file_name = path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .expect("utf-8 fixture name");
+                format!("{rel_prefix}/{file_name}")
+            })
+            .collect();
+        entries.sort();
+        entries
+    }
+
+    fn parse_corpus_paths() -> Vec<String> {
+        let compiler_root = compiler_root();
+        // Keep the `dsl/std` subset aligned with the seven bootstrap
+        // fixtures loaded in `bootstrap.rs`; this prep harness is a
+        // snapshot of the incumbent parser over that bootstrap-facing
+        // corpus, not a claim that every `dsl/std/*.dag` file parses
+        // under v3 today.
+        let mut paths = vec![
+            "dsl/std/algebra.dag".to_string(),
+            "dsl/std/bit.dag".to_string(),
+            "dsl/std/float.dag".to_string(),
+            "dsl/std/integer.dag".to_string(),
+            "dsl/std/logic.dag".to_string(),
+            "dsl/std/string_type.dag".to_string(),
+            "dsl/std/types.dag".to_string(),
+        ];
+        paths.extend(collect_rel_paths(
+            &compiler_root.join("../std"),
+            "src/v3/std",
+            "dag",
+        ));
+        paths.extend(collect_rel_paths(
+            &compiler_root.join("../spec"),
+            "src/v3/spec",
+            "dag",
+        ));
+        paths.extend(collect_rel_paths(&compiler_root, "src/v3/compiler", "dag"));
+        paths.extend(collect_rel_paths(
+            &compiler_root.join("tests/four_fixture_pressure"),
+            "src/v3/compiler/tests/four_fixture_pressure",
+            "v3",
+        ));
+        paths.sort();
+        paths
+    }
+
+    fn fnv1a64(bytes: &[u8]) -> u64 {
+        let mut hash = 0xcbf29ce484222325_u64;
+        for &byte in bytes {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+        hash
+    }
+
+    fn render_surface(path: &str) -> (usize, usize, u64) {
+        let source = fs::read_to_string(repo_root().join(path))
+            .unwrap_or_else(|err| panic!("read fixture `{path}` failed: {err}"));
+        let tokens = tokenize_for_test(&source, path)
+            .unwrap_or_else(|diag| panic!("tokenize `{path}` failed: {diag:?}"));
+        let surface = parse_for_test(&tokens, path)
+            .unwrap_or_else(|diag| panic!("parse `{path}` failed: {diag:?}"));
+        let rendered = format!("{surface:#?}");
+        (
+            surface.items.len(),
+            rendered.len(),
+            fnv1a64(rendered.as_bytes()),
+        )
+    }
+
+    fn render_manifest() -> String {
+        let mut rendered = String::from(
+            "# AUTO-GENERATED by `cargo test -p v3-compiler refresh_handwritten_parse_snapshot_manifest -- --ignored`\n\
+             # SG-2 prep only: snapshots incumbent handwritten `parse.rs` output; not `.dag` parity proof.\n\
+             # path\\titems\\tdebug_bytes\\tfnv1a64\n",
+        );
+        for path in parse_corpus_paths() {
+            let (items, debug_bytes, hash) = render_surface(&path);
+            rendered.push_str(&format!("{path}\t{items}\t{debug_bytes}\t{hash:016x}\n"));
+        }
+        rendered
+    }
+
+    fn parse_file(source: &str, name: &str) {
+        let tokens = tokenize_for_test(source, name)
+            .unwrap_or_else(|diag| panic!("tokenize {name} failed: {diag:?}"));
+        let _module = parse_for_test(&tokens, name)
+            .unwrap_or_else(|diag| panic!("parse {name} failed: {diag:?}"));
+    }
+
+    #[test]
+    fn handwritten_parse_snapshot_matches_manifest() {
+        assert_eq!(render_manifest(), PARSE_CORPUS_MANIFEST);
+    }
+
+    #[test]
+    #[ignore = "helper to refresh parse_corpus_manifest.txt after intentional handwritten parser changes"]
+    fn refresh_handwritten_parse_snapshot_manifest() {
+        let manifest_path = compiler_root()
+            .join("tests")
+            .join("integration")
+            .join("parse_corpus_manifest.txt");
+        fs::write(&manifest_path, render_manifest())
+            .unwrap_or_else(|err| panic!("write {} failed: {err}", manifest_path.display()));
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_logic_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/logic.dag"),
+            "dsl/std/logic.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_bit_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/bit.dag"),
+            "dsl/std/bit.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_algebra_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/algebra.dag"),
+            "dsl/std/algebra.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_types_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/types.dag"),
+            "dsl/std/types.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_integer_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/integer.dag"),
+            "dsl/std/integer.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_float_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/float.dag"),
+            "dsl/std/float.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_string_type_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/string_type.dag"),
+            "dsl/std/string_type.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_v3_list_dag() {
+        parse_file(include_str!("../../std/list.dag"), "src/v3/std/list.dag");
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_v3_verification_dag() {
+        parse_file(
+            include_str!("../../std/verification.dag"),
+            "src/v3/std/verification.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_v3_effects_dag() {
+        parse_file(
+            include_str!("../../std/effects.dag"),
+            "src/v3/std/effects.dag",
+        );
+    }
+}

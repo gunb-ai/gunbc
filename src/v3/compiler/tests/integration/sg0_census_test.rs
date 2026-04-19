@@ -139,13 +139,11 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/m2_lens_unused_parameters_migration_test.rs",
     "src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
-    "src/v3/compiler/tests/integration/real_stdlib_parse_smoke.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg4_prep_infer_helpers_freshness_test.rs",
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
-    "src/v3/compiler/tests/lane2_stage_2f_dimension_test.rs",
 ];
 
 fn workspace_root() -> PathBuf {
