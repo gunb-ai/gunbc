@@ -115,7 +115,11 @@ fn two_terms(a: SymbolicCost, b: SymbolicCost) -> NonSingletonList<SymbolicCost>
   {
     first: a
     second: b
-    rest: empty()
+    rest:
+      match singleton(a) {
+        Empty => empty()
+        Cons(payload) => payload.tail
+      }
   }
 
 fn many_terms(
