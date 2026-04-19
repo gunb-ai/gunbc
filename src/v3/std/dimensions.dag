@@ -3,9 +3,9 @@
 // 🟢 TERMINAL for the structural surface (Lane 2 Stage 2f). Execution
 // authority for `analyze_symbolic_cost_dimension` lives in
 // `v3_compiler::dimension` until generic HO list folds lower from
-// `.dag` without host stubs. Bootstrap discovery enumerates
-// `data` declarations whose connective is `Dimension<Carrier>` via
-// `Dag::dimension_value_declarations`.
+// `.dag` without host stubs. When class-5 `data` bodies land, callers
+// can walk `Dag::declarations()` for `Dimension<Carrier>` values — no
+// separate compiler registry until a real consumer needs it.
 //
 // **Deferred:** `data symbolic_cost_dimension: Dimension<SymbolicCost> = { ... }`
 // — class-5 gap #3 (`DOWNSTREAM_REQUIREMENTS.md`) blocks record bodies; the

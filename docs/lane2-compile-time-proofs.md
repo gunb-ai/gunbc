@@ -197,7 +197,7 @@ Emits diagnostic for unexpected complexity (e.g., hidden O(n²) via captured lis
 
 Type shape is **locked in [DB-3](./design-dimension-abstraction.md)** — `Dimension<Carrier>` with `name`, `witness_of`, `compose`, `identity`, `break_diagnostic` fields. See DB-3 for full signature, algebraic requirements (monoid laws on compose), and instance declarations.
 
-**Landed (Lane C / core 2f):** `std/dimensions.dag` + `workflows.dag` terminal types; `v3_compiler::analyze_symbolic_cost_dimension` migrates symbolic cost onto `DimensionReport<SymbolicCost>`; `Dag::dimension_value_declarations()` enumerates `Dimension<Carrier>` `data` items (empty until class-5 bodies). **Parallelism (2e) is NOT a Dimension instance** — per DB-3 OQ §1, parallelism stays an ordinary lens.
+**Landed (Lane C / core 2f):** `std/dimensions.dag` + `workflows.dag` terminal types; `v3_compiler::analyze_symbolic_cost_dimension` migrates symbolic cost onto `DimensionReport<SymbolicCost>`. Authoring `data … : Dimension<Carrier> = …` remains class-5-blocked; when it lands, discovery can walk declarations — no speculative compiler registry required until a pass consumes it. **Parallelism (2e) is NOT a Dimension instance** — per DB-3 OQ §1, parallelism stays an ordinary lens.
 
 **Acceptance (remaining follow-ups):**
 - Idempotency lens (2b) rewritten to consume the `Dimension` abstraction — same behavior, less bespoke code

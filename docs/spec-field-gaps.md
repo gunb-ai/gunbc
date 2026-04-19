@@ -126,4 +126,4 @@ This ordering matches **“spec extensions before deleting Rust”** so P2-L1 do
 
 ## 11. Lane 2 Stage 2f / DB-3 dimensions (not target-spec)
 
-**Surface:** `src/v3/std/dimensions.dag`, `workflows.dag` — no additional fields required on `rust.dag` / `go.dag` / `python.dag` for the dimension report types. **Gap:** authoring `data … : Dimension<Carrier> = { … }` values still waits on class-5 `data` bodies (`DOWNSTREAM_REQUIREMENTS.md`); the compiler-side registry (`Dag::dimension_value_declarations`) is live but empty until then.
+**Surface:** `src/v3/std/dimensions.dag`, `workflows.dag` — no additional fields required on `rust.dag` / `go.dag` / `python.dag` for the dimension report types. **Gap:** authoring `data … : Dimension<Carrier> = { … }` values still waits on class-5 `data` bodies (`DOWNSTREAM_REQUIREMENTS.md`); no separate compiler registry ships ahead of a consumer that needs it.

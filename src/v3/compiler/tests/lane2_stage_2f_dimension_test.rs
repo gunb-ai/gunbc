@@ -2,7 +2,7 @@
 
 use v3_compiler::analyze_symbolic_cost_dimension;
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Dag, PortId};
+use v3_compiler::dag::{Behavior, Dag, PortId, TypeConnective};
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
 fn find_bind_port(dag: &Dag, name: &str) -> PortId {
@@ -23,10 +23,25 @@ fn find_bind_root(dag: &Dag, name: &str) -> v3_compiler::dag::NodeId {
 }
 
 #[test]
-fn bootstrap_dimension_data_registry_empty_until_class5_instances_exist() {
+fn no_authored_dimension_carrier_constants_in_bootstrap_stdlib() {
     let dag = Dag::new();
-    assert!(
-        dag.dimension_value_declarations().is_empty(),
+    let dimension_template = dag
+        .declaration_by_name("Dimension")
+        .expect("bootstrap loads Dimension")
+        .id;
+    let count = dag
+        .declarations()
+        .iter()
+        .filter(|decl| {
+            decl.value_body.is_some()
+                && matches!(
+                    &decl.connective,
+                    TypeConnective::Instantiation { template: t, .. } if *t == dimension_template
+                )
+        })
+        .count();
+    assert_eq!(
+        count, 0,
         "no `data _: Dimension<_> = ...` values ship until class-5 bodies unlock the receipt"
     );
 }
