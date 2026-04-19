@@ -574,3 +574,4 @@ fn structural_predicates_cover_four_regression_fixtures() {
         "expected an unresolved port-state predicate to match the non-exhaustive fixture"
     );
 }
+

@@ -487,6 +487,14 @@ impl<'a> TestgenLens<'a> {
             if matches!(name.as_str(), "BoolPortRef" | "BranchArm") {
                 continue;
             }
+            // `DimensionReport<Carrier>` has two `List<…>` fields whose synthetic
+            // `empty()` witnesses share one implicit template binding during
+            // infer (surface calls cannot spell `empty<Element>()` — no generic
+            // call syntax in expression position). Skip until testgen can emit
+            // non-conflicting list witnesses.
+            if name == "DimensionReport" {
+                continue;
+            }
             // Cardinality list primitives (`NonEmptyList`, `NonSingletonList`) live in
             // `substrate_minimal.dag` ahead of `list.dag`'s `empty()` helper in bootstrap
             // order — the testgen witness uses `empty()` for `List<…>` tails in a
@@ -583,23 +591,12 @@ impl<'a> TestgenLens<'a> {
             return None;
         }
         let decl = self.dag.declaration(decl_id);
-        // Nested `List<…>` tails use `empty<element>()` so distinct list fields
-        // (e.g. `List<Diagnostic>` vs `List<Witness<Int>>` on `DimensionReport`)
-        // do not share one implicit `empty()` template binding (infer conflict).
-        if depth > 0 {
-            if let TypeConnective::Instantiation {
-                template,
-                arguments,
-            } = &decl.connective
-            {
-                if self.dag.declaration(*template).name.as_deref() == Some("List") {
-                    if let Some(arg) = arguments.first() {
-                        if let Some(inner_ty) = self.render_type_expr(arg.value, subst) {
-                            return Some(format!("empty<{inner_ty}>()"));
-                        }
-                    }
-                }
-            }
+        if self
+            .render_type_expr(decl_id, subst)
+            .is_some_and(|ty| ty.starts_with("List<"))
+            && depth > 0
+        {
+            return Some("empty()".to_string());
         }
         match decl.name.as_deref() {
             Some("Int") => Some("1".to_string()),
