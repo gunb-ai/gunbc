@@ -1,6 +1,6 @@
 module v3.compiler.regen
 
-import std.types { FilePath }
+import std.types { FilePath, NonEmptyStr }
 
 // Lens regen registry. Each `data <name>_entry: LensRegistryEntry`
 // record below is picked up structurally by the `regen_lens` binary
@@ -15,15 +15,18 @@ import std.types { FilePath }
 // `cargo run -p v3-compiler --bin regen_lens` picks it up. No
 // per-lens Rust driver is added or edited.
 //
-// `lens_file` and `generated_file` compose from `std.types::FilePath`
-// (= `String where non_empty`) per MODELING M9 — we attach to the
-// existing path vocabulary rather than reintroduce a raw `String`
-// for filesystem paths. Refinement means empty-string entries
-// cannot be lowered into the registry, closing the "illegal states
-// representable" hole that a raw `String` would leave open.
+// `name` composes from `std.types::NonEmptyStr` (= `String where
+// non_empty`) so the `--lens <name>` selector key cannot encode an
+// empty string. `lens_file` and `generated_file` compose from
+// `std.types::FilePath` (also `String where non_empty`) per
+// MODELING M9 — every field attaches to the existing path/identifier
+// vocabulary rather than reintroduce a raw `String`. Refinement
+// means empty-string entries cannot be lowered into the registry,
+// closing the "illegal states representable" hole that a raw
+// `String` would leave open across all three fields.
 
 type LensRegistryEntry {
-  name: String
+  name: NonEmptyStr
   lens_file: FilePath
   generated_file: FilePath
 }
