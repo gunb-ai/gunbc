@@ -295,6 +295,117 @@ pub mod lens_provenance {
     }
 
     pub use generated::{origin_of, Origin};
+
+    #[cfg(test)]
+    mod tests {
+        use super::{origin_of, Origin};
+        use crate::dag::{
+            ArithmeticOp, BranchPattern, Dag, LiteralBits, LoopBound, OperatorKind, Path,
+            TransformTarget,
+        };
+        use crate::diagnostics::SourceSpan;
+
+        fn span() -> SourceSpan {
+            SourceSpan::new("<lens-provenance-test>", 0, 0)
+        }
+
+        fn label(origin: &Origin) -> &'static str {
+            match origin {
+                Origin::NoProducer => "NoProducer",
+                Origin::MissingPort => "MissingPort",
+                Origin::MissingBehavior => "MissingBehavior",
+                Origin::Source { .. } => "Source",
+                Origin::Computed { .. } => "Computed",
+                Origin::Selected { .. } => "Selected",
+                Origin::Accumulated { .. } => "Accumulated",
+            }
+        }
+
+        #[test]
+        fn unproduced_parameter_port_reports_no_producer() {
+            let mut dag = Dag::new();
+            let int_shape = dag.int_shape().expect("bootstrap Int");
+            let param = dag.alloc_port_with_shape(int_shape);
+            assert_eq!(label(&origin_of(&dag, &param)), "NoProducer");
+        }
+
+        #[test]
+        fn value_port_reports_source_origin() {
+            let mut dag = Dag::new();
+            let port = dag.push_value(LiteralBits::Int(1), span());
+            assert_eq!(label(&origin_of(&dag, &port)), "Source");
+        }
+
+        #[test]
+        fn transform_port_reports_computed_origin() {
+            let mut dag = Dag::new();
+            let a = dag.push_value(LiteralBits::Int(1), span());
+            let b = dag.push_value(LiteralBits::Int(2), span());
+            let sum = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![a, b],
+                span(),
+            );
+            assert_eq!(label(&origin_of(&dag, &sum)), "Computed");
+        }
+
+        #[test]
+        fn branch_port_reports_selected_origin() {
+            let mut dag = Dag::new();
+            let cond = dag.push_value(LiteralBits::Bool(true), span());
+            let arm_output = dag.push_value(LiteralBits::Int(1), span());
+            let arm_body = dag.push_bind("arm", arm_output, Vec::new(), span());
+            let branch = dag.push_branch(
+                cond,
+                vec![Path {
+                    body: arm_body,
+                    output: arm_output,
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "Only".to_string(),
+                        span: span(),
+                    },
+                    binding: None,
+                }],
+                span(),
+            );
+            assert_eq!(label(&origin_of(&dag, &branch)), "Selected");
+        }
+
+        #[test]
+        fn loop_port_reports_accumulated_origin() {
+            let mut dag = Dag::new();
+            let source = dag.push_value(LiteralBits::Int(4), span());
+            let init = dag.push_value(LiteralBits::Int(0), span());
+            let body_output = dag.push_value(LiteralBits::Int(0), span());
+            let body = dag.push_bind("loop_body", body_output, Vec::new(), span());
+            let loop_port = dag.push_loop(
+                source,
+                init,
+                body,
+                LoopBound::Cardinality { count: source },
+                span(),
+            );
+            assert_eq!(label(&origin_of(&dag, &loop_port)), "Accumulated");
+        }
+
+        #[test]
+        fn bind_value_origin_is_its_producer_not_the_bind_itself() {
+            // `let x = 1 + 2` — bind.value is the transform output, so
+            // origin_of(bind.value) walks through to the Transform producer
+            // and reports Computed. A Bind's own output is only reached
+            // when something references the Bind node directly.
+            let mut dag = Dag::new();
+            let a = dag.push_value(LiteralBits::Int(1), span());
+            let b = dag.push_value(LiteralBits::Int(2), span());
+            let body = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![a, b],
+                span(),
+            );
+            let _ = dag.push_bind("x", body, Vec::new(), span());
+            assert_eq!(label(&origin_of(&dag, &body)), "Computed");
+        }
+    }
 }
 
 /// Structural-resolution lens. The authority lives in

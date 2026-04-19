@@ -1,10 +1,21 @@
+//! **Layer:** boundary-adjacent integration — emitted Rust lens linked via rustc.
+//!
+//! Lens-semantic coverage (Value/Transform/Branch/Loop/Bind, seeded
+//! bind-param costs) lives as in-crate unit tests under
+//! `src/v3/compiler/src/lib.rs::lens_cost::tests`, where the
+//! `pub(crate)` Dag builder is reachable. This suite is the
+//! cross-process receipt: it verifies that the `.dag` authority
+//! compiles cleanly, that the checked-in generated module is in sync
+//! with what `emit_rust_module(complexity.dag)` produces, and that the
+//! emitted module links and runs end-to-end via rustc on one
+//! representative fixture.
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Dag, PortId};
 use v3_compiler::emit_rust::emit_rust_module;
 
 use crate::common::{HarnessLinkMode, RustcHarness};
@@ -98,7 +109,7 @@ fn roundtrip_cost(
     program_source: &str,
     file_name: &str,
     bind_name: &str,
-) -> usize {
+) -> i64 {
     let run = Command::new(bin_path)
         .arg(program_source)
         .arg(file_name)
@@ -113,51 +124,7 @@ fn roundtrip_cost(
     String::from_utf8_lossy(&run.stdout)
         .trim()
         .parse()
-        .expect("printed cost should be usize")
-}
-
-fn bind_value(dag: &Dag, name: &str) -> PortId {
-    dag.nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|bind| bind.name == name)
-        .unwrap_or_else(|| panic!("bind `{name}` not found"))
-        .value
-}
-
-fn handwritten_cost(dag: &Dag, port: PortId) -> usize {
-    match dag.port(port).produced_by {
-        None => 0,
-        Some(node_id) => match dag.node(node_id) {
-            Behavior::Value(_) => 0,
-            Behavior::Transform(t) => {
-                1 + t
-                    .inputs
-                    .iter()
-                    .map(|&input| handwritten_cost(dag, input))
-                    .sum::<usize>()
-            }
-            Behavior::Branch(branch) => {
-                let cond = handwritten_cost(dag, branch.input);
-                let paths = branch
-                    .paths
-                    .iter()
-                    .map(|path| handwritten_cost(dag, path.output))
-                    .max()
-                    .unwrap_or(0);
-                1 + cond + paths
-            }
-            Behavior::Loop(loop_node) => {
-                1 + handwritten_cost(dag, loop_node.source) + handwritten_cost(dag, loop_node.init)
-            }
-            Behavior::Bind(bind) => handwritten_cost(dag, bind.value),
-        },
-    }
-}
-
-fn handwritten_bind_cost(program_source: &str, file_name: &str, bind_name: &str) -> usize {
-    let dag = compile_to_dag(program_source, file_name).expect("fixture compiles");
-    handwritten_cost(&dag, bind_value(&dag, bind_name))
+        .expect("printed cost should be i64")
 }
 
 #[test]
@@ -181,53 +148,24 @@ fn complexity_generated_module_matches_checked_in_snapshot() {
     );
 }
 
+/// Cross-process receipt: the emitted module links against the
+/// `v3_compiler` crate and runs under rustc on a representative
+/// fixture that exercises Bind-with-params + seeded param costs + a
+/// transform over fold/map/singleton. Deeper behavioral coverage
+/// (Value/Transform/Branch/Loop/Bind/params) is pinned by the
+/// in-crate `lens_cost::tests` unit tests against hand-built Dags.
 #[test]
-fn complexity_dag_matches_handwritten_oracle_on_core_fixtures() {
+fn complexity_dag_runs_end_to_end_via_rustc_harness() {
     let module = emit_lens_module();
-    let fixtures = [
-        ("let x = 1", "literal.v3", "x"),
-        ("let x = 1 + 2 + 3", "chained_transform.v3", "x"),
-        (
-            "let r = if 1 > 0 then 20 + 30 else 40 + 50 + 60",
-            "branch_max.v3",
-            "r",
-        ),
-        (
-            "\
-fn countdown(n: Int) -> Int =
-  if n == 0 then 0 else countdown(n - 1)
-",
-            "recursive_fn.v3",
-            "countdown",
-        ),
-        (
-            "let total: Int = fold(map(singleton(1), |x| x + 1), 0, |acc, x| acc + x)",
-            "nested_fold.v3",
-            "total",
-        ),
-        // Bind with parameters: exercises both the seed_bind_params pre-seed
-        // (x_port gets FoundCost(0), matching the oracle's None-produced = 0)
-        // and the Bind branch of entry_for (result_port lookup over the
-        // transform that produced `x + x`).
-        (
-            "fn double(x: Int) -> Int = x + x",
-            "bind_with_param.v3",
-            "double",
-        ),
-        (
-            "fn add(x: Int, y: Int) -> Int = x + y",
-            "bind_with_two_params.v3",
-            "add",
-        ),
-    ];
-
     let bin_path = build_roundtrip_harness(&module);
-    for (source, file_name, bind_name) in fixtures {
-        let expected = handwritten_bind_cost(source, file_name, bind_name);
-        let actual = roundtrip_cost(&bin_path, source, file_name, bind_name);
-        assert_eq!(
-            actual, expected,
-            "compiled complexity.dag should match handwritten oracle on {file_name}"
-        );
-    }
+    let cost = roundtrip_cost(
+        &bin_path,
+        "let total: Int = fold(map(singleton(1), |x| x + 1), 0, |acc, x| acc + x)",
+        "nested_fold.v3",
+        "total",
+    );
+    assert!(
+        cost > 0,
+        "nested fold fixture should report positive cost; got {cost}"
+    );
 }
