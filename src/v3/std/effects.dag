@@ -69,10 +69,15 @@
 // still admitted `OperationEffect { shape: ReadEffect }` — an
 // idempotent op in the breaker slot — enforced only by the
 // `compose_effects` filter. Partitioning EffectShape at the type
-// level makes naming an idempotent op as the workflow breaker
-// unrepresentable rather than disallowed-by-convention, while
-// `ElementRef<OperationEffect>` ties the verdict back to the original
-// evidence chain instead of copying name/shape into a second carrier.
+// level dissolved that hole for carrier copies like
+// `BreakingOperation`, while `ElementRef<OperationEffect>` ties the
+// verdict back to the original evidence chain instead of copying
+// name/shape into a second carrier. Current trade-off: the handle only
+// proves "in-bounds element of the caller-owned list", not "this
+// element is breaking" at the type boundary. That subset fact is still
+// established behaviorally by `compose_effects` / `first_breaker_ref`,
+// and the remaining constructor-validation asymmetry is tracked as
+// Track 9 style debt until the substrate grows a breaking-only witness.
 //
 // DESIGN PRINCIPLE:
 //   Idempotency is not a flag. It is a DERIVED PROPERTY of the
@@ -370,10 +375,11 @@ type OperationEffect {
 // converges, or some operation broke convergence. No third state.
 //
 // `first_breaker: ElementRef<OperationEffect>` is a carrier-relative
-// witness into the original workflow evidence chain. Combined with the
-// `EffectShape` partition, the verdict cannot name an idempotent op as
-// the breaker AND cannot drift away from the input list by copying a
-// standalone breaker record.
+// witness into the original workflow evidence chain. It closes the
+// "copied standalone breaker record" hole, but not the full subset
+// proof: `ElementRef` proves list membership, while "the pointed
+// operation is breaking" is still established by `compose_effects`
+// rather than by the handle type itself.
 type CompositionVerdict
   = IdempotentComposition
   | BrokenBy { first_breaker: ElementRef<OperationEffect> }

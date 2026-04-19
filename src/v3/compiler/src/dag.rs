@@ -1150,8 +1150,15 @@ pub struct OperationEffect {
     pub shape: EffectShape,
 }
 
-/// 🟢 **TERMINAL.** Result of linear `compose_effects` — mirrors
-/// `CompositionVerdict` in `effects.dag`.
+/// 🟢 **TERMINAL at current Stage 2b scope.** Result of linear
+/// `compose_effects` — mirrors `CompositionVerdict` in `effects.dag`.
+/// `ElementRef<OperationEffect>` closes the "copied standalone breaker
+/// record" hole by tying the verdict back to the caller-owned workflow
+/// list, but it does not by itself prove the pointed operation is
+/// breaking. That subset fact is still established by
+/// `workflow_idempotency::compose_operation_effects` and tracked as the
+/// same constructor-validation asymmetry class as other reflected
+/// handles until the substrate grows a breaking-only witness.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompositionVerdict {
     IdempotentComposition,
