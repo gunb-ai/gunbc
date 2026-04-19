@@ -121,3 +121,9 @@ Specs referenced: `src/v3/spec/rust.dag`, `go.dag`, `python.dag` (+ shared `v3_l
 3. **P2:** Bootstrap path lists, placeholder vocabulary, remaining diagnostic polish.
 
 This ordering matches **“spec extensions before deleting Rust”** so P2-L1 does not stall mid-walker on a missing field.
+
+---
+
+## 11. Lane 2 Stage 2f / DB-3 dimensions (not target-spec)
+
+**Surface:** `src/v3/std/dimensions.dag`, `workflows.dag` — no additional fields required on `rust.dag` / `go.dag` / `python.dag` for the dimension report types. **Gap:** authoring `data … : Dimension<Carrier> = { … }` values still waits on class-5 `data` bodies (`DOWNSTREAM_REQUIREMENTS.md`); the compiler-side registry (`Dag::dimension_value_declarations`) is live but empty until then.

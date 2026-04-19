@@ -214,7 +214,15 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> SymbolicCostLoo
         lookup_cost(payload.tail, port_id)
   }
 
-// ── Dimension<SymbolicCost> wiring — DEFERRED to Stage 2f ───────
+// ── Dimension<SymbolicCost> wiring — DEFERRED (class-5 data bodies) ─
+//
+// **Stage 2f dispatch (landed):** `v3_compiler::analyze_symbolic_cost_dimension`
+// packages the same `symbolic_cost_of` / `compute_symbolic_costs` algebra as a
+// `DimensionReport<SymbolicCost>` (DB-3). The `data symbolic_cost_dimension:
+// Dimension<SymbolicCost> = { ... }` **value** remains blocked on record bodies;
+// the Rust entrypoint is the interim authority — same pattern as ROADMAP §Lane 2.
+//
+// ── Dimension<SymbolicCost> data declaration — DEFERRED to class-5 ─
 //
 // DB-7 §"Dimension<SymbolicCost> wiring" specifies a
 // `data symbolic_cost_dimension: Dimension<SymbolicCost> = {..}`

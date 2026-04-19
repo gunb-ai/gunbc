@@ -156,6 +156,7 @@ pub mod lens_structural_resolution {
 }
 
 mod bootstrap;
+mod dimension;
 mod infer;
 pub mod lens_idempotency;
 pub mod lens_parallelism;
@@ -184,6 +185,12 @@ pub use lens_idempotency::analyze_workflow;
 pub use lens_parallelism::analyze_parallelism;
 pub use workflow_idempotency::{
     lane2_workflow_idempotency_report, report_unsupported_workflow_variant,
+};
+
+/// Lane 2 Stage 2f — DB-3 dimension abstraction (`std/dimensions.dag` types;
+/// `analyze_symbolic_cost_dimension` is the first migrated lens path).
+pub use dimension::{
+    analyze_symbolic_cost_dimension, behavior_spine_in_node_order, DimensionReport, Witness,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

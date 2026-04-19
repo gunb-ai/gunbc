@@ -8,10 +8,10 @@
 //! witnesses and reports the composed carrier at `workflow_root`'s result
 //! port (same query the cost lens answers today).
 
-use crate::dag::{Behavior, Dag, NodeId, SymbolicCost};
+use crate::dag::{Behavior, Dag, NodeId, PortId, SymbolicCost};
 use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
-fn behavior_result_port(b: &Behavior) -> crate::dag::PortId {
+fn behavior_result_port(b: &Behavior) -> PortId {
     match b {
         Behavior::Value(v) => v.result_port(),
         Behavior::Transform(t) => t.result_port(),

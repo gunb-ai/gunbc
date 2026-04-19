@@ -1948,6 +1948,11 @@ pub struct Dag {
     /// inference needs stable `Some` / `None` variant identities without
     /// promoting optionals into named top-level declarations.
     optional_match_disjs: HashMap<DeclarationId, DeclarationId>,
+    /// `data` declarations whose connective is `Instantiation { template:
+    /// Dimension, .. }` — DB-3 bootstrap discovery (Lane 2 Stage 2f). Empty when
+    /// no such values exist (e.g. before class-5 record bodies unlock
+    /// `data symbolic_cost_dimension: Dimension<SymbolicCost> = { .. }`).
+    dimension_value_declarations: Vec<DeclarationId>,
 }
 
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
@@ -1977,6 +1982,7 @@ impl Dag {
             verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
             clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
+            dimension_value_declarations: Vec::new(),
         }
     }
 
@@ -2680,6 +2686,13 @@ impl Dag {
             }
         }
         self.verifier_output_policy_variants = verifier_policy_variants;
+
+        self.dimension_value_declarations = collect_dimension_value_declarations(self);
+    }
+
+    /// Bootstrap-time index: `data` items typed as `Dimension<Carrier>` (DB-3).
+    pub fn dimension_value_declarations(&self) -> &[DeclarationId] {
+        &self.dimension_value_declarations
     }
 
     pub fn param_of(&self, member: NodeId, slot: usize) -> Option<ParamRef> {
@@ -2726,6 +2739,24 @@ impl Dag {
         self.node(node).as_transform()?;
         Some(TransformRef(node))
     }
+}
+
+fn collect_dimension_value_declarations(dag: &Dag) -> Vec<DeclarationId> {
+    let Some(dimension) = dag.declaration_by_name("Dimension") else {
+        return Vec::new();
+    };
+    let template = dimension.id;
+    dag.declarations()
+        .iter()
+        .filter(|decl| {
+            decl.value_body.is_some()
+                && matches!(
+                    &decl.connective,
+                    TypeConnective::Instantiation { template: t, .. } if *t == template
+                )
+        })
+        .map(|decl| decl.id)
+        .collect()
 }
 
 impl Default for Dag {

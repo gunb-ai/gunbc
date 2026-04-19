@@ -182,6 +182,7 @@ These are **not** counted in the 92 but are load-bearing for consolidation:
 | `algebra_field_for_operator` / `walk_to_algebra_conj` / `canonical_operator_field` | `emit_{rust,go,python}.rs` | **substrate walk** + **bridge** (OrderedRing fallback — see `emit-bridges.md`) |
 | `RealizationIndexes::build` | `emit_rust.rs` | Spec index build (feeds walker) |
 | `is_bootstrap_file` | each emitter | **per-target integration** policy (stdlib path filter) |
+| `analyze_symbolic_cost_dimension` | `dimension.rs` | **lens** (DB-3 `DimensionReport` — not an emitter; interim Rust analyze until generic `analyze<Carrier>` lowers from `std/dimensions.dag`) |
 
 ---
 
