@@ -7,9 +7,10 @@
 //! every test file into this single module tree means:
 //!
 //! - **One bootstrap per cargo test run** — shared across every test.
-//! - **Cross-test cache hits** — two tests compiling `"let x = 1"` with
-//!   different file markers now share a key (per-binary OnceLock is now
-//!   also per-run).
+//! - **Cross-test cache hits** — two tests that pass identical `(source,
+//!   file)` arguments to `cached_compile_to_dag` now share the compile
+//!   result. Different file markers produce distinct cache keys by design
+//!   (the cache identity is the exact compile invocation).
 //! - **One compile, link, and load cycle** — no 25× rustc invocations for
 //!   test-binary production.
 //!

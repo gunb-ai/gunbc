@@ -114,3 +114,31 @@ pub fn cached_compile_to_dag(source: &str, file: &str) -> Dag {
         ),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression lock for the cache contract: warming a key through the
+    /// permissive path (semantic-error fixture) must NOT let a later strict
+    /// caller silently succeed on the same key. The strict helper reads the
+    /// outcome variant directly, so order-of-population doesn't matter.
+    #[test]
+    #[should_panic(expected = "compile cleanly but produced semantic errors")]
+    fn cached_compile_to_dag_panics_on_key_warmed_by_semantic_error() {
+        // Use a fixture that reliably produces a semantic error.
+        // A type mismatch is the smallest repro:
+        let bad_source = "let x: Int = \"not an int\"";
+        let key = "cached_compile_to_dag_order_regression.v3";
+
+        // Permissive path: warm the cache with a semantic-error outcome.
+        let warmed = cached_compile_any(bad_source, key);
+        assert!(
+            !warmed.diagnostics().is_empty(),
+            "sanity: fixture should produce at least one diagnostic"
+        );
+
+        // Strict path on the same key: must panic regardless of cache warmth.
+        let _ = cached_compile_to_dag(bad_source, key);
+    }
+}
