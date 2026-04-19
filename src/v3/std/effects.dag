@@ -507,8 +507,26 @@ fn report_unsupported_workflow_variant(
   })
 }
 
+// 🟢 TERMINAL. Lane 2 Stage 2e (DB-20) — parallel branch composition safety.
+// Projects through `CompositionVerdict` only; unsupported paths stay explicit.
+type WorkflowParallelismReport
+  = ParallelCompositionVerdict(CompositionVerdict)
+  | ParallelismUnsupported(IdempotencyUnsupportedDetail)
+
+fn report_parallelism_unsupported(
+  variant_name: String,
+  reason: String
+) -> WorkflowParallelismReport =
+  ParallelismUnsupported(IdempotencyUnsupportedDetail {
+    variant_name: variant_name,
+    downstream_stage: "lane2_stage2e_parallelism_lens",
+    reason: reason
+  })
+
 // `analyze_workflow` lives in `src/v3/lenses/idempotency.dag` (Lane 2 Stage 2b
 // lens) — not here — so the name does not duplicate across bootstrap modules.
+// `analyze_parallelism` — same split: stub in `src/v3/lenses/parallelism.dag`,
+// Rust authority `v3_compiler::analyze_parallelism`.
 
 // ── Effect derivation from transport facts ──────────────────────
 //

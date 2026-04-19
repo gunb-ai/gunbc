@@ -1152,6 +1152,14 @@ pub enum WorkflowIdempotencyReport {
     IdempotencyUnsupported(IdempotencyUnsupportedDetail),
 }
 
+/// 🟢 **TERMINAL.** Lane 2 Stage 2e parallelism lens report — mirrors
+/// `WorkflowParallelismReport` in `effects.dag` (DB-20).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkflowParallelismReport {
+    ParallelCompositionVerdict(CompositionVerdict),
+    ParallelismUnsupported(IdempotencyUnsupportedDetail),
+}
+
 // ── end std.effects mirror (DB-18) ───────────────────────────────────
 // Cluster / loop-bound carriers below are Track 9 mutual-recursion
 // witnesses — not part of the Lane 2 Stage 2b effects algebra.
