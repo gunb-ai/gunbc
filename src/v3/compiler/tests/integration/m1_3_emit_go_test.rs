@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
+use v3_compiler::emit::{emit, emit_module, EmitTarget};
 use v3_compiler::emit_go::{emit_go, emit_go_module};
 use v3_compiler::emit_rust::emit_rust;
 
@@ -72,7 +73,7 @@ fn go_stdout(source: &str) -> Option<String> {
     }
 
     let dag = cached_compile_to_dag(source, "parity.v3");
-    let rendered = emit_go(&dag).expect("emits go");
+    let rendered = emit(&dag, EmitTarget::Go).expect("emits go").text;
     let tmp_dir = next_roundtrip_dir();
     std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
     let src_path = tmp_dir.join("main.go");
@@ -107,7 +108,9 @@ fn go_stdout(source: &str) -> Option<String> {
 fn emit_go_lens_unused_parameters_module() {
     let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())
         .expect("compiled lens source");
-    let rendered = emit_go_module(&dag).expect("emits go module");
+    let rendered = emit_module(&dag, EmitTarget::Go)
+        .expect("emits go module")
+        .text;
 
     assert!(rendered.contains("package emitted"), "got: {rendered}");
     assert!(
@@ -151,7 +154,7 @@ fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(value) => 0, Empty => 1 
 let zero: Int = 0
 ";
     let dag = cached_compile_to_dag(source, "clean_emission.v3");
-    let rendered = emit_go(&dag).expect("emits go");
+    let rendered = emit(&dag, EmitTarget::Go).expect("emits go").text;
     assert!(
         !rendered.contains("value := v._0"),
         "expected unused payload binding to be elided, got: {rendered}"
@@ -187,7 +190,7 @@ fn unwrap_or_zero(b: BoxedInt) -> Int = match b { Boxed(value) => value, Empty =
 let zero: Int = 0
 ";
     let dag = cached_compile_to_dag(source, "clean_emission.v3");
-    let rendered = emit_go(&dag).expect("emits go");
+    let rendered = emit(&dag, EmitTarget::Go).expect("emits go").text;
     assert!(
         rendered.contains("case Boxed: return v._0"),
         "used positional payload must still read from the type-switch witness, got: {rendered}"
@@ -207,7 +210,7 @@ fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap(payload) => payload.inner.
 let zero: Int = 0
 ";
     let dag = cached_compile_to_dag(source, "variant_payload_named_single.v3");
-    let rendered = emit_go(&dag).expect("emits go");
+    let rendered = emit(&dag, EmitTarget::Go).expect("emits go").text;
     assert!(
         rendered.contains("case Wrap: return ((v).inner).x"),
         "named single-field payload access must project from the variant value, got: {rendered}"
@@ -280,7 +283,7 @@ let result: Int = ignore_payload(Empty)
         .go_clean_emission_spec()
         .expect("go_clean_emission cached");
     let binding = parse_post_emit_verifier(&dag, spec).expect("parse contract");
-    let rendered = emit_go(&dag).expect("emits go");
+    let rendered = emit(&dag, EmitTarget::Go).expect("emits go").text;
     let tmp_dir = next_roundtrip_dir();
     std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
     let src_path = tmp_dir.join("main.go");
@@ -289,4 +292,33 @@ let result: Int = ignore_payload(Empty)
         .expect("write go source");
     run_post_emit_verifier(&binding, &src_path)
         .expect("go post_emit_verifier rejected pilot source — E-5 contract regression");
+}
+
+#[test]
+fn emit_go_wrapper_matches_shared_entrypoint() {
+    let program_source = "\
+fn double(x: Int) -> Int = x + x
+let result: Int = double(21)
+";
+    let program_dag =
+        compile_to_dag(program_source, "emit_go_wrapper_program_parity.v3").expect("compiles");
+    let shared = emit(&program_dag, EmitTarget::Go)
+        .expect("shared emit")
+        .text;
+    let wrapper = emit_go(&program_dag).expect("wrapper emit");
+    assert_eq!(shared, wrapper, "emit_go wrapper drifted from emit::emit");
+
+    let module_source = "\
+fn double(x: Int) -> Int = x + x
+";
+    let module_dag =
+        compile_to_dag(module_source, "emit_go_wrapper_module_parity.v3").expect("compiles");
+    let shared_module = emit_module(&module_dag, EmitTarget::Go)
+        .expect("shared module emit")
+        .text;
+    let wrapper_module = emit_go_module(&module_dag).expect("wrapper module emit");
+    assert_eq!(
+        shared_module, wrapper_module,
+        "emit_go_module wrapper drifted from emit::emit_module"
+    );
 }

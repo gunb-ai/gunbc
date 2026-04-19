@@ -295,7 +295,7 @@ After current batch closes + §3 next-batch lands:
 | Test obligation materialization (Lane 2 Stage 2c) | ❌ DB-15 R2 drafted; implementation not started |
 | Symbolic cost (Lane 2 Stage 2d) | ❌ DB-7 locked; implementation not started |
 | Diagnostics-as-corrections (Lane 3 Stage 3b) | ❌ DB-1 locked; gated on Lane 1c close |
-| **Lane 1 Stage 1e — single generic walker** | ❌ **HARD BLOCKER** (see below) |
+| **Lane 1 Stage 1e — single generic walker** | 🟡 Shared `emit.rs` scaffold landed on current branch; Go migrated, Rust/Python pending |
 
 ### The Lane 1 Stage 1e gate
 
@@ -307,8 +307,8 @@ Current critical-path status:
 - **1a** ✅ PR #495
 - **1b** 🟡 DB-14 wired; ROADMAP has "Deferral: 1b full implementation (M)"
 - **1c** 🟡 Rust+Go pilots shipped; Python pending; post_emit_verifier CI gate pending
-- **1d** ❌ not started
-- **1e** ❌ not started (design written just before execution, informed by 1a–1d)
+- **1d** ✅ post-pilot audit + build-plan R2 landed on current branch
+- **1e** 🟡 shared `emit.rs` entrypoint landed on current branch; Go migrated behind `EmitTarget::Go`, Rust/Python still pending
 - **3c** ❌ gated on 1e
 
 **Stage 3c is several stages away from dispatch.** Everything in §2 (in flight) and §3 (next batch) is UPSTREAM of 3c. The director-chat role for 3c in the current window is substrate-readiness tracking, NOT pre-clearance of 3c itself (DB-8 already did that).
