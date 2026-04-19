@@ -10,9 +10,7 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, PortState, TransformTarget};
 use v3_compiler::lens_cost::cost_of;
 
-mod common;
-
-use common::cached_compile_to_dag;
+use crate::common::cached_compile_to_dag;
 use v3_compiler::types::TypeShape;
 use v3_compiler::{CompileError, Diagnostic};
 
@@ -46,7 +44,7 @@ fn bind_named<'a>(dag: &'a Dag, name: &str) -> &'a v3_compiler::dag::BindNode {
 
 fn bind_cost(dag: &Dag, name: &str) -> usize {
     let port = bind_named(dag, name).value;
-    common::require_fixture_cost_usize(cost_of(dag, &port), &format!("bind `{name}`"))
+    crate::common::require_fixture_cost_usize(cost_of(dag, &port), &format!("bind `{name}`"))
 }
 
 #[test]

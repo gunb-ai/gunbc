@@ -4,9 +4,7 @@
 // the fail-closed invariant (C-8) holds across both happy-path and
 // error-path inputs.
 
-mod common;
-
-use common::cached_compile_to_dag;
+use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     AtomPayload, Behavior, Dag, LiteralBits, LoopBound, PortState, TransformTarget, TypeConnective,

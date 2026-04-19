@@ -3,9 +3,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-mod common;
-
-use common::cached_compile_to_dag;
+use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit_go::{emit_go, emit_go_module};
 use v3_compiler::emit_rust::emit_rust;

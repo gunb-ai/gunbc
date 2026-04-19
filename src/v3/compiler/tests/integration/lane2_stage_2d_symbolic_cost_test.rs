@@ -8,8 +8,6 @@
 // the composition algebra in `src/v3/std/algebra.dag` (+ its Rust
 // mirror in `dag.rs`) normalizes correctly.
 
-mod common;
-
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -21,7 +19,7 @@ use v3_compiler::dag::{
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
-use common::cached_compile_to_dag;
+use crate::common::cached_compile_to_dag;
 
 fn find_bind_value(dag: &Dag, name: &str) -> PortId {
     dag.nodes()
@@ -531,7 +529,7 @@ budgeted_test! {
     cost_generated_module_matches_checked_in_snapshot,
     {
         let fresh = emit_lens_module();
-        let checked_in = include_str!("../src/lens_cost_symbolic_generated.rs");
+        let checked_in = include_str!("../../src/lens_cost_symbolic_generated.rs");
         assert_eq!(
             fresh.trim(),
             checked_in.trim(),

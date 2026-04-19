@@ -7,9 +7,7 @@
 // These tests lock the feature-parity surface `compiler.dag` needs. If
 // any of them regresses, the self-hosting cycle cannot close.
 
-mod common;
-
-use common::cached_compile_to_dag;
+use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{AtomPayload, Dag, TypeConnective};
 use v3_compiler::CompileError;

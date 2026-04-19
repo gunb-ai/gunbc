@@ -1,8 +1,6 @@
 use std::collections::HashSet;
 
-mod common;
-
-use common::cached_compile_to_dag;
+use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, PortId, TransformTarget};
 use v3_compiler::operators::{ArithmeticOp, OperatorKind};

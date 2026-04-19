@@ -10,9 +10,7 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId};
 use v3_compiler::lens_cost::cost_of;
 
-mod common;
-
-use common::cached_compile_to_dag;
+use crate::common::cached_compile_to_dag;
 fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
     dag.nodes()
         .iter()
@@ -23,7 +21,7 @@ fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
 }
 
 fn expect_cost(dag: &v3_compiler::dag::Dag, port: PortId) -> usize {
-    common::require_fixture_cost_usize(cost_of(dag, &port), &format!("port {port:?}"))
+    crate::common::require_fixture_cost_usize(cost_of(dag, &port), &format!("port {port:?}"))
 }
 
 fn bind_cost(dag: &v3_compiler::dag::Dag, name: &str) -> usize {

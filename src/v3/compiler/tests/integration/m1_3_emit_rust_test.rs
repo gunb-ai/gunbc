@@ -23,8 +23,7 @@ use std::sync::OnceLock;
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit_rust::{emit_rust, emit_rust_module};
 
-mod common;
-use common::{HarnessLinkMode, RustcHarness};
+use crate::common::{HarnessLinkMode, RustcHarness};
 
 static HARNESS: OnceLock<RustcHarness> = OnceLock::new();
 fn harness() -> &'static RustcHarness {
@@ -582,7 +581,7 @@ fn emit_rust_preserves_rust_dag_is_the_only_rust_syntax_source() {
 /// rust.dag typed-reference shape that should be used instead.
 #[test]
 fn emit_rust_has_no_substrate_name_string_dispatches() {
-    const EMITTER_SOURCE: &str = include_str!("../src/emit_rust.rs");
+    const EMITTER_SOURCE: &str = include_str!("../../src/emit_rust.rs");
 
     // Strip comment-only lines (// ... and ///-style doc comments)
     // before scanning for forbidden patterns. This avoids false

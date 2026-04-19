@@ -19,62 +19,62 @@ fn parse_file(source: &str, name: &str) {
 
 #[test]
 fn logic_dag_parses() {
-    parse_file(include_str!("../../../../dsl/std/logic.dag"), "logic.dag");
+    parse_file(include_str!("../../../../../dsl/std/logic.dag"), "logic.dag");
 }
 
 #[test]
 fn bit_dag_parses() {
-    parse_file(include_str!("../../../../dsl/std/bit.dag"), "bit.dag");
+    parse_file(include_str!("../../../../../dsl/std/bit.dag"), "bit.dag");
 }
 
 #[test]
 fn algebra_dag_parses() {
     parse_file(
-        include_str!("../../../../dsl/std/algebra.dag"),
+        include_str!("../../../../../dsl/std/algebra.dag"),
         "algebra.dag",
     );
 }
 
 #[test]
 fn types_dag_parses() {
-    parse_file(include_str!("../../../../dsl/std/types.dag"), "types.dag");
+    parse_file(include_str!("../../../../../dsl/std/types.dag"), "types.dag");
 }
 
 #[test]
 fn integer_dag_parses() {
     parse_file(
-        include_str!("../../../../dsl/std/integer.dag"),
+        include_str!("../../../../../dsl/std/integer.dag"),
         "integer.dag",
     );
 }
 
 #[test]
 fn float_dag_parses() {
-    parse_file(include_str!("../../../../dsl/std/float.dag"), "float.dag");
+    parse_file(include_str!("../../../../../dsl/std/float.dag"), "float.dag");
 }
 
 #[test]
 fn string_type_dag_parses() {
     parse_file(
-        include_str!("../../../../dsl/std/string_type.dag"),
+        include_str!("../../../../../dsl/std/string_type.dag"),
         "string_type.dag",
     );
 }
 
 #[test]
 fn list_dag_parses() {
-    parse_file(include_str!("../../std/list.dag"), "list.dag");
+    parse_file(include_str!("../../../std/list.dag"), "list.dag");
 }
 
 #[test]
 fn verification_dag_parses() {
     parse_file(
-        include_str!("../../std/verification.dag"),
+        include_str!("../../../std/verification.dag"),
         "verification.dag",
     );
 }
 
 #[test]
 fn effects_dag_parses() {
-    parse_file(include_str!("../../std/effects.dag"), "effects.dag");
+    parse_file(include_str!("../../../std/effects.dag"), "effects.dag");
 }

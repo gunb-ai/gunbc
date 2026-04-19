@@ -10,8 +10,6 @@
 // Conj shape: SyntheticService / SyntheticOperation meta-types and a
 // CmdExec instance whose declaration tree mirrors the nesting.
 
-mod common;
-
 use std::collections::HashMap;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
@@ -21,7 +19,7 @@ use v3_compiler::dag::{
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
 use v3_compiler::Diagnostic;
 
-use common::{cached_compile_any, cached_compile_to_dag};
+use crate::common::{cached_compile_any, cached_compile_to_dag};
 
 fn compile_any(src: &str, file: &str) -> Dag {
     cached_compile_any(src, file)

@@ -4,8 +4,7 @@ use v3_compiler::dag::{
 };
 use v3_compiler::lens_cost::cost_of;
 
-mod common;
-use common::cached_compile_any;
+use crate::common::cached_compile_any;
 use v3_compiler::lens_testgen::{GeneratedClaim, TestgenLens};
 use v3_compiler::Diagnostic;
 
@@ -238,7 +237,7 @@ fn predicate_holds(
             // both fail closed. The earlier inline match only
             // handled MissingCost, which was drift flagged by the
             // chatgpt review.
-            let actual = common::require_fixture_cost_i64(
+            let actual = crate::common::require_fixture_cost_i64(
                 cost_of(&dag, &bind.value),
                 &format!("bind `{bind_name}`"),
             );
