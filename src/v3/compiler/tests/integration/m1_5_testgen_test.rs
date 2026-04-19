@@ -4,7 +4,7 @@ use v3_compiler::dag::{
 };
 use v3_compiler::lens_cost::cost_of;
 
-use crate::common::cached_compile_any;
+use crate::common::{cached_compile_any, cached_compile_outcome, CachedCompileOutcome};
 use v3_compiler::lens_testgen::{GeneratedClaim, TestgenLens};
 use v3_compiler::Diagnostic;
 
@@ -187,18 +187,16 @@ fn predicate_holds(
 ) -> bool {
     let (label, payload) = variant_value(expectation_dag, predicate);
     match label.as_str() {
-        "Compiles" => cached_compile_any(source, file_name)
-            .diagnostics()
-            .is_empty(),
+        "Compiles" => cached_compile_outcome(source, file_name).is_clean(),
         "FailsWithDiagnostic" => {
             let [reference] = payload else {
                 panic!("FailsWithDiagnostic payload should be a single DiagnosticReference");
             };
-            let dag = cached_compile_any(source, file_name);
-            if dag.diagnostics().is_empty() {
-                false
-            } else {
-                diagnostic_matches(expectation_dag, &dag, reference)
+            match cached_compile_outcome(source, file_name) {
+                CachedCompileOutcome::Clean(_) => false,
+                CachedCompileOutcome::Semantic(dag) => {
+                    diagnostic_matches(expectation_dag, &dag, reference)
+                }
             }
         }
         "PortHasState" => {
