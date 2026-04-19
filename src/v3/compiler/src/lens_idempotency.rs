@@ -4,6 +4,11 @@
 //! `std.effects::WorkflowEffect` inside lens modules; the algebraic walk is
 //! implemented in [`crate::workflow_idempotency`]. Only [`analyze_workflow`] is
 //! exported at the crate root — composition helpers stay `pub(crate)` there.
+//!
+//! **Emit receipt:** `tests/m2_lens_idempotency_emit_test.rs` compiles this `.dag`
+//! and asserts multi-target emission succeeds; `tests/m2_lens_idempotency_migration_test.rs`
+//! rustc-links the emitted Rust module and checks `analyze_workflow` matches this
+//! re-export (declared lens surface + `lane2_workflow_effect_at` path).
 
 use crate::dag::{Dag, NodeId, WorkflowIdempotencyReport};
 
