@@ -78,6 +78,7 @@ Per-target correction style is declared in each target spec alongside its `Clean
 - Every T-series test in `thesis_validation_test.rs` (T1.1–T1.5, T2.4) emits at least one Correction
 - Diagnostic rendering in test output shows the FIX lines from error-examples.md
 - Renaming variants in source → non-exhaustive match diagnostic emits the missing-variant Correction
+- Applying shipped corrections at `Correction.span` reparses the repaired source (and cleanly recompiles for the Stage 3b fully-repairing fixtures)
 
 **Escalation:** if corrections need semantic information the diagnostic site doesn't have (e.g., "suggest the right field" requires schema lookup from wherever the type is defined), surface — that's a legitimate API extension. Don't fabricate corrections without the needed context.
 

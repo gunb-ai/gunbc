@@ -64,6 +64,17 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // generic snapshot gate, both new entries collapse along with the
 // four existing `regen_lens_*` lines. Director sign-off
 // (clever-swift-141 brief, 2026-04-19) covers the temporary +2.
+//
+// Stage 3b DB-1 parse/apply ratchet bump — PR #564 adds one
+// hand-authored integration file,
+// `tests/integration/lane3_stage_3b_db1_test.rs`, because the
+// ratchet is intentionally end-to-end over real compiler fixtures
+// (diagnose -> apply correction -> reparse -> recompile), not a
+// generated lens snapshot or unit-only helper. Dissolution trigger:
+// when this slice is absorbed into a generic correction harness or a
+// `.dag`-native correction-validation path, drop the entry. This is
+// a bounded SG-0 exception for the merge-blocking Stage 3b receipt,
+// not a precedent for adding ad hoc integration files.
 const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_infer_helpers.rs",
@@ -114,6 +125,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/lane2_stage_2c_db15_test.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2d_symbolic_cost_test.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2e_parallelism_test.rs",
+    "src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs",
     "src/v3/compiler/tests/integration/m0_acceptance.rs",
     "src/v3/compiler/tests/integration/m1_3_emit_go_test.rs",
     "src/v3/compiler/tests/integration/m1_3_emit_rust_test.rs",
