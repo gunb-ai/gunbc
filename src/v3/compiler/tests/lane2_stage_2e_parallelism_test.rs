@@ -110,9 +110,7 @@ fn parallel_upsert_cross_branch_fail_closed_same_op_name() {
             Box::new(WorkflowEffect::LinearEffect {
                 ops: vec![upsert.clone()],
             }),
-            Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![upsert],
-            }),
+            Box::new(WorkflowEffect::LinearEffect { ops: vec![upsert] }),
         ])
         .unwrap(),
     };
@@ -205,9 +203,7 @@ fn parallel_read_vs_upsert_does_not_commute() {
             Box::new(WorkflowEffect::LinearEffect {
                 ops: vec![read("get")],
             }),
-            Box::new(WorkflowEffect::LinearEffect {
-                ops: vec![upsert],
-            }),
+            Box::new(WorkflowEffect::LinearEffect { ops: vec![upsert] }),
         ])
         .unwrap(),
     };
