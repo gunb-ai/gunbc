@@ -67,9 +67,36 @@ type GeneratedCrate {
 }
 
 data stage0: GeneratedCrate = {
-  package_name: "v2-compiler",
-  source_dir: "src/v2/stage0/src",
-  hand_maintained_src: ["cli_run.rs", "v2_interpreter.rs"]
+  package_name: "v3-compiler",
+  source_dir: "src/v3/compiler/src",
+  hand_maintained_src: [
+    "bootstrap.rs",
+    "dag.rs",
+    "diagnostics.rs",
+    "dimension.rs",
+    "emit.rs",
+    "emit_go.rs",
+    "emit_python.rs",
+    "emit_rust.rs",
+    "infer.rs",
+    "lens_depth.rs",
+    "lens_idempotency.rs",
+    "lens_parallelism.rs",
+    "lens_testgen.rs",
+    "lens_unused_parameters.rs",
+    "lib.rs",
+    "lower.rs",
+    "operators.rs",
+    "parse.rs",
+    "pipeline_authority.rs",
+    "post_emit_verifier.rs",
+    "serialize.rs",
+    "tokenize.rs",
+    "types.rs",
+    "variant_payload.rs",
+    "workflow_idempotency.rs",
+    "workflow_parallelism.rs"
+  ]
 }
 
 // ── Self-hosting cycle ──────────────────────────────────────────────
