@@ -1,21 +1,9 @@
-// M1(2.5) substrate tests — oracle from src/v3/M1_DESIGN.md §5 and §6.
-//
-// Test 1 (`parse_std_algebra_and_walk_int_add`) is the §5 canonical walk:
-// starting from the Int declaration produced by bootstrap, follow the
-// Instantiation template into OrderedRing, find the `add` field, substitute
-// the template argument T := Word64, and assert the resulting Arrow's
-// inputs and output both point at the Word64 declaration.
-//
-// Test 2 (`parse_synthetic_service_all_layers`) is the §6 five-level nested
-// Conj shape: SyntheticService / SyntheticOperation meta-types and a
-// CmdExec instance whose declaration tree mirrors the nesting.
-
-use std::collections::HashMap;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, PortState,
-    TransformTarget, TypeConnective,
+    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, LiteralBits, Path,
+    PayloadBinding, PortState, TransformTarget, TypeConnective,
 };
+use v3_compiler::SourceSpan;
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use v3_compiler::Diagnostic;
 
@@ -78,6 +66,10 @@ fn callable_instantiation_arguments(
         .collect()
 }
 
+fn test_span() -> SourceSpan {
+    SourceSpan::new("<substrate-test>", 0, 0)
+}
+
 #[test]
 fn operator_helpers_round_trip_from_dag_authority() {
     for (symbol, op, field_name) in [
@@ -101,438 +93,291 @@ fn operator_helpers_round_trip_from_dag_authority() {
 }
 
 #[test]
-fn parse_std_algebra_and_walk_int_add() {
-    // M1_DESIGN.md §5 canonical walk. The real `dsl/std/integer.dag`
-    // declares `Int = Int64` and `Int64 = OrderedRing<Word64>`, so Int
-    // reaches the OrderedRing algebra through two Instantiation hops
-    // rather than one. The test walks that chain accumulating template
-    // arguments on a SubstStack-equivalent HashMap, finds the `add`
-    // field on OrderedRing, and asserts the substituted Arrow's inputs
-    // and output both point at Word64.
+fn bootstrap_inventory_stays_typed_and_cached() {
     let dag = Dag::new();
-
-    let int_id = find_named(&dag, "Int");
-    let word64_id = find_named(&dag, "Word64");
-    let ordered_ring_id = find_named(&dag, "OrderedRing");
-
-    // Walk Int's Instantiation chain to the first Conj, accumulating
-    // substitutions along the way. `subst` maps TypeParam DeclarationIds
-    // to the concrete DeclarationIds they're bound to.
-    let mut subst: HashMap<DeclarationId, DeclarationId> = HashMap::new();
-    let algebra_id = walk_instantiation_chain(&dag, int_id, &mut subst);
-    assert_eq!(
-        algebra_id, ordered_ring_id,
-        "Int's instantiation chain must root at OrderedRing"
-    );
-
-    // Walk OrderedRing's Conj to find the `add` field.
-    let ordered_ring_children = match &dag.declaration(ordered_ring_id).connective {
-        TypeConnective::Conj { children } => children.clone(),
-        other => panic!("expected OrderedRing to be Conj, got {other:?}"),
-    };
-    let add_field = field(&ordered_ring_children, "add");
-
-    // `add`'s ty is an Arrow [T, T] → T, body: NoBody. The algebra field
-    // declares the signature; the body is "no body by construction" — the
-    // realization lives in extdeps and is never attached back to the
-    // algebra field. (Pre-broader-migration this was `Pending`; after the
-    // migration, every "no body needed" site moved to `NoBody` so
-    // `lens_structural_resolution` can treat `Pending` as the structural
-    // R13-leak predicate without `name`-based proxying. See the ledger
-    // entry on `ArrowBody` in `src/v3/compiler/src/dag.rs`.) Substituting
-    // T := Word64 yields [Word64, Word64] → Word64.
-    let (arrow_inputs, arrow_output, arrow_body) = match &dag.declaration(add_field.ty).connective {
-        TypeConnective::Arrow {
-            inputs,
-            output,
-            body,
-        } => (inputs.clone(), *output, body.clone()),
-        other => panic!("expected add field to be Arrow, got {other:?}"),
-    };
-    assert!(
-        matches!(arrow_body, ArrowBody::NoBody),
-        "algebra arrow bodies are NoBody (no body by construction) — got {arrow_body:?}"
-    );
-    assert_eq!(arrow_inputs.len(), 2, "add takes two arguments");
-
-    let substitute = |id: DeclarationId| -> DeclarationId { *subst.get(&id).unwrap_or(&id) };
-    let sub_input0 = substitute(arrow_inputs[0]);
-    let sub_input1 = substitute(arrow_inputs[1]);
-    let sub_output = substitute(arrow_output);
-
-    assert_eq!(sub_input0, word64_id);
-    assert_eq!(sub_input1, word64_id);
-    assert_eq!(sub_output, word64_id);
-}
-
-/// Walk a declaration's Instantiation chain, accumulating
-/// `[parameter := value]` bindings into `subst`, until a non-
-/// Instantiation declaration (typically a Conj algebra) is reached.
-/// Returns the terminal declaration's id.
-fn walk_instantiation_chain(
-    dag: &Dag,
-    start: DeclarationId,
-    subst: &mut HashMap<DeclarationId, DeclarationId>,
-) -> DeclarationId {
-    let mut current = start;
-    for _ in 0..16 {
-        match &dag.declaration(current).connective {
-            TypeConnective::Instantiation {
-                template,
-                arguments,
-            } => {
-                for arg in arguments {
-                    subst.insert(arg.parameter, arg.value);
-                }
-                current = *template;
-            }
-            _ => return current,
-        }
+    for (shape, name) in [
+        (dag.int_shape().expect("Int cached"), "Int"),
+        (dag.bool_shape().expect("Bool cached"), "Bool"),
+        (dag.string_shape().expect("String cached"), "String"),
+    ] {
+        assert_eq!(shape, v3_compiler::types::TypeShape::new(find_named(&dag, name)));
     }
-    current
+
+    for decl_id in [
+        dag.bind_marker().expect("Bind marker"),
+        dag.branch_marker().expect("Branch marker"),
+        dag.loop_marker().expect("Loop marker"),
+        dag.transform_marker().expect("Transform marker"),
+        dag.value_marker().expect("Value marker"),
+        dag.main_marker().expect("Main marker"),
+        dag.declaration_ref_marker().expect("DeclarationRef marker"),
+        dag.type_realization_meta().expect("TypeRealization meta"),
+        dag.type_instantiation_realization_meta()
+            .expect("TypeInstantiationRealization meta"),
+        dag.operator_realization_meta()
+            .expect("OperatorRealization meta"),
+        dag.behavior_realization_meta()
+            .expect("BehaviorRealization meta"),
+        dag.callable_realization_meta()
+            .expect("CallableRealization meta"),
+        dag.pattern_realization_meta()
+            .expect("PatternRealization meta"),
+    ] {
+        assert!(
+            matches!(dag.declaration(decl_id).connective, TypeConnective::Conj { .. }),
+            "bootstrap cache should point at Conj authorities"
+        );
+    }
+
+    let rust_language = dag
+        .rust_language_spec()
+        .expect("rust_language syntax bundle should be cached");
+    let rust_language_labels = match dag.declaration(rust_language).value_body.as_ref() {
+        Some(v3_compiler::dag::ValueBody::Structural { fields }) => {
+            fields.iter().map(|(label, _)| label.as_str()).collect::<Vec<_>>()
+        }
+        other => panic!("rust_language must lower structurally, got {other:?}"),
+    };
+    assert_eq!(
+        rust_language_labels,
+        vec![
+            "statements",
+            "expressions",
+            "control_flow",
+            "literals",
+            "modules",
+            "functions",
+            "type_applications",
+            "type_definitions",
+            "patterns",
+            "collection_ops",
+            "values",
+        ]
+    );
+
+    let rust_rendering = dag
+        .rust_rendering_spec()
+        .expect("rust_rendering bundle should be cached");
+    let rust_rendering_labels = match dag.declaration(rust_rendering).value_body.as_ref() {
+        Some(v3_compiler::dag::ValueBody::Structural { fields }) => {
+            fields.iter().map(|(label, _)| label.as_str()).collect::<Vec<_>>()
+        }
+        other => panic!("rust_rendering must lower structurally, got {other:?}"),
+    };
+    assert_eq!(rust_rendering_labels, vec!["read", "construct"]);
+
+    assert!(matches!(
+        dag.declaration(find_named(&dag, "RenderingModel")).connective,
+        TypeConnective::Conj { .. }
+    ));
+    assert!(matches!(
+        dag.declaration(find_named(&dag, "ReadStrategy")).connective,
+        TypeConnective::Disj { .. }
+    ));
+    assert!(matches!(
+        dag.declaration(find_named(&dag, "ConstructStrategy")).connective,
+        TypeConnective::Disj { .. }
+    ));
 }
 
 #[test]
-fn parse_synthetic_service_all_layers() {
-    // Synthetic nested-domain model. Five levels: SyntheticService meta
-    // → operations container → SyntheticOperation Run meta → input /
-    // output / arguments → scalar fields. The compiler needs to produce
-    // the full Declaration tree with only the six committed connectives.
-    let src = "\
+fn bootstrap_child_declarations_stay_anonymous_and_structural() {
+    let dag = Dag::new();
+    for name in [
+        "T",
+        "True",
+        "False",
+        "Less",
+        "Equal",
+        "Greater",
+        "Int64_add_rust",
+        "Int64_add",
+    ] {
+        assert!(
+            dag.declaration_by_name(name).is_none(),
+            "child declaration `{name}` must not leak through declaration_by_name"
+        );
+    }
+
+    assert!(dag.declaration_by_name("Int").is_some());
+    assert!(dag.declaration_by_name("OrderedRing").is_some());
+    assert!(dag.declaration_by_name("Classical").is_some());
+
+    let ordered_ring_fields = match &dag.declaration(find_named(&dag, "OrderedRing")).connective {
+        TypeConnective::Conj { children } => children,
+        other => panic!("OrderedRing should be a Conj, got {other:?}"),
+    };
+    for label in ["add", "sub", "mul", "div", "eq", "ne", "lt", "le", "gt", "ge"] {
+        assert!(
+            ordered_ring_fields.iter().any(|field| field.label == label),
+            "OrderedRing missing direct operator field `{label}`"
+        );
+    }
+
+    let magma_decl = dag.declaration(find_named(&dag, "Magma"));
+    let magma_fields = match &magma_decl.connective {
+        TypeConnective::Conj { children } => children,
+        other => panic!("Magma should be a Conj, got {other:?}"),
+    };
+    assert_eq!(magma_fields.len(), 1);
+    assert_eq!(magma_fields[0].label, "op");
+    assert_eq!(magma_decl.type_params.len(), 1);
+    assert!(matches!(
+        dag.declaration(magma_decl.type_params[0]).connective,
+        TypeConnective::Atom(AtomPayload::TypeParam(_))
+    ));
+}
+
+#[test]
+fn synthetic_service_compile_receipt_uses_nested_conjs() {
+    let dag = compile_any(
+        "\
 type SyntheticService { }
 type SyntheticOperation { }
 type RunInput { }
 type RunOutput { }
 type RunArguments { }
-type CmdExec_Run {
-  input: RunInput
-  output: RunOutput
-  arguments: RunArguments
-}
-type CmdExec_Operations {
-  Run: CmdExec_Run
-}
-type CmdExec {
-  operations: CmdExec_Operations
-}
-";
-    let dag = compile_any(src, "synthetic.v3");
-    assert!(
-        dag.diagnostics().is_empty(),
-        "synthetic service should compile cleanly: {:?}",
-        dag.diagnostics()
+type CmdExec_Run { input: RunInput output: RunOutput arguments: RunArguments }
+type CmdExec_Operations { Run: CmdExec_Run }
+type CmdExec { operations: CmdExec_Operations }
+",
+        "synthetic.v3",
     );
+    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
 
-    // Level 1: CmdExec is a Conj with one child, operations.
-    let cmd_exec_id = find_named(&dag, "CmdExec");
-    let cmd_exec_children = match &dag.declaration(cmd_exec_id).connective {
-        TypeConnective::Conj { children } => children.clone(),
-        other => panic!("expected CmdExec Conj, got {other:?}"),
-    };
-    let operations_field = field(&cmd_exec_children, "operations");
-
-    // Level 2: operations field points at CmdExec_Operations which is a
-    // Conj with a single `Run` child.
-    let operations_id = operations_field.ty;
-    let ops_children = match &dag.declaration(operations_id).connective {
-        TypeConnective::Conj { children } => children.clone(),
-        other => panic!("expected CmdExec_Operations Conj, got {other:?}"),
-    };
-    let run_field = field(&ops_children, "Run");
-
-    // Level 3: Run field points at CmdExec_Run which is a Conj with
-    // input, output, and arguments children.
-    let run_id = run_field.ty;
-    let run_children = match &dag.declaration(run_id).connective {
-        TypeConnective::Conj { children } => children.clone(),
-        other => panic!("expected CmdExec_Run Conj, got {other:?}"),
-    };
-    let input_field = field(&run_children, "input");
-    let output_field = field(&run_children, "output");
-    let arguments_field = field(&run_children, "arguments");
-
-    // Level 4: each field points at a Conj (empty for this test, but the
-    // structure is there). Assert the connective shape, not the children.
-    for f in [input_field, output_field, arguments_field] {
-        let child_connective = &dag.declaration(f.ty).connective;
-        assert!(
-            matches!(child_connective, TypeConnective::Conj { .. }),
-            "expected level-4 Conj for `{}`, got {:?}",
-            f.label,
-            child_connective
-        );
-    }
-
-    // Level 5: the synthetic service / operation meta-types exist as
-    // bare Conj declarations. They're lookup anchors for inhabits tags
-    // in a richer model; at M1(2.5) they're structurally present but
-    // empty.
-    for meta in ["SyntheticService", "SyntheticOperation"] {
-        let meta_id = find_named(&dag, meta);
-        assert!(
-            matches!(
-                &dag.declaration(meta_id).connective,
-                TypeConnective::Conj { .. }
-            ),
-            "meta-type `{meta}` should be a Conj"
-        );
-    }
-
-    // Spot-check: Magma<T>'s type parameter lives in the canonical
-    // `Declaration.type_params` slot, not mixed into Conj.children.
-    // Magma.children should contain only the `op` field; T is reachable
-    // via dag.declaration(magma_id).type_params.
-    let magma_id = find_named(&dag, "Magma");
-    let magma_decl = dag.declaration(magma_id);
-    let magma_children = match &magma_decl.connective {
+    let cmd_exec_fields = match &dag.declaration(find_named(&dag, "CmdExec")).connective {
         TypeConnective::Conj { children } => children,
-        _ => panic!("Magma should be Conj"),
+        other => panic!("CmdExec should lower to a Conj, got {other:?}"),
     };
-    assert_eq!(
-        magma_children.len(),
-        1,
-        "Magma's Conj children are pure record fields (just `op`), not TypeParams"
-    );
-    assert_eq!(magma_children[0].label, "op");
-    assert_eq!(
-        magma_decl.type_params.len(),
-        1,
-        "Magma has exactly one type parameter (T)"
-    );
-    let t_id = magma_decl.type_params[0];
-    let is_type_param = matches!(
-        &dag.declaration(t_id).connective,
-        TypeConnective::Atom(AtomPayload::TypeParam(_))
-    );
-    assert!(
-        is_type_param,
-        "Magma.type_params[0] should be a TypeParam atom declaration"
-    );
-}
+    let operations = field(cmd_exec_fields, "operations").ty;
+    let run = match &dag.declaration(operations).connective {
+        TypeConnective::Conj { children } => field(children, "Run").ty,
+        other => panic!("CmdExec_Operations should lower to a Conj, got {other:?}"),
+    };
+    let run_fields = match &dag.declaration(run).connective {
+        TypeConnective::Conj { children } => children,
+        other => panic!("CmdExec_Run should lower to a Conj, got {other:?}"),
+    };
+    for label in ["input", "output", "arguments"] {
+        let child = field(run_fields, label).ty;
+        assert!(
+            matches!(dag.declaration(child).connective, TypeConnective::Conj { .. }),
+            "CmdExec_Run.{label} should point at a Conj carrier"
+        );
+    }
 
-#[test]
-fn child_declarations_are_anonymous() {
-    // Named type parameters (`T`), sum variants (`True`, `False`,
-    // `Less`, `Equal`, `Greater`), and realization scaffolds
-    // (`Int64_add_rust`, the realization Arrow itself) are child
-    // declarations of their parents. They are intentionally stored
-    // with `name: None` so that `Dag::declaration_by_name` cannot find
-    // them — user code that types `T` or `True` as a free identifier
-    // gets a ResolveError rather than silently binding to a leaked
-    // child declaration from the bootstrap set.
-    let dag = Dag::new();
-    let leaked_names = [
-        "T",              // Monoid/Group/Ring/... type parameter binder
-        "True",           // Classical variant
-        "False",          // Classical variant
-        "Less",           // Ordering variant
-        "Equal",          // Ordering variant
-        "Greater",        // Ordering variant
-        "Int64_add_rust", // §6.5 realization scaffold (pre-anonymization)
-        "Int64_add",      // §6.5 realization arrow (pre-anonymization)
-    ];
-    for name in leaked_names {
-        assert!(
-            dag.declaration_by_name(name).is_none(),
-            "child declaration `{name}` must not be findable via declaration_by_name — it would silently shadow any user-code `{name}` reference"
-        );
-    }
-    // Sanity check: genuine top-level declarations still resolve.
-    assert!(dag.declaration_by_name("Int").is_some());
-    assert!(dag.declaration_by_name("OrderedRing").is_some());
-    assert!(dag.declaration_by_name("Classical").is_some());
-    // Starting at M1(3)+reflection, the per-target realization
-    // meta-types are production bootstrap declarations from
-    // `src/v3/spec/rust.dag`:
-    //
-    //   - `TypeRealization`              — monomorphic type →
-    //                                      target type
-    //   - `TypeInstantiationRealization` — generic template →
-    //                                      target instantiated carrier
-    // are production bootstrap declarations from the first
-    //   - `OperatorRealization` — (operand type, algebra field)
-    //                             → target operator symbol
-    //   - `BehaviorRealization` — substrate marker → target
-    //                             template
-    //   - `CallableRealization` — callable declaration → render
-    //                             strategy
-    //   - `PatternRealization`  — structural sum → carrier-
-    //                             specific match lowering
-    //
-    // The v3 emitter reads `data rust_*: <RealizationKind> = {...}`
-    // items through `meta_tag` filtering against each meta-type
-    // declaration. This is the thesis-aligned end-state: the
-    // realization meta-types live in extdeps where every
-    // per-target-language fact lives, not in compiler code.
-    //
-    // The unwind also added marker types from `dsl/std/v3_l1.dag`
-    // (Bind, Branch, Loop, Transform, Value, Main) plus the
-    // `DeclarationRef` sentinel meta-type that lets target spec files
-    // carry typed declaration references in record-literal field
-    // values. Each is a Conj (empty body) by construction.
-    for meta in [
-        "TypeRealization",
-        "TypeInstantiationRealization",
-        "OperatorRealization",
-        "BehaviorRealization",
-        "CallableRealization",
-        "PatternRealization",
-    ] {
-        let id = dag
-            .declaration_by_name(meta)
-            .unwrap_or_else(|| panic!("`{meta}` must be declared by src/v3/spec/rust.dag"))
-            .id;
-        assert!(
-            matches!(dag.declaration(id).connective, TypeConnective::Conj { .. }),
-            "`{meta}` must lower to a Conj"
-        );
-    }
-    for marker in [
-        "Bind",
-        "Branch",
-        "Loop",
-        "Transform",
-        "Value",
-        "Main",
-        "DeclarationRef",
-    ] {
-        let id = dag
-            .declaration_by_name(marker)
-            .unwrap_or_else(|| panic!("`{marker}` must be declared by dsl/std/v3_l1.dag"))
-            .id;
-        assert!(
-            matches!(dag.declaration(id).connective, TypeConnective::Conj { .. }),
-            "v3_l1 marker `{marker}` must lower to a Conj"
-        );
+    for name in ["SyntheticService", "SyntheticOperation"] {
+        assert!(matches!(
+            dag.declaration(find_named(&dag, name)).connective,
+            TypeConnective::Conj { .. }
+        ));
     }
 }
 
-// ════════════════════════════════════════════════════════════════
-// M1(2.7) — FACTS FLOW FORWARD + SINGLE AUTHORITY fixes
-// ════════════════════════════════════════════════════════════════
-//
-// These tests verify the structural guarantees the M1(2.7) PR
-// introduced in response to ChatGPT's review of PR #445:
-//
-//   Class 1 — primitive identity cache
-//   Class 2 — TransformTarget + OperatorKind structural dispatch
-//   Class 3 — scaffold honesty: FnExternalBody, Data, Module, Import
-//   Class 4 — Realization DeclarationId cache (tested indirectly
-//             via the existing §6.5 smoke test)
-
 #[test]
-fn m17_primitive_cache_is_populated_at_bootstrap() {
-    // Class 1: `Dag::int_shape` / `bool_shape` / `string_shape`
-    // return typed `TypeShape` pointers cached at bootstrap, not
-    // `None`. Callers that used to run `primitive_shape(dag, "Int")`
-    // name scans per call now read the cache in O(1) with no string
-    // comparison.
-    let dag = Dag::new();
-    let int_shape = dag.int_shape().expect("Int cached at bootstrap");
-    let bool_shape = dag.bool_shape().expect("Bool cached at bootstrap");
-    let string_shape = dag.string_shape().expect("String cached at bootstrap");
-
-    // The cached shapes must match the declaration-table lookups —
-    // the cache is a typed index over the same table, not a
-    // parallel authority.
-    let int_by_name = dag.declaration_by_name("Int").unwrap().id;
-    let bool_by_name = dag.declaration_by_name("Bool").unwrap().id;
-    let string_by_name = dag.declaration_by_name("String").unwrap().id;
-    assert_eq!(int_shape, v3_compiler::types::TypeShape::new(int_by_name));
-    assert_eq!(bool_shape, v3_compiler::types::TypeShape::new(bool_by_name));
-    assert_eq!(
-        string_shape,
-        v3_compiler::types::TypeShape::new(string_by_name)
+fn builder_receipts_keep_field_project_and_branch_claims_typed() {
+    let mut dag = Dag::new();
+    let int_id = find_named(&dag, "Int");
+    let bool_shape = dag.bool_shape().expect("Bool cached");
+    let point_id = dag.push_conj(
+        Some("BuilderPoint".to_string()),
+        vec![
+            Field {
+                label: "x".to_string(),
+                ty: int_id,
+            },
+            Field {
+                label: "y".to_string(),
+                ty: int_id,
+            },
+        ],
+        test_span(),
     );
-}
-
-#[test]
-fn m2_rust_language_syntax_bundle_is_cached_and_structural() {
-    let dag = Dag::new();
-    let rust_language = dag
-        .rust_language_spec()
-        .expect("rust_language syntax bundle should be cached at bootstrap");
-    let decl = dag.declaration(rust_language);
-    match decl.value_body.as_ref() {
-        Some(v3_compiler::dag::ValueBody::Structural { fields }) => {
-            let labels: Vec<_> = fields.iter().map(|(label, _)| label.as_str()).collect();
-            assert_eq!(
-                labels,
-                vec![
-                    "statements",
-                    "expressions",
-                    "control_flow",
-                    "literals",
-                    "modules",
-                    "functions",
-                    "type_applications",
-                    "type_definitions",
-                    "patterns",
-                    "collection_ops",
-                    "values",
-                ]
-            );
+    let point_input = dag.alloc_port_with_shape(v3_compiler::types::TypeShape::new(point_id));
+    let x_port = dag.push_transform(
+        TransformTarget::FieldProject {
+            field_label: "x".to_string(),
+            field_child: Some(int_id),
+        },
+        vec![point_input],
+        test_span(),
+    );
+    let alias_id = dag.push_bind("alias", x_port, Vec::new(), test_span());
+    let alias = dag.node(alias_id).as_bind().expect("alias bind");
+    let projection = dag
+        .resolve_producer_opt(&alias.value)
+        .and_then(Behavior::as_transform)
+        .expect("alias should resolve back to the field projection");
+    assert!(matches!(
+        dag.port(x_port).state(),
+        PortState::Resolved(shape) if *shape == v3_compiler::types::TypeShape::new(int_id)
+    ));
+    match &projection.target {
+        TransformTarget::FieldProject {
+            field_label,
+            field_child,
+        } => {
+            assert_eq!(field_label, "x");
+            assert_eq!(*field_child, Some(int_id));
         }
-        other => panic!("rust_language must lower structurally, got {other:?}"),
+        other => panic!("expected FieldProject target, got {other:?}"),
     }
 
-    for syntax_type in [
-        "StatementSyntax",
-        "ExpressionSyntax",
-        "ForEachSyntax",
-        "ControlFlowSyntax",
-        "LiteralSyntax",
-        "FunctionSyntax",
-        "TypeApplicationSyntax",
-        "TypeDefinitionSyntax",
-        "PatternMatchSyntax",
-        "CollectionOps",
-        "ValueConstructionSyntax",
-        "LanguageSpec",
-    ] {
-        let id = dag
-            .declaration_by_name(syntax_type)
-            .unwrap_or_else(|| panic!("`{syntax_type}` must be declared in rust.dag"))
-            .id;
-        assert!(
-            matches!(dag.declaration(id).connective, TypeConnective::Conj { .. }),
-            "`{syntax_type}` must lower to a Conj"
-        );
-    }
-}
-
-#[test]
-fn m2_rust_rendering_bundle_is_cached_and_structural() {
-    let dag = Dag::new();
-    let rust_rendering = dag
-        .rust_rendering_spec()
-        .expect("rust_rendering bundle should be cached at bootstrap");
-    let decl = dag.declaration(rust_rendering);
-    match decl.value_body.as_ref() {
-        Some(v3_compiler::dag::ValueBody::Structural { fields }) => {
-            let labels: Vec<_> = fields.iter().map(|(label, _)| label.as_str()).collect();
-            assert_eq!(labels, vec!["read", "construct"]);
-        }
-        other => panic!("rust_rendering must lower structurally, got {other:?}"),
-    }
-
-    for type_name in ["RenderingModel", "ReadStrategy", "ConstructStrategy"] {
-        let id = dag
-            .declaration_by_name(type_name)
-            .unwrap_or_else(|| panic!("`{type_name}` must be declared in rust.dag"))
-            .id;
-        match type_name {
-            "RenderingModel" => assert!(
-                matches!(dag.declaration(id).connective, TypeConnective::Conj { .. }),
-                "`RenderingModel` must lower to a Conj"
-            ),
-            "ReadStrategy" | "ConstructStrategy" => assert!(
-                matches!(dag.declaration(id).connective, TypeConnective::Disj { .. }),
-                "`{type_name}` must lower to a Disj"
-            ),
-            _ => unreachable!("covered above"),
-        }
-    }
+    let cond = dag.push_value(LiteralBits::Bool(true), test_span());
+    let lhs = dag.push_value(LiteralBits::Int(1), test_span());
+    let rhs = dag.push_value(LiteralBits::Int(2), test_span());
+    let lhs_body = dag.push_bind("lhs", lhs, Vec::new(), test_span());
+    let rhs_body = dag.push_bind("rhs", rhs, Vec::new(), test_span());
+    let payload_port = dag.alloc_port_with_shape(v3_compiler::types::TypeShape::new(int_id));
+    let branch_output = dag.push_branch(
+        cond,
+        vec![
+            Path {
+                body: lhs_body,
+                output: lhs,
+                pattern: BranchPattern::UnresolvedVariant {
+                    name: "Some".to_string(),
+                    span: test_span(),
+                },
+                binding: Some(PayloadBinding {
+                    binding_name: "value".to_string(),
+                    payload_port,
+                }),
+            },
+            Path {
+                body: rhs_body,
+                output: rhs,
+                pattern: BranchPattern::UnresolvedVariant {
+                    name: "None".to_string(),
+                    span: test_span(),
+                },
+                binding: None,
+            },
+        ],
+        test_span(),
+    );
+    let branch = dag
+        .resolve_producer_opt(&branch_output)
+        .and_then(Behavior::as_branch)
+        .expect("branch output should resolve to the branch node");
+    assert_eq!(dag.port(cond).state(), &PortState::Resolved(bool_shape));
+    assert!(matches!(
+        dag.port(branch.output).state(),
+        PortState::Resolved(shape) if *shape == v3_compiler::types::TypeShape::new(int_id)
+    ));
+    let payload_path = branch
+        .paths
+        .iter()
+        .find(|path| path.binding.is_some())
+        .expect("payload-capturing path exists");
+    assert_eq!(
+        payload_path
+            .binding
+            .as_ref()
+            .expect("payload binding")
+            .binding_name,
+        "value"
+    );
 }
 
 #[test]
