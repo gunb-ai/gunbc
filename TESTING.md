@@ -7,6 +7,22 @@ Dependency injection + minimal-constructed inputs are the default;
 full-pipeline `compile_to_dag(...)` is reserved for tests whose
 subject genuinely is the pipeline.
 
+## Adoption
+
+This document describes the live discipline for **new code and
+refactors**. The existing test suite does not satisfy every
+prescription — known divergences (large integration-test share,
+imperative substrate walks, exhaustive testgen validation) are
+documented in the *Migration audit* section below, with refactor
+priorities tracked against ROADMAP.
+
+**Enforcement stance:** reviewers should flag a NEW PR that
+violates these guidelines as a `KEEP_ITERATING` signal. An
+EXISTING file that violates them is documented debt, not a
+present failure — it migrates on touch or via a dedicated paydown
+lane. This keeps the doc honest against the live-state invariant
+without forcing a blocking refactor backlog.
+
 ## Five principles
 
 ### 1. Hermetic
@@ -95,6 +111,13 @@ Full-pipeline `compile_to_dag` is reserved for:
   the source text is part of the interface
 - **Boundary tests** — target-language roundtrips (rustc, go, python)
 
+**Scope clarifier:** the "mocks over compile" anti-pattern applies
+to lens / accessor / single-pass tests where the subject under
+test is narrower than the whole pipeline. For the three
+categories above, `compile_to_dag` **is** the correct entry point
+— the pipeline is the unit. Don't force minimal-`Dag` construction
+where the test legitimately targets end-to-end behavior.
+
 ## Test layers (target ratios)
 
 | Layer | Share of tests | What belongs here | Typical time per test |
@@ -155,6 +178,13 @@ Everything else ports to `.dag`.
 Until DB-15 R2's runtime lands, write Rust integration tests
 that match the guidelines above so the eventual port is a
 rewrite of shape, not of intent.
+
+**Post-R2 shape:** once DB-15 R2 ships, most of this document
+collapses into "see `dsl/std/verification.dag` for the test
+surface." The Rust-side residual is: compiler-internal unit
+tests (`#[cfg(test)] mod tests`) inside `src/v3/compiler/src/`,
+and boundary tests that invoke external toolchains. Everything
+else ports to `.dag`.
 
 ## Anti-patterns
 

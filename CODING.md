@@ -10,6 +10,22 @@ This document covers **Rust implementation style** in
 see `MODELING.md`. For the invariants the compiler **proves**,
 see `INVARIANTS.md`. For the shape of tests, see `TESTING.md`.
 
+## Adoption
+
+This document describes the live discipline for **new code and
+refactors**. The existing compiler does not satisfy every
+prescription — notable divergences today include some files >500
+lines (`emit.rs`, `dag.rs`, `algebra.dag`), some `impl` blocks
+over 20 methods on `Dag`, and some pipeline functions whose
+bodies exceed ~50 lines.
+
+**Enforcement stance:** reviewers should flag a NEW PR that
+violates these guidelines as a `KEEP_ITERATING` signal. An
+EXISTING file that violates them is documented debt, not a
+present failure — it migrates on touch or via a dedicated paydown
+lane. This keeps the doc honest against the live-state invariant
+without forcing a blocking refactor backlog.
+
 ## Five principles
 
 ### 1. Pure functions by default
@@ -26,7 +42,11 @@ hidden state. Given the same inputs, return the same output.
   output (the compiler's `Dag::new()` + `push_*` pattern is
   this shape). The function is still logically
   `(old_self, x) → new_self` — Rust's borrow checker is the
-  optimizer.
+  optimizer. Concrete examples in the compiler today:
+  `compile_to_dag` threads a `&mut Dag` through parse /
+  lower / infer; `emit_rust_module` threads a `&mut String`
+  through its rendering walk; `lower_*` functions in
+  `lower.rs` consume an AST and push nodes onto a `&mut Dag`.
 - `fn f(x) -> Y` (free function) — preferred when the body
   doesn't reference `self`. Don't hang a function off a type
   unless the function genuinely needs that type's invariants.
@@ -216,10 +236,10 @@ data type; `cost_of`, `dominates`, `sequential` are free
 functions over it. Polymorphism is pattern-matching on variants,
 not dynamic dispatch.
 
-### Hidden state
+### Hidden state as expressive dependency
 
 ```rust
-// ❌ function with hidden dependency
+// ❌ function with hidden expressive dependency
 static LOADED_SPEC: LazyLock<Mutex<Option<TargetSpec>>> = ...;
 fn emit_rust(dag: &Dag) -> Result<String, EmitError> {
     let spec = LOADED_SPEC.lock().unwrap().clone().expect("spec loaded");
@@ -227,7 +247,7 @@ fn emit_rust(dag: &Dag) -> Result<String, EmitError> {
 }
 ```
 
-The spec is a dependency. Pass it in:
+The spec is a **dependency**. Pass it in:
 
 ```rust
 // ✅ explicit dependency
@@ -235,6 +255,16 @@ fn emit_rust(dag: &Dag, spec: &TargetSpec) -> Result<String, EmitError> {
     // ...
 }
 ```
+
+**Distinct from:** hidden state for **performance amortization
+with documented dissolution**. A `LazyLock<Mutex<...>>` cache
+that memoizes pure-function results (e.g. test
+`cached_compile_to_dag`) is acceptable — the cache is not
+expressive (the output is identical with or without it), the
+cost saved is real, and the cache's lifetime and invalidation
+story are named in code comments. See the table below; keep
+such caches at the edges (test harness, bootstrap-once caches
+inside `Dag`), never in lens / emitter / inference bodies.
 
 ### God functions / god modules
 
