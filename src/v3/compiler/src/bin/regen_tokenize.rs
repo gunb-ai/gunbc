@@ -366,7 +366,10 @@ fn collect_variant_labels(dag: &Dag, type_name: &str) -> Vec<String> {
     let TypeConnective::Disj { variants } = &decl.connective else {
         panic!("`{type_name}`: expected Disj");
     };
-    variants.iter().map(|variant| variant.label.clone()).collect()
+    variants
+        .iter()
+        .map(|variant| variant.label.clone())
+        .collect()
 }
 
 fn keyword_spelling_for_token_kind(kind: &str) -> String {
@@ -417,12 +420,7 @@ impl SharedSyntaxAuthority {
     }
 }
 
-fn extract_balanced_section<'a>(
-    source: &'a str,
-    anchor: &str,
-    open: char,
-    close: char,
-) -> &'a str {
+fn extract_balanced_section<'a>(source: &'a str, anchor: &str, open: char, close: char) -> &'a str {
     let anchor_idx = source
         .find(anchor)
         .unwrap_or_else(|| panic!("missing `{anchor}` in `{SHARED_SYNTAX_FILE}`"));
@@ -459,9 +457,7 @@ fn parse_named_string_fields(section: &str, field_name: &str) -> Vec<String> {
     while let Some(idx) = rest.find(&needle) {
         let after_field = &rest[idx + needle.len()..];
         let quote_idx = after_field.find('"').unwrap_or_else(|| {
-            panic!(
-                "missing string literal for `{field_name}` in `{SHARED_SYNTAX_FILE}`"
-            )
+            panic!("missing string literal for `{field_name}` in `{SHARED_SYNTAX_FILE}`")
         });
         let (value, consumed) = parse_string_literal(&after_field[quote_idx..]);
         out.push(value);

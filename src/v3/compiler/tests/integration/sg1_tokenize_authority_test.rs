@@ -163,12 +163,7 @@ fn keyword_spelling_for_token_kind(kind: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn extract_balanced_section<'a>(
-    source: &'a str,
-    anchor: &str,
-    open: char,
-    close: char,
-) -> &'a str {
+fn extract_balanced_section<'a>(source: &'a str, anchor: &str, open: char, close: char) -> &'a str {
     let anchor_idx = source
         .find(anchor)
         .unwrap_or_else(|| panic!("missing `{anchor}` in shared syntax fixture"));
