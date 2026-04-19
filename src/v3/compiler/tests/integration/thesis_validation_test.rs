@@ -180,6 +180,40 @@ fn read(x: AB) -> Int = match x { A => 1 }
 }
 
 #[test]
+fn t1_3_empty_match_correction_seeds_first_arm_without_leading_comma() {
+    let src = "\
+type AB = A | B
+fn read(x: AB) -> Int = match x {}
+";
+    let dag = match compile_to_dag(src, "t1_3_empty_match.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. } if name.contains("non-exhaustive match") => {
+                Some(diag)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected non-exhaustive match diagnostic, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        diag.fixes()
+            .iter()
+            .any(|fix| !fix.new_source.starts_with(", ") && fix.new_source == "A => 1"),
+        "empty match fix should seed a valid first arm, got {:?}",
+        diag.fixes()
+    );
+}
+
+#[test]
 fn t1_3_exhaustive_match_compiles_cleanly() {
     let src = "\
 type AB = A | B

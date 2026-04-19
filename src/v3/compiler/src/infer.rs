@@ -488,6 +488,11 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
             .collect();
         if !missing.is_empty() {
             let missing_list = missing.join(", ");
+            let arm_prefix = if check.resolved_arms.is_empty() {
+                ""
+            } else {
+                ", "
+            };
             let fixes = match dag.port(check.output_port).state() {
                 PortState::Resolved(output_ty) => missing
                     .iter()
@@ -497,7 +502,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                         Some(Correction {
                             description: format!("add a `{variant}` arm"),
                             span: SourceSpan::new(check.span.file.clone(), insert_at, insert_at),
-                            new_source: format!(", {variant} => {body}"),
+                            new_source: format!("{arm_prefix}{variant} => {body}"),
                         })
                     })
                     .collect(),
