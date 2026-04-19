@@ -5,6 +5,16 @@
 // priority list) so `effects` can name `PortId` / `NonEmptyList` / `NonSingletonList`
 // before the full substrate graph, while `substrate` can import `WorkflowEffect`
 // from `std.effects` for reflected `ValueNode` / `BindNode` workflow facts.
+//
+// **Bootstrap split receipt — load-bearing (not a temporary shim).** `std.effects`
+// must reference `PortId` before the full substrate graph is on disk, and
+// `substrate.dag` must import `WorkflowEffect` for reflected node fields — a
+// cyclic import if every declaration lived in one file. That cycle is inherent
+// to layering effects beside reflected workflow facts; this file is the stable
+// seam unless the bootstrap loader gains a two-phase, cycle-aware resolve. If
+// that ever ships, the dissolution move is: fold these types back into
+// `substrate.dag`, delete this module, and drop the extra `build.rs` hook — until
+// then, treat `substrate_minimal` as permanent infrastructure.
 
 module v3.std.substrate_minimal
 

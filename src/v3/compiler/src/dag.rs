@@ -719,11 +719,16 @@ pub struct ValueNode {
     pub data: LiteralBits,
     pub output: PortId,
     pub span: SourceSpan,
-    /// Lane 2 Stage 2b: idempotency projection for this node. Reflected on
-    /// `ValueNode` / `BindNode` in `src/v3/std/substrate.dag` as `lane2_workflow`
-    /// (optional `WorkflowEffect`) — same authority as this field. Populated by
-    /// lowering or [`Dag::try_register_lane2_workflow_effect`];
-    /// [`crate::workflow_idempotency::analyze_workflow`] reads it from the graph.
+    /// Lane 2 Stage 2b: idempotency projection for this node.
+    ///
+    /// **Single authority:** the workflow fact lives only in this field (and the
+    /// analogous field on [`BindNode`]). There is no separate `Dag`-level map.
+    /// Reflected `ValueNode` / `BindNode` in `src/v3/std/substrate.dag` and
+    /// [`Dag::lane2_workflow_effect_at`] are read-only projections of the same
+    /// storage. The sole mutating constructor for tests/staging is
+    /// [`Dag::try_register_lane2_workflow_effect`]; lowering fills this field when
+    /// it exists. [`crate::workflow_idempotency::analyze_workflow`] reads through
+    /// [`Dag::lane2_workflow_effect_at`].
     pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
 }
 
@@ -1452,9 +1457,10 @@ pub struct BindNode {
     /// no type tag. See the C2 dissolution receipt at the top of this file.
     pub params: Vec<PortId>,
     pub span: SourceSpan,
-    /// Lane 2 Stage 2b: idempotency projection for this bind. Same contract as
-    /// [`ValueNode::lane2_workflow`] (native Rust field; see that comment for the
-    /// substrate-reflection deferral).
+    /// Lane 2 Stage 2b: idempotency projection for this bind — same authority as
+    /// [`ValueNode::lane2_workflow`] (see that comment: one native field, reflected
+    /// substrate + `lane2_workflow_effect_at`, writers via
+    /// [`Dag::try_register_lane2_workflow_effect`] or lowering).
     pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
 }
 

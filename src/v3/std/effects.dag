@@ -466,6 +466,12 @@ type BranchArm {
 // `BranchEffect` / `LoopEffect` / `ParallelEffect` return explicit unsupported
 // reports until a branch-wise idempotency algebra lands (see
 // `WorkflowIdempotencyReport`).
+//
+// **Graduation receipt (🟡 scaffold → 🟢 terminal on this carrier):** closed once
+// Lane 2 Stage 2b (`lane2_workflow_idempotency_report` + idempotency lens) and a
+// second Lane-2 workflow consumer (Stage 2e parallelism / `analyze_parallelism`,
+// landed as PR #543) both consumed this sum without a shape change. Additional
+// variants remain gated by DB-18 STOP-AND-ESCALATE — not ad-hoc growth here.
 type WorkflowEffect
   = LinearEffect { ops: List<OperationEffect> }
   | BranchEffect { arms: NonSingletonList<BranchArm> }

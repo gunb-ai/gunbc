@@ -4,6 +4,10 @@
 //! `std.effects::WorkflowEffect` inside lens modules; the algebraic walk is
 //! implemented in [`crate::workflow_idempotency`]. Only [`analyze_workflow`] is
 //! exported at the crate root — composition helpers stay `pub(crate)` there.
+//!
+//! **Emit-and-run receipt:** `tests/m2_lens_idempotency_emit_test.rs` loads the
+//! `.dag` through `emit_rust_module` and asserts the emitted `analyze_workflow`
+//! matches this oracle on a `WorkflowEffect` fixture (class-5 gap closure).
 
 use crate::dag::{Dag, NodeId, WorkflowIdempotencyReport};
 
