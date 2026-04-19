@@ -83,9 +83,7 @@ fn parallel_read_only_branches_commute() {
 fn parallel_same_key_path_upserts_commute() {
     let mut dag = trivial_user_dag();
     let root = lane2_anchor(&dag);
-    let key = KeySource::PathParam {
-        param: "id".into(),
-    };
+    let key = KeySource::PathParam { param: "id".into() };
     let upsert = |name: &str| {
         op(
             name,
