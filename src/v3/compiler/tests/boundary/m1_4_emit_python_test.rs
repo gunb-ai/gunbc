@@ -1,3 +1,6 @@
+//! **Layer:** boundary (TESTING.md § test layers — class-5 CPython
+//! roundtrip).
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};

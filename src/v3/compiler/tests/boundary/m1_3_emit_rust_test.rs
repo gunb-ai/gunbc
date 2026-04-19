@@ -1,3 +1,5 @@
+//! **Layer:** boundary (TESTING.md § test layers — class-5 rustc roundtrip).
+
 // M1(3) PR-B — Rust emitter acceptance tests.
 //
 // The success criterion the whole plan validates:

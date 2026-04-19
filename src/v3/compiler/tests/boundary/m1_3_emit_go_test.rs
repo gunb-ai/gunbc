@@ -1,3 +1,6 @@
+//! **Layer:** boundary (TESTING.md § test layers — class-5 Go toolchain
+//! roundtrip).
+
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};

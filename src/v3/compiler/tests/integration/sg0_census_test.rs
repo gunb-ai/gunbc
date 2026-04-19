@@ -53,6 +53,13 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // `regen_lens_*` lines above. Director sign-off
 // (clever-swift-141 brief, 2026-04-19) covers the temporary +2.
 //
+// Phase 0 test-taxonomy reorg — four target-emission tests moved from
+// `tests/integration/` to `tests/boundary/` (TESTING.md § test layers,
+// class-5 rustc/go/python roundtrips). Path rename only: net count
+// unchanged, no new hand-authored files. The consolidated
+// `tests/integration.rs` binary still includes them via `#[path =
+// "boundary/..."]` so the one-bootstrap compile amortization holds.
+//
 // Stage 3b DB-1 parse/apply ratchet bump — PR #564 adds one
 // hand-authored integration file,
 // `tests/integration/lane3_stage_3b_db1_test.rs`, because the
@@ -115,17 +122,17 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/lane2_stage_2e_parallelism_test.rs",
     "src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs",
     "src/v3/compiler/tests/integration/m0_acceptance.rs",
-    "src/v3/compiler/tests/integration/m1_3_emit_go_test.rs",
-    "src/v3/compiler/tests/integration/m1_3_emit_rust_test.rs",
+    "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
+    "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
+    "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
+    "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
     "src/v3/compiler/tests/integration/m1_3_lens_cost_test.rs",
     "src/v3/compiler/tests/integration/m1_3_lens_unused_parameters_test.rs",
-    "src/v3/compiler/tests/integration/m1_4_emit_python_test.rs",
     "src/v3/compiler/tests/integration/m1_5_testgen_test.rs",
     "src/v3/compiler/tests/integration/m1_5_verification_test.rs",
     "src/v3/compiler/tests/integration/m1_fn_external_body_reconciliation_test.rs",
     "src/v3/compiler/tests/integration/m1_lens_structural_resolution_test.rs",
     "src/v3/compiler/tests/integration/m1_substrate_test.rs",
-    "src/v3/compiler/tests/integration/m2_emit_multi_field_struct_variant_test.rs",
     "src/v3/compiler/tests/integration/m2_feature_parity_test.rs",
     "src/v3/compiler/tests/integration/m2_field_access_binding_test.rs",
     "src/v3/compiler/tests/integration/m2_lens_cost_migration_test.rs",

@@ -14,13 +14,24 @@
 //! - **One compile, link, and load cycle** — no 25× rustc invocations for
 //!   test-binary production.
 //!
-//! **Module discipline.** Each file under `tests/integration/*.rs` is a
-//! sibling module at this crate root, reached via `#[path]` because Rust's
-//! default module resolution for a crate-root file looks in the containing
-//! directory (`tests/`) rather than a same-named subdirectory. Shared
-//! helpers live under `tests/integration/common/`. Inside a test module,
+//! **Module discipline.** Each file under `tests/integration/*.rs`,
+//! `tests/boundary/*.rs`, or `tests/unit/*.rs` is a sibling module at this
+//! crate root, reached via `#[path]` because Rust's default module
+//! resolution for a crate-root file looks in the containing directory
+//! (`tests/`) rather than a same-named subdirectory. Shared helpers live
+//! under `tests/integration/common/`. Inside a test module,
 //! `use crate::common::…` reaches those helpers; there is no per-file
 //! `mod common;` declaration.
+//!
+//! **Layer taxonomy (TESTING.md § test layers).** Files are partitioned
+//! by directory:
+//! - `tests/unit/`        — lenses, accessors, single-pass behaviors (<5ms)
+//! - `tests/integration/` — multi-stage pipeline, fixed-point convergence (<100ms)
+//! - `tests/boundary/`    — rustc/go/python roundtrips, emitted-module behavior (<2s)
+//!
+//! Each moved test file carries a `//! **Layer:** <unit|integration|boundary>`
+//! header so `grep -rn '\*\*Layer:\*\*'` reports the current partition.
+//! The taxonomy is the directory; the header is a human-readable echo.
 
 #[macro_use]
 #[path = "integration/common/mod.rs"]
@@ -44,15 +55,15 @@ mod lane2_stage_2e_parallelism_test;
 mod lane3_stage_3b_db1_test;
 #[path = "integration/m0_acceptance.rs"]
 mod m0_acceptance;
-#[path = "integration/m1_3_emit_go_test.rs"]
+#[path = "boundary/m1_3_emit_go_test.rs"]
 mod m1_3_emit_go_test;
-#[path = "integration/m1_3_emit_rust_test.rs"]
+#[path = "boundary/m1_3_emit_rust_test.rs"]
 mod m1_3_emit_rust_test;
 #[path = "integration/m1_3_lens_cost_test.rs"]
 mod m1_3_lens_cost_test;
 #[path = "integration/m1_3_lens_unused_parameters_test.rs"]
 mod m1_3_lens_unused_parameters_test;
-#[path = "integration/m1_4_emit_python_test.rs"]
+#[path = "boundary/m1_4_emit_python_test.rs"]
 mod m1_4_emit_python_test;
 #[path = "integration/m1_5_testgen_test.rs"]
 mod m1_5_testgen_test;
@@ -64,7 +75,7 @@ mod m1_fn_external_body_reconciliation_test;
 mod m1_lens_structural_resolution_test;
 #[path = "integration/m1_substrate_test.rs"]
 mod m1_substrate_test;
-#[path = "integration/m2_emit_multi_field_struct_variant_test.rs"]
+#[path = "boundary/m2_emit_multi_field_struct_variant_test.rs"]
 mod m2_emit_multi_field_struct_variant_test;
 #[path = "integration/m2_feature_parity_test.rs"]
 mod m2_feature_parity_test;
