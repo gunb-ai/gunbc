@@ -1,0 +1,19 @@
+# Per-test 2s ratchet exemptions (TESTING.md § test layers,
+# `feedback_test_timeout_2s`). One fully-qualified test path per line.
+# Comments start with `#`. Blank lines ignored.
+#
+# Path format matches `cargo test -- --report-time` output:
+#   <binary>::<module_path>::<test_name>
+# e.g. `integration::m1_5_testgen_test::heavy_case`.
+#
+# Every exemption MUST cite either a ROADMAP item or a
+# project memory so the paydown backlog stays structural, not folkloric.
+#
+# Adding an entry here is a short-term tolerance, not a permanent waiver.
+# The goal remains: every `#[test]` under 2s wall-clock.
+
+# ── Intentionally empty on initial landing. ──
+# The first CI run with `scripts/check-test-timeout.sh` in blocking mode
+# will surface every currently-slow test. Populate this file from that
+# run (one line per test with a one-line reason), then flip the CI step
+# to blocking. See handoff note in src/v3/compiler/tests/HANDOFF_PHASE0.md.

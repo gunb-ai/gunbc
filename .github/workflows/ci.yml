@@ -141,6 +141,16 @@ jobs:
             exit 1
           fi
 
+      # Per-test 2s wall-clock ratchet (TESTING.md § test layers,
+      # `feedback_test_timeout_2s`). Non-blocking on initial landing — the
+      # script surfaces currently-slow tests so they can be added to
+      # `scripts/slow-test-exemptions.txt` with reasons. Flip the
+      # `continue-on-error` flag off once the exemption file reflects the
+      # real baseline. See `src/v3/compiler/tests/HANDOFF_PHASE0.md`.
+      - name: v3 tests (per-test 2s ratchet, non-blocking)
+        continue-on-error: true
+        run: scripts/check-test-timeout.sh
+
       - name: v3 Compiler Clippy
         run: cargo clippy -p v3-compiler --all-targets -- -D warnings
 
