@@ -163,10 +163,22 @@ budgeted_test! {
 }
 
 budgeted_test! {
+    5_000,
     branch_reports_constant_when_both_arms_constant,
     {
         // `if 1 > 0 then 10 else 20` — both arms are leaf literals, so
         // max_path over two Constants stays Constant.
+        //
+        // 5s budget (not default 2s): this fixture's `(source, file)` cache key
+        // is unique across the suite, so #546's shared cache can't warm it. The
+        // first caller pays cold bootstrap + pipeline; on CI cold runners the
+        // narrow Stage 2d gate runs this test first in alphabetical order, and
+        // the cold cost lands ~2.5s (inside the narrow 120s budget but past the
+        // default 2s per-test cap). Matches `cost_dag_compiles_cleanly` in this
+        // file, which carries the same cold-CI constraint. Dissolution trigger:
+        // share the fixture source with an existing cached test OR extend the
+        // caching to a pre-parsed bootstrap Dag (dropping the cold-pipeline
+        // cost, not just the cold-compile cost).
         let cost = bind_cost("let r = if 1 > 0 then 10 else 20", "test.v3", "r");
         assert!(
             is_constant(&cost),
