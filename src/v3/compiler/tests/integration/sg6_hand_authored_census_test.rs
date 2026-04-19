@@ -18,10 +18,10 @@
 // Scope is deliberately SG-6-local. A full `src/v3/compiler/src`
 // inventory belongs to SG-0 and is intentionally out of scope here.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
-use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::dag::{Dag, Declaration, FieldValue, LiteralBits, ValueBody};
 
 fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -67,6 +67,56 @@ fn sg6_bin_census_is_locked_to_three_shims() {
     );
 }
 
+struct RegistryRow {
+    binding: String,
+    name: String,
+    generated_file: String,
+}
+
+fn read_registry_rows(dag: &Dag) -> Vec<RegistryRow> {
+    let entry_type_id = dag
+        .declaration_by_name("LensRegistryEntry")
+        .map(|decl| decl.id)
+        .expect("regen.dag must declare `LensRegistryEntry`");
+
+    dag.declarations()
+        .iter()
+        .filter(|decl| decl.meta_tag == Some(entry_type_id))
+        .map(|decl| {
+            let binding = decl.name.clone().unwrap_or_else(|| "<anonymous>".to_string());
+            let fields = structural_fields(decl);
+            RegistryRow {
+                binding: binding.clone(),
+                name: string_field(fields, "name", &binding),
+                generated_file: string_field(fields, "generated_file", &binding),
+            }
+        })
+        .collect()
+}
+
+fn structural_fields(decl: &Declaration) -> &[(String, FieldValue)] {
+    let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "lens registry entry `{}` must carry a structural value body",
+            decl.name.as_deref().unwrap_or("<anonymous>")
+        );
+    };
+    fields.as_slice()
+}
+
+fn string_field(fields: &[(String, FieldValue)], label: &str, binding: &str) -> String {
+    fields
+        .iter()
+        .find(|(field_label, _)| field_label == label)
+        .and_then(|(_, value)| match value {
+            FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!("lens registry entry `{binding}` is missing a String `{label}` field")
+        })
+}
+
 #[test]
 fn sg6_regen_dag_exposes_lens_registry_entries() {
     let dag = Dag::new();
@@ -76,37 +126,8 @@ fn sg6_regen_dag_exposes_lens_registry_entries() {
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
 
-    let entry_type_id = dag
-        .declaration_by_name("LensRegistryEntry")
-        .map(|decl| decl.id)
-        .expect("regen.dag must declare `LensRegistryEntry`");
-
-    let mut registry_names: Vec<String> = Vec::new();
-    for decl in dag.declarations() {
-        if decl.meta_tag != Some(entry_type_id) {
-            continue;
-        }
-        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
-            panic!(
-                "lens registry entry `{}` must carry a structural value body",
-                decl.name.as_deref().unwrap_or("<anonymous>")
-            );
-        };
-        let name = fields
-            .iter()
-            .find(|(label, _)| label == "name")
-            .and_then(|(_, value)| match value {
-                FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
-                _ => None,
-            })
-            .unwrap_or_else(|| {
-                panic!(
-                    "lens registry entry `{}` is missing a String `name` field",
-                    decl.name.as_deref().unwrap_or("<anonymous>")
-                )
-            });
-        registry_names.push(name);
-    }
+    let mut registry_names: Vec<String> =
+        read_registry_rows(&dag).into_iter().map(|row| row.name).collect();
     registry_names.sort();
 
     let expected = vec![
@@ -123,4 +144,74 @@ fn sg6_regen_dag_exposes_lens_registry_entries() {
          reference them as well. If a lens is being added or retired, update \
          both `src/v3/compiler/regen.dag` and this test in the same PR."
     );
+}
+
+// `--lens <name>` is the selection key in `regen_lens`'s CLI surface.
+// If two registry entries carry the same `name`, the driver cannot
+// distinguish them and the first-match-wins iteration order becomes
+// a hidden contract. The driver itself fails closed on this case in
+// `read_registry`; the test below pins the invariant at the registry
+// source so the structural guarantee is visible at the authority.
+#[test]
+fn sg6_lens_registry_names_are_unique() {
+    let dag = Dag::new();
+    let rows = read_registry_rows(&dag);
+    let mut seen: HashMap<String, String> = HashMap::new();
+    for row in &rows {
+        if let Some(prior_binding) = seen.get(&row.name) {
+            panic!(
+                "lens registry has duplicate `name` `{name}`: first declared by `{prior}`, re-declared by `{current}`. \
+                 `regen_lens --lens {name}` would resolve ambiguously. Rename one entry in `src/v3/compiler/regen.dag`.",
+                name = row.name,
+                prior = prior_binding,
+                current = row.binding,
+            );
+        }
+        seen.insert(row.name.clone(), row.binding.clone());
+    }
+}
+
+// Two entries pointing at the same `generated_file` would let each
+// overwrite the other when `regen_lens` runs with no `--lens` filter
+// (full-registry pass). The driver fails closed on duplicates; this
+// test mirrors that invariant at the registry source.
+#[test]
+fn sg6_lens_registry_generated_files_are_unique() {
+    let dag = Dag::new();
+    let rows = read_registry_rows(&dag);
+    let mut seen: HashMap<String, String> = HashMap::new();
+    for row in &rows {
+        if let Some(prior_binding) = seen.get(&row.generated_file) {
+            panic!(
+                "lens registry has duplicate `generated_file` `{path}`: first declared by `{prior}`, re-declared by `{current}`. \
+                 Running `regen_lens` with no filter would have each entry clobber the other.",
+                path = row.generated_file,
+                prior = prior_binding,
+                current = row.binding,
+            );
+        }
+        seen.insert(row.generated_file.clone(), row.binding.clone());
+    }
+}
+
+// The reviewer ask from #560 made explicit: `--lens <name>` must
+// resolve to exactly one entry. Uniqueness is the structural
+// guarantee; this test exercises the resolver against each real
+// registry name and asserts a singleton match, locking in the
+// contract the driver's `--lens` argument depends on.
+#[test]
+fn sg6_lens_registry_names_resolve_to_singleton_entry() {
+    let dag = Dag::new();
+    let rows = read_registry_rows(&dag);
+    let known_names: Vec<String> = rows.iter().map(|row| row.name.clone()).collect();
+    for name in &known_names {
+        let matches: Vec<&RegistryRow> = rows.iter().filter(|row| row.name == *name).collect();
+        assert_eq!(
+            matches.len(),
+            1,
+            "`--lens {name}` must resolve to exactly one entry, found {count}: {bindings:?}",
+            count = matches.len(),
+            bindings = matches.iter().map(|row| row.binding.as_str()).collect::<Vec<_>>(),
+        );
+    }
 }
