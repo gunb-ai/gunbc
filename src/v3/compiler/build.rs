@@ -5,7 +5,7 @@
 // Three generated arrays exist:
 //   - `STAGED_FILES`   for `src/v3/std/*.dag`
 //   - `V3_SPECS`       for `src/v3/spec/*.dag`
-//   - `COMPILER_FILES` for `src/v3/compiler/*.dag`
+//   - `COMPILER_FILES` for `src/v3/compiler/*.dag` (except `tokenize.dag`; see below)
 //
 // Adding a new staged std/spec/compiler file becomes a pure file-system
 // change — no Rust edits to `bootstrap.rs`, no fixture-array
@@ -45,6 +45,9 @@
 //   pub static COMPILER_FILES: &[(&str, &str)] = &[
 //       ("src/v3/compiler/pipeline.dag", include_str!("...")),
 //   ];
+//   `tokenize.dag` is intentionally omitted: it is tokenizer authority for
+//   `regen_tokenize` and must not be folded into the bootstrap Dag (duplicate
+//   declarations when `compile_to_dag` parses it).
 //
 // `bootstrap.rs` uses `include!(concat!(env!("OUT_DIR"), ...))` to
 // pull the arrays in. The `include_str!` calls inside the generated
@@ -198,7 +201,15 @@ fn main() {
         ],
     );
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
-    let compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
+    let mut compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
+    // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`; it is not part
+    // of the runtime bootstrap Dag (would duplicate declarations when `compile_to_dag` parses it).
+    compiler_entries.retain(|p| {
+        p.file_name()
+            .and_then(|s| s.to_str())
+            .map(|n| n != "tokenize.dag")
+            .unwrap_or(true)
+    });
     let extdeps_entries = collect_dag_entries_recursive(&extdeps_dir, &[]);
     let gunbc_entries = collect_dag_entries_recursive(&gunbc_dir, &[]);
     let staged_generated = generate_static(
@@ -284,6 +295,7 @@ fn main() {
         "src/v3/compiler/src/lens_unused_parameters_generated.rs",
         "src/v3/compiler/src/operators_generated.rs",
         "src/v3/compiler/src/serialize_generated.rs",
+        "src/v3/compiler/src/tokenize_generated.rs",
         "src/v3/compiler/src/types_generated.rs",
     ];
     let mut manifest = String::from(

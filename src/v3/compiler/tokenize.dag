@@ -1,0 +1,202 @@
+// v3.compiler.tokenize — tokenizer authority for SG-1.
+//
+// The Rust projection (`tokenize_generated.rs`) is produced by
+// `cargo run -p v3-compiler --bin regen_tokenize` — do not hand-edit it.
+//
+// **Authority split.** This file declares token kinds, keyword/punct tables,
+// string escape behavior, line-comment prefix, string delimiter, and fixed
+// tokenizer diagnostic bodies. `regen_tokenize` is a pure projection (plus
+// fixed Rust control-flow scaffolding: loops, `match` shape, and the
+// `format!`/`i64::parse` bridge for integer literals) — it does not introduce
+// parallel spellings for data that appears here.
+//
+// **Scan phases (spec).** After skipping ASCII whitespace, the scanner applies
+// in order: line comment (`line_comment_prefix` to newline), punctuation
+// (longest `PunctSpec` match), ASCII digit run → decimal `IntLit`, identifier
+// run → keyword table or `Ident`, string (`string_literal_delimiter`) with
+// `StringEscapeSpec` rows after `\`, else `unexpected byte` diagnostic.
+
+module v3.compiler.tokenize
+
+import v3.std.substrate { SourceSpan }
+
+type TokenKind
+  = KwLet
+  | KwIf
+  | KwThen
+  | KwElse
+  | KwFn
+  | KwType
+  | KwModule
+  | KwImport
+  | KwMatch
+  | KwData
+  | KwWhere
+  | KwTrue
+  | KwFalse
+  | Ident(String)
+  | IntLit(Int)
+  | StringLit(String)
+  | Eq
+  | EqEq
+  | NotEq
+  | Lt
+  | Le
+  | Gt
+  | Ge
+  | Plus
+  | Minus
+  | Star
+  | Slash
+  | AmpAmp
+  | PipePipe
+  | Colon
+  | Arrow
+  | FatArrow
+  | PipeArrow
+  | Dot
+  | LParen
+  | RParen
+  | LBrace
+  | RBrace
+  | LBracket
+  | RBracket
+  | Comma
+  | Semicolon
+  | Pipe
+  | Question
+  | Eof
+
+type Token {
+  kind: TokenKind
+  span: SourceSpan
+}
+
+type KeywordTokenKind
+  = KwLet
+  | KwIf
+  | KwThen
+  | KwElse
+  | KwFn
+  | KwType
+  | KwModule
+  | KwImport
+  | KwMatch
+  | KwData
+  | KwWhere
+  | KwTrue
+  | KwFalse
+
+type PunctTokenKind
+  = Eq
+  | EqEq
+  | NotEq
+  | Lt
+  | Le
+  | Gt
+  | Ge
+  | Plus
+  | Minus
+  | Star
+  | Slash
+  | AmpAmp
+  | PipePipe
+  | Colon
+  | Arrow
+  | FatArrow
+  | PipeArrow
+  | Dot
+  | LParen
+  | RParen
+  | LBrace
+  | RBrace
+  | LBracket
+  | RBracket
+  | Comma
+  | Semicolon
+  | Pipe
+  | Question
+
+type KeywordSpec {
+  spelling: String
+  kind: KeywordTokenKind
+}
+
+type PunctSpec {
+  pattern: String
+  kind: PunctTokenKind
+}
+
+// After `\` inside a string literal: map the next source byte (as a
+// one-character `suffix`) to a Unicode scalar emitted into the string value.
+// Unknown suffixes are not listed here; the projection preserves historical
+// behavior (`\` + literal suffix char).
+type StringEscapeSpec {
+  suffix: String
+  output_codepoint: Int
+}
+
+// Fixed diagnostic message bodies for tokenizer failures (C-8: errors only).
+data diagnostic_unterminated_string_escape: String = "unterminated string escape"
+data diagnostic_unterminated_string_literal: String = "unterminated string literal"
+
+// `format!("invalid integer literal `{}`", literal)` — prefix/suffix split so
+// the delimiter is explicit in data without nested braces in one string.
+data diagnostic_invalid_integer_literal_prefix: String = "invalid integer literal `"
+data diagnostic_invalid_integer_literal_suffix: String = "`"
+
+// Line comment begins with this two-byte prefix; scanner runs to `\n` or EOF.
+data line_comment_prefix: String = "//"
+
+// Opening delimiter for string literals (one ASCII character).
+data string_literal_delimiter: String = "\""
+
+data string_escape_dquote: StringEscapeSpec = { suffix: "\"", output_codepoint: 34 }
+data string_escape_backslash: StringEscapeSpec = { suffix: "\\", output_codepoint: 92 }
+data string_escape_n: StringEscapeSpec = { suffix: "n", output_codepoint: 10 }
+data string_escape_r: StringEscapeSpec = { suffix: "r", output_codepoint: 13 }
+data string_escape_t: StringEscapeSpec = { suffix: "t", output_codepoint: 9 }
+
+data keyword_let: KeywordSpec = { spelling: "let", kind: KwLet }
+data keyword_if: KeywordSpec = { spelling: "if", kind: KwIf }
+data keyword_then: KeywordSpec = { spelling: "then", kind: KwThen }
+data keyword_else: KeywordSpec = { spelling: "else", kind: KwElse }
+data keyword_fn: KeywordSpec = { spelling: "fn", kind: KwFn }
+data keyword_type: KeywordSpec = { spelling: "type", kind: KwType }
+data keyword_module: KeywordSpec = { spelling: "module", kind: KwModule }
+data keyword_import: KeywordSpec = { spelling: "import", kind: KwImport }
+data keyword_match: KeywordSpec = { spelling: "match", kind: KwMatch }
+data keyword_data: KeywordSpec = { spelling: "data", kind: KwData }
+data keyword_where: KeywordSpec = { spelling: "where", kind: KwWhere }
+data keyword_true: KeywordSpec = { spelling: "true", kind: KwTrue }
+data keyword_false: KeywordSpec = { spelling: "false", kind: KwFalse }
+
+data punct_eq_eq: PunctSpec = { pattern: "==", kind: EqEq }
+data punct_eq_fat: PunctSpec = { pattern: "=>", kind: FatArrow }
+data punct_bang_eq: PunctSpec = { pattern: "!=", kind: NotEq }
+data punct_lt_eq: PunctSpec = { pattern: "<=", kind: Le }
+data punct_gt_eq: PunctSpec = { pattern: ">=", kind: Ge }
+data punct_minus_gt: PunctSpec = { pattern: "->", kind: Arrow }
+data punct_pipe_gt: PunctSpec = { pattern: "|>", kind: PipeArrow }
+data punct_amp_amp: PunctSpec = { pattern: "&&", kind: AmpAmp }
+data punct_pipe_pipe: PunctSpec = { pattern: "||", kind: PipePipe }
+
+data punct_eq: PunctSpec = { pattern: "=", kind: Eq }
+data punct_lt: PunctSpec = { pattern: "<", kind: Lt }
+data punct_gt: PunctSpec = { pattern: ">", kind: Gt }
+data punct_plus: PunctSpec = { pattern: "+", kind: Plus }
+data punct_minus: PunctSpec = { pattern: "-", kind: Minus }
+data punct_star: PunctSpec = { pattern: "*", kind: Star }
+data punct_slash: PunctSpec = { pattern: "/", kind: Slash }
+data punct_colon: PunctSpec = { pattern: ":", kind: Colon }
+data punct_dot: PunctSpec = { pattern: ".", kind: Dot }
+data punct_lparen: PunctSpec = { pattern: "(", kind: LParen }
+data punct_rparen: PunctSpec = { pattern: ")", kind: RParen }
+data punct_lbrace: PunctSpec = { pattern: "{", kind: LBrace }
+data punct_rbrace: PunctSpec = { pattern: "}", kind: RBrace }
+data punct_lbracket: PunctSpec = { pattern: "[", kind: LBracket }
+data punct_rbracket: PunctSpec = { pattern: "]", kind: RBracket }
+data punct_comma: PunctSpec = { pattern: ",", kind: Comma }
+data punct_semicolon: PunctSpec = { pattern: ";", kind: Semicolon }
+data punct_pipe: PunctSpec = { pattern: "|", kind: Pipe }
+data punct_question: PunctSpec = { pattern: "?", kind: Question }
