@@ -114,7 +114,14 @@ fn substrate_declares_expected_reflection_surface() {
     );
     assert_eq!(
         record_fields(&dag, "BindNode"),
-        vec!["id", "name", "result_port", "params", "span", "lane2_workflow"]
+        vec![
+            "id",
+            "name",
+            "result_port",
+            "params",
+            "span",
+            "lane2_workflow"
+        ]
     );
     assert_eq!(
         record_fields(&dag, "Dag"),
