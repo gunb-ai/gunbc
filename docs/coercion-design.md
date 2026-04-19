@@ -160,15 +160,15 @@ string interpolation, container syntax, indentation, lint/formatting rules).
 Type coercion is data-driven; the full backend is broader.
 
 **Transitional state:** This document describes the target architecture.
-The compiler is currently in a transitional identity model: checkpoint
-and inhabitant keys are strings (`dag_name`, `algebra`), not declaration
-edges. M4/Lane 1 is dissolving string identity into structural
-declaration-backed facts; M4/Lane 2 is deleting `Node.name`. The
-coercion algorithm described here is designed for the post-M4 world
-where identity flows from declarations, but the initial implementation
-(M5-early, via E0c `TypeRendering`) will use the transitional string
-keys until Lane 1 completes. The algorithm shape is the same; only the
-key resolution mechanism changes.
+The compiler is still partially transitional on some identity surfaces:
+checkpoint and inhabitant keys are strings (`dag_name`, `algebra`), not
+declaration edges. The v3 `Node.name` deletion is already landed; the
+remaining transition is Lane 1's string-keyed coercion identity. The
+coercion algorithm described here is designed for the post-transition
+world where identity flows from declarations, but the initial
+implementation (M5-early, via E0c `TypeRendering`) will keep the
+transitional string keys until Lane 1 completes. The algorithm shape is
+the same; only the key resolution mechanism changes.
 
 ## The Coercion Model
 

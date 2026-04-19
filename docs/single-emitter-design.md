@@ -225,7 +225,7 @@ assumption that the target is foreign. That assumption must not exist.
 |---|---|---|---|
 | LanguageSpec modeling | Track 2 | Presentation facts must be modeled as data before the emitter can read them | LS-4 (borrow model) in design |
 | Core table dissolution | Track 7 | String-keyed maps must become node-keyed before the emitter can use structural identity | Partially done |
-| Node.name deletion | Track 3 | String identity must dissolve before homomorphism discovery works | ~15 n.name reads remaining |
+| Node.name deletion | Track 3 | String identity must dissolve before homomorphism discovery works | Landed in v3 code; only stale docs remain |
 | CX gate | KF-1 | CX must be able to prove bounds on emission functions | 421 violations remaining (M1) |
 
 ### What can move without dependencies

@@ -244,9 +244,10 @@ still TRUE — it's just not urgent anymore. The session got
 the urgent perf win from fact-flow, not clones. Clone
 elimination remains valuable for:
 
-- **Node.name deletion (M2)** — String clones are real heap
-  allocations. Still worth eliminating. But no longer on the
-  critical path for perf.
+- **Node.name deletion (v3 code: landed)** — the generic v3
+  `Node.name` carrier is gone. Residual String clones now come from
+  other carriers (`Declaration.name`, `BindNode.name`) and any stale
+  doc references, not from an in-flight node-identity scaffold.
 - **Stable binding identity** (unblocks last-use clone elision,
   Stream B Layer 1) — worth doing for modeling correctness.
 - **The exclusion categories** (callables, TCO, match-bound,
@@ -287,7 +288,7 @@ during reviews. The tactical answer is:
 | `.clone()` sites | 13,724 | Unchanged — clones weren't the problem |
 | merge_envs bug | Fixed | 68× speedup on reconcile |
 | Skip data-only analysis | Landed | 82 of 143 files skip CX/ownership |
-| authored_name_at fallback | Mostly eliminated | ~8 parser sites remain |
+| authored_name_at fallback | v3 eliminated | Remaining mentions here are historical; active parser sites are v2-only |
 | InternTable threading | Landed | Unblocks registry migration |
 
 ## What's next
@@ -298,9 +299,10 @@ during reviews. The tactical answer is:
 
 1. **Audit for other re-derivation hotspots.** Apply Rules 2
    and 3 above. Find the next merge_envs.
-2. **M2 Node.name deletion continues** — for modeling, not
-   perf. String clones are worth eliminating but no longer
-   critical.
+2. **Keep clone work focused on live carriers** — `Node.name`
+   itself is no longer active v3 debt, so follow-on clone cleanup
+   should target remaining live String surfaces rather than a
+   completed node-identity migration.
 3. **M1 Step 3 — thread existing authorities, don't invent
    new ones.** `SubValueRelation` (std/induction.dag),
    `TerminationProof` (std/termination.dag), and

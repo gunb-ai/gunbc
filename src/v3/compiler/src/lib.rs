@@ -132,10 +132,9 @@ pub mod lens_provenance {
 /// editing the `.dag` — there is no hand-written implementation on
 /// this crate side.
 ///
-/// Detects leaked `ArrowBody::Pending` on named user Declarations
-/// and reports declaration atoms that still carry name-keyed
-/// resolution fallback (`ResolvedByName`). See the `.dag` source for
-/// the exact detection rules.
+/// Detects leaked `ArrowBody::Pending` in the final Dag.
+/// Defense-in-depth regression pin for the R13 fix (see the `.dag`
+/// source for the full detection rule and disposal trigger).
 pub mod lens_structural_resolution {
     #[allow(
         dead_code,
@@ -171,14 +170,14 @@ pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan};
 pub use emit::{EmitDispatchError, EmitMode, EmitTarget, EmittedSource};
 pub use emit_rust::EmitError;
-/// Lane 2 Stage 2b — supported public surface: [`analyze_workflow`] is the primary
-/// entry; [`report_unsupported_workflow_variant`] and
+/// Lane 2 Stage 2b — supported public surface: [`analyze_workflow`] is the
+/// primary entry; [`report_unsupported_workflow_variant`] and
 /// [`lane2_workflow_idempotency_report`] are additionally exported so
-/// `emit_rust_module(idempotency.dag)` output can link in rustc round-trip tests.
-/// Composition helpers such as `compose_operation_effects` / `operation_to_breaker`
-/// are **not** re-exported: naming and algebra authority live in
-/// `src/v3/std/effects.dag`, and the Rust bridge must not become a parallel
-/// public implementation surface beyond these std.effects mirrors.
+/// `emit_rust_module(idempotency.dag)` output can link in rustc round-trip
+/// tests. Composition helpers such as `compose_operation_effects` /
+/// `operation_to_breaker` are **not** re-exported: naming and algebra authority
+/// live in `src/v3/std/effects.dag`, and the Rust bridge must not become a
+/// parallel public implementation surface beyond these std.effects mirrors.
 pub use lens_idempotency::analyze_workflow;
 /// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
 pub use lens_parallelism::analyze_parallelism;
@@ -272,6 +271,34 @@ pub fn inject_name_keyed_reference_for_test(
         id,
         name: None,
         connective: dag::TypeConnective::Atom(dag::AtomPayload::ResolvedByName(target)),
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span: diagnostics::SourceSpan::new("test", 0, 0),
+    });
+    id
+}
+
+/// Test-only hook: inject an anonymous Arrow declaration with
+/// `ArrowBody::Pending` directly into `dag`. This exists solely to
+/// prove the lens no longer relies on `Declaration.name` as a proxy
+/// for the executable-fn leak shape.
+#[doc(hidden)]
+pub fn inject_anonymous_pending_arrow_for_test(
+    dag: &mut Dag,
+    output_type: dag::DeclarationId,
+) -> dag::DeclarationId {
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(dag::Declaration {
+        id,
+        name: None,
+        connective: dag::TypeConnective::Arrow {
+            inputs: Vec::new(),
+            output: output_type,
+            body: dag::ArrowBody::Pending,
+        },
         type_params: Vec::new(),
         meta_tag: None,
         inhabits: None,
