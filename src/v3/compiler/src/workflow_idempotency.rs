@@ -67,7 +67,7 @@ pub(crate) fn project_workflow_idempotency_report(
 }
 
 pub(crate) fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempotencyReport {
-    let Some(workflow) = d.lane2_workflow_effect_at(workflow_root) else {
+    let Some(workflow) = d.lane2_workflow_effect_at(&workflow_root) else {
         return WorkflowIdempotencyReport::IdempotencyUnsupported(
             IdempotencyUnsupportedDetail {
                 variant_name: "Lane2WorkflowRoot".to_string(),

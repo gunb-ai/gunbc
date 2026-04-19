@@ -2189,8 +2189,11 @@ impl Dag {
         }
     }
 
-    pub fn lane2_workflow_effect_at(&self, root: NodeId) -> Option<&WorkflowEffect> {
-        match self.node_opt(&root)? {
+    /// Takes `&NodeId` (not by value) so emitted Rust lens code and substrate
+    /// accessor carriers agree with `node_opt` / `port_opt` — transform inputs
+    /// render as borrows at the explicit boundary.
+    pub fn lane2_workflow_effect_at(&self, root: &NodeId) -> Option<&WorkflowEffect> {
+        match self.node_opt(root)? {
             Behavior::Value(v) => v.lane2_workflow.as_deref(),
             Behavior::Bind(b) => b.lane2_workflow.as_deref(),
             Behavior::Transform(_) | Behavior::Branch(_) | Behavior::Loop(_) => None,
