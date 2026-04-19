@@ -17,7 +17,8 @@ fn main() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let dag_path = manifest_dir.join("tokenize.dag");
     let source = std::fs::read_to_string(&dag_path).expect("read tokenize.dag");
-    let dag = compile_to_dag(&source, "src/v3/compiler/tokenize.dag").expect("compile tokenize.dag");
+    let dag =
+        compile_to_dag(&source, "src/v3/compiler/tokenize.dag").expect("compile tokenize.dag");
     let rust = generate(&dag);
     let combined = format!("{HEADER}{rust}");
 
@@ -96,7 +97,9 @@ fn emit_token_kind_enum(dag: &Dag) -> String {
             TypeConnective::Atom(atom) => {
                 use v3_compiler::dag::AtomPayload;
                 match atom {
-                    AtomPayload::Literal(_) => panic!("unexpected literal atom for variant {}", v.label),
+                    AtomPayload::Literal(_) => {
+                        panic!("unexpected literal atom for variant {}", v.label)
+                    }
                     AtomPayload::UnresolvedIdentifier(_) => panic!("unexpected unresolved id"),
                     AtomPayload::ResolvedByStructure(_) | AtomPayload::ResolvedByName(_) => {
                         panic!("unexpected resolved atom for {}", v.label)
@@ -104,7 +107,10 @@ fn emit_token_kind_enum(dag: &Dag) -> String {
                     AtomPayload::TypeParam(_) => panic!("unexpected type param"),
                 }
             }
-            other => panic!("TokenKind variant {}: unexpected payload {other:?}", v.label),
+            other => panic!(
+                "TokenKind variant {}: unexpected payload {other:?}",
+                v.label
+            ),
         };
         lines.push(arm);
     }
@@ -199,11 +205,7 @@ fn extract_int_field(fields: &[(String, FieldValue)], key: &str) -> i64 {
     }
 }
 
-fn extract_token_kind_variant(
-    dag: &Dag,
-    fields: &[(String, FieldValue)],
-    key: &str,
-) -> String {
+fn extract_token_kind_variant(dag: &Dag, fields: &[(String, FieldValue)], key: &str) -> String {
     let fv = fields
         .iter()
         .find_map(|(k, v)| (k == key).then_some(v))
