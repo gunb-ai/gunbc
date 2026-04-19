@@ -26,7 +26,7 @@ fn main() {
     // manifest as the sole producer-owned partition; writing to a path
     // outside the manifest would silently drift the census.
     assert!(
-        GENERATED_FILES.iter().any(|p| *p == GENERATED_FILE),
+        GENERATED_FILES.contains(&GENERATED_FILE),
         "`regen_tokenize` writes `{GENERATED_FILE}` but that path is not \
          registered in `REGEN_OUTPUTS` in `src/v3/compiler/build.rs`. \
          Add the path to `REGEN_OUTPUTS` so the two authorities stay in \
