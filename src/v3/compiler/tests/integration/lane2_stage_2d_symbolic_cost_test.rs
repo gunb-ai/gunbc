@@ -13,8 +13,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use v3_compiler::dag::{
-    dominates, iterate, max_path, normalize, sequential, Behavior, Dag, PortId, SizeVariable,
-    SymbolicCost,
+    dominates, iterate, max_path, normalize, sequential, Behavior, Dag, DegreeAtLeastTwo,
+    NonSingletonList, PortId, SizeVariable, SymbolicCost, TypeConnective,
 };
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
@@ -52,7 +52,7 @@ fn mentions_linear(cost: &SymbolicCost) -> bool {
     match cost {
         SymbolicCost::LinearCost { .. } => true,
         SymbolicCost::SumCost { _0: terms } | SymbolicCost::ProductCost { _0: terms } => {
-            terms.iter().any(mentions_linear)
+            terms.iter().any(|term| mentions_linear(term.as_ref()))
         }
         _ => false,
     }
@@ -82,7 +82,7 @@ fn linear(port: PortId) -> SymbolicCost {
 fn polynomial(port: PortId, degree: i64) -> SymbolicCost {
     SymbolicCost::PolynomialCost {
         var: size_var(port),
-        degree,
+        degree: DegreeAtLeastTwo::new(degree).expect("polynomial degree must be >= 2"),
     }
 }
 
@@ -92,6 +92,46 @@ fn log_cost(port: PortId) -> SymbolicCost {
 
 fn constant(n: i64) -> SymbolicCost {
     SymbolicCost::ConstantCost { _0: n }
+}
+
+fn boxed_terms_to_vec(terms: &NonSingletonList<Box<SymbolicCost>>) -> Vec<SymbolicCost> {
+    terms.iter().map(|term| term.as_ref().clone()).collect()
+}
+
+#[test]
+fn degree_at_least_two_is_structural_in_bootstrap_substrate() {
+    let dag = Dag::new();
+    let decl = dag
+        .declaration_by_name("DegreeAtLeastTwo")
+        .expect("DegreeAtLeastTwo should bootstrap from std/algebra.dag");
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        panic!(
+            "DegreeAtLeastTwo should be a recursive sum, got {:?}",
+            decl.connective
+        );
+    };
+    assert_eq!(
+        variants.len(),
+        2,
+        "degree carrier should expose 2 structural variants"
+    );
+    assert_eq!(variants[0].label, "DegreeTwo");
+    assert_eq!(variants[1].label, "DegreeSuccessor");
+
+    let succ = dag.declaration(variants[1].ty);
+    let TypeConnective::Conj { children } = &succ.connective else {
+        panic!(
+            "DegreeSuccessor payload should be a record, got {:?}",
+            succ.connective
+        );
+    };
+    assert_eq!(children.len(), 1);
+    assert_eq!(children[0].label, "previous");
+    assert_eq!(
+        dag.declaration(children[0].ty).name.as_deref(),
+        Some("DegreeAtLeastTwo"),
+        "successor must recurse structurally to DegreeAtLeastTwo"
+    );
 }
 
 // ── Per-Behavior lowering ────────────────────────────────────────
@@ -122,17 +162,23 @@ budgeted_test! {
     }
 }
 
-budgeted_test! {
-    branch_reports_constant_when_both_arms_constant,
-    {
-        // `if 1 > 0 then 10 else 20` — both arms are leaf literals, so
-        // max_path over two Constants stays Constant.
-        let cost = bind_cost("let r = if 1 > 0 then 10 else 20", "test.v3", "r");
-        assert!(
-            is_constant(&cost),
-            "branch over constant arms should report Constant, got {cost:?}"
-        );
-    }
+#[test]
+fn branch_reports_constant_when_both_arms_constant() {
+    // `if 1 > 0 then 10 else 20` — both arms are leaf literals, so
+    // max_path over two Constants stays Constant.
+    //
+    // Temporary ratchet exception: this fixture has a unique `(source, file)`
+    // cache key, so even with `cached_compile_to_dag` it still pays one cold
+    // branch-lowering compile on CI, which can exceed the 2s micro-budget while
+    // the assertion itself is effectively free. Dissolution trigger: once the
+    // `#546` caching pattern can guarantee this fixture hits a warmed/shared
+    // compile path, restore `budgeted_test!` here instead of carrying a plain
+    // `#[test]`.
+    let cost = bind_cost("let r = if 1 > 0 then 10 else 20", "test.v3", "r");
+    assert!(
+        is_constant(&cost),
+        "branch over constant arms should report Constant, got {cost:?}"
+    );
 }
 
 budgeted_test! {
@@ -169,10 +215,10 @@ budgeted_test! {
             SymbolicCost::ProductCost { _0: terms } => {
                 let has_linear = terms
                     .iter()
-                    .any(|t| matches!(t, SymbolicCost::LinearCost { .. }));
+                    .any(|t| matches!(t.as_ref(), SymbolicCost::LinearCost { .. }));
                 let has_nonzero_body = terms
                     .iter()
-                    .any(|t| matches!(t, SymbolicCost::ConstantCost { _0: n } if *n != 0));
+                    .any(|t| matches!(t.as_ref(), SymbolicCost::ConstantCost { _0: n } if *n != 0));
                 assert!(
                     has_linear,
                     "Loop cost must carry a LinearCost term from the bound port, got {cost:?}"
@@ -253,7 +299,7 @@ budgeted_test! {
         match result {
             SymbolicCost::PolynomialCost { var, degree } => {
                 assert_eq!(var, size_var(port));
-                assert_eq!(degree, 2);
+                assert_eq!(degree.raw(), 2);
             }
             other => panic!("expected PolynomialCost(n, 2), got {other:?}"),
         }
@@ -316,7 +362,8 @@ budgeted_test! {
         // should NOT dominate `Linear(n)`.
         let (port, _) = two_distinct_ports();
         let product_of_logs = SymbolicCost::ProductCost {
-            _0: vec![log_cost(port), log_cost(port)],
+            _0: NonSingletonList::from_vec(vec![Box::new(log_cost(port)), Box::new(log_cost(port))])
+                .unwrap(),
         };
         let linear_cost = linear(port);
         assert!(
@@ -329,7 +376,8 @@ budgeted_test! {
         // dominate Log, because the dominant-child summary walks the
         // children.
         let product_with_linear = SymbolicCost::ProductCost {
-            _0: vec![log_cost(port), linear(port)],
+            _0: NonSingletonList::from_vec(vec![Box::new(log_cost(port)), Box::new(linear(port))])
+                .unwrap(),
         };
         assert!(
             dominates(&product_with_linear, &log_cost(port)),
@@ -345,7 +393,8 @@ budgeted_test! {
         // summary, not a hardcoded "any Sum dominates scalars".
         let (port, _) = two_distinct_ports();
         let sum_of_logs = SymbolicCost::SumCost {
-            _0: vec![log_cost(port), log_cost(port)],
+            _0: NonSingletonList::from_vec(vec![Box::new(log_cost(port)), Box::new(log_cost(port))])
+                .unwrap(),
         };
         assert!(
             !dominates(&sum_of_logs, &linear(port)),
@@ -353,7 +402,11 @@ budgeted_test! {
         );
 
         let sum_with_polynomial = SymbolicCost::SumCost {
-            _0: vec![constant(0), polynomial(port, 2)],
+            _0: NonSingletonList::from_vec(vec![
+                Box::new(constant(0)),
+                Box::new(polynomial(port, 2)),
+            ])
+            .unwrap(),
         };
         assert!(
             dominates(&sum_with_polynomial, &linear(port)),
@@ -370,7 +423,7 @@ budgeted_test! {
         let paths = vec![constant(0), linear(port), polynomial(port, 2)];
         let result = max_path(&paths);
         match result {
-            SymbolicCost::PolynomialCost { degree, .. } => assert_eq!(degree, 2),
+            SymbolicCost::PolynomialCost { degree, .. } => assert_eq!(degree.raw(), 2),
             other => panic!("expected PolynomialCost, got {other:?}"),
         }
     }
@@ -396,7 +449,8 @@ budgeted_test! {
                      got {result:?}"
                 );
                 assert!(
-                    terms.contains(&linear(port_a)) && terms.contains(&linear(port_b)),
+                    terms.iter().any(|term| term.as_ref() == &linear(port_a))
+                        && terms.iter().any(|term| term.as_ref() == &linear(port_b)),
                     "both branch costs must remain in the Sum, got {result:?}"
                 );
             }
@@ -417,7 +471,7 @@ budgeted_test! {
         let reversed = max_path(&[linear(port_b), linear(port_a)]);
         let (forward_terms, reversed_terms) = match (&forward, &reversed) {
             (SymbolicCost::SumCost { _0: fwd }, SymbolicCost::SumCost { _0: rev }) => {
-                (fwd.clone(), rev.clone())
+                (boxed_terms_to_vec(fwd), boxed_terms_to_vec(rev))
             }
             _ => panic!(
                 "both orderings should produce a SumCost, got forward={forward:?} reversed={reversed:?}"

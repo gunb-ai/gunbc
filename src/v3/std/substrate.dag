@@ -36,7 +36,8 @@ type LiteralBits
 type AtomPayload
   = Literal(LiteralBits)
   | UnresolvedIdentifier(String)
-  | ResolvedIdentifier(DeclarationId)
+  | ResolvedByStructure(DeclarationId)
+  | ResolvedByName(DeclarationId)
   | TypeParam(String)
 
 // 🟢 TERMINAL. Cardinality bounds are structural substrate facts and
@@ -200,6 +201,19 @@ type ParamRef {
 // ("Tracked debt — substrate constructor-validation asymmetry").
 type TransformRef {
   node: NodeId
+}
+
+// Constructor-validation asymmetry (tracked Track 9 debt): `ElementRef`
+// is list-relative rather than graph-relative, so validity is enforced
+// today by consumer-specific Rust constructors (`ElementRef::from_slice`
+// and friends) that check the index against the carrier list in scope.
+// The handle does not retain owner identity after construction, so
+// read sites must still resolve it against the same authority list they
+// validated it against. Direct `.dag` construction currently exposes
+// only the witness field shape; self-hosted constructors should add the
+// same authority in the Lane 3c cycle.
+type ElementRef<element> {
+  index: Int
 }
 
 type MemberDescent {

@@ -1,5 +1,5 @@
 // lenses.structural_resolution — detect leaked `ArrowBody::Pending`
-// in named user declarations.
+// in the final Dag.
 //
 // Defense-in-depth regression pin for the R13 fix (lower.rs:2293).
 // User `fn` declarations are seeded by `seed_function_signature`
@@ -10,17 +10,15 @@
 // Pending as a realization-lag scaffold and would have let callers
 // Resolve against an invalid fn — a fail-closed leak).
 //
-// **Detection rule.** A `Declaration` with `name: Some(_)` and a
-// connective of `Arrow { body: Pending }` is a violation. The naming
-// filter does the boundary work: algebra field arrows synthesized by
-// `type_to_declaration_id` in `lower.rs` are anonymous
-// (`name: None`) and intentionally `Pending` at M1, so they never
-// match. Named type-alias arrows (`type Callback = fn(Int) -> Int`)
-// carry `ArrowBody::NoBody` rather than `Pending` so they sit
-// outside the violation rule by construction; see the `ArrowBody`
-// ledger in `src/v3/compiler/src/dag.rs`. Only a regression in
-// `lower_fn_item`'s body-patching path can produce a named
-// `Arrow(Pending)` in the final Dag.
+// **Detection rule.** Any final `Declaration` whose connective is
+// `Arrow { body: Pending }` is a violation. The old `decl.name ==
+// Some(_)` filter was only a proxy for "this came from executable-fn
+// seeding rather than an Arrow-as-data site." That proxy dissolves
+// now that the Arrow-as-data sites (bootstrap algebra arrows, nested
+// arrow type expressions, type aliases, transient synthesized
+// signatures) all carry `ArrowBody::NoBody` rather than `Pending`.
+// Only a regression in `lower_fn_item`'s body-patching path should be
+// able to leave `Arrow(Pending)` behind in the final Dag.
 //
 // **Deletes** when §8.11's Pending-elimination ratchet reaches zero
 // and the `ArrowBody::Pending` variant is removed from the
@@ -30,12 +28,18 @@ module lenses.structural_resolution
 
 import std.list { List, empty, cons, fold }
 import std.substrate {
-  Dag, Declaration, DeclarationId, TypeConnective, ArrowBody, SourceSpan
+  Dag, Declaration, DeclarationId, TypeConnective, ArrowBody, AtomPayload, SourceSpan
 }
 
 type UnresolvedArrowBody {
   declaration: DeclarationId
   name: String
+  span: SourceSpan
+}
+
+type NameKeyedReference {
+  declaration: DeclarationId
+  resolved_to: DeclarationId
   span: SourceSpan
 }
 
@@ -45,39 +49,81 @@ fn check(d: Dag) -> List<UnresolvedArrowBody> =
   )
 
 fn check_declaration(decl: Declaration) -> List<UnresolvedArrowBody> =
-  match decl.name {
-    None => empty()
-    Some(name_str) => check_named_connective(decl, name_str)
-  }
-
-fn check_named_connective(decl: Declaration, name_str: String) -> List<UnresolvedArrowBody> =
   match decl.connective {
     Atom(payload) => empty()
     Conj(c) => empty()
     Disj(d) => empty()
-    Arrow(a) => check_arrow_body(decl, name_str, a.body)
+    Arrow(a) => check_arrow_body(decl, a.body)
     Cardinality(c) => empty()
     Instantiation(i) => empty()
   }
 
-fn check_arrow_body(decl: Declaration, name_str: String, body: ArrowBody) -> List<UnresolvedArrowBody> =
+fn check_arrow_body(decl: Declaration, body: ArrowBody) -> List<UnresolvedArrowBody> =
   match body {
     UserDefined(node_id) => empty()
     ExternalRealization(decl_id) => empty()
-    Pending => singleton_violation(decl, name_str)
+    Pending => singleton_violation(decl)
     NoBody => empty()
     Unparsed(span) => empty()
   }
 
-fn singleton_violation(decl: Declaration, name_str: String) -> List<UnresolvedArrowBody> =
+fn declaration_name(decl: Declaration) -> String =
+  match decl.name {
+    Some(name_str) => name_str
+    None => "<anonymous>"
+  }
+
+fn singleton_violation(decl: Declaration) -> List<UnresolvedArrowBody> =
   cons(
     {
       declaration: decl.id
-      name: name_str
+      name: declaration_name(decl)
       span: decl.span
     },
     empty()
   )
 
 fn prepend_all(additions: List<UnresolvedArrowBody>, acc: List<UnresolvedArrowBody>) -> List<UnresolvedArrowBody> =
+  fold(additions, acc, |running, v| cons(v, running))
+
+fn name_keyed_references(d: Dag) -> List<NameKeyedReference> =
+  fold(d.declarations, empty(), |acc, decl|
+    prepend_name_keyed(check_name_keyed_declaration(decl), acc)
+  )
+
+// Raw structural reader: reports every `ResolvedByName` atom visible
+// in the reflected Dag, including bootstrap-range declarations. The
+// DB-17 user-range policy boundary is not yet a first-class
+// reflected fact, so callers that specifically want "user only"
+// must currently filter these results by their own source-range
+// policy.
+
+fn check_name_keyed_declaration(decl: Declaration) -> List<NameKeyedReference> =
+  match decl.connective {
+    Atom(payload) => check_name_keyed_payload(decl, payload)
+    Conj(c) => empty()
+    Disj(d) => empty()
+    Arrow(a) => empty()
+    Cardinality(c) => empty()
+    Instantiation(i) => empty()
+  }
+
+fn check_name_keyed_payload(decl: Declaration, payload: AtomPayload) -> List<NameKeyedReference> =
+  match payload {
+    Literal(bits) => empty()
+    UnresolvedIdentifier(name) => empty()
+    ResolvedByStructure(id) => empty()
+    ResolvedByName(id) =>
+      cons(
+        {
+          declaration: decl.id
+          resolved_to: id
+          span: decl.span
+        },
+        empty()
+      )
+    TypeParam(name) => empty()
+  }
+
+fn prepend_name_keyed(additions: List<NameKeyedReference>, acc: List<NameKeyedReference>) -> List<NameKeyedReference> =
   fold(additions, acc, |running, v| cons(v, running))

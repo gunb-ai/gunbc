@@ -621,14 +621,16 @@ fn m17_block_bodied_fn_produces_unparsed_scaffold_declaration() {
     let int_id = find_named(&dag, "Int");
     let input_decl = dag.declaration(inputs[0]);
     let resolved_input_id = match &input_decl.connective {
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(id)) => *id,
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(id))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(id)) => *id,
         TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) => {
             panic!("input still unresolved: {name}")
         }
         _ => inputs[0],
     };
     let resolved_output_id = match &dag.declaration(output).connective {
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(id)) => *id,
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(id))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(id)) => *id,
         _ => output,
     };
     assert_eq!(resolved_input_id, int_id);
@@ -648,14 +650,15 @@ fn m17_data_declaration_produces_typed_declaration() {
     let foo_id = find_named(&dag, "foo");
     // `type_to_connective` on a bare `Int` emits
     // `Instantiation { template: Int_id, arguments: [] }`, not a
-    // direct `ResolvedIdentifier` wrapper. Either shape is
+    // direct resolved-identifier wrapper. Either shape is
     // acceptable — the fact is "foo's type is Int" and we verify
     // it by walking one level.
     let foo_conn = dag.declaration(foo_id).connective.clone();
     let resolved = match &foo_conn {
         TypeConnective::Instantiation { template, .. } => *template,
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(id)) => *id,
-        other => panic!("expected Instantiation or ResolvedIdentifier, got {other:?}"),
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(id))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(id)) => *id,
+        other => panic!("expected Instantiation or resolved identifier, got {other:?}"),
     };
     let int_id = find_named(&dag, "Int");
     assert_eq!(resolved, int_id, "data foo's type resolves to Int");

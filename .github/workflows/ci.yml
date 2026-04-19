@@ -73,7 +73,9 @@ jobs:
 
   v3:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Full suite is capped at 750s, plus clippy + lens gates + cold compile — 15m
+    # can cancel the job before the final steps finish.
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -99,6 +101,12 @@ jobs:
             cargo-v3-${{ runner.os }}-
 
       # Layer 1 (coarse CI): wall-clock gates on `cargo test -p v3-compiler`.
+      #
+      # Full-suite budget is 750s (upstream). Warm local runs are often ~520–560s for
+      # `cargo test -p v3-compiler`, but cold GitHub runners + cache misses still
+      # need headroom beyond a tight 600s-style cap (Layer 1 ratchet history).
+      # Regressions show up when integration tests redo full `compile_to_dag` per
+      # `#[test]` (see `lane2_stage_2e_parallelism_test`: shared `OnceLock` + clone).
       #
       # 120s gate: applies to the lane2 Stage 2d symbolic-cost integration
       # binary only — that is the ζ (#537) regression surface (many `#[test]`

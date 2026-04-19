@@ -535,7 +535,7 @@ fn lower_parameter_refinement(
     dag.push_declaration(Declaration {
         id: refined_id,
         name: None,
-        connective: TypeConnective::Atom(AtomPayload::ResolvedIdentifier(base_decl_id)),
+        connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(base_decl_id)),
         type_params: Vec::new(),
         meta_tag: None,
         inhabits: None,
@@ -795,7 +795,8 @@ fn walk_to_refinement_base(
             return (current, top_refinement);
         }
         match &decl.connective {
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
             _ => return (current, top_refinement),
@@ -930,7 +931,7 @@ fn build_narrowed_refinement(
     dag.push_declaration(Declaration {
         id: refined_id,
         name: None,
-        connective: TypeConnective::Atom(AtomPayload::ResolvedIdentifier(true_base_decl)),
+        connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(true_base_decl)),
         type_params: Vec::new(),
         meta_tag: None,
         inhabits: None,
@@ -2106,11 +2107,11 @@ fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {
                 continue;
             }
             // Structural phase transition: rewrite the connective from
-            // `UnresolvedIdentifier(name)` to `ResolvedIdentifier(target)`.
+            // `UnresolvedIdentifier(name)` to `ResolvedByName(target)`.
             // The phase is now visible in the variant, not hidden in
             // an Option field.
             dag.declaration_mut(decl_id).connective =
-                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(target));
+                TypeConnective::Atom(AtomPayload::ResolvedByName(target));
         } else if (decl_id.raw() as usize) >= strict_from {
             // Strict mode for user-lowering stubs: any
             // `UnresolvedIdentifier` that survives the sweep is a
@@ -2258,7 +2259,8 @@ fn walk_to_conj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
             TypeConnective::Instantiation { template, .. } => {
                 current = *template;
             }
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
             _ => return None,
@@ -2276,7 +2278,8 @@ fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
             TypeConnective::Instantiation { template, .. } => {
                 current = *template;
             }
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
             _ => return None,
@@ -2341,7 +2344,8 @@ fn resolve_decl_with_subst_lower(
             .lookup(current)
             .and_then(|bound| resolve_decl_with_subst_lower(dag, bound, subst, depth + 1))
             .or(Some(current)),
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             resolve_decl_with_subst_lower(dag, *next, subst, depth + 1)
         }
         TypeConnective::Instantiation {
@@ -2392,7 +2396,8 @@ fn walk_to_conj_decl_with_subst_lower(
                 subst.push(arguments.clone());
                 current = *template;
             }
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
             TypeConnective::Atom(AtomPayload::TypeParam(_)) => current = subst.lookup(current)?,
             _ => return None,
         }
@@ -2421,7 +2426,8 @@ fn walk_to_type_shape_lower(
                 Some(TypeShape::new(current))
             }
         }
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             walk_to_type_shape_lower(dag, *next, subst, depth + 1)
         }
         TypeConnective::Instantiation { .. } => {
@@ -2869,9 +2875,8 @@ fn list_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<Declarat
             template,
             arguments,
         } if *template == list_id && arguments.len() == 1 => Some(arguments[0].value),
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
-            list_element_type(dag, *next)
-        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => list_element_type(dag, *next),
         _ => None,
     }
 }
@@ -2931,12 +2936,16 @@ fn declaration_ref_types_equivalent(
     let lhs_decl = dag.declaration(lhs);
     let rhs_decl = dag.declaration(rhs);
     match (&lhs_decl.connective, &rhs_decl.connective) {
-        (TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)), _) => {
-            declaration_ref_types_equivalent(dag, *next, rhs, depth + 1)
-        }
-        (_, TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next))) => {
-            declaration_ref_types_equivalent(dag, lhs, *next, depth + 1)
-        }
+        (
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)),
+            _,
+        ) => declaration_ref_types_equivalent(dag, *next, rhs, depth + 1),
+        (
+            _,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)),
+        ) => declaration_ref_types_equivalent(dag, lhs, *next, depth + 1),
         (
             TypeConnective::Instantiation {
                 template,
@@ -3113,7 +3122,8 @@ fn validate_realization_field_target(
             match &dag.declaration(current).connective {
                 TypeConnective::Arrow { .. } => return true,
                 TypeConnective::Instantiation { template, .. } => current = *template,
-                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+                TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
                 _ => return false,
             }
         }
@@ -3125,7 +3135,8 @@ fn validate_realization_field_target(
             match &dag.declaration(current).connective {
                 TypeConnective::Disj { .. } => return true,
                 TypeConnective::Instantiation { template, .. } => current = *template,
-                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+                TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
                 _ => return false,
             }
         }
@@ -3222,7 +3233,8 @@ fn walks_to(dag: &Dag, start: DeclarationId, target: DeclarationId) -> bool {
             TypeConnective::Instantiation { template, .. } => {
                 current = *template;
             }
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
             _ => return false,
@@ -3574,7 +3586,8 @@ fn declaration_callable_inputs(
     }
     match &dag.declaration(current).connective {
         TypeConnective::Arrow { inputs, .. } => Some(inputs.clone()),
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             declaration_callable_inputs(dag, *next, depth + 1)
         }
         TypeConnective::Instantiation { template, .. } => {
@@ -3610,7 +3623,8 @@ fn declaration_callable_output(
     }
     match &dag.declaration(current).connective {
         TypeConnective::Arrow { output, .. } => Some(*output),
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             declaration_callable_output(dag, *next, depth + 1)
         }
         TypeConnective::Instantiation { template, .. } => {
@@ -3968,7 +3982,8 @@ fn bind_expected_type_to_actual(
             }
             push_template_argument_binding(arguments, expected_id, actual_id)
         }
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             bind_expected_type_to_actual(dag, *next, actual_id, arguments, depth + 1)
         }
         TypeConnective::Instantiation {
@@ -3977,7 +3992,8 @@ fn bind_expected_type_to_actual(
         } => {
             let actual_decl = dag.declaration(actual_id);
             match &actual_decl.connective {
-                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                     bind_expected_type_to_actual(dag, expected_id, *next, arguments, depth + 1)
                 }
                 TypeConnective::Instantiation {
@@ -4022,7 +4038,8 @@ fn bind_expected_type_to_actual(
         TypeConnective::Arrow { inputs, output, .. } => {
             let actual_decl = dag.declaration(actual_id);
             match &actual_decl.connective {
-                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                     bind_expected_type_to_actual(dag, expected_id, *next, arguments, depth + 1)
                 }
                 TypeConnective::Arrow {
@@ -4059,7 +4076,8 @@ fn bind_expected_type_to_actual(
         TypeConnective::Cardinality { element, bound } => {
             let actual_decl = dag.declaration(actual_id);
             match &actual_decl.connective {
-                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                     bind_expected_type_to_actual(dag, expected_id, *next, arguments, depth + 1)
                 }
                 TypeConnective::Cardinality {
@@ -4078,7 +4096,8 @@ fn bind_expected_type_to_actual(
         _ => {
             let actual_decl = dag.declaration(actual_id);
             match &actual_decl.connective {
-                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                     bind_expected_type_to_actual(dag, expected_id, *next, arguments, depth + 1)
                 }
                 _ => expected_id == actual_id,
@@ -4103,7 +4122,8 @@ fn specialize_decl_for_lowering(
             .find(|arg| arg.parameter == current)
             .map(|arg| arg.value)
             .unwrap_or(current),
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             specialize_decl_for_lowering(dag, next, arguments, depth + 1)
         }
         TypeConnective::Instantiation {
@@ -4845,7 +4865,8 @@ fn direct_invocation_input_decls(
         TypeConnective::Instantiation { template, .. } => {
             direct_invocation_input_decls(dag, *template, depth + 1)
         }
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             direct_invocation_input_decls(dag, *next, depth + 1)
         }
         TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
@@ -5362,7 +5383,8 @@ fn canonical_decl_for_descent(dag: &Dag, start: DeclarationId) -> DeclarationId 
     for _ in 0..32 {
         match &dag.declaration(current).connective {
             TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
             _ => return current,
         }
     }
@@ -5977,6 +5999,23 @@ mod tests {
         assert_eq!(
             resolved, None,
             "declaration-ref lowering must fail closed when the name is not in scope"
+        );
+    }
+
+    #[test]
+    fn identifier_sweep_marks_name_keyed_resolution_provenance() {
+        let mut dag = Dag::new();
+        let user_start = dag.declarations().len();
+        let stub = alloc_identifier_stub(&mut dag, "Int", &test_span());
+
+        resolve_pending_identifiers_strict(&mut dag, user_start);
+
+        assert!(
+            matches!(
+                dag.declaration(stub).connective,
+                TypeConnective::Atom(AtomPayload::ResolvedByName(_))
+            ),
+            "strict identifier sweep must preserve name-fallback provenance on repaired stubs"
         );
     }
 }

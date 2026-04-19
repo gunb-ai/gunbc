@@ -47,6 +47,7 @@
 //   forward through lowering; no side tables, no reconstruction.
 
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::LazyLock;
 
 use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
@@ -375,9 +376,10 @@ pub struct Field {
 ///     not yet been resolved against the declaration table.
 ///     Produced during lowering and eliminated at
 ///     `resolve_pending_identifiers` time.
-///   - `ResolvedIdentifier(DeclarationId)` — a name reference that
-///     has been resolved. Structurally distinct from the unresolved
-///     form (no `Option` field hiding a phase coproduct).
+///   - `ResolvedByStructure(DeclarationId)` — a name reference that
+///     resolved by structural walk.
+///   - `ResolvedByName(DeclarationId)` — a name reference that
+///     resolved by name-keyed fallback.
 ///   - `TypeParam(String)` — a type parameter declaration slot.
 ///     Shared across references inside a parameterized declaration.
 ///
@@ -395,10 +397,11 @@ pub struct Field {
 /// review round 7 the shape was
 /// `Identifier { name: String, resolved: Option<DeclarationId> }`
 /// which hid a phase coproduct inside the Option. The split into
-/// `UnresolvedIdentifier` and `ResolvedIdentifier` makes that
-/// phase distinction visible to the type system: pattern matches
-/// for unresolved stubs and resolved references are on separate
-/// variants, not on `Some`/`None`.
+/// `UnresolvedIdentifier`, `ResolvedByStructure`, and
+/// `ResolvedByName` makes that distinction visible to the type
+/// system: unresolved stubs, structural references, and
+/// name-fallback references are on separate variants rather than
+/// hidden behind `Some`/`None`.
 ///
 /// Verdict: terminal. Future extensions (Span-backed metadata
 /// atoms for diagnostic-only uses, Char / Float literals) go
@@ -413,20 +416,33 @@ pub enum AtomPayload {
     /// table (forward references, pending cross-file imports, the
     /// bootstrap's dangling refs to types in un-loaded std/ modules).
     /// `resolve_pending_identifiers` either converts to
-    /// `ResolvedIdentifier` or emits a fail-closed diagnostic.
+    /// `ResolvedByStructure` / `ResolvedByName` or emits a
+    /// fail-closed diagnostic.
     UnresolvedIdentifier(String),
-    /// A resolved identifier. Produced by
-    /// `resolve_pending_identifiers` or directly by lowering when
-    /// a name is already in the symbol table. Carries the typed
-    /// edge to the referent declaration.
-    ResolvedIdentifier(DeclarationId),
+    /// A resolved identifier reached by structural walk.
+    /// Produced when lowering wires a known structural edge
+    /// directly into the declaration graph.
+    ResolvedByStructure(DeclarationId),
+    /// A resolved identifier reached by name-keyed fallback.
+    /// Produced by `resolve_pending_identifiers` when an
+    /// unresolved stub is repaired via `declaration_by_name`.
+    ResolvedByName(DeclarationId),
     /// A type parameter declaration slot. Declared at the top of a
     /// parameterized declaration (via `Declaration.type_params`);
-    /// referenced from inside the body by ResolvedIdentifier atoms
+    /// referenced from inside the body by resolved identifier atoms
     /// that resolve to this slot's DeclarationId. A single TypeParam
     /// Atom is shared across all references to it — the substrate
     /// is a DAG of declarations, not a tree.
     TypeParam(String),
+}
+
+impl AtomPayload {
+    pub fn resolved_id(&self) -> Option<DeclarationId> {
+        match self {
+            Self::ResolvedByStructure(id) | Self::ResolvedByName(id) => Some(*id),
+            _ => None,
+        }
+    }
 }
 
 /// Terminal literal payload. 3 variants, each corresponds to a distinct
@@ -509,7 +525,7 @@ pub struct TemplateArgument {
 ///      for patching every such declaration to
 ///      `ArrowBody::UserDefined(bind_id)` before the Dag is frozen
 ///      — including on error paths (R13 fix at `lower.rs:2293`). A
-///      named `Arrow(Pending)` surviving into the final Dag is
+///      final `Arrow(Pending)` surviving into the Dag is
 ///      structurally equivalent to "body lowering missed a path,"
 ///      which is exactly what `lens_structural_resolution` detects.
 ///
@@ -554,11 +570,9 @@ pub struct TemplateArgument {
 ///
 ///   `decide_transform` treats `NoBody` identically to `Pending`
 ///   (signature inhabitance, body-walking skipped). The variant
-///   distinction exists to make the substrate predicate "named
-///   `Arrow(Pending)` = R13-class regression" structurally exact
-///   rather than a `name`-based proxy — see the
-///   `lens_structural_resolution` ledger entry for the proxy
-///   dissolution this enables.
+///   distinction exists to make the substrate predicate
+///   "`Arrow(Pending)` in the final Dag = R13-class regression"
+///   structurally exact, with no `name`-based proxy in the lens.
 ///
 ///   No dissolution trigger — terminal at the substrate level.
 ///
@@ -612,7 +626,7 @@ pub enum ArrowBody {
     /// 1. `seed_function_signature` for `fn foo(x) -> T = body`
     ///    declarations — the initial substrate state before
     ///    `lower_fn_item` patches the body into `UserDefined(bind_id)`.
-    ///    A named `Arrow(Pending)` surviving into the final Dag is
+    ///    A final `Arrow(Pending)` surviving into the Dag is
     ///    structurally a missed body-patching path: the R13-class
     ///    regression `lens_structural_resolution` watches for.
     /// 2. `infer::resolve_operator_arrow` for transient `ResolvedArrow`
@@ -639,9 +653,8 @@ pub enum ArrowBody {
     /// `decide_transform` treats `NoBody` identically to `Pending` at
     /// dispatch time (signature inhabitance, body-walking skipped). The
     /// variant distinction exists so `lens_structural_resolution` can
-    /// match `Arrow(Pending)` as the structural fact for "executable-fn
-    /// body patching missed a path" without depending on `decl.name` as
-    /// a proxy for producer provenance.
+    /// match `Arrow(Pending)` directly as the structural fact for
+    /// "executable-fn body patching missed a path."
     NoBody,
     /// Surface-grammar scaffold. The arrow's signature is resolved and
     /// callers can type-check against it, but the body source is not
@@ -946,11 +959,43 @@ impl TransformRef {
     }
 }
 
-/// 🟢 **TERMINAL.** Bool-typed port witness — Track 9 parallel to [`ParamRef`] /
-/// [`TransformRef`]. The only Rust constructor is [`Dag::bool_port_of`], which
-/// checks the port resolves to `Bool`. The substrate field shape matches
-/// `src/v3/std/effects.dag`; direct `.dag` construction gains the same authority
-/// in the Lane 3c cycle (ROADMAP Track 9 debt).
+/// 🟢 **TERMINAL at current Track 9 scope.** Generic index witness parallel to
+/// [`ParamRef`] / [`TransformRef`]. The only Rust constructor is
+/// [`ElementRef::from_slice`], which validates the index against the slice in
+/// scope. The handle does not retain owner identity after construction, so
+/// read sites must still resolve it against the same authority list they
+/// validated it against. The substrate field shape matches
+/// `src/v3/std/substrate.dag`; direct `.dag` construction gains the same
+/// authority in the Lane 3c cycle (ROADMAP Track 9 debt).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ElementRef<T> {
+    index: usize,
+    _marker: PhantomData<fn() -> T>,
+}
+
+impl<T> ElementRef<T> {
+    pub fn index_of(self) -> usize {
+        self.index
+    }
+
+    pub fn from_slice(values: &[T], index: usize) -> Option<Self> {
+        values.get(index)?;
+        Some(Self {
+            index,
+            _marker: PhantomData,
+        })
+    }
+
+    pub fn get<'a>(self, values: &'a [T]) -> Option<&'a T> {
+        values.get(self.index)
+    }
+}
+
+/// 🟢 **TERMINAL.** Bool-typed branch predicate port — Track 9 parallel to
+/// [`ParamRef`] / [`TransformRef`]. The only Rust constructor is
+/// [`Dag::bool_port_of`], which checks the port resolves to `Bool`. The
+/// substrate field shape matches `src/v3/std/effects.dag`; direct `.dag`
+/// construction gains the same authority in the Lane 3c cycle (ROADMAP Track 9 debt).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BoolPortRef {
     port: PortId,
@@ -1015,6 +1060,20 @@ impl<T> NonSingletonList<T> {
         std::iter::once(&self.first)
             .chain(std::iter::once(&self.second))
             .chain(self.rest.iter())
+    }
+
+    pub fn len(&self) -> usize {
+        2 + self.rest.len()
+    }
+
+    pub fn to_vec(&self) -> Vec<T>
+    where
+        T: Clone,
+    {
+        std::iter::once(self.first.clone())
+            .chain(std::iter::once(self.second.clone()))
+            .chain(self.rest.iter().cloned())
+            .collect()
     }
 }
 
@@ -1094,20 +1153,23 @@ pub struct OperationEffect {
     pub shape: EffectShape,
 }
 
-/// 🟢 **TERMINAL.** First breaking witness in a composition chain — mirrors
-/// `BreakingOperation` in `effects.dag`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BreakingOperation {
-    pub operation_name: String,
-    pub shape: BreakingShape,
-}
-
-/// 🟢 **TERMINAL.** Result of linear `compose_effects` — mirrors
-/// `CompositionVerdict` in `effects.dag`.
+/// 🟢 **TERMINAL at current Stage 2b scope.** Result of linear
+/// `compose_effects` — mirrors `CompositionVerdict` in `effects.dag`.
+/// `ElementRef<OperationEffect>` closes the "copied standalone breaker
+/// record" hole by replacing the copied payload with a validated index,
+/// but it does not by itself preserve the owner list identity or prove
+/// the pointed operation is breaking. Those facts are still established
+/// by `workflow_idempotency::compose_operation_effects` and by callers
+/// resolving against the matching workflow evidence chain, and are
+/// tracked as the same constructor-validation asymmetry class as other
+/// reflected handles until the substrate grows an owner-bound,
+/// breaking-only witness.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompositionVerdict {
     IdempotentComposition,
-    BrokenBy { first_breaker: BreakingOperation },
+    BrokenBy {
+        first_breaker: ElementRef<OperationEffect>,
+    },
 }
 
 /// 🟢 **TERMINAL.** Branch arm: [`BoolPortRef`] condition + nested workflow body.
@@ -1160,6 +1222,28 @@ impl BranchArm {
     }
 }
 
+impl WorkflowEffect {
+    pub fn operation_at(&self, element: ElementRef<OperationEffect>) -> Option<&OperationEffect> {
+        match self {
+            Self::LinearEffect { ops } => element.get(ops),
+            Self::ParallelEffect { branches } => {
+                let mut remaining = element.index_of();
+                for branch in branches.iter() {
+                    let Self::LinearEffect { ops } = branch.as_ref() else {
+                        return None;
+                    };
+                    if let Some(op) = ops.get(remaining) {
+                        return Some(op);
+                    }
+                    remaining = remaining.checked_sub(ops.len())?;
+                }
+                None
+            }
+            Self::BranchEffect { .. } | Self::LoopEffect { .. } => None,
+        }
+    }
+}
+
 /// 🟢 **TERMINAL.** Explicit unsupported payload — names variant + stage +
 /// reason; not a silent `Option` alongside a verdict.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1175,6 +1259,35 @@ pub struct IdempotencyUnsupportedDetail {
 pub enum WorkflowIdempotencyReport {
     WorkflowCompositionVerdict(CompositionVerdict),
     IdempotencyUnsupported(IdempotencyUnsupportedDetail),
+}
+
+/// 🟢 **TERMINAL.** Stage 2e parallel-lens unsupported classes — mirrors
+/// `ParallelismUnsupportedKind` in `effects.dag` (distinct from Stage 2b
+/// `IdempotencyUnsupportedDetail.variant_name`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParallelismUnsupportedKind {
+    NoWorkflowProjection,
+    NotParallelEffectRoot,
+    NonLinearParallelBranch,
+    PairwiseNonCommute,
+    LensSurfacePending,
+}
+
+/// 🟢 **TERMINAL.** Parallelism lens explicit unsupported payload — mirrors
+/// `ParallelismUnsupportedDetail` in `effects.dag`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParallelismUnsupportedDetail {
+    pub kind: ParallelismUnsupportedKind,
+    pub downstream_stage: String,
+    pub reason: String,
+}
+
+/// 🟢 **TERMINAL.** Lane 2 Stage 2e parallelism lens report — mirrors
+/// `WorkflowParallelismReport` in `effects.dag` (DB-20).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkflowParallelismReport {
+    ParallelCompositionVerdict(CompositionVerdict),
+    ParallelismUnsupported(ParallelismUnsupportedDetail),
 }
 
 // ── end std.effects mirror (DB-18) ───────────────────────────────────
@@ -1253,14 +1366,58 @@ impl LoopBound {
 /// See `docs/design-symbolic-cost-algebra.md` (DB-7) for the
 /// dissolution receipt and variant rationale.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DegreeAtLeastTwo {
+    DegreeTwo,
+    DegreeSuccessor { previous: Box<DegreeAtLeastTwo> },
+}
+
+impl DegreeAtLeastTwo {
+    pub const TWO: Self = Self::DegreeTwo;
+
+    pub fn new(value: i64) -> Option<Self> {
+        match value {
+            2 => Some(Self::DegreeTwo),
+            v if v > 2 => Some(Self::DegreeSuccessor {
+                previous: Box::new(Self::new(v - 1)?),
+            }),
+            _ => None,
+        }
+    }
+
+    pub fn raw(&self) -> i64 {
+        match self {
+            Self::DegreeTwo => 2,
+            Self::DegreeSuccessor { previous } => previous.raw() + 1,
+        }
+    }
+}
+
+type BoxedSymbolicCostList = NonSingletonList<Box<SymbolicCost>>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolicCost {
-    ConstantCost { _0: i64 },
-    LinearCost { _0: SizeVariable },
-    PolynomialCost { var: SizeVariable, degree: i64 },
-    ProductCost { _0: Vec<SymbolicCost> },
-    SumCost { _0: Vec<SymbolicCost> },
-    LogCost { _0: SizeVariable },
-    UnknownCost { _0: String },
+    ConstantCost {
+        _0: i64,
+    },
+    LinearCost {
+        _0: SizeVariable,
+    },
+    PolynomialCost {
+        var: SizeVariable,
+        degree: DegreeAtLeastTwo,
+    },
+    ProductCost {
+        _0: BoxedSymbolicCostList,
+    },
+    SumCost {
+        _0: BoxedSymbolicCostList,
+    },
+    LogCost {
+        _0: SizeVariable,
+    },
+    UnknownCost {
+        _0: String,
+    },
 }
 
 /// 🟢 TERMINAL at Stage 2d scope. Rust mirror of `SizeVariable`
@@ -1298,12 +1455,14 @@ pub struct SizeVariable {
 //     dominant-child summary.
 
 pub fn sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
-    normalize(SymbolicCost::SumCost { _0: vec![a, b] })
+    normalize(SymbolicCost::SumCost {
+        _0: boxed_cost_list_pair(a, b),
+    })
 }
 
 pub fn iterate(bound: SymbolicCost, body: SymbolicCost) -> SymbolicCost {
     normalize(SymbolicCost::ProductCost {
-        _0: vec![bound, body],
+        _0: boxed_cost_list_pair(bound, body),
     })
 }
 
@@ -1332,10 +1491,26 @@ pub fn max_path(paths: &[SymbolicCost]) -> SymbolicCost {
 
 pub fn normalize(cost: SymbolicCost) -> SymbolicCost {
     match cost {
-        SymbolicCost::SumCost { _0: terms } => reduce_sum(drop_zero_terms(terms)),
-        SymbolicCost::ProductCost { _0: terms } => reduce_product(drop_zero_terms(terms)),
+        SymbolicCost::SumCost { _0: terms } => {
+            reduce_sum(drop_zero_terms(boxed_terms_to_vec(&terms)))
+        }
+        SymbolicCost::ProductCost { _0: terms } => {
+            reduce_product(drop_zero_terms(boxed_terms_to_vec(&terms)))
+        }
         other => other,
     }
+}
+
+fn boxed_cost_list_pair(a: SymbolicCost, b: SymbolicCost) -> BoxedSymbolicCostList {
+    BoxedSymbolicCostList {
+        first: Box::new(a),
+        second: Box::new(b),
+        rest: Vec::new(),
+    }
+}
+
+fn boxed_terms_to_vec(terms: &BoxedSymbolicCostList) -> Vec<SymbolicCost> {
+    terms.iter().map(|term| term.as_ref().clone()).collect()
 }
 
 fn drop_zero_terms(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
@@ -1350,7 +1525,9 @@ fn reduce_sum(mut terms: Vec<SymbolicCost>) -> SymbolicCost {
     match terms.len() {
         0 => SymbolicCost::ConstantCost { _0: 0 },
         1 => terms.into_iter().next().unwrap(),
-        _ => SymbolicCost::SumCost { _0: terms },
+        _ => SymbolicCost::SumCost {
+            _0: boxed_cost_list_from_vec(terms),
+        },
     }
 }
 
@@ -1364,8 +1541,14 @@ fn reduce_product(terms: Vec<SymbolicCost>) -> SymbolicCost {
             let b = iter.next().unwrap();
             combine_binary_product(a, b)
         }
-        _ => SymbolicCost::ProductCost { _0: terms },
+        _ => SymbolicCost::ProductCost {
+            _0: boxed_cost_list_from_vec(terms),
+        },
     }
+}
+
+fn boxed_cost_list_from_vec(terms: Vec<SymbolicCost>) -> BoxedSymbolicCostList {
+    NonSingletonList::from_vec(terms.into_iter().map(Box::new).collect()).unwrap()
 }
 
 fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
@@ -1373,11 +1556,13 @@ fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
         if va == vb {
             return SymbolicCost::PolynomialCost {
                 var: va.clone(),
-                degree: 2,
+                degree: DegreeAtLeastTwo::TWO,
             };
         }
     }
-    SymbolicCost::ProductCost { _0: vec![a, b] }
+    SymbolicCost::ProductCost {
+        _0: boxed_cost_list_pair(a, b),
+    }
 }
 
 fn drop_dominated_in_sum(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
@@ -1400,7 +1585,7 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
         SymbolicCost::LinearCost { _0: va } => match b {
             SymbolicCost::ConstantCost { .. } | SymbolicCost::LogCost { .. } => true,
             SymbolicCost::LinearCost { _0: vb } => va == vb,
-            SymbolicCost::PolynomialCost { var, degree } => va == var && *degree <= 1,
+            SymbolicCost::PolynomialCost { var: _, degree: _ } => false,
             _ => false,
         },
         SymbolicCost::PolynomialCost {
@@ -1408,11 +1593,11 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
             degree: ka,
         } => match b {
             SymbolicCost::ConstantCost { .. } | SymbolicCost::LogCost { .. } => true,
-            SymbolicCost::LinearCost { _0: vb } => va == vb && *ka >= 1,
+            SymbolicCost::LinearCost { _0: vb } => va == vb,
             SymbolicCost::PolynomialCost {
                 var: vb,
                 degree: kb,
-            } => va == vb && *ka >= *kb,
+            } => va == vb && ka.raw() >= kb.raw(),
             _ => false,
         },
         SymbolicCost::LogCost { _0: va } => match b {
@@ -1431,7 +1616,7 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
         // inspecting terms, so e.g. `Product([Log(n)])` incorrectly
         // dominated `Linear(n)`.
         SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => {
-            terms.iter().any(|child| dominates(child, b))
+            terms.iter().any(|child| dominates(child.as_ref(), b))
         }
     }
 }
@@ -2676,6 +2861,12 @@ impl Dag {
             fixes: Vec::new(),
         });
         None
+    }
+
+    /// Convenience wrapper over [`Dag::bool_port_of`] + [`BranchArm::new`].
+    pub fn branch_arm_of(&self, port: PortId, body: WorkflowEffect) -> Option<BranchArm> {
+        let condition = self.bool_port_of(port)?;
+        Some(BranchArm::new(condition, body))
     }
 
     pub fn as_transform_ref(&self, node: NodeId) -> Option<TransformRef> {

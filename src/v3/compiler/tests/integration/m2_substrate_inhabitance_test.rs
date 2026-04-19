@@ -80,6 +80,7 @@ fn substrate_declares_expected_reflection_surface() {
         record_fields(&dag, "NonSingletonList"),
         vec!["first", "second", "rest"]
     );
+    assert_eq!(record_fields(&dag, "ElementRef"), vec!["index"]);
     assert_eq!(record_fields(&dag, "ParamRef"), vec!["member", "slot"]);
     assert_eq!(record_fields(&dag, "TransformRef"), vec!["node"]);
     assert_eq!(record_fields(&dag, "MemberDescent"), vec!["param"]);
@@ -157,7 +158,11 @@ fn substrate_coproducts_match_runtime_carriers() {
                 String::from("UnresolvedIdentifier"),
                 vec![String::from("_0")],
             ),
-            (String::from("ResolvedIdentifier"), vec![String::from("_0")],),
+            (
+                String::from("ResolvedByStructure"),
+                vec![String::from("_0")],
+            ),
+            (String::from("ResolvedByName"), vec![String::from("_0")],),
             (String::from("TypeParam"), vec![String::from("_0")]),
         ]
     );
@@ -318,6 +323,7 @@ fn rust_dag_realizes_reflected_substrate_types() {
         "BranchPath",
         "NonEmptyList",
         "NonSingletonList",
+        "ElementRef",
         "ParamRef",
         "TransformRef",
         "MemberDescent",

@@ -21,6 +21,7 @@ use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
+use v3_compiler::emit::{emit as shared_emit, emit_module as shared_emit_module, EmitTarget};
 use v3_compiler::emit_rust::{emit_rust, emit_rust_module};
 
 use crate::common::{HarnessLinkMode, RustcHarness};
@@ -38,6 +39,35 @@ fn emit(source: &str) -> String {
 fn emit_module(source: &str) -> String {
     let dag = compile_to_dag(source, "test.v3").expect("compiles");
     emit_rust_module(&dag).expect("emits module")
+}
+
+#[test]
+fn emit_rust_wrappers_match_shared_entrypoint() {
+    let program_source = "\
+fn double(x: Int) -> Int = x + x
+let result: Int = double(21)
+";
+    let program_dag =
+        compile_to_dag(program_source, "emit_rust_wrapper_program_parity.v3").expect("compiles");
+    let shared = shared_emit(&program_dag, EmitTarget::Rust)
+        .expect("shared emit")
+        .text;
+    let wrapper = emit_rust(&program_dag).expect("wrapper emit");
+    assert_eq!(shared, wrapper, "emit_rust wrapper drifted from emit::emit");
+
+    let module_source = "\
+fn double(x: Int) -> Int = x + x
+";
+    let module_dag =
+        compile_to_dag(module_source, "emit_rust_wrapper_module_parity.v3").expect("compiles");
+    let shared_module = shared_emit_module(&module_dag, EmitTarget::Rust)
+        .expect("shared module emit")
+        .text;
+    let wrapper_module = emit_rust_module(&module_dag).expect("wrapper module emit");
+    assert_eq!(
+        shared_module, wrapper_module,
+        "emit_rust_module wrapper drifted from emit::emit_module"
+    );
 }
 
 fn roundtrip_stdout(source: &str) -> String {

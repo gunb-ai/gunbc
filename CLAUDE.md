@@ -6,6 +6,8 @@ Read these docs before working:
 - `MODELING.md` — DSL modeling philosophy. **Especially M9: DFS the concept DAG.**
   Before defining any new type, DFS from `dsl/std/` to find the existing concept
   it should attach to. See the concept DAG layers in MODELING.md.
+- `CODING.md` — Rust implementation style (Google C++-style, pure functions, data + free functions).
+- `TESTING.md` — test discipline (hermetic, behavior-driven, unit-first; mocks over full-pipeline compile).
 - `src/v2/DESIGN.md` — compiler design principles.
 
 ## Key Commands
