@@ -1,0 +1,31 @@
+// SG-4 prep — first .dag-authority slice of `infer.rs`.
+//
+// `behavior_output_port` is the smallest pure read helper in the
+// 4276-line `src/v3/compiler/src/infer.rs`: a five-arm match over
+// `Behavior` returning the variant's result port. Identical to
+// `behavior_port` in `lenses/unused_parameters.dag`; the duplication
+// is the price of avoiding an `infer → lens` dependency for now and
+// dissolves when SG-6 consolidates regen + a shared `behavior.dag`
+// helper module surfaces.
+//
+// Hard cutover for SG-4 itself remains blocked on the substrate
+// research called out in `src/v3/SELF_HOSTING.md` §5 (inferred-state
+// representation, I1–I8 write-surface experiments, L2.5 infer-domain
+// modeling). This file is the smallest credible step that proves
+// the existing `.dag → emit_rust_module → committed *_generated.rs`
+// path on infer-shaped code: the function comes out of `infer.rs`,
+// the .dag becomes the authority, and the regenerated Rust module
+// is the surface `infer.rs` consumes.
+
+module v3.compiler.infer_helpers
+
+import std.substrate { Behavior, PortId }
+
+fn behavior_output_port(behavior: Behavior) -> PortId =
+  match behavior {
+    Value(v) => v.result_port
+    Transform(t) => t.result_port
+    Branch(b) => b.result_port
+    Loop(l) => l.result_port
+    Bind(bind) => bind.result_port
+  }
