@@ -29,37 +29,37 @@ pub struct Correction {
 pub enum Diagnostic {
     TokenizerError {
         message: String,
-        span: CompilerSourceSpan,
-        fixes: Vec<CompilerCorrection>,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
     },
     ParseError {
         message: String,
-        span: CompilerSourceSpan,
-        fixes: Vec<CompilerCorrection>,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
     },
     TypeMismatch {
         expected: TypeShape,
         actual: TypeShape,
-        span: CompilerSourceSpan,
-        fixes: Vec<CompilerCorrection>,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
     },
     ArityMismatch {
         function: String,
         expected: usize,
         actual: usize,
-        span: CompilerSourceSpan,
-        fixes: Vec<CompilerCorrection>,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
     },
     ResolveError {
         name: String,
-        span: CompilerSourceSpan,
-        fixes: Vec<CompilerCorrection>,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
     },
     BranchConditionNotBool {
         port: PortId,
         actual_type: Option<TypeShape>,
-        span: CompilerSourceSpan,
-        fixes: Vec<CompilerCorrection>,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
     },
 }
 
