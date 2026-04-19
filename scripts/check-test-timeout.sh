@@ -78,8 +78,14 @@ fi
 # gawk on Ubuntu CI) lacks the `match(s, r, arr)` submatch form, so
 # extract via field indexing: `$1=="test", $2=name, $3="...", $4=status, $5=<time>`.
 # "ignored" tests have no timing trailer, so they fail the regex and are skipped.
-violations=$(awk -v budget_ms="$budget_ms" '
+#
+# The awk script emits a trailing `__PARSED_COUNT=<n>` line so the caller
+# can **fail closed** when zero test-result lines were parsed — protects
+# against silent false-green if libtest output drifts (the format is
+# explicitly unstable, rust-lang/rust#64888).
+awk_output=$(awk -v budget_ms="$budget_ms" '
   /^test[[:space:]]+[^ ]+[[:space:]]+\.\.\.[[:space:]]+(ok|FAILED)[[:space:]]+<[0-9]+\.[0-9]+s>$/ {
+    parsed_count++
     name = $2
     timestr = $NF
     # timestr looks like "<1.234s>" — strip brackets and the "s" suffix.
@@ -95,7 +101,21 @@ violations=$(awk -v budget_ms="$budget_ms" '
       printf "%s\t%d\n", name, elapsed_ms
     }
   }
+  END {
+    printf "__PARSED_COUNT=%d\n", parsed_count
+  }
 ' "$log_file")
+
+parsed_count=$(printf '%s\n' "$awk_output" | awk -F= '/^__PARSED_COUNT=/ {print $2}')
+violations=$(printf '%s\n' "$awk_output" | awk '!/^__PARSED_COUNT=/ {print}' | awk 'NF')
+
+if [ -z "$parsed_count" ] || [ "$parsed_count" -eq 0 ]; then
+  echo "::error::zero test-result lines parsed from $log_file — libtest --report-time format may have drifted (tracking rust-lang/rust#64888). Failing closed rather than emit a silent green ratchet."
+  echo "First 20 lines of the log:"
+  head -20 "$log_file" | sed 's/^/  | /'
+  exit 1
+fi
+echo "Parsed ${parsed_count} test-result lines from timing log."
 
 # Load exemptions. Lines are `test::name  # reason` — the `#` and anything
 # after it is a comment. Blank lines ignored.

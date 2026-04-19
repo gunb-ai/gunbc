@@ -83,6 +83,9 @@ fn roundtrip_stdout(source: &str) -> String {
         .expect("write rust source");
 
     let compile = Command::new("rustc")
+        // See common::RustcHarness::compile: strip RUSTC_BOOTSTRAP so the ratchet
+        // CI step's libtest unlock does not leak into child rustc invocations.
+        .env_remove("RUSTC_BOOTSTRAP")
         .arg(&src_path)
         .arg("-o")
         .arg(&bin_path)

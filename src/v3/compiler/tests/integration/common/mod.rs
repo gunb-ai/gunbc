@@ -131,7 +131,14 @@ impl RustcHarness {
             .expect("write harness source");
 
         let mut cmd = Command::new("rustc");
-        cmd.arg("--edition=2021")
+        // Strip RUSTC_BOOTSTRAP before spawning rustc. The ratchet CI step sets
+        // RUSTC_BOOTSTRAP=1 at the outer shell so libtest accepts its unstable
+        // `--report-time` flag; without this removal the env var would leak to
+        // every child rustc invocation, flipping them into bootstrap mode and
+        // breaking the boundary-layer contract that these tests exercise the
+        // **real** stable toolchain (TESTING.md § test layers).
+        cmd.env_remove("RUSTC_BOOTSTRAP")
+            .arg("--edition=2021")
             .arg(&src_path)
             .arg("-o")
             .arg(&bin_path);
