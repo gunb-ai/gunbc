@@ -1,9 +1,10 @@
 //! Lane 2 Stage 2e / DB-20 — `ParallelEffect` parallel composition safety.
 //!
 //! Derivation coverage (merge gate: pairwise commutativity from `OperationEffect` shapes):
-//! - **Commute (green):** `parallel_read_only_branches_commute` — cross-branch `ReadEffect` only;
-//!   `parallel_same_key_path_upserts_commute` — same `KeySource` **and** same `operation_name`
-//!   on upserts (distinct op names are not proven same write); `parallel_same_key_distinct_upsert_names_do_not_commute` — red.
+//! - **Commute (green):** `parallel_read_only_branches_commute` — cross-branch `ReadEffect` only.
+//! - **Upsert×Upsert (v1):** always **red** — `UpsertEffect` has no merge/value witness; see
+//!   `parallel_upsert_cross_branch_fail_closed_same_op_name` and
+//!   `parallel_upsert_cross_branch_fail_closed_distinct_op_names`.
 //! - **Non-commute / fail-closed (red):** `parallel_different_path_param_names_not_proven_commute` —
 //!   distinct `PathParam` names (not a disjointness proof); `parallel_read_vs_upsert_does_not_commute` —
 //!   read vs write shape clash.
@@ -94,11 +95,10 @@ fn parallel_read_only_branches_commute() {
 }
 
 #[test]
-fn parallel_same_key_path_upserts_commute() {
+fn parallel_upsert_cross_branch_fail_closed_same_op_name() {
     let mut dag = shared_fixture_dag();
     let root = lane2_anchor(&dag);
     let key = KeySource::PathParam { param: "id".into() };
-    // Same route identity: matching operation_name + KeySource is the v1 witness for upsert commute.
     let upsert = op(
         "put_item",
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
@@ -118,16 +118,14 @@ fn parallel_same_key_path_upserts_commute() {
     };
     assert!(dag.try_register_lane2_workflow_effect(root, wf));
     let r = analyze_parallelism(&dag, root);
-    assert!(matches!(
-        r,
-        WorkflowParallelismReport::ParallelCompositionVerdict(
-            CompositionVerdict::IdempotentComposition
-        )
-    ));
+    let WorkflowParallelismReport::ParallelismUnsupported(d) = r else {
+        panic!("expected ParallelismUnsupported — Upsert×Upsert has no merge witness in v1");
+    };
+    assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
 }
 
 #[test]
-fn parallel_same_key_distinct_upsert_names_do_not_commute() {
+fn parallel_upsert_cross_branch_fail_closed_distinct_op_names() {
     let mut dag = shared_fixture_dag();
     let root = lane2_anchor(&dag);
     let key = KeySource::PathParam { param: "id".into() };
@@ -153,7 +151,7 @@ fn parallel_same_key_distinct_upsert_names_do_not_commute() {
     assert!(dag.try_register_lane2_workflow_effect(root, wf));
     let r = analyze_parallelism(&dag, root);
     let WorkflowParallelismReport::ParallelismUnsupported(d) = r else {
-        panic!("expected ParallelismUnsupported — same KeySource but distinct operation_name is not a same-write proof");
+        panic!("expected ParallelismUnsupported");
     };
     assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
 }

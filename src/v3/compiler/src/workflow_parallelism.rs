@@ -27,27 +27,23 @@ fn parallel_unsupported(
 
 /// Pairwise commutativity for idempotent [`OperationEffect`] pairs.
 ///
-/// **Upsert×Upsert:** equal [`KeySource`] alone does **not** imply commuting
-/// writes — `IdempotentShape::UpsertEffect` has no payload witness, so two
-/// different `operation_name` values are treated as potentially conflicting
-/// updates to the same key. v1 only commutes when **key and operation name**
-/// both match (fail-closed).
+/// **Upsert×Upsert:** always **not** commute in v1. `UpsertEffect` in
+/// `std.effects` carries only [`crate::dag::KeySource`] — no value body or
+/// merge-law witness — so the lens cannot certify **concurrent** write
+/// commutativity (distinct payloads / last-write semantics). Fail-closed until
+/// the algebra exposes an explicit witness (Codex / #543).
 ///
-/// **Delete×Delete:** same structural key is enough (deleting the same cell
-/// twice commutes regardless of route label).
+/// **Delete×Delete:** same structural key commutes (same cell removed).
 ///
 /// **Read×Read:** always commutes.
 ///
 /// Distinct [`KeySource`] values do not prove runtime disjointness (e.g. different
-/// `PathParam` names may alias) — inequality → not commute.
+/// `PathParam` names may alias) — inequality on deletes → not commute.
 fn idempotent_operations_commute(a: &OperationEffect, b: &OperationEffect) -> bool {
     match (&a.shape, &b.shape) {
         (EffectShape::IsIdempotent(ia), EffectShape::IsIdempotent(ib)) => match (ia, ib) {
             (IdempotentShape::ReadEffect, IdempotentShape::ReadEffect) => true,
-            (
-                IdempotentShape::UpsertEffect { key_source: ka },
-                IdempotentShape::UpsertEffect { key_source: kb },
-            ) => ka == kb && a.operation_name == b.operation_name,
+            (IdempotentShape::UpsertEffect { .. }, IdempotentShape::UpsertEffect { .. }) => false,
             (
                 IdempotentShape::DeleteEffect { key_source: ka },
                 IdempotentShape::DeleteEffect { key_source: kb },

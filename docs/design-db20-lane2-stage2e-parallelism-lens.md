@@ -25,7 +25,7 @@ DB-18 locks `WorkflowEffect::ParallelEffect { branches: NonSingletonList<Workflo
 | Option | Verdict |
 |--------|---------|
 | (a) Additive `commutativity: CommutativityWitness` on `ParallelEffect` | **Rejected for Stage 2e.** Would duplicate facts derivable from per-op shapes (Q3), unless a future consumer proves a witness is *not* derivable from the op algebra alone. |
-| (b) Derive from op-level algebra without a substrate field | **Adopted.** For **deletes** and **reads**, same structural `KeySource` behaves as expected. For **upserts**, equal `KeySource` is **not** enough: `UpsertEffect` does not carry a payload witness, so two different `operation_name` values are treated as **potentially conflicting writes** to the same key — v1 only commutes upserts when **key and operation name** match. **Different** `KeySource` values (including different `PathParam` *names*) still do **not** imply runtime key disjointness without a witness (fail-closed). |
+| (b) Derive from op-level algebra without a substrate field | **Adopted for read/delete pairwise checks.** **Upsert×Upsert** cross-branch pairs are **not** certified in v1: `UpsertEffect` carries key provenance only (no value / merge-law witness), so parallel scheduling treats **all** Upsert×Upsert as **non-commute** (fail-closed) until the algebra exposes an explicit concurrent-write witness. **Different** `KeySource` values (including different `PathParam` *names*) do **not** imply runtime key disjointness without a witness (fail-closed). |
 
 ---
 
@@ -39,7 +39,7 @@ For parallel branches that are each linear sequences of operations, **safe concu
 
 - `ReadEffect` ∘ `ReadEffect` — commutes.
 - `DeleteEffect` ∘ `DeleteEffect` — **same** `KeySource` commutes (same cell deleted).
-- `UpsertEffect` ∘ `UpsertEffect` — commute only when **same** `KeySource` **and** **same** `operation_name` (the carrier does not model body/payload; distinct names ⇒ not proven same write ⇒ **not** commute in v1).
+- `UpsertEffect` ∘ `UpsertEffect` — **never** commutes in v1 (no payload / merge-law witness on the carrier; concurrent upserts are fail-closed).
 - **Distinct** `PathParam` parameter names do not prove disjoint runtime keys (`{id}` vs `{user_id}` can alias); inequality on `KeySource` → **not** commute in v1.
 - Mixed `Upsert`/`Delete` or `CompositeKey`/`InputField` combinations default to **not** commuting until a richer key-disjointness story exists (conservative).
 
