@@ -237,6 +237,51 @@ func resolve_compiler_tools() -> ToolResolveResult {
 
 data test_package: NonEmptyStr = "v2-compiler-tests"
 
+// ── v3 source authority inventory (SG program) ──────────────────────
+//
+// v3 is mid-migration from hand-authored Rust to .dag sources. Unlike
+// v2 stage0 (a fully regenerated crate with tiny hand-maintained
+// carve-outs) v3's hand-authored surface is still the majority and
+// shrinks one lane at a time. The SG program (SG-0..SG-7) sequences
+// that dissolution. Each lane's PR ports a group of .rs files to
+// .dag authority AND removes those .rs files as authority in the
+// same PR — deleted, generated, or reduced to a narrow host shim
+// that carries a generated header. No dual-authority period.
+//
+// This section is the STRUCTURAL authority for the census: the
+// directories that count against the inventory, and the marker that
+// separates generated files from hand-authored ones. The ENFORCED
+// authority — the concrete list of hand-authored .rs paths that
+// must only shrink over time — lives with the ratchet test at
+// src/v3/compiler/tests/integration/sg0_census_test.rs. The two
+// agree today by discipline; when the v3 pipeline is self-hosting
+// enough, the test's constant can be derived from this file.
+
+// Directories the census walks for .rs files. The walk is recursive
+// within each root; nested build artifacts (target/) are skipped by
+// the walker. One root today (`src/v3/compiler`) is enough to reach
+// every v3-compiler .rs file on disk — the crate sources, bin
+// targets, the emit subtree, the integration test tree, and the
+// crate's `build.rs`. Additional census roots land here if v3
+// ever grows Rust sources outside this crate.
+type V3CensusRoot {
+  path: FilePath
+}
+
+data v3_census_roots: List<V3CensusRoot> = [
+  { path: "src/v3/compiler" }
+]
+
+// First non-blank line prefix on every generated .rs file. Every
+// regen driver (src/v3/compiler/src/bin/regen_*.rs and the crate's
+// build.rs) prepends a header beginning with this string; the
+// census classifies any file whose first non-blank line begins with
+// it as generated-by-construction and drops it from the hand-
+// authored count. Hand-editing a generated file is still forbidden
+// by feedback_no_generated_code_on_disk — this marker is the
+// discrimination protocol, not a permission.
+data v3_generated_marker_prefix: NonEmptyStr = "// AUTO-GENERATED"
+
 // ── Command derivation ──────────────────────────────────────────────
 // Every builder takes a resolved cargo/grep/diff/cp/rm path instead of
 // a bare name, so emitted shell commands have no hidden PATH dependency.
