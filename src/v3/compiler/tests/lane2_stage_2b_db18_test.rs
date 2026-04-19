@@ -217,11 +217,14 @@ fn diagnostic_paths_name_stage2b() {
 #[test]
 fn branch_condition_not_bool_diagnostic_records_span() {
     let mut dag = compile_to_dag("let x = 1 + 2", "branch_cond.v3").expect("compile");
-    let binds: Vec<_> = dag.nodes().iter().filter_map(Behavior::as_bind).collect();
-    let int_bind = binds.iter().find(|b| b.name == "x").expect("x");
+    let int_port = {
+        let binds: Vec<_> = dag.nodes().iter().filter_map(Behavior::as_bind).collect();
+        let int_bind = binds.iter().find(|b| b.name == "x").expect("x");
+        int_bind.value
+    };
     let span = SourceSpan::new("branch_cond.v3", 4, 5);
     assert!(dag
-        .bool_port_for_branch_condition_or_diagnose(int_bind.value, span.clone())
+        .bool_port_for_branch_condition_or_diagnose(int_port, span.clone())
         .is_none());
     let diags: Vec<_> = dag.diagnostics().iter().collect();
     assert_eq!(diags.len(), 1);
@@ -235,7 +238,7 @@ fn branch_condition_not_bool_diagnostic_records_span() {
     else {
         panic!("expected BranchConditionNotBool, got {d:?}");
     };
-    assert_eq!(*port, int_bind.value);
+    assert_eq!(*port, int_port);
     assert!(actual_type.is_some());
     assert_eq!(sp.file, "branch_cond.v3");
 }
