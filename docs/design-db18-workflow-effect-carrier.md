@@ -326,7 +326,7 @@ This is deliberate. PR #529 removed `ComposedEffect { operations, verdict }` bec
 
 **Part 3 — follow-up:**
 - Data-declaration authoring surface: end-to-end lowering from `data my_flow: WorkflowEffect = …` using the same R2 constructors.
-- Optional polish beyond [`m2_lens_idempotency_migration_test.rs`](../../src/v3/compiler/tests/m2_lens_idempotency_migration_test.rs) (rustc round-trip vs oracle is already gated).
+- Optional polish beyond [`m2_lens_idempotency_migration_test.rs`](../src/v3/compiler/tests/m2_lens_idempotency_migration_test.rs) (rustc round-trip vs oracle is already gated).
 
 ---
 
@@ -402,7 +402,7 @@ Design-contract items (locked in this doc, independent of shipping-phase):
 3. Q1–Q6 substrate-principle audit is stamped in-doc; Q4 dissolution receipt is stamped in-doc. Q5 single-authority is resolved by the §"Authority site for WorkflowEffect" section.
 4. `LinearEffect` is the Stage 2b consumer; the other three variants produce `WorkflowIdempotencyReport::IdempotencyUnsupported` with a variant-specific `IdempotencyUnsupportedDetail`. Empty `LinearEffect.ops` is the monoidal identity at the workflow carrier; `compose_operation_effects` maps it to `IdempotentComposition`.
 5. `CompositionVerdict` and `WorkflowEffect` coexist on orthogonal axes — no enclosing record pairs them; `LinearEffect`'s dispatch is the sole edge between them.
-6. `WorkflowEffect`'s authority site is `ValueNode.lane2_workflow` / `BindNode.lane2_workflow` at the workflow root. Accessors: `try_register_lane2_workflow_effect` (write) and `lane2_workflow_effect_at(&NodeId)` (read). One workflow per root; no `Dag.workflows` sidecar.
+6. `WorkflowEffect`'s authority site is `ValueNode.lane2_workflow` / `BindNode.lane2_workflow` at the workflow root. Accessors: `try_register_lane2_workflow_effect` (write) and `lane2_workflow_effect_at(&self, root: &NodeId)` (read). One workflow per root; no `Dag.workflows` sidecar.
 7. Part 3 source-to-handle: expression → port → **`bool_port_of` / `bool_port_for_branch_condition_or_diagnose`** → **`BranchArm::new`**, fail-closed `BranchConditionNotBool` when the port is not Bool.
 8. Algebra pre-gate: PR #529 (`CompositionVerdict`). R2 substrate: DB-18 Part 2 (PR **#545** et seq.).
 
@@ -410,14 +410,14 @@ Design-contract items (locked in this doc, independent of shipping-phase):
 
 1. `WorkflowEffect`, `BranchArm`, `BoolPortRef` in `dag.rs`; **🟢 TERMINAL** in `effects.dag`.
 2. `bool_port_of`, `BranchArm::new`, `bool_port_for_branch_condition_or_diagnose`.
-3. `try_register_lane2_workflow_effect`, `lane2_workflow_effect_at(&NodeId)`.
+3. `try_register_lane2_workflow_effect`, `lane2_workflow_effect_at(&self, root: &NodeId)`.
 4. `workflow_idempotency::analyze_workflow` + `project_workflow_idempotency_report`.
 5. Tests: linear green/red, empty-linear idempotent, `BranchConditionNotBool`, non-linear unsupported paths.
 
 **Part 3 — follow-up:**
 
 1. **Data-declaration surface** `data my_flow: WorkflowEffect = …` wired end-to-end through the same R2 constructors (today: tests + `try_register` only).
-2. Optional: full **rustc** link of emitted idempotency lens (see compiler test module header).
+2. Optional: extend **rustc** coverage beyond [`m2_lens_idempotency_migration_test.rs`](../src/v3/compiler/tests/m2_lens_idempotency_migration_test.rs).
 
 **Pre-start gate for Part 3 surface:** reflection for `lane2_workflow` is **landed** (substrate + specs); the remaining gate is user-facing authoring + lowering polish.
 

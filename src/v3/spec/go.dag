@@ -421,6 +421,12 @@ data go_loop_bound: TypeRealization = {
   cost: 1
 }
 
+// DB-18 Stage 2b: `lane2_workflow` / `WorkflowEffect?` is **omitted** from
+// `go_value_node` / `go_bind_node` until Go has a typed projection getter
+// matching `WorkflowEffect?` (Rust uses `AccessorMethod("lane2_workflow")` in
+// `rust.dag`, not `DirectField` on staged storage). Listing `DirectField` here
+// duplicated a second, inconsistent realization story vs the substrate accessor
+// (`lane2_workflow_at`). Re-add when Go emission can express the same boundary.
 data go_value_node: TypeRealization = {
   language: go_language
   target: ValueNode
@@ -430,8 +436,7 @@ data go_value_node: TypeRealization = {
     { dag_name: "id", access: DirectField("id"), borrowed_read: false },
     { dag_name: "payload", access: DirectField("payload"), borrowed_read: false },
     { dag_name: "result_port", access: DirectField("result_port"), borrowed_read: false },
-    { dag_name: "span", access: DirectField("span"), borrowed_read: false },
-    { dag_name: "lane2_workflow", access: DirectField("lane2_workflow"), borrowed_read: false }
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -493,8 +498,7 @@ data go_bind_node: TypeRealization = {
     { dag_name: "name", access: DirectField("name"), borrowed_read: false },
     { dag_name: "result_port", access: DirectField("result_port"), borrowed_read: false },
     { dag_name: "params", access: DirectField("params"), borrowed_read: false },
-    { dag_name: "span", access: DirectField("span"), borrowed_read: false },
-    { dag_name: "lane2_workflow", access: DirectField("lane2_workflow"), borrowed_read: false }
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
 }
