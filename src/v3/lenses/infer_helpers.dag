@@ -2,11 +2,18 @@
 //
 // `behavior_output_port` is the smallest pure read helper in the
 // 4276-line `src/v3/compiler/src/infer.rs`: a five-arm match over
-// `Behavior` returning the variant's result port. Identical to
-// `behavior_port` in `lenses/unused_parameters.dag`; the duplication
-// is the price of avoiding an `infer → lens` dependency for now and
-// dissolves when SG-6 consolidates regen + a shared `behavior.dag`
+// `Behavior` returning the variant's result port. Functionally
+// identical to `behavior_port` in `lenses/unused_parameters.dag`;
+// the duplication is the price of avoiding an `infer → lens`
+// dependency for now and dissolves when a shared `behavior.dag`
 // helper module surfaces.
+//
+// Lives under `lenses/` (not `compiler/`) so build.rs's auto-stager
+// for `src/v3/compiler/*.dag` doesn't load it into the bootstrap.
+// The regen reads it standalone via `compile_to_dag` exactly the way
+// the lens regens do — see `regen_infer_helpers.rs`. SG-6 owns
+// reorganizing the regen-and-stage layout once the consolidated
+// driver lands.
 //
 // Hard cutover for SG-4 itself remains blocked on the substrate
 // research called out in `src/v3/SELF_HOSTING.md` §5 (inferred-state
@@ -17,7 +24,7 @@
 // the .dag becomes the authority, and the regenerated Rust module
 // is the surface `infer.rs` consumes.
 
-module v3.compiler.infer_helpers
+module lenses.infer_helpers
 
 import std.substrate { Behavior, PortId }
 

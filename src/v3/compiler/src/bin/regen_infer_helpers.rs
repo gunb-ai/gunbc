@@ -11,11 +11,14 @@ use std::process::{Command, Stdio};
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit_rust::emit_rust_module;
 
-const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/infer_helpers.dag` via\n\
+const HEADER: &str = "// AUTO-GENERATED from `src/v3/lenses/infer_helpers.dag` via\n\
      // `emit_rust_module`. Regenerate instead of hand-editing.\n\n";
 
 fn main() {
-    let source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("infer_helpers.dag");
+    let source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("lenses")
+        .join("infer_helpers.dag");
     let source = std::fs::read_to_string(&source_path).expect("read infer_helpers.dag");
     let dag = compile_to_dag(&source, source_path.to_string_lossy().as_ref())
         .expect("infer_helpers.dag compiles");
