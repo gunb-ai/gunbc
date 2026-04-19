@@ -220,7 +220,7 @@ The draft reserved DB-18/19/20/21/22 speculatively. This review dropped those re
 | DB-7 / Lane 2 Stage 2d | [`design-symbolic-cost-algebra.md`](./design-symbolic-cost-algebra.md) |
 | Stage 3b | [`design-correction-shape.md`](./design-correction-shape.md) (DB-1), [`lane3-self-hosting-cycle.md`](./lane3-self-hosting-cycle.md) §Stage 3b; Lane 1c blockers [`ROADMAP.md`](../ROADMAP.md) §Lane 1 Stage 1c |
 | Stage 3c mechanics | [`design-fixed-point-ratchet.md`](./design-fixed-point-ratchet.md) (DB-8) |
-| Lane 1 Stage 1e scope, emit determinism, `tests/determinism_test.rs` | [`post-l15-phase-plan.md`](./post-l15-phase-plan.md) Lane 1 summary (incl. DB-8 pointer), [`design-generic-walker-api.md`](./design-generic-walker-api.md) (DB-2) |
+| Lane 1 Stage 1e scope, emit determinism, `tests/determinism_test.rs` | [`phase1-lane3-consolidation-build-plan.md`](./phase1-lane3-consolidation-build-plan.md) §§7–12 (**primary** — 1d design **partial** 2026-04-18; §§7–12 land the walker contract / spec reading protocol / determinism plan / migration plan / bootstrap-once / determinism test suite; §§1–3 separate inventory docs + P2-L1 sign-off remain open per the doc's own §Acceptance gates); [`design-generic-walker-api.md`](./design-generic-walker-api.md) (DB-2 walker API); [`design-fixed-point-ratchet.md`](./design-fixed-point-ratchet.md) (DB-8 determinism); [`post-l15-phase-plan.md`](./post-l15-phase-plan.md) Lane 1 summary (sequencing) |
 | Open program questions (what `compiler.dag` is today) | **§6** below — not a design substitute for DB-8 |
 
 ---
