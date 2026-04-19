@@ -719,17 +719,29 @@ pub struct ValueNode {
     pub data: LiteralBits,
     pub output: PortId,
     pub span: SourceSpan,
-    /// Lane 2 Stage 2b: idempotency projection for this node. **Native Rust only**
-    /// — not part of the reflected `Behavior` surface in `substrate.dag`, so `.dag`
-    /// lenses cannot read it until a workflow fact is reflected + realized.
-    /// Populated by lowering or [`Dag::try_register_lane2_workflow_effect`];
-    /// [`crate::workflow_idempotency::analyze_workflow`] reads it from the graph.
+    /// Lane 2 Stage 2b: idempotency projection for this node.
+    ///
+    /// **Single authority:** the workflow fact lives only in this field (and the
+    /// analogous field on [`BindNode`]). There is no separate `Dag`-level map.
+    /// Reflected `ValueNode` / `BindNode` in `src/v3/std/substrate.dag` and
+    /// [`Dag::lane2_workflow_effect_at`] are read-only projections of the same
+    /// storage. The sole mutating constructor for tests/staging is
+    /// [`Dag::try_register_lane2_workflow_effect`]; lowering fills this field when
+    /// it exists. [`crate::workflow_idempotency::analyze_workflow`] reads through
+    /// [`Dag::lane2_workflow_effect_at`].
     pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
 }
 
 impl ValueNode {
     pub fn result_port(&self) -> PortId {
         self.output
+    }
+
+    /// Reflected substrate optional `WorkflowEffect?`: unboxes staged storage so
+    /// Rust realization does not surface `Option<Box<WorkflowEffect>>` at the
+    /// reflection boundary (`rust.dag` uses `AccessorMethod("lane2_workflow")`).
+    pub fn lane2_workflow(&self) -> Option<&WorkflowEffect> {
+        self.lane2_workflow.as_deref()
     }
 }
 
@@ -934,17 +946,17 @@ impl TransformRef {
     }
 }
 
-/// 🟢 **TERMINAL.** Bool-typed branch predicate port — Track 9 parallel to
-/// [`ParamRef`] / [`TransformRef`]. The only Rust constructor is
-/// [`Dag::branch_arm_of`], which checks the port resolves to `Bool`. The
-/// substrate field shape matches `src/v3/std/effects.dag`; direct `.dag`
-/// construction gains the same authority in the Lane 3c cycle (ROADMAP Track 9 debt).
+/// 🟢 **TERMINAL.** Bool-typed port witness — Track 9 parallel to [`ParamRef`] /
+/// [`TransformRef`]. The only Rust constructor is [`Dag::bool_port_of`], which
+/// checks the port resolves to `Bool`. The substrate field shape matches
+/// `src/v3/std/effects.dag`; direct `.dag` construction gains the same authority
+/// in the Lane 3c cycle (ROADMAP Track 9 debt).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct BranchPredicateRef {
+pub struct BoolPortRef {
     port: PortId,
 }
 
-impl BranchPredicateRef {
+impl BoolPortRef {
     pub fn port_id(self) -> PortId {
         self.port
     }
@@ -1098,21 +1110,22 @@ pub enum CompositionVerdict {
     BrokenBy { first_breaker: BreakingOperation },
 }
 
-/// 🟢 **TERMINAL.** Branch arm with a [`BranchPredicateRef`] witnessed as Bool by
-/// [`Dag::branch_arm_of`] — the sole constructor for valid arms.
+/// 🟢 **TERMINAL.** Branch arm: [`BoolPortRef`] condition + nested workflow body.
+/// Construct with [`BranchArm::new`] once [`Dag::bool_port_of`] has validated the
+/// predicate port.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BranchArm {
-    condition: BranchPredicateRef,
+    condition: BoolPortRef,
     body: Box<WorkflowEffect>,
 }
 
-/// 🟡 **SCAFFOLD.** Four-variant workflow sum aligned with `effects.dag`;
+/// 🟢 **TERMINAL.** Four-variant workflow sum aligned with `effects.dag`;
 /// Stage 2b analyzes `LinearEffect` only — non-linear variants surface
 /// `IdempotencyUnsupported` until branch-wise algebra lands.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkflowEffect {
     LinearEffect {
-        ops: NonEmptyList<OperationEffect>,
+        ops: Vec<OperationEffect>,
     },
     BranchEffect {
         arms: NonSingletonList<BranchArm>,
@@ -1126,7 +1139,19 @@ pub enum WorkflowEffect {
 }
 
 impl BranchArm {
-    pub fn branch_predicate(&self) -> BranchPredicateRef {
+    pub fn new(condition: BoolPortRef, body: WorkflowEffect) -> Self {
+        Self {
+            condition,
+            body: Box::new(body),
+        }
+    }
+
+    pub fn bool_port(&self) -> BoolPortRef {
+        self.condition
+    }
+
+    /// Back-compat alias for the condition field name used in early DB-18 tests.
+    pub fn branch_predicate(&self) -> BoolPortRef {
         self.condition
     }
 
@@ -1468,9 +1493,10 @@ pub struct BindNode {
     /// no type tag. See the C2 dissolution receipt at the top of this file.
     pub params: Vec<PortId>,
     pub span: SourceSpan,
-    /// Lane 2 Stage 2b: idempotency projection for this bind. Same contract as
-    /// [`ValueNode::lane2_workflow`] (native Rust field; see that comment for the
-    /// substrate-reflection deferral).
+    /// Lane 2 Stage 2b: idempotency projection for this bind — same authority as
+    /// [`ValueNode::lane2_workflow`] (see that comment: one native field, reflected
+    /// substrate + `lane2_workflow_effect_at`, writers via
+    /// [`Dag::try_register_lane2_workflow_effect`] or lowering).
     pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
 }
 
@@ -1484,6 +1510,12 @@ impl BindNode {
     /// point of agreement between the two.
     pub fn result_port(&self) -> PortId {
         self.value
+    }
+
+    /// Reflected substrate optional `WorkflowEffect?` — same contract as
+    /// [`ValueNode::lane2_workflow`].
+    pub fn lane2_workflow(&self) -> Option<&WorkflowEffect> {
+        self.lane2_workflow.as_deref()
     }
 }
 
@@ -2174,16 +2206,10 @@ impl Dag {
         &self.clusters[id.index()]
     }
 
-    /// **🟡 Scaffold hook (API is intentional, substrate is not).** Attaches a
-    /// [`WorkflowEffect`] on **native** [`Behavior`] nodes at `root` (`Value` or
-    /// `Bind` only). This does **not** populate a reflected substrate field —
-    /// `.dag` lens walkers cannot see `lane2_workflow`. Not a type-system proof
-    /// that `root` is “the” workflow root; tests and lowering use it under the
-    /// ROADMAP “Reflection boundary” contract until the fact is reflected.
-    /// Returns `false` if `root` is missing or not `Value`/`Bind`. Downstream
-    /// lowering should populate the same fields so
-    /// [`crate::workflow_idempotency::analyze_workflow`] reads one graph-local
-    /// store (not a parallel side table).
+    /// Attaches a [`WorkflowEffect`] on [`Behavior`] nodes at `root` (`Value` or
+    /// `Bind` only). Writes the same `lane2_workflow` field reflected in
+    /// `substrate.dag` for `ValueNode` / `BindNode`. Returns `false` if `root` is
+    /// missing or not `Value`/`Bind`.
     pub fn try_register_lane2_workflow_effect(
         &mut self,
         root: NodeId,
@@ -2205,10 +2231,13 @@ impl Dag {
         }
     }
 
-    pub fn lane2_workflow_effect_at(&self, root: NodeId) -> Option<&WorkflowEffect> {
-        match self.node_opt(&root)? {
-            Behavior::Value(v) => v.lane2_workflow.as_deref(),
-            Behavior::Bind(b) => b.lane2_workflow.as_deref(),
+    /// Takes `&NodeId` (not by value) so emitted Rust lens code and substrate
+    /// accessor carriers agree with `node_opt` / `port_opt` — transform inputs
+    /// render as borrows at the explicit boundary.
+    pub fn lane2_workflow_effect_at(&self, root: &NodeId) -> Option<&WorkflowEffect> {
+        match self.node_opt(root)? {
+            Behavior::Value(v) => v.lane2_workflow(),
+            Behavior::Bind(b) => b.lane2_workflow(),
             Behavior::Transform(_) | Behavior::Branch(_) | Behavior::Loop(_) => None,
         }
     }
@@ -2644,20 +2673,38 @@ impl Dag {
         Some(ParamRef { member, slot })
     }
 
-    /// Construct a [`BranchArm`] only when `port` is resolved to the `Bool`
-    /// primitive, packaging the port as a [`BranchPredicateRef`] (Track 9
-    /// parity with [`Dag::param_of`] / [`Dag::as_transform_ref`]).
-    pub fn branch_arm_of(&self, port: PortId, body: WorkflowEffect) -> Option<BranchArm> {
+    /// Sole Bool-validating constructor: returns a [`BoolPortRef`] when `port`
+    /// resolves to the `Bool` primitive (Track 9 parity with [`Dag::param_of`]
+    /// / [`Dag::as_transform_ref`]). Build [`BranchArm`] with [`BranchArm::new`].
+    pub fn bool_port_of(&self, port: PortId) -> Option<BoolPortRef> {
         let bool_ty = self.bool_shape()?;
         let p = self.port_opt(&port)?;
         let ty = p.value_type()?;
         if *ty != bool_ty {
             return None;
         }
-        Some(BranchArm {
-            condition: BranchPredicateRef { port },
-            body: Box::new(body),
-        })
+        Some(BoolPortRef { port })
+    }
+
+    /// Fail-closed wrapper for data-declaration lowering: on success returns the
+    /// same witness as [`Dag::bool_port_of`]; on failure records
+    /// [`Diagnostic::BranchConditionNotBool`] (C-8) and returns `None`.
+    pub fn bool_port_for_branch_condition_or_diagnose(
+        &mut self,
+        port: PortId,
+        condition_span: SourceSpan,
+    ) -> Option<BoolPortRef> {
+        if let Some(r) = self.bool_port_of(port) {
+            return Some(r);
+        }
+        let actual_type = self.port_opt(&port).and_then(|p| p.value_type().cloned());
+        self.attach_diagnostic(Diagnostic::BranchConditionNotBool {
+            port,
+            actual_type,
+            span: condition_span,
+            fixes: Vec::new(),
+        });
+        None
     }
 
     pub fn as_transform_ref(&self, node: NodeId) -> Option<TransformRef> {

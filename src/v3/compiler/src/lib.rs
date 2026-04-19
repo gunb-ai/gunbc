@@ -170,14 +170,20 @@ pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan};
 pub use emit::{EmitMode, EmitTarget, EmittedSource};
 pub use emit_rust::EmitError;
-/// Lane 2 Stage 2b — **supported** public entry: [`analyze_workflow`] is the only
-/// idempotency API exported from this crate. Composition helpers such as
-/// `compose_operation_effects` / `operation_to_breaker` are **not** re-exported:
-/// naming and algebra authority live in `src/v3/std/effects.dag`, and the Rust
-/// bridge must not become a parallel public implementation surface.
+/// Lane 2 Stage 2b — supported public surface: [`analyze_workflow`] is the primary
+/// entry; [`report_unsupported_workflow_variant`] and
+/// [`lane2_workflow_idempotency_report`] are additionally exported so
+/// `emit_rust_module(idempotency.dag)` output can link in rustc round-trip tests.
+/// Composition helpers such as `compose_operation_effects` / `operation_to_breaker`
+/// are **not** re-exported: naming and algebra authority live in
+/// `src/v3/std/effects.dag`, and the Rust bridge must not become a parallel
+/// public implementation surface beyond these std.effects mirrors.
 pub use lens_idempotency::analyze_workflow;
 /// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
 pub use lens_parallelism::analyze_parallelism;
+pub use workflow_idempotency::{
+    lane2_workflow_idempotency_report, report_unsupported_workflow_variant,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StageSnapshotKind {

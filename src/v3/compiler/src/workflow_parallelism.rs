@@ -102,7 +102,7 @@ fn pairwise_cross_branch_commutes(
 }
 
 pub(crate) fn analyze_parallelism(d: &Dag, workflow_root: NodeId) -> WorkflowParallelismReport {
-    let Some(workflow) = d.lane2_workflow_effect_at(workflow_root) else {
+    let Some(workflow) = d.lane2_workflow_effect_at(&workflow_root) else {
         return parallel_unsupported(
             ParallelismUnsupportedKind::NoWorkflowProjection,
             "no WorkflowEffect projection on this substrate node — analysis reads only `Value`/`Bind` fields set by lowering or `try_register_lane2_workflow_effect`",

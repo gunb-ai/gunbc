@@ -143,7 +143,18 @@ fn main() {
     // `dimensions.dag` ahead of `list.dag`/`substrate.dag`, and their
     // recursive helpers fail termination against placeholder
     // connectives.
-    let staged_entries = collect_dag_entries(&std_dir, &["list.dag", "substrate.dag"]);
+    // `substrate_minimal` + `effects` before full `substrate` so `substrate.dag`
+    // can import `WorkflowEffect` for reflected `lane2_workflow` without a
+    // module cycle (`effects` still needs `PortId` / list primitives first).
+    let staged_entries = collect_dag_entries(
+        &std_dir,
+        &[
+            "list.dag",
+            "substrate_minimal.dag",
+            "effects.dag",
+            "substrate.dag",
+        ],
+    );
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
     let compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
     let staged_generated =

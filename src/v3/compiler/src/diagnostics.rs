@@ -115,6 +115,13 @@ pub enum Diagnostic {
         span: SourceSpan,
         fixes: Vec<Correction>,
     },
+    /// DB-18 R2 — branch condition port did not resolve to `Bool` at lowering.
+    BranchConditionNotBool {
+        port: PortId,
+        actual_type: Option<TypeShape>,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
+    },
 }
 
 impl Diagnostic {
@@ -124,7 +131,8 @@ impl Diagnostic {
             | Diagnostic::ParseError { span, .. }
             | Diagnostic::TypeMismatch { span, .. }
             | Diagnostic::ArityMismatch { span, .. }
-            | Diagnostic::ResolveError { span, .. } => span,
+            | Diagnostic::ResolveError { span, .. }
+            | Diagnostic::BranchConditionNotBool { span, .. } => span,
         }
     }
 
@@ -134,7 +142,8 @@ impl Diagnostic {
             | Diagnostic::ParseError { fixes, .. }
             | Diagnostic::TypeMismatch { fixes, .. }
             | Diagnostic::ArityMismatch { fixes, .. }
-            | Diagnostic::ResolveError { fixes, .. } => fixes,
+            | Diagnostic::ResolveError { fixes, .. }
+            | Diagnostic::BranchConditionNotBool { fixes, .. } => fixes,
         }
     }
 
@@ -153,6 +162,10 @@ impl Diagnostic {
                 ..
             } => format!("{function} expected {expected}, got {actual}"),
             Diagnostic::ResolveError { name, .. } => name.clone(),
+            Diagnostic::BranchConditionNotBool { actual_type, .. } => match actual_type {
+                Some(ty) => format!("branch condition port is not Bool (got {ty:?})"),
+                None => "branch condition port is not Bool (type not resolved)".to_string(),
+            },
         }
     }
 }

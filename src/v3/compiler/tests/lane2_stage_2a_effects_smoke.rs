@@ -100,7 +100,7 @@ fn effects_dag_exposes_core_effect_algebra_types() {
         "ModifierAxisCheck",
         "ModifierCheck",
         "WorkflowEffect",
-        "BranchPredicateRef",
+        "BoolPortRef",
         "BranchArm",
         "WorkflowIdempotencyReport",
         "WorkflowParallelismReport",

@@ -4919,6 +4919,25 @@ fn bound_callable_argument(
         })
 }
 
+fn rust_string_literal_body(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_ascii() && !c.is_control() => out.push(c),
+            c => {
+                use std::fmt::Write;
+                let _ = write!(&mut out, "\\u{{{:X}}}", c as u32);
+            }
+        }
+    }
+    out
+}
+
 fn render_value(v: &ValueNode, literals: &LiteralSyntaxBinding) -> String {
     match &v.data {
         LiteralBits::Int(n) => n.to_string(),
@@ -4927,7 +4946,7 @@ fn render_value(v: &ValueNode, literals: &LiteralSyntaxBinding) -> String {
         LiteralBits::String(s) => format!(
             "{}{}{}",
             literals.string_delimiter,
-            s.replace('\\', "\\\\").replace('"', "\\\""),
+            rust_string_literal_body(s),
             literals.string_delimiter
         ),
     }
