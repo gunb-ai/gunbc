@@ -108,20 +108,20 @@ jobs:
       # Regressions show up when integration tests redo full `compile_to_dag` per
       # `#[test]` (see `lane2_stage_2e_parallelism_test`: shared `OnceLock` + clone).
       #
-      # 120s gate: applies to the lane2 Stage 2d symbolic-cost integration
-      # binary only — that is the ζ (#537) regression surface (many `#[test]`
-      # each doing full compile). A warm full `cargo test -p v3-compiler` is
-      # still ~400s locally (testgen / rustc roundtrips), so a 120s cap on the
-      # *entire* suite would fail every run until suite-wide setup is shared;
-      # tighten the second gate when that baseline drops.
-      - name: v3 tests with 120s budget
+      # Wall-clock gate on `lane2_stage_2d_symbolic_cost_test` only (ζ / #537).
+      # The timer wraps the full `cargo test` process, so **cold** runs (cache
+      # miss, first compile of `v3-compiler` + test binary on ubuntu-latest) can
+      # spend minutes linking — 120s was too tight and failed CI while local warm
+      # runs stayed ~5–15s. Keep this high enough for cold paths; per-test
+      # discipline still lives in `tests/common/budgeted.rs` (DEFAULT_BUDGET_MS).
+      - name: v3 tests (Stage 2d binary, 300s cold-compile-safe budget)
         run: |
           start=$(date +%s)
           cargo test -p v3-compiler --test lane2_stage_2d_symbolic_cost_test
           elapsed=$(( $(date +%s) - start ))
-          echo "v3 test wall time: ${elapsed}s"
-          if [ "$elapsed" -gt 120 ]; then
-            echo "::error::v3 tests took ${elapsed}s (budget: 120s) — share bootstrap setup via OnceLock or collapse fine-grained tests"
+          echo "v3 Stage 2d test wall time: ${elapsed}s"
+          if [ "$elapsed" -gt 300 ]; then
+            echo "::error::v3 Stage 2d tests took ${elapsed}s (budget: 300s) — share bootstrap setup via OnceLock or collapse fine-grained tests"
             exit 1
           fi
 
