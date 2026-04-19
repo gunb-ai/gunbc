@@ -158,7 +158,8 @@ fn tokenize_local_punct_rows_are_structural_and_disjoint_from_shared_operator_au
 }
 
 #[test]
-fn shared_syntax_text_parsing_scaffold_is_only_allowed_while_keyword_and_operator_bodies_are_unparsed() {
+fn shared_syntax_text_parsing_scaffold_is_only_allowed_while_keyword_and_operator_bodies_are_unparsed(
+) {
     let lowered = match compile_to_dag(SHARED_SYNTAX_DAG, "dsl/extdeps/languages/dag/syntax.dag") {
         Ok(dag) => dag,
         Err(v3_compiler::CompileError::Semantic(dag)) => dag,
