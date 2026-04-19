@@ -95,9 +95,13 @@ fn tokenize_registry_rows_use_structural_token_kind_and_derive_punct_width_from_
         );
         assert!(
             if name.starts_with("keyword_") {
-                keyword_variants.iter().any(|variant| variant.ty == *constructor)
+                keyword_variants
+                    .iter()
+                    .any(|variant| variant.ty == *constructor)
             } else {
-                punct_variants.iter().any(|variant| variant.ty == *constructor)
+                punct_variants
+                    .iter()
+                    .any(|variant| variant.ty == *constructor)
             },
             "token row `{name}` kind constructor should be a variant of its dedicated row carrier"
         );
