@@ -2323,6 +2323,27 @@ impl Dag {
         self.target_syntax.python_clean_emission
     }
 
+    /// Shared clean-emission lookup keyed by the target's
+    /// `LanguageSpec` declaration id. Consumers that already traffic
+    /// in the shared emit-model language surface should resolve the
+    /// language first, then ask for the corresponding
+    /// `CleanEmissionContract` through this accessor rather than
+    /// matching directly on per-target clean-emission cache fields.
+    pub fn clean_emission_spec_for_language(
+        &self,
+        language_spec: DeclarationId,
+    ) -> Option<DeclarationId> {
+        if Some(language_spec) == self.target_syntax.rust_language {
+            self.target_syntax.rust_clean_emission
+        } else if Some(language_spec) == self.target_syntax.go_language {
+            self.target_syntax.go_clean_emission
+        } else if Some(language_spec) == self.target_syntax.python_language {
+            self.target_syntax.python_clean_emission
+        } else {
+            None
+        }
+    }
+
     /// Typed accessor for the cached `std.list.List` template.
     pub fn list_template(&self) -> Option<DeclarationId> {
         self.stdlib_types.list

@@ -54,7 +54,10 @@
 
 use std::collections::HashMap;
 
-use crate::dag::{Dag, DeclarationId, FieldValue, PortId, ValueBody};
+use crate::dag::{
+    AtomPayload, CardinalityBound, Dag, DeclarationId, Field, FieldValue, PortId, TypeConnective,
+    ValueBody,
+};
 use crate::types::TypeShape;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -179,6 +182,7 @@ pub enum DiagnosticStyleTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagnosticRenderError {
+    MissingLanguageSpec(&'static str),
     MissingCleanEmissionContract(&'static str),
     MalformedCleanEmissionContract {
         declaration: DeclarationId,
@@ -224,32 +228,41 @@ pub fn render_diagnostic_for_target(
     target: DiagnosticStyleTarget,
     diagnostic: &Diagnostic,
 ) -> Result<String, DiagnosticRenderError> {
-    let declaration = correction_style_for_target(dag, target)?;
+    let language_spec = language_spec_for_target(dag, target)?;
+    render_diagnostic_for_language_spec(dag, language_spec, diagnostic)
+}
+
+pub fn render_diagnostic_for_language_spec(
+    dag: &Dag,
+    language_spec: DeclarationId,
+    diagnostic: &Diagnostic,
+) -> Result<String, DiagnosticRenderError> {
+    let declaration = correction_style_for_language_spec(dag, language_spec)?;
     let style = CorrectionStyleBinding::build(dag, declaration)?;
     Ok(render_diagnostic_with_style(diagnostic, &style))
 }
 
-fn correction_style_for_target(
+fn language_spec_for_target(
     dag: &Dag,
     target: DiagnosticStyleTarget,
 ) -> Result<DeclarationId, DiagnosticRenderError> {
-    let (clean_emission_decl, missing_name) = match target {
-        DiagnosticStyleTarget::Rust => (
-            dag.rust_clean_emission_spec(),
-            "rust_clean_emission.correction_style",
-        ),
-        DiagnosticStyleTarget::Go => (
-            dag.go_clean_emission_spec(),
-            "go_clean_emission.correction_style",
-        ),
-        DiagnosticStyleTarget::Python => (
-            dag.python_clean_emission_spec(),
-            "python_clean_emission.correction_style",
-        ),
+    let (language_spec, missing_name) = match target {
+        DiagnosticStyleTarget::Rust => (dag.rust_language_spec(), "rust_language"),
+        DiagnosticStyleTarget::Go => (dag.go_language_spec(), "go_language"),
+        DiagnosticStyleTarget::Python => (dag.python_language_spec(), "python_language"),
     };
-    let clean_emission_decl = clean_emission_decl.ok_or(
-        DiagnosticRenderError::MissingCleanEmissionContract(missing_name),
-    )?;
+    language_spec.ok_or(DiagnosticRenderError::MissingLanguageSpec(missing_name))
+}
+
+fn correction_style_for_language_spec(
+    dag: &Dag,
+    language_spec: DeclarationId,
+) -> Result<DeclarationId, DiagnosticRenderError> {
+    let clean_emission_decl = dag
+        .clean_emission_spec_for_language(language_spec)
+        .ok_or(DiagnosticRenderError::MissingCleanEmissionContract(
+            "clean_emission.correction_style",
+        ))?;
     let Some(ValueBody::Structural { fields }) = &dag.declaration(clean_emission_decl).value_body
     else {
         return Err(DiagnosticRenderError::MalformedCleanEmissionContract {
@@ -261,7 +274,9 @@ fn correction_style_for_target(
         .iter()
         .find(|(label, _)| label == "correction_style")
         .map(|(_, value)| value)
-        .ok_or(DiagnosticRenderError::MissingCorrectionStyle(missing_name))?;
+        .ok_or(DiagnosticRenderError::MissingCorrectionStyle(
+            "clean_emission.correction_style",
+        ))?;
     match value {
         FieldValue::Reference(declaration) => Ok(*declaration),
         _ => Err(DiagnosticRenderError::MalformedCleanEmissionContract {
@@ -367,6 +382,95 @@ fn require_bool(
             detail: "correction_style Bool field must be a bool literal",
         }),
     }
+}
+
+pub(crate) fn declaration_display_name(dag: &Dag, declaration: DeclarationId) -> String {
+    dag.declaration(declaration)
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("declaration#{}", declaration.raw()))
+}
+
+pub(crate) fn example_source_for_decl(dag: &Dag, declaration: DeclarationId) -> Option<String> {
+    example_source_for_decl_inner(dag, declaration, 0)
+}
+
+fn example_source_for_decl_inner(
+    dag: &Dag,
+    declaration: DeclarationId,
+    depth: usize,
+) -> Option<String> {
+    if depth >= 8 {
+        return None;
+    }
+    let decl = dag.declaration(declaration);
+    match decl.name.as_deref() {
+        Some("Int") => return Some("1".to_string()),
+        Some("Bool") => return Some("true".to_string()),
+        Some("String") => return Some("\"x\"".to_string()),
+        Some("List") => return Some("[]".to_string()),
+        _ => {}
+    }
+    match &decl.connective {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            example_source_for_decl_inner(dag, *next, depth + 1)
+        }
+        TypeConnective::Instantiation { template, .. } => {
+            if dag.declaration(*template).name.as_deref() == Some("List") {
+                return Some("[]".to_string());
+            }
+            example_source_for_decl_inner(dag, *template, depth + 1)
+        }
+        TypeConnective::Conj { children } => {
+            let fields: Option<Vec<_>> = children
+                .iter()
+                .map(|field| {
+                    Some(format!(
+                        "{}: {}",
+                        field.label,
+                        example_source_for_decl_inner(dag, field.ty, depth + 1)?
+                    ))
+                })
+                .collect();
+            Some(format!("{{ {} }}", fields?.join(", ")))
+        }
+        TypeConnective::Disj { variants } => variants
+            .iter()
+            .find_map(|variant| render_variant_witness(dag, variant, depth + 1)),
+        TypeConnective::Cardinality {
+            bound: CardinalityBound::AtMostOne,
+            ..
+        } => Some("None".to_string()),
+        _ => None,
+    }
+}
+
+fn render_variant_witness(dag: &Dag, variant: &Field, depth: usize) -> Option<String> {
+    let TypeConnective::Conj { children } = &dag.declaration(variant.ty).connective else {
+        return None;
+    };
+    if children.is_empty() {
+        return Some(variant.label.clone());
+    }
+    let payload: Option<Vec<_>> = children
+        .iter()
+        .map(|field| example_source_for_decl_inner(dag, field.ty, depth + 1))
+        .collect();
+    Some(format!("{}({})", variant.label, payload?.join(", ")))
+}
+
+pub(crate) fn witness_correction_for_decl(
+    dag: &Dag,
+    declaration: DeclarationId,
+    span: SourceSpan,
+    description: impl Into<String>,
+) -> Option<Correction> {
+    Some(Correction {
+        description: description.into(),
+        span,
+        new_source: example_source_for_decl(dag, declaration)?,
+    })
 }
 
 #[derive(Debug, Default, Clone)]
