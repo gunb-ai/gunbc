@@ -13,9 +13,9 @@ src/v3/compiler/tests/four_fixture_pressure/drop.v3	2	2517	00953bc6b6d8c811
 src/v3/compiler/tests/four_fixture_pressure/id.v3	2	2452	ec8b40edc3d3c017
 src/v3/compiler/tests/four_fixture_pressure/is_empty.v3	3	6727	19d9df0f0b2902a2
 src/v3/compiler/tests/four_fixture_pressure/wrap.v3	4	5189	ac633b042c944480
-src/v3/spec/go.dag	98	868154	2b30d8b78967c017
-src/v3/spec/python.dag	59	322667	8422ff18f0bd7b9c
-src/v3/spec/rust.dag	108	917995	e521335f7b911979
+src/v3/spec/go.dag	98	871128	afc90fa17dc84fe7
+src/v3/spec/python.dag	59	325673	4b23f17c7d43066e
+src/v3/spec/rust.dag	108	920985	d83a6a69778f3d85
 src/v3/spec/v3_l1.dag	8	2238	1f55d782265c3bfe
 src/v3/std/algebra.dag	33	281891	2a41cbb4d340fe43
 src/v3/std/clean_emission.dag	15	23643	f0743c9828ee4a8e
@@ -23,7 +23,7 @@ src/v3/std/computation_model.dag	10	14806	6bd80483473479ed
 src/v3/std/diagnostics.dag	6	7167	be32b095b1f3d208
 src/v3/std/dimensions.dag	8	15284	349e3f5d10f4e320
 src/v3/std/effects.dag	50	85653	c933b2b6581e7670
-src/v3/std/emit_model.dag	31	59465	375c8698b3ee12c4
+src/v3/std/emit_model.dag	31	60302	8c10b5181df0f340
 src/v3/std/list.dag	19	40241	721142de8452531f
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/substrate.dag	45	102559	c4768ed69230c4e1
