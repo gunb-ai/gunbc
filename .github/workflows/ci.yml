@@ -119,6 +119,9 @@ jobs:
       # (testgen / rustc roundtrips), so a 120s cap on the *entire*
       # suite would fail every run until suite-wide setup is shared;
       # tighten the second gate when that baseline drops.
+      #
+      # DB-8: the full suite below also runs `tests/determinism_test.rs` (5× emit
+      # matrix). Job `self_host_ratchet` repeats it as a named step for visibility.
       - name: v3 tests with 120s budget (lane2 Stage 2d only)
         run: |
           start=$(date +%s)
@@ -218,6 +221,11 @@ jobs:
           restore-keys: |
             cargo-self-host-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
             cargo-self-host-${{ runner.os }}-
+
+      # Named DB-8 ratchet (also executed inside the `v3` full suite); release
+      # build here matches `self_host_fixed_point` and gives a dedicated log section.
+      - name: DB-8 determinism_test (5× emit matrix)
+        run: cargo test -p v3-compiler --release --test determinism_test
 
       - name: DB-8 self_host_fixed_point (staged)
         run: cargo run -p v3-compiler --release --bin self_host_fixed_point
