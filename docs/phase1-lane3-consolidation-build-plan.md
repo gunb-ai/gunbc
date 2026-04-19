@@ -7,33 +7,43 @@
 **Lane:** 1 (Emission unification)
 **Stage:** 1d (last design stage; gates Stage 1e implementation start)
 **Size:** M
-**Status:** 🟢 Design complete, pending P2-L1 sign-off. Pure design, no code changes.
+**Status:** R2. Pilot-audited design; Stage 1e scaffold started on the shared `emit.rs` path.
 
-> Role in the plan: the file-by-file build plan for Stage 1e's
-> consolidation execution. Stage 1e dispatches on P2-L1 sign-off
-> against §Acceptance gates (inventory, gap list, bridges, pilot
-> target choice are all written).
-
-**No new DB number.** This document extends the already-locked
-DB-2 (walker API), DB-4 (clean-emission contract), and DB-8
-(fixed-point ratchet) with the concrete execution plan for how
-`emit_rust.rs` (5411 LOC) / `emit_go.rs` (2714 LOC) / `emit_python.rs`
-(1821 LOC) dissolve into one `emit.rs` walker + per-target specs.
-A new DB would be warranted only if this design surfaced a novel
-structural decision (a new Rust IR stage, a third substrate
-meeting point, a contract gap the walker cannot bridge). None of
-those appear. The escalation rules in §STOP-AND-ESCALATE name
-them explicitly.
+> Role in the plan: Stage 1d produced the file-by-file build plan for
+> Stage 1e's consolidation execution. This R2 revision records what the
+> Rust/Go/Python pilots actually proved and narrows the first Stage 1e
+> landing to an honest scaffold: one shared `emit.rs` entrypoint with Go
+> migrated behind it, while Rust and Python remain on legacy emitters.
 
 ---
 
 ## Motivation
 
 `docs/single-emitter-design.md` establishes the principle: one emitter,
-reads target specs. But it stops at principles. P2's consolidation
-needs a **file-by-file build plan** with:
+reads target specs. But it stops at principles. After the
+Rust/Go/Python pilots, Stage 1d had to answer a narrower question:
+which pieces of the pre-pilot design survived contact with three
+targets, and which had to be reshaped before code could move?
 
-- Which functions in `emit_rust.rs` / `emit_go.rs` / `emit_python.rs`
+The post-pilot audit says:
+
+- **Survives:** clean-emission dispatch is a target-spec fact; typed
+  `language` filtering is the authority for realizations; template
+  substitution remains the rendering primitive; unsupported core
+  behaviors fail closed rather than collapsing semantically.
+- **Reshaped:** Python proved `PatternBindingRule` is only half of the
+  payload-binding story; `variant_payload_field_access` is equally
+  load-bearing. The first shared entrypoint can land before the full
+  recursive walker is shared; an adapter stage is acceptable if it
+  moves one target onto the common path honestly. Python's target-
+  private realization family is real Stage 1e debt, not something the
+  docs can wish away.
+
+With that evidence in hand, consolidation needed a **file-by-file build
+plan** with:
+
+- Which functions in `emit_rust.rs` / `emit.rs` (Go path) /
+  `emit_python.rs`
   become target-agnostic (move into generic walker) vs target-declared
   (move into spec)
 - What new spec fields each current hardcoded behavior needs
@@ -42,8 +52,10 @@ needs a **file-by-file build plan** with:
 - A bridge list: every piece of name-based dispatch, hardcoded variant
   name, or target-specific convention currently in Rust code
 
-This lane produces that plan. **No code changes.** The plan's quality
-is the gate for P2 starting.
+Stage 1d is no longer speculative. Its deliverable is this audited
+design set plus the first Stage 1e scaffold that proves the common
+entrypoint can own one target without pretending the full walker has
+already dissolved the rest.
 
 ---
 

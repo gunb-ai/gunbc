@@ -4,14 +4,20 @@
 
 **Design blocker:** DB-2
 **Consumers:** Lane 1 Stage 1e (consolidation implementation); Lane 1 Stage 1f (consolidation proof, optionally adding one additional Shape A language); Lane 3 Stage 3c (self-hosting cycle runs through walker); Lane 4 Stage 4d (async emission via walker's spec dispatch)
-**Status:** Design ready for implementer review.
+**Status:** R2. End-state API sketch, revised after Rust/Go/Python pilot evidence and the first shared `emit.rs` scaffold.
 **Depends on:** DB-4 ([design-clean-emission-contract.md](./design-clean-emission-contract.md)) — walker reads `CleanEmissionContract`; DB-5 ([design-substrate-keyed-lookup-api.md](./design-substrate-keyed-lookup-api.md)) — walker consumes keyed accessors
 
 ---
 
 ## Problem
 
-Today `src/v3/compiler/src/emit_rust.rs` is ~3600 lines of hand-written per-target emission logic. `emit_go.rs` and `emit_python.rs` duplicate the pattern. Lane 1 Stage 1e consolidates these into **one generic walker** + three target specs.
+Today `src/v3/compiler/src/emit_rust.rs` and `src/v3/compiler/src/emit_python.rs`
+still carry hand-written per-target emission logic. Go's recursive
+renderer has now moved under `src/v3/compiler/src/emit.rs`, with
+`emit_go.rs` reduced to a compatibility adapter that forwards into the
+shared entrypoint. Lane 1 Stage 1e still aims at **one generic walker**
++ three target specs, but the pilots proved that the migration has to
+land in slices rather than as one atomic "delete all emitters" cut.
 
 The walker's API determines:
 - How much logic actually disappears from per-language files
@@ -20,6 +26,23 @@ The walker's API determines:
 - Whether async variants can emit from the same walker (Lane 4d)
 
 Getting this API wrong means rework at every downstream stage. Getting it right means ~90% of current per-language code dissolves.
+
+## Post-pilot receipts
+
+The Rust/Go/Python pilots changed this doc in two ways.
+
+- **What survived:** target selection by typed substrate facts; template
+  substitution as the rendering primitive; clean-emission dispatch via
+  `CleanEmissionContract`; fail-closed unsupported behaviors.
+- **What reshaped:** Python proved that payload-binding behavior is not
+  just `PatternBindingRule`; `variant_payload_field_access` is equally
+  load-bearing. The public `emit(dag, target)` entrypoint can land
+  before the full recursive walker is shared; the first scaffold is a
+  shared driver with one migrated target, not an all-target cutover.
+- **What the pilots rejected:** the earlier assumption that Stage 1e
+  would atomically delete every per-target adapter. The honest sequence
+  is: common entrypoint first, then migrate targets one by one until the
+  legacy files become trivial enough to delete.
 
 ---
 
