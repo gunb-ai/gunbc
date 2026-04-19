@@ -4667,6 +4667,12 @@ struct LoweredMatchArm {
     binding: Option<PayloadBinding>,
 }
 
+struct VariantRecordExprRef<'a> {
+    target: &'a str,
+    fields: &'a [crate::parse::SurfaceRecordField],
+    span: &'a SourceSpan,
+}
+
 fn lower_expr(
     expr: &SurfaceExpr,
     dag: &mut Dag,
@@ -4909,9 +4915,11 @@ fn lower_expr(
             fields,
             span,
         } => lower_variant_record_expr(
-            target,
-            fields,
-            span,
+            VariantRecordExprRef {
+                target,
+                fields,
+                span,
+            },
             dag,
             scope,
             callable_scope,
@@ -5258,24 +5266,24 @@ fn lower_record_literal_expr(
 }
 
 fn lower_variant_record_expr(
-    target: &str,
-    fields: &[crate::parse::SurfaceRecordField],
-    span: &SourceSpan,
+    expr: VariantRecordExprRef<'_>,
     dag: &mut Dag,
     scope: &HashMap<String, PortId>,
     callable_scope: &CallableScope,
     symbols: &HashMap<String, DeclarationId>,
     expected_decl: Option<DeclarationId>,
 ) -> PortId {
-    let Some(variant_decl) = resolve_expected_variant_constructor(dag, expected_decl, target)
+    let Some(variant_decl) =
+        resolve_expected_variant_constructor(dag, expected_decl, expr.target)
     else {
         return unresolved_port(
             dag,
             Diagnostic::ResolveError {
                 name: format!(
-                    "named constructor `{target}` requires an expected sum type whose variants include `{target}`"
+                    "named constructor `{}` requires an expected sum type whose variants include `{}`",
+                    expr.target, expr.target
                 ),
-                span: span.clone(),
+                span: expr.span.clone(),
                 fixes: Vec::new(),
             },
         );
@@ -5285,14 +5293,15 @@ fn lower_variant_record_expr(
             dag,
             Diagnostic::ResolveError {
                 name: format!(
-                    "named constructor `{target}` does not lower to a record payload shape"
+                    "named constructor `{}` does not lower to a record payload shape",
+                    expr.target
                 ),
-                span: span.clone(),
+                span: expr.span.clone(),
                 fixes: Vec::new(),
             },
         );
     };
-    for field in fields {
+    for field in expr.fields {
         if !expected_fields
             .iter()
             .any(|(label, _)| label == &field.name)
@@ -5301,8 +5310,8 @@ fn lower_variant_record_expr(
                 dag,
                 Diagnostic::ResolveError {
                     name: format!(
-                        "named constructor `{target}` has field `{}` but the payload has no such field",
-                        field.name
+                        "named constructor `{}` has field `{}` but the payload has no such field",
+                        expr.target, field.name
                     ),
                     span: field.span.clone(),
                     fixes: Vec::new(),
@@ -5312,14 +5321,15 @@ fn lower_variant_record_expr(
     }
     let mut inputs = Vec::with_capacity(expected_fields.len());
     for (label, field_ty) in expected_fields {
-        let Some(field) = fields.iter().find(|field| field.name == label) else {
+        let Some(field) = expr.fields.iter().find(|field| field.name == label) else {
             return unresolved_port(
                 dag,
                 Diagnostic::ResolveError {
                     name: format!(
-                        "named constructor `{target}` is missing required payload field `{label}`"
+                        "named constructor `{}` is missing required payload field `{label}`",
+                        expr.target
                     ),
-                    span: span.clone(),
+                    span: expr.span.clone(),
                     fixes: Vec::new(),
                 },
             );
@@ -5333,7 +5343,7 @@ fn lower_variant_record_expr(
             Some(field_ty),
         ));
     }
-    lower_constructor_invocation(dag, variant_decl, inputs, span.clone())
+    lower_constructor_invocation(dag, variant_decl, inputs, expr.span.clone())
 }
 
 fn lower_list_literal_expr(
