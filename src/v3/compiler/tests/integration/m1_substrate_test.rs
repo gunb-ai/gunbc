@@ -2759,6 +2759,111 @@ fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap(payload) => payload.inner.
 }
 
 #[test]
+fn prereq2_named_variant_constructor_expression_compiles_against_expected_sum() {
+    let src = "\
+type Point { x: Int }
+type Wrapped = Wrap { inner: Point } | Empty
+fn wrap(point: Point) -> Wrapped = Wrap { inner: point }
+";
+    let dag = cached_compile_to_dag(src, "named_variant_constructor.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "named variant constructor expression should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(
+        bind_value_type_decl(&dag, "wrap"),
+        find_named(&dag, "Wrapped")
+    );
+}
+
+#[test]
+fn prereq2_named_payload_pattern_binds_field_projection_ports() {
+    let src = "\
+type Point { x: Int }
+type Wrapped = Wrap { inner: Point } | Empty
+fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap { inner: point } => point.x, Empty => 0 }
+";
+    let dag = cached_compile_to_dag(src, "named_payload_pattern.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "named payload pattern should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "unwrap_or_zero")
+        .expect("Bind(unwrap_or_zero) exists");
+    let branch = match dag.node(
+        dag.port(bind.value)
+            .produced_by
+            .expect("Bind value has a producer"),
+    ) {
+        Behavior::Branch(b) => b,
+        other => panic!("expected Branch at match root, got {other:?}"),
+    };
+    let payload_path = branch
+        .paths
+        .iter()
+        .find(|path| path.binding.is_some())
+        .expect("payload-capturing path exists");
+    let binding = payload_path
+        .binding
+        .as_ref()
+        .expect("binding payload stored on Path");
+    let body_projection = match dag.node(
+        dag.port(payload_path.output)
+            .produced_by
+            .expect("payload arm body should be a field projection"),
+    ) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected Transform field projection, got {other:?}"),
+    };
+    let projected_point_port = body_projection.inputs[0];
+    let point_projection = match dag.node(
+        dag.port(projected_point_port)
+            .produced_by
+            .expect("named binding should be backed by a field projection"),
+    ) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected inner field projection, got {other:?}"),
+    };
+    assert_eq!(point_projection.inputs, vec![binding.payload_port]);
+    match &point_projection.target {
+        TransformTarget::FieldProject {
+            field_label,
+            field_child,
+        } => {
+            assert_eq!(field_label, "inner");
+            assert_eq!(*field_child, Some(find_named(&dag, "Point")));
+        }
+        other => panic!("expected inner FieldProject target, got {other:?}"),
+    }
+}
+
+#[test]
+fn prereq2_named_payload_pattern_duplicate_binding_fails_closed() {
+    let src = "\
+type Pair { a: Int b: Int }
+type Wrapped = Wrap { inner: Pair } | Empty
+fn bad(w: Wrapped) -> Int = match w { Wrap { inner: pair } => match pair { Pair { a: x, b: x } => x }, Empty => 0 }
+";
+    let dag = compile_any(src, "named_payload_pattern_duplicate_binding.v3");
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| matches!(
+            diag,
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("binds `x` more than once")
+        )),
+        "expected fail-closed duplicate payload-pattern binding diagnostic, got {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
 fn recursion_accepts_structural_descent_on_recursive_payload_field() {
     let src = "\
 type IntList = Empty | Cons { head: Int, tail: IntList }

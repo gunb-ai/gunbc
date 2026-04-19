@@ -37,7 +37,7 @@ use crate::infer::{concretize_decl_with_subst, SubstStack};
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
-    SurfacePattern, SurfaceType, SurfaceVariant, VariantPayload,
+    SurfacePattern, SurfacePatternField, SurfaceType, SurfaceVariant, VariantPayload,
 };
 use crate::types::TypeShape;
 
@@ -706,6 +706,9 @@ fn refinement_predicate_out_of_fragment(expr: &SurfaceExpr) -> Option<(&'static 
         SurfaceExpr::Lambda { span, .. } => Some(("lambda", span.clone())),
         SurfaceExpr::If { span, .. } => Some(("if", span.clone())),
         SurfaceExpr::Match { span, .. } => Some(("match", span.clone())),
+        SurfaceExpr::VariantRecord { span, .. } => {
+            Some(("named constructor literal", span.clone()))
+        }
         SurfaceExpr::Record { span, .. } => Some(("record literal", span.clone())),
         SurfaceExpr::List { span, .. } => Some(("list literal", span.clone())),
     }
@@ -1134,6 +1137,16 @@ fn narrowable_var_name(cond: &SurfaceExpr, scope: &HashMap<String, PortId>) -> O
     }
 }
 
+fn pattern_binding_names(pattern: &SurfacePattern) -> Vec<&str> {
+    match pattern {
+        SurfacePattern::BareVariant { .. } => Vec::new(),
+        SurfacePattern::VariantWith { binding, .. } => vec![binding.as_str()],
+        SurfacePattern::VariantFields { fields, .. } => {
+            fields.iter().map(|field| field.binding.as_str()).collect()
+        }
+    }
+}
+
 /// Walk a surface expression and collect the names of all free
 /// variables that resolve to entries in `scope`. Lambda parameter
 /// shadowing and match-arm binding shadowing are respected. Top-level
@@ -1167,6 +1180,11 @@ fn collect_scope_bound_free_vars(
                 collect_scope_bound_free_vars(arg, scope, out);
             }
         }
+        SurfaceExpr::VariantRecord { fields, .. } => {
+            for field in fields {
+                collect_scope_bound_free_vars(&field.value, scope, out);
+            }
+        }
         SurfaceExpr::Lambda { params, body, .. } => {
             let mut shadowed = scope.clone();
             for p in params {
@@ -1191,14 +1209,8 @@ fn collect_scope_bound_free_vars(
         } => {
             collect_scope_bound_free_vars(scrutinee, scope, out);
             for arm in arms {
-                // Arm payload bindings shadow the scope within the arm
-                // body. Use a synthetic shadowed scope by removing the
-                // binding name from a clone. We only remove — not
-                // insert a new port — because this routine only cares
-                // about scope membership for filtering, not port
-                // identity.
                 let mut arm_scope = scope.clone();
-                if let SurfacePattern::VariantWith { binding, .. } = &arm.pattern {
+                for binding in pattern_binding_names(&arm.pattern) {
                     arm_scope.remove(binding);
                 }
                 collect_scope_bound_free_vars(&arm.body, &arm_scope, out);
@@ -2740,23 +2752,6 @@ fn lower_structural_field_value(
     }
 
     if let Some(disj_id) = walk_to_disj_decl(dag, expected_type) {
-        let (variant_name, args, variant_span) = match expr {
-            SurfaceExpr::Call { target, args, span } => (target.as_str(), args.as_slice(), span),
-            SurfaceExpr::Var { name, span } => (name.as_str(), &[][..], span),
-            _ => {
-                report_declaration_error(
-                    dag,
-                    Diagnostic::ResolveError {
-                        name: format!(
-                            "data `{data_name}` field `{field_label}` must be a constructor call matching the declared sum type"
-                        ),
-                        span: span.clone(),
-                    fixes: Vec::new(),
-                    },
-                );
-                return None;
-            }
-        };
         let variants: Vec<(String, DeclarationId)> = match &dag.declaration(disj_id).connective {
             TypeConnective::Disj { variants } => variants
                 .iter()
@@ -2764,23 +2759,94 @@ fn lower_structural_field_value(
                 .collect(),
             _ => unreachable!("walk_to_disj_decl returned non-Disj"),
         };
-        let Some((_, variant_decl_id)) = variants.iter().find(|(label, _)| label == variant_name)
-        else {
-            report_declaration_error(
-                dag,
-                Diagnostic::ResolveError {
-                    name: format!(
-                        "data `{data_name}` field `{field_label}` uses constructor `{variant_name}` which is not a variant of the declared sum type"
-                    ),
-                    span: variant_span.clone(),
-                fixes: Vec::new(),
-                },
-            );
-            return None;
-        };
-        let payload_fields: Vec<DeclarationId> = match &dag.declaration(*variant_decl_id).connective
-        {
-            TypeConnective::Conj { children } => children.iter().map(|child| child.ty).collect(),
+        let (variant_name, variant_decl_id, positional_args, named_fields, variant_span) =
+            match expr {
+                SurfaceExpr::Call { target, args, span } => {
+                    let Some((_, variant_decl_id)) =
+                        variants.iter().find(|(label, _)| label == target)
+                    else {
+                        report_declaration_error(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "data `{data_name}` field `{field_label}` uses constructor `{target}` which is not a variant of the declared sum type"
+                            ),
+                            span: span.clone(),
+                            fixes: Vec::new(),
+                        },
+                    );
+                        return None;
+                    };
+                    (
+                        target.as_str(),
+                        *variant_decl_id,
+                        Some(args.as_slice()),
+                        None,
+                        span,
+                    )
+                }
+                SurfaceExpr::VariantRecord {
+                    target,
+                    fields,
+                    span,
+                } => {
+                    let Some((_, variant_decl_id)) =
+                        variants.iter().find(|(label, _)| label == target)
+                    else {
+                        report_declaration_error(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "data `{data_name}` field `{field_label}` uses constructor `{target}` which is not a variant of the declared sum type"
+                            ),
+                            span: span.clone(),
+                            fixes: Vec::new(),
+                        },
+                    );
+                        return None;
+                    };
+                    (
+                        target.as_str(),
+                        *variant_decl_id,
+                        None,
+                        Some(fields.as_slice()),
+                        span,
+                    )
+                }
+                SurfaceExpr::Var { name, span } => {
+                    let Some((_, variant_decl_id)) =
+                        variants.iter().find(|(label, _)| label == name)
+                    else {
+                        report_declaration_error(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "data `{data_name}` field `{field_label}` uses constructor `{name}` which is not a variant of the declared sum type"
+                            ),
+                            span: span.clone(),
+                            fixes: Vec::new(),
+                        },
+                    );
+                        return None;
+                    };
+                    (name.as_str(), *variant_decl_id, Some(&[][..]), None, span)
+                }
+                _ => {
+                    report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "data `{data_name}` field `{field_label}` must be a constructor expression matching the declared sum type"
+                        ),
+                        span: span.clone(),
+                    fixes: Vec::new(),
+                    },
+                );
+                    return None;
+                }
+            };
+        let payload_fields = match variant_payload_fields_for_lowering(dag, variant_decl_id) {
+            Some(fields) => fields,
             other => {
                 report_declaration_error(
                     dag,
@@ -2795,34 +2861,81 @@ fn lower_structural_field_value(
                 return None;
             }
         };
-        if payload_fields.len() != args.len() {
-            report_declaration_error(
-                dag,
-                Diagnostic::ArityMismatch {
-                    function: variant_name.to_string(),
-                    expected: payload_fields.len(),
-                    actual: args.len(),
-                    span: variant_span.clone(),
-                    fixes: Vec::new(),
-                },
-            );
-            return None;
-        }
-        let mut payload = Vec::with_capacity(args.len());
-        for (arg, payload_field_ty) in args.iter().zip(payload_fields.iter()) {
-            payload.push(lower_structural_field_value(
-                data_name,
-                field_label,
-                arg,
-                *payload_field_ty,
-                symbols,
-                dag,
-                None,
-                expr_span(arg),
-            )?);
+        let mut payload = Vec::with_capacity(payload_fields.len());
+        if let Some(args) = positional_args {
+            if payload_fields.len() != args.len() {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ArityMismatch {
+                        function: variant_name.to_string(),
+                        expected: payload_fields.len(),
+                        actual: args.len(),
+                        span: variant_span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+                return None;
+            }
+            for (arg, (_, payload_field_ty)) in args.iter().zip(payload_fields.iter()) {
+                payload.push(lower_structural_field_value(
+                    data_name,
+                    field_label,
+                    arg,
+                    *payload_field_ty,
+                    symbols,
+                    dag,
+                    None,
+                    expr_span(arg),
+                )?);
+            }
+        } else if let Some(fields) = named_fields {
+            for field in fields {
+                if !payload_fields.iter().any(|(label, _)| label == &field.name) {
+                    report_declaration_error(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "data `{data_name}` field `{field_label}` constructor `{variant_name}` has payload field `{}` but the variant has no such field",
+                                field.name
+                            ),
+                            span: field.span.clone(),
+                            fixes: Vec::new(),
+                        },
+                    );
+                    return None;
+                }
+            }
+            for (payload_field_label, payload_field_ty) in &payload_fields {
+                let Some(field) = fields
+                    .iter()
+                    .find(|field| field.name == *payload_field_label)
+                else {
+                    report_declaration_error(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "data `{data_name}` field `{field_label}` constructor `{variant_name}` is missing payload field `{payload_field_label}`"
+                            ),
+                            span: variant_span.clone(),
+                            fixes: Vec::new(),
+                        },
+                    );
+                    return None;
+                };
+                payload.push(lower_structural_field_value(
+                    data_name,
+                    field_label,
+                    &field.value,
+                    *payload_field_ty,
+                    symbols,
+                    dag,
+                    None,
+                    &field.span,
+                )?);
+            }
         }
         return Some(crate::dag::FieldValue::Variant {
-            constructor: *variant_decl_id,
+            constructor: variant_decl_id,
             payload,
         });
     }
@@ -3717,6 +3830,11 @@ fn collect_lambda_free_names(
                 collect_lambda_free_names(arg, bound, free);
             }
         }
+        SurfaceExpr::VariantRecord { fields, .. } => {
+            for field in fields {
+                collect_lambda_free_names(&field.value, bound, free);
+            }
+        }
         SurfaceExpr::Operator { args, .. } => {
             for arg in args {
                 collect_lambda_free_names(arg, bound, free);
@@ -3743,8 +3861,8 @@ fn collect_lambda_free_names(
             collect_lambda_free_names(scrutinee, bound, free);
             for arm in arms {
                 let mut arm_bound = bound.clone();
-                if let SurfacePattern::VariantWith { binding, .. } = &arm.pattern {
-                    arm_bound.insert(binding.clone());
+                for binding in pattern_binding_names(&arm.pattern) {
+                    arm_bound.insert(binding.to_string());
                 }
                 collect_lambda_free_names(&arm.body, &arm_bound, free);
             }
@@ -4485,12 +4603,88 @@ fn lower_payload_binding(dag: &mut Dag, binding_name: &str) -> PayloadBinding {
     }
 }
 
+fn lower_field_projection_from_port(
+    dag: &mut Dag,
+    input_port: PortId,
+    field_label: &str,
+    span: &SourceSpan,
+) -> PortId {
+    let node_id = dag.alloc_node_id();
+    let output = dag.alloc_port(Some(node_id));
+    let static_resolution = resolve_static_field_project(dag, input_port, field_label);
+    dag.push_node(Behavior::Transform(TransformNode {
+        id: node_id,
+        target: TransformTarget::FieldProject {
+            field_label: field_label.to_string(),
+            field_child: static_resolution.map(|(field_child, _)| field_child),
+        },
+        inputs: vec![input_port],
+        output,
+        span: span.clone(),
+    }));
+    if let Some((_, ty)) = static_resolution {
+        dag.set_port_type(output, ty);
+    }
+    output
+}
+
+fn variant_payload_fields_for_lowering(
+    dag: &Dag,
+    variant_decl: DeclarationId,
+) -> Option<Vec<(String, DeclarationId)>> {
+    let mut subst = LowerSubstStack::default();
+    let conj_id = walk_to_conj_decl_with_subst_lower(dag, variant_decl, &mut subst)?;
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return None;
+    };
+    Some(
+        children
+            .iter()
+            .map(|child| {
+                let specialized =
+                    resolve_decl_with_subst_lower(dag, child.ty, &subst, 0).unwrap_or(child.ty);
+                (child.label.clone(), specialized)
+            })
+            .collect(),
+    )
+}
+
+fn synthetic_pattern_payload_binding_name(
+    fields: &[SurfacePatternField],
+    span: &SourceSpan,
+) -> String {
+    if fields.len() == 1 {
+        return fields[0].binding.clone();
+    }
+    format!("__payload_{}_{}", span.byte_start, span.byte_end)
+}
+
 struct LoweredMatchArm {
     output: PortId,
     body_node: Option<NodeId>,
     pattern_name: String,
     pattern_span: SourceSpan,
     binding: Option<PayloadBinding>,
+}
+
+fn duplicate_payload_pattern_binding_diagnostic(
+    variant_name: &str,
+    binding_name: &str,
+    span: &SourceSpan,
+) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: format!(
+            "named payload pattern `{variant_name}` binds `{binding_name}` more than once"
+        ),
+        span: span.clone(),
+        fixes: Vec::new(),
+    }
+}
+
+struct VariantRecordExprRef<'a> {
+    target: &'a str,
+    fields: &'a [crate::parse::SurfaceRecordField],
+    span: &'a SourceSpan,
 }
 
 fn lower_expr(
@@ -4730,6 +4924,22 @@ fn lower_expr(
             }));
             output
         }
+        SurfaceExpr::VariantRecord {
+            target,
+            fields,
+            span,
+        } => lower_variant_record_expr(
+            VariantRecordExprRef {
+                target,
+                fields,
+                span,
+            },
+            dag,
+            scope,
+            callable_scope,
+            symbols,
+            expected_decl,
+        ),
         SurfaceExpr::Operator { op, args, span } => {
             let input_ports: Vec<PortId> = args
                 .iter()
@@ -4845,9 +5055,9 @@ fn lower_expr(
             let mut lowered_arms: Vec<LoweredMatchArm> = Vec::with_capacity(arms.len());
             for arm in arms {
                 let mut arm_scope = scope.clone();
-                let (pattern_name, pattern_span, binding) = match &arm.pattern {
+                let (pattern_name, pattern_span, binding, arm_error) = match &arm.pattern {
                     SurfacePattern::BareVariant { name, span } => {
-                        (name.clone(), span.clone(), None)
+                        (name.clone(), span.clone(), None, None)
                     }
                     SurfacePattern::VariantWith {
                         name,
@@ -4859,17 +5069,50 @@ fn lower_expr(
                             payload_binding.binding_name.clone(),
                             payload_binding.payload_port,
                         );
-                        (name.clone(), span.clone(), Some(payload_binding))
+                        (name.clone(), span.clone(), Some(payload_binding), None)
+                    }
+                    SurfacePattern::VariantFields { name, fields, span } => {
+                        let payload_binding_name =
+                            synthetic_pattern_payload_binding_name(fields, span);
+                        let payload_binding = lower_payload_binding(dag, &payload_binding_name);
+                        let mut duplicate_binding = None;
+                        for field in fields {
+                            if arm_scope.contains_key(&field.binding) {
+                                duplicate_binding =
+                                    Some(duplicate_payload_pattern_binding_diagnostic(
+                                        name,
+                                        &field.binding,
+                                        &field.span,
+                                    ));
+                                break;
+                            }
+                            let projection = lower_field_projection_from_port(
+                                dag,
+                                payload_binding.payload_port,
+                                &field.name,
+                                &field.span,
+                            );
+                            arm_scope.insert(field.binding.clone(), projection);
+                        }
+                        (
+                            name.clone(),
+                            span.clone(),
+                            Some(payload_binding),
+                            duplicate_binding,
+                        )
                     }
                 };
-                let arm_output_port = lower_expr(
-                    &arm.body,
-                    dag,
-                    &arm_scope,
-                    callable_scope,
-                    symbols,
-                    expected_decl,
-                );
+                let arm_output_port = match arm_error {
+                    Some(diag) => unresolved_port(dag, diag),
+                    None => lower_expr(
+                        &arm.body,
+                        dag,
+                        &arm_scope,
+                        callable_scope,
+                        symbols,
+                        expected_decl,
+                    ),
+                };
                 let body_node = producer_of(dag, arm_output_port);
                 lowered_arms.push(LoweredMatchArm {
                     output: arm_output_port,
@@ -5054,6 +5297,86 @@ fn lower_record_literal_expr(
     lower_constructor_invocation(dag, target_decl, inputs, span.clone())
 }
 
+fn lower_variant_record_expr(
+    expr: VariantRecordExprRef<'_>,
+    dag: &mut Dag,
+    scope: &HashMap<String, PortId>,
+    callable_scope: &CallableScope,
+    symbols: &HashMap<String, DeclarationId>,
+    expected_decl: Option<DeclarationId>,
+) -> PortId {
+    let Some(variant_decl) = resolve_expected_variant_constructor(dag, expected_decl, expr.target)
+    else {
+        return unresolved_port(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "named constructor `{}` requires an expected sum type whose variants include `{}`",
+                    expr.target, expr.target
+                ),
+                span: expr.span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+    };
+    let Some(expected_fields) = variant_payload_fields_for_lowering(dag, variant_decl) else {
+        return unresolved_port(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "named constructor `{}` does not lower to a record payload shape",
+                    expr.target
+                ),
+                span: expr.span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+    };
+    for field in expr.fields {
+        if !expected_fields
+            .iter()
+            .any(|(label, _)| label == &field.name)
+        {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "named constructor `{}` has field `{}` but the payload has no such field",
+                        expr.target, field.name
+                    ),
+                    span: field.span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+        }
+    }
+    let mut inputs = Vec::with_capacity(expected_fields.len());
+    for (label, field_ty) in expected_fields {
+        let Some(field) = expr.fields.iter().find(|field| field.name == label) else {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "named constructor `{}` is missing required payload field `{label}`",
+                        expr.target
+                    ),
+                    span: expr.span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+        };
+        inputs.push(lower_expr(
+            &field.value,
+            dag,
+            scope,
+            callable_scope,
+            symbols,
+            Some(field_ty),
+        ));
+    }
+    lower_constructor_invocation(dag, variant_decl, inputs, expr.span.clone())
+}
+
 fn lower_list_literal_expr(
     elements: &[SurfaceExpr],
     span: &SourceSpan,
@@ -5200,6 +5523,9 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
             }
             args.iter().any(|a| is_recursive(a, self_name))
         }
+        SurfaceExpr::VariantRecord { fields, .. } => fields
+            .iter()
+            .any(|field| is_recursive(&field.value, self_name)),
         SurfaceExpr::Operator { args, .. } => args.iter().any(|a| is_recursive(a, self_name)),
         SurfaceExpr::If {
             cond,
@@ -5255,6 +5581,20 @@ struct StructuralBindingInfo {
     recursive_fields: HashSet<String>,
 }
 
+fn bind_named_pattern_fields(
+    info: &StructuralBindingInfo,
+    fields: &[SurfacePatternField],
+    out: &mut HashMap<String, StructuralBindingInfo>,
+) {
+    for field in fields {
+        let mut binding_info = StructuralBindingInfo::default();
+        if info.recursive_fields.contains(&field.name) {
+            binding_info.whole_payload_recursive = true;
+        }
+        out.insert(field.binding.clone(), binding_info);
+    }
+}
+
 fn descent_provable(
     expr: &SurfaceExpr,
     dag: &Dag,
@@ -5291,6 +5631,16 @@ fn descent_provable(
                 })
             }
         }
+        SurfaceExpr::VariantRecord { fields, .. } => fields.iter().all(|field| {
+            descent_provable(
+                &field.value,
+                dag,
+                first_param_decl,
+                self_name,
+                first_param,
+                bindings,
+            )
+        }),
         SurfaceExpr::Operator { args, .. } => args
             .iter()
             .all(|a| descent_provable(a, dag, first_param_decl, self_name, first_param, bindings)),
@@ -5344,12 +5694,22 @@ fn descent_provable(
             arms.iter().all(|arm| {
                 let mut arm_bindings = bindings.clone();
                 if scrutinee_is_first_param {
-                    if let SurfacePattern::VariantWith { name, binding, .. } = &arm.pattern {
-                        if let Some(info) =
-                            structural_binding_info_for_variant(dag, first_param_decl, name)
-                        {
-                            arm_bindings.insert(binding.clone(), info);
+                    match &arm.pattern {
+                        SurfacePattern::VariantWith { name, binding, .. } => {
+                            if let Some(info) =
+                                structural_binding_info_for_variant(dag, first_param_decl, name)
+                            {
+                                arm_bindings.insert(binding.clone(), info);
+                            }
                         }
+                        SurfacePattern::VariantFields { name, fields, .. } => {
+                            if let Some(info) =
+                                structural_binding_info_for_variant(dag, first_param_decl, name)
+                            {
+                                bind_named_pattern_fields(&info, fields, &mut arm_bindings);
+                            }
+                        }
+                        SurfacePattern::BareVariant { .. } => {}
                     }
                 }
                 descent_provable(
@@ -5492,6 +5852,7 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::Var { span, .. }
         | SurfaceExpr::Path { span, .. }
         | SurfaceExpr::Call { span, .. }
+        | SurfaceExpr::VariantRecord { span, .. }
         | SurfaceExpr::Operator { span, .. }
         | SurfaceExpr::Lambda { span, .. }
         | SurfaceExpr::If { span, .. }
@@ -5857,6 +6218,9 @@ impl ClusterDescentChecker<'_> {
                 }
                 args.iter().all(|arg| self.expr(arg, bindings, shadowed))
             }
+            SurfaceExpr::VariantRecord { fields, .. } => fields
+                .iter()
+                .all(|field| self.expr(&field.value, bindings, shadowed)),
             SurfaceExpr::Operator { args, .. } => {
                 args.iter().all(|arg| self.expr(arg, bindings, shadowed))
             }
@@ -5884,18 +6248,30 @@ impl ClusterDescentChecker<'_> {
                 arms.iter().all(|arm| {
                     let mut arm_bindings = bindings.clone();
                     let mut arm_shadowed = shadowed.clone();
-                    if let SurfacePattern::VariantWith { binding, .. } = &arm.pattern {
-                        arm_shadowed.insert(binding.clone());
+                    for binding in pattern_binding_names(&arm.pattern) {
+                        arm_shadowed.insert(binding.to_string());
                     }
                     if scrutinee_is_current_param {
-                        if let SurfacePattern::VariantWith { name, binding, .. } = &arm.pattern {
-                            if let Some(info) = structural_binding_info_for_variant(
-                                self.dag,
-                                self.current_param_decl,
-                                name,
-                            ) {
-                                arm_bindings.insert(binding.clone(), info);
+                        match &arm.pattern {
+                            SurfacePattern::VariantWith { name, binding, .. } => {
+                                if let Some(info) = structural_binding_info_for_variant(
+                                    self.dag,
+                                    self.current_param_decl,
+                                    name,
+                                ) {
+                                    arm_bindings.insert(binding.clone(), info);
+                                }
                             }
+                            SurfacePattern::VariantFields { name, fields, .. } => {
+                                if let Some(info) = structural_binding_info_for_variant(
+                                    self.dag,
+                                    self.current_param_decl,
+                                    name,
+                                ) {
+                                    bind_named_pattern_fields(&info, fields, &mut arm_bindings);
+                                }
+                            }
+                            SurfacePattern::BareVariant { .. } => {}
                         }
                     }
                     self.expr(&arm.body, &arm_bindings, &arm_shadowed)
@@ -5934,6 +6310,11 @@ fn collect_recursive_callees(
                 collect_recursive_callees(a, function_symbols, shadowed, out);
             }
         }
+        SurfaceExpr::VariantRecord { fields, .. } => {
+            for field in fields {
+                collect_recursive_callees(&field.value, function_symbols, shadowed, out);
+            }
+        }
         SurfaceExpr::Operator { args, .. } => {
             for a in args {
                 collect_recursive_callees(a, function_symbols, shadowed, out);
@@ -5955,8 +6336,8 @@ fn collect_recursive_callees(
             collect_recursive_callees(scrutinee, function_symbols, shadowed, out);
             for arm in arms {
                 let mut arm_shadowed = shadowed.clone();
-                if let SurfacePattern::VariantWith { binding, .. } = &arm.pattern {
-                    arm_shadowed.insert(binding.clone());
+                for binding in pattern_binding_names(&arm.pattern) {
+                    arm_shadowed.insert(binding.to_string());
                 }
                 collect_recursive_callees(&arm.body, function_symbols, &mut arm_shadowed, out);
             }
