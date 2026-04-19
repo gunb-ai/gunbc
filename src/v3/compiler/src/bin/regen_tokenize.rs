@@ -19,8 +19,17 @@ fn main() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let dag_path = manifest_dir.join("tokenize.dag");
     let source = std::fs::read_to_string(&dag_path).expect("read tokenize.dag");
-    let dag =
-        compile_to_dag(&source, "src/v3/compiler/tokenize.dag").expect("compile tokenize.dag");
+    let dag = match compile_to_dag(&source, "src/v3/compiler/tokenize.dag") {
+        Ok(d) => d,
+        Err(CompileError::Semantic(d)) => {
+            eprintln!("tokenize.dag semantic errors:");
+            for (_, diag) in d.diagnostics().iter() {
+                eprintln!("  {diag:?}");
+            }
+            panic!("compile tokenize.dag failed");
+        }
+        Err(other) => panic!("compile tokenize.dag: {other:?}"),
+    };
     let rust = generate(&dag);
     let combined = format!("{HEADER}{rust}");
 
@@ -80,11 +89,7 @@ fn token_kind_variant_labels(dag: &Dag) -> HashSet<String> {
     variants.iter().map(|v| v.label.clone()).collect()
 }
 
-fn validate_kind_names(
-    dag: &Dag,
-    keywords: &[(String, String)],
-    puncts: &[(String, i64, String)],
-) {
+fn validate_kind_names(dag: &Dag, keywords: &[(String, String)], puncts: &[(String, i64, String)]) {
     let allowed = token_kind_variant_labels(dag);
     for (_, kind) in keywords {
         assert!(
