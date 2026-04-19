@@ -67,6 +67,10 @@ mod m2_feature_parity_test;
 mod m2_field_access_binding_test;
 #[path = "integration/m2_lens_cost_migration_test.rs"]
 mod m2_lens_cost_migration_test;
+#[path = "integration/m2_lens_idempotency_emit_test.rs"]
+mod m2_lens_idempotency_emit_test;
+#[path = "integration/m2_lens_idempotency_migration_test.rs"]
+mod m2_lens_idempotency_migration_test;
 #[path = "integration/m2_lens_provenance_migration_test.rs"]
 mod m2_lens_provenance_migration_test;
 #[path = "integration/m2_lens_structural_resolution_migration_test.rs"]
