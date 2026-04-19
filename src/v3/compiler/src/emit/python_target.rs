@@ -871,12 +871,12 @@ impl<'a> Ctx<'a> {
         let realized_scrutinee = render_named_template(&binding.scrutinee, &[("expr", &scrutinee)]);
         let empty_predicate = render_named_template(&binding.empty_pattern, &[("expr", "__match")]);
         let mut cons_locals = locals.clone();
-        if let Some(binding) = &cons_path.binding {
+        if let Some(payload_binding) = &cons_path.binding {
             let cons_expr = render_named_template(&binding.cons_pattern, &[("expr", "__match")]);
             let head_expr = render_named_template(&binding.head_expr, &[("list", &cons_expr)]);
             let tail_expr = render_named_template(&binding.tail_expr, &[("list", &cons_expr)]);
             cons_locals.payload_bindings.insert(
-                binding.payload_port,
+                payload_binding.payload_port,
                 VariantPayloadBinding::Direct(format!(
                     "types.SimpleNamespace(head={head_expr}, tail={tail_expr})"
                 )),
@@ -1549,52 +1549,73 @@ fn parse_callable_strategy(
     dag: &Dag,
     fields: &[(String, FieldValue)],
     declaration: DeclarationId,
-) -> Result<PythonCallableStrategy, EmitPythonError> {
+) -> Result<CallableStrategyBinding, EmitPythonError> {
     let (constructor, payload) = variant_field(fields, "strategy", declaration)?;
     if !payload.is_empty() {
         return Err(EmitPythonError::MalformedSpec {
             declaration,
-            detail: "PythonCallableStrategy variants must not carry payload",
+            detail: "CallableStrategy variants must not carry payload",
         });
     }
     let variants = [
-        ("ListEmpty", PythonCallableStrategy::Empty),
-        ("ListSingleton", PythonCallableStrategy::Singleton),
-        ("ListCons", PythonCallableStrategy::Cons),
-        ("ListConcat", PythonCallableStrategy::Concat),
-        ("ListLength", PythonCallableStrategy::Length),
-        ("ListIsEmpty", PythonCallableStrategy::IsEmpty),
-        ("ListFold", PythonCallableStrategy::Fold),
-        ("ListMap", PythonCallableStrategy::Map),
-        ("ListFilter", PythonCallableStrategy::Filter),
-        ("ListContains", PythonCallableStrategy::Contains),
+        ("ListEmpty", CallableStrategyBinding::Empty),
+        ("ListSingleton", CallableStrategyBinding::Singleton),
+        ("ListCons", CallableStrategyBinding::Cons),
+        ("ListConcat", CallableStrategyBinding::Concat),
+        ("ListLength", CallableStrategyBinding::Length),
+        ("ListIsEmpty", CallableStrategyBinding::IsEmpty),
+        ("ListFold", CallableStrategyBinding::Fold),
+        ("ListMap", CallableStrategyBinding::Map),
+        ("ListFilter", CallableStrategyBinding::Filter),
+        ("ListContains", CallableStrategyBinding::Contains),
     ];
     for (name, strategy) in variants {
-        if constructor == named_variant_id(dag, "PythonCallableStrategy", name)? {
+        if constructor == named_variant_id(dag, "CallableStrategy", name)? {
             return Ok(strategy);
         }
     }
     Err(EmitPythonError::MalformedSpec {
         declaration,
-        detail: "unsupported PythonCallableStrategy variant",
+        detail: "unsupported CallableStrategy variant",
     })
 }
 
-fn named_decl(dag: &Dag, name: &'static str) -> Result<DeclarationId, EmitPythonError> {
-    dag.declaration_by_name(name)
-        .map(|decl| decl.id)
-        .ok_or(EmitPythonError::MissingMeta(name))
+fn parse_pattern_realization(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<PatternRealizationBinding, EmitPythonError> {
+    let (constructor, payload) = variant_field(fields, "strategy", declaration)?;
+    if !payload.is_empty() {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "PatternStrategy variants must not carry payload",
+        });
+    }
+    let strategy = if constructor == named_variant_id(dag, "PatternStrategy", "VectorList")? {
+        PatternStrategyBinding::VectorList
+    } else {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "unsupported PatternStrategy variant",
+        });
+    };
+    Ok(PatternRealizationBinding {
+        strategy,
+        scrutinee: require_field_string(fields, "scrutinee", declaration)?,
+        empty_pattern: require_field_string(fields, "empty_pattern", declaration)?,
+        cons_pattern: require_field_string(fields, "cons_pattern", declaration)?,
+        head_expr: require_field_string(fields, "head_expr", declaration)?,
+        tail_expr: require_field_string(fields, "tail_expr", declaration)?,
+    })
 }
 
-fn structural_fields_for_named<'a>(
-    dag: &'a Dag,
-    name: &'static str,
-) -> Result<&'a [(String, FieldValue)], EmitPythonError> {
-    let decl = dag
-        .declaration_by_name(name)
-        .ok_or(EmitPythonError::MissingSpec(name))?;
-    structural_fields(decl).ok_or(EmitPythonError::MalformedSpec {
-        declaration: decl.id,
+fn structural_fields_for_decl(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<&[(String, FieldValue)], EmitPythonError> {
+    structural_fields(dag.declaration(declaration)).ok_or(EmitPythonError::MalformedSpec {
+        declaration,
         detail: "named Python spec entry must be a structural data item",
     })
 }
