@@ -133,6 +133,12 @@ The earlier **“≥ 86 sites”** lane estimate used a looser union/overlap men
 
 **Why no new `record_derive` carrier.** The emit-model's `TypeDefinitionSyntax` templates already treat target-specific scaffolding (e.g., `@dataclass\n` in Python, `type {name} struct { ... }` in Go) as part of the template string. Baking `#[derive(Clone, Debug)]\n` into Rust's `struct_def` / `enum_def` is consistent with that established pattern — no new substrate field required. If a future need emerges for conditional/per-type derive sets (e.g., `Copy` iff the type is copy-safe), that motivates a structural carrier; YAGNI until then.
 
+### B20 — Rust module-function visibility prefix → ✅ Dissolved (SG-7.2 partial)
+
+| Where | What | Resolution |
+|-------|------|-------------|
+| `emit/rust_target.rs` `render_function_declaration` | Previously wrapped module-mode functions with handwritten `format!("pub {rendered}")` after rendering the shared `FunctionSyntax.definition` template | **Dissolved in SG-7.2**: `FunctionSyntax` now carries `definition_exported`, and `spec/rust.dag` declares Rust's exported carrier as `pub fn ...`. Module-mode Rust emission selects the spec-owned exported template directly; no handwritten visibility prefix remains in the Rust emitter. |
+
 ---
 
 ### B16 — Substrate accessor miss error strings

@@ -345,6 +345,7 @@ struct ModuleSyntaxBinding {
 #[derive(Debug, Clone)]
 struct FunctionSyntaxBinding {
     definition: String,
+    definition_exported: String,
     param_with_type: String,
     param_separator: String,
 }
@@ -1357,6 +1358,7 @@ fn parse_function_syntax(
     let fields = structural_fields_for_decl(dag, declaration)?;
     Ok(FunctionSyntaxBinding {
         definition: syntax_field_string(fields, "definition", declaration)?,
+        definition_exported: syntax_field_string(fields, "definition_exported", declaration)?,
         param_with_type: syntax_field_string(fields, "param_with_type", declaration)?,
         param_separator: syntax_field_string(fields, "param_separator", declaration)?,
     })
@@ -4466,7 +4468,10 @@ impl<'a> Ctx<'a> {
             .ok_or(EmitError::MissingTypeRealization { target: *output })?;
         let body = self.render_port(bind.value, &locals, RenderMode::OwnedConstructLastUse)?;
         let rendered = render_named_template(
-            &self.indexes.syntax.functions.definition,
+            match self.mode {
+                EmitRustMode::Program => &self.indexes.syntax.functions.definition,
+                EmitRustMode::Module => &self.indexes.syntax.functions.definition_exported,
+            },
             &[
                 ("name", name),
                 ("params", &params_joined),
@@ -4474,11 +4479,7 @@ impl<'a> Ctx<'a> {
                 ("body", &body),
             ],
         );
-        if self.mode == EmitRustMode::Module {
-            Ok(format!("pub {rendered}"))
-        } else {
-            Ok(rendered)
-        }
+        Ok(rendered)
     }
 
     fn render_type_declaration(
@@ -5376,6 +5377,55 @@ fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
         assert!(
             rendered.contains("fn classify(p0: Sign) -> i64 {"),
             "expected PassByValue read strategy to render owned function params, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn module_function_visibility_comes_from_rust_function_syntax() {
+        let mut dag = compile_to_dag("fn classify(s: Int) -> Int = s", "test.v3").expect("compiles");
+        let functions_decl = dag
+            .declaration_by_name("rust_functions")
+            .expect("rust_functions declaration")
+            .id;
+        dag.declaration_mut(functions_decl).value_body = Some(ValueBody::Structural {
+            fields: vec![
+                (
+                    "definition".to_string(),
+                    FieldValue::Literal(LiteralBits::String(
+                        "fn {name}({params}) -> {ret} { {body} }".to_string(),
+                    )),
+                ),
+                (
+                    "definition_exported".to_string(),
+                    FieldValue::Literal(LiteralBits::String(
+                        "pub(crate) fn {name}({params}) -> {ret} { {body} }".to_string(),
+                    )),
+                ),
+                (
+                    "definition_void".to_string(),
+                    FieldValue::Literal(LiteralBits::String(
+                        "fn {name}({params}) { {body} }".to_string(),
+                    )),
+                ),
+                (
+                    "param_with_type".to_string(),
+                    FieldValue::Literal(LiteralBits::String("{name}: {type}".to_string())),
+                ),
+                (
+                    "param_separator".to_string(),
+                    FieldValue::Literal(LiteralBits::String(", ".to_string())),
+                ),
+            ],
+        });
+
+        let rendered = emit_rust_with_mode(&dag, EmitRustMode::Module).expect("emits");
+        assert!(
+            rendered.contains("pub(crate) fn classify("),
+            "expected module-mode function visibility to come from rust_functions.definition_exported, got: {rendered}"
+        );
+        assert!(
+            !rendered.contains("pub fn classify("),
+            "expected handwritten `pub ` prefix logic to be gone, got: {rendered}"
         );
     }
 

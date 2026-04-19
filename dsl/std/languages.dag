@@ -188,6 +188,7 @@ type ModuleSyntax {
 //      Python Reference 8.7 "Function definitions"
 type FunctionSyntax {
   definition: String               // e.g. "fn \{name\}(\{params\}) -> \{ret\} { \{body\} }"
+  definition_exported: String      // e.g. "pub fn \{name\}(\{params\}) -> \{ret\} { \{body\} }"
   definition_void: String          // e.g. "fn \{name\}(\{params\}) { \{body\} }"
   param_with_type: String          // e.g. "\{name\}: \{type\}" or "\{name\} \{type\}"
   param_separator: String          // e.g. ", "
@@ -681,6 +682,7 @@ data rust_modules: ModuleSyntax = {
 // "How does Rust define functions?"
 data rust_functions: FunctionSyntax = {
   definition: "fn \{name\}(\{params\}) -> \{ret\} { \{body\} }",
+  definition_exported: "pub fn \{name\}(\{params\}) -> \{ret\} { \{body\} }",
   definition_void: "fn \{name\}(\{params\}) { \{body\} }",
   param_with_type: "\{name\}: \{type\}",
   param_separator: ", ",
@@ -800,6 +802,7 @@ data go_modules: ModuleSyntax = {
 // "How does Go define functions?"
 data go_functions: FunctionSyntax = {
   definition: "func \{name\}(\{params\}) \{ret\} { \{body\} }",
+  definition_exported: "func \{name\}(\{params\}) \{ret\} { \{body\} }",
   definition_void: "func \{name\}(\{params\}) { \{body\} }",
   param_with_type: "\{name\} \{type\}",
   param_separator: ", ",
@@ -920,6 +923,7 @@ data python_modules: ModuleSyntax = {
 // "How does Python define functions?"
 data python_functions: FunctionSyntax = {
   definition: "def \{name\}(\{params\}) -> \{ret\}:\n    \{body\}",
+  definition_exported: "def \{name\}(\{params\}) -> \{ret\}:\n    \{body\}",
   definition_void: "def \{name\}(\{params\}):\n    \{body\}",
   param_with_type: "\{name\}: \{type\}",
   param_separator: ", ",

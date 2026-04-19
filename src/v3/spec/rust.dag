@@ -938,6 +938,7 @@ data rust_modules: ModuleSyntax = {
 
 data rust_functions: FunctionSyntax = {
   definition: "fn {name}({params}) -> {ret} { {body} }"
+  definition_exported: "pub fn {name}({params}) -> {ret} { {body} }"
   definition_void: "fn {name}({params}) { {body} }"
   param_with_type: "{name}: {type}"
   param_separator: ", "

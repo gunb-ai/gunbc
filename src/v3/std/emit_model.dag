@@ -197,6 +197,7 @@ type ModuleSyntax {
 
 type FunctionSyntax {
   definition: String
+  definition_exported: String
   definition_void: String
   param_with_type: String
   param_separator: String
