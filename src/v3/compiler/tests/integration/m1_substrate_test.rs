@@ -2856,7 +2856,7 @@ fn bad(w: Wrapped) -> Int = match w { Wrap { inner: pair } => match pair { Pair 
         dag.diagnostics().iter().any(|(_, diag)| matches!(
             diag,
             Diagnostic::ResolveError { name, .. }
-                if name.contains(\"binds `x` more than once\")
+                if name.contains("binds `x` more than once")
         )),
         "expected fail-closed duplicate payload-pattern binding diagnostic, got {:?}",
         dag.diagnostics()
