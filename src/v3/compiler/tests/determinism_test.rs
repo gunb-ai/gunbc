@@ -157,10 +157,12 @@ fn emit_matrix_program_rust_is_deterministic() {
 
 #[test]
 fn emit_matrix_program_go_is_deterministic() {
-    for fixture in PROGRAM_FIXTURES {
-        if GO_EMIT_EXCLUDE.contains(&fixture.name) {
-            continue;
-        }
+    // Pre-filter: `emit_go` does not support `Behavior::Loop` yet (e.g. recursive_function_call_six).
+    // Must not call `emit_go_program` for excluded rows — only supported Go matrix rows.
+    for fixture in PROGRAM_FIXTURES
+        .iter()
+        .filter(|f| !GO_EMIT_EXCLUDE.contains(&f.name))
+    {
         let name = fixture.name;
         assert_five_identical_runs(|| emit_go_program(fixture), &format!("go program {name}"));
     }

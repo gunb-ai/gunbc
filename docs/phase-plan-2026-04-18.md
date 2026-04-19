@@ -297,6 +297,8 @@ After current batch closes + §3 next-batch lands:
 | Diagnostics-as-corrections (Lane 3 Stage 3b) | ❌ DB-1 locked; gated on Lane 1c close |
 | **Lane 1 Stage 1e — single generic walker** | 🟡 Shared `emit.rs` scaffold landed on current branch; Go migrated, Rust/Python pending |
 
+**2026-04-19 audit (Lane D):** every 🟡/❌ row above remains correctly owned by the ROADMAP deferral it points at (1e, 1c tail, 2b consumer, 2c runner, 2d, 3b) — no orphan blocker surfaced for DB-8 prep beyond those authorities. DB-8 ratchet infra (`determinism_test.rs`, `self_host_fixed_point`, `self_host_ratchet` CI) lands independently; see ROADMAP **Lane 3 Stage 3c prep**.
+
 ### The Lane 1 Stage 1e gate
 
 **Stage 3c cannot start until Lane 1 Stage 1e lands.** Per lane3-self-hosting-cycle.md dependencies: *"Requires Lane 1 Stage 1e complete — self-hosting through fragmented per-target emitters is worthless. The dissolved single-emitter is what gets re-emitted in 3c."*
