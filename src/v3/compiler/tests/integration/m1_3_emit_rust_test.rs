@@ -5,11 +5,10 @@
 // produces Rust source that, when fed to `rustc`, compiles and runs
 // producing `3` on stdout.
 //
-// The #[ignore]d `rustc_roundtrip` test runs that whole pipeline;
-// it's gated because CI environments don't always have `rustc`
-// available. Run it locally via:
-//     cargo test -p v3-compiler --test m1_3_emit_rust_test \
-//                  -- --ignored --nocapture
+// The #[ignore]d `rustc_roundtrip` tests run that whole pipeline;
+// they're gated because CI environments don't always have `rustc`
+// available. Run locally via the consolidated integration binary, e.g.:
+//     cargo test -p v3-compiler --test integration -- --ignored --nocapture
 //
 // Everything else is structural: assert the emitter produced the
 // right substring for each kind of program without depending on
@@ -24,6 +23,7 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::emit::{emit as shared_emit, emit_module as shared_emit_module, EmitTarget};
 use v3_compiler::emit_rust::{emit_rust, emit_rust_module};
 
+use crate::common::determinism_fixtures::PROGRAM_FIXTURES;
 use crate::common::{HarnessLinkMode, RustcHarness};
 
 static HARNESS: OnceLock<RustcHarness> = OnceLock::new();
@@ -99,54 +99,6 @@ fn roundtrip_stdout(source: &str) -> String {
     assert!(run.status.success(), "compiled binary failed");
     String::from_utf8_lossy(&run.stdout).trim().to_string()
 }
-
-/// Descriptor for a self-contained program fixture. Each fixture's
-/// v3 source is emitted via `emit_rust` (full program with its own
-/// `fn main`), wrapped in a submodule so the nested `main` becomes
-/// namespaced, and the batched harness dispatches via argv.
-struct ProgramFixture {
-    name: &'static str,
-    source: &'static str,
-}
-
-const PROGRAM_FIXTURES: &[ProgramFixture] = &[
-    ProgramFixture {
-        name: "list_fold_six",
-        source: "let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)",
-    },
-    ProgramFixture {
-        name: "generic_list_fold_one",
-        source: "let total: Int = fold(singleton(1), 0, |acc, x| acc + x)",
-    },
-    ProgramFixture {
-        name: "list_map_then_fold_twelve",
-        source: "let total: Int = fold(map(cons(1, cons(2, singleton(3))), |x| x * 2), 0, |acc, x| acc + x)",
-    },
-    ProgramFixture {
-        name: "list_filter_then_fold_seven",
-        source: "let total: Int = fold(filter(cons(1, cons(2, cons(3, singleton(4)))), |x| x > 2), 0, |acc, x| acc + x)",
-    },
-    ProgramFixture {
-        name: "nested_list_builtins_inside_lambda_six",
-        source: "let total: Int = fold(cons(1, singleton(2)), 0, |acc, x| acc + fold(map(singleton(x), |y| y * 2), 0, |n, y| n + y))",
-    },
-    ProgramFixture {
-        name: "user_function_call_three",
-        source: "fn add(a: Int, b: Int) -> Int = a + b\nlet total: Int = add(1, 2)",
-    },
-    ProgramFixture {
-        name: "recursive_function_call_six",
-        source: "fn count_down(n: Int) -> Int = if n == 0 then 0 else n + count_down(n - 1)\nlet total: Int = count_down(3)",
-    },
-    ProgramFixture {
-        name: "record_literal_through_function_one",
-        source: "type Point { x: Int y: Int }\nfn x_of(p: Point) -> Int = p.x\nlet total: Int = x_of({ x: 1, y: 2 })",
-    },
-    ProgramFixture {
-        name: "user_sum_match_zero",
-        source: "type Sign = Plus | Minus\nfn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }\nlet total: Int = classify(Plus)",
-    },
-];
 
 static PROGRAM_HARNESS_BIN: OnceLock<PathBuf> = OnceLock::new();
 

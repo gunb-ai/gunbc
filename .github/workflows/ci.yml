@@ -73,7 +73,7 @@ jobs:
 
   v3:
     runs-on: ubuntu-latest
-    # Full suite is capped at 750s, plus clippy + lens gates + cold compile — 15m
+    # Full suite is capped at 1200s, plus clippy + lens gates + cold compile — 15m
     # can cancel the job before the final steps finish.
     timeout-minutes: 25
     steps:
@@ -102,10 +102,11 @@ jobs:
 
       # Layer 1 (coarse CI): wall-clock gates on `cargo test -p v3-compiler`.
       #
-      # Full-suite budget is 1050s. The last green GitHub run was 719s, but the
-      # current mainline suite is ~951–953s on ubuntu-24.04 after #548. Keep the
-      # cap above the live runner baseline while leaving ~100s headroom for normal
-      # variance and the post-test clippy / lens / ratchet steps in this job.
+      # Full-suite wall-clock ratchet below is 1200s. Mainline timing on ubuntu-24.04
+      # reached ~951–953s after #548 (earlier green ~719s); warm local runs are often
+      # ~520–560s for `cargo test -p v3-compiler`. Cold runners, cache misses, m1_5_testgen,
+      # and the DB-8 determinism matrix can push higher — observed ~1082s motivated cap >1050s.
+      # Ratchet is coarse (catch suite-wide slowdown), not a tight perf SLA.
       # Regressions show up when integration tests redo full `compile_to_dag` per
       # `#[test]` (see `lane2_stage_2e_parallelism_test`: shared `OnceLock` + clone).
       #
@@ -127,14 +128,16 @@ jobs:
             exit 1
           fi
 
-      - name: v3 tests (full suite, 1050s budget)
+      # **Dissolution trigger:** reshape m1_5_testgen to spot-check instead of exhaustive
+      # compile-every-claim, OR mark the two slow tests `#[ignore]`-by-default + nightly job.
+      - name: v3 tests (full suite, 1200s budget)
         run: |
           start=$(date +%s)
           cargo test -p v3-compiler
           elapsed=$(( $(date +%s) - start ))
           echo "v3 full-suite wall time: ${elapsed}s"
-          if [ "$elapsed" -gt 1050 ]; then
-            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 1050s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
+          if [ "$elapsed" -gt 1200 ]; then
+            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 1200s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
             exit 1
           fi
 
@@ -184,3 +187,54 @@ jobs:
 
       - name: Banked-dissolutions ratchet
         run: scripts/check-banked-dissolutions.sh
+
+  # DB-8 — fixed-point ratchet infrastructure (Lane 3 Stage 3c prep). Staged until
+  # Lane 1 Stage 1e closes: do not block merges on this job yet.
+  self_host_ratchet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [v3]
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93.0"
+
+      - name: Cache Cargo (self_host_ratchet)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: cargo-self-host-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/**') }}
+          restore-keys: |
+            cargo-self-host-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+            cargo-self-host-${{ runner.os }}-
+
+      # Named DB-8 ratchet (also executed inside the `v3` full suite); release
+      # build here matches `self_host_fixed_point` and gives a dedicated log section.
+      # Step-level continue-on-error: one ratchet can fail without aborting the other
+      # (job-level continue-on-error keeps the workflow green until Lane 1e graduates).
+      - name: DB-8 determinism_test (5× emit matrix)
+        continue-on-error: true
+        run: cargo test -p v3-compiler --release --test determinism_test
+
+      - name: DB-8 self_host_fixed_point (staged)
+        continue-on-error: true
+        run: cargo run -p v3-compiler --release --bin self_host_fixed_point
+
+      - name: DB-8 emit.rs HashMap iteration policy (informational)
+        run: |
+          if grep -nE "(HashMap|HashSet)::" src/v3/compiler/src/emit.rs; then
+            echo "::notice::DB-8: emit.rs still uses HashMap/HashSet:: iteration — target is BTree* / sorted keys (determinism_test + ROADMAP Lane 3 Stage 3c prep)"
+          else
+            echo "emit.rs: no HashMap::/HashSet:: — consider graduating this check to required when Lane 1e clears debt"
+          fi

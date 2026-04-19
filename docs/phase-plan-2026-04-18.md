@@ -297,6 +297,8 @@ After current batch closes + §3 next-batch lands:
 | Diagnostics-as-corrections (Lane 3 Stage 3b) | ❌ DB-1 locked; gated on Lane 1c close |
 | **Lane 1 Stage 1e — single generic walker** | 🟡 Shared `emit.rs` scaffold landed on current branch; Go migrated, Rust/Python pending |
 
+**2026-04-19 audit (Lane D):** every 🟡/❌ row above remains correctly owned by the ROADMAP deferral it points at (1e, 1c tail, 2b consumer, 2c runner, 2d, 3b) — no orphan blocker surfaced for DB-8 prep beyond those authorities. DB-8 ratchet infra (`determinism_test.rs`, `self_host_fixed_point`, `self_host_ratchet` CI) lands independently; see ROADMAP **Lane 3 Stage 3c prep**.
+
 ### The Lane 1 Stage 1e gate
 
 **Stage 3c cannot start until Lane 1 Stage 1e lands.** Per lane3-self-hosting-cycle.md dependencies: *"Requires Lane 1 Stage 1e complete — self-hosting through fragmented per-target emitters is worthless. The dissolved single-emitter is what gets re-emitted in 3c."*
@@ -315,13 +317,15 @@ Current critical-path status:
 
 ### Genuinely open 3c questions (not in DB-8 or lane3 doc)
 
-1. **Does 3c fire on compiler.dag AS-IS, or on an expanded compiler.dag?** compiler.dag today is 310 lines of cycle meta-model. If 3c fires the cycle using the existing hand-written Rust compiler, compiler.dag doesn't have to grow. If the intent is "compiler.dag EXPRESSES the compiler so the cycle is non-trivial," that's the horizon beyond 3c (M3 per original roadmap). **Open for next director session.** Candidate acceptance for 3c: "cycle fires on compiler.dag as it stands — trivially bit-identical because generated Rust depends on no field of compiler.dag that varies." Distinct from M3 acceptance: "compiler.dag EXPRESSES the compiler and the cycle re-derives the Rust emitter." Pick one or declare both.
+**2026-04-19 (Lane D / DB-8 prep):** four director-chat questions — answered in-place; escalate only where marked *still open*.
 
-2. **Bootstrap sequencing for the first self-hosted run.** DB-8 assumes the v3-Rust-compiler can produce a working binary from compiler.dag. If compiler.dag doesn't include parser/lowerer/emitter logic, the binary doesn't actually DO the compiler's work — it runs the cycle-runner. Question for next director session: is there an intermediate "self-hosting of the cycle-runner" milestone before "self-hosting of the compiler proper"?
+1. **Does 3c fire on compiler.dag AS-IS, or on an expanded compiler.dag?** **Resolved split:** **DB-8 / Stage 3c acceptance** for the *fixed-point ratchet* is the hand-written v3 compiler emitting Rust from whatever `.dag` input is in scope, then `rustc`, then re-run, then byte-diff — that input can remain `dsl/gunbc/compiler.dag` as soon as it parses and emits. **M3 / thesis horizon** (“compiler.dag *expresses* the full compiler”) is strictly stronger and is *not* required for 3c’s DB-8 gate. Today `compiler.dag` is the cycle meta-model (§6 above); it does not yet parse under v3 — the ratchet is **staged** until grammar + 1e land.
 
-3. **compiler.dag's `hand_maintained_src` references v2 paths** (`src/v2/stage0/src`, `cli_run.rs`, `v2_interpreter.rs`). Stage 3c operates on v3's compiler source, not v2. Does 3c require compiler.dag itself to be rewritten to v3-centric first, or is it a v2→v3 bridging detail that self-resolves? Tracked as a §5b migration candidate pending director pre-clearance — don't speculate on the answer here.
+2. **Bootstrap sequencing for the first self-hosted run.** **Answer:** yes — an intermediate milestone is **cycle-runner self-hosting** (emit + tool wiring from the meta-model) *before* “compiler logic lives in .dag.” DB-8’s binary already separates **pipeline fixed-point** (always-on `default_fixed_point_source`) from **full self-host** (gated). *Still open* for director chat: whether to name that intermediate as an explicit ROADMAP row or keep it as receipt-only staging.
 
-4. **Determinism test precedes 3c.** DB-8 prescribes `tests/determinism_test.rs` (per-fixture 5x re-run). This should land BEFORE 3c as part of Lane 1 Stage 1e acceptance — it's a unit-level prerequisite that catches non-determinism at emit-level before the full cycle runs. **Recommendation:** add `tests/determinism_test.rs` to Lane 1 Stage 1e acceptance list when 1e design is written.
+3. **compiler.dag's `hand_maintained_src` references v2 paths.** **Answer:** **bridging detail** until v3’s generated crate replaces v2 stage0 in the meta-model — 3c does not need to block on rewriting those strings for the **determinism + receipt** slice. **Tracked debt:** migrate `GeneratedCrate` / `hand_maintained_src` to v3-centric paths when the v3 compiler crate is what the cycle builds (same §5b migration candidate; dissolution: first green self-host cycle targeting v3 layout).
+
+4. **Determinism test precedes 3c.** **Landed:** `src/v3/compiler/tests/determinism_test.rs` + `determinism_fixtures.rs` — 5× re-emit matrix; also **Lane 1 Stage 1e** mechanical debt hook (`emit_rs_hash_iteration_debt_is_visible_to_audit`). Recommendation from prior snapshot is **done**; remaining work is Lane 1e BTree/sorted iteration in `emit.rs`, not more test scaffolding.
 
 ### What the next director session should do
 

@@ -25,6 +25,7 @@
 
 pub mod budgeted;
 pub mod cached_compile;
+pub mod determinism_fixtures;
 
 pub use cached_compile::{
     cached_compile_any, cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome,
