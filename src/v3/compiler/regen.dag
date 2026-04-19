@@ -57,3 +57,19 @@ data lens_unused_parameters_entry: LensRegistryEntry = {
   lens_file: "src/v3/lenses/unused_parameters.dag"
   generated_file: "src/v3/compiler/src/lens_unused_parameters_generated.rs"
 }
+
+// Absorbed from SG-4 prep (PR #562): `regen_infer_helpers.rs` was
+// landed as a per-file regen driver mirroring the deleted
+// `regen_lens_*` bins, explicitly flagged in its own header as
+// "SG-6 owns folding all of these into a single generic regen
+// target". This is that absorption. `infer_helpers.dag` is a lens
+// in the broad sense the registry uses (reads substrate Dag, emits
+// a Rust module via `emit_rust_module`), so it fits the existing
+// `LensRegistryEntry` shape without a rename. A future `.dag`
+// artifact that is genuinely non-lens would trigger the widening
+// to a `GeneratedArtifactEntry` carrier.
+data lens_infer_helpers_entry: LensRegistryEntry = {
+  name: "infer_helpers"
+  lens_file: "src/v3/lenses/infer_helpers.dag"
+  generated_file: "src/v3/compiler/src/infer_helpers_generated.rs"
+}
