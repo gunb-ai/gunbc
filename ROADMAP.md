@@ -652,6 +652,7 @@ Cleared (prior PR #521): `DerivedOpEffect { method, path_template, shape }` coll
 
 **Stage 1e.0 closeout — pattern-role authority structural** → ✅ Structurally resolved for the live single-role state (`VectorList` only): list-pattern lowering does not dispatch on a host `PatternStrategy` enum in emitters — each `spec/{rust,go,python}.dag` `*_list_pattern` declares `strategy: VectorList` plus the template bundle; Rust/Go/Python emitters validate that tag fail-closed when indexing realizations and render from the loaded templates only (`src/v3/std/emit_model.dag` documents the split). When a second distinct lowering path ships, restore strategy on the emitter binding and branch in render (still fail-closed from spec rows), and extend `PatternStrategy` + `spec/*.dag` data — YAGNI until then.
 
+<<<<<<< HEAD
 ### Lane 1 Stage 1e tail — SG-7 emit cutover (active, SG-program owned)
 
 **Scope.** SG-7 is the SG-program lane that dissolves `src/v3/compiler/src/emit/rust_target.rs` (≈5.5K hand-authored lines) and `src/v3/compiler/src/emit/python_target.rs` (≈2K hand-authored lines) into spec-driven declarations in `src/v3/spec/{rust,python}.dag`, consumed by the shared `emit.rs` walker (already on main via Go's port). Per SG program rule, each migrated `.rs` file ends its diff either deleted, generated, or reduced to a narrow host shim — no dual-authority period. SG-7 IS the Rust/Python half of remaining Stage 1e walker-body dissolution; it is not a separate effort tracked in parallel.
@@ -674,6 +675,34 @@ Each sub-PR must reduce handwritten-Rust line count in `src/v3/compiler/src/emit
 **Explicit non-goal.** **Do not** ship a PR whose only handwritten-Rust reduction is porting the 23-line target facades (`emit_rust.rs`, `emit_python.rs`, `emit_go.rs`). They carry zero target heuristic authority; deleting them alone moves the SG-0 census without moving the thesis acceptance ("all target behavior is spec-driven, no per-target heuristic authority remains in handwritten Rust"). SG-7's cutover is the walker, not the facade.
 
 **Cross-references:** `docs/emit-bridges.md` (bridge inventory), `docs/phase1-lane3-consolidation-build-plan.md` §"Wrapper exception receipt," `src/v3/SELF_HOSTING.md` §3 (Stage 1 emit.dag design note).
+=======
+### Self-Gen Program — SG-6 (regen/testgen/bootstrap/harness cutover)
+
+**SG program context.** The Self-Gen (SG) program is the "zero hand-authored Rust in `src/v3`" track dispatched out of the parent `gunbc Self Gen` session. Each SG lane owns a narrow surface and the same hard rule: every SG PR reduces the hand-authored Rust census in `src/v3`, ratchet only down. SG-6 specifically owns `build.rs`, `bootstrap.rs`, `pipeline_authority.rs`, `lens_testgen.rs`, and `src/bin/regen_*.rs`.
+
+**Landed (PR #560, SG-6 regen-driver cutover / partial lane).**
+- Four per-lens regen bins (`regen_lens_cost.rs`, `regen_lens_cost_symbolic.rs`, `regen_lens_structural_resolution.rs`, `regen_lens_unused_parameters.rs`) deleted.
+- Single `src/v3/compiler/src/bin/regen_lens.rs` shim reads `src/v3/compiler/regen.dag`'s `LensRegistryEntry` records via `Dag::new()` and regenerates each declared `lens_<name>_generated.rs`. `read_registry` fails closed on duplicate `name` / duplicate `generated_file`.
+- `sg6_hand_authored_census_test.rs` pins both the `src/bin/` census (`regen_lens.rs`, `regen_v3.rs`, `self_host_fixed_point.rs`) and the full `(name, lens_file, generated_file)` registry triple, plus uniqueness of `name` / `generated_file` and singleton resolution of `--lens <name>`.
+
+**Deferral: SG-6 registry consumer consolidation (S, follow-up).** `regen.dag` is now the primary authority for `(name, lens_file, generated_file)` triples, but two classes of downstream consumer still mirror those paths instead of resolving through the registry:
+1. Every `src/v3/compiler/tests/integration/m2_lens_*_migration_test.rs` has a local `lens_path()` and a `checked_in_generated_module()` backed by `include_str!`.
+2. `src/v3/compiler/src/lib.rs` (plus `lens_unused_parameters.rs`) embeds each generated file via `include_str!`.
+
+The triple-ratchet in `sg6_hand_authored_census_test.rs` keeps them from diverging silently, but the duplication still exists.
+
+Dissolution trigger: add a shared `tests/common` helper that walks `regen.dag` and returns a lens source path keyed by registry `name`; re-point every `m2_lens_*_migration_test.rs::lens_path()` at that helper. Once the source-side path is sourced exclusively from the registry, the `lens_file` column of the triple ratchet collapses into a dependency on the same helper (the SG-6 census then pins only `name` + `generated_file`, with `lens_file` re-derived at read time). `include_str!` on the generated output remains compile-time and stays hardcoded — that bridge dissolves only when/if the lib adopts a runtime-loaded generated-file surface.
+
+**Deferral: SG-6 `regen_lens` CLI end-to-end smoke test (XS, follow-up).** PR #560 covers the CLI surface structurally (arg parsing, bootstrap diagnostics, missing/duplicate/unknown-selector paths all tested via unit-shape tests) and manually via injected duplicates. The unified binary is not yet exercised end-to-end inside a test — adding `--lens <invalid>` exit-code + stderr coverage is cheap and belongs here; a positive-path smoke needs either `--dry-run` on the driver or a temp-output plumbing path so it does not race with migration-snapshot tests that read the committed generated files.
+
+**Deferral: SG-6 remaining lane surfaces (XL aggregate, follow-up PRs).**
+- `src/v3/compiler/src/pipeline_authority.rs` (276 lines): the text-scanning body parser for `pipeline.dag`'s `fn compile { ... }` body should dissolve into a declared `data pipeline_compile_order: List<DeclarationRef>` record consumed structurally (same pattern as `LensRegistryEntry`).
+- `src/v3/compiler/src/lens_testgen.rs` (792 lines): port to a `.dag` lens under `src/v3/lenses/testgen.dag`, emitted into `src/v3/compiler/src/lens_testgen_generated.rs`; register with `regen.dag` (or its widened successor). This is the largest single chunk and satisfies SG-6's "adding a generated test no longer requires hand-editing Rust drivers" acceptance axis.
+- `src/v3/compiler/src/bootstrap.rs` (468 lines): narrow to a host shim; `materialize_pipeline_realizations` becomes `.dag`-authored where possible.
+- `src/v3/compiler/build.rs` (181 lines): already narrow but should gain an explicit generated-style header declaring its shim status.
+
+**Rule (records design intent from the meta-review on PR #560).** If a second generated-artifact class appears (e.g., generated-test registry, generated-emitter driver), widen `LensRegistryEntry` / `regen_lens` into a generic `GeneratedArtifactEntry` registry BEFORE landing a new driver. Adding a second per-class registry or driver would re-introduce the per-lens-bin duplication SG-6 just dissolved.
+>>>>>>> c74b15698 (WIP: SG-6)
 
 ### Cross-cutting — performance
 
