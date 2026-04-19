@@ -1,23 +1,14 @@
-// M2 — lens_provenance migration test.
-//
-// Mirrors m2_lens_unused_parameters_migration_test.rs: the `.dag`
-// declaration at src/v3/lenses/provenance.dag is the live authority
-// for the provenance lens. This suite asserts:
-//
-// 1. The `.dag` file compiles cleanly (no diagnostics).
-// 2. The emitted Rust module matches the checked-in snapshot at
-//    src/v3/compiler/src/lens_provenance_generated.rs — so review of
-//    the emitted shape happens via the snapshot diff, not behind it.
-// 3. The clone-call count in the emitted module is ratcheted. If a
-//    future change regresses clone generation, the ratchet fires.
-// 4. The compiled `.dag` lens agrees with a hand-written Rust oracle
-//    on a small fixture set covering every Origin variant. The oracle
-//    is the minimum structural walker needed to classify a port by its
-//    producer's behavior kind — any divergence means either the lens
-//    or the oracle is wrong.
-//
-// If this test passes, the `.dag` is the authority and the
-// `lens_provenance_generated.rs` in-tree snapshot is in sync with it.
+//! **Layer:** boundary-adjacent integration — emitted Rust lens linked via rustc.
+//!
+//! Lens-semantic coverage (NoProducer, Source/Value, Computed/Transform,
+//! Selected/Branch, Accumulated/Loop, Bind-value passthrough) lives as
+//! in-crate unit tests under
+//! `src/v3/compiler/src/lib.rs::lens_provenance::tests`, where the
+//! `pub(crate)` Dag builder is reachable. This suite is the
+//! cross-process receipt: the `.dag` authority compiles cleanly, the
+//! checked-in generated module matches `emit_rust_module(provenance.dag)`,
+//! the clone-count ratchet holds, and the emitted module links and
+//! runs end-to-end on one representative fixture.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -144,37 +135,6 @@ fn roundtrip_origin_labels(bin_path: &Path, program_source: &str, file_name: &st
     String::from_utf8_lossy(&run.stdout).trim().to_string()
 }
 
-fn handwritten_origin_label(dag: &Dag, port: PortId) -> &'static str {
-    match dag.port(port).produced_by {
-        None => "Source",
-        Some(producer) => match dag.node(producer) {
-            Behavior::Value(_) => "Source",
-            Behavior::Transform(_) => "Computed",
-            Behavior::Branch(_) => "Selected",
-            Behavior::Loop(_) => "Accumulated",
-            Behavior::Bind(_) => "Source",
-        },
-    }
-}
-
-fn render_handwritten_oracle(program_source: &str, file_name: &str) -> String {
-    let dag = compile_to_dag(program_source, file_name).expect("program compiles");
-    let mut rendered: Vec<String> = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .map(|bind| {
-            format!(
-                "{}:{}",
-                bind.name,
-                handwritten_origin_label(&dag, bind.value)
-            )
-        })
-        .collect();
-    rendered.sort();
-    rendered.join("|")
-}
-
 /// Helper: regenerate the checked-in generated module. Run with
 /// `cargo test --test m2_lens_provenance_migration_test -- --ignored
 /// emit_lens_provenance_snapshot` whenever `lens_provenance.dag`
@@ -243,35 +203,60 @@ fn lens_provenance_generated_module_clone_count_is_ratcheted() {
     );
 }
 
-#[test]
-fn lens_provenance_dag_matches_handwritten_oracle_on_core_fixtures() {
-    let module = emit_lens_module();
-    let fixtures = [
-        (
-            "let a = 1\nlet b = 2\nlet c = a + b",
-            "transform_origin.v3",
-        ),
-        (
-            "let x = if 1 > 0 then 42 else 0",
-            "branch_origin.v3",
-        ),
-        (
-            "fn count(n: Int) -> Int = if n == 0 then 0 else n + count(n - 1)\nlet answer = count(3)",
-            "loop_origin.v3",
-        ),
-        (
-            "let a = 1",
-            "value_source.v3",
-        ),
-    ];
-
-    let bin_path = build_roundtrip_harness(&module);
-    for (source, file_name) in fixtures {
-        let rust_rendered = render_handwritten_oracle(source, file_name);
-        let dag_rendered = roundtrip_origin_labels(&bin_path, source, file_name);
-        assert_eq!(
-            dag_rendered, rust_rendered,
-            "compiled .dag lens should match handwritten Rust oracle on {file_name}"
-        );
+fn handwritten_origin_label(dag: &Dag, port: PortId) -> &'static str {
+    match dag.port(port).produced_by {
+        None => "Source",
+        Some(producer) => match dag.node(producer) {
+            Behavior::Value(_) => "Source",
+            Behavior::Transform(_) => "Computed",
+            Behavior::Branch(_) => "Selected",
+            Behavior::Loop(_) => "Accumulated",
+            Behavior::Bind(_) => "Source",
+        },
     }
+}
+
+fn render_handwritten_oracle(program_source: &str, file_name: &str) -> String {
+    let dag = compile_to_dag(program_source, file_name).expect("program compiles");
+    let mut rendered: Vec<String> = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .map(|bind| {
+            format!(
+                "{}:{}",
+                bind.name,
+                handwritten_origin_label(&dag, bind.value)
+            )
+        })
+        .collect();
+    rendered.sort();
+    rendered.join("|")
+}
+
+/// Cross-process receipt: the emitted lens module links against the
+/// `v3_compiler` crate and runs under rustc on a representative
+/// fixture that exercises all four producing Behaviors
+/// (Value/Source, Transform/Computed, Branch/Selected,
+/// Loop/Accumulated) plus Bind-value passthrough. Agreement is gated
+/// against the handwritten oracle (not a hard-coded string) because
+/// `compile_to_dag` also pulls in bootstrap `std/` binds whose names
+/// are not stable to pin here. Per-variant coverage against
+/// hand-built Dags lives in `lens_provenance::tests`.
+#[test]
+fn lens_provenance_dag_runs_end_to_end_via_rustc_harness() {
+    let module = emit_lens_module();
+    let bin_path = build_roundtrip_harness(&module);
+    let source = "let a = 1\n\
+         let b = a + 1\n\
+         let c = if 1 > 0 then 42 else 0\n\
+         fn count(n: Int) -> Int = if n == 0 then 0 else n + count(n - 1)\n\
+         let d = count(3)";
+    let file_name = "mixed_origins.v3";
+    let oracle = render_handwritten_oracle(source, file_name);
+    let emitted = roundtrip_origin_labels(&bin_path, source, file_name);
+    assert_eq!(
+        emitted, oracle,
+        "emitted provenance lens should match handwritten oracle on the cross-process receipt fixture",
+    );
 }
