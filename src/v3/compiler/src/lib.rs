@@ -17,6 +17,20 @@
 
 pub mod dag;
 pub mod diagnostics;
+
+/// SG-0 producer-owned generated-file manifest.
+///
+/// `GENERATED_FILES` is the workspace-relative path list of every
+/// `.rs` file under `src/v3/compiler` that is produced by a codegen
+/// authority. The list is emitted by `build.rs` at build time; the
+/// literal is reviewed there. Two consumers today: the `regen_*`
+/// binaries (they assert their output path is in the list before
+/// writing) and the SG-0 census test (it uses the list as the sole
+/// generated/hand-authored partition — no content-marker scanning).
+pub mod generated_files {
+    include!(concat!(env!("OUT_DIR"), "/v3_generated_files.rs"));
+}
+
 pub mod emit;
 pub mod emit_go;
 pub mod emit_python;
