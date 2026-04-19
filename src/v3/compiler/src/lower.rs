@@ -272,7 +272,8 @@ pub(crate) fn lower_bodies_phase(
     // Sole caller of `lower_parameter_refinement` for parameter
     // `where` clauses (single construction authority).
     lower_parameter_refinements_phase(dag, module, &scoped_symbols, is_first);
-    let mutual_recursion = compute_mutually_recursive(&module.items, dag, &scoped_symbols, is_first);
+    let mutual_recursion =
+        compute_mutually_recursive(&module.items, dag, &scoped_symbols, is_first);
     let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
@@ -321,7 +322,9 @@ fn resolve_imported_symbols(
         .items
         .iter()
         .filter_map(|item| match item {
-            SurfaceItem::Let { .. } | SurfaceItem::Module { .. } | SurfaceItem::Import { .. } => None,
+            SurfaceItem::Let { .. } | SurfaceItem::Module { .. } | SurfaceItem::Import { .. } => {
+                None
+            }
             SurfaceItem::Fn { name, .. }
             | SurfaceItem::FnExternalBody { name, .. }
             | SurfaceItem::Data { name, .. }
