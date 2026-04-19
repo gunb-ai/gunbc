@@ -269,7 +269,10 @@ impl Dag {
         }
     }
 
-    fn callable_template_arguments(&self, target: DeclarationId) -> (DeclarationId, Vec<TemplateArgument>) {
+    fn callable_template_arguments(
+        &self,
+        target: DeclarationId,
+    ) -> (DeclarationId, Vec<TemplateArgument>) {
         match &self.declaration(target).connective {
             TypeConnective::Instantiation {
                 template,
@@ -303,8 +306,7 @@ impl Dag {
             if !allowed.contains(&argument.parameter) {
                 continue;
             }
-            let resolved_value =
-                self.resolve_template_argument_value(arguments, argument.value, 0);
+            let resolved_value = self.resolve_template_argument_value(arguments, argument.value, 0);
             if let Some(existing) = retained
                 .iter_mut()
                 .find(|existing: &&mut TemplateArgument| existing.parameter == argument.parameter)
@@ -1191,7 +1193,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "push_transform(Callable) requires exactly 1 runtime input port(s), got 0")]
+    #[should_panic(
+        expected = "push_transform(Callable) requires exactly 1 runtime input port(s), got 0"
+    )]
     fn push_transform_rejects_wrong_callable_arity() {
         let mut dag = Dag::new();
         let int_decl = dag
