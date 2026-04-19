@@ -670,6 +670,40 @@ impl Port {
     }
 }
 
+/// Structural operator identities carried by `TransformTarget::Operator`.
+/// The authority lives in `src/v3/std/substrate.dag`; this Rust surface is the
+/// runtime mirror the compiler and emitted modules pattern-match on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ArithmeticOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ComparisonOp {
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LogicalOp {
+    And,
+    Or,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OperatorKind {
+    Arithmetic(ArithmeticOp),
+    Comparison(ComparisonOp),
+    Logical(LogicalOp),
+}
+
 #[derive(Debug, Clone)]
 pub struct ValueNode {
     pub id: NodeId,
@@ -765,8 +799,9 @@ pub enum TransformTarget {
     },
     /// A primitive binary operator. Inference dispatches on the
     /// `OperatorKind` variant directly: arithmetic returns the operand
-    /// type, comparison returns Bool. No declaration is allocated.
-    Operator(crate::operators::OperatorKind),
+    /// type, comparison returns Bool, and logical is Bool-monomorphic.
+    /// No declaration is allocated.
+    Operator(OperatorKind),
 }
 
 #[derive(Debug, Clone)]

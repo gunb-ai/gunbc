@@ -1,0 +1,51 @@
+module v3.compiler.operators
+
+import std.substrate { ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind }
+
+fn from_symbol(symbol: String) -> OperatorKind? {
+  if symbol == "+" then Some(Arithmetic(Add))
+  else if symbol == "-" then Some(Arithmetic(Sub))
+  else if symbol == "*" then Some(Arithmetic(Mul))
+  else if symbol == "/" then Some(Arithmetic(Div))
+  else if symbol == "==" then Some(Comparison(Eq))
+  else if symbol == "!=" then Some(Comparison(Ne))
+  else if symbol == "<" then Some(Comparison(Lt))
+  else if symbol == "<=" then Some(Comparison(Le))
+  else if symbol == ">" then Some(Comparison(Gt))
+  else if symbol == ">=" then Some(Comparison(Ge))
+  else if symbol == "&&" then Some(Logical(And))
+  else if symbol == "||" then Some(Logical(Or))
+  else None
+}
+
+fn symbol(op: OperatorKind) -> String =
+  match op {
+    Arithmetic(Add) => "+"
+    Arithmetic(Sub) => "-"
+    Arithmetic(Mul) => "*"
+    Arithmetic(Div) => "/"
+    Comparison(Eq) => "=="
+    Comparison(Ne) => "!="
+    Comparison(Lt) => "<"
+    Comparison(Le) => "<="
+    Comparison(Gt) => ">"
+    Comparison(Ge) => ">="
+    Logical(And) => "&&"
+    Logical(Or) => "||"
+  }
+
+fn algebra_field_name(op: OperatorKind) -> String =
+  match op {
+    Arithmetic(Add) => "add"
+    Arithmetic(Sub) => "sub"
+    Arithmetic(Mul) => "mul"
+    Arithmetic(Div) => "div"
+    Comparison(Eq) => "eq"
+    Comparison(Ne) => "ne"
+    Comparison(Lt) => "lt"
+    Comparison(Le) => "le"
+    Comparison(Gt) => "gt"
+    Comparison(Ge) => "ge"
+    Logical(And) => "and"
+    Logical(Or) => "or"
+  }
