@@ -882,6 +882,9 @@ data rust_contains_callable: CallableRealization = {
   cost: 1
 }
 
+// List structural-sum (`Empty`/`Cons`) → carrier patterns. `strategy` is the
+// pattern-role tag (validated at emitter load); templates below are the
+// emission bundle — no strategy dispatch in emitters post Stage 1e.0.
 data rust_list_pattern: PatternRealization = {
   language: rust_language
   target: List

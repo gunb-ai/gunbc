@@ -83,14 +83,8 @@ enum CallableStrategyBinding {
     ListContains,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PatternStrategyBinding {
-    VectorList,
-}
-
 #[derive(Debug, Clone)]
 struct PatternRealizationBinding {
-    strategy: PatternStrategyBinding,
     scrutinee: String,
     empty_pattern: String,
     cons_pattern: String,
@@ -1208,11 +1202,8 @@ impl<'a> Ctx<'a> {
         let Some(binding) = self.indexes.patterns.get(&disj_id) else {
             return Ok(None);
         };
-        match binding.strategy {
-            PatternStrategyBinding::VectorList => self
-                .render_vector_list_pattern_branch(branch, disj_id, binding, locals)
-                .map(Some),
-        }
+        self.render_vector_list_pattern_branch(branch, disj_id, binding, locals)
+            .map(Some)
     }
 
     fn render_vector_list_pattern_branch(
@@ -2436,7 +2427,6 @@ fn require_pattern_realization(
         });
     }
     Ok(PatternRealizationBinding {
-        strategy: PatternStrategyBinding::VectorList,
         scrutinee: require_field_string(fields, "scrutinee", declaration)?,
         empty_pattern: require_field_string(fields, "empty_pattern", declaration)?,
         cons_pattern: require_field_string(fields, "cons_pattern", declaration)?,

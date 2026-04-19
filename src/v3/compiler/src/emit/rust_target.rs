@@ -301,14 +301,8 @@ impl ParameterDispositionBinding {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RustPatternStrategyBinding {
-    VectorList,
-}
-
 #[derive(Debug, Clone)]
 struct PatternRealizationBinding {
-    strategy: RustPatternStrategyBinding,
     scrutinee: String,
     empty_pattern: String,
     cons_pattern: String,
@@ -1987,29 +1981,28 @@ fn require_pattern_realization(
     else {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "PatternRealization.strategy must be a RustPatternStrategy variant",
+            detail: "PatternRealization.strategy must be a PatternStrategy variant",
         });
     };
     if !payload.is_empty() {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "RustPatternStrategy variants must not carry payload fields",
+            detail: "PatternStrategy variants must not carry payload fields",
         });
     }
     let vector_list = named_variant_id(dag, "PatternStrategy", "VectorList").ok_or(
         EmitError::MalformedRealization {
             declaration,
-            detail: "RustPatternStrategy.VectorList declaration was not found",
+            detail: "PatternStrategy.VectorList declaration was not found",
         },
     )?;
     if *constructor != vector_list {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "RustPatternStrategy constructor must be VectorList",
+            detail: "PatternStrategy constructor must be VectorList",
         });
     }
     Ok(PatternRealizationBinding {
-        strategy: RustPatternStrategyBinding::VectorList,
         scrutinee: require_field_string(fields, "scrutinee", declaration)?,
         empty_pattern: require_field_string(fields, "empty_pattern", declaration)?,
         cons_pattern: require_field_string(fields, "cons_pattern", declaration)?,
@@ -3388,11 +3381,8 @@ impl<'a> Ctx<'a> {
         let Some(binding) = self.indexes.patterns.get(&disj_id) else {
             return Ok(None);
         };
-        match binding.strategy {
-            RustPatternStrategyBinding::VectorList => self
-                .render_vector_list_pattern_branch(branch, disj_id, binding, locals)
-                .map(Some),
-        }
+        self.render_vector_list_pattern_branch(branch, disj_id, binding, locals)
+            .map(Some)
     }
 
     fn render_vector_list_pattern_branch(

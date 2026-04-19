@@ -795,6 +795,7 @@ data go_contains_callable: CallableRealization = {
   cost: 1
 }
 
+// List structural-sum → slice carrier; same pattern-role contract as Rust/Python.
 data go_list_pattern: PatternRealization = {
   language: go_language
   target: List
