@@ -570,7 +570,8 @@ mod tests {
     #[test]
     fn target_syntax_bundles_pair_each_language_with_its_clean_emission_contract() {
         let dag = Dag::new();
-        let assert_bundle = |language_spec: DeclarationId, expected_clean_emission: DeclarationId| {
+        let assert_bundle = |language_spec: DeclarationId,
+                             expected_clean_emission: DeclarationId| {
             let bundle = dag
                 .target_syntax_bundle_for_language(language_spec)
                 .expect("bundle should exist for cached language spec");
