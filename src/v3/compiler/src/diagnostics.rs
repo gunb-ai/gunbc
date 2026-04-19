@@ -54,7 +54,10 @@
 
 use std::collections::HashMap;
 
-use crate::dag::{Dag, DeclarationId, FieldValue, PortId, ValueBody};
+use crate::dag::{
+    AtomPayload, CardinalityBound, Dag, DeclarationId, Field, FieldValue, PortId, TypeConnective,
+    ValueBody,
+};
 use crate::types::TypeShape;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -179,6 +182,7 @@ pub enum DiagnosticStyleTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagnosticRenderError {
+    MissingLanguageSpec(&'static str),
     MissingCleanEmissionContract(&'static str),
     MalformedCleanEmissionContract {
         declaration: DeclarationId,
@@ -224,32 +228,42 @@ pub fn render_diagnostic_for_target(
     target: DiagnosticStyleTarget,
     diagnostic: &Diagnostic,
 ) -> Result<String, DiagnosticRenderError> {
-    let declaration = correction_style_for_target(dag, target)?;
+    let language_spec = language_spec_for_target(dag, target)?;
+    render_diagnostic_for_language_spec(dag, language_spec, diagnostic)
+}
+
+pub fn render_diagnostic_for_language_spec(
+    dag: &Dag,
+    language_spec: DeclarationId,
+    diagnostic: &Diagnostic,
+) -> Result<String, DiagnosticRenderError> {
+    let declaration = correction_style_for_language_spec(dag, language_spec)?;
     let style = CorrectionStyleBinding::build(dag, declaration)?;
     Ok(render_diagnostic_with_style(diagnostic, &style))
 }
 
-fn correction_style_for_target(
+fn language_spec_for_target(
     dag: &Dag,
     target: DiagnosticStyleTarget,
 ) -> Result<DeclarationId, DiagnosticRenderError> {
-    let (clean_emission_decl, missing_name) = match target {
-        DiagnosticStyleTarget::Rust => (
-            dag.rust_clean_emission_spec(),
-            "rust_clean_emission.correction_style",
-        ),
-        DiagnosticStyleTarget::Go => (
-            dag.go_clean_emission_spec(),
-            "go_clean_emission.correction_style",
-        ),
-        DiagnosticStyleTarget::Python => (
-            dag.python_clean_emission_spec(),
-            "python_clean_emission.correction_style",
-        ),
+    let (language_spec, missing_name) = match target {
+        DiagnosticStyleTarget::Rust => (dag.rust_language_spec(), "rust_language"),
+        DiagnosticStyleTarget::Go => (dag.go_language_spec(), "go_language"),
+        DiagnosticStyleTarget::Python => (dag.python_language_spec(), "python_language"),
     };
-    let clean_emission_decl = clean_emission_decl.ok_or(
-        DiagnosticRenderError::MissingCleanEmissionContract(missing_name),
-    )?;
+    language_spec.ok_or(DiagnosticRenderError::MissingLanguageSpec(missing_name))
+}
+
+fn correction_style_for_language_spec(
+    dag: &Dag,
+    language_spec: DeclarationId,
+) -> Result<DeclarationId, DiagnosticRenderError> {
+    let clean_emission_decl = dag
+        .target_syntax_bundle_for_language(language_spec)
+        .map(|bundle| bundle.clean_emission_spec)
+        .ok_or(DiagnosticRenderError::MissingCleanEmissionContract(
+            "clean_emission.correction_style",
+        ))?;
     let Some(ValueBody::Structural { fields }) = &dag.declaration(clean_emission_decl).value_body
     else {
         return Err(DiagnosticRenderError::MalformedCleanEmissionContract {
@@ -261,7 +275,9 @@ fn correction_style_for_target(
         .iter()
         .find(|(label, _)| label == "correction_style")
         .map(|(_, value)| value)
-        .ok_or(DiagnosticRenderError::MissingCorrectionStyle(missing_name))?;
+        .ok_or(DiagnosticRenderError::MissingCorrectionStyle(
+            "clean_emission.correction_style",
+        ))?;
     match value {
         FieldValue::Reference(declaration) => Ok(*declaration),
         _ => Err(DiagnosticRenderError::MalformedCleanEmissionContract {
@@ -369,6 +385,157 @@ fn require_bool(
     }
 }
 
+pub(crate) fn declaration_display_name(dag: &Dag, declaration: DeclarationId) -> String {
+    dag.declaration(declaration)
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("declaration#{}", declaration.raw()))
+}
+
+pub(crate) fn example_source_for_decl(dag: &Dag, declaration: DeclarationId) -> Option<String> {
+    example_source_for_decl_inner(dag, declaration, 0)
+}
+
+fn example_source_for_decl_inner(
+    dag: &Dag,
+    declaration: DeclarationId,
+    depth: usize,
+) -> Option<String> {
+    if depth >= 8 {
+        return None;
+    }
+    if dag.declaration(declaration).refinement.is_some() {
+        return None;
+    }
+    if let Some(example) = builtin_example_source(dag, declaration, depth) {
+        return Some(example);
+    }
+    let decl = dag.declaration(declaration);
+    match &decl.connective {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            example_source_for_decl_inner(dag, *next, depth + 1)
+        }
+        TypeConnective::Instantiation { template, .. } => {
+            example_source_for_decl_inner(dag, *template, depth + 1)
+        }
+        TypeConnective::Conj { children } => {
+            let fields: Option<Vec<_>> = children
+                .iter()
+                .map(|field| {
+                    Some(format!(
+                        "{}: {}",
+                        field.label,
+                        example_source_for_decl_inner(dag, field.ty, depth + 1)?
+                    ))
+                })
+                .collect();
+            Some(format!("{{ {} }}", fields?.join(", ")))
+        }
+        TypeConnective::Disj { variants } => variants
+            .iter()
+            .find_map(|variant| render_variant_witness(dag, variant, depth + 1)),
+        TypeConnective::Cardinality {
+            bound: CardinalityBound::AtMostOne,
+            ..
+        } => Some("None".to_string()),
+        _ => None,
+    }
+}
+
+fn builtin_example_source(dag: &Dag, declaration: DeclarationId, depth: usize) -> Option<String> {
+    if dag.int_shape().is_some_and(|shape| {
+        decl_matches_example_identity(dag, declaration, shape.declaration, depth)
+    }) {
+        return Some("1".to_string());
+    }
+    if dag.bool_shape().is_some_and(|shape| {
+        decl_matches_example_identity(dag, declaration, shape.declaration, depth)
+    }) {
+        return Some("true".to_string());
+    }
+    if dag.string_shape().is_some_and(|shape| {
+        decl_matches_example_identity(dag, declaration, shape.declaration, depth)
+    }) {
+        return Some("\"x\"".to_string());
+    }
+    if dag.list_template().is_some_and(|list_template| {
+        decl_matches_example_identity(dag, declaration, list_template, depth)
+    }) {
+        return Some("[]".to_string());
+    }
+    None
+}
+
+fn canonical_decl_for_example(
+    dag: &Dag,
+    declaration: DeclarationId,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= 8 {
+        return None;
+    }
+    match &dag.declaration(declaration).connective {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            canonical_decl_for_example(dag, *next, depth + 1)
+        }
+        TypeConnective::Instantiation { template, .. } => {
+            canonical_decl_for_example(dag, *template, depth + 1)
+        }
+        _ => Some(declaration),
+    }
+}
+
+fn decl_matches_example_identity(
+    dag: &Dag,
+    actual: DeclarationId,
+    expected: DeclarationId,
+    depth: usize,
+) -> bool {
+    canonical_decl_for_example(dag, actual, depth)
+        == canonical_decl_for_example(dag, expected, depth)
+}
+
+fn render_variant_witness(dag: &Dag, variant: &Field, depth: usize) -> Option<String> {
+    if dag.declaration(variant.ty).refinement.is_some() {
+        return None;
+    }
+    let TypeConnective::Conj { children } = &dag.declaration(variant.ty).connective else {
+        return None;
+    };
+    if children.is_empty() {
+        return Some(variant.label.clone());
+    }
+    // Constructor invocation in the current `.dag` surface is
+    // positional (`Variant(arg0, arg1)`), even when the payload
+    // declaration's fields are named. Preserve declaration-derived
+    // child order here, but do not invent an unsupported
+    // `Variant { field: value }` surface until lowering accepts that
+    // shape structurally.
+    let payload: Option<Vec<_>> = children
+        .iter()
+        .map(|field| example_source_for_decl_inner(dag, field.ty, depth + 1))
+        .collect();
+    Some(format!("{}({})", variant.label, payload?.join(", ")))
+}
+
+pub(crate) fn witness_correction_for_decl(
+    dag: &Dag,
+    declaration: DeclarationId,
+    span: SourceSpan,
+    description: impl Into<String>,
+) -> Option<Correction> {
+    if dag.declaration(declaration).refinement.is_some() {
+        return None;
+    }
+    Some(Correction {
+        description: description.into(),
+        span,
+        new_source: example_source_for_decl(dag, declaration)?,
+    })
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct DiagnosticTable {
     entries: HashMap<PortId, Diagnostic>,
@@ -460,6 +627,181 @@ mod tests {
             "python_correction_style",
             "python_clean_emission",
         );
+    }
+
+    #[test]
+    fn target_syntax_bundles_pair_each_language_with_its_clean_emission_contract() {
+        let dag = Dag::new();
+        let assert_bundle = |language_spec: DeclarationId,
+                             expected_clean_emission: DeclarationId| {
+            let bundle = dag
+                .target_syntax_bundle_for_language(language_spec)
+                .expect("bundle should exist for cached language spec");
+            assert_eq!(bundle.language_spec, language_spec);
+            assert_eq!(bundle.clean_emission_spec, expected_clean_emission);
+        };
+        assert_bundle(
+            dag.rust_language_spec().expect("rust language"),
+            dag.rust_clean_emission_spec().expect("rust clean emission"),
+        );
+        assert_bundle(
+            dag.go_language_spec().expect("go language"),
+            dag.go_clean_emission_spec().expect("go clean emission"),
+        );
+        assert_bundle(
+            dag.python_language_spec().expect("python language"),
+            dag.python_clean_emission_spec()
+                .expect("python clean emission"),
+        );
+    }
+
+    #[test]
+    fn example_source_for_decl_uses_cached_structural_identities_not_std_names() {
+        let mut dag = Dag::new();
+        let int_decl = dag.int_shape().expect("int shape").declaration;
+        let bool_decl = dag.bool_shape().expect("bool shape").declaration;
+        let string_decl = dag.string_shape().expect("string shape").declaration;
+        let list_decl = dag.list_template().expect("list template");
+
+        dag.declaration_mut(int_decl).name = Some("WholeNumber".to_string());
+        dag.declaration_mut(bool_decl).name = Some("TruthValue".to_string());
+        dag.declaration_mut(string_decl).name = Some("Text".to_string());
+        dag.declaration_mut(list_decl).name = Some("Sequence".to_string());
+
+        let list_instantiation = dag.alloc_declaration_id();
+        dag.push_declaration(crate::dag::Declaration {
+            id: list_instantiation,
+            name: Some("SequenceOfInt".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: list_decl,
+                arguments: Vec::new(),
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("diagnostics_test.v3", 0, 1),
+        });
+
+        assert_eq!(
+            example_source_for_decl(&dag, int_decl).as_deref(),
+            Some("1")
+        );
+        assert_eq!(
+            example_source_for_decl(&dag, bool_decl).as_deref(),
+            Some("true")
+        );
+        assert_eq!(
+            example_source_for_decl(&dag, string_decl).as_deref(),
+            Some("\"x\"")
+        );
+        assert_eq!(
+            example_source_for_decl(&dag, list_decl).as_deref(),
+            Some("[]")
+        );
+        assert_eq!(
+            example_source_for_decl(&dag, list_instantiation).as_deref(),
+            Some("[]")
+        );
+    }
+
+    #[test]
+    fn example_source_for_decl_fails_closed_on_refined_record_children() {
+        let mut dag = Dag::new();
+        let int_decl = dag.int_shape().expect("int shape").declaration;
+        let bool_decl = dag.bool_shape().expect("bool shape").declaration;
+
+        let refined_child = dag.alloc_declaration_id();
+        dag.push_declaration(crate::dag::Declaration {
+            id: refined_child,
+            name: Some("BigInt".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(int_decl)),
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: Some(bool_decl),
+            span: SourceSpan::new("diagnostics_test.v3", 0, 1),
+        });
+
+        let record_decl = dag.alloc_declaration_id();
+        dag.push_declaration(crate::dag::Declaration {
+            id: record_decl,
+            name: Some("NeedsBig".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: refined_child,
+                }],
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("diagnostics_test.v3", 0, 1),
+        });
+
+        assert_eq!(example_source_for_decl(&dag, record_decl), None);
+    }
+
+    #[test]
+    fn example_source_for_decl_fails_closed_on_refined_sum_payloads() {
+        let mut dag = Dag::new();
+        let int_decl = dag.int_shape().expect("int shape").declaration;
+        let bool_decl = dag.bool_shape().expect("bool shape").declaration;
+
+        let refined_child = dag.alloc_declaration_id();
+        dag.push_declaration(crate::dag::Declaration {
+            id: refined_child,
+            name: Some("BigInt".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(int_decl)),
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: Some(bool_decl),
+            span: SourceSpan::new("diagnostics_test.v3", 0, 1),
+        });
+
+        let payload_decl = dag.alloc_declaration_id();
+        dag.push_declaration(crate::dag::Declaration {
+            id: payload_decl,
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: refined_child,
+                }],
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("diagnostics_test.v3", 0, 1),
+        });
+
+        let sum_decl = dag.alloc_declaration_id();
+        dag.push_declaration(crate::dag::Declaration {
+            id: sum_decl,
+            name: Some("MaybeBig".to_string()),
+            connective: TypeConnective::Disj {
+                variants: vec![Field {
+                    label: "Some".to_string(),
+                    ty: payload_decl,
+                }],
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("diagnostics_test.v3", 0, 1),
+        });
+
+        assert_eq!(example_source_for_decl(&dag, sum_decl), None);
     }
 
     #[test]

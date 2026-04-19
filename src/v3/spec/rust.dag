@@ -67,6 +67,7 @@ import v3.std.substrate {
 }
 import v3.std.clean_emission {
   CleanEmissionContract,
+  TargetCleanEmissionBinding,
   ExpressionWrappingRule, WrapOnlyInOperandPosition,
   PatternBindingRule, EmitUnderscoreWhenUnused,
   ImportRule, IncludeOnlyReferenced,
@@ -881,6 +882,9 @@ data rust_contains_callable: CallableRealization = {
   cost: 1
 }
 
+// List structural-sum (`Empty`/`Cons`) → carrier patterns. `strategy` is the
+// pattern-role tag (validated at emitter load); templates below are the
+// emission bundle — no strategy dispatch in emitters post Stage 1e.0.
 data rust_list_pattern: PatternRealization = {
   language: rust_language
   target: List
@@ -1038,6 +1042,11 @@ data rust_clean_emission: CleanEmissionContract = {
     expected_exit_code: 0
     output_policy: IgnoreVerifierOutput
   }
+}
+
+data rust_clean_emission_binding: TargetCleanEmissionBinding = {
+  language: rust_language
+  clean_emission: rust_clean_emission
 }
 
 // ─────────────────────────────────────────────────────────────────

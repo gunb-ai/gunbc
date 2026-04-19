@@ -25,6 +25,7 @@ import v3.std.emit_model {
 }
 import v3.std.clean_emission {
   CleanEmissionContract,
+  TargetCleanEmissionBinding,
   ExpressionWrappingRule, WrapOnlyInOperandPosition,
   PatternBindingRule, NotApplicablePatternBinding,
   ImportRule, IncludeOnlyReferenced,
@@ -449,6 +450,7 @@ data python_list_instantiation: TypeInstantiationRealization = {
   cost: 1
 }
 
+// List structural-sum → Python list surface; pattern-role + templates are spec-owned.
 data python_list_pattern: PatternRealization = {
   language: python_language
   target: List
@@ -518,4 +520,9 @@ data python_clean_emission: CleanEmissionContract = {
     expected_exit_code: 0
     output_policy: IgnoreVerifierOutput
   }
+}
+
+data python_clean_emission_binding: TargetCleanEmissionBinding = {
+  language: python_language
+  clean_emission: python_clean_emission
 }

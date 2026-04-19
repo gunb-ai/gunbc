@@ -1,6 +1,7 @@
 module v3.std.clean_emission
 
 import std.list { List }
+import v3.std.emit_model { LanguageSpec }
 
 // 🟢 TERMINAL. Per-target emission invariant (E-5). Every rule in
 // this contract must be satisfied by construction — emitted code
@@ -19,6 +20,25 @@ type CleanEmissionContract {
   match_arm_body: MatchArmBodyRule
   correction_style: CorrectionStyle
   post_emit_verifier: PostEmitVerifier
+}
+
+// 🟡 SCAFFOLD. Single authority tying a target `LanguageSpec` to the
+// `CleanEmissionContract` that governs emitted-source hygiene for
+// that language. Bootstrap scans these bindings structurally, so
+// adding a new target is one more spec data item rather than a new
+// compiler-side branch.
+//
+// Not terminal yet: both edges are still `DeclarationRef`, so the
+// compiler still must reject duplicate bindings at load time.
+// `language` and `clean_emission` are typed strongly enough that the
+// lowerer carries only `LanguageSpec`/`CleanEmissionContract`
+// references forward; the remaining scaffold debt is uniqueness, not
+// field typing. Dissolution trigger: replace the runtime duplicate
+// check with a substrate shape that makes "two bindings for one
+// language" structurally illegal.
+type TargetCleanEmissionBinding {
+  language: LanguageSpec
+  clean_emission: CleanEmissionContract
 }
 
 // 🟢 TERMINAL. Governs wrapping of expressions with precedence

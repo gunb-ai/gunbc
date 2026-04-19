@@ -30,7 +30,9 @@ use crate::dag::{
     LoopNode, MemberDescent, NodeId, NonEmptyList, NonSingletonList, Path, PayloadBinding, PortId,
     TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
-use crate::diagnostics::{Diagnostic, SourceSpan};
+use crate::diagnostics::{
+    declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
+};
 use crate::infer::{concretize_decl_with_subst, SubstStack};
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
 use crate::parse::{
@@ -3444,7 +3446,17 @@ fn lower_fn_item_expr_body(
                         "function `{name}` is recursive but has no parameters; cannot terminate"
                     ),
                     span: body_span.clone(),
-                    fixes: Vec::new(),
+                    fixes: witness_correction_for_decl(
+                        dag,
+                        return_decl_id,
+                        body_span.clone(),
+                        format!(
+                            "replace the recursive body of `{name}` with a `{}` base case",
+                            declaration_display_name(dag, return_decl_id)
+                        ),
+                    )
+                    .into_iter()
+                    .collect(),
                 },
             );
             (err_port, err_port)
@@ -3465,7 +3477,17 @@ fn lower_fn_item_expr_body(
                         param = &params[0].name,
                     ),
                     span: body_span.clone(),
-                fixes: Vec::new(),
+                    fixes: witness_correction_for_decl(
+                        dag,
+                        return_decl_id,
+                        body_span.clone(),
+                        format!(
+                            "replace the non-terminating body of `{name}` with a `{}` base case",
+                            declaration_display_name(dag, return_decl_id)
+                        ),
+                    )
+                    .into_iter()
+                    .collect(),
                 },
             );
             (err_port, err_port)
@@ -3863,7 +3885,7 @@ fn resolve_callable_reference(
             .copied()
             .or_else(|| symbols.get(name).copied())
             .unwrap_or_else(|| alloc_identifier_stub(dag, name, span)),
-        SurfaceExpr::Path { segments, span } => {
+        SurfaceExpr::Path { segments, span, .. } => {
             alloc_identifier_stub(dag, &segments.join("."), span)
         }
         other => alloc_identifier_stub(dag, "__callable_argument__", expr_span(other)),
@@ -4130,6 +4152,15 @@ fn specialize_decl_for_lowering(
         return current;
     }
     let decl = dag.declaration(current).clone();
+    // Stage 3b correction generation must see refinement-bearing
+    // declarations as refinement-bearing expectations, not their base
+    // carrier. Lowering does not have a substituted-refined
+    // materialization path here, so preserve the declared edge and let
+    // downstream consumers fail closed instead of specializing through
+    // to a base witness like `Int`.
+    if decl.refinement.is_some() {
+        return current;
+    }
     match decl.connective {
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => arguments
             .iter()
@@ -4291,6 +4322,7 @@ fn unresolved_port(dag: &mut Dag, diagnostic: Diagnostic) -> PortId {
 
 fn lower_field_path_expr(
     segments: &[String],
+    segment_spans: &[SourceSpan],
     span: &SourceSpan,
     dag: &mut Dag,
     scope: &HashMap<String, PortId>,
@@ -4310,10 +4342,14 @@ fn lower_field_path_expr(
     // match-arm pattern bindings). Existing type-driven walk.
     if let Some(&port) = scope.get(head) {
         let mut current_port = port;
-        for field_label in rest {
+        for (index, field_label) in rest.iter().enumerate() {
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
             let static_resolution = resolve_static_field_project(dag, current_port, field_label);
+            let field_span = segment_spans
+                .get(index + 1)
+                .cloned()
+                .unwrap_or_else(|| span.clone());
             dag.push_node(Behavior::Transform(TransformNode {
                 id: node_id,
                 target: TransformTarget::FieldProject {
@@ -4322,7 +4358,7 @@ fn lower_field_path_expr(
                 },
                 inputs: vec![current_port],
                 output,
-                span: span.clone(),
+                span: field_span,
             }));
             if let Some((_, ty)) = static_resolution {
                 dag.set_port_type(output, ty);
@@ -4508,22 +4544,65 @@ fn lower_expr(
                     }
                 }
                 let port = dag.alloc_port(None);
+                let fixes = expected_decl
+                    .and_then(|decl| {
+                        witness_correction_for_decl(
+                            dag,
+                            decl,
+                            span.clone(),
+                            format!(
+                                "replace unresolved name `{name}` with a `{}` value",
+                                declaration_display_name(dag, decl)
+                            ),
+                        )
+                    })
+                    .into_iter()
+                    .collect();
                 dag.mark_unresolved(
                     port,
                     Diagnostic::ResolveError {
                         name: name.clone(),
                         span: span.clone(),
-                        fixes: Vec::new(),
+                        fixes,
                     },
                 );
                 port
             }
         },
         SurfaceExpr::Call { target, args, span } => {
-            let base_target_decl = resolve_expected_variant_constructor(dag, expected_decl, target)
-                .or_else(|| callable_scope.get(target).copied())
-                .or_else(|| symbols.get(target).copied())
-                .unwrap_or_else(|| alloc_identifier_stub(dag, target, span));
+            let Some(base_target_decl) =
+                resolve_expected_variant_constructor(dag, expected_decl, target)
+                    .or_else(|| callable_scope.get(target).copied())
+                    .or_else(|| symbols.get(target).copied())
+            else {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                let port = dag.alloc_port(None);
+                let fixes = expected_decl
+                    .and_then(|decl| {
+                        witness_correction_for_decl(
+                            dag,
+                            decl,
+                            span.clone(),
+                            format!(
+                                "replace unresolved call `{target}` with a `{}` value",
+                                declaration_display_name(dag, decl)
+                            ),
+                        )
+                    })
+                    .into_iter()
+                    .collect();
+                dag.mark_unresolved(
+                    port,
+                    Diagnostic::ResolveError {
+                        name: target.clone(),
+                        span: span.clone(),
+                        fixes,
+                    },
+                );
+                return port;
+            };
             let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
             let mut input_ports: Vec<PortId> = Vec::new();
             let mut template_arguments: Vec<TemplateArgument> = Vec::new();
@@ -4841,9 +4920,11 @@ fn lower_expr(
             symbols,
             expected_decl,
         ),
-        SurfaceExpr::Path { segments, span } => {
-            lower_field_path_expr(segments, span, dag, scope, symbols)
-        }
+        SurfaceExpr::Path {
+            segments,
+            segment_spans,
+            span,
+        } => lower_field_path_expr(segments, segment_spans, span, dag, scope, symbols),
     }
 }
 

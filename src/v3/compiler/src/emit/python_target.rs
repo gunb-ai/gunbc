@@ -122,16 +122,14 @@ enum PatternBindingRuleBinding {
     NotApplicable,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PatternStrategyBinding {
-    VectorList,
-}
-
 #[derive(Debug, Clone)]
 struct PatternRealizationBinding {
+<<<<<<< HEAD
     strategy: PatternStrategyBinding,
     empty_variant: DeclarationId,
     cons_variant: DeclarationId,
+=======
+>>>>>>> origin/main
     scrutinee: String,
     empty_pattern: String,
     cons_pattern: String,
@@ -828,11 +826,8 @@ impl<'a> Ctx<'a> {
         let Some(binding) = self.indexes.patterns.get(&disj_id) else {
             return Ok(None);
         };
-        match binding.strategy {
-            PatternStrategyBinding::VectorList => self
-                .render_vector_list_pattern_branch(branch, disj_id, binding, locals)
-                .map(Some),
-        }
+        self.render_vector_list_pattern_branch(branch, disj_id, binding, locals)
+            .map(Some)
     }
 
     fn render_vector_list_pattern_branch(
@@ -1629,18 +1624,19 @@ fn parse_pattern_realization(
             detail: "PatternStrategy variants must not carry payload",
         });
     }
-    let strategy = if constructor == named_variant_id(dag, "PatternStrategy", "VectorList")? {
-        PatternStrategyBinding::VectorList
-    } else {
+    if constructor != named_variant_id(dag, "PatternStrategy", "VectorList")? {
         return Err(EmitPythonError::MalformedSpec {
             declaration,
             detail: "unsupported PatternStrategy variant",
         });
-    };
+    }
     Ok(PatternRealizationBinding {
+<<<<<<< HEAD
         strategy,
         empty_variant: require_field_decl_ref(fields, "empty_variant", declaration)?,
         cons_variant: require_field_decl_ref(fields, "cons_variant", declaration)?,
+=======
+>>>>>>> origin/main
         scrutinee: require_field_string(fields, "scrutinee", declaration)?,
         empty_pattern: require_field_string(fields, "empty_pattern", declaration)?,
         cons_pattern: require_field_string(fields, "cons_pattern", declaration)?,
