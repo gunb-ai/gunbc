@@ -679,6 +679,41 @@ When all three hold for a target, that target's `emit_<target>.rs`
 is a Stage 1e.6 deletion candidate. 1e.6 deletes all three
 atomically to avoid half-migrated repo state.
 
+### Wrapper exception receipt
+
+The Stage 1e scaffold allows **one narrow wrapper shape only**:
+
+1. The target's render body has already moved under `emit.rs`.
+2. The leftover `emit_<target>.rs` file contains only the public
+   compatibility entrypoints and pure delegation into `emit(dag,
+   target)` / `emit_module(dag, target)`.
+3. The wrapper owns **no** target-specific render helpers, spec reads,
+   caches, or behavior dispatch.
+
+For the current branch, that exception applies to **Go only**.
+`emit_go.rs` is therefore an allowed Stage 1e scaffold, not a second
+authority. Rust and Python do **not** get the same wrapper carve-out in
+advance; each target earns it only in the PR that actually moves that
+target's render body under `emit.rs`.
+
+**Exact dissolution trigger:** Stage **1e.6**. Once all three targets
+meet the retirement triggers above, every `emit_<target>.rs` wrapper is
+deleted in the same PR.
+
+**Enforcement path:** the wrapper-parity tests (`emit_go` /
+`emit_go_module` now; Rust/Python only in the same PR that migrates
+their bodies) prove the wrapper is a pure forwarder. The file-shape gate
+is structural: any target-specific helper still living in
+`emit_<target>.rs` means the target has not crossed into the wrapper
+exception yet.
+
+**Ratchet:** no PR may create a Rust or Python compatibility wrapper
+until that target's implementation body has moved under `emit.rs` and a
+matching wrapper-parity test lands in the same diff. That is the
+anti-replication rule for the Stage 1e scaffold; it prevents a second
+"tracked bridge" from appearing without the corresponding body
+migration.
+
 ### Bit-identical bar
 
 "Bit-identical" is measured against the post-PR-532 baseline
