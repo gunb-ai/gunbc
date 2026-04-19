@@ -72,14 +72,59 @@ type Token {
   span: SourceSpan
 }
 
+type KeywordTokenKind
+  = KwLet
+  | KwIf
+  | KwThen
+  | KwElse
+  | KwFn
+  | KwType
+  | KwModule
+  | KwImport
+  | KwMatch
+  | KwData
+  | KwWhere
+  | KwTrue
+  | KwFalse
+
+type PunctTokenKind
+  = Eq
+  | EqEq
+  | NotEq
+  | Lt
+  | Le
+  | Gt
+  | Ge
+  | Plus
+  | Minus
+  | Star
+  | Slash
+  | AmpAmp
+  | PipePipe
+  | Colon
+  | Arrow
+  | FatArrow
+  | PipeArrow
+  | Dot
+  | LParen
+  | RParen
+  | LBrace
+  | RBrace
+  | LBracket
+  | RBracket
+  | Comma
+  | Semicolon
+  | Pipe
+  | Question
+
 type KeywordSpec {
   spelling: String
-  kind: TokenKind
+  kind: KeywordTokenKind
 }
 
 type PunctSpec {
   pattern: String
-  kind: TokenKind
+  kind: PunctTokenKind
 }
 
 // After `\` inside a string literal: map the next source byte (as a

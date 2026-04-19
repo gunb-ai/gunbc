@@ -255,7 +255,8 @@ fn collect_keyword_rows(dag: &Dag) -> Vec<(String, String)> {
             continue;
         };
         let spelling = extract_string_field(fields, "spelling");
-        let kind = extract_nullary_variant_field(fields, "kind", "TokenKind", dag);
+        let kind = extract_nullary_variant_field(fields, "kind", "KeywordTokenKind", dag);
+        assert_token_kind_variant_exists(dag, &kind, "KeywordTokenKind");
         rows.push((spelling, kind));
     }
     rows.sort_by(|a, b| a.0.cmp(&b.0));
@@ -275,7 +276,8 @@ fn collect_punct_rows(dag: &Dag) -> Vec<(String, String)> {
             continue;
         };
         let pattern = extract_string_field(fields, "pattern");
-        let kind = extract_nullary_variant_field(fields, "kind", "TokenKind", dag);
+        let kind = extract_nullary_variant_field(fields, "kind", "PunctTokenKind", dag);
+        assert_token_kind_variant_exists(dag, &kind, "PunctTokenKind");
         rows.push((pattern, kind));
     }
     rows.sort_by(|a, b| a.0.cmp(&b.0));
@@ -323,6 +325,21 @@ fn extract_nullary_variant_field(
                 constructor
             )
         })
+}
+
+fn assert_token_kind_variant_exists(dag: &Dag, label: &str, source_type_name: &str) {
+    let token_kind_decl = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("TokenKind"))
+        .unwrap_or_else(|| panic!("missing `TokenKind` declaration"));
+    let TypeConnective::Disj { variants } = &token_kind_decl.connective else {
+        panic!("`TokenKind`: expected Disj");
+    };
+    assert!(
+        variants.iter().any(|field| field.label == label),
+        "`{source_type_name}` variant `{label}` has no matching `TokenKind` variant"
+    );
 }
 
 fn extract_string_field(fields: &[(String, FieldValue)], key: &str) -> String {

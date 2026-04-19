@@ -40,11 +40,24 @@ fn tokenize_registry_rows_use_structural_token_kind_and_derive_punct_width_from_
     let dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
         .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
 
-    let token_kind_decl = dag
-        .declaration_by_name("TokenKind")
-        .expect("TokenKind declaration");
-    let TypeConnective::Disj { variants } = &token_kind_decl.connective else {
-        panic!("TokenKind should lower to a Disj");
+    let keyword_kind_decl = dag
+        .declaration_by_name("KeywordTokenKind")
+        .expect("KeywordTokenKind declaration");
+    let TypeConnective::Disj {
+        variants: keyword_variants,
+    } = &keyword_kind_decl.connective
+    else {
+        panic!("KeywordTokenKind should lower to a Disj");
+    };
+
+    let punct_kind_decl = dag
+        .declaration_by_name("PunctTokenKind")
+        .expect("PunctTokenKind declaration");
+    let TypeConnective::Disj {
+        variants: punct_variants,
+    } = &punct_kind_decl.connective
+    else {
+        panic!("PunctTokenKind should lower to a Disj");
     };
 
     for decl in dag.declarations() {
@@ -81,8 +94,12 @@ fn tokenize_registry_rows_use_structural_token_kind_and_derive_punct_width_from_
             "token row `{name}` should store only nullary TokenKind variants"
         );
         assert!(
-            variants.iter().any(|variant| variant.ty == *constructor),
-            "token row `{name}` kind constructor should be a TokenKind variant"
+            if name.starts_with("keyword_") {
+                keyword_variants.iter().any(|variant| variant.ty == *constructor)
+            } else {
+                punct_variants.iter().any(|variant| variant.ty == *constructor)
+            },
+            "token row `{name}` kind constructor should be a variant of its dedicated row carrier"
         );
     }
 }
