@@ -424,6 +424,15 @@ data rust_comparison_op: TypeRealization = {
   cost: 1
 }
 
+data rust_logical_op: TypeRealization = {
+  language: rust_language
+  target: LogicalOp
+  carrier: "LogicalOp"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
 data rust_operator_kind: TypeRealization = {
   language: rust_language
   target: OperatorKind

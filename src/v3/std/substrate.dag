@@ -142,11 +142,19 @@ type ComparisonOp
   | Gt
   | Ge
 
+// 🟢 TERMINAL. Logical operators are substrate facts for the current
+// surface grammar; `&&` / `||` lower structurally rather than through
+// a name-keyed Rust bridge.
+type LogicalOp
+  = And
+  | Or
+
 // 🟢 TERMINAL. OperatorKind is the substrate authority for operator
 // identity; realizations map from this structural fact downstream.
 type OperatorKind
   = Arithmetic(ArithmeticOp)
   | Comparison(ComparisonOp)
+  | Logical(LogicalOp)
 
 // Computation substrate.
 // 🟢 TERMINAL at the reflected-substrate level. Every transform target
