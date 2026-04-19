@@ -53,9 +53,13 @@ data dsl_root: SourceRoot = { path: "dsl" }
 // ── Generated crate ─────────────────────────────────────────────────
 
 // The Rust crate that the compiler produces. hand_maintained_src names
-// the root-level basenames (relative to source_dir, maxdepth 1 only)
-// that are NOT emitted: they survive regeneration and must be excluded
-// from the fixed-point diff.
+// basenames inside source_dir that are NOT emitted: they survive
+// regeneration and must be excluded from the fixed-point diff.
+//
+// Today the stage0 sync only copies/deletes top-level `src/*.rs` files,
+// so nested entries in this list matter only to the recursive diff-based
+// freshness check. That asymmetry is intentional until the compiler
+// actually emits nested Rust modules into the stage0 tree.
 //
 // Note: Cargo.toml is also hand-maintained but lives outside source_dir,
 // never changes as part of regen, and is never in the fixed-point diff.
@@ -79,6 +83,8 @@ data stage0: GeneratedCrate = {
     "emit_go.rs",
     "emit_python.rs",
     "emit_rust.rs",
+    "python_target.rs",
+    "rust_target.rs",
     "infer.rs",
     "lens_depth.rs",
     "lens_idempotency.rs",

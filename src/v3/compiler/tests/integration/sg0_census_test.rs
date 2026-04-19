@@ -393,3 +393,25 @@ fn sg0_stage0_copy_command_excludes_hand_maintained_root_files() {
         "copy_generated_command should target the declared generated source_dir"
     );
 }
+
+#[test]
+fn sg0_stage0_hand_maintained_src_covers_emit_subtree_companions() {
+    let source = compiler_dag_source();
+    let start = source
+        .find("hand_maintained_src: [")
+        .expect("compiler.dag should declare hand_maintained_src");
+    let tail = &source[start..];
+    let end = tail
+        .find("\n  ]")
+        .expect("hand_maintained_src list should terminate");
+    let list = &tail[..end];
+
+    assert!(
+        list.contains("\"python_target.rs\""),
+        "hand_maintained_src should exclude emit/python_target.rs from recursive freshness drift"
+    );
+    assert!(
+        list.contains("\"rust_target.rs\""),
+        "hand_maintained_src should exclude emit/rust_target.rs from recursive freshness drift"
+    );
+}
