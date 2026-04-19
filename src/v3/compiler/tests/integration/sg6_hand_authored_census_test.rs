@@ -112,21 +112,42 @@ fn bin_basenames() -> BTreeSet<String> {
 }
 
 #[test]
-fn sg6_bin_census_is_locked_to_three_shims() {
-    let expected: BTreeSet<String> = ["regen_lens.rs", "regen_v3.rs", "self_host_fixed_point.rs"]
-        .into_iter()
-        .map(String::from)
-        .collect();
+fn sg6_bin_census_is_locked_to_four_shims() {
+    // SG-1 receipts `regen_tokenize.rs` here. The tokenizer cutover uses
+    // `src/v3/compiler/tokenize.dag` as lexical authority and
+    // `regen_tokenize.rs` as the host driver that projects it into
+    // `src/v3/compiler/src/tokenize_generated.rs`. The driver does not
+    // fit the lens-registry shape that `regen_lens` enumerates (its
+    // input is tokenizer spec rows — keyword / punctuation / escape
+    // tables — not `LensRegistryEntry`-tagged lens declarations), so
+    // for SG-1 it lands as a parallel shim rather than a registry entry.
+    //
+    // Dissolution trigger (SG-2+): unify `regen_tokenize` with the
+    // registry-driven pattern — either extend `regen.dag` to carry a
+    // tokenizer-registry shape that `regen_lens` can dispatch on, or
+    // introduce a generalized "producer registry" that both lenses and
+    // the tokenizer share. Either path retires `regen_tokenize.rs` and
+    // returns the bin census to three shims.
+    let expected: BTreeSet<String> = [
+        "regen_lens.rs",
+        "regen_tokenize.rs",
+        "regen_v3.rs",
+        "self_host_fixed_point.rs",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
 
     let actual = bin_basenames();
 
     assert_eq!(
         actual, expected,
-        "SG-6 hand-authored bin census changed. The cutover collapsed the 4 \
-         per-lens `regen_lens_*` bins into a single `regen_lens` driver that \
-         reads `src/v3/compiler/regen.dag`. Adding a new bin re-introduces a \
+        "SG-6 hand-authored bin census changed. The post-SG-1 census is \
+         `regen_lens` (reads `src/v3/compiler/regen.dag`), `regen_tokenize` \
+         (reads `src/v3/compiler/tokenize.dag`), `regen_v3`, and \
+         `self_host_fixed_point`. Adding a new bin re-introduces a \
          per-lens (or per-target) Rust driver — the SG-6 lane requires that \
-         new regen / harness targets be added via the `.dag` registry instead. \
+         new regen / harness targets be added via a `.dag` registry instead. \
          Both `src/bin/<name>.rs` (flat-file bins; basename reported) and \
          `src/bin/<name>/main.rs` (directory-form bins; reported as `<name>/`) \
          are counted, because Cargo's auto-discovery promotes both shapes. \

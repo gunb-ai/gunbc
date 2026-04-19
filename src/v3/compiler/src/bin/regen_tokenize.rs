@@ -11,12 +11,29 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     AtomPayload, Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody,
 };
+use v3_compiler::generated_files::GENERATED_FILES;
 use v3_compiler::CompileError;
+
+const GENERATED_FILE: &str = "src/v3/compiler/src/tokenize_generated.rs";
 
 const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/tokenize.dag` via\n\
      // `regen_tokenize`. Regenerate instead of hand-editing.\n\n";
 
 fn main() {
+    // Single-authority gate: the output path this driver writes must
+    // be registered in `REGEN_OUTPUTS` (surfaced as
+    // `v3_compiler::generated_files::GENERATED_FILES`). SG-0 treats that
+    // manifest as the sole producer-owned partition; writing to a path
+    // outside the manifest would silently drift the census.
+    assert!(
+        GENERATED_FILES.iter().any(|p| *p == GENERATED_FILE),
+        "`regen_tokenize` writes `{GENERATED_FILE}` but that path is not \
+         registered in `REGEN_OUTPUTS` in `src/v3/compiler/build.rs`. \
+         Add the path to `REGEN_OUTPUTS` so the two authorities stay in \
+         lockstep. Both are SG-0's producer-owned manifest; writing \
+         to a path outside the manifest would be silent drift."
+    );
+
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let dag_path = manifest_dir.join("tokenize.dag");
     let source = std::fs::read_to_string(&dag_path).expect("read tokenize.dag");

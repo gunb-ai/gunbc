@@ -74,6 +74,7 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
+    "src/v3/compiler/src/bin/regen_tokenize.rs",
     "src/v3/compiler/src/bin/regen_v3.rs",
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
     "src/v3/compiler/src/bootstrap.rs",
@@ -140,6 +141,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
+    "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
     "src/v3/compiler/tests/integration/sg4_prep_infer_helpers_freshness_test.rs",
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
