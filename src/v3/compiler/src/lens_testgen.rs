@@ -569,12 +569,15 @@ impl<'a> TestgenLens<'a> {
             return None;
         }
         let decl = self.dag.declaration(decl_id);
+        // Use `[]` (not `empty()`) for nested `List<…>` fields so row types like
+        // `NonEmptyList<Int> { first, rest: List<Int> }` infer `rest` as `List<Int>`
+        // without a fragile polymorphic-empty resolution edge.
         if self
             .render_type_expr(decl_id, subst)
             .is_some_and(|ty| ty.starts_with("List<"))
             && depth > 0
         {
-            return Some("empty()".to_string());
+            return Some("[]".to_string());
         }
         match decl.name.as_deref() {
             Some("Int") => Some("1".to_string()),
