@@ -4,6 +4,12 @@
 
 **Definition:** A **bridge** is any place Rust emission code encodes a policy the **target spec** should own: string comparisons on substrate names, hardcoded syntax, special cases for std shapes, or target-only filtering that is not already a data field in `rust.dag` / `go.dag` / `python.dag`.
 
+**Live-state note:** the Go target's implementation moved from
+`src/v3/compiler/src/emit_go.rs` to `src/v3/compiler/src/emit.rs`
+behind the shared entrypoint scaffold. References to Go sites below name
+the pre-move file because this inventory was the Stage 1d audit
+snapshot; the bridge classifications still apply to the moved body.
+
 **Goal:** Each bridge lists **what kills it** (dissolution) and **what spec or substrate fact replaces it**.
 
 ---

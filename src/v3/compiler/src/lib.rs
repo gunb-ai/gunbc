@@ -17,6 +17,7 @@
 
 pub mod dag;
 pub mod diagnostics;
+pub mod emit;
 pub mod emit_go;
 pub mod emit_python;
 pub mod emit_rust;
@@ -165,6 +166,7 @@ pub(crate) mod workflow_idempotency;
 
 pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan};
+pub use emit::{EmitMode, EmitTarget, EmittedSource};
 pub use emit_rust::EmitError;
 /// Lane 2 Stage 2b — **supported** public entry: [`analyze_workflow`] is the only
 /// idempotency API exported from this crate. Composition helpers such as

@@ -12,7 +12,7 @@
 | **P1 — blocks parity** | Needed for Go/Python/Rust to share one walker shape |
 | **P2 — nice-to-have** | Dissolves a bridge or improves ergonomics; emission can ship with a temporary Rust shim |
 
-Specs referenced: `src/v3/spec/rust.dag`, `go.dag`, `python.dag` (+ shared `v3_l1.dag`, `v3/std/*` types they import).
+Specs referenced: `src/v3/spec/rust.dag`, `go.dag`, `python.dag` (+ shared `v3_l1.dag`, `v3/std/*` types they import). The Go target's hand-written body now lives under `src/v3/compiler/src/emit.rs`; references below to the former `emit_go.rs` body apply to that moved implementation.
 
 ---
 

@@ -7,33 +7,43 @@
 **Lane:** 1 (Emission unification)
 **Stage:** 1d (last design stage; gates Stage 1e implementation start)
 **Size:** M
-**Status:** 🟢 Design complete, pending P2-L1 sign-off. Pure design, no code changes.
+**Status:** R2. Pilot-audited design; Stage 1e scaffold started on the shared `emit.rs` path.
 
-> Role in the plan: the file-by-file build plan for Stage 1e's
-> consolidation execution. Stage 1e dispatches on P2-L1 sign-off
-> against §Acceptance gates (inventory, gap list, bridges, pilot
-> target choice are all written).
-
-**No new DB number.** This document extends the already-locked
-DB-2 (walker API), DB-4 (clean-emission contract), and DB-8
-(fixed-point ratchet) with the concrete execution plan for how
-`emit_rust.rs` (5411 LOC) / `emit_go.rs` (2714 LOC) / `emit_python.rs`
-(1821 LOC) dissolve into one `emit.rs` walker + per-target specs.
-A new DB would be warranted only if this design surfaced a novel
-structural decision (a new Rust IR stage, a third substrate
-meeting point, a contract gap the walker cannot bridge). None of
-those appear. The escalation rules in §STOP-AND-ESCALATE name
-them explicitly.
+> Role in the plan: Stage 1d produced the file-by-file build plan for
+> Stage 1e's consolidation execution. This R2 revision records what the
+> Rust/Go/Python pilots actually proved and narrows the first Stage 1e
+> landing to an honest scaffold: one shared `emit.rs` entrypoint with Go
+> migrated behind it, while Rust and Python remain on legacy emitters.
 
 ---
 
 ## Motivation
 
 `docs/single-emitter-design.md` establishes the principle: one emitter,
-reads target specs. But it stops at principles. P2's consolidation
-needs a **file-by-file build plan** with:
+reads target specs. But it stops at principles. After the
+Rust/Go/Python pilots, Stage 1d had to answer a narrower question:
+which pieces of the pre-pilot design survived contact with three
+targets, and which had to be reshaped before code could move?
 
-- Which functions in `emit_rust.rs` / `emit_go.rs` / `emit_python.rs`
+The post-pilot audit says:
+
+- **Survives:** clean-emission dispatch is a target-spec fact; typed
+  `language` filtering is the authority for realizations; template
+  substitution remains the rendering primitive; unsupported core
+  behaviors fail closed rather than collapsing semantically.
+- **Reshaped:** Python proved `PatternBindingRule` is only half of the
+  payload-binding story; `variant_payload_field_access` is equally
+  load-bearing. The first shared entrypoint can land before the full
+  recursive walker is shared; an adapter stage is acceptable if it
+  moves one target onto the common path honestly. Python's target-
+  private realization family is real Stage 1e debt, not something the
+  docs can wish away.
+
+With that evidence in hand, consolidation needed a **file-by-file build
+plan** with:
+
+- Which functions in `emit_rust.rs` / `emit.rs` (Go path) /
+  `emit_python.rs`
   become target-agnostic (move into generic walker) vs target-declared
   (move into spec)
 - What new spec fields each current hardcoded behavior needs
@@ -42,8 +52,10 @@ needs a **file-by-file build plan** with:
 - A bridge list: every piece of name-based dispatch, hardcoded variant
   name, or target-specific convention currently in Rust code
 
-This lane produces that plan. **No code changes.** The plan's quality
-is the gate for P2 starting.
+Stage 1d is no longer speculative. Its deliverable is this audited
+design set plus the first Stage 1e scaffold that proves the common
+entrypoint can own one target without pretending the full walker has
+already dissolved the rest.
 
 ---
 
@@ -666,6 +678,41 @@ Each `emit_<target>.rs` retires when:
 When all three hold for a target, that target's `emit_<target>.rs`
 is a Stage 1e.6 deletion candidate. 1e.6 deletes all three
 atomically to avoid half-migrated repo state.
+
+### Wrapper exception receipt
+
+The Stage 1e scaffold allows **one narrow wrapper shape only**:
+
+1. The target's render body has already moved under `emit.rs`.
+2. The leftover `emit_<target>.rs` file contains only the public
+   compatibility entrypoints and pure delegation into `emit(dag,
+   target)` / `emit_module(dag, target)`.
+3. The wrapper owns **no** target-specific render helpers, spec reads,
+   caches, or behavior dispatch.
+
+For the current branch, that exception applies to **Go only**.
+`emit_go.rs` is therefore an allowed Stage 1e scaffold, not a second
+authority. Rust and Python do **not** get the same wrapper carve-out in
+advance; each target earns it only in the PR that actually moves that
+target's render body under `emit.rs`.
+
+**Exact dissolution trigger:** Stage **1e.6**. Once all three targets
+meet the retirement triggers above, every `emit_<target>.rs` wrapper is
+deleted in the same PR.
+
+**Enforcement path:** the wrapper-parity tests (`emit_go` /
+`emit_go_module` now; Rust/Python only in the same PR that migrates
+their bodies) prove the wrapper is a pure forwarder. The file-shape gate
+is structural: any target-specific helper still living in
+`emit_<target>.rs` means the target has not crossed into the wrapper
+exception yet.
+
+**Ratchet:** no PR may create a Rust or Python compatibility wrapper
+until that target's implementation body has moved under `emit.rs` and a
+matching wrapper-parity test lands in the same diff. That is the
+anti-replication rule for the Stage 1e scaffold; it prevents a second
+"tracked bridge" from appearing without the corresponding body
+migration.
 
 ### Bit-identical bar
 
