@@ -157,8 +157,8 @@ pub fn apply_correction_and_reparse(
 ) -> Result<String, CorrectionValidationError> {
     let updated =
         apply_correction(source, file, correction).map_err(CorrectionValidationError::Apply)?;
-    let tokens = crate::tokenize::tokenize(&updated, file)
-        .map_err(CorrectionValidationError::Tokenize)?;
+    let tokens =
+        crate::tokenize::tokenize(&updated, file).map_err(CorrectionValidationError::Tokenize)?;
     crate::parse::parse(&tokens, file).map_err(CorrectionValidationError::Parse)?;
     Ok(updated)
 }

@@ -63,13 +63,12 @@ fn read(x: Outer) -> Int = x.bad.leaf
 ";
     let file = "lane3_db1_missing_field.v3";
     let dag = compile_semantic_fixture(source, file);
-    let diagnostic = find_diagnostic(
-        &dag,
-        |diagnostic| matches!(
+    let diagnostic = find_diagnostic(&dag, |diagnostic| {
+        matches!(
             diagnostic,
             Diagnostic::ResolveError { name, .. } if name.contains("field `bad` does not exist")
-        ),
-    );
+        )
+    });
     assert_fixes_apply_and_recompile(source, file, diagnostic, true);
 }
 
@@ -81,13 +80,12 @@ fn read(x: AB) -> Int = match x { A => 1 }
 ";
     let file = "lane3_db1_non_exhaustive.v3";
     let dag = compile_semantic_fixture(source, file);
-    let diagnostic = find_diagnostic(
-        &dag,
-        |diagnostic| matches!(
+    let diagnostic = find_diagnostic(&dag, |diagnostic| {
+        matches!(
             diagnostic,
             Diagnostic::ResolveError { name, .. } if name.contains("non-exhaustive match")
-        ),
-    );
+        )
+    });
     assert_fixes_apply_and_recompile(source, file, diagnostic, true);
 }
 
@@ -99,13 +97,12 @@ fn read(x: AB) -> Int = match x {}
 ";
     let file = "lane3_db1_empty_match.v3";
     let dag = compile_semantic_fixture(source, file);
-    let diagnostic = find_diagnostic(
-        &dag,
-        |diagnostic| matches!(
+    let diagnostic = find_diagnostic(&dag, |diagnostic| {
+        matches!(
             diagnostic,
             Diagnostic::ResolveError { name, .. } if name.contains("non-exhaustive match")
-        ),
-    );
+        )
+    });
     assert_fixes_apply_and_recompile(source, file, diagnostic, false);
 }
 
@@ -114,10 +111,9 @@ fn type_mismatch_corrections_apply_and_compile() {
     let source = "let x: Bool = 1\n";
     let file = "lane3_db1_type_mismatch.v3";
     let dag = compile_semantic_fixture(source, file);
-    let diagnostic = find_diagnostic(
-        &dag,
-        |diagnostic| matches!(diagnostic, Diagnostic::TypeMismatch { .. }),
-    );
+    let diagnostic = find_diagnostic(&dag, |diagnostic| {
+        matches!(diagnostic, Diagnostic::TypeMismatch { .. })
+    });
     assert_fixes_apply_and_recompile(source, file, diagnostic, true);
 }
 
@@ -138,13 +134,12 @@ fn termination_corrections_apply_and_compile() {
     let source = "fn diverge(x: Int) -> Int = diverge(x)\n";
     let file = "lane3_db1_termination.v3";
     let dag = compile_semantic_fixture(source, file);
-    let diagnostic = find_diagnostic(
-        &dag,
-        |diagnostic| matches!(
+    let diagnostic = find_diagnostic(&dag, |diagnostic| {
+        matches!(
             diagnostic,
             Diagnostic::ResolveError { name, .. }
                 if name.contains("cannot prove recursion in `diverge` terminates")
-        ),
-    );
+        )
+    });
     assert_fixes_apply_and_recompile(source, file, diagnostic, true);
 }
