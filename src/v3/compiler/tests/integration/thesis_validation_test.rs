@@ -168,7 +168,9 @@ fn read(x: AB) -> Int = match x { A => 1 }
             )
         });
     assert!(
-        diag.fixes().iter().any(|fix| fix.description.contains("`B`")),
+        diag.fixes()
+            .iter()
+            .any(|fix| fix.description.contains("`B`")),
         "non-exhaustive match diagnostic should suggest the missing `B` arm"
     );
 }

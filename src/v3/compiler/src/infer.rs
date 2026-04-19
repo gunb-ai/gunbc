@@ -2524,7 +2524,17 @@ fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
                         index + 1
                     ),
                     span: bind.span.clone(),
-                    fixes: Vec::new(),
+                    fixes: witness_correction_for_decl(
+                        dag,
+                        expected_decl,
+                        bind.span.clone(),
+                        format!(
+                            "replace the parameter use with a `{}` value",
+                            declaration_display_name(dag, expected_decl)
+                        ),
+                    )
+                    .into_iter()
+                    .collect(),
                 },
             });
             continue 'declarations;
