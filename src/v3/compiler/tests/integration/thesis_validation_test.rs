@@ -154,7 +154,9 @@ fn read(x: Outer) -> Int = x.bad.leaf
         .diagnostics()
         .iter()
         .find_map(|(_, diag)| match diag {
-            Diagnostic::ResolveError { name, .. } if name.contains("field `bad` does not exist") => {
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("field `bad` does not exist") =>
+            {
                 Some(diag)
             }
             _ => None,
