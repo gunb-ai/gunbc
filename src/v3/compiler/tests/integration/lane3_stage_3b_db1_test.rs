@@ -8,10 +8,7 @@ fn compile_semantic_fixture(source: &str, file: &str) -> v3_compiler::Dag {
     }
 }
 
-fn find_diagnostic(
-    dag: &v3_compiler::Dag,
-    predicate: impl Fn(&Diagnostic) -> bool,
-) -> &Diagnostic {
+fn find_diagnostic(dag: &v3_compiler::Dag, predicate: impl Fn(&Diagnostic) -> bool) -> &Diagnostic {
     dag.diagnostics()
         .iter()
         .find_map(|(_, diagnostic)| predicate(diagnostic).then_some(diagnostic))
