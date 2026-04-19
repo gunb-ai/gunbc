@@ -159,6 +159,34 @@ fn numeric_recursion_lowers_to_a_bounded_loop() {
 }
 
 #[test]
+fn recursive_body_signature_mismatch_poisons_the_function_and_call_site() {
+    let src = "fn bad(n: Int) -> Bool = if n == 0 then 0 else bad(n - 1)\nlet x = bad(5)";
+    let dag = compile_any(src, "m0_recursive_body_signature_mismatch.v3");
+    let bad_bind = bind_named(&dag, "bad");
+    let x_bind = bind_named(&dag, "x");
+
+    assert!(matches!(
+        dag.port(bad_bind.value).state(),
+        PortState::Unresolved
+    ));
+    assert!(matches!(
+        dag.port(x_bind.value).state(),
+        PortState::Unresolved
+    ));
+}
+
+#[test]
+fn growing_recursive_argument_is_rejected() {
+    let dag = compile_any("fn f(n: Int) -> Int = f(n + 1)", "m0_growing_recursion.v3");
+    let bind = bind_named(&dag, "f");
+
+    assert!(matches!(
+        dag.port(bind.value).state(),
+        PortState::Unresolved
+    ));
+}
+
+#[test]
 fn type_annotation_does_not_resurrect_an_unresolved_port() {
     let dag = compile_any("let x: Bool = y", "m0_annotation_after_resolve_error.v3");
     let bind = bind_named(&dag, "x");
@@ -202,6 +230,8 @@ fn post_sweep_port_state_matches_diagnostic_table() {
         "fn f(a: Int) -> Int = a\nlet x = f(1, 2)",
         "let x = if 1 then 2 else 3",
         "fn f(a: Int) -> Bool = 1\nlet x = f(1)",
+        "fn f(n: Int) -> Int = f(n + 1)",
+        "fn bad(n: Int) -> Bool = if n == 0 then 0 else bad(n - 1)\nlet x = bad(5)",
         "let x: NotARealType = 1",
     ];
 
