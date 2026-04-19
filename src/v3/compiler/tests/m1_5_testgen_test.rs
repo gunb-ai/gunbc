@@ -188,7 +188,9 @@ fn predicate_holds(
 ) -> bool {
     let (label, payload) = variant_value(expectation_dag, predicate);
     match label.as_str() {
-        "Compiles" => cached_compile_any(source, file_name).diagnostics().is_empty(),
+        "Compiles" => cached_compile_any(source, file_name)
+            .diagnostics()
+            .is_empty(),
         "FailsWithDiagnostic" => {
             let [reference] = payload else {
                 panic!("FailsWithDiagnostic payload should be a single DiagnosticReference");

@@ -2286,8 +2286,7 @@ let total: Int = x_of({ x: 1, y: 2 })
 
 #[test]
 fn prereq4_list_literal_in_expression_position_lowers_through_std_list_constructors() {
-    let dag =
-        cached_compile_to_dag("let xs: List<Int> = [1, 2, 3]", "expr_list_literal.v3");
+    let dag = cached_compile_to_dag("let xs: List<Int> = [1, 2, 3]", "expr_list_literal.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "got diagnostics: {:?}",

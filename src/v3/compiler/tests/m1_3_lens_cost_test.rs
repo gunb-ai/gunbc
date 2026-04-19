@@ -12,7 +12,6 @@ use v3_compiler::lens_cost::cost_of;
 
 mod common;
 
-
 use common::cached_compile_to_dag;
 fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
     dag.nodes()
@@ -231,8 +230,7 @@ fn kf_1_lambda_body_cost_contributes_to_fold() {
 
 #[test]
 fn kf_1_list_operation_cost_ordering() {
-    let singleton =
-        cached_compile_to_dag("let xs = singleton(1)", "kf_1_singleton.v3");
+    let singleton = cached_compile_to_dag("let xs = singleton(1)", "kf_1_singleton.v3");
     let cons =
         compile_to_dag("let xs = cons(1, singleton(2))", "kf_1_cons.v3").expect("cons compiles");
     let fold = compile_to_dag(
