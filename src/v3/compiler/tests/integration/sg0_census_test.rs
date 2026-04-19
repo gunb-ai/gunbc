@@ -183,6 +183,10 @@ fn walk_rs(root: &Path, ws: &Path, out: &mut BTreeSet<String>) {
     }
 }
 
+fn compiler_dag_source() -> String {
+    let path = workspace_root().join("dsl/gunbc/compiler.dag");
+    fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
 #[test]
 fn sg0_v3_hand_authored_census() {
     let ws = workspace_root();
@@ -357,5 +361,57 @@ fn sg0_every_generated_file_is_present_on_disk() {
          the producer (a regen_* binary or build.rs entry) did not write them. \
          Update REGEN_OUTPUTS in src/v3/compiler/build.rs, or run the relevant \
          regen driver to populate the committed output."
+    );
+}
+
+#[test]
+fn sg0_stage0_copy_command_excludes_hand_maintained_root_files() {
+    let source = compiler_dag_source();
+    let start = source
+        .find("fn copy_generated_command(")
+        .expect("compiler.dag should define copy_generated_command");
+    let tail = &source[start..];
+    let end = tail
+        .find("\n}\n\n// Diff exclusion args")
+        .expect("copy_generated_command should end before diff_exclude_args");
+    let copy_fn = &tail[..end];
+
+    assert!(
+        copy_fn.contains("cycle.generated.hand_maintained_src |> fold"),
+        "copy_generated_command should derive an exclude filter from hand_maintained_src"
+    );
+    assert!(
+        copy_fn.contains(" -maxdepth 1 -type f -name '*.rs'"),
+        "copy_generated_command should only walk top-level emitted Rust files"
+    );
+    assert!(
+        copy_fn.contains(" -exec "),
+        "copy_generated_command should copy via find -exec so excluded names are not overwritten"
+    );
+    assert!(
+        copy_fn.contains("cycle.generated.source_dir"),
+        "copy_generated_command should target the declared generated source_dir"
+    );
+}
+
+#[test]
+fn sg0_stage0_hand_maintained_src_covers_emit_subtree_companions() {
+    let source = compiler_dag_source();
+    let start = source
+        .find("hand_maintained_src: [")
+        .expect("compiler.dag should declare hand_maintained_src");
+    let tail = &source[start..];
+    let end = tail
+        .find("\n  ]")
+        .expect("hand_maintained_src list should terminate");
+    let list = &tail[..end];
+
+    assert!(
+        list.contains("\"python_target.rs\""),
+        "hand_maintained_src should exclude emit/python_target.rs from recursive freshness drift"
+    );
+    assert!(
+        list.contains("\"rust_target.rs\""),
+        "hand_maintained_src should exclude emit/rust_target.rs from recursive freshness drift"
     );
 }
