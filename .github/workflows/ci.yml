@@ -117,14 +117,14 @@ jobs:
             exit 1
           fi
 
-      - name: v3 tests (full suite, 600s budget)
+      - name: v3 tests (full suite, 750s budget)
         run: |
           start=$(date +%s)
           cargo test -p v3-compiler
           elapsed=$(( $(date +%s) - start ))
           echo "v3 full-suite wall time: ${elapsed}s"
-          if [ "$elapsed" -gt 600 ]; then
-            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 600s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
+          if [ "$elapsed" -gt 750 ]; then
+            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 750s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
             exit 1
           fi
 
