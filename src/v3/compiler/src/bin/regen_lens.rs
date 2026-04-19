@@ -20,6 +20,7 @@ use std::process::{Command, ExitCode, Stdio};
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::emit_rust::emit_rust_module;
+use v3_compiler::generated_files::GENERATED_FILES;
 
 const LENS_REGISTRY_ENTRY_TYPE: &str = "LensRegistryEntry";
 
@@ -174,6 +175,30 @@ fn require_string(
 }
 
 fn regen_entry(root: &Path, entry: &Entry) -> Result<(), String> {
+    // Single-authority gate: the registry's `generated_file` path
+    // must also be registered in `REGEN_OUTPUTS` (surfaced as
+    // `v3_compiler::generated_files::GENERATED_FILES`). SG-0 treats
+    // that manifest as the sole producer-owned partition; if
+    // `regen.dag` and `REGEN_OUTPUTS` drift, the driver would
+    // silently write to a path the SG-0 census doesn't know about.
+    // Fail closed here rather than rely on the downstream census to
+    // notice — the error points the reviewer at the two authorities
+    // that must stay in lockstep.
+    if !GENERATED_FILES.iter().any(|p| *p == entry.generated_file) {
+        return Err(format!(
+            "registry / manifest drift: `regen.dag` declares \
+             `generated_file = \"{path}\"` (lens `{lens}`) but the \
+             path is not registered in `REGEN_OUTPUTS` in \
+             `src/v3/compiler/build.rs`. Add the path to `REGEN_OUTPUTS` \
+             (or remove it from `regen.dag`) so the two authorities stay \
+             in lockstep. Both are SG-0's producer-owned manifest; \
+             writing to a path outside the manifest would be silent \
+             drift.",
+            path = entry.generated_file,
+            lens = entry.name,
+        ));
+    }
+
     let lens_path = root.join(&entry.lens_file);
     let out_path = root.join(&entry.generated_file);
 
