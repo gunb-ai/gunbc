@@ -27,9 +27,7 @@ mod determinism_fixtures;
 
 use std::path::PathBuf;
 
-use determinism_fixtures::{
-    ProgramFixture, FOUR_FIXTURE_FILES, MODULE_FIXTURES, PROGRAM_FIXTURES,
-};
+use determinism_fixtures::{ProgramFixture, FOUR_FIXTURE_FILES, MODULE_FIXTURES, PROGRAM_FIXTURES};
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit::{emit, emit_module, EmitTarget};
 
@@ -131,7 +129,10 @@ fn audit_rust_emit_text(rust: &str, label: &str) {
 fn emit_matrix_program_rust_is_deterministic() {
     for fixture in PROGRAM_FIXTURES {
         let name = fixture.name;
-        assert_five_identical_runs(|| emit_rust_program(fixture), &format!("rust program {name}"));
+        assert_five_identical_runs(
+            || emit_rust_program(fixture),
+            &format!("rust program {name}"),
+        );
     }
 }
 
@@ -147,7 +148,10 @@ fn emit_matrix_program_go_is_deterministic() {
 fn emit_matrix_program_python_is_deterministic() {
     for fixture in PROGRAM_FIXTURES {
         let name = fixture.name;
-        assert_five_identical_runs(|| emit_python_program(fixture), &format!("python program {name}"));
+        assert_five_identical_runs(
+            || emit_python_program(fixture),
+            &format!("python program {name}"),
+        );
     }
 }
 
@@ -155,10 +159,7 @@ fn emit_matrix_program_python_is_deterministic() {
 fn emit_matrix_module_rust_is_deterministic() {
     for fixture in MODULE_FIXTURES {
         let name = fixture.name;
-        assert_five_identical_runs(
-            || emit_rust_module(fixture),
-            &format!("rust module {name}"),
-        );
+        assert_five_identical_runs(|| emit_rust_module(fixture), &format!("rust module {name}"));
     }
 }
 
@@ -217,10 +218,7 @@ fn four_fixture_disk_sources_emit_deterministically() {
 fn db8_rust_emit_avoids_time_paths_and_float_hooks_on_program_matrix() {
     for fixture in PROGRAM_FIXTURES {
         let rust = emit_rust_program(fixture);
-        audit_rust_emit_text(
-            &rust,
-            &format!("db8 audit rust program {}", fixture.name),
-        );
+        audit_rust_emit_text(&rust, &format!("db8 audit rust program {}", fixture.name));
     }
 }
 

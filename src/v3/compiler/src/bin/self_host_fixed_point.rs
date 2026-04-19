@@ -16,8 +16,8 @@
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::process::ExitCode;
+use std::process::{Command, Stdio};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit::{emit, EmitTarget};
@@ -52,8 +52,7 @@ fn main() -> ExitCode {
 fn run() -> Result<(), String> {
     let root = workspace_root();
     let out_dir = root.join("target").join("self_host");
-    fs::create_dir_all(&out_dir)
-        .map_err(|e| format!("create {}: {e}", out_dir.display()))?;
+    fs::create_dir_all(&out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
 
     let receipt_path = out_dir.join("receipt.json");
 
@@ -85,14 +84,12 @@ fn run() -> Result<(), String> {
     match compiler_parse {
         Ok(dag) => {
             receipt.push_str("  \"compiler_dag_v3_parse\": \"ok\",\n");
-            let stage1 = emit(&dag, EmitTarget::Rust).map_err(|e| format!("emit compiler.dag: {e:?}"))?;
+            let stage1 =
+                emit(&dag, EmitTarget::Rust).map_err(|e| format!("emit compiler.dag: {e:?}"))?;
             let stage1_path = out_dir.join("stage1.rs");
             fs::write(&stage1_path, &stage1.text)
                 .map_err(|e| format!("write {}: {e}", stage1_path.display()))?;
-            receipt.push_str(&format!(
-                "  \"stage1_rs_bytes\": {},\n",
-                stage1.text.len()
-            ));
+            receipt.push_str(&format!("  \"stage1_rs_bytes\": {},\n", stage1.text.len()));
 
             let bin_path = out_dir.join("stage1_bin");
             let rustc_status = Command::new("rustc")
@@ -126,9 +123,8 @@ fn run() -> Result<(), String> {
                             receipt.push_str("  \"fixed_point_diff\": \"mismatch\",\n");
                         }
                     } else {
-                        receipt.push_str(
-                            "  \"fixed_point_diff\": \"skipped_stage2_not_written\",\n",
-                        );
+                        receipt
+                            .push_str("  \"fixed_point_diff\": \"skipped_stage2_not_written\",\n");
                     }
                 } else {
                     receipt.push_str(&format!(
@@ -141,7 +137,10 @@ fn run() -> Result<(), String> {
             }
         }
         Err(msg) => {
-            receipt.push_str(&format!("  \"compiler_dag_v3_parse\": {},\n", json_string(&msg)));
+            receipt.push_str(&format!(
+                "  \"compiler_dag_v3_parse\": {},\n",
+                json_string(&msg)
+            ));
         }
     }
 
