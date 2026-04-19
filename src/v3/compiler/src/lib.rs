@@ -38,10 +38,30 @@ pub mod emit_rust;
 pub mod lens_depth;
 pub mod lens_testgen;
 pub mod lens_unused_parameters;
-pub mod operators;
 pub mod post_emit_verifier;
 pub mod serialize;
 pub mod types;
+
+pub mod operators {
+    pub use crate::dag::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
+
+    mod generated {
+        #![allow(
+            dead_code,
+            unused_imports,
+            unused_parens,
+            unused_variables,
+            clippy::clone_on_copy,
+            clippy::collapsible_else_if
+        )]
+
+        use crate::dag::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
+
+        include!("operators_generated.rs");
+    }
+
+    pub use generated::{algebra_field_name, from_symbol, symbol};
+}
 
 /// Cost lens. The authority lives in `src/v3/lenses/complexity.dag`;
 /// the Rust projection is auto-emitted into

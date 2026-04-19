@@ -126,14 +126,18 @@ type Declaration {
   span: SourceSpan
 }
 
-// 🟢 TERMINAL. Arithmetic operators are durable substrate facts.
+// 🟡 SCAFFOLD. Arithmetic operators inherit the operator-shim
+// dissolution trigger: surface-operator syntax still lowers through
+// `TransformTarget::Operator`, and the richer source remains the
+// algebra-field declaration in `dsl/std/algebra.dag`.
 type ArithmeticOp
   = Add
   | Sub
   | Mul
   | Div
 
-// 🟢 TERMINAL. Comparison operators are durable substrate facts.
+// 🟡 SCAFFOLD. Comparison operators inherit the same operator-shim
+// trigger as `ArithmeticOp`.
 type ComparisonOp
   = Eq
   | Ne
@@ -142,11 +146,21 @@ type ComparisonOp
   | Gt
   | Ge
 
-// 🟢 TERMINAL. OperatorKind is the substrate authority for operator
-// identity; realizations map from this structural fact downstream.
+// 🟡 SCAFFOLD. `&&` / `||` are structurally tracked for the current
+// surface grammar, but they stay on the operator-shim path until the
+// M2+ parser/desugarer lowers them to direct BooleanAlgebra
+// field/callable references.
+type LogicalOp
+  = And
+  | Or
+
+// 🟡 SCAFFOLD. `OperatorKind` is the current structural carrier for
+// the operator shim. Dissolves with `TransformTarget::Operator` once
+// surface operators lower directly to algebra-field declaration refs.
 type OperatorKind
   = Arithmetic(ArithmeticOp)
   | Comparison(ComparisonOp)
+  | Logical(LogicalOp)
 
 // Computation substrate.
 // 🟢 TERMINAL at the reflected-substrate level. Every transform target

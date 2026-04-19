@@ -868,7 +868,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                     return Decision::Fail(
                         t.output,
                         Diagnostic::ArityMismatch {
-                            function: op_kind.symbol().to_string(),
+                            function: crate::operators::symbol(*op_kind),
                             expected: 2,
                             actual: 0,
                             span: t.span.clone(),
@@ -882,7 +882,10 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                         return Decision::Fail(
                             t.output,
                             Diagnostic::ResolveError {
-                                name: format!("(upstream failure in {})", op_kind.symbol()),
+                                name: format!(
+                                    "(upstream failure in {})",
+                                    crate::operators::symbol(*op_kind)
+                                ),
                                 span: t.span.clone(),
                                 fixes: Vec::new(),
                             },
@@ -905,7 +908,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                         Diagnostic::ResolveError {
                             name: format!(
                                 "cannot dispatch operator `{}` on {lhs_type:?}",
-                                op_kind.symbol()
+                                crate::operators::symbol(*op_kind)
                             ),
                             span: t.span.clone(),
                             fixes: Vec::new(),
@@ -3701,7 +3704,7 @@ fn resolve_operator_arrow(
             TypeConnective::Conj { children } => {
                 // Found the algebra. Look up the operator's field by
                 // name.
-                let field_name = op_kind.algebra_field_name();
+                let field_name = crate::operators::algebra_field_name(op_kind);
                 if let Some(field) = children.iter().find(|f| f.label == field_name) {
                     return read_algebra_field(dag, decl, field.ty, source_id, op_kind, &base_lhs);
                 }
@@ -4214,7 +4217,7 @@ fn transform_target_display_name(dag: &Dag, target: &TransformTarget) -> String 
     match target {
         TransformTarget::Callable(id) => target_display_name(dag, *id),
         TransformTarget::FieldProject { field_label, .. } => format!(".{field_label}"),
-        TransformTarget::Operator(op_kind) => op_kind.symbol().to_string(),
+        TransformTarget::Operator(op_kind) => crate::operators::symbol(*op_kind),
     }
 }
 

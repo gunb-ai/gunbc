@@ -255,10 +255,18 @@ fn substrate_coproducts_match_runtime_carriers() {
         ]
     );
     assert_eq!(
+        sum_variants(&dag, "LogicalOp"),
+        vec![
+            (String::from("And"), Vec::new()),
+            (String::from("Or"), Vec::new()),
+        ]
+    );
+    assert_eq!(
         sum_variants(&dag, "OperatorKind"),
         vec![
             (String::from("Arithmetic"), vec![String::from("_0")]),
             (String::from("Comparison"), vec![String::from("_0")]),
+            (String::from("Logical"), vec![String::from("_0")]),
         ]
     );
     assert_eq!(
@@ -318,6 +326,7 @@ fn rust_dag_realizes_reflected_substrate_types() {
         "Behavior",
         "ArithmeticOp",
         "ComparisonOp",
+        "LogicalOp",
         "OperatorKind",
         "PayloadBinding",
         "BranchPath",

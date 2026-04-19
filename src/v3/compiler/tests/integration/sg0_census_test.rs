@@ -94,7 +94,6 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/src/lens_unused_parameters.rs",
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
-    "src/v3/compiler/src/operators.rs",
     "src/v3/compiler/src/parse.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
@@ -303,7 +302,6 @@ fn sg0_generated_partition_is_producer_owned() {
     // Isolation: the probe lives under `std::env::temp_dir()`, not
     // inside `src/v3/compiler/`. The live `sg0_v3_hand_authored_census`
     // walker never sees it, so the tests are safe to run in parallel.
-
     let tmp = std::env::temp_dir().join(format!(
         "sg0_soundness_probe_{}_{}",
         std::process::id(),
