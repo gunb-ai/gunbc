@@ -103,6 +103,7 @@ fn effects_dag_exposes_core_effect_algebra_types() {
         "BranchPredicateRef",
         "BranchArm",
         "WorkflowIdempotencyReport",
+        "WorkflowParallelismReport",
         "IdempotencyUnsupportedDetail",
     ] {
         assert_record_type(&dag, name);
