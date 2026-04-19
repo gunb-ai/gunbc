@@ -20,7 +20,7 @@ use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     Behavior, BreakingShape, CompositionVerdict, EffectShape, IdempotentShape, KeySource,
-    NonEmptyList, NonSingletonList, OperationEffect, ParallelismUnsupportedKind, WorkflowEffect,
+    NonSingletonList, OperationEffect, ParallelismUnsupportedKind, WorkflowEffect,
     WorkflowParallelismReport,
 };
 use v3_compiler::Dag;
@@ -61,7 +61,7 @@ fn read(name: &str) -> OperationEffect {
 #[test]
 fn parallel_requires_at_least_two_branches_type_level() {
     let linear = WorkflowEffect::LinearEffect {
-        ops: NonEmptyList::from_vec(vec![read("r")]).unwrap(),
+        ops: vec![read("r")],
     };
     assert!(
         NonSingletonList::from_vec(vec![Box::new(linear.clone())]).is_none(),
@@ -76,10 +76,10 @@ fn parallel_read_only_branches_commute() {
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: NonEmptyList::from_vec(vec![read("a"), read("b")]).unwrap(),
+                ops: vec![read("a"), read("b")],
             }),
             Box::new(WorkflowEffect::LinearEffect {
-                ops: NonEmptyList::from_vec(vec![read("c")]).unwrap(),
+                ops: vec![read("c")],
             }),
         ])
         .unwrap(),
@@ -108,10 +108,10 @@ fn parallel_upsert_cross_branch_fail_closed_same_op_name() {
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: NonEmptyList::from_vec(vec![upsert.clone()]).unwrap(),
+                ops: vec![upsert.clone()],
             }),
             Box::new(WorkflowEffect::LinearEffect {
-                ops: NonEmptyList::from_vec(vec![upsert]).unwrap(),
+                ops: vec![upsert],
             }),
         ])
         .unwrap(),
@@ -140,10 +140,10 @@ fn parallel_upsert_cross_branch_fail_closed_distinct_op_names() {
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: NonEmptyList::from_vec(vec![upsert("put_a")]).unwrap(),
+                ops: vec![upsert("put_a")],
             }),
             Box::new(WorkflowEffect::LinearEffect {
-                ops: NonEmptyList::from_vec(vec![upsert("put_b")]).unwrap(),
+                ops: vec![upsert("put_b")],
             }),
         ])
         .unwrap(),
@@ -173,10 +173,10 @@ fn parallel_different_path_param_names_not_proven_commute() {
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: NonEmptyList::from_vec(vec![upsert("put_a", "a")]).unwrap(),
+                ops: vec![upsert("put_a", "a")],
             }),
             Box::new(WorkflowEffect::LinearEffect {
-                ops: NonEmptyList::from_vec(vec![upsert("put_b", "b")]).unwrap(),
+                ops: vec![upsert("put_b", "b")],
             }),
         ])
         .unwrap(),
@@ -203,10 +203,10 @@ fn parallel_read_vs_upsert_does_not_commute() {
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: NonEmptyList::from_vec(vec![read("get")]).unwrap(),
+                ops: vec![read("get")],
             }),
             Box::new(WorkflowEffect::LinearEffect {
-                ops: NonEmptyList::from_vec(vec![upsert]).unwrap(),
+                ops: vec![upsert],
             }),
         ])
         .unwrap(),
@@ -228,14 +228,13 @@ fn parallel_append_in_branch_is_broken_by() {
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
             Box::new(WorkflowEffect::LinearEffect {
-                ops: NonEmptyList::from_vec(vec![read("get")]).unwrap(),
+                ops: vec![read("get")],
             }),
             Box::new(WorkflowEffect::LinearEffect {
-                ops: NonEmptyList::from_vec(vec![op(
+                ops: vec![op(
                     "append_audit",
                     EffectShape::IsBreaking(BreakingShape::AppendEffect),
-                )])
-                .unwrap(),
+                )],
             }),
         ])
         .unwrap(),
@@ -257,7 +256,7 @@ fn non_parallel_root_is_unsupported() {
     let mut dag = shared_fixture_dag();
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
-        ops: NonEmptyList::from_vec(vec![read("only")]).unwrap(),
+        ops: vec![read("only")],
     };
     assert!(dag.try_register_lane2_workflow_effect(root, wf));
     let r = analyze_parallelism(&dag, root);
