@@ -82,14 +82,16 @@ fn infer_helpers_generated_module_matches_checked_in_snapshot() {
     assert_eq!(
         fresh.trim(),
         checked_in_generated_module().trim(),
-        "checked-in generated module is stale; regenerate infer_helpers_generated.rs from infer_helpers.dag via `cargo run -p v3-compiler --bin regen_infer_helpers`"
+        "checked-in generated module is stale; regenerate infer_helpers_generated.rs from infer_helpers.dag via `cargo run -p v3-compiler --bin regen_lens -- --lens infer_helpers` (absorbed into SG-6's unified regen driver on PR #560)"
     );
 }
 
 /// Regenerate helper. Writes the freshly emitted module straight to
 /// disk so the next `cargo test` run sees a clean tree. Equivalent to
-/// `cargo run -p v3-compiler --bin regen_infer_helpers` — kept as an
-/// `#[ignore]` test for parity with the lens-migration regen helpers.
+/// `cargo run -p v3-compiler --bin regen_lens -- --lens infer_helpers`
+/// (SG-6 absorbed the former `regen_infer_helpers` bin into the unified
+/// driver on PR #560) — kept as an `#[ignore]` test for parity with
+/// the lens-migration regen helpers.
 ///
 /// Run with: `cargo test -p v3-compiler --test integration -- --ignored
 /// emit_infer_helpers_snapshot`.

@@ -43,15 +43,23 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // Removing an entry means the owning lane has retired the file;
 // adding an entry is forbidden outside SG-0 without director
 // sign-off.
+// SG-6 landing (PR #560): the four per-lens regen bins
+// (`regen_lens_cost.rs`, `regen_lens_cost_symbolic.rs`,
+// `regen_lens_structural_resolution.rs`, `regen_lens_unused_parameters.rs`)
+// and SG-4 prep's `regen_infer_helpers.rs` all folded into a single
+// `regen_lens.rs` shim driven by `src/v3/compiler/regen.dag`'s
+// `LensRegistryEntry` records. Five retirements; one net-new entry
+// (`regen_lens.rs`). The new `sg6_hand_authored_census_test.rs`
+// pins the reduced bin census + full `(name, lens_file,
+// generated_file)` registry tuples + `--lens` singleton resolve +
+// end-to-end CLI smoke; it is hand-authored test infrastructure and
+// belongs on this list.
 //
-// SG-4 prep carries two entries that SG-6 will retire together:
-//   - `bin/regen_infer_helpers.rs` (the per-helper regen binary)
-//   - `tests/integration/sg4_prep_infer_helpers_freshness_test.rs`
-//     (the per-helper regenerate→diff-empty ratchet)
-// When SG-6 folds all regen drivers and snapshot gates into a
-// single generic target, both entries collapse alongside the four
-// `regen_lens_*` lines above. Director sign-off
-// (clever-swift-141 brief, 2026-04-19) covers the temporary +2.
+// SG-6 owns the remaining fold: the per-helper freshness test
+// (`sg4_prep_infer_helpers_freshness_test.rs`) still mirrors the
+// per-lens migration tests' snapshot pattern. It collapses into a
+// single generic snapshot gate in a later SG-6 sub-PR, per the
+// Director sign-off (clever-swift-141 brief, 2026-04-19).
 //
 // Phase 0 test-taxonomy reorg — four target-emission tests moved from
 // `tests/integration/` to `tests/boundary/` (TESTING.md § test layers,
@@ -72,11 +80,7 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // not a precedent for adding ad hoc integration files.
 const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/build.rs",
-    "src/v3/compiler/src/bin/regen_infer_helpers.rs",
-    "src/v3/compiler/src/bin/regen_lens_cost.rs",
-    "src/v3/compiler/src/bin/regen_lens_cost_symbolic.rs",
-    "src/v3/compiler/src/bin/regen_lens_structural_resolution.rs",
-    "src/v3/compiler/src/bin/regen_lens_unused_parameters.rs",
+    "src/v3/compiler/src/bin/regen_lens.rs",
     "src/v3/compiler/src/bin/regen_v3.rs",
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
     "src/v3/compiler/src/bootstrap.rs",
@@ -97,7 +101,6 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/src/lens_unused_parameters.rs",
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
-    "src/v3/compiler/src/operators.rs",
     "src/v3/compiler/src/parse.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
@@ -143,12 +146,11 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/m2_lens_unused_parameters_migration_test.rs",
     "src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
-    "src/v3/compiler/tests/integration/real_stdlib_parse_smoke.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg4_prep_infer_helpers_freshness_test.rs",
+    "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
-    "src/v3/compiler/tests/lane2_stage_2f_dimension_test.rs",
 ];
 
 fn workspace_root() -> PathBuf {
@@ -305,7 +307,6 @@ fn sg0_generated_partition_is_producer_owned() {
     // Isolation: the probe lives under `std::env::temp_dir()`, not
     // inside `src/v3/compiler/`. The live `sg0_v3_hand_authored_census`
     // walker never sees it, so the tests are safe to run in parallel.
-
     let tmp = std::env::temp_dir().join(format!(
         "sg0_soundness_probe_{}_{}",
         std::process::id(),

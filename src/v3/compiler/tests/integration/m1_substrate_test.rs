@@ -16,7 +16,7 @@ use v3_compiler::dag::{
     ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, PortState,
     TransformTarget, TypeConnective,
 };
-use v3_compiler::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
+use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use v3_compiler::Diagnostic;
 
 use crate::common::{cached_compile_any, cached_compile_to_dag};
@@ -76,6 +76,28 @@ fn callable_instantiation_arguments(
             (*inst_template == template).then_some(arguments.as_slice())
         })
         .collect()
+}
+
+#[test]
+fn operator_helpers_round_trip_from_dag_authority() {
+    for (symbol, op, field_name) in [
+        ("+", OperatorKind::Arithmetic(ArithmeticOp::Add), "add"),
+        ("-", OperatorKind::Arithmetic(ArithmeticOp::Sub), "sub"),
+        ("*", OperatorKind::Arithmetic(ArithmeticOp::Mul), "mul"),
+        ("/", OperatorKind::Arithmetic(ArithmeticOp::Div), "div"),
+        ("==", OperatorKind::Comparison(ComparisonOp::Eq), "eq"),
+        ("!=", OperatorKind::Comparison(ComparisonOp::Ne), "ne"),
+        ("<", OperatorKind::Comparison(ComparisonOp::Lt), "lt"),
+        ("<=", OperatorKind::Comparison(ComparisonOp::Le), "le"),
+        (">", OperatorKind::Comparison(ComparisonOp::Gt), "gt"),
+        (">=", OperatorKind::Comparison(ComparisonOp::Ge), "ge"),
+        ("&&", OperatorKind::Logical(LogicalOp::And), "and"),
+        ("||", OperatorKind::Logical(LogicalOp::Or), "or"),
+    ] {
+        assert_eq!(v3_compiler::operators::from_symbol(symbol), Some(op));
+        assert_eq!(v3_compiler::operators::symbol(op), symbol);
+        assert_eq!(v3_compiler::operators::algebra_field_name(op), field_name);
+    }
 }
 
 #[test]
@@ -2859,6 +2881,31 @@ fn bad(w: Wrapped) -> Int = match w { Wrap { inner: pair } => match pair { Pair 
                 if name.contains("binds `x` more than once")
         )),
         "expected fail-closed duplicate payload-pattern binding diagnostic, got {:?}",
+        dag.diagnostics()
+    );
+}
+
+/// Regression for #565 / codex blocker: `VariantFields` duplicate-binding
+/// detection incorrectly used the full outer scope, so a legitimate
+/// shadow (fn parameter `x` + match-arm `Foo { x }` renaming a field
+/// to `x`) got rejected as a duplicate. Match arms must be allowed to
+/// shadow outer names exactly like `VariantWith { binding: x }` already does.
+#[test]
+fn prereq2_named_payload_pattern_shadows_outer_scope_binding() {
+    // `inner` is in outer scope (fn parameter). The match arm's
+    // `Wrap { inner: pair }` binds a new `pair` — not a shadow. But the
+    // bug fires whenever an outer name collides with ANY pattern binding,
+    // so introduce the conflict by also binding the field to `inner`:
+    // `Wrap { inner: inner }` is the shadow case the bug prevented.
+    let src = "\
+type Pair { inner: Int }
+type Wrapped = Wrap { inner: Pair } | Empty
+fn read(w: Wrapped, inner: Int) -> Int = match w { Wrap { inner: inner } => inner.inner, Empty => inner }
+";
+    let dag = cached_compile_to_dag(src, "named_payload_pattern_shadowing.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "named-payload match arm must shadow the outer `inner` binding, got {:?}",
         dag.diagnostics()
     );
 }
