@@ -162,9 +162,7 @@ impl Diagnostic {
                 ..
             } => format!("{function} expected {expected}, got {actual}"),
             Diagnostic::ResolveError { name, .. } => name.clone(),
-            Diagnostic::BranchConditionNotBool {
-                actual_type, ..
-            } => match actual_type {
+            Diagnostic::BranchConditionNotBool { actual_type, .. } => match actual_type {
                 Some(ty) => format!("branch condition port is not Bool (got {ty:?})"),
                 None => "branch condition port is not Bool (type not resolved)".to_string(),
             },
