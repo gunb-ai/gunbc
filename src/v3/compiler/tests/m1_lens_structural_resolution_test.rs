@@ -16,6 +16,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::inject_name_keyed_reference_for_test;
+use v3_compiler::inject_anonymous_pending_arrow_for_test;
 use v3_compiler::inject_named_pending_arrow_for_test;
 use v3_compiler::lens_structural_resolution::{
     check, name_keyed_references, NameKeyedReference, UnresolvedArrowBody,
@@ -94,6 +95,28 @@ fn lens_silent_on_anonymous_arrow_type_expression() {
         found.is_empty(),
         "anonymous fn-type expressions must not be flagged, got: {found:?}"
     );
+}
+
+#[test]
+fn lens_flags_anonymous_arrow_pending_injected_into_dag() {
+    // The post-#548 lens must key on `Arrow(Pending)` structurally,
+    // not on `Declaration.name`. An anonymous Pending arrow is still
+    // a leak and must be reported.
+    let mut dag = Dag::new();
+    let int_output = dag.int_shape().expect("bootstrap Dag has Int").declaration;
+    let decl_id = inject_anonymous_pending_arrow_for_test(&mut dag, int_output);
+
+    let found = violations(&dag);
+    assert_eq!(
+        found.len(),
+        1,
+        "expected exactly one anonymous violation, got: {found:?}"
+    );
+    assert_eq!(
+        found[0].declaration, decl_id,
+        "violation should point at the injected declaration"
+    );
+    assert_eq!(found[0].name, "<anonymous>");
 }
 
 #[test]

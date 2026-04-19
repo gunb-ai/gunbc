@@ -265,12 +265,40 @@ pub fn inject_named_pending_arrow_for_test(
 pub fn inject_name_keyed_reference_for_test(
     dag: &mut Dag,
     target: dag::DeclarationId,
-) -> dag::DeclarationId {
+ ) -> dag::DeclarationId {
     let id = dag.alloc_declaration_id();
     dag.push_declaration(dag::Declaration {
         id,
         name: None,
         connective: dag::TypeConnective::Atom(dag::AtomPayload::ResolvedByName(target)),
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span: diagnostics::SourceSpan::new("test", 0, 0),
+    });
+    id
+}
+
+/// Test-only hook: inject an anonymous Arrow declaration with
+/// `ArrowBody::Pending` directly into `dag`. This exists solely to
+/// prove the lens no longer relies on `Declaration.name` as a proxy
+/// for the executable-fn leak shape.
+#[doc(hidden)]
+pub fn inject_anonymous_pending_arrow_for_test(
+    dag: &mut Dag,
+    output_type: dag::DeclarationId,
+) -> dag::DeclarationId {
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(dag::Declaration {
+        id,
+        name: None,
+        connective: dag::TypeConnective::Arrow {
+            inputs: Vec::new(),
+            output: output_type,
+            body: dag::ArrowBody::Pending,
+        },
         type_params: Vec::new(),
         meta_tag: None,
         inhabits: None,
