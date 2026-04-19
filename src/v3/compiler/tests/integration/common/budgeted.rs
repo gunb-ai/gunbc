@@ -11,8 +11,13 @@
 
 use std::time::{Duration, Instant};
 
-/// Default single-test budget in milliseconds (2s).
-pub const DEFAULT_BUDGET_MS: u64 = 2000;
+/// Default single-test budget in milliseconds (3s).
+///
+/// CI runners (GitHub `ubuntu-latest`) occasionally exceed a 2s wall-clock
+/// budget on the first `compile_to_dag` + `symbolic_cost_of` path for a novel
+/// fixture key — enough margin prevents flaky `budgeted_test!` failures without
+/// weakening the "no multi-second hangs" intent.
+pub const DEFAULT_BUDGET_MS: u64 = 3000;
 
 /// Run `f` and panic if wall time exceeds `budget_ms`.
 pub fn with_budget_ms<F: FnOnce()>(budget_ms: u64, f: F) {

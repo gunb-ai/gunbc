@@ -565,8 +565,8 @@ fn format_rust_source(source: &str) -> String {
 // Cold-init path for the `cost.dag` OnceLock cache key. Sibling
 // `cost_generated_module_matches_checked_in_snapshot` also compiles
 // cost.dag and reuses the cached Dag, so this test legitimately
-// bears the one-time compile cost on CI (~2.5s on cold runners,
-// default 2s budget is tight). Matches the rationale behind the
+// bears the one-time compile cost on CI (~2.5s on cold runners;
+// default 3s budget covers typical cold paths). Matches the rationale behind the
 // sibling's 15s snapshot-compare budget below.
 budgeted_test! {
     5_000,

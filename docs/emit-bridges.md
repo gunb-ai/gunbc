@@ -191,6 +191,8 @@ These are **not** all separate “name bridges,” but they are **behavior bridg
 
 ## Related docs
 
-- [emit-functions-inventory.md](./emit-functions-inventory.md) — per-function classification.  
+- [emit-functions-inventory.md](./emit-functions-inventory.md) — per-function classification (includes Lane 2f `analyze_symbolic_cost_dimension` under “Related helpers”).  
 - [spec-field-gaps.md](./spec-field-gaps.md) — spec fields that subsume bridges.  
 - [phase1-lane3-consolidation-build-plan.md](./phase1-lane3-consolidation-build-plan.md) §5 — Half B revisit items tied to bridges.
+
+**Lane 2 Stage 2f note:** DB-3 dimension analysis (`src/v3/compiler/src/dimension.rs`) is **not** an emitter bridge — it does not intersect `render_*` / `emit_*`; it is listed in the inventory for discoverability only.
