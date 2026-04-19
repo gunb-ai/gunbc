@@ -4561,6 +4561,9 @@ fn lower_expr(
                     .or_else(|| callable_scope.get(target).copied())
                     .or_else(|| symbols.get(target).copied())
             else {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
                 let port = dag.alloc_port(None);
                 let fixes = expected_decl
                     .and_then(|decl| {

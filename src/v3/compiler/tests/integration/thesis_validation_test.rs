@@ -519,6 +519,31 @@ fn bad(m: Maybe<Int>) -> Int = unwrap(m)
 }
 
 #[test]
+fn t2_4_unresolved_calls_still_lower_argument_diagnostics() {
+    let src = "\
+type Maybe<T> = Some(T) | None
+fn bad(m: Maybe<Int>) -> Int = unknown(unwrap(m))
+";
+    let dag = match compile_to_dag(src, "t2_4_unresolved_call_keeps_arg_diags.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let diagnostics = dag.diagnostics().iter().map(|(_, d)| d).collect::<Vec<_>>();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diag| matches!(diag, Diagnostic::ResolveError { name, .. } if name == "unknown")),
+        "outer unresolved call diagnostic should be preserved; got {diagnostics:?}"
+    );
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diag| matches!(diag, Diagnostic::ResolveError { name, .. } if name == "unwrap")),
+        "argument diagnostics must still lower under unresolved calls; got {diagnostics:?}"
+    );
+}
+
+#[test]
 fn kf_5_bounded_fold_compiles_on_supported_primitives() {
     let src = "\
 let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)
