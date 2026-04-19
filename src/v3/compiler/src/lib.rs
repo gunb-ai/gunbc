@@ -90,6 +90,145 @@ pub mod lens_cost {
     }
 
     pub use generated::{cost_of, CostLookup};
+
+    #[cfg(test)]
+    mod tests {
+        use super::{cost_of, CostLookup};
+        use crate::dag::{
+            ArithmeticOp, BranchPattern, Dag, LiteralBits, LoopBound, OperatorKind, Path, PortId,
+            TransformTarget,
+        };
+        use crate::diagnostics::SourceSpan;
+
+        fn span() -> SourceSpan {
+            SourceSpan::new("<lens-cost-test>", 0, 0)
+        }
+
+        fn expect_found(lookup: CostLookup) -> i64 {
+            match lookup {
+                CostLookup::FoundCost { _0: c } => c,
+                CostLookup::MissingCost => panic!("expected FoundCost, got MissingCost"),
+            }
+        }
+
+        fn assert_cost(dag: &Dag, port: PortId, expected: i64) {
+            assert_eq!(expect_found(cost_of(dag, &port)), expected);
+        }
+
+        #[test]
+        fn value_port_has_zero_cost() {
+            let mut dag = Dag::new();
+            let port = dag.push_value(LiteralBits::Int(7), span());
+            assert_cost(&dag, port, 0);
+        }
+
+        #[test]
+        fn transform_adds_one_to_sum_of_input_costs() {
+            let mut dag = Dag::new();
+            let a = dag.push_value(LiteralBits::Int(1), span());
+            let b = dag.push_value(LiteralBits::Int(2), span());
+            let sum = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![a, b],
+                span(),
+            );
+            assert_cost(&dag, sum, 1);
+        }
+
+        #[test]
+        fn chained_transforms_accumulate_through_input_edges() {
+            // (1 + 2) + 3: outer transform = 1 + (inner=1) + (literal=0) = 2.
+            let mut dag = Dag::new();
+            let a = dag.push_value(LiteralBits::Int(1), span());
+            let b = dag.push_value(LiteralBits::Int(2), span());
+            let c = dag.push_value(LiteralBits::Int(3), span());
+            let inner = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![a, b],
+                span(),
+            );
+            let outer = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![inner, c],
+                span(),
+            );
+            assert_cost(&dag, outer, 2);
+        }
+
+        #[test]
+        fn branch_cost_is_one_plus_input_plus_max_of_path_outputs() {
+            // cond=Bool(true) [0], arm=Int(1) [0] → branch = 1 + 0 + 0 = 1.
+            let mut dag = Dag::new();
+            let cond = dag.push_value(LiteralBits::Bool(true), span());
+            let arm_output = dag.push_value(LiteralBits::Int(1), span());
+            let arm_body = dag.push_bind("arm", arm_output, Vec::new(), span());
+            let branch = dag.push_branch(
+                cond,
+                vec![Path {
+                    body: arm_body,
+                    output: arm_output,
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "Only".to_string(),
+                        span: span(),
+                    },
+                    binding: None,
+                }],
+                span(),
+            );
+            assert_cost(&dag, branch, 1);
+        }
+
+        #[test]
+        fn loop_cost_is_one_plus_source_plus_init() {
+            let mut dag = Dag::new();
+            let source = dag.push_value(LiteralBits::Int(4), span());
+            let init = dag.push_value(LiteralBits::Int(0), span());
+            let body_output = dag.push_value(LiteralBits::Int(0), span());
+            let body = dag.push_bind("loop_body", body_output, Vec::new(), span());
+            let loop_port = dag.push_loop(
+                source,
+                init,
+                body,
+                LoopBound::Cardinality { count: source },
+                span(),
+            );
+            assert_cost(&dag, loop_port, 1);
+        }
+
+        #[test]
+        fn bind_cost_tracks_body_value_cost() {
+            // let x = 1 + 2: bind.value is the Add transform (cost 1).
+            let mut dag = Dag::new();
+            let a = dag.push_value(LiteralBits::Int(1), span());
+            let b = dag.push_value(LiteralBits::Int(2), span());
+            let body = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![a, b],
+                span(),
+            );
+            let _ = dag.push_bind("x", body, Vec::new(), span());
+            assert_cost(&dag, body, 1);
+        }
+
+        #[test]
+        fn bind_params_seed_as_zero_cost_and_body_costs_accumulate() {
+            // fn double(x) = x + x: body transform reads x twice. Each param
+            // port is seeded to cost 0, so body cost = 1 + 0 + 0 = 1.
+            let mut dag = Dag::new();
+            let int_shape = dag.int_shape().expect("bootstrap Int");
+            let x = dag.alloc_port_with_shape(int_shape);
+            let body = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![x, x],
+                span(),
+            );
+            let _ = dag.push_bind("double", body, vec![x], span());
+
+            // Parameter ports look up against the seeded entries.
+            assert_cost(&dag, x, 0);
+            assert_cost(&dag, body, 1);
+        }
+    }
 }
 
 /// Symbolic-cost lens (Lane 2 Stage 2d / DB-7). Authority lives in
