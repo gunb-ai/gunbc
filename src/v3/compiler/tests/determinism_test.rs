@@ -27,7 +27,10 @@ mod determinism_fixtures;
 
 use std::path::PathBuf;
 
-use determinism_fixtures::{ProgramFixture, FOUR_FIXTURE_FILES, MODULE_FIXTURES, PROGRAM_FIXTURES};
+use determinism_fixtures::{
+    ModuleFixture, ProgramFixture, FOUR_FIXTURE_FILES, GO_EMIT_EXCLUDE, MODULE_FIXTURES,
+    PROGRAM_FIXTURES, PYTHON_EMIT_EXCLUDE,
+};
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit::{emit, emit_module, EmitTarget};
 

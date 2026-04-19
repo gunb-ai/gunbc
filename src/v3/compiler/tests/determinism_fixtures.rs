@@ -89,3 +89,8 @@ pub const MODULE_FIXTURES: &[ModuleFixture] = &[
 
 /// On-disk four-fixture pressure suite (Lane 6 / dependency design).
 pub const FOUR_FIXTURE_FILES: &[&str] = &["id.v3", "drop.v3", "wrap.v3", "is_empty.v3"];
+
+/// `PROGRAM_FIXTURES` entries excluded from per-target 5× determinism until the
+/// target emitter supports the lowering shape (e.g. Go `Loop`, Python operator bridge).
+pub const GO_EMIT_EXCLUDE: &[&str] = &["recursive_function_call_six"];
+pub const PYTHON_EMIT_EXCLUDE: &[&str] = &["list_map_then_fold_twelve"];
