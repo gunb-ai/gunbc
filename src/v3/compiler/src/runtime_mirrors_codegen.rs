@@ -1,7 +1,6 @@
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
-use crate::compile_to_dag;
 use crate::dag::{AtomPayload, Declaration, DeclarationId, TypeConnective};
 
 #[derive(Debug)]
@@ -21,13 +20,10 @@ pub enum MirrorError {
 
 pub fn render_runtime_mirrors() -> Result<MirrorOutput, MirrorError> {
     let path = runtime_mirrors_path();
-    let source = std::fs::read_to_string(&path)
-        .map_err(|err| MirrorError::Compile(format!("read {}: {err}", path.display())))?;
-    let dag = compile_to_dag(&source, path.to_string_lossy().as_ref())
-        .map_err(|err| MirrorError::Compile(format!("compile {}: {err:?}", path.display())))?;
+    let dag = crate::Dag::new();
     if !dag.diagnostics().is_empty() {
         return Err(MirrorError::Compile(format!(
-            "{} produced diagnostics: {:?}",
+            "{} did not bootstrap cleanly: {:?}",
             path.display(),
             dag.diagnostics()
         )));
@@ -69,25 +65,32 @@ fn render_diagnostics_module(dag: &crate::Dag) -> Result<String, MirrorError> {
     rendered.push('\n');
     rendered.push_str(&render_sum_with_derives(
         dag,
-        "Diagnostic",
-        &[("Int", "usize")],
+        "CompilerDiagnostic",
+        &[
+            ("Int", "usize"),
+            ("CompilerSourceSpan", "SourceSpan"),
+            ("CompilerCorrection", "Correction"),
+        ],
         "#[derive(Debug, Clone)]",
+        Some("Diagnostic"),
     )?);
     rendered.push('\n');
     rendered.push('\n');
     rendered.push_str(&render_sum_with_derives(
         dag,
-        "DiagnosticStyleTarget",
+        "CompilerDiagnosticStyleTarget",
         &[],
         "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
+        Some("DiagnosticStyleTarget"),
     )?);
     rendered.push('\n');
     rendered.push('\n');
     rendered.push_str(&render_sum_with_derives(
         dag,
-        "DiagnosticRenderError",
+        "CompilerDiagnosticRenderError",
         &[("String", "&'static str")],
         "#[derive(Debug, Clone, PartialEq, Eq)]",
+        Some("DiagnosticRenderError"),
     )?);
     Ok(rendered)
 }
@@ -128,6 +131,7 @@ fn render_sum(
         name,
         type_overrides,
         "#[derive(Debug, Clone, PartialEq, Eq)]",
+        None,
     )
 }
 
@@ -136,15 +140,17 @@ fn render_sum_with_derives(
     name: &'static str,
     type_overrides: &[(&str, &str)],
     derives: &str,
+    output_name: Option<&str>,
 ) -> Result<String, MirrorError> {
     let declaration = find_named(dag, name)?;
     let TypeConnective::Disj { variants } = &declaration.connective else {
         return Err(invalid(name, "expected sum (Disj)"));
     };
+    let output_name = output_name.unwrap_or(name);
 
     let mut rendered = String::new();
     writeln!(&mut rendered, "{derives}").unwrap();
-    writeln!(&mut rendered, "pub enum {name} {{").unwrap();
+    writeln!(&mut rendered, "pub enum {output_name} {{").unwrap();
     for variant in variants {
         let variant_decl = dag.declaration(variant.ty);
         let TypeConnective::Conj { children } = &variant_decl.connective else {
