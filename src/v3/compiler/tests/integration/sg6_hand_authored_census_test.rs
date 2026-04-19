@@ -70,6 +70,7 @@ fn sg6_bin_census_is_locked_to_three_shims() {
 struct RegistryRow {
     binding: String,
     name: String,
+    lens_file: String,
     generated_file: String,
 }
 
@@ -91,6 +92,7 @@ fn read_registry_rows(dag: &Dag) -> Vec<RegistryRow> {
             RegistryRow {
                 binding: binding.clone(),
                 name: string_field(fields, "name", &binding),
+                lens_file: string_field(fields, "lens_file", &binding),
                 generated_file: string_field(fields, "generated_file", &binding),
             }
         })
