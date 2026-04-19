@@ -2,6 +2,8 @@ use super::*;
 use crate::operators::OperatorKind;
 use crate::types::TypeShape;
 
+const BUILDER_TYPE_WALK_DEPTH_LIMIT: usize = 32;
+
 #[allow(dead_code)]
 impl Dag {
     /// Test-facing builder: allocate a detached port that already carries a
@@ -245,12 +247,33 @@ impl Dag {
     }
 
     fn callable_output_shape(&self, decl_id: DeclarationId) -> Option<TypeShape> {
+        let mut subst = Vec::new();
+        self.callable_output_shape_with_subst(decl_id, &mut subst, 0)
+    }
+
+    fn callable_output_shape_with_subst(
+        &self,
+        decl_id: DeclarationId,
+        subst: &mut Vec<Vec<TemplateArgument>>,
+        depth: usize,
+    ) -> Option<TypeShape> {
+        if depth >= BUILDER_TYPE_WALK_DEPTH_LIMIT {
+            return None;
+        }
         match &self.declaration(decl_id).connective {
-            TypeConnective::Arrow { output, .. } => Some(TypeShape::new(*output)),
-            TypeConnective::Instantiation { template, .. } => self.callable_output_shape(*template),
+            TypeConnective::Arrow { output, .. } => self.signature_type_shape(*output, subst, depth + 1),
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                subst.push(arguments.clone());
+                let result = self.callable_output_shape_with_subst(*template, subst, depth + 1);
+                subst.pop();
+                result
+            }
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
-                self.callable_output_shape(*next)
+                self.callable_output_shape_with_subst(*next, subst, depth + 1)
             }
             TypeConnective::Atom(AtomPayload::Literal(_))
             | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
@@ -276,6 +299,157 @@ impl Dag {
             PortState::Resolved(shape) => Some(*shape),
             PortState::Uninferred | PortState::Unresolved => None,
         }
+    }
+
+    fn signature_type_shape(
+        &self,
+        current: DeclarationId,
+        subst: &[Vec<TemplateArgument>],
+        depth: usize,
+    ) -> Option<TypeShape> {
+        if depth >= BUILDER_TYPE_WALK_DEPTH_LIMIT {
+            return None;
+        }
+        let decl = self.declaration(current);
+        if decl.name.is_some() || decl.refinement.is_some() {
+            return Some(TypeShape::new(current));
+        }
+        match &decl.connective {
+            TypeConnective::Instantiation { .. } => self
+                .resolve_decl_with_subst(current, subst, depth + 1)
+                .map(TypeShape::new)
+                .or_else(|| Some(TypeShape::new(current))),
+            TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+                if let Some(bound) = self.lookup_template_argument(current, subst) {
+                    self.signature_type_shape(bound, subst, depth + 1)
+                } else {
+                    Some(TypeShape::new(current))
+                }
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                self.signature_type_shape(*next, subst, depth + 1)
+            }
+            TypeConnective::Cardinality { .. } => Some(TypeShape::new(current)),
+            TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+            | TypeConnective::Atom(AtomPayload::Literal(_))
+            | TypeConnective::Conj { .. }
+            | TypeConnective::Disj { .. }
+            | TypeConnective::Arrow { .. } => None,
+        }
+    }
+
+    fn resolve_decl_with_subst(
+        &self,
+        current: DeclarationId,
+        subst: &[Vec<TemplateArgument>],
+        depth: usize,
+    ) -> Option<DeclarationId> {
+        if depth >= BUILDER_TYPE_WALK_DEPTH_LIMIT {
+            return None;
+        }
+        let decl = self.declaration(current);
+        match &decl.connective {
+            TypeConnective::Atom(AtomPayload::TypeParam(_)) => self
+                .lookup_template_argument(current, subst)
+                .and_then(|bound| self.resolve_decl_with_subst(bound, subst, depth + 1))
+                .or(Some(current)),
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                self.resolve_decl_with_subst(*next, subst, depth + 1)
+            }
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                let specialized_arguments: Vec<TemplateArgument> = arguments
+                    .iter()
+                    .map(|arg| {
+                        Some(TemplateArgument {
+                            parameter: arg.parameter,
+                            value: self.resolve_decl_with_subst(arg.value, subst, depth + 1)?,
+                        })
+                    })
+                    .collect::<Option<_>>()?;
+                if specialized_arguments
+                    .iter()
+                    .zip(arguments.iter())
+                    .all(|(lhs, rhs)| lhs.parameter == rhs.parameter && lhs.value == rhs.value)
+                {
+                    return Some(current);
+                }
+                self.find_equivalent_decl_instantiation(*template, &specialized_arguments)
+                    .or(Some(current))
+            }
+            TypeConnective::Cardinality { element, bound } => {
+                let specialized_element =
+                    self.resolve_decl_with_subst(*element, subst, depth + 1)?;
+                if specialized_element == *element {
+                    return Some(current);
+                }
+                self.find_equivalent_decl_cardinality(specialized_element, bound.clone())
+                    .or(Some(current))
+            }
+            _ => Some(current),
+        }
+    }
+
+    fn lookup_template_argument(
+        &self,
+        parameter: DeclarationId,
+        subst: &[Vec<TemplateArgument>],
+    ) -> Option<DeclarationId> {
+        for frame in subst.iter().rev() {
+            for arg in frame {
+                if arg.parameter == parameter {
+                    if arg.value == parameter {
+                        return None;
+                    }
+                    return Some(arg.value);
+                }
+            }
+        }
+        None
+    }
+
+    fn find_equivalent_decl_instantiation(
+        &self,
+        template: DeclarationId,
+        arguments: &[TemplateArgument],
+    ) -> Option<DeclarationId> {
+        self.declarations().iter().find_map(|decl| {
+            let TypeConnective::Instantiation {
+                template: existing_template,
+                arguments: existing_arguments,
+            } = &decl.connective
+            else {
+                return None;
+            };
+            (template == *existing_template
+                && existing_arguments.len() == arguments.len()
+                && existing_arguments
+                    .iter()
+                    .zip(arguments.iter())
+                    .all(|(lhs, rhs)| lhs.parameter == rhs.parameter && lhs.value == rhs.value))
+            .then_some(decl.id)
+        })
+    }
+
+    fn find_equivalent_decl_cardinality(
+        &self,
+        element: DeclarationId,
+        bound: CardinalityBound,
+    ) -> Option<DeclarationId> {
+        self.declarations().iter().find_map(|decl| {
+            let TypeConnective::Cardinality {
+                element: existing_element,
+                bound: existing_bound,
+            } = &decl.connective
+            else {
+                return None;
+            };
+            (element == *existing_element && bound == *existing_bound).then_some(decl.id)
+        })
     }
 
     fn common_resolved_shape(&self, ports: impl IntoIterator<Item = PortId>) -> Option<TypeShape> {
@@ -356,6 +530,27 @@ mod tests {
         SourceSpan::new("<builder-test>", 0, 0)
     }
 
+    fn push_test_declaration(
+        dag: &mut Dag,
+        name: Option<&str>,
+        connective: TypeConnective,
+        type_params: Vec<DeclarationId>,
+    ) -> DeclarationId {
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: name.map(str::to_string),
+            connective,
+            type_params,
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span(),
+        });
+        id
+    }
+
     #[test]
     fn alloc_port_with_shape_marks_port_resolved() {
         let mut dag = Dag::new();
@@ -388,29 +583,21 @@ mod tests {
             .expect("bootstrap Int declaration")
             .id;
         let input = dag.alloc_port_with_shape(TypeShape::new(int_decl));
-        let callable = dag.push_atom(
-            Some("test_callable".to_string()),
-            AtomPayload::ResolvedByStructure(int_decl),
-            span(),
-        );
-        let arrow = dag.alloc_declaration_id();
-        dag.push_declaration(Declaration {
-            id: arrow,
-            name: Some("test_arrow".to_string()),
-            connective: TypeConnective::Arrow {
+        let arrow = push_test_declaration(
+            &mut dag,
+            Some("test_arrow"),
+            TypeConnective::Arrow {
                 inputs: vec![int_decl],
                 output: int_decl,
                 body: ArrowBody::NoBody,
             },
-            type_params: Vec::new(),
-            meta_tag: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            span: span(),
-        });
-        dag.declaration_mut(callable).connective =
-            TypeConnective::Atom(AtomPayload::ResolvedByStructure(arrow));
+            Vec::new(),
+        );
+        let callable = dag.push_atom(
+            Some("test_callable".to_string()),
+            AtomPayload::ResolvedByStructure(arrow),
+            span(),
+        );
 
         let output = dag.push_transform(TransformTarget::Callable(callable), vec![input], span());
         let producer = dag.port(output).produced_by.expect("transform producer");
@@ -420,6 +607,137 @@ mod tests {
         assert_eq!(
             dag.port(output).state(),
             &PortState::Resolved(TypeShape::new(int_decl))
+        );
+    }
+
+    #[test]
+    fn push_transform_specializes_instantiated_callable_output_shape() {
+        let mut dag = Dag::new();
+        let int_decl = dag
+            .declaration_by_name("Int")
+            .expect("bootstrap Int declaration")
+            .id;
+        let input = dag.alloc_port_with_shape(TypeShape::new(int_decl));
+        let type_param = push_test_declaration(
+            &mut dag,
+            None,
+            TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
+            Vec::new(),
+        );
+        let generic_callable = push_test_declaration(
+            &mut dag,
+            Some("generic_identity"),
+            TypeConnective::Arrow {
+                inputs: vec![type_param],
+                output: type_param,
+                body: ArrowBody::NoBody,
+            },
+            vec![type_param],
+        );
+        let specialized_callable = push_test_declaration(
+            &mut dag,
+            None,
+            TypeConnective::Instantiation {
+                template: generic_callable,
+                arguments: vec![TemplateArgument {
+                    parameter: type_param,
+                    value: int_decl,
+                }],
+            },
+            Vec::new(),
+        );
+
+        let output = dag.push_transform(
+            TransformTarget::Callable(specialized_callable),
+            vec![input],
+            span(),
+        );
+
+        assert_eq!(
+            dag.port(output).state(),
+            &PortState::Resolved(TypeShape::new(int_decl))
+        );
+    }
+
+    #[test]
+    fn push_transform_specializes_nested_instantiated_output_shape() {
+        let mut dag = Dag::new();
+        let int_decl = dag
+            .declaration_by_name("Int")
+            .expect("bootstrap Int declaration")
+            .id;
+        let input = dag.alloc_port_with_shape(TypeShape::new(int_decl));
+        let type_param = push_test_declaration(
+            &mut dag,
+            None,
+            TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
+            Vec::new(),
+        );
+        let list_template = push_test_declaration(
+            &mut dag,
+            Some("TestList"),
+            TypeConnective::Cardinality {
+                element: type_param,
+                bound: CardinalityBound::Unbounded,
+            },
+            vec![type_param],
+        );
+        let list_of_t = push_test_declaration(
+            &mut dag,
+            None,
+            TypeConnective::Instantiation {
+                template: list_template,
+                arguments: vec![TemplateArgument {
+                    parameter: type_param,
+                    value: type_param,
+                }],
+            },
+            Vec::new(),
+        );
+        let list_of_int = push_test_declaration(
+            &mut dag,
+            None,
+            TypeConnective::Instantiation {
+                template: list_template,
+                arguments: vec![TemplateArgument {
+                    parameter: type_param,
+                    value: int_decl,
+                }],
+            },
+            Vec::new(),
+        );
+        let generic_callable = push_test_declaration(
+            &mut dag,
+            Some("generic_wrap"),
+            TypeConnective::Arrow {
+                inputs: vec![type_param],
+                output: list_of_t,
+                body: ArrowBody::NoBody,
+            },
+            vec![type_param],
+        );
+        let specialized_callable = push_test_declaration(
+            &mut dag,
+            None,
+            TypeConnective::Instantiation {
+                template: generic_callable,
+                arguments: vec![TemplateArgument {
+                    parameter: type_param,
+                    value: int_decl,
+                }],
+            },
+            Vec::new(),
+        );
+
+        let output = dag.push_transform(
+            TransformTarget::Callable(specialized_callable),
+            vec![input],
+            span(),
+        );
+
+        assert_eq!(
+            dag.port(output).state(),
+            &PortState::Resolved(TypeShape::new(list_of_int))
         );
     }
 
