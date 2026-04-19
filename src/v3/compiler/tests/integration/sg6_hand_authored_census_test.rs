@@ -65,18 +65,45 @@ fn bin_dir() -> PathBuf {
     manifest_dir().join("src").join("bin")
 }
 
+/// Enumerate every entry under `src/v3/compiler/src/bin/` that Cargo's
+/// auto-discovery would promote to a bin target. Cargo picks up two
+/// shapes out of that directory:
+///
+///   1. `src/bin/<name>.rs`         — flat single-file bin, yields `<name>.rs`
+///   2. `src/bin/<name>/main.rs`    — directory-form bin,    yields `<name>/`
+///
+/// SG-6 pins both: a flat `.rs` file outside the expected set grows
+/// the hand-authored bin census, and — more subtly — a new directory
+/// under `src/bin/` with its own `main.rs` is silently a new bin even
+/// though it does not create a top-level `.rs` file. Without
+/// detecting the directory form the ratchet leaks and a new driver
+/// can land as `src/bin/foo/main.rs` without tripping the census.
 fn bin_basenames() -> BTreeSet<String> {
-    std::fs::read_dir(bin_dir())
+    let mut out = BTreeSet::new();
+    for entry in std::fs::read_dir(bin_dir())
         .expect("read src/v3/compiler/src/bin")
         .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("rs"))
-        .filter_map(|path| {
-            path.file_name()
-                .and_then(|s| s.to_str())
-                .map(|s| s.to_string())
-        })
-        .collect()
+    {
+        let path = entry.path();
+        let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let file_type = match entry.file_type() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        if file_type.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rs") {
+            out.insert(file_name.to_string());
+        } else if file_type.is_dir() && path.join("main.rs").is_file() {
+            // Cargo names the resulting bin after the directory itself
+            // (not `main.rs`), so store the directory label with a
+            // trailing `/` to keep the directory form distinct from a
+            // flat `<name>.rs` bin in the expected set and in error
+            // output.
+            out.insert(format!("{file_name}/"));
+        }
+    }
+    out
 }
 
 #[test]
@@ -95,6 +122,9 @@ fn sg6_bin_census_is_locked_to_three_shims() {
          reads `src/v3/compiler/regen.dag`. Adding a new bin re-introduces a \
          per-lens (or per-target) Rust driver — the SG-6 lane requires that \
          new regen / harness targets be added via the `.dag` registry instead. \
+         Both `src/bin/<name>.rs` (flat-file bins; basename reported) and \
+         `src/bin/<name>/main.rs` (directory-form bins; reported as `<name>/`) \
+         are counted, because Cargo's auto-discovery promotes both shapes. \
          If you believe the new bin is genuinely irreducible host-shim work, \
          update this ratchet in the same PR and document the reason in the \
          ROADMAP."
