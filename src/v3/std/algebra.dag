@@ -73,7 +73,7 @@
 
 module v3.std.algebra
 
-import std.list { List, empty, fold, cons }
+import std.list { List, empty, fold, cons, singleton, filter }
 import std.substrate { NonSingletonList, PortId }
 
 // 🟢 TERMINAL. `SizeVariable` names the runtime size of a DAG
@@ -115,11 +115,7 @@ fn two_terms(a: SymbolicCost, b: SymbolicCost) -> NonSingletonList<SymbolicCost>
   {
     first: a
     second: b
-    rest:
-      match singleton(a) {
-        Empty => empty()
-        Cons(payload) => payload.tail
-      }
+    rest: filter(singleton(a), reject_all_symbolic_costs)
   }
 
 fn many_terms(
@@ -131,6 +127,12 @@ fn many_terms(
     first: first
     second: second
     rest: rest
+  }
+
+fn reject_all_symbolic_costs(cost: SymbolicCost) -> Bool =
+  match singleton(cost) {
+    Empty => False
+    Cons(_) => False
   }
 
 fn degree_raw(degree: DegreeAtLeastTwo) -> Int =
