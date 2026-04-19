@@ -100,7 +100,6 @@ pub const GO_EMIT_EXCLUDE: &[&str] = &["recursive_function_call_six"];
 pub const PYTHON_PROGRAM_DETERMINISM_NAMES: &[&str] = &[
     "list_fold_six",
     "generic_list_fold_one",
-    "nested_list_builtins_inside_lambda_six",
     "user_function_call_three",
     "record_literal_through_function_one",
     "user_sum_match_zero",
