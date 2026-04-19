@@ -353,8 +353,12 @@ def rust_type(source: str, overrides: dict[str, str] | None = None) -> str:
         "String": "String",
         "Bool": "bool",
         "Int": "i64",
+        "NodeId": "NodeId",
         "PortId": "PortId",
+        "ClusterId": "ClusterId",
         "DeclarationId": "DeclarationId",
+        "ParamRef": "ParamRef",
+        "TransformRef": "TransformRef",
         "TypeShape": "TypeShape",
         "CompilerSourceSpan": "SourceSpan",
         "CompilerCorrection": "Correction",
@@ -363,15 +367,23 @@ def rust_type(source: str, overrides: dict[str, str] | None = None) -> str:
         return mapping[source]
     if source.endswith("?"):
         return f"Option<{rust_type(source[:-1], overrides)}>"
-    list_match = re.fullmatch(r"List<(.+)>", source)
-    if list_match:
-        return f"Vec<{rust_type(list_match.group(1), overrides)}>"
+    generic_match = re.fullmatch(r"(\w+)<(.+)>", source)
+    if generic_match:
+        container = generic_match.group(1)
+        inner = rust_type(generic_match.group(2), overrides)
+        if container == "List":
+            return f"Vec<{inner}>"
+        return f"{container}<{inner}>"
     return source
 
 
-def render_record(record: RecordDef, output_name: str | None = None) -> str:
+def render_record(
+    record: RecordDef,
+    output_name: str | None = None,
+    derives: str = "#[derive(Debug, Clone, PartialEq, Eq)]",
+) -> str:
     output_name = output_name or record.name
-    lines = ["#[derive(Debug, Clone, PartialEq, Eq)]", f"pub struct {output_name} {{"]
+    lines = [derives, f"pub struct {output_name} {{"]
     for label, ty in record.fields:
         lines.append(f"    pub {label}: {rust_type(ty)},")
     lines.append("}")
@@ -431,6 +443,56 @@ def render_diagnostics_module(records: dict[str, RecordDef], sums: dict[str, lis
     return "\n\n".join(parts)
 
 
+def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
+    parts = [
+        render_sum(
+            "LiteralBits",
+            sums["LiteralBits"],
+            "#[derive(Debug, Clone, PartialEq, Eq)]",
+        ),
+        render_sum(
+            "CardinalityBound",
+            sums["CardinalityBound"],
+            "#[derive(Debug, Clone, PartialEq, Eq)]",
+            overrides={"Int": "u32"},
+        ),
+        render_record(records["TemplateArgument"], derives="#[derive(Debug, Clone)]"),
+        render_sum(
+            "PortState",
+            sums["PortState"],
+            "#[derive(Debug, Clone, PartialEq, Eq)]",
+        ),
+    ]
+    return "\n\n".join(parts)
+
+
+def render_dag_branch_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
+    parts = [
+        render_sum(
+            "BranchPattern",
+            sums["BranchPattern"],
+            "#[derive(Debug, Clone)]",
+        ),
+        render_record(records["PayloadBinding"], derives="#[derive(Debug, Clone)]"),
+        render_record(records["Path"], derives="#[derive(Debug, Clone)]"),
+    ]
+    return "\n\n".join(parts)
+
+
+def render_dag_cluster_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
+    parts = [
+        render_record(records["MemberDescent"], output_name="MemberDescent"),
+        render_record(records["IntraClusterCall"], output_name="IntraClusterCall"),
+        render_record(records["Cluster"], output_name="Cluster"),
+        render_sum(
+            "LoopBound",
+            sums["LoopBound"],
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
+        ),
+    ]
+    return "\n\n".join(parts)
+
+
 def format_with_header(authority: str, body: str) -> str:
     return HEADER_TEMPLATE.format(authority=authority, body=body.rstrip())
 
@@ -448,6 +510,18 @@ def expected_outputs() -> dict[Path, str]:
         SRC_DIR / "serialize_generated.rs": format_with_header(
             "src/v3/compiler/runtime_mirrors.dag",
             render_record(records["DagDifference"]),
+        ),
+        SRC_DIR / "dag_scalar_generated.rs": format_with_header(
+            "src/v3/compiler/runtime_mirrors.dag",
+            render_dag_scalar_module(records, sums),
+        ),
+        SRC_DIR / "dag_branch_generated.rs": format_with_header(
+            "src/v3/compiler/runtime_mirrors.dag",
+            render_dag_branch_module(records, sums),
+        ),
+        SRC_DIR / "dag_cluster_generated.rs": format_with_header(
+            "src/v3/compiler/runtime_mirrors.dag",
+            render_dag_cluster_module(records, sums),
         ),
         SRC_DIR / "dag_cost_generated.rs": format_with_header(
             "src/v3/std/algebra.dag", DAG_COST_TEMPLATE

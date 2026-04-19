@@ -450,53 +450,7 @@ impl AtomPayload {
 /// from source text). Pattern-check is trivial: fact placement, variant-
 /// is-data, algebraic form, and dimensional all fail on disjoint payload
 /// types. Any future `Float`/`Char` additions go through §8.10's audit.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LiteralBits {
-    Int(i64),
-    Bool(bool),
-    String(String),
-}
-
-/// Dissolution ledger: CardinalityBound is a 3-variant coproduct that
-/// encodes the "how many?" dimension of field/element repetition.
-/// Required/Optional/List distinctions that v2 carried in separate
-/// attributes collapse into this one axis.
-///
-/// 4-pattern check:
-/// - Pattern 1 (fact placement): fails. Callers dispatch on bound.
-/// - Pattern 2 (variant-is-data): partial. `Exact(n)` differs from
-///   `AtMostOne`/`Unbounded` structurally (carries a u32), but
-///   `AtMostOne` is distinct from `Exact(1)` because it admits the
-///   zero case.
-/// - Pattern 3 (algebraic form): passes. The three variants cover the
-///   `{n}` / `[0..1]` / `[0..∞)` range algebra.
-/// - Pattern 4 (dimensional): fails. No orthogonal coordinate space.
-///
-/// Verdict: terminal at M1(2.5). Adding `AtLeast(n)` / `Range(lo, hi)`
-/// would be a variant extension subject to §8.10's audit; neither is
-/// motivated by current std/ or shell.dag consumers.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CardinalityBound {
-    /// Exact count. Required = Exact(1); fixed-size arrays = Exact(n); argv
-    /// literals = Exact(3).
-    Exact(u32),
-    /// Zero or one. Distinct from Unbounded so that `T?` and `List<T>` are
-    /// structurally unrepresentable as the same thing.
-    AtMostOne,
-    /// Zero or more. `List<T>` and friends.
-    Unbounded,
-}
-
-#[derive(Debug, Clone)]
-pub struct TemplateArgument {
-    /// The template parameter being bound. References a TypeParam Atom declared
-    /// as a child of the template.
-    pub parameter: DeclarationId,
-    /// The concrete declaration the parameter binds to. This is a type
-    /// declaration for ordinary generics and may also be a callable
-    /// declaration for higher-order-function instantiation.
-    pub value: DeclarationId,
-}
+include!("dag_scalar_generated.rs");
 
 /// Dissolution ledger (per M1_DESIGN.md §Q7 "ArrowBody dissolution ledger"):
 /// ArrowBody is a **mixed-lifecycle coproduct**. Terminal shape is 2
@@ -683,13 +637,6 @@ pub enum ArrowBody {
 ///   state == Unresolved  iff  diagnostics.contains(port.id())
 ///
 /// **Dissolution receipt: TERMINAL.** PortState is substrate, not an annotation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PortState {
-    Uninferred,
-    Resolved(TypeShape),
-    Unresolved,
-}
-
 /// A Port carries a typed value forward in time.
 ///
 /// `state` has a single authoritative location: the Port struct stored in
@@ -887,46 +834,7 @@ impl BranchNode {
 /// Verdict: terminal at M1(2.8). Future pattern extensions
 /// (wildcard, record destructure, nested patterns) go through
 /// §8.10's substrate-extension audit.
-#[derive(Debug, Clone)]
-pub enum BranchPattern {
-    /// Arm pattern as written in surface syntax. Populated by
-    /// lowering; the name is the variant identifier the user wrote
-    /// (or `"True"` / `"False"` for an `if`/`else`'s two branches).
-    /// Must be resolved by the end of inference.
-    UnresolvedVariant { name: String, span: SourceSpan },
-    /// Arm pattern resolved to a variant declaration. The
-    /// `DeclarationId` points at the anonymous variant child of
-    /// the scrutinee's Disj.
-    ResolvedVariant(DeclarationId),
-}
-
-#[derive(Debug, Clone)]
-pub struct PayloadBinding {
-    /// Authored arm-local name from the surface pattern
-    /// (`Some(payload)` -> `"payload"`). Lowering consumes it to
-    /// extend the arm-local scope. It remains on the substrate as
-    /// carry-forward for readable downstream rendering.
-    pub binding_name: String,
-    /// Port carrying the variant payload value for this arm.
-    /// Lowering allocates the port so the binding can exist in
-    /// arm-local scope immediately; inference later validates the
-    /// matched variant shape and populates the payload type.
-    pub payload_port: PortId,
-}
-
-#[derive(Debug, Clone)]
-pub struct Path {
-    pub body: NodeId,
-    pub output: PortId,
-    /// Which variant of the scrutinee's Disj this path handles.
-    /// Discriminator for both `if`/`else` (on Bool) and `match`
-    /// (on any Disj). See `BranchPattern`.
-    pub pattern: BranchPattern,
-    /// Optional payload extraction for this arm. Present for
-    /// `Variant(binding)` surface patterns; absent for bare-variant
-    /// arms and `if`/`else`.
-    pub binding: Option<PayloadBinding>,
-}
+include!("dag_branch_generated.rs");
 
 impl Path {
     pub fn result_port(&self) -> PortId {
@@ -1303,36 +1211,7 @@ pub enum WorkflowParallelismReport {
 
 /// 🟢 **TERMINAL.** Single cluster member's descent parameter — typed
 /// `ParamRef` witness (see `docs/design-mutual-recursion-lowering.md`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MemberDescent {
-    pub param: ParamRef,
-}
-
-/// 🟢 **TERMINAL.** One intra-cluster `Transform` call edge inside the SCC.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IntraClusterCall {
-    pub transform: TransformRef,
-}
-
-/// 🟢 **TERMINAL.** Typed index over authoritative member/call topology for
-/// `LoopBound::Descent` — not a parallel copy of the Dag call graph.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Cluster {
-    pub members: NonSingletonList<MemberDescent>,
-    pub intra_cluster_calls: NonEmptyList<IntraClusterCall>,
-}
-
-/// 🟢 TERMINAL. `LoopBound` records the irreducible witness that makes
-/// a `Behavior::Loop` honest at the substrate layer: either an
-/// explicit runtime count port or a proved mutual-recursion cluster.
-/// Collapsing the variants would either fabricate a count fact or
-/// erase a structural termination proof. See
-/// `docs/design-mutual-recursion-lowering.md` for the full receipt.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LoopBound {
-    Cardinality { count: PortId },
-    Descent { cluster: ClusterId },
-}
+include!("dag_cluster_generated.rs");
 
 impl LoopBound {
     pub fn count_port(&self) -> Option<PortId> {

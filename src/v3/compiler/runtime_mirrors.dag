@@ -71,3 +71,63 @@ type CompilerDiagnosticRenderError
 type DagDifference {
   detail: String
 }
+
+type LiteralBits
+  = Int(Int)
+  | Bool(Bool)
+  | String(String)
+
+type CardinalityBound
+  = Exact(Int)
+  | AtMostOne
+  | Unbounded
+
+type TemplateArgument {
+  parameter: DeclarationId
+  value: DeclarationId
+}
+
+type PortState
+  = Uninferred
+  | Resolved(TypeShape)
+  | Unresolved
+
+type BranchPattern
+  = UnresolvedVariant {
+      name: String
+      span: CompilerSourceSpan
+    }
+  | ResolvedVariant(DeclarationId)
+
+type PayloadBinding {
+  binding_name: String
+  payload_port: PortId
+}
+
+type Path {
+  body: NodeId
+  output: PortId
+  pattern: BranchPattern
+  binding: PayloadBinding?
+}
+
+type MemberDescent {
+  param: ParamRef
+}
+
+type IntraClusterCall {
+  transform: TransformRef
+}
+
+type Cluster {
+  members: NonSingletonList<MemberDescent>
+  intra_cluster_calls: NonEmptyList<IntraClusterCall>
+}
+
+type LoopBound
+  = Cardinality {
+      count: PortId
+    }
+  | Descent {
+      cluster: ClusterId
+    }
