@@ -6,6 +6,9 @@
 //! The shared file's `dag_keyword_set` / `dag_operators` data bodies still
 //! lower as `Unparsed`, so this driver reads those two sections directly from
 //! source text rather than inventing duplicate authored rows in `tokenize.dag`.
+//! Named dissolution trigger: once those two shared syntax bodies lower as
+//! `ValueBody::Structural`, this raw-source scaffold must be deleted and the
+//! derivation must read the lowered Dag directly.
 
 use std::collections::BTreeSet;
 use std::io::Write;
@@ -46,6 +49,7 @@ fn main() {
     let source = std::fs::read_to_string(&dag_path).expect("read tokenize.dag");
     let dag = compile_authority_dag(&source, TOKENIZE_AUTHORITY_FILE);
     let shared_syntax_source = read_shared_syntax_source(&manifest_dir);
+    assert_shared_syntax_raw_source_scaffold_still_required(&shared_syntax_source);
     let shared_syntax = SharedSyntaxAuthority::parse(&shared_syntax_source);
     let rust = generate(&dag, &shared_syntax);
     let combined = format!("{HEADER}{rust}");
@@ -141,6 +145,27 @@ pub struct Token {
     ));
     out.push_str(&emit_punctuation_token(&puncts));
     out
+}
+
+fn assert_shared_syntax_raw_source_scaffold_still_required(shared_syntax_source: &str) {
+    let lowered = match compile_to_dag(shared_syntax_source, SHARED_SYNTAX_FILE) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => dag,
+        Err(other) => panic!("compile {SHARED_SYNTAX_FILE}: {other:?}"),
+    };
+
+    for name in ["dag_keyword_set", "dag_operators"] {
+        let decl = lowered
+            .declaration_by_name(name)
+            .unwrap_or_else(|| panic!("missing `{name}` in `{SHARED_SYNTAX_FILE}`"));
+        if !matches!(decl.value_body, Some(ValueBody::Unparsed(_))) {
+            panic!(
+                "`{SHARED_SYNTAX_FILE}` data `{name}` no longer lowers as `ValueBody::Unparsed`; \
+                 SG-1a raw-source scaffold must dissolve now. Delete the text extractor in \
+                 `regen_tokenize` and derive from the lowered Dag directly."
+            );
+        }
+    }
 }
 
 fn string_data_named(dag: &Dag, expected_name: &str) -> String {

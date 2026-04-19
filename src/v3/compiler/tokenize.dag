@@ -12,6 +12,13 @@
 // the tokenizer-local rows below. That keeps authored spellings for keywords /
 // shared operators out of this file.
 //
+// **Tracked scaffold (SG-1a).** The shared authority handoff is not yet a pure
+// structural read: `regen_tokenize` currently parses the raw source text for
+// `dag_keyword_set` / `dag_operators` because those bodies still lower as
+// `ValueBody::Unparsed`. Named dissolution trigger: once those two shared
+// syntax bodies lower structurally under `compile_to_dag`, delete the raw-text
+// extractor and derive directly from the lowered Dag in the same PR.
+//
 // **Scan phases (spec).** After skipping ASCII whitespace, the scanner applies
 // in order: line comment (`line_comment_prefix` to newline), punctuation
 // (longest match across the shared-operator subset plus local punctuation
