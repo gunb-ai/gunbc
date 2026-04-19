@@ -1311,16 +1311,28 @@ impl DegreeAtLeastTwo {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolicCost {
-    ConstantCost { _0: i64 },
-    LinearCost { _0: SizeVariable },
+    ConstantCost {
+        _0: i64,
+    },
+    LinearCost {
+        _0: SizeVariable,
+    },
     PolynomialCost {
         var: SizeVariable,
         degree: DegreeAtLeastTwo,
     },
-    ProductCost { _0: NonSingletonList<SymbolicCost> },
-    SumCost { _0: NonSingletonList<SymbolicCost> },
-    LogCost { _0: SizeVariable },
-    UnknownCost { _0: String },
+    ProductCost {
+        _0: NonSingletonList<SymbolicCost>,
+    },
+    SumCost {
+        _0: NonSingletonList<SymbolicCost>,
+    },
+    LogCost {
+        _0: SizeVariable,
+    },
+    UnknownCost {
+        _0: String,
+    },
 }
 
 /// 🟢 TERMINAL at Stage 2d scope. Rust mirror of `SizeVariable`
