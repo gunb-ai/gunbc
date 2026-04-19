@@ -88,6 +88,8 @@ mod m2_substrate_inhabitance_test;
 mod pipe_desugar;
 #[path = "integration/sg0_census_test.rs"]
 mod sg0_census_test;
+#[path = "integration/sg1_tokenize_authority_test.rs"]
+mod sg1_tokenize_authority_test;
 #[path = "integration/sg4_prep_infer_helpers_freshness_test.rs"]
 mod sg4_prep_infer_helpers_freshness_test;
 #[path = "integration/sg6_hand_authored_census_test.rs"]
