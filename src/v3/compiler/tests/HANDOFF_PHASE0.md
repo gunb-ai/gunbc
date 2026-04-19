@@ -57,11 +57,21 @@ single contradiction.
   PR flips `continue-on-error` off to make the ratchet binding.
 
 **Why `RUSTC_BOOTSTRAP=1`.** libtest's `--report-time` is still
-unstable on the 1.93 toolchain (tracking issue rust-lang/rust#64888).
-The bootstrap flag is the narrow unlock — it enables the *libtest
-flag*, not unstable language features. Migrate off it when the flag
-stabilizes or when the project adopts `cargo-nextest` (which has a
-native `slow-timeout`).
+unstable on the 1.93 toolchain (tracking issue rust-lang/rust#64888);
+the env var is the narrow unlock for the libtest flag. Migrate off
+when the flag stabilizes or the project adopts `cargo-nextest`
+(native `slow-timeout`).
+
+**Env-scope discipline.** The env var is inherited by every child
+process of `cargo test`, including the `rustc` invocations that the
+boundary tests spawn to exercise the real stable toolchain. That
+would flip those child rustcs into bootstrap mode and break the
+boundary-layer contract (TESTING.md § test layers). Each
+`Command::new("rustc")` spawn site in the test tree therefore calls
+`.env_remove("RUSTC_BOOTSTRAP")`: the shared harness in
+`tests/integration/common/mod.rs::RustcHarness::compile` and the four
+inline spawn sites in `tests/boundary/*`. Any **new** `rustc` spawn
+site must do the same.
 
 ### 2. Layer taxonomy
 

@@ -21,9 +21,18 @@
 #
 # `--report-time` is unstable on the 1.93 toolchain
 # (rust-lang/rust#64888); the `RUSTC_BOOTSTRAP=1 + -Z unstable-options`
-# pair is the documented narrow unlock for libtest flags and does not
-# enable any unstable *language* features. Migrate off when the flag
-# stabilizes or when the project adopts `cargo-nextest`.
+# pair is the documented narrow unlock for libtest flags.
+#
+# **Env-scope caveat.** `RUSTC_BOOTSTRAP=1` on the outer shell is
+# inherited by every child process — including the `rustc` invocations
+# that the boundary tests spawn to exercise the real stable toolchain.
+# That would break the boundary-layer contract (TESTING.md § test
+# layers). Each `Command::new("rustc")` spawn site in the test tree
+# therefore calls `.env_remove("RUSTC_BOOTSTRAP")` before spawning; see
+# `tests/integration/common/mod.rs::RustcHarness::compile` and the four
+# inline spawn sites in `tests/boundary/*`. Any **new** `rustc` spawn
+# site must do the same. Migrate off this whole mechanism when
+# `--report-time` stabilizes or when the project adopts `cargo-nextest`.
 #
 # Usage:
 #   scripts/check-test-timeout.sh <log_file> [budget_ms]
