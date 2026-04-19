@@ -104,12 +104,7 @@ fn build_roundtrip_harness(module_source: &str) -> PathBuf {
     harness().compile(&wrapped, "main_bin", HarnessLinkMode::WithV3Compiler)
 }
 
-fn roundtrip_cost(
-    bin_path: &Path,
-    program_source: &str,
-    file_name: &str,
-    bind_name: &str,
-) -> i64 {
+fn roundtrip_cost(bin_path: &Path, program_source: &str, file_name: &str, bind_name: &str) -> i64 {
     let run = Command::new(bin_path)
         .arg(program_source)
         .arg(file_name)
