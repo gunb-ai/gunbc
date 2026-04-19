@@ -849,6 +849,7 @@ data go_modules: ModuleSyntax = {
 
 data go_functions: FunctionSyntax = {
   definition: "func {name}({params}) {ret} { return {body} }"
+  definition_exported: "func {name}({params}) {ret} { return {body} }"
   definition_void: "func {name}({params}) { {body} }"
   param_with_type: "{name} {type}"
   param_separator: ", "

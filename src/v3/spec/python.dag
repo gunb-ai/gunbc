@@ -69,6 +69,7 @@ data python_modules: ModuleSyntax = {
 
 data python_functions: FunctionSyntax = {
   definition: "def {name}({params}) -> {ret}:\n    return {body}"
+  definition_exported: "def {name}({params}) -> {ret}:\n    return {body}"
   definition_void: "def {name}({params}) -> None:\n    {body}"
   param_with_type: "{name}: {type}"
   param_separator: ", "
