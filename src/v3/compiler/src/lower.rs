@@ -706,6 +706,7 @@ fn refinement_predicate_out_of_fragment(expr: &SurfaceExpr) -> Option<(&'static 
         SurfaceExpr::Lambda { span, .. } => Some(("lambda", span.clone())),
         SurfaceExpr::If { span, .. } => Some(("if", span.clone())),
         SurfaceExpr::Match { span, .. } => Some(("match", span.clone())),
+        SurfaceExpr::VariantRecord { span, .. } => Some(("named constructor literal", span.clone())),
         SurfaceExpr::Record { span, .. } => Some(("record literal", span.clone())),
         SurfaceExpr::List { span, .. } => Some(("list literal", span.clone())),
     }
@@ -5537,6 +5538,20 @@ struct StructuralBindingInfo {
     recursive_fields: HashSet<String>,
 }
 
+fn bind_named_pattern_fields(
+    info: &StructuralBindingInfo,
+    fields: &[SurfacePatternField],
+    out: &mut HashMap<String, StructuralBindingInfo>,
+) {
+    for field in fields {
+        let mut binding_info = StructuralBindingInfo::default();
+        if info.recursive_fields.contains(&field.name) {
+            binding_info.whole_payload_recursive = true;
+        }
+        out.insert(field.binding.clone(), binding_info);
+    }
+}
+
 fn descent_provable(
     expr: &SurfaceExpr,
     dag: &Dag,
@@ -5573,6 +5588,16 @@ fn descent_provable(
                 })
             }
         }
+        SurfaceExpr::VariantRecord { fields, .. } => fields.iter().all(|field| {
+            descent_provable(
+                &field.value,
+                dag,
+                first_param_decl,
+                self_name,
+                first_param,
+                bindings,
+            )
+        }),
         SurfaceExpr::Operator { args, .. } => args
             .iter()
             .all(|a| descent_provable(a, dag, first_param_decl, self_name, first_param, bindings)),
@@ -5626,12 +5651,22 @@ fn descent_provable(
             arms.iter().all(|arm| {
                 let mut arm_bindings = bindings.clone();
                 if scrutinee_is_first_param {
-                    if let SurfacePattern::VariantWith { name, binding, .. } = &arm.pattern {
-                        if let Some(info) =
-                            structural_binding_info_for_variant(dag, first_param_decl, name)
-                        {
-                            arm_bindings.insert(binding.clone(), info);
+                    match &arm.pattern {
+                        SurfacePattern::VariantWith { name, binding, .. } => {
+                            if let Some(info) =
+                                structural_binding_info_for_variant(dag, first_param_decl, name)
+                            {
+                                arm_bindings.insert(binding.clone(), info);
+                            }
                         }
+                        SurfacePattern::VariantFields { name, fields, .. } => {
+                            if let Some(info) =
+                                structural_binding_info_for_variant(dag, first_param_decl, name)
+                            {
+                                bind_named_pattern_fields(&info, fields, &mut arm_bindings);
+                            }
+                        }
+                        SurfacePattern::BareVariant { .. } => {}
                     }
                 }
                 descent_provable(
@@ -6119,9 +6154,7 @@ impl ClusterDescentChecker<'_> {
         shadowed: &HashSet<String>,
     ) -> bool {
         match expr {
-            SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => {
-                true
-            }
+            SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => true,
             SurfaceExpr::Call { target, args, .. } => {
                 if !shadowed.contains(target) {
                     if let Some(&callee_decl) = self.function_symbols.get(target) {
@@ -6140,6 +6173,9 @@ impl ClusterDescentChecker<'_> {
                 }
                 args.iter().all(|arg| self.expr(arg, bindings, shadowed))
             }
+            SurfaceExpr::VariantRecord { fields, .. } => fields
+                .iter()
+                .all(|field| self.expr(&field.value, bindings, shadowed)),
             SurfaceExpr::Operator { args, .. } => {
                 args.iter().all(|arg| self.expr(arg, bindings, shadowed))
             }
@@ -6167,18 +6203,30 @@ impl ClusterDescentChecker<'_> {
                 arms.iter().all(|arm| {
                     let mut arm_bindings = bindings.clone();
                     let mut arm_shadowed = shadowed.clone();
-                    if let SurfacePattern::VariantWith { binding, .. } = &arm.pattern {
-                        arm_shadowed.insert(binding.clone());
+                    for binding in pattern_binding_names(&arm.pattern) {
+                        arm_shadowed.insert(binding.to_string());
                     }
                     if scrutinee_is_current_param {
-                        if let SurfacePattern::VariantWith { name, binding, .. } = &arm.pattern {
-                            if let Some(info) = structural_binding_info_for_variant(
-                                self.dag,
-                                self.current_param_decl,
-                                name,
-                            ) {
-                                arm_bindings.insert(binding.clone(), info);
+                        match &arm.pattern {
+                            SurfacePattern::VariantWith { name, binding, .. } => {
+                                if let Some(info) = structural_binding_info_for_variant(
+                                    self.dag,
+                                    self.current_param_decl,
+                                    name,
+                                ) {
+                                    arm_bindings.insert(binding.clone(), info);
+                                }
                             }
+                            SurfacePattern::VariantFields { name, fields, .. } => {
+                                if let Some(info) = structural_binding_info_for_variant(
+                                    self.dag,
+                                    self.current_param_decl,
+                                    name,
+                                ) {
+                                    bind_named_pattern_fields(&info, fields, &mut arm_bindings);
+                                }
+                            }
+                            SurfacePattern::BareVariant { .. } => {}
                         }
                     }
                     self.expr(&arm.body, &arm_bindings, &arm_shadowed)
@@ -6217,6 +6265,11 @@ fn collect_recursive_callees(
                 collect_recursive_callees(a, function_symbols, shadowed, out);
             }
         }
+        SurfaceExpr::VariantRecord { fields, .. } => {
+            for field in fields {
+                collect_recursive_callees(&field.value, function_symbols, shadowed, out);
+            }
+        }
         SurfaceExpr::Operator { args, .. } => {
             for a in args {
                 collect_recursive_callees(a, function_symbols, shadowed, out);
@@ -6238,8 +6291,8 @@ fn collect_recursive_callees(
             collect_recursive_callees(scrutinee, function_symbols, shadowed, out);
             for arm in arms {
                 let mut arm_shadowed = shadowed.clone();
-                if let SurfacePattern::VariantWith { binding, .. } = &arm.pattern {
-                    arm_shadowed.insert(binding.clone());
+                for binding in pattern_binding_names(&arm.pattern) {
+                    arm_shadowed.insert(binding.to_string());
                 }
                 collect_recursive_callees(&arm.body, function_symbols, &mut arm_shadowed, out);
             }
