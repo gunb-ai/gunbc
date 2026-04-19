@@ -1,20 +1,15 @@
-use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective,
     ValueBody,
 };
 use v3_compiler::lens_cost::cost_of;
 
-mod common;
+use crate::common::{cached_compile_any, cached_compile_outcome, CachedCompileOutcome};
 use v3_compiler::lens_testgen::{GeneratedClaim, TestgenLens};
-use v3_compiler::{CompileError, Diagnostic};
+use v3_compiler::Diagnostic;
 
 fn compile_any(src: &str, file: &str) -> Dag {
-    match compile_to_dag(src, file) {
-        Ok(dag) => dag,
-        Err(CompileError::Semantic(dag)) => dag,
-        Err(other) => panic!("unexpected structural error: {other:?}"),
-    }
+    cached_compile_any(src, file)
 }
 
 fn generated_claim_decl<'a>(dag: &'a Dag, name: &str) -> &'a Declaration {
@@ -192,16 +187,16 @@ fn predicate_holds(
 ) -> bool {
     let (label, payload) = variant_value(expectation_dag, predicate);
     match label.as_str() {
-        "Compiles" => compile_to_dag(source, file_name).is_ok(),
+        "Compiles" => cached_compile_outcome(source, file_name).is_clean(),
         "FailsWithDiagnostic" => {
             let [reference] = payload else {
                 panic!("FailsWithDiagnostic payload should be a single DiagnosticReference");
             };
-            match compile_to_dag(source, file_name) {
-                Err(CompileError::Semantic(dag)) => {
+            match cached_compile_outcome(source, file_name) {
+                CachedCompileOutcome::Clean(_) => false,
+                CachedCompileOutcome::Semantic(dag) => {
                     diagnostic_matches(expectation_dag, &dag, reference)
                 }
-                _ => false,
             }
         }
         "PortHasState" => {
@@ -240,7 +235,7 @@ fn predicate_holds(
             // both fail closed. The earlier inline match only
             // handled MissingCost, which was drift flagged by the
             // chatgpt review.
-            let actual = common::require_fixture_cost_i64(
+            let actual = crate::common::require_fixture_cost_i64(
                 cost_of(&dag, &bind.value),
                 &format!("bind `{bind_name}`"),
             );

@@ -61,7 +61,7 @@ fn emit_lens_module() -> String {
 }
 
 fn checked_in_generated_module() -> &'static str {
-    include_str!("../src/lens_structural_resolution_generated.rs")
+    include_str!("../../src/lens_structural_resolution_generated.rs")
 }
 
 fn format_rust_source(source: &str) -> String {

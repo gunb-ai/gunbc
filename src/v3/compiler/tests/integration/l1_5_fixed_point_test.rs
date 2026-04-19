@@ -6,7 +6,7 @@ use v3_compiler::{
 
 #[test]
 fn pipeline_dag_parses() {
-    let source = include_str!("../pipeline.dag");
+    let source = include_str!("../../pipeline.dag");
     let tokens = tokenize_for_test(source, "pipeline.dag")
         .unwrap_or_else(|diag| panic!("tokenize pipeline.dag failed: {diag:?}"));
     let _module = parse_for_test(&tokens, "pipeline.dag")

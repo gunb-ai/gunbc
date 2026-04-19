@@ -8,15 +8,10 @@
 // the composition algebra in `src/v3/std/algebra.dag` (+ its Rust
 // mirror in `dag.rs`) normalizes correctly.
 
-mod common;
-
-use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
-use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     dominates, iterate, max_path, normalize, sequential, Behavior, Dag, DegreeAtLeastTwo,
     NonSingletonList, PortId, SizeVariable, SymbolicCost, TypeConnective,
@@ -24,34 +19,7 @@ use v3_compiler::dag::{
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
-type CompileCell = Arc<OnceLock<Dag>>;
-type CompileCacheMap = HashMap<(String, String), CompileCell>;
-
-/// Full `compile_to_dag` keyed by `(source, file)` so each fine-grained
-/// `#[test]` does not pay a cold bootstrap + pipeline run.
-///
-/// Per-key [`OnceLock`]: [`compile_cell_for_key`] only holds the map mutex; cold
-/// `compile_to_dag` runs inside [`OnceLock::get_or_init`] after the guard is
-/// dropped, so unrelated keys compile in parallel and per-test budgets measure
-/// real work (same-key init still serializes on that cell, by design).
-static COMPILE_CACHE: LazyLock<Mutex<CompileCacheMap>> =
-    LazyLock::new(|| Mutex::new(CompileCacheMap::new()));
-
-/// Map lookup / insert only — **must not** call `compile_to_dag`; the guard must
-/// not survive past this return, so compilation stays out of the critical section.
-fn compile_cell_for_key(key: (String, String)) -> CompileCell {
-    let mut guard = COMPILE_CACHE.lock().expect("compile cache mutex");
-    guard
-        .entry(key)
-        .or_insert_with(|| Arc::new(OnceLock::new()))
-        .clone()
-}
-
-fn cached_compile_to_dag(source: &str, file: &str) -> Dag {
-    let cell = compile_cell_for_key((source.to_string(), file.to_string()));
-    cell.get_or_init(|| compile_to_dag(source, file).expect("fixture compiles"))
-        .clone()
-}
+use crate::common::cached_compile_to_dag;
 
 fn find_bind_value(dag: &Dag, name: &str) -> PortId {
     dag.nodes()
@@ -615,7 +583,7 @@ budgeted_test! {
     cost_generated_module_matches_checked_in_snapshot,
     {
         let fresh = emit_lens_module();
-        let checked_in = include_str!("../src/lens_cost_symbolic_generated.rs");
+        let checked_in = include_str!("../../src/lens_cost_symbolic_generated.rs");
         assert_eq!(
             fresh.trim(),
             checked_in.trim(),

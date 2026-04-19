@@ -14,8 +14,8 @@ use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit_rust::emit_rust_module;
-mod common;
-use common::{HarnessLinkMode, RustcHarness};
+
+use crate::common::{HarnessLinkMode, RustcHarness};
 
 static HARNESS: OnceLock<RustcHarness> = OnceLock::new();
 fn harness() -> &'static RustcHarness {

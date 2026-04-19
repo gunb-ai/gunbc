@@ -7,6 +7,7 @@
 // These tests lock the feature-parity surface `compiler.dag` needs. If
 // any of them regresses, the self-hosting cycle cannot close.
 
+use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{AtomPayload, Dag, TypeConnective};
 use v3_compiler::CompileError;
@@ -27,8 +28,7 @@ fn compile_any(src: &str, file: &str) -> Dag {
 fn test_3a4_bare_generic_fn_compiles() {
     // Acceptance: `fn id<T>(x: T) -> T = x` compiles with explicit
     // type param.
-    let dag = compile_to_dag("fn id<T>(x: T) -> T = x", "test.v3")
-        .expect("fn id<T>(x: T) -> T = x must compile");
+    let dag = cached_compile_to_dag("fn id<T>(x: T) -> T = x", "test.v3");
 
     // Structural: the `id` declaration carries exactly one TypeParam
     // child in its `type_params` slot, named "T".
@@ -103,7 +103,7 @@ fn test_3a5_match_arm_dotted_path_compiles() {
     let src = "type Point { x: Int, y: Int }\n\
                type Opt = Some(Point) | None\n\
                fn first(o: Opt) -> Int = match o { Some(p) => p.x, None => 0 }";
-    let dag = compile_to_dag(src, "test.v3").expect("match-arm dotted path `p.x` must compile");
+    let dag = cached_compile_to_dag(src, "test.v3");
     let first = dag
         .declaration_by_name("first")
         .expect("`first` declaration must exist");
@@ -140,8 +140,7 @@ fn test_3a5_nested_match_arm_dotted_path_compiles() {
                type Outer { inner: Inner, tag: Int }\n\
                type Wrapped = Wrap(Outer) | Empty\n\
                fn pick(w: Wrapped) -> Int = match w { Wrap(o) => o.inner.a, Empty => 0 }";
-    compile_to_dag(src, "test.v3")
-        .expect("nested dotted path `o.inner.a` in match arm must compile");
+    cached_compile_to_dag(src, "test.v3");
 }
 
 // =================================================================
@@ -203,10 +202,8 @@ fn test_3a2_data_reference_is_order_independent() {
                    data answer: Int = 42";
     let backward = "data answer: Int = 42\n\
                     fn f() -> Int = answer";
-    let forward_dag = compile_to_dag(forward, "forward.v3")
-        .expect("forward reference to later `data answer` must compile");
-    let backward_dag = compile_to_dag(backward, "backward.v3")
-        .expect("backward reference to earlier `data answer` must compile");
+    let forward_dag = cached_compile_to_dag(forward, "forward.v3");
+    let backward_dag = cached_compile_to_dag(backward, "backward.v3");
     for (label, dag) in [("forward", forward_dag), ("backward", backward_dag)] {
         let has_value_42 = dag.nodes().iter().any(|n| {
             matches!(
@@ -250,7 +247,7 @@ fn test_3a2_data_referenced_in_fn_body_compiles() {
 fn test_3a2_record_data_compiles_structural() {
     let src = "type Config { host: Int, port: Int }\n\
                data cfg: Config = { host: 1, port: 8080 }";
-    let dag = compile_to_dag(src, "test.v3").expect("record data declaration must compile");
+    let dag = cached_compile_to_dag(src, "test.v3");
     let cfg = dag.declaration_by_name("cfg").expect("`cfg` must exist");
     match &cfg.value_body {
         Some(v3_compiler::dag::ValueBody::Structural { fields }) => {
@@ -332,8 +329,7 @@ fn test_3a3_refined_parameter_compiles() {
     // the predicate. Internal use of `d` (e.g. `n / d`) is fine
     // because the `/` operator doesn't require a refinement.
     let src = "fn div(n: Int, d: Int where d != 0) -> Int = n / d";
-    let dag = compile_to_dag(src, "test.v3")
-        .expect("refined parameter fn must compile; body's use of `d` in `/` doesn't require the refinement");
+    let dag = cached_compile_to_dag(src, "test.v3");
     let div = dag
         .declaration_by_name("div")
         .expect("`div` declaration must exist");
@@ -427,7 +423,7 @@ fn test_3a3_where_clause_does_not_break_signatureless_fn() {
     // Regression: refinement lowering must fire only when a `where`
     // is present. Bare `fn id(x: Int) -> Int = x` still compiles.
     let src = "fn id(x: Int) -> Int = x";
-    let _ = compile_to_dag(src, "test.v3").expect("bare-parameter fn must still compile");
+    let _ = cached_compile_to_dag(src, "test.v3");
 }
 
 #[test]
@@ -444,8 +440,7 @@ fn test_3a3_if_predicate_narrows_then_arm_discharge() {
     let src = "fn div(n: Int, d: Int where d != 0) -> Int = n\n\
                fn caller(n: Int, d: Int) -> Int = \
                  if d != 0 then div(n, d) else 0";
-    let _ = compile_to_dag(src, "test.v3")
-        .expect("narrowing Branch arm must discharge the callee's refinement on the forwarded `d`");
+    let _ = cached_compile_to_dag(src, "test.v3");
 }
 
 #[test]
@@ -684,7 +679,7 @@ fn test_3a3_substrate_integrity_behavior_still_five_variants() {
     // predicate sub-DAG is built from Value/Transform/Bind, all
     // pre-existing variants.
     let src = "fn div(n: Int, d: Int where d != 0) -> Int = n / d";
-    let dag = compile_to_dag(src, "test.v3").expect("must compile");
+    let dag = cached_compile_to_dag(src, "test.v3");
     for node in dag.nodes() {
         match node {
             v3_compiler::dag::Behavior::Value(_)
@@ -954,7 +949,7 @@ fn test_3a4_refined_generic_substrate_integrity_behavior_still_five_variants() {
     let src = "fn always_true<T>(x: T) -> Bool = 0 == 0\n\
                fn gate<T>(x: T where always_true(x)) -> T = x\n\
                fn caller(n: Int where always_true(n)) -> Int = gate(n)";
-    let dag = compile_to_dag(src, "test.v3").expect("must compile");
+    let dag = cached_compile_to_dag(src, "test.v3");
     for node in dag.nodes() {
         match node {
             v3_compiler::dag::Behavior::Value(_)
