@@ -375,9 +375,10 @@ pub struct Field {
 ///     not yet been resolved against the declaration table.
 ///     Produced during lowering and eliminated at
 ///     `resolve_pending_identifiers` time.
-///   - `ResolvedIdentifier(DeclarationId)` — a name reference that
-///     has been resolved. Structurally distinct from the unresolved
-///     form (no `Option` field hiding a phase coproduct).
+///   - `ResolvedByStructure(DeclarationId)` — a name reference that
+///     resolved by structural walk.
+///   - `ResolvedByName(DeclarationId)` — a name reference that
+///     resolved by name-keyed fallback.
 ///   - `TypeParam(String)` — a type parameter declaration slot.
 ///     Shared across references inside a parameterized declaration.
 ///
@@ -395,10 +396,11 @@ pub struct Field {
 /// review round 7 the shape was
 /// `Identifier { name: String, resolved: Option<DeclarationId> }`
 /// which hid a phase coproduct inside the Option. The split into
-/// `UnresolvedIdentifier` and `ResolvedIdentifier` makes that
-/// phase distinction visible to the type system: pattern matches
-/// for unresolved stubs and resolved references are on separate
-/// variants, not on `Some`/`None`.
+/// `UnresolvedIdentifier`, `ResolvedByStructure`, and
+/// `ResolvedByName` makes that distinction visible to the type
+/// system: unresolved stubs, structural references, and
+/// name-fallback references are on separate variants rather than
+/// hidden behind `Some`/`None`.
 ///
 /// Verdict: terminal. Future extensions (Span-backed metadata
 /// atoms for diagnostic-only uses, Char / Float literals) go
@@ -413,20 +415,33 @@ pub enum AtomPayload {
     /// table (forward references, pending cross-file imports, the
     /// bootstrap's dangling refs to types in un-loaded std/ modules).
     /// `resolve_pending_identifiers` either converts to
-    /// `ResolvedIdentifier` or emits a fail-closed diagnostic.
+    /// `ResolvedByStructure` / `ResolvedByName` or emits a
+    /// fail-closed diagnostic.
     UnresolvedIdentifier(String),
-    /// A resolved identifier. Produced by
-    /// `resolve_pending_identifiers` or directly by lowering when
-    /// a name is already in the symbol table. Carries the typed
-    /// edge to the referent declaration.
-    ResolvedIdentifier(DeclarationId),
+    /// A resolved identifier reached by structural walk.
+    /// Produced when lowering wires a known structural edge
+    /// directly into the declaration graph.
+    ResolvedByStructure(DeclarationId),
+    /// A resolved identifier reached by name-keyed fallback.
+    /// Produced by `resolve_pending_identifiers` when an
+    /// unresolved stub is repaired via `declaration_by_name`.
+    ResolvedByName(DeclarationId),
     /// A type parameter declaration slot. Declared at the top of a
     /// parameterized declaration (via `Declaration.type_params`);
-    /// referenced from inside the body by ResolvedIdentifier atoms
+    /// referenced from inside the body by resolved identifier atoms
     /// that resolve to this slot's DeclarationId. A single TypeParam
     /// Atom is shared across all references to it — the substrate
     /// is a DAG of declarations, not a tree.
     TypeParam(String),
+}
+
+impl AtomPayload {
+    pub fn resolved_id(&self) -> Option<DeclarationId> {
+        match self {
+            Self::ResolvedByStructure(id) | Self::ResolvedByName(id) => Some(*id),
+            _ => None,
+        }
+    }
 }
 
 /// Terminal literal payload. 3 variants, each corresponds to a distinct

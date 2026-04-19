@@ -132,9 +132,10 @@ pub mod lens_provenance {
 /// editing the `.dag` — there is no hand-written implementation on
 /// this crate side.
 ///
-/// Detects leaked `ArrowBody::Pending` on named user Declarations.
-/// Defense-in-depth regression pin for the R13 fix (see the `.dag`
-/// source for the full detection rule and disposal trigger).
+/// Detects leaked `ArrowBody::Pending` on named user Declarations
+/// and reports declaration atoms that still carry name-keyed
+/// resolution fallback (`ResolvedByName`). See the `.dag` source for
+/// the exact detection rules.
 pub mod lens_structural_resolution {
     #[allow(
         dead_code,
@@ -151,7 +152,7 @@ pub mod lens_structural_resolution {
         include!("lens_structural_resolution_generated.rs");
     }
 
-    pub use generated::{check, UnresolvedArrowBody};
+    pub use generated::{check, name_keyed_references, NameKeyedReference, UnresolvedArrowBody};
 }
 
 mod bootstrap;
@@ -244,6 +245,29 @@ pub fn inject_named_pending_arrow_for_test(
             output: output_type,
             body: dag::ArrowBody::Pending,
         },
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span: diagnostics::SourceSpan::new("test", 0, 0),
+    });
+    id
+}
+
+/// Test-only hook: inject an anonymous declaration whose atom payload
+/// is `ResolvedByName(target)`. Narrow helper for the structural-
+/// resolution lens acceptance tests.
+#[doc(hidden)]
+pub fn inject_name_keyed_reference_for_test(
+    dag: &mut Dag,
+    target: dag::DeclarationId,
+) -> dag::DeclarationId {
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(dag::Declaration {
+        id,
+        name: None,
+        connective: dag::TypeConnective::Atom(dag::AtomPayload::ResolvedByName(target)),
         type_params: Vec::new(),
         meta_tag: None,
         inhabits: None,

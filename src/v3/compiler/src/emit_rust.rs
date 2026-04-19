@@ -4692,7 +4692,8 @@ impl<'a> Ctx<'a> {
                     &[("element", &inner)],
                 ))
             }
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 self.rust_type_name_for_decl_at_depth(*next, depth + 1)
             }
             _ => Err(EmitError::MissingTypeRealization {
@@ -4766,7 +4767,8 @@ impl<'a> Ctx<'a> {
             return Ok(binding.is_copy);
         }
         match &decl.connective {
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 self.decl_is_copy_rec(*next, visited)
             }
             // For user-defined Conj/Disj/Instantiation/Cardinality
@@ -4797,7 +4799,8 @@ impl<'a> Ctx<'a> {
     fn decl_is_list(&self, declaration: DeclarationId) -> Result<bool, EmitError> {
         let decl = self.dag.declaration(declaration);
         match &decl.connective {
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => self.decl_is_list(*next),
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => self.decl_is_list(*next),
             TypeConnective::Instantiation { template, .. } => Ok(self.is_list_template(*template)),
             _ => Ok(self.is_list_template(declaration)),
         }
@@ -5005,7 +5008,8 @@ fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, 
         }
         match &decl.connective {
             TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
             _ => return Ok(current),
         }
     }
@@ -5021,7 +5025,8 @@ fn walk_to_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
         match &decl.connective {
             TypeConnective::Conj { .. } => return Some(current),
             TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
             _ => return None,
         }
     }
@@ -5042,7 +5047,8 @@ fn walk_to_disj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
                 ..
             } => return optional_match_disj_for_cardinality(dag, current),
             TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
             _ => return None,
         }
     }
@@ -5109,7 +5115,8 @@ fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId
         match &dag.declaration(current).connective {
             TypeConnective::Conj { .. } => return Some(current),
             TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
             _ => return None,
         }
     }

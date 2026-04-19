@@ -788,7 +788,8 @@ fn test_3a4_refined_generic_identity_across_instantiation_sites() {
             matches!(
                 decl.connective,
                 v3_compiler::dag::TypeConnective::Atom(
-                    v3_compiler::dag::AtomPayload::ResolvedIdentifier(b)
+                    v3_compiler::dag::AtomPayload::ResolvedByStructure(b)
+                    | v3_compiler::dag::AtomPayload::ResolvedByName(b)
                 ) if b == int_id
             )
         })

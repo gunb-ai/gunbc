@@ -30,12 +30,18 @@ module lenses.structural_resolution
 
 import std.list { List, empty, cons, fold }
 import std.substrate {
-  Dag, Declaration, DeclarationId, TypeConnective, ArrowBody, SourceSpan
+  Dag, Declaration, DeclarationId, TypeConnective, ArrowBody, AtomPayload, SourceSpan
 }
 
 type UnresolvedArrowBody {
   declaration: DeclarationId
   name: String
+  span: SourceSpan
+}
+
+type NameKeyedReference {
+  declaration: DeclarationId
+  resolved_to: DeclarationId
   span: SourceSpan
 }
 
@@ -80,4 +86,46 @@ fn singleton_violation(decl: Declaration, name_str: String) -> List<UnresolvedAr
   )
 
 fn prepend_all(additions: List<UnresolvedArrowBody>, acc: List<UnresolvedArrowBody>) -> List<UnresolvedArrowBody> =
+  fold(additions, acc, |running, v| cons(v, running))
+
+fn name_keyed_references(d: Dag) -> List<NameKeyedReference> =
+  fold(d.declarations, empty(), |acc, decl|
+    prepend_name_keyed(check_name_keyed_declaration(decl), acc)
+  )
+
+// Raw structural reader: reports every `ResolvedByName` atom visible
+// in the reflected Dag, including bootstrap-range declarations. The
+// DB-17 user-range policy boundary is not yet a first-class
+// reflected fact, so callers that specifically want "user only"
+// must currently filter these results by their own source-range
+// policy.
+
+fn check_name_keyed_declaration(decl: Declaration) -> List<NameKeyedReference> =
+  match decl.connective {
+    Atom(payload) => check_name_keyed_payload(decl, payload)
+    Conj(c) => empty()
+    Disj(d) => empty()
+    Arrow(a) => empty()
+    Cardinality(c) => empty()
+    Instantiation(i) => empty()
+  }
+
+fn check_name_keyed_payload(decl: Declaration, payload: AtomPayload) -> List<NameKeyedReference> =
+  match payload {
+    Literal(bits) => empty()
+    UnresolvedIdentifier(name) => empty()
+    ResolvedByStructure(id) => empty()
+    ResolvedByName(id) =>
+      cons(
+        {
+          declaration: decl.id
+          resolved_to: id
+          span: decl.span
+        },
+        empty()
+      )
+    TypeParam(name) => empty()
+  }
+
+fn prepend_name_keyed(additions: List<NameKeyedReference>, acc: List<NameKeyedReference>) -> List<NameKeyedReference> =
   fold(additions, acc, |running, v| cons(v, running))
