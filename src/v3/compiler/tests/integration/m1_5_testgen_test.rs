@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use v3_compiler::dag::{
     Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective,
     ValueBody,
@@ -8,8 +10,61 @@ use v3_compiler::Diagnostic;
 
 use crate::common::{cached_compile_any, cached_compile_outcome, CachedCompileOutcome};
 
+#[derive(Clone)]
+struct CachedGeneratedClaim {
+    declaration_name: String,
+    declaration_source: String,
+    fields: Vec<(String, FieldValue)>,
+}
+
+impl CachedGeneratedClaim {
+    fn declaration_name(&self) -> &str {
+        &self.declaration_name
+    }
+
+    fn render_declaration_source(&self) -> &str {
+        &self.declaration_source
+    }
+
+    fn fields(&self) -> &[(String, FieldValue)] {
+        &self.fields
+    }
+
+    fn dag(&self) -> &Dag {
+        bootstrapped_dag()
+    }
+}
+
+impl From<GeneratedClaim<'_>> for CachedGeneratedClaim {
+    fn from(claim: GeneratedClaim<'_>) -> Self {
+        Self {
+            declaration_name: claim.declaration_name().to_string(),
+            declaration_source: claim.render_declaration_source(),
+            fields: claim.fields().to_vec(),
+        }
+    }
+}
+
 fn compile_any(src: &str, file: &str) -> Dag {
     cached_compile_any(src, file)
+}
+
+fn bootstrapped_dag() -> &'static Dag {
+    static DAG: OnceLock<Dag> = OnceLock::new();
+    DAG.get_or_init(Dag::new)
+}
+
+fn generated_claims() -> &'static [CachedGeneratedClaim] {
+    static CLAIMS: OnceLock<Vec<CachedGeneratedClaim>> = OnceLock::new();
+    CLAIMS
+        .get_or_init(|| {
+            TestgenLens::new(bootstrapped_dag())
+                .query()
+                .into_iter()
+                .map(CachedGeneratedClaim::from)
+                .collect()
+        })
+        .as_slice()
 }
 
 fn generated_claim_decl<'a>(dag: &'a Dag, name: &str) -> &'a Declaration {
@@ -130,9 +185,9 @@ fn diagnostic_detail_expectation(dag: &Dag, value: Option<&str>) -> FieldValue {
     }
 }
 
-fn compiled_generated_claim(claim: &GeneratedClaim<'_>) -> Dag {
+fn compiled_generated_claim(claim: &CachedGeneratedClaim) -> Dag {
     let dag = compile_any(
-        &claim.render_declaration_source(),
+        claim.render_declaration_source(),
         "generated_test_claim.dag",
     );
     assert!(
@@ -163,11 +218,11 @@ fn compiled_generated_claim(claim: &GeneratedClaim<'_>) -> Dag {
     dag
 }
 
-fn claim_name(claim: &GeneratedClaim<'_>) -> String {
+fn claim_name(claim: &CachedGeneratedClaim) -> String {
     string_field(claim.fields(), "name")
 }
 
-fn claim_holds(claim: &GeneratedClaim<'_>) -> bool {
+fn claim_holds(claim: &CachedGeneratedClaim) -> bool {
     let source = string_field(claim.fields(), "source");
     let file_name = string_field(claim.fields(), "file_name");
     let predicate = claim
@@ -403,7 +458,7 @@ fn cost_bounded_predicate(dag: &Dag, bind_name: &str, comparator: &str, bound: i
     )
 }
 
-fn executable_today(claim: &GeneratedClaim<'_>) -> bool {
+fn executable_today(claim: &CachedGeneratedClaim) -> bool {
     let (predicate, payload) = variant_field(claim.dag(), claim.fields(), "predicate");
     if predicate != "FailsWithDiagnostic" {
         return true;
@@ -422,15 +477,15 @@ fn executable_today(claim: &GeneratedClaim<'_>) -> bool {
 #[test]
 #[ignore = "slow exhaustive testgen sweep; excluded from required PR CI wall-clock gate"]
 fn testgen_lens_emits_claims_as_structural_testclaim_values() {
-    let dag = Dag::new();
+    let dag = bootstrapped_dag();
     assert!(
         dag.diagnostics().is_empty(),
         "bootstrap should load std files cleanly, got {:?}",
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
 
-    let claims = TestgenLens::new(&dag).query();
-    for claim in &claims {
+    let claims = generated_claims();
+    for claim in claims {
         compiled_generated_claim(claim);
     }
     let claim_names: Vec<_> = claims.iter().map(claim_name).collect();
@@ -489,8 +544,7 @@ fn testgen_lens_emits_claims_as_structural_testclaim_values() {
 #[test]
 #[ignore = "slow exhaustive testgen sweep; excluded from required PR CI wall-clock gate"]
 fn testgen_generated_claims_execute_against_compile_boundary() {
-    let dag = Dag::new();
-    let claims = TestgenLens::new(&dag).query();
+    let claims = generated_claims();
     assert!(
         !claims.is_empty(),
         "testgen lens should emit at least one claim against the bootstrapped stdlib"
