@@ -90,7 +90,7 @@ fn substrate_declares_expected_reflection_surface() {
     );
     assert_eq!(
         record_fields(&dag, "ValueNode"),
-        vec!["id", "payload", "result_port", "span"]
+        vec!["id", "payload", "result_port", "span", "lane2_workflow"]
     );
     assert_eq!(
         record_fields(&dag, "TransformNode"),
@@ -114,7 +114,7 @@ fn substrate_declares_expected_reflection_surface() {
     );
     assert_eq!(
         record_fields(&dag, "BindNode"),
-        vec!["id", "name", "result_port", "params", "span"]
+        vec!["id", "name", "result_port", "params", "span", "lane2_workflow"]
     );
     assert_eq!(
         record_fields(&dag, "Dag"),
