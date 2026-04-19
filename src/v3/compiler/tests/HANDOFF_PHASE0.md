@@ -45,9 +45,16 @@ single contradiction.
   fails the ratchet. Empty on landing.
 - New CI step in `.github/workflows/ci.yml` (`v3` job, above the
   clippy gate): `v3 tests (per-test 2s ratchet, report-only baseline)`.
-  Marked `continue-on-error: true` — see the scope clarification above:
-  this PR is the baseline-publication half of the ratchet rollout; the
-  follow-up PR flips it to blocking.
+  Marked `continue-on-error: true` **and** `if: always()` — the first
+  keeps the job green while the exemption file is empty (baseline
+  publication); the second keeps the baseline visible on red runs too
+  (full-suite failure, 1200s wall-clock overflow), which is precisely
+  when the timing data is most diagnostic. `tee` captures the timing
+  log before the upstream budget check runs, so partial data survives.
+  A small guard in the step handles the degenerate case where the
+  upstream step errored before `cargo test` even ran, emitting a
+  `::notice::` instead of trying to parse a missing log. The follow-up
+  PR flips `continue-on-error` off to make the ratchet binding.
 
 **Why `RUSTC_BOOTSTRAP=1`.** libtest's `--report-time` is still
 unstable on the 1.93 toolchain (tracking issue rust-lang/rust#64888).

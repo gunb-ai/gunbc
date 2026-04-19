@@ -162,9 +162,21 @@ jobs:
       # criterion "CI fails on any test >2s." See
       # `src/v3/compiler/tests/HANDOFF_PHASE0.md` (TESTING.md § test layers,
       # `feedback_test_timeout_2s`).
+      #
+      # **`if: always()`** — the baseline is most interesting precisely on
+      # red runs (full-suite failure, 1200s-budget overflow). The log is
+      # captured via `tee` before the enforcement check, so partial timing
+      # data survives failure. `continue-on-error: true` on this step
+      # prevents the ratchet itself from masking the upstream failure.
       - name: v3 tests (per-test 2s ratchet, report-only baseline)
+        if: always()
         continue-on-error: true
-        run: scripts/check-test-timeout.sh /tmp/v3-test-timings.log
+        run: |
+          if [ ! -f /tmp/v3-test-timings.log ]; then
+            echo "::notice::no timing log captured (full-suite step did not reach the cargo test invocation)"
+            exit 0
+          fi
+          scripts/check-test-timeout.sh /tmp/v3-test-timings.log
 
       - name: v3 Compiler Clippy
         run: cargo clippy -p v3-compiler --all-targets -- -D warnings
