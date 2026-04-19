@@ -139,6 +139,42 @@ fn read(point: Point) -> Int = point.c
 }
 
 #[test]
+fn t1_2_chained_missing_field_fix_targets_the_missing_segment() {
+    let src = "\
+type Inner { leaf: Int }
+type Outer { ok: Inner }
+fn read(x: Outer) -> Int = x.bad.leaf
+";
+    let bad_start = src.find("bad").expect("fixture contains missing field") as u32;
+    let dag = match compile_to_dag(src, "t1_2_chained_missing_field.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. } if name.contains("field `bad` does not exist") => {
+                Some(diag)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected chained missing-field diagnostic, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
+    let fix = diag
+        .fixes()
+        .iter()
+        .find(|fix| fix.new_source == "ok")
+        .expect("missing-field fix should suggest `ok`");
+    assert_eq!(fix.span.byte_start, bad_start);
+    assert_eq!(fix.span.byte_end, bad_start + "bad".len() as u32);
+}
+
+#[test]
 fn t1_3_non_exhaustive_match_diagnostic_names_the_missing_variant() {
     let src = "\
 type AB = A | B

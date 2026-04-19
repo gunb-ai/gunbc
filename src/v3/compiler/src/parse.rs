@@ -446,6 +446,7 @@ pub enum SurfaceExpr {
     /// Other expression-position uses fail closed.
     Path {
         segments: Vec<String>,
+        segment_spans: Vec<SourceSpan>,
         span: SourceSpan,
     },
     Call {
@@ -1600,6 +1601,7 @@ impl<'a> Parser<'a> {
             // `SurfaceExpr::Path` for downstream resolution
             // via top-level symbol + Conj-child walk by label.
             let mut segments = vec![name];
+            let mut segment_spans = vec![span.clone()];
             let start = span.byte_start;
             let mut end = span.byte_end;
             while matches!(self.peek().kind, TokenKind::Dot) {
@@ -1609,6 +1611,7 @@ impl<'a> Parser<'a> {
                     TokenKind::Ident(n) => {
                         end = next.span.byte_end;
                         segments.push(n);
+                        segment_spans.push(next.span.clone());
                     }
                     other => {
                         return Err(Diagnostic::ParseError {
@@ -1623,6 +1626,7 @@ impl<'a> Parser<'a> {
             }
             Ok(SurfaceExpr::Path {
                 segments,
+                segment_spans,
                 span: SourceSpan::new(self.file, start, end),
             })
         } else {

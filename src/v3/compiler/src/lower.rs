@@ -3871,7 +3871,7 @@ fn resolve_callable_reference(
             .copied()
             .or_else(|| symbols.get(name).copied())
             .unwrap_or_else(|| alloc_identifier_stub(dag, name, span)),
-        SurfaceExpr::Path { segments, span } => {
+        SurfaceExpr::Path { segments, span, .. } => {
             alloc_identifier_stub(dag, &segments.join("."), span)
         }
         other => alloc_identifier_stub(dag, "__callable_argument__", expr_span(other)),
@@ -4299,6 +4299,7 @@ fn unresolved_port(dag: &mut Dag, diagnostic: Diagnostic) -> PortId {
 
 fn lower_field_path_expr(
     segments: &[String],
+    segment_spans: &[SourceSpan],
     span: &SourceSpan,
     dag: &mut Dag,
     scope: &HashMap<String, PortId>,
@@ -4318,10 +4319,14 @@ fn lower_field_path_expr(
     // match-arm pattern bindings). Existing type-driven walk.
     if let Some(&port) = scope.get(head) {
         let mut current_port = port;
-        for field_label in rest {
+        for (index, field_label) in rest.iter().enumerate() {
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
             let static_resolution = resolve_static_field_project(dag, current_port, field_label);
+            let field_span = segment_spans
+                .get(index + 1)
+                .cloned()
+                .unwrap_or_else(|| span.clone());
             dag.push_node(Behavior::Transform(TransformNode {
                 id: node_id,
                 target: TransformTarget::FieldProject {
@@ -4330,7 +4335,7 @@ fn lower_field_path_expr(
                 },
                 inputs: vec![current_port],
                 output,
-                span: span.clone(),
+                span: field_span,
             }));
             if let Some((_, ty)) = static_resolution {
                 dag.set_port_type(output, ty);
@@ -4889,9 +4894,11 @@ fn lower_expr(
             symbols,
             expected_decl,
         ),
-        SurfaceExpr::Path { segments, span } => {
-            lower_field_path_expr(segments, span, dag, scope, symbols)
-        }
+        SurfaceExpr::Path {
+            segments,
+            segment_spans,
+            span,
+        } => lower_field_path_expr(segments, segment_spans, span, dag, scope, symbols),
     }
 }
 
