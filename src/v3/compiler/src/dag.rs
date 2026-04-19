@@ -515,8 +515,8 @@ pub struct TemplateArgument {
 ///
 /// Scaffold variants with their dissolution triggers:
 ///
-/// - **`Pending`** — "body to come, transient." Two production sites
-///   write Pending today, both transient:
+/// - **`Pending`** — "body to come, transient." One production site
+///   writes Pending today:
 ///
 ///   1. **Executable-fn seeding (declarations).** `seed_function_signature`
 ///      writes `Pending` for `fn foo(x) -> T = body` declarations as
@@ -524,19 +524,9 @@ pub struct TemplateArgument {
 ///      for patching every such declaration to
 ///      `ArrowBody::UserDefined(bind_id)` before the Dag is frozen
 ///      — including on error paths (R13 fix at `lower.rs:2293`). A
-///      named `Arrow(Pending)` surviving into the final Dag is
+///      final `Arrow(Pending)` surviving into the Dag is
 ///      structurally equivalent to "body lowering missed a path,"
 ///      which is exactly what `lens_structural_resolution` detects.
-///
-///   2. **Operator fallback bridge (transient `ResolvedArrow`).**
-///      `infer::resolve_operator_arrow` falls back to a synthetic
-///      `(T, T) -> T` / `(T, T) -> Bool` signature with `body:
-///      Pending` when the structural algebra walk can't find an
-///      algebra Conj (Bool, collection-level algebras — class-5
-///      gaps #1 and #2 in DOWNSTREAM_REQUIREMENTS.md). This shape
-///      lives in inference-only `ResolvedArrow` values, never in
-///      `Dag.declarations`, so the lens cannot see it. Dissolves
-///      when those class-5 gaps close.
 ///
 ///   **History.** Earlier rounds wrote Pending at four additional
 ///   sites (anonymous nested Arrow type expressions, type-alias
@@ -569,11 +559,9 @@ pub struct TemplateArgument {
 ///
 ///   `decide_transform` treats `NoBody` identically to `Pending`
 ///   (signature inhabitance, body-walking skipped). The variant
-///   distinction exists to make the substrate predicate "named
-///   `Arrow(Pending)` = R13-class regression" structurally exact
-///   rather than a `name`-based proxy — see the
-///   `lens_structural_resolution` ledger entry for the proxy
-///   dissolution this enables.
+///   distinction exists to make the substrate predicate
+///   "`Arrow(Pending)` in the final Dag = R13-class regression"
+///   structurally exact, with no `name`-based proxy in the lens.
 ///
 ///   No dissolution trigger — terminal at the substrate level.
 ///
@@ -622,17 +610,14 @@ pub enum ArrowBody {
     /// inference verifies signature compatibility.
     ExternalRealization(DeclarationId),
     /// Transient "body to come." Signature type-checks via inhabitance;
-    /// body-walking is skipped. Two production sites write `Pending`:
+    /// body-walking is skipped. One production site writes `Pending`:
     ///
     /// 1. `seed_function_signature` for `fn foo(x) -> T = body`
     ///    declarations — the initial substrate state before
     ///    `lower_fn_item` patches the body into `UserDefined(bind_id)`.
-    ///    A named `Arrow(Pending)` surviving into the final Dag is
+    ///    A final `Arrow(Pending)` surviving into the Dag is
     ///    structurally a missed body-patching path: the R13-class
     ///    regression `lens_structural_resolution` watches for.
-    /// 2. `infer::resolve_operator_arrow` for transient `ResolvedArrow`
-    ///    fallback signatures (class-5 gap; never stored in
-    ///    `Dag.declarations`, so the lens cannot see them).
     ///
     /// All "no body by construction" sites that earlier wrote `Pending`
     /// (anonymous nested Arrows, type aliases, data items, variant
@@ -654,9 +639,8 @@ pub enum ArrowBody {
     /// `decide_transform` treats `NoBody` identically to `Pending` at
     /// dispatch time (signature inhabitance, body-walking skipped). The
     /// variant distinction exists so `lens_structural_resolution` can
-    /// match `Arrow(Pending)` as the structural fact for "executable-fn
-    /// body patching missed a path" without depending on `decl.name` as
-    /// a proxy for producer provenance.
+    /// match `Arrow(Pending)` directly as the structural fact for
+    /// "executable-fn body patching missed a path."
     NoBody,
     /// Surface-grammar scaffold. The arrow's signature is resolved and
     /// callers can type-check against it, but the body source is not
@@ -1031,6 +1015,20 @@ impl<T> NonSingletonList<T> {
             .chain(std::iter::once(&self.second))
             .chain(self.rest.iter())
     }
+
+    pub fn len(&self) -> usize {
+        2 + self.rest.len()
+    }
+
+    pub fn to_vec(&self) -> Vec<T>
+    where
+        T: Clone,
+    {
+        std::iter::once(self.first.clone())
+            .chain(std::iter::once(self.second.clone()))
+            .chain(self.rest.iter().cloned())
+            .collect()
+    }
 }
 
 // ── std.effects mirror (DB-18 / Lane 2 Stage 2b) ───────────────────
@@ -1296,13 +1294,31 @@ impl LoopBound {
 ///
 /// See `docs/design-symbolic-cost-algebra.md` (DB-7) for the
 /// dissolution receipt and variant rationale.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DegreeAtLeastTwo(i64);
+
+impl DegreeAtLeastTwo {
+    pub const TWO: Self = Self(2);
+
+    pub fn new(value: i64) -> Option<Self> {
+        (value >= 2).then_some(Self(value))
+    }
+
+    pub fn raw(self) -> i64 {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolicCost {
     ConstantCost { _0: i64 },
     LinearCost { _0: SizeVariable },
-    PolynomialCost { var: SizeVariable, degree: i64 },
-    ProductCost { _0: Vec<SymbolicCost> },
-    SumCost { _0: Vec<SymbolicCost> },
+    PolynomialCost {
+        var: SizeVariable,
+        degree: DegreeAtLeastTwo,
+    },
+    ProductCost { _0: NonSingletonList<SymbolicCost> },
+    SumCost { _0: NonSingletonList<SymbolicCost> },
     LogCost { _0: SizeVariable },
     UnknownCost { _0: String },
 }
@@ -1342,12 +1358,22 @@ pub struct SizeVariable {
 //     dominant-child summary.
 
 pub fn sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
-    normalize(SymbolicCost::SumCost { _0: vec![a, b] })
+    normalize(SymbolicCost::SumCost {
+        _0: NonSingletonList {
+            first: a,
+            second: b,
+            rest: Vec::new(),
+        },
+    })
 }
 
 pub fn iterate(bound: SymbolicCost, body: SymbolicCost) -> SymbolicCost {
     normalize(SymbolicCost::ProductCost {
-        _0: vec![bound, body],
+        _0: NonSingletonList {
+            first: bound,
+            second: body,
+            rest: Vec::new(),
+        },
     })
 }
 
@@ -1376,8 +1402,8 @@ pub fn max_path(paths: &[SymbolicCost]) -> SymbolicCost {
 
 pub fn normalize(cost: SymbolicCost) -> SymbolicCost {
     match cost {
-        SymbolicCost::SumCost { _0: terms } => reduce_sum(drop_zero_terms(terms)),
-        SymbolicCost::ProductCost { _0: terms } => reduce_product(drop_zero_terms(terms)),
+        SymbolicCost::SumCost { _0: terms } => reduce_sum(drop_zero_terms(terms.to_vec())),
+        SymbolicCost::ProductCost { _0: terms } => reduce_product(drop_zero_terms(terms.to_vec())),
         other => other,
     }
 }
@@ -1394,7 +1420,9 @@ fn reduce_sum(mut terms: Vec<SymbolicCost>) -> SymbolicCost {
     match terms.len() {
         0 => SymbolicCost::ConstantCost { _0: 0 },
         1 => terms.into_iter().next().unwrap(),
-        _ => SymbolicCost::SumCost { _0: terms },
+        _ => SymbolicCost::SumCost {
+            _0: NonSingletonList::from_vec(terms).unwrap(),
+        },
     }
 }
 
@@ -1408,7 +1436,9 @@ fn reduce_product(terms: Vec<SymbolicCost>) -> SymbolicCost {
             let b = iter.next().unwrap();
             combine_binary_product(a, b)
         }
-        _ => SymbolicCost::ProductCost { _0: terms },
+        _ => SymbolicCost::ProductCost {
+            _0: NonSingletonList::from_vec(terms).unwrap(),
+        },
     }
 }
 
@@ -1417,11 +1447,17 @@ fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
         if va == vb {
             return SymbolicCost::PolynomialCost {
                 var: va.clone(),
-                degree: 2,
+                degree: DegreeAtLeastTwo::TWO,
             };
         }
     }
-    SymbolicCost::ProductCost { _0: vec![a, b] }
+    SymbolicCost::ProductCost {
+        _0: NonSingletonList {
+            first: a,
+            second: b,
+            rest: Vec::new(),
+        },
+    }
 }
 
 fn drop_dominated_in_sum(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
@@ -1444,7 +1480,7 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
         SymbolicCost::LinearCost { _0: va } => match b {
             SymbolicCost::ConstantCost { .. } | SymbolicCost::LogCost { .. } => true,
             SymbolicCost::LinearCost { _0: vb } => va == vb,
-            SymbolicCost::PolynomialCost { var, degree } => va == var && *degree <= 1,
+            SymbolicCost::PolynomialCost { var: _, degree: _ } => false,
             _ => false,
         },
         SymbolicCost::PolynomialCost {
@@ -1452,11 +1488,11 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
             degree: ka,
         } => match b {
             SymbolicCost::ConstantCost { .. } | SymbolicCost::LogCost { .. } => true,
-            SymbolicCost::LinearCost { _0: vb } => va == vb && *ka >= 1,
+            SymbolicCost::LinearCost { _0: vb } => va == vb,
             SymbolicCost::PolynomialCost {
                 var: vb,
                 degree: kb,
-            } => va == vb && *ka >= *kb,
+            } => va == vb && ka.raw() >= kb.raw(),
             _ => false,
         },
         SymbolicCost::LogCost { _0: va } => match b {

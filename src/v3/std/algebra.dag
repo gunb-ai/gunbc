@@ -74,7 +74,7 @@
 module v3.std.algebra
 
 import std.list { List, empty, fold, cons }
-import std.substrate { PortId }
+import std.substrate { NonSingletonList, PortId }
 
 // 🟢 TERMINAL. `SizeVariable` names the runtime size of a DAG
 // port's value. Two cost expressions correlate structurally via
@@ -91,15 +91,19 @@ type SizeVariable {
   source_port: PortId
 }
 
+type DegreeAtLeastTwo {
+  value: Int
+}
+
 // 🟢 TERMINAL at Stage 2d scope. The asymptotic-bound coproduct
 // DB-7 locks. See the module-level receipt for dissolution-pattern
 // evidence.
 type SymbolicCost
   = ConstantCost(Int)
   | LinearCost(SizeVariable)
-  | PolynomialCost { var: SizeVariable, degree: Int }
-  | ProductCost(List<SymbolicCost>)
-  | SumCost(List<SymbolicCost>)
+  | PolynomialCost { var: SizeVariable, degree: DegreeAtLeastTwo }
+  | ProductCost(NonSingletonList<SymbolicCost>)
+  | SumCost(NonSingletonList<SymbolicCost>)
   | LogCost(SizeVariable)
   | UnknownCost(String)
 
@@ -108,13 +112,13 @@ type SymbolicCost
 // `sequential(a, b)` composes two costs in series. The resulting
 // sum normalizes dominated terms away — `O(n) + O(1) = O(n)`.
 fn sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
-  normalize(SumCost(cons(a, cons(b, empty()))))
+  normalize(SumCost({ first: a, second: b, rest: empty() }))
 
 // `iterate(bound, body)` composes an iteration: `body` runs
 // `bound`-many times. `O(n) * O(1) = O(n)`; `O(n) * O(n) = O(n²)`
 // when the two LinearCost terms share a SizeVariable.
 fn iterate(bound: SymbolicCost, body: SymbolicCost) -> SymbolicCost =
-  normalize(ProductCost(cons(bound, cons(body, empty()))))
+  normalize(ProductCost({ first: bound, second: body, rest: empty() }))
 
 // Lambda-free helper so `max_path`'s fold below resolves its
 // function-type parameter without relying on bidirectional
@@ -163,7 +167,8 @@ fn max_path(paths: List<SymbolicCost>) -> SymbolicCost =
 //   - Unknown dominates everything (safest over-approximation).
 //   - Constant is dominated by everything else.
 //   - Polynomial(v, k1) dominates Polynomial(v, k2) iff k1 >= k2.
-//   - Linear(v) = Polynomial(v, 1) for dominance purposes.
+//   - `PolynomialCost` carries `DegreeAtLeastTwo`, so `Linear(v)` is
+//     the sole degree-1 surface.
 //   - Product/Sum use the dominant child as a summary (MVP — full
 //     term-by-term comparison lands with the multi-variable
 //     fixtures in Stage 2d+ follow-up).
@@ -186,10 +191,7 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
         LogCost(_) => True
         LinearCost(vb) => same_size_variable(va, vb)
         PolynomialCost(payload) =>
-          if same_size_variable(va, payload.var) then
-            payload.degree <= 1
-          else
-            False
+          False
         UnknownCost(_) => False
         ProductCost(_) => False
         SumCost(_) => False
@@ -199,13 +201,10 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
         ConstantCost(_) => True
         LogCost(_) => True
         LinearCost(vb) =>
-          if same_size_variable(pa.var, vb) then
-            pa.degree >= 1
-          else
-            False
+          same_size_variable(pa.var, vb)
         PolynomialCost(pb) =>
           if same_size_variable(pa.var, pb.var) then
-            pa.degree >= pb.degree
+            pa.degree.value >= pb.degree.value
           else
             False
         UnknownCost(_) => False
@@ -269,9 +268,12 @@ fn normalize(c: SymbolicCost) -> SymbolicCost =
     PolynomialCost => c
     LogCost => c
     UnknownCost => c
-    SumCost(terms) => reduce_sum(drop_zero(terms))
-    ProductCost(terms) => reduce_product(drop_zero(terms))
+    SumCost(terms) => reduce_sum(drop_zero(nsl_to_list(terms)))
+    ProductCost(terms) => reduce_product(drop_zero(nsl_to_list(terms)))
   }
+
+fn nsl_to_list(terms: NonSingletonList<SymbolicCost>) -> List<SymbolicCost> =
+  cons(terms.first, cons(terms.second, terms.rest))
 
 // Drops `ConstantCost(0)` terms from a list of costs. Used by
 // normalize so `SumCost([Linear, Constant(0)])` collapses to the
@@ -297,8 +299,9 @@ fn is_zero_constant(c: SymbolicCost) -> Bool =
     UnknownCost(_) => False
   }
 
-// If a SumCost reduces to a single term, return that term; else
-// keep the SumCost wrapper with dominated terms dropped.
+// If a SumCost reduces to a single term, return that term; else keep
+// the canonical `NonSingletonList` wrapper with dominated terms
+// dropped.
 //
 // PR #537 reviewer (ChatGPT) call-out: the Cons-branch previously
 // wrapped the result of `drop_dominated` in `SumCost(...)`
@@ -307,10 +310,9 @@ fn is_zero_constant(c: SymbolicCost) -> Bool =
 // dominated `Constant(5)` and leaves a singleton — landed as the
 // invalid `SumCost([Linear(n)])`. Now a post-drop singleton
 // unwraps via `wrap_sum` so the post-normalize carrier stays
-// canonical (≥ 2 terms in any surviving `SumCost`). Rust mirror
-// in `dag.rs::reduce_sum` already handles this via its
-// `match terms.len()` arms; this keeps the .dag authority in
-// sync.
+// canonical (≥ 2 terms in any surviving `SumCost`). Rust mirror in
+// `dag.rs::reduce_sum` already handles this via its `match terms.len()`
+// arms; this keeps the .dag authority in sync.
 fn reduce_sum(terms: List<SymbolicCost>) -> SymbolicCost =
   match terms {
     Empty => ConstantCost(0)
@@ -327,7 +329,11 @@ fn wrap_sum(terms: List<SymbolicCost>) -> SymbolicCost =
     Cons(payload) =>
       match payload.tail {
         Empty => payload.head
-        Cons(_) => SumCost(cons(payload.head, payload.tail))
+        Cons(second) => SumCost({
+          first: payload.head,
+          second: second.head,
+          rest: second.tail
+        })
       }
   }
 
@@ -343,7 +349,11 @@ fn reduce_product(terms: List<SymbolicCost>) -> SymbolicCost =
         Cons(second) =>
           match second.tail {
             Empty => combine_binary_product(payload.head, second.head)
-            Cons(_) => ProductCost(cons(payload.head, payload.tail))
+            Cons(_) => ProductCost({
+              first: payload.head,
+              second: second.head,
+              rest: second.tail
+            })
           }
       }
   }
@@ -385,11 +395,11 @@ fn collapse_linear_square(
     product_pair(a, b)
 
 fn polynomial_square(v: SizeVariable) -> SymbolicCost {
-  PolynomialCost { var: v, degree: 2 }
+  PolynomialCost { var: v, degree: { value: 2 } }
 }
 
 fn product_pair(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
-  ProductCost(cons(a, cons(b, empty())))
+  ProductCost({ first: a, second: b, rest: empty() })
 
 fn any_dominates(candidates: List<SymbolicCost>, term: SymbolicCost) -> Bool =
   match candidates {

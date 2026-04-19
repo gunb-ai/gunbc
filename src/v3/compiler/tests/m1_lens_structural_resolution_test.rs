@@ -1,7 +1,7 @@
 // W3 — `lens_structural_resolution` acceptance tests.
 //
-// The lens detects leaked `ArrowBody::Pending` on named user
-// Declarations. No current source path produces the violation (see
+// The lens detects leaked `ArrowBody::Pending` in the final Dag. No
+// current source path produces the violation (see
 // the R13 fix at `lower.rs:2293` — `lower_fn_item`'s mutual-recursion
 // arm used to emit Pending and was rewritten to emit
 // `UserDefined(bind_id)` pointing at an Unresolved Bind value port).
@@ -10,10 +10,9 @@
 // via the narrow `inject_named_pending_arrow_for_test` hook rather
 // than driving from source.
 //
-// Negative coverage drives from real source: anonymous Arrow(Pending)
-// declarations (first-class `fn(Int) -> Int` type expressions) and
-// named Arrow(UserDefined) declarations (ordinary user fns) should
-// both leave the lens silent.
+// Negative coverage drives from real source: Arrow-as-data
+// declarations now lower to `NoBody`, and ordinary user fns lower to
+// `UserDefined`, so both should leave the lens silent.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::inject_name_keyed_reference_for_test;
@@ -33,10 +32,10 @@ fn name_keyed(dag: &Dag) -> Vec<NameKeyedReference> {
 
 #[test]
 fn lens_flags_named_arrow_pending_injected_into_dag() {
-    // Synthesize the exact shape the lens targets: a Declaration
-    // with `name: Some("leaked_fn")` and `connective: Arrow { body:
-    // Pending }`. `Dag::new()` provides the bootstrap declarations
-    // so `int_shape` is available as a valid output-type reference.
+    // Synthesize the exact regression shape the lens targets:
+    // `Arrow { body: Pending }` surviving into the final Dag.
+    // `Dag::new()` provides the bootstrap declarations so
+    // `int_shape` is available as a valid output-type reference.
     let mut dag = Dag::new();
     let int_output = dag.int_shape().expect("bootstrap Dag has Int").declaration;
     let decl_id = inject_named_pending_arrow_for_test(&mut dag, "leaked_fn", int_output);
@@ -56,11 +55,10 @@ fn lens_flags_named_arrow_pending_injected_into_dag() {
 
 #[test]
 fn lens_silent_on_empty_bootstrap_dag() {
-    // `Dag::new()` produces the bootstrap declaration set. Every
-    // algebra-field Arrow in bootstrap is anonymous (`name: None`),
-    // so the naming filter should silence every one. Any violation
-    // here would mean the naming filter is broken — bootstrap-range
-    // Pendings must not fire.
+    // `Dag::new()` produces the bootstrap declaration set. After the
+    // `NoBody` migration for Arrow-as-data carriers, bootstrap should
+    // contain no surviving `Arrow(Pending)` declarations at all. Any
+    // violation here means a no-body site regressed back to Pending.
     let dag = Dag::new();
     let found = violations(&dag);
     assert!(
@@ -72,8 +70,8 @@ fn lens_silent_on_empty_bootstrap_dag() {
 #[test]
 fn lens_silent_on_named_user_defined_fn() {
     // `fn foo(x: Int) -> Int = x` lowers to a named Arrow whose
-    // body is `UserDefined(bind_id)`. The lens only flags Pending,
-    // so this must stay silent.
+    // body is `UserDefined(bind_id)`. The lens only flags Pending, so
+    // this must stay silent.
     let dag = compile_to_dag("fn foo(x: Int) -> Int = x", "user.v3").expect("compiles");
     let found = violations(&dag);
     assert!(
@@ -85,10 +83,10 @@ fn lens_silent_on_named_user_defined_fn() {
 #[test]
 fn lens_silent_on_anonymous_arrow_type_expression() {
     // `type Callback { handler: fn(Int) -> Int }` creates an
-    // anonymous Arrow declaration (name=None) with body=Pending as
-    // the type of the `handler` field. This Pending is correct by
-    // construction — the arrow is a first-class type, not a fn that
-    // forgot its body — and the naming filter correctly ignores it.
+    // anonymous Arrow declaration with body=NoBody as the type of
+    // the `handler` field. This arrow is first-class type data, not
+    // a fn that forgot its body, so the structural-resolution lens
+    // must stay silent.
     let dag =
         compile_to_dag("type Callback { handler: fn(Int) -> Int }", "user.v3").expect("compiles");
     let found = violations(&dag);
@@ -111,8 +109,8 @@ fn lens_silent_on_named_type_alias_to_arrow() {
     // The fix: split `Pending` (executable-fn realization-lag scaffold,
     // dissolves via the §8.11 ratchet) from `NoBody` (terminal —
     // the arrow has no executable body by construction, e.g. type
-    // aliases). The lens still flags only `Pending`; `NoBody` is
-    // silently excluded.
+    // aliases). The lens now keys directly on surviving
+    // `Arrow(Pending)`; `NoBody` is structurally excluded.
     let dag = compile_to_dag("type Callback = fn(Int) -> Int", "user.v3").expect("compiles");
     let found = violations(&dag);
     assert!(

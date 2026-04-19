@@ -132,10 +132,16 @@ pub mod lens_provenance {
 /// editing the `.dag` — there is no hand-written implementation on
 /// this crate side.
 ///
+<<<<<<< HEAD
 /// Detects leaked `ArrowBody::Pending` on named user Declarations
 /// and reports declaration atoms that still carry name-keyed
 /// resolution fallback (`ResolvedByName`). See the `.dag` source for
 /// the exact detection rules.
+=======
+/// Detects leaked `ArrowBody::Pending` in the final Dag.
+/// Defense-in-depth regression pin for the R13 fix (see the `.dag`
+/// source for the full detection rule and disposal trigger).
+>>>>>>> 654432bd2 (WIP: Debt Paydown)
 pub mod lens_structural_resolution {
     #[allow(
         dead_code,
