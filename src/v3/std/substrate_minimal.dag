@@ -1,0 +1,29 @@
+// substrate_minimal — identity handles + list cardinality primitives shared by
+// `std.effects` and `v3.std.substrate` without a bootstrap import cycle.
+//
+// Loaded before `effects.dag` and `substrate.dag` (see `src/v3/compiler/build.rs`
+// priority list) so `effects` can name `PortId` / `NonEmptyList` / `NonSingletonList`
+// before the full substrate graph, while `substrate` can import `WorkflowEffect`
+// from `std.effects` for reflected `ValueNode` / `BindNode` workflow facts.
+
+module v3.std.substrate_minimal
+
+import std.list { List }
+
+// Atomic identity handles. These stay opaque at the .dag layer and are realized
+// by Rust newtypes in dag.rs.
+type NodeId
+type PortId
+type DeclarationId
+type ClusterId
+
+type NonEmptyList<element> {
+  first: element
+  rest: List<element>
+}
+
+type NonSingletonList<element> {
+  first: element
+  second: element
+  rest: List<element>
+}
