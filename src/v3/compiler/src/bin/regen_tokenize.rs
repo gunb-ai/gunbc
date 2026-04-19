@@ -183,9 +183,7 @@ fn rust_type_for_decl_id(dag: &Dag, id: DeclarationId) -> String {
                 other => panic!("unsupported instantiated type {other:?}"),
             }
         }
-        other => panic!(
-            "rust_type_for_decl_id: unsupported connective for field type: {other:?}"
-        ),
+        other => panic!("rust_type_for_decl_id: unsupported connective for field type: {other:?}"),
     }
 }
 
@@ -261,9 +259,7 @@ fn emit_tokenize_fn(keywords: &[(String, String)]) -> String {
         ));
     }
     let mut s = String::new();
-    s.push_str(
-        "pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {\n",
-    );
+    s.push_str("pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {\n");
     s.push_str("    let bytes = source.as_bytes();\n");
     s.push_str("    let mut pos: usize = 0;\n");
     s.push_str("    let mut tokens = Vec::new();\n\n");
@@ -285,7 +281,9 @@ fn emit_tokenize_fn(keywords: &[(String, String)]) -> String {
     s.push_str("        if let Some((kind, width)) = punctuation_token(bytes, pos) {\n");
     s.push_str("            tokens.push(Token {\n");
     s.push_str("                kind,\n");
-    s.push_str("                span: SourceSpan::new(file, start as u32, (start + width) as u32),\n");
+    s.push_str(
+        "                span: SourceSpan::new(file, start as u32, (start + width) as u32),\n",
+    );
     s.push_str("            });\n");
     s.push_str("            pos += width;\n");
     s.push_str("            continue;\n");
@@ -296,7 +294,9 @@ fn emit_tokenize_fn(keywords: &[(String, String)]) -> String {
     s.push_str("                end += 1;\n");
     s.push_str("            }\n");
     s.push_str("            let literal = &source[start..end];\n");
-    s.push_str("            let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n");
+    s.push_str(
+        "            let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n",
+    );
     s.push_str("                message: format!(\"invalid integer literal `{}`\", literal),\n");
     s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
     s.push_str("                fixes: Vec::new(),\n");
@@ -328,7 +328,9 @@ fn emit_tokenize_fn(keywords: &[(String, String)]) -> String {
     s.push_str("        // String literal: \"...\"\n");
     s.push_str("        //\n");
     s.push_str("        // Minimal escape surface for bootstrap-staged structural data:\n");
-    s.push_str("        // `\\\"`, `\\\\`, `\\n`, `\\r`, `\\t`. Unknown `\\x` pairs preserve the\n");
+    s.push_str(
+        "        // `\\\"`, `\\\\`, `\\n`, `\\r`, `\\t`. Unknown `\\x` pairs preserve the\n",
+    );
     s.push_str("        // old M0 behavior and stay literal as `\\` + `x`. Raw newlines\n");
     s.push_str("        // are preserved until the closing `\"`.\n");
     s.push_str("        if byte == b'\"' {\n");
@@ -345,7 +347,9 @@ fn emit_tokenize_fn(keywords: &[(String, String)]) -> String {
     s.push_str("                    b'\\\\' => {\n");
     s.push_str("                        let Some(escaped) = bytes.get(end + 1).copied() else {\n");
     s.push_str("                            return Err(Diagnostic::TokenizerError {\n");
-    s.push_str("                                message: \"unterminated string escape\".to_string(),\n");
+    s.push_str(
+        "                                message: \"unterminated string escape\".to_string(),\n",
+    );
     s.push_str("                                span: SourceSpan::new(file, start as u32, (end + 1) as u32),\n");
     s.push_str("                                fixes: Vec::new(),\n");
     s.push_str("                            });\n");
