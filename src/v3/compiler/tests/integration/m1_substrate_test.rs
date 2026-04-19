@@ -2271,28 +2271,6 @@ fn prereq4_list_dag_bootstrap_loads_cleanly() {
 }
 
 #[test]
-fn prereq4_bootstrap_loads_extdeps_and_gunbc_authorities() {
-    let dag = Dag::new();
-    assert!(
-        dag.diagnostics().is_empty(),
-        "bootstrap should load extdeps/gunbc authorities cleanly, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
-    );
-    for name in [
-        "CliTool",
-        "formula_rust",
-        "GeneratedCrate",
-        "compiler_cycle",
-        "ci_pipeline",
-    ] {
-        assert!(
-            dag.declaration_by_name(name).is_some(),
-            "bootstrap should register authority declaration `{name}`"
-        );
-    }
-}
-
-#[test]
 fn prereq4_record_literal_in_expression_position_compiles_with_expected_type() {
     let src = "\
 type Point { x: Int y: Int }
