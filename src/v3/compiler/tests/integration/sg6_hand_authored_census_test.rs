@@ -17,6 +17,40 @@
 //
 // Scope is deliberately SG-6-local. A full `src/v3/compiler/src`
 // inventory belongs to SG-0 and is intentionally out of scope here.
+//
+// **Bounded-debt trigger: out-of-band registry copies.** `regen.dag`
+// is now the primary authority for each lens's `(name, lens_file,
+// generated_file)` triple, but two classes of downstream consumer
+// still reach for the same paths through hardcoded bytes instead of
+// resolving from the registry:
+//
+//   1. Every `m2_lens_*_migration_test.rs` under
+//      `src/v3/compiler/tests/integration/` declares a local
+//      `lens_path()` (e.g. `../lenses/complexity.dag`) and a
+//      `checked_in_generated_module()` backed by `include_str!`.
+//      The triple-ratchet below catches any divergence loudly, but
+//      the path still lives in two places.
+//
+//   2. `src/v3/compiler/src/lib.rs` (and `lens_unused_parameters.rs`)
+//      embeds each `lens_<name>_generated.rs` via `include_str!`. That
+//      call is compile-time and so is not a natural fit for a
+//      runtime registry walk, but it still duplicates the
+//      `generated_file` field structurally.
+//
+// Dissolution trigger (scoped as an SG-6 follow-up PR, not this
+// one): add a shared `tests/common` helper that walks `regen.dag`
+// and returns the absolute lens-source path for a given registry
+// name, and re-point every migration test at that helper. Once the
+// source-side path is sourced exclusively from the registry, the
+// `lens_file` column in the triple ratchet collapses into a
+// dependency on the same helper (i.e., SG-6's triple-ratchet ends
+// up pinning only `name` plus `generated_file`, because `lens_file`
+// is re-derived at read time instead of mirrored in the test).
+//
+// Until that follow-up lands, the triple ratchet below IS the
+// bridge that keeps the duplication from drifting silently — it
+// fails loudly the moment `regen.dag`, the migration-test
+// `lens_path()` helpers, or the `include_str!` targets diverge.
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
