@@ -47,7 +47,10 @@ pub fn behavior_spine_in_node_order(d: &Dag) -> &[Behavior] {
 ///
 /// `composed` is the asymptotic bound at `workflow_root`'s result port. Witnesses
 /// walk every [`Behavior`] in node order (see [`behavior_spine_in_node_order`]).
-pub fn analyze_symbolic_cost_dimension(d: &Dag, workflow_root: NodeId) -> DimensionReport<SymbolicCost> {
+pub fn analyze_symbolic_cost_dimension(
+    d: &Dag,
+    workflow_root: NodeId,
+) -> DimensionReport<SymbolicCost> {
     const DIMENSION_NAME: &str = "symbolic_cost";
     let mut witnesses = Vec::new();
     for behavior in d.nodes() {
@@ -64,9 +67,9 @@ pub fn analyze_symbolic_cost_dimension(d: &Dag, workflow_root: NodeId) -> Dimens
     let root = d.node(workflow_root);
     let composed = match symbolic_cost_of(d, &behavior_result_port(root)) {
         SymbolicCostLookup::FoundCost { _0: cost } => cost,
-        SymbolicCostLookup::MissingCost => SymbolicCost::UnknownCost(
-            "missing symbolic cost for workflow root result port".into(),
-        ),
+        SymbolicCostLookup::MissingCost => {
+            SymbolicCost::UnknownCost("missing symbolic cost for workflow root result port".into())
+        }
     };
 
     DimensionReport {
