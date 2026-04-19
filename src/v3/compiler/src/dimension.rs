@@ -67,9 +67,9 @@ pub fn analyze_symbolic_cost_dimension(
     let root = d.node(workflow_root);
     let composed = match symbolic_cost_of(d, &behavior_result_port(root)) {
         SymbolicCostLookup::FoundCost { _0: cost } => cost,
-        SymbolicCostLookup::MissingCost => {
-            SymbolicCost::UnknownCost("missing symbolic cost for workflow root result port".into())
-        }
+        SymbolicCostLookup::MissingCost => SymbolicCost::UnknownCost {
+            _0: "missing symbolic cost for workflow root result port".into(),
+        },
     };
 
     DimensionReport {
