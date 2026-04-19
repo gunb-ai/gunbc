@@ -92,6 +92,8 @@ mod real_stdlib_parse_smoke;
 mod sg0_census_test;
 #[path = "integration/sg4_prep_infer_helpers_freshness_test.rs"]
 mod sg4_prep_infer_helpers_freshness_test;
+#[path = "integration/sg6_hand_authored_census_test.rs"]
+mod sg6_hand_authored_census_test;
 #[path = "integration/thesis_parallelism_test.rs"]
 mod thesis_parallelism_test;
 #[path = "integration/thesis_validation_test.rs"]

@@ -1,0 +1,410 @@
+// SG-6 hand-authored-Rust census for the driver + harness surfaces
+// SG-6 owns:
+//
+//   - `src/v3/compiler/src/bin/` — regen drivers and the self-host
+//     CI binary. The 4 per-lens regen bins collapsed to a single
+//     `regen_lens` shim that reads `src/v3/compiler/regen.dag`.
+//   - `src/v3/compiler/regen.dag` — lens registry. Every entry in
+//     the registry is tagged with `LensRegistryEntry`, so the
+//     `regen_lens` driver enumerates them structurally rather than
+//     hard-coding per-lens paths.
+//
+// The tests below pin the post-cutover census. Any new
+// hand-authored driver or mutation that silently grows the bin set
+// fails this test before it can become a hidden authority — the
+// SG-6 rule "every PR reduces the hand-authored Rust census;
+// ratchet only down" can't be upheld without a machine check.
+//
+// Scope is deliberately SG-6-local. A full `src/v3/compiler/src`
+// inventory belongs to SG-0 and is intentionally out of scope here.
+//
+// **Bounded-debt trigger: out-of-band registry copies.** `regen.dag`
+// is now the primary authority for each lens's `(name, lens_file,
+// generated_file)` triple, but two classes of downstream consumer
+// still reach for the same paths through hardcoded bytes instead of
+// resolving from the registry:
+//
+//   1. Every `m2_lens_*_migration_test.rs` under
+//      `src/v3/compiler/tests/integration/` declares a local
+//      `lens_path()` (e.g. `../lenses/complexity.dag`) and a
+//      `checked_in_generated_module()` backed by `include_str!`.
+//      The triple-ratchet below catches any divergence loudly, but
+//      the path still lives in two places.
+//
+//   2. `src/v3/compiler/src/lib.rs` (and `lens_unused_parameters.rs`)
+//      embeds each `lens_<name>_generated.rs` via `include_str!`. That
+//      call is compile-time and so is not a natural fit for a
+//      runtime registry walk, but it still duplicates the
+//      `generated_file` field structurally.
+//
+// Dissolution trigger (scoped as an SG-6 follow-up PR, not this
+// one): add a shared `tests/common` helper that walks `regen.dag`
+// and returns the absolute lens-source path for a given registry
+// name, and re-point every migration test at that helper. Once the
+// source-side path is sourced exclusively from the registry, the
+// `lens_file` column in the triple ratchet collapses into a
+// dependency on the same helper (i.e., SG-6's triple-ratchet ends
+// up pinning only `name` plus `generated_file`, because `lens_file`
+// is re-derived at read time instead of mirrored in the test).
+//
+// Until that follow-up lands, the triple ratchet below IS the
+// bridge that keeps the duplication from drifting silently — it
+// fails loudly the moment `regen.dag`, the migration-test
+// `lens_path()` helpers, or the `include_str!` targets diverge.
+
+use std::collections::{BTreeSet, HashMap};
+use std::path::PathBuf;
+use std::process::Command;
+
+use v3_compiler::dag::{Dag, Declaration, FieldValue, LiteralBits, ValueBody};
+
+fn manifest_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+fn bin_dir() -> PathBuf {
+    manifest_dir().join("src").join("bin")
+}
+
+fn workspace_root() -> PathBuf {
+    manifest_dir().join("..").join("..").join("..")
+}
+
+/// Enumerate every entry under `src/v3/compiler/src/bin/` that Cargo's
+/// auto-discovery would promote to a bin target. Cargo picks up two
+/// shapes out of that directory:
+///
+///   1. `src/bin/<name>.rs`         — flat single-file bin, yields `<name>.rs`
+///   2. `src/bin/<name>/main.rs`    — directory-form bin,    yields `<name>/`
+///
+/// SG-6 pins both: a flat `.rs` file outside the expected set grows
+/// the hand-authored bin census, and — more subtly — a new directory
+/// under `src/bin/` with its own `main.rs` is silently a new bin even
+/// though it does not create a top-level `.rs` file. Without
+/// detecting the directory form the ratchet leaks and a new driver
+/// can land as `src/bin/foo/main.rs` without tripping the census.
+fn bin_basenames() -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for entry in std::fs::read_dir(bin_dir())
+        .expect("read src/v3/compiler/src/bin")
+        .filter_map(|entry| entry.ok())
+    {
+        let path = entry.path();
+        let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let file_type = match entry.file_type() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        if file_type.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rs") {
+            out.insert(file_name.to_string());
+        } else if file_type.is_dir() && path.join("main.rs").is_file() {
+            // Cargo names the resulting bin after the directory itself
+            // (not `main.rs`), so store the directory label with a
+            // trailing `/` to keep the directory form distinct from a
+            // flat `<name>.rs` bin in the expected set and in error
+            // output.
+            out.insert(format!("{file_name}/"));
+        }
+    }
+    out
+}
+
+#[test]
+fn sg6_bin_census_is_locked_to_three_shims() {
+    let expected: BTreeSet<String> = ["regen_lens.rs", "regen_v3.rs", "self_host_fixed_point.rs"]
+        .into_iter()
+        .map(String::from)
+        .collect();
+
+    let actual = bin_basenames();
+
+    assert_eq!(
+        actual, expected,
+        "SG-6 hand-authored bin census changed. The cutover collapsed the 4 \
+         per-lens `regen_lens_*` bins into a single `regen_lens` driver that \
+         reads `src/v3/compiler/regen.dag`. Adding a new bin re-introduces a \
+         per-lens (or per-target) Rust driver — the SG-6 lane requires that \
+         new regen / harness targets be added via the `.dag` registry instead. \
+         Both `src/bin/<name>.rs` (flat-file bins; basename reported) and \
+         `src/bin/<name>/main.rs` (directory-form bins; reported as `<name>/`) \
+         are counted, because Cargo's auto-discovery promotes both shapes. \
+         If you believe the new bin is genuinely irreducible host-shim work, \
+         update this ratchet in the same PR and document the reason in the \
+         ROADMAP."
+    );
+}
+
+struct RegistryRow {
+    binding: String,
+    name: String,
+    lens_file: String,
+    generated_file: String,
+}
+
+fn read_registry_rows(dag: &Dag) -> Vec<RegistryRow> {
+    let entry_type_id = dag
+        .declaration_by_name("LensRegistryEntry")
+        .map(|decl| decl.id)
+        .expect("regen.dag must declare `LensRegistryEntry`");
+
+    dag.declarations()
+        .iter()
+        .filter(|decl| decl.meta_tag == Some(entry_type_id))
+        .map(|decl| {
+            let binding = decl
+                .name
+                .clone()
+                .unwrap_or_else(|| "<anonymous>".to_string());
+            let fields = structural_fields(decl);
+            RegistryRow {
+                binding: binding.clone(),
+                name: string_field(fields, "name", &binding),
+                lens_file: string_field(fields, "lens_file", &binding),
+                generated_file: string_field(fields, "generated_file", &binding),
+            }
+        })
+        .collect()
+}
+
+fn structural_fields(decl: &Declaration) -> &[(String, FieldValue)] {
+    let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "lens registry entry `{}` must carry a structural value body",
+            decl.name.as_deref().unwrap_or("<anonymous>")
+        );
+    };
+    fields.as_slice()
+}
+
+fn string_field(fields: &[(String, FieldValue)], label: &str, binding: &str) -> String {
+    fields
+        .iter()
+        .find(|(field_label, _)| field_label == label)
+        .and_then(|(_, value)| match value {
+            FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!("lens registry entry `{binding}` is missing a String `{label}` field")
+        })
+}
+
+// Full-triple ratchet over `src/v3/compiler/regen.dag`. `name`
+// alone pins `--lens` selector identity, but leaving `lens_file`
+// out-of-band would let the source path for a lens drift
+// independently of the per-lens migration tests' hard-coded
+// `lens_path()` helpers (e.g. renaming `complexity.dag` or moving
+// a lens across directories). Asserting all three fields keeps
+// every registry-visible path under one structural ratchet, so
+// any drift forces a paired edit across `regen.dag`, this test,
+// and the referring migration test.
+#[test]
+fn sg6_regen_dag_registry_triples_are_pinned() {
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap should load `src/v3/compiler/regen.dag` cleanly, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+
+    let mut rows = read_registry_rows(&dag);
+    rows.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let expected: Vec<(&str, &str, &str)> = vec![
+        (
+            "cost",
+            "src/v3/lenses/complexity.dag",
+            "src/v3/compiler/src/lens_cost_generated.rs",
+        ),
+        (
+            "cost_symbolic",
+            "src/v3/lenses/cost.dag",
+            "src/v3/compiler/src/lens_cost_symbolic_generated.rs",
+        ),
+        (
+            "infer_helpers",
+            "src/v3/lenses/infer_helpers.dag",
+            "src/v3/compiler/src/infer_helpers_generated.rs",
+        ),
+        (
+            "provenance",
+            "src/v3/lenses/provenance.dag",
+            "src/v3/compiler/src/lens_provenance_generated.rs",
+        ),
+        (
+            "structural_resolution",
+            "src/v3/lenses/structural_resolution.dag",
+            "src/v3/compiler/src/lens_structural_resolution_generated.rs",
+        ),
+        (
+            "unused_parameters",
+            "src/v3/lenses/unused_parameters.dag",
+            "src/v3/compiler/src/lens_unused_parameters_generated.rs",
+        ),
+    ];
+
+    let actual: Vec<(&str, &str, &str)> = rows
+        .iter()
+        .map(|row| {
+            (
+                row.name.as_str(),
+                row.lens_file.as_str(),
+                row.generated_file.as_str(),
+            )
+        })
+        .collect();
+
+    assert_eq!(
+        actual, expected,
+        "lens registry triple drift. Every `(name, lens_file, \
+         generated_file)` tuple is pinned so changing the source path \
+         or output path of a lens has to land in the same PR as the \
+         registry edit and the matching migration-test update. If a \
+         lens is being added, renamed, relocated, or retired, update \
+         `src/v3/compiler/regen.dag`, this snapshot, the corresponding \
+         `m2_lens_*_migration_test.rs` hard-coded `lens_path()`, and \
+         any `include_str!` in `src/v3/compiler/src/lib.rs` in the \
+         same commit."
+    );
+}
+
+// `--lens <name>` is the selection key in `regen_lens`'s CLI surface.
+// If two registry entries carry the same `name`, the driver cannot
+// distinguish them and the first-match-wins iteration order becomes
+// a hidden contract. The driver itself fails closed on this case in
+// `read_registry`; the test below pins the invariant at the registry
+// source so the structural guarantee is visible at the authority.
+#[test]
+fn sg6_lens_registry_names_are_unique() {
+    let dag = Dag::new();
+    let rows = read_registry_rows(&dag);
+    let mut seen: HashMap<String, String> = HashMap::new();
+    for row in &rows {
+        if let Some(prior_binding) = seen.get(&row.name) {
+            panic!(
+                "lens registry has duplicate `name` `{name}`: first declared by `{prior}`, re-declared by `{current}`. \
+                 `regen_lens --lens {name}` would resolve ambiguously. Rename one entry in `src/v3/compiler/regen.dag`.",
+                name = row.name,
+                prior = prior_binding,
+                current = row.binding,
+            );
+        }
+        seen.insert(row.name.clone(), row.binding.clone());
+    }
+}
+
+// Two entries pointing at the same `generated_file` would let each
+// overwrite the other when `regen_lens` runs with no `--lens` filter
+// (full-registry pass). The driver fails closed on duplicates; this
+// test mirrors that invariant at the registry source.
+#[test]
+fn sg6_lens_registry_generated_files_are_unique() {
+    let dag = Dag::new();
+    let rows = read_registry_rows(&dag);
+    let mut seen: HashMap<String, String> = HashMap::new();
+    for row in &rows {
+        if let Some(prior_binding) = seen.get(&row.generated_file) {
+            panic!(
+                "lens registry has duplicate `generated_file` `{path}`: first declared by `{prior}`, re-declared by `{current}`. \
+                 Running `regen_lens` with no filter would have each entry clobber the other.",
+                path = row.generated_file,
+                prior = prior_binding,
+                current = row.binding,
+            );
+        }
+        seen.insert(row.generated_file.clone(), row.binding.clone());
+    }
+}
+
+// The reviewer ask from #560 made explicit: `--lens <name>` must
+// resolve to exactly one entry. Uniqueness is the structural
+// guarantee; this test exercises the resolver against each real
+// registry name and asserts a singleton match, locking in the
+// contract the driver's `--lens` argument depends on.
+#[test]
+fn sg6_lens_registry_names_resolve_to_singleton_entry() {
+    let dag = Dag::new();
+    let rows = read_registry_rows(&dag);
+    let known_names: Vec<String> = rows.iter().map(|row| row.name.clone()).collect();
+    for name in &known_names {
+        let matches: Vec<&RegistryRow> = rows.iter().filter(|row| row.name == *name).collect();
+        assert_eq!(
+            matches.len(),
+            1,
+            "`--lens {name}` must resolve to exactly one entry, found {count}: {bindings:?}",
+            count = matches.len(),
+            bindings = matches
+                .iter()
+                .map(|row| row.binding.as_str())
+                .collect::<Vec<_>>(),
+        );
+    }
+}
+
+// Director/Codex follow-up on #560: prove the real CLI path works, not
+// just the structural registry ratchets. This smoke test runs the
+// built `regen_lens` binary against a single concrete registry entry
+// and asserts three things:
+//   1. `--lens <name>` exits successfully,
+//   2. stdout reports the expected generated target path, and
+//   3. the checked-in generated file is unchanged after the run.
+//
+// If the file bytes change, restore the original snapshot before
+// failing so a local red test does not leave the worktree dirty.
+budgeted_test! {
+    15_000,
+    sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift,
+    {
+        let dag = Dag::new();
+        assert!(
+            dag.diagnostics().is_empty(),
+            "bootstrap should load `src/v3/compiler/regen.dag` cleanly, got {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+
+        let row = read_registry_rows(&dag)
+            .into_iter()
+            .find(|row| row.name == "cost")
+            .expect("registry row for `cost`");
+
+        let out_path = workspace_root().join(&row.generated_file);
+        let before = std::fs::read(&out_path).expect("read checked-in generated file");
+
+        let output = Command::new(env!("CARGO_BIN_EXE_regen_lens"))
+            .current_dir(manifest_dir())
+            .arg("--lens")
+            .arg(&row.name)
+            .output()
+            .expect("run regen_lens binary");
+
+        assert!(
+            output.status.success(),
+            "regen_lens --lens {} failed:\nstdout:\n{}\nstderr:\n{}",
+            row.name,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+
+        let stdout = String::from_utf8(output.stdout).expect("regen_lens stdout should be utf-8");
+        assert_eq!(
+            stdout.trim(),
+            format!("wrote {}", out_path.display()),
+            "`regen_lens --lens {}` should report the single generated target it rewrote",
+            row.name,
+        );
+
+        let after = std::fs::read(&out_path).expect("read regenerated file");
+        if after != before {
+            std::fs::write(&out_path, &before)
+                .expect("restore checked-in generated file after smoke drift");
+        }
+        assert_eq!(
+            after, before,
+            "`regen_lens --lens {}` changed `{}`. The smoke test expects the CLI path to be clean against the checked-in snapshot; if this fails, regenerate in the same PR that updates the snapshot.",
+            row.name,
+            row.generated_file,
+        );
+    }
+}
