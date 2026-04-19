@@ -8,6 +8,7 @@
 //! - branch lowering and type unification
 //! - bounded self-recursion lowering
 //! - fail-closed semantic diagnostics for representative error classes
+//! - post-sweep port-state invariants
 
 use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
@@ -158,6 +159,21 @@ fn numeric_recursion_lowers_to_a_bounded_loop() {
 }
 
 #[test]
+fn type_annotation_does_not_resurrect_an_unresolved_port() {
+    let dag = compile_any("let x: Bool = y", "m0_annotation_after_resolve_error.v3");
+    let bind = bind_named(&dag, "x");
+
+    assert!(matches!(
+        dag.port(bind.value).state(),
+        PortState::Unresolved
+    ));
+    assert!(matches!(
+        dag.diagnostics().get(bind.value),
+        Some(Diagnostic::ResolveError { .. })
+    ));
+}
+
+#[test]
 fn compile_boundary_is_fail_closed() {
     assert!(compile_to_dag("let x = 1 + 2", "m0_ok.v3").is_ok());
     assert!(matches!(
@@ -172,6 +188,50 @@ fn compile_boundary_is_fail_closed() {
         compile_to_dag("fn f(a: Int) -> Int = a\nlet x = f(1, 2)", "m0_arity.v3"),
         Err(CompileError::Semantic(_))
     ));
+}
+
+#[test]
+fn post_sweep_port_state_matches_diagnostic_table() {
+    let sources = [
+        "let x = 1 + 2",
+        "let x = 5\nlet result = if x > 0 then 1 else 2",
+        "fn count_down(n: Int) -> Int = if n == 0 then 0 else n + count_down(n - 1)\nlet answer = count_down(3)",
+        "let x: Bool = 1",
+        "let y = x\nlet x = 1",
+        "let x: Bool = y",
+        "fn f(a: Int) -> Int = a\nlet x = f(1, 2)",
+        "let x = if 1 then 2 else 3",
+        "fn f(a: Int) -> Bool = 1\nlet x = f(1)",
+        "let x: NotARealType = 1",
+    ];
+
+    for src in sources {
+        let dag = compile_any(src, "m0_invariant.v3");
+        for port in dag.all_ports() {
+            match port.state() {
+                PortState::Uninferred => {
+                    panic!(
+                        "port {:?} is Uninferred after compile in source {src:?}",
+                        port.id()
+                    );
+                }
+                PortState::Resolved(_) => {
+                    assert!(
+                        !dag.diagnostics().contains(port.id()),
+                        "Resolved port {:?} has a diagnostic entry in source {src:?}",
+                        port.id(),
+                    );
+                }
+                PortState::Unresolved => {
+                    assert!(
+                        dag.diagnostics().contains(port.id()),
+                        "Unresolved port {:?} has no diagnostic entry in source {src:?}",
+                        port.id(),
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]
