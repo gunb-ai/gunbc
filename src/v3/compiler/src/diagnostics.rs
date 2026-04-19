@@ -804,6 +804,72 @@ mod tests {
         assert_eq!(example_source_for_decl(&dag, sum_decl), None);
     }
 
+    /// Regression: happy-path payloaded disjunct. Fills the coverage gap
+    /// the PR #554 loop-health meta-review called out — the existing
+    /// witness tests cover unpayloaded primitives and fail-closed refined
+    /// payloads, but no test pinned "Disj with a positional-payload variant
+    /// renders as `Variant(witness_arg0, witness_arg1, …)`". The walk goes
+    /// through `render_variant_witness` → `example_source_for_decl_inner`
+    /// on each payload field, so the assertion exercises the full
+    /// Disj → Conj → primitive recursion path structurally.
+    #[test]
+    fn example_source_for_decl_renders_positional_payload_variant() {
+        let mut dag = Dag::new();
+        let int_decl = dag.int_shape().expect("int shape").declaration;
+        let bool_decl = dag.bool_shape().expect("bool shape").declaration;
+
+        // Positional payload: fields `_0: Int`, `_1: Bool` — mirrors the
+        // shape lowering produces for `Cons(Int, Bool)` before any named-
+        // field surface grammar lands.
+        let payload_decl = dag.alloc_declaration_id();
+        dag.push_declaration(crate::dag::Declaration {
+            id: payload_decl,
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![
+                    Field {
+                        label: "_0".to_string(),
+                        ty: int_decl,
+                    },
+                    Field {
+                        label: "_1".to_string(),
+                        ty: bool_decl,
+                    },
+                ],
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("diagnostics_test.v3", 0, 1),
+        });
+
+        let sum_decl = dag.alloc_declaration_id();
+        dag.push_declaration(crate::dag::Declaration {
+            id: sum_decl,
+            name: Some("Pair".to_string()),
+            connective: TypeConnective::Disj {
+                variants: vec![Field {
+                    label: "Paired".to_string(),
+                    ty: payload_decl,
+                }],
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("diagnostics_test.v3", 0, 1),
+        });
+
+        assert_eq!(
+            example_source_for_decl(&dag, sum_decl).as_deref(),
+            Some("Paired(1, true)"),
+            "payloaded variant witness must recurse structurally through each payload field"
+        );
+    }
+
     #[test]
     fn render_rust_diagnostic_uses_rust_correction_style() {
         let dag = Dag::new();
