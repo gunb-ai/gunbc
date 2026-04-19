@@ -604,6 +604,8 @@ Cleared (prior PR #521): `DerivedOpEffect { method, path_template, shape }` coll
 
 **Follow-up — Lane B reflection (`lane2_workflow` on reflected `Behavior`, e.g. PR #545):** when that debt clears, `src/v3/lenses/parallelism.dag` can graduate from stub to real `.dag` consumer (same dissolution as `idempotency.dag`); `workflow_parallelism.rs` stays the Rust authority until emit+match can walk user sums on the reflected surface.
 
+**Follow-up — cross-lens workflow-analysis unsupported carrier (M–L, paydown lane; not blocking DB-20 / #543 merge).** Stage 2b still encodes “unsupported workflow” cases in `IdempotencyUnsupportedDetail` (including a **string** `variant_name` alongside `reason`). Stage 2e adds **`ParallelismUnsupportedDetail { kind: ParallelismUnsupportedKind, downstream_stage, reason }`** — typed `kind` for parallelism, but **two** lens-local unsupported stories remain side-by-side. The recurring risk (ChatGPT + meta-review on #543, 2026-04-19) is **cross-layer convention** if more workflow lenses or emit consumers must **dispatch** on unsupported causes structurally, not only read prose. **Dissolution trigger:** a **third** workflow-analysis lens lands, or the first consumer needs structural discrimination across Stage 2b vs Stage 2e unsupported paths. **Target shape (pick one in the paydown PR):** introduce a shared `WorkflowAnalysisUnsupportedDetail` (name TBD) in `std.effects` and migrate both reports, **or** graduate `IdempotencyUnsupportedDetail` with per-cause variants and align naming — goal is to remove “overload `variant_name` / duplicate conventions” as the long-term interface. **Explicitly deferred from #543** so DB-20 ships without conflating Stage 2e delivery with cross-lens carrier surgery.
+
 
 ### Lane 1 Stage 1b
 
