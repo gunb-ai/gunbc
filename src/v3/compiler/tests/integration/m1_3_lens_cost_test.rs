@@ -6,9 +6,7 @@
 // wiring rather than the lens's graph walk.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{
-    Behavior, BranchPattern, Dag, LiteralBits, Path, PortId, TransformTarget,
-};
+use v3_compiler::dag::{Behavior, BranchPattern, Dag, LiteralBits, Path, PortId, TransformTarget};
 use v3_compiler::diagnostics::SourceSpan;
 use v3_compiler::lens_cost::cost_of;
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
@@ -78,7 +76,9 @@ fn bind_arm(dag: &mut Dag, name: &str, output: PortId) -> Path {
 
 fn add_chain(dag: &mut Dag, values: &[i64]) -> PortId {
     let mut ports = values.iter().copied().map(|value| int_value(dag, value));
-    let first = ports.next().expect("add_chain requires at least one literal");
+    let first = ports
+        .next()
+        .expect("add_chain requires at least one literal");
     ports.fold(first, |lhs, rhs| add(dag, lhs, rhs))
 }
 
@@ -271,8 +271,8 @@ fn kf_1_lambda_body_cost_contributes_to_fold() {
 
 #[test]
 fn kf_1_list_operation_cost_ordering() {
-    let singleton = compile_to_dag("let xs = singleton(1)", "kf_1_singleton.v3")
-        .expect("singleton compiles");
+    let singleton =
+        compile_to_dag("let xs = singleton(1)", "kf_1_singleton.v3").expect("singleton compiles");
     let cons =
         compile_to_dag("let xs = cons(1, singleton(2))", "kf_1_cons.v3").expect("cons compiles");
     let fold = compile_to_dag(
