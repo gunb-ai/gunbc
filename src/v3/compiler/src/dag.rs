@@ -46,7 +46,7 @@
 //   SourceSpan lives on every Behavior and every Declaration structurally. Spans flow
 //   forward through lowering; no side tables, no reconstruction.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::LazyLock;
 
@@ -1881,13 +1881,6 @@ pub(crate) struct TargetSyntaxCache {
     /// authority the Rust emitter reads for borrow-vs-construct
     /// rendering policy at use sites.
     pub rust_rendering: Option<DeclarationId>,
-    /// `rust_clean_emission` CleanEmissionContract declaration
-    /// loaded from `src/v3/spec/rust.dag`. Lane 1 Stage 1c / E-5:
-    /// the emitter dispatches on this contract's rule fields to
-    /// shape emitted code so it passes `rustc -D warnings` by
-    /// construction. Go / Python cache analogues land when their
-    /// respective pilots do.
-    pub rust_clean_emission: Option<DeclarationId>,
     /// `rust_execution_model` declaration loaded from
     /// `src/v3/spec/rust.dag`. Used by emitters to gate the
     /// ownership stage on the target memory model.
@@ -1903,26 +1896,29 @@ pub(crate) struct TargetSyntaxCache {
     /// `go_execution_model` declaration loaded from
     /// `src/v3/spec/go.dag`.
     pub go_execution_model: Option<DeclarationId>,
-    /// `go_clean_emission` CleanEmissionContract declaration loaded
-    /// from `src/v3/spec/go.dag`. Lane 1 Stage 1c PR 2 / E-5: the
-    /// Go emitter dispatches on this contract's rule fields so
-    /// emitted Go compiles under `gofmt -l` + the Go compiler's
-    /// own unused-local check by construction.
-    pub go_clean_emission: Option<DeclarationId>,
     /// `python_language` syntax bundle declaration loaded from
     /// `src/v3/spec/python.dag`.
     pub python_language: Option<DeclarationId>,
     /// `python_target` execution-model declaration loaded from
     /// `src/v3/spec/python.dag`.
     pub python_target: Option<DeclarationId>,
-    /// `python_clean_emission` CleanEmissionContract declaration
-    /// loaded from `src/v3/spec/python.dag`. Lane 1 Stage 1c PR 3 /
-    /// E-5: the Python emitter dispatches on this contract's
-    /// `pattern_bindings` field. Python's `NotApplicablePatternBinding`
-    /// selects the substitute-at-render-time path — the binding
-    /// identifier is never emitted at the pattern site, so
-    /// py_compile never flags an unused binding.
-    pub python_clean_emission: Option<DeclarationId>,
+    /// Shared target-authority bindings scanned from
+    /// `TargetCleanEmissionBinding` data items. This is the single
+    /// cached bridge from `LanguageSpec` to `CleanEmissionContract`;
+    /// adding a new target extends the spec surface, not compiler
+    /// branches.
+    pub clean_emission_by_language: HashMap<DeclarationId, DeclarationId>,
+}
+
+/// Shared target-authority bundle tying one `LanguageSpec`
+/// declaration to the `CleanEmissionContract` that governs how code
+/// for that language must render. This keeps the pairing as a typed
+/// carrier instead of asking downstream consumers to reconstruct it
+/// from parallel per-target caches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TargetSyntaxBundle {
+    pub language_spec: DeclarationId,
+    pub clean_emission_spec: DeclarationId,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -2266,7 +2262,21 @@ impl Dag {
     /// latter is a spec-file drift and surfaces at emit time as
     /// `EmitError::MissingTargetSyntax`.
     pub fn rust_clean_emission_spec(&self) -> Option<DeclarationId> {
-        self.target_syntax.rust_clean_emission
+        self.rust_target_syntax_bundle()
+            .map(|bundle| bundle.clean_emission_spec)
+    }
+
+    /// Typed accessor for the Rust target authority bundle pairing
+    /// `rust_language` with its `CleanEmissionContract`.
+    pub fn rust_target_syntax_bundle(&self) -> Option<TargetSyntaxBundle> {
+        let language_spec = self.target_syntax.rust_language?;
+        Some(TargetSyntaxBundle {
+            language_spec,
+            clean_emission_spec: *self
+                .target_syntax
+                .clean_emission_by_language
+                .get(&language_spec)?,
+        })
     }
 
     /// Typed accessor for the Rust target execution model
@@ -2299,7 +2309,21 @@ impl Dag {
     /// parses the structural fields and dispatches on the rule
     /// variants.
     pub fn go_clean_emission_spec(&self) -> Option<DeclarationId> {
-        self.target_syntax.go_clean_emission
+        self.go_target_syntax_bundle()
+            .map(|bundle| bundle.clean_emission_spec)
+    }
+
+    /// Typed accessor for the Go target authority bundle pairing
+    /// `go_language` with its `CleanEmissionContract`.
+    pub fn go_target_syntax_bundle(&self) -> Option<TargetSyntaxBundle> {
+        let language_spec = self.target_syntax.go_language?;
+        Some(TargetSyntaxBundle {
+            language_spec,
+            clean_emission_spec: *self
+                .target_syntax
+                .clean_emission_by_language
+                .get(&language_spec)?,
+        })
     }
 
     /// Typed accessor for the Python target-language syntax bundle
@@ -2320,7 +2344,52 @@ impl Dag {
     /// `go_clean_emission_spec`; emitter parses the structural
     /// fields and dispatches on the rule variants.
     pub fn python_clean_emission_spec(&self) -> Option<DeclarationId> {
-        self.target_syntax.python_clean_emission
+        self.python_target_syntax_bundle()
+            .map(|bundle| bundle.clean_emission_spec)
+    }
+
+    /// Typed accessor for the Python target authority bundle pairing
+    /// `python_language` with its `CleanEmissionContract`.
+    pub fn python_target_syntax_bundle(&self) -> Option<TargetSyntaxBundle> {
+        let language_spec = self.target_syntax.python_language?;
+        Some(TargetSyntaxBundle {
+            language_spec,
+            clean_emission_spec: *self
+                .target_syntax
+                .clean_emission_by_language
+                .get(&language_spec)?,
+        })
+    }
+
+    /// Shared target-authority lookup keyed by the target's
+    /// `LanguageSpec` declaration id. Consumers that already traffic
+    /// in the shared emit-model language surface should resolve the
+    /// language first, then ask for the corresponding target bundle
+    /// through this accessor rather than reconstructing the
+    /// `LanguageSpec -> CleanEmissionContract` pairing themselves.
+    pub fn target_syntax_bundle_for_language(
+        &self,
+        language_spec: DeclarationId,
+    ) -> Option<TargetSyntaxBundle> {
+        Some(TargetSyntaxBundle {
+            language_spec,
+            clean_emission_spec: *self
+                .target_syntax
+                .clean_emission_by_language
+                .get(&language_spec)?,
+        })
+    }
+
+    /// Shared clean-emission lookup keyed by the target's
+    /// `LanguageSpec` declaration id. This is the
+    /// `TargetSyntaxBundle` projection for consumers that only need
+    /// the clean-emission side of the pair.
+    pub fn clean_emission_spec_for_language(
+        &self,
+        language_spec: DeclarationId,
+    ) -> Option<DeclarationId> {
+        self.target_syntax_bundle_for_language(language_spec)
+            .map(|bundle| bundle.clean_emission_spec)
     }
 
     /// Typed accessor for the cached `std.list.List` template.
@@ -2746,9 +2815,6 @@ impl Dag {
         self.target_syntax.rust_language = self.declaration_by_name("rust_language").map(|d| d.id);
         self.target_syntax.rust_rendering =
             self.declaration_by_name("rust_rendering").map(|d| d.id);
-        self.target_syntax.rust_clean_emission = self
-            .declaration_by_name("rust_clean_emission")
-            .map(|d| d.id);
         self.target_syntax.rust_execution_model = self
             .declaration_by_name("rust_execution_model")
             .map(|d| d.id);
@@ -2756,14 +2822,10 @@ impl Dag {
         self.target_syntax.go_language = self.declaration_by_name("go_language").map(|d| d.id);
         self.target_syntax.go_execution_model =
             self.declaration_by_name("go_execution_model").map(|d| d.id);
-        self.target_syntax.go_clean_emission =
-            self.declaration_by_name("go_clean_emission").map(|d| d.id);
         self.target_syntax.python_language =
             self.declaration_by_name("python_language").map(|d| d.id);
         self.target_syntax.python_target = self.declaration_by_name("python_target").map(|d| d.id);
-        self.target_syntax.python_clean_emission = self
-            .declaration_by_name("python_clean_emission")
-            .map(|d| d.id);
+        self.populate_target_clean_emission_bindings();
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
 
         // `PatternBindingRule` variant resolution. Walks the
@@ -2851,6 +2913,88 @@ impl Dag {
         self.verifier_output_policy_variants = verifier_policy_variants;
     }
 
+    fn populate_target_clean_emission_bindings(&mut self) {
+        self.target_syntax.clean_emission_by_language.clear();
+        let Some(binding_meta) = self
+            .declaration_by_name("TargetCleanEmissionBinding")
+            .map(|d| d.id)
+        else {
+            return;
+        };
+        let language_spec_meta = self.declaration_by_name("LanguageSpec").map(|d| d.id);
+        let clean_emission_meta = self
+            .declaration_by_name("CleanEmissionContract")
+            .map(|d| d.id);
+        let mut clean_emission_by_language = HashMap::new();
+        let mut duplicate_languages = HashSet::new();
+        let mut diagnostics = Vec::new();
+
+        for declaration in &self.declarations {
+            if declaration.meta_tag != Some(binding_meta) {
+                continue;
+            }
+            let Some(ValueBody::Structural { fields }) = declaration.value_body.as_ref() else {
+                diagnostics.push(malformed_target_clean_emission_binding(
+                    declaration,
+                    "must carry a structural value_body",
+                ));
+                continue;
+            };
+            let Some(language) = binding_reference_field(fields, "language") else {
+                diagnostics.push(malformed_target_clean_emission_binding(
+                    declaration,
+                    "is missing `language: DeclarationRef`",
+                ));
+                continue;
+            };
+            let Some(clean_emission) = binding_reference_field(fields, "clean_emission") else {
+                diagnostics.push(malformed_target_clean_emission_binding(
+                    declaration,
+                    "is missing `clean_emission: DeclarationRef`",
+                ));
+                continue;
+            };
+            if language_spec_meta
+                .is_some_and(|meta| self.declaration(language).meta_tag != Some(meta))
+            {
+                diagnostics.push(malformed_target_clean_emission_binding(
+                    declaration,
+                    "`language` must reference a LanguageSpec declaration",
+                ));
+                continue;
+            }
+            if clean_emission_meta
+                .is_some_and(|meta| self.declaration(clean_emission).meta_tag != Some(meta))
+            {
+                diagnostics.push(malformed_target_clean_emission_binding(
+                    declaration,
+                    "`clean_emission` must reference a CleanEmissionContract declaration",
+                ));
+                continue;
+            }
+            if duplicate_languages.contains(&language) {
+                continue;
+            }
+            if clean_emission_by_language
+                .insert(language, clean_emission)
+                .is_some()
+            {
+                clean_emission_by_language.remove(&language);
+                duplicate_languages.insert(language);
+                diagnostics.push(duplicate_target_clean_emission_binding(
+                    self,
+                    declaration,
+                    language,
+                ));
+            }
+        }
+
+        self.target_syntax.clean_emission_by_language = clean_emission_by_language;
+        for diagnostic in diagnostics {
+            self.attach_diagnostic(diagnostic);
+        }
+    }
+
     pub fn param_of(&self, member: NodeId, slot: usize) -> Option<ParamRef> {
         let bind = self.node(member).as_bind()?;
         bind.params.get(slot)?;
@@ -2906,5 +3050,150 @@ impl Dag {
 impl Default for Dag {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn binding_reference_field(fields: &[(String, FieldValue)], label: &str) -> Option<DeclarationId> {
+    fields.iter().find_map(|(field_label, value)| {
+        if field_label != label {
+            return None;
+        }
+        match value {
+            FieldValue::Reference(id) => Some(*id),
+            _ => None,
+        }
+    })
+}
+
+fn malformed_target_clean_emission_binding(declaration: &Declaration, detail: &str) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: format!(
+            "TargetCleanEmissionBinding `{}` {detail}",
+            declaration
+                .name
+                .as_deref()
+                .unwrap_or("<anonymous target clean emission binding>")
+        ),
+        span: declaration.span.clone(),
+        fixes: Vec::new(),
+    }
+}
+
+fn duplicate_target_clean_emission_binding(
+    dag: &Dag,
+    declaration: &Declaration,
+    language: DeclarationId,
+) -> Diagnostic {
+    let language_name = dag
+        .declaration(language)
+        .name
+        .as_deref()
+        .unwrap_or("<anonymous language>");
+    Diagnostic::ResolveError {
+        name: format!(
+            "TargetCleanEmissionBinding `{}` duplicates the clean-emission authority for language `{language_name}`",
+            declaration
+                .name
+                .as_deref()
+                .unwrap_or("<anonymous target clean emission binding>")
+        ),
+        span: declaration.span.clone(),
+        fixes: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn binding_fields(language: DeclarationId, clean_emission: DeclarationId) -> ValueBody {
+        ValueBody::Structural {
+            fields: vec![
+                ("language".to_string(), FieldValue::Reference(language)),
+                (
+                    "clean_emission".to_string(),
+                    FieldValue::Reference(clean_emission),
+                ),
+            ],
+        }
+    }
+
+    #[test]
+    fn malformed_target_clean_emission_binding_fails_closed() {
+        let mut dag = Dag::new();
+        let binding = dag
+            .declaration_by_name("rust_clean_emission_binding")
+            .expect("rust binding exists")
+            .id;
+        let rust_language = dag.rust_language_spec().expect("rust language");
+        dag.declaration_mut(binding).value_body =
+            Some(binding_fields(rust_language, rust_language));
+
+        dag.populate_primitive_cache();
+
+        assert!(
+            dag.target_syntax_bundle_for_language(rust_language)
+                .is_none(),
+            "malformed binding should not populate a target authority bundle"
+        );
+        assert!(
+            dag.rust_clean_emission_spec().is_none(),
+            "target-specific clean-emission accessor must also fail closed on malformed bindings"
+        );
+        assert!(
+            dag.diagnostics().iter().any(|(_, diagnostic)| matches!(
+                diagnostic,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("rust_clean_emission_binding")
+                        && name.contains("CleanEmissionContract")
+            )),
+            "expected malformed TargetCleanEmissionBinding diagnostic, got {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn duplicate_target_clean_emission_binding_fails_closed() {
+        let mut dag = Dag::new();
+        let binding_meta = dag
+            .declaration_by_name("TargetCleanEmissionBinding")
+            .expect("binding meta exists")
+            .id;
+        let rust_language = dag.rust_language_spec().expect("rust language");
+        let go_clean_emission = dag.go_clean_emission_spec().expect("go clean emission");
+        let duplicate = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: duplicate,
+            name: Some("duplicate_rust_clean_emission_binding".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(binding_meta)),
+            type_params: Vec::new(),
+            meta_tag: Some(binding_meta),
+            inhabits: None,
+            value_body: Some(binding_fields(rust_language, go_clean_emission)),
+            refinement: None,
+            span: SourceSpan::new("duplicate_binding_test.v3", 0, 1),
+        });
+
+        dag.populate_primitive_cache();
+
+        assert!(
+            dag.target_syntax_bundle_for_language(rust_language)
+                .is_none(),
+            "duplicate language bindings should remove the ambiguous authority"
+        );
+        assert!(
+            dag.rust_clean_emission_spec().is_none(),
+            "target-specific clean-emission accessor must project the same ambiguous authority as None"
+        );
+        assert!(
+            dag.diagnostics().iter().any(|(_, diagnostic)| matches!(
+                diagnostic,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("duplicate_rust_clean_emission_binding")
+                        && name.contains("duplicates the clean-emission authority")
+            )),
+            "expected duplicate TargetCleanEmissionBinding diagnostic, got {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
     }
 }

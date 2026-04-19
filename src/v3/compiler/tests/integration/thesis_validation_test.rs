@@ -8,6 +8,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, PortState, TransformTarget};
+use v3_compiler::diagnostics::{render_diagnostic_for_target, DiagnosticStyleTarget};
 use v3_compiler::lens_cost::cost_of;
 
 use crate::common::cached_compile_to_dag;
@@ -45,6 +46,10 @@ fn bind_named<'a>(dag: &'a Dag, name: &str) -> &'a v3_compiler::dag::BindNode {
 fn bind_cost(dag: &Dag, name: &str) -> usize {
     let port = bind_named(dag, name).value;
     crate::common::require_fixture_cost_usize(cost_of(dag, &port), &format!("bind `{name}`"))
+}
+
+fn rendered_rust_diagnostic(dag: &Dag, diagnostic: &Diagnostic) -> String {
+    render_diagnostic_for_target(dag, DiagnosticStyleTarget::Rust, diagnostic).expect("render")
 }
 
 #[test]
@@ -103,15 +108,72 @@ fn read(point: Point) -> Int = point.c
         "missing-field access must fail closed at the bind output; got {:?}",
         dag.port(bind.value).state()
     );
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. } if name.contains("field `c` does not exist") => {
+                Some(diag)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected missing-field diagnostic naming `c`, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
     assert!(
-        dag.diagnostics().iter().any(|(_, diag)| matches!(
-            diag,
-            Diagnostic::ResolveError { name, .. }
-                if name.contains("field `c` does not exist")
-        )),
-        "expected missing-field diagnostic naming `c`, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
+        !diag.fixes().is_empty(),
+        "missing-field diagnostic should carry at least one correction"
     );
+    let rendered = rendered_rust_diagnostic(&dag, diag);
+    assert!(
+        rendered.contains("FIX (option 1):"),
+        "rendered diagnostic should show FIX lines, got {rendered}"
+    );
+    assert!(
+        rendered.contains("\n    \"a\";"),
+        "rendered diagnostic should include pasteable .dag fix source, got {rendered}"
+    );
+}
+
+#[test]
+fn t1_2_chained_missing_field_fix_targets_the_missing_segment() {
+    let src = "\
+type Inner { leaf: Int }
+type Outer { ok: Inner }
+fn read(x: Outer) -> Int = x.bad.leaf
+";
+    let bad_start = src.find("bad").expect("fixture contains missing field") as u32;
+    let dag = match compile_to_dag(src, "t1_2_chained_missing_field.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("field `bad` does not exist") =>
+            {
+                Some(diag)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected chained missing-field diagnostic, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
+    let fix = diag
+        .fixes()
+        .iter()
+        .find(|fix| fix.new_source == "ok")
+        .expect("missing-field fix should suggest `ok`");
+    assert_eq!(fix.span.byte_start, bad_start);
+    assert_eq!(fix.span.byte_end, bad_start + "bad".len() as u32);
 }
 
 #[test]
@@ -130,15 +192,62 @@ fn read(x: AB) -> Int = match x { A => 1 }
         "non-exhaustive match must fail closed at the bind output; got {:?}",
         dag.port(bind.value).state()
     );
-    assert!(
-        dag.diagnostics().iter().any(|(_, diag)| matches!(
-            diag,
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
             Diagnostic::ResolveError { name, .. }
-                if name.contains("non-exhaustive match")
-                    && name.contains("`B`")
-        )),
-        "expected non-exhaustive match diagnostic naming `B`, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
+                if name.contains("non-exhaustive match") && name.contains("`B`") =>
+            {
+                Some(diag)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected non-exhaustive match diagnostic naming `B`, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        diag.fixes()
+            .iter()
+            .any(|fix| fix.description.contains("`B`")),
+        "non-exhaustive match diagnostic should suggest the missing `B` arm"
+    );
+}
+
+#[test]
+fn t1_3_empty_match_correction_seeds_first_arm_without_leading_comma() {
+    let src = "\
+type AB = A | B
+fn read(x: AB) -> Int = match x {}
+";
+    let dag = match compile_to_dag(src, "t1_3_empty_match.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. } if name.contains("non-exhaustive match") => {
+                Some(diag)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected non-exhaustive match diagnostic, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        diag.fixes()
+            .iter()
+            .any(|fix| !fix.new_source.starts_with(", ") && fix.new_source == "A => 1"),
+        "empty match fix should seed a valid first arm, got {:?}",
+        diag.fixes()
     );
 }
 
@@ -174,10 +283,17 @@ fn t1_4_type_mismatch_produces_a_typemismatch_diagnostic() {
         .expect("diagnostic recorded for mismatched value");
     match diag {
         Diagnostic::TypeMismatch {
-            expected, actual, ..
+            expected,
+            actual,
+            fixes,
+            ..
         } => {
             assert_eq!(*expected, primitive_shape(&dag, "Bool"));
             assert_eq!(*actual, primitive_shape(&dag, "Int"));
+            assert!(
+                !fixes.is_empty(),
+                "type mismatch diagnostic should carry at least one correction"
+            );
         }
         other => panic!("expected TypeMismatch, got {other:?}"),
     }
@@ -195,6 +311,63 @@ fn t1_4_type_mismatch_does_not_cascade_fabricated_diagnostics() {
     assert!(
         !dag.diagnostics().contains(bind.value),
         "well-typed downstream binding should not receive a fabricated diagnostic"
+    );
+}
+
+#[test]
+fn t1_4_named_payload_sum_fix_renders_supported_constructor_syntax() {
+    let src = "\
+type MaybeInt = Some { value: Int } | None
+let x: MaybeInt = true
+";
+    let dag = match compile_to_dag(src, "t1_4_named_payload_sum_fix.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let bind = bind_named(&dag, "x");
+    let diag = dag
+        .diagnostics()
+        .get(bind.value)
+        .expect("diagnostic recorded for mismatched sum value");
+    let Diagnostic::TypeMismatch { fixes, .. } = diag else {
+        panic!("expected TypeMismatch, got {diag:?}");
+    };
+    let fix = fixes
+        .iter()
+        .find(|fix| fix.new_source == "Some(1)")
+        .unwrap_or_else(|| panic!("expected positional constructor witness, got {fixes:?}"));
+    let rendered = rendered_rust_diagnostic(&dag, diag);
+    assert!(
+        rendered.contains("\n    \"Some(1)\";"),
+        "rendered diagnostic should show the supported positional constructor syntax, got {rendered}"
+    );
+    assert_eq!(fix.new_source, "Some(1)");
+}
+
+#[test]
+fn t1_4_refined_declarations_do_not_get_shape_only_fix_witnesses() {
+    let src = "\
+fn div(n: Int, d: Int where d != 0) -> Int = n
+fn bad() -> Int = div(1, nope)
+";
+    let dag = match compile_to_dag(src, "t1_4_refined_no_fix_witness.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. } if name == "nope" => Some(diag),
+            _ => None,
+        })
+        .expect("diagnostic recorded for unresolved name in refined argument position");
+    let Diagnostic::ResolveError { fixes, .. } = diag else {
+        panic!("expected ResolveError, got {diag:?}");
+    };
+    assert!(
+        fixes.is_empty(),
+        "refined declarations must fail closed instead of emitting a base-shape witness; got {fixes:?}"
     );
 }
 
@@ -243,14 +416,26 @@ fn t1_5_missing_descent_is_rejected() {
         matches!(dag.port(bind.value).state(), PortState::Unresolved),
         "non-decreasing recursion must fail closed"
     );
-    assert!(
-        dag.diagnostics().iter().any(|(_, diag)| matches!(
-            diag,
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
             Diagnostic::ResolveError { name, .. }
-                if name.contains("cannot prove recursion in `diverge` terminates")
-        )),
-        "expected descent-proof diagnostic, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
+                if name.contains("cannot prove recursion in `diverge` terminates") =>
+            {
+                Some(diag)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected descent-proof diagnostic, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        !diag.fixes().is_empty(),
+        "termination diagnostic should carry at least one correction"
     );
 }
 
@@ -278,14 +463,24 @@ fn bad(m: Maybe<Int>) -> Int = m
         matches!(dag.port(bind.value).state(), PortState::Unresolved),
         "using an option-like value without matching must fail closed"
     );
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. } if name.contains("declared signature") => {
+                Some(diag)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a declared-signature diagnostic, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
     assert!(
-        dag.diagnostics().iter().any(|(_, diag)| matches!(
-            diag,
-            Diagnostic::ResolveError { name, .. }
-                if name.contains("declared signature")
-        )),
-        "expected a declared-signature diagnostic, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
+        !diag.fixes().is_empty(),
+        "declared-signature diagnostic should carry at least one correction"
     );
 }
 
@@ -304,13 +499,47 @@ fn bad(m: Maybe<Int>) -> Int = unwrap(m)
         matches!(dag.port(bind.value).state(), PortState::Unresolved),
         "unknown unwrap primitive must fail closed"
     );
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. } if name == "unwrap" => Some(diag),
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected unresolved callable diagnostic for `unwrap`, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
     assert!(
-        dag.diagnostics().iter().any(|(_, diag)| matches!(
-            diag,
-            Diagnostic::ResolveError { name, .. } if name == "unwrap"
-        )),
-        "expected unresolved callable diagnostic for `unwrap`, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
+        !diag.fixes().is_empty(),
+        "unresolved callable diagnostic should carry at least one correction"
+    );
+}
+
+#[test]
+fn t2_4_unresolved_calls_still_lower_argument_diagnostics() {
+    let src = "\
+type Maybe<T> = Some(T) | None
+fn bad(m: Maybe<Int>) -> Int = unknown(unwrap(m))
+";
+    let dag = match compile_to_dag(src, "t2_4_unresolved_call_keeps_arg_diags.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let diagnostics = dag.diagnostics().iter().map(|(_, d)| d).collect::<Vec<_>>();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diag| matches!(diag, Diagnostic::ResolveError { name, .. } if name == "unknown")),
+        "outer unresolved call diagnostic should be preserved; got {diagnostics:?}"
+    );
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diag| matches!(diag, Diagnostic::ResolveError { name, .. } if name == "unwrap")),
+        "argument diagnostics must still lower under unresolved calls; got {diagnostics:?}"
     );
 }
 
