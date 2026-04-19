@@ -55,8 +55,8 @@
 use std::collections::HashMap;
 
 use crate::dag::{
-    AtomPayload, CardinalityBound, Dag, DeclarationId, Field, FieldValue, PortId,
-    TypeConnective, ValueBody,
+    AtomPayload, CardinalityBound, Dag, DeclarationId, Field, FieldValue, PortId, TypeConnective,
+    ValueBody,
 };
 use crate::types::TypeShape;
 
@@ -441,30 +441,24 @@ fn example_source_for_decl_inner(
 }
 
 fn builtin_example_source(dag: &Dag, declaration: DeclarationId, depth: usize) -> Option<String> {
-    if dag
-        .int_shape()
-        .is_some_and(|shape| decl_matches_example_identity(dag, declaration, shape.declaration, depth))
-    {
+    if dag.int_shape().is_some_and(|shape| {
+        decl_matches_example_identity(dag, declaration, shape.declaration, depth)
+    }) {
         return Some("1".to_string());
     }
-    if dag
-        .bool_shape()
-        .is_some_and(|shape| decl_matches_example_identity(dag, declaration, shape.declaration, depth))
-    {
+    if dag.bool_shape().is_some_and(|shape| {
+        decl_matches_example_identity(dag, declaration, shape.declaration, depth)
+    }) {
         return Some("true".to_string());
     }
-    if dag
-        .string_shape()
-        .is_some_and(|shape| decl_matches_example_identity(dag, declaration, shape.declaration, depth))
-    {
+    if dag.string_shape().is_some_and(|shape| {
+        decl_matches_example_identity(dag, declaration, shape.declaration, depth)
+    }) {
         return Some("\"x\"".to_string());
     }
-    if dag
-        .list_template()
-        .is_some_and(|list_template| {
-            decl_matches_example_identity(dag, declaration, list_template, depth)
-        })
-    {
+    if dag.list_template().is_some_and(|list_template| {
+        decl_matches_example_identity(dag, declaration, list_template, depth)
+    }) {
         return Some("[]".to_string());
     }
     None
@@ -666,7 +660,7 @@ mod tests {
         dag.declaration_mut(list_decl).name = Some("Sequence".to_string());
 
         let list_instantiation = dag.alloc_declaration_id();
-        dag.push_declaration(Declaration {
+        dag.push_declaration(crate::dag::Declaration {
             id: list_instantiation,
             name: Some("SequenceOfInt".to_string()),
             connective: TypeConnective::Instantiation {
@@ -681,13 +675,22 @@ mod tests {
             span: SourceSpan::new("diagnostics_test.v3", 0, 1),
         });
 
-        assert_eq!(example_source_for_decl(&dag, int_decl).as_deref(), Some("1"));
-        assert_eq!(example_source_for_decl(&dag, bool_decl).as_deref(), Some("true"));
+        assert_eq!(
+            example_source_for_decl(&dag, int_decl).as_deref(),
+            Some("1")
+        );
+        assert_eq!(
+            example_source_for_decl(&dag, bool_decl).as_deref(),
+            Some("true")
+        );
         assert_eq!(
             example_source_for_decl(&dag, string_decl).as_deref(),
             Some("\"x\"")
         );
-        assert_eq!(example_source_for_decl(&dag, list_decl).as_deref(), Some("[]"));
+        assert_eq!(
+            example_source_for_decl(&dag, list_decl).as_deref(),
+            Some("[]")
+        );
         assert_eq!(
             example_source_for_decl(&dag, list_instantiation).as_deref(),
             Some("[]")
