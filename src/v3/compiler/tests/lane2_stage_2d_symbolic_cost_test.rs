@@ -535,7 +535,14 @@ fn format_rust_source(source: &str) -> String {
     String::from_utf8(output.stdout).expect("rustfmt output should be utf-8")
 }
 
+// Cold-init path for the `cost.dag` OnceLock cache key. Sibling
+// `cost_generated_module_matches_checked_in_snapshot` also compiles
+// cost.dag and reuses the cached Dag, so this test legitimately
+// bears the one-time compile cost on CI (~2.5s on cold runners,
+// default 2s budget is tight). Matches the rationale behind the
+// sibling's 15s snapshot-compare budget below.
 budgeted_test! {
+    5_000,
     cost_dag_compiles_cleanly,
     {
         let source = std::fs::read_to_string(lens_path()).expect("read cost.dag");
