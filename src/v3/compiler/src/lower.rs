@@ -535,7 +535,7 @@ fn lower_parameter_refinement(
     dag.push_declaration(Declaration {
         id: refined_id,
         name: None,
-        connective: TypeConnective::Atom(AtomPayload::ResolvedIdentifier(base_decl_id)),
+        connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(base_decl_id)),
         type_params: Vec::new(),
         meta_tag: None,
         inhabits: None,
@@ -930,7 +930,7 @@ fn build_narrowed_refinement(
     dag.push_declaration(Declaration {
         id: refined_id,
         name: None,
-        connective: TypeConnective::Atom(AtomPayload::ResolvedIdentifier(true_base_decl)),
+        connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(true_base_decl)),
         type_params: Vec::new(),
         meta_tag: None,
         inhabits: None,
@@ -2106,11 +2106,11 @@ fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {
                 continue;
             }
             // Structural phase transition: rewrite the connective from
-            // `UnresolvedIdentifier(name)` to `ResolvedIdentifier(target)`.
+            // `UnresolvedIdentifier(name)` to `ResolvedByName(target)`.
             // The phase is now visible in the variant, not hidden in
             // an Option field.
             dag.declaration_mut(decl_id).connective =
-                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(target));
+                TypeConnective::Atom(AtomPayload::ResolvedByName(target));
         } else if (decl_id.raw() as usize) >= strict_from {
             // Strict mode for user-lowering stubs: any
             // `UnresolvedIdentifier` that survives the sweep is a

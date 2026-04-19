@@ -3034,7 +3034,7 @@ fn materialize_substituted_refined_decl(
     dag.push_declaration(Declaration {
         id: fresh_refined_id,
         name: None,
-        connective: TypeConnective::Atom(AtomPayload::ResolvedIdentifier(substituted_base)),
+        connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(substituted_base)),
         type_params: Vec::new(),
         meta_tag: None,
         inhabits: None,
