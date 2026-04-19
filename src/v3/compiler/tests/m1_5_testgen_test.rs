@@ -574,23 +574,3 @@ fn structural_predicates_cover_four_regression_fixtures() {
         "expected an unresolved port-state predicate to match the non-exhaustive fixture"
     );
 }
-
-#[test]
-#[ignore]
-fn debug_dimension_report_compile() {
-    let src = "let witness: DimensionReport<Int> = { dimension_name: \"x\", composed: 1, violations: empty(), witnesses: empty() }\n";
-    let r = compile_to_dag(src, "x.v3");
-    match &r {
-        Ok(d) => eprintln!(
-            "ok, diags: {:?}",
-            d.diagnostics().iter().collect::<Vec<_>>()
-        ),
-        Err(CompileError::Semantic(d)) => {
-            for (_port, diag) in d.diagnostics().iter() {
-                eprintln!("diag: {:?}", diag);
-            }
-        }
-        Err(e) => eprintln!("other: {:?}", e),
-    }
-    assert!(r.is_ok(), "{r:?}");
-}

@@ -583,12 +583,23 @@ impl<'a> TestgenLens<'a> {
             return None;
         }
         let decl = self.dag.declaration(decl_id);
-        if self
-            .render_type_expr(decl_id, subst)
-            .is_some_and(|ty| ty.starts_with("List<"))
-            && depth > 0
-        {
-            return Some("empty()".to_string());
+        // Nested `List<…>` tails use `empty<element>()` so distinct list fields
+        // (e.g. `List<Diagnostic>` vs `List<Witness<Int>>` on `DimensionReport`)
+        // do not share one implicit `empty()` template binding (infer conflict).
+        if depth > 0 {
+            if let TypeConnective::Instantiation {
+                template,
+                arguments,
+            } = &decl.connective
+            {
+                if self.dag.declaration(*template).name.as_deref() == Some("List") {
+                    if let Some(arg) = arguments.first() {
+                        if let Some(inner_ty) = self.render_type_expr(arg.value, subst) {
+                            return Some(format!("empty<{inner_ty}>()"));
+                        }
+                    }
+                }
+            }
         }
         match decl.name.as_deref() {
             Some("Int") => Some("1".to_string()),
