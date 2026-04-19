@@ -94,29 +94,34 @@ could be anywhere in ~30k lines of compiler code.
 Instead, construct the exact shape under test and run the lens
 against it.
 
-**Availability today.** Minimal-Dag construction is natural for
-**crate-internal unit tests** (`#[cfg(test)] mod tests` inside
-`src/v3/compiler/src/`) that can reach `pub(crate)` helpers —
-`push_literal_value`, `push_transform`, `alloc_port`, and
-friends are crate-private today. For **integration tests** in
-`tests/`, the public surface of `Dag` is narrow (`Dag::new()`,
-`declaration_by_name`, typed handle accessors, primitive
-shape lookups) — the minimal-construction path requires a
-broader public builder API, which is a **tracked follow-up**
-and not yet available.
+**Availability today — honest read of the current tree.** The
+public surface of `Dag` is narrow: `Dag::new()`,
+`declaration_by_name`, typed handle accessors, primitive shape
+lookups. Crate-private there's one builder helper
+(`Dag::alloc_port`); a full minimal-construction API
+(`push_value`, `push_transform`, `push_bind`, etc.) **does
+not yet exist**. This means the guidance above is today more
+aspiration than available workflow.
 
-**Practical guidance while the builder surface is limited:**
+**Tracked follow-up:** land a public (or at minimum
+`pub(crate)`-with-test-harness-access) builder surface on
+`Dag` covering the behaviors lenses analyze. The absence of
+that surface is the single biggest blocker to the
+`~75% unit` target ratio.
 
-- Prefer crate-internal `#[cfg(test)]` unit tests for lens /
-  accessor / single-pass behaviors. Construction helpers are
-  in scope.
-- For integration tests in `tests/`, `compile_to_dag(small_fixture)`
-  is often the only available entry point. Keep the fixture
+**Practical guidance for now:**
+
+- For crate-internal unit tests (`#[cfg(test)] mod tests`
+  inside `src/v3/compiler/src/`): `alloc_port` and the other
+  `pub(crate)` APIs are in scope. Write tests that need only
+  those.
+- For integration tests in `tests/`: `compile_to_dag(small_fixture)`
+  is the practical entry point today. Keep the fixture
   minimal (single `let`, single `fn`) and assert on the lens
   output, not pipeline intermediates.
-- As the public builder API grows, port integration tests
-  that test narrow subjects (individual lenses) off
-  `compile_to_dag` onto the builder.
+- When you find yourself wanting a `push_*` helper that
+  doesn't exist, proposing it is the right move — see the
+  follow-up above.
 
 Full-pipeline `compile_to_dag` is the **intended** entry point
 for:
@@ -156,11 +161,13 @@ that does `dag.declaration_by_name("Foo")` is pinning the name,
 not the structure — use typed `DeclarationId` handles once
 resolved).
 
-**Constructing a minimal Dag** — helpers on `Dag` that produce
-specific shapes (`push_value`, `push_transform`, `push_bind`,
-`alloc_port`) are the primary mocking surface. If the helper
-you need doesn't exist yet, adding it is usually a better
-investment than another integration test.
+**Constructing a minimal Dag — eventual shape.** Builder
+helpers on `Dag` that produce specific shapes (value literals,
+transforms, binds, port allocations) are the intended mocking
+surface. Today only `alloc_port` exists as a `pub(crate)`
+helper; the rest are the tracked follow-up named earlier in
+this document. When proposing a new helper, match the natural
+per-variant granularity of `Behavior` / `TypeConnective`.
 
 **When compile IS the unit** — parser / lowering / inference
 tests legitimately test the compile pipeline. Those tests use
