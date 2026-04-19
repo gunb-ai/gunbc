@@ -522,6 +522,10 @@ Follow-up (not blocking): emission for narrowed ports currently errors if `emit_
 
 **Follow-up (not blocking):** `lens_testgen.rs` still skips some substrate declaration names (`BoolPortRef`, `BranchArm`, …) by string — replace with a structural constructibility fact when a consumer needs it (ChatGPT review; same pattern as other lens testgen debt).
 
+**Rust reflection binding (Codex / INVARIANTS “Explicit boundary contracts”):** `rust_value_node` and `rust_bind_node` realize `lane2_workflow` with `AccessorMethod("lane2_workflow")` (`borrowed_read: true`), backed by `ValueNode::lane2_workflow` / `BindNode::lane2_workflow` → `Option<&WorkflowEffect>`. Emitted Rust does **not** treat `Option<Box<WorkflowEffect>>` as the substrate-facing type.
+
+**Part 3 deferral (diagnostic vs authoring lowering):** `Diagnostic::BranchConditionNotBool` and `bool_port_for_branch_condition_or_diagnose` are implemented and exercised in [`lane2_stage_2b_db18_test.rs`](src/v3/compiler/tests/lane2_stage_2b_db18_test.rs). Wiring **user-authored** `WorkflowEffect` / `BranchEffect` surfaces so real branch conditions always go through that helper (vs tests or `try_register_lane2_workflow_effect` alone) is **Part 3** — the `data … WorkflowEffect` authoring + lowering pipeline — and is out of scope for the Part 2 carrier + reflection slice.
+
 **Cleared debt rows (were: reflection boundary + R1→R2 reconciliation):** `lane2_workflow` is on the reflected substrate; R2 handle + list shapes + fixtures landed together with the accessor + diagnostic path (see **PR #545** and related). **`Dag::try_register_lane2_workflow_effect`** remains the **public staging / test / integration write path** until Part 3 lowering populates `lane2_workflow` from user surface — it is not `cfg(test)`-only and is not redundant with reflection (reflection is read; register is write).
 
 ### Lane 2 Stage 2c — test infrastructure
