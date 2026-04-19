@@ -2,6 +2,7 @@ use super::*;
 use crate::operators::OperatorKind;
 use crate::types::TypeShape;
 
+#[allow(dead_code)]
 impl Dag {
     /// Test-facing builder: allocate a detached port that already carries a
     /// resolved shape. This keeps unit-style graph construction on the same
