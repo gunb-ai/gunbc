@@ -9,7 +9,7 @@
 //!
 //! 1. **HashMap iteration order** — ratchet: no unstable map iteration in emit;
 //!    mechanical follow-up: sorted keys / `BTreeMap` (see `emit.rs` policy).
-//!    *Structural hook:* `emit_rs_iteration_policy_is_tracked` documents current
+//!    *Structural hook:* `emit_rs_hash_iteration_debt_is_visible_to_audit` documents current
 //!    `emit.rs` surface until Lane 1e dissolves remaining `HashMap` uses.
 //! 2. **HashSet iteration order** — same class as (1).
 //! 3. **Timestamp / build metadata embedding** — `assert_no_time_or_line_macros`.
