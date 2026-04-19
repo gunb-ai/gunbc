@@ -40,8 +40,18 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // Removing an entry means the owning lane has retired the file;
 // adding an entry is forbidden outside SG-0 without director
 // sign-off.
+// SG-4 prep — `regen_infer_helpers.rs` is the +1 ratchet bump that
+// pays for the first .dag-authority slice of `infer.rs`. The
+// extracted helper lives in `src/v3/lenses/infer_helpers.dag` and
+// renders into `src/v3/compiler/src/infer_helpers_generated.rs`
+// (excluded from the census via the `// AUTO-GENERATED` marker).
+// SG-6 owns the dissolution: when the lens-style regen drivers fold
+// into a single generic regen target, all six `regen_*.rs` lines
+// (including this one) collapse to one. Director sign-off
+// (clever-swift-141 brief, 2026-04-19) covers the temporary +1.
 const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/build.rs",
+    "src/v3/compiler/src/bin/regen_infer_helpers.rs",
     "src/v3/compiler/src/bin/regen_lens_cost.rs",
     "src/v3/compiler/src/bin/regen_lens_cost_symbolic.rs",
     "src/v3/compiler/src/bin/regen_lens_structural_resolution.rs",

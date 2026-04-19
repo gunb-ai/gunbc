@@ -33,6 +33,7 @@ use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
     Diagnostic, SourceSpan,
 };
+use crate::infer_helpers::behavior_output_port;
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
 use crate::types::TypeShape;
@@ -4214,16 +4215,6 @@ fn transform_target_display_name(dag: &Dag, target: &TransformTarget) -> String 
         TransformTarget::Callable(id) => target_display_name(dag, *id),
         TransformTarget::FieldProject { field_label, .. } => format!(".{field_label}"),
         TransformTarget::Operator(op_kind) => op_kind.symbol().to_string(),
-    }
-}
-
-fn behavior_output_port(node: &Behavior) -> PortId {
-    match node {
-        Behavior::Value(v) => v.output,
-        Behavior::Transform(t) => t.output,
-        Behavior::Branch(b) => b.output,
-        Behavior::Loop(l) => l.output,
-        Behavior::Bind(b) => b.value,
     }
 }
 

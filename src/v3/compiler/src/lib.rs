@@ -157,6 +157,34 @@ pub mod lens_structural_resolution {
 mod bootstrap;
 mod dimension;
 mod infer;
+
+/// SG-4 prep: first .dag-authority slice of `infer.rs`. Authority
+/// lives in `src/v3/lenses/infer_helpers.dag`; the Rust projection is
+/// auto-emitted into `src/v3/compiler/src/infer_helpers_generated.rs`
+/// and consumed by `infer.rs` via
+/// `crate::infer_helpers::behavior_output_port`. Editing the helper
+/// means editing the `.dag` — there is no hand-written implementation
+/// on this crate side. SG-6 owns folding the standalone regen driver
+/// and relocating extracted helper modules out of `lenses/` once the
+/// consolidated regen target lands.
+pub(crate) mod infer_helpers {
+    #[allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        unused_variables,
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if
+    )]
+    mod generated {
+        use crate::dag::*;
+
+        include!("infer_helpers_generated.rs");
+    }
+
+    pub(crate) use generated::behavior_output_port;
+}
+
 pub mod lens_idempotency;
 pub mod lens_parallelism;
 mod lower;
