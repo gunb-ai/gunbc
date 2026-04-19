@@ -196,4 +196,3 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
         }
     }
 }
-
