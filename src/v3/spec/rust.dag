@@ -939,9 +939,9 @@ data rust_type_applications: TypeApplicationSyntax = {
 }
 
 data rust_type_defs: TypeDefinitionSyntax = {
-  struct_def: "pub struct {name} { {fields} }"
+  struct_def: "#[derive(Clone, Debug)]\npub struct {name} { {fields} }"
   struct_field: "pub {name}: {type},"
-  enum_def: "pub enum {name} { {variants} }"
+  enum_def: "#[derive(Clone, Debug)]\npub enum {name} { {variants} }"
   enum_unit_variant: "{name},"
   enum_data_variant: "{name} { {fields} },"
 }
