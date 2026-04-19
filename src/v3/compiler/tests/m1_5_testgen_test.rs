@@ -310,6 +310,7 @@ fn diagnostic_kind(diag: &Diagnostic) -> &'static str {
         Diagnostic::TypeMismatch { .. } => "TypeMismatch",
         Diagnostic::ArityMismatch { .. } => "ArityMismatch",
         Diagnostic::ResolveError { .. } => "ResolveError",
+        Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
     }
 }
 
@@ -328,6 +329,7 @@ fn diagnostic_detail(diag: &Diagnostic) -> String {
             ..
         } => format!("{function} expected {expected}, got {actual}"),
         Diagnostic::ResolveError { name, .. } => name.clone(),
+        Diagnostic::BranchConditionNotBool { .. } => diag.message(),
     }
 }
 

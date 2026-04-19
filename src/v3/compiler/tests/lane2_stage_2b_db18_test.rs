@@ -1,12 +1,13 @@
-//! DB-18 / Lane 2 Stage 2b — `WorkflowEffect`, `branch_arm_of`, and idempotency analysis.
+//! DB-18 / Lane 2 Stage 2b — `WorkflowEffect`, `bool_port_of`, and idempotency analysis.
 
 use v3_compiler::analyze_workflow;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     Behavior, BreakingShape, CompositionVerdict, CreateCause, EffectShape, IdempotentShape,
-    KeySource, NonEmptyList, NonSingletonList, OperationEffect, TypeConnective, WorkflowEffect,
+    KeySource, NonSingletonList, OperationEffect, TypeConnective, WorkflowEffect,
     WorkflowIdempotencyReport,
 };
+use v3_compiler::diagnostics::{Diagnostic, SourceSpan};
 use v3_compiler::Dag;
 use v3_compiler::NodeId;
 
@@ -41,23 +42,36 @@ fn workflow_effect_decl_four_variants_in_bootstrap() {
 }
 
 #[test]
-fn branch_arm_of_requires_bool_port() {
+fn bool_port_of_requires_bool_port() {
     let dag = compile_to_dag("let x = 1 + 2\nlet y = 1 < 2", "branch_arm.v3").expect("compile");
     let binds: Vec<_> = dag.nodes().iter().filter_map(Behavior::as_bind).collect();
     let int_bind = binds.iter().find(|b| b.name == "x").expect("x");
     let bool_bind = binds.iter().find(|b| b.name == "y").expect("y");
     let linear = || WorkflowEffect::LinearEffect {
-        ops: NonEmptyList::from_vec(vec![op(
+        ops: vec![op(
             "noop",
             EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-        )])
-        .unwrap(),
+        )],
     };
-    assert!(dag.branch_arm_of(int_bind.value, linear()).is_none());
-    let arm = dag
-        .branch_arm_of(bool_bind.value, linear())
-        .expect("bool arm");
-    assert_eq!(arm.branch_predicate().port_id(), bool_bind.value);
+    assert!(dag.bool_port_of(int_bind.value).is_none());
+    let pred = dag.bool_port_of(bool_bind.value).expect("bool port");
+    let arm = v3_compiler::dag::BranchArm::new(pred, linear());
+    assert_eq!(arm.bool_port().port_id(), bool_bind.value);
+}
+
+#[test]
+fn linear_empty_ops_is_idempotent_composition() {
+    let mut dag = compile_to_dag("let _ = 1", "lane2_empty.v3").expect("compile");
+    let root = lane2_anchor(&dag);
+    let wf = WorkflowEffect::LinearEffect { ops: vec![] };
+    assert!(dag.try_register_lane2_workflow_effect(root, wf));
+    let r = analyze_workflow(&dag, root);
+    assert!(matches!(
+        r,
+        WorkflowIdempotencyReport::WorkflowCompositionVerdict(
+            CompositionVerdict::IdempotentComposition
+        )
+    ));
 }
 
 #[test]
@@ -65,7 +79,7 @@ fn gcp_style_linear_chain_idempotent() {
     let mut dag = compile_to_dag("let _ = 1", "lane2_gcp.v3").expect("compile");
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
-        ops: NonEmptyList::from_vec(vec![
+        ops: vec![
             op(
                 "get_secret",
                 EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
@@ -82,8 +96,7 @@ fn gcp_style_linear_chain_idempotent() {
                 "grant",
                 EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
             ),
-        ])
-        .unwrap(),
+        ],
     };
     assert!(dag.try_register_lane2_workflow_effect(root, wf));
     let r = analyze_workflow(&dag, root);
@@ -100,7 +113,7 @@ fn append_effect_breaks_linear_chain() {
     let mut dag = compile_to_dag("let _ = 1", "lane2_append.v3").expect("compile");
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
-        ops: NonEmptyList::from_vec(vec![
+        ops: vec![
             op(
                 "read",
                 EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
@@ -109,8 +122,7 @@ fn append_effect_breaks_linear_chain() {
                 "append_audit",
                 EffectShape::IsBreaking(BreakingShape::AppendEffect),
             ),
-        ])
-        .unwrap(),
+        ],
     };
     assert!(dag.try_register_lane2_workflow_effect(root, wf));
     let r = analyze_workflow(&dag, root);
@@ -129,13 +141,12 @@ fn post_create_is_breaking() {
     let mut dag = compile_to_dag("let _ = 1", "lane2_post.v3").expect("compile");
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
-        ops: NonEmptyList::from_vec(vec![op(
+        ops: vec![op(
             "post_create",
             EffectShape::IsBreaking(BreakingShape::CreateEffect {
                 cause: CreateCause::PostAlways,
             }),
-        )])
-        .unwrap(),
+        )],
     };
     assert!(dag.try_register_lane2_workflow_effect(root, wf));
     let r = analyze_workflow(&dag, root);
@@ -153,19 +164,24 @@ fn diagnostic_paths_name_stage2b() {
     let d = binds.iter().find(|b| b.name == "d").expect("d");
     let stage = "lane2_stage2b_idempotency_lens";
     let linear = WorkflowEffect::LinearEffect {
-        ops: NonEmptyList::from_vec(vec![op(
+        ops: vec![op(
             "r",
             EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-        )])
-        .unwrap(),
+        )],
     };
     let root = lane2_anchor(&dag);
     for (wf, name) in [
         (
             WorkflowEffect::BranchEffect {
                 arms: NonSingletonList::from_vec(vec![
-                    dag.branch_arm_of(c.value, linear.clone()).unwrap(),
-                    dag.branch_arm_of(d.value, linear.clone()).unwrap(),
+                    v3_compiler::dag::BranchArm::new(
+                        dag.bool_port_of(c.value).unwrap(),
+                        linear.clone(),
+                    ),
+                    v3_compiler::dag::BranchArm::new(
+                        dag.bool_port_of(d.value).unwrap(),
+                        linear.clone(),
+                    ),
                 ])
                 .unwrap(),
             },
@@ -196,4 +212,30 @@ fn diagnostic_paths_name_stage2b() {
         assert_eq!(d.variant_name, name);
         assert_eq!(d.downstream_stage, stage);
     }
+}
+
+#[test]
+fn branch_condition_not_bool_diagnostic_records_span() {
+    let mut dag = compile_to_dag("let x = 1 + 2", "branch_cond.v3").expect("compile");
+    let binds: Vec<_> = dag.nodes().iter().filter_map(Behavior::as_bind).collect();
+    let int_bind = binds.iter().find(|b| b.name == "x").expect("x");
+    let span = SourceSpan::new("branch_cond.v3", 4, 5);
+    assert!(dag
+        .bool_port_for_branch_condition_or_diagnose(int_bind.value, span.clone())
+        .is_none());
+    let diags: Vec<_> = dag.diagnostics().iter().collect();
+    assert_eq!(diags.len(), 1);
+    let d = diags[0].1;
+    let Diagnostic::BranchConditionNotBool {
+        port,
+        actual_type,
+        span: sp,
+        ..
+    } = d
+    else {
+        panic!("expected BranchConditionNotBool, got {d:?}");
+    };
+    assert_eq!(*port, int_bind.value);
+    assert!(actual_type.is_some());
+    assert_eq!(sp.file, "branch_cond.v3");
 }
