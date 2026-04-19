@@ -42,15 +42,13 @@ fn idempotent_pair_commutes(a: &IdempotentShape, b: &IdempotentShape) -> bool {
     }
 }
 
-/// Same key → lattice meet commutes; disjoint `PathParam` names → independent cells.
+/// Upsert/delete on the same structural [`KeySource`] commute (lattice meet is
+/// commutative on one cell). **Inequality of `PathParam` parameter names does not
+/// prove runtime key disjointness** (e.g. `{id}` vs `{user_id}` can still resolve
+/// to the same record) — so distinct `KeySource` values yield **not commute**
+/// until a future substrate witness proves disjoint keys (fail-closed).
 fn upsert_or_delete_keys_commute(ka: &KeySource, kb: &KeySource) -> bool {
-    if ka == kb {
-        return true;
-    }
-    match (ka, kb) {
-        (KeySource::PathParam { param: a }, KeySource::PathParam { param: b }) => a != b,
-        _ => false,
-    }
+    ka == kb
 }
 
 fn operations_commute(a: &OperationEffect, b: &OperationEffect) -> bool {

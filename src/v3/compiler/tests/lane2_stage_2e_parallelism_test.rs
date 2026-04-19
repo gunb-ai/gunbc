@@ -80,7 +80,43 @@ fn parallel_read_only_branches_commute() {
 }
 
 #[test]
-fn parallel_disjoint_path_upserts_commute() {
+fn parallel_same_key_path_upserts_commute() {
+    let mut dag = trivial_user_dag();
+    let root = lane2_anchor(&dag);
+    let key = KeySource::PathParam {
+        param: "id".into(),
+    };
+    let upsert = |name: &str| {
+        op(
+            name,
+            EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
+                key_source: key.clone(),
+            }),
+        )
+    };
+    let wf = WorkflowEffect::ParallelEffect {
+        branches: NonSingletonList::from_vec(vec![
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: NonEmptyList::from_vec(vec![upsert("put_a")]).unwrap(),
+            }),
+            Box::new(WorkflowEffect::LinearEffect {
+                ops: NonEmptyList::from_vec(vec![upsert("put_b")]).unwrap(),
+            }),
+        ])
+        .unwrap(),
+    };
+    assert!(dag.try_register_lane2_workflow_effect(root, wf));
+    let r = analyze_parallelism(&dag, root);
+    assert!(matches!(
+        r,
+        WorkflowParallelismReport::ParallelCompositionVerdict(
+            CompositionVerdict::IdempotentComposition
+        )
+    ));
+}
+
+#[test]
+fn parallel_different_path_param_names_not_proven_commute() {
     let mut dag = trivial_user_dag();
     let root = lane2_anchor(&dag);
     let upsert = |name: &str, param: &str| {
@@ -106,12 +142,11 @@ fn parallel_disjoint_path_upserts_commute() {
     };
     assert!(dag.try_register_lane2_workflow_effect(root, wf));
     let r = analyze_parallelism(&dag, root);
-    assert!(matches!(
-        r,
-        WorkflowParallelismReport::ParallelCompositionVerdict(
-            CompositionVerdict::IdempotentComposition
-        )
-    ));
+    let WorkflowParallelismReport::ParallelismUnsupported(d) = r else {
+        panic!("expected ParallelismUnsupported — distinct PathParam names are not a disjointness proof");
+    };
+    assert_eq!(d.variant_name, "PairwiseNonCommute");
+    assert!(d.reason.contains("put_a") && d.reason.contains("put_b"));
 }
 
 #[test]

@@ -24,7 +24,7 @@ DB-18 locks `WorkflowEffect::ParallelEffect { branches: NonSingletonList<Workflo
 | Option | Verdict |
 |--------|---------|
 | (a) Additive `commutativity: CommutativityWitness` on `ParallelEffect` | **Rejected for Stage 2e.** Would duplicate facts derivable from per-op shapes (Q3), unless a future consumer proves a witness is *not* derivable from the op algebra alone. |
-| (b) Derive from op-level algebra without a substrate field | **Adopted.** `KeySource` equality / disjoint `PathParam` keys supply enough structure to decide common cloud cases; conservative defaults where the algebra does not yet justify commutativity. |
+| (b) Derive from op-level algebra without a substrate field | **Adopted.** Same structural `KeySource` on two upserts/deletes is enough to treat them as commuting on one cell; **different** `KeySource` values (including different `PathParam` *names*) do **not** imply runtime key disjointness without a witness, so v1 is fail-closed there. |
 
 ---
 
@@ -37,7 +37,7 @@ For parallel branches that are each linear sequences of operations, **safe concu
 **Idempotent pairs** use a conservative partial function `idempotent_pair_commutes` on `IdempotentShape`:
 
 - `ReadEffect` ∘ `ReadEffect` — commutes.
-- `UpsertEffect` / `DeleteEffect` — same `KeySource` commutes (lattice meet on one key); **disjoint** `PathParam` keys commute (independent map cells); mixed shapes involving reads vs writes default to **not** commuting unless the algebra justifies it.
+- `UpsertEffect` / `DeleteEffect` — **same** `KeySource` commutes (lattice meet on one key). **Distinct** `PathParam` parameter names do not prove disjoint runtime keys (`{id}` vs `{user_id}` can alias); inequality → **not** commute in v1.
 - Mixed `Upsert`/`Delete` or `CompositeKey`/`InputField` combinations default to **not** commuting until a richer key-disjointness story exists (conservative).
 
 This is **physics in the op algebra**, not a heuristic re-invented inside the lens body — the lens only combines facts already on `OperationEffect` (`feedback_lenses_not_passes`).
