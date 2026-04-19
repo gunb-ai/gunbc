@@ -107,21 +107,25 @@ type SymbolicCost
   | LogCost(SizeVariable)
   | UnknownCost(String)
 
-fn two_terms(a: SymbolicCost, b: SymbolicCost) -> NonSingletonList<SymbolicCost> = {
-  first: a
-  second: b
-  rest: empty()
-}
+fn two_terms(a: SymbolicCost, b: SymbolicCost) -> NonSingletonList<SymbolicCost> =
+  {
+    first: a
+    second: b
+    rest: no_more_terms()
+  }
 
 fn many_terms(
   first: SymbolicCost,
   second: SymbolicCost,
   rest: List<SymbolicCost>
-) -> NonSingletonList<SymbolicCost> = {
-  first: first
-  second: second
-  rest: rest
-}
+) -> NonSingletonList<SymbolicCost> =
+  {
+    first: first
+    second: second
+    rest: rest
+  }
+
+fn no_more_terms() -> List<SymbolicCost> = empty()
 
 // ── Composition (sequential / iterate / max_path) ───────────────
 
@@ -403,7 +407,7 @@ fn collapse_linear_square(
     product_pair(a, b)
 
 fn polynomial_square(v: SizeVariable) -> SymbolicCost {
-  PolynomialCost { var: v, degree: { value: 2 } }
+  PolynomialCost { var: v, degree: DegreeAtLeastTwo { value: 2 } }
 }
 
 fn product_pair(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
