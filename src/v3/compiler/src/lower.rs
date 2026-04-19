@@ -2890,8 +2890,16 @@ fn list_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<Declarat
 ///     in the symbols map.
 ///   - `SurfaceExpr::Path { segments }` — dotted-path. The first
 ///     segment is a top-level identifier; subsequent segments walk
-///     the parent's `Conj` children by label, returning the child
-///     declaration's `ty` (the field's type declaration).
+///     the parent's `Conj` children by field label or `Disj`
+///     variants by variant label, returning the child/variant's
+///     `ty` (the field's type declaration / the variant's payload
+///     declaration).
+///
+/// Walking Disj variants is the path that lets pattern-role
+/// realization specs reference a specific sum variant (e.g.
+/// `List.Empty`) without the emitter needing a label-matching
+/// heuristic — the authority for "which variant plays the empty
+/// role" lives in the spec data item, not in emitter code.
 ///
 /// Returns `None` if the expression is not a recognized reference
 /// shape or any segment fails to resolve.
@@ -2908,17 +2916,23 @@ fn resolve_field_value_as_declaration_ref(
     let (first, rest) = segments.split_first()?;
     let mut current = symbols.get(*first).copied()?;
     for segment in rest {
-        // Walk `current` through aliases / instantiation to a Conj,
-        // then find the child field whose label matches `segment`.
-        // The child's `ty` becomes the new `current` for the next
-        // segment (or the final answer if this was the last one).
-        let conj_id = walk_to_conj_decl(dag, current)?;
-        let children = match &dag.declaration(conj_id).connective {
-            TypeConnective::Conj { children } => children,
-            _ => return None,
-        };
-        let next = children.iter().find(|f| f.label == *segment)?;
-        current = next.ty;
+        if let Some(conj_id) = walk_to_conj_decl(dag, current) {
+            let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+                return None;
+            };
+            let next = children.iter().find(|f| f.label == *segment)?;
+            current = next.ty;
+            continue;
+        }
+        if let Some(disj_id) = walk_to_disj_decl(dag, current) {
+            let TypeConnective::Disj { variants } = &dag.declaration(disj_id).connective else {
+                return None;
+            };
+            let next = variants.iter().find(|v| v.label == *segment)?;
+            current = next.ty;
+            continue;
+        }
+        return None;
     }
     Some(current)
 }

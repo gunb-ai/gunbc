@@ -124,6 +124,8 @@ enum PatternBindingRuleBinding {
 
 #[derive(Debug, Clone)]
 struct PatternRealizationBinding {
+    empty_variant: DeclarationId,
+    cons_variant: DeclarationId,
     scrutinee: String,
     empty_pattern: String,
     cons_pattern: String,
@@ -262,6 +264,7 @@ impl PythonIndexes {
             } else {
                 let target = require_field_decl_ref(fields, "target", decl.id)?;
                 let binding = parse_pattern_realization(dag, fields, decl.id)?;
+                validate_pattern_roles(dag, target, &binding, decl.id)?;
                 if patterns.insert(target, binding).is_some() {
                     return Err(EmitPythonError::DuplicateRealization {
                         declaration: decl.id,
@@ -826,41 +829,26 @@ impl<'a> Ctx<'a> {
     fn render_vector_list_pattern_branch(
         &self,
         branch: &BranchNode,
-        disj_id: DeclarationId,
+        _disj_id: DeclarationId,
         binding: &PatternRealizationBinding,
         locals: &RenderLocals,
     ) -> Result<String, EmitPythonError> {
-        let TypeConnective::Disj { variants } = &self.dag.declaration(disj_id).connective else {
-            unreachable!("pattern realization target must be a disjunction");
-        };
-        let empty_variant = variants
-            .iter()
-            .find(|variant| variant.label == "Empty")
-            .map(|variant| variant.ty)
-            .ok_or_else(|| {
+        let empty_path = find_resolved_branch_path(branch, binding.empty_variant).ok_or_else(
+            || {
                 EmitPythonError::Unsupported(
-                    "vector-list pattern realization requires Empty".to_string(),
+                    "vector-list pattern realization requires a branch arm for the declared empty_variant"
+                        .to_string(),
                 )
-            })?;
-        let cons_variant = variants
-            .iter()
-            .find(|variant| variant.label == "Cons")
-            .map(|variant| variant.ty)
-            .ok_or_else(|| {
+            },
+        )?;
+        let cons_path = find_resolved_branch_path(branch, binding.cons_variant).ok_or_else(
+            || {
                 EmitPythonError::Unsupported(
-                    "vector-list pattern realization requires Cons".to_string(),
+                    "vector-list pattern realization requires a branch arm for the declared cons_variant"
+                        .to_string(),
                 )
-            })?;
-        let empty_path = find_resolved_branch_path(branch, empty_variant).ok_or_else(|| {
-            EmitPythonError::Unsupported(
-                "vector-list pattern realization requires an Empty arm".to_string(),
-            )
-        })?;
-        let cons_path = find_resolved_branch_path(branch, cons_variant).ok_or_else(|| {
-            EmitPythonError::Unsupported(
-                "vector-list pattern realization requires a Cons arm".to_string(),
-            )
-        })?;
+            },
+        )?;
         let scrutinee = self.render_port(branch.input, locals)?;
         let empty_body = self.render_path_body(empty_path, locals)?;
         let realized_scrutinee = render_named_template(&binding.scrutinee, &[("expr", &scrutinee)]);
@@ -1575,6 +1563,51 @@ fn parse_callable_strategy(
     })
 }
 
+/// Structural boundary check for `PatternRealization.empty_variant` /
+/// `cons_variant`. Mirrors `rust_target::validate_pattern_roles` — see
+/// that comment for rationale. Rejects spec data where the typed
+/// `DeclarationRef`s point outside `target`'s variants.
+fn validate_pattern_roles(
+    dag: &Dag,
+    target: DeclarationId,
+    binding: &PatternRealizationBinding,
+    declaration: DeclarationId,
+) -> Result<(), EmitPythonError> {
+    let disj_id = walk_to_disj(dag, target).ok_or(EmitPythonError::MalformedSpec {
+        declaration,
+        detail:
+            "PatternRealization.target must resolve to a Disj — empty_variant / cons_variant have no target to range over otherwise",
+    })?;
+    let TypeConnective::Disj { variants } = &dag.declaration(disj_id).connective else {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "walk_to_disj returned a non-Disj declaration (internal invariant violation)",
+        });
+    };
+    if !variants.iter().any(|v| v.ty == binding.empty_variant) {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail:
+                "PatternRealization.empty_variant must be a variant of `target` — structural boundary check rejects unrelated DeclarationRefs",
+        });
+    }
+    if !variants.iter().any(|v| v.ty == binding.cons_variant) {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail:
+                "PatternRealization.cons_variant must be a variant of `target` — structural boundary check rejects unrelated DeclarationRefs",
+        });
+    }
+    if binding.empty_variant == binding.cons_variant {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail:
+                "PatternRealization.empty_variant and cons_variant must be distinct variants of `target`",
+        });
+    }
+    Ok(())
+}
+
 fn parse_pattern_realization(
     dag: &Dag,
     fields: &[(String, FieldValue)],
@@ -1594,6 +1627,8 @@ fn parse_pattern_realization(
         });
     }
     Ok(PatternRealizationBinding {
+        empty_variant: require_field_decl_ref(fields, "empty_variant", declaration)?,
+        cons_variant: require_field_decl_ref(fields, "cons_variant", declaration)?,
         scrutinee: require_field_string(fields, "scrutinee", declaration)?,
         empty_pattern: require_field_string(fields, "empty_pattern", declaration)?,
         cons_pattern: require_field_string(fields, "cons_pattern", declaration)?,

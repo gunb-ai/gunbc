@@ -167,13 +167,18 @@ fn branch_reports_constant_when_both_arms_constant() {
     // `if 1 > 0 then 10 else 20` — both arms are leaf literals, so
     // max_path over two Constants stays Constant.
     //
-    // Temporary ratchet exception: this fixture has a unique `(source, file)`
-    // cache key, so even with `cached_compile_to_dag` it still pays one cold
-    // branch-lowering compile on CI, which can exceed the 2s micro-budget while
-    // the assertion itself is effectively free. Dissolution trigger: once the
-    // `#546` caching pattern can guarantee this fixture hits a warmed/shared
-    // compile path, restore `budgeted_test!` here instead of carrying a plain
-    // `#[test]`.
+    // Ratchet exception (unchanged after #546): #546's cache consolidation
+    // keys on `(source, file)`, and this fixture's pair is unique across the
+    // suite — the shared cache never warms it. On the CI narrow Stage 2d gate
+    // this test runs first in alphabetical order and pays a cold
+    // bootstrap + pipeline compile (measured 2.515s; past the 2s
+    // `budgeted_test!` cap). Restoring under `budgeted_test!` was attempted
+    // and rolled back when CI confirmed the cold cost. Honest dissolution
+    // trigger: cache bootstrap Dag state as input to `compile_to_dag` (so
+    // cold-pipeline cost drops, not just the per-source cold-compile cost),
+    // OR change this fixture to share a `(source, file)` key with an existing
+    // cached test in this module. #546's caching pattern alone does NOT
+    // address this test's cold path.
     let cost = bind_cost("let r = if 1 > 0 then 10 else 20", "test.v3", "r");
     assert!(
         is_constant(&cost),

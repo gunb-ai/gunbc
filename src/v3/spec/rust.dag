@@ -889,6 +889,8 @@ data rust_list_pattern: PatternRealization = {
   language: rust_language
   target: List
   strategy: VectorList
+  empty_variant: List.Empty
+  cons_variant: List.Cons
   scrutinee: "{expr}"
   empty_pattern: "[]"
   cons_pattern: "[{head}, {tail} @ ..]"

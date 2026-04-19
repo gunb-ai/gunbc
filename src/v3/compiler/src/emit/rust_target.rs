@@ -303,6 +303,8 @@ impl ParameterDispositionBinding {
 
 #[derive(Debug, Clone)]
 struct PatternRealizationBinding {
+    empty_variant: DeclarationId,
+    cons_variant: DeclarationId,
     scrutinee: String,
     empty_pattern: String,
     cons_pattern: String,
@@ -838,6 +840,7 @@ impl RealizationIndexes {
                 }
                 RealizationCategory::Pattern => {
                     let binding = require_pattern_realization(dag, fields, decl.id)?;
+                    validate_pattern_roles(dag, target, &binding, decl.id)?;
                     if patterns.insert(target, binding).is_some() {
                         return Err(EmitError::DuplicateRealization {
                             declaration: decl.id,
@@ -1961,6 +1964,60 @@ fn parse_parameter_disposition(
     }
 }
 
+/// Structural boundary check for `PatternRealization.empty_variant` /
+/// `cons_variant`. These fields carry typed `DeclarationRef`s, but
+/// `DeclarationRef` alone cannot express the shape constraint "must be
+/// a variant of `target`'s Disj" — so the spec grammar admits
+/// `empty_variant: Int` even though it is nonsensical.
+///
+/// Reject-at-boundary: after parsing a realization, walk `target` to
+/// its Disj and verify both role refs match one of the variants' `ty`,
+/// and that they are distinct. A malformed spec surfaces loudly via
+/// `MalformedRealization` instead of silently producing emitter output
+/// that never finds the named branch arm at render time.
+fn validate_pattern_roles(
+    dag: &Dag,
+    target: DeclarationId,
+    binding: &PatternRealizationBinding,
+    declaration: DeclarationId,
+) -> Result<(), EmitError> {
+    let disj_id = walk_to_disj(dag, target).ok_or(EmitError::MalformedRealization {
+        declaration,
+        detail:
+            "PatternRealization.target must resolve to a Disj — empty_variant / cons_variant have no target to range over otherwise",
+    })?;
+    let TypeConnective::Disj { variants } = &dag.declaration(disj_id).connective else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "walk_to_disj returned a non-Disj declaration (internal invariant violation)",
+        });
+    };
+    let has_empty = variants.iter().any(|v| v.ty == binding.empty_variant);
+    if !has_empty {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail:
+                "PatternRealization.empty_variant must be a variant of `target` — structural boundary check rejects unrelated DeclarationRefs",
+        });
+    }
+    let has_cons = variants.iter().any(|v| v.ty == binding.cons_variant);
+    if !has_cons {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail:
+                "PatternRealization.cons_variant must be a variant of `target` — structural boundary check rejects unrelated DeclarationRefs",
+        });
+    }
+    if binding.empty_variant == binding.cons_variant {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail:
+                "PatternRealization.empty_variant and cons_variant must be distinct variants of `target`",
+        });
+    }
+    Ok(())
+}
+
 fn require_pattern_realization(
     dag: &Dag,
     fields: &[(String, FieldValue)],
@@ -2003,6 +2060,8 @@ fn require_pattern_realization(
         });
     }
     Ok(PatternRealizationBinding {
+        empty_variant: require_field_decl_ref(fields, "empty_variant", declaration)?,
+        cons_variant: require_field_decl_ref(fields, "cons_variant", declaration)?,
         scrutinee: require_field_string(fields, "scrutinee", declaration)?,
         empty_pattern: require_field_string(fields, "empty_pattern", declaration)?,
         cons_pattern: require_field_string(fields, "cons_pattern", declaration)?,
@@ -3388,47 +3447,30 @@ impl<'a> Ctx<'a> {
     fn render_vector_list_pattern_branch(
         &self,
         branch: &BranchNode,
-        disj_id: DeclarationId,
+        _disj_id: DeclarationId,
         binding: &PatternRealizationBinding,
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
-        // Debt receipt: this still reconstructs `Empty` / `Cons` by label from the
-        // structural list sum, then lowers that shape onto the realized `Vec<_>`
-        // carrier. The current authority is the spec-owned `PatternRealization`
-        // data in `rust.dag`; the remaining opacity gap is that the list-specific
-        // branch shape is still interpreted here rather than composed by a .dag
-        // emitter over target facts.
-        let TypeConnective::Disj { variants } = &self.dag.declaration(disj_id).connective else {
-            unreachable!("pattern realization target must walk to a Disj")
-        };
-        let empty_variant = variants
-            .iter()
-            .find(|variant| variant.label == "Empty")
-            .map(|variant| variant.ty)
-            .ok_or_else(|| {
+        // Role identity is a spec fact: `PatternRealization.empty_variant` /
+        // `cons_variant` are typed `DeclarationRef`s to the sum's variants
+        // (`List.Empty` / `List.Cons` in `rust.dag`). The emitter reads them
+        // — no label-matching on variant strings.
+        let empty_path = find_resolved_branch_path(branch, binding.empty_variant).ok_or_else(
+            || {
                 EmitError::UnsupportedBehavior(
-                    "vector-list pattern realization requires an `Empty` variant".to_string(),
+                    "vector-list pattern realization requires a branch arm for the declared empty_variant"
+                        .to_string(),
                 )
-            })?;
-        let cons_variant = variants
-            .iter()
-            .find(|variant| variant.label == "Cons")
-            .map(|variant| variant.ty)
-            .ok_or_else(|| {
+            },
+        )?;
+        let cons_path = find_resolved_branch_path(branch, binding.cons_variant).ok_or_else(
+            || {
                 EmitError::UnsupportedBehavior(
-                    "vector-list pattern realization requires a `Cons` variant".to_string(),
+                    "vector-list pattern realization requires a branch arm for the declared cons_variant"
+                        .to_string(),
                 )
-            })?;
-        let empty_path = find_resolved_branch_path(branch, empty_variant).ok_or_else(|| {
-            EmitError::UnsupportedBehavior(
-                "vector-list pattern realization requires an `Empty` branch arm".to_string(),
-            )
-        })?;
-        let cons_path = find_resolved_branch_path(branch, cons_variant).ok_or_else(|| {
-            EmitError::UnsupportedBehavior(
-                "vector-list pattern realization requires a `Cons` branch arm".to_string(),
-            )
-        })?;
+            },
+        )?;
         let scrutinee = self.render_input_use(
             InputConsumer::Branch(branch),
             InputSlot::BranchInput,
@@ -5538,5 +5580,126 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
         // partitions entries cleanly. This is the structural signal
         // that replaced the TargetLanguage enum roster.
         assert_ne!(rust_language_id, go_language_id);
+    }
+
+    /// Boundary check for `PatternRealization.empty_variant` /
+    /// `cons_variant`. The substrate types these as `DeclarationRef`,
+    /// which is unconstrained — nothing in the grammar rejects
+    /// `empty_variant: Int` under `target: List`. `validate_pattern_roles`
+    /// enforces "must be a variant of `target`" at parse time. This test
+    /// pins the rejection so later refactors can't silently drop it.
+    #[test]
+    fn validate_pattern_roles_rejects_non_variant_empty_ref() {
+        let dag = Dag::new();
+        let bool_id = dag
+            .declaration_by_name("Bool")
+            .expect("Bool is a Disj in bootstrap std")
+            .id;
+        let int_id = dag
+            .declaration_by_name("Int")
+            .expect("Int in bootstrap std")
+            .id;
+        // Pick a real Bool variant for `cons_variant` so only
+        // `empty_variant` is the illegal pointer.
+        let bool_variant_ty = match &dag.declaration(bool_id).connective {
+            TypeConnective::Disj { variants } => variants[0].ty,
+            other => panic!("Bool should be a Disj, got {other:?}"),
+        };
+        let binding = PatternRealizationBinding {
+            empty_variant: int_id,
+            cons_variant: bool_variant_ty,
+            scrutinee: "{expr}".into(),
+            empty_pattern: "[]".into(),
+            cons_pattern: "[{head}, {tail} @ ..]".into(),
+            head_expr: "{head}".into(),
+            tail_expr: "{tail}".into(),
+        };
+        let result = validate_pattern_roles(&dag, bool_id, &binding, bool_id);
+        match result {
+            Err(EmitError::MalformedRealization { detail, .. }) => {
+                assert!(
+                    detail.contains("empty_variant must be a variant"),
+                    "unexpected detail: {detail}"
+                );
+            }
+            other => {
+                panic!("expected MalformedRealization for non-variant empty_variant, got {other:?}")
+            }
+        }
+    }
+
+    /// Mirror of the above for `cons_variant`. Distinct test so a future
+    /// regression on only one of the two role checks is caught narrowly.
+    #[test]
+    fn validate_pattern_roles_rejects_non_variant_cons_ref() {
+        let dag = Dag::new();
+        let bool_id = dag
+            .declaration_by_name("Bool")
+            .expect("Bool is a Disj in bootstrap std")
+            .id;
+        let int_id = dag
+            .declaration_by_name("Int")
+            .expect("Int in bootstrap std")
+            .id;
+        let bool_variant_ty = match &dag.declaration(bool_id).connective {
+            TypeConnective::Disj { variants } => variants[0].ty,
+            other => panic!("Bool should be a Disj, got {other:?}"),
+        };
+        let binding = PatternRealizationBinding {
+            empty_variant: bool_variant_ty,
+            cons_variant: int_id,
+            scrutinee: "{expr}".into(),
+            empty_pattern: "[]".into(),
+            cons_pattern: "[{head}, {tail} @ ..]".into(),
+            head_expr: "{head}".into(),
+            tail_expr: "{tail}".into(),
+        };
+        let result = validate_pattern_roles(&dag, bool_id, &binding, bool_id);
+        match result {
+            Err(EmitError::MalformedRealization { detail, .. }) => {
+                assert!(
+                    detail.contains("cons_variant must be a variant"),
+                    "unexpected detail: {detail}"
+                );
+            }
+            other => {
+                panic!("expected MalformedRealization for non-variant cons_variant, got {other:?}")
+            }
+        }
+    }
+
+    /// Distinct-variants check: even if both refs are valid variants of
+    /// `target`, they must not be the same one — the branch shape needs
+    /// two distinct arms. Pins the third clause of `validate_pattern_roles`.
+    #[test]
+    fn validate_pattern_roles_rejects_aliased_role_refs() {
+        let dag = Dag::new();
+        let bool_id = dag
+            .declaration_by_name("Bool")
+            .expect("Bool is a Disj in bootstrap std")
+            .id;
+        let bool_variant_ty = match &dag.declaration(bool_id).connective {
+            TypeConnective::Disj { variants } => variants[0].ty,
+            other => panic!("Bool should be a Disj, got {other:?}"),
+        };
+        let binding = PatternRealizationBinding {
+            empty_variant: bool_variant_ty,
+            cons_variant: bool_variant_ty,
+            scrutinee: "{expr}".into(),
+            empty_pattern: "[]".into(),
+            cons_pattern: "[{head}, {tail} @ ..]".into(),
+            head_expr: "{head}".into(),
+            tail_expr: "{tail}".into(),
+        };
+        let result = validate_pattern_roles(&dag, bool_id, &binding, bool_id);
+        match result {
+            Err(EmitError::MalformedRealization { detail, .. }) => {
+                assert!(
+                    detail.contains("must be distinct"),
+                    "unexpected detail: {detail}"
+                );
+            }
+            other => panic!("expected MalformedRealization for aliased role refs, got {other:?}"),
+        }
     }
 }
