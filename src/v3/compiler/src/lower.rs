@@ -37,7 +37,7 @@ use crate::infer::{concretize_decl_with_subst, SubstStack};
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
-    SurfacePattern, SurfaceType, SurfaceVariant, VariantPayload,
+    SurfacePattern, SurfacePatternField, SurfaceType, SurfaceVariant, VariantPayload,
 };
 use crate::types::TypeShape;
 
@@ -1131,6 +1131,16 @@ fn narrowable_var_name(cond: &SurfaceExpr, scope: &HashMap<String, PortId>) -> O
         seen.into_iter().next()
     } else {
         None
+    }
+}
+
+fn pattern_binding_names(pattern: &SurfacePattern) -> Vec<&str> {
+    match pattern {
+        SurfacePattern::BareVariant { .. } => Vec::new(),
+        SurfacePattern::VariantWith { binding, .. } => vec![binding.as_str()],
+        SurfacePattern::VariantFields { fields, .. } => {
+            fields.iter().map(|field| field.binding.as_str()).collect()
+        }
     }
 }
 
