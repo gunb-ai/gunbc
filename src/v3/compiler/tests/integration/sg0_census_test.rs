@@ -9,14 +9,9 @@
 //!
 //! - **new hand-authored file**: a contributor added a `.rs` without
 //!   porting the logic to `.dag`. The PR should port the logic and
-<<<<<<< HEAD
 //!   remove the file, reduce it to a narrow host shim (see `compiler.dag`
 //!   for the shim rule), or (last resort) extend `EXPECTED_HAND_AUTHORED`
 //!   with director sign-off.
-=======
-//!   remove the file, reduce it to a narrow host shim, or (last
-//!   resort) extend `EXPECTED_HAND_AUTHORED` with director sign-off.
->>>>>>> 2bc514d78 (SG-0: track generated files via manifest)
 //! - **missing expected file**: an SG lane retired the file. Remove
 //!   the entry from `EXPECTED_HAND_AUTHORED` — this is the normal
 //!   shrinkage path and the primary success condition for SG-1..SG-7.
@@ -24,18 +19,12 @@
 //! **Producer-owned partition.** A `.rs` file counts as generated iff
 //! its workspace-relative path is a member of `GENERATED_FILES`, which
 //! is emitted by `src/v3/compiler/build.rs` on every build from the
-<<<<<<< HEAD
 //! reviewed `REGEN_OUTPUTS` literal. Every codegen driver (the
 //! `regen_*` binaries plus the ignored `emit_lens_provenance_snapshot`
 //! test) imports the same manifest and asserts its output path is in
 //! the list before writing — so a new generated file can only land if
 //! `build.rs` names it. File contents do not participate: a hand-authored
 //! `.rs` that begins with `// AUTO-GENERATED` does not slip through.
-=======
-//! reviewed `REGEN_OUTPUTS` literal. File contents do not participate:
-//! a hand-authored `.rs` that begins with `// AUTO-GENERATED` does not
-//! slip through.
->>>>>>> 2bc514d78 (SG-0: track generated files via manifest)
 
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
@@ -155,14 +144,11 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
 ];
 
 fn workspace_root() -> PathBuf {
-<<<<<<< HEAD
     // CARGO_MANIFEST_DIR points at src/v3/compiler/. ancestors():
     //   [0] src/v3/compiler
     //   [1] src/v3
     //   [2] src
     //   [3] workspace root
-=======
->>>>>>> 2bc514d78 (SG-0: track generated files via manifest)
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir
         .ancestors()
@@ -177,13 +163,10 @@ fn walk_rs(root: &Path, ws: &Path, out: &mut BTreeSet<String>) {
         let entry = entry.expect("read_dir entry");
         let path = entry.path();
         if path.is_dir() {
-<<<<<<< HEAD
             // `target/` holds Cargo build output — never part of the
             // census. Skip regardless of whether it lives at the
             // workspace root (default) or inside the crate (custom
             // CARGO_TARGET_DIR or local configurations).
-=======
->>>>>>> 2bc514d78 (SG-0: track generated files via manifest)
             if path.file_name() == Some(OsStr::new("target")) {
                 continue;
             }
@@ -294,7 +277,6 @@ impl Drop for TempDirGuard {
 
 #[test]
 fn sg0_generated_partition_is_producer_owned() {
-<<<<<<< HEAD
     // Soundness: the manifest is the sole authority for the
     // generated/hand-authored partition. This test plants a
     // handwritten file whose first non-blank line is the most
@@ -311,9 +293,6 @@ fn sg0_generated_partition_is_producer_owned() {
     // Isolation: the probe lives under `std::env::temp_dir()`, not
     // inside `src/v3/compiler/`. The live `sg0_v3_hand_authored_census`
     // walker never sees it, so the tests are safe to run in parallel.
-
-=======
->>>>>>> 2bc514d78 (SG-0: track generated files via manifest)
     let tmp = std::env::temp_dir().join(format!(
         "sg0_soundness_probe_{}_{}",
         std::process::id(),
@@ -347,14 +326,10 @@ fn sg0_generated_partition_is_producer_owned() {
     assert!(
         hand_authored.contains(&probe_rel),
         "probe file with `// AUTO-GENERATED` first-line header must be \
-<<<<<<< HEAD
          classified as hand-authored (the path is not in GENERATED_FILES). \
          The manifest is the sole authority; content headers must not \
          participate. If this fails, content-based classification has \
          regressed into walk_rs or the partition logic."
-=======
-         classified as hand-authored (the path is not in GENERATED_FILES)."
->>>>>>> 2bc514d78 (SG-0: track generated files via manifest)
     );
 }
 
