@@ -63,7 +63,7 @@ import v3.std.emit_model {
 }
 import v3.std.substrate {
   SubstrateAccessorRealization, SubstrateAccessorBinding,
-  port, node, resolve_producer
+  port, node, resolve_producer, lane2_workflow_at
 }
 import v3.std.clean_emission {
   CleanEmissionContract,
@@ -483,7 +483,8 @@ data rust_value_node: TypeRealization = {
     { dag_name: "id", access: DirectField("id"), borrowed_read: false },
     { dag_name: "payload", access: DirectField("data"), borrowed_read: false },
     { dag_name: "result_port", access: AccessorMethod("result_port"), borrowed_read: false },
-    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false },
+    { dag_name: "lane2_workflow", access: DirectField("lane2_workflow"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -545,7 +546,8 @@ data rust_bind_node: TypeRealization = {
     { dag_name: "name", access: DirectField("name"), borrowed_read: false },
     { dag_name: "result_port", access: AccessorMethod("result_port"), borrowed_read: false },
     { dag_name: "params", access: DirectField("params"), borrowed_read: false },
-    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false },
+    { dag_name: "lane2_workflow", access: DirectField("lane2_workflow"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -1065,5 +1067,15 @@ data node_binding_rust: SubstrateAccessorBinding = {
 data resolve_producer_binding_rust: SubstrateAccessorBinding = {
   accessor: resolve_producer
   realization: rust_resolve_producer_accessor
+  language: rust_language
+}
+
+data rust_lane2_workflow_accessor: SubstrateAccessorRealization = {
+  carrier: "({p0}).lane2_workflow_effect_at({p1}).cloned()"
+}
+
+data lane2_workflow_at_binding_rust: SubstrateAccessorBinding = {
+  accessor: lane2_workflow_at
+  realization: rust_lane2_workflow_accessor
   language: rust_language
 }

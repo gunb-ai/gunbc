@@ -2,11 +2,9 @@
 //!
 //! Authority for the algebra lives in `src/v3/std/effects.dag`; these helpers
 //! are the crate-private compiler-side projection (tests + `lens_idempotency`)
-//! until the emitted lens module is the sole entry point. Workflow structure for
-//! analysis is read from **native** `Value` / `Bind` fields on the [`Dag`]
-//! (`lane2_workflow`), not from a free-floating `WorkflowEffect` argument or a
-//! parallel hash map. That pocket is not yet reflected in `substrate.dag` for
-//! `.dag` lens introspection — see ROADMAP Lane 2 Stage 2b “Reflection boundary.”
+//! until the emitted lens module is the sole entry point. Workflow structure
+//! for analysis is read from **native** `Value` / `Bind` fields on the [`Dag`]
+//! (`lane2_workflow`), mirrored on the reflected substrate (`substrate.dag`).
 
 use crate::dag::{
     CompositionVerdict, Dag, EffectShape, IdempotencyUnsupportedDetail, NodeId, OperationEffect,
@@ -32,20 +30,14 @@ pub(crate) fn compose_operation_effects(effects: &[OperationEffect]) -> Composit
     CompositionVerdict::IdempotentComposition
 }
 
-pub(crate) fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempotencyReport {
-    let Some(workflow) = d.lane2_workflow_effect_at(workflow_root) else {
-        return WorkflowIdempotencyReport::IdempotencyUnsupported(
-            IdempotencyUnsupportedDetail {
-                variant_name: "Lane2WorkflowRoot".to_string(),
-                downstream_stage: "lane2_stage2b_idempotency_lens".to_string(),
-                reason: "no WorkflowEffect projection on this substrate node — analysis reads only `Value`/`Bind` fields set by lowering or `try_register_lane2_workflow_effect`"
-                    .to_string(),
-            },
-        );
-    };
+/// Pure projection used by Stage 2b — kept aligned with
+/// `std.effects::lane2_workflow_idempotency_report`.
+pub(crate) fn project_workflow_idempotency_report(
+    workflow: &WorkflowEffect,
+) -> WorkflowIdempotencyReport {
     match workflow {
         WorkflowEffect::LinearEffect { ops } => WorkflowIdempotencyReport::WorkflowCompositionVerdict(
-            compose_operation_effects(ops.to_vec().as_slice()),
+            compose_operation_effects(ops.as_slice()),
         ),
         WorkflowEffect::BranchEffect { .. } => WorkflowIdempotencyReport::IdempotencyUnsupported(
             IdempotencyUnsupportedDetail {
@@ -72,4 +64,18 @@ pub(crate) fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempo
             },
         ),
     }
+}
+
+pub(crate) fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempotencyReport {
+    let Some(workflow) = d.lane2_workflow_effect_at(workflow_root) else {
+        return WorkflowIdempotencyReport::IdempotencyUnsupported(
+            IdempotencyUnsupportedDetail {
+                variant_name: "Lane2WorkflowRoot".to_string(),
+                downstream_stage: "lane2_stage2b_idempotency_lens".to_string(),
+                reason: "no WorkflowEffect at this substrate root — populate `lane2_workflow` on `Value`/`Bind` via lowering or `try_register_lane2_workflow_effect`"
+                    .to_string(),
+            },
+        );
+    };
+    project_workflow_idempotency_report(workflow)
 }
