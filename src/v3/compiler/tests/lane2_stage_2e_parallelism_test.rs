@@ -243,8 +243,13 @@ fn parallel_append_in_branch_is_broken_by() {
     else {
         panic!("expected BrokenBy");
     };
-    assert_eq!(first_breaker.operation_name, "append_audit");
-    assert!(matches!(first_breaker.shape, BreakingShape::AppendEffect));
+    let breaker = dag
+        .lane2_workflow_effect_at(&root)
+        .expect("registered workflow should be readable at the root")
+        .operation_at(first_breaker)
+        .expect("parallel breaker ref should resolve in branch-order flattening");
+    assert_eq!(breaker.operation_name, "append_audit");
+    assert!(matches!(breaker.shape, EffectShape::IsBreaking(BreakingShape::AppendEffect)));
 }
 
 #[test]

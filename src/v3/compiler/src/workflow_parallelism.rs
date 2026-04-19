@@ -6,11 +6,10 @@
 //! projecting through [`crate::dag::CompositionVerdict`] per DB-18 / PR #529.
 
 use crate::dag::{
-    CompositionVerdict, Dag, EffectShape, IdempotentShape, NodeId, NonSingletonList,
+    CompositionVerdict, Dag, EffectShape, ElementRef, IdempotentShape, NodeId, NonSingletonList,
     OperationEffect, ParallelismUnsupportedDetail, ParallelismUnsupportedKind, WorkflowEffect,
     WorkflowParallelismReport,
 };
-use crate::workflow_idempotency::operation_to_breaker;
 
 const DOWNSTREAM: &str = "lane2_stage2e_parallelism_lens";
 
@@ -60,12 +59,18 @@ fn operations_commute(a: &OperationEffect, b: &OperationEffect) -> bool {
 
 fn first_breaking_across_branches(
     branch_ops: &[Vec<OperationEffect>],
-) -> Option<crate::dag::BreakingOperation> {
-    for ops in branch_ops {
-        for op in ops {
-            if let Some(b) = operation_to_breaker(op) {
-                return Some(b);
-            }
+) -> Option<ElementRef<OperationEffect>> {
+    // Stage 2e reuses `CompositionVerdict`, so breaker identity must be a
+    // carrier-relative handle rather than a copied record. The parallel
+    // evidence chain is the branch-order flattening of every linear branch's
+    // `ops`, which callers can reconstruct via `WorkflowEffect::operation_at`.
+    let flattened: Vec<OperationEffect> = branch_ops
+        .iter()
+        .flat_map(|ops| ops.iter().cloned())
+        .collect();
+    for (index, op) in flattened.iter().enumerate() {
+        if matches!(op.shape, EffectShape::IsBreaking(_)) {
+            return ElementRef::from_slice(flattened.as_slice(), index);
         }
     }
     None

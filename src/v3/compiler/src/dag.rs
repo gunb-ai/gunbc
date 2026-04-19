@@ -1221,9 +1221,20 @@ impl WorkflowEffect {
     pub fn operation_at(&self, element: ElementRef<OperationEffect>) -> Option<&OperationEffect> {
         match self {
             Self::LinearEffect { ops } => element.get(ops),
-            Self::BranchEffect { .. } | Self::LoopEffect { .. } | Self::ParallelEffect { .. } => {
+            Self::ParallelEffect { branches } => {
+                let mut remaining = element.index_of();
+                for branch in branches.iter() {
+                    let Self::LinearEffect { ops } = branch.as_ref() else {
+                        return None;
+                    };
+                    if let Some(op) = ops.get(remaining) {
+                        return Some(op);
+                    }
+                    remaining = remaining.checked_sub(ops.len())?;
+                }
                 None
             }
+            Self::BranchEffect { .. } | Self::LoopEffect { .. } => None,
         }
     }
 }
