@@ -24,6 +24,8 @@ ChatGPT rounds (parent commit SHA in marker):
 | `06b14483d9bb589ffc9df161a11921f42ef96c71` | complete | **APPROVE_WITH_COMMENTS** — `.dag` + `regen_tokenize` + drift test; follow-ups: derive `width`, structural `kind_name` later, clarify lexer-vs-tables scope. | [ChatGPT](https://chatgpt.com/g/g-p-69e3c70def688191bf8fa7c2cb3292ba-gunbc-review/c/69e484c0-00b8-83ea-9dd5-1a3da56a67be) |
 | `37c3d25f1283cba04d55b3d9ae9a24c724f96e67` | pending | Awaiting full review body on thread. | [ChatGPT](https://chatgpt.com/g/g-p-69e3c70def688191bf8fa7c2cb3292ba-gunbc-review/c/69e48bc5-4418-83ea-88e3-d3c57b27b7cb) |
 
+**Superseded bot stubs:** For a given parent SHA, ChatGPT often posts `status:pending` (“review in progress…”) first, then a later comment with `status:complete` for the **same** SHA (e.g. `06b14483…`: pending stub @ 2026-04-19T07:31:40Z → complete @ 07:55:14Z on [PR #556](https://github.com/gunb-ai/gunbc/pull/556)). The table rows are the **final** outcome per SHA, not the queue at a single timestamp.
+
 For each PR: use **Conversation** (reviews, bots, threads) and **Checks** (CI).
 
 Stage 1d design artifacts carried on #540: [`emit-functions-inventory.md`](./emit-functions-inventory.md), [`spec-field-gaps.md`](./spec-field-gaps.md), [`emit-bridges.md`](./emit-bridges.md).
