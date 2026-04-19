@@ -107,18 +107,34 @@ type SymbolicCost
   | LogCost(SizeVariable)
   | UnknownCost(String)
 
+fn two_terms(a: SymbolicCost, b: SymbolicCost) -> NonSingletonList<SymbolicCost> = {
+  first: a
+  second: b
+  rest: empty()
+}
+
+fn many_terms(
+  first: SymbolicCost,
+  second: SymbolicCost,
+  rest: List<SymbolicCost>
+) -> NonSingletonList<SymbolicCost> = {
+  first: first
+  second: second
+  rest: rest
+}
+
 // ── Composition (sequential / iterate / max_path) ───────────────
 
 // `sequential(a, b)` composes two costs in series. The resulting
 // sum normalizes dominated terms away — `O(n) + O(1) = O(n)`.
 fn sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
-  normalize(SumCost({ first: a, second: b, rest: empty() }))
+  normalize(SumCost(two_terms(a, b)))
 
 // `iterate(bound, body)` composes an iteration: `body` runs
 // `bound`-many times. `O(n) * O(1) = O(n)`; `O(n) * O(n) = O(n²)`
 // when the two LinearCost terms share a SizeVariable.
 fn iterate(bound: SymbolicCost, body: SymbolicCost) -> SymbolicCost =
-  normalize(ProductCost({ first: bound, second: body, rest: empty() }))
+  normalize(ProductCost(two_terms(bound, body)))
 
 // Lambda-free helper so `max_path`'s fold below resolves its
 // function-type parameter without relying on bidirectional
@@ -329,11 +345,7 @@ fn wrap_sum(terms: List<SymbolicCost>) -> SymbolicCost =
     Cons(payload) =>
       match payload.tail {
         Empty => payload.head
-        Cons(second) => SumCost({
-          first: payload.head,
-          second: second.head,
-          rest: second.tail
-        })
+        Cons(second) => SumCost(many_terms(payload.head, second.head, second.tail))
       }
   }
 
@@ -349,11 +361,7 @@ fn reduce_product(terms: List<SymbolicCost>) -> SymbolicCost =
         Cons(second) =>
           match second.tail {
             Empty => combine_binary_product(payload.head, second.head)
-            Cons(_) => ProductCost({
-              first: payload.head,
-              second: second.head,
-              rest: second.tail
-            })
+            Cons(_) => ProductCost(many_terms(payload.head, second.head, second.tail))
           }
       }
   }
@@ -399,7 +407,7 @@ fn polynomial_square(v: SizeVariable) -> SymbolicCost {
 }
 
 fn product_pair(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
-  ProductCost({ first: a, second: b, rest: empty() })
+  ProductCost(two_terms(a, b))
 
 fn any_dominates(candidates: List<SymbolicCost>, term: SymbolicCost) -> Bool =
   match candidates {

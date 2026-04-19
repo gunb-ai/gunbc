@@ -84,7 +84,7 @@ fn mentions_linear(cost: &SymbolicCost) -> bool {
     match cost {
         SymbolicCost::LinearCost { .. } => true,
         SymbolicCost::SumCost { _0: terms } | SymbolicCost::ProductCost { _0: terms } => {
-            terms.iter().any(mentions_linear)
+            terms.iter().any(|term| mentions_linear(term.as_ref()))
         }
         _ => false,
     }
@@ -124,6 +124,10 @@ fn log_cost(port: PortId) -> SymbolicCost {
 
 fn constant(n: i64) -> SymbolicCost {
     SymbolicCost::ConstantCost { _0: n }
+}
+
+fn boxed_terms_to_vec(terms: &NonSingletonList<Box<SymbolicCost>>) -> Vec<SymbolicCost> {
+    terms.iter().map(|term| term.as_ref().clone()).collect()
 }
 
 // ── Per-Behavior lowering ────────────────────────────────────────
@@ -201,10 +205,10 @@ budgeted_test! {
             SymbolicCost::ProductCost { _0: terms } => {
                 let has_linear = terms
                     .iter()
-                    .any(|t| matches!(t, SymbolicCost::LinearCost { .. }));
+                    .any(|t| matches!(t.as_ref(), SymbolicCost::LinearCost { .. }));
                 let has_nonzero_body = terms
                     .iter()
-                    .any(|t| matches!(t, SymbolicCost::ConstantCost { _0: n } if *n != 0));
+                    .any(|t| matches!(t.as_ref(), SymbolicCost::ConstantCost { _0: n } if *n != 0));
                 assert!(
                     has_linear,
                     "Loop cost must carry a LinearCost term from the bound port, got {cost:?}"
@@ -348,7 +352,8 @@ budgeted_test! {
         // should NOT dominate `Linear(n)`.
         let (port, _) = two_distinct_ports();
         let product_of_logs = SymbolicCost::ProductCost {
-            _0: Box::new(NonSingletonList::from_vec(vec![log_cost(port), log_cost(port)]).unwrap()),
+            _0: NonSingletonList::from_vec(vec![Box::new(log_cost(port)), Box::new(log_cost(port))])
+                .unwrap(),
         };
         let linear_cost = linear(port);
         assert!(
@@ -361,7 +366,8 @@ budgeted_test! {
         // dominate Log, because the dominant-child summary walks the
         // children.
         let product_with_linear = SymbolicCost::ProductCost {
-            _0: Box::new(NonSingletonList::from_vec(vec![log_cost(port), linear(port)]).unwrap()),
+            _0: NonSingletonList::from_vec(vec![Box::new(log_cost(port)), Box::new(linear(port))])
+                .unwrap(),
         };
         assert!(
             dominates(&product_with_linear, &log_cost(port)),
@@ -377,7 +383,8 @@ budgeted_test! {
         // summary, not a hardcoded "any Sum dominates scalars".
         let (port, _) = two_distinct_ports();
         let sum_of_logs = SymbolicCost::SumCost {
-            _0: Box::new(NonSingletonList::from_vec(vec![log_cost(port), log_cost(port)]).unwrap()),
+            _0: NonSingletonList::from_vec(vec![Box::new(log_cost(port)), Box::new(log_cost(port))])
+                .unwrap(),
         };
         assert!(
             !dominates(&sum_of_logs, &linear(port)),
@@ -385,9 +392,11 @@ budgeted_test! {
         );
 
         let sum_with_polynomial = SymbolicCost::SumCost {
-            _0: Box::new(
-                NonSingletonList::from_vec(vec![constant(0), polynomial(port, 2)]).unwrap(),
-            ),
+            _0: NonSingletonList::from_vec(vec![
+                Box::new(constant(0)),
+                Box::new(polynomial(port, 2)),
+            ])
+            .unwrap(),
         };
         assert!(
             dominates(&sum_with_polynomial, &linear(port)),
@@ -430,8 +439,8 @@ budgeted_test! {
                      got {result:?}"
                 );
                 assert!(
-                    terms.iter().any(|term| term == &linear(port_a))
-                        && terms.iter().any(|term| term == &linear(port_b)),
+                    terms.iter().any(|term| term.as_ref() == &linear(port_a))
+                        && terms.iter().any(|term| term.as_ref() == &linear(port_b)),
                     "both branch costs must remain in the Sum, got {result:?}"
                 );
             }
@@ -452,7 +461,7 @@ budgeted_test! {
         let reversed = max_path(&[linear(port_b), linear(port_a)]);
         let (forward_terms, reversed_terms) = match (&forward, &reversed) {
             (SymbolicCost::SumCost { _0: fwd }, SymbolicCost::SumCost { _0: rev }) => {
-                (fwd.to_vec(), rev.to_vec())
+                (boxed_terms_to_vec(fwd), boxed_terms_to_vec(rev))
             }
             _ => panic!(
                 "both orderings should produce a SumCost, got forward={forward:?} reversed={reversed:?}"
