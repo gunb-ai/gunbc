@@ -385,7 +385,7 @@ fn emit_tokenize_fn(
     s.push_str("        // Line comment prefix from `tokenize.dag` (`line_comment_prefix`).\n");
     s.push_str("        if bytes.len() >= pos + LINE_COMMENT_PREFIX.len()\n");
     s.push_str(
-        "            && bytes[pos..pos + LINE_COMMENT_PREFIX.len()] == LINE_COMMENT_PREFIX\n",
+        "            && bytes[pos..pos + LINE_COMMENT_PREFIX.len()].eq(LINE_COMMENT_PREFIX)\n",
     );
     s.push_str("        {\n");
     s.push_str("            pos += LINE_COMMENT_PREFIX.len();\n");

@@ -62,6 +62,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
     let mut pos: usize = 0;
     let mut tokens = Vec::new();
 
+    const LINE_COMMENT_PREFIX: &[u8] = b"//";
     while pos < bytes.len() {
         let byte = bytes[pos];
 
@@ -70,9 +71,11 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             continue;
         }
 
-        // Line comments: `// ...` to end of line.
-        if byte == b'/' && bytes.get(pos + 1) == Some(&b'/') {
-            pos += 2;
+        // Line comment prefix from `tokenize.dag` (`line_comment_prefix`).
+        if bytes.len() >= pos + LINE_COMMENT_PREFIX.len()
+            && bytes[pos..pos + LINE_COMMENT_PREFIX.len()].eq(LINE_COMMENT_PREFIX)
+        {
+            pos += LINE_COMMENT_PREFIX.len();
             while pos < bytes.len() && bytes[pos] != b'\n' {
                 pos += 1;
             }
@@ -97,7 +100,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             }
             let literal = &source[start..end];
             let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {
-                message: format!("invalid integer literal `{}`", literal),
+                message: format!("{}{}{}", "invalid integer literal `", literal, "`"),
                 span: SourceSpan::new(file, start as u32, end as u32),
                 fixes: Vec::new(),
             })?;
@@ -139,12 +142,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             continue;
         }
 
-        // String literal: "..."
-        //
-        // Minimal escape surface for bootstrap-staged structural data:
-        // `\"`, `\\`, `\n`, `\r`, `\t`. Unknown `\x` pairs preserve the
-        // old M0 behavior and stay literal as `\` + `x`. Raw newlines
-        // are preserved until the closing `"`.
+        // String literal (`string_literal_delimiter` + `StringEscapeSpec` rows).
         if byte == b'"' {
             let mut end = pos + 1;
             let mut content = String::new();
@@ -165,11 +163,11 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                             });
                         };
                         match escaped {
-                            b'"' => content.push('"'),
-                            b'\\' => content.push('\\'),
-                            b'n' => content.push('\n'),
-                            b'r' => content.push('\r'),
-                            b't' => content.push('\t'),
+                            b'"' => content.push(core::char::from_u32(34 as u32).unwrap()),
+                            b'\\' => content.push(core::char::from_u32(92 as u32).unwrap()),
+                            b'n' => content.push(core::char::from_u32(10 as u32).unwrap()),
+                            b'r' => content.push(core::char::from_u32(13 as u32).unwrap()),
+                            b't' => content.push(core::char::from_u32(9 as u32).unwrap()),
                             other => {
                                 content.push('\\');
                                 content.push(other as char);
