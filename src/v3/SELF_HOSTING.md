@@ -1032,7 +1032,7 @@ output.
 
 **Current prep status (not cutover).** A handwritten-parser snapshot
 harness lives in `src/v3/compiler/tests/integration.rs` and
-`tests/integration/parse_corpus_manifest.txt`. It records the current
+`src/v3/compiler/tests/integration/parse_corpus_manifest.txt`. It records the current
 `parse.rs` `SurfaceModule` output over the parseable fixture corpus so
 later `parse.dag` work has a ratchet. This is **SG-2 prep only**: it
 does not add `parse.dag`, does not generate a Rust projection, does
