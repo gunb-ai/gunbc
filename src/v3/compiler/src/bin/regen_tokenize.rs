@@ -161,25 +161,30 @@ fn emit_token_kind_enum(dag: &Dag) -> String {
 
 fn rust_type_for_decl_id(dag: &Dag, id: DeclarationId) -> String {
     let decl = dag.declaration(id);
+    if let Some(name) = &decl.name {
+        match name.as_str() {
+            "String" => return "String".to_string(),
+            "Int" | "Int64" => return "i64".to_string(),
+            _ => {}
+        }
+    }
     match &decl.connective {
         TypeConnective::Atom(ap) => match ap {
             AtomPayload::ResolvedByName(inner) | AtomPayload::ResolvedByStructure(inner) => {
-                let target = dag.declaration(*inner);
-                let name = target
-                    .name
-                    .as_deref()
-                    .unwrap_or_else(|| panic!("anon decl {:?}", inner));
-                match name {
-                    "String" => "String".to_string(),
-                    "Int" | "Int64" => "i64".to_string(),
-                    other => panic!("unsupported primitive type `{other}`"),
-                }
+                rust_type_for_decl_id(dag, *inner)
             }
             _ => panic!("rust_type_for_decl_id: unexpected atom {ap:?}"),
         },
-        _ => panic!(
-            "rust_type_for_decl_id: expected atom for field type, got {:?}",
-            decl.connective
+        TypeConnective::Instantiation { template, .. } => {
+            let template_decl = dag.declaration(*template);
+            match template_decl.name.as_deref() {
+                Some("String") => "String".to_string(),
+                Some("Int") | Some("Int64") => "i64".to_string(),
+                other => panic!("unsupported instantiated type {other:?}"),
+            }
+        }
+        other => panic!(
+            "rust_type_for_decl_id: unsupported connective for field type: {other:?}"
         ),
     }
 }
@@ -255,151 +260,142 @@ fn emit_tokenize_fn(keywords: &[(String, String)]) -> String {
             spelling, kind
         ));
     }
-    format!(
-        r#"pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {{
-    let bytes = source.as_bytes();
-    let mut pos: usize = 0;
-    let mut tokens = Vec::new();
-
-    while pos < bytes.len() {{
-        let byte = bytes[pos];
-
-        if byte.is_ascii_whitespace() {{
-            pos += 1;
-            continue;
-        }}
-
-        // Line comments: `// ...` to end of line.
-        if byte == b'/' && bytes.get(pos + 1) == Some(&b'/') {{
-            pos += 2;
-            while pos < bytes.len() && bytes[pos] != b'\\n' {{
-                pos += 1;
-            }}
-            continue;
-        }}
-
-        let start = pos;
-
-        if let Some((kind, width)) = punctuation_token(bytes, pos) {{
-            tokens.push(Token {{
-                kind,
-                span: SourceSpan::new(file, start as u32, (start + width) as u32),
-            }});
-            pos += width;
-            continue;
-        }}
-
-        if byte.is_ascii_digit() {{
-            let mut end = pos;
-            while end < bytes.len() && bytes[end].is_ascii_digit() {{
-                end += 1;
-            }}
-            let literal = &source[start..end];
-            let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {{
-                message: format!("invalid integer literal `{{literal}}`"),
-                span: SourceSpan::new(file, start as u32, end as u32),
-                fixes: Vec::new(),
-            }})?;
-            tokens.push(Token {{
-                kind: TokenKind::IntLit(value),
-                span: SourceSpan::new(file, start as u32, end as u32),
-            }});
-            pos = end;
-            continue;
-        }}
-
-        if byte.is_ascii_alphabetic() || byte == b'_' {{
-            let mut end = pos;
-            while end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {{
-                end += 1;
-            }}
-            let text = &source[start..end];
-            let kind = match text {{
-{arms}                _ => TokenKind::Ident(text.to_string()),
-            }};
-            tokens.push(Token {{
-                kind,
-                span: SourceSpan::new(file, start as u32, end as u32),
-            }});
-            pos = end;
-            continue;
-        }}
-
-        // String literal: "..."
-        //
-        // Minimal escape surface for bootstrap-staged structural data:
-        // `\"`, `\\\\`, `\\n`, `\\r`, `\\t`. Unknown `\\x` pairs preserve the
-        // old M0 behavior and stay literal as `\\` + `x`. Raw newlines
-        // are preserved until the closing `"`.
-        if byte == b'"' {{
-            let mut end = pos + 1;
-            let mut content = String::new();
-            let mut terminated = false;
-            while end < bytes.len() {{
-                match bytes[end] {{
-                    b'"' => {{
-                        terminated = true;
-                        end += 1;
-                        break;
-                    }}
-                    b'\\\\' => {{
-                        let Some(escaped) = bytes.get(end + 1).copied() else {{
-                            return Err(Diagnostic::TokenizerError {{
-                                message: "unterminated string escape".to_string(),
-                                span: SourceSpan::new(file, start as u32, (end + 1) as u32),
-                                fixes: Vec::new(),
-                            }});
-                        }};
-                        match escaped {{
-                            b'"' => content.push('"'),
-                            b'\\\\' => content.push('\\\\'),
-                            b'n' => content.push('\\n'),
-                            b'r' => content.push('\\r'),
-                            b't' => content.push('\\t'),
-                            other => {{
-                                content.push('\\\\');
-                                content.push(other as char);
-                            }}
-                        }}
-                        end += 2;
-                    }}
-                    other => {{
-                        content.push(other as char);
-                        end += 1;
-                    }}
-                }}
-            }}
-            if !terminated {{
-                return Err(Diagnostic::TokenizerError {{
-                    message: "unterminated string literal".to_string(),
-                    span: SourceSpan::new(file, start as u32, end as u32),
-                    fixes: Vec::new(),
-                }});
-            }}
-            tokens.push(Token {{
-                kind: TokenKind::StringLit(content),
-                span: SourceSpan::new(file, start as u32, end as u32),
-            }});
-            pos = end;
-            continue;
-        }}
-
-        return Err(Diagnostic::TokenizerError {{
-            message: format!("unexpected byte `{{}}`", byte as char),
-            span: SourceSpan::new(file, start as u32, (start + 1) as u32),
-            fixes: Vec::new(),
-        }});
-    }}
-
-    tokens.push(Token {{
-        kind: TokenKind::Eof,
-        span: SourceSpan::new(file, bytes.len() as u32, bytes.len() as u32),
-    }});
-    Ok(tokens)
-}}
-
-"#
-    )
+    let mut s = String::new();
+    s.push_str(
+        "pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {\n",
+    );
+    s.push_str("    let bytes = source.as_bytes();\n");
+    s.push_str("    let mut pos: usize = 0;\n");
+    s.push_str("    let mut tokens = Vec::new();\n\n");
+    s.push_str("    while pos < bytes.len() {\n");
+    s.push_str("        let byte = bytes[pos];\n\n");
+    s.push_str("        if byte.is_ascii_whitespace() {\n");
+    s.push_str("            pos += 1;\n");
+    s.push_str("            continue;\n");
+    s.push_str("        }\n\n");
+    s.push_str("        // Line comments: `// ...` to end of line.\n");
+    s.push_str("        if byte == b'/' && bytes.get(pos + 1) == Some(&b'/') {\n");
+    s.push_str("            pos += 2;\n");
+    s.push_str("            while pos < bytes.len() && bytes[pos] != b'\\n' {\n");
+    s.push_str("                pos += 1;\n");
+    s.push_str("            }\n");
+    s.push_str("            continue;\n");
+    s.push_str("        }\n\n");
+    s.push_str("        let start = pos;\n\n");
+    s.push_str("        if let Some((kind, width)) = punctuation_token(bytes, pos) {\n");
+    s.push_str("            tokens.push(Token {\n");
+    s.push_str("                kind,\n");
+    s.push_str("                span: SourceSpan::new(file, start as u32, (start + width) as u32),\n");
+    s.push_str("            });\n");
+    s.push_str("            pos += width;\n");
+    s.push_str("            continue;\n");
+    s.push_str("        }\n\n");
+    s.push_str("        if byte.is_ascii_digit() {\n");
+    s.push_str("            let mut end = pos;\n");
+    s.push_str("            while end < bytes.len() && bytes[end].is_ascii_digit() {\n");
+    s.push_str("                end += 1;\n");
+    s.push_str("            }\n");
+    s.push_str("            let literal = &source[start..end];\n");
+    s.push_str("            let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n");
+    s.push_str("                message: format!(\"invalid integer literal `{}`\", literal),\n");
+    s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
+    s.push_str("                fixes: Vec::new(),\n");
+    s.push_str("            })?;\n");
+    s.push_str("            tokens.push(Token {\n");
+    s.push_str("                kind: TokenKind::IntLit(value),\n");
+    s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
+    s.push_str("            });\n");
+    s.push_str("            pos = end;\n");
+    s.push_str("            continue;\n");
+    s.push_str("        }\n\n");
+    s.push_str("        if byte.is_ascii_alphabetic() || byte == b'_' {\n");
+    s.push_str("            let mut end = pos;\n");
+    s.push_str("            while end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {\n");
+    s.push_str("                end += 1;\n");
+    s.push_str("            }\n");
+    s.push_str("            let text = &source[start..end];\n");
+    s.push_str("            let kind = match text {\n");
+    s.push_str(&arms);
+    s.push_str("                _ => TokenKind::Ident(text.to_string()),\n");
+    s.push_str("            };\n");
+    s.push_str("            tokens.push(Token {\n");
+    s.push_str("                kind,\n");
+    s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
+    s.push_str("            });\n");
+    s.push_str("            pos = end;\n");
+    s.push_str("            continue;\n");
+    s.push_str("        }\n\n");
+    s.push_str("        // String literal: \"...\"\n");
+    s.push_str("        //\n");
+    s.push_str("        // Minimal escape surface for bootstrap-staged structural data:\n");
+    s.push_str("        // `\\\"`, `\\\\`, `\\n`, `\\r`, `\\t`. Unknown `\\x` pairs preserve the\n");
+    s.push_str("        // old M0 behavior and stay literal as `\\` + `x`. Raw newlines\n");
+    s.push_str("        // are preserved until the closing `\"`.\n");
+    s.push_str("        if byte == b'\"' {\n");
+    s.push_str("            let mut end = pos + 1;\n");
+    s.push_str("            let mut content = String::new();\n");
+    s.push_str("            let mut terminated = false;\n");
+    s.push_str("            while end < bytes.len() {\n");
+    s.push_str("                match bytes[end] {\n");
+    s.push_str("                    b'\"' => {\n");
+    s.push_str("                        terminated = true;\n");
+    s.push_str("                        end += 1;\n");
+    s.push_str("                        break;\n");
+    s.push_str("                    }\n");
+    s.push_str("                    b'\\\\' => {\n");
+    s.push_str("                        let Some(escaped) = bytes.get(end + 1).copied() else {\n");
+    s.push_str("                            return Err(Diagnostic::TokenizerError {\n");
+    s.push_str("                                message: \"unterminated string escape\".to_string(),\n");
+    s.push_str("                                span: SourceSpan::new(file, start as u32, (end + 1) as u32),\n");
+    s.push_str("                                fixes: Vec::new(),\n");
+    s.push_str("                            });\n");
+    s.push_str("                        };\n");
+    s.push_str("                        match escaped {\n");
+    s.push_str("                            b'\"' => content.push('\"'),\n");
+    s.push_str("                            b'\\\\' => content.push('\\\\'),\n");
+    s.push_str("                            b'n' => content.push('\u{000A}'),\n");
+    s.push_str("                            b'r' => content.push('\u{000D}'),\n");
+    s.push_str("                            b't' => content.push('\u{0009}'),\n");
+    s.push_str("                            other => {\n");
+    s.push_str("                                content.push('\\\\');\n");
+    s.push_str("                                content.push(other as char);\n");
+    s.push_str("                            }\n");
+    s.push_str("                        }\n");
+    s.push_str("                        end += 2;\n");
+    s.push_str("                    }\n");
+    s.push_str("                    other => {\n");
+    s.push_str("                        content.push(other as char);\n");
+    s.push_str("                        end += 1;\n");
+    s.push_str("                    }\n");
+    s.push_str("                }\n");
+    s.push_str("            }\n");
+    s.push_str("            if !terminated {\n");
+    s.push_str("                return Err(Diagnostic::TokenizerError {\n");
+    s.push_str("                    message: \"unterminated string literal\".to_string(),\n");
+    s.push_str("                    span: SourceSpan::new(file, start as u32, end as u32),\n");
+    s.push_str("                    fixes: Vec::new(),\n");
+    s.push_str("                });\n");
+    s.push_str("            }\n");
+    s.push_str("            tokens.push(Token {\n");
+    s.push_str("                kind: TokenKind::StringLit(content),\n");
+    s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
+    s.push_str("            });\n");
+    s.push_str("            pos = end;\n");
+    s.push_str("            continue;\n");
+    s.push_str("        }\n\n");
+    s.push_str("        return Err(Diagnostic::TokenizerError {\n");
+    s.push_str("            message: format!(\"unexpected byte `{}`\", byte as char),\n");
+    s.push_str("            span: SourceSpan::new(file, start as u32, (start + 1) as u32),\n");
+    s.push_str("            fixes: Vec::new(),\n");
+    s.push_str("        });\n");
+    s.push_str("    }\n\n");
+    s.push_str("    tokens.push(Token {\n");
+    s.push_str("        kind: TokenKind::Eof,\n");
+    s.push_str("        span: SourceSpan::new(file, bytes.len() as u32, bytes.len() as u32),\n");
+    s.push_str("    });\n");
+    s.push_str("    Ok(tokens)\n");
+    s.push_str("}\n\n");
+    s
 }
 
 fn emit_punctuation_token(puncts: &[(String, i64, String)]) -> String {
@@ -426,37 +422,35 @@ fn emit_punctuation_token(puncts: &[(String, i64, String)]) -> String {
     let mut arms = String::new();
     for (a, b, kind) in &two {
         arms.push_str(&format!(
-            "        (b'{}', Some(b'{}')) => Some((TokenKind::{}, 2)),\n",
-            byte_lit_char(*a),
-            byte_lit_char(*b),
+            "        ({}, Some({})) => Some((TokenKind::{}, 2)),\n",
+            rust_byte_literal(*a),
+            rust_byte_literal(*b),
             kind
         ));
     }
     for (a, kind) in &one {
         arms.push_str(&format!(
-            "        (b'{}', _) => Some((TokenKind::{}, 1)),\n",
-            byte_lit_char(*a),
+            "        ({}, _) => Some((TokenKind::{}, 1)),\n",
+            rust_byte_literal(*a),
             kind
         ));
     }
     arms.push_str("        _ => None,\n");
 
     format!(
-        r#"fn punctuation_token(bytes: &[u8], pos: usize) -> Option<(TokenKind, usize)> {{
-    let first = bytes[pos];
-    let second = bytes.get(pos + 1).copied();
-    match (first, second) {{
-{arms}    }}
-}}
-"#,
-        arms = arms
+        "fn punctuation_token(bytes: &[u8], pos: usize) -> Option<(TokenKind, usize)> {{\n\
+    let first = bytes[pos];\n\
+    let second = bytes.get(pos + 1).copied();\n\
+    match (first, second) {{\n\
+{arms}    }}\n\
+}}\n"
     )
 }
 
-fn byte_lit_char(b: u8) -> char {
+fn rust_byte_literal(b: u8) -> String {
     match b {
-        b'\'' => '\'',
-        b'\\' => '\\',
-        _ => b as char,
+        b'\'' => "b'\\''".to_string(),
+        b'\\' => "b'\\\\'".to_string(),
+        _ => format!("b'{}'", b as char),
     }
 }
