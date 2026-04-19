@@ -670,9 +670,6 @@ impl Port {
     }
 }
 
-/// Structural operator identities carried by `TransformTarget::Operator`.
-/// The authority lives in `src/v3/std/substrate.dag`; this Rust surface is the
-/// runtime mirror the compiler and emitted modules pattern-match on.
 /// Structural operator identities carried by
 /// [`TransformTarget::Operator`].
 ///
