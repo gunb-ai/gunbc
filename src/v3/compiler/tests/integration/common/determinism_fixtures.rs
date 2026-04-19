@@ -98,13 +98,12 @@ pub const FOUR_FIXTURE_FILES: &[&str] = &["id.v3", "drop.v3", "wrap.v3", "is_emp
 /// target emitter supports the lowering shape (e.g. Go `Loop`).
 pub const GO_EMIT_EXCLUDE: &[&str] = &["recursive_function_call_six"];
 
-/// Python 5× determinism allowlist — several program fixtures still hit
-/// `MissingOperatorRealization` until Python spec/emitter parity catches the
-/// full matrix (`m1_3_emit_rust_test` is Rust-canonical).
-pub const PYTHON_PROGRAM_DETERMINISM_NAMES: &[&str] = &[
-    "list_fold_six",
-    "generic_list_fold_one",
-    "user_function_call_three",
-    "record_literal_through_function_one",
-    "user_sum_match_zero",
+/// Program fixtures excluded from Python 5× determinism — `MissingOperatorRealization`,
+/// unsupported `Behavior::Loop`, etc., until Python spec/emitter parity matches the
+/// Rust matrix (`m1_3_emit_rust_test` is Rust-canonical).
+pub const PYTHON_EMIT_EXCLUDE: &[&str] = &[
+    "list_map_then_fold_twelve",
+    "list_filter_then_fold_seven",
+    "nested_list_builtins_inside_lambda_six",
+    "recursive_function_call_six",
 ];
