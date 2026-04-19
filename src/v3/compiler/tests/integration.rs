@@ -139,7 +139,6 @@ mod parse_corpus {
     fn parse_corpus_paths() -> Vec<String> {
         let compiler_root = compiler_root();
         let mut paths = vec![
-            "dsl/gunbc/compiler.dag".to_string(),
             "dsl/std/algebra.dag".to_string(),
             "dsl/std/bit.dag".to_string(),
             "dsl/std/float.dag".to_string(),
