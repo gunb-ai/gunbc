@@ -384,7 +384,9 @@ fn emit_tokenize_fn(
     s.push_str("        }\n\n");
     s.push_str("        // Line comment prefix from `tokenize.dag` (`line_comment_prefix`).\n");
     s.push_str("        if bytes.len() >= pos + LINE_COMMENT_PREFIX.len()\n");
-    s.push_str("            && bytes[pos..pos + LINE_COMMENT_PREFIX.len()] == LINE_COMMENT_PREFIX\n");
+    s.push_str(
+        "            && bytes[pos..pos + LINE_COMMENT_PREFIX.len()] == LINE_COMMENT_PREFIX\n",
+    );
     s.push_str("        {\n");
     s.push_str("            pos += LINE_COMMENT_PREFIX.len();\n");
     s.push_str("            while pos < bytes.len() && bytes[pos] != b'\\n' {\n");
@@ -409,7 +411,9 @@ fn emit_tokenize_fn(
     s.push_str("                end += 1;\n");
     s.push_str("            }\n");
     s.push_str("            let literal = &source[start..end];\n");
-    s.push_str("            let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n");
+    s.push_str(
+        "            let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n",
+    );
     s.push_str(&format!(
         "                message: format!(\"{{}}{{}}{{}}\", {}, literal, {}),\n",
         int_pre, int_suf
@@ -441,7 +445,9 @@ fn emit_tokenize_fn(
     s.push_str("            pos = end;\n");
     s.push_str("            continue;\n");
     s.push_str("        }\n\n");
-    s.push_str("        // String literal (`string_literal_delimiter` + `StringEscapeSpec` rows).\n");
+    s.push_str(
+        "        // String literal (`string_literal_delimiter` + `StringEscapeSpec` rows).\n",
+    );
     s.push_str(&format!("        if byte == {} {{\n", delim_lit));
     s.push_str("            let mut end = pos + 1;\n");
     s.push_str("            let mut content = String::new();\n");
