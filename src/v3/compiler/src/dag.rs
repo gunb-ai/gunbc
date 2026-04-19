@@ -1909,6 +1909,12 @@ pub(crate) struct TargetSyntaxCache {
     /// emitted Go compiles under `gofmt -l` + the Go compiler's
     /// own unused-local check by construction.
     pub go_clean_emission: Option<DeclarationId>,
+    /// `python_language` syntax bundle declaration loaded from
+    /// `src/v3/spec/python.dag`.
+    pub python_language: Option<DeclarationId>,
+    /// `python_target` execution-model declaration loaded from
+    /// `src/v3/spec/python.dag`.
+    pub python_target: Option<DeclarationId>,
     /// `python_clean_emission` CleanEmissionContract declaration
     /// loaded from `src/v3/spec/python.dag`. Lane 1 Stage 1c PR 3 /
     /// E-5: the Python emitter dispatches on this contract's
@@ -2294,6 +2300,18 @@ impl Dag {
     /// variants.
     pub fn go_clean_emission_spec(&self) -> Option<DeclarationId> {
         self.target_syntax.go_clean_emission
+    }
+
+    /// Typed accessor for the Python target-language syntax bundle
+    /// declared in `src/v3/spec/python.dag`.
+    pub fn python_language_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.python_language
+    }
+
+    /// Typed accessor for the Python target execution model
+    /// declaration loaded from `src/v3/spec/python.dag`.
+    pub fn python_target_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.python_target
     }
 
     /// Typed accessor for the Python `CleanEmissionContract`
@@ -2740,6 +2758,9 @@ impl Dag {
             self.declaration_by_name("go_execution_model").map(|d| d.id);
         self.target_syntax.go_clean_emission =
             self.declaration_by_name("go_clean_emission").map(|d| d.id);
+        self.target_syntax.python_language =
+            self.declaration_by_name("python_language").map(|d| d.id);
+        self.target_syntax.python_target = self.declaration_by_name("python_target").map(|d| d.id);
         self.target_syntax.python_clean_emission = self
             .declaration_by_name("python_clean_emission")
             .map(|d| d.id);

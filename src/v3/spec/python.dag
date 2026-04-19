@@ -13,6 +13,16 @@ import v3.std.computation_model {
   TargetExecutionModel, MemoryModel,
   GarbageCollected, LexicalScoping
 }
+import v3.std.emit_model {
+  TypeRealization, OperatorRealization, CallableRealization,
+  TypeInstantiationRealization, PatternRealization, CallableStrategy,
+  PatternStrategy, CallableParameter, ParameterDisposition,
+  Borrowed, Consumed,
+  StatementSyntax, ExpressionSyntax, ControlFlowSyntax, ForEachSyntax,
+  LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
+  TypeDefinitionSyntax, PatternMatchSyntax, CollectionOps,
+  ValueConstructionSyntax, LanguageSpec
+}
 import v3.std.clean_emission {
   CleanEmissionContract,
   ExpressionWrappingRule, WrapOnlyInOperandPosition,
@@ -25,141 +35,68 @@ import v3.std.clean_emission {
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
 
-// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
-// `v3.std.emit_model.TypeRealization`. emit_python consumes
-// PythonTypeRealization instead of the shared schema; the shared
-// schema lacks an `is_copy` field that Python's per-value rendering
-// reads, so a direct migration requires extending TypeRealization
-// OR lifting is_copy into a separate per-target lens.
-// Dissolution trigger: Lane 1e (consolidation) migrates emit_python
-// onto shared TypeRealization after the schema grows an is_copy
-// equivalent (or after emit_rust's copy-handling moves to a lens).
-type PythonTypeRealization {
-  target: DeclarationRef
-  carrier: String
-  is_copy: Bool
-  cost: Int
+data python_statements: StatementSyntax = {
+  let_binding: "{name} = {value}"
+  let_binding_inferred: "{name} = {value}"
 }
 
-// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
-// `v3.std.emit_model.OperatorRealization` — identical shape, just
-// private meta-type. No schema gap; this is a pure-migration target.
-// Dissolution trigger: Lane 1e migrates emit_python to read
-// OperatorRealization (shared).
-type PythonOperatorRealization {
-  target: DeclarationRef
-  op: DeclarationRef
-  carrier: String
-  cost: Int
-}
-
-// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
-// `v3.std.emit_model.CallableRealization`. Shared schema has
-// `parameters: List<CallableParameter>` (slot-keyed dispositions
-// that Go parses but doesn't consume for GC rendering); Python
-// doesn't need that field, so migrating requires either making
-// parameters optional in the shared schema (regression against
-// E-6) or accepting that emit_python validates-and-ignores the
-// field (the Go pattern).
-// Dissolution trigger: Lane 1e decides the policy. Until then,
-// the private family is the bounded scaffold.
-type PythonCallableRealization {
-  target: DeclarationRef
-  strategy: PythonCallableStrategy
-  cost: Int
-}
-
-// 🟡 SCAFFOLD. Parallel to v3.std.emit_model.CallableStrategy. Lives
-// here because emit_python is on a Python-private realization
-// vocabulary (PythonCallableRealization etc.) that hasn't migrated
-// to the shared schema yet. Dissolution path: when emit_python reads
-// CallableRealization (shared) instead of PythonCallableRealization
-// (private), this enum dissolves into the shared CallableStrategy.
-type PythonCallableStrategy
-  = ListEmpty
-  | ListSingleton
-  | ListCons
-  | ListConcat
-  | ListLength
-  | ListIsEmpty
-  | ListFold
-  | ListMap
-  | ListFilter
-  | ListContains
-
-// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
-// `v3.std.emit_model.TypeInstantiationRealization` — identical
-// shape. No schema gap; pure-migration target.
-// Dissolution trigger: Lane 1e migrates emit_python to read
-// TypeInstantiationRealization (shared).
-type PythonTypeInstantiationRealization {
-  target: DeclarationRef
-  carrier: String
-  cost: Int
-}
-
-// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
-// `v3.std.emit_model.PatternRealization`. Shared schema carries
-// typed pattern strings (scrutinee, empty_pattern, cons_pattern,
-// head_expr, tail_expr); Python's pattern lowering currently
-// uses hardcoded list-variant name lookups in render_list_branch
-// (blocked on parser dotted-path variant access, tracked as B13
-// in Lane 3 Stage 3a). The type exists for schema-shape symmetry
-// but is NOT currently loaded by PythonIndexes::build — the
-// record's only consumer is still prose.
-// Dissolution trigger: B13 (Lane 3 Stage 3a parser feature) lands
-// AND emit_python migrates to shared PatternRealization in Lane 1e.
-type PythonPatternRealization {
-  target: DeclarationRef
-  strategy: PythonPatternStrategy
-  cost: Int
-}
-
-// 🟡 SCAFFOLD. Parallel to v3.std.emit_model.PatternStrategy. Same
-// dissolution path as PythonCallableStrategy — when emit_python
-// reads PatternRealization (shared) and the planned typed-variant
-// authority (B13) replaces hardcoded "Empty"/"Cons" name lookups,
-// this enum dissolves into the shared PatternStrategy.
-type PythonPatternStrategy
-  = ListPattern
-
-type PythonExpressionSyntax {
-  binary_op: String
-  field_access: String
-  function_call: String
-  closure: String
-}
-
-type PythonCollectionOps {
-  empty_list: String
-  list_literal: String
-  cons: String
-  concat: String
-  length: String
-  is_empty: String
-  fold: String
-  map: String
-  filter: String
-  contains: String
-}
-
-type PythonTypeApplicationSyntax {
-  optional: String
-}
-
-data python_target: TargetExecutionModel = {
-  memory: GarbageCollected
-  scope: LexicalScoping
-}
-
-data python_expressions: PythonExpressionSyntax = {
+data python_expressions: ExpressionSyntax = {
   binary_op: "({lhs} {op} {rhs})"
   field_access: "{object}.{field}"
   function_call: "{func}({args})"
   closure: "lambda {params}: {body}"
 }
 
-data python_collections: PythonCollectionOps = {
+data python_control_flow: ControlFlowSyntax = {
+  if_else: "({then} if {cond} else {else})"
+  match_arm: "{pattern}: {body}"
+  for_each_syntax: {
+    prefix: "for {item} in {iter}:\n{body}"
+    separator: "\n"
+  }
+}
+
+data python_literals: LiteralSyntax = {
+  true_keyword: "True"
+  false_keyword: "False"
+  string_delimiter: "%Q"
+}
+
+data python_modules: ModuleSyntax = {
+  path_separator: "."
+}
+
+data python_functions: FunctionSyntax = {
+  definition: "def {name}({params}) -> {ret}:\n    return {body}"
+  definition_void: "def {name}({params}) -> None:\n    {body}"
+  param_with_type: "{name}: {type}"
+  param_separator: ", "
+}
+
+data python_type_applications: TypeApplicationSyntax = {
+  optional: "typing.Optional[{element}]"
+}
+
+data python_type_definitions: TypeDefinitionSyntax = {
+  struct_def: "@dataclass\nclass {name}:\n{fields}"
+  struct_field: "{name}: {type}"
+  enum_def: "class {name}:\n    pass\n\n{variants}"
+  enum_unit_variant: "@dataclass\nclass {name}({parent}):\n    pass"
+  enum_data_variant: "@dataclass\nclass {name}({parent}):\n{fields}"
+}
+
+data python_patterns: PatternMatchSyntax = {
+  match_expr: "match {expr} { {arms} }"
+  match_arm: "{pattern}: {body}"
+  variant_pattern: "{name}({bindings})"
+  variant_pattern_positional: "{name}({binding})"
+  variant_pattern_empty: "{name}()"
+  field_binding: "{field}={binding}"
+  field_binding_separator: ", "
+  wildcard: "_"
+}
+
+data python_collections: CollectionOps = {
   empty_list: "[]"
   list_literal: "[{elements}]"
   cons: "[{head}, *{tail}]"
@@ -172,234 +109,355 @@ data python_collections: PythonCollectionOps = {
   contains: "({item} in {recv})"
 }
 
-data python_type_applications: PythonTypeApplicationSyntax = {
-  optional: "typing.Optional[{element}]"
+data python_value_construction: ValueConstructionSyntax = {
+  struct_literal: "{name}({fields})"
+  struct_field_init: "{field}={value}"
+  struct_field_separator: ", "
+  variant_construction: "{name}()"
+  variant_named_construction: "{name}({fields})"
 }
 
-data python_int: PythonTypeRealization = {
+data python_language: LanguageSpec = {
+  statements: python_statements
+  expressions: python_expressions
+  control_flow: python_control_flow
+  literals: python_literals
+  modules: python_modules
+  functions: python_functions
+  type_applications: python_type_applications
+  type_definitions: python_type_definitions
+  patterns: python_patterns
+  collection_ops: python_collections
+  values: python_value_construction
+}
+
+data python_target: TargetExecutionModel = {
+  memory: GarbageCollected
+  scope: LexicalScoping
+}
+
+data python_int: TypeRealization = {
+  language: python_language
   target: Int
   carrier: "int"
   is_copy: true
+  fields: []
   cost: 1
 }
 
-data python_bool: PythonTypeRealization = {
+data python_bool: TypeRealization = {
+  language: python_language
   target: Bool
   carrier: "bool"
   is_copy: true
+  fields: []
   cost: 1
 }
 
-data python_string: PythonTypeRealization = {
+data python_string: TypeRealization = {
+  language: python_language
   target: String
   carrier: "str"
   is_copy: true
+  fields: []
   cost: 1
 }
 
-data python_node_id: PythonTypeRealization = {
+data python_node_id: TypeRealization = {
+  language: python_language
   target: NodeId
   carrier: "NodeId"
   is_copy: true
+  fields: []
   cost: 1
 }
 
-data python_port_id: PythonTypeRealization = {
+data python_port_id: TypeRealization = {
+  language: python_language
   target: PortId
   carrier: "PortId"
   is_copy: true
+  fields: []
   cost: 1
 }
 
-data python_declaration_id: PythonTypeRealization = {
+data python_declaration_id: TypeRealization = {
+  language: python_language
   target: DeclarationId
   carrier: "DeclarationId"
   is_copy: true
+  fields: []
   cost: 1
 }
 
-data python_declaration_ref: PythonTypeRealization = {
+data python_declaration_ref: TypeRealization = {
+  language: python_language
   target: DeclarationRef
   carrier: "DeclarationId"
   is_copy: true
+  fields: []
   cost: 1
 }
 
-data python_source_span: PythonTypeRealization = {
+data python_source_span: TypeRealization = {
+  language: python_language
   target: SourceSpan
   carrier: "SourceSpan"
   is_copy: false
+  fields: []
   cost: 1
 }
 
-data python_dag_port: PythonTypeRealization = {
+data python_dag_port: TypeRealization = {
+  language: python_language
   target: DagPort
   carrier: "DagPort"
   is_copy: false
+  fields: []
   cost: 1
 }
 
-data python_branch_path: PythonTypeRealization = {
+data python_branch_path: TypeRealization = {
+  language: python_language
   target: BranchPath
   carrier: "BranchPath"
   is_copy: false
+  fields: []
   cost: 1
 }
 
-data python_value_node: PythonTypeRealization = {
+data python_value_node: TypeRealization = {
+  language: python_language
   target: ValueNode
   carrier: "ValueNode"
   is_copy: false
+  fields: []
   cost: 1
 }
 
-data python_transform_node: PythonTypeRealization = {
+data python_transform_node: TypeRealization = {
+  language: python_language
   target: TransformNode
   carrier: "TransformNode"
   is_copy: false
+  fields: []
   cost: 1
 }
 
-data python_branch_node: PythonTypeRealization = {
+data python_branch_node: TypeRealization = {
+  language: python_language
   target: BranchNode
   carrier: "BranchNode"
   is_copy: false
+  fields: []
   cost: 1
 }
 
-data python_loop_node: PythonTypeRealization = {
+data python_loop_node: TypeRealization = {
+  language: python_language
   target: LoopNode
   carrier: "LoopNode"
   is_copy: false
+  fields: []
   cost: 1
 }
 
-data python_bind_node: PythonTypeRealization = {
+data python_bind_node: TypeRealization = {
+  language: python_language
   target: BindNode
   carrier: "BindNode"
   is_copy: false
+  fields: []
   cost: 1
 }
 
-data python_behavior: PythonTypeRealization = {
+data python_behavior: TypeRealization = {
+  language: python_language
   target: Behavior
   carrier: "Behavior"
   is_copy: false
+  fields: []
   cost: 1
 }
 
-data python_dag: PythonTypeRealization = {
+data python_dag: TypeRealization = {
+  language: python_language
   target: Dag
   carrier: "Dag"
   is_copy: false
+  fields: []
   cost: 1
 }
 
-data python_int_add: PythonOperatorRealization = {
+data python_int_add: OperatorRealization = {
+  language: python_language
   target: Int
   op: OrderedRing.add
   carrier: "+"
   cost: 1
 }
 
-data python_int_sub: PythonOperatorRealization = {
+data python_int_sub: OperatorRealization = {
+  language: python_language
   target: Int
   op: OrderedRing.sub
   carrier: "-"
   cost: 1
 }
 
-data python_int_eq: PythonOperatorRealization = {
+data python_int_eq: OperatorRealization = {
+  language: python_language
   target: Int
   op: OrderedRing.eq
   carrier: "=="
   cost: 1
 }
 
-data python_node_id_eq: PythonOperatorRealization = {
+data python_node_id_eq: OperatorRealization = {
+  language: python_language
   target: NodeId
   op: OrderedRing.eq
   carrier: "=="
   cost: 1
 }
 
-data python_port_id_eq: PythonOperatorRealization = {
+data python_port_id_eq: OperatorRealization = {
+  language: python_language
   target: PortId
   op: OrderedRing.eq
   carrier: "=="
   cost: 1
 }
 
-data python_declaration_id_eq: PythonOperatorRealization = {
+data python_declaration_id_eq: OperatorRealization = {
+  language: python_language
   target: DeclarationId
   op: OrderedRing.eq
   carrier: "=="
   cost: 1
 }
 
-data python_empty_callable: PythonCallableRealization = {
+data python_empty_callable: CallableRealization = {
+  language: python_language
   target: empty
   strategy: ListEmpty
+  parameters: []
   cost: 1
 }
 
-data python_singleton_callable: PythonCallableRealization = {
+data python_singleton_callable: CallableRealization = {
+  language: python_language
   target: singleton
   strategy: ListSingleton
+  parameters: [
+    { slot: 0, disposition: Consumed }
+  ]
   cost: 1
 }
 
-data python_cons_callable: PythonCallableRealization = {
+data python_cons_callable: CallableRealization = {
+  language: python_language
   target: cons
   strategy: ListCons
+  parameters: [
+    { slot: 0, disposition: Consumed },
+    { slot: 1, disposition: Consumed }
+  ]
   cost: 1
 }
 
-data python_concat_callable: PythonCallableRealization = {
+data python_concat_callable: CallableRealization = {
+  language: python_language
   target: concat
   strategy: ListConcat
+  parameters: [
+    { slot: 0, disposition: Consumed },
+    { slot: 1, disposition: Consumed }
+  ]
   cost: 1
 }
 
-data python_length_callable: PythonCallableRealization = {
+data python_length_callable: CallableRealization = {
+  language: python_language
   target: length
   strategy: ListLength
+  parameters: [
+    { slot: 0, disposition: Borrowed }
+  ]
   cost: 1
 }
 
-data python_is_empty_callable: PythonCallableRealization = {
+data python_is_empty_callable: CallableRealization = {
+  language: python_language
   target: is_empty
   strategy: ListIsEmpty
+  parameters: [
+    { slot: 0, disposition: Borrowed }
+  ]
   cost: 1
 }
 
-data python_fold_callable: PythonCallableRealization = {
+data python_fold_callable: CallableRealization = {
+  language: python_language
   target: fold
   strategy: ListFold
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Consumed },
+    { slot: 2, disposition: Borrowed }
+  ]
   cost: 1
 }
 
-data python_map_callable: PythonCallableRealization = {
+data python_map_callable: CallableRealization = {
+  language: python_language
   target: map
   strategy: ListMap
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Borrowed }
+  ]
   cost: 1
 }
 
-data python_filter_callable: PythonCallableRealization = {
+data python_filter_callable: CallableRealization = {
+  language: python_language
   target: filter
   strategy: ListFilter
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Borrowed }
+  ]
   cost: 1
 }
 
-data python_contains_callable: PythonCallableRealization = {
+data python_contains_callable: CallableRealization = {
+  language: python_language
   target: contains
   strategy: ListContains
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Borrowed }
+  ]
   cost: 1
 }
 
-data python_list_instantiation: PythonTypeInstantiationRealization = {
+data python_list_instantiation: TypeInstantiationRealization = {
+  language: python_language
   target: List
   carrier: "list[{element}]"
+  cost: 1
+}
+
+data python_list_pattern: PatternRealization = {
+  language: python_language
+  target: List
+  strategy: VectorList
+  scrutinee: "{expr}"
+  empty_pattern: "len({expr}) == 0"
+  cons_pattern: "{expr}"
+  head_expr: "{list}[0]"
+  tail_expr: "{list}[1:]"
   cost: 1
 }
 

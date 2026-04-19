@@ -13,6 +13,11 @@
 | **P2 — nice-to-have** | Dissolves a bridge or improves ergonomics; emission can ship with a temporary Rust shim |
 
 Specs referenced: `src/v3/spec/rust.dag`, `go.dag`, `python.dag` (+ shared `v3_l1.dag`, `v3/std/*` types they import). The Go target's hand-written body now lives under `src/v3/compiler/src/emit.rs`; references below to the former `emit_go.rs` body apply to that moved implementation.
+Python's Stage 1e.0 schema bridge is now cleared: `spec/python.dag`
+uses the shared emit-model schema (`python_language: LanguageSpec`
+plus shared realization rows), and `emit/python_target.rs` reads that
+shared surface. The remaining gaps below are the post-bridge
+consolidation gaps, not reasons to keep a Python-private spec family.
 
 ---
 

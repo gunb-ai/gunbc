@@ -13,6 +13,13 @@ the build plan was locked:
 apply to that moved body verbatim; this document keeps the original
 audit labels because Stage 1d's question was "what code must
 consolidate?", not "which file currently hosts it?"
+Python's Stage 1e.0 bridge has also landed: `spec/python.dag` now
+authors shared `TypeRealization` / `OperatorRealization` /
+`CallableRealization` / `TypeInstantiationRealization` /
+`PatternRealization` rows behind `python_language: LanguageSpec`, and
+`emit/python_target.rs` reads that shared schema. The inventory below
+still applies to the current Python body; it no longer depends on the
+private `Python*` scaffold family.
 
 **Verification (line counts must match this doc):**
 
