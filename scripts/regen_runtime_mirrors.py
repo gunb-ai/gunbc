@@ -362,6 +362,17 @@ def rust_type(source: str, overrides: dict[str, str] | None = None) -> str:
         "TypeShape": "TypeShape",
         "CompilerSourceSpan": "SourceSpan",
         "CompilerCorrection": "Correction",
+        "CompilerLiteralBits": "LiteralBits",
+        "CompilerCardinalityBound": "CardinalityBound",
+        "CompilerTemplateArgument": "TemplateArgument",
+        "CompilerPortState": "PortState",
+        "CompilerBranchPattern": "BranchPattern",
+        "CompilerPayloadBinding": "PayloadBinding",
+        "CompilerPath": "Path",
+        "CompilerMemberDescent": "MemberDescent",
+        "CompilerIntraClusterCall": "IntraClusterCall",
+        "CompilerCluster": "Cluster",
+        "CompilerLoopBound": "LoopBound",
     }
     if source in mapping:
         return mapping[source]
@@ -446,21 +457,28 @@ def render_diagnostics_module(records: dict[str, RecordDef], sums: dict[str, lis
 def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
     parts = [
         render_sum(
-            "LiteralBits",
-            sums["LiteralBits"],
+            "CompilerLiteralBits",
+            sums["CompilerLiteralBits"],
             "#[derive(Debug, Clone, PartialEq, Eq)]",
+            output_name="LiteralBits",
         ),
         render_sum(
-            "CardinalityBound",
-            sums["CardinalityBound"],
+            "CompilerCardinalityBound",
+            sums["CompilerCardinalityBound"],
             "#[derive(Debug, Clone, PartialEq, Eq)]",
+            output_name="CardinalityBound",
             overrides={"Int": "u32"},
         ),
-        render_record(records["TemplateArgument"], derives="#[derive(Debug, Clone)]"),
+        render_record(
+            records["CompilerTemplateArgument"],
+            output_name="TemplateArgument",
+            derives="#[derive(Debug, Clone)]",
+        ),
         render_sum(
-            "PortState",
-            sums["PortState"],
+            "CompilerPortState",
+            sums["CompilerPortState"],
             "#[derive(Debug, Clone, PartialEq, Eq)]",
+            output_name="PortState",
         ),
     ]
     return "\n\n".join(parts)
@@ -469,25 +487,41 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
 def render_dag_branch_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
     parts = [
         render_sum(
-            "BranchPattern",
-            sums["BranchPattern"],
+            "CompilerBranchPattern",
+            sums["CompilerBranchPattern"],
             "#[derive(Debug, Clone)]",
+            output_name="BranchPattern",
         ),
-        render_record(records["PayloadBinding"], derives="#[derive(Debug, Clone)]"),
-        render_record(records["Path"], derives="#[derive(Debug, Clone)]"),
+        render_record(
+            records["CompilerPayloadBinding"],
+            output_name="PayloadBinding",
+            derives="#[derive(Debug, Clone)]",
+        ),
+        render_record(
+            records["CompilerPath"],
+            output_name="Path",
+            derives="#[derive(Debug, Clone)]",
+        ),
     ]
     return "\n\n".join(parts)
 
 
 def render_dag_cluster_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
     parts = [
-        render_record(records["MemberDescent"], output_name="MemberDescent"),
-        render_record(records["IntraClusterCall"], output_name="IntraClusterCall"),
-        render_record(records["Cluster"], output_name="Cluster"),
+        render_record(
+            records["CompilerMemberDescent"],
+            output_name="MemberDescent",
+        ),
+        render_record(
+            records["CompilerIntraClusterCall"],
+            output_name="IntraClusterCall",
+        ),
+        render_record(records["CompilerCluster"], output_name="Cluster"),
         render_sum(
-            "LoopBound",
-            sums["LoopBound"],
+            "CompilerLoopBound",
+            sums["CompilerLoopBound"],
             "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
+            output_name="LoopBound",
         ),
     ]
     return "\n\n".join(parts)

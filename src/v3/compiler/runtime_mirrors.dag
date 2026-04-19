@@ -72,59 +72,59 @@ type DagDifference {
   detail: String
 }
 
-type LiteralBits
+type CompilerLiteralBits
   = Int(Int)
   | Bool(Bool)
   | String(String)
 
-type CardinalityBound
+type CompilerCardinalityBound
   = Exact(Int)
   | AtMostOne
   | Unbounded
 
-type TemplateArgument {
+type CompilerTemplateArgument {
   parameter: DeclarationId
   value: DeclarationId
 }
 
-type PortState
+type CompilerPortState
   = Uninferred
   | Resolved(TypeShape)
   | Unresolved
 
-type BranchPattern
+type CompilerBranchPattern
   = UnresolvedVariant {
       name: String
       span: CompilerSourceSpan
     }
   | ResolvedVariant(DeclarationId)
 
-type PayloadBinding {
+type CompilerPayloadBinding {
   binding_name: String
   payload_port: PortId
 }
 
-type Path {
+type CompilerPath {
   body: NodeId
   output: PortId
-  pattern: BranchPattern
-  binding: PayloadBinding?
+  pattern: CompilerBranchPattern
+  binding: CompilerPayloadBinding?
 }
 
-type MemberDescent {
+type CompilerMemberDescent {
   param: ParamRef
 }
 
-type IntraClusterCall {
+type CompilerIntraClusterCall {
   transform: TransformRef
 }
 
-type Cluster {
-  members: NonSingletonList<MemberDescent>
-  intra_cluster_calls: NonEmptyList<IntraClusterCall>
+type CompilerCluster {
+  members: NonSingletonList<CompilerMemberDescent>
+  intra_cluster_calls: NonEmptyList<CompilerIntraClusterCall>
 }
 
-type LoopBound
+type CompilerLoopBound
   = Cardinality {
       count: PortId
     }
