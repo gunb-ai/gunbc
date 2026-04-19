@@ -73,11 +73,7 @@ jobs:
 
   v3:
     runs-on: ubuntu-latest
-<<<<<<< HEAD
-    # Full suite is capped at 950s, plus clippy + lens gates + cold compile — 15m
-=======
     # Full suite is capped at 1200s, plus clippy + lens gates + cold compile — 15m
->>>>>>> origin/main
     # can cancel the job before the final steps finish.
     timeout-minutes: 25
     steps:
@@ -106,22 +102,11 @@ jobs:
 
       # Layer 1 (coarse CI): wall-clock gates on `cargo test -p v3-compiler`.
       #
-<<<<<<< HEAD
-      # Full-suite budget is 950s. Post-#546 (cache consolidation) mainline
-      # baseline on ubuntu-24.04 is ~883s; 950s leaves ~70s headroom for
-      # cold-runner / cache-miss variance. Dominant remaining cost is
-      # `m1_5_testgen` — two tests each compiling ~150s of per-claim rendered
-      # source (unique cache keys, so sharing doesn't help). Next ratchet-down
-      # (target ~500s) is gated on dissolving that pair: either `#[ignore]`
-      # + nightly, or compile-once bootstrap-as-input. Ratchet is coarse
-      # (catch suite-wide slowdown), not a tight perf SLA.
-=======
       # Full-suite wall-clock ratchet below is 1200s. Mainline timing on ubuntu-24.04
       # reached ~951–953s after #548 (earlier green ~719s); warm local runs are often
       # ~520–560s for `cargo test -p v3-compiler`. Cold runners, cache misses, m1_5_testgen,
       # and the DB-8 determinism matrix can push higher — observed ~1082s motivated cap >1050s.
       # Ratchet is coarse (catch suite-wide slowdown), not a tight perf SLA.
->>>>>>> origin/main
       # Regressions show up when integration tests redo full `compile_to_dag` per
       # `#[test]` (see `lane2_stage_2e_parallelism_test`: shared `OnceLock` + clone).
       #
@@ -143,25 +128,16 @@ jobs:
             exit 1
           fi
 
-<<<<<<< HEAD
-      - name: v3 tests (full suite, 950s budget)
-=======
       # **Dissolution trigger:** reshape m1_5_testgen to spot-check instead of exhaustive
       # compile-every-claim, OR mark the two slow tests `#[ignore]`-by-default + nightly job.
       - name: v3 tests (full suite, 1200s budget)
->>>>>>> origin/main
         run: |
           start=$(date +%s)
           cargo test -p v3-compiler
           elapsed=$(( $(date +%s) - start ))
           echo "v3 full-suite wall time: ${elapsed}s"
-<<<<<<< HEAD
-          if [ "$elapsed" -gt 950 ]; then
-            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 950s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
-=======
           if [ "$elapsed" -gt 1200 ]; then
             echo "::error::v3 full-suite tests took ${elapsed}s (budget: 1200s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
->>>>>>> origin/main
             exit 1
           fi
 
