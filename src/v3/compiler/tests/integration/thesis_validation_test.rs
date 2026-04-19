@@ -8,6 +8,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, PortState, TransformTarget};
+use v3_compiler::diagnostics::{render_diagnostic_for_target, DiagnosticStyleTarget};
 use v3_compiler::lens_cost::cost_of;
 
 use crate::common::cached_compile_to_dag;
@@ -45,6 +46,10 @@ fn bind_named<'a>(dag: &'a Dag, name: &str) -> &'a v3_compiler::dag::BindNode {
 fn bind_cost(dag: &Dag, name: &str) -> usize {
     let port = bind_named(dag, name).value;
     crate::common::require_fixture_cost_usize(cost_of(dag, &port), &format!("bind `{name}`"))
+}
+
+fn rendered_rust_diagnostic(dag: &Dag, diagnostic: &Diagnostic) -> String {
+    render_diagnostic_for_target(dag, DiagnosticStyleTarget::Rust, diagnostic).expect("render")
 }
 
 #[test]
@@ -103,14 +108,29 @@ fn read(point: Point) -> Int = point.c
         "missing-field access must fail closed at the bind output; got {:?}",
         dag.port(bind.value).state()
     );
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. } if name.contains("field `c` does not exist") => {
+                Some(diag)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected missing-field diagnostic naming `c`, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
     assert!(
-        dag.diagnostics().iter().any(|(_, diag)| matches!(
-            diag,
-            Diagnostic::ResolveError { name, .. }
-                if name.contains("field `c` does not exist")
-        )),
-        "expected missing-field diagnostic naming `c`, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
+        !diag.fixes().is_empty(),
+        "missing-field diagnostic should carry at least one correction"
+    );
+    let rendered = rendered_rust_diagnostic(&dag, diag);
+    assert!(
+        rendered.contains("FIX (option 1):"),
+        "rendered diagnostic should show FIX lines, got {rendered}"
     );
 }
 
@@ -130,15 +150,26 @@ fn read(x: AB) -> Int = match x { A => 1 }
         "non-exhaustive match must fail closed at the bind output; got {:?}",
         dag.port(bind.value).state()
     );
-    assert!(
-        dag.diagnostics().iter().any(|(_, diag)| matches!(
-            diag,
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
             Diagnostic::ResolveError { name, .. }
-                if name.contains("non-exhaustive match")
-                    && name.contains("`B`")
-        )),
-        "expected non-exhaustive match diagnostic naming `B`, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
+                if name.contains("non-exhaustive match") && name.contains("`B`") =>
+            {
+                Some(diag)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected non-exhaustive match diagnostic naming `B`, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        diag.fixes().iter().any(|fix| fix.description.contains("`B`")),
+        "non-exhaustive match diagnostic should suggest the missing `B` arm"
     );
 }
 
@@ -174,10 +205,17 @@ fn t1_4_type_mismatch_produces_a_typemismatch_diagnostic() {
         .expect("diagnostic recorded for mismatched value");
     match diag {
         Diagnostic::TypeMismatch {
-            expected, actual, ..
+            expected,
+            actual,
+            fixes,
+            ..
         } => {
             assert_eq!(*expected, primitive_shape(&dag, "Bool"));
             assert_eq!(*actual, primitive_shape(&dag, "Int"));
+            assert!(
+                !fixes.is_empty(),
+                "type mismatch diagnostic should carry at least one correction"
+            );
         }
         other => panic!("expected TypeMismatch, got {other:?}"),
     }
@@ -243,14 +281,26 @@ fn t1_5_missing_descent_is_rejected() {
         matches!(dag.port(bind.value).state(), PortState::Unresolved),
         "non-decreasing recursion must fail closed"
     );
-    assert!(
-        dag.diagnostics().iter().any(|(_, diag)| matches!(
-            diag,
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
             Diagnostic::ResolveError { name, .. }
-                if name.contains("cannot prove recursion in `diverge` terminates")
-        )),
-        "expected descent-proof diagnostic, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
+                if name.contains("cannot prove recursion in `diverge` terminates") =>
+            {
+                Some(diag)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected descent-proof diagnostic, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        !diag.fixes().is_empty(),
+        "termination diagnostic should carry at least one correction"
     );
 }
 
@@ -278,14 +328,24 @@ fn bad(m: Maybe<Int>) -> Int = m
         matches!(dag.port(bind.value).state(), PortState::Unresolved),
         "using an option-like value without matching must fail closed"
     );
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. } if name.contains("declared signature") => {
+                Some(diag)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a declared-signature diagnostic, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
     assert!(
-        dag.diagnostics().iter().any(|(_, diag)| matches!(
-            diag,
-            Diagnostic::ResolveError { name, .. }
-                if name.contains("declared signature")
-        )),
-        "expected a declared-signature diagnostic, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
+        !diag.fixes().is_empty(),
+        "declared-signature diagnostic should carry at least one correction"
     );
 }
 
@@ -304,13 +364,22 @@ fn bad(m: Maybe<Int>) -> Int = unwrap(m)
         matches!(dag.port(bind.value).state(), PortState::Unresolved),
         "unknown unwrap primitive must fail closed"
     );
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. } if name == "unwrap" => Some(diag),
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected unresolved callable diagnostic for `unwrap`, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
     assert!(
-        dag.diagnostics().iter().any(|(_, diag)| matches!(
-            diag,
-            Diagnostic::ResolveError { name, .. } if name == "unwrap"
-        )),
-        "expected unresolved callable diagnostic for `unwrap`, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
+        !diag.fixes().is_empty(),
+        "unresolved callable diagnostic should carry at least one correction"
     );
 }
 
