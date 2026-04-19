@@ -73,7 +73,7 @@ jobs:
 
   v3:
     runs-on: ubuntu-latest
-    # Full suite is capped at 750s, plus clippy + lens gates + cold compile — 15m
+    # Full suite is capped at 950s, plus clippy + lens gates + cold compile — 15m
     # can cancel the job before the final steps finish.
     timeout-minutes: 25
     steps:
@@ -102,10 +102,14 @@ jobs:
 
       # Layer 1 (coarse CI): wall-clock gates on `cargo test -p v3-compiler`.
       #
-      # Full-suite budget is 1050s. The last green GitHub run was 719s, but the
-      # current mainline suite is ~951–953s on ubuntu-24.04 after #548. Keep the
-      # cap above the live runner baseline while leaving ~100s headroom for normal
-      # variance and the post-test clippy / lens / ratchet steps in this job.
+      # Full-suite budget is 950s. Post-#546 (cache consolidation) mainline
+      # baseline on ubuntu-24.04 is ~883s; 950s leaves ~70s headroom for
+      # cold-runner / cache-miss variance. Dominant remaining cost is
+      # `m1_5_testgen` — two tests each compiling ~150s of per-claim rendered
+      # source (unique cache keys, so sharing doesn't help). Next ratchet-down
+      # (target ~500s) is gated on dissolving that pair: either `#[ignore]`
+      # + nightly, or compile-once bootstrap-as-input. Ratchet is coarse
+      # (catch suite-wide slowdown), not a tight perf SLA.
       # Regressions show up when integration tests redo full `compile_to_dag` per
       # `#[test]` (see `lane2_stage_2e_parallelism_test`: shared `OnceLock` + clone).
       #
@@ -130,14 +134,14 @@ jobs:
             exit 1
           fi
 
-      - name: v3 tests (full suite, 1050s budget)
+      - name: v3 tests (full suite, 950s budget)
         run: |
           start=$(date +%s)
           cargo test -p v3-compiler
           elapsed=$(( $(date +%s) - start ))
           echo "v3 full-suite wall time: ${elapsed}s"
-          if [ "$elapsed" -gt 1050 ]; then
-            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 1050s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
+          if [ "$elapsed" -gt 950 ]; then
+            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 950s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
             exit 1
           fi
 
