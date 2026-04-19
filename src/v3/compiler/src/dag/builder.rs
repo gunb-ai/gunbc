@@ -86,7 +86,7 @@ impl Dag {
     pub fn push_branch(&mut self, input: PortId, paths: Vec<Path>, span: SourceSpan) -> PortId {
         assert!(!paths.is_empty(), "push_branch requires at least one path");
         self.assert_port_exists(input, "push_branch(input)");
-        for (index, path) in paths.iter().enumerate() {
+        for path in &paths {
             self.assert_node_exists(path.body, "push_branch(path.body)");
             self.assert_port_exists(path.output, "push_branch(path.output)");
             if let Some(binding) = &path.binding {
@@ -94,12 +94,6 @@ impl Dag {
                     binding.payload_port,
                     "push_branch(path.binding.payload_port)",
                 );
-            }
-            if matches!(
-                path.pattern,
-                BranchPattern::UnresolvedVariant { .. } | BranchPattern::ResolvedVariant(_)
-            ) {
-                let _ = index;
             }
         }
         let node_id = self.alloc_node_id();
