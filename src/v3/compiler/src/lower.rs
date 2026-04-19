@@ -706,7 +706,9 @@ fn refinement_predicate_out_of_fragment(expr: &SurfaceExpr) -> Option<(&'static 
         SurfaceExpr::Lambda { span, .. } => Some(("lambda", span.clone())),
         SurfaceExpr::If { span, .. } => Some(("if", span.clone())),
         SurfaceExpr::Match { span, .. } => Some(("match", span.clone())),
-        SurfaceExpr::VariantRecord { span, .. } => Some(("named constructor literal", span.clone())),
+        SurfaceExpr::VariantRecord { span, .. } => {
+            Some(("named constructor literal", span.clone()))
+        }
         SurfaceExpr::Record { span, .. } => Some(("record literal", span.clone())),
         SurfaceExpr::List { span, .. } => Some(("list literal", span.clone())),
     }
@@ -6154,7 +6156,9 @@ impl ClusterDescentChecker<'_> {
         shadowed: &HashSet<String>,
     ) -> bool {
         match expr {
-            SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => true,
+            SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => {
+                true
+            }
             SurfaceExpr::Call { target, args, .. } => {
                 if !shadowed.contains(target) {
                     if let Some(&callee_decl) = self.function_symbols.get(target) {
