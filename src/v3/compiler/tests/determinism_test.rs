@@ -3,7 +3,7 @@
 //! Per [`docs/design-fixed-point-ratchet.md`](../../docs/design-fixed-point-ratchet.md):
 //! for fixed `(dag, target)`, repeated `emit` must yield **byte-identical** text.
 //! This module locks that contract structurally: **5× re-emit** on every row of
-//! the shared emit matrix (`determinism_fixtures.rs`).
+//! the shared emit matrix (`common/determinism_fixtures.rs`).
 //!
 //! ## DB-8 non-determinism sources (structural coverage map)
 //!
@@ -23,11 +23,11 @@
 //! 8. **Filesystem read order** — not exercised by string-in/string-out emit;
 //!    documented as N/A for this test file (emit does not `read_dir`).
 
-mod determinism_fixtures;
+mod common;
 
 use std::path::PathBuf;
 
-use determinism_fixtures::{
+use common::determinism_fixtures::{
     ModuleFixture, ProgramFixture, FOUR_FIXTURE_FILES, GO_EMIT_EXCLUDE, MODULE_FIXTURES,
     PROGRAM_FIXTURES, PYTHON_PROGRAM_DETERMINISM_NAMES,
 };

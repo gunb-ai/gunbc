@@ -3,7 +3,7 @@
 //! Keep in sync with `m1_3_emit_rust_test.rs` program harness — this is the
 //! single list of program fixtures used for rustc round-trip batching.
 //!
-//! Multiple integration-test binaries `mod` this file; each uses a different
+//! Multiple integration-test binaries import this module; each uses a different
 //! subset of exports — `dead_code` is allowed at module scope.
 #![allow(dead_code)]
 
