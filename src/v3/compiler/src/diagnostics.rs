@@ -60,33 +60,11 @@ use crate::dag::{
 };
 use crate::types::TypeShape;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceSpan {
-    pub file: String,
-    pub byte_start: u32,
-    pub byte_end: u32,
-}
-
-impl SourceSpan {
-    pub fn new(file: impl Into<String>, byte_start: u32, byte_end: u32) -> Self {
-        Self {
-            file: file.into(),
-            byte_start,
-            byte_end,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Correction {
-    pub description: String,
-    // Retained even though the current source-level renderer only
-    // prints replacement text. Future fix surfaces can use this to
-    // point at the precise range the correction applies to without
-    // changing the carrier shape.
-    pub span: SourceSpan,
-    pub new_source: String,
-}
+// `SourceSpan` / `Correction` are generated mirrors of std-owned
+// substrate/diagnostic carriers. The compiler-local `Diagnostic`
+// taxonomy below remains a narrow host shim until the staged compiler
+// adopts the shared std diagnostic record directly.
+include!("diagnostics_generated.rs");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CorrectionApplyError {
@@ -193,7 +171,6 @@ pub enum Diagnostic {
         span: SourceSpan,
         fixes: Vec<Correction>,
     },
-    /// DB-18 R2 — branch condition port did not resolve to `Bool` at lowering.
     BranchConditionNotBool {
         port: PortId,
         actual_type: Option<TypeShape>,
@@ -269,7 +246,6 @@ pub enum DiagnosticRenderError {
         detail: &'static str,
     },
 }
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CorrectionStyleBinding {
     indent_unit: String,

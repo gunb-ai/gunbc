@@ -354,3 +354,21 @@ fn rust_dag_realizes_reflected_substrate_types() {
         );
     }
 }
+
+#[test]
+fn runtime_mirror_snapshots_are_fresh() {
+    let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("repo root");
+    let status = std::process::Command::new("python3")
+        .arg("scripts/regen_runtime_mirrors.py")
+        .arg("--check")
+        .current_dir(repo_root)
+        .status()
+        .expect("run runtime mirror freshness check");
+    assert!(
+        status.success(),
+        "runtime mirror snapshots are stale; run scripts/regen_runtime_mirrors.py"
+    );
+}

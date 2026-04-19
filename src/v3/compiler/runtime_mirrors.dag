@@ -1,0 +1,5 @@
+module v3.compiler.runtime_mirrors
+
+type DagDifference {
+  detail: String
+}
