@@ -28,12 +28,18 @@ single contradiction.
 
 ### 1. Per-test 2s ratchet
 
-- New: `scripts/check-test-timeout.sh` — runs
-  `cargo test -p v3-compiler -- -Z unstable-options --report-time`
-  under `RUSTC_BOOTSTRAP=1`, parses the libtest `<N.NNNs>` trailer on
+- New: `scripts/check-test-timeout.sh` — parses a **pre-captured**
+  libtest log (path passed as `$1`), reads the `<N.NNNs>` trailer on
   each `ok|FAILED` line, and exits non-zero when any single `#[test]`
   exceeds the budget (default **2000 ms**, overridable via
-  `TEST_TIMEOUT_MS`).
+  `TEST_TIMEOUT_MS`). The existing v3 full-suite CI step now runs with
+  `RUSTC_BOOTSTRAP=1 cargo test -- -Z unstable-options --report-time`
+  and tees the output to `/tmp/v3-test-timings.log`; the ratchet step
+  parses that file. This keeps the CI job to a single `cargo test`
+  invocation — no second full-suite run that would starve later
+  quality gates inside the 25-minute v3 job budget. A local-fallback
+  mode (invoke the script with no args) does run `cargo test` itself
+  for users without a captured log.
 - New: `scripts/slow-test-exemptions.txt` — paydown list. Tests named
   here are tolerated with a `::warning::` line; every other slow test
   fails the ratchet. Empty on landing.
@@ -145,9 +151,10 @@ file, not in a narrow reorg diff):
 
 1. **Populate `scripts/slow-test-exemptions.txt`.** Read the first
    merged-main CI run's report-only baseline (or run
-   `TEST_TIMEOUT_MS=2000 scripts/check-test-timeout.sh` locally), and
-   add each violating test to the exemption file with a one-line
-   reason that cites a ROADMAP item or project memory.
+   `scripts/check-test-timeout.sh` locally — no args invokes the
+   fallback that runs `cargo test` itself), and add each violating
+   test to the exemption file with a one-line reason that cites a
+   ROADMAP item or project memory.
    **Entry format:** the token libtest emits as the second
    whitespace-delimited field, e.g. `m1_5_testgen_test::heavy_case`
    — no binary prefix, no `<…s>` timing. The exemption file header
