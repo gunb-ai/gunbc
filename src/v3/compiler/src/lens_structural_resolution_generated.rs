@@ -52,7 +52,7 @@ pub fn check_arrow_body(p0: &Declaration, p1: &ArrowBody) -> Vec<UnresolvedArrow
 pub fn declaration_name(p0: &Declaration) -> String {
     match &((p0).name) {
         Some(name_str) => (name_str).clone(),
-        None => "<anonymous>",
+        None => String::from("<anonymous>"),
     }
 }
 pub fn singleton_violation(p0: &Declaration) -> Vec<UnresolvedArrowBody> {
