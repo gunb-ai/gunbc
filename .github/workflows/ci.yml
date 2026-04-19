@@ -73,7 +73,7 @@ jobs:
 
   v3:
     runs-on: ubuntu-latest
-    # Full suite is capped at 750s, plus clippy + lens gates + cold compile — 15m
+    # Full suite is capped at 1200s, plus clippy + lens gates + cold compile — 15m
     # can cancel the job before the final steps finish.
     timeout-minutes: 25
     steps:
@@ -102,10 +102,10 @@ jobs:
 
       # Layer 1 (coarse CI): wall-clock gates on `cargo test -p v3-compiler`.
       #
-      # Full-suite budget is 1050s. The last green GitHub run was 719s, but the
-      # current mainline suite is ~951–953s on ubuntu-24.04 after #548. Keep the
-      # cap above the live runner baseline while leaving ~100s headroom for normal
-      # variance and the post-test clippy / lens / ratchet steps in this job.
+      # Full-suite wall-clock ratchet below is 1200s. Mainline timing on ubuntu-24.04
+      # reached ~951–953s after #548 (earlier green ~719s); cold runners, m1_5_testgen,
+      # and the DB-8 determinism matrix can push higher — observed ~1082s motivated cap >1050s.
+      # Ratchet is coarse (catch suite-wide slowdown), not a tight perf SLA.
       # Regressions show up when integration tests redo full `compile_to_dag` per
       # `#[test]` (see `lane2_stage_2e_parallelism_test`: shared `OnceLock` + clone).
       #
@@ -122,13 +122,7 @@ jobs:
       #
       # DB-8: the full suite below also runs `tests/determinism_test.rs` (5× emit
       # matrix). Job `self_host_ratchet` repeats it as a named step for visibility.
-<<<<<<< HEAD
       - name: v3 tests with 120s budget (lane2 Stage 2d only)
-=======
-      # Cold GitHub runners + DB-8 determinism matrix can exceed 750s wall time;
-      # ratchet is coarse (catch suite-wide slowdown), not a performance budget.
-      - name: v3 tests with 120s budget
->>>>>>> 7fa52ad3d (fix(ci): raise v3 full-suite wall budget to 1200s)
         run: |
           start=$(date +%s)
           cargo test -p v3-compiler --test integration lane2_stage_2d_symbolic_cost_test::
@@ -139,42 +133,16 @@ jobs:
             exit 1
           fi
 
-<<<<<<< HEAD
-      - name: v3 tests (full suite, 1050s budget)
-=======
-<<<<<<< HEAD
-      # Full-suite budget is 900s. Observed range on GitHub Actions (2 vCPUs):
-      # ~850–870s on recent commits, against a local warm baseline of
-      # ~435s. The dominant remaining cost is m1_5_testgen's two slow tests
-      # (~150s each locally, more on CI cold runners), which compile
-      # per-claim sources that are unique per cache key — the shared
-      # cache can't help them. **Dissolution trigger:** reshape
-      # m1_5_testgen to spot-check instead of exhaustive
-      # compile-every-claim, OR mark the two slow tests
-      # `#[ignore]`-by-default + nightly job. Either drops the suite
-      # back under 500s and the budget can tighten to ~600s.
-      - name: v3 tests (full suite, 900s budget)
-=======
+      # **Dissolution trigger:** reshape m1_5_testgen to spot-check instead of exhaustive
+      # compile-every-claim, OR mark the two slow tests `#[ignore]`-by-default + nightly job.
       - name: v3 tests (full suite, 1200s budget)
->>>>>>> 7fa52ad3d (fix(ci): raise v3 full-suite wall budget to 1200s)
->>>>>>> f2ab6c420 (WIP: D)
         run: |
           start=$(date +%s)
           cargo test -p v3-compiler
           elapsed=$(( $(date +%s) - start ))
           echo "v3 full-suite wall time: ${elapsed}s"
-<<<<<<< HEAD
-          if [ "$elapsed" -gt 1050 ]; then
-            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 1050s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
-=======
-<<<<<<< HEAD
-          if [ "$elapsed" -gt 900 ]; then
-            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 900s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
-=======
           if [ "$elapsed" -gt 1200 ]; then
             echo "::error::v3 full-suite tests took ${elapsed}s (budget: 1200s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
->>>>>>> 7fa52ad3d (fix(ci): raise v3 full-suite wall budget to 1200s)
->>>>>>> f2ab6c420 (WIP: D)
             exit 1
           fi
 
