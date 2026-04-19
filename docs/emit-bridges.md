@@ -9,6 +9,10 @@
 behind the shared entrypoint scaffold. References to Go sites below name
 the pre-move file because this inventory was the Stage 1d audit
 snapshot; the bridge classifications still apply to the moved body.
+Python's Stage 1e.0 bridge has landed as well: the target no longer
+depends on private `Python*` realization/syntax declarations, and the
+remaining Python rows below describe live emitter bridges on top of the
+shared schema rather than pre-bridge scaffold debt.
 
 **Goal:** Each bridge lists **what kills it** (dissolution) and **what spec or substrate fact replaces it**.
 

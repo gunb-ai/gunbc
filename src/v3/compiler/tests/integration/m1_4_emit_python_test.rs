@@ -75,6 +75,34 @@ fn double(x: Int) -> Int = x + x
     );
 }
 
+#[test]
+fn emit_python_uses_only_shared_schema_surface() {
+    const PYTHON_SPEC: &str = include_str!("../../../spec/python.dag");
+    const PYTHON_EMITTER: &str = include_str!("../../src/emit/python_target.rs");
+    let forbidden = [
+        "PythonTypeRealization",
+        "PythonOperatorRealization",
+        "PythonCallableRealization",
+        "PythonCallableStrategy",
+        "PythonTypeInstantiationRealization",
+        "PythonPatternRealization",
+        "PythonPatternStrategy",
+        "PythonExpressionSyntax",
+        "PythonCollectionOps",
+        "PythonTypeApplicationSyntax",
+    ];
+    for needle in forbidden {
+        assert!(
+            !PYTHON_SPEC.contains(needle),
+            "spec/python.dag still contains private Python scaffold `{needle}`"
+        );
+        assert!(
+            !PYTHON_EMITTER.contains(needle),
+            "emit/python_target.rs still contains private Python scaffold `{needle}`"
+        );
+    }
+}
+
 fn next_roundtrip_dir() -> PathBuf {
     let id = ROUNDTRIP_ID.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!(
