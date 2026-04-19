@@ -487,11 +487,12 @@ impl<'a> TestgenLens<'a> {
             if matches!(name.as_str(), "BoolPortRef" | "BranchArm") {
                 continue;
             }
-            // `NonEmptyList` now lives in `substrate_minimal.dag` ahead of `list.dag`'s
-            // `empty()` helper in bootstrap order — the testgen witness uses
-            // `empty()` in a position where resolution regressed; skip until the
-            // witness renderer names `empty<List<…>>` explicitly.
-            if name == "NonEmptyList" {
+            // Cardinality list primitives (`NonEmptyList`, `NonSingletonList`) live in
+            // `substrate_minimal.dag` ahead of `list.dag`'s `empty()` helper in bootstrap
+            // order — the testgen witness uses `empty()` for `List<…>` tails in a
+            // position where resolution regressed; skip until the witness renderer
+            // names `empty<…>()` explicitly.
+            if matches!(name.as_str(), "NonEmptyList" | "NonSingletonList") {
                 continue;
             }
             if decl.value_body.is_some()
