@@ -86,15 +86,12 @@ mod m2_lens_unused_parameters_migration_test;
 mod m2_substrate_inhabitance_test;
 #[path = "integration/pipe_desugar.rs"]
 mod pipe_desugar;
-<<<<<<< HEAD
 #[path = "integration/real_stdlib_parse_smoke.rs"]
 mod real_stdlib_parse_smoke;
 #[path = "integration/sg0_census_test.rs"]
 mod sg0_census_test;
 #[path = "integration/sg4_prep_infer_helpers_freshness_test.rs"]
 mod sg4_prep_infer_helpers_freshness_test;
-=======
->>>>>>> 8f8bdeac0 (WIP: SG-2)
 #[path = "integration/thesis_parallelism_test.rs"]
 mod thesis_parallelism_test;
 #[path = "integration/thesis_validation_test.rs"]
