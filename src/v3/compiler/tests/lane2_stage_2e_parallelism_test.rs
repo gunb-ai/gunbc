@@ -1,5 +1,7 @@
 //! Lane 2 Stage 2e / DB-20 — `ParallelEffect` parallel composition safety.
 
+use std::sync::OnceLock;
+
 use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
@@ -8,6 +10,19 @@ use v3_compiler::dag::{
 };
 use v3_compiler::Dag;
 use v3_compiler::NodeId;
+
+/// One `compile_to_dag("let _ = 1", …)` for all tests that mutate the user DAG
+/// (each test [`Dag::clone`]s so `try_register_lane2_workflow_effect` stays isolated).
+static TRIVIAL_USER_DAG: OnceLock<Dag> = OnceLock::new();
+
+fn trivial_user_dag() -> Dag {
+    TRIVIAL_USER_DAG
+        .get_or_init(|| {
+            compile_to_dag("let _ = 1", "lane2_stage_2e_fixture.v3")
+                .expect("compile trivial fixture")
+        })
+        .clone()
+}
 
 fn lane2_anchor(dag: &Dag) -> NodeId {
     dag.nodes()
@@ -41,7 +56,7 @@ fn parallel_requires_at_least_two_branches_type_level() {
 
 #[test]
 fn parallel_read_only_branches_commute() {
-    let mut dag = compile_to_dag("let _ = 1", "lane2_par_read.v3").expect("compile");
+    let mut dag = trivial_user_dag();
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
@@ -66,7 +81,7 @@ fn parallel_read_only_branches_commute() {
 
 #[test]
 fn parallel_disjoint_path_upserts_commute() {
-    let mut dag = compile_to_dag("let _ = 1", "lane2_par_upsert.v3").expect("compile");
+    let mut dag = trivial_user_dag();
     let root = lane2_anchor(&dag);
     let upsert = |name: &str, param: &str| {
         op(
@@ -101,7 +116,7 @@ fn parallel_disjoint_path_upserts_commute() {
 
 #[test]
 fn parallel_read_vs_upsert_does_not_commute() {
-    let mut dag = compile_to_dag("let _ = 1", "lane2_par_mix.v3").expect("compile");
+    let mut dag = trivial_user_dag();
     let root = lane2_anchor(&dag);
     let upsert = op(
         "put",
@@ -132,7 +147,7 @@ fn parallel_read_vs_upsert_does_not_commute() {
 
 #[test]
 fn parallel_append_in_branch_is_broken_by() {
-    let mut dag = compile_to_dag("let _ = 1", "lane2_par_append.v3").expect("compile");
+    let mut dag = trivial_user_dag();
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::ParallelEffect {
         branches: NonSingletonList::from_vec(vec![
@@ -163,7 +178,7 @@ fn parallel_append_in_branch_is_broken_by() {
 
 #[test]
 fn non_parallel_root_is_unsupported() {
-    let mut dag = compile_to_dag("let _ = 1", "lane2_par_linear.v3").expect("compile");
+    let mut dag = trivial_user_dag();
     let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
         ops: NonEmptyList::from_vec(vec![read("only")]).unwrap(),

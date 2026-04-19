@@ -587,6 +587,8 @@ Cleared (prior PR #521): `DerivedOpEffect { method, path_template, shape }` coll
 
 **DB-20 — parallel composition safety over `ParallelEffect`.** Closes [design-db18-workflow-effect-carrier.md](docs/design-db18-workflow-effect-carrier.md) §Open question 1: commutativity is **derived** from per-`OperationEffect` algebra (no additive `ParallelEffect` substrate field). Report carrier `WorkflowParallelismReport` (`ParallelCompositionVerdict(CompositionVerdict) | ParallelismUnsupported(...)`) in `src/v3/std/effects.dag`; Rust analysis `v3_compiler::analyze_parallelism` in `src/v3/compiler/src/workflow_parallelism.rs` (exported via `lens_parallelism`). **v1 scope:** `ParallelEffect` whose branches are each `LinearEffect`; nested non-linear branches return explicit `ParallelismUnsupported`. Lens stub: `src/v3/lenses/parallelism.dag` (same reflection boundary as `idempotency.dag`). Design: [design-db20-lane2-stage2e-parallelism-lens.md](docs/design-db20-lane2-stage2e-parallelism-lens.md). Fixtures: `src/v3/compiler/tests/lane2_stage_2e_parallelism_test.rs` (commutative reads; disjoint path upserts; read vs upsert non-commute; append → `BrokenBy`; `NonSingletonList` singleton rejection; non-`ParallelEffect` root).
 
+**DB number reservation:** **`DB-19`** has no `docs/design-db19-*.md` in-tree yet — hold the number for the next effects/lane-2 consumer that needs a DB doc so allocation stays collision-free alongside DB-18 (carrier) and DB-20 (parallelism lens).
+
 
 ### Lane 1 Stage 1b
 
