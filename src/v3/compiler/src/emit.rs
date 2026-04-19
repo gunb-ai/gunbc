@@ -675,18 +675,28 @@ fn emit_with_mode(
     let text = match target {
         EmitTarget::Go => emit_go_with_mode(dag, mode).map_err(EmitDispatchError::Core)?,
         EmitTarget::Rust => match mode {
-            EmitMode::Program => crate::emit_rust::emit_rust(dag).map_err(EmitDispatchError::Core)?,
-            EmitMode::Module => {
-                crate::emit_rust::emit_rust_module(dag).map_err(EmitDispatchError::Core)?
-            }
+            EmitMode::Program => crate::emit_rust::emit_rust_with_mode(
+                dag,
+                crate::emit_rust::EmitRustMode::Program,
+            )
+            .map_err(EmitDispatchError::Core)?,
+            EmitMode::Module => crate::emit_rust::emit_rust_with_mode(
+                dag,
+                crate::emit_rust::EmitRustMode::Module,
+            )
+            .map_err(EmitDispatchError::Core)?,
         },
         EmitTarget::Python => match mode {
-            EmitMode::Program => {
-                crate::emit_python::emit_python(dag).map_err(EmitDispatchError::Python)?
-            }
-            EmitMode::Module => {
-                crate::emit_python::emit_python_module(dag).map_err(EmitDispatchError::Python)?
-            }
+            EmitMode::Program => crate::emit_python::emit_python_with_mode(
+                dag,
+                crate::emit_python::EmitPythonMode::Program,
+            )
+            .map_err(EmitDispatchError::Python)?,
+            EmitMode::Module => crate::emit_python::emit_python_with_mode(
+                dag,
+                crate::emit_python::EmitPythonMode::Module,
+            )
+            .map_err(EmitDispatchError::Python)?,
         },
     };
     Ok(EmittedSource { text, target, mode })

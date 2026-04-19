@@ -5,6 +5,7 @@ use crate::dag::{
     FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective,
 };
+use crate::emit::{emit, emit_module, EmitDispatchError, EmitTarget};
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
     variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
@@ -43,7 +44,7 @@ pub enum EmitPythonError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EmitPythonMode {
+pub(crate) enum EmitPythonMode {
     Program,
     Module,
 }
@@ -514,14 +515,29 @@ fn parse_variant_payload_field_access_rule(
 }
 
 pub fn emit_python(dag: &Dag) -> Result<String, EmitPythonError> {
-    emit_python_with_mode(dag, EmitPythonMode::Program)
+    match emit(dag, EmitTarget::Python) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Python(error)) => Err(error),
+        Err(EmitDispatchError::Core(_)) => {
+            unreachable!("EmitTarget::Python cannot yield a core emission error")
+        }
+    }
 }
 
 pub fn emit_python_module(dag: &Dag) -> Result<String, EmitPythonError> {
-    emit_python_with_mode(dag, EmitPythonMode::Module)
+    match emit_module(dag, EmitTarget::Python) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Python(error)) => Err(error),
+        Err(EmitDispatchError::Core(_)) => {
+            unreachable!("EmitTarget::Python cannot yield a core emission error")
+        }
+    }
 }
 
-fn emit_python_with_mode(dag: &Dag, mode: EmitPythonMode) -> Result<String, EmitPythonError> {
+pub(crate) fn emit_python_with_mode(
+    dag: &Dag,
+    mode: EmitPythonMode,
+) -> Result<String, EmitPythonError> {
     let indexes = PythonIndexes::build(dag)?;
     if indexes.target.memory != MemoryModelBinding::GarbageCollected {
         return Err(EmitPythonError::Unsupported(format!(

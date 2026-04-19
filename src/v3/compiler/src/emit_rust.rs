@@ -50,6 +50,7 @@ use crate::dag::{
     FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective, ValueBody, ValueNode,
 };
+use crate::emit::{emit, emit_module, EmitDispatchError, EmitTarget};
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
     variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
@@ -2579,12 +2580,12 @@ fn callable_input_disposition_for_target(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EmitRustMode {
+pub(crate) enum EmitRustMode {
     Program,
     Module,
 }
 
-fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitError> {
+pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitError> {
     let indexes = RealizationIndexes::build(dag)?;
     if !indexes.execution.is_lexically_scoped() {
         return Err(EmitError::UnsupportedBehavior(
@@ -2734,11 +2735,23 @@ fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitErro
 }
 
 pub fn emit_rust(dag: &Dag) -> Result<String, EmitError> {
-    emit_rust_with_mode(dag, EmitRustMode::Program)
+    match emit(dag, EmitTarget::Rust) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Core(error)) => Err(error),
+        Err(EmitDispatchError::Python(_)) => {
+            unreachable!("EmitTarget::Rust cannot yield a Python emission error")
+        }
+    }
 }
 
 pub fn emit_rust_module(dag: &Dag) -> Result<String, EmitError> {
-    emit_rust_with_mode(dag, EmitRustMode::Module)
+    match emit_module(dag, EmitTarget::Rust) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Core(error)) => Err(error),
+        Err(EmitDispatchError::Python(_)) => {
+            unreachable!("EmitTarget::Rust cannot yield a Python emission error")
+        }
+    }
 }
 
 /// Bundled emission context. Carries the typed indexes, substrate
