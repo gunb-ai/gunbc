@@ -26,6 +26,8 @@ pub mod lens_testgen;
 pub mod lens_unused_parameters;
 pub mod operators;
 pub mod post_emit_verifier;
+#[doc(hidden)]
+pub mod runtime_mirrors_codegen;
 pub mod serialize;
 pub mod types;
 

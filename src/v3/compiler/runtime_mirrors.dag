@@ -1,0 +1,73 @@
+module v3.compiler.runtime_mirrors
+
+import std.list { List }
+import v3.std.substrate { PortId, DeclarationId, TypeShape }
+
+type SourceSpan {
+  file: String
+  byte_start: Int
+  byte_end: Int
+}
+
+type Correction {
+  description: String
+  span: SourceSpan
+  new_source: String
+}
+
+type Diagnostic
+  = TokenizerError {
+      message: String
+      span: SourceSpan
+      fixes: List<Correction>
+    }
+  | ParseError {
+      message: String
+      span: SourceSpan
+      fixes: List<Correction>
+    }
+  | TypeMismatch {
+      expected: TypeShape
+      actual: TypeShape
+      span: SourceSpan
+      fixes: List<Correction>
+    }
+  | ArityMismatch {
+      function: String
+      expected: Int
+      actual: Int
+      span: SourceSpan
+      fixes: List<Correction>
+    }
+  | ResolveError {
+      name: String
+      span: SourceSpan
+      fixes: List<Correction>
+    }
+  | BranchConditionNotBool {
+      port: PortId
+      actual_type: TypeShape?
+      span: SourceSpan
+      fixes: List<Correction>
+    }
+
+type DiagnosticStyleTarget
+  = Rust
+  | Go
+  | Python
+
+type DiagnosticRenderError
+  = MissingCleanEmissionContract(String)
+  | MalformedCleanEmissionContract {
+      declaration: DeclarationId
+      detail: String
+    }
+  | MissingCorrectionStyle(String)
+  | MalformedCorrectionStyle {
+      declaration: DeclarationId
+      detail: String
+    }
+
+type DagDifference {
+  detail: String
+}
