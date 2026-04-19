@@ -133,6 +133,10 @@ type PatternRealization {
 // List-pattern role tag — single authority lives in each target's
 // `data <target>_list_pattern: PatternRealization` in `spec/*.dag`.
 // Emitters map validated records to emission without per-role `match` arms.
+//
+// `PlaceholderPatternStrategy` keeps the coproduct non-singleton (substrate
+// discipline: avoid a one-variant sum) until a second real role lands; it
+// then dissolves in favor of that role (e.g. tuple-list lowering).
 type PatternStrategy
   = PlaceholderPatternStrategy
   | VectorList
