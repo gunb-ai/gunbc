@@ -19,17 +19,15 @@ fn main() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let dag_path = manifest_dir.join("tokenize.dag");
     let source = std::fs::read_to_string(&dag_path).expect("read tokenize.dag");
-    let dag = compile_to_dag(&source, "src/v3/compiler/tokenize.dag").unwrap_or_else(|e| {
-        match e {
-            CompileError::Semantic(d) => {
-                let mut msg = String::from("compile tokenize.dag failed:\n");
-                for (_, diag) in d.diagnostics().iter() {
-                    msg.push_str(&format!("  {diag:?}\n"));
-                }
-                panic!("{msg}");
+    let dag = compile_to_dag(&source, "src/v3/compiler/tokenize.dag").unwrap_or_else(|e| match e {
+        CompileError::Semantic(d) => {
+            let mut msg = String::from("compile tokenize.dag failed:\n");
+            for (_, diag) in d.diagnostics().iter() {
+                msg.push_str(&format!("  {diag:?}\n"));
             }
-            other => panic!("compile tokenize.dag: {other:?}"),
+            panic!("{msg}");
         }
+        other => panic!("compile tokenize.dag: {other:?}"),
     });
     let rust = generate(&dag);
     let combined = format!("{HEADER}{rust}");
