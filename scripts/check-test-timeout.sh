@@ -31,11 +31,14 @@ log_file=$(mktemp -t test-timings.XXXXXX)
 trap 'rm -f "$log_file"' EXIT
 
 echo "Running cargo test -p $pkg -- --report-time (budget: ${budget_ms}ms per test)..."
-# --report-time is stable since Rust 1.70. Libtest appends `<N.NNNs>` to each
-# line for passing tests and `<N.NNNs>` for failures too. We only inspect the
-# report lines, not the suite summary.
+# Per-test timing output is emitted by libtest's `--report-time`, which is still
+# unstable on the 1.93 toolchain (tracking issue rust-lang/rust#64888). The
+# narrow unlock is `RUSTC_BOOTSTRAP=1` — it does not pull in unstable *language*
+# features, only the unstable libtest flag. This is a tooling-ratchet concession,
+# not a production-code pattern; migrate off it when the flag stabilizes or when
+# this project adopts `cargo-nextest`.
 set +e
-cargo test -p "$pkg" -- --report-time 2>&1 | tee "$log_file"
+RUSTC_BOOTSTRAP=1 cargo test -p "$pkg" -- -Z unstable-options --report-time 2>&1 | tee "$log_file"
 cargo_status=${PIPESTATUS[0]}
 set -e
 
