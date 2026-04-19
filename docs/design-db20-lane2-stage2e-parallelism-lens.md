@@ -3,6 +3,7 @@
 # Design DB-20 — Lane 2 Stage 2e: parallelism-as-lens (parallel composition safety)
 
 **Status:** Implemented — `analyze_parallelism` in `src/v3/compiler/src/workflow_parallelism.rs`, report carrier in `src/v3/std/effects.dag`, lens stub `src/v3/lenses/parallelism.dag`.
+**Scope boundary:** DB-20 covers **workflow** `ParallelEffect` + op-level commutativity only. Thesis Stage 2e items (dependency-graph parallelism, commutative fold reducibility) stay tracked in [lane2-compile-time-proofs.md](./lane2-compile-time-proofs.md) until shipped.
 **Consumers:** CI fixtures (`lane2_stage_2e_parallelism_test.rs`); future `.dag` lens once `match` on user sums + `lane2_workflow` reflection land (same boundary as Stage 2b).
 
 ---

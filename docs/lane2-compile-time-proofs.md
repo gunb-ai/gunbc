@@ -185,11 +185,11 @@ Emits diagnostic for unexpected complexity (e.g., hidden O(n²) via captured lis
 
 **Escalation:** if recognition rules for O(n²) require solving arbitrary symbolic arithmetic, scope tighter — recognize the thesis doc's two patterns (nested fold, sort-before-commutative) and document what's not recognized. Don't build a full symbolic math library.
 
-### Stage 2e — Parallelism-as-lens (✅ Shipped — DB-20)
+### Stage 2e — Parallelism-as-lens (DB-20 shipped; thesis graph slice still open)
 
-**Delivered:** [design-db20-lane2-stage2e-parallelism-lens.md](./design-db20-lane2-stage2e-parallelism-lens.md). The lens consumes `WorkflowEffect::ParallelEffect` from DB-18 and checks **pairwise commutativity** of `OperationEffect` values across concurrent linear branches, projecting through `CompositionVerdict` (no parallel verdict carrier). Commutativity is **derived** from existing op shapes and `KeySource` (DB-18 §Open question 1 path (b)). Entry point: `v3_compiler::analyze_parallelism`; report: `WorkflowParallelismReport`; stub: `src/v3/lenses/parallelism.dag` (Rust authority until reflection + `match` on user sums land).
+**Delivered (DB-20):** [design-db20-lane2-stage2e-parallelism-lens.md](./design-db20-lane2-stage2e-parallelism-lens.md). The lens consumes `WorkflowEffect::ParallelEffect` from DB-18 and checks **pairwise commutativity** of `OperationEffect` values across concurrent linear branches, projecting through `CompositionVerdict` (no parallel verdict carrier). Commutativity is **derived** from existing op shapes and `KeySource` (DB-18 §Open question 1 path (b)). Entry point: `v3_compiler::analyze_parallelism`; report: `WorkflowParallelismReport`; stub: `src/v3/lenses/parallelism.dag` (Rust authority until reflection + `match` on user sums land).
 
-**Follow-up (thesis / graph parallelism, not DB-20):** `thesis_parallelism_test.rs` structural parallelism (`has_transitive_dependency`), fold-on-commutative-monoid promotion, and `ParallelizationOpportunity`-style **data** outputs remain future work — orthogonal to the `ParallelEffect` workflow carrier analyzed here.
+**Still open (thesis Stage 2e, not DB-20):** `thesis_parallelism_test.rs` structural parallelism (`has_transitive_dependency`), fold-on-commutative-monoid promotion, `parallel_fold_on_commutative_monoid_is_reducible`, and `ParallelizationOpportunity`-style **data** outputs — orthogonal to the workflow `ParallelEffect` carrier. **Stage 2e as a whole** is not complete until this slice lands; ROADMAP §Lane 2 Stage 2e names the split explicitly.
 
 ### Stage 2f — User-declared dimensions (S)
 
