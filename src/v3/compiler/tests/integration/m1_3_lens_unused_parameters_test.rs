@@ -120,7 +120,9 @@ fn unused_params_reports_all_parameters_for_constant_body() {
 #[test]
 fn unused_params_skips_value_bindings() {
     let mut dag = Dag::new();
-    let value = add(&mut dag, int_value(&mut dag, 1), int_value(&mut dag, 2));
+    let lhs = int_value(&mut dag, 1);
+    let rhs = int_value(&mut dag, 2);
+    let value = add(&mut dag, lhs, rhs);
     dag.push_bind("x", value, Vec::new(), span());
 
     assert_eq!(
@@ -133,15 +135,11 @@ fn unused_params_skips_value_bindings() {
 #[test]
 fn unused_params_handles_branch_in_body() {
     let dag = function_dag("pick", 2, |dag, params| {
-        let cond = gt(dag, params[0], int_value(dag, 0));
-        dag.push_branch(
-            cond,
-            vec![
-                bind_arm(dag, "then_arm", params[0]),
-                bind_arm(dag, "else_arm", params[1]),
-            ],
-            span(),
-        )
+        let zero = int_value(dag, 0);
+        let cond = gt(dag, params[0], zero);
+        let then_path = bind_arm(dag, "then_arm", params[0]);
+        let else_path = bind_arm(dag, "else_arm", params[1]);
+        dag.push_branch(cond, vec![then_path, else_path], span())
     });
 
     assert_eq!(
@@ -181,7 +179,8 @@ fn content_upsert(content: String, path: String) -> { written: Bool } {
 #[test]
 fn unused_params_catches_content_upsert_synthetic_equivalent() {
     let dag = function_dag("content_upsert", 2, |dag, params| {
-        add(dag, params[0], int_value(dag, 0))
+        let zero = int_value(dag, 0);
+        add(dag, params[0], zero)
     });
 
     assert_eq!(
@@ -239,15 +238,11 @@ fn unused_params_loop_body_descent_finds_param_only_used_in_recursion() {
 #[test]
 fn unused_params_reports_unused_in_branch_body() {
     let dag = function_dag("always_a", 2, |dag, params| {
-        let cond = gt(dag, params[0], int_value(dag, 0));
-        dag.push_branch(
-            cond,
-            vec![
-                bind_arm(dag, "then_arm", params[0]),
-                bind_arm(dag, "else_arm", params[0]),
-            ],
-            span(),
-        )
+        let zero = int_value(dag, 0);
+        let cond = gt(dag, params[0], zero);
+        let then_path = bind_arm(dag, "then_arm", params[0]);
+        let else_path = bind_arm(dag, "else_arm", params[0]);
+        dag.push_branch(cond, vec![then_path, else_path], span())
     });
 
     assert_eq!(

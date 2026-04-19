@@ -38,10 +38,6 @@ fn int_value(dag: &mut Dag, value: i64) -> PortId {
     dag.push_value(LiteralBits::Int(value), span())
 }
 
-fn bool_value(dag: &mut Dag, value: bool) -> PortId {
-    dag.push_value(LiteralBits::Bool(value), span())
-}
-
 fn add(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {
     dag.push_transform(
         TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
@@ -75,26 +71,30 @@ fn bind_arm(dag: &mut Dag, name: &str, output: PortId) -> Path {
 }
 
 fn add_chain(dag: &mut Dag, values: &[i64]) -> PortId {
-    let mut ports = values.iter().copied().map(|value| int_value(dag, value));
-    let first = ports
-        .next()
-        .expect("add_chain requires at least one literal");
-    ports.fold(first, |lhs, rhs| add(dag, lhs, rhs))
+    let mut iter = values.iter().copied();
+    let first = int_value(
+        dag,
+        iter.next()
+            .expect("add_chain requires at least one literal"),
+    );
+    let mut current = first;
+    for value in iter {
+        let rhs = int_value(dag, value);
+        current = add(dag, current, rhs);
+    }
+    current
 }
 
 fn branch_cost_fixture(then_values: &[i64], else_values: &[i64]) -> Dag {
     let mut dag = Dag::new();
-    let cond = gt(&mut dag, int_value(&mut dag, 1), int_value(&mut dag, 0));
+    let lhs = int_value(&mut dag, 1);
+    let rhs = int_value(&mut dag, 0);
+    let cond = gt(&mut dag, lhs, rhs);
     let then_output = add_chain(&mut dag, then_values);
     let else_output = add_chain(&mut dag, else_values);
-    let result = dag.push_branch(
-        cond,
-        vec![
-            bind_arm(&mut dag, "then_arm", then_output),
-            bind_arm(&mut dag, "else_arm", else_output),
-        ],
-        span(),
-    );
+    let then_path = bind_arm(&mut dag, "then_arm", then_output);
+    let else_path = bind_arm(&mut dag, "else_arm", else_output);
+    let result = dag.push_branch(cond, vec![then_path, else_path], span());
     dag.push_bind("r", result, Vec::new(), span());
     dag
 }
@@ -111,7 +111,9 @@ fn cost_lens_literal_value_is_zero() {
 #[test]
 fn cost_lens_single_transform_is_one() {
     let mut dag = Dag::new();
-    let value = add(&mut dag, int_value(&mut dag, 1), int_value(&mut dag, 2));
+    let lhs = int_value(&mut dag, 1);
+    let rhs = int_value(&mut dag, 2);
+    let value = add(&mut dag, lhs, rhs);
     dag.push_bind("x", value, Vec::new(), span());
 
     assert_eq!(bind_cost(&dag, "x"), 1);
@@ -120,8 +122,11 @@ fn cost_lens_single_transform_is_one() {
 #[test]
 fn cost_lens_chained_transform_is_two() {
     let mut dag = Dag::new();
-    let inner = add(&mut dag, int_value(&mut dag, 1), int_value(&mut dag, 2));
-    let value = add(&mut dag, inner, int_value(&mut dag, 3));
+    let one = int_value(&mut dag, 1);
+    let two = int_value(&mut dag, 2);
+    let three = int_value(&mut dag, 3);
+    let inner = add(&mut dag, one, two);
+    let value = add(&mut dag, inner, three);
     dag.push_bind("x", value, Vec::new(), span());
 
     assert_eq!(bind_cost(&dag, "x"), 2);
@@ -130,17 +135,14 @@ fn cost_lens_chained_transform_is_two() {
 #[test]
 fn cost_lens_branch_counts_condition_plus_max_path() {
     let mut dag = Dag::new();
-    let cond = gt(&mut dag, int_value(&mut dag, 1), int_value(&mut dag, 0));
+    let lhs = int_value(&mut dag, 1);
+    let rhs = int_value(&mut dag, 0);
+    let cond = gt(&mut dag, lhs, rhs);
     let then_output = int_value(&mut dag, 10);
     let else_output = int_value(&mut dag, 20);
-    let result = dag.push_branch(
-        cond,
-        vec![
-            bind_arm(&mut dag, "then_arm", then_output),
-            bind_arm(&mut dag, "else_arm", else_output),
-        ],
-        span(),
-    );
+    let then_path = bind_arm(&mut dag, "then_arm", then_output);
+    let else_path = bind_arm(&mut dag, "else_arm", else_output);
+    let result = dag.push_branch(cond, vec![then_path, else_path], span());
     dag.push_bind("r", result, Vec::new(), span());
 
     assert_eq!(bind_cost(&dag, "r"), 2);
@@ -156,7 +158,9 @@ fn cost_lens_branch_uses_max_not_sum_across_paths() {
 #[test]
 fn cost_lens_bind_passes_through_to_value() {
     let mut dag = Dag::new();
-    let add_output = add(&mut dag, int_value(&mut dag, 1), int_value(&mut dag, 2));
+    let lhs = int_value(&mut dag, 1);
+    let rhs = int_value(&mut dag, 2);
+    let add_output = add(&mut dag, lhs, rhs);
     dag.push_bind("y", add_output, Vec::new(), span());
 
     assert_eq!(bind_cost(&dag, "y"), expect_cost(&dag, add_output));
