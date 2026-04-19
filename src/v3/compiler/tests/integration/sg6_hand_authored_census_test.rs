@@ -54,6 +54,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
+use std::process::Command;
 
 use v3_compiler::dag::{Dag, Declaration, FieldValue, LiteralBits, ValueBody};
 
@@ -63,6 +64,10 @@ fn manifest_dir() -> PathBuf {
 
 fn bin_dir() -> PathBuf {
     manifest_dir().join("src").join("bin")
+}
+
+fn workspace_root() -> PathBuf {
+    manifest_dir().join("..").join("..").join("..")
 }
 
 /// Enumerate every entry under `src/v3/compiler/src/bin/` that Cargo's
@@ -219,6 +224,11 @@ fn sg6_regen_dag_registry_triples_are_pinned() {
             "src/v3/compiler/src/lens_cost_symbolic_generated.rs",
         ),
         (
+            "infer_helpers",
+            "src/v3/lenses/infer_helpers.dag",
+            "src/v3/compiler/src/infer_helpers_generated.rs",
+        ),
+        (
             "provenance",
             "src/v3/lenses/provenance.dag",
             "src/v3/compiler/src/lens_provenance_generated.rs",
@@ -329,6 +339,72 @@ fn sg6_lens_registry_names_resolve_to_singleton_entry() {
                 .iter()
                 .map(|row| row.binding.as_str())
                 .collect::<Vec<_>>(),
+        );
+    }
+}
+
+// Director/Codex follow-up on #560: prove the real CLI path works, not
+// just the structural registry ratchets. This smoke test runs the
+// built `regen_lens` binary against a single concrete registry entry
+// and asserts three things:
+//   1. `--lens <name>` exits successfully,
+//   2. stdout reports the expected generated target path, and
+//   3. the checked-in generated file is unchanged after the run.
+//
+// If the file bytes change, restore the original snapshot before
+// failing so a local red test does not leave the worktree dirty.
+budgeted_test! {
+    15_000,
+    sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift,
+    {
+        let dag = Dag::new();
+        assert!(
+            dag.diagnostics().is_empty(),
+            "bootstrap should load `src/v3/compiler/regen.dag` cleanly, got {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+
+        let row = read_registry_rows(&dag)
+            .into_iter()
+            .find(|row| row.name == "cost")
+            .expect("registry row for `cost`");
+
+        let out_path = workspace_root().join(&row.generated_file);
+        let before = std::fs::read(&out_path).expect("read checked-in generated file");
+
+        let output = Command::new(env!("CARGO_BIN_EXE_regen_lens"))
+            .current_dir(manifest_dir())
+            .arg("--lens")
+            .arg(&row.name)
+            .output()
+            .expect("run regen_lens binary");
+
+        assert!(
+            output.status.success(),
+            "regen_lens --lens {} failed:\nstdout:\n{}\nstderr:\n{}",
+            row.name,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+
+        let stdout = String::from_utf8(output.stdout).expect("regen_lens stdout should be utf-8");
+        assert_eq!(
+            stdout.trim(),
+            format!("wrote {}", out_path.display()),
+            "`regen_lens --lens {}` should report the single generated target it rewrote",
+            row.name,
+        );
+
+        let after = std::fs::read(&out_path).expect("read regenerated file");
+        if after != before {
+            std::fs::write(&out_path, &before)
+                .expect("restore checked-in generated file after smoke drift");
+        }
+        assert_eq!(
+            after, before,
+            "`regen_lens --lens {}` changed `{}`. The smoke test expects the CLI path to be clean against the checked-in snapshot; if this fails, regenerate in the same PR that updates the snapshot.",
+            row.name,
+            row.generated_file,
         );
     }
 }
