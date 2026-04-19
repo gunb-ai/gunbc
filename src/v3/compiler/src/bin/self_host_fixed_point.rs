@@ -77,9 +77,9 @@ fn run() -> Result<(), String> {
         Err(e) => Err(format!("compiler.dag: {e:?}")),
     };
 
-    /// When `compiler.dag` parses and we exercise emit→rustc→run→diff, any failure on that
-    /// slice must exit non-zero (Invariant D-1 / DB-8 fail-closed). Parse failure alone stays
-    /// exit 0 — expected until v3 grammar + Lane 1e land (staged ratchet).
+    // When `compiler.dag` parses and we exercise emit→rustc→run→diff, any failure on that
+    // slice must exit non-zero (Invariant D-1 / DB-8 fail-closed). Parse failure alone stays
+    // exit 0 — expected until v3 grammar + Lane 1e land (staged ratchet).
     let mut self_host_slice_failed: Option<String> = None;
 
     let mut receipt = String::new();
@@ -155,7 +155,7 @@ fn run() -> Result<(), String> {
         }
         Err(msg) => {
             receipt.push_str(&format!(
-                 "  \"compiler_dag_v3_parse\": {},\n",
+                "  \"compiler_dag_v3_parse\": {},\n",
                 json_string(&msg)
             ));
         }
@@ -166,7 +166,10 @@ fn run() -> Result<(), String> {
     } else {
         "completed"
     };
-    receipt.push_str(&format!("  \"status\": {json_string_exit}\n}}\n", json_string_exit = json_string(exit_status)));
+    receipt.push_str(&format!(
+        "  \"status\": {}\n}}\n",
+        json_string(exit_status)
+    ));
 
     write_receipt(&receipt_path, &receipt);
     writeln!(
