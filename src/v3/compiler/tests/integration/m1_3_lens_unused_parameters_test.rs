@@ -7,6 +7,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{BranchPattern, Dag, LiteralBits, LoopBound, Path, PortId, TransformTarget};
+use v3_compiler::dag_test_support as dag_test;
 use v3_compiler::diagnostics::SourceSpan;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
@@ -29,11 +30,12 @@ fn unused_parameter_indexes(dag: &Dag) -> Vec<usize> {
 }
 
 fn int_value(dag: &mut Dag, value: i64) -> PortId {
-    dag.push_value(LiteralBits::Int(value), span())
+    dag_test::push_value(dag, LiteralBits::Int(value), span())
 }
 
 fn add(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {
-    dag.push_transform(
+    dag_test::push_transform(
+        dag,
         TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
         vec![lhs, rhs],
         span(),
@@ -41,7 +43,8 @@ fn add(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {
 }
 
 fn gt(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {
-    dag.push_transform(
+    dag_test::push_transform(
+        dag,
         TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt)),
         vec![lhs, rhs],
         span(),
@@ -51,14 +54,14 @@ fn gt(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {
 fn int_params(dag: &mut Dag, count: usize) -> Vec<PortId> {
     let int_shape = dag.int_shape().expect("bootstrap Dag has Int");
     (0..count)
-        .map(|_| dag.alloc_port_with_shape(int_shape))
+        .map(|_| dag_test::alloc_port_with_shape(dag, int_shape))
         .collect()
 }
 
 fn producer_or_bind(dag: &mut Dag, name: &str, output: PortId) -> v3_compiler::dag::NodeId {
     dag.port(output)
         .produced_by
-        .unwrap_or_else(|| dag.push_bind(name, output, Vec::new(), span()))
+        .unwrap_or_else(|| dag_test::push_bind(dag, name, output, Vec::new(), span()))
 }
 
 fn bind_arm(dag: &mut Dag, name: &str, output: PortId) -> Path {
@@ -80,7 +83,7 @@ where
     let mut dag = Dag::new();
     let params = int_params(&mut dag, param_count);
     let value = build_body(&mut dag, &params);
-    dag.push_bind(name, value, params, span());
+    dag_test::push_bind(&mut dag, name, value, params, span());
     dag
 }
 
@@ -123,7 +126,7 @@ fn unused_params_skips_value_bindings() {
     let lhs = int_value(&mut dag, 1);
     let rhs = int_value(&mut dag, 2);
     let value = add(&mut dag, lhs, rhs);
-    dag.push_bind("x", value, Vec::new(), span());
+    dag_test::push_bind(&mut dag, "x", value, Vec::new(), span());
 
     assert_eq!(
         unused_parameter_indexes(&dag),
@@ -139,7 +142,7 @@ fn unused_params_handles_branch_in_body() {
         let cond = gt(dag, params[0], zero);
         let then_path = bind_arm(dag, "then_arm", params[0]);
         let else_path = bind_arm(dag, "else_arm", params[1]);
-        dag.push_branch(cond, vec![then_path, else_path], span())
+        dag_test::push_branch(dag, cond, vec![then_path, else_path], span())
     });
 
     assert_eq!(
@@ -196,7 +199,8 @@ fn unused_params_descends_into_loop_body_for_recursive_calls() {
         let body_output = add(dag, params[0], params[1]);
         let count = int_value(dag, 1);
         let body = producer_or_bind(dag, "loop_body", body_output);
-        dag.push_loop(
+        dag_test::push_loop(
+            dag,
             params[0],
             params[1],
             body,
@@ -219,7 +223,8 @@ fn unused_params_loop_body_descent_finds_param_only_used_in_recursion() {
         let init = int_value(dag, 0);
         let count = int_value(dag, 1);
         let body = producer_or_bind(dag, "loop_body", body_output);
-        dag.push_loop(
+        dag_test::push_loop(
+            dag,
             params[0],
             init,
             body,
@@ -242,7 +247,7 @@ fn unused_params_reports_unused_in_branch_body() {
         let cond = gt(dag, params[0], zero);
         let then_path = bind_arm(dag, "then_arm", params[0]);
         let else_path = bind_arm(dag, "else_arm", params[0]);
-        dag.push_branch(cond, vec![then_path, else_path], span())
+        dag_test::push_branch(dag, cond, vec![then_path, else_path], span())
     });
 
     assert_eq!(

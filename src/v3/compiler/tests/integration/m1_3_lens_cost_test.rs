@@ -7,6 +7,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, BranchPattern, Dag, LiteralBits, Path, PortId, TransformTarget};
+use v3_compiler::dag_test_support as dag_test;
 use v3_compiler::diagnostics::SourceSpan;
 use v3_compiler::lens_cost::cost_of;
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
@@ -35,11 +36,12 @@ fn bind_cost(dag: &Dag, name: &str) -> usize {
 }
 
 fn int_value(dag: &mut Dag, value: i64) -> PortId {
-    dag.push_value(LiteralBits::Int(value), span())
+    dag_test::push_value(dag, LiteralBits::Int(value), span())
 }
 
 fn add(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {
-    dag.push_transform(
+    dag_test::push_transform(
+        dag,
         TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
         vec![lhs, rhs],
         span(),
@@ -47,7 +49,8 @@ fn add(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {
 }
 
 fn gt(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {
-    dag.push_transform(
+    dag_test::push_transform(
+        dag,
         TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt)),
         vec![lhs, rhs],
         span(),
@@ -58,7 +61,7 @@ fn bind_arm(dag: &mut Dag, name: &str, output: PortId) -> Path {
     let body = dag
         .port(output)
         .produced_by
-        .unwrap_or_else(|| dag.push_bind(name, output, Vec::new(), span()));
+        .unwrap_or_else(|| dag_test::push_bind(dag, name, output, Vec::new(), span()));
     Path {
         body,
         output,
@@ -94,8 +97,8 @@ fn branch_cost_fixture(then_values: &[i64], else_values: &[i64]) -> Dag {
     let else_output = add_chain(&mut dag, else_values);
     let then_path = bind_arm(&mut dag, "then_arm", then_output);
     let else_path = bind_arm(&mut dag, "else_arm", else_output);
-    let result = dag.push_branch(cond, vec![then_path, else_path], span());
-    dag.push_bind("r", result, Vec::new(), span());
+    let result = dag_test::push_branch(&mut dag, cond, vec![then_path, else_path], span());
+    dag_test::push_bind(&mut dag, "r", result, Vec::new(), span());
     dag
 }
 
@@ -103,7 +106,7 @@ fn branch_cost_fixture(then_values: &[i64], else_values: &[i64]) -> Dag {
 fn cost_lens_literal_value_is_zero() {
     let mut dag = Dag::new();
     let value = int_value(&mut dag, 1);
-    dag.push_bind("x", value, Vec::new(), span());
+    dag_test::push_bind(&mut dag, "x", value, Vec::new(), span());
 
     assert_eq!(bind_cost(&dag, "x"), 0);
 }
@@ -114,7 +117,7 @@ fn cost_lens_single_transform_is_one() {
     let lhs = int_value(&mut dag, 1);
     let rhs = int_value(&mut dag, 2);
     let value = add(&mut dag, lhs, rhs);
-    dag.push_bind("x", value, Vec::new(), span());
+    dag_test::push_bind(&mut dag, "x", value, Vec::new(), span());
 
     assert_eq!(bind_cost(&dag, "x"), 1);
 }
@@ -127,7 +130,7 @@ fn cost_lens_chained_transform_is_two() {
     let three = int_value(&mut dag, 3);
     let inner = add(&mut dag, one, two);
     let value = add(&mut dag, inner, three);
-    dag.push_bind("x", value, Vec::new(), span());
+    dag_test::push_bind(&mut dag, "x", value, Vec::new(), span());
 
     assert_eq!(bind_cost(&dag, "x"), 2);
 }
@@ -142,8 +145,8 @@ fn cost_lens_branch_counts_condition_plus_max_path() {
     let else_output = int_value(&mut dag, 20);
     let then_path = bind_arm(&mut dag, "then_arm", then_output);
     let else_path = bind_arm(&mut dag, "else_arm", else_output);
-    let result = dag.push_branch(cond, vec![then_path, else_path], span());
-    dag.push_bind("r", result, Vec::new(), span());
+    let result = dag_test::push_branch(&mut dag, cond, vec![then_path, else_path], span());
+    dag_test::push_bind(&mut dag, "r", result, Vec::new(), span());
 
     assert_eq!(bind_cost(&dag, "r"), 2);
 }
@@ -161,7 +164,7 @@ fn cost_lens_bind_passes_through_to_value() {
     let lhs = int_value(&mut dag, 1);
     let rhs = int_value(&mut dag, 2);
     let add_output = add(&mut dag, lhs, rhs);
-    dag.push_bind("y", add_output, Vec::new(), span());
+    dag_test::push_bind(&mut dag, "y", add_output, Vec::new(), span());
 
     assert_eq!(bind_cost(&dag, "y"), expect_cost(&dag, add_output));
 }

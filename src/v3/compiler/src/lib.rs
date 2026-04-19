@@ -16,6 +16,8 @@
 //   payload.
 
 pub mod dag;
+#[doc(hidden)]
+pub mod dag_test_support;
 pub mod diagnostics;
 
 /// SG-0 producer-owned generated-file manifest.
