@@ -191,7 +191,11 @@ mod parse_stage4_prep {
     fn collect_rel_paths(dir: &Path, rel_prefix: &str, ext: &str) -> Vec<String> {
         let mut entries: Vec<String> = fs::read_dir(dir)
             .unwrap_or_else(|err| panic!("read_dir {} failed: {err}", dir.display()))
-            .filter_map(|entry| entry.ok())
+            .map(|entry| {
+                entry.unwrap_or_else(|err| {
+                    panic!("read_dir entry {} failed: {err}", dir.display())
+                })
+            })
             .map(|entry| entry.path())
             .filter(|path| path.extension().and_then(|value| value.to_str()) == Some(ext))
             .map(|path| {
