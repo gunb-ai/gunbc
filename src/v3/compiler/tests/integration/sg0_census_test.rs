@@ -183,6 +183,23 @@ fn walk_rs(root: &Path, ws: &Path, out: &mut BTreeSet<String>) {
     }
 }
 
+<<<<<<< HEAD
+=======
+fn is_generated(abs_path: &Path) -> bool {
+    let contents =
+        fs::read_to_string(abs_path).unwrap_or_else(|e| panic!("read {}: {e}", abs_path.display()));
+    let Some(first) = contents.lines().find(|line| !line.trim().is_empty()) else {
+        return false;
+    };
+    first.trim_start().starts_with(GENERATED_MARKER_PREFIX)
+}
+
+fn compiler_dag_source() -> String {
+    let path = workspace_root().join("dsl/gunbc/compiler.dag");
+    fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
+
+>>>>>>> 683fda539 (WIP: XL Misc)
 #[test]
 fn sg0_v3_hand_authored_census() {
     let ws = workspace_root();
@@ -266,6 +283,7 @@ fn sg0_expected_list_is_sorted_and_unique() {
     }
 }
 
+<<<<<<< HEAD
 static PROBE_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 struct TempDirGuard(PathBuf);
@@ -357,5 +375,34 @@ fn sg0_every_generated_file_is_present_on_disk() {
          the producer (a regen_* binary or build.rs entry) did not write them. \
          Update REGEN_OUTPUTS in src/v3/compiler/build.rs, or run the relevant \
          regen driver to populate the committed output."
+=======
+#[test]
+fn sg0_stage0_copy_command_excludes_hand_maintained_root_files() {
+    let source = compiler_dag_source();
+    let start = source
+        .find("fn copy_generated_command(")
+        .expect("compiler.dag should define copy_generated_command");
+    let tail = &source[start..];
+    let end = tail
+        .find("\n}\n\n// Diff exclusion args")
+        .expect("copy_generated_command should end before diff_exclude_args");
+    let copy_fn = &tail[..end];
+
+    assert!(
+        copy_fn.contains("cycle.generated.hand_maintained_src |> fold"),
+        "copy_generated_command should derive an exclude filter from hand_maintained_src"
+    );
+    assert!(
+        copy_fn.contains(" -maxdepth 1 -type f -name '*.rs'"),
+        "copy_generated_command should only walk top-level emitted Rust files"
+    );
+    assert!(
+        copy_fn.contains(" -exec "),
+        "copy_generated_command should copy via find -exec so excluded names are not overwritten"
+    );
+    assert!(
+        copy_fn.contains("cycle.generated.source_dir"),
+        "copy_generated_command should target the declared generated source_dir"
+>>>>>>> 683fda539 (WIP: XL Misc)
     );
 }
