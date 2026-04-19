@@ -60,10 +60,11 @@ fn operations_commute(a: &OperationEffect, b: &OperationEffect) -> bool {
 fn first_breaking_across_branches(
     branch_ops: &[Vec<OperationEffect>],
 ) -> Option<ElementRef<OperationEffect>> {
-    // Stage 2e reuses `CompositionVerdict`, so breaker identity must be a
-    // carrier-relative handle rather than a copied record. The parallel
-    // evidence chain is the branch-order flattening of every linear branch's
-    // `ops`, which callers can reconstruct via `WorkflowEffect::operation_at`.
+    // Stage 2e reuses `CompositionVerdict`, so breaker identity stays an
+    // index-shaped handle rather than a copied record. The canonical evidence
+    // list here is the branch-order flattening of every linear branch's `ops`;
+    // callers must resolve the handle against that same flattening, which
+    // `WorkflowEffect::operation_at` reconstructs.
     let flattened: Vec<OperationEffect> = branch_ops
         .iter()
         .flat_map(|ops| ops.iter().cloned())

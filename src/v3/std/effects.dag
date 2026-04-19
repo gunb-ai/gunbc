@@ -426,8 +426,9 @@ fn first_breaker_ref(effects: List<OperationEffect>) -> ElementRef<OperationEffe
 // be made to disagree without any type-level obstruction.
 //
 // Walks the effect list with indices, then returns the first breaking
-// position (if any). `BrokenBy` points back into the caller-owned
-// evidence chain instead of copying a second breaker record.
+// position (if any). `BrokenBy` carries that validated position instead
+// of copying a second breaker record; callers still have to resolve it
+// against the same evidence list they validated it against.
 fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
   match first_breaker_ref(effects) {
     Some(b) => BrokenBy { first_breaker: b }
