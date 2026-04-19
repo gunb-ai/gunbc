@@ -1881,13 +1881,6 @@ pub(crate) struct TargetSyntaxCache {
     /// authority the Rust emitter reads for borrow-vs-construct
     /// rendering policy at use sites.
     pub rust_rendering: Option<DeclarationId>,
-    /// `rust_clean_emission` CleanEmissionContract declaration
-    /// loaded from `src/v3/spec/rust.dag`. Lane 1 Stage 1c / E-5:
-    /// the emitter dispatches on this contract's rule fields to
-    /// shape emitted code so it passes `rustc -D warnings` by
-    /// construction. Go / Python cache analogues land when their
-    /// respective pilots do.
-    pub rust_clean_emission: Option<DeclarationId>,
     /// `rust_execution_model` declaration loaded from
     /// `src/v3/spec/rust.dag`. Used by emitters to gate the
     /// ownership stage on the target memory model.
@@ -1903,26 +1896,12 @@ pub(crate) struct TargetSyntaxCache {
     /// `go_execution_model` declaration loaded from
     /// `src/v3/spec/go.dag`.
     pub go_execution_model: Option<DeclarationId>,
-    /// `go_clean_emission` CleanEmissionContract declaration loaded
-    /// from `src/v3/spec/go.dag`. Lane 1 Stage 1c PR 2 / E-5: the
-    /// Go emitter dispatches on this contract's rule fields so
-    /// emitted Go compiles under `gofmt -l` + the Go compiler's
-    /// own unused-local check by construction.
-    pub go_clean_emission: Option<DeclarationId>,
     /// `python_language` syntax bundle declaration loaded from
     /// `src/v3/spec/python.dag`.
     pub python_language: Option<DeclarationId>,
     /// `python_target` execution-model declaration loaded from
     /// `src/v3/spec/python.dag`.
     pub python_target: Option<DeclarationId>,
-    /// `python_clean_emission` CleanEmissionContract declaration
-    /// loaded from `src/v3/spec/python.dag`. Lane 1 Stage 1c PR 3 /
-    /// E-5: the Python emitter dispatches on this contract's
-    /// `pattern_bindings` field. Python's `NotApplicablePatternBinding`
-    /// selects the substitute-at-render-time path — the binding
-    /// identifier is never emitted at the pattern site, so
-    /// py_compile never flags an unused binding.
-    pub python_clean_emission: Option<DeclarationId>,
     /// Shared target-authority bindings scanned from
     /// `TargetCleanEmissionBinding` data items. This is the single
     /// cached bridge from `LanguageSpec` to `CleanEmissionContract`;
@@ -2283,7 +2262,8 @@ impl Dag {
     /// latter is a spec-file drift and surfaces at emit time as
     /// `EmitError::MissingTargetSyntax`.
     pub fn rust_clean_emission_spec(&self) -> Option<DeclarationId> {
-        self.target_syntax.rust_clean_emission
+        self.rust_target_syntax_bundle()
+            .map(|bundle| bundle.clean_emission_spec)
     }
 
     /// Typed accessor for the Rust target authority bundle pairing
@@ -2329,7 +2309,8 @@ impl Dag {
     /// parses the structural fields and dispatches on the rule
     /// variants.
     pub fn go_clean_emission_spec(&self) -> Option<DeclarationId> {
-        self.target_syntax.go_clean_emission
+        self.go_target_syntax_bundle()
+            .map(|bundle| bundle.clean_emission_spec)
     }
 
     /// Typed accessor for the Go target authority bundle pairing
@@ -2363,7 +2344,8 @@ impl Dag {
     /// `go_clean_emission_spec`; emitter parses the structural
     /// fields and dispatches on the rule variants.
     pub fn python_clean_emission_spec(&self) -> Option<DeclarationId> {
-        self.target_syntax.python_clean_emission
+        self.python_target_syntax_bundle()
+            .map(|bundle| bundle.clean_emission_spec)
     }
 
     /// Typed accessor for the Python target authority bundle pairing
@@ -2833,9 +2815,6 @@ impl Dag {
         self.target_syntax.rust_language = self.declaration_by_name("rust_language").map(|d| d.id);
         self.target_syntax.rust_rendering =
             self.declaration_by_name("rust_rendering").map(|d| d.id);
-        self.target_syntax.rust_clean_emission = self
-            .declaration_by_name("rust_clean_emission")
-            .map(|d| d.id);
         self.target_syntax.rust_execution_model = self
             .declaration_by_name("rust_execution_model")
             .map(|d| d.id);
@@ -2843,14 +2822,9 @@ impl Dag {
         self.target_syntax.go_language = self.declaration_by_name("go_language").map(|d| d.id);
         self.target_syntax.go_execution_model =
             self.declaration_by_name("go_execution_model").map(|d| d.id);
-        self.target_syntax.go_clean_emission =
-            self.declaration_by_name("go_clean_emission").map(|d| d.id);
         self.target_syntax.python_language =
             self.declaration_by_name("python_language").map(|d| d.id);
         self.target_syntax.python_target = self.declaration_by_name("python_target").map(|d| d.id);
-        self.target_syntax.python_clean_emission = self
-            .declaration_by_name("python_clean_emission")
-            .map(|d| d.id);
         self.populate_target_clean_emission_bindings();
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
 
@@ -3163,6 +3137,10 @@ mod tests {
             "malformed binding should not populate a target authority bundle"
         );
         assert!(
+            dag.rust_clean_emission_spec().is_none(),
+            "target-specific clean-emission accessor must also fail closed on malformed bindings"
+        );
+        assert!(
             dag.diagnostics().iter().any(|(_, diagnostic)| matches!(
                 diagnostic,
                 Diagnostic::ResolveError { name, .. }
@@ -3202,6 +3180,10 @@ mod tests {
             dag.target_syntax_bundle_for_language(rust_language)
                 .is_none(),
             "duplicate language bindings should remove the ambiguous authority"
+        );
+        assert!(
+            dag.rust_clean_emission_spec().is_none(),
+            "target-specific clean-emission accessor must project the same ambiguous authority as None"
         );
         assert!(
             dag.diagnostics().iter().any(|(_, diagnostic)| matches!(
