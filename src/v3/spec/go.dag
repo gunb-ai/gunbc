@@ -360,6 +360,15 @@ data go_comparison_op: TypeRealization = {
   cost: 1
 }
 
+data go_logical_op: TypeRealization = {
+  language: go_language
+  target: LogicalOp
+  carrier: "LogicalOp"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
 data go_operator_kind: TypeRealization = {
   language: go_language
   target: OperatorKind

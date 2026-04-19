@@ -970,8 +970,8 @@ impl<'a> Ctx<'a> {
         // Go uses `&&` / `||`; same as the source surface.
         if let OperatorKind::Logical(logical_op) = op {
             let symbol = match logical_op {
-                crate::operators::LogicalOp::And => "&&",
-                crate::operators::LogicalOp::Or => "||",
+                crate::dag::LogicalOp::And => "&&",
+                crate::dag::LogicalOp::Or => "||",
             };
             let lhs = self.render_port(t.inputs[0], locals)?;
             let rhs = self.render_port(t.inputs[1], locals)?;
@@ -2762,7 +2762,7 @@ fn algebra_field_for_operator(
     let Some(algebra_conj_id) = walk_to_algebra_conj(dag, operand_type_id) else {
         return canonical_operator_field(dag, op);
     };
-    let field_label = op.algebra_field_name();
+    let field_label = crate::operators::algebra_field_name(op);
     let children = match &dag.declaration(algebra_conj_id).connective {
         TypeConnective::Conj { children } => children,
         _ => unreachable!("walk_to_algebra_conj returned a non-Conj"),
@@ -2798,7 +2798,7 @@ fn canonical_operator_field(dag: &Dag, op: OperatorKind) -> Result<DeclarationId
             "`OrderedRing` does not lower to a Conj declaration".to_string(),
         ));
     };
-    let field_label = op.algebra_field_name();
+    let field_label = crate::operators::algebra_field_name(op);
     children
         .iter()
         .find(|field| field.label == field_label)

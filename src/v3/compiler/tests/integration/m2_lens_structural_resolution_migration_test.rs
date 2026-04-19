@@ -92,10 +92,9 @@ fn format_rust_source(source: &str) -> String {
 /// `structural_resolution.dag` changes. The snapshot test below then
 /// confirms the update landed on disk.
 ///
-/// Equivalent to running the standalone
-/// `bin/regen_lens_structural_resolution.rs` binary; both paths are
-/// kept in lockstep with the cost / provenance / unused_parameters
-/// migration tests.
+/// Equivalent to running the unified `bin/regen_lens` driver with
+/// `--lens structural_resolution`; both paths are kept in lockstep
+/// with the cost / provenance / unused_parameters migration tests.
 #[test]
 #[ignore]
 fn emit_lens_structural_resolution_snapshot() {

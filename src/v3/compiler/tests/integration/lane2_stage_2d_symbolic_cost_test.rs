@@ -592,7 +592,7 @@ budgeted_test! {
         assert_eq!(
             fresh.trim(),
             checked_in.trim(),
-            "checked-in `lens_cost_symbolic_generated.rs` is stale; run `cargo run --bin regen_lens_cost_symbolic`"
+            "checked-in `lens_cost_symbolic_generated.rs` is stale; run `cargo run -p v3-compiler --bin regen_lens -- --lens cost_symbolic`"
         );
     }
 }

@@ -25,7 +25,7 @@ fn assert_target_name(dag: &Dag, target: &TransformTarget, expected: &str) {
             }
         }
         TransformTarget::FieldProject { field_label, .. } => Some(format!(".{field_label}")),
-        TransformTarget::Operator(op_kind) => Some(op_kind.symbol().to_string()),
+        TransformTarget::Operator(op_kind) => Some(v3_compiler::operators::symbol(*op_kind)),
     };
     assert_eq!(
         actual.as_deref(),

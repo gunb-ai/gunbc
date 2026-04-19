@@ -16,7 +16,7 @@ use v3_compiler::dag::{
     ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, PortState,
     TransformTarget, TypeConnective,
 };
-use v3_compiler::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
+use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use v3_compiler::Diagnostic;
 
 use crate::common::{cached_compile_any, cached_compile_to_dag};
@@ -76,6 +76,28 @@ fn callable_instantiation_arguments(
             (*inst_template == template).then_some(arguments.as_slice())
         })
         .collect()
+}
+
+#[test]
+fn operator_helpers_round_trip_from_dag_authority() {
+    for (symbol, op, field_name) in [
+        ("+", OperatorKind::Arithmetic(ArithmeticOp::Add), "add"),
+        ("-", OperatorKind::Arithmetic(ArithmeticOp::Sub), "sub"),
+        ("*", OperatorKind::Arithmetic(ArithmeticOp::Mul), "mul"),
+        ("/", OperatorKind::Arithmetic(ArithmeticOp::Div), "div"),
+        ("==", OperatorKind::Comparison(ComparisonOp::Eq), "eq"),
+        ("!=", OperatorKind::Comparison(ComparisonOp::Ne), "ne"),
+        ("<", OperatorKind::Comparison(ComparisonOp::Lt), "lt"),
+        ("<=", OperatorKind::Comparison(ComparisonOp::Le), "le"),
+        (">", OperatorKind::Comparison(ComparisonOp::Gt), "gt"),
+        (">=", OperatorKind::Comparison(ComparisonOp::Ge), "ge"),
+        ("&&", OperatorKind::Logical(LogicalOp::And), "and"),
+        ("||", OperatorKind::Logical(LogicalOp::Or), "or"),
+    ] {
+        assert_eq!(v3_compiler::operators::from_symbol(symbol), Some(op));
+        assert_eq!(v3_compiler::operators::symbol(op), symbol);
+        assert_eq!(v3_compiler::operators::algebra_field_name(op), field_name);
+    }
 }
 
 #[test]
@@ -2755,6 +2777,136 @@ fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap(payload) => payload.inner.
     assert_eq!(
         bind_value_type_decl(&dag, "unwrap_or_zero"),
         find_named(&dag, "Int")
+    );
+}
+
+#[test]
+fn prereq2_named_variant_constructor_expression_compiles_against_expected_sum() {
+    let src = "\
+type Point { x: Int }
+type Wrapped = Wrap { inner: Point } | Empty
+fn wrap(point: Point) -> Wrapped = Wrap { inner: point }
+";
+    let dag = cached_compile_to_dag(src, "named_variant_constructor.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "named variant constructor expression should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(
+        bind_value_type_decl(&dag, "wrap"),
+        find_named(&dag, "Wrapped")
+    );
+}
+
+#[test]
+fn prereq2_named_payload_pattern_binds_field_projection_ports() {
+    let src = "\
+type Point { x: Int }
+type Wrapped = Wrap { inner: Point } | Empty
+fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap { inner: point } => point.x, Empty => 0 }
+";
+    let dag = cached_compile_to_dag(src, "named_payload_pattern.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "named payload pattern should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "unwrap_or_zero")
+        .expect("Bind(unwrap_or_zero) exists");
+    let branch = match dag.node(
+        dag.port(bind.value)
+            .produced_by
+            .expect("Bind value has a producer"),
+    ) {
+        Behavior::Branch(b) => b,
+        other => panic!("expected Branch at match root, got {other:?}"),
+    };
+    let payload_path = branch
+        .paths
+        .iter()
+        .find(|path| path.binding.is_some())
+        .expect("payload-capturing path exists");
+    let binding = payload_path
+        .binding
+        .as_ref()
+        .expect("binding payload stored on Path");
+    let body_projection = match dag.node(
+        dag.port(payload_path.output)
+            .produced_by
+            .expect("payload arm body should be a field projection"),
+    ) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected Transform field projection, got {other:?}"),
+    };
+    let projected_point_port = body_projection.inputs[0];
+    let point_projection = match dag.node(
+        dag.port(projected_point_port)
+            .produced_by
+            .expect("named binding should be backed by a field projection"),
+    ) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected inner field projection, got {other:?}"),
+    };
+    assert_eq!(point_projection.inputs, vec![binding.payload_port]);
+    match &point_projection.target {
+        TransformTarget::FieldProject {
+            field_label,
+            field_child,
+        } => {
+            assert_eq!(field_label, "inner");
+            assert_eq!(*field_child, Some(find_named(&dag, "Point")));
+        }
+        other => panic!("expected inner FieldProject target, got {other:?}"),
+    }
+}
+
+#[test]
+fn prereq2_named_payload_pattern_duplicate_binding_fails_closed() {
+    let src = "\
+type Pair { a: Int b: Int }
+type Wrapped = Wrap { inner: Pair } | Empty
+fn bad(w: Wrapped) -> Int = match w { Wrap { inner: pair } => match pair { Pair { a: x, b: x } => x }, Empty => 0 }
+";
+    let dag = compile_any(src, "named_payload_pattern_duplicate_binding.v3");
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| matches!(
+            diag,
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("binds `x` more than once")
+        )),
+        "expected fail-closed duplicate payload-pattern binding diagnostic, got {:?}",
+        dag.diagnostics()
+    );
+}
+
+/// Regression for #565 / codex blocker: `VariantFields` duplicate-binding
+/// detection incorrectly used the full outer scope, so a legitimate
+/// shadow (fn parameter `x` + match-arm `Foo { x }` renaming a field
+/// to `x`) got rejected as a duplicate. Match arms must be allowed to
+/// shadow outer names exactly like `VariantWith { binding: x }` already does.
+#[test]
+fn prereq2_named_payload_pattern_shadows_outer_scope_binding() {
+    // `inner` is in outer scope (fn parameter). The match arm's
+    // `Wrap { inner: pair }` binds a new `pair` — not a shadow. But the
+    // bug fires whenever an outer name collides with ANY pattern binding,
+    // so introduce the conflict by also binding the field to `inner`:
+    // `Wrap { inner: inner }` is the shadow case the bug prevented.
+    let src = "\
+type Pair { inner: Int }
+type Wrapped = Wrap { inner: Pair } | Empty
+fn read(w: Wrapped, inner: Int) -> Int = match w { Wrap { inner: inner } => inner.inner, Empty => inner }
+";
+    let dag = cached_compile_to_dag(src, "named_payload_pattern_shadowing.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "named-payload match arm must shadow the outer `inner` binding, got {:?}",
+        dag.diagnostics()
     );
 }
 

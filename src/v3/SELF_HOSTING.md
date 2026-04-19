@@ -1030,6 +1030,18 @@ grammar spec file — the parser is no longer v3-specific.
 ~1500-2000 lines of `.dag`. Produces identical Surface tree
 output.
 
+**Current prep status (not cutover).** A handwritten-parser snapshot
+harness lives in `src/v3/compiler/tests/integration.rs` and
+`src/v3/compiler/tests/integration/parse_corpus_manifest.txt`. It records the current
+`parse.rs` `SurfaceModule` output over the parseable fixture corpus so
+later `parse.dag` work has a ratchet. This is **SG-2 prep only**: it
+does not add `parse.dag`, does not generate a Rust projection, does
+not switch callers, and is not by itself evidence that `.dag` parser
+output matches the handwritten parser. The prep corpus currently pins
+the seven bootstrap `dsl/std` fixtures plus the parseable `src/v3/std`,
+`src/v3/spec`, `src/v3/compiler`, and four-fixture-pressure sources;
+it does not claim every file under `dsl/std/`.
+
 **Phase 4b — grammar-as-data.** Parser rules become `.dag`
 declarations in a grammar spec file (`dsl/grammar/v3.dag` or
 similar). The parser is a generic rule-interpreter that reads

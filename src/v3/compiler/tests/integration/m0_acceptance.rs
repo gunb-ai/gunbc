@@ -33,8 +33,8 @@ fn primitive_shape(dag: &Dag, name: &str) -> TypeShape {
 ///   named declarations. The target declaration's name (or its
 ///   resolved-identifier chain) carries the surface label.
 /// - `Operator(OperatorKind)` — primitive binary operators. The
-///   `OperatorKind::symbol()` renders the source symbol directly
-///   (`"+"`, `">="`, etc.).
+///   generated `operators::symbol` helper renders the source symbol
+///   directly (`"+"`, `">="`, etc.).
 fn assert_target_name(dag: &Dag, target: &TransformTarget, expected: &str) {
     let actual: Option<String> = match target {
         TransformTarget::Callable(id) => {
@@ -49,7 +49,7 @@ fn assert_target_name(dag: &Dag, target: &TransformTarget, expected: &str) {
             }
         }
         TransformTarget::FieldProject { field_label, .. } => Some(format!(".{field_label}")),
-        TransformTarget::Operator(op_kind) => Some(op_kind.symbol().to_string()),
+        TransformTarget::Operator(op_kind) => Some(v3_compiler::operators::symbol(*op_kind)),
     };
     assert_eq!(
         actual.as_deref(),
