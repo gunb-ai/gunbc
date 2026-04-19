@@ -5591,4 +5591,124 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
         // that replaced the TargetLanguage enum roster.
         assert_ne!(rust_language_id, go_language_id);
     }
+
+    /// Boundary check for `PatternRealization.empty_variant` /
+    /// `cons_variant`. The substrate types these as `DeclarationRef`,
+    /// which is unconstrained — nothing in the grammar rejects
+    /// `empty_variant: Int` under `target: List`. `validate_pattern_roles`
+    /// enforces "must be a variant of `target`" at parse time. This test
+    /// pins the rejection so later refactors can't silently drop it.
+    #[test]
+    fn validate_pattern_roles_rejects_non_variant_empty_ref() {
+        let dag = Dag::new();
+        let bool_id = dag
+            .declaration_by_name("Bool")
+            .expect("Bool is a Disj in bootstrap std")
+            .id;
+        let int_id = dag
+            .declaration_by_name("Int")
+            .expect("Int in bootstrap std")
+            .id;
+        // Pick a real Bool variant for `cons_variant` so only
+        // `empty_variant` is the illegal pointer.
+        let bool_variant_ty = match &dag.declaration(bool_id).connective {
+            TypeConnective::Disj { variants } => variants[0].ty,
+            other => panic!("Bool should be a Disj, got {other:?}"),
+        };
+        let binding = PatternRealizationBinding {
+            strategy: RustPatternStrategyBinding::VectorList,
+            empty_variant: int_id,
+            cons_variant: bool_variant_ty,
+            scrutinee: "{expr}".into(),
+            empty_pattern: "[]".into(),
+            cons_pattern: "[{head}, {tail} @ ..]".into(),
+            head_expr: "{head}".into(),
+            tail_expr: "{tail}".into(),
+        };
+        let result = validate_pattern_roles(&dag, bool_id, &binding, bool_id);
+        match result {
+            Err(EmitError::MalformedRealization { detail, .. }) => {
+                assert!(
+                    detail.contains("empty_variant must be a variant"),
+                    "unexpected detail: {detail}"
+                );
+            }
+            other => panic!("expected MalformedRealization for non-variant empty_variant, got {other:?}"),
+        }
+    }
+
+    /// Mirror of the above for `cons_variant`. Distinct test so a future
+    /// regression on only one of the two role checks is caught narrowly.
+    #[test]
+    fn validate_pattern_roles_rejects_non_variant_cons_ref() {
+        let dag = Dag::new();
+        let bool_id = dag
+            .declaration_by_name("Bool")
+            .expect("Bool is a Disj in bootstrap std")
+            .id;
+        let int_id = dag
+            .declaration_by_name("Int")
+            .expect("Int in bootstrap std")
+            .id;
+        let bool_variant_ty = match &dag.declaration(bool_id).connective {
+            TypeConnective::Disj { variants } => variants[0].ty,
+            other => panic!("Bool should be a Disj, got {other:?}"),
+        };
+        let binding = PatternRealizationBinding {
+            strategy: RustPatternStrategyBinding::VectorList,
+            empty_variant: bool_variant_ty,
+            cons_variant: int_id,
+            scrutinee: "{expr}".into(),
+            empty_pattern: "[]".into(),
+            cons_pattern: "[{head}, {tail} @ ..]".into(),
+            head_expr: "{head}".into(),
+            tail_expr: "{tail}".into(),
+        };
+        let result = validate_pattern_roles(&dag, bool_id, &binding, bool_id);
+        match result {
+            Err(EmitError::MalformedRealization { detail, .. }) => {
+                assert!(
+                    detail.contains("cons_variant must be a variant"),
+                    "unexpected detail: {detail}"
+                );
+            }
+            other => panic!("expected MalformedRealization for non-variant cons_variant, got {other:?}"),
+        }
+    }
+
+    /// Distinct-variants check: even if both refs are valid variants of
+    /// `target`, they must not be the same one — the branch shape needs
+    /// two distinct arms. Pins the third clause of `validate_pattern_roles`.
+    #[test]
+    fn validate_pattern_roles_rejects_aliased_role_refs() {
+        let dag = Dag::new();
+        let bool_id = dag
+            .declaration_by_name("Bool")
+            .expect("Bool is a Disj in bootstrap std")
+            .id;
+        let bool_variant_ty = match &dag.declaration(bool_id).connective {
+            TypeConnective::Disj { variants } => variants[0].ty,
+            other => panic!("Bool should be a Disj, got {other:?}"),
+        };
+        let binding = PatternRealizationBinding {
+            strategy: RustPatternStrategyBinding::VectorList,
+            empty_variant: bool_variant_ty,
+            cons_variant: bool_variant_ty,
+            scrutinee: "{expr}".into(),
+            empty_pattern: "[]".into(),
+            cons_pattern: "[{head}, {tail} @ ..]".into(),
+            head_expr: "{head}".into(),
+            tail_expr: "{tail}".into(),
+        };
+        let result = validate_pattern_roles(&dag, bool_id, &binding, bool_id);
+        match result {
+            Err(EmitError::MalformedRealization { detail, .. }) => {
+                assert!(
+                    detail.contains("must be distinct"),
+                    "unexpected detail: {detail}"
+                );
+            }
+            other => panic!("expected MalformedRealization for aliased role refs, got {other:?}"),
+        }
+    }
 }
