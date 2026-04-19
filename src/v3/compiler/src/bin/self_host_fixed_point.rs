@@ -136,9 +136,8 @@ fn run() -> Result<(), String> {
                             );
                         }
                     } else {
-                        receipt.push_str(
-                            "  \"fixed_point_diff\": \"skipped_stage2_not_written\",\n",
-                        );
+                        receipt
+                            .push_str("  \"fixed_point_diff\": \"skipped_stage2_not_written\",\n");
                     }
                 } else {
                     let stderr = String::from_utf8_lossy(&run.stderr);
@@ -171,10 +170,7 @@ fn run() -> Result<(), String> {
     } else {
         "completed"
     };
-    receipt.push_str(&format!(
-        "  \"status\": {}\n}}\n",
-        json_string(exit_status)
-    ));
+    receipt.push_str(&format!("  \"status\": {}\n}}\n", json_string(exit_status)));
 
     write_receipt(&receipt_path, &receipt);
     writeln!(
