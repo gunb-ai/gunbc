@@ -45,19 +45,25 @@ if [ "$cargo_status" -ne 0 ]; then
 fi
 
 # Parse lines of shape:  test foo::bar_baz ... ok <0.123s>
-# (FINISHED_IN_<...s> on older output; report-time normalizes to <...s>.)
-# Tolerate optional "failed" (already short-circuited above) and "ignored"
-# (no timing attached).
+# report-time normalizes to `<N.NNNs>`. POSIX awk (BSD on macOS,
+# gawk on Ubuntu CI) lacks the `match(s, r, arr)` submatch form, so
+# extract via field indexing: `$1=="test", $2=name, $3="...", $4=status, $5=<time>`.
+# "ignored" tests have no timing trailer, so they fail the regex and are skipped.
 violations=$(awk -v budget_ms="$budget_ms" '
-  match($0, /test[[:space:]]+([^ ]+)[[:space:]]+\.\.\.[[:space:]]+(ok|FAILED)[[:space:]]+<([0-9]+)\.([0-9]+)s>/, m) {
-    # ms = whole_seconds*1000 + fractional_3_digits
-    frac = m[4]
-    # Pad/truncate to 3 digits for millisecond resolution.
+  /^test[[:space:]]+[^ ]+[[:space:]]+\.\.\.[[:space:]]+(ok|FAILED)[[:space:]]+<[0-9]+\.[0-9]+s>$/ {
+    name = $2
+    timestr = $NF
+    # timestr looks like "<1.234s>" — strip brackets and the "s" suffix.
+    gsub(/[<>s]/, "", timestr)
+    n = split(timestr, parts, ".")
+    if (n != 2) next
+    whole = parts[1] + 0
+    frac = parts[2]
     while (length(frac) < 3) frac = frac "0"
     frac = substr(frac, 1, 3)
-    elapsed_ms = m[3] * 1000 + frac + 0
+    elapsed_ms = whole * 1000 + (frac + 0)
     if (elapsed_ms > budget_ms) {
-      printf "%s\t%d\n", m[1], elapsed_ms
+      printf "%s\t%d\n", name, elapsed_ms
     }
   }
 ' "$log_file")
