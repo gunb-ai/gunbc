@@ -15,6 +15,9 @@ use crate::dag::{
 pub(crate) fn compose_operation_effects(effects: &[OperationEffect]) -> CompositionVerdict {
     for (index, effect) in effects.iter().enumerate() {
         if matches!(effect.shape, EffectShape::IsBreaking(_)) {
+            // `ElementRef` preserves "which workflow element broke" without
+            // copying a second breaker record; the breaking-subset proof still
+            // comes from this partition check, not from the handle type alone.
             let first_breaker = ElementRef::from_slice(effects, index)
                 .expect("enumerated workflow effect index must stay in-bounds");
             return CompositionVerdict::BrokenBy { first_breaker };
