@@ -121,20 +121,6 @@ fn render_record(
     Ok(rendered)
 }
 
-fn render_sum(
-    dag: &crate::Dag,
-    name: &'static str,
-    type_overrides: &[(&str, &str)],
-) -> Result<String, MirrorError> {
-    render_sum_with_derives(
-        dag,
-        name,
-        type_overrides,
-        "#[derive(Debug, Clone, PartialEq, Eq)]",
-        None,
-    )
-}
-
 fn render_sum_with_derives(
     dag: &crate::Dag,
     name: &'static str,

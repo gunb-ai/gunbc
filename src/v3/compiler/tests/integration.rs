@@ -80,6 +80,8 @@ mod m2_lens_provenance_migration_test;
 mod m2_lens_structural_resolution_migration_test;
 #[path = "integration/m2_lens_unused_parameters_migration_test.rs"]
 mod m2_lens_unused_parameters_migration_test;
+#[path = "integration/m2_runtime_mirror_generation_test.rs"]
+mod m2_runtime_mirror_generation_test;
 #[path = "integration/m2_substrate_inhabitance_test.rs"]
 mod m2_substrate_inhabitance_test;
 #[path = "integration/pipe_desugar.rs"]

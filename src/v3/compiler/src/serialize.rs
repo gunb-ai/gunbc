@@ -1,10 +1,7 @@
 use crate::dag::{Behavior, Dag};
 use crate::diagnostics::Diagnostic;
 
-#[derive(Debug, Clone)]
-pub struct DagDifference {
-    pub detail: String,
-}
+include!("serialize_generated.rs");
 
 pub fn serialize_dag(dag: &Dag) -> Vec<u8> {
     let mut out = String::new();
