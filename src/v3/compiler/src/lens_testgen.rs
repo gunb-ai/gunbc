@@ -487,6 +487,14 @@ impl<'a> TestgenLens<'a> {
             if matches!(name.as_str(), "BoolPortRef" | "BranchArm") {
                 continue;
             }
+            // `DimensionReport<Carrier>` has two `List<…>` fields whose synthetic
+            // `empty()` witnesses share one implicit template binding during
+            // infer (surface calls cannot spell `empty<Element>()` — no generic
+            // call syntax in expression position). Skip until testgen can emit
+            // non-conflicting list witnesses.
+            if name == "DimensionReport" {
+                continue;
+            }
             // Cardinality list primitives (`NonEmptyList`, `NonSingletonList`) live in
             // `substrate_minimal.dag` ahead of `list.dag`'s `empty()` helper in bootstrap
             // order — the testgen witness uses `empty()` for `List<…>` tails in a

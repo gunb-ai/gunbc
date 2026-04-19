@@ -126,3 +126,9 @@ consolidation gaps, not reasons to keep a Python-private spec family.
 3. **P2:** Bootstrap path lists, placeholder vocabulary, remaining diagnostic polish.
 
 This ordering matches **“spec extensions before deleting Rust”** so P2-L1 does not stall mid-walker on a missing field.
+
+---
+
+## 11. Lane 2 Stage 2f / DB-3 dimensions (not target-spec)
+
+**Surface:** `src/v3/std/dimensions.dag`, `workflows.dag` — no additional fields required on `rust.dag` / `go.dag` / `python.dag` for the dimension report types. **Gap:** authoring `data … : Dimension<Carrier> = { … }` values still waits on class-5 `data` bodies (`DOWNSTREAM_REQUIREMENTS.md`); no separate compiler registry ships ahead of a consumer that needs it.

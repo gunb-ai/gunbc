@@ -1,26 +1,24 @@
-// std.dimensions — the structural shape every compile-time proof
-// lens shares.
+// std.dimensions — DB-3 `Dimension` abstraction (compile-time proof dimensions).
 //
-// 🟡 SCAFFOLD at Stage 2d scope. This file declares the minimum
-// `Dimension<C>` + `Witness<C>` types required for 2d's
-// `symbolic_cost_dimension: Dimension<SymbolicCost>` data
-// declaration. Per DB-3 (`docs/design-dimension-abstraction.md`),
-// Stage 2f owns the full abstraction — the generic `analyze` walker,
-// `DimensionReport<C>`, workflow detection, bootstrap discovery.
-// 2d ships the carrier shape so that (a) 2f's later refactor keeps
-// the same field names, and (b) 2b/2d/2e instances can already
-// declare against a single-authority type.
+// 🟢 TERMINAL for the structural surface (Lane 2 Stage 2f). Execution
+// authority for `analyze_symbolic_cost_dimension` lives in
+// `v3_compiler::dimension` until generic HO list folds lower from
+// `.dag` without host stubs. When class-5 `data` bodies land, callers
+// can walk `Dag::declarations()` for `Dimension<Carrier>` values — no
+// separate compiler registry until a real consumer needs it.
 //
-// **What does not come over yet:** `fn analyze<Carrier>`,
-// `DimensionReport<Carrier>`, monoid-law declarations. Those land
-// in Stage 2f when the abstraction is pulled back over three
-// concrete dimensions.
+// **Deferred:** `data symbolic_cost_dimension: Dimension<SymbolicCost> = { ... }`
+// — class-5 gap #3 (`DOWNSTREAM_REQUIREMENTS.md`) blocks record bodies; the
+// symbolic-cost **analysis** path still dispatches through this module's
+// report shape + the cost lens algebra.
 //
-// See DB-3 §"Core type" for the full locked shape.
+// See DB-3 (`docs/design-dimension-abstraction.md`) §"Core type".
 
 module v3.std.dimensions
 
+import std.list { List }
 import std.substrate { Dag, Behavior }
+import v3.std.diagnostics { Diagnostic }
 
 // 🟢 TERMINAL at the structural-witness scope. `Witness<Carrier>`
 // partitions per-operation evidence into two disjoint cases:
@@ -37,23 +35,33 @@ type Witness<Carrier>
   = Inhabits(Carrier)
   | Violates { reason: String, at: Behavior }
 
-// 🟢 TERMINAL at the dimension-surface scope. The four fields are
+// Optional break channel for `break_diagnostic` — replaces `Diagnostic?`
+// until optional return types are uniform on staged function declarations.
+type OptionalDiagnostic
+  = NoDiagnostic
+  | SomeDiagnostic { value: Diagnostic }
+
+// 🟢 TERMINAL. Aggregate result from `analyze` (DB-3 §Dimension evaluation).
+type DimensionReport<Carrier> {
+  dimension_name: String
+  composed: Carrier
+  violations: List<Diagnostic>
+  witnesses: List<Witness<Carrier>>
+}
+
+// 🟢 TERMINAL at the dimension-surface scope. The five fields are
 // the irreducible contract a compile-time property has to publish:
 //   - `name`      — human-facing identifier
 //   - `witness_of`— per-op evidence extraction
 //   - `compose`   — how two pieces of evidence combine along a
 //                   workflow (must form a monoid with `identity`;
-//                   law is documented not mechanically enforced —
-//                   Stage 2f open question §2)
+//                   monoid law is documented, not mechanically enforced)
 //   - `identity`  — fold unit / empty workflow value
-//
-// Stage 2d consumers MAY additionally declare a
-// `break_diagnostic: fn(Behavior, Carrier) -> Diagnostic?` as a
-// free-standing function on the lens side; the field form lands
-// with the full abstraction in Stage 2f.
+//   - `break_diagnostic` — optional diagnostic when composition breaks
 type Dimension<Carrier> {
   name: String
   witness_of: fn(Dag, Behavior) -> Witness<Carrier>
   compose: fn(Carrier, Carrier) -> Carrier
   identity: Carrier
+  break_diagnostic: fn(Behavior, Carrier) -> OptionalDiagnostic
 }
