@@ -119,10 +119,11 @@ pub fn cached_compile_to_dag(source: &str, file: &str) -> Dag {
 mod tests {
     use super::*;
 
-    /// Regression lock for the cache contract: warming a key through the
-    /// permissive path (semantic-error fixture) must NOT let a later strict
-    /// caller silently succeed on the same key. The strict helper reads the
-    /// outcome variant directly, so order-of-population doesn't matter.
+    /// Regression lock for the cache contract (permissive→strict order):
+    /// warming a key through the permissive path (semantic-error fixture)
+    /// must NOT let a later strict caller silently succeed on the same key.
+    /// The strict helper reads the outcome variant directly, so
+    /// order-of-population doesn't matter.
     #[test]
     #[should_panic(expected = "compile cleanly but produced semantic errors")]
     fn cached_compile_to_dag_panics_on_key_warmed_by_semantic_error() {
@@ -140,5 +141,30 @@ mod tests {
 
         // Strict path on the same key: must panic regardless of cache warmth.
         let _ = cached_compile_to_dag(bad_source, key);
+    }
+
+    /// Regression lock for the cache contract (strict→permissive order):
+    /// warming a key through the strict path (clean-compile fixture) must
+    /// let a later permissive caller read the same Dag on the same key.
+    /// Pins the helper contract from the other direction so future
+    /// refactors cannot silently invert the cache semantics.
+    #[test]
+    fn cached_compile_any_returns_clean_dag_when_key_warmed_by_strict() {
+        let good_source = "let x: Int = 42";
+        let key = "cached_compile_any_order_regression.v3";
+
+        // Strict path: warm with a clean outcome.
+        let warmed = cached_compile_to_dag(good_source, key);
+        assert!(
+            warmed.diagnostics().is_empty(),
+            "sanity: clean fixture should produce no diagnostics"
+        );
+
+        // Permissive path on the same key: must return the cached clean Dag.
+        let retrieved = cached_compile_any(good_source, key);
+        assert!(
+            retrieved.diagnostics().is_empty(),
+            "permissive helper should surface the cached clean outcome, not re-derive"
+        );
     }
 }
