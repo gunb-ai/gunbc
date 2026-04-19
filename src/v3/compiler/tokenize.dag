@@ -72,15 +72,59 @@ type Token {
   span: SourceSpan
 }
 
+type KeywordTokenKind
+  = KwLet
+  | KwIf
+  | KwThen
+  | KwElse
+  | KwFn
+  | KwType
+  | KwModule
+  | KwImport
+  | KwMatch
+  | KwData
+  | KwWhere
+  | KwTrue
+  | KwFalse
+
+type PunctTokenKind
+  = Eq
+  | EqEq
+  | NotEq
+  | Lt
+  | Le
+  | Gt
+  | Ge
+  | Plus
+  | Minus
+  | Star
+  | Slash
+  | AmpAmp
+  | PipePipe
+  | Colon
+  | Arrow
+  | FatArrow
+  | PipeArrow
+  | Dot
+  | LParen
+  | RParen
+  | LBrace
+  | RBrace
+  | LBracket
+  | RBracket
+  | Comma
+  | Semicolon
+  | Pipe
+  | Question
+
 type KeywordSpec {
   spelling: String
-  kind_name: String
+  kind: KeywordTokenKind
 }
 
 type PunctSpec {
   pattern: String
-  width: Int
-  kind_name: String
+  kind: PunctTokenKind
 }
 
 // After `\` inside a string literal: map the next source byte (as a
@@ -113,46 +157,46 @@ data string_escape_n: StringEscapeSpec = { suffix: "n", output_codepoint: 10 }
 data string_escape_r: StringEscapeSpec = { suffix: "r", output_codepoint: 13 }
 data string_escape_t: StringEscapeSpec = { suffix: "t", output_codepoint: 9 }
 
-data keyword_let: KeywordSpec = { spelling: "let", kind_name: "KwLet" }
-data keyword_if: KeywordSpec = { spelling: "if", kind_name: "KwIf" }
-data keyword_then: KeywordSpec = { spelling: "then", kind_name: "KwThen" }
-data keyword_else: KeywordSpec = { spelling: "else", kind_name: "KwElse" }
-data keyword_fn: KeywordSpec = { spelling: "fn", kind_name: "KwFn" }
-data keyword_type: KeywordSpec = { spelling: "type", kind_name: "KwType" }
-data keyword_module: KeywordSpec = { spelling: "module", kind_name: "KwModule" }
-data keyword_import: KeywordSpec = { spelling: "import", kind_name: "KwImport" }
-data keyword_match: KeywordSpec = { spelling: "match", kind_name: "KwMatch" }
-data keyword_data: KeywordSpec = { spelling: "data", kind_name: "KwData" }
-data keyword_where: KeywordSpec = { spelling: "where", kind_name: "KwWhere" }
-data keyword_true: KeywordSpec = { spelling: "true", kind_name: "KwTrue" }
-data keyword_false: KeywordSpec = { spelling: "false", kind_name: "KwFalse" }
+data keyword_let: KeywordSpec = { spelling: "let", kind: KwLet }
+data keyword_if: KeywordSpec = { spelling: "if", kind: KwIf }
+data keyword_then: KeywordSpec = { spelling: "then", kind: KwThen }
+data keyword_else: KeywordSpec = { spelling: "else", kind: KwElse }
+data keyword_fn: KeywordSpec = { spelling: "fn", kind: KwFn }
+data keyword_type: KeywordSpec = { spelling: "type", kind: KwType }
+data keyword_module: KeywordSpec = { spelling: "module", kind: KwModule }
+data keyword_import: KeywordSpec = { spelling: "import", kind: KwImport }
+data keyword_match: KeywordSpec = { spelling: "match", kind: KwMatch }
+data keyword_data: KeywordSpec = { spelling: "data", kind: KwData }
+data keyword_where: KeywordSpec = { spelling: "where", kind: KwWhere }
+data keyword_true: KeywordSpec = { spelling: "true", kind: KwTrue }
+data keyword_false: KeywordSpec = { spelling: "false", kind: KwFalse }
 
-data punct_eq_eq: PunctSpec = { pattern: "==", width: 2, kind_name: "EqEq" }
-data punct_eq_fat: PunctSpec = { pattern: "=>", width: 2, kind_name: "FatArrow" }
-data punct_bang_eq: PunctSpec = { pattern: "!=", width: 2, kind_name: "NotEq" }
-data punct_lt_eq: PunctSpec = { pattern: "<=", width: 2, kind_name: "Le" }
-data punct_gt_eq: PunctSpec = { pattern: ">=", width: 2, kind_name: "Ge" }
-data punct_minus_gt: PunctSpec = { pattern: "->", width: 2, kind_name: "Arrow" }
-data punct_pipe_gt: PunctSpec = { pattern: "|>", width: 2, kind_name: "PipeArrow" }
-data punct_amp_amp: PunctSpec = { pattern: "&&", width: 2, kind_name: "AmpAmp" }
-data punct_pipe_pipe: PunctSpec = { pattern: "||", width: 2, kind_name: "PipePipe" }
+data punct_eq_eq: PunctSpec = { pattern: "==", kind: EqEq }
+data punct_eq_fat: PunctSpec = { pattern: "=>", kind: FatArrow }
+data punct_bang_eq: PunctSpec = { pattern: "!=", kind: NotEq }
+data punct_lt_eq: PunctSpec = { pattern: "<=", kind: Le }
+data punct_gt_eq: PunctSpec = { pattern: ">=", kind: Ge }
+data punct_minus_gt: PunctSpec = { pattern: "->", kind: Arrow }
+data punct_pipe_gt: PunctSpec = { pattern: "|>", kind: PipeArrow }
+data punct_amp_amp: PunctSpec = { pattern: "&&", kind: AmpAmp }
+data punct_pipe_pipe: PunctSpec = { pattern: "||", kind: PipePipe }
 
-data punct_eq: PunctSpec = { pattern: "=", width: 1, kind_name: "Eq" }
-data punct_lt: PunctSpec = { pattern: "<", width: 1, kind_name: "Lt" }
-data punct_gt: PunctSpec = { pattern: ">", width: 1, kind_name: "Gt" }
-data punct_plus: PunctSpec = { pattern: "+", width: 1, kind_name: "Plus" }
-data punct_minus: PunctSpec = { pattern: "-", width: 1, kind_name: "Minus" }
-data punct_star: PunctSpec = { pattern: "*", width: 1, kind_name: "Star" }
-data punct_slash: PunctSpec = { pattern: "/", width: 1, kind_name: "Slash" }
-data punct_colon: PunctSpec = { pattern: ":", width: 1, kind_name: "Colon" }
-data punct_dot: PunctSpec = { pattern: ".", width: 1, kind_name: "Dot" }
-data punct_lparen: PunctSpec = { pattern: "(", width: 1, kind_name: "LParen" }
-data punct_rparen: PunctSpec = { pattern: ")", width: 1, kind_name: "RParen" }
-data punct_lbrace: PunctSpec = { pattern: "{", width: 1, kind_name: "LBrace" }
-data punct_rbrace: PunctSpec = { pattern: "}", width: 1, kind_name: "RBrace" }
-data punct_lbracket: PunctSpec = { pattern: "[", width: 1, kind_name: "LBracket" }
-data punct_rbracket: PunctSpec = { pattern: "]", width: 1, kind_name: "RBracket" }
-data punct_comma: PunctSpec = { pattern: ",", width: 1, kind_name: "Comma" }
-data punct_semicolon: PunctSpec = { pattern: ";", width: 1, kind_name: "Semicolon" }
-data punct_pipe: PunctSpec = { pattern: "|", width: 1, kind_name: "Pipe" }
-data punct_question: PunctSpec = { pattern: "?", width: 1, kind_name: "Question" }
+data punct_eq: PunctSpec = { pattern: "=", kind: Eq }
+data punct_lt: PunctSpec = { pattern: "<", kind: Lt }
+data punct_gt: PunctSpec = { pattern: ">", kind: Gt }
+data punct_plus: PunctSpec = { pattern: "+", kind: Plus }
+data punct_minus: PunctSpec = { pattern: "-", kind: Minus }
+data punct_star: PunctSpec = { pattern: "*", kind: Star }
+data punct_slash: PunctSpec = { pattern: "/", kind: Slash }
+data punct_colon: PunctSpec = { pattern: ":", kind: Colon }
+data punct_dot: PunctSpec = { pattern: ".", kind: Dot }
+data punct_lparen: PunctSpec = { pattern: "(", kind: LParen }
+data punct_rparen: PunctSpec = { pattern: ")", kind: RParen }
+data punct_lbrace: PunctSpec = { pattern: "{", kind: LBrace }
+data punct_rbrace: PunctSpec = { pattern: "}", kind: RBrace }
+data punct_lbracket: PunctSpec = { pattern: "[", kind: LBracket }
+data punct_rbracket: PunctSpec = { pattern: "]", kind: RBracket }
+data punct_comma: PunctSpec = { pattern: ",", kind: Comma }
+data punct_semicolon: PunctSpec = { pattern: ";", kind: Semicolon }
+data punct_pipe: PunctSpec = { pattern: "|", kind: Pipe }
+data punct_question: PunctSpec = { pattern: "?", kind: Question }

@@ -3,7 +3,6 @@
 // Keyword and punctuation tables are read from the lowered Dag; the scanning
 // algorithm is emitted as deterministic Rust (this binary is codegen only).
 
-use std::collections::HashSet;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -59,7 +58,6 @@ fn main() {
 fn generate(dag: &Dag) -> String {
     let keywords = collect_keyword_rows(dag);
     let puncts = collect_punct_rows(dag);
-    validate_kind_names(dag, &keywords, &puncts);
     let line_comment_prefix = string_data_named(dag, "line_comment_prefix");
     let string_delim = string_data_named(dag, "string_literal_delimiter");
     assert_eq!(
@@ -160,34 +158,6 @@ fn rust_string_literal_for_rust_source(s: &str) -> String {
     format!("{s:?}")
 }
 
-fn token_kind_variant_labels(dag: &Dag) -> HashSet<String> {
-    let decl = dag
-        .declarations()
-        .iter()
-        .find(|d| d.name.as_deref() == Some("TokenKind"))
-        .expect("TokenKind declaration");
-    let TypeConnective::Disj { variants } = &decl.connective else {
-        panic!("TokenKind: expected Disj");
-    };
-    variants.iter().map(|v| v.label.clone()).collect()
-}
-
-fn validate_kind_names(dag: &Dag, keywords: &[(String, String)], puncts: &[(String, i64, String)]) {
-    let allowed = token_kind_variant_labels(dag);
-    for (_, kind) in keywords {
-        assert!(
-            allowed.contains(kind),
-            "keyword kind_name `{kind}` is not a TokenKind variant"
-        );
-    }
-    for (_, _, kind) in puncts {
-        assert!(
-            allowed.contains(kind),
-            "punct kind_name `{kind}` is not a TokenKind variant"
-        );
-    }
-}
-
 fn emit_token_kind_enum(dag: &Dag) -> String {
     let decl = dag
         .declarations()
@@ -285,14 +255,15 @@ fn collect_keyword_rows(dag: &Dag) -> Vec<(String, String)> {
             continue;
         };
         let spelling = extract_string_field(fields, "spelling");
-        let kind = extract_string_field(fields, "kind_name");
+        let kind = extract_nullary_variant_field(fields, "kind", "KeywordTokenKind", dag);
+        assert_token_kind_variant_exists(dag, &kind, "KeywordTokenKind");
         rows.push((spelling, kind));
     }
     rows.sort_by(|a, b| a.0.cmp(&b.0));
     rows
 }
 
-fn collect_punct_rows(dag: &Dag) -> Vec<(String, i64, String)> {
+fn collect_punct_rows(dag: &Dag) -> Vec<(String, String)> {
     let mut rows = Vec::new();
     for decl in dag.declarations() {
         let Some(name) = &decl.name else {
@@ -305,12 +276,70 @@ fn collect_punct_rows(dag: &Dag) -> Vec<(String, i64, String)> {
             continue;
         };
         let pattern = extract_string_field(fields, "pattern");
-        let width = extract_int_field(fields, "width");
-        let kind = extract_string_field(fields, "kind_name");
-        rows.push((pattern, width, kind));
+        let kind = extract_nullary_variant_field(fields, "kind", "PunctTokenKind", dag);
+        assert_token_kind_variant_exists(dag, &kind, "PunctTokenKind");
+        rows.push((pattern, kind));
     }
     rows.sort_by(|a, b| a.0.cmp(&b.0));
     rows
+}
+
+fn extract_nullary_variant_field(
+    fields: &[(String, FieldValue)],
+    key: &str,
+    expected_type_name: &str,
+    dag: &Dag,
+) -> String {
+    let fv = fields
+        .iter()
+        .find_map(|(k, v)| (k == key).then_some(v))
+        .unwrap_or_else(|| panic!("missing field {key}"));
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = fv
+    else {
+        panic!("field {key}: expected nullary variant value");
+    };
+    assert!(
+        payload.is_empty(),
+        "field {key}: expected nullary variant, got payload of len {}",
+        payload.len()
+    );
+
+    let expected_type_decl = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some(expected_type_name))
+        .unwrap_or_else(|| panic!("missing `{expected_type_name}` declaration"));
+    let TypeConnective::Disj { variants } = &expected_type_decl.connective else {
+        panic!("`{expected_type_name}`: expected Disj");
+    };
+    variants
+        .iter()
+        .find(|field| field.ty == *constructor)
+        .map(|field| field.label.clone())
+        .unwrap_or_else(|| {
+            panic!(
+                "field {key}: constructor id {:?} is not a variant of `{expected_type_name}`",
+                constructor
+            )
+        })
+}
+
+fn assert_token_kind_variant_exists(dag: &Dag, label: &str, source_type_name: &str) {
+    let token_kind_decl = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("TokenKind"))
+        .unwrap_or_else(|| panic!("missing `TokenKind` declaration"));
+    let TypeConnective::Disj { variants } = &token_kind_decl.connective else {
+        panic!("`TokenKind`: expected Disj");
+    };
+    assert!(
+        variants.iter().any(|field| field.label == label),
+        "`{source_type_name}` variant `{label}` has no matching `TokenKind` variant"
+    );
 }
 
 fn extract_string_field(fields: &[(String, FieldValue)], key: &str) -> String {
@@ -518,23 +547,16 @@ fn emit_tokenize_fn(
     s
 }
 
-fn emit_punctuation_token(puncts: &[(String, i64, String)]) -> String {
+fn emit_punctuation_token(puncts: &[(String, String)]) -> String {
     let mut two = Vec::new();
     let mut one = Vec::new();
-    for (pat, width, kind) in puncts {
-        match *width {
-            2 => {
-                let bs: Vec<u8> = pat.bytes().collect();
-                assert_eq!(bs.len(), 2, "pattern {pat}");
-                two.push((bs[0], bs[1], kind.clone()));
-            }
-            1 => {
-                let bs: Vec<u8> = pat.bytes().collect();
-                assert_eq!(bs.len(), 1, "pattern {pat}");
-                one.push((bs[0], kind.clone()));
-            }
-            w => panic!("unsupported punct width {w} for {pat}"),
-        }
+    for (pat, kind) in puncts {
+        let bs: Vec<u8> = pat.bytes().collect();
+        match bs.as_slice() {
+            [a, b] => two.push((*a, *b, kind.clone())),
+            [a] => one.push((*a, kind.clone())),
+            _ => panic!("unsupported punct width {} for {pat}", bs.len()),
+        };
     }
     two.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
     one.sort_by_key(|x| x.0);
