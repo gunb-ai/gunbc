@@ -254,26 +254,72 @@ fn sg0_expected_list_is_sorted_and_unique() {
     }
 }
 
+static PROBE_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+struct TempDirGuard(PathBuf);
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn sg0_generated_partition_is_producer_owned() {
-    // Soundness: a handwritten file cannot spoof the census by bearing
-    // a `// AUTO-GENERATED` comment. The classification is membership
-    // in `GENERATED_FILES` (emitted by build.rs from `REGEN_OUTPUTS`),
-    // not a text scan. A path outside the manifest classifies as
-    // hand-authored regardless of any file-local content — which is the
-    // property the ratchet depends on.
-    const FAKE_PATH: &str = "src/v3/compiler/src/__probe_spoofed_header.rs";
-    assert!(
-        !GENERATED_FILES.contains(&FAKE_PATH),
-        "probe path must not appear in the real manifest"
-    );
+    // Soundness: the manifest is the sole authority for the
+    // generated/hand-authored partition. This test plants a
+    // handwritten file whose first non-blank line is the most
+    // convincing possible spoof — the exact string
+    // `// AUTO-GENERATED from ...` that every real regen driver
+    // emits — into an isolated temp tree, then runs the real
+    // `walk_rs` + manifest-membership classification over it.
+    // Because the probe's path is not in `GENERATED_FILES`, it must
+    // land in the hand-authored set. If a future change reintroduces
+    // content-based filtering (either inside `walk_rs` or in the
+    // partition step), the probe would wrongly classify as generated
+    // and this assertion flips — catching the regression loudly.
+    //
+    // Isolation: the probe lives under `std::env::temp_dir()`, not
+    // inside `src/v3/compiler/`. The live `sg0_v3_hand_authored_census`
+    // walker never sees it, so the tests are safe to run in parallel.
+
+    let tmp = std::env::temp_dir().join(format!(
+        "sg0_soundness_probe_{}_{}",
+        std::process::id(),
+        PROBE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    let _guard = TempDirGuard(tmp.clone());
+    fs::create_dir_all(&tmp).unwrap_or_else(|e| panic!("create probe dir: {e}"));
+
+    let probe_path = tmp.join("spoofed_header.rs");
+    fs::write(
+        &probe_path,
+        "// AUTO-GENERATED from `src/v3/lenses/fake.dag` via `emit_rust_module`.\n\
+         // Hand-authored file masquerading as generated — must still\n\
+         // classify as hand-authored because the manifest is authority.\n\
+         pub fn spoof() {}\n",
+    )
+    .unwrap_or_else(|e| panic!("write probe: {e}"));
+
+    let mut walk_results: BTreeSet<String> = BTreeSet::new();
+    walk_rs(&tmp, &tmp, &mut walk_results);
+
     let generated: BTreeSet<String> = GENERATED_FILES.iter().map(|p| (*p).to_string()).collect();
-    let classified_as_generated = generated.contains(FAKE_PATH);
+    let hand_authored: BTreeSet<String> = walk_results.difference(&generated).cloned().collect();
+
+    let probe_rel = probe_path
+        .strip_prefix(&tmp)
+        .expect("probe is inside tmp")
+        .to_string_lossy()
+        .replace('\\', "/");
+
     assert!(
-        !classified_as_generated,
-        "a path outside the manifest must classify as hand-authored \
-         regardless of any file-local content — the manifest is the \
-         sole authority."
+        hand_authored.contains(&probe_rel),
+        "probe file with `// AUTO-GENERATED` first-line header must be \
+         classified as hand-authored (the path is not in GENERATED_FILES). \
+         The manifest is the sole authority; content headers must not \
+         participate. If this fails, content-based classification has \
+         regressed into walk_rs or the partition logic."
     );
 }
 
