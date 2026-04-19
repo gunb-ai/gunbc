@@ -90,7 +90,7 @@ func regenerate(cycle: SelfHostingCycle) -> RegenResult {
 
       // Step 3b: Copy pass 1 output to stage0
       let copy = shell.Exec.Run(
-        script: copy_generated_command(cp: t.cp, from_dir: ".regen-pass1", cycle: cycle)
+        script: copy_generated_command(find: t.find, cp: t.cp, from_dir: ".regen-pass1", cycle: cycle)
       )
       if copy.success == false {
         return Failed { stage: Copy, stderr: copy.stderr }

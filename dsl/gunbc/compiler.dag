@@ -53,8 +53,9 @@ data dsl_root: SourceRoot = { path: "dsl" }
 // ── Generated crate ─────────────────────────────────────────────────
 
 // The Rust crate that the compiler produces. hand_maintained_src names
-// the basenames (relative to source_dir) that are NOT emitted: they
-// survive regeneration and must be excluded from the fixed-point diff.
+// the root-level basenames (relative to source_dir, maxdepth 1 only)
+// that are NOT emitted: they survive regeneration and must be excluded
+// from the fixed-point diff.
 //
 // Note: Cargo.toml is also hand-maintained but lives outside source_dir,
 // never changes as part of regen, and is never in the fixed-point diff.
@@ -344,10 +345,16 @@ fn clean_stage0_generated_command(find: FilePath, cycle: SelfHostingCycle) -> St
 
 // Copy pass 1 output to stage0. Combined with clean_stage0_generated_command
 // (which runs first), this synchronizes deletions: pass output replaces
-// committed files, removed files are pruned, hand_maintained_src files
-// are preserved on both sides.
-fn copy_generated_command(cp: FilePath, from_dir: String, cycle: SelfHostingCycle) -> String {
-  concat(cp, " ", from_dir, "/src/*.rs ", cycle.generated.source_dir, "/")
+// committed generated files, removed files are pruned, and root-level
+// hand_maintained_src files are preserved on both sides.
+fn copy_generated_command(find: FilePath, cp: FilePath, from_dir: String, cycle: SelfHostingCycle) -> String {
+  let exclude_filter = cycle.generated.hand_maintained_src |> fold(init: "", f: (acc, f) =>
+    concat(acc, " ! -name ", f)
+  )
+  // <find_path> FROM/src -maxdepth 1 -type f -name '*.rs' ! -name lib.rs ... -exec <cp_path> {} SRCDIR/ \;
+  concat(find, " ", from_dir, "/src",
+         " -maxdepth 1 -type f -name '*.rs'", exclude_filter,
+         " -exec ", cp, " {} ", cycle.generated.source_dir, "/ \\;")
 }
 
 // Diff exclusion args for hand-maintained files. Applied in freshness
