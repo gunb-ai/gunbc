@@ -940,11 +940,11 @@ impl TransformRef {
 /// substrate field shape matches `src/v3/std/effects.dag`; direct `.dag`
 /// construction gains the same authority in the Lane 3c cycle (ROADMAP Track 9 debt).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct BranchPredicateRef {
+pub struct BoolPortRef {
     port: PortId,
 }
 
-impl BranchPredicateRef {
+impl BoolPortRef {
     pub fn port_id(self) -> PortId {
         self.port
     }
@@ -1098,11 +1098,11 @@ pub enum CompositionVerdict {
     BrokenBy { first_breaker: BreakingOperation },
 }
 
-/// 🟢 **TERMINAL.** Branch arm with a [`BranchPredicateRef`] witnessed as Bool by
+/// 🟢 **TERMINAL.** Branch arm with a [`BoolPortRef`] witnessed as Bool by
 /// [`Dag::branch_arm_of`] — the sole constructor for valid arms.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BranchArm {
-    condition: BranchPredicateRef,
+    condition: BoolPortRef,
     body: Box<WorkflowEffect>,
 }
 
@@ -1126,7 +1126,7 @@ pub enum WorkflowEffect {
 }
 
 impl BranchArm {
-    pub fn branch_predicate(&self) -> BranchPredicateRef {
+    pub fn branch_predicate(&self) -> BoolPortRef {
         self.condition
     }
 
@@ -2616,7 +2616,7 @@ impl Dag {
     }
 
     /// Construct a [`BranchArm`] only when `port` is resolved to the `Bool`
-    /// primitive, packaging the port as a [`BranchPredicateRef`] (Track 9
+    /// primitive, packaging the port as a [`BoolPortRef`] (Track 9
     /// parity with [`Dag::param_of`] / [`Dag::as_transform_ref`]).
     pub fn branch_arm_of(&self, port: PortId, body: WorkflowEffect) -> Option<BranchArm> {
         let bool_ty = self.bool_shape()?;
@@ -2626,7 +2626,7 @@ impl Dag {
             return None;
         }
         Some(BranchArm {
-            condition: BranchPredicateRef { port },
+            condition: BoolPortRef { port },
             body: Box::new(body),
         })
     }
