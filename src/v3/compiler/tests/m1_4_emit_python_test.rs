@@ -49,8 +49,8 @@ fn emit_python_wrappers_match_shared_entrypoint() {
 fn double(x: Int) -> Int = x + x
 let result: Int = double(21)
 ";
-    let program_dag = compile_to_dag(program_source, "emit_python_wrapper_program_parity.v3")
-        .expect("compiles");
+    let program_dag =
+        compile_to_dag(program_source, "emit_python_wrapper_program_parity.v3").expect("compiles");
     let shared = shared_emit(&program_dag, EmitTarget::Python)
         .expect("shared emit")
         .text;
@@ -63,8 +63,8 @@ let result: Int = double(21)
     let module_source = "\
 fn double(x: Int) -> Int = x + x
 ";
-    let module_dag = compile_to_dag(module_source, "emit_python_wrapper_module_parity.v3")
-        .expect("compiles");
+    let module_dag =
+        compile_to_dag(module_source, "emit_python_wrapper_module_parity.v3").expect("compiles");
     let shared_module = shared_emit_module(&module_dag, EmitTarget::Python)
         .expect("shared module emit")
         .text;

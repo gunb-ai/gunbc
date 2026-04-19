@@ -663,10 +663,7 @@ pub fn emit(dag: &Dag, target: EmitTarget) -> Result<EmittedSource, EmitDispatch
     emit_with_mode(dag, target, EmitMode::Program)
 }
 
-pub fn emit_module(
-    dag: &Dag,
-    target: EmitTarget,
-) -> Result<EmittedSource, EmitDispatchError> {
+pub fn emit_module(dag: &Dag, target: EmitTarget) -> Result<EmittedSource, EmitDispatchError> {
     emit_with_mode(dag, target, EmitMode::Module)
 }
 

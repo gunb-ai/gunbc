@@ -1,5 +1,5 @@
-use crate::emit::{emit, emit_module, EmitDispatchError, EmitTarget};
 pub use crate::emit::rust_target::{EmitError, RealizationCategory, SubstrateMarkerRole};
+use crate::emit::{emit, emit_module, EmitDispatchError, EmitTarget};
 use crate::Dag;
 
 pub fn emit_rust(dag: &Dag) -> Result<String, EmitError> {

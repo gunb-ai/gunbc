@@ -1,5 +1,5 @@
-use crate::emit::{emit, emit_module, EmitDispatchError, EmitTarget};
 pub use crate::emit::python_target::EmitPythonError;
+use crate::emit::{emit, emit_module, EmitDispatchError, EmitTarget};
 use crate::Dag;
 
 pub fn emit_python(dag: &Dag) -> Result<String, EmitPythonError> {

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use super::EmitMode;
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, DeclarationId, Field,
     FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
@@ -11,7 +12,6 @@ use crate::variant_payload::{
     VariantPayloadShape,
 };
 use crate::Dag;
-use super::{emit, emit_module, EmitDispatchError, EmitMode, EmitTarget};
 
 #[derive(Debug, Clone)]
 pub enum EmitPythonError {
@@ -507,26 +507,6 @@ fn parse_variant_payload_field_access_rule(
             declaration,
             detail: "python_clean_emission.variant_payload_field_access constructor is not a known VariantPayloadFieldAccessRule variant",
         })
-    }
-}
-
-pub fn emit_python(dag: &Dag) -> Result<String, EmitPythonError> {
-    match emit(dag, EmitTarget::Python) {
-        Ok(source) => Ok(source.text),
-        Err(EmitDispatchError::Python(error)) => Err(error),
-        Err(EmitDispatchError::Core(_)) => {
-            unreachable!("EmitTarget::Python cannot yield a core emission error")
-        }
-    }
-}
-
-pub fn emit_python_module(dag: &Dag) -> Result<String, EmitPythonError> {
-    match emit_module(dag, EmitTarget::Python) {
-        Ok(source) => Ok(source.text),
-        Err(EmitDispatchError::Python(error)) => Err(error),
-        Err(EmitDispatchError::Core(_)) => {
-            unreachable!("EmitTarget::Python cannot yield a core emission error")
-        }
     }
 }
 

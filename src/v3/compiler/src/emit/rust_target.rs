@@ -45,6 +45,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use super::EmitMode;
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
     FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
@@ -55,7 +56,6 @@ use crate::variant_payload::{
     variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
     VariantPayloadShape,
 };
-use super::{emit, emit_module, EmitDispatchError, EmitMode, EmitTarget};
 
 /// Errors the Rust emitter surfaces when the DAG reaches a shape it
 /// cannot render under the PR-B scope. Each variant names a specific
@@ -2728,26 +2728,6 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         sections.push(main_program);
     }
     Ok(join_rendered(&sections, " "))
-}
-
-pub fn emit_rust(dag: &Dag) -> Result<String, EmitError> {
-    match emit(dag, EmitTarget::Rust) {
-        Ok(source) => Ok(source.text),
-        Err(EmitDispatchError::Core(error)) => Err(error),
-        Err(EmitDispatchError::Python(_)) => {
-            unreachable!("EmitTarget::Rust cannot yield a Python emission error")
-        }
-    }
-}
-
-pub fn emit_rust_module(dag: &Dag) -> Result<String, EmitError> {
-    match emit_module(dag, EmitTarget::Rust) {
-        Ok(source) => Ok(source.text),
-        Err(EmitDispatchError::Core(error)) => Err(error),
-        Err(EmitDispatchError::Python(_)) => {
-            unreachable!("EmitTarget::Rust cannot yield a Python emission error")
-        }
-    }
 }
 
 /// Bundled emission context. Carries the typed indexes, substrate
