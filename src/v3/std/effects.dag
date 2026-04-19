@@ -507,18 +507,33 @@ fn report_unsupported_workflow_variant(
   })
 }
 
+// 🟢 TERMINAL. Stage 2e unsupported classes — distinct from Stage 2b
+// `IdempotencyUnsupportedDetail.variant_name` (unsupported *workflow* variant label).
+type ParallelismUnsupportedKind
+  = NoWorkflowProjection
+  | NotParallelEffectRoot
+  | NonLinearParallelBranch
+  | PairwiseNonCommute
+  | LensSurfacePending
+
+type ParallelismUnsupportedDetail {
+  kind: ParallelismUnsupportedKind
+  downstream_stage: String
+  reason: String
+}
+
 // 🟢 TERMINAL. Lane 2 Stage 2e (DB-20) — parallel branch composition safety.
 // Projects through `CompositionVerdict` only; unsupported paths stay explicit.
 type WorkflowParallelismReport
   = ParallelCompositionVerdict(CompositionVerdict)
-  | ParallelismUnsupported(IdempotencyUnsupportedDetail)
+  | ParallelismUnsupported(ParallelismUnsupportedDetail)
 
 fn report_parallelism_unsupported(
-  variant_name: String,
+  kind: ParallelismUnsupportedKind,
   reason: String
 ) -> WorkflowParallelismReport {
-  ParallelismUnsupported(IdempotencyUnsupportedDetail {
-    variant_name: variant_name,
+  ParallelismUnsupported(ParallelismUnsupportedDetail {
+    kind: kind,
     downstream_stage: "lane2_stage2e_parallelism_lens",
     reason: reason
   })

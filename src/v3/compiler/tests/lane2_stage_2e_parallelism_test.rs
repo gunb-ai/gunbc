@@ -14,7 +14,8 @@ use v3_compiler::analyze_parallelism;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     Behavior, BreakingShape, CompositionVerdict, EffectShape, IdempotentShape, KeySource,
-    NonEmptyList, NonSingletonList, OperationEffect, WorkflowEffect, WorkflowParallelismReport,
+    NonEmptyList, NonSingletonList, OperationEffect, ParallelismUnsupportedKind, WorkflowEffect,
+    WorkflowParallelismReport,
 };
 use v3_compiler::Dag;
 use v3_compiler::NodeId;
@@ -151,7 +152,7 @@ fn parallel_different_path_param_names_not_proven_commute() {
     let WorkflowParallelismReport::ParallelismUnsupported(d) = r else {
         panic!("expected ParallelismUnsupported — distinct PathParam names are not a disjointness proof");
     };
-    assert_eq!(d.variant_name, "PairwiseNonCommute");
+    assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
     assert!(d.reason.contains("put_a") && d.reason.contains("put_b"));
 }
 
@@ -181,7 +182,7 @@ fn parallel_read_vs_upsert_does_not_commute() {
     let WorkflowParallelismReport::ParallelismUnsupported(d) = r else {
         panic!("expected ParallelismUnsupported");
     };
-    assert_eq!(d.variant_name, "PairwiseNonCommute");
+    assert_eq!(d.kind, ParallelismUnsupportedKind::PairwiseNonCommute);
     assert_eq!(d.downstream_stage, "lane2_stage2e_parallelism_lens");
     assert!(d.reason.contains("get") && d.reason.contains("put"));
 }
@@ -229,5 +230,5 @@ fn non_parallel_root_is_unsupported() {
     let WorkflowParallelismReport::ParallelismUnsupported(d) = r else {
         panic!("expected unsupported");
     };
-    assert_eq!(d.variant_name, "NotParallelEffect");
+    assert_eq!(d.kind, ParallelismUnsupportedKind::NotParallelEffectRoot);
 }

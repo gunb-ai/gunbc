@@ -9,10 +9,10 @@
 module lenses.parallelism
 
 import v3.std.substrate { Dag, NodeId }
-import std.effects { WorkflowParallelismReport, report_parallelism_unsupported }
+import std.effects { LensSurfacePending, WorkflowParallelismReport, report_parallelism_unsupported }
 
 fn analyze_parallelism(_d: Dag, _workflow_root: NodeId) -> WorkflowParallelismReport =
   report_parallelism_unsupported(
-    "WorkflowParallelismReport",
+    LensSurfacePending,
     "lens surface pending match-on-user-sum; use v3_compiler::analyze_parallelism"
   )

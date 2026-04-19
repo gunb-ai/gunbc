@@ -1152,12 +1152,33 @@ pub enum WorkflowIdempotencyReport {
     IdempotencyUnsupported(IdempotencyUnsupportedDetail),
 }
 
+/// 🟢 **TERMINAL.** Stage 2e parallel-lens unsupported classes — mirrors
+/// `ParallelismUnsupportedKind` in `effects.dag` (distinct from Stage 2b
+/// `IdempotencyUnsupportedDetail.variant_name`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParallelismUnsupportedKind {
+    NoWorkflowProjection,
+    NotParallelEffectRoot,
+    NonLinearParallelBranch,
+    PairwiseNonCommute,
+    LensSurfacePending,
+}
+
+/// 🟢 **TERMINAL.** Parallelism lens explicit unsupported payload — mirrors
+/// `ParallelismUnsupportedDetail` in `effects.dag`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParallelismUnsupportedDetail {
+    pub kind: ParallelismUnsupportedKind,
+    pub downstream_stage: String,
+    pub reason: String,
+}
+
 /// 🟢 **TERMINAL.** Lane 2 Stage 2e parallelism lens report — mirrors
 /// `WorkflowParallelismReport` in `effects.dag` (DB-20).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkflowParallelismReport {
     ParallelCompositionVerdict(CompositionVerdict),
-    ParallelismUnsupported(IdempotencyUnsupportedDetail),
+    ParallelismUnsupported(ParallelismUnsupportedDetail),
 }
 
 // ── end std.effects mirror (DB-18) ───────────────────────────────────

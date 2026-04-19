@@ -14,7 +14,7 @@ DB-18 locks `WorkflowEffect::ParallelEffect { branches: NonSingletonList<Workflo
 
 **Decision (path (b), preferred by substrate Q3):** do **not** add `commutativity: …` to `ParallelEffect`. Pairwise commutativity for concurrent branches is **derived** from `OperationEffect` / `EffectShape` / `KeySource` data already carried on each operation. The lens is the sole place that combines those facts into a judgment; nothing new is duplicated into the workflow substrate.
 
-**Output shape:** `WorkflowParallelismReport = ParallelCompositionVerdict(CompositionVerdict) | ParallelismUnsupported(IdempotencyUnsupportedDetail)`. This mirrors Stage 2b’s `WorkflowIdempotencyReport` pattern: the **algebra verdict** stays `CompositionVerdict` only (PR #529 / DB-18 constraint — no parallel verdict carrier). Unsupported paths stay explicit and fail-closed (C-8), including “pairwise non-commute” and “non-`ParallelEffect` root.”
+**Output shape:** `WorkflowParallelismReport = ParallelCompositionVerdict(CompositionVerdict) | ParallelismUnsupported(ParallelismUnsupportedDetail)` where `ParallelismUnsupportedDetail` carries a typed `ParallelismUnsupportedKind` (not Stage 2b’s `IdempotencyUnsupportedDetail`, which names an unsupported *workflow* variant). The **algebra verdict** stays `CompositionVerdict` only (PR #529 / DB-18 constraint — no parallel verdict carrier). Unsupported paths stay explicit and fail-closed (C-8), including “pairwise non-commute” and “non-`ParallelEffect` root.”
 
 **Scope v1:** `ParallelEffect` whose **every branch is `LinearEffect`** (each branch is a non-empty list of `OperationEffect`). Nested `ParallelEffect` / `BranchEffect` / `LoopEffect` as direct parallel children return `ParallelismUnsupported` with a reason — not a silent `None`.
 
@@ -67,7 +67,7 @@ This is **physics in the op algebra**, not a heuristic re-invented inside the le
 |-----------|--------------------------------------|
 | All branches linear, no breaking op, all cross-branch pairs commute | `IdempotentComposition` |
 | Any breaking op in any branch | `BrokenBy { first_breaker }` |
-| Non-linear branch, wrong root variant, or pairwise non-commute | Not a `CompositionVerdict` — use `ParallelismUnsupported` with `variant_name` + `reason` |
+| Non-linear branch, wrong root variant, or pairwise non-commute | Not a `CompositionVerdict` — use `ParallelismUnsupported` with typed `kind` + `reason` |
 
 ---
 

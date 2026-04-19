@@ -6,16 +6,20 @@
 //! projecting through [`crate::dag::CompositionVerdict`] per DB-18 / PR #529.
 
 use crate::dag::{
-    CompositionVerdict, Dag, EffectShape, IdempotencyUnsupportedDetail, IdempotentShape, KeySource,
-    NodeId, NonSingletonList, OperationEffect, WorkflowEffect, WorkflowParallelismReport,
+    CompositionVerdict, Dag, EffectShape, IdempotentShape, KeySource, NodeId, NonSingletonList,
+    OperationEffect, ParallelismUnsupportedDetail, ParallelismUnsupportedKind, WorkflowEffect,
+    WorkflowParallelismReport,
 };
 use crate::workflow_idempotency::operation_to_breaker;
 
 const DOWNSTREAM: &str = "lane2_stage2e_parallelism_lens";
 
-fn unsupported(variant_name: &str, reason: impl Into<String>) -> WorkflowParallelismReport {
-    WorkflowParallelismReport::ParallelismUnsupported(IdempotencyUnsupportedDetail {
-        variant_name: variant_name.to_string(),
+fn parallel_unsupported(
+    kind: ParallelismUnsupportedKind,
+    reason: impl Into<String>,
+) -> WorkflowParallelismReport {
+    WorkflowParallelismReport::ParallelismUnsupported(ParallelismUnsupportedDetail {
+        kind,
         downstream_stage: DOWNSTREAM.to_string(),
         reason: reason.into(),
     })
@@ -105,21 +109,21 @@ fn pairwise_cross_branch_commutes(
 
 pub(crate) fn analyze_parallelism(d: &Dag, workflow_root: NodeId) -> WorkflowParallelismReport {
     let Some(workflow) = d.lane2_workflow_effect_at(workflow_root) else {
-        return unsupported(
-            "Lane2WorkflowRoot",
+        return parallel_unsupported(
+            ParallelismUnsupportedKind::NoWorkflowProjection,
             "no WorkflowEffect projection on this substrate node — analysis reads only `Value`/`Bind` fields set by lowering or `try_register_lane2_workflow_effect`",
         );
     };
     let WorkflowEffect::ParallelEffect { branches } = workflow else {
-        return unsupported(
-            "NotParallelEffect",
+        return parallel_unsupported(
+            ParallelismUnsupportedKind::NotParallelEffectRoot,
             "parallelism lens analyzes `ParallelEffect` roots only",
         );
     };
 
     let Some(branch_ops) = extract_linear_branches(branches) else {
-        return unsupported(
-            "NonLinearParallelBranch",
+        return parallel_unsupported(
+            ParallelismUnsupportedKind::NonLinearParallelBranch,
             "Stage 2e v1 requires every parallel branch to be `LinearEffect`",
         );
     };
@@ -134,8 +138,8 @@ pub(crate) fn analyze_parallelism(d: &Dag, workflow_root: NodeId) -> WorkflowPar
         Ok(()) => WorkflowParallelismReport::ParallelCompositionVerdict(
             CompositionVerdict::IdempotentComposition,
         ),
-        Err((a, b)) => unsupported(
-            "PairwiseNonCommute",
+        Err((a, b)) => parallel_unsupported(
+            ParallelismUnsupportedKind::PairwiseNonCommute,
             format!("operations `{a}` and `{b}` do not commute under parallel scheduling"),
         ),
     }
