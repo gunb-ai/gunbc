@@ -6,7 +6,7 @@
 //! projecting through [`crate::dag::CompositionVerdict`] per DB-18 / PR #529.
 
 use crate::dag::{
-    CompositionVerdict, Dag, EffectShape, IdempotentShape, KeySource, NodeId, NonSingletonList,
+    CompositionVerdict, Dag, EffectShape, IdempotentShape, NodeId, NonSingletonList,
     OperationEffect, ParallelismUnsupportedDetail, ParallelismUnsupportedKind, WorkflowEffect,
     WorkflowParallelismReport,
 };
@@ -25,43 +25,41 @@ fn parallel_unsupported(
     })
 }
 
-/// Pairwise commutativity on idempotent shapes — conservative: default false.
-fn idempotent_pair_commutes(a: &IdempotentShape, b: &IdempotentShape) -> bool {
-    match (a, b) {
-        (IdempotentShape::ReadEffect, IdempotentShape::ReadEffect) => true,
-        (
-            IdempotentShape::UpsertEffect { key_source: ka },
-            IdempotentShape::UpsertEffect { key_source: kb },
-        ) => upsert_or_delete_keys_commute(ka, kb),
-        (
-            IdempotentShape::DeleteEffect { key_source: ka },
-            IdempotentShape::DeleteEffect { key_source: kb },
-        ) => upsert_or_delete_keys_commute(ka, kb),
-        (IdempotentShape::ReadEffect, IdempotentShape::UpsertEffect { .. })
-        | (IdempotentShape::UpsertEffect { .. }, IdempotentShape::ReadEffect)
-        | (IdempotentShape::ReadEffect, IdempotentShape::DeleteEffect { .. })
-        | (IdempotentShape::DeleteEffect { .. }, IdempotentShape::ReadEffect) => false,
-        (IdempotentShape::UpsertEffect { .. }, IdempotentShape::DeleteEffect { .. })
-        | (IdempotentShape::DeleteEffect { .. }, IdempotentShape::UpsertEffect { .. }) => false,
+/// Pairwise commutativity for idempotent [`OperationEffect`] pairs.
+///
+/// **Upsert×Upsert:** equal [`KeySource`] alone does **not** imply commuting
+/// writes — `IdempotentShape::UpsertEffect` has no payload witness, so two
+/// different `operation_name` values are treated as potentially conflicting
+/// updates to the same key. v1 only commutes when **key and operation name**
+/// both match (fail-closed).
+///
+/// **Delete×Delete:** same structural key is enough (deleting the same cell
+/// twice commutes regardless of route label).
+///
+/// **Read×Read:** always commutes.
+///
+/// Distinct [`KeySource`] values do not prove runtime disjointness (e.g. different
+/// `PathParam` names may alias) — inequality → not commute.
+fn idempotent_operations_commute(a: &OperationEffect, b: &OperationEffect) -> bool {
+    match (&a.shape, &b.shape) {
+        (EffectShape::IsIdempotent(ia), EffectShape::IsIdempotent(ib)) => match (ia, ib) {
+            (IdempotentShape::ReadEffect, IdempotentShape::ReadEffect) => true,
+            (
+                IdempotentShape::UpsertEffect { key_source: ka },
+                IdempotentShape::UpsertEffect { key_source: kb },
+            ) => ka == kb && a.operation_name == b.operation_name,
+            (
+                IdempotentShape::DeleteEffect { key_source: ka },
+                IdempotentShape::DeleteEffect { key_source: kb },
+            ) => ka == kb,
+            _ => false,
+        },
+        _ => false,
     }
-}
-
-/// Upsert/delete on the same structural [`KeySource`] commute (lattice meet is
-/// commutative on one cell). **Inequality of `PathParam` parameter names does not
-/// prove runtime key disjointness** (e.g. `{id}` vs `{user_id}` can still resolve
-/// to the same record) — so distinct `KeySource` values yield **not commute**
-/// until a future substrate witness proves disjoint keys (fail-closed).
-fn upsert_or_delete_keys_commute(ka: &KeySource, kb: &KeySource) -> bool {
-    ka == kb
 }
 
 fn operations_commute(a: &OperationEffect, b: &OperationEffect) -> bool {
-    match (&a.shape, &b.shape) {
-        (EffectShape::IsIdempotent(ia), EffectShape::IsIdempotent(ib)) => {
-            idempotent_pair_commutes(ia, ib)
-        }
-        _ => false,
-    }
+    idempotent_operations_commute(a, b)
 }
 
 fn first_breaking_across_branches(
