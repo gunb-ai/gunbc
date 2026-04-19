@@ -249,7 +249,10 @@ fn parallel_append_in_branch_is_broken_by() {
         .operation_at(first_breaker)
         .expect("parallel breaker ref should resolve in branch-order flattening");
     assert_eq!(breaker.operation_name, "append_audit");
-    assert!(matches!(breaker.shape, EffectShape::IsBreaking(BreakingShape::AppendEffect)));
+    assert!(matches!(
+        breaker.shape,
+        EffectShape::IsBreaking(BreakingShape::AppendEffect)
+    ));
 }
 
 #[test]
