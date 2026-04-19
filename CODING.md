@@ -39,14 +39,13 @@ hidden state. Given the same inputs, return the same output.
 - `fn f(&self, x) -> Y` — pure reader over `self`, no mutation.
 - `fn f(&mut self, x) -> Y` — acceptable when `self` is an
   accumulator whose final state is the caller's intended
-  output (the compiler's `Dag::new()` + `push_*` pattern is
-  this shape). The function is still logically
+  output. The function is still logically
   `(old_self, x) → new_self` — Rust's borrow checker is the
-  optimizer. Concrete examples in the compiler today:
-  `compile_to_dag` threads a `&mut Dag` through parse /
-  lower / infer; `emit_rust_module` threads a `&mut String`
-  through its rendering walk; `lower_*` functions in
-  `lower.rs` consume an AST and push nodes onto a `&mut Dag`.
+  optimizer. Concrete example in the compiler today:
+  `lower::lower_into(dag: &mut Dag, module: &SurfaceModule)`
+  and its siblings in `lower.rs` consume a surface-AST and
+  push nodes onto the threaded `Dag`. The caller owns the
+  Dag; `lower_into` is a pure-by-borrow mutation of it.
 - `fn f(x) -> Y` (free function) — preferred when the body
   doesn't reference `self`. Don't hang a function off a type
   unless the function genuinely needs that type's invariants.
@@ -320,7 +319,7 @@ be clearly labeled (rustdoc on the module or function):
 | **Build script** (`compiler/build.rs`) | filesystem, codegen | build-time concern by definition |
 | **Code-generation binaries** (`compiler/src/bin/regen_*.rs`) | filesystem writes | their job is to materialize generated files |
 | **Bootstrap** (single-call-site inside `Dag::new()`) | loads std files at init | std files are frozen at build; amortized once per process |
-| **Test amortization caches** (e.g. `cached_compile_to_dag` with `LazyLock<Mutex<…>>`) | per-test-binary memoization | cache's existence does not change observable output; documented scope + dissolution |
+| **Test amortization caches** (module-local `LazyLock<Mutex<…>>` memoizing pure-function results inside `tests/`) | per-test-binary memoization | cache's existence does not change observable output; documented scope + dissolution |
 
 Everywhere else — library code, lenses, substrate walks,
 emitters, inference, lowering — should be pure in the Rust
