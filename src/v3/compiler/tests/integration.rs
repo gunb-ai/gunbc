@@ -158,11 +158,7 @@ mod parse_corpus {
             "src/v3/spec",
             "dag",
         ));
-        paths.extend(collect_rel_paths(
-            &compiler_root,
-            "src/v3/compiler",
-            "dag",
-        ));
+        paths.extend(collect_rel_paths(&compiler_root, "src/v3/compiler", "dag"));
         paths.extend(collect_rel_paths(
             &compiler_root.join("tests/four_fixture_pressure"),
             "src/v3/compiler/tests/four_fixture_pressure",
@@ -189,7 +185,11 @@ mod parse_corpus {
         let surface = parse_for_test(&tokens, path)
             .unwrap_or_else(|diag| panic!("parse `{path}` failed: {diag:?}"));
         let rendered = format!("{surface:#?}");
-        (surface.items.len(), rendered.len(), fnv1a64(rendered.as_bytes()))
+        (
+            surface.items.len(),
+            rendered.len(),
+            fnv1a64(rendered.as_bytes()),
+        )
     }
 
     fn render_manifest() -> String {
@@ -199,9 +199,7 @@ mod parse_corpus {
         );
         for path in parse_corpus_paths() {
             let (items, debug_bytes, hash) = render_surface(&path);
-            rendered.push_str(&format!(
-                "{path}\t{items}\t{debug_bytes}\t{hash:016x}\n"
-            ));
+            rendered.push_str(&format!("{path}\t{items}\t{debug_bytes}\t{hash:016x}\n"));
         }
         rendered
     }
@@ -239,7 +237,10 @@ mod parse_corpus {
 
     #[test]
     fn bit_dag_parses() {
-        parse_file(include_str!("../../../../dsl/std/bit.dag"), "dsl/std/bit.dag");
+        parse_file(
+            include_str!("../../../../dsl/std/bit.dag"),
+            "dsl/std/bit.dag",
+        );
     }
 
     #[test]
