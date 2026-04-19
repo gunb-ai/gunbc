@@ -19,7 +19,10 @@ fn parse_file(source: &str, name: &str) {
 
 #[test]
 fn logic_dag_parses() {
-    parse_file(include_str!("../../../../../dsl/std/logic.dag"), "logic.dag");
+    parse_file(
+        include_str!("../../../../../dsl/std/logic.dag"),
+        "logic.dag",
+    );
 }
 
 #[test]
@@ -37,7 +40,10 @@ fn algebra_dag_parses() {
 
 #[test]
 fn types_dag_parses() {
-    parse_file(include_str!("../../../../../dsl/std/types.dag"), "types.dag");
+    parse_file(
+        include_str!("../../../../../dsl/std/types.dag"),
+        "types.dag",
+    );
 }
 
 #[test]
@@ -50,7 +56,10 @@ fn integer_dag_parses() {
 
 #[test]
 fn float_dag_parses() {
-    parse_file(include_str!("../../../../../dsl/std/float.dag"), "float.dag");
+    parse_file(
+        include_str!("../../../../../dsl/std/float.dag"),
+        "float.dag",
+    );
 }
 
 #[test]
