@@ -848,7 +848,9 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_named_expr_fields(&mut self) -> Result<(Vec<SurfaceRecordField>, SourceSpan), Diagnostic> {
+    fn parse_named_expr_fields(
+        &mut self,
+    ) -> Result<(Vec<SurfaceRecordField>, SourceSpan), Diagnostic> {
         let open = self.expect_kind(TokenKind::LBrace)?;
         let mut fields: Vec<SurfaceRecordField> = Vec::new();
         while !matches!(self.peek().kind, TokenKind::RBrace) {
