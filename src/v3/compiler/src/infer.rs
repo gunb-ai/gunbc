@@ -947,11 +947,10 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
         }
         ArrowBody::Pending | ArrowBody::NoBody => {
             // Both shapes mean "no executable body to walk."
-            // `Pending` is the remaining transient scaffold
-            // (`seed_function_signature` during lowering plus the
-            // inference-only operator fallback); `NoBody` is the
-            // terminal "no body by construction" form used by arrow
-            // types and other non-executable carriers.
+            // `Pending` is the remaining transient scaffold from
+            // `seed_function_signature` during lowering; `NoBody`
+            // is the terminal "no body by construction" form used
+            // by arrow types and other non-executable carriers.
             // `decide_transform` treats them identically: signature
             // inhabitance accepts; body walking is skipped. The
             // variant distinction exists so
