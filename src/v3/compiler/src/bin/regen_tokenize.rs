@@ -1,8 +1,13 @@
 //! Regenerate `tokenize_generated.rs` from `src/v3/compiler/tokenize.dag`.
-//
-// Keyword and punctuation tables are read from the lowered Dag; the scanning
-// algorithm is emitted as deterministic Rust (this binary is codegen only).
+//!
+//! Scanner controls and tokenizer-local punctuation come from the lowered
+//! tokenizer Dag. Dedicated keywords and shared operators are derived from the
+//! shared syntax authority text at `dsl/extdeps/languages/dag/syntax.dag`.
+//! The shared file's `dag_keyword_set` / `dag_operators` data bodies still
+//! lower as `Unparsed`, so this driver reads those two sections directly from
+//! source text rather than inventing duplicate authored rows in `tokenize.dag`.
 
+use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -15,6 +20,8 @@ use v3_compiler::generated_files::GENERATED_FILES;
 use v3_compiler::CompileError;
 
 const GENERATED_FILE: &str = "src/v3/compiler/src/tokenize_generated.rs";
+const TOKENIZE_AUTHORITY_FILE: &str = "src/v3/compiler/tokenize.dag";
+const SHARED_SYNTAX_FILE: &str = "dsl/extdeps/languages/dag/syntax.dag";
 
 const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/tokenize.dag` via\n\
      // `regen_tokenize`. Regenerate instead of hand-editing.\n\n";
@@ -37,17 +44,10 @@ fn main() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let dag_path = manifest_dir.join("tokenize.dag");
     let source = std::fs::read_to_string(&dag_path).expect("read tokenize.dag");
-    let dag = compile_to_dag(&source, "src/v3/compiler/tokenize.dag").unwrap_or_else(|e| match e {
-        CompileError::Semantic(d) => {
-            let mut msg = String::from("compile tokenize.dag failed:\n");
-            for (_, diag) in d.diagnostics().iter() {
-                msg.push_str(&format!("  {diag:?}\n"));
-            }
-            panic!("{msg}");
-        }
-        other => panic!("compile tokenize.dag: {other:?}"),
-    });
-    let rust = generate(&dag);
+    let dag = compile_authority_dag(&source, TOKENIZE_AUTHORITY_FILE);
+    let shared_syntax_source = read_shared_syntax_source(&manifest_dir);
+    let shared_syntax = SharedSyntaxAuthority::parse(&shared_syntax_source);
+    let rust = generate(&dag, &shared_syntax);
     let combined = format!("{HEADER}{rust}");
 
     let mut child = Command::new("rustfmt")
@@ -72,9 +72,38 @@ fn main() {
     println!("wrote {}", out_path.display());
 }
 
-fn generate(dag: &Dag) -> String {
-    let keywords = collect_keyword_rows(dag);
-    let puncts = collect_punct_rows(dag);
+fn compile_authority_dag(source: &str, file: &str) -> Dag {
+    compile_to_dag(source, file).unwrap_or_else(|e| match e {
+        CompileError::Semantic(d) => {
+            let mut msg = format!("compile {file} failed:\n");
+            for (_, diag) in d.diagnostics().iter() {
+                msg.push_str(&format!("  {diag:?}\n"));
+            }
+            panic!("{msg}");
+        }
+        other => panic!("compile {file}: {other:?}"),
+    })
+}
+
+fn read_shared_syntax_source(manifest_dir: &std::path::Path) -> String {
+    let repo_root = manifest_dir
+        .parent()
+        .and_then(|path| path.parent())
+        .and_then(|path| path.parent())
+        .expect("src/v3/compiler should have a repo root ancestor");
+    let syntax_path = repo_root.join(SHARED_SYNTAX_FILE);
+    std::fs::read_to_string(&syntax_path).unwrap_or_else(|e| {
+        panic!(
+            "read shared syntax authority `{}` from {}: {e}",
+            SHARED_SYNTAX_FILE,
+            syntax_path.display()
+        )
+    })
+}
+
+fn generate(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> String {
+    let keywords = collect_keyword_rows(dag, shared_syntax);
+    let puncts = collect_punct_rows(dag, shared_syntax);
     let line_comment_prefix = string_data_named(dag, "line_comment_prefix");
     let string_delim = string_data_named(dag, "string_literal_delimiter");
     assert_eq!(
