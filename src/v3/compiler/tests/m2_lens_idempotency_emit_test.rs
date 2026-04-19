@@ -115,7 +115,11 @@ fn idempotency_emit_check_binary() -> &'static PathBuf {
         src.push_str(&emitted);
         src.push_str("\n}\n");
         src.push_str(EMIT_CHECK_TAIL);
-        harness().compile(&src, "idempotency_emit_check", HarnessLinkMode::WithV3Compiler)
+        harness().compile(
+            &src,
+            "idempotency_emit_check",
+            HarnessLinkMode::WithV3Compiler,
+        )
     })
 }
 
@@ -136,11 +140,7 @@ fn lens_idempotency_dag_emits_and_matches_analyze_workflow_oracle() {
 fn lens_idempotency_dag_emits_go_and_python_modules() {
     let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())
         .expect("compile idempotency.dag");
-    assert!(
-        dag.diagnostics().is_empty(),
-        "{:?}",
-        dag.diagnostics()
-    );
+    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
     let _go = emit_go_module(&dag).expect("emit_go_module(idempotency.dag)");
     let _py = emit_python_module(&dag).expect("emit_python_module(idempotency.dag)");
 }
