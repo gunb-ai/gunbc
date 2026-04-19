@@ -39,7 +39,6 @@ fn idempotent_pair_commutes(a: &IdempotentShape, b: &IdempotentShape) -> bool {
         | (IdempotentShape::DeleteEffect { .. }, IdempotentShape::ReadEffect) => false,
         (IdempotentShape::UpsertEffect { .. }, IdempotentShape::DeleteEffect { .. })
         | (IdempotentShape::DeleteEffect { .. }, IdempotentShape::UpsertEffect { .. }) => false,
-        _ => false,
     }
 }
 
