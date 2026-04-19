@@ -2,30 +2,44 @@
 #
 # Per-test wall-clock ratchet (TESTING.md § test layers).
 #
-# Runs
-#   RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler \
-#       -- -Z unstable-options --report-time
-# and fails if any single `#[test]` exceeded the budget (default 2000 ms,
-# aligns with `feedback_test_timeout_2s`). `--report-time` is still unstable
-# on the 1.93 toolchain (rust-lang/rust#64888); the `RUSTC_BOOTSTRAP=1 +
-# -Z unstable-options` pair is the documented narrow unlock for libtest
-# flags and does not enable any unstable *language* features — see the
-# body of the script for the full comment. Tests listed in the exemption file are
-# tolerated with a logged warning so the ratchet can land without blocking
-# known-slow tests — the exemption file IS the paydown backlog.
+# Reads libtest `--report-time` output (lines like
+# `test foo::bar ... ok <1.234s>`) from a pre-captured log file and fails
+# if any single `#[test]` exceeded the budget (default 2000 ms, aligns
+# with `feedback_test_timeout_2s`). Tests listed in the exemption file
+# are tolerated with a logged warning so the ratchet can land without
+# blocking known-slow tests — the exemption file IS the paydown backlog.
+#
+# **Why parse an external log, not re-run `cargo test`.** The v3 CI job
+# already runs `cargo test -p v3-compiler` once (budget 1200s) and the
+# job-level timeout is 25 minutes. A second full-suite invocation from
+# this ratchet would compete for the remaining job budget and could
+# starve the clippy / lens / census gates on cold runners. Instead, the
+# caller (CI step or local shell) runs `cargo test` itself with
+# `RUSTC_BOOTSTRAP=1 ... -- -Z unstable-options --report-time`, tees the
+# output to a log, and passes the path here. Local users with no
+# pre-captured log get a fallback that invokes `cargo test` once.
+#
+# `--report-time` is unstable on the 1.93 toolchain
+# (rust-lang/rust#64888); the `RUSTC_BOOTSTRAP=1 + -Z unstable-options`
+# pair is the documented narrow unlock for libtest flags and does not
+# enable any unstable *language* features. Migrate off when the flag
+# stabilizes or when the project adopts `cargo-nextest`.
 #
 # Usage:
-#   scripts/check-test-timeout.sh [budget_ms]
+#   scripts/check-test-timeout.sh <log_file> [budget_ms]
+#   scripts/check-test-timeout.sh                 # local fallback: runs cargo test itself
 #
 # Environment:
 #   TEST_TIMEOUT_MS       Override budget (default 2000).
-#   TEST_TIMEOUT_PACKAGE  Cargo package to test (default v3-compiler).
+#   TEST_TIMEOUT_PACKAGE  Cargo package for the local fallback
+#                         (default v3-compiler).
 #   TEST_TIMEOUT_EXEMPT   Path to exemption file
 #                         (default scripts/slow-test-exemptions.txt).
 
 set -euo pipefail
 
-budget_ms=${1:-${TEST_TIMEOUT_MS:-2000}}
+log_file_arg=${1:-}
+budget_ms=${2:-${TEST_TIMEOUT_MS:-2000}}
 pkg=${TEST_TIMEOUT_PACKAGE:-v3-compiler}
 exempt_file=${TEST_TIMEOUT_EXEMPT:-scripts/slow-test-exemptions.txt}
 
@@ -33,24 +47,30 @@ script_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root=$(cd "$script_dir/.." && pwd)
 cd "$repo_root"
 
-log_file=$(mktemp -t test-timings.XXXXXX)
-trap 'rm -f "$log_file"' EXIT
+cleanup_log=""
+trap '[ -n "$cleanup_log" ] && rm -f "$cleanup_log"' EXIT
 
-echo "Running RUSTC_BOOTSTRAP=1 cargo test -p $pkg -- -Z unstable-options --report-time (budget: ${budget_ms}ms per test)..."
-# Per-test timing output is emitted by libtest's `--report-time`, which is still
-# unstable on the 1.93 toolchain (tracking issue rust-lang/rust#64888). The
-# narrow unlock is `RUSTC_BOOTSTRAP=1` — it does not pull in unstable *language*
-# features, only the unstable libtest flag. This is a tooling-ratchet concession,
-# not a production-code pattern; migrate off it when the flag stabilizes or when
-# this project adopts `cargo-nextest`.
-set +e
-RUSTC_BOOTSTRAP=1 cargo test -p "$pkg" -- -Z unstable-options --report-time 2>&1 | tee "$log_file"
-cargo_status=${PIPESTATUS[0]}
-set -e
-
-if [ "$cargo_status" -ne 0 ]; then
-  echo "::error::cargo test failed (exit=$cargo_status) — per-test ratchet not evaluated"
-  exit "$cargo_status"
+if [ -n "$log_file_arg" ]; then
+  log_file=$log_file_arg
+  if [ ! -r "$log_file" ]; then
+    echo "::error::log file not readable: $log_file"
+    exit 2
+  fi
+  echo "Reading pre-captured libtest timings from $log_file (budget: ${budget_ms}ms per test)..."
+else
+  # Local fallback: re-run cargo test to capture timings. Not for CI —
+  # the CI step reuses the log from the existing full-suite run.
+  log_file=$(mktemp -t test-timings.XXXXXX)
+  cleanup_log=$log_file
+  echo "Running RUSTC_BOOTSTRAP=1 cargo test -p $pkg -- -Z unstable-options --report-time (budget: ${budget_ms}ms per test)..."
+  set +e
+  RUSTC_BOOTSTRAP=1 cargo test -p "$pkg" -- -Z unstable-options --report-time 2>&1 | tee "$log_file"
+  cargo_status=${PIPESTATUS[0]}
+  set -e
+  if [ "$cargo_status" -ne 0 ]; then
+    echo "::error::cargo test failed (exit=$cargo_status) — per-test ratchet not evaluated"
+    exit "$cargo_status"
+  fi
 fi
 
 # Parse lines of shape:  test foo::bar_baz ... ok <0.123s>
