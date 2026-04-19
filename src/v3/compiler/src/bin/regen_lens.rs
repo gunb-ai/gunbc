@@ -11,6 +11,7 @@
 //   cargo run -p v3-compiler --bin regen_lens -- --lens cost
 //     → regenerates only the entry whose `name` field is "cost".
 
+use std::collections::HashMap;
 use std::env;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -110,7 +111,16 @@ fn read_registry(dag: &Dag) -> Result<Vec<Entry>, String> {
         .map(|decl| decl.id)
         .ok_or_else(|| format!("missing `{LENS_REGISTRY_ENTRY_TYPE}` in bootstrap Dag"))?;
 
-    let mut entries = Vec::new();
+    let mut entries: Vec<Entry> = Vec::new();
+    // Dedup maps: record the FIRST binding that introduced each key,
+    // so a duplicate error names both the existing owner and the
+    // colliding binding. `--lens <name>` is a singleton key and
+    // `generated_file` is the output an entry writes to; either
+    // collision would make the registry ambiguous or let two
+    // entries race to clobber the same file.
+    let mut seen_name: HashMap<String, String> = HashMap::new();
+    let mut seen_generated_file: HashMap<String, String> = HashMap::new();
+
     for decl in dag.declarations() {
         if decl.meta_tag != Some(entry_type_id) {
             continue;
@@ -121,11 +131,27 @@ fn read_registry(dag: &Dag) -> Result<Vec<Entry>, String> {
                 "lens registry entry `{binding_name}` must carry a structural value body"
             ));
         };
-        entries.push(Entry {
+        let entry = Entry {
             name: require_string(fields, "name", binding_name)?,
             lens_file: require_string(fields, "lens_file", binding_name)?,
             generated_file: require_string(fields, "generated_file", binding_name)?,
-        });
+        };
+
+        if let Some(prior_binding) = seen_name.get(&entry.name) {
+            return Err(format!(
+                "lens registry has duplicate `name` field `{name}`: first declared by `{prior_binding}`, re-declared by `{binding_name}`",
+                name = entry.name,
+            ));
+        }
+        if let Some(prior_binding) = seen_generated_file.get(&entry.generated_file) {
+            return Err(format!(
+                "lens registry has duplicate `generated_file` path `{path}`: first declared by `{prior_binding}`, re-declared by `{binding_name}`",
+                path = entry.generated_file,
+            ));
+        }
+        seen_name.insert(entry.name.clone(), binding_name.to_string());
+        seen_generated_file.insert(entry.generated_file.clone(), binding_name.to_string());
+        entries.push(entry);
     }
     Ok(entries)
 }
