@@ -59,7 +59,9 @@ fn tokenize_registry_rows_use_structural_token_kind_and_derive_punct_width_from_
         };
 
         assert!(
-            fields.iter().all(|(label, _)| label != "kind_name" && label != "width"),
+            fields
+                .iter()
+                .all(|(label, _)| label != "kind_name" && label != "width"),
             "token row `{name}` should not carry string `kind_name` or redundant `width` fields"
         );
 
