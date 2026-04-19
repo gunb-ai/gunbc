@@ -71,6 +71,15 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // `.dag`-native correction-validation path, drop the entry. This is
 // a bounded SG-0 exception for the merge-blocking Stage 3b receipt,
 // not a precedent for adding ad hoc integration files.
+//
+// Phase 1 Dag builder surface — PR #570 adds one narrow host-side
+// helper file, `src/dag/builder.rs`, to keep the test-facing graph
+// constructors scoped away from the main `dag.rs` body while the
+// direct-Dag migration replaces `compile_to_dag(source)` fixtures.
+// Dissolution trigger: once the migration wave settles, fold the
+// builder back into `dag.rs` or move the surface behind a
+// producer-owned path. This is a bounded migration exception, not a
+// precedent for free-standing handwritten helpers.
 const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
@@ -79,6 +88,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
     "src/v3/compiler/src/bootstrap.rs",
     "src/v3/compiler/src/dag.rs",
+    "src/v3/compiler/src/dag/builder.rs",
     "src/v3/compiler/src/diagnostics.rs",
     "src/v3/compiler/src/dimension.rs",
     "src/v3/compiler/src/emit.rs",
