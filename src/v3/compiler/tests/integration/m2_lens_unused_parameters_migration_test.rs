@@ -1,3 +1,17 @@
+//! **Layer:** boundary-adjacent integration — emitted Rust lens linked via rustc.
+//!
+//! Lens-semantic coverage (all-used / single-unused / all-unused /
+//! branch-arm reference / zero-param bind) lives as in-crate unit
+//! tests under
+//! `src/v3/compiler/src/lens_unused_parameters.rs::tests`, where the
+//! `pub(crate)` Dag builder is reachable. This suite is the
+//! cross-process receipt: the `.dag` authority compiles cleanly, the
+//! checked-in generated module is in sync with
+//! `emit_rust_module(unused_parameters.dag)`, the clone-count ratchet
+//! holds, the emitted module links and runs end-to-end on one
+//! representative fixture, and the `.dag` lens produces zero findings
+//! on its own source.
+
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -138,11 +152,7 @@ struct OracleUnusedParameter {
 
 fn render_handwritten_oracle(program_source: &str, file_name: &str) -> String {
     let dag = compile_to_dag(program_source, file_name).expect("program compiles");
-    render_handwritten_oracle_on_dag(&dag)
-}
-
-fn render_handwritten_oracle_on_dag(dag: &Dag) -> String {
-    let mut rendered: Vec<String> = handwritten_unused_parameters(dag)
+    let mut rendered: Vec<String> = handwritten_unused_parameters(&dag)
         .iter()
         .map(|violation| {
             let function_name = dag
@@ -298,39 +308,27 @@ fn unused_parameters_generated_module_clone_count_is_ratcheted() {
     );
 }
 
+/// Cross-process receipt: the emitted module links against the
+/// `v3_compiler` crate and runs under rustc on a representative
+/// fixture exercising both used and unused parameters across an
+/// `if/else` body. Agreement is gated against the handwritten oracle
+/// (not a hard-coded string) because `compile_to_dag` also pulls in
+/// bootstrap `std/` binds whose unused-param set is not stable to
+/// pin here. Per-shape coverage against hand-built Dags lives in
+/// `lens_unused_parameters::tests`.
 #[test]
-fn unused_parameters_dag_matches_rust_lens_on_core_fixtures() {
+fn unused_parameters_dag_runs_end_to_end_via_rustc_harness() {
     let module = emit_lens_module();
-    let fixtures = [
-        ("fn add(a: Int, b: Int) -> Int = a + b", "used_all.v3"),
-        ("fn first(a: Int, b: Int) -> Int = a", "single_unused.v3"),
-        (
-            "fn always_one(x: Int, y: Int, z: Int) -> Int = 1",
-            "constant_body.v3",
-        ),
-        (
-            "fn pick(a: Int, b: Int) -> Int = if a > 0 then a else b",
-            "branch_body.v3",
-        ),
-        (
-            "fn count(list: List<Int>) -> Int = match list { Empty => 0, Cons(payload) => 1 + count(payload.tail) }",
-            "recursive_list.v3",
-        ),
-        (
-            "fn content_upsert(content: Int, path: Int) -> Int = content + 0",
-            "patterns_synthetic.v3",
-        ),
-    ];
-
     let bin_path = build_roundtrip_harness(&module);
-    for (source, file_name) in fixtures {
-        let rust_rendered = render_handwritten_oracle(source, file_name);
-        let dag_rendered = roundtrip_lens_render(&bin_path, source, file_name);
-        assert_eq!(
-            dag_rendered, rust_rendered,
-            "compiled .dag lens should match handwritten Rust oracle on {file_name}"
-        );
-    }
+    let source = "fn pick(a: Int, b: Int) -> Int = if a > 0 then a else b\n\
+         fn first(a: Int, b: Int) -> Int = a";
+    let file_name = "unused_param_mix.v3";
+    let oracle = render_handwritten_oracle(source, file_name);
+    let emitted = roundtrip_lens_render(&bin_path, source, file_name);
+    assert_eq!(
+        emitted, oracle,
+        "emitted unused_parameters lens should match handwritten oracle on the cross-process receipt fixture",
+    );
 }
 
 #[test]
