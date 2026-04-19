@@ -312,20 +312,24 @@ returns `Result` or `Option`. Only `main` and test code
 ## When impurity is acceptable
 
 The compiler's edges necessarily interact with the outside
-world. Impurity is fine in these specific places, and should
-be clearly labeled:
+world. Impurity is fine in these specific **roles**, and should
+be clearly labeled (rustdoc on the module or function):
 
-| Location | Kind of impurity | Labeling |
+| Role | Kind of impurity | Why acceptable |
 |---|---|---|
-| `src/v3/compiler/build.rs` | filesystem, codegen | rustdoc header |
-| `src/v3/compiler/src/bin/regen_*.rs` | filesystem writes | rustdoc header |
-| `src/v3/compiler/src/bin/cli.rs` | stdin/stdout | rustdoc header |
-| bootstrap inside `Dag::new()` | loads std files at init | single-call-site; std files frozen at build |
-| `tests/integration/common/cached_compile.rs` | `LazyLock<Mutex>` cache | explicit: "per-test-binary amortization" |
+| **Build script** (`compiler/build.rs`) | filesystem, codegen | build-time concern by definition |
+| **Code-generation binaries** (`compiler/src/bin/regen_*.rs`) | filesystem writes | their job is to materialize generated files |
+| **Bootstrap** (single-call-site inside `Dag::new()`) | loads std files at init | std files are frozen at build; amortized once per process |
+| **Test amortization caches** (e.g. `cached_compile_to_dag` with `LazyLock<Mutex<…>>`) | per-test-binary memoization | cache's existence does not change observable output; documented scope + dissolution |
 
 Everywhere else — library code, lenses, substrate walks,
 emitters, inference, lowering — should be pure in the Rust
 sense described above.
+
+If you want to add a new impurity surface, identify its role
+first. If the role isn't in the table, the function probably
+belongs inside a library-pure API and the impure part should
+be split out to an edge.
 
 ## Related
 

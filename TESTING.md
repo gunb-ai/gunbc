@@ -91,20 +91,35 @@ pipeline (parse + lower + infer) as a side effect of testing
 one structural invariant. If that test fails, the root cause
 could be anywhere in ~30k lines of compiler code.
 
-Instead:
+Instead, construct the exact shape under test and run the lens
+against it.
 
-```rust
-// Construct the exact shape under test.
-let mut dag = Dag::new();
-let int = dag.int_shape();
-let left = dag.push_literal_value(42, int);
-let right = dag.push_literal_value(7, int);
-let sum = dag.push_transform(/* binary-op-add */, &[left, right], int);
-// Now test the lens under this minimal input.
-assert_eq!(cost_of(&dag, &sum.output()), CostLookup::FoundCost(1));
-```
+**Availability today.** Minimal-Dag construction is natural for
+**crate-internal unit tests** (`#[cfg(test)] mod tests` inside
+`src/v3/compiler/src/`) that can reach `pub(crate)` helpers —
+`push_literal_value`, `push_transform`, `alloc_port`, and
+friends are crate-private today. For **integration tests** in
+`tests/`, the public surface of `Dag` is narrow (`Dag::new()`,
+`declaration_by_name`, typed handle accessors, primitive
+shape lookups) — the minimal-construction path requires a
+broader public builder API, which is a **tracked follow-up**
+and not yet available.
 
-Full-pipeline `compile_to_dag` is reserved for:
+**Practical guidance while the builder surface is limited:**
+
+- Prefer crate-internal `#[cfg(test)]` unit tests for lens /
+  accessor / single-pass behaviors. Construction helpers are
+  in scope.
+- For integration tests in `tests/`, `compile_to_dag(small_fixture)`
+  is often the only available entry point. Keep the fixture
+  minimal (single `let`, single `fn`) and assert on the lens
+  output, not pipeline intermediates.
+- As the public builder API grows, port integration tests
+  that test narrow subjects (individual lenses) off
+  `compile_to_dag` onto the builder.
+
+Full-pipeline `compile_to_dag` is the **intended** entry point
+for:
 - **Integration tests** — deliberate end-to-end coverage of the
   pipeline itself
 - **Thesis tests** — claims about user-facing behavior, where
