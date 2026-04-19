@@ -454,6 +454,12 @@ fn render_variant_witness(dag: &Dag, variant: &Field, depth: usize) -> Option<St
     if children.is_empty() {
         return Some(variant.label.clone());
     }
+    // Constructor invocation in the current `.dag` surface is
+    // positional (`Variant(arg0, arg1)`), even when the payload
+    // declaration's fields are named. Preserve declaration-derived
+    // child order here, but do not invent an unsupported
+    // `Variant { field: value }` surface until lowering accepts that
+    // shape structurally.
     let payload: Option<Vec<_>> = children
         .iter()
         .map(|field| example_source_for_decl_inner(dag, field.ty, depth + 1))

@@ -315,6 +315,36 @@ fn t1_4_type_mismatch_does_not_cascade_fabricated_diagnostics() {
 }
 
 #[test]
+fn t1_4_named_payload_sum_fix_renders_supported_constructor_syntax() {
+    let src = "\
+type MaybeInt = Some { value: Int } | None
+let x: MaybeInt = true
+";
+    let dag = match compile_to_dag(src, "t1_4_named_payload_sum_fix.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let bind = bind_named(&dag, "x");
+    let diag = dag
+        .diagnostics()
+        .get(bind.value)
+        .expect("diagnostic recorded for mismatched sum value");
+    let Diagnostic::TypeMismatch { fixes, .. } = diag else {
+        panic!("expected TypeMismatch, got {diag:?}");
+    };
+    let fix = fixes
+        .iter()
+        .find(|fix| fix.new_source == "Some(1)")
+        .unwrap_or_else(|| panic!("expected positional constructor witness, got {fixes:?}"));
+    let rendered = rendered_rust_diagnostic(&dag, diag);
+    assert!(
+        rendered.contains("\n    \"Some(1)\";"),
+        "rendered diagnostic should show the supported positional constructor syntax, got {rendered}"
+    );
+    assert_eq!(fix.new_source, "Some(1)");
+}
+
+#[test]
 fn t1_5_numeric_descent_is_accepted() {
     let src = "\
 fn countdown(n: Int) -> Int =
