@@ -373,7 +373,7 @@ type OperationEffect {
 // witness into the original workflow evidence chain. Combined with the
 // `EffectShape` partition, the verdict cannot name an idempotent op as
 // the breaker AND cannot drift away from the input list by copying a
-// standalone `BreakingOperation`.
+// standalone breaker record.
 type CompositionVerdict
   = IdempotentComposition
   | BrokenBy { first_breaker: ElementRef<OperationEffect> }
