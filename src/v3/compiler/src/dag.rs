@@ -445,11 +445,8 @@ impl AtomPayload {
     }
 }
 
-/// Terminal literal payload. 3 variants, each corresponds to a distinct
-/// user-input boundary (integer literal, boolean literal, string literal
-/// from source text). Pattern-check is trivial: fact placement, variant-
-/// is-data, algebraic form, and dimensional all fail on disjoint payload
-/// types. Any future `Float`/`Char` additions go through §8.10's audit.
+// Terminal literal/cardinality/template/port-state mirrors are generated
+// from `runtime_mirrors.dag`; keep the authority there, not here.
 include!("dag_scalar_generated.rs");
 
 /// Dissolution ledger (per M1_DESIGN.md §Q7 "ArrowBody dissolution ledger"):
@@ -806,34 +803,8 @@ impl BranchNode {
     }
 }
 
-/// Per-arm pattern on a `Path`. Encodes which variant of the
-/// scrutinee's Disj this arm handles. Unifies `if`/`else` with
-/// `match` — both lower to `Branch` with one `Path` per arm, and
-/// the discriminator lives on the pattern instead of on positional
-/// convention.
-///
-/// **Phase coproduct — M1(2.8).** Lowering emits
-/// `UnresolvedVariant { name, span }`; inference walks the
-/// scrutinee's Disj children, matches the arm's variant name
-/// scoped against that Disj, and mutates the Path's pattern
-/// in-place to `ResolvedVariant(DeclarationId)`. The resolved
-/// form is the stable post-infer shape; the unresolved form is
-/// the transient lowering-output shape. Same pattern the substrate
-/// uses for `AtomPayload::Unresolved/ResolvedIdentifier`.
-///
-/// 4-pattern check:
-/// - Pattern 1 (fact placement): fails. Variant identity is a
-///   per-arm fact that downstream code (exhaustiveness checks,
-///   emission) must read per-Path.
-/// - Pattern 2 (variant-is-data): fails. Unresolved carries a
-///   name + span; Resolved carries a DeclarationId.
-/// - Pattern 3 (algebraic form): fails. The two variants are
-///   two phases of the same fact, not an algebra.
-/// - Pattern 4 (dimensional): fails.
-///
-/// Verdict: terminal at M1(2.8). Future pattern extensions
-/// (wildcard, record destructure, nested patterns) go through
-/// §8.10's substrate-extension audit.
+// Branch-pattern/path mirrors are generated from `runtime_mirrors.dag`;
+// host-only behavior stays in the impl blocks below.
 include!("dag_branch_generated.rs");
 
 impl Path {
@@ -1209,8 +1180,8 @@ pub enum WorkflowParallelismReport {
 // Cluster / loop-bound carriers below are Track 9 mutual-recursion
 // witnesses — not part of the Lane 2 Stage 2b effects algebra.
 
-/// 🟢 **TERMINAL.** Single cluster member's descent parameter — typed
-/// `ParamRef` witness (see `docs/design-mutual-recursion-lowering.md`).
+// Cluster/loop-bound mirrors are generated from `runtime_mirrors.dag`;
+// keep only host helper behavior in Rust.
 include!("dag_cluster_generated.rs");
 
 impl LoopBound {
