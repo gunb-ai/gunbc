@@ -1,12 +1,15 @@
+pub(crate) mod python_target;
+pub(crate) mod rust_target;
+
 use std::collections::{HashMap, HashSet};
 
+use self::python_target::EmitPythonError;
+use self::rust_target::{EmitError, RealizationCategory, SubstrateMarkerRole};
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, CardinalityBound, DeclarationId,
     Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective, ValueBody,
 };
-use crate::emit_python::EmitPythonError;
-use crate::emit_rust::{EmitError, RealizationCategory};
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
     variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
@@ -674,30 +677,12 @@ fn emit_with_mode(
 ) -> Result<EmittedSource, EmitDispatchError> {
     let text = match target {
         EmitTarget::Go => emit_go_with_mode(dag, mode).map_err(EmitDispatchError::Core)?,
-        EmitTarget::Rust => match mode {
-            EmitMode::Program => crate::emit_rust::emit_rust_with_mode(
-                dag,
-                crate::emit_rust::EmitRustMode::Program,
-            )
-            .map_err(EmitDispatchError::Core)?,
-            EmitMode::Module => crate::emit_rust::emit_rust_with_mode(
-                dag,
-                crate::emit_rust::EmitRustMode::Module,
-            )
-            .map_err(EmitDispatchError::Core)?,
-        },
-        EmitTarget::Python => match mode {
-            EmitMode::Program => crate::emit_python::emit_python_with_mode(
-                dag,
-                crate::emit_python::EmitPythonMode::Program,
-            )
-            .map_err(EmitDispatchError::Python)?,
-            EmitMode::Module => crate::emit_python::emit_python_with_mode(
-                dag,
-                crate::emit_python::EmitPythonMode::Module,
-            )
-            .map_err(EmitDispatchError::Python)?,
-        },
+        EmitTarget::Rust => {
+            rust_target::emit_rust_with_mode(dag, mode).map_err(EmitDispatchError::Core)?
+        }
+        EmitTarget::Python => {
+            python_target::emit_python_with_mode(dag, mode).map_err(EmitDispatchError::Python)?
+        }
     };
     Ok(EmittedSource { text, target, mode })
 }
@@ -709,9 +694,9 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
             "emit_go requires a non-ownership execution model".to_string(),
         ));
     }
-    let main_marker = dag.main_marker().ok_or(EmitError::MissingSubstrateMarker(
-        crate::emit_rust::SubstrateMarkerRole::Main,
-    ))?;
+    let main_marker = dag
+        .main_marker()
+        .ok_or(EmitError::MissingSubstrateMarker(SubstrateMarkerRole::Main))?;
     let type_decls: Vec<_> = dag
         .declarations()
         .iter()

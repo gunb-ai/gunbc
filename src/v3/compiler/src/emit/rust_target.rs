@@ -50,12 +50,12 @@ use crate::dag::{
     FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective, ValueBody, ValueNode,
 };
-use crate::emit::{emit, emit_module, EmitDispatchError, EmitTarget};
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
     variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
     VariantPayloadShape,
 };
+use super::{emit, emit_module, EmitDispatchError, EmitMode, EmitTarget};
 
 /// Errors the Rust emitter surfaces when the DAG reaches a shape it
 /// cannot render under the PR-B scope. Each variant names a specific
@@ -2579,11 +2579,7 @@ fn callable_input_disposition_for_target(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EmitRustMode {
-    Program,
-    Module,
-}
+pub(crate) type EmitRustMode = EmitMode;
 
 pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitError> {
     let indexes = RealizationIndexes::build(dag)?;

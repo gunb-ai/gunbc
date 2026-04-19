@@ -5,13 +5,13 @@ use crate::dag::{
     FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective,
 };
-use crate::emit::{emit, emit_module, EmitDispatchError, EmitTarget};
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
     variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
     VariantPayloadShape,
 };
 use crate::Dag;
+use super::{emit, emit_module, EmitDispatchError, EmitMode, EmitTarget};
 
 #[derive(Debug, Clone)]
 pub enum EmitPythonError {
@@ -43,11 +43,7 @@ pub enum EmitPythonError {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EmitPythonMode {
-    Program,
-    Module,
-}
+pub(crate) type EmitPythonMode = EmitMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PythonCallableStrategy {
