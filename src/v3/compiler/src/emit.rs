@@ -85,12 +85,8 @@ enum CallableStrategyBinding {
 
 #[derive(Debug, Clone)]
 struct PatternRealizationBinding {
-<<<<<<< HEAD
-    strategy: PatternStrategyBinding,
     empty_variant: DeclarationId,
     cons_variant: DeclarationId,
-=======
->>>>>>> origin/main
     scrutinee: String,
     empty_pattern: String,
     cons_pattern: String,
@@ -2464,12 +2460,8 @@ fn require_pattern_realization(
         });
     }
     Ok(PatternRealizationBinding {
-<<<<<<< HEAD
-        strategy: PatternStrategyBinding::VectorList,
         empty_variant: require_field_decl_ref(fields, "empty_variant", declaration)?,
         cons_variant: require_field_decl_ref(fields, "cons_variant", declaration)?,
-=======
->>>>>>> origin/main
         scrutinee: require_field_string(fields, "scrutinee", declaration)?,
         empty_pattern: require_field_string(fields, "empty_pattern", declaration)?,
         cons_pattern: require_field_string(fields, "cons_pattern", declaration)?,
