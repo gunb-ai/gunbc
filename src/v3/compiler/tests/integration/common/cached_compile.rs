@@ -41,17 +41,6 @@ fn compile_cell_for_key(key: (String, String)) -> CompileCell {
         .clone()
 }
 
-/// `compile_to_dag`, but cache hits on repeated `(source, file)` keys.
-///
-/// Panics if the compile returns `Err` — use this for fixtures that must
-/// compile cleanly. For tests that expect semantic errors use
-/// [`cached_compile_any`].
-pub fn cached_compile_to_dag(source: &str, file: &str) -> Dag {
-    let cell = compile_cell_for_key((source.to_string(), file.to_string()));
-    cell.get_or_init(|| compile_to_dag(source, file).expect("fixture compiles"))
-        .clone()
-}
-
 /// Variant of [`cached_compile_to_dag`] that accepts semantic errors — returns
 /// the partial Dag (with diagnostics attached) when `compile_to_dag` returns
 /// `Err(CompileError::Semantic(dag))`. Structural errors still panic.
@@ -66,4 +55,28 @@ pub fn cached_compile_any(source: &str, file: &str) -> Dag {
         Err(other) => panic!("unexpected structural error: {other:?}"),
     })
     .clone()
+}
+
+/// `compile_to_dag`, but cache hits on repeated `(source, file)` keys.
+///
+/// Panics if the compile result has diagnostics — use this for fixtures that
+/// must compile cleanly. For tests that expect semantic errors use
+/// [`cached_compile_any`] directly.
+///
+/// The per-call diagnostic check is contract-enforcement at the **caller
+/// boundary**, not at cache-insert time. `cached_compile_to_dag` and
+/// `cached_compile_any` share the same `(source, file)` cache key, so if
+/// `cached_compile_any` populates a key first with a diagnostic-bearing Dag,
+/// a later `cached_compile_to_dag` call for that key must still panic —
+/// otherwise clean-compile assertions would become order-dependent across
+/// parallel tests.
+pub fn cached_compile_to_dag(source: &str, file: &str) -> Dag {
+    let dag = cached_compile_any(source, file);
+    assert!(
+        dag.diagnostics().is_empty(),
+        "fixture should compile cleanly (source={source:?}, file={file:?}) — \
+         diagnostics: {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    dag
 }
