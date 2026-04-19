@@ -13,11 +13,7 @@ use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::Behavior;
-use v3_compiler::dag::{WorkflowEffect, WorkflowIdempotencyReport};
 use v3_compiler::emit_rust::emit_rust_module;
-use v3_compiler::{analyze_workflow as oracle_analyze_workflow, Dag, NodeId};
-
 mod common;
 use common::{HarnessLinkMode, RustcHarness};
 
@@ -72,14 +68,6 @@ fn emit_idempotency_module() -> String {
     format_rust_source(&raw)
 }
 
-fn lane2_anchor(dag: &Dag) -> NodeId {
-    dag.nodes()
-        .iter()
-        .find(|b| matches!(b, Behavior::Value(_) | Behavior::Bind(_)))
-        .expect("fixture should include a Value or Bind for lane2 staging")
-        .id()
-}
-
 /// Compile the idempotency-lens roundtrip harness once per test run.
 fn build_roundtrip_harness(module_source: &str) -> PathBuf {
     let wrapped = format!(
@@ -100,7 +88,7 @@ fn build_roundtrip_harness(module_source: &str) -> PathBuf {
            let emitted = emitted::analyze_workflow(&dag, &root); \
            let oracle = v3_compiler::analyze_workflow(&dag, root); \
            assert_eq!(emitted, oracle, \"emitted analyze_workflow should match crate oracle\"); \
-           let mut dag2 = v3_compiler::compile_to_dag(\"let _ = 1\", \"lane2_none.v3\") \
+           let dag2 = v3_compiler::compile_to_dag(\"let _ = 1\", \"lane2_none.v3\") \
              .expect(\"compile fixture 2\"); \
            let root2 = dag2.nodes().iter() \
              .find(|b| matches!(b, v3_compiler::dag::Behavior::Value(_) | v3_compiler::dag::Behavior::Bind(_))) \

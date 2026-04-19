@@ -93,7 +93,7 @@ pub(crate) fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempo
             IdempotencyUnsupportedDetail {
                 variant_name: "Lane2WorkflowRoot".to_string(),
                 downstream_stage: "lane2_stage2b_idempotency_lens".to_string(),
-                reason: "no WorkflowEffect at this substrate root — populate `lane2_workflow` on `Value`/`Bind` via lowering or `try_register_lane2_workflow_effect`"
+                reason: "no WorkflowEffect at this substrate root - populate `lane2_workflow` on `Value`/`Bind` via lowering or `try_register_lane2_workflow_effect`"
                     .to_string(),
             },
         );
