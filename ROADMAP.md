@@ -525,7 +525,7 @@ Follow-up (not blocking): emission for narrowed ports currently errors if `emit_
 - **Invariant:** `INVARIANTS.md` §Deterministic emission (D-1); `emit.rs` module docs cite D-1 (`feedback_substrate_principle_audit` Q5 — single authority for determinism invariants).
 - **Substrate-readiness (phase-plan §6 checklist):** tracked in [`docs/phase-plan-2026-04-18.md`](docs/phase-plan-2026-04-18.md) §6 — rows still 🟡/❌ remain upstream deferrals (1e, 1c Python tail, 2b workflow consumer, 2c runner, 2d, 3b) with dissolution triggers in ROADMAP; no new orphan debt from this audit.
 
-**CI job:** `.github/workflows/ci.yml` — `self_host_ratchet` after `v3`, `continue-on-error: true` until Lane 1e closes (then graduate to required).
+**CI job:** `.github/workflows/ci.yml` — job **`self_host_ratchet`** (`needs: v3`; job + per-step `continue-on-error: true` until Lane 1e): runs `cargo test -p v3-compiler --release --test determinism_test`, then `cargo run -p v3-compiler --release --bin self_host_fixed_point`, then informational `emit.rs` HashMap/HashSet grep. The **`v3`** job’s full `cargo test -p v3-compiler` also executes `determinism_test` (debug build).
 
 ### Lane 2 Stage 2b — workflow idempotency lens
 

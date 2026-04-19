@@ -224,10 +224,14 @@ jobs:
 
       # Named DB-8 ratchet (also executed inside the `v3` full suite); release
       # build here matches `self_host_fixed_point` and gives a dedicated log section.
+      # Step-level continue-on-error: one ratchet can fail without aborting the other
+      # (job-level continue-on-error keeps the workflow green until Lane 1e graduates).
       - name: DB-8 determinism_test (5× emit matrix)
+        continue-on-error: true
         run: cargo test -p v3-compiler --release --test determinism_test
 
       - name: DB-8 self_host_fixed_point (staged)
+        continue-on-error: true
         run: cargo run -p v3-compiler --release --bin self_host_fixed_point
 
       - name: DB-8 emit.rs HashMap iteration policy (informational)
