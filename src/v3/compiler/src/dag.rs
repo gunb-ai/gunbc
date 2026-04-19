@@ -1923,6 +1923,12 @@ pub(crate) struct TargetSyntaxCache {
     /// identifier is never emitted at the pattern site, so
     /// py_compile never flags an unused binding.
     pub python_clean_emission: Option<DeclarationId>,
+    /// Shared target-authority bindings scanned from
+    /// `TargetCleanEmissionBinding` data items. This is the single
+    /// cached bridge from `LanguageSpec` to `CleanEmissionContract`;
+    /// adding a new target extends the spec surface, not compiler
+    /// branches.
+    pub clean_emission_by_language: HashMap<DeclarationId, DeclarationId>,
 }
 
 /// Shared target-authority bundle tying one `LanguageSpec`
@@ -2283,9 +2289,13 @@ impl Dag {
     /// Typed accessor for the Rust target authority bundle pairing
     /// `rust_language` with its `CleanEmissionContract`.
     pub fn rust_target_syntax_bundle(&self) -> Option<TargetSyntaxBundle> {
+        let language_spec = self.target_syntax.rust_language?;
         Some(TargetSyntaxBundle {
-            language_spec: self.target_syntax.rust_language?,
-            clean_emission_spec: self.target_syntax.rust_clean_emission?,
+            language_spec,
+            clean_emission_spec: *self
+                .target_syntax
+                .clean_emission_by_language
+                .get(&language_spec)?,
         })
     }
 
@@ -2325,9 +2335,13 @@ impl Dag {
     /// Typed accessor for the Go target authority bundle pairing
     /// `go_language` with its `CleanEmissionContract`.
     pub fn go_target_syntax_bundle(&self) -> Option<TargetSyntaxBundle> {
+        let language_spec = self.target_syntax.go_language?;
         Some(TargetSyntaxBundle {
-            language_spec: self.target_syntax.go_language?,
-            clean_emission_spec: self.target_syntax.go_clean_emission?,
+            language_spec,
+            clean_emission_spec: *self
+                .target_syntax
+                .clean_emission_by_language
+                .get(&language_spec)?,
         })
     }
 
@@ -2355,9 +2369,13 @@ impl Dag {
     /// Typed accessor for the Python target authority bundle pairing
     /// `python_language` with its `CleanEmissionContract`.
     pub fn python_target_syntax_bundle(&self) -> Option<TargetSyntaxBundle> {
+        let language_spec = self.target_syntax.python_language?;
         Some(TargetSyntaxBundle {
-            language_spec: self.target_syntax.python_language?,
-            clean_emission_spec: self.target_syntax.python_clean_emission?,
+            language_spec,
+            clean_emission_spec: *self
+                .target_syntax
+                .clean_emission_by_language
+                .get(&language_spec)?,
         })
     }
 
@@ -2371,11 +2389,10 @@ impl Dag {
         &self,
         language_spec: DeclarationId,
     ) -> Option<TargetSyntaxBundle> {
-        self.rust_target_syntax_bundle()
-            .into_iter()
-            .chain(self.go_target_syntax_bundle())
-            .chain(self.python_target_syntax_bundle())
-            .find(|bundle| bundle.language_spec == language_spec)
+        Some(TargetSyntaxBundle {
+            language_spec,
+            clean_emission_spec: *self.target_syntax.clean_emission_by_language.get(&language_spec)?,
+        })
     }
 
     /// Shared clean-emission lookup keyed by the target's
@@ -2831,6 +2848,27 @@ impl Dag {
         self.target_syntax.python_clean_emission = self
             .declaration_by_name("python_clean_emission")
             .map(|d| d.id);
+        self.target_syntax.clean_emission_by_language.clear();
+        if let Some(binding_meta) = self
+            .declaration_by_name("TargetCleanEmissionBinding")
+            .map(|d| d.id)
+        {
+            for declaration in &self.declarations {
+                if declaration.meta_tag != Some(binding_meta) {
+                    continue;
+                }
+                let Some(ValueBody::Structural { fields }) = declaration.value_body.as_ref() else {
+                    continue;
+                };
+                let language = binding_reference_field(fields, "language");
+                let clean_emission = binding_reference_field(fields, "clean_emission");
+                if let (Some(language), Some(clean_emission)) = (language, clean_emission) {
+                    self.target_syntax
+                        .clean_emission_by_language
+                        .insert(language, clean_emission);
+                }
+            }
+        }
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
 
         // `PatternBindingRule` variant resolution. Walks the
@@ -2974,4 +3012,19 @@ impl Default for Dag {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn binding_reference_field(
+    fields: &[(String, FieldValue)],
+    label: &str,
+) -> Option<DeclarationId> {
+    fields.iter().find_map(|(field_label, value)| {
+        if field_label != label {
+            return None;
+        }
+        match value {
+            FieldValue::Reference(id) => Some(*id),
+            _ => None,
+        }
+    })
 }

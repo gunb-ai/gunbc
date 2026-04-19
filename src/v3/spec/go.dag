@@ -17,6 +17,7 @@ import v3.std.computation_model {
 }
 import v3.std.clean_emission {
   CleanEmissionContract,
+  TargetCleanEmissionBinding,
   ExpressionWrappingRule, WrapOnlyInOperandPosition,
   PatternBindingRule, EmitUnderscoreWhenUnused,
   ImportRule, IncludeOnlyReferenced,
@@ -958,4 +959,9 @@ data go_clean_emission: CleanEmissionContract = {
     expected_exit_code: 0
     output_policy: RequireEmptyStdout
   }
+}
+
+data go_clean_emission_binding: TargetCleanEmissionBinding = {
+  language: go_language
+  clean_emission: go_clean_emission
 }
