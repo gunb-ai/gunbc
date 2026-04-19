@@ -16,7 +16,7 @@ DB-18 locks `WorkflowEffect::ParallelEffect { branches: NonSingletonList<Workflo
 
 **Output shape:** `WorkflowParallelismReport = ParallelCompositionVerdict(CompositionVerdict) | ParallelismUnsupported(ParallelismUnsupportedDetail)` where `ParallelismUnsupportedDetail` carries a typed `ParallelismUnsupportedKind` (not Stage 2b’s `IdempotencyUnsupportedDetail`, which names an unsupported *workflow* variant). The **algebra verdict** stays `CompositionVerdict` only (PR #529 / DB-18 constraint — no parallel verdict carrier). Unsupported paths stay explicit and fail-closed (C-8), including “pairwise non-commute” and “non-`ParallelEffect` root.”
 
-**Scope v1:** `ParallelEffect` whose **every branch is `LinearEffect`** (each branch is a non-empty list of `OperationEffect`). Nested `ParallelEffect` / `BranchEffect` / `LoopEffect` as direct parallel children return `ParallelismUnsupported` with a reason — not a silent `None`.
+**Scope v1:** `ParallelEffect` whose **every branch is `LinearEffect`** (each branch’s `ops` is DB-18’s `List<OperationEffect>` — the shipped carrier still allows **empty** `ops`; Stage 2e does not tighten that yet). Nested `ParallelEffect` / `BranchEffect` / `LoopEffect` as direct parallel children return `ParallelismUnsupported` with a reason — not a silent `None`.
 
 ---
 
