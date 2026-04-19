@@ -11,6 +11,8 @@ use v3_compiler::dag::{Behavior, Dag, PortState, TransformTarget};
 use v3_compiler::lens_cost::cost_of;
 
 mod common;
+
+use common::cached_compile_to_dag;
 use v3_compiler::types::TypeShape;
 use v3_compiler::{CompileError, Diagnostic};
 
@@ -58,7 +60,7 @@ fn t1_1_field_rename_propagates_to_lowered_field_projection() {
 type Box<T> { renamed: T }
 fn read(boxed: Box<Int>) -> Int = boxed.renamed
 ";
-    let dag = compile_to_dag(src, "t1_1_field_rename.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "t1_1_field_rename.v3");
     let bind = bind_named(&dag, "read");
 
     let projection = match dag.node(
@@ -148,7 +150,7 @@ fn t1_3_exhaustive_match_compiles_cleanly() {
 type AB = A | B
 fn read(x: AB) -> Int = match x { A => 1, B => 2 }
 ";
-    let dag = compile_to_dag(src, "t1_3_exhaustive.v3").expect("exhaustive match compiles");
+    let dag = cached_compile_to_dag(src, "t1_3_exhaustive.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "no diagnostics expected for exhaustive match, got {:?}",
@@ -204,7 +206,7 @@ fn t1_5_numeric_descent_is_accepted() {
 fn countdown(n: Int) -> Int =
   if n == 0 then 0 else countdown(n - 1)
 ";
-    let dag = compile_to_dag(src, "t1_5_numeric_descent.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "t1_5_numeric_descent.v3");
     let bind = bind_named(&dag, "countdown");
 
     assert!(
@@ -226,7 +228,7 @@ fn t1_5_structural_list_descent_is_accepted() {
 fn count(list: List<Int>) -> Int =
   match list { Empty => 0, Cons(p) => 1 + count(p.tail) }
 ";
-    compile_to_dag(src, "t1_5_list_descent.v3").expect("list descent compiles");
+    cached_compile_to_dag(src, "t1_5_list_descent.v3");
 }
 
 #[test]
@@ -260,7 +262,7 @@ fn t2_4_option_like_values_require_a_match() {
 type Maybe<T> = Some(T) | None
 fn unwrap_or_zero(m: Maybe<Int>) -> Int = match m { Some(value) => value, None => 0 }
 ";
-    compile_to_dag(src, "t2_4_match_required.v3").expect("Option-like match compiles");
+    cached_compile_to_dag(src, "t2_4_match_required.v3");
 }
 
 #[test]
@@ -319,7 +321,7 @@ fn kf_5_bounded_fold_compiles_on_supported_primitives() {
     let src = "\
 let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)
 ";
-    compile_to_dag(src, "kf_5_fold.v3").expect("bounded fold compiles");
+    cached_compile_to_dag(src, "kf_5_fold.v3");
 }
 
 #[test]

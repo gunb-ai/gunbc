@@ -3,6 +3,9 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+mod common;
+
+use common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit_go::{emit_go, emit_go_module};
 use v3_compiler::emit_rust::emit_rust;
@@ -30,7 +33,7 @@ fn next_roundtrip_dir() -> PathBuf {
 }
 
 fn rust_stdout(source: &str) -> String {
-    let dag = compile_to_dag(source, "parity.v3").expect("compiles");
+    let dag = cached_compile_to_dag(source, "parity.v3");
     let rendered = emit_rust(&dag).expect("emits rust");
     let tmp_dir = next_roundtrip_dir();
     std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
@@ -70,7 +73,7 @@ fn go_stdout(source: &str) -> Option<String> {
         return None;
     }
 
-    let dag = compile_to_dag(source, "parity.v3").expect("compiles");
+    let dag = cached_compile_to_dag(source, "parity.v3");
     let rendered = emit_go(&dag).expect("emits go");
     let tmp_dir = next_roundtrip_dir();
     std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
@@ -149,7 +152,7 @@ type BoxedInt = Boxed(Int) | Empty
 fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(value) => 0, Empty => 1 }
 let zero: Int = 0
 ";
-    let dag = compile_to_dag(source, "clean_emission.v3").expect("compiles");
+    let dag = cached_compile_to_dag(source, "clean_emission.v3");
     let rendered = emit_go(&dag).expect("emits go");
     assert!(
         !rendered.contains("value := v._0"),
@@ -185,7 +188,7 @@ type BoxedInt = Boxed(Int) | Empty
 fn unwrap_or_zero(b: BoxedInt) -> Int = match b { Boxed(value) => value, Empty => 0 }
 let zero: Int = 0
 ";
-    let dag = compile_to_dag(source, "clean_emission.v3").expect("compiles");
+    let dag = cached_compile_to_dag(source, "clean_emission.v3");
     let rendered = emit_go(&dag).expect("emits go");
     assert!(
         rendered.contains("case Boxed: return v._0"),
@@ -205,7 +208,7 @@ type Wrapped = Wrap { inner: Point } | Empty
 fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap(payload) => payload.inner.x, Empty => 0 }
 let zero: Int = 0
 ";
-    let dag = compile_to_dag(source, "variant_payload_named_single.v3").expect("compiles");
+    let dag = cached_compile_to_dag(source, "variant_payload_named_single.v3");
     let rendered = emit_go(&dag).expect("emits go");
     assert!(
         rendered.contains("case Wrap: return ((v).inner).x"),
@@ -274,7 +277,7 @@ type BoxedInt = Boxed(Int) | Empty
 fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(value) => 0, Empty => 1 }
 let result: Int = ignore_payload(Empty)
 ";
-    let dag = compile_to_dag(source, "go_post_emit_verifier.v3").expect("source compiles");
+    let dag = cached_compile_to_dag(source, "go_post_emit_verifier.v3");
     let spec = dag
         .go_clean_emission_spec()
         .expect("go_clean_emission cached");

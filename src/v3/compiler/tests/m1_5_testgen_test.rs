@@ -1,4 +1,3 @@
-use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective,
     ValueBody,
@@ -6,15 +5,12 @@ use v3_compiler::dag::{
 use v3_compiler::lens_cost::cost_of;
 
 mod common;
+use common::cached_compile_any;
 use v3_compiler::lens_testgen::{GeneratedClaim, TestgenLens};
-use v3_compiler::{CompileError, Diagnostic};
+use v3_compiler::Diagnostic;
 
 fn compile_any(src: &str, file: &str) -> Dag {
-    match compile_to_dag(src, file) {
-        Ok(dag) => dag,
-        Err(CompileError::Semantic(dag)) => dag,
-        Err(other) => panic!("unexpected structural error: {other:?}"),
-    }
+    cached_compile_any(src, file)
 }
 
 fn generated_claim_decl<'a>(dag: &'a Dag, name: &str) -> &'a Declaration {
@@ -192,16 +188,16 @@ fn predicate_holds(
 ) -> bool {
     let (label, payload) = variant_value(expectation_dag, predicate);
     match label.as_str() {
-        "Compiles" => compile_to_dag(source, file_name).is_ok(),
+        "Compiles" => cached_compile_any(source, file_name).diagnostics().is_empty(),
         "FailsWithDiagnostic" => {
             let [reference] = payload else {
                 panic!("FailsWithDiagnostic payload should be a single DiagnosticReference");
             };
-            match compile_to_dag(source, file_name) {
-                Err(CompileError::Semantic(dag)) => {
-                    diagnostic_matches(expectation_dag, &dag, reference)
-                }
-                _ => false,
+            let dag = cached_compile_any(source, file_name);
+            if dag.diagnostics().is_empty() {
+                false
+            } else {
+                diagnostic_matches(expectation_dag, &dag, reference)
             }
         }
         "PortHasState" => {

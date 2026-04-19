@@ -4,7 +4,7 @@
 // never touch `HarnessLinkMode::Standalone`). Suppress dead-code
 // warnings per-binary rather than carry a separate "which features
 // does this binary use" declaration.
-#![allow(dead_code)]
+#![allow(dead_code, unused_imports)]
 
 //! Shared test harness for rustc-roundtrip integration tests.
 //!
@@ -24,6 +24,9 @@
 //! benefit from leaving artifacts visible.
 
 pub mod budgeted;
+pub mod cached_compile;
+
+pub use cached_compile::{cached_compile_any, cached_compile_to_dag};
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

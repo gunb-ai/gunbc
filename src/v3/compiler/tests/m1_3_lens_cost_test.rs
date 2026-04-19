@@ -12,6 +12,8 @@ use v3_compiler::lens_cost::cost_of;
 
 mod common;
 
+
+use common::cached_compile_to_dag;
 fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
     dag.nodes()
         .iter()
@@ -33,7 +35,7 @@ fn bind_cost(dag: &v3_compiler::dag::Dag, name: &str) -> usize {
 fn cost_lens_literal_value_is_zero() {
     // `let x = 1`
     //   Value(1) is a leaf — zero work.
-    let dag = compile_to_dag("let x = 1", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let x = 1", "test.v3");
     assert_eq!(expect_cost(&dag, find_bind_value(&dag, "x")), 0);
 }
 
@@ -42,7 +44,7 @@ fn cost_lens_single_transform_is_one() {
     // `let x = 1 + 2`
     //   Value(1) cost 0, Value(2) cost 0
     //   Add cost = 1 + (0 + 0) = 1
-    let dag = compile_to_dag("let x = 1 + 2", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let x = 1 + 2", "test.v3");
     assert_eq!(expect_cost(&dag, find_bind_value(&dag, "x")), 1);
 }
 
@@ -52,7 +54,7 @@ fn cost_lens_chained_transform_is_two() {
     //   left-associative: ((1 + 2) + 3)
     //   inner Add cost 1, Value(3) cost 0
     //   outer Add cost = 1 + (1 + 0) = 2
-    let dag = compile_to_dag("let x = 1 + 2 + 3", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let x = 1 + 2 + 3", "test.v3");
     assert_eq!(expect_cost(&dag, find_bind_value(&dag, "x")), 2);
 }
 
@@ -63,7 +65,7 @@ fn cost_lens_branch_counts_condition_plus_max_path() {
     //   then:      Value(10), cost 0
     //   else:      Value(20), cost 0
     //   Branch cost = 1 + cond + max(paths) = 1 + 1 + 0 = 2
-    let dag = compile_to_dag("let r = if 1 > 0 then 10 else 20", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let r = if 1 > 0 then 10 else 20", "test.v3");
     assert_eq!(expect_cost(&dag, find_bind_value(&dag, "r")), 2);
 }
 
@@ -92,7 +94,7 @@ fn cost_lens_bind_passes_through_to_value() {
     //   cost_of takes the PortId, so we never see a Bind produce it
     //   (Bind's value field IS the underlying port). A passthrough
     //   test verifies this: bind_y cost equals direct Add cost.
-    let dag = compile_to_dag("let y = 1 + 2", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let y = 1 + 2", "test.v3");
     assert_eq!(expect_cost(&dag, find_bind_value(&dag, "y")), 1);
 }
 
@@ -230,7 +232,7 @@ fn kf_1_lambda_body_cost_contributes_to_fold() {
 #[test]
 fn kf_1_list_operation_cost_ordering() {
     let singleton =
-        compile_to_dag("let xs = singleton(1)", "kf_1_singleton.v3").expect("singleton compiles");
+        cached_compile_to_dag("let xs = singleton(1)", "kf_1_singleton.v3");
     let cons =
         compile_to_dag("let xs = cons(1, singleton(2))", "kf_1_cons.v3").expect("cons compiles");
     let fold = compile_to_dag(
