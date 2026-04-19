@@ -270,6 +270,7 @@ impl PythonIndexes {
             } else {
                 let target = require_field_decl_ref(fields, "target", decl.id)?;
                 let binding = parse_pattern_realization(dag, fields, decl.id)?;
+                validate_pattern_roles(dag, target, &binding, decl.id)?;
                 if patterns.insert(target, binding).is_some() {
                     return Err(EmitPythonError::DuplicateRealization {
                         declaration: decl.id,
@@ -1569,6 +1570,51 @@ fn parse_callable_strategy(
         declaration,
         detail: "unsupported CallableStrategy variant",
     })
+}
+
+/// Structural boundary check for `PatternRealization.empty_variant` /
+/// `cons_variant`. Mirrors `rust_target::validate_pattern_roles` — see
+/// that comment for rationale. Rejects spec data where the typed
+/// `DeclarationRef`s point outside `target`'s variants.
+fn validate_pattern_roles(
+    dag: &Dag,
+    target: DeclarationId,
+    binding: &PatternRealizationBinding,
+    declaration: DeclarationId,
+) -> Result<(), EmitPythonError> {
+    let disj_id = walk_to_disj(dag, target).ok_or(EmitPythonError::MalformedSpec {
+        declaration,
+        detail:
+            "PatternRealization.target must resolve to a Disj — empty_variant / cons_variant have no target to range over otherwise",
+    })?;
+    let TypeConnective::Disj { variants } = &dag.declaration(disj_id).connective else {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "walk_to_disj returned a non-Disj declaration (internal invariant violation)",
+        });
+    };
+    if !variants.iter().any(|v| v.ty == binding.empty_variant) {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail:
+                "PatternRealization.empty_variant must be a variant of `target` — structural boundary check rejects unrelated DeclarationRefs",
+        });
+    }
+    if !variants.iter().any(|v| v.ty == binding.cons_variant) {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail:
+                "PatternRealization.cons_variant must be a variant of `target` — structural boundary check rejects unrelated DeclarationRefs",
+        });
+    }
+    if binding.empty_variant == binding.cons_variant {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail:
+                "PatternRealization.empty_variant and cons_variant must be distinct variants of `target`",
+        });
+    }
+    Ok(())
 }
 
 fn parse_pattern_realization(

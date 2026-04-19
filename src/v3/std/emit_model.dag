@@ -118,6 +118,19 @@ type CallableStrategy
 // variants (e.g., `List.Empty` / `List.Cons`) — dotted-path lowering walks
 // Disj variants to resolve them. Moving role identity into spec data is the
 // single-authority handoff: emitters no longer match variant labels by string.
+//
+// **Shape constraint not expressible in substrate grammar:** a bare
+// `DeclarationRef` admits any declaration, so the type alone does not reject
+// `empty_variant: Int` under `target: List`. The constraint "must be a
+// variant of `target`'s Disj" is enforced at the emitter-binding parse
+// boundary — `validate_pattern_roles` in each of `emit/rust_target.rs`,
+// `emit/python_target.rs`, and `emit.rs` rejects role refs that are not
+// variants of `target`, not distinct from each other, or where `target`
+// itself does not resolve to a Disj. Fail-closed: malformed spec surfaces
+// `MalformedRealization` at load time, not silent wrong output at render
+// time. The terminal resting place is a substrate where variant-of-sum can
+// be expressed structurally (refined `DeclarationRef<VariantOf<T>>`, or
+// similar), which dissolves the boundary check into a type-level fact.
 type PatternRealization {
   language: DeclarationRef
   target: DeclarationRef
