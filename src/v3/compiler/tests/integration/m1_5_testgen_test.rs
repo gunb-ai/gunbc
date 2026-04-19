@@ -130,28 +130,20 @@ fn diagnostic_detail_expectation(dag: &Dag, value: Option<&str>) -> FieldValue {
     }
 }
 
-fn compile_generated_claim_batch(claims: &[&GeneratedClaim<'_>], file_name: &str) -> Dag {
-    let source = claims
-        .iter()
-        .map(|claim| claim.render_declaration_source())
-        .collect::<Vec<_>>()
-        .join("\n");
-    let dag = compile_any(&source, file_name);
+fn compiled_generated_claim(claim: &GeneratedClaim<'_>) -> Dag {
+    let dag = compile_any(
+        &claim.render_declaration_source(),
+        "generated_test_claim.dag",
+    );
     assert!(
         dag.diagnostics().is_empty(),
-        "generated claim declarations should compile cleanly, got {:?}",
+        "generated claim declaration should compile cleanly, got {:?}",
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
-    dag
-}
-
-fn assert_compiled_generated_claim_matches(compiled_dag: &Dag, claim: &GeneratedClaim<'_>) {
-    let decl = generated_claim_decl(compiled_dag, claim.declaration_name());
+    let decl = generated_claim_decl(&dag, claim.declaration_name());
     assert_eq!(
         decl.meta_tag,
-        compiled_dag
-            .declaration_by_name("TestClaim")
-            .map(|decl| decl.id),
+        dag.declaration_by_name("TestClaim").map(|decl| decl.id),
         "generated data declaration should be typed as TestClaim"
     );
     let compiled_fields = structural_fields(decl);
@@ -165,23 +157,26 @@ fn assert_compiled_generated_claim_matches(compiled_dag: &Dag, claim: &Generated
         string_field(claim.fields(), "file_name")
     );
     assert_eq!(
-        variant_field(compiled_dag, compiled_fields, "predicate").0,
+        variant_field(&dag, compiled_fields, "predicate").0,
         variant_field(claim.dag(), claim.fields(), "predicate").0
     );
-}
-
-fn generated_claim_named<'a, 'b>(
-    claims: &'b [GeneratedClaim<'a>],
-    name: &str,
-) -> &'b GeneratedClaim<'a> {
-    claims
-        .iter()
-        .find(|claim| claim_name(claim) == name)
-        .unwrap_or_else(|| panic!("generated claim `{name}` not found"))
+    dag
 }
 
 fn claim_name(claim: &GeneratedClaim<'_>) -> String {
     string_field(claim.fields(), "name")
+}
+
+fn claim_holds(claim: &GeneratedClaim<'_>) -> bool {
+    let source = string_field(claim.fields(), "source");
+    let file_name = string_field(claim.fields(), "file_name");
+    let predicate = claim
+        .fields()
+        .iter()
+        .find(|(label, _)| label == "predicate")
+        .map(|(_, value)| value)
+        .unwrap_or_else(|| panic!("generated claim is missing `predicate`"));
+    predicate_holds(claim.dag(), &source, &file_name, predicate)
 }
 
 fn predicate_holds(
@@ -408,12 +403,25 @@ fn cost_bounded_predicate(dag: &Dag, bind_name: &str, comparator: &str, bound: i
     )
 }
 
-// Querying the full bootstrapped stdlib through `TestgenLens` still costs too
-// much for the required PR gate. Keep one representative round-trip for manual
-// runs instead of the earlier exhaustive sweep.
+fn executable_today(claim: &GeneratedClaim<'_>) -> bool {
+    let (predicate, payload) = variant_field(claim.dag(), claim.fields(), "predicate");
+    if predicate != "FailsWithDiagnostic" {
+        return true;
+    }
+    let [reference] = payload else {
+        panic!("FailsWithDiagnostic payload should be a single DiagnosticReference");
+    };
+    let kind = record_value(reference)
+        .iter()
+        .find(|(label, _)| label == "kind")
+        .map(|(_, value)| value)
+        .unwrap_or_else(|| panic!("DiagnosticReference is missing `kind`"));
+    variant_value(claim.dag(), kind).0 != "TypeMismatch"
+}
+
 #[test]
-#[ignore = "representative testgen query spot-check; still too expensive for required PR CI"]
-fn representative_generated_claims_round_trip_as_structural_testclaim_values() {
+#[ignore = "slow exhaustive testgen sweep; excluded from required PR CI wall-clock gate"]
+fn testgen_lens_emits_claims_as_structural_testclaim_values() {
     let dag = Dag::new();
     assert!(
         dag.diagnostics().is_empty(),
@@ -422,35 +430,77 @@ fn representative_generated_claims_round_trip_as_structural_testclaim_values() {
     );
 
     let claims = TestgenLens::new(&dag).query();
-    let representative_claims = [
-        generated_claim_named(&claims, "TestClaim compiles"),
-        generated_claim_named(&claims, "TestClaim witness resolves"),
-        generated_claim_named(&claims, "TestClaim witness has bounded cost"),
-        generated_claim_named(&claims, "List<Int> requires exhaustive match"),
-        generated_claim_named(&claims, "TestClaim rejects field type mismatch"),
-    ];
+    for claim in &claims {
+        compiled_generated_claim(claim);
+    }
+    let claim_names: Vec<_> = claims.iter().map(claim_name).collect();
+    assert!(
+        claim_names
+            .iter()
+            .any(|name| name == "TestPredicate variant Compiles compiles"),
+        "expected a compile claim for TestPredicate::Compiles, got {:?}",
+        claim_names
+    );
+    assert!(
+        claim_names.iter().any(|name| name == "TestClaim compiles"),
+        "expected a compile claim for TestClaim"
+    );
+    assert!(
+        claim_names
+            .iter()
+            .any(|name| name == "List<Int> variant Empty compiles"),
+        "expected a compile claim for List<Int>::Empty"
+    );
+    assert!(
+        claim_names
+            .iter()
+            .any(|name| name == "List<Int> requires exhaustive match"),
+        "expected a non-exhaustive-match claim for List<Int>"
+    );
+    assert!(
+        claim_names
+            .iter()
+            .any(|name| name == "TestClaim witness resolves"),
+        "expected a port-state claim for TestClaim witnesses, got {:?}",
+        claim_names
+    );
+    assert!(
+        claim_names
+            .iter()
+            .any(|name| name == "TestClaim witness has bounded cost"),
+        "expected a cost-bounded claim for TestClaim witnesses, got {:?}",
+        claim_names
+    );
+    assert!(
+        claim_names
+            .iter()
+            .any(|name| name == "TestClaim rejects field type mismatch"),
+        "expected a field-type-mismatch claim for TestClaim"
+    );
+    assert!(
+        claim_names
+            .iter()
+            .any(|name| name == "TestClaim mismatched witness stays unresolved"),
+        "expected an unresolved port-state claim for TestClaim mismatches, got {:?}",
+        claim_names
+    );
+}
 
-    for (claim, predicate_kind) in [
-        (representative_claims[0], "Compiles"),
-        (representative_claims[1], "PortHasState"),
-        (representative_claims[2], "CostBounded"),
-        (representative_claims[3], "FailsWithDiagnostic"),
-        (representative_claims[4], "FailsWithDiagnostic"),
-    ] {
-        assert_eq!(
-            variant_field(claim.dag(), claim.fields(), "predicate").0,
-            predicate_kind,
-            "representative claim `{}` should lower to `{predicate_kind}`",
+#[test]
+#[ignore = "slow exhaustive testgen sweep; excluded from required PR CI wall-clock gate"]
+fn testgen_generated_claims_execute_against_compile_boundary() {
+    let dag = Dag::new();
+    let claims = TestgenLens::new(&dag).query();
+    assert!(
+        !claims.is_empty(),
+        "testgen lens should emit at least one claim against the bootstrapped stdlib"
+    );
+    for claim in claims.iter().filter(|claim| executable_today(claim)) {
+        assert!(
+            claim_holds(claim),
+            "generated claim should hold: name={}",
             claim_name(claim)
         );
-    }
-
-    let compiled = compile_generated_claim_batch(
-        &representative_claims,
-        "representative_generated_claims_batch.dag",
-    );
-    for claim in representative_claims {
-        assert_compiled_generated_claim_matches(&compiled, claim);
     }
 }
 
