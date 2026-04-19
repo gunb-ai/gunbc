@@ -404,6 +404,9 @@ fn example_source_for_decl_inner(
     if depth >= 8 {
         return None;
     }
+    if dag.declaration(declaration).refinement.is_some() {
+        return None;
+    }
     if let Some(example) = builtin_example_source(dag, declaration, depth) {
         return Some(example);
     }
@@ -495,6 +498,9 @@ fn decl_matches_example_identity(
 }
 
 fn render_variant_witness(dag: &Dag, variant: &Field, depth: usize) -> Option<String> {
+    if dag.declaration(variant.ty).refinement.is_some() {
+        return None;
+    }
     let TypeConnective::Conj { children } = &dag.declaration(variant.ty).connective else {
         return None;
     };
@@ -698,6 +704,104 @@ mod tests {
             example_source_for_decl(&dag, list_instantiation).as_deref(),
             Some("[]")
         );
+    }
+
+    #[test]
+    fn example_source_for_decl_fails_closed_on_refined_record_children() {
+        let mut dag = Dag::new();
+        let int_decl = dag.int_shape().expect("int shape").declaration;
+        let bool_decl = dag.bool_shape().expect("bool shape").declaration;
+
+        let refined_child = dag.alloc_declaration_id();
+        dag.push_declaration(crate::dag::Declaration {
+            id: refined_child,
+            name: Some("BigInt".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(int_decl)),
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: Some(bool_decl),
+            span: SourceSpan::new("diagnostics_test.v3", 0, 1),
+        });
+
+        let record_decl = dag.alloc_declaration_id();
+        dag.push_declaration(crate::dag::Declaration {
+            id: record_decl,
+            name: Some("NeedsBig".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: refined_child,
+                }],
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("diagnostics_test.v3", 0, 1),
+        });
+
+        assert_eq!(example_source_for_decl(&dag, record_decl), None);
+    }
+
+    #[test]
+    fn example_source_for_decl_fails_closed_on_refined_sum_payloads() {
+        let mut dag = Dag::new();
+        let int_decl = dag.int_shape().expect("int shape").declaration;
+        let bool_decl = dag.bool_shape().expect("bool shape").declaration;
+
+        let refined_child = dag.alloc_declaration_id();
+        dag.push_declaration(crate::dag::Declaration {
+            id: refined_child,
+            name: Some("BigInt".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(int_decl)),
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: Some(bool_decl),
+            span: SourceSpan::new("diagnostics_test.v3", 0, 1),
+        });
+
+        let payload_decl = dag.alloc_declaration_id();
+        dag.push_declaration(crate::dag::Declaration {
+            id: payload_decl,
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: refined_child,
+                }],
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("diagnostics_test.v3", 0, 1),
+        });
+
+        let sum_decl = dag.alloc_declaration_id();
+        dag.push_declaration(crate::dag::Declaration {
+            id: sum_decl,
+            name: Some("MaybeBig".to_string()),
+            connective: TypeConnective::Disj {
+                variants: vec![Field {
+                    label: "Some".to_string(),
+                    ty: payload_decl,
+                }],
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("diagnostics_test.v3", 0, 1),
+        });
+
+        assert_eq!(example_source_for_decl(&dag, sum_decl), None);
     }
 
     #[test]
