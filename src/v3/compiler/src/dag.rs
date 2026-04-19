@@ -986,7 +986,7 @@ impl<T> ElementRef<T> {
         })
     }
 
-    pub fn get<'a>(self, values: &'a [T]) -> Option<&'a T> {
+    pub fn get(self, values: &[T]) -> Option<&T> {
         values.get(self.index)
     }
 }
@@ -1064,6 +1064,13 @@ impl<T> NonSingletonList<T> {
 
     pub fn len(&self) -> usize {
         2 + self.rest.len()
+    }
+
+    /// `NonSingletonList` always has at least two elements by construction;
+    /// this exists to satisfy clippy's `len_without_is_empty` lint and always
+    /// returns `false`.
+    pub fn is_empty(&self) -> bool {
+        false
     }
 
     pub fn to_vec(&self) -> Vec<T>
