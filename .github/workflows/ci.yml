@@ -103,7 +103,8 @@ jobs:
       # Layer 1 (coarse CI): wall-clock gates on `cargo test -p v3-compiler`.
       #
       # Full-suite wall-clock ratchet below is 1200s. Mainline timing on ubuntu-24.04
-      # reached ~951–953s after #548 (earlier green ~719s); cold runners, m1_5_testgen,
+      # reached ~951–953s after #548 (earlier green ~719s); warm local runs are often
+      # ~520–560s for `cargo test -p v3-compiler`. Cold runners, cache misses, m1_5_testgen,
       # and the DB-8 determinism matrix can push higher — observed ~1082s motivated cap >1050s.
       # Ratchet is coarse (catch suite-wide slowdown), not a tight perf SLA.
       # Regressions show up when integration tests redo full `compile_to_dag` per
