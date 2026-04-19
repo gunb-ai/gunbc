@@ -651,6 +651,29 @@ Cleared (prior PR #521): `DerivedOpEffect { method, path_template, shape }` coll
 
 **Stage 1e.0 closeout — pattern-role authority structural** → ✅ Structurally resolved for the live single-role state (`VectorList` only): list-pattern lowering does not dispatch on a host `PatternStrategy` enum in emitters — each `spec/{rust,go,python}.dag` `*_list_pattern` declares `strategy: VectorList` plus the template bundle; Rust/Go/Python emitters validate that tag fail-closed when indexing realizations and render from the loaded templates only (`src/v3/std/emit_model.dag` documents the split). When a second distinct lowering path ships, restore strategy on the emitter binding and branch in render (still fail-closed from spec rows), and extend `PatternStrategy` + `spec/*.dag` data — YAGNI until then.
 
+### Lane 1 Stage 1e tail — SG-7 emit cutover (active, SG-program owned)
+
+**Scope.** SG-7 is the SG-program lane that dissolves `src/v3/compiler/src/emit/rust_target.rs` (≈5.5K hand-authored lines) and `src/v3/compiler/src/emit/python_target.rs` (≈2K hand-authored lines) into spec-driven declarations in `src/v3/spec/{rust,python}.dag`, consumed by the shared `emit.rs` walker (already on main via Go's port). Per SG program rule, each migrated `.rs` file ends its diff either deleted, generated, or reduced to a narrow host shim — no dual-authority period. SG-7 IS the Rust/Python half of remaining Stage 1e walker-body dissolution; it is not a separate effort tracked in parallel.
+
+**Sub-lane labeling.** XL-XXL size makes single-PR landing unlikely; ship partial with explicit sub-lane labels:
+
+- **SG-7.1 — `emit/rust_target.rs` cutover.** Active sub-lane.
+- **SG-7.2 — `emit/python_target.rs` cutover.** Sequenced after SG-7.1 settles (smaller surface, post-Python Stage 1e.0 bridge clear).
+
+Each sub-PR must reduce handwritten-Rust line count in `src/v3/compiler/src/emit/` net-down vs. its base.
+
+**Coordination (recorded per director clarification).** SG-program (`clever-swift` manager) owns Stage 1e Rust/Python walker-body dissolution via SG-7 — not the Features manager. `warm-wren` focuses on Stage 3b parse/apply tail and feature work, NOT `emit/*_target.rs`. Overlap on these files while SG-7 is in flight is a coordination failure to escalate to director, not resolve in-PR.
+
+**Dependencies.**
+
+- **SG-0 ratchet soundness (in flight, #559)** — affects trust in the handwritten-Rust census but does NOT block authoring or merging SG-7 sub-PRs. The census can back-fill verification once it lands.
+- **Stage 1e Rust dissolution** — not a separate prerequisite; it IS SG-7's scope.
+- **Pre-existing on main, not blockers:** `emit.rs` shared walker (#542 + #547) and `spec/rust.dag` / `spec/python.dag` carriers (active Stage 1e work).
+
+**Explicit non-goal.** **Do not** ship a PR whose only handwritten-Rust reduction is porting the 23-line target facades (`emit_rust.rs`, `emit_python.rs`, `emit_go.rs`). They carry zero target heuristic authority; deleting them alone moves the SG-0 census without moving the thesis acceptance ("all target behavior is spec-driven, no per-target heuristic authority remains in handwritten Rust"). SG-7's cutover is the walker, not the facade.
+
+**Cross-references:** `docs/emit-bridges.md` (bridge inventory), `docs/phase1-lane3-consolidation-build-plan.md` §"Wrapper exception receipt," `src/v3/SELF_HOSTING.md` §3 (Stage 1 emit.dag design note).
+
 ### Cross-cutting — performance
 
 **Deferral: self-compile perf ratchet investigation (M, not on any critical path but compounding).** Self-compile time drifted from ~60s to ~70s in recent cycles (~16% growth). The ratchet keeps getting bumped without a root-cause investigation; each bump normalizes the regression. Scope: (1) profile a single `cargo test -p v3-compiler-tests` run, identify the top hot paths; (2) measure where the 10s came from across recent PRs (bisect across #479, #489, #490 if signal is unclear); (3) either fix the regression or document it as an accepted cost with a new ratchet ceiling. **Yellow-flag threshold: 90s.** If self-compile exceeds that before this deferral is scheduled, it preempts other work. No design doc needed; profiling is a data-gathering exercise.
