@@ -99,7 +99,6 @@ data stage0: GeneratedCrate = {
     "post_emit_verifier.rs",
     "serialize.rs",
     "tokenize.rs",
-    "types.rs",
     "variant_payload.rs",
     "workflow_idempotency.rs",
     "workflow_parallelism.rs"
