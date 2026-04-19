@@ -515,8 +515,8 @@ pub struct TemplateArgument {
 ///
 /// Scaffold variants with their dissolution triggers:
 ///
-/// - **`Pending`** — "body to come, transient." One production site
-///   writes Pending today:
+/// - **`Pending`** — "body to come, transient." Two production sites
+///   write Pending today, both transient:
 ///
 ///   1. **Executable-fn seeding (declarations).** `seed_function_signature`
 ///      writes `Pending` for `fn foo(x) -> T = body` declarations as
@@ -527,6 +527,16 @@ pub struct TemplateArgument {
 ///      final `Arrow(Pending)` surviving into the Dag is
 ///      structurally equivalent to "body lowering missed a path,"
 ///      which is exactly what `lens_structural_resolution` detects.
+///
+///   2. **Operator fallback bridge (transient `ResolvedArrow`).**
+///      `infer::resolve_operator_arrow` falls back to a synthetic
+///      `(T, T) -> T` / `(T, T) -> Bool` signature with `body:
+///      Pending` when the structural algebra walk can't find an
+///      algebra Conj (Bool, collection-level algebras — class-5
+///      gaps #1 and #2 in DOWNSTREAM_REQUIREMENTS.md). This shape
+///      lives in inference-only `ResolvedArrow` values, never in
+///      `Dag.declarations`, so the lens cannot see it. Dissolves
+///      when those class-5 gaps close.
 ///
 ///   **History.** Earlier rounds wrote Pending at four additional
 ///   sites (anonymous nested Arrow type expressions, type-alias
@@ -610,7 +620,7 @@ pub enum ArrowBody {
     /// inference verifies signature compatibility.
     ExternalRealization(DeclarationId),
     /// Transient "body to come." Signature type-checks via inhabitance;
-    /// body-walking is skipped. One production site writes `Pending`:
+    /// body-walking is skipped. Two production sites write `Pending`:
     ///
     /// 1. `seed_function_signature` for `fn foo(x) -> T = body`
     ///    declarations — the initial substrate state before
@@ -618,6 +628,9 @@ pub enum ArrowBody {
     ///    A final `Arrow(Pending)` surviving into the Dag is
     ///    structurally a missed body-patching path: the R13-class
     ///    regression `lens_structural_resolution` watches for.
+    /// 2. `infer::resolve_operator_arrow` for transient `ResolvedArrow`
+    ///    fallback signatures (class-5 gap; never stored in
+    ///    `Dag.declarations`, so the lens cannot see them).
     ///
     /// All "no body by construction" sites that earlier wrote `Pending`
     /// (anonymous nested Arrows, type aliases, data items, variant
@@ -1322,10 +1335,10 @@ pub enum SymbolicCost {
         degree: DegreeAtLeastTwo,
     },
     ProductCost {
-        _0: NonSingletonList<SymbolicCost>,
+        _0: Box<NonSingletonList<SymbolicCost>>,
     },
     SumCost {
-        _0: NonSingletonList<SymbolicCost>,
+        _0: Box<NonSingletonList<SymbolicCost>>,
     },
     LogCost {
         _0: SizeVariable,
@@ -1371,21 +1384,21 @@ pub struct SizeVariable {
 
 pub fn sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
     normalize(SymbolicCost::SumCost {
-        _0: NonSingletonList {
+        _0: Box::new(NonSingletonList {
             first: a,
             second: b,
             rest: Vec::new(),
-        },
+        }),
     })
 }
 
 pub fn iterate(bound: SymbolicCost, body: SymbolicCost) -> SymbolicCost {
     normalize(SymbolicCost::ProductCost {
-        _0: NonSingletonList {
+        _0: Box::new(NonSingletonList {
             first: bound,
             second: body,
             rest: Vec::new(),
-        },
+        }),
     })
 }
 
@@ -1433,7 +1446,7 @@ fn reduce_sum(mut terms: Vec<SymbolicCost>) -> SymbolicCost {
         0 => SymbolicCost::ConstantCost { _0: 0 },
         1 => terms.into_iter().next().unwrap(),
         _ => SymbolicCost::SumCost {
-            _0: NonSingletonList::from_vec(terms).unwrap(),
+            _0: Box::new(NonSingletonList::from_vec(terms).unwrap()),
         },
     }
 }
@@ -1449,7 +1462,7 @@ fn reduce_product(terms: Vec<SymbolicCost>) -> SymbolicCost {
             combine_binary_product(a, b)
         }
         _ => SymbolicCost::ProductCost {
-            _0: NonSingletonList::from_vec(terms).unwrap(),
+            _0: Box::new(NonSingletonList::from_vec(terms).unwrap()),
         },
     }
 }
@@ -1464,11 +1477,11 @@ fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
         }
     }
     SymbolicCost::ProductCost {
-        _0: NonSingletonList {
+        _0: Box::new(NonSingletonList {
             first: a,
             second: b,
             rest: Vec::new(),
-        },
+        }),
     }
 }
 

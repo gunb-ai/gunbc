@@ -947,13 +947,14 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
         }
         ArrowBody::Pending | ArrowBody::NoBody => {
             // Both shapes mean "no executable body to walk."
-            // `Pending` is reserved for executable-fn declarations
-            // whose body still must be patched in; `NoBody` is the
+            // `Pending` is the remaining transient scaffold
+            // (`seed_function_signature` during lowering plus the
+            // inference-only operator fallback); `NoBody` is the
             // terminal "no body by construction" form used by arrow
-            // types, synthesized signatures, and other non-executable
-            // carriers. `decide_transform` treats them identically:
-            // signature inhabitance accepts; body walking is skipped.
-            // The variant distinction exists so
+            // types and other non-executable carriers.
+            // `decide_transform` treats them identically: signature
+            // inhabitance accepts; body walking is skipped. The
+            // variant distinction exists so
             // `lens_structural_resolution` can treat any surviving
             // `Arrow(Pending)` in the final Dag as an R13-class body-
             // patching regression.
@@ -3669,10 +3670,7 @@ fn resolve_operator_arrow(
     Some(ResolvedArrow {
         inputs,
         output,
-        // Operator fallback synthesizes a signature but never an
-        // executable body. Keep the transient carrier aligned with the
-        // declaration-side "no body by construction" invariant.
-        body: ArrowBody::NoBody,
+        body: ArrowBody::Pending,
     })
 }
 

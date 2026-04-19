@@ -18,8 +18,8 @@ use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    dominates, iterate, max_path, normalize, sequential, Behavior, Dag, PortId, SizeVariable,
-    SymbolicCost,
+    dominates, iterate, max_path, normalize, sequential, Behavior, Dag, DegreeAtLeastTwo,
+    NonSingletonList, PortId, SizeVariable, SymbolicCost,
 };
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
@@ -114,7 +114,7 @@ fn linear(port: PortId) -> SymbolicCost {
 fn polynomial(port: PortId, degree: i64) -> SymbolicCost {
     SymbolicCost::PolynomialCost {
         var: size_var(port),
-        degree,
+        degree: DegreeAtLeastTwo::new(degree).expect("polynomial degree must be >= 2"),
     }
 }
 
@@ -285,7 +285,7 @@ budgeted_test! {
         match result {
             SymbolicCost::PolynomialCost { var, degree } => {
                 assert_eq!(var, size_var(port));
-                assert_eq!(degree, 2);
+                assert_eq!(degree.raw(), 2);
             }
             other => panic!("expected PolynomialCost(n, 2), got {other:?}"),
         }
@@ -348,7 +348,7 @@ budgeted_test! {
         // should NOT dominate `Linear(n)`.
         let (port, _) = two_distinct_ports();
         let product_of_logs = SymbolicCost::ProductCost {
-            _0: vec![log_cost(port), log_cost(port)],
+            _0: Box::new(NonSingletonList::from_vec(vec![log_cost(port), log_cost(port)]).unwrap()),
         };
         let linear_cost = linear(port);
         assert!(
@@ -361,7 +361,7 @@ budgeted_test! {
         // dominate Log, because the dominant-child summary walks the
         // children.
         let product_with_linear = SymbolicCost::ProductCost {
-            _0: vec![log_cost(port), linear(port)],
+            _0: Box::new(NonSingletonList::from_vec(vec![log_cost(port), linear(port)]).unwrap()),
         };
         assert!(
             dominates(&product_with_linear, &log_cost(port)),
@@ -377,7 +377,7 @@ budgeted_test! {
         // summary, not a hardcoded "any Sum dominates scalars".
         let (port, _) = two_distinct_ports();
         let sum_of_logs = SymbolicCost::SumCost {
-            _0: vec![log_cost(port), log_cost(port)],
+            _0: Box::new(NonSingletonList::from_vec(vec![log_cost(port), log_cost(port)]).unwrap()),
         };
         assert!(
             !dominates(&sum_of_logs, &linear(port)),
@@ -385,7 +385,9 @@ budgeted_test! {
         );
 
         let sum_with_polynomial = SymbolicCost::SumCost {
-            _0: vec![constant(0), polynomial(port, 2)],
+            _0: Box::new(
+                NonSingletonList::from_vec(vec![constant(0), polynomial(port, 2)]).unwrap(),
+            ),
         };
         assert!(
             dominates(&sum_with_polynomial, &linear(port)),
@@ -402,7 +404,7 @@ budgeted_test! {
         let paths = vec![constant(0), linear(port), polynomial(port, 2)];
         let result = max_path(&paths);
         match result {
-            SymbolicCost::PolynomialCost { degree, .. } => assert_eq!(degree, 2),
+            SymbolicCost::PolynomialCost { degree, .. } => assert_eq!(degree.raw(), 2),
             other => panic!("expected PolynomialCost, got {other:?}"),
         }
     }
@@ -428,7 +430,8 @@ budgeted_test! {
                      got {result:?}"
                 );
                 assert!(
-                    terms.contains(&linear(port_a)) && terms.contains(&linear(port_b)),
+                    terms.iter().any(|term| term == &linear(port_a))
+                        && terms.iter().any(|term| term == &linear(port_b)),
                     "both branch costs must remain in the Sum, got {result:?}"
                 );
             }
@@ -449,7 +452,7 @@ budgeted_test! {
         let reversed = max_path(&[linear(port_b), linear(port_a)]);
         let (forward_terms, reversed_terms) = match (&forward, &reversed) {
             (SymbolicCost::SumCost { _0: fwd }, SymbolicCost::SumCost { _0: rev }) => {
-                (fwd.clone(), rev.clone())
+                (fwd.to_vec(), rev.to_vec())
             }
             _ => panic!(
                 "both orderings should produce a SumCost, got forward={forward:?} reversed={reversed:?}"
