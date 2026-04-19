@@ -5075,9 +5075,20 @@ fn lower_expr(
                         let payload_binding_name =
                             synthetic_pattern_payload_binding_name(fields, span);
                         let payload_binding = lower_payload_binding(dag, &payload_binding_name);
+                        // Track names INTRODUCED by THIS pattern only, not the
+                        // full outer scope. `arm_scope` was cloned from the
+                        // enclosing scope at line 5057, so any outer binding
+                        // (`let x = ...; match y { Foo { x } => ... }`) would
+                        // otherwise fire a spurious duplicate-binding
+                        // diagnostic. Pattern-local duplicates
+                        // (`Foo { x: a, y: a }`) are still rejected. Match-arm
+                        // shadowing of outer names then works the same way
+                        // `VariantWith` already does (overwrite on insert).
+                        let mut introduced: std::collections::HashSet<String> =
+                            std::collections::HashSet::new();
                         let mut duplicate_binding = None;
                         for field in fields {
-                            if arm_scope.contains_key(&field.binding) {
+                            if !introduced.insert(field.binding.clone()) {
                                 duplicate_binding =
                                     Some(duplicate_payload_pattern_binding_diagnostic(
                                         name,
