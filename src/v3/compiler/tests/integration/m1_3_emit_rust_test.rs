@@ -5,11 +5,10 @@
 // produces Rust source that, when fed to `rustc`, compiles and runs
 // producing `3` on stdout.
 //
-// The #[ignore]d `rustc_roundtrip` test runs that whole pipeline;
-// it's gated because CI environments don't always have `rustc`
-// available. Run it locally via:
-//     cargo test -p v3-compiler --test m1_3_emit_rust_test \
-//                  -- --ignored --nocapture
+// The #[ignore]d `rustc_roundtrip` tests run that whole pipeline;
+// they're gated because CI environments don't always have `rustc`
+// available. Run locally via the consolidated integration binary, e.g.:
+//     cargo test -p v3-compiler --test integration -- --ignored --nocapture
 //
 // Everything else is structural: assert the emitter produced the
 // right substring for each kind of program without depending on
