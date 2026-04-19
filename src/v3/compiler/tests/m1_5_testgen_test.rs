@@ -500,7 +500,11 @@ fn testgen_generated_claims_execute_against_compile_boundary() {
         "testgen lens should emit at least one claim against the bootstrapped stdlib"
     );
     for claim in claims.iter().filter(|claim| executable_today(claim)) {
-        assert!(claim_holds(claim), "generated claim should hold: {claim:?}");
+        assert!(
+            claim_holds(claim),
+            "generated claim should hold: name={}",
+            claim_name(claim)
+        );
     }
 }
 
