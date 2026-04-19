@@ -529,12 +529,12 @@ Follow-up (not blocking): emission for narrowed ports currently errors if `emit_
 
 ### Lane 3 Stage 3b — diagnostics as corrections
 
-**Status (2026-04-19):** 🟡 substrate + initial consumer wiring shipped; parse/apply gate remains follow-up.
+**Status (2026-04-19):** ✅ shipped end-to-end, including the parse/apply ratchet.
 
 - **DB-1 substrate landed in ε / PR #538.** `src/v3/std/diagnostics.dag` declares `Correction` + `Diagnostic.fixes`; `src/v3/std/clean_emission.dag` declares `CorrectionStyle`; each target spec wires `correction_style` through its `CleanEmissionContract`.
 - **Initial consumer wiring landed in PR #554.** `src/v3/compiler/src/diagnostics.rs` resolves `CorrectionStyle` through `LanguageSpec -> CleanEmissionContract`, fail-closes malformed style rows via `DiagnosticRenderError`, and renders `FIX (option N)` lines with target-specific quoting / indentation. `src/v3/compiler/src/infer.rs` and `src/v3/compiler/src/lower.rs` now attach concrete `Correction` values at shipped sites including type mismatch, missing field, non-exhaustive match, declared-signature mismatch, unresolved names/calls, and recursion termination failures.
 - **Acceptance coverage present for both surfaces.** `src/v3/compiler/tests/integration/thesis_validation_test.rs` asserts the T-series diagnostics exercised today carry corrections and that rendered output includes pasteable fix text; `src/v3/compiler/src/diagnostics.rs` unit tests prove all three in-tree targets (`Rust`, `Go`, `Python`) resolve a non-missing `CorrectionStyle` and render fix text through it.
-- **Remaining gate before calling Stage 3b fully complete:** the DB-1 parse/apply ratchet is still outstanding. `docs/design-correction-shape.md` requires a gate that each emitted `Correction.new_source` parses (and eventually round-trips through apply → recompile). No `MalformedCorrection` diagnostic or equivalent parse-failure carrier is wired yet; treat that as the remaining follow-up rather than reading Stage 3b as fully closed.
+- **Parse/apply ratchet landed in this follow-up.** `src/v3/compiler/src/diagnostics.rs` now exposes `apply_correction(...)` plus `apply_correction_and_reparse(...)`, with explicit fail-closed carriers (`CorrectionApplyError`, `CorrectionValidationError`) for bad spans, file mismatches, UTF-8 boundary violations, and tokenize/parse failures after applying a fix. `src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs` walks shipped fix families (missing field, non-exhaustive match, empty-match seed arm, type mismatch, unresolved call, recursion termination), applies every emitted correction to the original source, requires the repaired source to reparse, and requires clean recompilation for the fixtures where the correction is intended to fully repair the program.
 
 ### Lane 2 Stage 2b — workflow idempotency lens
 
