@@ -100,6 +100,9 @@ jobs:
 
       # Layer 1 (coarse CI): wall-clock gates on `cargo test -p v3-compiler`.
       #
+      # Full-suite budget was raised 600→720s: warm local runs are ~550s+; cold
+      # GitHub runners can spike past 600s without a code regression.
+      #
       # 120s gate: applies to the lane2 Stage 2d symbolic-cost integration
       # binary only — that is the ζ (#537) regression surface (many `#[test]`
       # each doing full compile). A warm full `cargo test -p v3-compiler` is
@@ -117,14 +120,14 @@ jobs:
             exit 1
           fi
 
-      - name: v3 tests (full suite, 600s budget)
+      - name: v3 tests (full suite, 720s budget)
         run: |
           start=$(date +%s)
           cargo test -p v3-compiler
           elapsed=$(( $(date +%s) - start ))
           echo "v3 full-suite wall time: ${elapsed}s"
-          if [ "$elapsed" -gt 600 ]; then
-            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 600s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
+          if [ "$elapsed" -gt 720 ]; then
+            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 720s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
             exit 1
           fi
 
