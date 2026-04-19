@@ -41,9 +41,6 @@ pub mod lens_unused_parameters;
 pub mod post_emit_verifier;
 pub mod serialize;
 pub mod types;
-pub mod generated_files {
-    include!(concat!(env!("OUT_DIR"), "/v3_generated_files.rs"));
-}
 
 pub mod operators {
     pub use crate::dag::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
