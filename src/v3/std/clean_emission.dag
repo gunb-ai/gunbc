@@ -22,11 +22,18 @@ type CleanEmissionContract {
   post_emit_verifier: PostEmitVerifier
 }
 
-// 🟢 TERMINAL. Single authority tying a target `LanguageSpec` to the
+// 🟡 SCAFFOLD. Single authority tying a target `LanguageSpec` to the
 // `CleanEmissionContract` that governs emitted-source hygiene for
 // that language. Bootstrap scans these bindings structurally, so
 // adding a new target is one more spec data item rather than a new
 // compiler-side branch.
+//
+// Not terminal yet: both edges are still `DeclarationRef`, so the
+// compiler must validate "language really is a LanguageSpec" and
+// "clean_emission really is a CleanEmissionContract" at load time.
+// Dissolution trigger: replace these edges with a typed target-authority
+// carrier once the substrate can make malformed/duplicate bindings
+// structurally illegal rather than bootstrap-diagnosed.
 type TargetCleanEmissionBinding {
   language: DeclarationRef
   clean_emission: DeclarationRef
