@@ -589,6 +589,8 @@ Cleared (prior PR #521): `DerivedOpEffect { method, path_template, shape }` coll
 
 **DB number reservation:** **`DB-19`** has no `docs/design-db19-*.md` in-tree yet — hold the number for the next effects/lane-2 consumer that needs a DB doc so allocation stays collision-free alongside DB-18 (carrier) and DB-20 (parallelism lens).
 
+**Follow-up — Lane B reflection (`lane2_workflow` on reflected `Behavior`, e.g. PR #545):** when that debt clears, `src/v3/lenses/parallelism.dag` can graduate from stub to real `.dag` consumer (same dissolution as `idempotency.dag`); `workflow_parallelism.rs` stays the Rust authority until emit+match can walk user sums on the reflected surface.
+
 
 ### Lane 1 Stage 1b
 

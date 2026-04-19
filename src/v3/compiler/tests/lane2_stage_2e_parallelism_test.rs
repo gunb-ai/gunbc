@@ -1,4 +1,12 @@
 //! Lane 2 Stage 2e / DB-20 — `ParallelEffect` parallel composition safety.
+//!
+//! Derivation coverage (merge gate: pairwise commutativity from `OperationEffect` shapes):
+//! - **Commute (green):** `parallel_read_only_branches_commute` — cross-branch `ReadEffect` only;
+//!   `parallel_same_key_path_upserts_commute` — same `KeySource` upserts on parallel branches.
+//! - **Non-commute / fail-closed (red):** `parallel_different_path_param_names_not_proven_commute` —
+//!   distinct `PathParam` names (not a disjointness proof); `parallel_read_vs_upsert_does_not_commute` —
+//!   read vs write shape clash.
+//! - **Breaking op:** `parallel_append_in_branch_is_broken_by` — `BrokenBy` before pairwise check.
 
 use std::sync::OnceLock;
 
