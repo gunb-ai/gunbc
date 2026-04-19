@@ -4667,6 +4667,20 @@ struct LoweredMatchArm {
     binding: Option<PayloadBinding>,
 }
 
+fn duplicate_payload_pattern_binding_diagnostic(
+    variant_name: &str,
+    binding_name: &str,
+    span: &SourceSpan,
+) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: format!(
+            "named payload pattern `{variant_name}` binds `{binding_name}` more than once"
+        ),
+        span: span.clone(),
+        fixes: Vec::new(),
+    }
+}
+
 struct VariantRecordExprRef<'a> {
     target: &'a str,
     fields: &'a [crate::parse::SurfaceRecordField],
@@ -5041,9 +5055,9 @@ fn lower_expr(
             let mut lowered_arms: Vec<LoweredMatchArm> = Vec::with_capacity(arms.len());
             for arm in arms {
                 let mut arm_scope = scope.clone();
-                let (pattern_name, pattern_span, binding) = match &arm.pattern {
+                let (pattern_name, pattern_span, binding, arm_error) = match &arm.pattern {
                     SurfacePattern::BareVariant { name, span } => {
-                        (name.clone(), span.clone(), None)
+                        (name.clone(), span.clone(), None, None)
                     }
                     SurfacePattern::VariantWith {
                         name,
@@ -5055,13 +5069,23 @@ fn lower_expr(
                             payload_binding.binding_name.clone(),
                             payload_binding.payload_port,
                         );
-                        (name.clone(), span.clone(), Some(payload_binding))
+                        (name.clone(), span.clone(), Some(payload_binding), None)
                     }
                     SurfacePattern::VariantFields { name, fields, span } => {
                         let payload_binding_name =
                             synthetic_pattern_payload_binding_name(fields, span);
                         let payload_binding = lower_payload_binding(dag, &payload_binding_name);
+                        let mut duplicate_binding = None;
                         for field in fields {
+                            if arm_scope.contains_key(&field.binding) {
+                                duplicate_binding =
+                                    Some(duplicate_payload_pattern_binding_diagnostic(
+                                        name,
+                                        &field.binding,
+                                        &field.span,
+                                    ));
+                                break;
+                            }
                             let projection = lower_field_projection_from_port(
                                 dag,
                                 payload_binding.payload_port,
@@ -5070,17 +5094,25 @@ fn lower_expr(
                             );
                             arm_scope.insert(field.binding.clone(), projection);
                         }
-                        (name.clone(), span.clone(), Some(payload_binding))
+                        (
+                            name.clone(),
+                            span.clone(),
+                            Some(payload_binding),
+                            duplicate_binding,
+                        )
                     }
                 };
-                let arm_output_port = lower_expr(
-                    &arm.body,
-                    dag,
-                    &arm_scope,
-                    callable_scope,
-                    symbols,
-                    expected_decl,
-                );
+                let arm_output_port = match arm_error {
+                    Some(diag) => unresolved_port(dag, diag),
+                    None => lower_expr(
+                        &arm.body,
+                        dag,
+                        &arm_scope,
+                        callable_scope,
+                        symbols,
+                        expected_decl,
+                    ),
+                };
                 let body_node = producer_of(dag, arm_output_port);
                 lowered_arms.push(LoweredMatchArm {
                     output: arm_output_port,

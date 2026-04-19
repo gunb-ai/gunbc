@@ -2845,6 +2845,25 @@ fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap { inner: point } => point.
 }
 
 #[test]
+fn prereq2_named_payload_pattern_duplicate_binding_fails_closed() {
+    let src = "\
+type Pair { a: Int b: Int }
+type Wrapped = Wrap { inner: Pair } | Empty
+fn bad(w: Wrapped) -> Int = match w { Wrap { inner: pair } => match pair { Pair { a: x, b: x } => x }, Empty => 0 }
+";
+    let dag = compile_any(src, "named_payload_pattern_duplicate_binding.v3");
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| matches!(
+            diag,
+            Diagnostic::ResolveError { name, .. }
+                if name.contains(\"binds `x` more than once\")
+        )),
+        "expected fail-closed duplicate payload-pattern binding diagnostic, got {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
 fn recursion_accepts_structural_descent_on_recursive_payload_field() {
     let src = "\
 type IntList = Empty | Cons { head: Int, tail: IntList }
