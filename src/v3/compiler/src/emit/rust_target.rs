@@ -5382,7 +5382,8 @@ fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
 
     #[test]
     fn module_function_visibility_comes_from_rust_function_syntax() {
-        let mut dag = compile_to_dag("fn classify(s: Int) -> Int = s", "test.v3").expect("compiles");
+        let mut dag =
+            compile_to_dag("fn classify(s: Int) -> Int = s", "test.v3").expect("compiles");
         let functions_decl = dag
             .declaration_by_name("rust_functions")
             .expect("rust_functions declaration")
