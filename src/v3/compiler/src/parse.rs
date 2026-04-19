@@ -454,6 +454,15 @@ pub enum SurfaceExpr {
         args: Vec<SurfaceExpr>,
         span: SourceSpan,
     },
+    /// Sum-constructor expression with named payload fields, e.g.
+    /// `Some { value: x }`. Lowering resolves `target` against the
+    /// expected sum type at the use site, then lowers each named field
+    /// against the matched variant payload.
+    VariantRecord {
+        target: String,
+        fields: Vec<SurfaceRecordField>,
+        span: SourceSpan,
+    },
     /// Primitive binary operator application. Distinct from `Call`
     /// because the dispatch is via algebra inhabitance, not a
     /// declaration lookup. At parse time the operator is committed
@@ -483,18 +492,12 @@ pub enum SurfaceExpr {
         arms: Vec<SurfaceMatchArm>,
         span: SourceSpan,
     },
-    /// `{ field: expr, field: expr, ... }` — record literal. At
-    /// M1(3) PR-B this variant is produced ONLY by
-    /// `parse_data_item` when the body of a `data foo: T = {...}`
-    /// declaration matches the 3-token lookahead record-literal
-    /// shape. `parse_primary` does not dispatch to record literal
-    /// parsing, so user-code expressions containing `{ ... }` still
-    /// fail at parse time. Lowering for user-code position
-    /// (`lower_expr::Record`) emits a fail-closed diagnostic
-    /// pointing at class-5 gap #3; lowering for data-body position
-    /// (`lower_data_item`) walks the type annotation to a Conj and
-    /// runs inhabitance checking, producing a
-    /// `ValueBody::Structural { fields }` on the declaration.
+    /// `{ field: expr, field: expr, ... }` — record literal.
+    /// Produced in both expression position and data-body position.
+    /// Lowering for user-code position routes through
+    /// `lower_record_literal_expr`; lowering for data bodies walks the
+    /// declared type and produces a `ValueBody::Structural { fields }`
+    /// when the body inhabits the target record shape.
     Record {
         fields: Vec<SurfaceRecordField>,
         span: SourceSpan,
@@ -525,6 +528,13 @@ pub struct SurfaceRecordField {
 pub struct SurfaceMatchArm {
     pub pattern: SurfacePattern,
     pub body: SurfaceExpr,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+pub struct SurfacePatternField {
+    pub name: String,
+    pub binding: String,
     pub span: SourceSpan,
 }
 
@@ -564,6 +574,12 @@ pub enum SurfacePattern {
     VariantWith {
         name: String,
         binding: String,
+        span: SourceSpan,
+    },
+    /// Named payload capture, e.g. `Some { value: x }`.
+    VariantFields {
+        name: String,
+        fields: Vec<SurfacePatternField>,
         span: SourceSpan,
     },
 }
@@ -830,6 +846,67 @@ impl<'a> Parser<'a> {
             fields,
             span: SourceSpan::new(self.file, open.span.byte_start, close.span.byte_end),
         })
+    }
+
+    fn parse_named_expr_fields(&mut self) -> Result<(Vec<SurfaceRecordField>, SourceSpan), Diagnostic> {
+        let open = self.expect_kind(TokenKind::LBrace)?;
+        let mut fields: Vec<SurfaceRecordField> = Vec::new();
+        while !matches!(self.peek().kind, TokenKind::RBrace) {
+            let (field_name, name_span) = self.parse_field_label()?;
+            self.expect_kind(TokenKind::Colon)?;
+            let value = self.parse_expr()?;
+            let field_end = expr_span(&value).byte_end;
+            fields.push(SurfaceRecordField {
+                name: field_name,
+                value,
+                span: SourceSpan::new(self.file, name_span.byte_start, field_end),
+            });
+            if matches!(self.peek().kind, TokenKind::Comma) {
+                self.bump();
+            }
+        }
+        let close = self.expect_kind(TokenKind::RBrace)?;
+        Ok((
+            fields,
+            SourceSpan::new(self.file, open.span.byte_start, close.span.byte_end),
+        ))
+    }
+
+    fn parse_named_pattern_fields(
+        &mut self,
+    ) -> Result<(Vec<SurfacePatternField>, SourceSpan), Diagnostic> {
+        let open = self.expect_kind(TokenKind::LBrace)?;
+        let mut fields: Vec<SurfacePatternField> = Vec::new();
+        while !matches!(self.peek().kind, TokenKind::RBrace) {
+            let (field_name, name_span) = self.parse_field_label()?;
+            self.expect_kind(TokenKind::Colon)?;
+            let binding_token = self.bump().clone();
+            let binding = match binding_token.kind {
+                TokenKind::Ident(binding) => binding,
+                other => {
+                    return Err(Diagnostic::ParseError {
+                        message: format!(
+                            "expected binding name in named payload match pattern after `{field_name}:`, got {other:?}"
+                        ),
+                        span: binding_token.span,
+                        fixes: Vec::new(),
+                    });
+                }
+            };
+            fields.push(SurfacePatternField {
+                name: field_name,
+                binding,
+                span: SourceSpan::new(self.file, name_span.byte_start, binding_token.span.byte_end),
+            });
+            if matches!(self.peek().kind, TokenKind::Comma) {
+                self.bump();
+            }
+        }
+        let close = self.expect_kind(TokenKind::RBrace)?;
+        Ok((
+            fields,
+            SourceSpan::new(self.file, open.span.byte_start, close.span.byte_end),
+        ))
     }
 
     fn parse_dotted_path(&mut self) -> Result<Vec<String>, Diagnostic> {
@@ -1508,7 +1585,14 @@ impl<'a> Parser<'a> {
                 span,
                 fixes: Vec::new(),
             }),
-            _ => unreachable!("parse_ident_expr only returns Var, Call, or Path"),
+            SurfaceExpr::VariantRecord { span, .. } => Err(Diagnostic::ParseError {
+                message:
+                    "expected function name or call after `|>`; named constructor literals are values, not callable pipe targets"
+                        .to_string(),
+                span,
+                fixes: Vec::new(),
+            }),
+            _ => unreachable!("parse_ident_expr only returns Var, Call, Path, or VariantRecord"),
         }
     }
 
@@ -1593,6 +1677,13 @@ impl<'a> Parser<'a> {
                 target: name,
                 args,
                 span: SourceSpan::new(self.file, start, end),
+            })
+        } else if matches!(self.peek().kind, TokenKind::LBrace) {
+            let (fields, fields_span) = self.parse_named_expr_fields()?;
+            Ok(SurfaceExpr::VariantRecord {
+                target: name,
+                fields,
+                span: SourceSpan::new(self.file, span.byte_start, fields_span.byte_end),
             })
         } else if matches!(self.peek().kind, TokenKind::Dot) {
             // Member-access chain: Ident (. Ident)+. Always
@@ -1704,9 +1795,10 @@ impl<'a> Parser<'a> {
 
     /// Parse a `match <scrutinee> { <pattern> => <expr> ... }`
     /// expression. At M1(2.8) patterns are limited to bare variant
-    /// constructors (`Ident`) — no wildcards, destructuring, or
-    /// nested patterns. Arms are brace-separated with optional
-    /// comma between them for readability; we accept either.
+    /// constructors (`Ident`), positional single-payload captures
+    /// (`Variant(binding)`), and named-payload captures
+    /// (`Variant { field: binding }`). Arms are brace-separated with
+    /// optional comma between them for readability; we accept either.
     fn parse_match(&mut self) -> Result<SurfaceExpr, Diagnostic> {
         let match_token = self.bump().clone();
         debug_assert!(matches!(match_token.kind, TokenKind::KwMatch));
@@ -1759,6 +1851,17 @@ impl<'a> Parser<'a> {
                             close.span.byte_end,
                         ),
                     }
+                } else if matches!(self.peek().kind, TokenKind::LBrace) {
+                    let (fields, fields_span) = self.parse_named_pattern_fields()?;
+                    SurfacePattern::VariantFields {
+                        name: name.clone(),
+                        fields,
+                        span: SourceSpan::new(
+                            self.file,
+                            name_token.span.byte_start,
+                            fields_span.byte_end,
+                        ),
+                    }
                 } else {
                     SurfacePattern::BareVariant {
                         name: name.clone(),
@@ -1769,7 +1872,7 @@ impl<'a> Parser<'a> {
             other => {
                 return Err(Diagnostic::ParseError {
                     message: format!(
-                        "expected variant name in match pattern, got {other:?} — M1(2.8) supports `Variant => expr` and `Variant(binding) => expr`"
+                        "expected variant name in match pattern, got {other:?} — M1(2.8) supports `Variant => expr`, `Variant(binding) => expr`, and `Variant {{ field: binding }} => expr`"
                     ),
                     span: name_token.span,
                 fixes: Vec::new(),
@@ -1794,6 +1897,7 @@ pub(crate) fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::Var { span, .. }
         | SurfaceExpr::Path { span, .. }
         | SurfaceExpr::Call { span, .. }
+        | SurfaceExpr::VariantRecord { span, .. }
         | SurfaceExpr::Operator { span, .. }
         | SurfaceExpr::Lambda { span, .. }
         | SurfaceExpr::If { span, .. }
