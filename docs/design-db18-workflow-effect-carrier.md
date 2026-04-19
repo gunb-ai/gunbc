@@ -52,8 +52,6 @@ DB-18 is that legitimate design extension. The substrate gains **one new coprodu
 // (ParallelEffect, ⊗). The Q4 dissolution receipt below argues each
 // variant traces to a distinct algebraic operation and the coproduct
 // is structurally irreducible.
-//
-// 🟢 TERMINAL. Four-variant workflow sum (see `src/v3/std/effects.dag`).
 type WorkflowEffect
   = LinearEffect { ops: List<OperationEffect> }
   | BranchEffect { arms: NonSingletonList<BranchArm> }
@@ -271,44 +269,22 @@ The locked-ahead contract (to prevent Part 3 from inventing escape hatches):
 
 ### Consumer contract — Stage 2b (LinearEffect-only scope)
 
-Stage 2b's analyzer walks a `WorkflowEffect` value, dispatching per variant. Only `LinearEffect` yields a `CompositionVerdict`; the other three variants produce explicit unsupported reports. The shipped shape in `workflow_idempotency.rs` (PR #534):
+Stage 2b's analyzer walks a `WorkflowEffect` value, dispatching per variant. Only `LinearEffect` yields a `WorkflowCompositionVerdict` wrapping `CompositionVerdict`; the other three variants produce `IdempotencyUnsupported`. The shipped shape in `workflow_idempotency.rs`:
 
 ```rust
-// src/v3/compiler/src/workflow_idempotency.rs (shipped, PR #534)
-pub fn analyze_workflow(dag: &Dag, root: NodeId) -> WorkflowIdempotencyReport {
-    let Some(workflow) = dag.lane2_workflow_effect_at(root) else {
-        return WorkflowIdempotencyReport::Unsupported {
-            detail: IdempotencyUnsupportedDetail::NoWorkflowAtRoot,
-        };
+pub fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempotencyReport {
+    let Some(workflow) = d.lane2_workflow_effect_at(&workflow_root) else {
+        return WorkflowIdempotencyReport::IdempotencyUnsupported(IdempotencyUnsupportedDetail {
+            variant_name: "Lane2WorkflowRoot".into(),
+            downstream_stage: "lane2_stage2b_idempotency_lens".into(),
+            reason: "no WorkflowEffect at this substrate root".into(),
+        });
     };
-    match workflow {
-        WorkflowEffect::Linear { ops } => {
-            // Delegate to the post-PR-#529 algebra. compose_effects
-            // returns CompositionVerdict directly; for ops = [] it
-            // returns IdempotentComposition (the monoidal identity).
-            let verdict = compose_effects(ops);
-            WorkflowIdempotencyReport::Linear { verdict }
-        }
-        WorkflowEffect::Branch { .. } => WorkflowIdempotencyReport::Unsupported {
-            detail: IdempotencyUnsupportedDetail::Branch {
-                downstream_stage: "Lane 2 Stage 2d (branch-wise composition — symbolic cost)",
-            },
-        },
-        WorkflowEffect::Loop { .. } => WorkflowIdempotencyReport::Unsupported {
-            detail: IdempotencyUnsupportedDetail::Loop {
-                downstream_stage: "Lane 2 Stage 2d (fixpoint bound + body convergence)",
-            },
-        },
-        WorkflowEffect::Parallel { .. } => WorkflowIdempotencyReport::Unsupported {
-            detail: IdempotencyUnsupportedDetail::Parallel {
-                downstream_stage: "Lane 2 Stage 2e (parallelism-as-lens + commutativity witness)",
-            },
-        },
-    }
+    project_workflow_idempotency_report(workflow)
 }
 ```
 
-`WorkflowIdempotencyReport` is an enum: `Linear { verdict: CompositionVerdict } | Unsupported { detail: IdempotencyUnsupportedDetail }`. `verdict` carries the algebra's output for the linear case; `detail` names which variant + which downstream stage for the other three. Callers that need to re-render the full workflow alongside a verdict keep their own `WorkflowEffect` in scope and read the report — two facts kept separate at their natural sites, with no correlated-fields record (the PR #529 R3 lesson).
+`project_workflow_idempotency_report` matches `LinearEffect { ops }` → `WorkflowCompositionVerdict(compose_operation_effects(ops))` and routes non-linear variants to `IdempotencyUnsupportedDetail` with `lane2_stage2b_idempotency_lens` as downstream stage. Callers keep the `WorkflowEffect` and the report as separate facts (PR #529 R3).
 
 **Why the other three variants are diagnostics, not silent skips.** Per C-8 (INVARIANTS §Diagnostic severity): every detectable condition is either an error or not a diagnostic. A workflow with a `BranchEffect` root is not an error — it is an error only if Stage 2b were claiming to be exhaustive over all workflow shapes. Stage 2b explicitly is *not* exhaustive; it is linear-only. So the diagnostic is informational-framed-as-error ("this variant is out of Stage 2b's scope; see Stage 2d") rather than "your workflow is broken." Downstream stages (2d, 2e) will subsume these diagnostics when they ship, replacing them with real verdicts. The diagnostic contract is: *name the variant, name the downstream stage that will consume it, name the reason it cannot be verdicted at Stage 2b.*
 
@@ -341,17 +317,16 @@ This is deliberate. PR #529 removed `ComposedEffect { operations, verdict }` bec
 
 ### What DB-18 DOES add (summary)
 
-**Part 2 — implemented in PR #534 (eager-fox-851, OPEN):**
-- Rust enum `WorkflowEffect` (four-variant, **🟡 scaffold** — graduates to 🟢 when all four variants have consumers) + struct `BranchArm` + struct `BoolPortRef` (crate-private inner field) in `src/v3/compiler/src/dag.rs`.
-- Fields `Value.lane2_workflow` and `Bind.lane2_workflow: Option<Box<WorkflowEffect>>` — authority site on both behaviors; other `Behavior` kinds cannot host.
-- `Dag::branch_arm_of(&self, port, body) -> Option<BranchArm>` — sole `BranchArm` producer; validates port resolves to `Bool` on the graph.
-- `Dag::try_register_lane2_workflow_effect` + `Dag::lane2_workflow_effect_at` — writer / reader accessors (both pattern-match `Value` and `Bind`).
-- `workflow_idempotency::analyze_workflow` — analyzer: `LinearEffect` → `CompositionVerdict`; other variants → `WorkflowIdempotencyReport::Unsupported { detail }`.
+**Part 2 — R2 shipped (DB-18 Part 2; see PR #545 and predecessors):**
+- Rust enum `WorkflowEffect` + `BranchArm` + `BoolPortRef` in `src/v3/compiler/src/dag.rs`; `effects.dag` marks carriers **🟢 TERMINAL** for Stage 2b / 2e consumers.
+- Fields `ValueNode.lane2_workflow` / `BindNode.lane2_workflow: Option<Box<WorkflowEffect>>` — authority site; reflected in `substrate.dag`.
+- **`bool_port_of`**, **`BranchArm::new`**, **`bool_port_for_branch_condition_or_diagnose`** — R2 Bool / branch-arm construction (no `branch_arm_of`).
+- `Dag::try_register_lane2_workflow_effect` + `Dag::lane2_workflow_effect_at(&NodeId)` — writer / reader.
+- `workflow_idempotency::analyze_workflow` — `LinearEffect` → verdict; non-linear → `IdempotencyUnsupported`.
 
-**Part 3 — follow-up (not in #534):**
-- Reflection of `lane2_workflow` into the `.dag` `substrate.dag` surface (unblocks Lane 2 Stages 2d / 2e / 2f as `.dag` consumers; graduates the 🟡 scaffold marker).
-- Data-declaration authoring surface: lowering a `data my_flow: WorkflowEffect = ...` literal into computation-substrate sub-DAGs that call `Dag::branch_arm_of` and `Dag::try_register_lane2_workflow_effect`.
-- Fail-closed `Diagnostic::BranchConditionNotBool` wired to the data-declaration lowering path with source-span precision.
+**Part 3 — follow-up:**
+- Data-declaration authoring surface: end-to-end lowering from `data my_flow: WorkflowEffect = …` using the same R2 constructors.
+- Any remaining polish on emitted-lens Rust linking (see `m2_lens_idempotency_emit_test.rs` header).
 
 ---
 
@@ -370,18 +345,16 @@ IAM.grant(role=...)                         // UpsertEffect
 Encoded as (ops is `List<OperationEffect>`):
 
 ```rust
-WorkflowEffect::Linear {
-    ops: NonEmptyList {
-        first: OperationEffect { name: "Secret.upsert", shape: EffectShape::IsIdempotent(UpsertEffect { .. }) },
-        rest: vec![
-            OperationEffect { name: "STS.exchange", shape: EffectShape::IsIdempotent(ReadEffect) },
-            OperationEffect { name: "IAM.grant",    shape: EffectShape::IsIdempotent(UpsertEffect { .. }) },
-        ],
-    },
+WorkflowEffect::LinearEffect {
+    ops: vec![
+        OperationEffect { operation_name: "Secret.upsert".into(), shape: /* … */ },
+        OperationEffect { operation_name: "STS.exchange".into(), shape: /* … */ },
+        OperationEffect { operation_name: "IAM.grant".into(), shape: /* … */ },
+    ],
 }
 ```
 
-Stage 2b lens dispatches on `LinearEffect`, calls `compose_effects(ops)`, receives `CompositionVerdict::IdempotentComposition`. Report green. ✓ — mirrors the Stage 2b fixture from `lane2-compile-time-proofs.md` §Stage 2b Acceptance.
+Stage 2b dispatches on `LinearEffect`, calls `compose_operation_effects` / `compose_effects` on `ops`, receives `CompositionVerdict::IdempotentComposition` inside `WorkflowCompositionVerdict`. Report green. ✓ — mirrors Stage 2b fixtures.
 
 **Workflow B — linear chain with terminal audit log (Stage 2b red).**
 
@@ -397,26 +370,21 @@ Encoded as `LinearEffect { ops: [upsert, exchange, grant, append] }`. Stage 2b c
 **Workflow C — retry with nested branch (Stage 2b diagnostic).**
 
 ```rust
-// workflow_root is the NodeId of the root Value or Bind behavior on which
-// the WorkflowEffect is registered via Dag::try_register_lane2_workflow_effect.
-// port_auth_ok and port_auth_failed are PortId values on the graph.
-// Dag::branch_arm_of(&self, port, body) validates the port resolves to Bool
-// on the graph and constructs the BranchArm in one step; a non-Bool port
-// returns None and the caller is required to emit a Diagnostic identifying
-// the condition source (no silent absorption — C-8).
-let arm_ok = dag
-    .branch_arm_of(port_auth_ok, WorkflowEffect::Linear {
-        ops: NonEmptyList::singleton(secret_get),
-    })
-    .expect("port_auth_ok resolves to Bool on the graph");
-let arm_failed = dag
-    .branch_arm_of(port_auth_failed, WorkflowEffect::Linear {
-        ops: NonEmptyList::from_iter_nonempty([sts_exchange, secret_get]),
-    })
-    .expect("port_auth_failed resolves to Bool on the graph");
-
-let workflow = LoopEffect {
-    body: BranchEffect { arms: non_singleton_list![arm_ok, arm_failed] }.into(),
+// R2: bool_port_of + BranchArm::new (tests use this pattern).
+let arm_ok = BranchArm::new(
+    dag.bool_port_of(port_auth_ok).expect("Bool"),
+    WorkflowEffect::LinearEffect { ops: vec![secret_get] },
+);
+let arm_failed = BranchArm::new(
+    dag.bool_port_of(port_auth_failed).expect("Bool"),
+    WorkflowEffect::LinearEffect {
+        ops: vec![sts_exchange, secret_get],
+    },
+);
+let workflow = WorkflowEffect::LoopEffect {
+    body: Box::new(WorkflowEffect::BranchEffect {
+        arms: /* NonSingletonList of arm_ok, arm_failed */,
+    }),
 };
 dag.try_register_lane2_workflow_effect(workflow_root, workflow);
 ```
@@ -430,40 +398,39 @@ Stage 2b dispatches on `LoopEffect`, emits diagnostic: *"`LoopEffect` encountere
 Design-contract items (locked in this doc, independent of shipping-phase):
 
 1. `WorkflowEffect` is a four-variant coproduct (`LinearEffect | BranchEffect | LoopEffect | ParallelEffect`) with the payload shapes in §"Substrate changes." The locked invariant is the set of VARIANTS (four, exactly) and the MANDATORY fields of each variant; additive-extension fields graduate as downstream stages bind (e.g., `LoopEffect.bound` when Stage 2d consumes, `ParallelEffect.commutativity` when Stage 2e consumes) and do not regress this lock.
-2. `BranchArm { condition: BoolPortRef, body: WorkflowEffect }` is the sole structural distinction between `BranchEffect` and `ParallelEffect` payloads. `BoolPortRef` has no public constructor — the only way to inhabit it is via `Dag::branch_arm_of(root, port, body) -> Option<BranchArm>`, which validates the port resolves to `Bool` on the root's graph and returns the constructed `BranchArm`. Raw-literal construction of a `BranchArm` around a non-Bool port is not representable at the type level. The Q4 Pattern-2 distinction is carried by the typed witness, not by constructor discipline.
+2. `BranchArm { condition: BoolPortRef, body: WorkflowEffect }` is the sole structural distinction between `BranchEffect` and `ParallelEffect` payloads. `BoolPortRef` is obtained via **`bool_port_of`**; arms are built with **`BranchArm::new`**. Raw `PortId` does not appear in `condition`. The Q4 Pattern-2 distinction is carried by the typed witness, not by constructor discipline.
 3. Q1–Q6 substrate-principle audit is stamped in-doc; Q4 dissolution receipt is stamped in-doc. Q5 single-authority is resolved by the §"Authority site for WorkflowEffect" section.
-4. `LinearEffect` is the Stage 2b consumer; the other three variants produce `WorkflowIdempotencyReport::Unsupported` with a variant-specific `IdempotencyUnsupportedDetail`. Empty `LinearEffect.ops` is the monoidal identity, consumed by `compose_effects([])` = `IdempotentComposition`.
+4. `LinearEffect` is the Stage 2b consumer; the other three variants produce `WorkflowIdempotencyReport::IdempotencyUnsupported` with a variant-specific `IdempotencyUnsupportedDetail`. Empty `LinearEffect.ops` is the monoidal identity at the workflow carrier; `compose_operation_effects` maps it to `IdempotentComposition`.
 5. `CompositionVerdict` and `WorkflowEffect` coexist on orthogonal axes — no enclosing record pairs them; `LinearEffect`'s dispatch is the sole edge between them.
-6. `WorkflowEffect`'s authority site is `ValueNode.lane2_workflow` on the computation-substrate Value node at the workflow root. Accessors: `Dag::try_register_lane2_workflow_effect` (write) and `Dag::lane2_workflow_effect_at` (read). One workflow per root; no parallel hosting; no `Dag.workflows` sidecar.
-7. The source-to-handle contract for user-authored `BranchArm.condition` values (Part 3) is locked: expression → sub-DAG → output port → `Dag::branch_arm_of(root, port, body)`, fail-closed `Diagnostic::BranchConditionNotBool` on `None`. Named-port lookup, raw-id literals, and source-anchorless synthesis are rejected paths, not Part 3 judgment calls.
-8. Pre-start gate for Part 2 (computation-substrate mirrors + Rust-side analyzer): PR #529 merged 2026-04-18 (`8c7e7acdd`), clearing the gate. Part 2 shipped in PR #534 (eager-fox-851).
+6. `WorkflowEffect`'s authority site is `ValueNode.lane2_workflow` / `BindNode.lane2_workflow` at the workflow root. Accessors: `try_register_lane2_workflow_effect` (write) and `lane2_workflow_effect_at(&NodeId)` (read). One workflow per root; no `Dag.workflows` sidecar.
+7. Part 3 source-to-handle: expression → port → **`bool_port_of` / `bool_port_for_branch_condition_or_diagnose`** → **`BranchArm::new`**, fail-closed `BranchConditionNotBool` when the port is not Bool.
+8. Algebra pre-gate: PR #529 (`CompositionVerdict`). R2 substrate: DB-18 Part 2 (PR **#545** et seq.).
 
-**Part 2 — shipped in PR #534** (Rust mirrors + typed constructor + analyzer):
+**Part 2 — R2 shipped** (Rust + `effects.dag` + reflection + accessor realizations):
 
-1. `src/v3/compiler/src/dag.rs` declares Rust enum `WorkflowEffect`, struct `BranchArm`, struct `BoolPortRef` (with private `port: PortId` field and `port_id()` accessor). Field `ValueNode.lane2_workflow: Option<Box<WorkflowEffect>>` hosts the workflow.
-2. `Dag::branch_arm_of(root, port, body) -> Option<BranchArm>` is the sole `BranchArm` constructor; validates `port` resolves to `Bool` on the graph rooted at `root`.
-3. `Dag::try_register_lane2_workflow_effect(root, workflow) -> bool` and `Dag::lane2_workflow_effect_at(root) -> Option<&WorkflowEffect>` are the write / read accessors for the authority site.
-4. `src/v3/compiler/src/workflow_idempotency.rs` declares `analyze_workflow(dag, root) -> WorkflowIdempotencyReport` dispatching per variant: `LinearEffect` delegates to `compose_effects` and returns a verdict; the other three variants return `WorkflowIdempotencyReport::Unsupported { detail: IdempotencyUnsupportedDetail }` identifying the variant and its downstream stage.
-5. Structural tests cover: GCP-style linear green path; terminal `AppendEffect` red path; fail-closed on non-Bool branch conditions (`Dag::branch_arm_of` returns `None`); diagnostic paths for `BranchEffect` / `LoopEffect` / `ParallelEffect`.
+1. `WorkflowEffect`, `BranchArm`, `BoolPortRef` in `dag.rs`; **🟢 TERMINAL** in `effects.dag`.
+2. `bool_port_of`, `BranchArm::new`, `bool_port_for_branch_condition_or_diagnose`.
+3. `try_register_lane2_workflow_effect`, `lane2_workflow_effect_at(&NodeId)`.
+4. `workflow_idempotency::analyze_workflow` + `project_workflow_idempotency_report`.
+5. Tests: linear green/red, empty-linear idempotent, `BranchConditionNotBool`, non-linear unsupported paths.
 
-**Part 3 — follow-up (NOT shipped by PR #534):**
+**Part 3 — follow-up:**
 
-1. **`ValueNode.lane2_workflow` reflection + realization into the `.dag` substrate surface.** Today the field is Rust-only; `.dag` lenses (Lane 2 Stages 2d / 2e / 2f) cannot read it until the reflection lands. Per the shipped code's own comment: *"not part of the reflected `Behavior` surface in `substrate.dag`, so `.dag` lenses cannot read it until a workflow fact is reflected + realized."*
-2. **Data-declaration authoring surface: `data my_flow: WorkflowEffect = ...`.** Lowering parses the surface literal, lowers the condition expressions to computation sub-DAGs, calls `Dag::branch_arm_of` for each branch arm, and registers the resulting `WorkflowEffect` via `Dag::try_register_lane2_workflow_effect`. Fail-closed on non-Bool conditions with source-span-precise `Diagnostic::BranchConditionNotBool`. Per §"Source-to-handle contract" above — no named-port lookup, no raw-id literals, no synthesis escape.
-3. **ROADMAP update** once Part 3 lands: Lane 2 Stage 2b row → `✅ Shipped (DB-18 Part 2 Rust carrier + Part 3 surface)`; Lane 2 `.dag`-lens stages 2d / 2e / 2f unblocked by the reflection in Part 3 item 1.
+1. **Data-declaration surface** `data my_flow: WorkflowEffect = …` wired end-to-end through the same R2 constructors (today: tests + `try_register` only).
+2. Optional: full **rustc** link of emitted idempotency lens (see compiler test module header).
 
-**Pre-start gate for Part 3:** Value-body reflection into `substrate.dag` (Part 3 item 1) must land before the data-declaration surface (Part 3 item 2) can emit `.dag`-visible registrations. The two Part 3 items form a short linear chain — reflection first, then surface.
+**Pre-start gate for Part 3 surface:** reflection for `lane2_workflow` is **landed** (substrate + specs); the remaining gate is user-facing authoring + lowering polish.
 
 ---
 
 ## STOP-AND-ESCALATE rules (Part 3 dispatch)
 
-Part 2 shipped in PR #534; Part 3 (value-body reflection + data-declaration surface) is the next dispatch under DB-18. If Part 3 implementation discovers any of the following, HALT and report to director chat rather than patching forward:
+R2 substrate + reflection have shipped; Part 3 (data-declaration **authoring** surface) is the next dispatch under DB-18. If implementation discovers any of the following, HALT and report to director chat rather than patching forward:
 
 - `WorkflowEffect`'s 4-variant shape is insufficient — e.g., a real workflow fixture requires a fifth variant or a variant payload reshape. DB-18 locks the shape; reshape is a DB revision, not an in-flight patch.
-- `BoolPortRef` does not distinguish BranchEffect from ParallelEffect structurally in practice (Q4 receipt regresses), OR `Dag::branch_arm_of` fail-closed semantics require an escape hatch for some legitimate lowering case. Same rule — reshape the substrate only through a DB revision.
+- `BoolPortRef` does not distinguish BranchEffect from ParallelEffect structurally in practice (Q4 receipt regresses), OR `bool_port_of` / diagnose fail-closed semantics require an escape hatch for some legitimate lowering case. Same rule — reshape the substrate only through a DB revision.
 - The authority-site decision (`ValueNode.lane2_workflow` keyed by workflow-root `NodeId`) turns out to be insufficient — e.g., a real fixture needs `WorkflowEffect` hosted somewhere the computation-substrate root cannot reach. DB-18 locks the host; changing it is a DB revision, not an in-flight patch.
-- `Dag::branch_arm_of` returning `None` is silently absorbed at any lowering site (no `Diagnostic::BranchConditionNotBool` emission). This is a C-8 violation — Part 3 review must reject it.
+- A non-Bool branch condition is silently absorbed at any lowering site (no `Diagnostic::BranchConditionNotBool` emission). This is a C-8 violation — Part 3 review must reject it.
 - The data-declaration surface for authoring `WorkflowEffect` requires a new FieldValue variant (i.e., the current `ValueBody` / `FieldValue` substrate cannot encode the `data my_flow: WorkflowEffect = ...` literal). This is a substrate extension, not a Part 3 patch — escalate before extending.
 
 The director chat owns the call on each of these. Silent in-flight patches destroy the structural-finding signal the pre-clearance exists to capture (per `phase-plan-2026-04-18.md` §7 "Structural-finding escalation rule").
@@ -496,13 +463,13 @@ Each entry names a shape a reader might reasonably propose and states the live r
 
 **Drop `ParallelEffect`; add it later via DB-N when Stage 2e ships.** Viable but not chosen: the four-variant shape is locked up front so Stage 2e's DB extends the existing carrier rather than graduating it. A 3-variant initial shape would be an additive refinement and does not regress the Q4 receipt for the remaining three variants — noted as a director-chat judgment call if the 4-variant commit proves too heavy.
 
-**Raw `PortId` on `BranchArm.condition` with constructor-level validation only.** Relies on a `branch_arm_of(port, body) -> Option<BranchArm>` constructor to validate "port is Bool-typed" and requires every lowering site to obey the constructor-only-no-raw-literals convention. That is API-level enforcement: a contributor writing `BranchArm { condition: <non_bool_port>, body: ... }` directly produces a type-checkable value whose condition port is invalid. The Q4 Pattern-2 receipt leans on the condition field as the load-bearing structural distinction between `BranchEffect` and `ParallelEffect`; if that field admits invalid ports, the receipt degrades to convention-level enforcement and the coproduct dissolution argument collapses. Adopted shape: `BoolPortRef` typed witness — invariant on the type, not the constructor. Additional benefit: `BoolPortRef` is reusable for other Bool-typed-port consumers (e.g., the computation substrate's Branch behavior condition slot) as a Track 9 primitive graduation.
+**Raw `PortId` on `BranchArm.condition` with constructor-level validation only.** Rejected: R2 uses **`BoolPortRef`** + **`bool_port_of`**, not raw ports. A contributor cannot type-check `BranchArm { condition: PortId, ... }` — the field is `BoolPortRef`. The Q4 receipt leans on that typed witness as the load-bearing distinction between `BranchEffect` and `ParallelEffect`.
 
 **Host `WorkflowEffect` on a new `WorkflowDeclaration` kind or as a field on `OperationDeclaration`.** Adds a substrate concept (or conflates workflow composition with per-op effect) without capability gain. The adopted host (`ValueNode.lane2_workflow` on the computation-substrate root) attaches the workflow to the node it describes and reuses the existing `ValueNode` machinery. The Part 3 data-declaration surface for authoring workflows reuses the existing `data` surface with the `WorkflowEffect` type annotation — no new declaration kind, no specific-to-workflow hosting concept.
 
 **Sidecar table `Dag.workflows`.** Parallel to `ValueNode.lane2_workflow`; would require a derivation to stay in sync with the field. Violates Q3 (no duplicated facts) and Q5 (single authority). Sidecars are justified when a fact spans multiple declarations (e.g., `Dag.clusters`); a `WorkflowEffect` is attached to one root node.
 
-**Host `WorkflowEffect` on the declaration's `value_body` (FieldValue tree) directly.** Considered and rejected for the shipped shape because `ValueBody` / `FieldValue` today cannot carry opaque handles like `BoolPortRef` — a `FieldValue::Variant { constructor, payload }` literal cannot inhabit a Rust-only opaque type. The Part 3 data-declaration surface compiles the surface literal into a computation sub-DAG, calls `Dag::branch_arm_of` on the resulting ports, and registers the final `WorkflowEffect` on the root's `ValueNode.lane2_workflow` field. This is the single-authority path — the data-declaration surface is the authoring surface; `ValueNode.lane2_workflow` is the authority storage; the two are connected by the Part 3 lowering pipeline.
+**Host `WorkflowEffect` on the declaration's `value_body` (FieldValue tree) directly.** Considered and rejected for the shipped shape because `ValueBody` / `FieldValue` today cannot carry opaque handles like `BoolPortRef` — a `FieldValue::Variant { constructor, payload }` literal cannot inhabit a Rust-only opaque type. The Part 3 data-declaration surface compiles the surface literal into a computation sub-DAG, obtains **`BoolPortRef`** witnesses from those ports via **`bool_port_of`**, builds **`BranchArm::new`**, and registers the final `WorkflowEffect` on the root's `lane2_workflow` field. This is the single-authority path — the data-declaration surface is the authoring surface; `ValueNode.lane2_workflow` is the authority storage; the two are connected by the Part 3 lowering pipeline.
 
 ---
 
@@ -513,13 +480,13 @@ Each entry names a shape a reader might reasonably propose and states the live r
 - `feedback_state_space_vs_behavioral_invariants` — cardinality invariants via `NonEmptyList` / `NonSingletonList`; rejected alternative R-alt-A.
 - `feedback_lenses_not_passes` — anchor for the lens-level re-derivation rejection (see §Rejected alternatives).
 - `feedback_no_metadata_markers` — `BranchArm.condition: BoolPortRef` is a typed opaque handle, not a string marker or raw index.
-- `feedback_fail_closed_discipline` — `WorkflowIdempotencyReport::Unsupported` carries a typed `IdempotencyUnsupportedDetail`, not a silent skip; `Dag::branch_arm_of` returning `None` must be surfaced as a `Diagnostic` identifying the non-Bool condition port at the caller.
+- `feedback_fail_closed_discipline` — `WorkflowIdempotencyReport::IdempotencyUnsupported` carries a typed `IdempotencyUnsupportedDetail`, not a silent skip; non-Bool branch conditions surface as **`Diagnostic::BranchConditionNotBool`** (via `bool_port_for_branch_condition_or_diagnose` or equivalent).
 - `feedback_std_over_patterns` — authority site reuses `ValueNode` rather than introducing a new declaration kind; Part 3 surface reuses `data` rather than introducing a workflow-specific surface.
 - DB-9 R2.1 (`design-mutual-recursion-lowering.md`) — worked example of the six-question audit; mirrors DB-18's format. Also: the `ParamRef` / `TransformRef` Track 9 primitive pattern that `BoolPortRef` follows.
 - DB-16 (`design-db16-refined-generic-substitution.md`) — worked example of Part 1 design / Part 2 impl split; mirrors DB-18's scope discipline.
 - PR #529 (`design-composed-effect-reshape.md`) — `CompositionVerdict` authority that DB-18's `LinearEffect` path delegates to. Merged 2026-04-18 as `8c7e7acdd`.
-- PR #534 (eager-fox-851) — shipped DB-18 Part 2: Rust mirrors in `src/v3/compiler/src/dag.rs`, `Dag::branch_arm_of` constructor, `workflow_idempotency::analyze_workflow` consumer, `ValueNode.lane2_workflow` authority field. Part 3 (reflection + data-declaration surface) is the follow-up dispatch.
-- ROADMAP (`../ROADMAP.md` and `../src/v3/ROADMAP.md`) — Lane 2 Stage 2b entry; this DB advances the row to ✅ Shipped for the Rust carrier + analyzer; Part 3 remains tracked follow-up.
+- PR #534 / **#545** — DB-18 Part 1 / Part 2 (β + R2 reconciliation): Rust mirrors, `bool_port_of` / `BranchArm::new`, `workflow_idempotency`, reflected `lane2_workflow`, `lane2_workflow_at` realizations. Part 3 (data-declaration **authoring** surface) remains follow-up.
+- ROADMAP — Lane 2 Stage 2b row records DB-18 Part 2 shipped; debt rows for reflection + R1→R2 cleared with the landing PRs.
 
 ---
 
