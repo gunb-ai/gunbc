@@ -261,7 +261,9 @@ impl Dag {
             return None;
         }
         match &self.declaration(decl_id).connective {
-            TypeConnective::Arrow { output, .. } => self.signature_type_shape(*output, subst, depth + 1),
+            TypeConnective::Arrow { output, .. } => {
+                self.signature_type_shape(*output, subst, depth + 1)
+            }
             TypeConnective::Instantiation {
                 template,
                 arguments,
