@@ -148,11 +148,9 @@ fn lens_flags_injected_name_keyed_reference() {
     let site_id = inject_name_keyed_reference_for_test(&mut dag, int_id);
 
     let found = name_keyed(&dag);
-    assert_eq!(
-        found.len(),
-        1,
-        "expected exactly one name-keyed reference, got: {found:?}"
-    );
-    assert_eq!(found[0].declaration, site_id);
-    assert_eq!(found[0].resolved_to, int_id);
+    let injected = found
+        .iter()
+        .find(|entry| entry.declaration == site_id)
+        .unwrap_or_else(|| panic!("expected injected site in name-keyed references, got: {found:?}"));
+    assert_eq!(injected.resolved_to, int_id);
 }

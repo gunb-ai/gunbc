@@ -93,6 +93,13 @@ fn name_keyed_references(d: Dag) -> List<NameKeyedReference> =
     prepend_name_keyed(check_name_keyed_declaration(decl), acc)
   )
 
+// Raw structural reader: reports every `ResolvedByName` atom visible
+// in the reflected Dag, including bootstrap-range declarations. The
+// DB-17 user-range policy boundary is not yet a first-class
+// reflected fact, so callers that specifically want "user only"
+// must currently filter these results by their own source-range
+// policy.
+
 fn check_name_keyed_declaration(decl: Declaration) -> List<NameKeyedReference> =
   match decl.connective {
     Atom(payload) => check_name_keyed_payload(decl, payload)
