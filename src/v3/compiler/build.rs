@@ -5,7 +5,7 @@
 // Three generated arrays exist:
 //   - `STAGED_FILES`   for `src/v3/std/*.dag`
 //   - `V3_SPECS`       for `src/v3/spec/*.dag`
-//   - `COMPILER_FILES` for `src/v3/compiler/*.dag`
+//   - `COMPILER_FILES` for `src/v3/compiler/*.dag` (except `tokenize.dag`; see below)
 //
 // Adding a new staged std/spec/compiler file becomes a pure file-system
 // change — no Rust edits to `bootstrap.rs`, no fixture-array
@@ -45,6 +45,9 @@
 //   pub static COMPILER_FILES: &[(&str, &str)] = &[
 //       ("src/v3/compiler/pipeline.dag", include_str!("...")),
 //   ];
+//   `tokenize.dag` is intentionally omitted: it is tokenizer authority for
+//   `regen_tokenize` and must not be folded into the bootstrap Dag (duplicate
+//   declarations when `compile_to_dag` parses it).
 //
 // `bootstrap.rs` uses `include!(concat!(env!("OUT_DIR"), ...))` to
 // pull the arrays in. The `include_str!` calls inside the generated

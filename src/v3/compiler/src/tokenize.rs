@@ -17,8 +17,6 @@
     clippy::collapsible_else_if
 )]
 mod generated {
-    use crate::diagnostics::{Diagnostic, SourceSpan};
-
     include!("tokenize_generated.rs");
 }
 
