@@ -1342,18 +1342,30 @@ impl LoopBound {
 ///
 /// See `docs/design-symbolic-cost-algebra.md` (DB-7) for the
 /// dissolution receipt and variant rationale.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DegreeAtLeastTwo(i64);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DegreeAtLeastTwo {
+    DegreeTwo,
+    DegreeSuccessor { previous: Box<DegreeAtLeastTwo> },
+}
 
 impl DegreeAtLeastTwo {
-    pub const TWO: Self = Self(2);
+    pub const TWO: Self = Self::DegreeTwo;
 
     pub fn new(value: i64) -> Option<Self> {
-        (value >= 2).then_some(Self(value))
+        match value {
+            2 => Some(Self::DegreeTwo),
+            v if v > 2 => Some(Self::DegreeSuccessor {
+                previous: Box::new(Self::new(v - 1)?),
+            }),
+            _ => None,
+        }
     }
 
-    pub fn raw(self) -> i64 {
-        self.0
+    pub fn raw(&self) -> i64 {
+        match self {
+            Self::DegreeTwo => 2,
+            Self::DegreeSuccessor { previous } => previous.raw() + 1,
+        }
     }
 }
 

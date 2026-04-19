@@ -19,7 +19,7 @@ use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     dominates, iterate, max_path, normalize, sequential, Behavior, Dag, DegreeAtLeastTwo,
-    NonSingletonList, PortId, SizeVariable, SymbolicCost,
+    NonSingletonList, PortId, SizeVariable, SymbolicCost, TypeConnective,
 };
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
@@ -128,6 +128,42 @@ fn constant(n: i64) -> SymbolicCost {
 
 fn boxed_terms_to_vec(terms: &NonSingletonList<Box<SymbolicCost>>) -> Vec<SymbolicCost> {
     terms.iter().map(|term| term.as_ref().clone()).collect()
+}
+
+#[test]
+fn degree_at_least_two_is_structural_in_bootstrap_substrate() {
+    let dag = Dag::new();
+    let decl = dag
+        .declaration_by_name("DegreeAtLeastTwo")
+        .expect("DegreeAtLeastTwo should bootstrap from std/algebra.dag");
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        panic!(
+            "DegreeAtLeastTwo should be a recursive sum, got {:?}",
+            decl.connective
+        );
+    };
+    assert_eq!(
+        variants.len(),
+        2,
+        "degree carrier should expose 2 structural variants"
+    );
+    assert_eq!(variants[0].label, "DegreeTwo");
+    assert_eq!(variants[1].label, "DegreeSuccessor");
+
+    let succ = dag.declaration(variants[1].ty);
+    let TypeConnective::Conj { children } = &succ.connective else {
+        panic!(
+            "DegreeSuccessor payload should be a record, got {:?}",
+            succ.connective
+        );
+    };
+    assert_eq!(children.len(), 1);
+    assert_eq!(children[0].label, "previous");
+    assert_eq!(
+        dag.declaration(children[0].ty).name.as_deref(),
+        Some("DegreeAtLeastTwo"),
+        "successor must recurse structurally to DegreeAtLeastTwo"
+    );
 }
 
 // ── Per-Behavior lowering ────────────────────────────────────────

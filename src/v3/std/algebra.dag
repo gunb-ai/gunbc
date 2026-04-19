@@ -91,9 +91,13 @@ type SizeVariable {
   source_port: PortId
 }
 
-type DegreeAtLeastTwo {
-  value: Int
-}
+// 🟢 TERMINAL. Polynomial degrees `>= 2` as a structural carrier, not a
+// pseudo-refinement over `Int`. `LinearCost` remains the sole degree-1 surface,
+// and `ConstantCost` carries degree-0 behavior; this sum makes 0/1 literally
+// unrepresentable inside `PolynomialCost`.
+type DegreeAtLeastTwo
+  = DegreeTwo
+  | DegreeSuccessor { previous: DegreeAtLeastTwo }
 
 // 🟢 TERMINAL at Stage 2d scope. The asymptotic-bound coproduct
 // DB-7 locks. See the module-level receipt for dissolution-pattern
@@ -126,6 +130,12 @@ fn many_terms(
   }
 
 fn empty_terms(seed: SymbolicCost) -> List<SymbolicCost> = empty()
+
+fn degree_raw(degree: DegreeAtLeastTwo) -> Int =
+  match degree {
+    DegreeTwo => 2
+    DegreeSuccessor(payload) => degree_raw(payload.previous) + 1
+  }
 
 // ── Composition (sequential / iterate / max_path) ───────────────
 
@@ -224,7 +234,7 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
           same_size_variable(pa.var, vb)
         PolynomialCost(pb) =>
           if same_size_variable(pa.var, pb.var) then
-            pa.degree.value >= pb.degree.value
+            degree_raw(pa.degree) >= degree_raw(pb.degree)
           else
             False
         UnknownCost(_) => False
@@ -407,7 +417,7 @@ fn collapse_linear_square(
     product_pair(a, b)
 
 fn polynomial_square(v: SizeVariable) -> SymbolicCost {
-  PolynomialCost { var: v, degree: DegreeAtLeastTwo { value: 2 } }
+  PolynomialCost { var: v, degree: DegreeTwo }
 }
 
 fn product_pair(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
