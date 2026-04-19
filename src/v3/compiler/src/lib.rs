@@ -172,6 +172,9 @@ pub use emit_rust::EmitError;
 /// naming and algebra authority live in `src/v3/std/effects.dag`, and the Rust
 /// bridge must not become a parallel public implementation surface.
 pub use lens_idempotency::analyze_workflow;
+pub use workflow_idempotency::{
+    lane2_workflow_idempotency_report, report_unsupported_workflow_variant,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StageSnapshotKind {

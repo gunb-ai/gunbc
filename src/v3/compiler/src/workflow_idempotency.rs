@@ -1,8 +1,9 @@
 //! Lane 2 Stage 2b — workflow idempotency analysis (`std.effects` mirror).
 //!
-//! Authority for the algebra lives in `src/v3/std/effects.dag`; these helpers
-//! are the crate-private compiler-side projection (tests + `lens_idempotency`)
-//! until the emitted lens module is the sole entry point. Workflow structure
+//! Authority for the algebra lives in `src/v3/std/effects.dag`; the core
+//! projection is shared with [`crate::lens_idempotency`] and with
+//! [`report_unsupported_workflow_variant`] / [`lane2_workflow_idempotency_report`],
+//! which `emit_rust_module` consumers import for rustc round-trips. Workflow structure
 //! for analysis is read from **native** `Value` / `Bind` fields on the [`Dag`]
 //! (`lane2_workflow`), mirrored on the reflected substrate (`substrate.dag`).
 
@@ -32,6 +33,26 @@ pub(crate) fn compose_operation_effects(effects: &[OperationEffect]) -> Composit
 
 /// Pure projection used by Stage 2b — kept aligned with
 /// `std.effects::lane2_workflow_idempotency_report`.
+/// Mirrors `std.effects::report_unsupported_workflow_variant` — exported for
+/// `emit_rust_module` output from `src/v3/lenses/idempotency.dag` (rustc
+/// round-trip in `m2_lens_idempotency_migration_test`).
+pub fn report_unsupported_workflow_variant(
+    variant_name: &str,
+    downstream_stage: &str,
+    reason: &str,
+) -> WorkflowIdempotencyReport {
+    WorkflowIdempotencyReport::IdempotencyUnsupported(IdempotencyUnsupportedDetail {
+        variant_name: variant_name.to_string(),
+        downstream_stage: downstream_stage.to_string(),
+        reason: reason.to_string(),
+    })
+}
+
+/// Mirrors `std.effects::lane2_workflow_idempotency_report`.
+pub fn lane2_workflow_idempotency_report(workflow: &WorkflowEffect) -> WorkflowIdempotencyReport {
+    project_workflow_idempotency_report(workflow)
+}
+
 pub(crate) fn project_workflow_idempotency_report(
     workflow: &WorkflowEffect,
 ) -> WorkflowIdempotencyReport {
