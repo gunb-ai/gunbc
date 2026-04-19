@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Dag, FieldValue, TypeConnective, ValueBody};
+use v3_compiler::dag::{AtomPayload, Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
 use v3_compiler::CompileError;
 
 const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/tokenize.dag` via\n\
@@ -124,8 +124,7 @@ fn emit_token_kind_enum(dag: &Dag) -> String {
             TypeConnective::Conj { children } if children.is_empty() => format!("    {},", v.label),
             TypeConnective::Conj { children } if children.len() == 1 => {
                 let field = &children[0];
-                let ty = dag.declaration(field.ty);
-                let rust_ty = atom_decl_to_rust(ty);
+                let rust_ty = rust_type_for_decl_id(dag, field.ty);
                 let field_name = &field.label;
                 if field_name == "name" && rust_ty == "String" {
                     format!("    {}(String),", v.label)
@@ -160,26 +159,28 @@ fn emit_token_kind_enum(dag: &Dag) -> String {
     lines.join("\n")
 }
 
-fn atom_decl_to_rust(decl: &v3_compiler::dag::Declaration) -> &'static str {
+fn rust_type_for_decl_id(dag: &Dag, id: DeclarationId) -> String {
+    let decl = dag.declaration(id);
     match &decl.connective {
-        TypeConnective::Atom(ap) => {
-            use v3_compiler::dag::AtomPayload;
-            match ap {
-                AtomPayload::ResolvedByName(id) | AtomPayload::ResolvedByStructure(id) => {
-                    let target = decl
-                        .name
-                        .as_deref()
-                        .unwrap_or_else(|| panic!("anon decl {:?}", id));
-                    match target {
-                        "String" => "String",
-                        "Int" | "Int64" => "i64",
-                        other => panic!("unsupported atom target {other}"),
-                    }
+        TypeConnective::Atom(ap) => match ap {
+            AtomPayload::ResolvedByName(inner) | AtomPayload::ResolvedByStructure(inner) => {
+                let target = dag.declaration(*inner);
+                let name = target
+                    .name
+                    .as_deref()
+                    .unwrap_or_else(|| panic!("anon decl {:?}", inner));
+                match name {
+                    "String" => "String".to_string(),
+                    "Int" | "Int64" => "i64".to_string(),
+                    other => panic!("unsupported primitive type `{other}`"),
                 }
-                _ => panic!("atom_decl_to_rust: non-resolved atom"),
             }
-        }
-        _ => panic!("atom_decl_to_rust: expected atom"),
+            _ => panic!("rust_type_for_decl_id: unexpected atom {ap:?}"),
+        },
+        _ => panic!(
+            "rust_type_for_decl_id: expected atom for field type, got {:?}",
+            decl.connective
+        ),
     }
 }
 

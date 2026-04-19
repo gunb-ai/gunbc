@@ -156,7 +156,15 @@ fn main() {
         ],
     );
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
-    let compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
+    let mut compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
+    // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`; it is not part
+    // of the runtime bootstrap Dag (would duplicate declarations when `compile_to_dag` parses it).
+    compiler_entries.retain(|p| {
+        p.file_name()
+            .and_then(|s| s.to_str())
+            .map(|n| n != "tokenize.dag")
+            .unwrap_or(true)
+    });
     let staged_generated =
         generate_static("STAGED_FILES", "src/v3/std", "src/v3/std", &staged_entries);
     let specs_generated = generate_static("V3_SPECS", "src/v3/spec", "src/v3/spec", &spec_entries);
