@@ -4936,7 +4936,7 @@ fn render_value(v: &ValueNode, literals: &LiteralSyntaxBinding) -> String {
         LiteralBits::Bool(true) => literals.true_keyword.clone(),
         LiteralBits::Bool(false) => literals.false_keyword.clone(),
         LiteralBits::String(s) => format!(
-            "{}{}{}",
+            "String::from({}{}{})",
             literals.string_delimiter,
             rust_string_literal_body(s),
             literals.string_delimiter
