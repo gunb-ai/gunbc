@@ -8,9 +8,13 @@
 // the composition algebra in `src/v3/std/algebra.dag` (+ its Rust
 // mirror in `dag.rs`) normalizes correctly.
 
+mod common;
+
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
@@ -19,6 +23,35 @@ use v3_compiler::dag::{
 };
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+
+type CompileCell = Arc<OnceLock<Dag>>;
+type CompileCacheMap = HashMap<(String, String), CompileCell>;
+
+/// Full `compile_to_dag` keyed by `(source, file)` so each fine-grained
+/// `#[test]` does not pay a cold bootstrap + pipeline run.
+///
+/// Per-key [`OnceLock`]: [`compile_cell_for_key`] only holds the map mutex; cold
+/// `compile_to_dag` runs inside [`OnceLock::get_or_init`] after the guard is
+/// dropped, so unrelated keys compile in parallel and per-test budgets measure
+/// real work (same-key init still serializes on that cell, by design).
+static COMPILE_CACHE: LazyLock<Mutex<CompileCacheMap>> =
+    LazyLock::new(|| Mutex::new(CompileCacheMap::new()));
+
+/// Map lookup / insert only — **must not** call `compile_to_dag`; the guard must
+/// not survive past this return, so compilation stays out of the critical section.
+fn compile_cell_for_key(key: (String, String)) -> CompileCell {
+    let mut guard = COMPILE_CACHE.lock().expect("compile cache mutex");
+    guard
+        .entry(key)
+        .or_insert_with(|| Arc::new(OnceLock::new()))
+        .clone()
+}
+
+fn cached_compile_to_dag(source: &str, file: &str) -> Dag {
+    let cell = compile_cell_for_key((source.to_string(), file.to_string()));
+    cell.get_or_init(|| compile_to_dag(source, file).expect("fixture compiles"))
+        .clone()
+}
 
 fn find_bind_value(dag: &Dag, name: &str) -> PortId {
     dag.nodes()
@@ -39,7 +72,7 @@ fn expect_cost(dag: &Dag, port: PortId) -> SymbolicCost {
 }
 
 fn bind_cost(source: &str, file: &str, name: &str) -> SymbolicCost {
-    let dag = compile_to_dag(source, file).expect("fixture compiles");
+    let dag = cached_compile_to_dag(source, file);
     expect_cost(&dag, find_bind_value(&dag, name))
 }
 
@@ -95,330 +128,364 @@ fn constant(n: i64) -> SymbolicCost {
 
 // ── Per-Behavior lowering ────────────────────────────────────────
 
-#[test]
-fn value_reports_constant() {
-    // `let x = 1` → ConstantCost(0) (leaf literal, no work).
-    let dag = compile_to_dag("let x = 1", "test.v3").expect("compiles");
-    let cost = expect_cost(&dag, find_bind_value(&dag, "x"));
-    assert!(
-        is_constant(&cost),
-        "literal value should report Constant, got {cost:?}"
-    );
-}
-
-#[test]
-fn transform_single_op_reports_constant() {
-    // `let x = 1 + 2` → sequential(Constant(1), sum(Constant(0), Constant(0)))
-    // → Constant wrapper. Asymptotically O(1).
-    let cost = bind_cost("let x = 1 + 2", "test.v3", "x");
-    assert!(
-        is_constant(&cost),
-        "single scalar op should report Constant, got {cost:?}"
-    );
-}
-
-#[test]
-fn branch_reports_constant_when_both_arms_constant() {
-    // `if 1 > 0 then 10 else 20` — both arms are leaf literals, so
-    // max_path over two Constants stays Constant.
-    let cost = bind_cost("let r = if 1 > 0 then 10 else 20", "test.v3", "r");
-    assert!(
-        is_constant(&cost),
-        "branch over constant arms should report Constant, got {cost:?}"
-    );
-}
-
-#[test]
-fn recursive_fn_body_contributes_to_loop_cost() {
-    // PR #537 reviewer call-out (briansrls, BLOCKING): the prior
-    // `loop_cost(acc, l.source)` shape fed the loop its source
-    // port as the body cost — the SAME port as the bound — so
-    // body work contributed `ConstantCost(0)` (the pre-seeded
-    // param-port cost) and `normalize` dropped it from the
-    // iteration. A recursive fn `fn f(n) = if ... else f(n - 1)`
-    // then flattened to a bare `LinearCost` instead of a
-    // `ProductCost([LinearCost, body-cost])`.
-    //
-    // Post-fix: `l.body: NodeId` is resolved through
-    // `node(d, body_id)` → result_port, and THAT port's cost
-    // enters the iterate composition. The recursive fn's Branch
-    // body has a `ConstantCost(1)` (the comparison op), which is
-    // non-zero and does NOT drop in `drop_zero`. The resulting
-    // shape is `ProductCost([LinearCost, ConstantCost])` — the
-    // iterate composition is preserved structurally.
-    //
-    // Pin the structural signal: the cost must be a `ProductCost`
-    // that carries BOTH a LinearCost term (from `l.source`) and a
-    // non-zero leaf (from the body). A regression that drops the
-    // body fact collapses this back to bare LinearCost, which
-    // this assertion catches.
-    let dag = compile_to_dag(
-        "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
-        "loop_body_countdown.v3",
-    )
-    .expect("compiles");
-    let cost = expect_cost(&dag, find_bind_value(&dag, "countdown"));
-    match &cost {
-        SymbolicCost::ProductCost { _0: terms } => {
-            let has_linear = terms
-                .iter()
-                .any(|t| matches!(t, SymbolicCost::LinearCost { .. }));
-            let has_nonzero_body = terms
-                .iter()
-                .any(|t| matches!(t, SymbolicCost::ConstantCost { _0: n } if *n != 0));
-            assert!(
-                has_linear,
-                "Loop cost must carry a LinearCost term from the bound port, got {cost:?}"
-            );
-            assert!(
-                has_nonzero_body,
-                "Loop cost must carry a non-zero body-cost term (regression of briansrls BLOCKING \
-                 on PR #537 — body fact silently dropped), got {cost:?}"
-            );
-        }
-        other => panic!(
-            "recursive fn should produce a ProductCost wrapping `iterate(Linear, body-cost)`; \
-             a bare LinearCost means body is being dropped. Got {other:?}"
-        ),
+budgeted_test! {
+    value_reports_constant,
+    {
+        // `let x = 1` → ConstantCost(0) (leaf literal, no work).
+        let dag = cached_compile_to_dag("let x = 1", "test.v3");
+        let cost = expect_cost(&dag, find_bind_value(&dag, "x"));
+        assert!(
+            is_constant(&cost),
+            "literal value should report Constant, got {cost:?}"
+        );
     }
 }
 
-#[test]
-fn recursive_fn_reports_linear_via_loop_lowering() {
-    // `fn countdown(n) = if n == 0 then 0 else countdown(n - 1)`
-    // lowers to a Loop whose source is the `n` param port. The
-    // lens's `loop_cost` fires LinearCost(size_var_of(source)),
-    // so the bound carries a LinearCost term.
-    let dag = compile_to_dag(
-        "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
-        "countdown.v3",
-    )
-    .expect("compiles");
-    let cost = expect_cost(&dag, find_bind_value(&dag, "countdown"));
-    assert!(
-        mentions_linear(&cost),
-        "recursive fn should surface a LinearCost term, got {cost:?}"
-    );
+budgeted_test! {
+    transform_single_op_reports_constant,
+    {
+        // `let x = 1 + 2` → sequential(Constant(1), sum(Constant(0), Constant(0)))
+        // → Constant wrapper. Asymptotically O(1).
+        let cost = bind_cost("let x = 1 + 2", "test.v3", "x");
+        assert!(
+            is_constant(&cost),
+            "single scalar op should report Constant, got {cost:?}"
+        );
+    }
+}
+
+budgeted_test! {
+    branch_reports_constant_when_both_arms_constant,
+    {
+        // `if 1 > 0 then 10 else 20` — both arms are leaf literals, so
+        // max_path over two Constants stays Constant.
+        let cost = bind_cost("let r = if 1 > 0 then 10 else 20", "test.v3", "r");
+        assert!(
+            is_constant(&cost),
+            "branch over constant arms should report Constant, got {cost:?}"
+        );
+    }
+}
+
+budgeted_test! {
+    recursive_fn_body_contributes_to_loop_cost,
+    {
+        // PR #537 reviewer call-out (briansrls, BLOCKING): the prior
+        // `loop_cost(acc, l.source)` shape fed the loop its source
+        // port as the body cost — the SAME port as the bound — so
+        // body work contributed `ConstantCost(0)` (the pre-seeded
+        // param-port cost) and `normalize` dropped it from the
+        // iteration. A recursive fn `fn f(n) = if ... else f(n - 1)`
+        // then flattened to a bare `LinearCost` instead of a
+        // `ProductCost([LinearCost, body-cost])`.
+        //
+        // Post-fix: `l.body: NodeId` is resolved through
+        // `node(d, body_id)` → result_port, and THAT port's cost
+        // enters the iterate composition. The recursive fn's Branch
+        // body has a `ConstantCost(1)` (the comparison op), which is
+        // non-zero and does NOT drop in `drop_zero`. The resulting
+        // shape is `ProductCost([LinearCost, ConstantCost])` — the
+        // iterate composition is preserved structurally.
+        //
+        // Pin the structural signal: the cost must be a `ProductCost`
+        // that carries BOTH a LinearCost term (from `l.source`) and a
+        // non-zero leaf (from the body). A regression that drops the
+        // body fact collapses this back to bare LinearCost, which
+        // this assertion catches.
+        let dag = cached_compile_to_dag(
+            "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
+            "loop_body_countdown.v3",
+        );
+        let cost = expect_cost(&dag, find_bind_value(&dag, "countdown"));
+        match &cost {
+            SymbolicCost::ProductCost { _0: terms } => {
+                let has_linear = terms
+                    .iter()
+                    .any(|t| matches!(t, SymbolicCost::LinearCost { .. }));
+                let has_nonzero_body = terms
+                    .iter()
+                    .any(|t| matches!(t, SymbolicCost::ConstantCost { _0: n } if *n != 0));
+                assert!(
+                    has_linear,
+                    "Loop cost must carry a LinearCost term from the bound port, got {cost:?}"
+                );
+                assert!(
+                    has_nonzero_body,
+                    "Loop cost must carry a non-zero body-cost term (regression of briansrls BLOCKING \
+                     on PR #537 — body fact silently dropped), got {cost:?}"
+                );
+            }
+            other => panic!(
+                "recursive fn should produce a ProductCost wrapping `iterate(Linear, body-cost)`; \
+                 a bare LinearCost means body is being dropped. Got {other:?}"
+            ),
+        }
+    }
+}
+
+budgeted_test! {
+    recursive_fn_reports_linear_via_loop_lowering,
+    {
+        // `fn countdown(n) = if n == 0 then 0 else countdown(n - 1)`
+        // lowers to a Loop whose source is the `n` param port. The
+        // lens's `loop_cost` fires LinearCost(size_var_of(source)),
+        // so the bound carries a LinearCost term.
+        let dag = cached_compile_to_dag(
+            "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
+            "countdown.v3",
+        );
+        let cost = expect_cost(&dag, find_bind_value(&dag, "countdown"));
+        assert!(
+            mentions_linear(&cost),
+            "recursive fn should surface a LinearCost term, got {cost:?}"
+        );
+    }
 }
 
 // ── Composition algebra (std.algebra Rust mirror) ────────────────
 
-#[test]
-fn sum_of_linear_and_constant_zero_normalizes_to_linear() {
-    // DB-7 acceptance gate: `SumCost([LinearCost, ConstantCost(0)])`
-    // normalizes to `LinearCost` (zero drops out).
-    let (port, _) = two_distinct_ports();
-    let l = linear(port);
-    let result = sequential(l.clone(), constant(0));
-    assert_eq!(
-        result, l,
-        "Linear + Constant(0) should normalize to Linear, got {result:?}"
-    );
-}
-
-#[test]
-fn sum_of_constant_and_linear_normalizes_to_linear() {
-    // Dominance is order-independent: Constant + Linear also
-    // normalizes to Linear (Constant is dominated).
-    let (port, _) = two_distinct_ports();
-    let l = linear(port);
-    let result = sequential(constant(5), l);
-    assert!(
-        matches!(result, SymbolicCost::LinearCost { .. }),
-        "Constant + Linear should normalize to Linear, got {result:?}"
-    );
-}
-
-#[test]
-fn product_of_two_linears_over_same_var_folds_to_polynomial_squared() {
-    // DB-7 §"Nested fold detection (O(n²) diagnostic)":
-    // `iterate(Linear(n), Linear(n))` folds to `Polynomial(n, 2)`.
-    let (port, _) = two_distinct_ports();
-    let l = linear(port);
-    let result = iterate(l.clone(), l);
-    match result {
-        SymbolicCost::PolynomialCost { var, degree } => {
-            assert_eq!(var, size_var(port));
-            assert_eq!(degree, 2);
-        }
-        other => panic!("expected PolynomialCost(n, 2), got {other:?}"),
+budgeted_test! {
+    sum_of_linear_and_constant_zero_normalizes_to_linear,
+    {
+        // DB-7 acceptance gate: `SumCost([LinearCost, ConstantCost(0)])`
+        // normalizes to `LinearCost` (zero drops out).
+        let (port, _) = two_distinct_ports();
+        let l = linear(port);
+        let result = sequential(l.clone(), constant(0));
+        assert_eq!(
+            result, l,
+            "Linear + Constant(0) should normalize to Linear, got {result:?}"
+        );
     }
 }
 
-#[test]
-fn product_of_linears_over_different_vars_stays_product() {
-    // Two folds over DISTINCT lists stay as ProductCost — the
-    // two size variables aren't the same, so the polynomial
-    // collapse doesn't fire.
-    let (port_a, port_b) = two_distinct_ports();
-    let result = iterate(linear(port_a), linear(port_b));
-    assert!(
-        matches!(result, SymbolicCost::ProductCost { .. }),
-        "Linear(a) * Linear(b) over different ports should stay Product, got {result:?}"
-    );
-}
-
-#[test]
-fn dominance_unknown_dominates_everything() {
-    // DB-7 §"Dominance" — Unknown is the safest over-approximation.
-    let (port, _) = two_distinct_ports();
-    let unknown = SymbolicCost::UnknownCost {
-        _0: "reflection".to_string(),
-    };
-    assert!(dominates(&unknown, &linear(port)));
-    assert!(dominates(&unknown, &constant(0)));
-}
-
-#[test]
-fn dominance_linear_dominates_log_and_constant() {
-    let (port, _) = two_distinct_ports();
-    assert!(dominates(&linear(port), &log_cost(port)));
-    assert!(dominates(&linear(port), &constant(3)));
-    assert!(!dominates(&constant(3), &linear(port)));
-}
-
-#[test]
-fn dominance_polynomial_degree_ordering() {
-    let (port, _) = two_distinct_ports();
-    assert!(dominates(&polynomial(port, 3), &polynomial(port, 2)));
-    assert!(!dominates(&polynomial(port, 2), &polynomial(port, 3)));
-}
-
-#[test]
-fn composite_dominance_reads_children_not_outer_variant() {
-    // PR #537 review (codex P2): Product / Sum dominance must
-    // derive from children, not hardcode "any Product dominates
-    // Linear". A product whose strongest child is `Log(n)`
-    // should NOT dominate `Linear(n)`.
-    let (port, _) = two_distinct_ports();
-    let product_of_logs = SymbolicCost::ProductCost {
-        _0: vec![log_cost(port), log_cost(port)],
-    };
-    let linear_cost = linear(port);
-    assert!(
-        !dominates(&product_of_logs, &linear_cost),
-        "Product([Log, Log]) must NOT dominate Linear — children don't reach Linear, \
-         got dominates=true (regression of codex P2 on PR #537)"
-    );
-
-    // Symmetric positive case: a product WITH a Linear child DOES
-    // dominate Log, because the dominant-child summary walks the
-    // children.
-    let product_with_linear = SymbolicCost::ProductCost {
-        _0: vec![log_cost(port), linear(port)],
-    };
-    assert!(
-        dominates(&product_with_linear, &log_cost(port)),
-        "Product([Log, Linear]) must dominate Log via its Linear child"
-    );
-}
-
-#[test]
-fn sum_dominance_reads_children_not_outer_variant() {
-    // Same fix as ProductCost: Sum's dominance is a dominant-child
-    // summary, not a hardcoded "any Sum dominates scalars".
-    let (port, _) = two_distinct_ports();
-    let sum_of_logs = SymbolicCost::SumCost {
-        _0: vec![log_cost(port), log_cost(port)],
-    };
-    assert!(
-        !dominates(&sum_of_logs, &linear(port)),
-        "Sum([Log, Log]) must NOT dominate Linear — no child reaches Linear"
-    );
-
-    let sum_with_polynomial = SymbolicCost::SumCost {
-        _0: vec![constant(0), polynomial(port, 2)],
-    };
-    assert!(
-        dominates(&sum_with_polynomial, &linear(port)),
-        "Sum containing Polynomial(n, 2) must dominate Linear(n) via the poly child"
-    );
-}
-
-#[test]
-fn max_path_returns_dominant_term() {
-    // `max_path([Constant(0), Linear(n), Polynomial(n, 2)])` → Polynomial(n, 2).
-    let (port, _) = two_distinct_ports();
-    let paths = vec![constant(0), linear(port), polynomial(port, 2)];
-    let result = max_path(&paths);
-    match result {
-        SymbolicCost::PolynomialCost { degree, .. } => assert_eq!(degree, 2),
-        other => panic!("expected PolynomialCost, got {other:?}"),
+budgeted_test! {
+    sum_of_constant_and_linear_normalizes_to_linear,
+    {
+        // Dominance is order-independent: Constant + Linear also
+        // normalizes to Linear (Constant is dominated).
+        let (port, _) = two_distinct_ports();
+        let l = linear(port);
+        let result = sequential(constant(5), l);
+        assert!(
+            matches!(result, SymbolicCost::LinearCost { .. }),
+            "Constant + Linear should normalize to Linear, got {result:?}"
+        );
     }
 }
 
-#[test]
-fn max_path_preserves_both_incomparable_branches() {
-    // PR #537 review (briansrls, BLOCKING): two incomparable
-    // branches — `Linear(n)` over port_a vs `Linear(m)` over
-    // port_b — must NOT drop one silently. `Big-O(f + g) =
-    // Big-O(max(f, g))` for non-negative asymptotic terms, so the
-    // preserved-as-sum shape is the honest worst case.
-    let (port_a, port_b) = two_distinct_ports();
-    let paths = vec![linear(port_a), linear(port_b)];
-    let result = max_path(&paths);
-    match &result {
-        SymbolicCost::SumCost { _0: terms } => {
-            assert_eq!(
-                terms.len(),
-                2,
-                "incomparable Linear(n) + Linear(m) must preserve both as a two-element Sum, \
-                 got {result:?}"
-            );
-            assert!(
-                terms.contains(&linear(port_a)) && terms.contains(&linear(port_b)),
-                "both branch costs must remain in the Sum, got {result:?}"
-            );
+budgeted_test! {
+    product_of_two_linears_over_same_var_folds_to_polynomial_squared,
+    {
+        // DB-7 §"Nested fold detection (O(n²) diagnostic)":
+        // `iterate(Linear(n), Linear(n))` folds to `Polynomial(n, 2)`.
+        let (port, _) = two_distinct_ports();
+        let l = linear(port);
+        let result = iterate(l.clone(), l);
+        match result {
+            SymbolicCost::PolynomialCost { var, degree } => {
+                assert_eq!(var, size_var(port));
+                assert_eq!(degree, 2);
+            }
+            other => panic!("expected PolynomialCost(n, 2), got {other:?}"),
         }
-        other => panic!("expected SumCost preserving both branches, got {other:?}"),
     }
 }
 
-#[test]
-fn max_path_order_independence_on_incomparable_branches() {
-    // Reversing the input order must yield the same asymptotic
-    // shape — the previous two-way dominance fold depended on
-    // fold order and dropped whichever branch landed later when
-    // both were incomparable.
-    let (port_a, port_b) = two_distinct_ports();
-    let forward = max_path(&[linear(port_a), linear(port_b)]);
-    let reversed = max_path(&[linear(port_b), linear(port_a)]);
-    let (forward_terms, reversed_terms) = match (&forward, &reversed) {
-        (SymbolicCost::SumCost { _0: fwd }, SymbolicCost::SumCost { _0: rev }) => {
-            (fwd.clone(), rev.clone())
-        }
-        _ => panic!(
-            "both orderings should produce a SumCost, got forward={forward:?} reversed={reversed:?}"
-        ),
-    };
-    assert_eq!(
-        forward_terms.len(),
-        reversed_terms.len(),
-        "element count must not depend on fold order"
-    );
-    assert!(
-        forward_terms.iter().all(|t| reversed_terms.contains(t))
-            && reversed_terms.iter().all(|t| forward_terms.contains(t)),
-        "the preserved set of terms must be the same regardless of input order; \
-         got forward={forward_terms:?} reversed={reversed_terms:?}"
-    );
+budgeted_test! {
+    product_of_linears_over_different_vars_stays_product,
+    {
+        // Two folds over DISTINCT lists stay as ProductCost — the
+        // two size variables aren't the same, so the polynomial
+        // collapse doesn't fire.
+        let (port_a, port_b) = two_distinct_ports();
+        let result = iterate(linear(port_a), linear(port_b));
+        assert!(
+            matches!(result, SymbolicCost::ProductCost { .. }),
+            "Linear(a) * Linear(b) over different ports should stay Product, got {result:?}"
+        );
+    }
 }
 
-#[test]
-fn normalize_keeps_singleton_costs_unchanged() {
-    // `normalize` is structural — non-Sum/Product variants pass
-    // through unmodified.
-    let (port, _) = two_distinct_ports();
-    for cost in [
-        constant(7),
-        linear(port),
-        log_cost(port),
-        SymbolicCost::UnknownCost {
-            _0: "opaque".to_string(),
-        },
-    ] {
-        let normalized = normalize(cost.clone());
-        assert_eq!(normalized, cost, "normalize should pass through leaf costs");
+budgeted_test! {
+    dominance_unknown_dominates_everything,
+    {
+        // DB-7 §"Dominance" — Unknown is the safest over-approximation.
+        let (port, _) = two_distinct_ports();
+        let unknown = SymbolicCost::UnknownCost {
+            _0: "reflection".to_string(),
+        };
+        assert!(dominates(&unknown, &linear(port)));
+        assert!(dominates(&unknown, &constant(0)));
+    }
+}
+
+budgeted_test! {
+    dominance_linear_dominates_log_and_constant,
+    {
+        let (port, _) = two_distinct_ports();
+        assert!(dominates(&linear(port), &log_cost(port)));
+        assert!(dominates(&linear(port), &constant(3)));
+        assert!(!dominates(&constant(3), &linear(port)));
+    }
+}
+
+budgeted_test! {
+    dominance_polynomial_degree_ordering,
+    {
+        let (port, _) = two_distinct_ports();
+        assert!(dominates(&polynomial(port, 3), &polynomial(port, 2)));
+        assert!(!dominates(&polynomial(port, 2), &polynomial(port, 3)));
+    }
+}
+
+budgeted_test! {
+    composite_dominance_reads_children_not_outer_variant,
+    {
+        // PR #537 review (codex P2): Product / Sum dominance must
+        // derive from children, not hardcode "any Product dominates
+        // Linear". A product whose strongest child is `Log(n)`
+        // should NOT dominate `Linear(n)`.
+        let (port, _) = two_distinct_ports();
+        let product_of_logs = SymbolicCost::ProductCost {
+            _0: vec![log_cost(port), log_cost(port)],
+        };
+        let linear_cost = linear(port);
+        assert!(
+            !dominates(&product_of_logs, &linear_cost),
+            "Product([Log, Log]) must NOT dominate Linear — children don't reach Linear, \
+             got dominates=true (regression of codex P2 on PR #537)"
+        );
+
+        // Symmetric positive case: a product WITH a Linear child DOES
+        // dominate Log, because the dominant-child summary walks the
+        // children.
+        let product_with_linear = SymbolicCost::ProductCost {
+            _0: vec![log_cost(port), linear(port)],
+        };
+        assert!(
+            dominates(&product_with_linear, &log_cost(port)),
+            "Product([Log, Linear]) must dominate Log via its Linear child"
+        );
+    }
+}
+
+budgeted_test! {
+    sum_dominance_reads_children_not_outer_variant,
+    {
+        // Same fix as ProductCost: Sum's dominance is a dominant-child
+        // summary, not a hardcoded "any Sum dominates scalars".
+        let (port, _) = two_distinct_ports();
+        let sum_of_logs = SymbolicCost::SumCost {
+            _0: vec![log_cost(port), log_cost(port)],
+        };
+        assert!(
+            !dominates(&sum_of_logs, &linear(port)),
+            "Sum([Log, Log]) must NOT dominate Linear — no child reaches Linear"
+        );
+
+        let sum_with_polynomial = SymbolicCost::SumCost {
+            _0: vec![constant(0), polynomial(port, 2)],
+        };
+        assert!(
+            dominates(&sum_with_polynomial, &linear(port)),
+            "Sum containing Polynomial(n, 2) must dominate Linear(n) via the poly child"
+        );
+    }
+}
+
+budgeted_test! {
+    max_path_returns_dominant_term,
+    {
+        // `max_path([Constant(0), Linear(n), Polynomial(n, 2)])` → Polynomial(n, 2).
+        let (port, _) = two_distinct_ports();
+        let paths = vec![constant(0), linear(port), polynomial(port, 2)];
+        let result = max_path(&paths);
+        match result {
+            SymbolicCost::PolynomialCost { degree, .. } => assert_eq!(degree, 2),
+            other => panic!("expected PolynomialCost, got {other:?}"),
+        }
+    }
+}
+
+budgeted_test! {
+    max_path_preserves_both_incomparable_branches,
+    {
+        // PR #537 review (briansrls, BLOCKING): two incomparable
+        // branches — `Linear(n)` over port_a vs `Linear(m)` over
+        // port_b — must NOT drop one silently. `Big-O(f + g) =
+        // Big-O(max(f, g))` for non-negative asymptotic terms, so the
+        // preserved-as-sum shape is the honest worst case.
+        let (port_a, port_b) = two_distinct_ports();
+        let paths = vec![linear(port_a), linear(port_b)];
+        let result = max_path(&paths);
+        match &result {
+            SymbolicCost::SumCost { _0: terms } => {
+                assert_eq!(
+                    terms.len(),
+                    2,
+                    "incomparable Linear(n) + Linear(m) must preserve both as a two-element Sum, \
+                     got {result:?}"
+                );
+                assert!(
+                    terms.contains(&linear(port_a)) && terms.contains(&linear(port_b)),
+                    "both branch costs must remain in the Sum, got {result:?}"
+                );
+            }
+            other => panic!("expected SumCost preserving both branches, got {other:?}"),
+        }
+    }
+}
+
+budgeted_test! {
+    max_path_order_independence_on_incomparable_branches,
+    {
+        // Reversing the input order must yield the same asymptotic
+        // shape — the previous two-way dominance fold depended on
+        // fold order and dropped whichever branch landed later when
+        // both were incomparable.
+        let (port_a, port_b) = two_distinct_ports();
+        let forward = max_path(&[linear(port_a), linear(port_b)]);
+        let reversed = max_path(&[linear(port_b), linear(port_a)]);
+        let (forward_terms, reversed_terms) = match (&forward, &reversed) {
+            (SymbolicCost::SumCost { _0: fwd }, SymbolicCost::SumCost { _0: rev }) => {
+                (fwd.clone(), rev.clone())
+            }
+            _ => panic!(
+                "both orderings should produce a SumCost, got forward={forward:?} reversed={reversed:?}"
+            ),
+        };
+        assert_eq!(
+            forward_terms.len(),
+            reversed_terms.len(),
+            "element count must not depend on fold order"
+        );
+        assert!(
+            forward_terms.iter().all(|t| reversed_terms.contains(t))
+                && reversed_terms.iter().all(|t| forward_terms.contains(t)),
+            "the preserved set of terms must be the same regardless of input order; \
+             got forward={forward_terms:?} reversed={reversed_terms:?}"
+        );
+    }
+}
+
+budgeted_test! {
+    normalize_keeps_singleton_costs_unchanged,
+    {
+        // `normalize` is structural — non-Sum/Product variants pass
+        // through unmodified.
+        let (port, _) = two_distinct_ports();
+        for cost in [
+            constant(7),
+            linear(port),
+            log_cost(port),
+            SymbolicCost::UnknownCost {
+                _0: "opaque".to_string(),
+            },
+        ] {
+            let normalized = normalize(cost.clone());
+            assert_eq!(normalized, cost, "normalize should pass through leaf costs");
+        }
     }
 }
 
@@ -436,8 +503,7 @@ fn lens_path() -> PathBuf {
 
 fn emit_lens_module() -> String {
     let source = std::fs::read_to_string(lens_path()).expect("read cost.dag");
-    let dag = compile_to_dag(&source, lens_path().to_string_lossy().as_ref())
-        .expect("cost.dag should compile cleanly");
+    let dag = cached_compile_to_dag(&source, lens_path().to_string_lossy().as_ref());
     assert!(
         dag.diagnostics().is_empty(),
         "cost.dag should compile without diagnostics, got {:?}",
@@ -469,25 +535,30 @@ fn format_rust_source(source: &str) -> String {
     String::from_utf8(output.stdout).expect("rustfmt output should be utf-8")
 }
 
-#[test]
-fn cost_dag_compiles_cleanly() {
-    let source = std::fs::read_to_string(lens_path()).expect("read cost.dag");
-    let dag = compile_to_dag(&source, lens_path().to_string_lossy().as_ref())
-        .expect("cost.dag should compile cleanly");
-    assert!(
-        dag.diagnostics().is_empty(),
-        "cost.dag should compile without diagnostics, got {:?}",
-        dag.diagnostics()
-    );
+budgeted_test! {
+    cost_dag_compiles_cleanly,
+    {
+        let source = std::fs::read_to_string(lens_path()).expect("read cost.dag");
+        let dag = cached_compile_to_dag(&source, lens_path().to_string_lossy().as_ref());
+        assert!(
+            dag.diagnostics().is_empty(),
+            "cost.dag should compile without diagnostics, got {:?}",
+            dag.diagnostics()
+        );
+    }
 }
 
-#[test]
-fn cost_generated_module_matches_checked_in_snapshot() {
-    let fresh = emit_lens_module();
-    let checked_in = include_str!("../src/lens_cost_symbolic_generated.rs");
-    assert_eq!(
-        fresh.trim(),
-        checked_in.trim(),
-        "checked-in `lens_cost_symbolic_generated.rs` is stale; run `cargo run --bin regen_lens_cost_symbolic`"
-    );
+// rustfmt + snapshot compare can spike on cold CI runners.
+budgeted_test! {
+    15_000,
+    cost_generated_module_matches_checked_in_snapshot,
+    {
+        let fresh = emit_lens_module();
+        let checked_in = include_str!("../src/lens_cost_symbolic_generated.rs");
+        assert_eq!(
+            fresh.trim(),
+            checked_in.trim(),
+            "checked-in `lens_cost_symbolic_generated.rs` is stale; run `cargo run --bin regen_lens_cost_symbolic`"
+        );
+    }
 }

@@ -98,8 +98,35 @@ jobs:
             cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
             cargo-v3-${{ runner.os }}-
 
-      - name: v3 Compiler Tests
-        run: cargo test -p v3-compiler
+      # Layer 1 (coarse CI): wall-clock gates on `cargo test -p v3-compiler`.
+      #
+      # 120s gate: applies to the lane2 Stage 2d symbolic-cost integration
+      # binary only — that is the ζ (#537) regression surface (many `#[test]`
+      # each doing full compile). A warm full `cargo test -p v3-compiler` is
+      # still ~400s locally (testgen / rustc roundtrips), so a 120s cap on the
+      # *entire* suite would fail every run until suite-wide setup is shared;
+      # tighten the second gate when that baseline drops.
+      - name: v3 tests with 120s budget
+        run: |
+          start=$(date +%s)
+          cargo test -p v3-compiler --test lane2_stage_2d_symbolic_cost_test
+          elapsed=$(( $(date +%s) - start ))
+          echo "v3 test wall time: ${elapsed}s"
+          if [ "$elapsed" -gt 120 ]; then
+            echo "::error::v3 tests took ${elapsed}s (budget: 120s) — share bootstrap setup via OnceLock or collapse fine-grained tests"
+            exit 1
+          fi
+
+      - name: v3 tests (full suite, 600s budget)
+        run: |
+          start=$(date +%s)
+          cargo test -p v3-compiler
+          elapsed=$(( $(date +%s) - start ))
+          echo "v3 full-suite wall time: ${elapsed}s"
+          if [ "$elapsed" -gt 600 ]; then
+            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 600s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
+            exit 1
+          fi
 
       - name: v3 Compiler Clippy
         run: cargo clippy -p v3-compiler --all-targets -- -D warnings
