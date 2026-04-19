@@ -53,6 +53,8 @@ use std::sync::LazyLock;
 use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
 use crate::types::TypeShape;
 
+mod builder;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeId(u32);
 
