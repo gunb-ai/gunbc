@@ -13,14 +13,10 @@ ROOT = Path(__file__).resolve().parent.parent
 COMPILER_DIR = ROOT / "src" / "v3" / "compiler"
 SRC_DIR = COMPILER_DIR / "src"
 AUTHORITY_PATH = COMPILER_DIR / "runtime_mirrors.dag"
+SUBSTRATE_PATH = ROOT / "src" / "v3" / "std" / "substrate.dag"
 
 
-TYPE_SHAPE_TEMPLATE = """#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TypeShape {
-    pub declaration: DeclarationId,
-}
-
-impl TypeShape {
+TYPE_SHAPE_IMPL_TEMPLATE = """impl TypeShape {
     pub fn new(declaration: DeclarationId) -> Self {
         Self { declaration }
     }
@@ -277,8 +273,8 @@ class VariantDef:
     fields: list[tuple[str, str]] | None = None
 
 
-def parse_runtime_mirrors() -> tuple[dict[str, RecordDef], dict[str, list[VariantDef]]]:
-    lines = AUTHORITY_PATH.read_text().splitlines()
+def parse_types(path: Path) -> tuple[dict[str, RecordDef], dict[str, list[VariantDef]]]:
+    lines = path.read_text().splitlines()
     records: dict[str, RecordDef] = {}
     sums: dict[str, list[VariantDef]] = {}
     i = 0
@@ -288,12 +284,12 @@ def parse_runtime_mirrors() -> tuple[dict[str, RecordDef], dict[str, list[Varian
             i += 1
             continue
         if "{" in line and "=" not in line:
-            name = re.match(r"type\s+(\w+)\s*\{", line).group(1)
+            name = re.match(r"type\s+(\w+)(?:<[^>]+>)?\s*\{", line).group(1)
             i += 1
             fields: list[tuple[str, str]] = []
             while lines[i].strip() != "}":
                 field_line = lines[i].strip()
-                if field_line:
+                if field_line and ":" in field_line:
                     label, ty = field_line.split(":", 1)
                     fields.append((label.strip(), ty.strip()))
                 i += 1
@@ -301,7 +297,7 @@ def parse_runtime_mirrors() -> tuple[dict[str, RecordDef], dict[str, list[Varian
             i += 1
             continue
 
-        name = re.match(r"type\s+(\w+)", line).group(1)
+        name = re.match(r"type\s+(\w+)(?:<[^>]+>)?", line).group(1)
         variants: list[VariantDef] = []
         i += 1
         while i < len(lines):
@@ -330,7 +326,7 @@ def parse_runtime_mirrors() -> tuple[dict[str, RecordDef], dict[str, list[Varian
                 fields: list[tuple[str, str]] = []
                 while lines[i].strip() != "}":
                     field_line = lines[i].strip()
-                    if field_line:
+                    if field_line and ":" in field_line:
                         label, ty = field_line.split(":", 1)
                         fields.append((label.strip(), ty.strip()))
                     i += 1
@@ -343,6 +339,10 @@ def parse_runtime_mirrors() -> tuple[dict[str, RecordDef], dict[str, list[Varian
                 raise ValueError(f"unparsed variant line: {lines[i]}")
         sums[name] = variants
     return records, sums
+
+
+def parse_runtime_mirrors() -> tuple[dict[str, RecordDef], dict[str, list[VariantDef]]]:
+    return parse_types(AUTHORITY_PATH)
 
 
 def rust_type(source: str, overrides: dict[str, str] | None = None) -> str:
@@ -431,6 +431,18 @@ def render_diagnostics_module(records: dict[str, RecordDef], sums: dict[str, lis
     return "\n\n".join([SOURCE_SPAN_TEMPLATE.strip(), CORRECTION_TEMPLATE.strip()])
 
 
+def render_types_module(substrate_records: dict[str, RecordDef]) -> str:
+    return "\n\n".join(
+        [
+            render_record(
+                substrate_records["TypeShape"],
+                derives="#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]",
+            ),
+            TYPE_SHAPE_IMPL_TEMPLATE.strip(),
+        ]
+    )
+
+
 def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
     parts = [
         render_sum(
@@ -510,9 +522,10 @@ def format_with_header(authority: str, body: str) -> str:
 
 def expected_outputs() -> dict[Path, str]:
     records, sums = parse_runtime_mirrors()
+    substrate_records, _ = parse_types(SUBSTRATE_PATH)
     return {
         SRC_DIR / "types_generated.rs": format_with_header(
-            "src/v3/std/substrate.dag", TYPE_SHAPE_TEMPLATE
+            "src/v3/std/substrate.dag", render_types_module(substrate_records)
         ),
         SRC_DIR / "diagnostics_generated.rs": format_with_header(
             "src/v3/std/substrate.dag, src/v3/std/diagnostics.dag",
