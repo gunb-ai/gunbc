@@ -179,13 +179,13 @@ These are **not** all separate “name bridges,” but they are **behavior bridg
 | `LanguageSpec` discrimination | **Yes** | Use `language` refs — B11 largely closed. |
 | List / optional **variant roles** | **Partial** | Need explicit metadata or spec fields (B13). |
 | Canonical algebra fallback | **Partial** | `OrderedRing` name is the gap (B14). |
-| Rust derive attributes | **No** | Hardcoded (B15). |
+| Rust derive attributes | **Yes** | Baked into `spec/rust.dag` `rust_type_defs.struct_def` / `enum_def` templates; B15 dissolved in SG-7.1. |
 
 ---
 
 ## Suggested dissolution priority (for P2)
 
-1. **B14** + **B15** + **Loop** (B19) — unblock “spec-complete” Rust/Go/Python.  
+1. **B14** + **Loop** (B19) — unblock “spec-complete” Rust/Go/Python. (B15 dissolved in SG-7.1.)
 2. **B13** — remove cross-target string variant compares.  
 3. **B12**, **B16**, **B17**, **B18** — polish and de-string remaining bootstrap.
 
