@@ -1,3 +1,6 @@
+//! **Layer:** boundary (TESTING.md § test layers — class-5 CPython
+//! roundtrip).
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -149,6 +152,9 @@ fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
     let deps = deps_dir();
     let current_rlib = find_current_rlib("v3_compiler");
     let compile = Command::new("rustc")
+        // See common::RustcHarness::compile: strip RUSTC_BOOTSTRAP so the ratchet
+        // CI step's libtest unlock does not leak into child rustc invocations.
+        .env_remove("RUSTC_BOOTSTRAP")
         .arg("--edition=2021")
         .arg(src_path)
         .arg("-o")

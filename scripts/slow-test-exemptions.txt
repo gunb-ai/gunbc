@@ -1,0 +1,34 @@
+# Per-test 2s ratchet exemptions (TESTING.md § test layers,
+# `feedback_test_timeout_2s`). One test name per line. Comments start
+# with `#`. Blank lines ignored.
+#
+# Path format matches the second whitespace-delimited token of
+# `cargo test -- --report-time` output — that is,
+# `<module_path>::<test_name>` inside a given test binary, with no
+# binary prefix. Example lines libtest emits:
+#   test m1_5_testgen_test::heavy_case ... ok <3.412s>
+#   test sg0_census_test::sg0_v3_hand_authored_census ... ok <0.005s>
+# The exemption entries are the `m1_5_testgen_test::heavy_case` and
+# `sg0_census_test::sg0_v3_hand_authored_census` tokens — exactly as
+# they appear in the output.
+#
+# This means the same test name in two different binaries cannot be
+# disambiguated here (rare in this repo; the consolidated
+# `tests/integration.rs` binary hosts almost everything, and names
+# are qualified by their source-file module already). If disambiguation
+# is ever needed, the parser would need extension first.
+#
+# Every exemption MUST cite either a ROADMAP item or a
+# project memory so the paydown backlog stays structural, not folkloric.
+#
+# Adding an entry here is a short-term tolerance, not a permanent waiver.
+# The goal remains: every `#[test]` under 2s wall-clock.
+
+# ── Intentionally empty on initial landing. ──
+# Phase 0 shipped the ratchet in **report-only** mode (the CI step has
+# `continue-on-error: true`), so the first green-or-red CI run already
+# publishes the baseline of currently-slow tests in its log. Read that
+# log, populate this file with one line per test + a one-line reason,
+# then flip `continue-on-error: true` off in `.github/workflows/ci.yml`
+# to make the ratchet binding — that is the Phase 0 binding follow-up.
+# See `src/v3/compiler/tests/HANDOFF_PHASE0.md` for the full path.

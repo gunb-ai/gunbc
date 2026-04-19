@@ -1,3 +1,5 @@
+//! **Layer:** boundary (TESTING.md § test layers — class-5 rustc roundtrip).
+
 // M1(3) PR-B — Rust emitter acceptance tests.
 //
 // The success criterion the whole plan validates:
@@ -81,6 +83,9 @@ fn roundtrip_stdout(source: &str) -> String {
         .expect("write rust source");
 
     let compile = Command::new("rustc")
+        // See common::RustcHarness::compile: strip RUSTC_BOOTSTRAP so the ratchet
+        // CI step's libtest unlock does not leak into child rustc invocations.
+        .env_remove("RUSTC_BOOTSTRAP")
         .arg(&src_path)
         .arg("-o")
         .arg(&bin_path)
@@ -479,6 +484,9 @@ let zero: Int = 0",
         .and_then(|mut f| f.write_all(wrapped.as_bytes()))
         .expect("write rust source");
     let status = Command::new("rustc")
+        // See common::RustcHarness::compile: strip RUSTC_BOOTSTRAP so the ratchet
+        // CI step's libtest unlock does not leak into child rustc invocations.
+        .env_remove("RUSTC_BOOTSTRAP")
         .arg("--edition=2021")
         .arg(&src_path)
         .arg("-o")

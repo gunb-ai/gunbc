@@ -1,3 +1,6 @@
+//! **Layer:** boundary (TESTING.md § test layers — class-5 rustc emit
+//! roundtrip).
+
 // Pure-emitter regression pin for the multi-field struct-variant
 // match fix in `emit_rust.rs` (see `destructured_field_alias` and
 // `render_path_body`'s `field_overrides` population).

@@ -130,16 +130,53 @@ jobs:
 
       # **Dissolution trigger:** reshape m1_5_testgen to spot-check instead of exhaustive
       # compile-every-claim, OR mark the two slow tests `#[ignore]`-by-default + nightly job.
+      #
+      # Timing capture — the trailing `-- -Z unstable-options --report-time` enables
+      # libtest's per-test timing output (`<N.NNNs>` trailer) so the Phase 0 per-test
+      # ratchet step below can parse violations without running the suite a second
+      # time. `--report-time` is still unstable on 1.93 (rust-lang/rust#64888); the
+      # `RUSTC_BOOTSTRAP=1` prefix is the documented narrow unlock for libtest flags
+      # and does not enable unstable language features.
       - name: v3 tests (full suite, 1200s budget)
         run: |
           start=$(date +%s)
-          cargo test -p v3-compiler
+          RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log
+          status=${PIPESTATUS[0]}
           elapsed=$(( $(date +%s) - start ))
           echo "v3 full-suite wall time: ${elapsed}s"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::cargo test failed (exit=$status)"
+            exit "$status"
+          fi
           if [ "$elapsed" -gt 1200 ]; then
             echo "::error::v3 full-suite tests took ${elapsed}s (budget: 1200s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
             exit 1
           fi
+
+      # Per-test 2s wall-clock ratchet — Phase 0 **report-only baseline**.
+      # Parses the timing log captured by the full-suite step above; does not
+      # re-run `cargo test`. `continue-on-error: true` keeps the job green
+      # while the exemption file is empty — a follow-up PR populates
+      # `scripts/slow-test-exemptions.txt` from the first baseline run and
+      # flips this step to blocking, satisfying the Phase 0 acceptance
+      # criterion "CI fails on any test >2s." See
+      # `src/v3/compiler/tests/HANDOFF_PHASE0.md` (TESTING.md § test layers,
+      # `feedback_test_timeout_2s`).
+      #
+      # **`if: always()`** — the baseline is most interesting precisely on
+      # red runs (full-suite failure, 1200s-budget overflow). The log is
+      # captured via `tee` before the enforcement check, so partial timing
+      # data survives failure. `continue-on-error: true` on this step
+      # prevents the ratchet itself from masking the upstream failure.
+      - name: v3 tests (per-test 2s ratchet, report-only baseline)
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ ! -f /tmp/v3-test-timings.log ]; then
+            echo "::notice::no timing log captured (full-suite step did not reach the cargo test invocation)"
+            exit 0
+          fi
+          scripts/check-test-timeout.sh /tmp/v3-test-timings.log
 
       - name: v3 Compiler Clippy
         run: cargo clippy -p v3-compiler --all-targets -- -D warnings

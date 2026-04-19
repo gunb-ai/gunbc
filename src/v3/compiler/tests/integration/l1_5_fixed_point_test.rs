@@ -1,3 +1,6 @@
+//! **Layer:** integration (TESTING.md § test layers — multi-stage
+//! pipeline fixed-point convergence).
+
 use v3_compiler::dag::{ArrowBody, TypeConnective};
 use v3_compiler::{
     compare_stage_snapshots, compile_stage_snapshots, default_fixed_point_source, parse_for_test,
