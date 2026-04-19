@@ -25,7 +25,10 @@
 # The goal remains: every `#[test]` under 2s wall-clock.
 
 # ── Intentionally empty on initial landing. ──
-# The first CI run with `scripts/check-test-timeout.sh` in blocking mode
-# will surface every currently-slow test. Populate this file from that
-# run (one line per test with a one-line reason), then flip the CI step
-# to blocking. See handoff note in src/v3/compiler/tests/HANDOFF_PHASE0.md.
+# Phase 0 shipped the ratchet in **report-only** mode (the CI step has
+# `continue-on-error: true`), so the first green-or-red CI run already
+# publishes the baseline of currently-slow tests in its log. Read that
+# log, populate this file with one line per test + a one-line reason,
+# then flip `continue-on-error: true` off in `.github/workflows/ci.yml`
+# to make the ratchet binding — that is the Phase 0 binding follow-up.
+# See `src/v3/compiler/tests/HANDOFF_PHASE0.md` for the full path.
