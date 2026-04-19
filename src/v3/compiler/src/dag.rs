@@ -446,7 +446,7 @@ impl AtomPayload {
 }
 
 // Terminal literal/cardinality/template/port-state mirrors are generated
-// from `runtime_mirrors.dag`; keep the authority there, not here.
+// from `std/substrate.dag`; keep the substrate authority there, not here.
 include!("dag_scalar_generated.rs");
 
 /// Dissolution ledger (per M1_DESIGN.md §Q7 "ArrowBody dissolution ledger"):
@@ -803,8 +803,8 @@ impl BranchNode {
     }
 }
 
-// Branch-pattern/path mirrors are generated from `runtime_mirrors.dag`;
-// host-only behavior stays in the impl blocks below.
+// Branch-pattern/path mirrors are generated from `std/substrate.dag`.
+// The host keeps only the `Path.output` field rename plus impl behavior below.
 include!("dag_branch_generated.rs");
 
 impl Path {
@@ -1180,7 +1180,7 @@ pub enum WorkflowParallelismReport {
 // Cluster / loop-bound carriers below are Track 9 mutual-recursion
 // witnesses — not part of the Lane 2 Stage 2b effects algebra.
 
-// Cluster/loop-bound mirrors are generated from `runtime_mirrors.dag`;
+// Cluster/loop-bound mirrors are generated from `std/substrate.dag`;
 // keep only host helper behavior in Rust.
 include!("dag_cluster_generated.rs");
 

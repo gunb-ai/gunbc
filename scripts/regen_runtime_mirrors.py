@@ -273,6 +273,20 @@ class VariantDef:
     fields: list[tuple[str, str]] | None = None
 
 
+def parse_inline_fields(source: str) -> list[tuple[str, str]]:
+    source = source.strip()
+    if not source:
+        return []
+    fields: list[tuple[str, str]] = []
+    for raw_field in source.split(","):
+        field = raw_field.strip()
+        if not field:
+            continue
+        label, ty = field.split(":", 1)
+        fields.append((label.strip(), ty.strip()))
+    return fields
+
+
 def parse_types(path: Path) -> tuple[dict[str, RecordDef], dict[str, list[VariantDef]]]:
     lines = path.read_text().splitlines()
     records: dict[str, RecordDef] = {}
@@ -322,16 +336,21 @@ def parse_types(path: Path) -> tuple[dict[str, RecordDef], dict[str, list[Varian
                 i += 1
             elif record_match:
                 variant_name = record_match.group(1)
-                i += 1
-                fields: list[tuple[str, str]] = []
-                while lines[i].strip() != "}":
-                    field_line = lines[i].strip()
-                    if field_line and ":" in field_line:
-                        label, ty = field_line.split(":", 1)
-                        fields.append((label.strip(), ty.strip()))
+                inline_fields = re.match(r"\w+\s*\{(.+)\}\s*$", variant_src)
+                if inline_fields:
+                    fields = parse_inline_fields(inline_fields.group(1))
+                    i += 1
+                else:
+                    i += 1
+                    fields = []
+                    while lines[i].strip() != "}":
+                        field_line = lines[i].strip()
+                        if field_line and ":" in field_line:
+                            label, ty = field_line.split(":", 1)
+                            fields.append((label.strip(), ty.strip()))
+                        i += 1
                     i += 1
                 variants.append(VariantDef(name=variant_name, kind="record", fields=fields))
-                i += 1
             elif unit_match:
                 variants.append(VariantDef(name=unit_match.group(1), kind="unit"))
                 i += 1

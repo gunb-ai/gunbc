@@ -1,4 +1,4 @@
-// AUTO-GENERATED from `src/v3/compiler/runtime_mirrors.dag`.
+// AUTO-GENERATED from `src/v3/std/substrate.dag`.
 // Regenerate instead of hand-editing.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
