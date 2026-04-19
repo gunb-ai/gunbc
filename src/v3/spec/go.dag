@@ -421,6 +421,12 @@ data go_loop_bound: TypeRealization = {
   cost: 1
 }
 
+// DB-18 Stage 2b: `lane2_workflow` / `WorkflowEffect?` is **omitted** from
+// `go_value_node` / `go_bind_node` until Go has a typed projection getter
+// matching `WorkflowEffect?` (Rust uses `AccessorMethod("lane2_workflow")` in
+// `rust.dag`, not `DirectField` on staged storage). Listing `DirectField` here
+// duplicated a second, inconsistent realization story vs the substrate accessor
+// (`lane2_workflow_at`). Re-add when Go emission can express the same boundary.
 data go_value_node: TypeRealization = {
   language: go_language
   target: ValueNode

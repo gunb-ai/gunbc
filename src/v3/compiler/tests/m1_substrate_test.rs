@@ -3213,8 +3213,8 @@ fn substrate_accessor_binding_carries_language_selector() {
         checked += 1;
     }
     assert_eq!(
-        checked, 3,
-        "expected 3 substrate accessor bindings (port, node, resolve_producer)"
+        checked, 4,
+        "expected 4 substrate accessor bindings (port, node, resolve_producer, lane2_workflow)"
     );
 }
 

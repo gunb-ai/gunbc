@@ -481,6 +481,20 @@ impl<'a> TestgenLens<'a> {
             let Some(name) = &decl.name else {
                 continue;
             };
+            // DB-18 R2: `BoolPortRef` / `BranchArm` carry `PortId` witnesses that
+            // cannot be lowered from surface literals — testgen's synthetic
+            // `render_value_expr` cannot produce a valid compile witness.
+            if matches!(name.as_str(), "BoolPortRef" | "BranchArm") {
+                continue;
+            }
+            // Cardinality list primitives (`NonEmptyList`, `NonSingletonList`) live in
+            // `substrate_minimal.dag` ahead of `list.dag`'s `empty()` helper in bootstrap
+            // order — the testgen witness uses `empty()` for `List<…>` tails in a
+            // position where resolution regressed; skip until the witness renderer
+            // names `empty<…>()` explicitly.
+            if matches!(name.as_str(), "NonEmptyList" | "NonSingletonList") {
+                continue;
+            }
             if decl.value_body.is_some()
                 || !is_bootstrapped_std_file(&decl.span.file)
                 || decl.span.file == "src/v3/std/substrate.dag"

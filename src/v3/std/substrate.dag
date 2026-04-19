@@ -1,14 +1,10 @@
 module v3.std.substrate
 
 import v3.spec.v3_l1 { DeclarationRef }
-
-// Atomic identity handles. These stay opaque at the .dag layer and
-// are realized by Rust newtypes in dag.rs plus seed TypeRealization
-// entries in rust.dag.
-type NodeId
-type PortId
-type DeclarationId
-type ClusterId
+import v3.std.substrate_minimal {
+  NodeId, PortId, DeclarationId, ClusterId, NonEmptyList, NonSingletonList
+}
+import std.effects { WorkflowEffect }
 
 type TypeShape {
   declaration: DeclarationId
@@ -63,17 +59,6 @@ type TemplateArgument {
 type FieldEntry {
   label: String
   value: FieldValue
-}
-
-type NonEmptyList<element> {
-  first: element
-  rest: List<element>
-}
-
-type NonSingletonList<element> {
-  first: element
-  second: element
-  rest: List<element>
 }
 
 // 🟡 SCAFFOLD until reflected structural values dissolve into ordinary
@@ -245,6 +230,7 @@ type ValueNode {
   payload: LiteralBits
   result_port: PortId
   span: SourceSpan
+  lane2_workflow: WorkflowEffect?
 }
 
 type TransformNode {
@@ -279,6 +265,7 @@ type BindNode {
   result_port: PortId
   params: List<PortId>
   span: SourceSpan
+  lane2_workflow: WorkflowEffect?
 }
 
 // 🟢 TERMINAL. Behavior is the core runtime computation coproduct.
@@ -351,4 +338,11 @@ fn node(d: Dag, id: NodeId) -> Behavior? {
 
 fn resolve_producer(d: Dag, port_id: PortId) -> Behavior? {
   host resolve_producer
+}
+
+// Lane 2 Stage 2b — reads the optional workflow fact installed on `Value` /
+// `Bind` roots (same authority as `Dag::lane2_workflow_effect_at` on the Rust
+// side). Target emitters map this accessor via `SubstrateAccessorBinding`.
+fn lane2_workflow_at(d: Dag, id: NodeId) -> WorkflowEffect? {
+  host lane2_workflow_effect_at
 }
