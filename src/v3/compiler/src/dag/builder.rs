@@ -251,6 +251,134 @@ impl Dag {
         self.callable_output_shape_with_subst(decl_id, &mut subst, 0)
     }
 
+    fn callable_runtime_arity(&self, target: DeclarationId) -> Option<usize> {
+        let (template, mut arguments) = self.callable_template_arguments(target);
+        arguments = self.retained_template_arguments_for_target(template, &arguments);
+        let mut subst = vec![arguments];
+        if let Some(raw_inputs) = self.resolve_arrow_decl_inputs(template, &mut subst, 0) {
+            return Some(
+                raw_inputs
+                    .into_iter()
+                    .filter(|input| !self.declaration_is_callable(*input, 0))
+                    .count(),
+            );
+        }
+        match &self.declaration(template).connective {
+            TypeConnective::Conj { children } => Some(children.len()),
+            _ => None,
+        }
+    }
+
+    fn callable_template_arguments(&self, target: DeclarationId) -> (DeclarationId, Vec<TemplateArgument>) {
+        match &self.declaration(target).connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => (*template, arguments.clone()),
+            _ => (target, Vec::new()),
+        }
+    }
+
+    fn retained_template_arguments_for_target(
+        &self,
+        template: DeclarationId,
+        arguments: &[TemplateArgument],
+    ) -> Vec<TemplateArgument> {
+        let mut allowed: HashSet<DeclarationId> = self
+            .declaration(template)
+            .type_params
+            .iter()
+            .copied()
+            .collect();
+        if let Some(raw_inputs) = self.resolve_arrow_decl_inputs(template, &mut Vec::new(), 0) {
+            for input in raw_inputs {
+                if self.declaration_is_callable(input, 0) {
+                    allowed.insert(input);
+                }
+            }
+        }
+
+        let mut retained = Vec::new();
+        for argument in arguments {
+            if !allowed.contains(&argument.parameter) {
+                continue;
+            }
+            let resolved_value =
+                self.resolve_template_argument_value(arguments, argument.value, 0);
+            if let Some(existing) = retained
+                .iter_mut()
+                .find(|existing: &&mut TemplateArgument| existing.parameter == argument.parameter)
+            {
+                existing.value = resolved_value;
+                continue;
+            }
+            retained.push(TemplateArgument {
+                parameter: argument.parameter,
+                value: resolved_value,
+            });
+        }
+        retained
+    }
+
+    fn resolve_template_argument_value(
+        &self,
+        arguments: &[TemplateArgument],
+        current: DeclarationId,
+        depth: usize,
+    ) -> DeclarationId {
+        if depth >= BUILDER_TYPE_WALK_DEPTH_LIMIT {
+            return current;
+        }
+        let Some(next) = arguments
+            .iter()
+            .find(|arg| arg.parameter == current)
+            .map(|arg| arg.value)
+        else {
+            return current;
+        };
+        if next == current {
+            return current;
+        }
+        self.resolve_template_argument_value(arguments, next, depth + 1)
+    }
+
+    fn resolve_arrow_decl_inputs(
+        &self,
+        current: DeclarationId,
+        subst: &mut Vec<Vec<TemplateArgument>>,
+        depth: usize,
+    ) -> Option<Vec<DeclarationId>> {
+        if depth >= BUILDER_TYPE_WALK_DEPTH_LIMIT {
+            return None;
+        }
+        let decl = self.declaration(current);
+        match &decl.connective {
+            TypeConnective::Arrow { inputs, .. } => Some(inputs.clone()),
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                subst.push(arguments.clone());
+                let result = self.resolve_arrow_decl_inputs(*template, subst, depth + 1);
+                subst.pop();
+                result
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                self.resolve_arrow_decl_inputs(*next, subst, depth + 1)
+            }
+            TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+                let bound = self.lookup_template_argument(current, subst)?;
+                self.resolve_arrow_decl_inputs(bound, subst, depth + 1)
+            }
+            TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+            | TypeConnective::Atom(AtomPayload::Literal(_))
+            | TypeConnective::Conj { .. }
+            | TypeConnective::Disj { .. }
+            | TypeConnective::Cardinality { .. } => None,
+        }
+    }
+
     fn callable_output_shape_with_subst(
         &self,
         decl_id: DeclarationId,
@@ -283,6 +411,28 @@ impl Dag {
             | TypeConnective::Conj { .. }
             | TypeConnective::Disj { .. }
             | TypeConnective::Cardinality { .. } => None,
+        }
+    }
+
+    fn declaration_is_callable(&self, current: DeclarationId, depth: usize) -> bool {
+        if depth >= BUILDER_TYPE_WALK_DEPTH_LIMIT {
+            return false;
+        }
+        match &self.declaration(current).connective {
+            TypeConnective::Arrow { .. } => true,
+            TypeConnective::Instantiation { template, .. } => {
+                self.declaration_is_callable(*template, depth + 1)
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                self.declaration_is_callable(*next, depth + 1)
+            }
+            TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+            | TypeConnective::Atom(AtomPayload::TypeParam(_))
+            | TypeConnective::Atom(AtomPayload::Literal(_))
+            | TypeConnective::Conj { .. }
+            | TypeConnective::Disj { .. }
+            | TypeConnective::Cardinality { .. } => false,
         }
     }
 
@@ -523,6 +673,14 @@ impl Dag {
         match target {
             TransformTarget::Callable(target_decl) => {
                 self.assert_declaration_exists(*target_decl, "push_transform(target)");
+                if let Some(expected_runtime_arity) = self.callable_runtime_arity(*target_decl) {
+                    assert!(
+                        expected_runtime_arity == inputs.len(),
+                        "push_transform(Callable) requires exactly {} runtime input port(s), got {}",
+                        expected_runtime_arity,
+                        inputs.len(),
+                    );
+                }
             }
             TransformTarget::FieldProject { .. } => {
                 assert!(
@@ -1030,6 +1188,28 @@ mod tests {
             dag.port(output).state(),
             &PortState::Resolved(dag.bool_shape().expect("bootstrap Bool"))
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "push_transform(Callable) requires exactly 1 runtime input port(s), got 0")]
+    fn push_transform_rejects_wrong_callable_arity() {
+        let mut dag = Dag::new();
+        let int_decl = dag
+            .declaration_by_name("Int")
+            .expect("bootstrap Int declaration")
+            .id;
+        let callable = push_test_declaration(
+            &mut dag,
+            Some("unary"),
+            TypeConnective::Arrow {
+                inputs: vec![int_decl],
+                output: int_decl,
+                body: ArrowBody::NoBody,
+            },
+            Vec::new(),
+        );
+
+        let _ = dag.push_transform(TransformTarget::Callable(callable), Vec::new(), span());
     }
 
     #[test]
