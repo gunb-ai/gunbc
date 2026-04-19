@@ -57,24 +57,58 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 fn collect_dag_entries(dir: &Path, prioritized: &[&str]) -> Vec<PathBuf> {
-    let mut entries: Vec<PathBuf> = fs::read_dir(dir)
-        .unwrap_or_else(|e| panic!("failed to read {}: {}", dir.display(), e))
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("dag"))
-        .collect();
+    collect_dag_entries_impl(dir, prioritized, false)
+}
+
+fn collect_dag_entries_recursive(dir: &Path, prioritized: &[&str]) -> Vec<PathBuf> {
+    collect_dag_entries_impl(dir, prioritized, true)
+}
+
+fn collect_dag_entries_impl(dir: &Path, prioritized: &[&str], recursive: bool) -> Vec<PathBuf> {
+    let mut entries = Vec::new();
+    let mut dirs = vec![dir.to_path_buf()];
+
+    while let Some(current_dir) = dirs.pop() {
+        let mut child_dirs = Vec::new();
+        for entry in fs::read_dir(&current_dir)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", current_dir.display(), e))
+        {
+            let entry =
+                entry.unwrap_or_else(|e| panic!("failed to read dir entry in {}: {}", current_dir.display(), e));
+            let path = entry.path();
+            if path.is_dir() {
+                if recursive {
+                    child_dirs.push(path);
+                }
+                continue;
+            }
+            if path.extension().and_then(|s| s.to_str()) == Some("dag") {
+                entries.push(path);
+            }
+        }
+        child_dirs.sort();
+        for child_dir in child_dirs.into_iter().rev() {
+            dirs.push(child_dir);
+        }
+    }
 
     entries.sort_by(|a, b| {
-        let a_name = a.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        let b_name = b.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        let priority_key = |name: &str| -> (usize, String) {
+        let priority_key = |path: &Path| -> (usize, String, String) {
+            let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
             let rank = prioritized
                 .iter()
                 .position(|candidate| *candidate == name)
                 .unwrap_or(prioritized.len());
-            (rank, name.to_string())
+            (
+                rank,
+                name.to_string(),
+                path.strip_prefix(dir)
+                    .unwrap_or(path)
+                    .display()
+                    .to_string(),
+            )
         };
-        priority_key(a_name).cmp(&priority_key(b_name))
+        priority_key(a).cmp(&priority_key(b))
     });
 
     entries
@@ -84,6 +118,7 @@ fn generate_static(
     static_name: &str,
     dir_label: &str,
     display_prefix: &str,
+    base_dir: &Path,
     entries: &[PathBuf],
 ) -> String {
     let mut generated = format!(
@@ -94,11 +129,10 @@ fn generate_static(
          pub static {static_name}: &[(&str, &str)] = &[\n"
     );
     for path in entries {
-        let file_name = path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .expect("entry has utf-8 file name");
-        let display_path = format!("{display_prefix}/{file_name}");
+        let relative_path = path
+            .strip_prefix(base_dir)
+            .unwrap_or_else(|_| panic!("{} is not under {}", path.display(), base_dir.display()));
+        let display_path = format!("{display_prefix}/{}", relative_path.display());
         let abs_path = path
             .canonicalize()
             .unwrap_or_else(|e| panic!("failed to canonicalize {}: {}", path.display(), e));
@@ -120,9 +154,13 @@ fn main() {
         env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set by Cargo");
     let manifest_path = PathBuf::from(&manifest_dir);
     let v3_dir = manifest_path.parent().expect("compiler dir has parent");
+    let src_dir = v3_dir.parent().expect("v3 dir has parent");
+    let repo_root = src_dir.parent().expect("src dir has parent");
     let std_dir = v3_dir.join("std");
     let spec_dir = v3_dir.join("spec");
     let compiler_dir = manifest_path.clone();
+    let extdeps_dir = repo_root.join("dsl").join("extdeps");
+    let gunbc_dir = repo_root.join("dsl").join("gunbc");
 
     // Tell Cargo to re-run the script if any staged std/spec/compiler file
     // changes. Without this, adding a new file wouldn't trigger a
@@ -130,6 +168,8 @@ fn main() {
     println!("cargo:rerun-if-changed={}", std_dir.display());
     println!("cargo:rerun-if-changed={}", spec_dir.display());
     println!("cargo:rerun-if-changed={}", compiler_dir.display());
+    println!("cargo:rerun-if-changed={}", extdeps_dir.display());
+    println!("cargo:rerun-if-changed={}", gunbc_dir.display());
 
     // Structural-recursion termination analysis walks a recursing
     // argument back to its declared Disj connective (see
@@ -157,14 +197,42 @@ fn main() {
     );
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
     let compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
-    let staged_generated =
-        generate_static("STAGED_FILES", "src/v3/std", "src/v3/std", &staged_entries);
-    let specs_generated = generate_static("V3_SPECS", "src/v3/spec", "src/v3/spec", &spec_entries);
+    let extdeps_entries = collect_dag_entries_recursive(&extdeps_dir, &[]);
+    let gunbc_entries = collect_dag_entries_recursive(&gunbc_dir, &[]);
+    let staged_generated = generate_static(
+        "STAGED_FILES",
+        "src/v3/std",
+        "src/v3/std",
+        &std_dir,
+        &staged_entries,
+    );
+    let specs_generated = generate_static(
+        "V3_SPECS",
+        "src/v3/spec",
+        "src/v3/spec",
+        &spec_dir,
+        &spec_entries,
+    );
     let compiler_generated = generate_static(
         "COMPILER_FILES",
         "src/v3/compiler",
         "src/v3/compiler",
+        &compiler_dir,
         &compiler_entries,
+    );
+    let extdeps_generated = generate_static(
+        "EXTDEPS_FILES",
+        "dsl/extdeps",
+        "dsl/extdeps",
+        &extdeps_dir,
+        &extdeps_entries,
+    );
+    let gunbc_generated = generate_static(
+        "GUNBC_FILES",
+        "dsl/gunbc",
+        "dsl/gunbc",
+        &gunbc_dir,
+        &gunbc_entries,
     );
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR must be set by Cargo");
@@ -178,7 +246,6 @@ fn main() {
     let compiler_out = out_dir.join("v3_compiler_files.rs");
     fs::write(&compiler_out, compiler_generated)
         .unwrap_or_else(|e| panic!("failed to write {}: {}", compiler_out.display(), e));
-<<<<<<< HEAD
     // SG-0 producer-owned generated manifest. The census at
     // `tests/integration/sg0_census_test.rs` reads this list as the
     // sole authority for "which .rs files under src/v3/compiler are
@@ -227,6 +294,4 @@ fn main() {
     let gunbc_out = out_dir.join("v3_gunbc_files.rs");
     fs::write(&gunbc_out, gunbc_generated)
         .unwrap_or_else(|e| panic!("failed to write {}: {}", gunbc_out.display(), e));
-=======
->>>>>>> 49e3ff6b6 (WIP: XL Misc)
 }
