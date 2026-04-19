@@ -5273,8 +5273,7 @@ fn lower_variant_record_expr(
     symbols: &HashMap<String, DeclarationId>,
     expected_decl: Option<DeclarationId>,
 ) -> PortId {
-    let Some(variant_decl) =
-        resolve_expected_variant_constructor(dag, expected_decl, expr.target)
+    let Some(variant_decl) = resolve_expected_variant_constructor(dag, expected_decl, expr.target)
     else {
         return unresolved_port(
             dag,
