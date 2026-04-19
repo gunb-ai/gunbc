@@ -198,6 +198,14 @@ fn main() {
     // match exactly what the regen drivers write to disk as
     // committed Rust.
     const REGEN_OUTPUTS: &[&str] = &[
+        // SG-5 substrate / runtime-mirror projections, generated from
+        // `src/v3/std/substrate.dag` + `src/v3/compiler/runtime_mirrors.dag`
+        // and consumed by hand-authored Rust via `include!(...)`.
+        // Registering them here keeps SG-0's census honest: they carry
+        // `// AUTO-GENERATED` headers AND are listed as producer-owned
+        // outputs, so the content header alone never masquerades as
+        // generated (SG-0's `sg0_generated_partition_is_producer_owned`
+        // invariant).
         "src/v3/compiler/src/dag_branch_generated.rs",
         "src/v3/compiler/src/dag_cluster_generated.rs",
         "src/v3/compiler/src/dag_cost_generated.rs",
