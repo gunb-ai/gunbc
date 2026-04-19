@@ -1,11 +1,10 @@
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, LiteralBits, Path,
-    PayloadBinding, PortState, TransformTarget, TypeConnective,
+    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, PortState,
+    TransformTarget, TypeConnective,
 };
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use v3_compiler::Diagnostic;
-use v3_compiler::SourceSpan;
 
 use crate::common::{cached_compile_any, cached_compile_to_dag};
 
@@ -64,10 +63,6 @@ fn callable_instantiation_arguments(
             (*inst_template == template).then_some(arguments.as_slice())
         })
         .collect()
-}
-
-fn test_span() -> SourceSpan {
-    SourceSpan::new("<substrate-test>", 0, 0)
 }
 
 #[test]
@@ -287,112 +282,6 @@ type CmdExec { operations: CmdExec_Operations }
             TypeConnective::Conj { .. }
         ));
     }
-}
-
-#[test]
-fn builder_receipts_keep_field_project_and_branch_claims_typed() {
-    let mut dag = Dag::new();
-    let int_id = find_named(&dag, "Int");
-    let bool_shape = dag.bool_shape().expect("Bool cached");
-    let point_id = dag.push_conj(
-        Some("BuilderPoint".to_string()),
-        vec![
-            Field {
-                label: "x".to_string(),
-                ty: int_id,
-            },
-            Field {
-                label: "y".to_string(),
-                ty: int_id,
-            },
-        ],
-        test_span(),
-    );
-    let point_input = dag.alloc_port_with_shape(v3_compiler::types::TypeShape::new(point_id));
-    let x_port = dag.push_transform(
-        TransformTarget::FieldProject {
-            field_label: "x".to_string(),
-            field_child: Some(int_id),
-        },
-        vec![point_input],
-        test_span(),
-    );
-    let alias_id = dag.push_bind("alias", x_port, Vec::new(), test_span());
-    let alias = dag.node(alias_id).as_bind().expect("alias bind");
-    let projection = dag
-        .resolve_producer_opt(&alias.value)
-        .and_then(Behavior::as_transform)
-        .expect("alias should resolve back to the field projection");
-    assert!(matches!(
-        dag.port(x_port).state(),
-        PortState::Resolved(shape) if *shape == v3_compiler::types::TypeShape::new(int_id)
-    ));
-    match &projection.target {
-        TransformTarget::FieldProject {
-            field_label,
-            field_child,
-        } => {
-            assert_eq!(field_label, "x");
-            assert_eq!(*field_child, Some(int_id));
-        }
-        other => panic!("expected FieldProject target, got {other:?}"),
-    }
-
-    let cond = dag.push_value(LiteralBits::Bool(true), test_span());
-    let lhs = dag.push_value(LiteralBits::Int(1), test_span());
-    let rhs = dag.push_value(LiteralBits::Int(2), test_span());
-    let lhs_body = dag.push_bind("lhs", lhs, Vec::new(), test_span());
-    let rhs_body = dag.push_bind("rhs", rhs, Vec::new(), test_span());
-    let payload_port = dag.alloc_port_with_shape(v3_compiler::types::TypeShape::new(int_id));
-    let branch_output = dag.push_branch(
-        cond,
-        vec![
-            Path {
-                body: lhs_body,
-                output: lhs,
-                pattern: BranchPattern::UnresolvedVariant {
-                    name: "Some".to_string(),
-                    span: test_span(),
-                },
-                binding: Some(PayloadBinding {
-                    binding_name: "value".to_string(),
-                    payload_port,
-                }),
-            },
-            Path {
-                body: rhs_body,
-                output: rhs,
-                pattern: BranchPattern::UnresolvedVariant {
-                    name: "None".to_string(),
-                    span: test_span(),
-                },
-                binding: None,
-            },
-        ],
-        test_span(),
-    );
-    let branch = dag
-        .resolve_producer_opt(&branch_output)
-        .and_then(Behavior::as_branch)
-        .expect("branch output should resolve to the branch node");
-    assert_eq!(dag.port(cond).state(), &PortState::Resolved(bool_shape));
-    assert!(matches!(
-        dag.port(branch.output).state(),
-        PortState::Resolved(shape) if *shape == v3_compiler::types::TypeShape::new(int_id)
-    ));
-    let payload_path = branch
-        .paths
-        .iter()
-        .find(|path| path.binding.is_some())
-        .expect("payload-capturing path exists");
-    assert_eq!(
-        payload_path
-            .binding
-            .as_ref()
-            .expect("payload binding")
-            .binding_name,
-        "value"
-    );
 }
 
 #[test]
