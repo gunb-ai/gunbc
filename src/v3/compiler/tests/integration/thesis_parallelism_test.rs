@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, PortId, TransformTarget};
 use v3_compiler::operators::{ArithmeticOp, OperatorKind};
@@ -67,14 +68,13 @@ fn has_transitive_dependency(dag: &Dag, from_port: PortId, to_port: PortId) -> b
 
 #[test]
 fn parallel_independent_bindings_have_no_dependency() {
-    let dag = compile_to_dag(
+    let dag = cached_compile_to_dag(
         "\
 let a: Int = 1 + 2
 let b: Int = 3 + 4
 ",
         "parallel_independent_bindings.v3",
-    )
-    .expect("compiles");
+    );
     let a = bind_named(&dag, "a");
     let b = bind_named(&dag, "b");
 
@@ -90,14 +90,13 @@ let b: Int = 3 + 4
 
 #[test]
 fn sequential_dependent_bindings_have_dependency() {
-    let dag = compile_to_dag(
+    let dag = cached_compile_to_dag(
         "\
 let a: Int = 1 + 2
 let b: Int = a + 3
 ",
         "parallel_dependent_bindings.v3",
-    )
-    .expect("compiles");
+    );
     let a = bind_named(&dag, "a");
     let b = bind_named(&dag, "b");
 
@@ -113,15 +112,14 @@ let b: Int = a + 3
 
 #[test]
 fn transitive_dependencies_are_detected_across_multiple_steps() {
-    let dag = compile_to_dag(
+    let dag = cached_compile_to_dag(
         "\
 let a: Int = 1
 let b: Int = a + 1
 let c: Int = b + 1
 ",
         "parallel_transitive_bindings.v3",
-    )
-    .expect("compiles");
+    );
     let a = bind_named(&dag, "a");
     let b = bind_named(&dag, "b");
     let c = bind_named(&dag, "c");
@@ -142,7 +140,7 @@ let c: Int = b + 1
 
 #[test]
 fn diamond_dependencies_preserve_shared_parent_without_serializing_siblings() {
-    let dag = compile_to_dag(
+    let dag = cached_compile_to_dag(
         "\
 let a: Int = 1
 let b: Int = a + 1
@@ -150,8 +148,7 @@ let c: Int = a + 2
 let d: Int = b + c
 ",
         "parallel_diamond_bindings.v3",
-    )
-    .expect("compiles");
+    );
     let a = bind_named(&dag, "a");
     let b = bind_named(&dag, "b");
     let c = bind_named(&dag, "c");
@@ -278,7 +275,7 @@ fn fold_body_can_contain_accumulator_independent_subgraphs() {
 
 #[test]
 fn independent_function_calls_stay_independent_across_bindings() {
-    let dag = compile_to_dag(
+    let dag = cached_compile_to_dag(
         "\
 fn f(x: Int) -> Int = x + 1
 fn g(x: Int) -> Int = x + 2
@@ -286,8 +283,7 @@ let a: Int = f(1)
 let b: Int = g(2)
 ",
         "parallel_cross_function_bindings.v3",
-    )
-    .expect("compiles");
+    );
     let a = bind_named(&dag, "a");
     let b = bind_named(&dag, "b");
 

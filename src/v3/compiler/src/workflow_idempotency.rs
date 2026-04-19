@@ -8,24 +8,20 @@
 //! (`lane2_workflow`), mirrored on the reflected substrate (`substrate.dag`).
 
 use crate::dag::{
-    CompositionVerdict, Dag, EffectShape, IdempotencyUnsupportedDetail, NodeId, OperationEffect,
-    WorkflowEffect, WorkflowIdempotencyReport,
+    CompositionVerdict, Dag, EffectShape, ElementRef, IdempotencyUnsupportedDetail, NodeId,
+    OperationEffect, WorkflowEffect, WorkflowIdempotencyReport,
 };
 
-pub(crate) fn operation_to_breaker(op: &OperationEffect) -> Option<crate::dag::BreakingOperation> {
-    match &op.shape {
-        EffectShape::IsIdempotent(_) => None,
-        EffectShape::IsBreaking(shape) => Some(crate::dag::BreakingOperation {
-            operation_name: op.operation_name.clone(),
-            shape: shape.clone(),
-        }),
-    }
-}
-
 pub(crate) fn compose_operation_effects(effects: &[OperationEffect]) -> CompositionVerdict {
-    for effect in effects {
-        if let Some(b) = operation_to_breaker(effect) {
-            return CompositionVerdict::BrokenBy { first_breaker: b };
+    for (index, effect) in effects.iter().enumerate() {
+        if matches!(effect.shape, EffectShape::IsBreaking(_)) {
+            // `ElementRef` preserves the validated in-bounds position of the
+            // breaker without copying a second breaker record; the breaking
+            // subset fact and the owner-list identity still come from this
+            // partition check plus callers resolving against the same slice.
+            let first_breaker = ElementRef::from_slice(effects, index)
+                .expect("enumerated workflow effect index must stay in-bounds");
+            return CompositionVerdict::BrokenBy { first_breaker };
         }
     }
     CompositionVerdict::IdempotentComposition

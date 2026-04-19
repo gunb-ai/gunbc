@@ -17,14 +17,12 @@ use v3_compiler::dag::{
     TransformTarget, TypeConnective,
 };
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
-use v3_compiler::{CompileError, Diagnostic};
+use v3_compiler::Diagnostic;
+
+use crate::common::{cached_compile_any, cached_compile_to_dag};
 
 fn compile_any(src: &str, file: &str) -> Dag {
-    match compile_to_dag(src, file) {
-        Ok(dag) => dag,
-        Err(CompileError::Semantic(dag)) => dag,
-        Err(other) => panic!("unexpected structural error: {other:?}"),
-    }
+    cached_compile_any(src, file)
 }
 
 fn find_named(dag: &Dag, name: &str) -> DeclarationId {
@@ -521,7 +519,7 @@ fn m17_operator_lowers_to_structural_transform_target() {
     // `target: TransformTarget::Operator(Arithmetic(Add))`. No
     // anonymous stub declaration is allocated for the operator
     // symbol; the dispatch fact lives on the Transform's variant.
-    let dag = compile_to_dag("let x = 1 + 2", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let x = 1 + 2", "test.v3");
     // Scope to user-source transforms — std modules loaded by
     // bootstrap (e.g. `src/v3/std/algebra.dag`) also push Transform
     // nodes, so the first entry in `dag.nodes()` is no longer
@@ -544,7 +542,7 @@ fn m17_comparison_operator_lowers_to_structural_transform_target() {
     // `OperatorKind::Comparison` variant at parse time. The
     // arithmetic-vs-comparison split is structural, not a sibling
     // string match.
-    let dag = compile_to_dag("let y = 1 < 2", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let y = 1 < 2", "test.v3");
     let cmp_node = dag
         .nodes()
         .iter()
@@ -565,7 +563,7 @@ fn m17_user_function_call_lowers_to_callable_target() {
     // lowering time based on the `SurfaceExpr` variant the parser
     // committed to.
     let src = "fn f(x: Int) -> Int = x + 1\nlet y = f(5)";
-    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "test.v3");
     // The outermost Transform is the f(5) call — find it by
     // looking for the one whose target resolves to "f".
     let f_call = dag
@@ -674,7 +672,7 @@ fn m17_module_and_import_preserve_parsed_facts() {
     // no-ops. Parsed facts survive into the SurfaceModule so M2
     // module scoping can consume them.
     let src = "module foo.bar\nimport baz.quux { Zot, Wat }\nlet x = 1";
-    let dag = compile_to_dag(src, "imports.v3").expect("compiles cleanly");
+    let dag = cached_compile_to_dag(src, "imports.v3");
     // The `let x = 1` item still binds, confirming the module /
     // import items didn't break lowering.
     let bind_x = dag
@@ -709,7 +707,7 @@ fn m17_r9_arithmetic_operator_walks_to_algebra_field() {
     // ports of the operands and the compile will fail with a
     // TypeMismatch. This test asserts the happy path compiles
     // cleanly and the operator output is typed as Int.
-    let dag = compile_to_dag("let x = 1 + 2", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let x = 1 + 2", "test.v3");
     let bind_x = dag
         .nodes()
         .iter()
@@ -729,7 +727,7 @@ fn m17_r9_comparison_operator_walks_to_algebra_field() {
     // the "lt" field on OrderedRing (added in M1(2.7) R9) and
     // reads its Arrow signature. OrderedRing.lt: fn(T, T) -> Bool.
     // Substituting receiver T → Int gives (Int, Int) -> Bool.
-    let dag = compile_to_dag("let y = 1 < 2", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let y = 1 < 2", "test.v3");
     let bind_y = dag
         .nodes()
         .iter()
@@ -1312,7 +1310,7 @@ type Color = Red | Green | Blue
 type Hue = Color
 fn classify(h: Hue) -> Int = match h { Red => 0, Green => 1, Blue => 2 }
 ";
-    let dag = compile_to_dag(src, "aliased_sum.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "aliased_sum.v3");
     assert!(dag.diagnostics().is_empty());
 
     // The Branch exists and its pattern resolution ran through
@@ -1499,7 +1497,7 @@ fn m18_r11_three_variant_exhaustive_match_compiles() {
 type Ternary = Low | Mid | High
 fn level(t: Ternary) -> Int = match t { Low => 0, Mid => 1, High => 2 }
 ";
-    let dag = compile_to_dag(src, "ternary.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "ternary.v3");
     assert!(dag.diagnostics().is_empty());
 }
 
@@ -1527,7 +1525,7 @@ fn m18_if_then_else_populates_branch_pattern() {
     // for the then-branch and {name:"False"} for the else-branch,
     // resolved to Bool's True/False variant declarations after
     // inference.
-    let dag = compile_to_dag("let r = if 1 > 0 then 10 else 20", "if.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let r = if 1 > 0 then 10 else 20", "if.v3");
     let branch = dag
         .nodes()
         .iter()
@@ -1579,7 +1577,7 @@ fn m17_r9_fn_param_uses_single_declaration_id_for_arrow_and_port() {
 type Point { x: Int y: Int }
 fn identity(p: Point) -> Point = p
 ";
-    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "test.v3");
 
     // Find `identity`'s declaration — its connective is Arrow.
     let identity_id = find_named(&dag, "identity");
@@ -1616,7 +1614,7 @@ fn m17_r9_type_alias_has_no_value_body() {
     // Converse of the data test: `type foo = Int` (a pure type
     // alias) must have value_body = None, so consumers can
     // discriminate on this field alone.
-    let dag = compile_to_dag("type Foo = Int", "alias.v3").expect("compiles");
+    let dag = cached_compile_to_dag("type Foo = Int", "alias.v3");
     let foo_id = find_named(&dag, "Foo");
     let foo_decl = dag.declaration(foo_id);
     assert!(
@@ -2279,7 +2277,7 @@ type Point { x: Int y: Int }
 fn x_of(p: Point) -> Int = p.x
 let total: Int = x_of({ x: 1, y: 2 })
 ";
-    let dag = compile_to_dag(src, "expr_record_literal.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "expr_record_literal.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "record literal in expression position should compile when an expected type is available, got {:?}",
@@ -2289,8 +2287,7 @@ let total: Int = x_of({ x: 1, y: 2 })
 
 #[test]
 fn prereq4_list_literal_in_expression_position_lowers_through_std_list_constructors() {
-    let dag =
-        compile_to_dag("let xs: List<Int> = [1, 2, 3]", "expr_list_literal.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let xs: List<Int> = [1, 2, 3]", "expr_list_literal.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "got diagnostics: {:?}",
@@ -2366,7 +2363,7 @@ fn prereq1_field_access_lowers_to_field_project() {
 type Point { x: Int y: Int }
 fn get_x(point: Point) -> Int = point.x
 ";
-    let dag = compile_to_dag(src, "field_access.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "field_access.v3");
     let int_id = find_named(&dag, "Int");
 
     let bind = dag
@@ -2409,7 +2406,7 @@ type Inner { x: Int }
 type Outer { inner: Inner }
 fn get_nested_x(outer: Outer) -> Int = outer.inner.x
 ";
-    let dag = compile_to_dag(src, "field_access_multi_hop.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "field_access_multi_hop.v3");
 
     let bind = dag
         .nodes()
@@ -2465,7 +2462,7 @@ fn prereq1_field_access_on_instantiated_record_substitutes_template_args() {
 type Box<T> { value: T }
 fn read(boxed: Box<Int>) -> Int = boxed.value
 ";
-    let dag = compile_to_dag(src, "field_access_generic.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "field_access_generic.v3");
     let box_id = find_named(&dag, "Box");
     let box_t = dag.declaration(box_id).type_params[0];
 
@@ -2541,7 +2538,7 @@ fn prereq2_payload_binding_compiles_and_types_the_payload_port() {
 type BoxedInt = Boxed(Int) | Empty
 fn unwrap_or_zero(b: BoxedInt) -> Int = match b { Boxed(value) => value, Empty => 0 }
 ";
-    let dag = compile_to_dag(src, "payload_binding.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "payload_binding.v3");
 
     let bind = dag
         .nodes()
@@ -2591,7 +2588,7 @@ type MaybePoint = Some(Point) | None
 fn id(m: MaybePoint) -> MaybePoint = m
 fn get_or_zero(m: MaybePoint) -> Int = match id(m) { Some(point) => point.x, None => 0 }
 ";
-    let dag = compile_to_dag(src, "payload_field_access.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "payload_field_access.v3");
 
     let bind = dag
         .nodes()
@@ -2644,7 +2641,7 @@ type BoxedInt = Boxed(Int) | Empty
 fn id(b: BoxedInt) -> BoxedInt = b
 fn unwrap_or_zero(b: BoxedInt) -> Int = match id(b) { Boxed(value) => value, Empty => 0 }
 ";
-    let dag = compile_to_dag(src, "payload_binding_inferred.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "payload_binding_inferred.v3");
 
     let bind = dag
         .nodes()
@@ -2683,7 +2680,7 @@ fn prereq2_payload_binding_on_instantiated_sum_substitutes_template_args() {
 type Maybe<T> = Some(T) | None
 fn unwrap_or_zero(m: Maybe<Int>) -> Int = match m { Some(value) => value, None => 0 }
 ";
-    let dag = compile_to_dag(src, "payload_binding_generic.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "payload_binding_generic.v3");
 
     let bind = dag
         .nodes()
@@ -2722,7 +2719,7 @@ fn reflected_optional_handle_field_projection_resolves() {
 import std.substrate { DagPort, NodeId }
 fn producer_or_self(port: DagPort) -> NodeId = match port.produced_by { Some(node_id) => node_id, None => port.id }
 ";
-    let dag = compile_to_dag(src, "optional_handle_field_projection.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "optional_handle_field_projection.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "optional reflected handle field projection should compile cleanly, got {:?}",
@@ -2749,7 +2746,7 @@ type Point { x: Int }
 type Wrapped = Wrap { inner: Point } | Empty
 fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap(payload) => payload.inner.x, Empty => 0 }
 ";
-    let dag = compile_to_dag(src, "payload_record_variant.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "payload_record_variant.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "record payload binding should compile cleanly: {:?}",
@@ -2767,7 +2764,7 @@ fn recursion_accepts_structural_descent_on_recursive_payload_field() {
 type IntList = Empty | Cons { head: Int, tail: IntList }
 fn count(list: IntList) -> Int = match list { Empty => 0, Cons(payload) => 1 + count(payload.tail) }
 ";
-    let dag = compile_to_dag(src, "structural_descent.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "structural_descent.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "structural descent on a recursive payload field should compile cleanly: {:?}",
@@ -2797,7 +2794,7 @@ fn even(list: IntList) -> Bool = match list { Empty => true, Cons(payload) => od
 fn odd(list: IntList) -> Bool = match list { Empty => false, Cons(payload) => even(payload.tail) }
 type IntList = Empty | Cons { head: Int, tail: IntList }
 ";
-    let dag = compile_to_dag(src, "mutual_structural_descent_later_type.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "mutual_structural_descent_later_type.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "mutual structural descent through a later recursive type should compile cleanly: {:?}",
@@ -2816,7 +2813,7 @@ fn mutual_recursion_planner_ignores_callable_parameter_shadowing() {
 fn even(n: Int, odd: fn(Int) -> Bool) -> Bool = odd(n)
 fn odd(n: Int, even: fn(Int) -> Bool) -> Bool = even(n)
 ";
-    let dag = compile_to_dag(src, "mutual_shadowing_false_positive.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "mutual_shadowing_false_positive.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "callable-parameter shadowing should not fabricate a mutual-recursion diagnostic: {:?}",
@@ -2876,7 +2873,7 @@ fn apply_once(f: fn(Int) -> Bool, x: Int) -> Bool = f(x)
 fn even(n: Int) -> Bool = if n == 0 then true else odd(n - 1)
 fn odd(n: Int) -> Bool = if n == 0 then false else if n == 1 then apply_once(|even| even(n), n) else even(n - 1)
 ";
-    let dag = compile_to_dag(src, "mutual_shadowing_inside_cluster.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "mutual_shadowing_inside_cluster.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "shadowed lambda parameters inside a real cluster must not poison descent checking: {:?}",
@@ -2908,7 +2905,7 @@ fn recursive_generic_sum_can_reference_itself_in_payload_types() {
     let src = "\
 type MyList<T> = Empty | Cons { head: T, tail: MyList<T> }
 ";
-    let dag = compile_to_dag(src, "recursive_generic_sum.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "recursive_generic_sum.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "recursive generic sums should lower without self-resolution diagnostics: {:?}",
@@ -2966,7 +2963,7 @@ fn std_list_supports_structural_match_and_recursive_descent() {
 fn count(list: List<Int>) -> Int = match list { Empty => 0, Cons(payload) => 1 + count(payload.tail) }
 let n: Int = count([1, 2, 3])
 ";
-    let dag = compile_to_dag(src, "std_list_structural_recursion.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "std_list_structural_recursion.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "std.list structural recursion should compile cleanly: {:?}",
@@ -3083,7 +3080,7 @@ let alias: Int = base
 let double_alias: Int = alias
 let total: Int = double_alias + double_alias
 ";
-    let dag = v3_compiler::compile_to_dag(src, "bind_hop.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "bind_hop.v3");
     // Walk every Bind in the Dag. For each, resolve_producer_opt on its
     // value port MUST land on a non-Bind (Value / Transform / etc.) —
     // never a Bind.

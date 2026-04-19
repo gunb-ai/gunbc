@@ -4,6 +4,7 @@
 // the fail-closed invariant (C-8) holds across both happy-path and
 // error-path inputs.
 
+use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     AtomPayload, Behavior, Dag, LiteralBits, LoopBound, PortState, TransformTarget, TypeConnective,
@@ -71,7 +72,7 @@ fn compile_any(src: &str, file: &str) -> Dag {
 
 #[test]
 fn test_let_binding_produces_dag_shape() {
-    let dag = compile_to_dag("let x = 1 + 2", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let x = 1 + 2", "test.v3");
 
     // Count only user-code nodes. The bootstrap Dag carries std
     // module bodies (effects, list, algebra, ...) whose nodes live
@@ -134,7 +135,7 @@ fn test_let_binding_produces_dag_shape() {
 #[test]
 fn test_if_then_else_produces_branch_dag() {
     let src = "let x = 5\nlet result = if x > 0 then 1 else 2";
-    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "test.v3");
 
     let result_bind = dag
         .nodes()
@@ -188,7 +189,7 @@ fn test_if_then_else_produces_branch_dag() {
 #[test]
 fn test_recursive_function_produces_loop_dag() {
     let src = "fn count_down(n: Int) -> Int = if n == 0 then 0 else n + count_down(n - 1)\nlet answer = count_down(3)";
-    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "test.v3");
 
     let count_down = dag
         .nodes()
@@ -255,7 +256,7 @@ fn test_recursive_function_produces_loop_dag() {
 #[test]
 fn test_provenance_lens_reads_produced_by() {
     let src = "let a = 1\nlet b = 2\nlet c = a + b";
-    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "test.v3");
 
     let bind_c = dag
         .nodes()
@@ -406,7 +407,7 @@ fn test_bool_literal_true() {
     // `let x = true` — the value port producer is a Value node
     // carrying LiteralBits::Bool(true), and inference resolves the
     // port to Prim::Bool.
-    let dag = compile_to_dag("let x = true", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let x = true", "test.v3");
 
     let bind_x = dag
         .nodes()
@@ -435,7 +436,7 @@ fn test_bool_literal_true() {
 
 #[test]
 fn test_bool_literal_false() {
-    let dag = compile_to_dag("let x = false", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let x = false", "test.v3");
 
     let bind_x = dag
         .nodes()
@@ -467,7 +468,7 @@ fn test_string_literal() {
     // `let x = "hello"` — the value port producer is a Value node
     // carrying LiteralBits::String("hello"), and inference resolves
     // the port to Prim::String.
-    let dag = compile_to_dag("let x = \"hello\"", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let x = \"hello\"", "test.v3");
 
     let bind_x = dag
         .nodes()
@@ -500,7 +501,7 @@ fn test_bool_literal_in_conditional() {
     // Branch node's `input` port must trace back to a Value(Bool(true))
     // producer, proving tokenize -> parse -> lower -> infer flows
     // bool literals end-to-end into the conditional context.
-    let dag = compile_to_dag("let x = if true then 1 else 2", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let x = if true then 1 else 2", "test.v3");
 
     let bind_x = dag
         .nodes()
@@ -728,7 +729,7 @@ fn test_provenance_lens_branch_origin() {
     // Branch node. The lens reads only produced_by and the
     // producer's behavior kind — no reconstruction.
     let src = "let x = if 1 > 0 then 42 else 0";
-    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "test.v3");
 
     let bind_x = dag
         .nodes()
@@ -755,7 +756,7 @@ fn test_provenance_lens_loop_origin() {
     // lens reports Origin::Accumulated pointing at the Loop node.
     let src =
         "fn count(n: Int) -> Int = if n == 0 then 0 else n + count(n - 1)\nlet answer = count(3)";
-    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "test.v3");
 
     let count_bind = dag
         .nodes()
@@ -779,7 +780,7 @@ fn test_provenance_lens_loop_origin() {
 fn test_composition_nested_let_bindings() {
     // Three-deep let chain where each binding references the previous.
     let src = "let a = 1\nlet b = a + 1\nlet c = b + a";
-    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "test.v3");
     // Expected shape: Value(1) + Bind(a)
     //                 + Transform(Add) + Bind(b)     (uses a)
     //                 + Transform(Add) + Bind(c)     (uses b, a)
@@ -801,7 +802,7 @@ fn test_composition_nested_let_bindings() {
 fn test_composition_nested_if_expressions() {
     // Nested if in the else branch: `if a then b else (if c then d else e)`.
     let src = "let r = if 1 > 0 then 10 else if 2 > 0 then 20 else 30";
-    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "test.v3");
     let bind_r = dag
         .nodes()
         .iter()
@@ -835,7 +836,7 @@ fn test_composition_nested_if_expressions() {
 fn test_composition_if_inside_function_call() {
     // If-expression as a function-call argument.
     let src = "fn f(x: Int) -> Int = x + 1\nlet y = f(if 1 > 0 then 10 else 20)";
-    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "test.v3");
     let bind_y = dag
         .nodes()
         .iter()
@@ -873,7 +874,7 @@ fn test_composition_two_functions_later_calls_earlier() {
     // Function `g` defined after `f` and calls `f`. Multiple
     // functions in sequence with forward dependency from g into f.
     let src = "fn f(x: Int) -> Int = x + 1\nfn g(y: Int) -> Int = f(y) + 1\nlet r = g(5)";
-    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "test.v3");
     let bind_r = dag
         .nodes()
         .iter()
@@ -916,7 +917,7 @@ fn test_composition_branch_with_function_calls_in_both_paths() {
     // Both paths of an if contain function calls — exercise the
     // Branch path-unification with non-trivial path bodies.
     let src = "fn f(x: Int) -> Int = x\nfn g(x: Int) -> Int = x + 1\nlet r = if 1 > 0 then f(10) else g(20)";
-    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag(src, "test.v3");
     let bind_r = dag
         .nodes()
         .iter()
@@ -1249,7 +1250,7 @@ fn test_depth_lens_let_binding() {
     //   Value(1) depth 0, Value(2) depth 0
     //   Add.output depth = 1 + max(0, 0) = 1
     //   Bind(x).value = Add.output, depth 1
-    let dag = compile_to_dag("let x = 1 + 2", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let x = 1 + 2", "test.v3");
     let lens = DepthLens::new(&dag);
     let bind_x = dag
         .nodes()
@@ -1266,7 +1267,7 @@ fn test_depth_lens_nested_arithmetic() {
     //   left-associative: ((1 + 2) + 3)
     //   inner Add depth 1, Value(3) depth 0
     //   outer Add depth = 1 + max(1, 0) = 2
-    let dag = compile_to_dag("let z = 1 + 2 + 3", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let z = 1 + 2 + 3", "test.v3");
     let lens = DepthLens::new(&dag);
     let bind_z = dag
         .nodes()
@@ -1285,7 +1286,7 @@ fn test_depth_lens_branch_takes_max_of_paths_and_condition() {
     //   else:      Value(20), Value(30) -> Add, depth 1
     //   Branch depth = 1 + max(cond_depth, max(paths_depths))
     //               = 1 + max(1, max(0, 1)) = 1 + 1 = 2
-    let dag = compile_to_dag("let r = if 1 > 0 then 10 else 20 + 30", "test.v3").expect("compiles");
+    let dag = cached_compile_to_dag("let r = if 1 > 0 then 10 else 20 + 30", "test.v3");
     let lens = DepthLens::new(&dag);
     let bind_r = dag
         .nodes()
@@ -1354,7 +1355,7 @@ fn test_recursive_function_with_wrong_body_type_is_rejected() {
 #[test]
 fn test_mutual_recursion_compiles_with_cluster_descent() {
     let src = "fn even(n: Int) -> Bool = if n == 0 then true else odd(n - 1)\nfn odd(n: Int) -> Bool = if n == 0 then false else even(n - 1)";
-    let dag = compile_to_dag(src, "test.v3").expect("mutual recursion compiles");
+    let dag = cached_compile_to_dag(src, "test.v3");
     let even_bind = dag
         .nodes()
         .iter()

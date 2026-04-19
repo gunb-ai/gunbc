@@ -115,7 +115,7 @@ If Python forces a `CleanEmissionContract` SHAPE change (not just a new instanti
 
 ### Brief — Lens-name-filter dissolution (#518 follow-up)
 
-**Status:** dispatchable now (independent of in-flight items).
+**Status:** ✅ Cleared on PR #548.
 
 **Scope:** broader migration of `ArrowBody::Pending` writes from anonymous sites (`lower.rs:872` nested Arrow, `infer.rs:1884` variant constructor, `infer.rs:2807` operator fallback) to `NoBody` where appropriate. Once migrated, `lens_structural_resolution` predicate drops the `name: Some(_)` filter and becomes purely structural.
 
@@ -129,7 +129,7 @@ If Python forces a `CleanEmissionContract` SHAPE change (not just a new instanti
 - Site 5 (operator fallback) — explicit classification: NoBody if "no body by construction"; documented Pending-with-rationale otherwise
 - Lens predicate drops `name: Some(_)` filter where safe
 - New regression tests: anonymous arrows previously silent-via-name-filter now silent-via-NoBody
-- ROADMAP entry added and closed in the same PR
+- ROADMAP closure note landed in the same PR (`ROADMAP.md` notes the `#518` follow-up as cleared on PR #548)
 
 **STOP-AND-ESCALATE rule:** if site 5 forces a NEW substrate variant (neither Pending nor NoBody fits), escalate — don't introduce variants inside an anonymous dispatch.
 
@@ -250,7 +250,7 @@ No migration needed for any row above — §3 briefs or ROADMAP's existing stanc
 |---|---|---|
 | Mutual-recursion planner vs `is_first` alignment | #519 ChatGPT non-blocking | Lane 3 Stage 3a.1 follow-up — §3 combined XS brief lands this |
 | Variant-payload field-access general model | #518 (multi-field) + #519 chat A (single-field) | New "infra debt" subsection OR Lane 1 follow-ups — needs a dedicated hygiene chat |
-| Lens-name-filter dissolution (#518 sites 2/4/5) | #518 broader migration | §3 brief handles; ROADMAP row added when that PR opens |
+| Lens-name-filter dissolution (#518 sites 2/4/5) | #518 broader migration | ✅ Cleared on PR #548 |
 | compiler.dag v2-path carryover (§6 Q3) | `hand_maintained_src` references `src/v2/stage0/src`, `cli_run.rs`, `v2_interpreter.rs` — v2 paths in a doc that should eventually key off v3 source | Lane 3 Stage 3c prerequisite OR downgrade to "open question until 3c starts" — needs director pre-clearance before migration |
 
 **Dispatch decision:** §3 briefs cover 2 rows — the combined XS brief lands the planner alignment; the lens-name-filter brief lands that dissolution. The **variant-payload field-access general model** row needs a dedicated ROADMAP-hygiene chat (not folded into the XS brief — it won't get attention inside an XS dispatch). The **compiler.dag v2-path carryover** row needs director-chat pre-clearance first (is it a real 3c blocker, or a v2→v3 bridging detail that self-resolves?) before ROADMAP migration.

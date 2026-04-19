@@ -9,8 +9,7 @@ use v3_compiler::dag::{Behavior, BindNode, NodeId, PortId};
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::Dag;
 
-mod common;
-use common::{HarnessLinkMode, RustcHarness};
+use crate::common::{HarnessLinkMode, RustcHarness};
 
 static HARNESS: OnceLock<RustcHarness> = OnceLock::new();
 fn harness() -> &'static RustcHarness {
@@ -45,7 +44,7 @@ fn emit_lens_module() -> String {
 }
 
 fn checked_in_generated_module() -> &'static str {
-    include_str!("../src/lens_unused_parameters_generated.rs")
+    include_str!("../../src/lens_unused_parameters_generated.rs")
 }
 
 fn clone_call_count(source: &str) -> usize {

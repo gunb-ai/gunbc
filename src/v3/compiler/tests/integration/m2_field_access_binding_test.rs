@@ -144,6 +144,7 @@ fn every_realized_reflection_record_field_has_a_binding() {
         "BranchPath",
         "NonEmptyList",
         "NonSingletonList",
+        "ElementRef",
         "ParamRef",
         "TransformRef",
         "MemberDescent",

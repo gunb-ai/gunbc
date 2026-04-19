@@ -108,31 +108,42 @@ jobs:
       # Regressions show up when integration tests redo full `compile_to_dag` per
       # `#[test]` (see `lane2_stage_2e_parallelism_test`: shared `OnceLock` + clone).
       #
-      # Wall-clock gate on `lane2_stage_2d_symbolic_cost_test` only (ζ / #537).
+      # Wall-clock gate on lane2 Stage 2d symbolic-cost tests only (ζ / #537).
+      # Post-#546 these live in the consolidated `integration` test binary; the
+      # `lane2_stage_2d_symbolic_cost_test::` filter keeps the ratchet narrow.
       # The timer wraps the full `cargo test` process, so **cold** runs (cache
-      # miss, first compile of `v3-compiler` + test binary on ubuntu-latest) can
-      # spend minutes linking — 120s was too tight and failed CI while local warm
-      # runs stayed ~5–15s. Keep this high enough for cold paths; per-test
-      # discipline still lives in `tests/common/budgeted.rs` (DEFAULT_BUDGET_MS).
-      - name: v3 tests (Stage 2d binary, 300s cold-compile-safe budget)
+      # miss, first compile + link on ubuntu-latest) can spend minutes — keep
+      # headroom beyond a tight 120s; per-test discipline lives in
+      # `tests/common/budgeted.rs` (DEFAULT_BUDGET_MS).
+      - name: v3 tests (Stage 2d integration module, 300s cold-compile-safe budget)
         run: |
           start=$(date +%s)
-          cargo test -p v3-compiler --test lane2_stage_2d_symbolic_cost_test
+          cargo test -p v3-compiler --test integration lane2_stage_2d_symbolic_cost_test::
           elapsed=$(( $(date +%s) - start ))
-          echo "v3 Stage 2d test wall time: ${elapsed}s"
+          echo "v3 Stage 2d (lane2d) wall time: ${elapsed}s"
           if [ "$elapsed" -gt 300 ]; then
-            echo "::error::v3 Stage 2d tests took ${elapsed}s (budget: 300s) — share bootstrap setup via OnceLock or collapse fine-grained tests"
+            echo "::error::v3 lane2d tests took ${elapsed}s (budget: 300s) — share bootstrap setup via OnceLock or collapse fine-grained tests"
             exit 1
           fi
 
-      - name: v3 tests (full suite, 750s budget)
+      # Full-suite budget is 900s. Observed range on GitHub Actions (2 vCPUs):
+      # ~850–870s on recent commits, against a local warm baseline of
+      # ~435s. The dominant remaining cost is m1_5_testgen's two slow tests
+      # (~150s each locally, more on CI cold runners), which compile
+      # per-claim sources that are unique per cache key — the shared
+      # cache can't help them. **Dissolution trigger:** reshape
+      # m1_5_testgen to spot-check instead of exhaustive
+      # compile-every-claim, OR mark the two slow tests
+      # `#[ignore]`-by-default + nightly job. Either drops the suite
+      # back under 500s and the budget can tighten to ~600s.
+      - name: v3 tests (full suite, 900s budget)
         run: |
           start=$(date +%s)
           cargo test -p v3-compiler
           elapsed=$(( $(date +%s) - start ))
           echo "v3 full-suite wall time: ${elapsed}s"
-          if [ "$elapsed" -gt 750 ]; then
-            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 750s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
+          if [ "$elapsed" -gt 900 ]; then
+            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 900s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
             exit 1
           fi
 

@@ -7,8 +7,7 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, PortId};
 use v3_compiler::emit_rust::emit_rust_module;
 
-mod common;
-use common::{HarnessLinkMode, RustcHarness};
+use crate::common::{HarnessLinkMode, RustcHarness};
 
 static HARNESS: OnceLock<RustcHarness> = OnceLock::new();
 fn harness() -> &'static RustcHarness {
@@ -42,7 +41,7 @@ fn emit_lens_module() -> String {
 }
 
 fn checked_in_generated_module() -> &'static str {
-    include_str!("../src/lens_cost_generated.rs")
+    include_str!("../../src/lens_cost_generated.rs")
 }
 
 fn format_rust_source(source: &str) -> String {
