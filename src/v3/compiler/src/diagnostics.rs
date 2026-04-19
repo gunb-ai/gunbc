@@ -258,11 +258,9 @@ fn correction_style_for_language_spec(
     dag: &Dag,
     language_spec: DeclarationId,
 ) -> Result<DeclarationId, DiagnosticRenderError> {
-    let clean_emission_decl = dag
-        .clean_emission_spec_for_language(language_spec)
-        .ok_or(DiagnosticRenderError::MissingCleanEmissionContract(
-            "clean_emission.correction_style",
-        ))?;
+    let clean_emission_decl = dag.clean_emission_spec_for_language(language_spec).ok_or(
+        DiagnosticRenderError::MissingCleanEmissionContract("clean_emission.correction_style"),
+    )?;
     let Some(ValueBody::Structural { fields }) = &dag.declaration(clean_emission_decl).value_body
     else {
         return Err(DiagnosticRenderError::MalformedCleanEmissionContract {
