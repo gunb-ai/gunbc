@@ -354,7 +354,6 @@ fn emit_tokenize_fn(
     }
     let line_comment_lit = rust_byte_string_literal(line_comment_prefix);
     let diag_esc = rust_string_literal_for_rust_source(diag_unterm_esc);
-    let diag_lit = rust_string_literal_for_rust_source(diag_unterm_lit);
     let int_pre = rust_string_literal_for_rust_source(diag_int_pre);
     let int_suf = rust_string_literal_for_rust_source(diag_int_suf);
     let delim_lit = rust_byte_literal(string_delim_byte);
@@ -362,7 +361,7 @@ fn emit_tokenize_fn(
     let mut escape_arms = String::new();
     for (suf, cp) in escapes {
         escape_arms.push_str(&format!(
-            "                            {} => content.push(core::char::from_u32({}u32).unwrap()),\n",
+            "                            {} => content.push(core::char::from_u32({} as u32).unwrap()),\n",
             rust_byte_literal(*suf),
             cp
         ));
@@ -412,7 +411,8 @@ fn emit_tokenize_fn(
     s.push_str("            let literal = &source[start..end];\n");
     s.push_str("            let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n");
     s.push_str(&format!(
-        "                message: format!(\"{{}}{{}}{{}}\", {int_pre}, literal, {int_suf}),\n"
+        "                message: format!(\"{{}}{{}}{{}}\", {}, literal, {}),\n",
+        int_pre, int_suf
     ));
     s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
     s.push_str("                fixes: Vec::new(),\n");
@@ -441,21 +441,14 @@ fn emit_tokenize_fn(
     s.push_str("            pos = end;\n");
     s.push_str("            continue;\n");
     s.push_str("        }\n\n");
-    s.push_str("        // String literal: \"...\"\n");
-    s.push_str("        //\n");
-    s.push_str("        // Minimal escape surface for bootstrap-staged structural data:\n");
-    s.push_str(
-        "        // `\\\"`, `\\\\`, `\\n`, `\\r`, `\\t`. Unknown `\\x` pairs preserve the\n",
-    );
-    s.push_str("        // old M0 behavior and stay literal as `\\` + `x`. Raw newlines\n");
-    s.push_str("        // are preserved until the closing `\"`.\n");
-    s.push_str("        if byte == b'\"' {\n");
+    s.push_str("        // String literal (`string_literal_delimiter` + `StringEscapeSpec` rows).\n");
+    s.push_str(&format!("        if byte == {} {{\n", delim_lit));
     s.push_str("            let mut end = pos + 1;\n");
     s.push_str("            let mut content = String::new();\n");
     s.push_str("            let mut terminated = false;\n");
     s.push_str("            while end < bytes.len() {\n");
     s.push_str("                match bytes[end] {\n");
-    s.push_str("                    b'\"' => {\n");
+    s.push_str(&format!("                    {} => {{\n", delim_lit));
     s.push_str("                        terminated = true;\n");
     s.push_str("                        end += 1;\n");
     s.push_str("                        break;\n");
@@ -463,22 +456,16 @@ fn emit_tokenize_fn(
     s.push_str("                    b'\\\\' => {\n");
     s.push_str("                        let Some(escaped) = bytes.get(end + 1).copied() else {\n");
     s.push_str("                            return Err(Diagnostic::TokenizerError {\n");
-    s.push_str(
-        "                                message: \"unterminated string escape\".to_string(),\n",
-    );
+    s.push_str(&format!(
+        "                                message: {}.to_string(),\n",
+        diag_esc
+    ));
     s.push_str("                                span: SourceSpan::new(file, start as u32, (end + 1) as u32),\n");
     s.push_str("                                fixes: Vec::new(),\n");
     s.push_str("                            });\n");
     s.push_str("                        };\n");
     s.push_str("                        match escaped {\n");
-    s.push_str("                            b'\"' => content.push('\"'),\n");
-    s.push_str("                            b'\\\\' => content.push('\\\\'),\n");
-    let push_n = format!("content.push({:?})", '\n');
-    s.push_str(&format!("                            b'n' => {push_n},\n"));
-    let push_r = format!("content.push({:?})", '\r');
-    s.push_str(&format!("                            b'r' => {push_r},\n"));
-    let push_t = format!("content.push({:?})", '\t');
-    s.push_str(&format!("                            b't' => {push_t},\n"));
+    s.push_str(&escape_arms);
     s.push_str("                            other => {\n");
     s.push_str("                                content.push('\\\\');\n");
     s.push_str("                                content.push(other as char);\n");
@@ -494,7 +481,10 @@ fn emit_tokenize_fn(
     s.push_str("            }\n");
     s.push_str("            if !terminated {\n");
     s.push_str("                return Err(Diagnostic::TokenizerError {\n");
-    s.push_str("                    message: \"unterminated string literal\".to_string(),\n");
+    s.push_str(&format!(
+        "                    message: {}.to_string(),\n",
+        rust_string_literal_for_rust_source(diag_unterm_lit)
+    ));
     s.push_str("                    span: SourceSpan::new(file, start as u32, end as u32),\n");
     s.push_str("                    fixes: Vec::new(),\n");
     s.push_str("                });\n");
