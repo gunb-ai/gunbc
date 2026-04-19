@@ -86,6 +86,8 @@ mod m2_substrate_inhabitance_test;
 mod pipe_desugar;
 #[path = "integration/real_stdlib_parse_smoke.rs"]
 mod real_stdlib_parse_smoke;
+#[path = "integration/sg0_census_test.rs"]
+mod sg0_census_test;
 #[path = "integration/thesis_parallelism_test.rs"]
 mod thesis_parallelism_test;
 #[path = "integration/thesis_validation_test.rs"]
