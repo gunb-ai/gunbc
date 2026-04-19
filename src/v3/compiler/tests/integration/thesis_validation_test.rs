@@ -345,6 +345,33 @@ let x: MaybeInt = true
 }
 
 #[test]
+fn t1_4_refined_declarations_do_not_get_shape_only_fix_witnesses() {
+    let src = "\
+fn div(n: Int, d: Int where d != 0) -> Int = n
+fn bad() -> Int = div(1, nope)
+";
+    let dag = match compile_to_dag(src, "t1_4_refined_no_fix_witness.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. } if name == "nope" => Some(diag),
+            _ => None,
+        })
+        .expect("diagnostic recorded for unresolved name in refined argument position");
+    let Diagnostic::ResolveError { fixes, .. } = diag else {
+        panic!("expected ResolveError, got {diag:?}");
+    };
+    assert!(
+        fixes.is_empty(),
+        "refined declarations must fail closed instead of emitting a base-shape witness; got {fixes:?}"
+    );
+}
+
+#[test]
 fn t1_5_numeric_descent_is_accepted() {
     let src = "\
 fn countdown(n: Int) -> Int =

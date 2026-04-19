@@ -520,6 +520,9 @@ pub(crate) fn witness_correction_for_decl(
     span: SourceSpan,
     description: impl Into<String>,
 ) -> Option<Correction> {
+    if dag.declaration(declaration).refinement.is_some() {
+        return None;
+    }
     Some(Correction {
         description: description.into(),
         span,
