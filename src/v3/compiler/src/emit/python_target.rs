@@ -766,8 +766,8 @@ impl<'a> Ctx<'a> {
         // form directly. `&&` / `||` in source become `and` / `or`.
         if let OperatorKind::Logical(logical_op) = op {
             let symbol = match logical_op {
-                crate::operators::LogicalOp::And => "and",
-                crate::operators::LogicalOp::Or => "or",
+                crate::dag::LogicalOp::And => "and",
+                crate::dag::LogicalOp::Or => "or",
             };
             let lhs = self.render_port(t.inputs[0], locals)?;
             let rhs = self.render_port(t.inputs[1], locals)?;
@@ -1890,7 +1890,7 @@ fn algebra_field_for_operator(
     op: OperatorKind,
 ) -> Result<DeclarationId, EmitPythonError> {
     if let Some(algebra_conj_id) = walk_to_algebra_conj(dag, operand_type_id) {
-        let field_label = op.algebra_field_name();
+        let field_label = crate::operators::algebra_field_name(op);
         let children = match &dag.declaration(algebra_conj_id).connective {
             TypeConnective::Conj { children } => children,
             _ => unreachable!("walk_to_algebra_conj returned a non-Conj"),
@@ -1920,7 +1920,7 @@ fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId
 }
 
 fn canonical_operator_field(dag: &Dag, op: OperatorKind) -> Result<DeclarationId, EmitPythonError> {
-    let field_label = op.algebra_field_name();
+    let field_label = crate::operators::algebra_field_name(op);
     let ordered_ring = dag.declaration_by_name("OrderedRing").ok_or_else(|| {
         EmitPythonError::Unsupported(
             "bootstrap is missing canonical OrderedRing declaration".to_string(),

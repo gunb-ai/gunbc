@@ -16,7 +16,7 @@ use v3_compiler::dag::{
     ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, PortState,
     TransformTarget, TypeConnective,
 };
-use v3_compiler::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
+use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use v3_compiler::Diagnostic;
 
 use crate::common::{cached_compile_any, cached_compile_to_dag};
@@ -76,6 +76,28 @@ fn callable_instantiation_arguments(
             (*inst_template == template).then_some(arguments.as_slice())
         })
         .collect()
+}
+
+#[test]
+fn operator_helpers_round_trip_from_dag_authority() {
+    for (symbol, op, field_name) in [
+        ("+", OperatorKind::Arithmetic(ArithmeticOp::Add), "add"),
+        ("-", OperatorKind::Arithmetic(ArithmeticOp::Sub), "sub"),
+        ("*", OperatorKind::Arithmetic(ArithmeticOp::Mul), "mul"),
+        ("/", OperatorKind::Arithmetic(ArithmeticOp::Div), "div"),
+        ("==", OperatorKind::Comparison(ComparisonOp::Eq), "eq"),
+        ("!=", OperatorKind::Comparison(ComparisonOp::Ne), "ne"),
+        ("<", OperatorKind::Comparison(ComparisonOp::Lt), "lt"),
+        ("<=", OperatorKind::Comparison(ComparisonOp::Le), "le"),
+        (">", OperatorKind::Comparison(ComparisonOp::Gt), "gt"),
+        (">=", OperatorKind::Comparison(ComparisonOp::Ge), "ge"),
+        ("&&", OperatorKind::Logical(LogicalOp::And), "and"),
+        ("||", OperatorKind::Logical(LogicalOp::Or), "or"),
+    ] {
+        assert_eq!(v3_compiler::operators::from_symbol(symbol), Some(op));
+        assert_eq!(v3_compiler::operators::symbol(op), symbol);
+        assert_eq!(v3_compiler::operators::algebra_field_name(op), field_name);
+    }
 }
 
 #[test]
