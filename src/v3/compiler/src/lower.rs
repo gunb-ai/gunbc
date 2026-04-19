@@ -2756,12 +2756,13 @@ fn lower_structural_field_value(
                 .collect(),
             _ => unreachable!("walk_to_disj_decl returned non-Disj"),
         };
-        let (variant_name, variant_decl_id, positional_args, named_fields, variant_span) = match expr {
-            SurfaceExpr::Call { target, args, span } => {
-                let Some((_, variant_decl_id)) =
-                    variants.iter().find(|(label, _)| label == target)
-                else {
-                    report_declaration_error(
+        let (variant_name, variant_decl_id, positional_args, named_fields, variant_span) =
+            match expr {
+                SurfaceExpr::Call { target, args, span } => {
+                    let Some((_, variant_decl_id)) =
+                        variants.iter().find(|(label, _)| label == target)
+                    else {
+                        report_declaration_error(
                         dag,
                         Diagnostic::ResolveError {
                             name: format!(
@@ -2771,25 +2772,25 @@ fn lower_structural_field_value(
                             fixes: Vec::new(),
                         },
                     );
-                    return None;
-                };
-                (
-                    target.as_str(),
-                    *variant_decl_id,
-                    Some(args.as_slice()),
-                    None,
+                        return None;
+                    };
+                    (
+                        target.as_str(),
+                        *variant_decl_id,
+                        Some(args.as_slice()),
+                        None,
+                        span,
+                    )
+                }
+                SurfaceExpr::VariantRecord {
+                    target,
+                    fields,
                     span,
-                )
-            }
-            SurfaceExpr::VariantRecord {
-                target,
-                fields,
-                span,
-            } => {
-                let Some((_, variant_decl_id)) =
-                    variants.iter().find(|(label, _)| label == target)
-                else {
-                    report_declaration_error(
+                } => {
+                    let Some((_, variant_decl_id)) =
+                        variants.iter().find(|(label, _)| label == target)
+                    else {
+                        report_declaration_error(
                         dag,
                         Diagnostic::ResolveError {
                             name: format!(
@@ -2799,21 +2800,21 @@ fn lower_structural_field_value(
                             fixes: Vec::new(),
                         },
                     );
-                    return None;
-                };
-                (
-                    target.as_str(),
-                    *variant_decl_id,
-                    None,
-                    Some(fields.as_slice()),
-                    span,
-                )
-            }
-            SurfaceExpr::Var { name, span } => {
-                let Some((_, variant_decl_id)) =
-                    variants.iter().find(|(label, _)| label == name)
-                else {
-                    report_declaration_error(
+                        return None;
+                    };
+                    (
+                        target.as_str(),
+                        *variant_decl_id,
+                        None,
+                        Some(fields.as_slice()),
+                        span,
+                    )
+                }
+                SurfaceExpr::Var { name, span } => {
+                    let Some((_, variant_decl_id)) =
+                        variants.iter().find(|(label, _)| label == name)
+                    else {
+                        report_declaration_error(
                         dag,
                         Diagnostic::ResolveError {
                             name: format!(
@@ -2823,12 +2824,12 @@ fn lower_structural_field_value(
                             fixes: Vec::new(),
                         },
                     );
-                    return None;
-                };
-                (name.as_str(), *variant_decl_id, Some(&[][..]), None, span)
-            }
-            _ => {
-                report_declaration_error(
+                        return None;
+                    };
+                    (name.as_str(), *variant_decl_id, Some(&[][..]), None, span)
+                }
+                _ => {
+                    report_declaration_error(
                     dag,
                     Diagnostic::ResolveError {
                         name: format!(
@@ -2838,9 +2839,9 @@ fn lower_structural_field_value(
                     fixes: Vec::new(),
                     },
                 );
-                return None;
-            }
-        };
+                    return None;
+                }
+            };
         let payload_fields = match variant_payload_fields_for_lowering(dag, variant_decl_id) {
             Some(fields) => fields,
             other => {
@@ -2886,10 +2887,7 @@ fn lower_structural_field_value(
             }
         } else if let Some(fields) = named_fields {
             for field in fields {
-                if !payload_fields
-                    .iter()
-                    .any(|(label, _)| label == &field.name)
-                {
+                if !payload_fields.iter().any(|(label, _)| label == &field.name) {
                     report_declaration_error(
                         dag,
                         Diagnostic::ResolveError {
@@ -2905,7 +2903,10 @@ fn lower_structural_field_value(
                 }
             }
             for (payload_field_label, payload_field_ty) in &payload_fields {
-                let Some(field) = fields.iter().find(|field| field.name == *payload_field_label) else {
+                let Some(field) = fields
+                    .iter()
+                    .find(|field| field.name == *payload_field_label)
+                else {
                     report_declaration_error(
                         dag,
                         Diagnostic::ResolveError {
@@ -4637,8 +4638,8 @@ fn variant_payload_fields_for_lowering(
         children
             .iter()
             .map(|child| {
-                let specialized = resolve_decl_with_subst_lower(dag, child.ty, &subst, 0)
-                    .unwrap_or(child.ty);
+                let specialized =
+                    resolve_decl_with_subst_lower(dag, child.ty, &subst, 0).unwrap_or(child.ty);
                 (child.label.clone(), specialized)
             })
             .collect(),
@@ -5263,7 +5264,8 @@ fn lower_variant_record_expr(
     symbols: &HashMap<String, DeclarationId>,
     expected_decl: Option<DeclarationId>,
 ) -> PortId {
-    let Some(variant_decl) = resolve_expected_variant_constructor(dag, expected_decl, target) else {
+    let Some(variant_decl) = resolve_expected_variant_constructor(dag, expected_decl, target)
+    else {
         return unresolved_port(
             dag,
             Diagnostic::ResolveError {
@@ -5477,6 +5479,9 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
             }
             args.iter().any(|a| is_recursive(a, self_name))
         }
+        SurfaceExpr::VariantRecord { fields, .. } => fields
+            .iter()
+            .any(|field| is_recursive(&field.value, self_name)),
         SurfaceExpr::Operator { args, .. } => args.iter().any(|a| is_recursive(a, self_name)),
         SurfaceExpr::If {
             cond,
@@ -5769,6 +5774,7 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::Var { span, .. }
         | SurfaceExpr::Path { span, .. }
         | SurfaceExpr::Call { span, .. }
+        | SurfaceExpr::VariantRecord { span, .. }
         | SurfaceExpr::Operator { span, .. }
         | SurfaceExpr::Lambda { span, .. }
         | SurfaceExpr::If { span, .. }
