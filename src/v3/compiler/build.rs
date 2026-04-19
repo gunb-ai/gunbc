@@ -235,8 +235,6 @@ fn main() {
     let compiler_out = out_dir.join("v3_compiler_files.rs");
     fs::write(&compiler_out, compiler_generated)
         .unwrap_or_else(|e| panic!("failed to write {}: {}", compiler_out.display(), e));
-<<<<<<< HEAD
-
     // SG-0 producer-owned generated manifest. The census at
     // `tests/integration/sg0_census_test.rs` reads this list as the
     // sole authority for "which .rs files under src/v3/compiler are
@@ -279,12 +277,10 @@ fn main() {
     let manifest_out = out_dir.join("v3_generated_files.rs");
     fs::write(&manifest_out, manifest)
         .unwrap_or_else(|e| panic!("failed to write {}: {}", manifest_out.display(), e));
-=======
     let extdeps_out = out_dir.join("v3_extdeps_files.rs");
     fs::write(&extdeps_out, extdeps_generated)
         .unwrap_or_else(|e| panic!("failed to write {}: {}", extdeps_out.display(), e));
     let gunbc_out = out_dir.join("v3_gunbc_files.rs");
     fs::write(&gunbc_out, gunbc_generated)
         .unwrap_or_else(|e| panic!("failed to write {}: {}", gunbc_out.display(), e));
->>>>>>> 689bc77a8 (WIP: XL Misc)
 }
