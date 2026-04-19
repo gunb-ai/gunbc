@@ -3,9 +3,9 @@ use v3_compiler::dag::{
     ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, LiteralBits, Path,
     PayloadBinding, PortState, TransformTarget, TypeConnective,
 };
-use v3_compiler::SourceSpan;
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use v3_compiler::Diagnostic;
+use v3_compiler::SourceSpan;
 
 use crate::common::{cached_compile_any, cached_compile_to_dag};
 
@@ -100,7 +100,10 @@ fn bootstrap_inventory_stays_typed_and_cached() {
         (dag.bool_shape().expect("Bool cached"), "Bool"),
         (dag.string_shape().expect("String cached"), "String"),
     ] {
-        assert_eq!(shape, v3_compiler::types::TypeShape::new(find_named(&dag, name)));
+        assert_eq!(
+            shape,
+            v3_compiler::types::TypeShape::new(find_named(&dag, name))
+        );
     }
 
     for decl_id in [
@@ -124,7 +127,10 @@ fn bootstrap_inventory_stays_typed_and_cached() {
             .expect("PatternRealization meta"),
     ] {
         assert!(
-            matches!(dag.declaration(decl_id).connective, TypeConnective::Conj { .. }),
+            matches!(
+                dag.declaration(decl_id).connective,
+                TypeConnective::Conj { .. }
+            ),
             "bootstrap cache should point at Conj authorities"
         );
     }
@@ -133,9 +139,10 @@ fn bootstrap_inventory_stays_typed_and_cached() {
         .rust_language_spec()
         .expect("rust_language syntax bundle should be cached");
     let rust_language_labels = match dag.declaration(rust_language).value_body.as_ref() {
-        Some(v3_compiler::dag::ValueBody::Structural { fields }) => {
-            fields.iter().map(|(label, _)| label.as_str()).collect::<Vec<_>>()
-        }
+        Some(v3_compiler::dag::ValueBody::Structural { fields }) => fields
+            .iter()
+            .map(|(label, _)| label.as_str())
+            .collect::<Vec<_>>(),
         other => panic!("rust_language must lower structurally, got {other:?}"),
     };
     assert_eq!(
@@ -159,15 +166,17 @@ fn bootstrap_inventory_stays_typed_and_cached() {
         .rust_rendering_spec()
         .expect("rust_rendering bundle should be cached");
     let rust_rendering_labels = match dag.declaration(rust_rendering).value_body.as_ref() {
-        Some(v3_compiler::dag::ValueBody::Structural { fields }) => {
-            fields.iter().map(|(label, _)| label.as_str()).collect::<Vec<_>>()
-        }
+        Some(v3_compiler::dag::ValueBody::Structural { fields }) => fields
+            .iter()
+            .map(|(label, _)| label.as_str())
+            .collect::<Vec<_>>(),
         other => panic!("rust_rendering must lower structurally, got {other:?}"),
     };
     assert_eq!(rust_rendering_labels, vec!["read", "construct"]);
 
     assert!(matches!(
-        dag.declaration(find_named(&dag, "RenderingModel")).connective,
+        dag.declaration(find_named(&dag, "RenderingModel"))
+            .connective,
         TypeConnective::Conj { .. }
     ));
     assert!(matches!(
@@ -175,7 +184,8 @@ fn bootstrap_inventory_stays_typed_and_cached() {
         TypeConnective::Disj { .. }
     ));
     assert!(matches!(
-        dag.declaration(find_named(&dag, "ConstructStrategy")).connective,
+        dag.declaration(find_named(&dag, "ConstructStrategy"))
+            .connective,
         TypeConnective::Disj { .. }
     ));
 }
@@ -207,7 +217,9 @@ fn bootstrap_child_declarations_stay_anonymous_and_structural() {
         TypeConnective::Conj { children } => children,
         other => panic!("OrderedRing should be a Conj, got {other:?}"),
     };
-    for label in ["add", "sub", "mul", "div", "eq", "ne", "lt", "le", "gt", "ge"] {
+    for label in [
+        "add", "sub", "mul", "div", "eq", "ne", "lt", "le", "gt", "ge",
+    ] {
         assert!(
             ordered_ring_fields.iter().any(|field| field.label == label),
             "OrderedRing missing direct operator field `{label}`"
@@ -261,7 +273,10 @@ type CmdExec { operations: CmdExec_Operations }
     for label in ["input", "output", "arguments"] {
         let child = field(run_fields, label).ty;
         assert!(
-            matches!(dag.declaration(child).connective, TypeConnective::Conj { .. }),
+            matches!(
+                dag.declaration(child).connective,
+                TypeConnective::Conj { .. }
+            ),
             "CmdExec_Run.{label} should point at a Conj carrier"
         );
     }
@@ -605,28 +620,6 @@ fn m17_r9_comparison_operator_walks_to_algebra_field() {
     match dag.port(bind_y.value).state() {
         v3_compiler::dag::PortState::Resolved(ty) if *ty == bool_shape => {}
         other => panic!("expected Bind(y).value to be Resolved(Bool), got {other:?}"),
-    }
-}
-
-#[test]
-fn m17_r9_ordered_ring_carries_direct_operator_fields() {
-    // Verify algebra.dag was extended with the direct operator
-    // fields the §8.9 walk looks up. If any is missing the walk
-    // falls back to the Rust scaffold bridge, which would make
-    // the two tests above silently pass via the wrong path.
-    let dag = Dag::new();
-    let ordered_ring = find_named(&dag, "OrderedRing");
-    let fields = match &dag.declaration(ordered_ring).connective {
-        TypeConnective::Conj { children } => children.clone(),
-        other => panic!("expected OrderedRing Conj, got {other:?}"),
-    };
-    for required in [
-        "add", "sub", "mul", "div", "eq", "ne", "lt", "le", "gt", "ge",
-    ] {
-        assert!(
-            fields.iter().any(|f| f.label == required),
-            "OrderedRing missing direct operator field `{required}` — the §8.9 walk will fall back to the Rust scaffold bridge"
-        );
     }
 }
 
