@@ -4,7 +4,7 @@
 
 **Design blocker:** DB-18 (new substrate carrier `WorkflowEffect` — a four-variant coproduct describing workflow control-flow shape for effect-algebra composition)
 **Consumers:** Lane 2 Stage 2b workflow idempotency lens (initial consumer; `LinearEffect`-only scope). Downstream: Stage 2d symbolic cost, Stage 2e parallelism-as-lens, Stage 2f user-declared dimensions.
-**Status:** **R2 (Part 2) is shipped in code** — `BoolPortRef`, `Dag::bool_port_of`, `BranchArm::new`, `LinearEffect.ops: List<OperationEffect>`, reflected `lane2_workflow` on `ValueNode`/`BindNode`, substrate accessor `lane2_workflow_at`, and `Dag::lane2_workflow_effect_at(&NodeId)`. This document describes that **live** shape (see `src/v3/std/effects.dag`, `src/v3/std/substrate.dag`, `src/v3/compiler/src/dag.rs`). **Part 3** (user `data … WorkflowEffect` authoring surface + full lowering) remains future work. Historical R1 names (`BranchPredicateRef`, `branch_arm_of`, `NonEmptyList` for linear ops) are **not** the current substrate.
+**Status:** **R2 (Part 2) is shipped in code** — `BoolPortRef`, `Dag::bool_port_of`, `BranchArm::new`, `LinearEffect.ops: List<OperationEffect>`, reflected `lane2_workflow` on `ValueNode`/`BindNode`, substrate accessor `lane2_workflow_at`, and `Dag::lane2_workflow_effect_at(&self, root: &NodeId)`. This document describes that **live** shape (see `src/v3/std/effects.dag`, `src/v3/std/substrate.dag`, `src/v3/compiler/src/dag.rs`). **Part 3** (user `data … WorkflowEffect` authoring surface + full lowering) remains future work. Historical R1 names (`BranchPredicateRef`, `branch_arm_of`, `NonEmptyList` for linear ops) are **not** the current substrate.
 **Companion:** [design-composed-effect-reshape.md](./design-composed-effect-reshape.md) (PR #529, landed 2026-04-18 as `8c7e7acdd`) reshapes the *output* side of the effect algebra: `ComposedEffect` is removed; `compose_effects(effects: List<OperationEffect>) -> CompositionVerdict` is the post-reshape algebra. DB-18 adds the *input* side: a typed carrier describing the workflow's control-flow structure above `List<OperationEffect>`. The two live on orthogonal axes — `WorkflowEffect` is the input structure the lens walks; `CompositionVerdict` is the output the algebra returns. They coexist; neither replaces the other.
 
 ---
@@ -155,7 +155,7 @@ Per `feedback_substrate_principle_audit`, all six questions walk before greenlig
 
 **Q5 — Construction authority.** Are multiple call sites independently constructing the same fact?
 
-- **Authority site for `WorkflowEffect` values.** `ValueNode.lane2_workflow: Option<Box<WorkflowEffect>>` on the computation-substrate Value node at the workflow root. Writes go through `Dag::try_register_lane2_workflow_effect(root, workflow)`; reads go through `Dag::lane2_workflow_effect_at(root)`. Exactly one workflow per root; no sidecar table; no parallel hosting. See §"Authority site for WorkflowEffect" below.
+- **Authority site for `WorkflowEffect` values.** `ValueNode.lane2_workflow: Option<Box<WorkflowEffect>>` on the computation-substrate Value node at the workflow root. Writes go through `Dag::try_register_lane2_workflow_effect(root, workflow)`; reads go through `Dag::lane2_workflow_effect_at(&root)`. Exactly one workflow per root; no sidecar table; no parallel hosting. See §"Authority site for WorkflowEffect" below.
 - **Construction authority for `BranchArm`.** After `bool_port_of` succeeds, **`BranchArm::new(condition, body)`** is the public arm constructor. The `BoolPortRef` inner field is crate-private; there is no `BranchArm { condition: PortId, ... }`. Any lowering that cannot obtain a witness must use **`bool_port_for_branch_condition_or_diagnose`** (or equivalent) so **`BranchConditionNotBool`** is emitted — never silent absorption. ✓ single authority on the typed-witness path.
 
 **Q6 — Representation duality.** Can the same fact be expressed in two structurally different shapes that comparison treats differently?
@@ -199,8 +199,8 @@ impl Dag {
 
     pub fn lane2_workflow_effect_at(&self, root: &NodeId) -> Option<&WorkflowEffect> {
         match self.node_opt(root)? {
-            Behavior::Value(v) => v.lane2_workflow.as_deref(),
-            Behavior::Bind(b) => b.lane2_workflow.as_deref(),
+            Behavior::Value(v) => v.lane2_workflow(),
+            Behavior::Bind(b) => b.lane2_workflow(),
             _ => None,
         }
     }
@@ -321,12 +321,12 @@ This is deliberate. PR #529 removed `ComposedEffect { operations, verdict }` bec
 - Rust enum `WorkflowEffect` + `BranchArm` + `BoolPortRef` in `src/v3/compiler/src/dag.rs`; `effects.dag` marks carriers **🟢 TERMINAL** for Stage 2b / 2e consumers.
 - Fields `ValueNode.lane2_workflow` / `BindNode.lane2_workflow: Option<Box<WorkflowEffect>>` — authority site; reflected in `substrate.dag`.
 - **`bool_port_of`**, **`BranchArm::new`**, **`bool_port_for_branch_condition_or_diagnose`** — R2 Bool / branch-arm construction (no `branch_arm_of`).
-- `Dag::try_register_lane2_workflow_effect` + `Dag::lane2_workflow_effect_at(&NodeId)` — writer / reader.
+- `Dag::try_register_lane2_workflow_effect` + `Dag::lane2_workflow_effect_at(&self, root: &NodeId)` — writer / reader.
 - `workflow_idempotency::analyze_workflow` — `LinearEffect` → verdict; non-linear → `IdempotencyUnsupported`.
 
 **Part 3 — follow-up:**
 - Data-declaration authoring surface: end-to-end lowering from `data my_flow: WorkflowEffect = …` using the same R2 constructors.
-- Any remaining polish on emitted-lens Rust linking (see `m2_lens_idempotency_emit_test.rs` header).
+- Optional polish beyond [`m2_lens_idempotency_migration_test.rs`](../../src/v3/compiler/tests/m2_lens_idempotency_migration_test.rs) (rustc round-trip vs oracle is already gated).
 
 ---
 
