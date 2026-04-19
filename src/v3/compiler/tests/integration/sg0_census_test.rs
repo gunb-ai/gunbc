@@ -133,8 +133,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn walk_rs(root: &Path, ws: &Path, out: &mut BTreeSet<String>) {
-    let entries = fs::read_dir(root)
-        .unwrap_or_else(|e| panic!("read_dir {}: {e}", root.display()));
+    let entries = fs::read_dir(root).unwrap_or_else(|e| panic!("read_dir {}: {e}", root.display()));
     for entry in entries {
         let entry = entry.expect("read_dir entry");
         let path = entry.path();
@@ -159,8 +158,8 @@ fn walk_rs(root: &Path, ws: &Path, out: &mut BTreeSet<String>) {
 }
 
 fn is_generated(abs_path: &Path) -> bool {
-    let contents = fs::read_to_string(abs_path)
-        .unwrap_or_else(|e| panic!("read {}: {e}", abs_path.display()));
+    let contents =
+        fs::read_to_string(abs_path).unwrap_or_else(|e| panic!("read {}: {e}", abs_path.display()));
     let Some(first) = contents.lines().find(|line| !line.trim().is_empty()) else {
         return false;
     };
@@ -210,9 +209,7 @@ fn sg0_v3_hand_authored_census() {
         "SG-0 census drift: observed hand-authored set does not match EXPECTED_HAND_AUTHORED.\n\n",
     );
     if !added.is_empty() {
-        msg.push_str(
-            "New hand-authored .rs files (the SG program forbids adding these):\n",
-        );
+        msg.push_str("New hand-authored .rs files (the SG program forbids adding these):\n");
         for p in &added {
             msg.push_str("  + ");
             msg.push_str(p);
