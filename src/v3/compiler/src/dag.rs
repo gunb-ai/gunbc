@@ -736,6 +736,13 @@ impl ValueNode {
     pub fn result_port(&self) -> PortId {
         self.output
     }
+
+    /// Reflected substrate optional `WorkflowEffect?`: unboxes staged storage so
+    /// Rust realization does not surface `Option<Box<WorkflowEffect>>` at the
+    /// reflection boundary (`rust.dag` uses `AccessorMethod("lane2_workflow")`).
+    pub fn lane2_workflow(&self) -> Option<&WorkflowEffect> {
+        self.lane2_workflow.as_deref()
+    }
 }
 
 /// Dispatch target of a `TransformNode`. Structural coproduct that
@@ -1475,6 +1482,12 @@ impl BindNode {
     pub fn result_port(&self) -> PortId {
         self.value
     }
+
+    /// Reflected substrate optional `WorkflowEffect?` — same contract as
+    /// [`ValueNode::lane2_workflow`].
+    pub fn lane2_workflow(&self) -> Option<&WorkflowEffect> {
+        self.lane2_workflow.as_deref()
+    }
 }
 
 // Checkpoint C1.
@@ -2194,8 +2207,8 @@ impl Dag {
     /// render as borrows at the explicit boundary.
     pub fn lane2_workflow_effect_at(&self, root: &NodeId) -> Option<&WorkflowEffect> {
         match self.node_opt(root)? {
-            Behavior::Value(v) => v.lane2_workflow.as_deref(),
-            Behavior::Bind(b) => b.lane2_workflow.as_deref(),
+            Behavior::Value(v) => v.lane2_workflow(),
+            Behavior::Bind(b) => b.lane2_workflow(),
             Behavior::Transform(_) | Behavior::Branch(_) | Behavior::Loop(_) => None,
         }
     }
