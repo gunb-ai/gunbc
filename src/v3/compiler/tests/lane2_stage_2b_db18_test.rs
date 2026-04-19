@@ -124,7 +124,7 @@ fn append_effect_breaks_linear_chain() {
             ),
         ],
     };
-    assert!(dag.try_register_lane2_workflow_effect(root, wf));
+    assert!(dag.try_register_lane2_workflow_effect(root, wf.clone()));
     let r = analyze_workflow(&dag, root);
     let WorkflowIdempotencyReport::WorkflowCompositionVerdict(CompositionVerdict::BrokenBy {
         first_breaker,
@@ -132,8 +132,11 @@ fn append_effect_breaks_linear_chain() {
     else {
         panic!("expected BrokenBy");
     };
-    assert_eq!(first_breaker.operation_name, "append_audit");
-    assert!(matches!(first_breaker.shape, BreakingShape::AppendEffect));
+    let breaker = wf
+        .operation_at(first_breaker)
+        .expect("breaker ref should resolve into linear ops");
+    assert_eq!(breaker.operation_name, "append_audit");
+    assert!(matches!(breaker.shape, EffectShape::IsBreaking(BreakingShape::AppendEffect)));
 }
 
 #[test]

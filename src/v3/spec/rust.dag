@@ -283,6 +283,17 @@ data rust_non_singleton_list: TypeRealization = {
   cost: 1
 }
 
+data rust_element_ref: TypeRealization = {
+  language: rust_language
+  target: ElementRef
+  carrier: "ElementRef"
+  is_copy: true
+  fields: [
+    { dag_name: "index", access: AccessorMethod("index_of"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
 data rust_param_ref: TypeRealization = {
   language: rust_language
   target: ParamRef

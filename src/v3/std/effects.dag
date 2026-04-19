@@ -24,9 +24,9 @@
 //   - `EffectShape = IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)` (partition)
 //   - `IdempotentShape`, `BreakingShape`
 //   - `CreateCause`, `KeySource`, `IdempotencyEvidence`
-//   - `OperationEffect`, `BreakingOperation`
-//   - `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: BreakingOperation }`
-//   - `is_idempotent_effect`, `operation_is_breaking`, `operation_to_breaker`
+//   - `OperationEffect`
+//   - `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: ElementRef<OperationEffect> }`
+//   - `is_idempotent_effect`, `operation_is_breaking`
 //   - `compose_effects(effects: List<OperationEffect>) -> CompositionVerdict`
 //   - `derive_effect_shape(method, path)` — HTTP method + path → EffectShape
 //   - `generate_idempotency_obligations`, `check_modifier_vs_derivation`
@@ -49,7 +49,7 @@
 //
 // 2. `ComposedEffect { operations, idempotent: Bool, breaking_operation: String? }`
 // was removed entirely. `compose_effects` now returns
-// `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: BreakingOperation }`
+// `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: ElementRef<OperationEffect> }`
 // directly. The earlier intermediate form wrapped the verdict in a
 // `{ operations, verdict }` record so callers could get the walk and
 // the judgment from one value, but reviewer feedback on the
@@ -64,18 +64,15 @@
 // natural sites, with no correlation for the type system to enforce.
 //
 // 3. `EffectShape` was partitioned into
-// `IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)`,
-// and `BrokenBy`'s payload narrowed to `BreakingOperation { shape: BreakingShape }`.
+// `IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)`.
 // The earlier flat `BrokenBy { first_breaker: OperationEffect }` shape
 // still admitted `OperationEffect { shape: ReadEffect }` — an
 // idempotent op in the breaker slot — enforced only by the
 // `compose_effects` filter. Partitioning EffectShape at the type
-// level, and narrowing the carrier to `BreakingShape`, makes naming
-// an idempotent op as the workflow breaker unrepresentable rather
-// than disallowed-by-convention. Consumers still match on the five
-// concrete variants (ReadEffect / UpsertEffect / DeleteEffect /
-// CreateEffect / AppendEffect) through the outer-variant destructure;
-// the per-variant algebra is unchanged.
+// level makes naming an idempotent op as the workflow breaker
+// unrepresentable rather than disallowed-by-convention, while
+// `ElementRef<OperationEffect>` ties the verdict back to the original
+// evidence chain instead of copying name/shape into a second carrier.
 //
 // DESIGN PRINCIPLE:
 //   Idempotency is not a flag. It is a DERIVED PROPERTY of the
@@ -111,6 +108,8 @@ module std.effects
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.list { List, cons }
 import v3.std.substrate_minimal { NonEmptyList, NonSingletonList, PortId }
+import std.list { List, cons, enumerate }
+import v3.std.substrate { ElementRef, NonSingletonList, PortId }
 
 // ── Path-template carriers ──────────────────────────────────────
 //
@@ -367,28 +366,19 @@ type OperationEffect {
   shape: EffectShape
 }
 
-// 🟢 TERMINAL. The breaking-subset projection of OperationEffect.
-// `shape: BreakingShape` structurally restricts the variant space —
-// no idempotent shape can inhabit this carrier — so naming an
-// idempotent op as the workflow breaker is unrepresentable, not
-// merely disallowed by a constructor convention.
-type BreakingOperation {
-  operation_name: String
-  shape: BreakingShape
-}
-
 // 🟢 TERMINAL. The composition of idempotent lattice meets is
 // idempotent; a single non-idempotent operation poisons the chain.
 // The judgment space is therefore exactly two states: the workflow
 // converges, or some operation broke convergence. No third state.
 //
-// `first_breaker: BreakingOperation` is a state-space-sound witness:
-// its `shape` field ranges only over `BreakingShape`, so the verdict
-// cannot name an idempotent op as the breaker. Downstream diagnostics
-// project shape / cause directly.
+// `first_breaker: ElementRef<OperationEffect>` is a carrier-relative
+// witness into the original workflow evidence chain. Combined with the
+// `EffectShape` partition, the verdict cannot name an idempotent op as
+// the breaker AND cannot drift away from the input list by copying a
+// standalone `BreakingOperation`.
 type CompositionVerdict
   = IdempotentComposition
-  | BrokenBy { first_breaker: BreakingOperation }
+  | BrokenBy { first_breaker: ElementRef<OperationEffect> }
 
 // True if this operation is non-idempotent. Reads the partition
 // directly off `EffectShape` — no evidence-projection round-trip.
@@ -399,19 +389,25 @@ fn operation_is_breaking(op: OperationEffect) -> Bool {
   }
 }
 
-// Project an OperationEffect to the breaking-subset witness when its
-// shape falls in `BreakingShape`; `None` when the op is idempotent.
-// The outer-variant match is exhaustive, so adding a new EffectShape
-// partition member forces this projection to update.
-fn operation_to_breaker(op: OperationEffect) -> BreakingOperation? {
-  match op.shape {
-    IsIdempotent => None
-    IsBreaking(breaking) =>
-      Some(BreakingOperation {
-        operation_name: op.operation_name,
-        shape: breaking
-      })
-  }
+fn breaker_ref(index: Int) -> ElementRef<OperationEffect> {
+  { index: index }
+}
+
+fn indexed_breaker_ref(op: IndexedElement<OperationEffect>) -> ElementRef<OperationEffect>? {
+  if operation_is_breaking(op.value) then
+    Some(breaker_ref(op.index))
+  else
+    None
+}
+
+fn first_breaker_ref(effects: List<OperationEffect>) -> ElementRef<OperationEffect>? {
+  let breaker_candidates = effects |> enumerate |> flat_map(op =>
+    match indexed_breaker_ref(op) {
+      Some(r) => [r]
+      None => []
+    }
+  )
+  breaker_candidates |> first
 }
 
 // Compose a list of operation effects into a workflow-level verdict.
@@ -423,17 +419,11 @@ fn operation_to_breaker(op: OperationEffect) -> BreakingOperation? {
 // and `.dag` records are directly constructible, so the two could
 // be made to disagree without any type-level obstruction.
 //
-// Flat-maps each op through `operation_to_breaker`, then takes the
-// first breaker (if any). `BrokenBy` is only constructible from a
-// `BreakingOperation`, so the verdict is state-space sound.
+// Walks the effect list with indices, then returns the first breaking
+// position (if any). `BrokenBy` points back into the caller-owned
+// evidence chain instead of copying a second breaker record.
 fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
-  let breaker_candidates = effects |> flat_map(op =>
-    match operation_to_breaker(op: op) {
-      Some(b) => [b]
-      None => []
-    }
-  )
-  match breaker_candidates |> first {
+  match first_breaker_ref(effects) {
     Some(b) => BrokenBy { first_breaker: b }
     None => IdempotentComposition
   }
@@ -452,8 +442,10 @@ fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
 // Track 9 parity: `BoolPortRef` mirrors `ParamRef` / `TransformRef` in
 // `substrate.dag` — a named witness carrier, not a bare `PortId` on
 // `BranchArm`. Validity (Bool-typed port) is enforced by
-// `Dag::bool_port_of` on the Rust side; substrate constructor symmetry is
-// tracked under the same ROADMAP Track 9 debt as other reflected handles.
+// `Dag::bool_port_of` on the Rust side; `BranchArm` is built from the witnessed
+// handle (`BranchArm::new` / `Dag::branch_arm_of`). Substrate constructor
+// symmetry is tracked under the same ROADMAP Track 9 debt as other reflected
+// handles.
 
 // 🟢 TERMINAL. Bool-typed port witness — Track 9 parallel to `ParamRef` /
 // `TransformRef`; illegal states (non-Bool port) are rejected at
