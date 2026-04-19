@@ -77,8 +77,8 @@ fn double(x: Int) -> Int = x + x
 
 #[test]
 fn emit_python_uses_only_shared_schema_surface() {
-    const PYTHON_SPEC: &str = include_str!("../../spec/python.dag");
-    const PYTHON_EMITTER: &str = include_str!("../src/emit/python_target.rs");
+    const PYTHON_SPEC: &str = include_str!("../../../spec/python.dag");
+    const PYTHON_EMITTER: &str = include_str!("../../src/emit/python_target.rs");
     let forbidden = [
         "PythonTypeRealization",
         "PythonOperatorRealization",
