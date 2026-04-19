@@ -335,6 +335,7 @@ fn extract_int_field(fields: &[(String, FieldValue)], key: &str) -> i64 {
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Codegen: one projection bundle per `tokenize.dag` surface.
 fn emit_tokenize_fn(
     keywords: &[(String, String)],
     line_comment_prefix: &str,
@@ -361,7 +362,7 @@ fn emit_tokenize_fn(
     let mut escape_arms = String::new();
     for (suf, cp) in escapes {
         escape_arms.push_str(&format!(
-            "                            {} => content.push(core::char::from_u32({} as u32).unwrap()),\n",
+            "                            {} => content.push(core::char::from_u32({}_u32).unwrap()),\n",
             rust_byte_literal(*suf),
             cp
         ));

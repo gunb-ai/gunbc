@@ -163,11 +163,11 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                             });
                         };
                         match escaped {
-                            b'"' => content.push(core::char::from_u32(34 as u32).unwrap()),
-                            b'\\' => content.push(core::char::from_u32(92 as u32).unwrap()),
-                            b'n' => content.push(core::char::from_u32(10 as u32).unwrap()),
-                            b'r' => content.push(core::char::from_u32(13 as u32).unwrap()),
-                            b't' => content.push(core::char::from_u32(9 as u32).unwrap()),
+                            b'"' => content.push(core::char::from_u32(34_u32).unwrap()),
+                            b'\\' => content.push(core::char::from_u32(92_u32).unwrap()),
+                            b'n' => content.push(core::char::from_u32(10_u32).unwrap()),
+                            b'r' => content.push(core::char::from_u32(13_u32).unwrap()),
+                            b't' => content.push(core::char::from_u32(9_u32).unwrap()),
                             other => {
                                 content.push('\\');
                                 content.push(other as char);
