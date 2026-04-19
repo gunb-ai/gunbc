@@ -115,7 +115,7 @@ fn two_terms(a: SymbolicCost, b: SymbolicCost) -> NonSingletonList<SymbolicCost>
   {
     first: a
     second: b
-    rest: empty_terms(a)
+    rest: empty()
   }
 
 fn many_terms(
@@ -128,8 +128,6 @@ fn many_terms(
     second: second
     rest: rest
   }
-
-fn empty_terms(seed: SymbolicCost) -> List<SymbolicCost> = empty()
 
 fn degree_raw(degree: DegreeAtLeastTwo) -> Int =
   match degree {
