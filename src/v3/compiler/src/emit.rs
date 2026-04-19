@@ -5,6 +5,7 @@ use crate::dag::{
     Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective, ValueBody,
 };
+use crate::emit_python::EmitPythonError;
 use crate::emit_rust::{EmitError, RealizationCategory};
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
@@ -620,6 +621,8 @@ impl TargetExecutionModelBinding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmitTarget {
     Go,
+    Rust,
+    Python,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -635,11 +638,32 @@ pub struct EmittedSource {
     pub mode: EmitMode,
 }
 
-pub fn emit(dag: &Dag, target: EmitTarget) -> Result<EmittedSource, EmitError> {
+#[derive(Debug, Clone)]
+pub enum EmitDispatchError {
+    Core(EmitError),
+    Python(EmitPythonError),
+}
+
+impl From<EmitError> for EmitDispatchError {
+    fn from(value: EmitError) -> Self {
+        Self::Core(value)
+    }
+}
+
+impl From<EmitPythonError> for EmitDispatchError {
+    fn from(value: EmitPythonError) -> Self {
+        Self::Python(value)
+    }
+}
+
+pub fn emit(dag: &Dag, target: EmitTarget) -> Result<EmittedSource, EmitDispatchError> {
     emit_with_mode(dag, target, EmitMode::Program)
 }
 
-pub fn emit_module(dag: &Dag, target: EmitTarget) -> Result<EmittedSource, EmitError> {
+pub fn emit_module(
+    dag: &Dag,
+    target: EmitTarget,
+) -> Result<EmittedSource, EmitDispatchError> {
     emit_with_mode(dag, target, EmitMode::Module)
 }
 
@@ -647,9 +671,23 @@ fn emit_with_mode(
     dag: &Dag,
     target: EmitTarget,
     mode: EmitMode,
-) -> Result<EmittedSource, EmitError> {
+) -> Result<EmittedSource, EmitDispatchError> {
     let text = match target {
-        EmitTarget::Go => emit_go_with_mode(dag, mode)?,
+        EmitTarget::Go => emit_go_with_mode(dag, mode).map_err(EmitDispatchError::Core)?,
+        EmitTarget::Rust => match mode {
+            EmitMode::Program => crate::emit_rust::emit_rust(dag).map_err(EmitDispatchError::Core)?,
+            EmitMode::Module => {
+                crate::emit_rust::emit_rust_module(dag).map_err(EmitDispatchError::Core)?
+            }
+        },
+        EmitTarget::Python => match mode {
+            EmitMode::Program => {
+                crate::emit_python::emit_python(dag).map_err(EmitDispatchError::Python)?
+            }
+            EmitMode::Module => {
+                crate::emit_python::emit_python_module(dag).map_err(EmitDispatchError::Python)?
+            }
+        },
     };
     Ok(EmittedSource { text, target, mode })
 }

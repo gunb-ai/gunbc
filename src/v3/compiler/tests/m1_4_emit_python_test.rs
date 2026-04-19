@@ -8,6 +8,7 @@ use v3_compiler::dag::{
     Behavior, BindNode, BranchNode, LoopBound, LoopNode, Path as DagPath, Port, TransformNode,
     ValueNode,
 };
+use v3_compiler::emit::{emit as shared_emit, emit_module as shared_emit_module, EmitTarget};
 use v3_compiler::emit_python::emit_python_module;
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::Dag;
@@ -40,6 +41,38 @@ fn emit_python_lens_module() -> String {
 fn emit_python_module_from_source(source: &str, file_name: &str) -> String {
     let dag = compile_to_dag(source, file_name).expect("compiled python module source");
     emit_python_module(&dag).expect("emit python module")
+}
+
+#[test]
+fn emit_python_wrappers_match_shared_entrypoint() {
+    let program_source = "\
+fn double(x: Int) -> Int = x + x
+let result: Int = double(21)
+";
+    let program_dag = compile_to_dag(program_source, "emit_python_wrapper_program_parity.v3")
+        .expect("compiles");
+    let shared = shared_emit(&program_dag, EmitTarget::Python)
+        .expect("shared emit")
+        .text;
+    let wrapper = v3_compiler::emit_python::emit_python(&program_dag).expect("wrapper emit");
+    assert_eq!(
+        shared, wrapper,
+        "emit_python wrapper drifted from emit::emit"
+    );
+
+    let module_source = "\
+fn double(x: Int) -> Int = x + x
+";
+    let module_dag = compile_to_dag(module_source, "emit_python_wrapper_module_parity.v3")
+        .expect("compiles");
+    let shared_module = shared_emit_module(&module_dag, EmitTarget::Python)
+        .expect("shared module emit")
+        .text;
+    let wrapper_module = emit_python_module(&module_dag).expect("wrapper module emit");
+    assert_eq!(
+        shared_module, wrapper_module,
+        "emit_python_module wrapper drifted from emit::emit_module"
+    );
 }
 
 fn next_roundtrip_dir() -> PathBuf {
