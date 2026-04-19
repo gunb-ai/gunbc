@@ -77,6 +77,11 @@ fn run() -> Result<(), String> {
         Err(e) => Err(format!("compiler.dag: {e:?}")),
     };
 
+    /// When `compiler.dag` parses and we exercise emit→rustc→run→diff, any failure on that
+    /// slice must exit non-zero (Invariant D-1 / DB-8 fail-closed). Parse failure alone stays
+    /// exit 0 — expected until v3 grammar + Lane 1e land (staged ratchet).
+    let mut self_host_slice_failed: Option<String> = None;
+
     let mut receipt = String::new();
     receipt.push_str("{\n");
     receipt.push_str("  \"pipeline_fixed_point_default_source\": \"ok\",\n");
@@ -92,16 +97,16 @@ fn run() -> Result<(), String> {
             receipt.push_str(&format!("  \"stage1_rs_bytes\": {},\n", stage1.text.len()));
 
             let bin_path = out_dir.join("stage1_bin");
-            let rustc_status = Command::new("rustc")
+            let rustc_inv = Command::new("rustc")
                 .arg("--edition=2021")
                 .arg(&stage1_path)
                 .arg("-o")
                 .arg(&bin_path)
                 .stderr(Stdio::piped())
-                .status()
+                .output()
                 .map_err(|e| format!("rustc: {e}"))?;
 
-            if rustc_status.success() {
+            if rustc_inv.status.success() {
                 receipt.push_str("  \"stage1_rustc\": \"ok\",\n");
                 let run = Command::new(&bin_path)
                     .arg(&compiler_abs)
@@ -109,7 +114,6 @@ fn run() -> Result<(), String> {
                     .map_err(|e| format!("run stage1_bin: {e}"))?;
                 if run.status.success() {
                     let stage2_path = out_dir.join("stage2.rs");
-                    // If the binary wrote nowhere predictable, record stderr only.
                     receipt.push_str(&format!(
                         "  \"self_host_run_stderr_len\": {},\n",
                         run.stderr.len()
@@ -121,30 +125,49 @@ fn run() -> Result<(), String> {
                             receipt.push_str("  \"fixed_point_diff\": \"ok\",\n");
                         } else {
                             receipt.push_str("  \"fixed_point_diff\": \"mismatch\",\n");
+                            self_host_slice_failed = Some(
+                                "fixed-point: stage1.rs bytes != stage2.rs (Invariant D-1)"
+                                    .to_string(),
+                            );
                         }
                     } else {
-                        receipt
-                            .push_str("  \"fixed_point_diff\": \"skipped_stage2_not_written\",\n");
+                        receipt.push_str(
+                            "  \"fixed_point_diff\": \"skipped_stage2_not_written\",\n",
+                        );
                     }
                 } else {
+                    let stderr = String::from_utf8_lossy(&run.stderr);
                     receipt.push_str(&format!(
-                        "  \"self_host_run\": \"failed: {}\",\n",
-                        String::from_utf8_lossy(&run.stderr).escape_default()
+                        "  \"self_host_run\": {},\n",
+                        json_string(&format!("failed: {stderr}"))
                     ));
+                    self_host_slice_failed =
+                        Some(format!("self_host_run: stage1_bin failed: {stderr}"));
                 }
             } else {
-                receipt.push_str("  \"stage1_rustc\": \"failed\",\n");
+                let stderr = String::from_utf8_lossy(&rustc_inv.stderr);
+                receipt.push_str(&format!(
+                    "  \"stage1_rustc\": {},\n",
+                    json_string(&format!("failed: {stderr}"))
+                ));
+                self_host_slice_failed = Some(format!("rustc failed on stage1.rs: {stderr}"));
             }
         }
         Err(msg) => {
             receipt.push_str(&format!(
-                "  \"compiler_dag_v3_parse\": {},\n",
+                 "  \"compiler_dag_v3_parse\": {},\n",
                 json_string(&msg)
             ));
         }
     }
 
-    receipt.push_str("  \"status\": \"completed\"\n}\n");
+    let exit_status = if self_host_slice_failed.is_some() {
+        "failed_self_host_slice"
+    } else {
+        "completed"
+    };
+    receipt.push_str(&format!("  \"status\": {json_string_exit}\n}}\n", json_string_exit = json_string(exit_status)));
+
     write_receipt(&receipt_path, &receipt);
     writeln!(
         io::stdout(),
@@ -152,6 +175,11 @@ fn run() -> Result<(), String> {
         receipt_path.display()
     )
     .map_err(|e| e.to_string())?;
+
+    if let Some(detail) = self_host_slice_failed {
+        let _ = writeln!(io::stderr(), "{detail}");
+        return Err(detail);
+    }
     Ok(())
 }
 
