@@ -1,3 +1,13 @@
+//! Shared emit entrypoint and Stage 1e scaffolding.
+//!
+//! `emit.rs` is the single dispatch surface for all targets. Each
+//! `*_target.rs` sibling still contains one target-monolithic
+//! implementation body; the behavior-by-behavior lifts planned in α
+//! §10 Stages 1e.2–1e.4 will move logic out of those files into
+//! generic walker helpers here. Until that dissolution lands,
+//! target-private carriers stay inside their target module and no
+//! cross-target code should read them.
+
 pub(crate) mod python_target;
 pub(crate) mod rust_target;
 
