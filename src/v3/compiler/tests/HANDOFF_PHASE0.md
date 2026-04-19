@@ -5,6 +5,25 @@ narrow directory reorg only. Test semantics are unchanged. Deeper
 migrations (m0_acceptance, m1_substrate, lens tests, thesis tests)
 are explicitly out of scope and move under their own workers.
 
+**Scope clarification — this PR is the report-only baseline.** The
+acceptance-criterion phrasing "CI fails on any test >2s" is split
+across two PRs by design:
+- **This PR (quick-crab-901)** lands the ratchet script, the exemption
+  file, the CI step, and the directory reorg. The CI step runs the
+  ratchet and publishes violations in the log, but is
+  `continue-on-error: true`, so main still merges with arbitrarily
+  slow per-test timings. This is the baseline-publication PR.
+- **Follow-up PR** reads the first full CI run's report, populates
+  `scripts/slow-test-exemptions.txt` with one line per currently-slow
+  test + a reason, and removes `continue-on-error: true` from the CI
+  step. That is the PR that makes the ratchet binding.
+
+Splitting this way keeps the Phase 0 diff narrow (measurement + org
+only) and keeps the paydown decisions in a second diff with an
+attached baseline to justify each entry, instead of landing an
+unpopulated exemption file and a green-but-informative CI step as a
+single contradiction.
+
 ## What changed
 
 ### 1. Per-test 2s ratchet
@@ -19,10 +38,10 @@ are explicitly out of scope and move under their own workers.
   here are tolerated with a `::warning::` line; every other slow test
   fails the ratchet. Empty on landing.
 - New CI step in `.github/workflows/ci.yml` (`v3` job, above the
-  clippy gate): `v3 tests (per-test 2s ratchet, non-blocking)`.
-  Marked `continue-on-error: true` on the initial landing so the
-  measurement scaffold can merge without requiring a suite-wide
-  speedup in this PR.
+  clippy gate): `v3 tests (per-test 2s ratchet, report-only baseline)`.
+  Marked `continue-on-error: true` — see the scope clarification above:
+  this PR is the baseline-publication half of the ratchet rollout; the
+  follow-up PR flips it to blocking.
 
 **Why `RUSTC_BOOTSTRAP=1`.** libtest's `--report-time` is still
 unstable on the 1.93 toolchain (tracking issue rust-lang/rust#64888).

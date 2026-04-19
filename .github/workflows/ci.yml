@@ -141,13 +141,15 @@ jobs:
             exit 1
           fi
 
-      # Per-test 2s wall-clock ratchet (TESTING.md § test layers,
-      # `feedback_test_timeout_2s`). Non-blocking on initial landing — the
-      # script surfaces currently-slow tests so they can be added to
-      # `scripts/slow-test-exemptions.txt` with reasons. Flip the
-      # `continue-on-error` flag off once the exemption file reflects the
-      # real baseline. See `src/v3/compiler/tests/HANDOFF_PHASE0.md`.
-      - name: v3 tests (per-test 2s ratchet, non-blocking)
+      # Per-test 2s wall-clock ratchet — Phase 0 **report-only baseline**.
+      # This step intentionally does NOT block merges: it runs the ratchet
+      # script against every `#[test]` and surfaces violations in the log,
+      # but `continue-on-error: true` means the job stays green regardless.
+      # The step exists to publish the baseline so a follow-up PR can
+      # populate `scripts/slow-test-exemptions.txt` with reasons and flip
+      # this to blocking. See `src/v3/compiler/tests/HANDOFF_PHASE0.md`
+      # (TESTING.md § test layers, `feedback_test_timeout_2s`).
+      - name: v3 tests (per-test 2s ratchet, report-only baseline)
         continue-on-error: true
         run: scripts/check-test-timeout.sh
 
