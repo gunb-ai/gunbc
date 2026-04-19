@@ -111,7 +111,11 @@ fn build_roundtrip_harness(module_source: &str) -> PathBuf {
            assert!(matches!(e2, v3_compiler::dag::WorkflowIdempotencyReport::IdempotencyUnsupported(_))); \
          }}"
     );
-    harness().compile(&wrapped, "idempo_roundtrip", HarnessLinkMode::WithV3Compiler)
+    harness().compile(
+        &wrapped,
+        "idempo_roundtrip",
+        HarnessLinkMode::WithV3Compiler,
+    )
 }
 
 #[test]
