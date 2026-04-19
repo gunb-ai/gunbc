@@ -9,7 +9,9 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{AtomPayload, Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
+use v3_compiler::dag::{
+    AtomPayload, Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody,
+};
 use v3_compiler::CompileError;
 
 const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/tokenize.dag` via\n\
@@ -58,6 +60,18 @@ fn generate(dag: &Dag) -> String {
     let keywords = collect_keyword_rows(dag);
     let puncts = collect_punct_rows(dag);
     validate_kind_names(dag, &keywords, &puncts);
+    let line_comment_prefix = string_data_named(dag, "line_comment_prefix");
+    let string_delim = string_data_named(dag, "string_literal_delimiter");
+    assert_eq!(
+        string_delim.len(),
+        1,
+        "string_literal_delimiter must be one byte, got {string_delim:?}"
+    );
+    let diag_unterm_esc = string_data_named(dag, "diagnostic_unterminated_string_escape");
+    let diag_unterm_lit = string_data_named(dag, "diagnostic_unterminated_string_literal");
+    let diag_int_pre = string_data_named(dag, "diagnostic_invalid_integer_literal_prefix");
+    let diag_int_suf = string_data_named(dag, "diagnostic_invalid_integer_literal_suffix");
+    let escapes = collect_string_escape_rows(dag);
 
     let mut out = String::new();
     out.push_str("use crate::diagnostics::{Diagnostic, SourceSpan};\n\n");
@@ -71,9 +85,79 @@ pub struct Token {
 
 "#,
     );
-    out.push_str(&emit_tokenize_fn(&keywords));
+    out.push_str(&emit_tokenize_fn(
+        &keywords,
+        &line_comment_prefix,
+        string_delim.as_bytes()[0],
+        &diag_unterm_esc,
+        &diag_unterm_lit,
+        &diag_int_pre,
+        &diag_int_suf,
+        &escapes,
+    ));
     out.push_str(&emit_punctuation_token(&puncts));
     out
+}
+
+fn string_data_named(dag: &Dag, expected_name: &str) -> String {
+    let decl = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some(expected_name))
+        .unwrap_or_else(|| panic!("missing `{expected_name}` data in tokenize.dag"));
+    match &decl.value_body {
+        Some(ValueBody::Scalar(LiteralBits::String(s))) => s.clone(),
+        Some(ValueBody::Structural { fields }) => {
+            if let Some((_, FieldValue::Literal(LiteralBits::String(s)))) = fields.first() {
+                s.clone()
+            } else {
+                panic!("`{expected_name}`: expected string scalar or single string field")
+            }
+        }
+        other => panic!("`{expected_name}`: expected string data, got {other:?}"),
+    }
+}
+
+fn collect_string_escape_rows(dag: &Dag) -> Vec<(u8, i64)> {
+    let mut rows = Vec::new();
+    for decl in dag.declarations() {
+        let Some(name) = &decl.name else {
+            continue;
+        };
+        if !name.starts_with("string_escape_") {
+            continue;
+        }
+        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            continue;
+        };
+        let suffix = extract_string_field(fields, "suffix");
+        let codepoint = extract_int_field(fields, "output_codepoint");
+        assert_eq!(suffix.len(), 1, "{name}: escape suffix must be one byte");
+        rows.push((suffix.as_bytes()[0], codepoint));
+    }
+    rows.sort_by_key(|x| x.0);
+    rows
+}
+
+fn rust_byte_string_literal(prefix: &str) -> String {
+    let mut out = String::from("b\"");
+    for b in prefix.bytes() {
+        match b {
+            b'\\' => out.push_str("\\\\"),
+            b'"' => out.push_str("\\\""),
+            b'\n' => out.push_str("\\n"),
+            b'\r' => out.push_str("\\r"),
+            b'\t' => out.push_str("\\t"),
+            32..=126 => out.push(b as char),
+            _ => panic!("non-printable byte in line_comment_prefix: {b:?}"),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn rust_string_literal_for_rust_source(s: &str) -> String {
+    format!("{s:?}")
 }
 
 fn token_kind_variant_labels(dag: &Dag) -> HashSet<String> {
@@ -251,7 +335,16 @@ fn extract_int_field(fields: &[(String, FieldValue)], key: &str) -> i64 {
     }
 }
 
-fn emit_tokenize_fn(keywords: &[(String, String)]) -> String {
+fn emit_tokenize_fn(
+    keywords: &[(String, String)],
+    line_comment_prefix: &str,
+    string_delim_byte: u8,
+    diag_unterm_esc: &str,
+    diag_unterm_lit: &str,
+    diag_int_pre: &str,
+    diag_int_suf: &str,
+    escapes: &[(u8, i64)],
+) -> String {
     let mut arms = String::new();
     for (spelling, kind) in keywords {
         arms.push_str(&format!(
@@ -259,20 +352,42 @@ fn emit_tokenize_fn(keywords: &[(String, String)]) -> String {
             spelling, kind
         ));
     }
+    let line_comment_lit = rust_byte_string_literal(line_comment_prefix);
+    let diag_esc = rust_string_literal_for_rust_source(diag_unterm_esc);
+    let diag_lit = rust_string_literal_for_rust_source(diag_unterm_lit);
+    let int_pre = rust_string_literal_for_rust_source(diag_int_pre);
+    let int_suf = rust_string_literal_for_rust_source(diag_int_suf);
+    let delim_lit = rust_byte_literal(string_delim_byte);
+
+    let mut escape_arms = String::new();
+    for (suf, cp) in escapes {
+        escape_arms.push_str(&format!(
+            "                            {} => content.push(core::char::from_u32({}u32).unwrap()),\n",
+            rust_byte_literal(*suf),
+            cp
+        ));
+    }
+
     let mut s = String::new();
     s.push_str("pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {\n");
     s.push_str("    let bytes = source.as_bytes();\n");
     s.push_str("    let mut pos: usize = 0;\n");
     s.push_str("    let mut tokens = Vec::new();\n\n");
+    s.push_str(&format!(
+        "    const LINE_COMMENT_PREFIX: &[u8] = {};\n",
+        line_comment_lit
+    ));
     s.push_str("    while pos < bytes.len() {\n");
     s.push_str("        let byte = bytes[pos];\n\n");
     s.push_str("        if byte.is_ascii_whitespace() {\n");
     s.push_str("            pos += 1;\n");
     s.push_str("            continue;\n");
     s.push_str("        }\n\n");
-    s.push_str("        // Line comments: `// ...` to end of line.\n");
-    s.push_str("        if byte == b'/' && bytes.get(pos + 1) == Some(&b'/') {\n");
-    s.push_str("            pos += 2;\n");
+    s.push_str("        // Line comment prefix from `tokenize.dag` (`line_comment_prefix`).\n");
+    s.push_str("        if bytes.len() >= pos + LINE_COMMENT_PREFIX.len()\n");
+    s.push_str("            && bytes[pos..pos + LINE_COMMENT_PREFIX.len()] == LINE_COMMENT_PREFIX\n");
+    s.push_str("        {\n");
+    s.push_str("            pos += LINE_COMMENT_PREFIX.len();\n");
     s.push_str("            while pos < bytes.len() && bytes[pos] != b'\\n' {\n");
     s.push_str("                pos += 1;\n");
     s.push_str("            }\n");
@@ -295,10 +410,10 @@ fn emit_tokenize_fn(keywords: &[(String, String)]) -> String {
     s.push_str("                end += 1;\n");
     s.push_str("            }\n");
     s.push_str("            let literal = &source[start..end];\n");
-    s.push_str(
-        "            let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n",
-    );
-    s.push_str("                message: format!(\"invalid integer literal `{}`\", literal),\n");
+    s.push_str("            let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n");
+    s.push_str(&format!(
+        "                message: format!(\"{{}}{{}}{{}}\", {int_pre}, literal, {int_suf}),\n"
+    ));
     s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
     s.push_str("                fixes: Vec::new(),\n");
     s.push_str("            })?;\n");
