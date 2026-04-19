@@ -3,12 +3,14 @@
 // Keyword and punctuation tables are read from the lowered Dag; the scanning
 // algorithm is emitted as deterministic Rust (this binary is codegen only).
 
+use std::collections::HashSet;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, FieldValue, TypeConnective, ValueBody};
+use v3_compiler::CompileError;
 
 const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/tokenize.dag` via\n\
      // `regen_tokenize`. Regenerate instead of hand-editing.\n\n";
@@ -45,6 +47,10 @@ fn main() {
 }
 
 fn generate(dag: &Dag) -> String {
+    let keywords = collect_keyword_rows(dag);
+    let puncts = collect_punct_rows(dag);
+    validate_kind_names(dag, &keywords, &puncts);
+
     let mut out = String::new();
     out.push_str("use crate::diagnostics::{Diagnostic, SourceSpan};\n\n");
     out.push_str(&emit_token_kind_enum(dag));
@@ -57,11 +63,41 @@ pub struct Token {
 
 "#,
     );
-    let keywords = collect_keyword_rows(dag);
-    let puncts = collect_punct_rows(dag);
     out.push_str(&emit_tokenize_fn(&keywords));
     out.push_str(&emit_punctuation_token(&puncts));
     out
+}
+
+fn token_kind_variant_labels(dag: &Dag) -> HashSet<String> {
+    let decl = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("TokenKind"))
+        .expect("TokenKind declaration");
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        panic!("TokenKind: expected Disj");
+    };
+    variants.iter().map(|v| v.label.clone()).collect()
+}
+
+fn validate_kind_names(
+    dag: &Dag,
+    keywords: &[(String, String)],
+    puncts: &[(String, i64, String)],
+) {
+    let allowed = token_kind_variant_labels(dag);
+    for (_, kind) in keywords {
+        assert!(
+            allowed.contains(kind),
+            "keyword kind_name `{kind}` is not a TokenKind variant"
+        );
+    }
+    for (_, _, kind) in puncts {
+        assert!(
+            allowed.contains(kind),
+            "punct kind_name `{kind}` is not a TokenKind variant"
+        );
+    }
 }
 
 fn emit_token_kind_enum(dag: &Dag) -> String {
@@ -155,7 +191,7 @@ fn collect_keyword_rows(dag: &Dag) -> Vec<(String, String)> {
             continue;
         };
         let spelling = extract_string_field(fields, "spelling");
-        let kind = extract_token_kind_variant(dag, fields, "kind");
+        let kind = extract_string_field(fields, "kind_name");
         rows.push((spelling, kind));
     }
     rows.sort_by(|a, b| a.0.cmp(&b.0));
@@ -176,7 +212,7 @@ fn collect_punct_rows(dag: &Dag) -> Vec<(String, i64, String)> {
         };
         let pattern = extract_string_field(fields, "pattern");
         let width = extract_int_field(fields, "width");
-        let kind = extract_token_kind_variant(dag, fields, "kind");
+        let kind = extract_string_field(fields, "kind_name");
         rows.push((pattern, width, kind));
     }
     rows.sort_by(|a, b| a.0.cmp(&b.0));
@@ -202,29 +238,6 @@ fn extract_int_field(fields: &[(String, FieldValue)], key: &str) -> i64 {
     match fv {
         FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(n)) => *n,
         _ => panic!("field {key}: expected int literal"),
-    }
-}
-
-fn extract_token_kind_variant(dag: &Dag, fields: &[(String, FieldValue)], key: &str) -> String {
-    let fv = fields
-        .iter()
-        .find_map(|(k, v)| (k == key).then_some(v))
-        .unwrap_or_else(|| panic!("missing field {key}"));
-    match fv {
-        FieldValue::Variant {
-            constructor,
-            payload,
-        } => {
-            assert!(
-                payload.is_empty(),
-                "keyword/punct kind must be a unit TokenKind variant"
-            );
-            let decl = dag.declaration(*constructor);
-            decl.name
-                .clone()
-                .unwrap_or_else(|| panic!("constructor {:?} unnamed", constructor))
-        }
-        _ => panic!("field {key}: expected variant"),
     }
 }
 
