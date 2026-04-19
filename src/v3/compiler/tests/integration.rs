@@ -210,6 +210,11 @@ mod parse_stage4_prep {
 
     fn parse_corpus_paths() -> Vec<String> {
         let compiler_root = compiler_root();
+        // Keep the `dsl/std` subset aligned with the seven bootstrap
+        // fixtures loaded in `bootstrap.rs`; this prep harness is a
+        // snapshot of the incumbent parser over that bootstrap-facing
+        // corpus, not a claim that every `dsl/std/*.dag` file parses
+        // under v3 today.
         let mut paths = vec![
             "dsl/std/algebra.dag".to_string(),
             "dsl/std/bit.dag".to_string(),
