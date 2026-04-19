@@ -959,13 +959,11 @@ impl TransformRef {
     }
 }
 
-<<<<<<< HEAD
 /// 🟢 **TERMINAL.** Bool-typed port witness — Track 9 parallel to [`ParamRef`] /
 /// [`TransformRef`]. The only Rust constructor is [`Dag::bool_port_of`], which
 /// checks the port resolves to `Bool`. The substrate field shape matches
 /// `src/v3/std/effects.dag`; direct `.dag` construction gains the same authority
 /// in the Lane 3c cycle (ROADMAP Track 9 debt).
-=======
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ElementRef<T> {
     index: usize,
@@ -995,7 +993,6 @@ impl<T> ElementRef<T> {
 /// [`Dag::bool_port_of`], which checks the port resolves to `Bool`. The
 /// substrate field shape matches `src/v3/std/effects.dag`; direct `.dag`
 /// construction gains the same authority in the Lane 3c cycle (ROADMAP Track 9 debt).
->>>>>>> 2d8793f93 (WIP: Debt Paydown)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BoolPortRef {
     port: PortId,
@@ -1163,14 +1160,9 @@ pub enum CompositionVerdict {
     },
 }
 
-<<<<<<< HEAD
 /// 🟢 **TERMINAL.** Branch arm: [`BoolPortRef`] condition + nested workflow body.
 /// Construct with [`BranchArm::new`] once [`Dag::bool_port_of`] has validated the
 /// predicate port.
-=======
-/// 🟢 **TERMINAL.** Branch arm with a [`BoolPortRef`] witnessed as Bool by
-/// [`Dag::branch_arm_of`] — the sole constructor for valid arms.
->>>>>>> 2d8793f93 (WIP: Debt Paydown)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BranchArm {
     condition: BoolPortRef,
@@ -1197,7 +1189,6 @@ pub enum WorkflowEffect {
 }
 
 impl BranchArm {
-<<<<<<< HEAD
     pub fn new(condition: BoolPortRef, body: WorkflowEffect) -> Self {
         Self {
             condition,
@@ -1211,9 +1202,6 @@ impl BranchArm {
 
     /// Back-compat alias for the condition field name used in early DB-18 tests.
     pub fn branch_predicate(&self) -> BoolPortRef {
-=======
-    pub fn bool_port(&self) -> BoolPortRef {
->>>>>>> 2d8793f93 (WIP: Debt Paydown)
         self.condition
     }
 
@@ -2806,14 +2794,9 @@ impl Dag {
         Some(ParamRef { member, slot })
     }
 
-<<<<<<< HEAD
     /// Sole Bool-validating constructor: returns a [`BoolPortRef`] when `port`
     /// resolves to the `Bool` primitive (Track 9 parity with [`Dag::param_of`]
     /// / [`Dag::as_transform_ref`]). Build [`BranchArm`] with [`BranchArm::new`].
-=======
-    /// Construct a [`BoolPortRef`] only when `port` is resolved to the `Bool`
-    /// primitive (Track 9 parity with [`Dag::param_of`] / [`Dag::as_transform_ref`]).
->>>>>>> 2d8793f93 (WIP: Debt Paydown)
     pub fn bool_port_of(&self, port: PortId) -> Option<BoolPortRef> {
         let bool_ty = self.bool_shape()?;
         let p = self.port_opt(&port)?;
@@ -2824,7 +2807,6 @@ impl Dag {
         Some(BoolPortRef { port })
     }
 
-<<<<<<< HEAD
     /// Fail-closed wrapper for data-declaration lowering: on success returns the
     /// same witness as [`Dag::bool_port_of`]; on failure records
     /// [`Diagnostic::BranchConditionNotBool`] (C-8) and returns `None`.
@@ -2844,16 +2826,12 @@ impl Dag {
             fixes: Vec::new(),
         });
         None
-=======
-    /// Construct a [`BranchArm`] only when `port` is resolved to the `Bool`
-    /// primitive, packaging the port as a [`BoolPortRef`].
+    }
+
+    /// Convenience wrapper over [`Dag::bool_port_of`] + [`BranchArm::new`].
     pub fn branch_arm_of(&self, port: PortId, body: WorkflowEffect) -> Option<BranchArm> {
         let condition = self.bool_port_of(port)?;
-        Some(BranchArm {
-            condition,
-            body: Box::new(body),
-        })
->>>>>>> 2d8793f93 (WIP: Debt Paydown)
+        Some(BranchArm::new(condition, body))
     }
 
     pub fn as_transform_ref(&self, node: NodeId) -> Option<TransformRef> {
