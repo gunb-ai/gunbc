@@ -16,8 +16,6 @@
 //   payload.
 
 pub mod dag;
-#[doc(hidden)]
-pub mod dag_test_support;
 pub mod diagnostics;
 
 /// SG-0 producer-owned generated-file manifest.
@@ -641,6 +639,61 @@ pub fn parse_for_test(
     file: &str,
 ) -> Result<parse::SurfaceModule, Diagnostic> {
     parse::parse(tokens, file)
+}
+
+/// Narrow test-support wrappers around the internal Dag builder.
+///
+/// Integration tests in `tests/` compile as external crates, so they
+/// cannot call `Dag`'s `pub(crate)` builder methods directly. Keep the
+/// core builder surface crate-private and expose only the small wrapper
+/// set the hand-authored direct-Dag tests need.
+#[doc(hidden)]
+pub mod dag_test_support {
+    use crate::dag::{Dag, LiteralBits, LoopBound, Path, PortId, TransformTarget};
+    use crate::diagnostics::SourceSpan;
+    use crate::types::TypeShape;
+
+    pub fn alloc_port_with_shape(dag: &mut Dag, shape: TypeShape) -> PortId {
+        dag.alloc_port_with_shape(shape)
+    }
+
+    pub fn push_value(dag: &mut Dag, bits: LiteralBits, span: SourceSpan) -> PortId {
+        dag.push_value(bits, span)
+    }
+
+    pub fn push_transform(
+        dag: &mut Dag,
+        target: TransformTarget,
+        inputs: Vec<PortId>,
+        span: SourceSpan,
+    ) -> PortId {
+        dag.push_transform(target, inputs, span)
+    }
+
+    pub fn push_bind(
+        dag: &mut Dag,
+        name: impl Into<String>,
+        value: PortId,
+        params: Vec<PortId>,
+        span: SourceSpan,
+    ) -> crate::dag::NodeId {
+        dag.push_bind(name, value, params, span)
+    }
+
+    pub fn push_branch(dag: &mut Dag, input: PortId, paths: Vec<Path>, span: SourceSpan) -> PortId {
+        dag.push_branch(input, paths, span)
+    }
+
+    pub fn push_loop(
+        dag: &mut Dag,
+        source: PortId,
+        init: PortId,
+        body: crate::dag::NodeId,
+        bound: LoopBound,
+        span: SourceSpan,
+    ) -> PortId {
+        dag.push_loop(source, init, body, bound, span)
+    }
 }
 
 /// Test hook: pipeline stage identifiers in `compile { ... }` order in
