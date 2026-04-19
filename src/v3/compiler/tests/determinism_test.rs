@@ -3,7 +3,7 @@
 //! Per [`docs/design-fixed-point-ratchet.md`](../../docs/design-fixed-point-ratchet.md):
 //! for fixed `(dag, target)`, repeated `emit` must yield **byte-identical** text.
 //! This module locks that contract structurally: **5× re-emit** on every row of
-//! the shared emit matrix (`common/determinism_fixtures.rs`).
+//! the shared emit matrix (`integration/common/determinism_fixtures.rs`).
 //!
 //! ## DB-8 non-determinism sources (structural coverage map)
 //!
@@ -14,7 +14,10 @@
 //! 2. **HashSet iteration order** — same class as (1).
 //! 3. **Timestamp / build metadata embedding** — `assert_no_time_or_line_macros`.
 //! 4. **Absolute path strings in output** — `assert_no_absolute_path_leakage` on
-//!    emitted Rust (best-effort; spans should stay relative fixture names).
+//!    emitted Rust (best-effort; spans should stay relative fixture names). Covers
+//!    common macOS/Windows/Linux **and** typical CI workspace prefixes (e.g. GitHub Actions);
+//!    program/module matrix **and** disk-backed `four_fixture_pressure` sources (real paths in
+//!    `compile_to_dag`). Lane 1 Stage 1e may tighten further.
 //! 5. **Unstable sorts / tie-breakers** — covered by byte-stable `emit` replay
 //!    on one fixed `Dag` (same as 6).
 //! 6. **Generated id allocation order** — same as (5).
@@ -23,11 +26,12 @@
 //! 8. **Filesystem read order** — not exercised by string-in/string-out emit;
 //!    documented as N/A for this test file (emit does not `read_dir`).
 
-mod common;
+#[path = "integration/common/determinism_fixtures.rs"]
+mod determinism_fixtures;
 
 use std::path::PathBuf;
 
-use common::determinism_fixtures::{
+use determinism_fixtures::{
     ModuleFixture, ProgramFixture, FOUR_FIXTURE_FILES, GO_EMIT_EXCLUDE, MODULE_FIXTURES,
     PROGRAM_FIXTURES, PYTHON_PROGRAM_DETERMINISM_NAMES,
 };
@@ -111,8 +115,20 @@ fn assert_no_time_or_line_macros(rust: &str, label: &str) {
 }
 
 fn assert_no_absolute_path_leakage(rust: &str, label: &str) {
-    if rust.contains("/Users/") || rust.contains("\\\\Users\\\\") {
-        panic!("{label}: emitted Rust appears to contain an absolute user path");
+    // Substrings that usually indicate a leaked host or CI workspace path in emit output.
+    const LEAK_NEEDLES: &[&str] = &[
+        "/Users/",
+        "\\\\Users\\\\",
+        "/home/runner/",
+        "/home/circleci/",
+        "/github/workspace/",
+        "/builds/",
+        "/root/",
+    ];
+    for needle in LEAK_NEEDLES {
+        if rust.contains(needle) {
+            panic!("{label}: emitted Rust appears to contain an absolute path ({needle:?})");
+        }
     }
 }
 
@@ -209,6 +225,14 @@ fn four_fixture_disk_sources_emit_deterministically() {
             },
             &base,
         );
+        let rust_disk = {
+            let dag = compile_to_dag(&source, path_for_compile.as_str())
+                .unwrap_or_else(|e| panic!("{base} compile: {e:?}"));
+            emit(&dag, EmitTarget::Rust)
+                .unwrap_or_else(|e| panic!("{base} emit rust: {e:?}"))
+                .text
+        };
+        audit_rust_emit_text(&rust_disk, &format!("{base} disk rust"));
         let go_label = format!("{base} go");
         assert_five_identical_runs(
             || {

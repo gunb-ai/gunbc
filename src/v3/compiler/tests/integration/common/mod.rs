@@ -24,15 +24,12 @@
 //! benefit from leaving artifacts visible.
 
 pub mod budgeted;
-<<<<<<< HEAD:src/v3/compiler/tests/integration/common/mod.rs
 pub mod cached_compile;
+pub mod determinism_fixtures;
 
 pub use cached_compile::{
     cached_compile_any, cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome,
 };
-=======
-pub mod determinism_fixtures;
->>>>>>> 4c2a69876 (WIP: D):src/v3/compiler/tests/common/mod.rs
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

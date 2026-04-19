@@ -24,15 +24,8 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::emit::{emit as shared_emit, emit_module as shared_emit_module, EmitTarget};
 use v3_compiler::emit_rust::{emit_rust, emit_rust_module};
 
-<<<<<<< HEAD:src/v3/compiler/tests/integration/m1_3_emit_rust_test.rs
+use crate::common::determinism_fixtures::PROGRAM_FIXTURES;
 use crate::common::{HarnessLinkMode, RustcHarness};
-use crate::determinism_fixtures::PROGRAM_FIXTURES;
-=======
-mod common;
-
-use common::determinism_fixtures::PROGRAM_FIXTURES;
-use common::{HarnessLinkMode, RustcHarness};
->>>>>>> 4c2a69876 (WIP: D):src/v3/compiler/tests/m1_3_emit_rust_test.rs
 
 static HARNESS: OnceLock<RustcHarness> = OnceLock::new();
 fn harness() -> &'static RustcHarness {
