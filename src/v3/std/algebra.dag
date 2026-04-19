@@ -111,7 +111,7 @@ fn two_terms(a: SymbolicCost, b: SymbolicCost) -> NonSingletonList<SymbolicCost>
   {
     first: a
     second: b
-    rest: no_more_terms()
+    rest: empty_terms(a)
   }
 
 fn many_terms(
@@ -125,7 +125,7 @@ fn many_terms(
     rest: rest
   }
 
-fn no_more_terms() -> List<SymbolicCost> = empty()
+fn empty_terms(seed: SymbolicCost) -> List<SymbolicCost> = empty()
 
 // ── Composition (sequential / iterate / max_path) ───────────────
 
