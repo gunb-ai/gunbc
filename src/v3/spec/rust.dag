@@ -1073,8 +1073,13 @@ data resolve_producer_binding_rust: SubstrateAccessorBinding = {
   language: rust_language
 }
 
-// `{p1}` is the emitter’s borrow of the `NodeId` argument (same as `node_opt` /
-// `port_opt`); it matches `Dag::lane2_workflow_effect_at(&self, root: &NodeId)`.
+// `{p1}` is whatever `emit_rust` renders for the accessor’s second transform
+// input — for `lane2_workflow_at` that is the **borrow** of the workflow root
+// (`&NodeId`, same convention as `node_opt` / `port_opt`), not a by-value
+// `NodeId`. Emitted idempotency lens: `fn analyze_workflow(p0: &Dag, p1: &NodeId)`
+// → `(p0).lane2_workflow_effect_at(p1)` type-checks against
+// `lane2_workflow_effect_at(&self, root: &NodeId)`; see
+// `tests/m2_lens_idempotency_migration_test.rs` (rustc round-trip).
 data rust_lane2_workflow_accessor: SubstrateAccessorRealization = {
   carrier: "({p0}).lane2_workflow_effect_at({p1}).cloned()"
 }
