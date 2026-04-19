@@ -125,11 +125,13 @@ The earlier **“≥ 86 sites”** lane estimate used a looser union/overlap men
 
 ---
 
-### B15 — Hardcoded Rust attributes / derives
+### B15 — Hardcoded Rust attributes / derives → ✅ Dissolved (SG-7.1)
 
-| Where | What | Dissolution |
+| Where | What | Resolution |
 |-------|------|-------------|
-| `emit_rust.rs` `render_type_declaration` | Prepends `"#[derive(Clone, Debug)]\n"` before struct/enum templates | **P0:** `TypeDefinitionSyntax` gains **attribute template list** or `record_derive` carriers (see `spec-field-gaps.md` §2). |
+| `emit/rust_target.rs` `render_type_declaration` (was `emit_rust.rs`) | Previously prepended `"#[derive(Clone, Debug)]\n"` before struct/enum templates | **Dissolved in SG-7.1**: `spec/rust.dag` now bakes the derive line into `rust_type_defs.struct_def` and `rust_type_defs.enum_def` templates directly; the Rust emitter is a pass-through `render_named_template` with no target-specific prelude. If future Rust types need different derives, the authority is the spec template, not hand-coded Rust. |
+
+**Why no new `record_derive` carrier.** The emit-model's `TypeDefinitionSyntax` templates already treat target-specific scaffolding (e.g., `@dataclass\n` in Python, `type {name} struct { ... }` in Go) as part of the template string. Baking `#[derive(Clone, Debug)]\n` into Rust's `struct_def` / `enum_def` is consistent with that established pattern — no new substrate field required. If a future need emerges for conditional/per-type derive sets (e.g., `Copy` iff the type is copy-safe), that motivates a structural carrier; YAGNI until then.
 
 ---
 
