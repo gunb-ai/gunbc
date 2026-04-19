@@ -40,15 +40,30 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // Removing an entry means the owning lane has retired the file;
 // adding an entry is forbidden outside SG-0 without director
 // sign-off.
-// SG-4 prep — `regen_infer_helpers.rs` is the +1 ratchet bump that
-// pays for the first .dag-authority slice of `infer.rs`. The
-// extracted helper lives in `src/v3/lenses/infer_helpers.dag` and
-// renders into `src/v3/compiler/src/infer_helpers_generated.rs`
-// (excluded from the census via the `// AUTO-GENERATED` marker).
-// SG-6 owns the dissolution: when the lens-style regen drivers fold
-// into a single generic regen target, all six `regen_*.rs` lines
-// (including this one) collapse to one. Director sign-off
-// (clever-swift-141 brief, 2026-04-19) covers the temporary +1.
+// SG-4 prep — two ratchet bumps pay for the first .dag-authority
+// slice of `infer.rs`. The extracted helper lives in
+// `src/v3/lenses/infer_helpers.dag` and renders into
+// `src/v3/compiler/src/infer_helpers_generated.rs` (excluded from the
+// census via the `// AUTO-GENERATED` marker). The two new
+// hand-authored entries below mirror the lens-migration precedent
+// 1:1:
+//
+// - `bin/regen_infer_helpers.rs` — the per-helper regen binary
+//   (one per generated module, same as the four `regen_lens_*`
+//   binaries already in the list).
+// - `tests/integration/sg4_prep_infer_helpers_freshness_test.rs` —
+//   the per-helper regenerate→diff-empty ratchet that converts the
+//   `.dag → committed *_generated.rs` link from convention to
+//   enforcement (added in response to codex BLOCKING review on PR
+//   #562 SHA `90939487a`; mirrors
+//   `unused_parameters_generated_module_matches_checked_in_snapshot`
+//   in the lens-migration tests).
+//
+// SG-6 owns the dissolution: when the lens-style regen drivers and
+// per-file freshness tests fold into a single generic regen target +
+// generic snapshot gate, both new entries collapse along with the
+// four existing `regen_lens_*` lines. Director sign-off
+// (clever-swift-141 brief, 2026-04-19) covers the temporary +2.
 const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_infer_helpers.rs",
@@ -123,6 +138,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
     "src/v3/compiler/tests/integration/real_stdlib_parse_smoke.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
+    "src/v3/compiler/tests/integration/sg4_prep_infer_helpers_freshness_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
     "src/v3/compiler/tests/lane2_stage_2f_dimension_test.rs",
