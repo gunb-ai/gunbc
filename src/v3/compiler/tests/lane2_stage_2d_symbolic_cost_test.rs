@@ -199,10 +199,13 @@ fn branch_reports_constant_when_both_arms_constant() {
     // `if 1 > 0 then 10 else 20` — both arms are leaf literals, so
     // max_path over two Constants stays Constant.
     //
-    // This fixture still pays a cold branch-lowering compile on CI, which can
-    // exceed the 2s micro-budget even though the full symbolic-cost suite stays
-    // well inside the job-level wall clock. Keep the correctness assertion, but
-    // do not fail the PR on per-test timing noise here.
+    // Temporary ratchet exception: this fixture has a unique `(source, file)`
+    // cache key, so even with `cached_compile_to_dag` it still pays one cold
+    // branch-lowering compile on CI, which can exceed the 2s micro-budget while
+    // the assertion itself is effectively free. Dissolution trigger: once the
+    // `#546` caching pattern can guarantee this fixture hits a warmed/shared
+    // compile path, restore `budgeted_test!` here instead of carrying a plain
+    // `#[test]`.
     let cost = bind_cost("let r = if 1 > 0 then 10 else 20", "test.v3", "r");
     assert!(
         is_constant(&cost),

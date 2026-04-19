@@ -95,6 +95,13 @@ type SizeVariable {
 // pseudo-refinement over `Int`. `LinearCost` remains the sole degree-1 surface,
 // and `ConstantCost` carries degree-0 behavior; this sum makes 0/1 literally
 // unrepresentable inside `PolynomialCost`.
+//
+// Track 9 constructor-validation asymmetry still exists at the API boundary:
+// Rust's `DegreeAtLeastTwo::new(Int) -> Option<_>` remains the only generic
+// `Int -> DegreeAtLeastTwo` constructor today. The substrate is the authority
+// for the inhabitant set; a `.dag`-level validator/constructor (for example
+// `degree_of(n) -> DegreeAtLeastTwo?`) is the dissolution trigger for removing
+// the Rust-side validation asymmetry in the Lane 3c self-hosting cycle.
 type DegreeAtLeastTwo
   = DegreeTwo
   | DegreeSuccessor { previous: DegreeAtLeastTwo }
@@ -115,6 +122,10 @@ fn two_terms(a: SymbolicCost, b: SymbolicCost) -> NonSingletonList<SymbolicCost>
   {
     first: a
     second: b
+    // Grammar workaround: this is semantically `empty()` for
+    // `List<SymbolicCost>`, but v3 does not yet infer that typed-empty witness
+    // reliably from the surrounding `NonSingletonList<SymbolicCost>` context.
+    // Collapse this back to `rest: empty()` once typed-empty inference lands.
     rest: filter(singleton(a), reject_all_symbolic_costs)
   }
 
