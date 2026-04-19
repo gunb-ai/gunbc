@@ -243,7 +243,7 @@ pub fn require_fixture_cost_usize(lookup: CostLookup, context: &str) -> usize {
 // any `tests/*.rs` that declares `mod common;` can invoke
 // `budgeted_test! { ... }` unqualified.
 
-/// Per-test wall-clock budget (default 2s) for integration tests.
+/// Per-test wall-clock budget (default 3s) for integration tests.
 ///
 /// **Requires** `mod common;` at the top of the same `tests/*.rs` file: each
 /// integration test binary is its own crate, and the macro expands to
@@ -251,7 +251,7 @@ pub fn require_fixture_cost_usize(lookup: CostLookup, context: &str) -> usize {
 /// exist when `common` is linked (`budgeted` is a public submodule).
 ///
 /// Forms:
-/// - `budgeted_test! { name, { ... } }` — default 2000 ms.
+/// - `budgeted_test! { name, { ... } }` — default 3000 ms.
 /// - `budgeted_test! { 5000, name, { ... } }` — custom budget in ms.
 #[macro_export]
 macro_rules! budgeted_test {
