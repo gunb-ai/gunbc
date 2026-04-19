@@ -15,6 +15,7 @@ Full text stays on **GitHub** (and linked external threads where applicable); th
 | Source | Link |
 |:---|:---|
 | Human — blocking SG-1 brief (cutover, semantics, corpus parity) | [issue comment](https://github.com/gunb-ai/gunbc/pull/556#issuecomment-4275393872) |
+| Human — **inline** on `src/v3/compiler/tokenize.dag` (~line 6), **2026-04-19T09:30:30Z** — **BLOCKING**: SG-1 tokenizer authority overlaps **`.dag` frontend** keyword/operator facts in `dsl/extdeps/languages/dag/syntax.dag` → **second syntax source** without the **named scaffold trigger** single-authority discipline expects | [PR #556](https://github.com/gunb-ai/gunbc/pull/556) (see **Files** / inline threads — authoritative text on GitHub) |
 
 ChatGPT rounds (parent commit SHA in marker):
 
