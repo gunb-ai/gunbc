@@ -42,6 +42,12 @@ fn main() {
     assert!(output.status.success(), "rustfmt failed");
     let formatted = String::from_utf8(output.stdout).expect("utf8");
 
+    const OUT_REL: &str = "src/v3/compiler/src/infer_helpers_generated.rs";
+    assert!(
+        v3_compiler::generated_files::GENERATED_FILES.contains(&OUT_REL),
+        "SG-0 producer manifest mismatch: `{OUT_REL}` is not in GENERATED_FILES — \
+         add it to REGEN_OUTPUTS in src/v3/compiler/build.rs."
+    );
     let out_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("src")
         .join("infer_helpers_generated.rs");

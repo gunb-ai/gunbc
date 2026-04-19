@@ -32,22 +32,4 @@
 
 use crate::dag::DeclarationId;
 
-/// A port's type, carried as the identity of the declaration the port
-/// refers to. Structural equality (`==`) is declaration-id equality;
-/// no name comparison, no string bridging.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TypeShape {
-    pub declaration: DeclarationId,
-}
-
-impl TypeShape {
-    pub fn new(declaration: DeclarationId) -> Self {
-        Self { declaration }
-    }
-}
-
-impl From<DeclarationId> for TypeShape {
-    fn from(declaration: DeclarationId) -> Self {
-        Self { declaration }
-    }
-}
+include!("types_generated.rs");

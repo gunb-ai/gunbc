@@ -220,7 +220,7 @@ FIX (option 2): did you mean `p.b`?
 
 - **Empty `fixes: []`** is the default for any diagnostic lacking a generator. Implementers adding new `DiagnosticKind` variants MUST either add a fix generator or document why no fix is possible.
 - **Fix generation is pure** — no I/O, no mutation. Takes `(Dag, Diagnostic)`, returns `List<Correction>`.
-- **Generated fixes MUST parse** — Lane 3 Stage 3b adds a test gate: every emitted fix's `new_source` is parsed back through `compile_to_dag`; if any fix doesn't parse, the fix generator is broken.
+- **Generated fixes MUST parse in context** — Lane 3 Stage 3b adds a test gate: apply each emitted `Correction` to the source at `Correction.span`, then re-run tokenize + parse (and for the shipped fixtures, full `compile_to_dag`). If the applied source hits `TokenizerError` or `ParseError`, the fix generator is broken. Fragment fixes like `ok` or `A => 1` are not standalone programs; the gate is on the repaired source artifact, not the raw replacement string in isolation.
 - **Generated fixes MUST NOT break the program** — stronger test gate (optional, Lane 3b extension): applying a fix should at minimum reduce the diagnostic count, not increase it.
 - **Ordering matters** — fixes are shown to users in list order. Most-likely first. `point.a OR point.b` ordering can be alphabetic; `change annotation OR change value` should order by which the user probably wants (heuristic: keep-annotation-change-value first for explicit annotations, flip otherwise).
 
@@ -244,7 +244,7 @@ FIX (option 2): did you mean `p.b`?
 - [ ] `CorrectionStyle` type declared in `std/clean_emission.dag`; `rust_correction_style`, `python_correction_style`, `go_correction_style` data items in each target spec
 - [ ] Fix generators for the 8 starter diagnostic kinds (table above) live in `lenses/corrections.dag` and pass unit tests
 - [ ] Every new `DiagnosticKind` variant added after this design either has a fix generator OR documents why not (code comment at the variant declaration)
-- [ ] Gate test: every emitted fix's `new_source` parses via `compile_to_dag`
+- [ ] Gate test: every emitted fix applies to the source at `Correction.span` and the repaired source reparses (plus cleanly recompiles for the shipped Stage 3b fixtures)
 
 ---
 

@@ -60,32 +60,85 @@ use crate::dag::{
 };
 use crate::types::TypeShape;
 
+// `SourceSpan` / `Correction` are generated mirrors of std-owned
+// substrate/diagnostic carriers. The compiler-local `Diagnostic`
+// taxonomy below remains a narrow host shim until the staged compiler
+// adopts the shared std diagnostic record directly.
+include!("diagnostics_generated.rs");
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceSpan {
-    pub file: String,
-    pub byte_start: u32,
-    pub byte_end: u32,
+pub enum CorrectionApplyError {
+    FileMismatch {
+        expected: String,
+        actual: String,
+    },
+    InvalidSpan {
+        start: u32,
+        end: u32,
+        source_len: usize,
+    },
+    NonCharBoundary {
+        offset: u32,
+    },
 }
 
-impl SourceSpan {
-    pub fn new(file: impl Into<String>, byte_start: u32, byte_end: u32) -> Self {
-        Self {
-            file: file.into(),
-            byte_start,
-            byte_end,
-        }
+#[derive(Debug, Clone)]
+pub enum CorrectionValidationError {
+    Apply(CorrectionApplyError),
+    Tokenize(Diagnostic),
+    Parse(Diagnostic),
+}
+
+pub fn apply_correction(
+    source: &str,
+    file: &str,
+    correction: &Correction,
+) -> Result<String, CorrectionApplyError> {
+    if correction.span.file != file {
+        return Err(CorrectionApplyError::FileMismatch {
+            expected: correction.span.file.clone(),
+            actual: file.to_string(),
+        });
     }
+
+    let start = correction.span.byte_start as usize;
+    let end = correction.span.byte_end as usize;
+    if start > end || end > source.len() {
+        return Err(CorrectionApplyError::InvalidSpan {
+            start: correction.span.byte_start,
+            end: correction.span.byte_end,
+            source_len: source.len(),
+        });
+    }
+    if !source.is_char_boundary(start) {
+        return Err(CorrectionApplyError::NonCharBoundary {
+            offset: correction.span.byte_start,
+        });
+    }
+    if !source.is_char_boundary(end) {
+        return Err(CorrectionApplyError::NonCharBoundary {
+            offset: correction.span.byte_end,
+        });
+    }
+
+    let mut updated = String::with_capacity(source.len() + correction.new_source.len());
+    updated.push_str(&source[..start]);
+    updated.push_str(&correction.new_source);
+    updated.push_str(&source[end..]);
+    Ok(updated)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Correction {
-    pub description: String,
-    // Retained even though the current source-level renderer only
-    // prints replacement text. Future fix surfaces can use this to
-    // point at the precise range the correction applies to without
-    // changing the carrier shape.
-    pub span: SourceSpan,
-    pub new_source: String,
+pub fn apply_correction_and_reparse(
+    source: &str,
+    file: &str,
+    correction: &Correction,
+) -> Result<String, CorrectionValidationError> {
+    let updated =
+        apply_correction(source, file, correction).map_err(CorrectionValidationError::Apply)?;
+    let tokens =
+        crate::tokenize::tokenize(&updated, file).map_err(CorrectionValidationError::Tokenize)?;
+    crate::parse::parse(&tokens, file).map_err(CorrectionValidationError::Parse)?;
+    Ok(updated)
 }
 
 #[derive(Debug, Clone)]
@@ -118,7 +171,6 @@ pub enum Diagnostic {
         span: SourceSpan,
         fixes: Vec<Correction>,
     },
-    /// DB-18 R2 — branch condition port did not resolve to `Bool` at lowering.
     BranchConditionNotBool {
         port: PortId,
         actual_type: Option<TypeShape>,
@@ -194,7 +246,6 @@ pub enum DiagnosticRenderError {
         detail: &'static str,
     },
 }
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CorrectionStyleBinding {
     indent_unit: String,
@@ -582,6 +633,80 @@ impl DiagnosticTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apply_correction_replaces_the_requested_span() {
+        let updated = apply_correction(
+            "let x: Int = 1\n",
+            "apply_fix.v3",
+            &Correction {
+                description: "replace the literal".to_string(),
+                span: SourceSpan::new("apply_fix.v3", 13, 14),
+                new_source: "2".to_string(),
+            },
+        )
+        .expect("correction should apply");
+        assert_eq!(updated, "let x: Int = 2\n");
+    }
+
+    #[test]
+    fn apply_correction_rejects_file_mismatch() {
+        let error = apply_correction(
+            "let x: Int = 1\n",
+            "actual.v3",
+            &Correction {
+                description: "replace the literal".to_string(),
+                span: SourceSpan::new("expected.v3", 13, 14),
+                new_source: "2".to_string(),
+            },
+        )
+        .expect_err("mismatched file should fail closed");
+        assert_eq!(
+            error,
+            CorrectionApplyError::FileMismatch {
+                expected: "expected.v3".to_string(),
+                actual: "actual.v3".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn apply_correction_rejects_non_char_boundaries() {
+        let source = "let x = \"é\"\n";
+        let accent = source.find('é').expect("fixture contains accent") as u32;
+        let error = apply_correction(
+            source,
+            "utf8_fix.v3",
+            &Correction {
+                description: "split the accent".to_string(),
+                span: SourceSpan::new("utf8_fix.v3", accent, accent + 1),
+                new_source: "e".to_string(),
+            },
+        )
+        .expect_err("mid-codepoint correction must fail closed");
+        assert_eq!(
+            error,
+            CorrectionApplyError::NonCharBoundary { offset: accent + 1 }
+        );
+    }
+
+    #[test]
+    fn apply_correction_and_reparse_surfaces_parse_failures() {
+        let error = apply_correction_and_reparse(
+            "let x: Int = 1\n",
+            "broken_fix.v3",
+            &Correction {
+                description: "make the expression malformed".to_string(),
+                span: SourceSpan::new("broken_fix.v3", 13, 14),
+                new_source: ")".to_string(),
+            },
+        )
+        .expect_err("malformed correction should fail closed");
+        assert!(
+            matches!(error, CorrectionValidationError::Parse(_)),
+            "expected parse failure carrier, got {error:?}"
+        );
+    }
 
     #[test]
     fn clean_emission_contracts_reference_named_correction_styles() {

@@ -451,6 +451,19 @@ data python_list_instantiation: TypeInstantiationRealization = {
 }
 
 // List structural-sum → Python list surface; pattern-role + templates are spec-owned.
+data python_non_empty_list_instantiation: TypeInstantiationRealization = {
+  language: python_language
+  target: NonEmptyList
+  carrier: "NonEmptyList[{element}]"
+  cost: 1
+}
+
+data python_non_singleton_list_instantiation: TypeInstantiationRealization = {
+  language: python_language
+  target: NonSingletonList
+  carrier: "NonSingletonList[{element}]"
+  cost: 1
+}
 data python_list_pattern: PatternRealization = {
   language: python_language
   target: List

@@ -529,12 +529,13 @@ Follow-up (not blocking): emission for narrowed ports currently errors if `emit_
 
 ### Lane 3 Stage 3b — diagnostics as corrections
 
-**Status (2026-04-19):** 🟡 substrate + initial consumer wiring shipped; parse/apply gate remains follow-up.
+**Status (2026-04-19):** ✅ shipped end-to-end, including the parse/apply ratchet.
 
 - **DB-1 substrate landed in ε / PR #538.** `src/v3/std/diagnostics.dag` declares `Correction` + `Diagnostic.fixes`; `src/v3/std/clean_emission.dag` declares `CorrectionStyle`; each target spec wires `correction_style` through its `CleanEmissionContract`.
 - **Initial consumer wiring landed in PR #554.** `src/v3/compiler/src/diagnostics.rs` resolves `CorrectionStyle` through `LanguageSpec -> CleanEmissionContract`, fail-closes malformed style rows via `DiagnosticRenderError`, and renders `FIX (option N)` lines with target-specific quoting / indentation. `src/v3/compiler/src/infer.rs` and `src/v3/compiler/src/lower.rs` now attach concrete `Correction` values at shipped sites including type mismatch, missing field, non-exhaustive match, declared-signature mismatch, unresolved names/calls, and recursion termination failures.
 - **Acceptance coverage present for both surfaces.** `src/v3/compiler/tests/integration/thesis_validation_test.rs` asserts the T-series diagnostics exercised today carry corrections and that rendered output includes pasteable fix text; `src/v3/compiler/src/diagnostics.rs` unit tests prove all three in-tree targets (`Rust`, `Go`, `Python`) resolve a non-missing `CorrectionStyle` and render fix text through it.
-- **Remaining gate before calling Stage 3b fully complete:** the DB-1 parse/apply ratchet is still outstanding. `docs/design-correction-shape.md` requires a gate that each emitted `Correction.new_source` parses (and eventually round-trips through apply → recompile). No `MalformedCorrection` diagnostic or equivalent parse-failure carrier is wired yet; treat that as the remaining follow-up rather than reading Stage 3b as fully closed.
+- **Parse/apply ratchet landed in this follow-up.** `src/v3/compiler/src/diagnostics.rs` now exposes `apply_correction(...)` plus `apply_correction_and_reparse(...)`, with explicit fail-closed carriers (`CorrectionApplyError`, `CorrectionValidationError`) for bad spans, file mismatches, UTF-8 boundary violations, and tokenize/parse failures after applying a fix. `src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs` walks shipped fix families (missing field, non-exhaustive match, empty-match seed arm, type mismatch, unresolved call, recursion termination), applies every emitted correction to the original source, requires the repaired source to reparse, and requires clean recompilation for the fixtures where the correction is intended to fully repair the program.
+- **Follow-up — DB-1 production-side malformed-correction carrier (not blocking, debt is named rather than implicit).** The ratchet currently proves emitted corrections survive apply → tokenize → parse in test/validation paths, but the compiler does not yet surface a first-class production diagnostic such as `MalformedCorrection` when a bad `.dag` snippet is constructed at emission time. **Dissolution trigger:** first concrete production fix site that needs to report malformed correction text directly to users, OR an explicit audit that every `Correction` construction site is proven parse-safe by construction. **Yellow-flag threshold:** any CI failure from `apply_correction_and_reparse` on shipped correction fixtures is the forcing function to promote this from tracked follow-up to blocking work.
 
 ### Lane 2 Stage 2b — workflow idempotency lens
 
@@ -650,6 +651,29 @@ Cleared (prior PR #521): `DerivedOpEffect { method, path_template, shape }` coll
 **In progress on the current branch (pending merge):** `src/v3/compiler/src/emit.rs` now exists as the shared emit entrypoint with `EmitTarget`, `EmitMode`, `EmittedSource`, `emit(...)`, and `emit_module(...)`. The first migrated target is **Go**: its hand-written renderer moved under `emit.rs`, and `src/v3/compiler/src/emit_go.rs` is reduced to a compatibility adapter that forwards into the shared path. Coverage is locked by `m1_3_emit_go_test` plus `emit::tests::*`, including a wrapper-parity test proving `emit_go` / `emit_go_module` are thin adapters over the shared entrypoint. The authoritative scaffold receipt now lives in `docs/phase1-lane3-consolidation-build-plan.md` §"Wrapper exception receipt": Go's adapter is allowed only because its body already moved under `emit.rs`; Rust/Python do not get wrapper copies in advance, and all wrappers delete at Stage 1e.6. Follow-up namespace unification moved the remaining per-target monoliths under `src/v3/compiler/src/emit/*_target.rs`, with `emit.rs` staying the single dispatch surface and the old `emit_<target>.rs` files reduced to compatibility adapters only after their bodies moved in the same diff. **Python's Stage 1e.0 bridge is now cleared:** `spec/python.dag` authors shared `LanguageSpec`/`TypeRealization`/`OperatorRealization`/`CallableRealization`/`TypeInstantiationRealization`/`PatternRealization` data, `Dag` caches `python_language` + `python_target`, and `emit/python_target.rs` filters shared realizations by `language: python_language` while loading shared `PatternRealization` for list-pattern lowering. Rust and Python still remain target-monolithic under the shared namespace; full recursive walker unification is still the remaining Stage 1e work.
 
 **Stage 1e.0 closeout — pattern-role authority structural** → ✅ Structurally resolved for the live single-role state (`VectorList` only): list-pattern lowering does not dispatch on a host `PatternStrategy` enum in emitters — each `spec/{rust,go,python}.dag` `*_list_pattern` declares `strategy: VectorList` plus the template bundle; Rust/Go/Python emitters validate that tag fail-closed when indexing realizations and render from the loaded templates only (`src/v3/std/emit_model.dag` documents the split). When a second distinct lowering path ships, restore strategy on the emitter binding and branch in render (still fail-closed from spec rows), and extend `PatternStrategy` + `spec/*.dag` data — YAGNI until then.
+
+### Lane 1 Stage 1e tail — SG-7 emit cutover (active, SG-program owned)
+
+**Scope.** SG-7 is the SG-program lane that dissolves `src/v3/compiler/src/emit/rust_target.rs` (≈5.5K hand-authored lines) and `src/v3/compiler/src/emit/python_target.rs` (≈2K hand-authored lines) into spec-driven declarations in `src/v3/spec/{rust,python}.dag`, consumed by the shared `emit.rs` walker (already on main via Go's port). Per SG program rule, each migrated `.rs` file ends its diff either deleted, generated, or reduced to a narrow host shim — no dual-authority period. SG-7 IS the Rust/Python half of remaining Stage 1e walker-body dissolution; it is not a separate effort tracked in parallel.
+
+**Sub-lane labeling.** XL-XXL size makes single-PR landing unlikely; ship partial with explicit sub-lane labels:
+
+- **SG-7.1 — `emit/rust_target.rs` cutover.** Active sub-lane.
+- **SG-7.2 — `emit/python_target.rs` cutover.** Sequenced after SG-7.1 settles (smaller surface, post-Python Stage 1e.0 bridge clear).
+
+Each sub-PR must reduce handwritten-Rust line count in `src/v3/compiler/src/emit/` net-down vs. its base.
+
+**Coordination (recorded per director clarification).** SG-program (`clever-swift` manager) owns Stage 1e Rust/Python walker-body dissolution via SG-7 — not the Features manager. `warm-wren` focuses on Stage 3b parse/apply tail and feature work, NOT `emit/*_target.rs`. Overlap on these files while SG-7 is in flight is a coordination failure to escalate to director, not resolve in-PR.
+
+**Dependencies.**
+
+- **SG-0 ratchet soundness (in flight, #559)** — affects trust in the handwritten-Rust census but does NOT block authoring or merging SG-7 sub-PRs. The census can back-fill verification once it lands.
+- **Stage 1e Rust dissolution** — not a separate prerequisite; it IS SG-7's scope.
+- **Pre-existing on main, not blockers:** `emit.rs` shared walker (#542 + #547) and `spec/rust.dag` / `spec/python.dag` carriers (active Stage 1e work).
+
+**Explicit non-goal.** **Do not** ship a PR whose only handwritten-Rust reduction is porting the 23-line target facades (`emit_rust.rs`, `emit_python.rs`, `emit_go.rs`). They carry zero target heuristic authority; deleting them alone moves the SG-0 census without moving the thesis acceptance ("all target behavior is spec-driven, no per-target heuristic authority remains in handwritten Rust"). SG-7's cutover is the walker, not the facade.
+
+**Cross-references:** `docs/emit-bridges.md` (bridge inventory), `docs/phase1-lane3-consolidation-build-plan.md` §"Wrapper exception receipt," `src/v3/SELF_HOSTING.md` §3 (Stage 1 emit.dag design note).
 
 ### Cross-cutting — performance
 

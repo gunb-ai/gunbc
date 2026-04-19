@@ -4502,12 +4502,9 @@ impl<'a> Ctx<'a> {
                     .map(|field| self.render_struct_field(field))
                     .collect::<Result<Vec<_>, _>>()?;
                 let fields_joined = join_rendered(&fields, " ");
-                Ok(format!(
-                    "#[derive(Clone, Debug)]\n{}",
-                    render_named_template(
-                        &self.indexes.syntax.type_definitions.struct_def,
-                        &[("name", name), ("fields", &fields_joined)],
-                    )
+                Ok(render_named_template(
+                    &self.indexes.syntax.type_definitions.struct_def,
+                    &[("name", name), ("fields", &fields_joined)],
                 ))
             }
             TypeConnective::Disj { variants } => {
@@ -4516,12 +4513,9 @@ impl<'a> Ctx<'a> {
                     .map(|variant| self.render_enum_variant(variant))
                     .collect::<Result<Vec<_>, _>>()?;
                 let variants_joined = join_rendered(&rendered_variants, " ");
-                Ok(format!(
-                    "#[derive(Clone, Debug)]\n{}",
-                    render_named_template(
-                        &self.indexes.syntax.type_definitions.enum_def,
-                        &[("name", name), ("variants", &variants_joined)],
-                    )
+                Ok(render_named_template(
+                    &self.indexes.syntax.type_definitions.enum_def,
+                    &[("name", name), ("variants", &variants_joined)],
                 ))
             }
             _ => Err(EmitError::UnsupportedBehavior(format!(
