@@ -43,17 +43,6 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // Removing an entry means the owning lane has retired the file;
 // adding an entry is forbidden outside SG-0 without director
 // sign-off.
-<<<<<<< HEAD
-//
-// SG-4 prep carries two entries that SG-6 will retire together:
-//   - `bin/regen_infer_helpers.rs` (the per-helper regen binary)
-//   - `tests/integration/sg4_prep_infer_helpers_freshness_test.rs`
-//     (the per-helper regenerate→diff-empty ratchet)
-// When SG-6 folds all regen drivers and snapshot gates into a
-// single generic target, both entries collapse alongside the four
-// `regen_lens_*` lines above. Director sign-off
-// (clever-swift-141 brief, 2026-04-19) covers the temporary +2.
-=======
 // SG-6 landing (PR #560): the four per-lens regen bins
 // (`regen_lens_cost.rs`, `regen_lens_cost_symbolic.rs`,
 // `regen_lens_structural_resolution.rs`, `regen_lens_unused_parameters.rs`)
@@ -71,7 +60,6 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // per-lens migration tests' snapshot pattern. It collapses into a
 // single generic snapshot gate in a later SG-6 sub-PR, per the
 // Director sign-off (clever-swift-141 brief, 2026-04-19).
->>>>>>> 3b53f80f3 (WIP: SG-6)
 //
 // Stage 3b DB-1 parse/apply ratchet bump — PR #564 adds one
 // hand-authored integration file,
