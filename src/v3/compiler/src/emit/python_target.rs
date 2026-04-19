@@ -290,7 +290,11 @@ impl PythonIndexes {
         let target_fields = structural_fields_for_decl(dag, target_decl)?;
 
         let syntax = PythonSyntax {
-            binary_op: require_field_string(structural_fields_for_decl(dag, expressions)?, "binary_op", expressions)?,
+            binary_op: require_field_string(
+                structural_fields_for_decl(dag, expressions)?,
+                "binary_op",
+                expressions,
+            )?,
             field_access: require_field_string(
                 structural_fields_for_decl(dag, expressions)?,
                 "field_access",
