@@ -265,7 +265,7 @@ pub fn inject_named_pending_arrow_for_test(
 pub fn inject_name_keyed_reference_for_test(
     dag: &mut Dag,
     target: dag::DeclarationId,
- ) -> dag::DeclarationId {
+) -> dag::DeclarationId {
     let id = dag.alloc_declaration_id();
     dag.push_declaration(dag::Declaration {
         id,

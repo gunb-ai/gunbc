@@ -15,8 +15,8 @@
 // `UserDefined`, so both should leave the lens silent.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::inject_name_keyed_reference_for_test;
 use v3_compiler::inject_anonymous_pending_arrow_for_test;
+use v3_compiler::inject_name_keyed_reference_for_test;
 use v3_compiler::inject_named_pending_arrow_for_test;
 use v3_compiler::lens_structural_resolution::{
     check, name_keyed_references, NameKeyedReference, UnresolvedArrowBody,
