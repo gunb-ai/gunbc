@@ -73,7 +73,9 @@ jobs:
 
   v3:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Full suite is capped at 720s, plus clippy + lens gates + cold compile — 15m
+    # can cancel the job before the final steps finish.
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
