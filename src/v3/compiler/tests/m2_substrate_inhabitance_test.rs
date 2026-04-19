@@ -150,7 +150,8 @@ fn substrate_coproducts_match_runtime_carriers() {
                 String::from("UnresolvedIdentifier"),
                 vec![String::from("_0")],
             ),
-            (String::from("ResolvedIdentifier"), vec![String::from("_0")],),
+            (String::from("ResolvedByStructure"), vec![String::from("_0")],),
+            (String::from("ResolvedByName"), vec![String::from("_0")],),
             (String::from("TypeParam"), vec![String::from("_0")]),
         ]
     );

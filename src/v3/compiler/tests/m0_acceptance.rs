@@ -40,7 +40,8 @@ fn assert_target_name(dag: &Dag, target: &TransformTarget, expected: &str) {
             let decl = dag.declaration(*id);
             match &decl.connective {
                 TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) => Some(name.clone()),
-                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                     dag.declaration(*next).name.clone()
                 }
                 _ => decl.name.clone(),
