@@ -46,7 +46,7 @@
 //   SourceSpan lives on every Behavior and every Declaration structurally. Spans flow
 //   forward through lowering; no side tables, no reconstruction.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::LazyLock;
 
@@ -2851,27 +2851,7 @@ impl Dag {
         self.target_syntax.python_clean_emission = self
             .declaration_by_name("python_clean_emission")
             .map(|d| d.id);
-        self.target_syntax.clean_emission_by_language.clear();
-        if let Some(binding_meta) = self
-            .declaration_by_name("TargetCleanEmissionBinding")
-            .map(|d| d.id)
-        {
-            for declaration in &self.declarations {
-                if declaration.meta_tag != Some(binding_meta) {
-                    continue;
-                }
-                let Some(ValueBody::Structural { fields }) = declaration.value_body.as_ref() else {
-                    continue;
-                };
-                let language = binding_reference_field(fields, "language");
-                let clean_emission = binding_reference_field(fields, "clean_emission");
-                if let (Some(language), Some(clean_emission)) = (language, clean_emission) {
-                    self.target_syntax
-                        .clean_emission_by_language
-                        .insert(language, clean_emission);
-                }
-            }
-        }
+        self.populate_target_clean_emission_bindings();
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
 
         // `PatternBindingRule` variant resolution. Walks the
@@ -2959,6 +2939,86 @@ impl Dag {
         self.verifier_output_policy_variants = verifier_policy_variants;
     }
 
+    fn populate_target_clean_emission_bindings(&mut self) {
+        self.target_syntax.clean_emission_by_language.clear();
+        let Some(binding_meta) = self
+            .declaration_by_name("TargetCleanEmissionBinding")
+            .map(|d| d.id)
+        else {
+            return;
+        };
+        let language_spec_meta = self.declaration_by_name("LanguageSpec").map(|d| d.id);
+        let clean_emission_meta = self
+            .declaration_by_name("CleanEmissionContract")
+            .map(|d| d.id);
+        let mut clean_emission_by_language = HashMap::new();
+        let mut duplicate_languages = HashSet::new();
+        let mut diagnostics = Vec::new();
+
+        for declaration in &self.declarations {
+            if declaration.meta_tag != Some(binding_meta) {
+                continue;
+            }
+            let Some(ValueBody::Structural { fields }) = declaration.value_body.as_ref() else {
+                diagnostics.push(malformed_target_clean_emission_binding(
+                    declaration,
+                    "must carry a structural value_body",
+                ));
+                continue;
+            };
+            let Some(language) = binding_reference_field(fields, "language") else {
+                diagnostics.push(malformed_target_clean_emission_binding(
+                    declaration,
+                    "is missing `language: DeclarationRef`",
+                ));
+                continue;
+            };
+            let Some(clean_emission) = binding_reference_field(fields, "clean_emission") else {
+                diagnostics.push(malformed_target_clean_emission_binding(
+                    declaration,
+                    "is missing `clean_emission: DeclarationRef`",
+                ));
+                continue;
+            };
+            if language_spec_meta.is_some_and(|meta| self.declaration(language).meta_tag != Some(meta)) {
+                diagnostics.push(malformed_target_clean_emission_binding(
+                    declaration,
+                    "`language` must reference a LanguageSpec declaration",
+                ));
+                continue;
+            }
+            if clean_emission_meta
+                .is_some_and(|meta| self.declaration(clean_emission).meta_tag != Some(meta))
+            {
+                diagnostics.push(malformed_target_clean_emission_binding(
+                    declaration,
+                    "`clean_emission` must reference a CleanEmissionContract declaration",
+                ));
+                continue;
+            }
+            if duplicate_languages.contains(&language) {
+                continue;
+            }
+            if clean_emission_by_language
+                .insert(language, clean_emission)
+                .is_some()
+            {
+                clean_emission_by_language.remove(&language);
+                duplicate_languages.insert(language);
+                diagnostics.push(duplicate_target_clean_emission_binding(
+                    self,
+                    declaration,
+                    language,
+                ));
+            }
+        }
+
+        self.target_syntax.clean_emission_by_language = clean_emission_by_language;
+        for diagnostic in diagnostics {
+            self.attach_diagnostic(diagnostic);
+        }
+    }
+
     pub fn param_of(&self, member: NodeId, slot: usize) -> Option<ParamRef> {
         let bind = self.node(member).as_bind()?;
         bind.params.get(slot)?;
@@ -3027,4 +3087,129 @@ fn binding_reference_field(fields: &[(String, FieldValue)], label: &str) -> Opti
             _ => None,
         }
     })
+}
+
+fn malformed_target_clean_emission_binding(
+    declaration: &Declaration,
+    detail: &str,
+) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: format!(
+            "TargetCleanEmissionBinding `{}` {detail}",
+            declaration
+                .name
+                .as_deref()
+                .unwrap_or("<anonymous target clean emission binding>")
+        ),
+        span: declaration.span.clone(),
+        fixes: Vec::new(),
+    }
+}
+
+fn duplicate_target_clean_emission_binding(
+    dag: &Dag,
+    declaration: &Declaration,
+    language: DeclarationId,
+) -> Diagnostic {
+    let language_name = dag
+        .declaration(language)
+        .name
+        .as_deref()
+        .unwrap_or("<anonymous language>");
+    Diagnostic::ResolveError {
+        name: format!(
+            "TargetCleanEmissionBinding `{}` duplicates the clean-emission authority for language `{language_name}`",
+            declaration
+                .name
+                .as_deref()
+                .unwrap_or("<anonymous target clean emission binding>")
+        ),
+        span: declaration.span.clone(),
+        fixes: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn binding_fields(language: DeclarationId, clean_emission: DeclarationId) -> ValueBody {
+        ValueBody::Structural {
+            fields: vec![
+                ("language".to_string(), FieldValue::Reference(language)),
+                (
+                    "clean_emission".to_string(),
+                    FieldValue::Reference(clean_emission),
+                ),
+            ],
+        }
+    }
+
+    #[test]
+    fn malformed_target_clean_emission_binding_fails_closed() {
+        let mut dag = Dag::new();
+        let binding = dag
+            .declaration_by_name("rust_clean_emission_binding")
+            .expect("rust binding exists")
+            .id;
+        let rust_language = dag.rust_language_spec().expect("rust language");
+        dag.declaration_mut(binding).value_body = Some(binding_fields(rust_language, rust_language));
+
+        dag.populate_primitive_cache();
+
+        assert!(
+            dag.target_syntax_bundle_for_language(rust_language).is_none(),
+            "malformed binding should not populate a target authority bundle"
+        );
+        assert!(
+            dag.diagnostics().iter().any(|(_, diagnostic)| matches!(
+                diagnostic,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("rust_clean_emission_binding")
+                        && name.contains("CleanEmissionContract")
+            )),
+            "expected malformed TargetCleanEmissionBinding diagnostic, got {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn duplicate_target_clean_emission_binding_fails_closed() {
+        let mut dag = Dag::new();
+        let binding_meta = dag
+            .declaration_by_name("TargetCleanEmissionBinding")
+            .expect("binding meta exists")
+            .id;
+        let rust_language = dag.rust_language_spec().expect("rust language");
+        let go_clean_emission = dag.go_clean_emission_spec().expect("go clean emission");
+        let duplicate = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: duplicate,
+            name: Some("duplicate_rust_clean_emission_binding".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(binding_meta)),
+            type_params: Vec::new(),
+            meta_tag: Some(binding_meta),
+            inhabits: None,
+            value_body: Some(binding_fields(rust_language, go_clean_emission)),
+            refinement: None,
+            span: SourceSpan::new("duplicate_binding_test.v3", 0, 1),
+        });
+
+        dag.populate_primitive_cache();
+
+        assert!(
+            dag.target_syntax_bundle_for_language(rust_language).is_none(),
+            "duplicate language bindings should remove the ambiguous authority"
+        );
+        assert!(
+            dag.diagnostics().iter().any(|(_, diagnostic)| matches!(
+                diagnostic,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("duplicate_rust_clean_emission_binding")
+                        && name.contains("duplicates the clean-emission authority")
+            )),
+            "expected duplicate TargetCleanEmissionBinding diagnostic, got {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
 }
