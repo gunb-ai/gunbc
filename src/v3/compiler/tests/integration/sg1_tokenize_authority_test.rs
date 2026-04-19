@@ -1,9 +1,12 @@
 //! SG-1: `tokenize.dag` is load-bearing authority; `tokenize_generated.rs` must stay in sync.
 
+use std::collections::BTreeSet;
+
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{FieldValue, TypeConnective, ValueBody};
+use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
 
 const TOKENIZE_DAG: &str = include_str!("../../tokenize.dag");
+const SHARED_SYNTAX_DAG: &str = include_str!("../../../../dsl/extdeps/languages/dag/syntax.dag");
 const CHECKED_IN_GENERATED: &str = include_str!("../../src/tokenize_generated.rs");
 
 #[test]
@@ -36,9 +39,22 @@ fn tokenize_generated_module_matches_checked_in_snapshot() {
 }
 
 #[test]
-fn tokenize_registry_rows_use_structural_token_kind_and_derive_punct_width_from_pattern() {
+fn tokenize_keyword_subset_derives_from_shared_syntax_authority() {
     let dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
         .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+    let shared_keywords: BTreeSet<_> = parse_map_string_keys(extract_balanced_section(
+        SHARED_SYNTAX_DAG,
+        "data dag_keyword_set",
+        '{',
+        '}',
+    ))
+    .into_iter()
+    .collect();
+
+    assert!(
+        !TOKENIZE_DAG.contains("\ndata keyword_"),
+        "shared keyword spellings should not remain authored in tokenize.dag"
+    );
 
     let keyword_kind_decl = dag
         .declaration_by_name("KeywordTokenKind")
@@ -49,6 +65,32 @@ fn tokenize_registry_rows_use_structural_token_kind_and_derive_punct_width_from_
     else {
         panic!("KeywordTokenKind should lower to a Disj");
     };
+
+    for variant in keyword_variants {
+        let spelling = keyword_spelling_for_token_kind(&variant.label);
+        assert!(
+            shared_keywords.contains(&spelling),
+            "`KeywordTokenKind::{}` expects keyword `{spelling}` from shared syntax authority",
+            variant.label
+        );
+    }
+}
+
+#[test]
+fn tokenize_local_punct_rows_are_structural_and_disjoint_from_shared_operator_authority() {
+    let dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
+        .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+    let shared_operators: BTreeSet<_> = parse_named_string_fields(
+        extract_balanced_section(SHARED_SYNTAX_DAG, "data dag_operators", '[', ']'),
+        "symbol",
+    )
+    .into_iter()
+    .collect();
+
+    assert!(
+        !TOKENIZE_DAG.contains("\ndata punct_"),
+        "shared operator spellings should not remain authored in tokenize.dag"
+    );
 
     let punct_kind_decl = dag
         .declaration_by_name("PunctTokenKind")
@@ -64,7 +106,7 @@ fn tokenize_registry_rows_use_structural_token_kind_and_derive_punct_width_from_
         let Some(name) = &decl.name else {
             continue;
         };
-        if !name.starts_with("keyword_") && !name.starts_with("punct_") {
+        if !name.starts_with("local_punct_") {
             continue;
         }
         let Some(ValueBody::Structural { fields }) = &decl.value_body else {
@@ -76,6 +118,19 @@ fn tokenize_registry_rows_use_structural_token_kind_and_derive_punct_width_from_
                 .iter()
                 .all(|(label, _)| label != "kind_name" && label != "width"),
             "token row `{name}` should not carry string `kind_name` or redundant `width` fields"
+        );
+
+        let pattern = fields
+            .iter()
+            .find(|(label, _)| label == "pattern")
+            .and_then(|(_, value)| match value {
+                FieldValue::Literal(LiteralBits::String(pattern)) => Some(pattern.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("token row `{name}` should carry a string `pattern` field"));
+        assert!(
+            !shared_operators.contains(&pattern),
+            "token row `{name}` should not duplicate shared operator `{pattern}`"
         );
 
         let kind_field = fields
@@ -94,16 +149,97 @@ fn tokenize_registry_rows_use_structural_token_kind_and_derive_punct_width_from_
             "token row `{name}` should store only nullary TokenKind variants"
         );
         assert!(
-            if name.starts_with("keyword_") {
-                keyword_variants
-                    .iter()
-                    .any(|variant| variant.ty == *constructor)
-            } else {
-                punct_variants
-                    .iter()
-                    .any(|variant| variant.ty == *constructor)
-            },
-            "token row `{name}` kind constructor should be a variant of its dedicated row carrier"
+            punct_variants
+                .iter()
+                .any(|variant| variant.ty == *constructor),
+            "token row `{name}` kind constructor should be a variant of `PunctTokenKind`"
         );
     }
+}
+
+fn keyword_spelling_for_token_kind(kind: &str) -> String {
+    kind.strip_prefix("Kw")
+        .unwrap_or_else(|| panic!("keyword token kind `{kind}` should start with `Kw`"))
+        .to_ascii_lowercase()
+}
+
+fn extract_balanced_section<'a>(
+    source: &'a str,
+    anchor: &str,
+    open: char,
+    close: char,
+) -> &'a str {
+    let anchor_idx = source
+        .find(anchor)
+        .unwrap_or_else(|| panic!("missing `{anchor}` in shared syntax fixture"));
+    let tail = &source[anchor_idx..];
+    let open_rel = tail
+        .find(open)
+        .unwrap_or_else(|| panic!("missing `{open}` after `{anchor}` in shared syntax fixture"));
+    let start = anchor_idx + open_rel;
+    let mut depth = 0usize;
+    for (offset, ch) in source[start..].char_indices() {
+        if ch == open {
+            depth += 1;
+        } else if ch == close {
+            depth -= 1;
+            if depth == 0 {
+                return &source[start + open.len_utf8()..start + offset];
+            }
+        }
+    }
+    panic!("unterminated `{anchor}` section in shared syntax fixture");
+}
+
+fn parse_map_string_keys(section: &str) -> Vec<String> {
+    parse_all_string_literals(section)
+}
+
+fn parse_named_string_fields(section: &str, field_name: &str) -> Vec<String> {
+    let needle = format!("{field_name}:");
+    let mut out = Vec::new();
+    let mut rest = section;
+    while let Some(idx) = rest.find(&needle) {
+        let after_field = &rest[idx + needle.len()..];
+        let quote_idx = after_field.find('"').unwrap_or_else(|| {
+            panic!("missing string literal for `{field_name}` in shared syntax fixture")
+        });
+        let (value, consumed) = parse_string_literal(&after_field[quote_idx..]);
+        out.push(value);
+        rest = &after_field[quote_idx + consumed..];
+    }
+    out
+}
+
+fn parse_all_string_literals(section: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = section;
+    while let Some(idx) = rest.find('"') {
+        let (value, consumed) = parse_string_literal(&rest[idx..]);
+        out.push(value);
+        rest = &rest[idx + consumed..];
+    }
+    out
+}
+
+fn parse_string_literal(source: &str) -> (String, usize) {
+    assert!(
+        source.starts_with('"'),
+        "string literal parser expects to start at a quote"
+    );
+    let mut out = String::new();
+    let mut escaped = false;
+    for (idx, ch) in source[1..].char_indices() {
+        if escaped {
+            out.push(ch);
+            escaped = false;
+            continue;
+        }
+        match ch {
+            '\\' => escaped = true,
+            '"' => return (out, idx + 2),
+            other => out.push(other),
+        }
+    }
+    panic!("unterminated string literal in shared syntax fixture");
 }
