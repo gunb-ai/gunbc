@@ -122,8 +122,17 @@ fn string_field(fields: &[(String, FieldValue)], label: &str, binding: &str) -> 
         })
 }
 
+// Full-triple ratchet over `src/v3/compiler/regen.dag`. `name`
+// alone pins `--lens` selector identity, but leaving `lens_file`
+// out-of-band would let the source path for a lens drift
+// independently of the per-lens migration tests' hard-coded
+// `lens_path()` helpers (e.g. renaming `complexity.dag` or moving
+// a lens across directories). Asserting all three fields keeps
+// every registry-visible path under one structural ratchet, so
+// any drift forces a paired edit across `regen.dag`, this test,
+// and the referring migration test.
 #[test]
-fn sg6_regen_dag_exposes_lens_registry_entries() {
+fn sg6_regen_dag_registry_triples_are_pinned() {
     let dag = Dag::new();
     assert!(
         dag.diagnostics().is_empty(),
@@ -131,25 +140,59 @@ fn sg6_regen_dag_exposes_lens_registry_entries() {
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
 
-    let mut registry_names: Vec<String> = read_registry_rows(&dag)
-        .into_iter()
-        .map(|row| row.name)
-        .collect();
-    registry_names.sort();
+    let mut rows = read_registry_rows(&dag);
+    rows.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let expected = vec![
-        "cost".to_string(),
-        "cost_symbolic".to_string(),
-        "provenance".to_string(),
-        "structural_resolution".to_string(),
-        "unused_parameters".to_string(),
+    let expected: Vec<(&str, &str, &str)> = vec![
+        (
+            "cost",
+            "src/v3/lenses/complexity.dag",
+            "src/v3/compiler/src/lens_cost_generated.rs",
+        ),
+        (
+            "cost_symbolic",
+            "src/v3/lenses/cost.dag",
+            "src/v3/compiler/src/lens_cost_symbolic_generated.rs",
+        ),
+        (
+            "provenance",
+            "src/v3/lenses/provenance.dag",
+            "src/v3/compiler/src/lens_provenance_generated.rs",
+        ),
+        (
+            "structural_resolution",
+            "src/v3/lenses/structural_resolution.dag",
+            "src/v3/compiler/src/lens_structural_resolution_generated.rs",
+        ),
+        (
+            "unused_parameters",
+            "src/v3/lenses/unused_parameters.dag",
+            "src/v3/compiler/src/lens_unused_parameters_generated.rs",
+        ),
     ];
+
+    let actual: Vec<(&str, &str, &str)> = rows
+        .iter()
+        .map(|row| {
+            (
+                row.name.as_str(),
+                row.lens_file.as_str(),
+                row.generated_file.as_str(),
+            )
+        })
+        .collect();
+
     assert_eq!(
-        registry_names, expected,
-        "lens registry drift. `regen_lens` relies on these names to resolve \
-         `--lens <name>`; the snapshot migration tests and the ROADMAP \
-         reference them as well. If a lens is being added or retired, update \
-         both `src/v3/compiler/regen.dag` and this test in the same PR."
+        actual, expected,
+        "lens registry triple drift. Every `(name, lens_file, \
+         generated_file)` tuple is pinned so changing the source path \
+         or output path of a lens has to land in the same PR as the \
+         registry edit and the matching migration-test update. If a \
+         lens is being added, renamed, relocated, or retired, update \
+         `src/v3/compiler/regen.dag`, this snapshot, the corresponding \
+         `m2_lens_*_migration_test.rs` hard-coded `lens_path()`, and \
+         any `include_str!` in `src/v3/compiler/src/lib.rs` in the \
+         same commit."
     );
 }
 
