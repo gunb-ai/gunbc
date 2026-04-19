@@ -1925,6 +1925,17 @@ pub(crate) struct TargetSyntaxCache {
     pub python_clean_emission: Option<DeclarationId>,
 }
 
+/// Shared target-authority bundle tying one `LanguageSpec`
+/// declaration to the `CleanEmissionContract` that governs how code
+/// for that language must render. This keeps the pairing as a typed
+/// carrier instead of asking downstream consumers to reconstruct it
+/// from parallel per-target caches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TargetSyntaxBundle {
+    pub language_spec: DeclarationId,
+    pub clean_emission_spec: DeclarationId,
+}
+
 #[derive(Debug, Default, Clone)]
 pub(crate) struct StdlibTypeCache {
     /// `std.list.List` template declaration. Resolved once at
@@ -2269,6 +2280,15 @@ impl Dag {
         self.target_syntax.rust_clean_emission
     }
 
+    /// Typed accessor for the Rust target authority bundle pairing
+    /// `rust_language` with its `CleanEmissionContract`.
+    pub fn rust_target_syntax_bundle(&self) -> Option<TargetSyntaxBundle> {
+        Some(TargetSyntaxBundle {
+            language_spec: self.target_syntax.rust_language?,
+            clean_emission_spec: self.target_syntax.rust_clean_emission?,
+        })
+    }
+
     /// Typed accessor for the Rust target execution model
     /// declaration loaded from `src/v3/spec/rust.dag`.
     pub fn rust_execution_model_spec(&self) -> Option<DeclarationId> {
@@ -2302,6 +2322,15 @@ impl Dag {
         self.target_syntax.go_clean_emission
     }
 
+    /// Typed accessor for the Go target authority bundle pairing
+    /// `go_language` with its `CleanEmissionContract`.
+    pub fn go_target_syntax_bundle(&self) -> Option<TargetSyntaxBundle> {
+        Some(TargetSyntaxBundle {
+            language_spec: self.target_syntax.go_language?,
+            clean_emission_spec: self.target_syntax.go_clean_emission?,
+        })
+    }
+
     /// Typed accessor for the Python target-language syntax bundle
     /// declared in `src/v3/spec/python.dag`.
     pub fn python_language_spec(&self) -> Option<DeclarationId> {
@@ -2323,25 +2352,42 @@ impl Dag {
         self.target_syntax.python_clean_emission
     }
 
-    /// Shared clean-emission lookup keyed by the target's
+    /// Typed accessor for the Python target authority bundle pairing
+    /// `python_language` with its `CleanEmissionContract`.
+    pub fn python_target_syntax_bundle(&self) -> Option<TargetSyntaxBundle> {
+        Some(TargetSyntaxBundle {
+            language_spec: self.target_syntax.python_language?,
+            clean_emission_spec: self.target_syntax.python_clean_emission?,
+        })
+    }
+
+    /// Shared target-authority lookup keyed by the target's
     /// `LanguageSpec` declaration id. Consumers that already traffic
     /// in the shared emit-model language surface should resolve the
-    /// language first, then ask for the corresponding
-    /// `CleanEmissionContract` through this accessor rather than
-    /// matching directly on per-target clean-emission cache fields.
+    /// language first, then ask for the corresponding target bundle
+    /// through this accessor rather than reconstructing the
+    /// `LanguageSpec -> CleanEmissionContract` pairing themselves.
+    pub fn target_syntax_bundle_for_language(
+        &self,
+        language_spec: DeclarationId,
+    ) -> Option<TargetSyntaxBundle> {
+        self.rust_target_syntax_bundle()
+            .into_iter()
+            .chain(self.go_target_syntax_bundle())
+            .chain(self.python_target_syntax_bundle())
+            .find(|bundle| bundle.language_spec == language_spec)
+    }
+
+    /// Shared clean-emission lookup keyed by the target's
+    /// `LanguageSpec` declaration id. This is the
+    /// `TargetSyntaxBundle` projection for consumers that only need
+    /// the clean-emission side of the pair.
     pub fn clean_emission_spec_for_language(
         &self,
         language_spec: DeclarationId,
     ) -> Option<DeclarationId> {
-        if Some(language_spec) == self.target_syntax.rust_language {
-            self.target_syntax.rust_clean_emission
-        } else if Some(language_spec) == self.target_syntax.go_language {
-            self.target_syntax.go_clean_emission
-        } else if Some(language_spec) == self.target_syntax.python_language {
-            self.target_syntax.python_clean_emission
-        } else {
-            None
-        }
+        self.target_syntax_bundle_for_language(language_spec)
+            .map(|bundle| bundle.clean_emission_spec)
     }
 
     /// Typed accessor for the cached `std.list.List` template.

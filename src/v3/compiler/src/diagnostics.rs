@@ -258,9 +258,12 @@ fn correction_style_for_language_spec(
     dag: &Dag,
     language_spec: DeclarationId,
 ) -> Result<DeclarationId, DiagnosticRenderError> {
-    let clean_emission_decl = dag.clean_emission_spec_for_language(language_spec).ok_or(
-        DiagnosticRenderError::MissingCleanEmissionContract("clean_emission.correction_style"),
-    )?;
+    let clean_emission_decl = dag
+        .target_syntax_bundle_for_language(language_spec)
+        .map(|bundle| bundle.clean_emission_spec)
+        .ok_or(DiagnosticRenderError::MissingCleanEmissionContract(
+            "clean_emission.correction_style",
+        ))?;
     let Some(ValueBody::Structural { fields }) = &dag.declaration(clean_emission_decl).value_body
     else {
         return Err(DiagnosticRenderError::MalformedCleanEmissionContract {
@@ -561,6 +564,31 @@ mod tests {
                 .expect("python clean emission"),
             "python_correction_style",
             "python_clean_emission",
+        );
+    }
+
+    #[test]
+    fn target_syntax_bundles_pair_each_language_with_its_clean_emission_contract() {
+        let dag = Dag::new();
+        let assert_bundle = |language_spec: DeclarationId, expected_clean_emission: DeclarationId| {
+            let bundle = dag
+                .target_syntax_bundle_for_language(language_spec)
+                .expect("bundle should exist for cached language spec");
+            assert_eq!(bundle.language_spec, language_spec);
+            assert_eq!(bundle.clean_emission_spec, expected_clean_emission);
+        };
+        assert_bundle(
+            dag.rust_language_spec().expect("rust language"),
+            dag.rust_clean_emission_spec().expect("rust clean emission"),
+        );
+        assert_bundle(
+            dag.go_language_spec().expect("go language"),
+            dag.go_clean_emission_spec().expect("go clean emission"),
+        );
+        assert_bundle(
+            dag.python_language_spec().expect("python language"),
+            dag.python_clean_emission_spec()
+                .expect("python clean emission"),
         );
     }
 
