@@ -362,17 +362,6 @@ def rust_type(source: str, overrides: dict[str, str] | None = None) -> str:
         "TypeShape": "TypeShape",
         "CompilerSourceSpan": "SourceSpan",
         "CompilerCorrection": "Correction",
-        "CompilerLiteralBits": "LiteralBits",
-        "CompilerCardinalityBound": "CardinalityBound",
-        "CompilerTemplateArgument": "TemplateArgument",
-        "CompilerPortState": "PortState",
-        "CompilerBranchPattern": "BranchPattern",
-        "CompilerPayloadBinding": "PayloadBinding",
-        "CompilerPath": "Path",
-        "CompilerMemberDescent": "MemberDescent",
-        "CompilerIntraClusterCall": "IntraClusterCall",
-        "CompilerCluster": "Cluster",
-        "CompilerLoopBound": "LoopBound",
     }
     if source in mapping:
         return mapping[source]
@@ -392,11 +381,14 @@ def render_record(
     record: RecordDef,
     output_name: str | None = None,
     derives: str = "#[derive(Debug, Clone, PartialEq, Eq)]",
+    field_name_overrides: dict[str, str] | None = None,
 ) -> str:
     output_name = output_name or record.name
+    field_name_overrides = field_name_overrides or {}
     lines = [derives, f"pub struct {output_name} {{"]
     for label, ty in record.fields:
-        lines.append(f"    pub {label}: {rust_type(ty)},")
+        output_label = field_name_overrides.get(label, label)
+        lines.append(f"    pub {output_label}: {rust_type(ty)},")
     lines.append("}")
     return "\n".join(lines)
 
@@ -407,16 +399,19 @@ def render_sum(
     derives: str,
     output_name: str | None = None,
     overrides: dict[str, str] | None = None,
+    variant_name_overrides: dict[str, str] | None = None,
 ) -> str:
     output_name = output_name or name
+    variant_name_overrides = variant_name_overrides or {}
     lines = [derives, f"pub enum {output_name} {{"]
     for variant in variants:
+        variant_name = variant_name_overrides.get(variant.name, variant.name)
         if variant.kind == "unit":
-            lines.append(f"    {variant.name},")
+            lines.append(f"    {variant_name},")
         elif variant.kind == "tuple":
-            lines.append(f"    {variant.name}({rust_type(variant.payload, overrides)}),")
+            lines.append(f"    {variant_name}({rust_type(variant.payload, overrides)}),")
         elif variant.kind == "record":
-            lines.append(f"    {variant.name} {{")
+            lines.append(f"    {variant_name} {{")
             for label, ty in variant.fields or []:
                 lines.append(f"        {label}: {rust_type(ty, overrides)},")
             lines.append("    },")
@@ -446,26 +441,27 @@ def render_types_module(substrate_records: dict[str, RecordDef]) -> str:
 def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
     parts = [
         render_sum(
-            "CompilerLiteralBits",
-            sums["CompilerLiteralBits"],
+            "LiteralBits",
+            sums["LiteralBits"],
             "#[derive(Debug, Clone, PartialEq, Eq)]",
             output_name="LiteralBits",
+            variant_name_overrides={"LitInt": "Int", "LitBool": "Bool", "LitString": "String"},
         ),
         render_sum(
-            "CompilerCardinalityBound",
-            sums["CompilerCardinalityBound"],
+            "CardinalityBound",
+            sums["CardinalityBound"],
             "#[derive(Debug, Clone, PartialEq, Eq)]",
             output_name="CardinalityBound",
             overrides={"Int": "u32"},
         ),
         render_record(
-            records["CompilerTemplateArgument"],
+            records["TemplateArgument"],
             output_name="TemplateArgument",
             derives="#[derive(Debug, Clone)]",
         ),
         render_sum(
-            "CompilerPortState",
-            sums["CompilerPortState"],
+            "PortState",
+            sums["PortState"],
             "#[derive(Debug, Clone, PartialEq, Eq)]",
             output_name="PortState",
         ),
@@ -476,20 +472,21 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
 def render_dag_branch_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
     parts = [
         render_sum(
-            "CompilerBranchPattern",
-            sums["CompilerBranchPattern"],
+            "BranchPattern",
+            sums["BranchPattern"],
             "#[derive(Debug, Clone)]",
             output_name="BranchPattern",
         ),
         render_record(
-            records["CompilerPayloadBinding"],
+            records["PayloadBinding"],
             output_name="PayloadBinding",
             derives="#[derive(Debug, Clone)]",
         ),
         render_record(
-            records["CompilerPath"],
+            records["BranchPath"],
             output_name="Path",
             derives="#[derive(Debug, Clone)]",
+            field_name_overrides={"result_port": "output"},
         ),
     ]
     return "\n\n".join(parts)
@@ -498,17 +495,17 @@ def render_dag_branch_module(records: dict[str, RecordDef], sums: dict[str, list
 def render_dag_cluster_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
     parts = [
         render_record(
-            records["CompilerMemberDescent"],
+            records["MemberDescent"],
             output_name="MemberDescent",
         ),
         render_record(
-            records["CompilerIntraClusterCall"],
+            records["IntraClusterCall"],
             output_name="IntraClusterCall",
         ),
-        render_record(records["CompilerCluster"], output_name="Cluster"),
+        render_record(records["Cluster"], output_name="Cluster"),
         render_sum(
-            "CompilerLoopBound",
-            sums["CompilerLoopBound"],
+            "LoopBound",
+            sums["LoopBound"],
             "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
             output_name="LoopBound",
         ),
@@ -523,6 +520,7 @@ def format_with_header(authority: str, body: str) -> str:
 def expected_outputs() -> dict[Path, str]:
     records, sums = parse_runtime_mirrors()
     substrate_records, _ = parse_types(SUBSTRATE_PATH)
+    _, substrate_sums = parse_types(SUBSTRATE_PATH)
     return {
         SRC_DIR / "types_generated.rs": format_with_header(
             "src/v3/std/substrate.dag", render_types_module(substrate_records)
@@ -536,16 +534,16 @@ def expected_outputs() -> dict[Path, str]:
             render_record(records["DagDifference"]),
         ),
         SRC_DIR / "dag_scalar_generated.rs": format_with_header(
-            "src/v3/compiler/runtime_mirrors.dag",
-            render_dag_scalar_module(records, sums),
+            "src/v3/std/substrate.dag",
+            render_dag_scalar_module(substrate_records, substrate_sums),
         ),
         SRC_DIR / "dag_branch_generated.rs": format_with_header(
-            "src/v3/compiler/runtime_mirrors.dag",
-            render_dag_branch_module(records, sums),
+            "src/v3/std/substrate.dag",
+            render_dag_branch_module(substrate_records, substrate_sums),
         ),
         SRC_DIR / "dag_cluster_generated.rs": format_with_header(
-            "src/v3/compiler/runtime_mirrors.dag",
-            render_dag_cluster_module(records, sums),
+            "src/v3/std/substrate.dag",
+            render_dag_cluster_module(substrate_records, substrate_sums),
         ),
         SRC_DIR / "dag_cost_generated.rs": format_with_header(
             "src/v3/std/algebra.dag", DAG_COST_TEMPLATE
