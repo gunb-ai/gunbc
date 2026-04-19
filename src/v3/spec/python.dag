@@ -453,6 +453,8 @@ data python_list_pattern: PatternRealization = {
   language: python_language
   target: List
   strategy: VectorList
+  empty_variant: List.Empty
+  cons_variant: List.Cons
   scrutinee: "{expr}"
   empty_pattern: "len({expr}) == 0"
   cons_pattern: "{expr}"

@@ -112,10 +112,18 @@ type CallableStrategy
 // `List<T> -> Vec<T>` or `[]T`. The terminal target is the same authority
 // expressed as target-language facts consumed by `.dag` emission; this record
 // remains the single authority until that stage lands.
+//
+// `empty_variant` / `cons_variant` name the role each variant plays for the
+// `VectorList` strategy. They are typed `DeclarationRef`s to the target sum's
+// variants (e.g., `List.Empty` / `List.Cons`) — dotted-path lowering walks
+// Disj variants to resolve them. Moving role identity into spec data is the
+// single-authority handoff: emitters no longer match variant labels by string.
 type PatternRealization {
   language: DeclarationRef
   target: DeclarationRef
   strategy: PatternStrategy
+  empty_variant: DeclarationRef
+  cons_variant: DeclarationRef
   scrutinee: String
   empty_pattern: String
   cons_pattern: String

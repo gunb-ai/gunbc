@@ -309,6 +309,8 @@ enum RustPatternStrategyBinding {
 #[derive(Debug, Clone)]
 struct PatternRealizationBinding {
     strategy: RustPatternStrategyBinding,
+    empty_variant: DeclarationId,
+    cons_variant: DeclarationId,
     scrutinee: String,
     empty_pattern: String,
     cons_pattern: String,
@@ -2010,6 +2012,8 @@ fn require_pattern_realization(
     }
     Ok(PatternRealizationBinding {
         strategy: RustPatternStrategyBinding::VectorList,
+        empty_variant: require_field_decl_ref(fields, "empty_variant", declaration)?,
+        cons_variant: require_field_decl_ref(fields, "cons_variant", declaration)?,
         scrutinee: require_field_string(fields, "scrutinee", declaration)?,
         empty_pattern: require_field_string(fields, "empty_pattern", declaration)?,
         cons_pattern: require_field_string(fields, "cons_pattern", declaration)?,
