@@ -1,37 +1,40 @@
 //! SG-0 — v3 Rust authority census + ratchet.
 //!
-//! Enumerates every `.rs` file under `src/v3/compiler` and classifies
-//! each as generated-by-construction (first non-blank line begins with
-//! `// AUTO-GENERATED`) or hand-authored. The hand-authored set is
-//! compared against [`EXPECTED_HAND_AUTHORED`] below — the declared
-//! ratchet. Drift in either direction fails:
+//! Enumerates every `.rs` file under `src/v3/compiler` and partitions
+//! it into **generated** (listed in the producer-owned manifest at
+//! [`v3_compiler::generated_files::GENERATED_FILES`]) versus
+//! **hand-authored** (everything else). The hand-authored set is
+//! compared against [`EXPECTED_HAND_AUTHORED`] below — the ratchet.
+//! Drift in either direction fails:
 //!
-//! - **new hand-authored file**: a contributor added a .rs file
-//!   without porting logic to .dag. The PR should port the logic and
-//!   remove the file, reduce the file to a shim with a generated
-//!   header, or (last resort) extend `EXPECTED_HAND_AUTHORED` with
-//!   director sign-off.
-//! - **missing expected file**: an SG lane retired a file. Remove
+//! - **new hand-authored file**: a contributor added a `.rs` without
+//!   porting the logic to `.dag`. The PR should port the logic and
+//!   remove the file, reduce it to a narrow host shim (see `compiler.dag`
+//!   for the shim rule), or (last resort) extend `EXPECTED_HAND_AUTHORED`
+//!   with director sign-off.
+//! - **missing expected file**: an SG lane retired the file. Remove
 //!   the entry from `EXPECTED_HAND_AUTHORED` — this is the normal
-//!   shrinkage path and the primary success condition for
-//!   SG-1..SG-7.
+//!   shrinkage path and the primary success condition for SG-1..SG-7.
 //!
-//! The structural authority for the census *shape* (roots to walk,
-//! marker prefix) lives in `dsl/gunbc/compiler.dag` under "v3 source
-//! authority inventory (SG program)". This test is the enforcement
-//! side; `EXPECTED_HAND_AUTHORED` is the ratchet value. Keep the two
-//! consistent.
+//! **Producer-owned partition.** A `.rs` file counts as generated iff
+//! its workspace-relative path is a member of `GENERATED_FILES`, which
+//! is emitted by `src/v3/compiler/build.rs` on every build from the
+//! reviewed `REGEN_OUTPUTS` literal. Every codegen driver (the
+//! `regen_*` binaries plus the ignored `emit_lens_provenance_snapshot`
+//! test) imports the same manifest and asserts its output path is in
+//! the list before writing — so a new generated file can only land if
+//! `build.rs` names it. File contents do not participate: a hand-authored
+//! `.rs` that begins with `// AUTO-GENERATED` does not slip through.
 
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-// Mirrors `v3_generated_marker_prefix` in `dsl/gunbc/compiler.dag`.
-const GENERATED_MARKER_PREFIX: &str = "// AUTO-GENERATED";
+use v3_compiler::generated_files::GENERATED_FILES;
 
-// Mirrors the single entry of `v3_census_roots` in
-// `dsl/gunbc/compiler.dag`. Relative to workspace root.
+// Relative to workspace root; mirrors the single census root
+// informally named in `dsl/gunbc/compiler.dag`.
 const CENSUS_ROOT: &str = "src/v3/compiler";
 
 // All .rs files under `src/v3/compiler` that are currently
@@ -40,29 +43,14 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // Removing an entry means the owning lane has retired the file;
 // adding an entry is forbidden outside SG-0 without director
 // sign-off.
-// SG-4 prep — two ratchet bumps pay for the first .dag-authority
-// slice of `infer.rs`. The extracted helper lives in
-// `src/v3/lenses/infer_helpers.dag` and renders into
-// `src/v3/compiler/src/infer_helpers_generated.rs` (excluded from the
-// census via the `// AUTO-GENERATED` marker). The two new
-// hand-authored entries below mirror the lens-migration precedent
-// 1:1:
 //
-// - `bin/regen_infer_helpers.rs` — the per-helper regen binary
-//   (one per generated module, same as the four `regen_lens_*`
-//   binaries already in the list).
-// - `tests/integration/sg4_prep_infer_helpers_freshness_test.rs` —
-//   the per-helper regenerate→diff-empty ratchet that converts the
-//   `.dag → committed *_generated.rs` link from convention to
-//   enforcement (added in response to codex BLOCKING review on PR
-//   #562 SHA `90939487a`; mirrors
-//   `unused_parameters_generated_module_matches_checked_in_snapshot`
-//   in the lens-migration tests).
-//
-// SG-6 owns the dissolution: when the lens-style regen drivers and
-// per-file freshness tests fold into a single generic regen target +
-// generic snapshot gate, both new entries collapse along with the
-// four existing `regen_lens_*` lines. Director sign-off
+// SG-4 prep carries two entries that SG-6 will retire together:
+//   - `bin/regen_infer_helpers.rs` (the per-helper regen binary)
+//   - `tests/integration/sg4_prep_infer_helpers_freshness_test.rs`
+//     (the per-helper regenerate→diff-empty ratchet)
+// When SG-6 folds all regen drivers and snapshot gates into a
+// single generic target, both entries collapse alongside the four
+// `regen_lens_*` lines above. Director sign-off
 // (clever-swift-141 brief, 2026-04-19) covers the temporary +2.
 const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/build.rs",
@@ -183,15 +171,6 @@ fn walk_rs(root: &Path, ws: &Path, out: &mut BTreeSet<String>) {
     }
 }
 
-fn is_generated(abs_path: &Path) -> bool {
-    let contents =
-        fs::read_to_string(abs_path).unwrap_or_else(|e| panic!("read {}: {e}", abs_path.display()));
-    let Some(first) = contents.lines().find(|line| !line.trim().is_empty()) else {
-        return false;
-    };
-    first.trim_start().starts_with(GENERATED_MARKER_PREFIX)
-}
-
 #[test]
 fn sg0_v3_hand_authored_census() {
     let ws = workspace_root();
@@ -205,13 +184,8 @@ fn sg0_v3_hand_authored_census() {
     let mut all_rs: BTreeSet<String> = BTreeSet::new();
     walk_rs(&census_root, &ws, &mut all_rs);
 
-    let mut hand_authored: BTreeSet<String> = BTreeSet::new();
-    for rel in &all_rs {
-        let abs = ws.join(rel);
-        if !is_generated(&abs) {
-            hand_authored.insert(rel.clone());
-        }
-    }
+    let generated: BTreeSet<String> = GENERATED_FILES.iter().map(|p| (*p).to_string()).collect();
+    let hand_authored: BTreeSet<String> = all_rs.difference(&generated).cloned().collect();
 
     let expected: BTreeSet<String> = EXPECTED_HAND_AUTHORED
         .iter()
@@ -243,7 +217,9 @@ fn sg0_v3_hand_authored_census() {
         }
         msg.push_str(
             "\nFix: port the logic to .dag and remove the .rs, or reduce the file\n\
-             to a shim whose first non-blank line begins with `// AUTO-GENERATED`.\n\
+             to a narrow host shim and add its path to REGEN_OUTPUTS in\n\
+             src/v3/compiler/build.rs (the shim must be written by a producer —\n\
+             a hand-authored `// AUTO-GENERATED` header does not count).\n\
              Last resort: add the path to EXPECTED_HAND_AUTHORED with a\n\
              director-approved receipt.\n\n",
         );
@@ -276,4 +252,52 @@ fn sg0_expected_list_is_sorted_and_unique() {
         }
         prev = Some(p);
     }
+}
+
+#[test]
+fn sg0_generated_partition_is_producer_owned() {
+    // Soundness: a handwritten file cannot spoof the census by bearing
+    // a `// AUTO-GENERATED` comment. The classification is membership
+    // in `GENERATED_FILES` (emitted by build.rs from `REGEN_OUTPUTS`),
+    // not a text scan. A path outside the manifest classifies as
+    // hand-authored regardless of any file-local content — which is the
+    // property the ratchet depends on.
+    const FAKE_PATH: &str = "src/v3/compiler/src/__probe_spoofed_header.rs";
+    assert!(
+        !GENERATED_FILES.contains(&FAKE_PATH),
+        "probe path must not appear in the real manifest"
+    );
+    let generated: BTreeSet<String> = GENERATED_FILES.iter().map(|p| (*p).to_string()).collect();
+    let classified_as_generated = generated.contains(FAKE_PATH);
+    assert!(
+        !classified_as_generated,
+        "a path outside the manifest must classify as hand-authored \
+         regardless of any file-local content — the manifest is the \
+         sole authority."
+    );
+}
+
+#[test]
+fn sg0_every_generated_file_is_present_on_disk() {
+    // The manifest is the authority for "which files are generated";
+    // it must stay in lockstep with what producers actually write.
+    // If a manifest entry points at a missing file, either the
+    // producer hasn't run yet (fresh checkout + `cargo test` without
+    // regen) or the file was deleted without updating build.rs.
+    // Either way the census would silently shrink and this ratchet
+    // would be unsound — fail loud here.
+    let ws = workspace_root();
+    let mut missing: Vec<&str> = Vec::new();
+    for rel in GENERATED_FILES {
+        if !ws.join(rel).is_file() {
+            missing.push(rel);
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "GENERATED_FILES references paths not present on disk: {missing:?} — \
+         the producer (a regen_* binary or build.rs entry) did not write them. \
+         Update REGEN_OUTPUTS in src/v3/compiler/build.rs, or run the relevant \
+         regen driver to populate the committed output."
+    );
 }

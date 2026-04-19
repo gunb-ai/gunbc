@@ -183,6 +183,12 @@ fn render_handwritten_oracle(program_source: &str, file_name: &str) -> String {
 #[test]
 #[ignore]
 fn emit_lens_provenance_snapshot() {
+    const OUT_REL: &str = "src/v3/compiler/src/lens_provenance_generated.rs";
+    assert!(
+        v3_compiler::generated_files::GENERATED_FILES.contains(&OUT_REL),
+        "SG-0 producer manifest mismatch: `{OUT_REL}` is not in GENERATED_FILES — \
+         add it to REGEN_OUTPUTS in src/v3/compiler/build.rs."
+    );
     let fresh = emit_lens_module();
     let out_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("src")
