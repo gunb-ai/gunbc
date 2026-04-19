@@ -69,8 +69,6 @@ const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
 include!(concat!(env!("OUT_DIR"), "/v3_staged_files.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_specs.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_compiler_files.rs"));
-include!(concat!(env!("OUT_DIR"), "/v3_extdeps_files.rs"));
-include!(concat!(env!("OUT_DIR"), "/v3_gunbc_files.rs"));
 
 const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
 
@@ -82,13 +80,6 @@ fn declaration_name_preference_rank(file: &str) -> usize {
     } else {
         1
     }
-}
-
-fn module_path_for(module: &SurfaceModule) -> Option<Vec<String>> {
-    module.items.iter().find_map(|item| match item {
-        crate::parse::SurfaceItem::Module { path, .. } => Some(path.clone()),
-        _ => None,
-    })
 }
 
 pub(crate) fn bootstrap(dag: &mut Dag) {
@@ -129,8 +120,6 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
         .chain(STAGED_FILES.iter().copied())
         .chain(V3_SPECS.iter().copied())
         .chain(COMPILER_FILES.iter().copied())
-        .chain(EXTDEPS_FILES.iter().copied())
-        .chain(GUNBC_FILES.iter().copied())
         .collect();
 
     // Phase 0: parse every fixture. Tokenize/parse errors attach to
@@ -144,16 +133,10 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     // of Phase 1 because later files' declarations aren't in it.
     // Phase 2 uses a REBUILT shared symbols map below.
     let mut parsed: Vec<(SurfaceModule, Vec<bool>)> = Vec::with_capacity(fixtures.len());
-    let mut module_files: HashMap<Vec<String>, String> = HashMap::new();
     for (file, source) in fixtures.iter() {
         let Some(module) = parse_fixture(dag, source, file) else {
             continue;
         };
-        if let Some(path) = module_path_for(&module) {
-            module_files
-                .entry(path)
-                .or_insert_with(|| (*file).to_string());
-        }
         let (_stale_symbols, is_first) = collect_symbols_phase(dag, &module.items);
         parsed.push((module, is_first));
     }
@@ -187,7 +170,7 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
 
     // Phase 2: lower bodies using the shared symbols map.
     for (module, is_first) in parsed.iter() {
-        lower_bodies_phase(dag, module, &shared_symbols, is_first, &module_files);
+        lower_bodies_phase(dag, module, &shared_symbols, is_first);
     }
 
     // Batch-final resolution for cross-file forward references. In

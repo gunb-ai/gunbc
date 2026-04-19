@@ -175,8 +175,7 @@ pub fn lower(module: &SurfaceModule) -> Dag {
 /// `types.dag`, which loads later).
 pub(crate) fn lower_into(dag: &mut Dag, module: &SurfaceModule) {
     let (symbols, is_first) = collect_symbols_phase(dag, &module.items);
-    let module_files: HashMap<Vec<String>, String> = HashMap::new();
-    lower_bodies_phase(dag, module, &symbols, &is_first, &module_files);
+    lower_bodies_phase(dag, module, &symbols, &is_first);
 }
 
 /// Phase 1 of two-phase lowering. Allocates placeholder declarations
@@ -204,10 +203,8 @@ pub(crate) fn lower_bodies_phase(
     module: &SurfaceModule,
     symbols: &HashMap<String, DeclarationId>,
     is_first: &[bool],
-    module_files: &HashMap<Vec<String>, String>,
 ) {
-    let scoped_symbols = resolve_imported_symbols(dag, module, symbols, module_files);
-    seed_function_signatures_phase(dag, &module.items, &scoped_symbols, is_first);
+    seed_function_signatures_phase(dag, &module.items, symbols, is_first);
     let mut scope = ScopeState::default();
     let empty_mutual_recursion = MutualRecursionPlans::default();
     let mut empty_mutual_state = MutualRecursionState::default();
@@ -245,7 +242,7 @@ pub(crate) fn lower_bodies_phase(
                 item,
                 dag,
                 scope,
-                &scoped_symbols,
+                symbols,
                 &empty_mutual_recursion,
                 &mut empty_mutual_state,
             );
@@ -263,7 +260,7 @@ pub(crate) fn lower_bodies_phase(
             ..
         } = item
         {
-            lower_data_item(name, ty, body.as_ref(), body_span, dag, &scoped_symbols);
+            lower_data_item(name, ty, body.as_ref(), body_span, dag, symbols);
         }
     }
     // DB-11 (3a.3) phase-ordered refinement lowering. Runs AFTER the
@@ -271,9 +268,8 @@ pub(crate) fn lower_bodies_phase(
     // constants resolve against lowered declarations, not placeholders.
     // Sole caller of `lower_parameter_refinement` for parameter
     // `where` clauses (single construction authority).
-    lower_parameter_refinements_phase(dag, module, &scoped_symbols, is_first);
-    let mutual_recursion =
-        compute_mutually_recursive(&module.items, dag, &scoped_symbols, is_first);
+    lower_parameter_refinements_phase(dag, module, symbols, is_first);
+    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
     let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
@@ -299,90 +295,12 @@ pub(crate) fn lower_bodies_phase(
             item,
             dag,
             scope,
-            &scoped_symbols,
+            symbols,
             &mutual_recursion,
             &mut mutual_state,
         );
     }
     finalize_mutual_clusters(dag, &mutual_recursion, &mutual_state);
-}
-
-fn resolve_imported_symbols(
-    dag: &mut Dag,
-    module: &SurfaceModule,
-    symbols: &HashMap<String, DeclarationId>,
-    module_files: &HashMap<Vec<String>, String>,
-) -> HashMap<String, DeclarationId> {
-    let mut scoped_symbols = symbols.clone();
-    if module_files.is_empty() {
-        return scoped_symbols;
-    }
-
-    let local_names: HashSet<String> = module
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            SurfaceItem::Let { .. } | SurfaceItem::Module { .. } | SurfaceItem::Import { .. } => {
-                None
-            }
-            SurfaceItem::Fn { name, .. }
-            | SurfaceItem::FnExternalBody { name, .. }
-            | SurfaceItem::Data { name, .. }
-            | SurfaceItem::TypeAtom { name, .. }
-            | SurfaceItem::TypeRecord { name, .. }
-            | SurfaceItem::TypeSum { name, .. }
-            | SurfaceItem::TypeAlias { name, .. } => Some(name.clone()),
-        })
-        .collect();
-
-    for item in &module.items {
-        let SurfaceItem::Import { path, names, span } = item else {
-            continue;
-        };
-        let Some(target_file) = module_files.get(path) else {
-            report_declaration_error(
-                dag,
-                Diagnostic::ResolveError {
-                    name: format!("imported module `{}` is not loaded", path.join(".")),
-                    span: span.clone(),
-                    fixes: Vec::new(),
-                },
-            );
-            continue;
-        };
-        let exported: HashMap<String, DeclarationId> = dag
-            .declarations()
-            .iter()
-            .filter(|decl| decl.span.file == *target_file)
-            .filter_map(|decl| decl.name.as_ref().map(|name| (name.clone(), decl.id)))
-            .collect();
-        let requested_names: Vec<String> = if names.is_empty() {
-            exported.keys().cloned().collect()
-        } else {
-            names.clone()
-        };
-        for name in requested_names {
-            let Some(&decl_id) = exported.get(&name) else {
-                report_declaration_error(
-                    dag,
-                    Diagnostic::ResolveError {
-                        name: format!(
-                            "module `{}` does not export imported name `{name}`",
-                            path.join(".")
-                        ),
-                        span: span.clone(),
-                        fixes: Vec::new(),
-                    },
-                );
-                continue;
-            };
-            if !local_names.contains(&name) {
-                scoped_symbols.insert(name, decl_id);
-            }
-        }
-    }
-
-    scoped_symbols
 }
 
 fn finalize_mutual_clusters(
