@@ -16,10 +16,7 @@ pub struct MirrorOutput {
 pub enum MirrorError {
     Compile(String),
     MissingDeclaration(&'static str),
-    InvalidDeclaration {
-        name: &'static str,
-        detail: String,
-    },
+    InvalidDeclaration { name: &'static str, detail: String },
 }
 
 pub fn render_runtime_mirrors() -> Result<MirrorOutput, MirrorError> {
@@ -48,10 +45,7 @@ pub fn render_runtime_mirrors() -> Result<MirrorOutput, MirrorError> {
             "src/v3/compiler/runtime_mirrors.dag",
             &render_record(&dag, "DagDifference", &[])?,
         ),
-        dag_cost: with_header(
-            "src/v3/std/algebra.dag",
-            DAG_COST_TEMPLATE.trim_start(),
-        ),
+        dag_cost: with_header("src/v3/std/algebra.dag", DAG_COST_TEMPLATE.trim_start()),
     })
 }
 
@@ -156,7 +150,10 @@ fn render_sum_with_derives(
         let TypeConnective::Conj { children } = &variant_decl.connective else {
             return Err(MirrorError::InvalidDeclaration {
                 name,
-                detail: format!("variant `{}` does not lower to a Conj payload", variant.label),
+                detail: format!(
+                    "variant `{}` does not lower to a Conj payload",
+                    variant.label
+                ),
             });
         };
         match children.as_slice() {

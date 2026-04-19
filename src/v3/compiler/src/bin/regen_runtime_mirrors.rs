@@ -11,7 +11,9 @@ fn main() {
 }
 
 fn write(name: &str, body: &str) {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src").join(name);
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .join(name);
     std::fs::write(&path, body).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
     println!("wrote {}", path.display());
 }
