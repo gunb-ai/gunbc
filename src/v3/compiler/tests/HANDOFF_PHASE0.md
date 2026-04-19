@@ -141,18 +141,24 @@ file, not in a narrow reorg diff):
   `OnceLock<PathBuf>` amortization already in place, but individual
   `#[test]`s that compile their own harness can still exceed 2s.
 
-## Next steps (unclaimed)
+## Next steps (unclaimed) — the binding half
 
-1. **Populate `scripts/slow-test-exemptions.txt`.** Run
-   `TEST_TIMEOUT_MS=2000 scripts/check-test-timeout.sh` locally (or
-   merge and read the first CI run's non-blocking report), add each
-   unexpectedly-slow test to the exemption file with a one-line
+1. **Populate `scripts/slow-test-exemptions.txt`.** Read the first
+   merged-main CI run's report-only baseline (or run
+   `TEST_TIMEOUT_MS=2000 scripts/check-test-timeout.sh` locally), and
+   add each violating test to the exemption file with a one-line
    reason that cites a ROADMAP item or project memory.
+   **Entry format:** the token libtest emits as the second
+   whitespace-delimited field, e.g. `m1_5_testgen_test::heavy_case`
+   — no binary prefix, no `<…s>` timing. The exemption file header
+   documents the exact shape and an example line.
 2. **Flip the CI step to blocking.** Remove
    `continue-on-error: true` from the
-   `v3 tests (per-test 2s ratchet, non-blocking)` step in
-   `.github/workflows/ci.yml` once the exemption file reflects the
-   real baseline.
+   `v3 tests (per-test 2s ratchet, report-only baseline)` step in
+   `.github/workflows/ci.yml` and rename to
+   `v3 tests (per-test 2s ratchet)` once the exemption file reflects
+   the real baseline. This is the PR that satisfies the Phase 0
+   acceptance criterion "CI fails on any test >2s."
 3. **Paydown (owned by sibling workers).** Each exempt test is a
    migration target — either speed it up (share bootstrap via
    `OnceLock`, shrink fixtures, collapse fine-grained cases),

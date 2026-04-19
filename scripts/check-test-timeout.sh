@@ -2,9 +2,15 @@
 #
 # Per-test wall-clock ratchet (TESTING.md § test layers).
 #
-# Runs `cargo test -p v3-compiler -- --report-time` and fails if any single
-# `#[test]` exceeded the budget (default 2000 ms, aligns with
-# `feedback_test_timeout_2s`). Tests listed in the exemption file are
+# Runs
+#   RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler \
+#       -- -Z unstable-options --report-time
+# and fails if any single `#[test]` exceeded the budget (default 2000 ms,
+# aligns with `feedback_test_timeout_2s`). `--report-time` is still unstable
+# on the 1.93 toolchain (rust-lang/rust#64888); the `RUSTC_BOOTSTRAP=1 +
+# -Z unstable-options` pair is the documented narrow unlock for libtest
+# flags and does not enable any unstable *language* features — see the
+# body of the script for the full comment. Tests listed in the exemption file are
 # tolerated with a logged warning so the ratchet can land without blocking
 # known-slow tests — the exemption file IS the paydown backlog.
 #
@@ -30,7 +36,7 @@ cd "$repo_root"
 log_file=$(mktemp -t test-timings.XXXXXX)
 trap 'rm -f "$log_file"' EXIT
 
-echo "Running cargo test -p $pkg -- --report-time (budget: ${budget_ms}ms per test)..."
+echo "Running RUSTC_BOOTSTRAP=1 cargo test -p $pkg -- -Z unstable-options --report-time (budget: ${budget_ms}ms per test)..."
 # Per-test timing output is emitted by libtest's `--report-time`, which is still
 # unstable on the 1.93 toolchain (tracking issue rust-lang/rust#64888). The
 # narrow unlock is `RUSTC_BOOTSTRAP=1` — it does not pull in unstable *language*
