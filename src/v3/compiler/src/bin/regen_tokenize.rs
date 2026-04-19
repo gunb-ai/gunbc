@@ -19,17 +19,18 @@ fn main() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let dag_path = manifest_dir.join("tokenize.dag");
     let source = std::fs::read_to_string(&dag_path).expect("read tokenize.dag");
-    let dag = match compile_to_dag(&source, "src/v3/compiler/tokenize.dag") {
-        Ok(d) => d,
-        Err(CompileError::Semantic(d)) => {
-            eprintln!("tokenize.dag semantic errors:");
-            for (_, diag) in d.diagnostics().iter() {
-                eprintln!("  {diag:?}");
+    let dag = compile_to_dag(&source, "src/v3/compiler/tokenize.dag").unwrap_or_else(|e| {
+        match e {
+            CompileError::Semantic(d) => {
+                let mut msg = String::from("compile tokenize.dag failed:\n");
+                for (_, diag) in d.diagnostics().iter() {
+                    msg.push_str(&format!("  {diag:?}\n"));
+                }
+                panic!("{msg}");
             }
-            panic!("compile tokenize.dag failed");
+            other => panic!("compile tokenize.dag: {other:?}"),
         }
-        Err(other) => panic!("compile tokenize.dag: {other:?}"),
-    };
+    });
     let rust = generate(&dag);
     let combined = format!("{HEADER}{rust}");
 
@@ -359,18 +360,12 @@ fn emit_tokenize_fn(keywords: &[(String, String)]) -> String {
     s.push_str("                        match escaped {\n");
     s.push_str("                            b'\"' => content.push('\"'),\n");
     s.push_str("                            b'\\\\' => content.push('\\\\'),\n");
-    s.push_str(&format!(
-        "                            b'n' => {},\n",
-        format!("content.push({:?})", '\n')
-    ));
-    s.push_str(&format!(
-        "                            b'r' => {},\n",
-        format!("content.push({:?})", '\r')
-    ));
-    s.push_str(&format!(
-        "                            b't' => {},\n",
-        format!("content.push({:?})", '\t')
-    ));
+    let push_n = format!("content.push({:?})", '\n');
+    s.push_str(&format!("                            b'n' => {push_n},\n"));
+    let push_r = format!("content.push({:?})", '\r');
+    s.push_str(&format!("                            b'r' => {push_r},\n"));
+    let push_t = format!("content.push({:?})", '\t');
+    s.push_str(&format!("                            b't' => {push_t},\n"));
     s.push_str("                            other => {\n");
     s.push_str("                                content.push('\\\\');\n");
     s.push_str("                                content.push(other as char);\n");
