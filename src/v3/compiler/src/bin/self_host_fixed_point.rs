@@ -12,6 +12,11 @@
 //!
 //! Single authority for byte-identical emission across processes: [`v3_compiler::emit::emit`]
 //! + determinism tests (`tests/determinism_test.rs`) — see `feedback_substrate_principle_audit` Q5.
+//!
+//! **Exit status (Invariant D-1):** when `compiler.dag` parses and the emit→`rustc`→run→diff slice
+//! runs, any failure on that slice returns **`Err`** from [`run`] so the process exits **non-zero**
+//! after writing `receipt.json`. Workflow policy (“do not block merges yet”) is enforced by
+//! `continue-on-error` on the CI job/step — not by treating a failed slice as `Ok`.
 
 use std::fs;
 use std::io::{self, Write};
