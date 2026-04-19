@@ -104,27 +104,6 @@ pub enum Diagnostic {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiagnosticStyleTarget {
-    Rust,
-    Go,
-    Python,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DiagnosticRenderError {
-    MissingCleanEmissionContract(&'static str),
-    MalformedCleanEmissionContract {
-        declaration: DeclarationId,
-        detail: &'static str,
-    },
-    MissingCorrectionStyle(&'static str),
-    MalformedCorrectionStyle {
-        declaration: DeclarationId,
-        detail: &'static str,
-    },
-}
-
 impl Diagnostic {
     pub fn span(&self) -> &SourceSpan {
         match self {
