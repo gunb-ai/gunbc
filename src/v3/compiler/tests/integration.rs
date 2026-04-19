@@ -37,6 +37,8 @@ mod lane2_stage_2b_db18_test;
 mod lane2_stage_2c_db15_test;
 #[path = "integration/lane2_stage_2d_symbolic_cost_test.rs"]
 mod lane2_stage_2d_symbolic_cost_test;
+#[path = "integration/lane2_stage_2e_parallelism_test.rs"]
+mod lane2_stage_2e_parallelism_test;
 #[path = "integration/m0_acceptance.rs"]
 mod m0_acceptance;
 #[path = "integration/m1_3_emit_go_test.rs"]
