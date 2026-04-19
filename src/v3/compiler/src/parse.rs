@@ -917,6 +917,7 @@ impl<'a> Parser<'a> {
         }
         let mut depth = 0usize;
         let mut idx = self.pos;
+        let mut only_empty_block_so_far = true;
         while let Some(token) = self.tokens.get(idx) {
             match token.kind {
                 TokenKind::LBrace => depth += 1,
@@ -926,10 +927,16 @@ impl<'a> Parser<'a> {
                     }
                     depth -= 1;
                     if depth == 0 {
-                        return false;
+                        // `match x {}` is a valid empty-arm block that
+                        // should parse and fail later during lowering/
+                        // validation as non-exhaustive, not be
+                        // reinterpreted as `x {}` (a named constructor
+                        // expression with empty fields).
+                        return only_empty_block_so_far;
                     }
                 }
                 TokenKind::FatArrow if depth == 1 => return true,
+                _ if depth == 1 => only_empty_block_so_far = false,
                 TokenKind::Eof => return false,
                 _ => {}
             }
