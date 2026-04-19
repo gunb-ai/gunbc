@@ -25,10 +25,7 @@ fn op(name: &str, shape: EffectShape) -> OperationEffect {
 }
 
 fn read(name: &str) -> OperationEffect {
-    op(
-        name,
-        EffectShape::IsIdempotent(IdempotentShape::ReadEffect),
-    )
+    op(name, EffectShape::IsIdempotent(IdempotentShape::ReadEffect))
 }
 
 #[test]
@@ -61,7 +58,9 @@ fn parallel_read_only_branches_commute() {
     let r = analyze_parallelism(&dag, root);
     assert!(matches!(
         r,
-        WorkflowParallelismReport::ParallelCompositionVerdict(CompositionVerdict::IdempotentComposition)
+        WorkflowParallelismReport::ParallelCompositionVerdict(
+            CompositionVerdict::IdempotentComposition
+        )
     ));
 }
 
@@ -94,7 +93,9 @@ fn parallel_disjoint_path_upserts_commute() {
     let r = analyze_parallelism(&dag, root);
     assert!(matches!(
         r,
-        WorkflowParallelismReport::ParallelCompositionVerdict(CompositionVerdict::IdempotentComposition)
+        WorkflowParallelismReport::ParallelCompositionVerdict(
+            CompositionVerdict::IdempotentComposition
+        )
     ));
 }
 
@@ -105,9 +106,7 @@ fn parallel_read_vs_upsert_does_not_commute() {
     let upsert = op(
         "put",
         EffectShape::IsIdempotent(IdempotentShape::UpsertEffect {
-            key_source: KeySource::PathParam {
-                param: "k".into(),
-            },
+            key_source: KeySource::PathParam { param: "k".into() },
         }),
     );
     let wf = WorkflowEffect::ParallelEffect {

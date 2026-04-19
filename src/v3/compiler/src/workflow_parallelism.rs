@@ -6,9 +6,8 @@
 //! projecting through [`crate::dag::CompositionVerdict`] per DB-18 / PR #529.
 
 use crate::dag::{
-    CompositionVerdict, Dag, EffectShape, IdempotencyUnsupportedDetail, IdempotentShape,
-    KeySource, NodeId, NonSingletonList, OperationEffect, WorkflowEffect,
-    WorkflowParallelismReport,
+    CompositionVerdict, Dag, EffectShape, IdempotencyUnsupportedDetail, IdempotentShape, KeySource,
+    NodeId, NonSingletonList, OperationEffect, WorkflowEffect, WorkflowParallelismReport,
 };
 use crate::workflow_idempotency::operation_to_breaker;
 
@@ -38,14 +37,8 @@ fn idempotent_pair_commutes(a: &IdempotentShape, b: &IdempotentShape) -> bool {
         | (IdempotentShape::UpsertEffect { .. }, IdempotentShape::ReadEffect)
         | (IdempotentShape::ReadEffect, IdempotentShape::DeleteEffect { .. })
         | (IdempotentShape::DeleteEffect { .. }, IdempotentShape::ReadEffect) => false,
-        (
-            IdempotentShape::UpsertEffect { .. },
-            IdempotentShape::DeleteEffect { .. },
-        )
-        | (
-            IdempotentShape::DeleteEffect { .. },
-            IdempotentShape::UpsertEffect { .. },
-        ) => false,
+        (IdempotentShape::UpsertEffect { .. }, IdempotentShape::DeleteEffect { .. })
+        | (IdempotentShape::DeleteEffect { .. }, IdempotentShape::UpsertEffect { .. }) => false,
         _ => false,
     }
 }
@@ -70,7 +63,9 @@ fn operations_commute(a: &OperationEffect, b: &OperationEffect) -> bool {
     }
 }
 
-fn first_breaking_across_branches(branch_ops: &[Vec<OperationEffect>]) -> Option<crate::dag::BreakingOperation> {
+fn first_breaking_across_branches(
+    branch_ops: &[Vec<OperationEffect>],
+) -> Option<crate::dag::BreakingOperation> {
     for ops in branch_ops {
         for op in ops {
             if let Some(b) = operation_to_breaker(op) {
@@ -94,7 +89,9 @@ fn extract_linear_branches(
     Some(out)
 }
 
-fn pairwise_cross_branch_commutes(branch_ops: &[Vec<OperationEffect>]) -> Result<(), (String, String)> {
+fn pairwise_cross_branch_commutes(
+    branch_ops: &[Vec<OperationEffect>],
+) -> Result<(), (String, String)> {
     for i in 0..branch_ops.len() {
         for j in (i + 1)..branch_ops.len() {
             for oa in &branch_ops[i] {
@@ -131,9 +128,9 @@ pub(crate) fn analyze_parallelism(d: &Dag, workflow_root: NodeId) -> WorkflowPar
     };
 
     if let Some(b) = first_breaking_across_branches(&branch_ops) {
-        return WorkflowParallelismReport::ParallelCompositionVerdict(CompositionVerdict::BrokenBy {
-            first_breaker: b,
-        });
+        return WorkflowParallelismReport::ParallelCompositionVerdict(
+            CompositionVerdict::BrokenBy { first_breaker: b },
+        );
     }
 
     match pairwise_cross_branch_commutes(&branch_ops) {
@@ -142,9 +139,7 @@ pub(crate) fn analyze_parallelism(d: &Dag, workflow_root: NodeId) -> WorkflowPar
         ),
         Err((a, b)) => unsupported(
             "PairwiseNonCommute",
-            format!(
-                "operations `{a}` and `{b}` do not commute under parallel scheduling"
-            ),
+            format!("operations `{a}` and `{b}` do not commute under parallel scheduling"),
         ),
     }
 }
