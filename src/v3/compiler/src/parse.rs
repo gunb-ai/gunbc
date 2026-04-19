@@ -911,6 +911,33 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    fn brace_starts_match_arms(&self) -> bool {
+        if !matches!(self.peek().kind, TokenKind::LBrace) {
+            return false;
+        }
+        let mut depth = 0usize;
+        let mut idx = self.pos;
+        while let Some(token) = self.tokens.get(idx) {
+            match token.kind {
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => {
+                    if depth == 0 {
+                        return false;
+                    }
+                    depth -= 1;
+                    if depth == 0 {
+                        return false;
+                    }
+                }
+                TokenKind::FatArrow if depth == 1 => return true,
+                TokenKind::Eof => return false,
+                _ => {}
+            }
+            idx += 1;
+        }
+        false
+    }
+
     fn parse_dotted_path(&mut self) -> Result<Vec<String>, Diagnostic> {
         let mut path = vec![self.parse_ident()?];
         while matches!(self.peek().kind, TokenKind::Dot) {
@@ -1680,7 +1707,7 @@ impl<'a> Parser<'a> {
                 args,
                 span: SourceSpan::new(self.file, start, end),
             })
-        } else if matches!(self.peek().kind, TokenKind::LBrace) {
+        } else if matches!(self.peek().kind, TokenKind::LBrace) && !self.brace_starts_match_arms() {
             let (fields, fields_span) = self.parse_named_expr_fields()?;
             Ok(SurfaceExpr::VariantRecord {
                 target: name,
