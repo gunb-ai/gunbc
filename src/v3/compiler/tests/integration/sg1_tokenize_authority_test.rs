@@ -6,8 +6,7 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
 
 const TOKENIZE_DAG: &str = include_str!("../../tokenize.dag");
-const SHARED_SYNTAX_DAG: &str =
-    include_str!("../../../../../dsl/extdeps/languages/dag/syntax.dag");
+const SHARED_SYNTAX_DAG: &str = include_str!("../../../../../dsl/extdeps/languages/dag/syntax.dag");
 const CHECKED_IN_GENERATED: &str = include_str!("../../src/tokenize_generated.rs");
 
 #[test]
