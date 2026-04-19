@@ -6,6 +6,7 @@
 |:---|:---|
 | #530 | https://github.com/gunb-ai/gunbc/pull/530 |
 | #540 | https://github.com/gunb-ai/gunbc/pull/540 |
+| #556 (SG-1, session `neat-pike-779`) | https://github.com/gunb-ai/gunbc/pull/556 |
 
 For each PR: use **Conversation** (reviews, bots, threads) and **Checks** (CI).
 
