@@ -1,24 +1,15 @@
-// M1(3) PR-B — cost lens acceptance tests.
+// M1(3) PR-B — cost lens integration receipts.
 //
-// These tests now build the minimal graph shape the cost lens
-// needs for its structural claims. Source compilation stays only
-// where the receipt depends on real lowering or stdlib callable
-// wiring rather than the lens's graph walk.
+// Structural direct-Dag cases live in in-crate unit tests so they can
+// use the crate-private builder surface without widening the public API.
+// This file keeps only compile-path receipts that still need real
+// lowering or stdlib callable wiring.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, BranchPattern, Dag, LiteralBits, Path, PortId, TransformTarget};
-use v3_compiler::dag_test_support as dag_test;
-use v3_compiler::diagnostics::SourceSpan;
+use v3_compiler::dag::{Behavior, PortId};
 use v3_compiler::lens_cost::cost_of;
-use v3_compiler::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
 
-const DIRECT_DAG_FILE: &str = "m1_3_lens_cost_test.direct";
-
-fn span() -> SourceSpan {
-    SourceSpan::new(DIRECT_DAG_FILE, 0, 0)
-}
-
-fn find_bind_value(dag: &Dag, name: &str) -> PortId {
+fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
     dag.nodes()
         .iter()
         .filter_map(Behavior::as_bind)
@@ -27,146 +18,20 @@ fn find_bind_value(dag: &Dag, name: &str) -> PortId {
         .value
 }
 
-fn expect_cost(dag: &Dag, port: PortId) -> usize {
+fn expect_cost(dag: &v3_compiler::dag::Dag, port: PortId) -> usize {
     crate::common::require_fixture_cost_usize(cost_of(dag, &port), &format!("port {port:?}"))
 }
 
-fn bind_cost(dag: &Dag, name: &str) -> usize {
+fn bind_cost(dag: &v3_compiler::dag::Dag, name: &str) -> usize {
     expect_cost(dag, find_bind_value(dag, name))
-}
-
-fn int_value(dag: &mut Dag, value: i64) -> PortId {
-    dag_test::push_value(dag, LiteralBits::Int(value), span())
-}
-
-fn add(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {
-    dag_test::push_transform(
-        dag,
-        TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
-        vec![lhs, rhs],
-        span(),
-    )
-}
-
-fn gt(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {
-    dag_test::push_transform(
-        dag,
-        TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt)),
-        vec![lhs, rhs],
-        span(),
-    )
-}
-
-fn bind_arm(dag: &mut Dag, name: &str, output: PortId) -> Path {
-    let body = dag
-        .port(output)
-        .produced_by
-        .unwrap_or_else(|| dag_test::push_bind(dag, name, output, Vec::new(), span()));
-    Path {
-        body,
-        output,
-        pattern: BranchPattern::UnresolvedVariant {
-            name: name.to_string(),
-            span: span(),
-        },
-        binding: None,
-    }
-}
-
-fn add_chain(dag: &mut Dag, values: &[i64]) -> PortId {
-    let mut iter = values.iter().copied();
-    let first = int_value(
-        dag,
-        iter.next()
-            .expect("add_chain requires at least one literal"),
-    );
-    let mut current = first;
-    for value in iter {
-        let rhs = int_value(dag, value);
-        current = add(dag, current, rhs);
-    }
-    current
-}
-
-fn branch_cost_fixture(then_values: &[i64], else_values: &[i64]) -> Dag {
-    let mut dag = Dag::new();
-    let lhs = int_value(&mut dag, 1);
-    let rhs = int_value(&mut dag, 0);
-    let cond = gt(&mut dag, lhs, rhs);
-    let then_output = add_chain(&mut dag, then_values);
-    let else_output = add_chain(&mut dag, else_values);
-    let then_path = bind_arm(&mut dag, "then_arm", then_output);
-    let else_path = bind_arm(&mut dag, "else_arm", else_output);
-    let result = dag_test::push_branch(&mut dag, cond, vec![then_path, else_path], span());
-    dag_test::push_bind(&mut dag, "r", result, Vec::new(), span());
-    dag
-}
-
-#[test]
-fn cost_lens_literal_value_is_zero() {
-    let mut dag = Dag::new();
-    let value = int_value(&mut dag, 1);
-    dag_test::push_bind(&mut dag, "x", value, Vec::new(), span());
-
-    assert_eq!(bind_cost(&dag, "x"), 0);
-}
-
-#[test]
-fn cost_lens_single_transform_is_one() {
-    let mut dag = Dag::new();
-    let lhs = int_value(&mut dag, 1);
-    let rhs = int_value(&mut dag, 2);
-    let value = add(&mut dag, lhs, rhs);
-    dag_test::push_bind(&mut dag, "x", value, Vec::new(), span());
-
-    assert_eq!(bind_cost(&dag, "x"), 1);
-}
-
-#[test]
-fn cost_lens_chained_transform_is_two() {
-    let mut dag = Dag::new();
-    let one = int_value(&mut dag, 1);
-    let two = int_value(&mut dag, 2);
-    let three = int_value(&mut dag, 3);
-    let inner = add(&mut dag, one, two);
-    let value = add(&mut dag, inner, three);
-    dag_test::push_bind(&mut dag, "x", value, Vec::new(), span());
-
-    assert_eq!(bind_cost(&dag, "x"), 2);
-}
-
-#[test]
-fn cost_lens_branch_counts_condition_plus_max_path() {
-    let mut dag = Dag::new();
-    let lhs = int_value(&mut dag, 1);
-    let rhs = int_value(&mut dag, 0);
-    let cond = gt(&mut dag, lhs, rhs);
-    let then_output = int_value(&mut dag, 10);
-    let else_output = int_value(&mut dag, 20);
-    let then_path = bind_arm(&mut dag, "then_arm", then_output);
-    let else_path = bind_arm(&mut dag, "else_arm", else_output);
-    let result = dag_test::push_branch(&mut dag, cond, vec![then_path, else_path], span());
-    dag_test::push_bind(&mut dag, "r", result, Vec::new(), span());
-
-    assert_eq!(bind_cost(&dag, "r"), 2);
 }
 
 #[test]
 fn cost_lens_branch_uses_max_not_sum_across_paths() {
-    let dag = branch_cost_fixture(&[20, 30], &[40, 50, 60]);
+    let dag = compile_to_dag("let r = if 1 > 0 then 20 + 30 else 40 + 50 + 60", "test.v3")
+        .expect("compiles");
 
-    assert_eq!(bind_cost(&dag, "r"), 4);
-}
-
-#[test]
-fn cost_lens_bind_passes_through_to_value() {
-    let mut dag = Dag::new();
-    let lhs = int_value(&mut dag, 1);
-    let rhs = int_value(&mut dag, 2);
-    let add_output = add(&mut dag, lhs, rhs);
-    dag_test::push_bind(&mut dag, "y", add_output, Vec::new(), span());
-
-    assert_eq!(bind_cost(&dag, "y"), expect_cost(&dag, add_output));
+    assert_eq!(expect_cost(&dag, find_bind_value(&dag, "r")), 4);
 }
 
 #[test]
@@ -192,26 +57,6 @@ fn countdown(n: Int) -> Int =
 }
 
 #[test]
-fn kf_1_branch_cost_is_max_not_sum() {
-    let baseline = branch_cost_fixture(&[10, 20, 30, 40], &[50, 60]);
-    let larger_non_max = branch_cost_fixture(&[10, 20, 30, 40], &[50, 60, 70]);
-    let larger_max = branch_cost_fixture(&[10, 20, 30, 40, 50], &[60, 70]);
-
-    let baseline_cost = bind_cost(&baseline, "r");
-    let larger_non_max_cost = bind_cost(&larger_non_max, "r");
-    let larger_max_cost = bind_cost(&larger_max, "r");
-
-    assert_eq!(
-        baseline_cost, larger_non_max_cost,
-        "growing only the non-max path should leave branch cost unchanged: baseline={baseline_cost}, larger_non_max={larger_non_max_cost}"
-    );
-    assert!(
-        larger_max_cost > baseline_cost,
-        "growing the max path should increase branch cost: baseline={baseline_cost}, larger_max={larger_max_cost}"
-    );
-}
-
-#[test]
 fn kf_1_nested_fold_costs_more_than_flat_fold() {
     let flat = compile_to_dag(
         "let total: Int = fold(singleton(1), 0, |acc, x| acc + x)",
@@ -230,26 +75,6 @@ fn kf_1_nested_fold_costs_more_than_flat_fold() {
     assert!(
         nested_cost > flat_cost,
         "nested fold should cost more structurally than flat fold: flat={flat_cost}, nested={nested_cost}"
-    );
-}
-
-#[test]
-fn kf_1_non_max_branch_does_not_inflate_cost() {
-    let baseline = branch_cost_fixture(&[1, 2, 3, 4], &[5, 6]);
-    let more_non_max_work = branch_cost_fixture(&[1, 2, 3, 4], &[5, 6, 7, 8]);
-    let more_max_work = branch_cost_fixture(&[1, 2, 3, 4, 5], &[6, 7]);
-
-    let baseline_cost = bind_cost(&baseline, "r");
-    let more_non_max_work_cost = bind_cost(&more_non_max_work, "r");
-    let more_max_work_cost = bind_cost(&more_max_work, "r");
-
-    assert_eq!(
-        baseline_cost, more_non_max_work_cost,
-        "growing only the non-max branch should not change structural cost: baseline={baseline_cost}, more_non_max_work={more_non_max_work_cost}"
-    );
-    assert!(
-        more_max_work_cost > baseline_cost,
-        "growing the max branch should increase structural cost: baseline={baseline_cost}, more_max_work={more_max_work_cost}"
     );
 }
 
