@@ -1,5 +1,12 @@
 //! Shared emit entrypoint and Stage 1e scaffolding.
 //!
+//! **Invariant D-1 (determinism, DB-8):** for fixed inputs `(dag, target)`,
+//! successive calls to [`emit`] / [`emit_module`] must produce **byte-identical**
+//! text. Mechanical ratchet: `tests/determinism_test.rs` (5× re-emit per matrix
+//! row). Violations include unstable map/set iteration, timestamps or `file!()` /
+//! `line!()` in emitted source, and path-dependent emission. Single authority for
+//! this claim is the emit pipeline plus those tests (`feedback_substrate_principle_audit` Q5).
+//!
 //! `emit.rs` is the single dispatch surface for all targets. Each
 //! `*_target.rs` sibling still contains one target-monolithic
 //! implementation body; the behavior-by-behavior lifts planned in α
