@@ -26,9 +26,9 @@ type TokenKind
   | KwWhere
   | KwTrue
   | KwFalse
-  | Ident { name: String }
-  | IntLit { value: Int }
-  | StringLit { value: String }
+  | Ident(String)
+  | IntLit(Int)
+  | StringLit(String)
   | Eq
   | EqEq
   | NotEq

@@ -126,7 +126,9 @@ fn emit_token_kind_enum(dag: &Dag) -> String {
                 let field = &children[0];
                 let rust_ty = rust_type_for_decl_id(dag, field.ty);
                 let field_name = &field.label;
-                if field_name == "name" && rust_ty == "String" {
+                if field_name == "_0" {
+                    format!("    {}({rust_ty}),", v.label)
+                } else if field_name == "name" && rust_ty == "String" {
                     format!("    {}(String),", v.label)
                 } else if field_name == "value" && rust_ty == "Int" {
                     format!("    {}(i64),", v.label)
@@ -357,9 +359,18 @@ fn emit_tokenize_fn(keywords: &[(String, String)]) -> String {
     s.push_str("                        match escaped {\n");
     s.push_str("                            b'\"' => content.push('\"'),\n");
     s.push_str("                            b'\\\\' => content.push('\\\\'),\n");
-    s.push_str("                            b'n' => content.push('\u{000A}'),\n");
-    s.push_str("                            b'r' => content.push('\u{000D}'),\n");
-    s.push_str("                            b't' => content.push('\u{0009}'),\n");
+    s.push_str(&format!(
+        "                            b'n' => {},\n",
+        format!("content.push({:?})", '\n')
+    ));
+    s.push_str(&format!(
+        "                            b'r' => {},\n",
+        format!("content.push({:?})", '\r')
+    ));
+    s.push_str(&format!(
+        "                            b't' => {},\n",
+        format!("content.push({:?})", '\t')
+    ));
     s.push_str("                            other => {\n");
     s.push_str("                                content.push('\\\\');\n");
     s.push_str("                                content.push(other as char);\n");
