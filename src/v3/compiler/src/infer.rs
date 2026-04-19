@@ -165,7 +165,8 @@ fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
             TypeConnective::Instantiation { template, .. } => {
                 current = *template;
             }
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
             _ => return None,
@@ -190,7 +191,8 @@ fn walk_to_optional_cardinality_decl(dag: &Dag, start: DeclarationId) -> Option<
                 ..
             } => return Some(current),
             TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
             _ => return None,
         }
     }
@@ -1369,7 +1371,8 @@ fn declaration_is_callable(dag: &Dag, current: DeclarationId, depth: usize) -> b
         TypeConnective::Instantiation { template, .. } => {
             declaration_is_callable(dag, *template, depth + 1)
         }
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             declaration_is_callable(dag, *next, depth + 1)
         }
         TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
@@ -1391,7 +1394,8 @@ fn is_retryable_generic_decl_walk(dag: &Dag, current: DeclarationId, depth: usiz
     }
     match &dag.declaration(current).connective {
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => true,
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             is_retryable_generic_decl_walk(dag, *next, depth + 1)
         }
         TypeConnective::Instantiation { arguments, .. } => arguments
@@ -1542,7 +1546,8 @@ fn resolve_arrow_decl_walk(
             subst.pop();
             result
         }
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             resolve_arrow_decl_walk(dag, *next, subst, depth + 1)
         }
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
@@ -1653,7 +1658,8 @@ fn resolve_binding_decl(
             .or_else(|| {
                 walk_to_type_shape(dag, current, subst, depth + 1).map(|ty| ty.declaration)
             }),
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             resolve_binding_decl(dag, *next, subst, depth + 1)
         }
         _ => walk_to_type_shape(dag, current, subst, depth + 1).map(|ty| ty.declaration),
@@ -1780,7 +1786,8 @@ fn bind_expected_decl_to_actual_context(
             };
             push_template_argument_binding(arguments, expected, value)
         }
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             bind_expected_decl_to_actual_context(dag, *next, actual, arguments, depth + 1)
         }
         TypeConnective::Instantiation {
@@ -1803,7 +1810,8 @@ fn bind_expected_decl_to_actual_context(
                         depth + 1,
                     );
                 }
-                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                     return bind_expected_decl_to_actual_context(
                         dag,
                         expected,
@@ -1877,7 +1885,8 @@ fn bind_expected_decl_to_actual_context(
                         depth + 1,
                     );
                 }
-                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                     return bind_expected_decl_to_actual_context(
                         dag,
                         expected,
@@ -2605,7 +2614,8 @@ fn walk_to_conj_decl_with_subst(
                 subst.push(arguments.clone());
                 current = *template;
             }
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
             TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
@@ -2638,7 +2648,8 @@ fn walk_to_disj_decl_with_subst(
                 subst.push(arguments.clone());
                 current = *template;
             }
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
             TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
@@ -2767,7 +2778,8 @@ pub(crate) fn concretize_decl_with_subst(
     }
     match decl.connective {
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst.lookup(current).unwrap_or(current),
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             concretize_decl_with_subst(dag, next, subst, depth + 1)
         }
         TypeConnective::Instantiation {
@@ -2853,7 +2865,9 @@ fn refinement_base_requires_substitution(
     subst: &SubstStack,
 ) -> bool {
     let decl = dag.declaration(current);
-    let TypeConnective::Atom(AtomPayload::ResolvedIdentifier(base)) = &decl.connective else {
+    let TypeConnective::Atom(AtomPayload::ResolvedByStructure(base) | AtomPayload::ResolvedByName(base)) =
+        &decl.connective
+    else {
         return false;
     };
     refinement_base_walk(dag, *base, subst, 0)
@@ -2871,7 +2885,8 @@ fn refinement_base_walk(
     let decl = dag.declaration(current);
     match &decl.connective {
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst.lookup(current).is_some(),
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             refinement_base_walk(dag, *next, subst, depth + 1)
         }
         TypeConnective::Instantiation { arguments, .. } => arguments
@@ -2921,7 +2936,9 @@ fn materialize_substituted_refined_decl(
             template_refined
         );
     };
-    let TypeConnective::Atom(AtomPayload::ResolvedIdentifier(template_base)) =
+    let TypeConnective::Atom(
+        AtomPayload::ResolvedByStructure(template_base) | AtomPayload::ResolvedByName(template_base),
+    ) =
         template_decl.connective
     else {
         // Caller also checks `refinement_base_requires_substitution`,
@@ -3064,7 +3081,9 @@ fn find_equivalent_substituted_refined_decl(
     subst: &SubstStack,
 ) -> Option<DeclarationId> {
     let template_decl = dag.declaration(template_refined);
-    let TypeConnective::Atom(AtomPayload::ResolvedIdentifier(template_base)) =
+    let TypeConnective::Atom(
+        AtomPayload::ResolvedByStructure(template_base) | AtomPayload::ResolvedByName(template_base),
+    ) =
         &template_decl.connective
     else {
         return None;
@@ -3085,7 +3104,9 @@ fn find_equivalent_substituted_refined_decl(
         if decl.id == template_refined {
             continue;
         }
-        let TypeConnective::Atom(AtomPayload::ResolvedIdentifier(cand_base)) = &decl.connective
+        let TypeConnective::Atom(
+            AtomPayload::ResolvedByStructure(cand_base) | AtomPayload::ResolvedByName(cand_base),
+        ) = &decl.connective
         else {
             continue;
         };
@@ -3615,7 +3636,8 @@ fn resolve_operator_arrow(
             TypeConnective::Instantiation { template, .. } => {
                 current = *template;
             }
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
             // Terminal non-follow cases — no algebra in this chain.
@@ -3669,7 +3691,8 @@ fn strip_refinement_to_base(dag: &Dag, decl_id: DeclarationId) -> DeclarationId 
             return current;
         }
         match &decl.connective {
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
             _ => return current,
@@ -3757,7 +3780,8 @@ fn substitute_receiver(
         return Some(TypeShape::new(current));
     }
     match &decl.connective {
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             substitute_receiver(dag, *next, receiver_param, source_id)
         }
         TypeConnective::Instantiation { template, .. } => {
@@ -3847,7 +3871,8 @@ fn resolve_arrow_walk(
             subst.pop();
             result
         }
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             resolve_arrow_walk(dag, *next, subst, depth + 1)
         }
         // Terminal non-Arrow cases. Each is unreachable in well-formed
@@ -3899,7 +3924,8 @@ fn walk_to_type_shape(
                 Some(TypeShape::new(current))
             }
         }
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             walk_to_type_shape(dag, *next, subst, depth + 1)
         }
         TypeConnective::Instantiation { .. } => {
@@ -3977,7 +4003,8 @@ fn signature_type_shape(
                 Some(TypeShape::new(current))
             }
         }
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             signature_type_shape(dag, *next, subst, depth + 1)
         }
         TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_)) => None,
@@ -4008,7 +4035,8 @@ fn resolve_decl_with_subst(
             .lookup(current)
             .and_then(|bound| resolve_decl_with_subst(dag, bound, subst, depth + 1))
             .or(Some(current)),
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             resolve_decl_with_subst(dag, *next, subst, depth + 1)
         }
         TypeConnective::Instantiation {
@@ -4095,7 +4123,8 @@ fn target_display_name(dag: &Dag, target: DeclarationId) -> String {
     }
     match &decl.connective {
         TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) => name.clone(),
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             target_display_name(dag, *next)
         }
         _ => format!("declaration#{}", target.raw()),
@@ -4155,10 +4184,12 @@ fn declaration_shapes_equivalent(
     let lhs_decl = dag.declaration(lhs);
     let rhs_decl = dag.declaration(rhs);
     match (&lhs_decl.connective, &rhs_decl.connective) {
-        (TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)), _) => {
+        (TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)), _) => {
             declaration_shapes_equivalent(dag, *next, rhs, depth + 1)
         }
-        (_, TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next))) => {
+        (_, TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next))) => {
             declaration_shapes_equivalent(dag, lhs, *next, depth + 1)
         }
         (

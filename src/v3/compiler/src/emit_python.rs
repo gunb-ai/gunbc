@@ -1408,7 +1408,8 @@ impl<'a> Ctx<'a> {
                     &[("element", &inner)],
                 ))
             }
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 self.python_type_name_for_decl_at_depth(*next, depth + 1)
             }
             _ => Err(EmitPythonError::MissingTypeRealization {
@@ -1713,7 +1714,8 @@ fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, 
         }
         match &decl.connective {
             TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
             _ => return Ok(current),
         }
     }
@@ -1732,7 +1734,8 @@ fn walk_to_disj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
                 ..
             } => return dag.optional_match_disj(current),
             TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
             _ => return None,
         }
     }
@@ -1780,7 +1783,8 @@ fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId
         match &dag.declaration(current).connective {
             TypeConnective::Conj { .. } => return Some(current),
             TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
             _ => return None,
         }
     }
