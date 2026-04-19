@@ -1,11 +1,25 @@
+//! Shared emit entrypoint and Stage 1e scaffolding.
+//!
+//! `emit.rs` is the single dispatch surface for all targets. Each
+//! `*_target.rs` sibling still contains one target-monolithic
+//! implementation body; the behavior-by-behavior lifts planned in α
+//! §10 Stages 1e.2–1e.4 will move logic out of those files into
+//! generic walker helpers here. Until that dissolution lands,
+//! target-private carriers stay inside their target module and no
+//! cross-target code should read them.
+
+pub(crate) mod python_target;
+pub(crate) mod rust_target;
+
 use std::collections::{HashMap, HashSet};
 
+use self::python_target::EmitPythonError;
+use self::rust_target::{EmitError, RealizationCategory, SubstrateMarkerRole};
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, CardinalityBound, DeclarationId,
     Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective, ValueBody,
 };
-use crate::emit_rust::{EmitError, RealizationCategory};
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
     variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
@@ -620,6 +634,8 @@ impl TargetExecutionModelBinding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmitTarget {
     Go,
+    Rust,
+    Python,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -635,11 +651,29 @@ pub struct EmittedSource {
     pub mode: EmitMode,
 }
 
-pub fn emit(dag: &Dag, target: EmitTarget) -> Result<EmittedSource, EmitError> {
+#[derive(Debug, Clone)]
+pub enum EmitDispatchError {
+    Core(EmitError),
+    Python(EmitPythonError),
+}
+
+impl From<EmitError> for EmitDispatchError {
+    fn from(value: EmitError) -> Self {
+        Self::Core(value)
+    }
+}
+
+impl From<EmitPythonError> for EmitDispatchError {
+    fn from(value: EmitPythonError) -> Self {
+        Self::Python(value)
+    }
+}
+
+pub fn emit(dag: &Dag, target: EmitTarget) -> Result<EmittedSource, EmitDispatchError> {
     emit_with_mode(dag, target, EmitMode::Program)
 }
 
-pub fn emit_module(dag: &Dag, target: EmitTarget) -> Result<EmittedSource, EmitError> {
+pub fn emit_module(dag: &Dag, target: EmitTarget) -> Result<EmittedSource, EmitDispatchError> {
     emit_with_mode(dag, target, EmitMode::Module)
 }
 
@@ -647,9 +681,15 @@ fn emit_with_mode(
     dag: &Dag,
     target: EmitTarget,
     mode: EmitMode,
-) -> Result<EmittedSource, EmitError> {
+) -> Result<EmittedSource, EmitDispatchError> {
     let text = match target {
-        EmitTarget::Go => emit_go_with_mode(dag, mode)?,
+        EmitTarget::Go => emit_go_with_mode(dag, mode).map_err(EmitDispatchError::Core)?,
+        EmitTarget::Rust => {
+            rust_target::emit_rust_with_mode(dag, mode).map_err(EmitDispatchError::Core)?
+        }
+        EmitTarget::Python => {
+            python_target::emit_python_with_mode(dag, mode).map_err(EmitDispatchError::Python)?
+        }
     };
     Ok(EmittedSource { text, target, mode })
 }
@@ -661,9 +701,9 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
             "emit_go requires a non-ownership execution model".to_string(),
         ));
     }
-    let main_marker = dag.main_marker().ok_or(EmitError::MissingSubstrateMarker(
-        crate::emit_rust::SubstrateMarkerRole::Main,
-    ))?;
+    let main_marker = dag
+        .main_marker()
+        .ok_or(EmitError::MissingSubstrateMarker(SubstrateMarkerRole::Main))?;
     let type_decls: Vec<_> = dag
         .declarations()
         .iter()

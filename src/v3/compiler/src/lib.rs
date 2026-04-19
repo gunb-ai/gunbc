@@ -169,7 +169,7 @@ pub(crate) mod workflow_parallelism;
 
 pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan};
-pub use emit::{EmitMode, EmitTarget, EmittedSource};
+pub use emit::{EmitDispatchError, EmitMode, EmitTarget, EmittedSource};
 pub use emit_rust::EmitError;
 /// Lane 2 Stage 2b — supported public surface: [`analyze_workflow`] is the primary
 /// entry; [`report_unsupported_workflow_variant`] and
@@ -396,9 +396,14 @@ pub fn compile_stage_snapshots(
 
     let infer_snapshot = lower_dag.clone();
     let infer_bytes = serialize::serialize_dag(&infer_snapshot);
-    let emitted = emit_rust::emit_rust(&lower_dag)
-        .map_err(Box::new)
-        .map_err(StageSnapshotError::Emit)?;
+    let emitted = emit::emit(&lower_dag, EmitTarget::Rust)
+        .map(|source| source.text)
+        .map_err(|error| match error {
+            emit::EmitDispatchError::Core(error) => StageSnapshotError::Emit(Box::new(error)),
+            emit::EmitDispatchError::Python(_) => {
+                unreachable!("EmitTarget::Rust cannot yield a Python emission error")
+            }
+        })?;
 
     let mut snapshots = Vec::with_capacity(pipeline.len());
     for stage in pipeline {
