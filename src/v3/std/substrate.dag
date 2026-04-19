@@ -40,7 +40,8 @@ type LiteralBits
 type AtomPayload
   = Literal(LiteralBits)
   | UnresolvedIdentifier(String)
-  | ResolvedIdentifier(DeclarationId)
+  | ResolvedByStructure(DeclarationId)
+  | ResolvedByName(DeclarationId)
   | TypeParam(String)
 
 // 🟢 TERMINAL. Cardinality bounds are structural substrate facts and
