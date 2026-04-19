@@ -132,6 +132,10 @@ fn read(point: Point) -> Int = point.c
         rendered.contains("FIX (option 1):"),
         "rendered diagnostic should show FIX lines, got {rendered}"
     );
+    assert!(
+        rendered.contains("\n    \"a\";"),
+        "rendered diagnostic should include pasteable .dag fix source, got {rendered}"
+    );
 }
 
 #[test]
