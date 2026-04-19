@@ -5,9 +5,11 @@
 //! implemented in [`crate::workflow_idempotency`]. Only [`analyze_workflow`] is
 //! exported at the crate root — composition helpers stay `pub(crate)` there.
 //!
-//! **Emit-and-run receipt:** `tests/m2_lens_idempotency_emit_test.rs` loads the
-//! `.dag` through `emit_rust_module` and asserts the emitted `analyze_workflow`
-//! matches this oracle on a `WorkflowEffect` fixture (class-5 gap closure).
+//! **Emit receipt:** `tests/m2_lens_idempotency_emit_test.rs` compiles this `.dag`
+//! and asserts `emit_rust_module` / `emit_go_module` / `emit_python_module`
+//! succeed with the expected surface (`analyze_workflow`, host read). A rustc
+//! link-and-run equivalence check against this re-export awaits emitter fixes for
+//! imported `std.effects` helpers (see that test module’s header).
 
 use crate::dag::{Dag, NodeId, WorkflowIdempotencyReport};
 

@@ -3,8 +3,8 @@
 // Reads `lane2_workflow` through the substrate accessor `lane2_workflow_at`
 // (reflected on `ValueNode` / `BindNode` in `v3.std.substrate`) and projects
 // through `std.effects::lane2_workflow_idempotency_report`. The Rust entry
-// `v3_compiler::analyze_workflow` re-exports the Rust oracle; CI proves the
-// emitted module matches it (`m2_lens_idempotency_emit_test`).
+// `v3_compiler::analyze_workflow` re-exports the Rust oracle; CI exercises lens
+// emission in `m2_lens_idempotency_emit_test` (Rust/Go/Python emit smoke).
 
 module lenses.idempotency
 
