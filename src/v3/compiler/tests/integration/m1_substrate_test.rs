@@ -2863,6 +2863,31 @@ fn bad(w: Wrapped) -> Int = match w { Wrap { inner: pair } => match pair { Pair 
     );
 }
 
+/// Regression for #565 / codex blocker: `VariantFields` duplicate-binding
+/// detection incorrectly used the full outer scope, so a legitimate
+/// shadow (fn parameter `x` + match-arm `Foo { x }` renaming a field
+/// to `x`) got rejected as a duplicate. Match arms must be allowed to
+/// shadow outer names exactly like `VariantWith { binding: x }` already does.
+#[test]
+fn prereq2_named_payload_pattern_shadows_outer_scope_binding() {
+    // `inner` is in outer scope (fn parameter). The match arm's
+    // `Wrap { inner: pair }` binds a new `pair` — not a shadow. But the
+    // bug fires whenever an outer name collides with ANY pattern binding,
+    // so introduce the conflict by also binding the field to `inner`:
+    // `Wrap { inner: inner }` is the shadow case the bug prevented.
+    let src = "\
+type Pair { inner: Int }
+type Wrapped = Wrap { inner: Pair } | Empty
+fn read(w: Wrapped, inner: Int) -> Int = match w { Wrap { inner: inner } => inner.inner, Empty => inner }
+";
+    let dag = cached_compile_to_dag(src, "named_payload_pattern_shadowing.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "named-payload match arm must shadow the outer `inner` binding, got {:?}",
+        dag.diagnostics()
+    );
+}
+
 #[test]
 fn recursion_accepts_structural_descent_on_recursive_payload_field() {
     let src = "\
