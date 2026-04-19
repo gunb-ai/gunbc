@@ -30,7 +30,9 @@ use crate::dag::{
     LoopNode, MemberDescent, NodeId, NonEmptyList, NonSingletonList, Path, PayloadBinding, PortId,
     TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
-use crate::diagnostics::{Diagnostic, SourceSpan};
+use crate::diagnostics::{
+    declaration_display_name, Diagnostic, SourceSpan, witness_correction_for_decl,
+};
 use crate::infer::{concretize_decl_with_subst, SubstStack};
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
 use crate::parse::{
@@ -3430,7 +3432,17 @@ fn lower_fn_item_expr_body(
                         "function `{name}` is recursive but has no parameters; cannot terminate"
                     ),
                     span: body_span.clone(),
-                    fixes: Vec::new(),
+                    fixes: witness_correction_for_decl(
+                        dag,
+                        return_decl_id,
+                        body_span.clone(),
+                        format!(
+                            "replace the recursive body of `{name}` with a `{}` base case",
+                            declaration_display_name(dag, return_decl_id)
+                        ),
+                    )
+                    .into_iter()
+                    .collect(),
                 },
             );
             (err_port, err_port)
@@ -3451,7 +3463,17 @@ fn lower_fn_item_expr_body(
                         param = &params[0].name,
                     ),
                     span: body_span.clone(),
-                fixes: Vec::new(),
+                    fixes: witness_correction_for_decl(
+                        dag,
+                        return_decl_id,
+                        body_span.clone(),
+                        format!(
+                            "replace the non-terminating body of `{name}` with a `{}` base case",
+                            declaration_display_name(dag, return_decl_id)
+                        ),
+                    )
+                    .into_iter()
+                    .collect(),
                 },
             );
             (err_port, err_port)
@@ -4494,22 +4516,61 @@ fn lower_expr(
                     }
                 }
                 let port = dag.alloc_port(None);
+                let fixes = expected_decl
+                    .and_then(|decl| {
+                        witness_correction_for_decl(
+                            dag,
+                            decl,
+                            span.clone(),
+                            format!(
+                                "replace unresolved name `{name}` with a `{}` value",
+                                declaration_display_name(dag, decl)
+                            ),
+                        )
+                    })
+                    .into_iter()
+                    .collect();
                 dag.mark_unresolved(
                     port,
                     Diagnostic::ResolveError {
                         name: name.clone(),
                         span: span.clone(),
-                        fixes: Vec::new(),
+                        fixes,
                     },
                 );
                 port
             }
         },
         SurfaceExpr::Call { target, args, span } => {
-            let base_target_decl = resolve_expected_variant_constructor(dag, expected_decl, target)
+            let Some(base_target_decl) = resolve_expected_variant_constructor(dag, expected_decl, target)
                 .or_else(|| callable_scope.get(target).copied())
                 .or_else(|| symbols.get(target).copied())
-                .unwrap_or_else(|| alloc_identifier_stub(dag, target, span));
+            else {
+                let port = dag.alloc_port(None);
+                let fixes = expected_decl
+                    .and_then(|decl| {
+                        witness_correction_for_decl(
+                            dag,
+                            decl,
+                            span.clone(),
+                            format!(
+                                "replace unresolved call `{target}` with a `{}` value",
+                                declaration_display_name(dag, decl)
+                            ),
+                        )
+                    })
+                    .into_iter()
+                    .collect();
+                dag.mark_unresolved(
+                    port,
+                    Diagnostic::ResolveError {
+                        name: target.clone(),
+                        span: span.clone(),
+                        fixes,
+                    },
+                );
+                return port;
+            };
             let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
             let mut input_ports: Vec<PortId> = Vec::new();
             let mut template_arguments: Vec<TemplateArgument> = Vec::new();

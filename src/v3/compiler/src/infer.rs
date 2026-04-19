@@ -29,7 +29,10 @@ use crate::dag::{
     LiteralBits, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective,
 };
-use crate::diagnostics::{Diagnostic, SourceSpan};
+use crate::diagnostics::{
+    declaration_display_name, example_source_for_decl, witness_correction_for_decl, Diagnostic,
+    SourceSpan, Correction,
+};
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
 use crate::types::TypeShape;
@@ -70,11 +73,22 @@ pub fn infer(dag: &mut Dag) {
                                 continue;
                             }
                             let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
+                            let fixes = witness_correction_for_decl(
+                                dag,
+                                existing.declaration,
+                                span.clone(),
+                                format!(
+                                    "replace this expression with a `{}` value",
+                                    declaration_display_name(dag, existing.declaration)
+                                ),
+                            )
+                            .into_iter()
+                            .collect();
                             let diag = Diagnostic::TypeMismatch {
                                 expected: existing,
                                 actual: ty,
                                 span,
-                                fixes: Vec::new(),
+                                fixes,
                             };
                             dag.mark_unresolved(port, diag);
                             changed = true;
@@ -474,6 +488,21 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
             .collect();
         if !missing.is_empty() {
             let missing_list = missing.join(", ");
+            let fixes = match dag.port(check.output_port).state() {
+                PortState::Resolved(output_ty) => missing
+                    .iter()
+                    .filter_map(|variant| {
+                        let body = example_source_for_decl(dag, output_ty.declaration)?;
+                        let insert_at = check.span.byte_end.saturating_sub(1);
+                        Some(Correction {
+                            description: format!("add a `{variant}` arm"),
+                            span: SourceSpan::new(check.span.file.clone(), insert_at, insert_at),
+                            new_source: format!(", {variant} => {body}"),
+                        })
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
             dag.mark_unresolved(
                 check.output_port,
                 Diagnostic::ResolveError {
@@ -481,7 +510,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                         "non-exhaustive match: missing arm(s) for variant(s) `{missing_list}` — every constructor of the scrutinee's sum type must be covered"
                     ),
                     span: check.span,
-                fixes: Vec::new(),
+                    fixes,
                 },
             );
             changed = true;
@@ -2439,7 +2468,17 @@ fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
                             .unwrap_or("<anonymous>")
                     ),
                     span: bind.span.clone(),
-                    fixes: Vec::new(),
+                    fixes: witness_correction_for_decl(
+                        dag,
+                        output,
+                        bind.span.clone(),
+                        format!(
+                            "replace the function body with a `{}` value",
+                            declaration_display_name(dag, output)
+                        ),
+                    )
+                    .into_iter()
+                    .collect(),
                 },
             });
             continue;
@@ -2516,7 +2555,17 @@ fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
                         .unwrap_or("<anonymous>")
                 ),
                 span: bind.span.clone(),
-                fixes: Vec::new(),
+                fixes: witness_correction_for_decl(
+                    dag,
+                    output,
+                    bind.span.clone(),
+                    format!(
+                        "replace the function body with a `{}` value",
+                        declaration_display_name(dag, output)
+                    ),
+                )
+                .into_iter()
+                .collect(),
             },
         });
     }
@@ -3472,13 +3521,26 @@ fn resolve_field_project(
             .find(|field| field.label == field_label)
             .map(|field| field.ty)
         else {
+            let field_start = t
+                .span
+                .byte_end
+                .saturating_sub(field_label.len() as u32);
+            let fixes = children
+                .iter()
+                .take(5)
+                .map(|field| Correction {
+                    description: format!("did you mean field `{}`?", field.label),
+                    span: SourceSpan::new(t.span.file.clone(), field_start, t.span.byte_end),
+                    new_source: field.label.clone(),
+                })
+                .collect();
             return FieldProjectResolution::Fail(Diagnostic::ResolveError {
                 name: format!(
                     "field `{field_label}` does not exist on `{}`",
                     target_display_name(dag, input_ty.declaration),
                 ),
                 span: t.span.clone(),
-                fixes: Vec::new(),
+                fixes,
             });
         };
         field_decl_id
