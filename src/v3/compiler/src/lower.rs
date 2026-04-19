@@ -4138,6 +4138,15 @@ fn specialize_decl_for_lowering(
         return current;
     }
     let decl = dag.declaration(current).clone();
+    // Stage 3b correction generation must see refinement-bearing
+    // declarations as refinement-bearing expectations, not their base
+    // carrier. Lowering does not have a substituted-refined
+    // materialization path here, so preserve the declared edge and let
+    // downstream consumers fail closed instead of specializing through
+    // to a base witness like `Int`.
+    if decl.refinement.is_some() {
+        return current;
+    }
     match decl.connective {
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => arguments
             .iter()
