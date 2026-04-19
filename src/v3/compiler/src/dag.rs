@@ -959,11 +959,14 @@ impl TransformRef {
     }
 }
 
-/// 🟢 **TERMINAL.** Bool-typed port witness — Track 9 parallel to [`ParamRef`] /
-/// [`TransformRef`]. The only Rust constructor is [`Dag::bool_port_of`], which
-/// checks the port resolves to `Bool`. The substrate field shape matches
-/// `src/v3/std/effects.dag`; direct `.dag` construction gains the same authority
-/// in the Lane 3c cycle (ROADMAP Track 9 debt).
+/// 🟢 **TERMINAL at current Track 9 scope.** Generic index witness parallel to
+/// [`ParamRef`] / [`TransformRef`]. The only Rust constructor is
+/// [`ElementRef::from_slice`], which validates the index against the slice in
+/// scope. The handle does not retain owner identity after construction, so
+/// read sites must still resolve it against the same authority list they
+/// validated it against. The substrate field shape matches
+/// `src/v3/std/substrate.dag`; direct `.dag` construction gains the same
+/// authority in the Lane 3c cycle (ROADMAP Track 9 debt).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ElementRef<T> {
     index: usize,
@@ -1153,12 +1156,14 @@ pub struct OperationEffect {
 /// 🟢 **TERMINAL at current Stage 2b scope.** Result of linear
 /// `compose_effects` — mirrors `CompositionVerdict` in `effects.dag`.
 /// `ElementRef<OperationEffect>` closes the "copied standalone breaker
-/// record" hole by tying the verdict back to the caller-owned workflow
-/// list, but it does not by itself prove the pointed operation is
-/// breaking. That subset fact is still established by
-/// `workflow_idempotency::compose_operation_effects` and tracked as the
-/// same constructor-validation asymmetry class as other reflected
-/// handles until the substrate grows a breaking-only witness.
+/// record" hole by replacing the copied payload with a validated index,
+/// but it does not by itself preserve the owner list identity or prove
+/// the pointed operation is breaking. Those facts are still established
+/// by `workflow_idempotency::compose_operation_effects` and by callers
+/// resolving against the matching workflow evidence chain, and are
+/// tracked as the same constructor-validation asymmetry class as other
+/// reflected handles until the substrate grows an owner-bound,
+/// breaking-only witness.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompositionVerdict {
     IdempotentComposition,

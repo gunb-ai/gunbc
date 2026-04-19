@@ -70,14 +70,15 @@
 // idempotent op in the breaker slot — enforced only by the
 // `compose_effects` filter. Partitioning EffectShape at the type
 // level dissolved that hole for carrier copies like
-// `BreakingOperation`, while `ElementRef<OperationEffect>` ties the
-// verdict back to the original evidence chain instead of copying
-// name/shape into a second carrier. Current trade-off: the handle only
-// proves "in-bounds element of the caller-owned list", not "this
-// element is breaking" at the type boundary. That subset fact is still
-// established behaviorally by `compose_effects` / `first_breaker_ref`,
-// and the remaining constructor-validation asymmetry is tracked as
-// Track 9 style debt until the substrate grows a breaking-only witness.
+// `BreakingOperation`, while `ElementRef<OperationEffect>` replaces the
+// copied payload with an index validated against a caller-owned evidence
+// list. Current trade-off: the handle only proves "in-bounds element of
+// some list the constructor saw", not "this exact owner list" and not
+// "this element is breaking" at the type boundary. Those facts are
+// still established behaviorally by `compose_effects` /
+// `first_breaker_ref`, and the remaining constructor-validation
+// asymmetry is tracked as Track 9 style debt until the substrate grows
+// an owner-bound, breaking-only witness.
 //
 // DESIGN PRINCIPLE:
 //   Idempotency is not a flag. It is a DERIVED PROPERTY of the
@@ -374,12 +375,13 @@ type OperationEffect {
 // The judgment space is therefore exactly two states: the workflow
 // converges, or some operation broke convergence. No third state.
 //
-// `first_breaker: ElementRef<OperationEffect>` is a carrier-relative
-// witness into the original workflow evidence chain. It closes the
-// "copied standalone breaker record" hole, but not the full subset
-// proof: `ElementRef` proves list membership, while "the pointed
-// operation is breaking" is still established by `compose_effects`
-// rather than by the handle type itself.
+// `first_breaker: ElementRef<OperationEffect>` is an index witness
+// validated against a caller-owned evidence list. It closes the
+// "copied standalone breaker record" hole, but not the full owner or
+// subset proof: `ElementRef` proves list membership for the list used
+// at construction time, while "the pointed operation is breaking" and
+// "the read site is resolving against the same authority list" are
+// still established behaviorally.
 type CompositionVerdict
   = IdempotentComposition
   | BrokenBy { first_breaker: ElementRef<OperationEffect> }
