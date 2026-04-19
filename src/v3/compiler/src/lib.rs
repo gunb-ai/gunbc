@@ -158,12 +158,14 @@ pub mod lens_structural_resolution {
 mod bootstrap;
 mod infer;
 pub mod lens_idempotency;
+pub mod lens_parallelism;
 mod lower;
 mod parse;
 mod pipeline_authority;
 mod tokenize;
 mod variant_payload;
 pub(crate) mod workflow_idempotency;
+pub(crate) mod workflow_parallelism;
 
 pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan};
@@ -178,6 +180,8 @@ pub use emit_rust::EmitError;
 /// `src/v3/std/effects.dag`, and the Rust bridge must not become a parallel
 /// public implementation surface beyond these std.effects mirrors.
 pub use lens_idempotency::analyze_workflow;
+/// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
+pub use lens_parallelism::analyze_parallelism;
 pub use workflow_idempotency::{
     lane2_workflow_idempotency_report, report_unsupported_workflow_variant,
 };

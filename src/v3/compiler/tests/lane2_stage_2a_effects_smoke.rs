@@ -103,6 +103,9 @@ fn effects_dag_exposes_core_effect_algebra_types() {
         "BoolPortRef",
         "BranchArm",
         "WorkflowIdempotencyReport",
+        "WorkflowParallelismReport",
+        "ParallelismUnsupportedKind",
+        "ParallelismUnsupportedDetail",
         "IdempotencyUnsupportedDetail",
     ] {
         assert_record_type(&dag, name);

@@ -185,30 +185,11 @@ Emits diagnostic for unexpected complexity (e.g., hidden O(n²) via captured lis
 
 **Escalation:** if recognition rules for O(n²) require solving arbitrary symbolic arithmetic, scope tighter — recognize the thesis doc's two patterns (nested fold, sort-before-commutative) and document what's not recognized. Don't build a full symbolic math library.
 
-### Stage 2e — Parallelism-as-lens (S)
+### Stage 2e — Parallelism-as-lens (DB-20 shipped; thesis graph slice still open)
 
-**Scope:** `thesis_parallelism_test.rs` already asserts structural parallelism via `has_transitive_dependency`. Stage 2e promotes that structural fact to a lens output users can see.
+**Delivered (DB-20):** [design-db20-lane2-stage2e-parallelism-lens.md](./design-db20-lane2-stage2e-parallelism-lens.md). The lens consumes `WorkflowEffect::ParallelEffect` from DB-18 and checks **pairwise commutativity** of `OperationEffect` values across concurrent linear branches, projecting through `CompositionVerdict` (no parallel verdict carrier). Facts are **derived** from existing op shapes and `KeySource`; **Upsert×Upsert** cross-branch pairs are **fail-closed** (no merge/value witness on `UpsertEffect`). Entry point: `v3_compiler::analyze_parallelism`; report: `WorkflowParallelismReport`; stub: `src/v3/lenses/parallelism.dag` (Rust authority until reflection + `match` on user sums land).
 
-New lens `src/v3/lenses/parallelism.dag`:
-```
-fn analyze_parallelism(d: Dag, workflow: NodeId) -> List<ParallelizationOpportunity>
-
-type ParallelizationOpportunity
-  = IndependentBindings(NodeId, NodeId)     // "a and b have no dep, run in parallel"
-  | MapPromotion(NodeId)                     // "this fold is actually a map"
-  | CommutativeReduction(NodeId, AlgebraRef) // "this fold reduces on a commutative monoid — tree-reducible"
-```
-
-Unignores `parallel_fold_on_commutative_monoid_is_reducible`.
-
-**Acceptance:**
-- Structural parallelism tests from `thesis_parallelism_test.rs` now emit a corresponding `ParallelizationOpportunity` entry in the lens's output
-- Commutative monoid fold produces `CommutativeReduction` entry
-- Lens output is **data, not a diagnostic**. Per INVARIANTS.md:410-417 there is no "info" severity. IDE tooling reads the lens output and may surface "this fold is parallelizable" as an inline hint; the compiler itself treats the output as structured data, not as a diagnostic
-
-**Severity discipline**: parallelism-as-lens output is DATA. Not a warning, not an info, not a diagnostic. Downstream tooling (IDE, docs generation, compile-time parallelization passes) consume it. If user code declares `where parallel_reducible` and the analysis disagrees, THAT declaration mismatch IS an error — but "this could be parallelized" on unconstrained code is just information the lens produces.
-
-**Escalation:** if commutative-monoid detection requires algebra-awareness the `.dag` compiler doesn't have yet (operator-on-declared-Monoid-instance lookup), surface. That primitive might live in algebra.dag; if it doesn't, it's a prerequisite.
+**Still open (thesis Stage 2e, not DB-20):** `thesis_parallelism_test.rs` structural parallelism (`has_transitive_dependency`), fold-on-commutative-monoid promotion, `parallel_fold_on_commutative_monoid_is_reducible`, and `ParallelizationOpportunity`-style **data** outputs — orthogonal to the workflow `ParallelEffect` carrier. **Tracker:** [ROADMAP.md](../ROADMAP.md) §Lane 2 Stage 2e — **Deferral: thesis graph-parallelism slice** (single authority; avoids orphaning this work after DB-20 narrowed the Stage 2e heading).
 
 ### Stage 2f — User-declared dimensions (S)
 
@@ -253,7 +234,7 @@ XL aggregate (six stages), overlaps Lane 1 starting after 1b. Per-stage sizes:
 - 2b: L
 - 2c: M
 - 2d: M
-- 2e: S
+- 2e: split — DB-20 workflow slice S; **thesis graph-parallelism deferral** (see ROADMAP) additional S–M
 - 2f: S
 
 Some internal parallelism possible if 2+ implementers.

@@ -237,6 +237,12 @@ fn last_path_param(template: PathTemplate) -> String? {
 // here form either an identity (ReadEffect) or a lattice meet on
 // their target state (UpsertEffect / DeleteEffect); repeat application
 // converges.
+//
+// DB-20 note: `UpsertEffect` records key provenance only (retry/idempotency
+// story). Lane 2 Stage 2e **parallel** scheduling does **not** treat
+// Upsert×Upsert as commuting on that key alone — concurrent-write commutativity
+// needs a value/merge witness not modeled here (fail-closed in
+// `workflow_parallelism` until the algebra grows one).
 type IdempotentShape
   = ReadEffect
   | UpsertEffect { key_source: KeySource }
@@ -508,6 +514,38 @@ fn report_unsupported_workflow_variant(
   })
 }
 
+// 🟢 TERMINAL. Stage 2e unsupported classes — distinct from Stage 2b
+// `IdempotencyUnsupportedDetail.variant_name` (unsupported *workflow* variant label).
+type ParallelismUnsupportedKind
+  = NoWorkflowProjection
+  | NotParallelEffectRoot
+  | NonLinearParallelBranch
+  | PairwiseNonCommute
+  | LensSurfacePending
+
+type ParallelismUnsupportedDetail {
+  kind: ParallelismUnsupportedKind
+  downstream_stage: String
+  reason: String
+}
+
+// 🟢 TERMINAL. Lane 2 Stage 2e (DB-20) — parallel branch composition safety.
+// Projects through `CompositionVerdict` only; unsupported paths stay explicit.
+type WorkflowParallelismReport
+  = ParallelCompositionVerdict(CompositionVerdict)
+  | ParallelismUnsupported(ParallelismUnsupportedDetail)
+
+fn report_parallelism_unsupported(
+  kind: ParallelismUnsupportedKind,
+  reason: String
+) -> WorkflowParallelismReport {
+  ParallelismUnsupported(ParallelismUnsupportedDetail {
+    kind: kind,
+    downstream_stage: "lane2_stage2e_parallelism_lens",
+    reason: reason
+  })
+}
+
 // Stage 2b projection: `LinearEffect` delegates to `compose_effects`; other
 // shapes are explicit unsupported until downstream stages consume them.
 fn lane2_workflow_idempotency_report(wf: WorkflowEffect) -> WorkflowIdempotencyReport {
@@ -536,6 +574,8 @@ fn lane2_workflow_idempotency_report(wf: WorkflowEffect) -> WorkflowIdempotencyR
 
 // `analyze_workflow` lives in `src/v3/lenses/idempotency.dag` (Lane 2 Stage 2b
 // lens) — not here — so the name does not duplicate across bootstrap modules.
+// `analyze_parallelism` — same split: stub in `src/v3/lenses/parallelism.dag`,
+// Rust authority `v3_compiler::analyze_parallelism`.
 
 // ── Effect derivation from transport facts ──────────────────────
 //
