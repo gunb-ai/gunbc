@@ -335,7 +335,6 @@ fn sg0_generated_partition_is_producer_owned() {
 
 #[test]
 fn sg0_every_generated_file_is_present_on_disk() {
-<<<<<<< HEAD
     // The manifest is the authority for "which files are generated";
     // it must stay in lockstep with what producers actually write.
     // If a manifest entry points at a missing file, either the
@@ -343,8 +342,6 @@ fn sg0_every_generated_file_is_present_on_disk() {
     // regen) or the file was deleted without updating build.rs.
     // Either way the census would silently shrink and this ratchet
     // would be unsound — fail loud here.
-=======
->>>>>>> 2bc514d78 (SG-0: track generated files via manifest)
     let ws = workspace_root();
     let mut missing: Vec<&str> = Vec::new();
     for rel in GENERATED_FILES {
@@ -355,12 +352,8 @@ fn sg0_every_generated_file_is_present_on_disk() {
     assert!(
         missing.is_empty(),
         "GENERATED_FILES references paths not present on disk: {missing:?} — \
-<<<<<<< HEAD
          the producer (a regen_* binary or build.rs entry) did not write them. \
          Update REGEN_OUTPUTS in src/v3/compiler/build.rs, or run the relevant \
-=======
-         update REGEN_OUTPUTS in src/v3/compiler/build.rs, or run the relevant \
->>>>>>> 2bc514d78 (SG-0: track generated files via manifest)
          regen driver to populate the committed output."
     );
 }
