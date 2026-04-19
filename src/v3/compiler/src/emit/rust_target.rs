@@ -5633,7 +5633,9 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
                     "unexpected detail: {detail}"
                 );
             }
-            other => panic!("expected MalformedRealization for non-variant empty_variant, got {other:?}"),
+            other => {
+                panic!("expected MalformedRealization for non-variant empty_variant, got {other:?}")
+            }
         }
     }
 
@@ -5672,7 +5674,9 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
                     "unexpected detail: {detail}"
                 );
             }
-            other => panic!("expected MalformedRealization for non-variant cons_variant, got {other:?}"),
+            other => {
+                panic!("expected MalformedRealization for non-variant cons_variant, got {other:?}")
+            }
         }
     }
 
