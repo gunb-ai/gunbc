@@ -55,8 +55,8 @@
 use std::collections::HashMap;
 
 use crate::dag::{
-    AtomPayload, CardinalityBound, Dag, DeclarationId, Field, FieldValue, PortId, TypeConnective,
-    ValueBody,
+    AtomPayload, CardinalityBound, Dag, DeclarationId, Field, FieldValue, PortId,
+    TypeConnective, ValueBody,
 };
 use crate::types::TypeShape;
 
@@ -404,23 +404,16 @@ fn example_source_for_decl_inner(
     if depth >= 8 {
         return None;
     }
-    let decl = dag.declaration(declaration);
-    match decl.name.as_deref() {
-        Some("Int") => return Some("1".to_string()),
-        Some("Bool") => return Some("true".to_string()),
-        Some("String") => return Some("\"x\"".to_string()),
-        Some("List") => return Some("[]".to_string()),
-        _ => {}
+    if let Some(example) = builtin_example_source(dag, declaration, depth) {
+        return Some(example);
     }
+    let decl = dag.declaration(declaration);
     match &decl.connective {
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             example_source_for_decl_inner(dag, *next, depth + 1)
         }
         TypeConnective::Instantiation { template, .. } => {
-            if dag.declaration(*template).name.as_deref() == Some("List") {
-                return Some("[]".to_string());
-            }
             example_source_for_decl_inner(dag, *template, depth + 1)
         }
         TypeConnective::Conj { children } => {
@@ -445,6 +438,66 @@ fn example_source_for_decl_inner(
         } => Some("None".to_string()),
         _ => None,
     }
+}
+
+fn builtin_example_source(dag: &Dag, declaration: DeclarationId, depth: usize) -> Option<String> {
+    if dag
+        .int_shape()
+        .is_some_and(|shape| decl_matches_example_identity(dag, declaration, shape.declaration, depth))
+    {
+        return Some("1".to_string());
+    }
+    if dag
+        .bool_shape()
+        .is_some_and(|shape| decl_matches_example_identity(dag, declaration, shape.declaration, depth))
+    {
+        return Some("true".to_string());
+    }
+    if dag
+        .string_shape()
+        .is_some_and(|shape| decl_matches_example_identity(dag, declaration, shape.declaration, depth))
+    {
+        return Some("\"x\"".to_string());
+    }
+    if dag
+        .list_template()
+        .is_some_and(|list_template| {
+            decl_matches_example_identity(dag, declaration, list_template, depth)
+        })
+    {
+        return Some("[]".to_string());
+    }
+    None
+}
+
+fn canonical_decl_for_example(
+    dag: &Dag,
+    declaration: DeclarationId,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= 8 {
+        return None;
+    }
+    match &dag.declaration(declaration).connective {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            canonical_decl_for_example(dag, *next, depth + 1)
+        }
+        TypeConnective::Instantiation { template, .. } => {
+            canonical_decl_for_example(dag, *template, depth + 1)
+        }
+        _ => Some(declaration),
+    }
+}
+
+fn decl_matches_example_identity(
+    dag: &Dag,
+    actual: DeclarationId,
+    expected: DeclarationId,
+    depth: usize,
+) -> bool {
+    canonical_decl_for_example(dag, actual, depth)
+        == canonical_decl_for_example(dag, expected, depth)
 }
 
 fn render_variant_witness(dag: &Dag, variant: &Field, depth: usize) -> Option<String> {
@@ -596,6 +649,48 @@ mod tests {
             dag.python_language_spec().expect("python language"),
             dag.python_clean_emission_spec()
                 .expect("python clean emission"),
+        );
+    }
+
+    #[test]
+    fn example_source_for_decl_uses_cached_structural_identities_not_std_names() {
+        let mut dag = Dag::new();
+        let int_decl = dag.int_shape().expect("int shape").declaration;
+        let bool_decl = dag.bool_shape().expect("bool shape").declaration;
+        let string_decl = dag.string_shape().expect("string shape").declaration;
+        let list_decl = dag.list_template().expect("list template");
+
+        dag.declaration_mut(int_decl).name = Some("WholeNumber".to_string());
+        dag.declaration_mut(bool_decl).name = Some("TruthValue".to_string());
+        dag.declaration_mut(string_decl).name = Some("Text".to_string());
+        dag.declaration_mut(list_decl).name = Some("Sequence".to_string());
+
+        let list_instantiation = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: list_instantiation,
+            name: Some("SequenceOfInt".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: list_decl,
+                arguments: Vec::new(),
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("diagnostics_test.v3", 0, 1),
+        });
+
+        assert_eq!(example_source_for_decl(&dag, int_decl).as_deref(), Some("1"));
+        assert_eq!(example_source_for_decl(&dag, bool_decl).as_deref(), Some("true"));
+        assert_eq!(
+            example_source_for_decl(&dag, string_decl).as_deref(),
+            Some("\"x\"")
+        );
+        assert_eq!(example_source_for_decl(&dag, list_decl).as_deref(), Some("[]"));
+        assert_eq!(
+            example_source_for_decl(&dag, list_instantiation).as_deref(),
+            Some("[]")
         );
     }
 
