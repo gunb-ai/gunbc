@@ -189,7 +189,7 @@ Emits diagnostic for unexpected complexity (e.g., hidden O(n²) via captured lis
 
 **Delivered (DB-20):** [design-db20-lane2-stage2e-parallelism-lens.md](./design-db20-lane2-stage2e-parallelism-lens.md). The lens consumes `WorkflowEffect::ParallelEffect` from DB-18 and checks **pairwise commutativity** of `OperationEffect` values across concurrent linear branches, projecting through `CompositionVerdict` (no parallel verdict carrier). Commutativity is **derived** from existing op shapes and `KeySource` (DB-18 §Open question 1 path (b)). Entry point: `v3_compiler::analyze_parallelism`; report: `WorkflowParallelismReport`; stub: `src/v3/lenses/parallelism.dag` (Rust authority until reflection + `match` on user sums land).
 
-**Still open (thesis Stage 2e, not DB-20):** `thesis_parallelism_test.rs` structural parallelism (`has_transitive_dependency`), fold-on-commutative-monoid promotion, `parallel_fold_on_commutative_monoid_is_reducible`, and `ParallelizationOpportunity`-style **data** outputs — orthogonal to the workflow `ParallelEffect` carrier. **Stage 2e as a whole** is not complete until this slice lands; ROADMAP §Lane 2 Stage 2e names the split explicitly.
+**Still open (thesis Stage 2e, not DB-20):** `thesis_parallelism_test.rs` structural parallelism (`has_transitive_dependency`), fold-on-commutative-monoid promotion, `parallel_fold_on_commutative_monoid_is_reducible`, and `ParallelizationOpportunity`-style **data** outputs — orthogonal to the workflow `ParallelEffect` carrier. **Tracker:** [ROADMAP.md](../ROADMAP.md) §Lane 2 Stage 2e — **Deferral: thesis graph-parallelism slice** (single authority; avoids orphaning this work after DB-20 narrowed the Stage 2e heading).
 
 ### Stage 2f — User-declared dimensions (S)
 
@@ -234,7 +234,7 @@ XL aggregate (six stages), overlaps Lane 1 starting after 1b. Per-stage sizes:
 - 2b: L
 - 2c: M
 - 2d: M
-- 2e: S
+- 2e: split — DB-20 workflow slice S; **thesis graph-parallelism deferral** (see ROADMAP) additional S–M
 - 2f: S
 
 Some internal parallelism possible if 2+ implementers.
