@@ -21,12 +21,6 @@ pub fn check(p0: &Dag) -> Vec<UnresolvedArrowBody> {
         })
 }
 pub fn check_declaration(p0: &Declaration) -> Vec<UnresolvedArrowBody> {
-    match &((p0).name) {
-        None => Vec::new(),
-        Some(name_str) => check_named_connective(p0, (name_str).clone()),
-    }
-}
-pub fn check_named_connective(p0: &Declaration, p1: String) -> Vec<UnresolvedArrowBody> {
     match &((p0).connective) {
         TypeConnective::Atom(_) => Vec::new(),
         TypeConnective::Conj { children: _ } => Vec::new(),
@@ -35,7 +29,7 @@ pub fn check_named_connective(p0: &Declaration, p1: String) -> Vec<UnresolvedArr
             inputs: __a_inputs,
             output: __a_output,
             body: __a_body,
-        } => check_arrow_body(p0, (p1).clone(), __a_body),
+        } => check_arrow_body(p0, __a_body),
         TypeConnective::Cardinality {
             element: _,
             bound: _,
@@ -46,23 +40,29 @@ pub fn check_named_connective(p0: &Declaration, p1: String) -> Vec<UnresolvedArr
         } => Vec::new(),
     }
 }
-pub fn check_arrow_body(p0: &Declaration, p1: String, p2: &ArrowBody) -> Vec<UnresolvedArrowBody> {
-    match p2 {
+pub fn check_arrow_body(p0: &Declaration, p1: &ArrowBody) -> Vec<UnresolvedArrowBody> {
+    match p1 {
         ArrowBody::UserDefined(_) => Vec::new(),
         ArrowBody::ExternalRealization(_) => Vec::new(),
-        ArrowBody::Pending => singleton_violation(p0, (p1).clone()),
+        ArrowBody::Pending => singleton_violation(p0),
         ArrowBody::NoBody => Vec::new(),
         ArrowBody::Unparsed(_) => Vec::new(),
     }
 }
-pub fn singleton_violation(p0: &Declaration, p1: String) -> Vec<UnresolvedArrowBody> {
+pub fn declaration_name(p0: &Declaration) -> String {
+    match &((p0).name) {
+        Some(name_str) => (name_str).clone(),
+        None => String::from("<anonymous>"),
+    }
+}
+pub fn singleton_violation(p0: &Declaration) -> Vec<UnresolvedArrowBody> {
     {
         let mut __list = Vec::new();
         __list.insert(
             0,
             UnresolvedArrowBody {
                 declaration: (p0).id,
-                name: (p1).clone(),
+                name: declaration_name(p0),
                 span: ((p0).span).clone(),
             },
         );

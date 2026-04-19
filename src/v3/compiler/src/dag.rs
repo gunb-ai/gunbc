@@ -1322,6 +1322,8 @@ impl DegreeAtLeastTwo {
     }
 }
 
+type BoxedSymbolicCostList = NonSingletonList<Box<SymbolicCost>>;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolicCost {
     ConstantCost {
@@ -1335,10 +1337,10 @@ pub enum SymbolicCost {
         degree: DegreeAtLeastTwo,
     },
     ProductCost {
-        _0: Box<NonSingletonList<SymbolicCost>>,
+        _0: BoxedSymbolicCostList,
     },
     SumCost {
-        _0: Box<NonSingletonList<SymbolicCost>>,
+        _0: BoxedSymbolicCostList,
     },
     LogCost {
         _0: SizeVariable,
@@ -1384,21 +1386,13 @@ pub struct SizeVariable {
 
 pub fn sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
     normalize(SymbolicCost::SumCost {
-        _0: Box::new(NonSingletonList {
-            first: a,
-            second: b,
-            rest: Vec::new(),
-        }),
+        _0: boxed_cost_list_pair(a, b),
     })
 }
 
 pub fn iterate(bound: SymbolicCost, body: SymbolicCost) -> SymbolicCost {
     normalize(SymbolicCost::ProductCost {
-        _0: Box::new(NonSingletonList {
-            first: bound,
-            second: body,
-            rest: Vec::new(),
-        }),
+        _0: boxed_cost_list_pair(bound, body),
     })
 }
 
@@ -1427,10 +1421,24 @@ pub fn max_path(paths: &[SymbolicCost]) -> SymbolicCost {
 
 pub fn normalize(cost: SymbolicCost) -> SymbolicCost {
     match cost {
-        SymbolicCost::SumCost { _0: terms } => reduce_sum(drop_zero_terms(terms.to_vec())),
-        SymbolicCost::ProductCost { _0: terms } => reduce_product(drop_zero_terms(terms.to_vec())),
+        SymbolicCost::SumCost { _0: terms } => reduce_sum(drop_zero_terms(boxed_terms_to_vec(&terms))),
+        SymbolicCost::ProductCost { _0: terms } => {
+            reduce_product(drop_zero_terms(boxed_terms_to_vec(&terms)))
+        }
         other => other,
     }
+}
+
+fn boxed_cost_list_pair(a: SymbolicCost, b: SymbolicCost) -> BoxedSymbolicCostList {
+    BoxedSymbolicCostList {
+        first: Box::new(a),
+        second: Box::new(b),
+        rest: Vec::new(),
+    }
+}
+
+fn boxed_terms_to_vec(terms: &BoxedSymbolicCostList) -> Vec<SymbolicCost> {
+    terms.iter().map(|term| term.as_ref().clone()).collect()
 }
 
 fn drop_zero_terms(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
@@ -1446,7 +1454,7 @@ fn reduce_sum(mut terms: Vec<SymbolicCost>) -> SymbolicCost {
         0 => SymbolicCost::ConstantCost { _0: 0 },
         1 => terms.into_iter().next().unwrap(),
         _ => SymbolicCost::SumCost {
-            _0: Box::new(NonSingletonList::from_vec(terms).unwrap()),
+            _0: boxed_cost_list_from_vec(terms),
         },
     }
 }
@@ -1462,9 +1470,13 @@ fn reduce_product(terms: Vec<SymbolicCost>) -> SymbolicCost {
             combine_binary_product(a, b)
         }
         _ => SymbolicCost::ProductCost {
-            _0: Box::new(NonSingletonList::from_vec(terms).unwrap()),
+            _0: boxed_cost_list_from_vec(terms),
         },
     }
+}
+
+fn boxed_cost_list_from_vec(terms: Vec<SymbolicCost>) -> BoxedSymbolicCostList {
+    NonSingletonList::from_vec(terms.into_iter().map(Box::new).collect()).unwrap()
 }
 
 fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
@@ -1477,11 +1489,7 @@ fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
         }
     }
     SymbolicCost::ProductCost {
-        _0: Box::new(NonSingletonList {
-            first: a,
-            second: b,
-            rest: Vec::new(),
-        }),
+        _0: boxed_cost_list_pair(a, b),
     }
 }
 
@@ -1536,7 +1544,7 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
         // inspecting terms, so e.g. `Product([Log(n)])` incorrectly
         // dominated `Linear(n)`.
         SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => {
-            terms.iter().any(|child| dominates(child, b))
+            terms.iter().any(|child| dominates(child.as_ref(), b))
         }
     }
 }
