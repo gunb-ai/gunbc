@@ -2876,9 +2876,7 @@ fn list_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<Declarat
             arguments,
         } if *template == list_id && arguments.len() == 1 => Some(arguments[0].value),
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
-            list_element_type(dag, *next)
-        }
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => list_element_type(dag, *next),
         _ => None,
     }
 }
@@ -2938,14 +2936,16 @@ fn declaration_ref_types_equivalent(
     let lhs_decl = dag.declaration(lhs);
     let rhs_decl = dag.declaration(rhs);
     match (&lhs_decl.connective, &rhs_decl.connective) {
-        (TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)), _) => {
-            declaration_ref_types_equivalent(dag, *next, rhs, depth + 1)
-        }
-        (_, TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next))) => {
-            declaration_ref_types_equivalent(dag, lhs, *next, depth + 1)
-        }
+        (
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)),
+            _,
+        ) => declaration_ref_types_equivalent(dag, *next, rhs, depth + 1),
+        (
+            _,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)),
+        ) => declaration_ref_types_equivalent(dag, lhs, *next, depth + 1),
         (
             TypeConnective::Instantiation {
                 template,

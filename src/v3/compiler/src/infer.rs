@@ -2865,8 +2865,9 @@ fn refinement_base_requires_substitution(
     subst: &SubstStack,
 ) -> bool {
     let decl = dag.declaration(current);
-    let TypeConnective::Atom(AtomPayload::ResolvedByStructure(base) | AtomPayload::ResolvedByName(base)) =
-        &decl.connective
+    let TypeConnective::Atom(
+        AtomPayload::ResolvedByStructure(base) | AtomPayload::ResolvedByName(base),
+    ) = &decl.connective
     else {
         return false;
     };
@@ -2937,9 +2938,9 @@ fn materialize_substituted_refined_decl(
         );
     };
     let TypeConnective::Atom(
-        AtomPayload::ResolvedByStructure(template_base) | AtomPayload::ResolvedByName(template_base),
-    ) =
-        template_decl.connective
+        AtomPayload::ResolvedByStructure(template_base)
+        | AtomPayload::ResolvedByName(template_base),
+    ) = template_decl.connective
     else {
         // Caller also checks `refinement_base_requires_substitution`,
         // whose first step returns false for any connective other than
@@ -3082,9 +3083,9 @@ fn find_equivalent_substituted_refined_decl(
 ) -> Option<DeclarationId> {
     let template_decl = dag.declaration(template_refined);
     let TypeConnective::Atom(
-        AtomPayload::ResolvedByStructure(template_base) | AtomPayload::ResolvedByName(template_base),
-    ) =
-        &template_decl.connective
+        AtomPayload::ResolvedByStructure(template_base)
+        | AtomPayload::ResolvedByName(template_base),
+    ) = &template_decl.connective
     else {
         return None;
     };
@@ -4184,14 +4185,16 @@ fn declaration_shapes_equivalent(
     let lhs_decl = dag.declaration(lhs);
     let rhs_decl = dag.declaration(rhs);
     match (&lhs_decl.connective, &rhs_decl.connective) {
-        (TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)), _) => {
-            declaration_shapes_equivalent(dag, *next, rhs, depth + 1)
-        }
-        (_, TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next))) => {
-            declaration_shapes_equivalent(dag, lhs, *next, depth + 1)
-        }
+        (
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)),
+            _,
+        ) => declaration_shapes_equivalent(dag, *next, rhs, depth + 1),
+        (
+            _,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)),
+        ) => declaration_shapes_equivalent(dag, lhs, *next, depth + 1),
         (
             TypeConnective::Instantiation {
                 template: lhs_template,
