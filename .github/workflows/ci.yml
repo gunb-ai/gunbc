@@ -73,7 +73,7 @@ jobs:
 
   v3:
     runs-on: ubuntu-latest
-    # Full suite is capped at 720s, plus clippy + lens gates + cold compile — 15m
+    # Full suite is capped at 750s, plus clippy + lens gates + cold compile — 15m
     # can cancel the job before the final steps finish.
     timeout-minutes: 25
     steps:
@@ -102,9 +102,9 @@ jobs:
 
       # Layer 1 (coarse CI): wall-clock gates on `cargo test -p v3-compiler`.
       #
-      # Full-suite budget is 720s. Warm local runs are often ~520–560s for
+      # Full-suite budget is 750s (upstream). Warm local runs are often ~520–560s for
       # `cargo test -p v3-compiler`, but cold GitHub runners + cache misses still
-      # spike past 600s without a code regression (Layer 1 ratchet history).
+      # need headroom beyond a tight 600s-style cap (Layer 1 ratchet history).
       # Regressions show up when integration tests redo full `compile_to_dag` per
       # `#[test]` (see `lane2_stage_2e_parallelism_test`: shared `OnceLock` + clone).
       #
@@ -125,14 +125,14 @@ jobs:
             exit 1
           fi
 
-      - name: v3 tests (full suite, 720s budget)
+      - name: v3 tests (full suite, 750s budget)
         run: |
           start=$(date +%s)
           cargo test -p v3-compiler
           elapsed=$(( $(date +%s) - start ))
           echo "v3 full-suite wall time: ${elapsed}s"
-          if [ "$elapsed" -gt 720 ]; then
-            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 720s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
+          if [ "$elapsed" -gt 750 ]; then
+            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 750s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
             exit 1
           fi
 

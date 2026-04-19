@@ -2,8 +2,17 @@
 
 # Emitter function inventory (Stage 1d)
 
-**Scope:** Every `fn render_*` and `fn emit_*` in the three v3 emitters  
+**Scope:** Stage 1d's audit snapshot over every `fn render_*` and
+`fn emit_*` in the three hand-written emission paths that existed when
+the build plan was locked:
 `src/v3/compiler/src/emit_rust.rs`, `emit_go.rs`, `emit_python.rs`.
+
+**Live-state note:** the Go implementation now lives under
+`src/v3/compiler/src/emit.rs` behind the shared entrypoint, and
+`emit_go.rs` is a thin adapter. The Go classifications below still
+apply to that moved body verbatim; this document keeps the original
+audit labels because Stage 1d's question was "what code must
+consolidate?", not "which file currently hosts it?"
 
 **Verification (line counts must match this doc):**
 
