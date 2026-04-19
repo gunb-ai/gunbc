@@ -150,7 +150,9 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
             continue;
         };
         if let Some(path) = module_path_for(&module) {
-            module_files.entry(path).or_insert_with(|| (*file).to_string());
+            module_files
+                .entry(path)
+                .or_insert_with(|| (*file).to_string());
         }
         let (_stale_symbols, is_first) = collect_symbols_phase(dag, &module.items);
         parsed.push((module, is_first));

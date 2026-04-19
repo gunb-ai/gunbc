@@ -198,8 +198,13 @@ fn main() {
     let compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
     let extdeps_entries = collect_dag_entries_recursive(&extdeps_dir, &[]);
     let gunbc_entries = collect_dag_entries_recursive(&gunbc_dir, &[]);
-    let staged_generated =
-        generate_static("STAGED_FILES", "src/v3/std", "src/v3/std", &std_dir, &staged_entries);
+    let staged_generated = generate_static(
+        "STAGED_FILES",
+        "src/v3/std",
+        "src/v3/std",
+        &std_dir,
+        &staged_entries,
+    );
     let specs_generated = generate_static(
         "V3_SPECS",
         "src/v3/spec",
@@ -221,8 +226,13 @@ fn main() {
         &extdeps_dir,
         &extdeps_entries,
     );
-    let gunbc_generated =
-        generate_static("GUNBC_FILES", "dsl/gunbc", "dsl/gunbc", &gunbc_dir, &gunbc_entries);
+    let gunbc_generated = generate_static(
+        "GUNBC_FILES",
+        "dsl/gunbc",
+        "dsl/gunbc",
+        &gunbc_dir,
+        &gunbc_entries,
+    );
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR must be set by Cargo");
     let out_dir = Path::new(&out_dir);
