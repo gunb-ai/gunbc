@@ -946,17 +946,17 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
             }
         }
         ArrowBody::Pending | ArrowBody::NoBody => {
-            // Both shapes mean "no executable body to walk." `Pending`
-            // is the bootstrap/anonymous "no body needed" scaffold (see
-            // the `ArrowBody` ledger in `dag.rs`); `NoBody` is the
-            // terminal "no body by construction" form used by named
-            // type aliases (`type Callback = fn(Int) -> Int`).
-            // `decide_transform` treats them identically: signature
-            // inhabitance accepts; body walking is skipped. The variant
-            // distinction exists so `lens_structural_resolution` can
-            // single out the one shape (`Arrow { name: Some(_), body:
-            // Pending }`) that indicates an R13-class regression in
-            // body patching.
+            // Both shapes mean "no executable body to walk."
+            // `Pending` is reserved for executable-fn declarations
+            // whose body still must be patched in; `NoBody` is the
+            // terminal "no body by construction" form used by arrow
+            // types, synthesized signatures, and other non-executable
+            // carriers. `decide_transform` treats them identically:
+            // signature inhabitance accepts; body walking is skipped.
+            // The variant distinction exists so
+            // `lens_structural_resolution` can treat any surviving
+            // `Arrow(Pending)` in the final Dag as an R13-class body-
+            // patching regression.
         }
         ArrowBody::Unparsed(_) => {
             // Surface-grammar scaffold: signature type-checks,
@@ -3669,7 +3669,10 @@ fn resolve_operator_arrow(
     Some(ResolvedArrow {
         inputs,
         output,
-        body: ArrowBody::Pending,
+        // Operator fallback synthesizes a signature but never an
+        // executable body. Keep the transient carrier aligned with the
+        // declaration-side "no body by construction" invariant.
+        body: ArrowBody::NoBody,
     })
 }
 
