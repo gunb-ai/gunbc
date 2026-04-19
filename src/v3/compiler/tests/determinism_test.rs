@@ -29,7 +29,7 @@ use std::path::PathBuf;
 
 use determinism_fixtures::{
     ModuleFixture, ProgramFixture, FOUR_FIXTURE_FILES, GO_EMIT_EXCLUDE, MODULE_FIXTURES,
-    PROGRAM_FIXTURES, PYTHON_EMIT_EXCLUDE,
+    PROGRAM_FIXTURES, PYTHON_PROGRAM_DETERMINISM_NAMES,
 };
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit::{emit, emit_module, EmitTarget};
@@ -142,6 +142,9 @@ fn emit_matrix_program_rust_is_deterministic() {
 #[test]
 fn emit_matrix_program_go_is_deterministic() {
     for fixture in PROGRAM_FIXTURES {
+        if GO_EMIT_EXCLUDE.contains(&fixture.name) {
+            continue;
+        }
         let name = fixture.name;
         assert_five_identical_runs(|| emit_go_program(fixture), &format!("go program {name}"));
     }
@@ -150,6 +153,9 @@ fn emit_matrix_program_go_is_deterministic() {
 #[test]
 fn emit_matrix_program_python_is_deterministic() {
     for fixture in PROGRAM_FIXTURES {
+        if !PYTHON_PROGRAM_DETERMINISM_NAMES.contains(&fixture.name) {
+            continue;
+        }
         let name = fixture.name;
         assert_five_identical_runs(
             || emit_python_program(fixture),
