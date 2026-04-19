@@ -481,6 +481,12 @@ impl<'a> TestgenLens<'a> {
             let Some(name) = &decl.name else {
                 continue;
             };
+            // DB-18 R2: `BoolPortRef` / `BranchArm` carry `PortId` witnesses that
+            // cannot be lowered from surface literals — testgen's synthetic
+            // `render_value_expr` cannot produce a valid compile witness.
+            if matches!(name.as_str(), "BoolPortRef" | "BranchArm") {
+                continue;
+            }
             if decl.value_body.is_some()
                 || !is_bootstrapped_std_file(&decl.span.file)
                 || decl.span.file == "src/v3/std/substrate.dag"
