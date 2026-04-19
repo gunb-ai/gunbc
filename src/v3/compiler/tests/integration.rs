@@ -26,6 +26,9 @@
 #[path = "integration/common/mod.rs"]
 mod common;
 
+#[path = "determinism_fixtures.rs"]
+mod determinism_fixtures;
+
 #[path = "integration/four_fixture_regression_test.rs"]
 mod four_fixture_regression_test;
 #[path = "integration/l1_5_fixed_point_test.rs"]
