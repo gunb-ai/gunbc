@@ -1421,7 +1421,9 @@ pub fn max_path(paths: &[SymbolicCost]) -> SymbolicCost {
 
 pub fn normalize(cost: SymbolicCost) -> SymbolicCost {
     match cost {
-        SymbolicCost::SumCost { _0: terms } => reduce_sum(drop_zero_terms(boxed_terms_to_vec(&terms))),
+        SymbolicCost::SumCost { _0: terms } => {
+            reduce_sum(drop_zero_terms(boxed_terms_to_vec(&terms)))
+        }
         SymbolicCost::ProductCost { _0: terms } => {
             reduce_product(drop_zero_terms(boxed_terms_to_vec(&terms)))
         }
