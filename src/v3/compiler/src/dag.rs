@@ -2980,7 +2980,9 @@ impl Dag {
                 ));
                 continue;
             };
-            if language_spec_meta.is_some_and(|meta| self.declaration(language).meta_tag != Some(meta)) {
+            if language_spec_meta
+                .is_some_and(|meta| self.declaration(language).meta_tag != Some(meta))
+            {
                 diagnostics.push(malformed_target_clean_emission_binding(
                     declaration,
                     "`language` must reference a LanguageSpec declaration",
@@ -3089,10 +3091,7 @@ fn binding_reference_field(fields: &[(String, FieldValue)], label: &str) -> Opti
     })
 }
 
-fn malformed_target_clean_emission_binding(
-    declaration: &Declaration,
-    detail: &str,
-) -> Diagnostic {
+fn malformed_target_clean_emission_binding(declaration: &Declaration, detail: &str) -> Diagnostic {
     Diagnostic::ResolveError {
         name: format!(
             "TargetCleanEmissionBinding `{}` {detail}",
@@ -3153,12 +3152,14 @@ mod tests {
             .expect("rust binding exists")
             .id;
         let rust_language = dag.rust_language_spec().expect("rust language");
-        dag.declaration_mut(binding).value_body = Some(binding_fields(rust_language, rust_language));
+        dag.declaration_mut(binding).value_body =
+            Some(binding_fields(rust_language, rust_language));
 
         dag.populate_primitive_cache();
 
         assert!(
-            dag.target_syntax_bundle_for_language(rust_language).is_none(),
+            dag.target_syntax_bundle_for_language(rust_language)
+                .is_none(),
             "malformed binding should not populate a target authority bundle"
         );
         assert!(
@@ -3198,7 +3199,8 @@ mod tests {
         dag.populate_primitive_cache();
 
         assert!(
-            dag.target_syntax_bundle_for_language(rust_language).is_none(),
+            dag.target_syntax_bundle_for_language(rust_language)
+                .is_none(),
             "duplicate language bindings should remove the ambiguous authority"
         );
         assert!(
