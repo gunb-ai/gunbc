@@ -6,10 +6,9 @@
 //! exported at the crate root — composition helpers stay `pub(crate)` there.
 //!
 //! **Emit receipt:** `tests/m2_lens_idempotency_emit_test.rs` compiles this `.dag`
-//! and asserts `emit_rust_module` / `emit_go_module` / `emit_python_module`
-//! succeed with the expected surface (`analyze_workflow`, host read). A rustc
-//! link-and-run equivalence check against this re-export awaits emitter fixes for
-//! imported `std.effects` helpers (see that test module’s header).
+//! and asserts multi-target emission succeeds; `tests/m2_lens_idempotency_migration_test.rs`
+//! rustc-links the emitted Rust module and checks `analyze_workflow` matches this
+//! re-export (declared lens surface + `lane2_workflow_effect_at` path).
 
 use crate::dag::{Dag, NodeId, WorkflowIdempotencyReport};
 

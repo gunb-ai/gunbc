@@ -2,13 +2,12 @@
 //!
 //! **Rust:** `emit_rust_module` must succeed and surface `analyze_workflow` +
 //! `lane2_workflow_effect_at` in the rendered module (the Stage 2b `.dag` lens
-//! is part of the emit contract). A full `rustc` link-and-run round-trip against
-//! `v3_compiler::analyze_workflow` is not yet wired: the emitter still lowers
-//! imported `std.effects` helpers (`lane2_workflow_idempotency_report`,
-//! `report_unsupported_workflow_variant`) to unresolved Rust paths, and the
-//! generated `analyze_workflow` signature uses `&NodeId` where the oracle uses
-//! `NodeId`. Close that gap in the emitter, then add a subprocess harness like
-//! `m2_lens_cost_migration_test.rs`.
+//! is part of the emit contract). **`m2_lens_idempotency_migration_test.rs`**
+//! provides the rustc link-and-run check against `v3_compiler::analyze_workflow`
+//! (crate exports `lane2_workflow_idempotency_report` /
+//! `report_unsupported_workflow_variant` as std.effects mirrors for the emitted
+//! module). Note: emitted `analyze_workflow` takes `&NodeId`; the oracle takes
+//! `NodeId` — the migration test accounts for that at the call site.
 //!
 //! **Go / Python:** module emission succeeds on the same compiled lens DAG (class-5
 //! surface: the lens is not Rust-only).
