@@ -25,7 +25,7 @@ DB-18 locks `WorkflowEffect::ParallelEffect { branches: NonSingletonList<Workflo
 | Option | Verdict |
 |--------|---------|
 | (a) Additive `commutativity: CommutativityWitness` on `ParallelEffect` | **Rejected for Stage 2e.** Would duplicate facts derivable from per-op shapes (Q3), unless a future consumer proves a witness is *not* derivable from the op algebra alone. |
-| (b) Derive from op-level algebra without a substrate field | **Adopted.** Same structural `KeySource` on two upserts/deletes is enough to treat them as commuting on one cell; **different** `KeySource` values (including different `PathParam` *names*) do **not** imply runtime key disjointness without a witness, so v1 is fail-closed there. |
+| (b) Derive from op-level algebra without a substrate field | **Adopted.** For **deletes** and **reads**, same structural `KeySource` behaves as expected. For **upserts**, equal `KeySource` is **not** enough: `UpsertEffect` does not carry a payload witness, so two different `operation_name` values are treated as **potentially conflicting writes** to the same key — v1 only commutes upserts when **key and operation name** match. **Different** `KeySource` values (including different `PathParam` *names*) still do **not** imply runtime key disjointness without a witness (fail-closed). |
 
 ---
 
@@ -38,7 +38,9 @@ For parallel branches that are each linear sequences of operations, **safe concu
 **Idempotent pairs** use a conservative partial function `idempotent_pair_commutes` on `IdempotentShape`:
 
 - `ReadEffect` ∘ `ReadEffect` — commutes.
-- `UpsertEffect` / `DeleteEffect` — **same** `KeySource` commutes (lattice meet on one key). **Distinct** `PathParam` parameter names do not prove disjoint runtime keys (`{id}` vs `{user_id}` can alias); inequality → **not** commute in v1.
+- `DeleteEffect` ∘ `DeleteEffect` — **same** `KeySource` commutes (same cell deleted).
+- `UpsertEffect` ∘ `UpsertEffect` — commute only when **same** `KeySource` **and** **same** `operation_name` (the carrier does not model body/payload; distinct names ⇒ not proven same write ⇒ **not** commute in v1).
+- **Distinct** `PathParam` parameter names do not prove disjoint runtime keys (`{id}` vs `{user_id}` can alias); inequality on `KeySource` → **not** commute in v1.
 - Mixed `Upsert`/`Delete` or `CompositeKey`/`InputField` combinations default to **not** commuting until a richer key-disjointness story exists (conservative).
 
 This is **physics in the op algebra**, not a heuristic re-invented inside the lens body — the lens only combines facts already on `OperationEffect` (`feedback_lenses_not_passes`).
