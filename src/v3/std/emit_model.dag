@@ -112,6 +112,12 @@ type CallableStrategy
 // `List<T> -> Vec<T>` or `[]T`. The terminal target is the same authority
 // expressed as target-language facts consumed by `.dag` emission; this record
 // remains the single authority until that stage lands.
+//
+// **Pattern-role authority (Stage 1e.0):** `strategy` names which lowering
+// recipe applies (`VectorList` today). Emitters validate it fail-closed at
+// index build and **do not** branch on it when rendering — the role is fully
+// expressed by the spec data item (templates + target ref); rendering follows
+// that bundle alone.
 type PatternRealization {
   language: DeclarationRef
   target: DeclarationRef
@@ -124,10 +130,9 @@ type PatternRealization {
   cost: Int
 }
 
-// Dissolution receipt — 🟡 mixed lifecycle. The current staged emitters need a
-// small structural strategy tag to decide which pattern-lowering path to take.
-// It dissolves with `PatternRealization` when the emitters themselves become
-// data.
+// List-pattern role tag — single authority lives in each target's
+// `data <target>_list_pattern: PatternRealization` in `spec/*.dag`.
+// Emitters map validated records to emission without per-role `match` arms.
 type PatternStrategy
   = PlaceholderPatternStrategy
   | VectorList

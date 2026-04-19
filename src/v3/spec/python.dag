@@ -449,6 +449,7 @@ data python_list_instantiation: TypeInstantiationRealization = {
   cost: 1
 }
 
+// List structural-sum → Python list surface; pattern-role + templates are spec-owned.
 data python_list_pattern: PatternRealization = {
   language: python_language
   target: List
