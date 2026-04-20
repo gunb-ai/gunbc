@@ -229,7 +229,9 @@ that is **Rule 2**.
 
 **Single-authority boundary (read this before implementing):** Nothing
 here “excludes all `= Carrier where …` refinements from the lens.”
-That would incorrectly hide `NonEmptyStr` / `NonEmptyString`. Those
+That would incorrectly hide a **Rule 2** refinement-twin class
+(illustrated by the audit-era `NonEmptyStr` / `NonEmptyString` pair
+when both existed). Those
 rows stay in **channel (2)**; **Rule 1** only blocks **alias vs its
 canonical expandee** false positives, and **Rule 2** is what surfaces
 **two peer refinements** with the same **structural refinement key**
@@ -249,9 +251,10 @@ the bucket; aliases are absorbed into it.
 If **two distinct declarations** `D1` and `D2` **both** normalize to
 the **same** structural surrogate **and neither pair is covered by Rule
 1 relative to the other** (i.e. they are peers, not namespace→canonical),
-emit a finding. Examples: `NonEmptyStr` and `NonEmptyString` both
-`String where non_empty` → same structural refinement key (channel
-(2) below); two independent `data` rows with identical bodies; two
+emit a finding. Examples: **historical** twin refinements such as
+`NonEmptyStr` and `NonEmptyString` both spelling `String where non_empty`
+→ same structural refinement key (channel (2) below); two independent
+`data` rows with identical bodies; two
 record types with identical field maps (pre-#596 `FileEntry` vs
 `FileClassification`). Rule 2 is what the audit lists as “expected
 initial findings” once Rule 1 stops false positives.
@@ -284,7 +287,8 @@ initial findings” once Rule 1 stops false positives.
    **semantic** refinement iff their structural keys collide.
    **Rule 1:** do not count `Name` against bare `Carrier` alone.
    **Rule 2:** two names with the **same** structural refinement key
-   collide (`NonEmptyStr` / `NonEmptyString`). Distinct predicates /
+   collide (twin refinement **peer** names — audit used
+   `NonEmptyStr` / `NonEmptyString`; see inventory note below). Distinct predicates /
    brands → distinct keys → no collision.
 
 3. **Re-exports** — `ignore_re_exports` filters forward-only pairs
@@ -315,10 +319,12 @@ new parallel id registry for predicates.
   value.
 - `default_edition: String = "2021"` declared in both `cargo.dag`
   and `rust/imports.dag`.
-- `NonEmptyStr` / `NonEmptyString` (audit-era example) — two names for
-  the same `String where …` refinement; channel **(2)** in §2.1, not
-  a product-body duplicate. (Today `types.dag` may only carry one
-  spelling; the lens contract still names the class.)
+- `NonEmptyStr` / `NonEmptyString` (**audit-era** illustration) — two
+  names for the same `String where …` refinement; channel **(2)** in
+  §2.1, not a product-body duplicate. **`dsl/std/types.dag` today only
+  carries `NonEmptyStr`;** do not bake both spellings into lens CI as a
+  “must find in std” expectation — use **synthetic** fixtures for Rule
+  2 until a second spelling lands again.
 
 At the time of the audit, four examples were hand-found in a single
 pass. One (`FileClassification` / `FileEntry`, PR #596) is already
@@ -407,11 +413,17 @@ impl StructuralDuplicatesLens {
 5. If `ignore_re_exports` is set, filter out duplicates where one
    declaration imports the other transitively.
 
-**Expected initial findings** (from the reviewer's audit):
+**Expected initial findings** (from the reviewer's audit; std inventory
+drifts):
 
-- `NonEmptyStr` / `NonEmptyString` in `dsl/std/types.dag`
-- `wire_contract` in `llm.dag` vs `anthropic.dag` vs `openai.dag`
-- `default_edition` in `cargo.dag` vs `rust/imports.dag`
+- **Cross-file / data shapes still typical today:** `wire_contract` in
+  `llm.dag` vs `anthropic.dag` vs `openai.dag`; `default_edition` in
+  `cargo.dag` vs `rust/imports.dag`.
+- **Rule 2 refinement peers — class, not a pinned std row:** the audit
+  named `NonEmptyStr` vs `NonEmptyString`, but **current** `dsl/std/types.dag`
+  does **not** define `NonEmptyString`. Treat the pair as **historical
+  motivation**; lens integration should assert Rule 2 on **constructed**
+  twin refinements, not on “both names exist in std.”
 - Probably others nobody has noticed yet
 
 **Test plan:**
@@ -921,8 +933,10 @@ The recommended order for building the initial library:
 2. **`lens_structural_duplicates`** — next. §2.1 **Rules 1–2** across
    two channels (product/`data` hash + refinement-surface hash).
    Expected to catch the `wire_contract` duplicates,
-   `default_edition` duplication, `NonEmptyStr` / `NonEmptyString`
-   refinement twins (Rule 2), and probably others. (The
+   `default_edition` duplication, and **Rule 2** refinement-twin
+   classes (audit illustrated with `NonEmptyStr` / `NonEmptyString` —
+   **synthetic** fixtures; not assumed present in current `types.dag`),
+   and probably others. (The
    `FileClassification` / `FileEntry` duplicate from the same audit was
    dissolved manually in PR #596 — Rule 1 covers `type
    FileClassification = FileEntry` vs `FileEntry`.) Gives immediate
@@ -1046,12 +1060,13 @@ The library is successful when:
 3. **At least one high-value finding is closed by a lens-driven
    fix.** The `FileClassification`/`FileEntry` duplicate was fixed
    ahead of the lens (PR #596: one record + `type FileClassification =
-   FileEntry`, i.e. **Rule 1** applies and must not regress). Concrete
-   remaining audit-class targets still include `wire_contract` /
-   `default_edition` and `NonEmptyStr` vs `NonEmptyString` (**Rule 2**
-   refinement peers). After fixes land, CI expects **Rule 2** clean
-   on those classes while **Rule 1** continues to suppress false
-   alias-vs-canonical pairs (§2.1).
+   FileEntry`, i.e. **Rule 1** applies and must not regress). **Live-repo**
+   audit-class targets still include `wire_contract` / `default_edition`.
+   **Rule 2** refinement-peer work should prove out on **synthetic** twin
+   refinements (historical audit example: `NonEmptyStr` vs
+   `NonEmptyString` — only the former remains in `types.dag` today). After
+   fixes land, CI expects **Rule 2** clean on the exercised classes while
+   **Rule 1** continues to suppress false alias-vs-canonical pairs (§2.1).
 4. **The existing layer-opacity grep-gate proposal in
    `INVARIANTS.md` is fully superseded** — the §"Layer opacity"
    invariant points at `lens_layer_opacity` as its primary
