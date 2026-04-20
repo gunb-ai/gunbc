@@ -1160,7 +1160,9 @@ pub(crate) struct EmitAnchorCache {
     pub dag_type: Option<DeclarationId>,
     /// `fold` from `src/v3/std/list.dag` (list catamorphism).
     pub std_list_fold: Option<DeclarationId>,
-    /// `rust_functions` syntax record (`dsl/std/languages.dag`).
+    /// `rust_functions` syntax record — resolved to the v3 spec copy in
+    /// `src/v3/spec/rust.dag` (bootstrap name resolution prefers `src/v3/`
+    /// over the duplicate carrier in `dsl/std/languages.dag`).
     pub rust_functions: Option<DeclarationId>,
 }
 
@@ -1656,7 +1658,7 @@ impl Dag {
         self.emit_anchors.std_list_fold
     }
 
-    /// `rust_functions` syntax record from the languages spec.
+    /// `rust_functions` syntax record from `src/v3/spec/rust.dag`.
     pub fn rust_functions_syntax_decl(&self) -> Option<DeclarationId> {
         self.emit_anchors.rust_functions
     }
