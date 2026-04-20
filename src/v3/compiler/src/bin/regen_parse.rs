@@ -12,7 +12,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use v3_compiler::compile_to_dag;
+use v3_compiler::compile_runtime_mirrors_authority_dag;
 use v3_compiler::dag::{AtomPayload, CardinalityBound, Dag, DeclarationId, TypeConnective};
 use v3_compiler::generated_files::GENERATED_FILES;
 use v3_compiler::CompileError;
@@ -66,7 +66,7 @@ fn main() {
 }
 
 fn compile_authority_dag(source: &str, file: &str) -> Dag {
-    compile_to_dag(source, file).unwrap_or_else(|e| match e {
+    compile_runtime_mirrors_authority_dag(source, file).unwrap_or_else(|e| match e {
         CompileError::Semantic(d) => {
             let mut msg = format!("compile {file} failed:\n");
             for (_, diag) in d.diagnostics().iter() {

@@ -5,8 +5,7 @@
 // Three generated arrays exist:
 //   - `STAGED_FILES`   for `src/v3/std/*.dag`
 //   - `V3_SPECS`       for `src/v3/spec/*.dag`
-//   - `COMPILER_FILES` for `src/v3/compiler/*.dag` (except `tokenize.dag` /
-//     `runtime_mirrors.dag`; see below)
+//   - `COMPILER_FILES` for `src/v3/compiler/*.dag` (except `tokenize.dag`; see below)
 //
 // Adding a new staged std/spec/compiler file becomes a pure file-system
 // change — no Rust edits to `bootstrap.rs`, no fixture-array
@@ -46,11 +45,14 @@
 //   pub static COMPILER_FILES: &[(&str, &str)] = &[
 //       ("src/v3/compiler/pipeline.dag", include_str!("...")),
 //   ];
-//   `tokenize.dag` and `runtime_mirrors.dag` are intentionally omitted: tokenizer
-//   authority for `regen_tokenize` and the SG-3f surface-mirror schema for
-//   `regen_runtime_mirrors.py` / `regen_parse` must not be folded into the bootstrap Dag
-//   (duplicate `Surface*` declarations when `compile_to_dag` parses those authorities
-//   standalone on top of `Dag::new()`'s bootstrapped clone).
+//   `tokenize.dag` is intentionally omitted: tokenizer authority for `regen_tokenize`
+//   must not be folded into the bootstrap Dag (duplicate declarations when
+//   `compile_to_dag` parses that authority standalone on top of `Dag::new()`'s
+//   bootstrapped clone). `runtime_mirrors.dag` stays in the bundle so the production
+//   substrate matches the staged compiler; `regen_parse` and staging tests compile
+//   it via [`compile_runtime_mirrors_authority_dag`](crate::compile_runtime_mirrors_authority_dag),
+//   which boots from a clone that omits that fixture to avoid the duplicate-name path
+//   (see `compile_runtime_mirrors_authority_dag` in `src/v3/compiler/src/lib.rs`).
 //
 // `bootstrap.rs` uses `include!(concat!(env!("OUT_DIR"), ...))` to
 // pull the arrays in. The `include_str!` calls inside the generated
@@ -205,14 +207,12 @@ fn main() {
     );
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
     let mut compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
-    // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`.
-    // `runtime_mirrors.dag` is SG-3f surface-mirror schema consumed by `regen_runtime_mirrors.py`
-    // and `regen_parse` (Surface carriers). Both are stripped from the runtime bootstrap
-    // bundle below — see COMPILER_FILES header for the duplicate-declaration rationale.
+    // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`; it is
+    // stripped from the runtime bootstrap bundle — see COMPILER_FILES header.
     compiler_entries.retain(|p| {
         p.file_name()
             .and_then(|s| s.to_str())
-            .map(|n| n != "tokenize.dag" && n != "runtime_mirrors.dag")
+            .map(|n| n != "tokenize.dag")
             .unwrap_or(true)
     });
     let extdeps_entries = collect_dag_entries_recursive(&extdeps_dir, &[]);
