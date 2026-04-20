@@ -235,7 +235,7 @@ If (4) and (5) can be generated, the shim is 3 files.
 |---|---|---|
 | Today | 78 | — |
 | Post-PB-2 | 77 | tokenize.rs deleted |
-| Post-PB-3 | 76 | parse.rs deleted |
+| Post-PB-3 | 76 | monolithic `parse.rs` retired (parser staging); **PB-3 done** when SG-2b removes `parse_parser_body.txt` / body splice |
 | Post-PB-4 | 75 | lower.rs deleted (+ support) |
 | Post-PB-5 | 74 | infer.rs deleted |
 | Post-PB-6 | 68 | emit files collapsed (~6 deletions) |
