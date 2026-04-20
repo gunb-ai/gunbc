@@ -45,7 +45,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::EmitMode;
+use super::{EmitMode, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding};
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
     FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
@@ -53,8 +53,7 @@ use crate::dag::{
 };
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
-    variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
-    VariantPayloadShape,
+    variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup,
 };
 
 /// Errors the Rust emitter surfaces when the DAG reaches a shape it
@@ -3584,17 +3583,20 @@ impl<'a> Ctx<'a> {
                 &[("name", &qualified_name)],
             ));
         };
-        let Some(payload_shape) = variant_payload_shape(self.dag, resolved_id) else {
-            return Err(EmitError::UnsupportedBehavior(format!(
-                "matched variant `{variant_name}` does not lower to a payload product"
-            )));
+        let payload_shape = match variant_payload_shape(self.dag, &resolved_id) {
+            VariantPayloadShapeLookup::Missing => {
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "matched variant `{variant_name}` does not lower to a payload product"
+                )));
+            }
+            VariantPayloadShapeLookup::Found { _0: shape } => shape,
         };
         let rendered_binding = self.render_payload_binding_name(path, binding);
         if matches!(
             payload_shape,
-            VariantPayloadShape::NamedFields(ref fields) if fields.len() > 1
+            VariantPayloadShape::NamedFields { _0: ref fields } if fields.len() > 1
         ) {
-            let VariantPayloadShape::NamedFields(field_labels) = payload_shape else {
+            let VariantPayloadShape::NamedFields { _0: field_labels } = payload_shape else {
                 unreachable!("guarded above")
             };
             // Multi-field struct-variant: Rust won't let us access
@@ -3644,7 +3646,7 @@ impl<'a> Ctx<'a> {
                 ],
             ));
         }
-        if payload_shape == VariantPayloadShape::PositionalSingle
+        if matches!(payload_shape, VariantPayloadShape::PositionalSingle)
             && (self.indexes.types.contains_key(&disj_id) || is_optional_match)
         {
             return Ok(render_named_template(
@@ -3667,7 +3669,7 @@ impl<'a> Ctx<'a> {
                     &[("name", &qualified_name), ("bindings", &bindings)],
                 ))
             }
-            VariantPayloadShape::NamedFields(field_labels) => {
+            VariantPayloadShape::NamedFields { _0: field_labels } => {
                 let bindings = render_named_template(
                     &self.indexes.syntax.patterns.field_binding,
                     &[("field", &field_labels[0]), ("binding", &rendered_binding)],
@@ -3711,8 +3713,9 @@ impl<'a> Ctx<'a> {
         let BranchPattern::ResolvedVariant(variant_id) = &path.pattern else {
             return Ok(None);
         };
-        let Some(shape) = variant_payload_shape(self.dag, *variant_id) else {
-            return Ok(None);
+        let shape = match variant_payload_shape(self.dag, variant_id) {
+            VariantPayloadShapeLookup::Missing => return Ok(None),
+            VariantPayloadShapeLookup::Found { _0: shape } => shape,
         };
         let payload_binding_name = self.render_payload_binding_name(path, binding);
         let wildcard = self.indexes.syntax.patterns.wildcard.clone();
@@ -3721,7 +3724,7 @@ impl<'a> Ctx<'a> {
             VariantPayloadShape::PositionalSingle => Some(VariantPayloadBinding::Direct(
                 LocalBinding::Borrowed(payload_binding_name),
             )),
-            VariantPayloadShape::NamedFields(field_labels) => {
+            VariantPayloadShape::NamedFields { _0: field_labels } => {
                 match self.indexes.clean_emission.variant_payload_field_access {
                     VariantPayloadFieldAccessRuleBinding::AccessFromPayloadBinding => Some(
                         VariantPayloadBinding::Direct(LocalBinding::Borrowed(payload_binding_name)),

@@ -8,7 +8,7 @@
 
 module lenses.variant_payload
 
-import std.list { List, empty, cons, map, fold }
+import std.list { List, empty, cons, map }
 import std.substrate {
   Dag, Declaration, DeclarationId, TypeConnective, ConjField
 }
@@ -23,17 +23,16 @@ type VariantPayloadShapeLookup
   | Found(VariantPayloadShape)
 
 type DeclarationLookup
-  = DeclarationMissing
-  | DeclarationFound(Declaration)
+  = LookupMissing
+  | LookupFound(Declaration)
 
 fn find_declaration(decls: List<Declaration>, target: DeclarationId) -> DeclarationLookup =
-  fold(decls, DeclarationMissing, |acc, decl|
-    match acc {
-      DeclarationFound(_) => acc
-      DeclarationMissing =>
-        if decl.id == target then DeclarationFound(decl) else DeclarationMissing
-    }
-  )
+  match decls {
+    Empty => LookupMissing
+    Cons(payload) =>
+      if payload.head.id == target then LookupFound(payload.head)
+      else find_declaration(payload.tail, target)
+  }
 
 fn conj_field_label(f: ConjField) -> String =
   f.label
@@ -53,8 +52,8 @@ fn conj_payload_shape(children: List<ConjField>) -> VariantPayloadShape =
 
 fn variant_payload_shape(d: Dag, variant_id: DeclarationId) -> VariantPayloadShapeLookup =
   match find_declaration(d.declarations, variant_id) {
-    DeclarationMissing => Missing
-    DeclarationFound(decl) =>
+    LookupMissing => Missing
+    LookupFound(decl) =>
       match decl.connective {
         Conj(c) => Found(conj_payload_shape(c.children))
         Atom(_) => Missing
