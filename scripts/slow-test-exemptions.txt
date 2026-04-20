@@ -61,6 +61,8 @@ m2_lens_provenance_migration_test::lens_provenance_dag_runs_end_to_end_via_rustc
 m2_lens_unused_parameters_migration_test::unused_parameters_dag_runs_end_to_end_via_rustc_harness  # Lane 2 migration harness roundtrip; compile-heavy oracle test remains explicit until lens migration paydown.
 m2_lens_unused_parameters_migration_test::unused_parameters_dag_self_analysis_reports_zero_findings  # Lane 2 migration harness roundtrip; compile-heavy self-analysis remains explicit until lens migration paydown.
 
+p0_std_render_repeat_string_test::std_render_repeat_string_and_indent_text_match_interpreter  # ROADMAP P0 (`dsl/std/render.dag` `repeat_string` / `indent_text`); P0-A v2 `compile_to_resolved` + interpreter oracle remains cold-compile heavy on ubuntu-latest; paydown is shared bootstrap / smaller fixture, not TM-0.
+
 m1_substrate_test::referenced_port_walk_real_helper_stack_compiles  # Real substrate helper-stack compile smoke is still cold-compile bound on GitHub runners; substrate/test-shape paydown owns any decomposition, not SG-7.4.
 
 sg1_tokenize_authority_test::tokenize_generated_module_matches_checked_in_snapshot  # SG-1 authority snapshot still regenerates/parses full tokenize projection; tokenize authority lane owns future speedup.
