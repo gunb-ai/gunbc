@@ -196,9 +196,8 @@ Implementation note: per-call unification state; not substrate. Risk: medium.
 #### `bind_expected_decl_to_actual_context` (L1793, 184 LOC) — Cat-3 (**HIGH-RISK**)
 184-line recursive unification over TypeConnective. Mutates args vec
 across recursive calls. **Ambiguous**: pure unification or stateful
-binding? Distinction matters — pure unification ports directly,
-stateful binding needs substrate extension or Rust shim.
-**Gap #2** (same). Risk: **high**.
+binding? Distinction matters for regen codegen shape, not substrate.
+Risk: **high**.
 
 #### `callable_instantiation_conflict` (L1977, 21 LOC) — Cat-2
 Format diagnostic. Risk: low.
@@ -207,8 +206,8 @@ Format diagnostic. Risk: low.
 216-line heavyweight resolver. Calls both unification helpers plus
 `check_refinement_discharge` and `resolve_decl_with_subst`. Multiple
 return paths, complex state threading.
-**Ambiguous** — decomposition into pure/impure layers unclear.
-**Gap #2** (same). Risk: **high**.
+**Ambiguous** — decomposition into pure/impure layers unclear; this is
+a regen-design clarification, not a substrate gap. Risk: **high**.
 
 #### `resolve_direct_target_signature` (L2214, 32 LOC) — Cat-1
 Walk target + template args → ResolvedArrow. Risk: low.
@@ -222,12 +221,12 @@ Collect-then-rewrite over Transform nodes. Risk: low.
 Allocate fresh Arrow instantiation declarations. Risk: low.
 
 #### `resolve_lambda_parameter_types` (L2351, 84 LOC) — Cat-3
-Infer param types from refinement / outer constraints. **Gap #4** (see
-below). Risk: medium.
+Infer param types from refinement / outer constraints. Implementation
+of a rule over Dag facts; not a substrate gap. Risk: medium.
 
 #### `validate_user_defined_function_signatures` (L2435, 168 LOC) — Cat-3
 Walks Arrow bodies checking param/output types; marks Unresolved on
-mismatch. **Gap #5** (local validation state). Risk: medium.
+mismatch. Local validation vector; implementation concern. Risk: medium.
 
 ### Non-callable target arguments
 
@@ -243,8 +242,9 @@ Push Instantiation args onto SubstStack while walking. Risk: low.
 Same pattern, Disj. Risk: low.
 
 #### `enclosing_disj_for_variant` (L2732, 12 LOC) — Cat-2
-Reverse lookup variant → parent Disj. **Gap #3**: if Dag lacks reverse
-parent link this is O(n). Risk: medium.
+Reverse lookup variant → parent Disj. **Only remaining candidate
+substrate concern** — Dag lacks reverse parent link; current impl is
+O(n). Low priority; doesn't block SG-4b. Risk: medium.
 
 ### Payload materialization
 
@@ -268,8 +268,9 @@ Unbound-TypeParam/Instantiation walk. Risk: low.
 
 #### `materialize_substituted_refined_decl` (L2986, 161 LOC) — Cat-3 / Cat-4 border
 DB-16 closure. Calls `outer_predicate_slots`, `clone_predicate_body`
-(both in `lower.rs`). **Gap #6** (predicate-body cloning is cross-stage).
-Risk: **high**.
+(both in `lower.rs`). Clone helpers are pure structural Dag-reads;
+co-location in `lower.rs` is organizational, not a true cross-stage
+boundary. Port as shared `.dag` utilities. Risk: **high** (volume).
 
 #### `find_equivalent_substituted_refined_decl` (L3147, 68 LOC) — Cat-1
 Deduplication scan. Risk: low.
