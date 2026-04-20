@@ -137,14 +137,23 @@ retire projection — not one.
 
 ### PB-3 — parse retire
 
-- **Authority creation**: in progress via SG-2 (parse cutover).
-  SG-2 prep (#557) snapshotted incumbent output; full cutover
-  authoring `parse.dag` + `regen_parse` + `parse_generated.rs` is
-  the SG-2 followup lane.
-- **PB-3 work** (after SG-2 authority lands): delete `parse.rs`,
-  route through generated.
-- **Dependencies**: SG-2 full cutover landed.
-- **Counter delta**: -1 file (~2K LOC — biggest single hand file).
+- **Authority creation**: **SG-2 parser staging** (not SG-2b closure).
+  Surface **carrier** schema is substrate-authoritative in `runtime_mirrors.dag`;
+  `regen_parse` emits `parse_generated.rs` and splices `parse_parser_body.txt` as
+  **temporary semantic authority** for the recursive-descent algorithm until a
+  follow-on lane (**SG-2b**) makes parse **logic** structurally `.dag`-owned
+  (dissolution trigger in that file’s header and `docs/history/roadmap-active-deferrals.md`).
+  SG-2 prep (#557) snapshotted incumbent output; staging retires handwritten `parse.rs`
+  in favor of generated carriers + the explicit body fragment — **without** claiming
+  full parse-rule `.dag` authority yet.
+- **SG-2b follow-on** (still open for PB-3 completion): delete `parse_parser_body.txt`
+  once the regen path emits parse without an external Rust body host; then PB-3 can
+  finish as “parse is projection-only,” matching pure-bootstrap intent.
+- **PB-3 work** (after SG-2b + projection-only parse emit): delete any remaining
+  hand-maintained parse routing shims; route callers only through the generated surface.
+- **Dependencies**: **SG-2b** — `.dag`-owned parse rules; no spliced semantic fragment.
+- **Counter delta**: Staging already removes the monolithic `parse.rs` hand file; the
+  remaining PB-3 shrink is the body fragment + final shim deletion once SG-2b lands.
 
 ### PB-4 — lower retire
 
@@ -226,7 +235,7 @@ If (4) and (5) can be generated, the shim is 3 files.
 |---|---|---|
 | Today | 78 | — |
 | Post-PB-2 | 77 | tokenize.rs deleted |
-| Post-PB-3 | 76 | parse.rs deleted |
+| Post-PB-3 | 76 | monolithic `parse.rs` retired (parser staging); **PB-3 done** when SG-2b removes `parse_parser_body.txt` / body splice |
 | Post-PB-4 | 75 | lower.rs deleted (+ support) |
 | Post-PB-5 | 74 | infer.rs deleted |
 | Post-PB-6 | 68 | emit files collapsed (~6 deletions) |
@@ -242,7 +251,7 @@ PB-0 (ratchet) ──────────────┐
 TM-1 (Dag builder) ──→ PB-1 (bootstrap loader)
                              ↓
 SG-1 (merged) ───────→ PB-2 (tokenize)
-SG-2 full cutover ──→ PB-3 (parse)
+SG-2 staging + SG-2b (parse rules) ──→ PB-3 (parse)
 SG-3 series ────────→ PB-4 (lower)
 SG-4 complete ──────→ PB-5 (infer)
 Lane 1e complete ──→ PB-6 (emit) ──────────┐

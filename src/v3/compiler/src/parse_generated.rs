@@ -1,106 +1,160 @@
-// Surface AST + hand-recursive parser for the v3 surface grammar.
-//
-// G3 guardrail: parse.rs exports SurfaceModule / SurfaceItem / SurfaceExpr /
-// SurfaceType; it does NOT mention Dag or any L1 behavior type. Lowering from
-// surface to DAG happens in `lower.rs`.
-//
-// Operators compile to a structural `SurfaceExpr::Operator` variant.
-// `1 + 2` → `Operator { op: OperatorKind::Arithmetic(ArithmeticOp::Add),
-// args: [1, 2] }`. The parser commits to the operator's enum variant at
-// parse time (it already knows, because operator symbols come from
-// different grammar productions than identifiers); `lower.rs` emits a
-// `TransformNode { target: TransformTarget::Operator(OperatorKind) }`;
-// `infer::resolve_operator_arrow` walks the LHS type's algebra chain in
-// `std/algebra.dag` to read the concrete Arrow signature.
-//
-// This replaces the M1(2.5)-era design in which operators compiled to
-// identifier-shaped Calls (`Call { target: "+" }`) that were resolved
-// through an `OPERATOR_FIELD_MAP` bridge. See
-// `DOWNSTREAM_REQUIREMENTS.md` M1(2.7) Class 2 for the dissolution.
-//
-// Grammar (M1(2.5)):
-//   module     := item*
-//   item       := let_item | fn_item | type_item
-//   let_item   := `let` ident (`:` type_expr)? `=` expr
-//   fn_item    := `fn` ident `(` params `)` `->` type_expr `=` expr
-//   type_item  := `type` ident type_params? type_body?
-//   type_body  := `{` record_fields `}`                       -- TypeRecord
-//              |  `=` ( sum_variants | type_expr )             -- TypeSum | TypeAlias
-//                                                              -- (no body) TypeAtom
-//   type_params := `<` ident ( `,` ident )* `>`
-//   type_expr  := atom_type ( `?` )?
-//   atom_type  := ident type_args?                             -- Named | Parameterized
-//              |  `fn` `(` type_expr_list `)` `->` type_expr   -- Arrow
-//   type_args  := `<` type_expr ( `,` type_expr )* `>`
-//   record_fields := field_decl*                               -- whitespace-separated
-//   field_decl := ident `:` type_expr (`,` | `;`)?
-//   sum_variants := variant ( `|` variant )*
-//   variant    := ident ( `(` type_expr_list `)` )?
-//   expr       := comparison
-//   pipe_target := ident | ident ( `(` args `)` )
-//   comparison := additive ( cmp_op additive )?
-//   additive   := term ( (`+` | `-`) term )*
-//   term       := pipe ( (`*` | `/`) pipe )*
-//   pipe       := primary ( `|>` pipe_target )*
-//   primary    := int_lit | bool_lit | string_lit
-//              |  ident ( `(` args `)` )?
-//              |  `if` expr `then` expr `else` expr
+// AUTO-GENERATED from `src/v3/compiler/runtime_mirrors.dag` (Surface carriers)
+// via `regen_parse` + `parse_parser_body.txt`. Regenerate instead of hand-editing.
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
+use crate::operators::OperatorKind;
 use crate::tokenize::{Token, TokenKind};
 
 #[derive(Debug, Clone)]
-pub struct SurfaceModule {
-    pub items: Vec<SurfaceItem>,
+pub enum SurfaceLiteral {
+    Int(i64),
+    Bool(bool),
+    String(String),
 }
 
-/// Dissolution ledger — **SurfaceItem**:
-///
-/// 🟢 **Terminal at M1(2.7).** Ten variants. The earlier six-variant
-/// shape from M1(2.6) grew four variants at M1(2.7) to resolve the
-/// scaffold-honesty gaps (QW1–QW3):
-///
-/// - **`Fn`** now always carries a body `SurfaceExpr`. Block-bodied
-///   fn declarations in std/ files become `FnExternalBody` —
-///   structurally separate variants, not an `Option<SurfaceExpr>`
-///   with the discriminator in the Option.
-/// - **`FnExternalBody`** records `name + params + return_type +
-///   body_span`. The parser does not distinguish **case 1** (std/ parse
-///   lag), **case 2a** (`pipeline.dag` per-stage host fns), or **case 2c**
-///   (`pipeline.dag`'s `compile` orchestrator) — all are "block body that is
-///   not a `SurfaceExpr`." All initially lower to `ArrowBody::Unparsed(body_span)`.
-///   At bootstrap, **per-stage pipeline fns** (`parse`, `lower`, …) are upgraded
-///   to `ExternalRealization` via `PipelineStageBinding` /
-///   `materialize_pipeline_realizations` (DB-16). **`compile` itself** has no
-///   stage binding: it **stays** `Unparsed`, and
-///   `pipeline_compile_order_stage_names` reads its **body span** as ordering
-///   authority. DB-16 documents cases **1**, **2a**, and **2c** only; substrate
-///   accessor bootstrap alignment with **`INVARIANTS.md` §E-9** is **deferred**
-///   (see `ROADMAP.md`). The signature flows forward; body spans are
-///   preserved for parse-lag growth, ordering facts, or host stubs.
-/// - **`Data`**, **`Module`**, **`Import`** replace the three former
-///   parser-absorbed items. `Data` lowers to a declaration whose
-///   connective is the resolved type; `Module` and `Import` lower
-///   to no-ops at M1(2.7) but preserve the parsed facts for M2
-///   module scoping.
-///
-/// 4-pattern check:
-/// - Pattern 1 (fact placement): fails. Each variant has a distinct
-///   lowering path.
-/// - Pattern 2 (variant-is-data): fails. Different payload types.
-/// - Pattern 3 (algebraic form): partial. The four `Type*` variants
-///   still could collapse into `Type { name, type_params, shape }`
-///   in M2; `Fn` + `FnExternalBody` could collapse into
-///   `Fn { body: FnBody }` where `FnBody` is a coproduct. Both
-///   restructures are tracked as M2 work.
-/// - Pattern 4 (dimensional): fails.
-///
-/// Verdict: terminal at M1(2.7) modulo the two M2 collapses noted
-/// above. `FnExternalBody` dissolution (DB-16): case 1 via parser growth;
-/// pipeline **case 2a** via bootstrap `ExternalRealization`; **`compile` (2c)**
-/// keeps `Unparsed` as the **terminal** ordering-authority encoding until a
-/// structural pipeline-order carrier supersedes span extraction (see variant
-/// docs).
+#[derive(Debug, Clone)]
+pub struct SurfaceField {
+    pub name: String,
+    pub ty: SurfaceType,
+}
+
+#[derive(Debug, Clone)]
+pub enum VariantPayload {
+    Positional(Vec<SurfaceType>),
+    Record(Vec<SurfaceField>),
+}
+
+#[derive(Debug, Clone)]
+pub struct SurfaceVariant {
+    pub name: String,
+    pub payload: VariantPayload,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+pub enum SurfaceType {
+    Named {
+        name: String,
+        span: SourceSpan,
+    },
+    Parameterized {
+        name: String,
+        args: Vec<SurfaceType>,
+        span: SourceSpan,
+    },
+    Optional {
+        inner: Box<SurfaceType>,
+        span: SourceSpan,
+    },
+    Arrow {
+        inputs: Vec<SurfaceType>,
+        output: Box<SurfaceType>,
+        span: SourceSpan,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct SurfacePatternField {
+    pub name: String,
+    pub binding: String,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+pub enum SurfacePattern {
+    BareVariant {
+        name: String,
+        span: SourceSpan,
+    },
+    VariantWith {
+        name: String,
+        binding: String,
+        span: SourceSpan,
+    },
+    VariantFields {
+        name: String,
+        fields: Vec<SurfacePatternField>,
+        span: SourceSpan,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct SurfaceRecordField {
+    pub name: String,
+    pub value: SurfaceExpr,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+pub enum SurfaceExpr {
+    Literal {
+        value: SurfaceLiteral,
+        span: SourceSpan,
+    },
+    Var {
+        name: String,
+        span: SourceSpan,
+    },
+    Path {
+        segments: Vec<String>,
+        segment_spans: Vec<SourceSpan>,
+        span: SourceSpan,
+    },
+    Call {
+        target: String,
+        args: Vec<SurfaceExpr>,
+        span: SourceSpan,
+    },
+    VariantRecord {
+        target: String,
+        fields: Vec<SurfaceRecordField>,
+        span: SourceSpan,
+    },
+    Operator {
+        op: OperatorKind,
+        args: Vec<SurfaceExpr>,
+        span: SourceSpan,
+    },
+    Lambda {
+        params: Vec<String>,
+        body: Box<SurfaceExpr>,
+        span: SourceSpan,
+    },
+    If {
+        cond: Box<SurfaceExpr>,
+        then_branch: Box<SurfaceExpr>,
+        else_branch: Box<SurfaceExpr>,
+        span: SourceSpan,
+    },
+    Match {
+        scrutinee: Box<SurfaceExpr>,
+        arms: Vec<SurfaceMatchArm>,
+        span: SourceSpan,
+    },
+    Record {
+        fields: Vec<SurfaceRecordField>,
+        span: SourceSpan,
+    },
+    List {
+        elements: Vec<SurfaceExpr>,
+        span: SourceSpan,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct SurfaceMatchArm {
+    pub pattern: SurfacePattern,
+    pub body: SurfaceExpr,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+pub struct SurfaceParam {
+    pub name: String,
+    pub ty: SurfaceType,
+    pub refinement: Option<SurfaceExpr>,
+}
+
 #[derive(Debug, Clone)]
 pub enum SurfaceItem {
     Let {
@@ -108,11 +162,6 @@ pub enum SurfaceItem {
         type_ann: Option<SurfaceType>,
         expr: SurfaceExpr,
     },
-    /// Expression-body function definition: `fn f(x) -> T = expr`.
-    /// The body is always present and always a `SurfaceExpr`. Lowers
-    /// to a declaration whose connective is an `Arrow` with
-    /// `ArrowBody::UserDefined(NodeId)` pointing at the lowered
-    /// sub-DAG.
     Fn {
         name: String,
         type_params: Vec<String>,
@@ -121,48 +170,6 @@ pub enum SurfaceItem {
         body: SurfaceExpr,
         span: SourceSpan,
     },
-    /// Block-body scaffold: `fn f(x) -> T { body }` where the body is
-    /// not expressible as a `SurfaceExpr` at this parser stage.
-    ///
-    /// **Case 1 — parse lag.** Bodies in std/ that use match/lambda/
-    /// pipe / etc. Dissolves when the grammar grows: re-parse yields a
-    /// regular [`SurfaceItem::Fn`] with a full `SurfaceExpr` body, and
-    /// `ArrowBody::Unparsed` retires with this case.
-    ///
-    /// **Case 2a — pipeline host stages.** `v3.compiler.pipeline` fns such
-    /// as `{ host parse }`. Indistinguishable from case 1 at parse time; at
-    /// bootstrap, `PipelineStageBinding` data drives
-    /// `materialize_pipeline_realizations`, rewriting the Arrow body from
-    /// `Unparsed` to `ExternalRealization`. Never becomes a user `.dag`
-    /// body.
-    ///
-    /// **Case 2c — `compile` orchestrator (`pipeline.dag`).** `fn compile(...) {
-    /// ... }` lists stage names (`parse`, `lower`, …). No `PipelineStageBinding`
-    /// targets `compile` itself — **`ArrowBody::Unparsed` persists** after
-    /// bootstrap. `pipeline_compile_order_stage_names` consumes **`body_span`** as
-    /// the authority for which stages participate and in what order (facts
-    /// flow forward). Not parse lag (case 1): the body is intentional
-    /// structured text, not std/ grammar debt.
-    ///
-    /// **Receipt — terminal vs bridge:** Case 2c is **not** a bridge to
-    /// `ExternalRealization` (there is no host stage body to realize). For the
-    /// current substrate, the span is the **deliberate terminal encoding** of
-    /// pipeline order in bootstrap-range — same thesis meeting point (`Arrow →
-    /// body`), with the “implementation kind” being *ordering text* read by
-    /// `pipeline_authority`, not user DAG execution. **Dissolution trigger
-    /// (future substrate):** when pipeline stage order is represented by a
-    /// first-class structural fact (e.g. ordered declarations or a dedicated
-    /// carrier) that supersedes parsing `compile`'s brace body, migrate
-    /// `pipeline_compile_order_stage_names` to that source and retire this
-    /// span-backed path — **not** “M2 parses `compile` as `SurfaceExpr`.”
-    ///
-    /// Downstream: **case 1** only for std/ `FnExternalBody` parse lag. **2a**
-    /// per-stage fns via `PipelineStageBinding` → `ExternalRealization`. **2c**
-    /// `compile`: `pipeline_compile_order_names` / `pipeline_compile_order_stage_names`
-    /// always consume **`compile`'s `body_span`** for stage ordering — a live
-    /// authority path independent of “has `PipelineStageBinding` or not.” Do
-    /// not infer case 1 from absence of bindings: if the decl is `compile` in
-    /// `pipeline.dag`, treat as **2c** (ordering text), not parse lag.
     FnExternalBody {
         name: String,
         type_params: Vec<String>,
@@ -171,19 +178,6 @@ pub enum SurfaceItem {
         body_span: SourceSpan,
         span: SourceSpan,
     },
-    /// `data name: Type = { body }` — a typed constant. At M1(3)
-    /// PR-B the parser attempts to lower the body as a record
-    /// literal (via a 3-token lookahead on `{`, `Ident`, `:`); if
-    /// successful, `body` is `Some(SurfaceExpr::Record { .. })` and
-    /// lowering validates the record against the type annotation
-    /// via inhabitance checking. If the body doesn't match the
-    /// record-literal shape, `body` is `None` and the body is
-    /// brace-skipped, preserving only the span (M1(2.7) R14's
-    /// ValueBody::Unparsed path).
-    ///
-    /// `body_span` always reflects the full range of the brace
-    /// group so downstream span-anchored diagnostics and future
-    /// parser extensions have a stable anchor.
     Data {
         name: String,
         ty: SurfaceType,
@@ -191,13 +185,10 @@ pub enum SurfaceItem {
         body_span: SourceSpan,
         span: SourceSpan,
     },
-    /// `module foo.bar.baz` — parsed into a dotted path. At M1(2.7)
-    /// lowering is a no-op; M2+ consumes it as a scope boundary.
-    Module { path: Vec<String>, span: SourceSpan },
-    /// `import foo.bar { Name1, Name2 }` — parsed into a dotted path
-    /// plus an optional name list. At M1(2.7) lowering is a no-op
-    /// (the declaration table is flat); M2+ consumes it as a
-    /// scoped symbol-table seed.
+    Module {
+        path: Vec<String>,
+        span: SourceSpan,
+    },
     Import {
         path: Vec<String>,
         names: Vec<String>,
@@ -205,7 +196,6 @@ pub enum SurfaceItem {
     },
     TypeAtom {
         name: String,
-        #[allow(dead_code)]
         type_params: Vec<String>,
         span: SourceSpan,
     },
@@ -230,103 +220,8 @@ pub enum SurfaceItem {
 }
 
 #[derive(Debug, Clone)]
-pub struct SurfaceParam {
-    pub name: String,
-    pub ty: SurfaceType,
-    /// DB-11 (3a.3): optional `where <expr>` refinement predicate on
-    /// the parameter. `None` for bare `x: Int`; `Some(expr)` for
-    /// `x: Int where x > 0`. Lowered into `Declaration.refinement` via
-    /// `lower_parameter_refinements_phase` except where fail-closed:
-    /// out-of-fragment predicate shapes (see `lower.rs`). Generic refined
-    /// carriers are materialized at inference via substitution (PR #522).
-    pub refinement: Option<SurfaceExpr>,
-}
-
-#[derive(Debug, Clone)]
-pub struct SurfaceField {
-    pub name: String,
-    pub ty: SurfaceType,
-}
-
-#[derive(Debug, Clone)]
-pub struct SurfaceVariant {
-    pub name: String,
-    pub payload: VariantPayload,
-    pub span: SourceSpan,
-}
-
-/// Dissolution ledger — **VariantPayload**:
-///
-/// 🟢 **Terminal at M1(2.6).** Two variants: `Positional` and
-/// `Record`. Unit variants like `True | False` are represented as
-/// `Positional(vec![])` — there is no separate `Unit` variant
-/// because it was structurally equivalent to an empty positional.
-///
-/// 4-pattern check:
-/// - Pattern 1 (fact placement): fails. Record vs positional
-///   have different downstream field shapes (labeled vs
-///   anonymous).
-/// - Pattern 2 (variant-is-data): fails. Record carries
-///   `Vec<SurfaceField>`, positional carries `Vec<SurfaceType>`.
-/// - Pattern 3 (algebraic form): fails.
-/// - Pattern 4 (dimensional): fails.
-///
-/// Verdict: terminal. A future `Tuple` variant or named-indexed
-/// payload would extend through §8.10's substrate-extension
-/// audit, not replace this enum.
-#[derive(Debug, Clone)]
-pub enum VariantPayload {
-    /// Positional payload — e.g. `Ok(T)` in `type Result<T, E> = Ok(T) | Err(E)`,
-    /// or an empty `vec![]` for unit variants like `True` / `False`.
-    Positional(Vec<SurfaceType>),
-    /// Record-style payload — e.g. `WorkloadIdentity { audience: NonEmptyStr, ... }`.
-    Record(Vec<SurfaceField>),
-}
-
-/// Dissolution ledger — **SurfaceType**:
-///
-/// 🟢 **Terminal at M1(2.6).** Four variants cover the four surface
-/// type-expression shapes: bare name, parameterized, optional,
-/// function type. Each maps onto a distinct `TypeConnective` variant
-/// during lowering (Atom(Identifier), Instantiation, Cardinality,
-/// Arrow) so the coproduct mirrors the substrate.
-///
-/// 4-pattern check:
-/// - Pattern 1 (fact placement): fails. Each variant lowers via a
-///   distinct `type_to_declaration_id` arm.
-/// - Pattern 2 (variant-is-data): fails. Different payload types.
-/// - Pattern 3 (algebraic form): the variants correspond 1:1 to
-///   distinct `TypeConnective` variants — this is the surface
-///   projection of the type substrate. Collapsing is a category
-///   error.
-/// - Pattern 4 (dimensional): fails.
-///
-/// STOP SIGNAL: adding a variant that doesn't correspond to a
-/// `TypeConnective` shape (e.g., intersection types, type-level
-/// literals) triggers a substrate question — is the surface
-/// grammar running ahead of the substrate, or is the substrate
-/// missing a sixth connective? Re-run the `TypeConnective`
-/// dissolution audit in `dag.rs` before extending this enum.
-#[derive(Debug, Clone)]
-pub enum SurfaceType {
-    Named {
-        name: String,
-        span: SourceSpan,
-    },
-    Parameterized {
-        name: String,
-        args: Vec<SurfaceType>,
-        span: SourceSpan,
-    },
-    Optional {
-        inner: Box<SurfaceType>,
-        span: SourceSpan,
-    },
-    Arrow {
-        inputs: Vec<SurfaceType>,
-        output: Box<SurfaceType>,
-        span: SourceSpan,
-    },
+pub struct SurfaceModule {
+    pub items: Vec<SurfaceItem>,
 }
 
 impl SurfaceType {
@@ -340,268 +235,16 @@ impl SurfaceType {
     }
 }
 
-/// Dissolution ledger — **SurfaceExpr**:
-///
-/// 🟡 **Scaffold at M1(3) PR-B.** Seven variants for the seven
-/// currently supported expression forms: Literal, Var, Call,
-/// Operator, If, Match, Record. Each has a distinct lowering
-/// target:
-///   Literal  → Value(LiteralBits::*)
-///   Var      → scope lookup (no new node)
-///   Call     → Transform with TransformTarget::Callable
-///   Operator → Transform with TransformTarget::Operator
-///   If       → Branch (lowered as match on Bool with two arms)
-///   Match    → Branch with one Path per arm
-///   Record   → **data-body only** at M1(3) PR-B; emits a
-///              ValueBody::Structural on the enclosing
-///              Declaration via `lower_data_item`. In user-code
-///              expression position `lower_expr::Record` emits
-///              a fail-closed diagnostic pointing at class-5
-///              gap #3 (user-code record literals land when
-///              list/map/map-body parsing follows in M2+).
-///
-/// **M1(3) PR-B change:** `SurfaceExpr::Record { fields, span }`
-/// joined the enum to let `src/v3/spec/rust.dag` exist
-/// as a structurally-grounded language spec file that the Rust
-/// emitter reads at compile time. The parser accepts record
-/// literals only in `data foo: T = { ... }` body position via
-/// a 3-token lookahead (`{`, `Ident`, `:`) in `parse_data_item`;
-/// `parse_primary` does NOT dispatch to record literals, so
-/// user-code expressions like `let x = { a: 1 }` still fail at
-/// parse time (with a better follow-up diagnostic forthcoming).
-///
-/// **M1(2.8) change:** `SurfaceExpr::Match { scrutinee, arms }`
-/// joined the enum as part of the parser catch-up to v2's
-/// grammar (see `DOWNSTREAM_REQUIREMENTS.md` M1(2.8) section).
-/// It lowers to a `Branch` — no new L1 behavior variant — and
-/// its arms carry `BranchPattern` discriminators on the emitted
-/// `Path`s, so `if`/`else` and `match` share the same dispatch
-/// substrate.
-///
-/// **M1(2.7) change:** the former `Call { target: String, .. }` was
-/// doing double duty — representing both user function calls AND
-/// primitive operator applications (with the target string acting
-/// as discriminator: `"+"` vs `"foo"`). That's the same shape the
-/// enumeration pass flagged as Q3: one field, two jobs, string as
-/// discriminator. The new `Operator { op: OperatorKind, .. }`
-/// variant puts the distinction on the type. Parser commits to
-/// which variant to emit at parse time — it already knows, because
-/// operator symbols come from different grammar productions than
-/// identifiers.
-///
-/// The former IntLit/BoolLit/StringLit trio is still collapsed
-/// into a single `Literal(SurfaceLiteral)` variant.
-///
-/// 4-pattern check:
-/// - Pattern 1 (fact placement): fails. Each variant has a distinct
-///   downstream lowering path.
-/// - Pattern 2 (variant-is-data): fails. Different payload types
-///   per variant.
-/// - Pattern 3 (algebraic form): these are the current expression
-///   kinds that M1(2.8) supports — collapsing would erase
-///   structure, not dissolve it. The enum will grow as the
-///   parser catches up to the remaining surface grammar
-///   (lambda `=> expr`, record/map/list literals, field access).
-/// - Pattern 4 (dimensional): fails.
-///
-/// Verdict: 🟡 scaffold, not terminal. The enum is in flight —
-/// the M1(2.8) addition was itself a scaffold-honesty fix for
-/// `FnExternalBody` / `ArrowBody::Unparsed` bodies that the
-/// parser couldn't previously consume. Further additions go
-/// through §8.10's substrate-extension audit as each grammar
-/// surface lands. Dissolution trigger: the enum reaches terminal
-/// shape only when the surface grammar subsumes the set of
-/// forms found in the fully-loaded v3 std/ set, with no
-/// remaining `Unparsed` scaffolds in the bootstrap. When the
-/// M2+ parser covers record/map/list literals and the data
-/// body gap (class-5 gap #3) closes, this ledger is re-run.
-/// The `Operator` variant also dissolves at M2+ into
-/// `Call` once explicit algebra-field access syntax lands.
-#[derive(Debug, Clone)]
-pub enum SurfaceExpr {
-    Literal {
-        value: SurfaceLiteral,
-        span: SourceSpan,
-    },
-    Var {
-        name: String,
-        span: SourceSpan,
-    },
-    /// Dotted-path identifier — `OrderedRing.add`,
-    /// `dsl.std.v3_l1.Bind`, etc. Produced by `parse_primary` when
-    /// it sees `Ident . Ident (. Ident)*`. Distinct from `Var` so
-    /// downstream lowering can tell whether it was looking at a
-    /// bare name (top-level scope lookup) or a dotted reference
-    /// (top-level lookup followed by Conj-child walk by label).
-    /// At M1(3), two lowering routes consume `Path`:
-    ///
-    /// - `lower_expr` lowers a Path whose head resolves to a local
-    ///   variable into one `TransformTarget::FieldProject` per
-    ///   segment.
-    /// - `lower_record_to_structural` accepts Path as a typed
-    ///   declaration reference when a record-literal field's
-    ///   declared type is the `DeclarationRef` sentinel from
-    ///   `src/v3/spec/v3_l1.dag`.
-    ///
-    /// Other expression-position uses fail closed.
-    Path {
-        segments: Vec<String>,
-        segment_spans: Vec<SourceSpan>,
-        span: SourceSpan,
-    },
-    Call {
-        target: String,
-        args: Vec<SurfaceExpr>,
-        span: SourceSpan,
-    },
-    /// Sum-constructor expression with named payload fields, e.g.
-    /// `Some { value: x }`. Lowering resolves `target` against the
-    /// expected sum type at the use site, then lowers each named field
-    /// against the matched variant payload.
-    VariantRecord {
-        target: String,
-        fields: Vec<SurfaceRecordField>,
-        span: SourceSpan,
-    },
-    /// Primitive binary operator application. Distinct from `Call`
-    /// because the dispatch is via algebra inhabitance, not a
-    /// declaration lookup. At parse time the operator is committed
-    /// to a structural `OperatorKind` variant; downstream code
-    /// never re-parses the operator symbol.
-    Operator {
-        op: crate::operators::OperatorKind,
-        args: Vec<SurfaceExpr>,
-        span: SourceSpan,
-    },
-    Lambda {
-        params: Vec<String>,
-        body: Box<SurfaceExpr>,
-        span: SourceSpan,
-    },
-    If {
-        cond: Box<SurfaceExpr>,
-        then_branch: Box<SurfaceExpr>,
-        else_branch: Box<SurfaceExpr>,
-        span: SourceSpan,
-    },
-    /// `match <scrutinee> { <pattern> => <expr> <pattern> => <expr> ... }`
-    /// Lowers to a `Branch` behavior with the scrutinee as input
-    /// and one `Path` per arm carrying the arm's pattern.
-    Match {
-        scrutinee: Box<SurfaceExpr>,
-        arms: Vec<SurfaceMatchArm>,
-        span: SourceSpan,
-    },
-    /// `{ field: expr, field: expr, ... }` — record literal.
-    /// Produced in both expression position and data-body position.
-    /// Lowering for user-code position routes through
-    /// `lower_record_literal_expr`; lowering for data bodies walks the
-    /// declared type and produces a `ValueBody::Structural { fields }`
-    /// when the body inhabits the target record shape.
-    Record {
-        fields: Vec<SurfaceRecordField>,
-        span: SourceSpan,
-    },
-    /// `[expr, expr, ...]` — list literal. Used by structured data
-    /// bodies in staged spec files. User-code lowering still
-    /// rejects list literals at the current surface scope.
-    List {
-        elements: Vec<SurfaceExpr>,
-        span: SourceSpan,
-    },
-}
-
-/// A single field in a record literal: a label and the expression
-/// assigned to it. At M1(3) PR-B lowering requires field values to
-/// be literal scalars (Int/Bool/String) — nested records,
-/// references, and computed expressions are class-5 gap #3
-/// follow-ups.
-#[derive(Debug, Clone)]
-pub struct SurfaceRecordField {
-    pub name: String,
-    pub value: SurfaceExpr,
-    pub span: SourceSpan,
-}
-
-/// A single arm of a `match` expression. Pattern plus body.
-#[derive(Debug, Clone)]
-pub struct SurfaceMatchArm {
-    pub pattern: SurfacePattern,
-    pub body: SurfaceExpr,
-    pub span: SourceSpan,
-}
-
-#[derive(Debug, Clone)]
-pub struct SurfacePatternField {
-    pub name: String,
-    pub binding: String,
-    pub span: SourceSpan,
-}
-
-/// Dissolution ledger — **SurfacePattern**:
-///
-/// 🟡 **M1(2.8) scaffold.** Two variants today: bare variant
-/// patterns like `True`, `None`, `Plus`, and single-binding
-/// payload captures like `Some(value)`. Both are parse-time names
-/// that the lowering / inference pipeline resolve scoped against
-/// the scrutinee's `Disj` connective. Future extensions (wildcard
-/// `_`, record destructure `Some { value: x }`, nested patterns,
-/// literal patterns) go through §8.10's substrate-extension audit.
-///
-/// 4-pattern check:
-/// - Pattern 1 (fact placement): fails. The pattern is per-arm
-///   data that `BranchPattern::UnresolvedVariant` consumes; no
-///   alternative structural placement.
-/// - Pattern 2 (variant-is-data): fails. BareVariant carries a
-///   variant name; VariantWith carries a variant name plus a
-///   payload-binding name.
-/// - Pattern 3 (algebraic form): fails.
-/// - Pattern 4 (dimensional): fails.
-///
-/// Verdict: scaffold. The set of patterns grows as the parser
-/// grammar catches up to v2.
-#[derive(Debug, Clone)]
-pub enum SurfacePattern {
-    /// A bare constructor name, e.g. the `True` in
-    /// `match a { True => x, False => y }`. Resolves at infer
-    /// time against the scrutinee's Disj children by label.
-    BareVariant { name: String, span: SourceSpan },
-    /// A single-binding payload capture, e.g. the `Some(value)`
-    /// in `match opt { Some(value) => value, None => 0 }`.
-    /// Lowering resolves the payload's type from the matched
-    /// variant declaration and inserts `binding` into the arm-
-    /// local scope.
-    VariantWith {
-        name: String,
-        binding: String,
-        span: SourceSpan,
-    },
-    /// Named payload capture, e.g. `Some { value: x }`.
-    VariantFields {
-        name: String,
-        fields: Vec<SurfacePatternField>,
-        span: SourceSpan,
-    },
-}
-
-/// Parse-local literal value. Mirrors `dag::LiteralBits` but lives
-/// in the parse layer so the G3 guardrail ("parse.rs does not
-/// mention any Dag type") is preserved: an alternative frontend
-/// that plugs in at the SurfaceAst boundary works against
-/// `SurfaceLiteral`, not `LiteralBits`. The surface→substrate
-/// translation in `lower.rs` is the bridge.
-///
-/// Dissolution ledger — 🟢 terminal. Each variant is a distinct
-/// user-input boundary (integer literal, boolean literal, string
-/// literal) with no shared structure. A future `Char` or `Float`
-/// addition extends through §8.10.
-#[derive(Debug, Clone)]
-pub enum SurfaceLiteral {
-    Int(i64),
-    Bool(bool),
-    String(String),
-}
-
+// TEMPORARY STAGING — checked-in recursive-descent parse **algorithm** (semantic authority).
+// This is **parser staging**, not SG-2b: Surface **carrier** schema lives in `runtime_mirrors.dag`;
+// `regen_parse` splices this fragment after emitted `Surface*` definitions inside `parse_generated.rs`.
+// Do not treat this file as omission-grade final authority — it is an explicit scaffold with a
+// named paydown (SG-2b follow-on lane).
+//
+// Dissolution trigger: delete this file when parse **logic** is structurally `.dag`-owned (SELF_HOSTING
+// §6 Phase 4a direct port or Phase 4b grammar-as-data) and `regen_parse` emits the full module without
+// any external Rust body fragment.
+//
 pub fn parse(tokens: &[Token], file: &str) -> Result<SurfaceModule, Diagnostic> {
     let mut parser = Parser {
         tokens,

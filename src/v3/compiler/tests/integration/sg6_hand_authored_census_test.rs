@@ -136,7 +136,7 @@ fn bin_basenames() -> BTreeSet<String> {
 }
 
 #[test]
-fn sg6_bin_census_is_locked_to_five_shims() {
+fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     // SG-1 receipts `regen_tokenize.rs` here. The tokenizer cutover uses
     // `src/v3/compiler/tokenize.dag` as lexical authority and
     // `regen_tokenize.rs` as the host driver that projects it into
@@ -159,6 +159,7 @@ fn sg6_bin_census_is_locked_to_five_shims() {
     let expected: BTreeSet<String> = [
         "regen_lens.rs",
         "regen_lower.rs",
+        "regen_parse.rs",
         "regen_tokenize.rs",
         "regen_v3.rs",
         "self_host_fixed_point.rs",
@@ -171,9 +172,10 @@ fn sg6_bin_census_is_locked_to_five_shims() {
 
     assert_eq!(
         actual, expected,
-        "SG-6 hand-authored bin census changed. The post-SG-3f-prep census is \
+        "SG-6 hand-authored bin census changed. The census is \
          `regen_lens` (reads `src/v3/compiler/regen.dag`), `regen_lower` \
-         (reads `src/v3/compiler/src/lower.rs`), `regen_tokenize` \
+         (reads `src/v3/compiler/src/lower.rs`), `regen_parse` \
+         (reads `src/v3/compiler/runtime_mirrors.dag` for Surface carriers), `regen_tokenize` \
          (reads `src/v3/compiler/tokenize.dag`), `regen_v3`, and \
          `self_host_fixed_point`. Adding a new bin re-introduces a \
          per-lens (or per-target) Rust driver — the SG-6 lane requires that \

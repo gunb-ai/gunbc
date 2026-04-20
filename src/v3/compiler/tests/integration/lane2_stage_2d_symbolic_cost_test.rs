@@ -565,11 +565,13 @@ fn format_rust_source(source: &str) -> String {
 // Cold-init path for the `cost.dag` OnceLock cache key. Sibling
 // `cost_generated_module_matches_checked_in_snapshot` also compiles
 // cost.dag and reuses the cached Dag, so this test legitimately
-// bears the one-time compile cost on CI (~2.5s on cold runners;
-// busy shared runners sometimes exceed 5s wall-clock). Matches the rationale behind the
-// sibling's 15s snapshot-compare budget below.
+// bears the first `compile_to_dag(cost.dag)` cost on CI (~2.5s on typical cold
+// runners; busy shared runners or heavier bootstrap — `runtime_mirrors.dag`
+// in the bundle and substrate growth — can exceed ~7s wall on integration
+// binaries). `15_000`ms keeps headroom under this ratchet without matching the
+// sibling's 45s snapshot-compare budget below.
 budgeted_test! {
-    8_000,
+    15_000,
     cost_dag_compiles_cleanly,
     {
         let source = std::fs::read_to_string(lens_path()).expect("read cost.dag");
@@ -582,9 +584,13 @@ budgeted_test! {
     }
 }
 
-// rustfmt + snapshot compare can spike on cold CI runners.
+// rustfmt + snapshot compare can spike on cold CI runners. Bootstrap includes
+// `runtime_mirrors.dag` (regen_parse authority lives in the same bundle), so
+// `Dag::new()` clones and the first `compile_to_dag(cost.dag)` pay more than
+// the old 15s cap; a cold integration-binary run can also spend tens of seconds
+// in link + first `LazyLock` bootstrap before this test's body starts.
 budgeted_test! {
-    15_000,
+    45_000,
     cost_generated_module_matches_checked_in_snapshot,
     {
         let fresh = emit_lens_module();

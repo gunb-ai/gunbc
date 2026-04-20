@@ -42,8 +42,11 @@ four_fixture_disk_sources_emit_deterministically  # ROADMAP Lane 3 Stage 3c prep
 four_fixture_regression_test::four_fixture_suite_shares_one_reachability_shape  # ROADMAP Lane 3 Stage 3c prep / four-fixture pressure corpus; shared `compile_to_dag` suite can exceed 2s on cold ubuntu-latest (neighbor: `four_fixture_disk_sources_emit_deterministically`).
 
 common::cached_compile::tests::cached_compile_any_returns_clean_dag_when_key_warmed_by_strict  # TESTING.md "Mocks over compile" paydown; compile-cache behavior test still performs real compile work.
+lane2_stage_2d_symbolic_cost_test::branch_reports_constant_when_both_arms_constant  # ROADMAP Lane 2 Stage 2d (#546): unique `cached_compile` key + cold compile; libtest default parallelism can push wall time over 2s when neighbors compile heavy fixtures — paydown: shared bootstrap / shared cache key (see inline comment on the test).
 lane2_stage_2d_symbolic_cost_test::cost_dag_compiles_cleanly  # ROADMAP Lane 2 Stage 2d symbolic-cost migration; DAG compile smoke still cold-compiles authority input.
+lane2_stage_2d_symbolic_cost_test::cost_generated_module_matches_checked_in_snapshot  # ROADMAP Lane 2 Stage 2d: emit + rustfmt snapshot compare on cold CI can far exceed 2s; `budgeted_test!` owns inner wall-clock; ratchet exemption keeps Phase-0 gate honest (TESTING.md).
 
+m0_acceptance::compile_boundary_is_fail_closed  # ROADMAP M0 acceptance: fail-closed compile-boundary path can sit just above the 2s Phase-0 ratchet on cold ubuntu-latest; TESTING.md test-shape / shared-setup paydown, not TM-0.
 m0_acceptance::post_sweep_port_state_matches_diagnostic_table  # M0 acceptance compile-boundary coverage still exercises full compile path; any reshaping belongs to test-layer migration work.
 m1_substrate_test::referenced_port_walk_real_helper_stack_compiles  # SG-3f reflected-surface foundation increases bootstrap/load cost slightly; this helper-stack compile receipt stays explicit until parse/lower cutover work can restructure it.
 
@@ -67,6 +70,8 @@ p0_std_render_repeat_string_test::std_render_repeat_string_and_indent_text_match
 m1_substrate_test::referenced_port_walk_real_helper_stack_compiles  # Real substrate helper-stack compile smoke is still cold-compile bound on GitHub runners; substrate/test-shape paydown owns any decomposition, not SG-7.4.
 
 sg1_tokenize_authority_test::tokenize_generated_module_matches_checked_in_snapshot  # SG-1 authority snapshot still regenerates/parses full tokenize projection; tokenize authority lane owns future speedup.
+sg2_parse_authority_test::parse_generated_module_matches_checked_in_snapshot  # SG-2 parser-staging snapshot: in-process authority compile + rustfmt stdout (same paydown class as SG-1 tokenize snapshot gate).
+sg2_parse_authority_test::runtime_mirrors_dag_compiles_cleanly_for_regen_parse  # SG-2 parser-staging: `compile_runtime_mirrors_authority_dag` + cold bootstrap work can exceed 2s wall under default libtest parallelism; ROADMAP SG-2 / TESTING.md paydown (same lane as `parse_generated_module_matches_checked_in_snapshot`).
 sg3_lower_authority_test::lower_generated_module_matches_regen_snapshot  # SG-3f-prep: `cargo run regen_lower` cold-links on CI; snapshot gate mirrors SG-1 tokenize pattern; canonical lowering remains `lower.rs`.
 sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift  # SG-6 regen CLI smoke intentionally shells out to regen path; CLI smoke cost is tracked in SG-6, not TM-0.
 

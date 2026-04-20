@@ -83,6 +83,19 @@ fn declaration_name_preference_rank(file: &str) -> usize {
 }
 
 pub(crate) fn bootstrap(dag: &mut Dag) {
+    bootstrap_inner(dag, &[]);
+}
+
+/// Production bootstrap minus `src/v3/compiler/runtime_mirrors.dag`.
+///
+/// Used by [`crate::compile_runtime_mirrors_authority_dag`] so a fresh parse+lower of
+/// that file is first-of-name (no duplicate-declaration diagnostics against the
+/// embedded compiler fixture).
+pub(crate) fn bootstrap_without_runtime_mirrors_fixture(dag: &mut Dag) {
+    bootstrap_inner(dag, &["src/v3/compiler/runtime_mirrors.dag"]);
+}
+
+fn bootstrap_inner(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
     // Two-phase loading across all seven std/ files. Phase 1 parses and
     // `collect_symbols_phase`s every file, allocating top-level
     // declarations + their TypeParam children in one batch. Phase 2
@@ -114,12 +127,16 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     // time from `src/v3/std/*.dag`, `src/v3/spec/*.dag`, and
     // `src/v3/compiler/*.dag`. Adding a new staged file is a pure
     // file-system change.
+    let compiler_iter = COMPILER_FILES
+        .iter()
+        .copied()
+        .filter(|(path, _)| !excluded_compiler_paths.contains(path));
     let fixtures: Vec<(&str, &str)> = std_fixtures
         .iter()
         .copied()
         .chain(STAGED_FILES.iter().copied())
         .chain(V3_SPECS.iter().copied())
-        .chain(COMPILER_FILES.iter().copied())
+        .chain(compiler_iter)
         .collect();
 
     // Phase 0: parse every fixture. Tokenize/parse errors attach to

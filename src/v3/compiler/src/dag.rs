@@ -1345,6 +1345,12 @@ static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     dag
 });
 
+static BOOTSTRAPPED_DAG_WITHOUT_RUNTIME_MIRRORS_FIXTURE: LazyLock<Dag> = LazyLock::new(|| {
+    let mut dag = Dag::empty();
+    crate::bootstrap::bootstrap_without_runtime_mirrors_fixture(&mut dag);
+    dag
+});
+
 impl Dag {
     fn empty() -> Self {
         Self {
@@ -1372,6 +1378,13 @@ impl Dag {
 
     pub fn new() -> Self {
         (*BOOTSTRAPPED_DAG).clone()
+    }
+
+    /// Clone of the bootstrapped Dag used by [`crate::compile_runtime_mirrors_authority_dag`]:
+    /// every fixture except `src/v3/compiler/runtime_mirrors.dag`, so that file can be
+    /// parsed and lowered again without duplicate top-level names.
+    pub(crate) fn new_without_runtime_mirrors_compiler_fixture_bootstrap() -> Self {
+        (*BOOTSTRAPPED_DAG_WITHOUT_RUNTIME_MIRRORS_FIXTURE).clone()
     }
 
     /// Typed accessor for the cached `Int` primitive `TypeShape`. `None`

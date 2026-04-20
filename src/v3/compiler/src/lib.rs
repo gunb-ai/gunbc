@@ -686,9 +686,13 @@ pub(crate) mod infer_helpers {
 pub mod lens_idempotency;
 pub mod lens_parallelism;
 mod lower;
+#[path = "parse_generated.rs"]
 mod parse;
 mod pipeline_authority;
+mod regen_parse_emit;
 mod tokenize;
+
+pub use regen_parse_emit::{render_parse_generated_rs, RenderParseGeneratedError};
 pub(crate) mod variant_payload {
     #[allow(
         dead_code,
@@ -855,6 +859,30 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
     let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;
     let mut dag = lower::lower(&surface);
+    infer::infer(&mut dag);
+    if dag.diagnostics().is_empty() {
+        Ok(dag)
+    } else {
+        Err(CompileError::Semantic(dag))
+    }
+}
+
+/// Lower `runtime_mirrors.dag` for codegen (`regen_parse`, SG-2 staging tests).
+///
+/// Unlike [`compile_to_dag`], this starts from a bootstrap Dag that omits the embedded
+/// `runtime_mirrors.dag` compiler fixture so the fresh parse is first-of-name and can be
+/// lowered without duplicate-declaration diagnostics.
+#[allow(clippy::result_large_err)]
+pub fn compile_runtime_mirrors_authority_dag(
+    source: &str,
+    file: &str,
+) -> Result<Dag, CompileError> {
+    let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
+    let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;
+    let mut dag = Dag::new_without_runtime_mirrors_compiler_fixture_bootstrap();
+    let user_start = dag.declarations().len();
+    lower::lower_into(&mut dag, &surface);
+    lower::finalize_strict_user_lower_range(&mut dag, user_start);
     infer::infer(&mut dag);
     if dag.diagnostics().is_empty() {
         Ok(dag)

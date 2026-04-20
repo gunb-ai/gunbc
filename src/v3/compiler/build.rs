@@ -45,9 +45,13 @@
 //   pub static COMPILER_FILES: &[(&str, &str)] = &[
 //       ("src/v3/compiler/pipeline.dag", include_str!("...")),
 //   ];
-//   `tokenize.dag` is intentionally omitted: it is tokenizer authority for
-//   `regen_tokenize` and must not be folded into the bootstrap Dag (duplicate
-//   declarations when `compile_to_dag` parses it).
+//   `tokenize.dag` is intentionally omitted: tokenizer authority for `regen_tokenize`
+//   must not be folded into the bootstrap Dag (duplicate declarations when
+//   `compile_to_dag` parses that authority standalone on top of `Dag::new()`'s
+//   bootstrapped clone). `runtime_mirrors.dag` stays in the bundle so the production
+//   substrate matches the staged compiler; `regen_parse` and staging tests compile
+//   it via `compile_runtime_mirrors_authority_dag` in `src/v3/compiler/src/lib.rs`, which
+//   boots from a clone that omits that fixture to avoid the duplicate-name path.
 //
 // `bootstrap.rs` uses `include!(concat!(env!("OUT_DIR"), ...))` to
 // pull the arrays in. The `include_str!` calls inside the generated
@@ -202,8 +206,8 @@ fn main() {
     );
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
     let mut compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
-    // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`; it is not part
-    // of the runtime bootstrap Dag (would duplicate declarations when `compile_to_dag` parses it).
+    // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`; it is
+    // stripped from the runtime bootstrap bundle — see COMPILER_FILES header.
     compiler_entries.retain(|p| {
         p.file_name()
             .and_then(|s| s.to_str())
@@ -295,6 +299,7 @@ fn main() {
         "src/v3/compiler/src/lens_unused_parameters_generated.rs",
         "src/v3/compiler/src/lower_generated.rs",
         "src/v3/compiler/src/operators_generated.rs",
+        "src/v3/compiler/src/parse_generated.rs",
         "src/v3/compiler/src/parse_surface_generated.rs",
         "src/v3/compiler/src/serialize_generated.rs",
         "src/v3/compiler/src/tokenize_generated.rs",
