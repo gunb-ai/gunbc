@@ -46,17 +46,29 @@ authority**. Only the system boundary does.
 
 ## Current v3 state
 
-- **78 hand-maintained `.rs` files** (`src/v3/compiler/tests/integration/sg0_census_test.rs`).
-- **4 generated**: lens files (`lens_cost_generated`,
-  `lens_provenance_generated`, `lens_unused_parameters_generated`,
-  `lens_structural_resolution_generated`).
-- **`bootstrap.rs` uses `include_str!`** to load 7 `.dag` files at
-  runtime — v3 re-tokenizes, re-parses, re-lowers the std library
-  every `Dag::new()`. v2 doesn't do this.
+**Hand-maintained**: **78 `.rs` files** (SG-0 census at
+`src/v3/compiler/tests/integration/sg0_census_test.rs`).
 
-The 78-file gap decomposes:
-- ~30 compiler core files (parse, lower, infer, emit, tokenize, ...)
-- ~10 lens files (migrating to generated per SG-6)
+**Generated files on main** (partial dissolution already landed):
+- `lens_*_generated.rs` (5 files: cost, cost_symbolic, provenance,
+  structural_resolution, unused_parameters)
+- `tokenize_generated.rs` (SG-1 authority via `src/v3/compiler/tokenize.dag` + `regen_tokenize`; `tokenize.rs` is now a 23-line shim but still on census)
+- `operators_generated.rs` (SG-3; `operators.rs` retired)
+- `dag_{branch,cluster,cost,scalar}_generated.rs`
+- `infer_helpers_generated.rs`, `serialize_generated.rs`,
+  `diagnostics_generated.rs`, `types_generated.rs`
+
+**Bootstrap inputs `Dag::new()` parses at runtime** (all four authorities):
+1. **`std_fixtures`** — 7 `dsl/std/*.dag` files embedded via `include_str!` (`LOGIC_DAG`, `BIT_DAG`, `ALGEBRA_DAG`, `INTEGER_DAG`, `FLOAT_DAG`, `STRING_TYPE_DAG`, `TYPES_DAG`)
+2. **`STAGED_FILES`** — `src/v3/std/*.dag` (build-script-enumerated)
+3. **`V3_SPECS`** — `src/v3/spec/*.dag` (Rust/Go/Python language specs)
+4. **`COMPILER_FILES`** — `src/v3/compiler/*.dag` (compiler.dag, pipeline.dag, tokenize.dag, operators.dag, regen.dag, runtime_mirrors.dag)
+
+All four chain into a single `fixtures` array that bootstrap.rs tokenizes + parses + lowers on every `Dag::new()`. **PB-1 must replace the runtime tokenize/parse/lower path for all four input authorities**, not just `std_fixtures`.
+
+**The 78-file gap decomposes** (approximate):
+- ~30 compiler core files (parse, lower, infer, emit internals, tokenize shim, ...)
+- ~10 lens files (SG-6 migrating to generated; some already done)
 - ~10 diagnostic / utility files (serialize, diagnostics, types, ...)
 - ~15 test infrastructure files
 - ~10 bin files (regen_*, self_host_fixed_point, ...)
@@ -64,7 +76,12 @@ The 78-file gap decomposes:
 
 ## The PB program
 
-Nine stages, mapping to existing SG and Lane work where possible.
+Nine stages. Each stage is the **retirement step** that follows a
+corresponding **authority-creation step** in the SG / Lane programs.
+SG-N creates the `.dag` authority + its `_generated.rs` projection;
+PB-N retires the hand-maintained Rust file that used to own the
+concept. Two-step dissolution per concept: create authority, then
+retire projection — not one.
 
 ### PB-0 — ratchet (unblocks everything)
 
@@ -73,64 +90,93 @@ Nine stages, mapping to existing SG and Lane work where possible.
 - **Target trajectory**: 78 → 50 → 20 → 5.
 - **Dependencies**: none. Dispatchable now.
 
-### PB-1 — bootstrap loader emission
+### PB-1 — bootstrap loader emission (all four authorities)
 
-- Replace `bootstrap.rs`'s runtime `include_str!` + tokenize/parse/lower
-  with generated Rust constructors that build the primed Dag directly.
-- Input: `dsl/std/*.dag`. Output: `bootstrap_generated.rs` that calls
-  `Dag::push_value`, `Dag::push_declaration`, etc. at `Dag::new()`.
+- Replace `bootstrap.rs`'s runtime `include_str!` + tokenize + parse +
+  lower for **all four input authorities** (`std_fixtures` +
+  `STAGED_FILES` + `V3_SPECS` + `COMPILER_FILES`, per current-state
+  section above). Covering only `dsl/std/*.dag` is insufficient —
+  `Dag::new()` today chains all four into a single `fixtures` array.
+- Output: `bootstrap_generated.rs` that calls `Dag::push_*` builders
+  to construct the primed Dag directly at `Dag::new()`, with no
+  runtime tokenize/parse/lower path.
 - Matches v2's pattern (no runtime `.dag` parsing at bootstrap).
-- **Dependencies**: Dag builder API (blocked on TM-1).
+- **Dependencies**: Dag builder API (TM-1); generator that walks
+  the 4 authorities at build time and emits the constructor module.
+- **Not done in one shot**: can stage per-authority (e.g., ship
+  `std_fixtures` first as PB-1a, then STAGED/SPECS/COMPILER as
+  PB-1b/c/d). Each sub-stage dissolves one include_str block + its
+  runtime parse path.
 
 ### PB-2 — tokenize retire
 
-- `tokenize.dag` landed via SG-1. `regen_tokenize` produces
-  `tokenize_generated.rs` today.
-- Retire `tokenize.rs` entirely — lib.rs routes through generated.
-- **Dependencies**: SG-1 merge.
-- **Counter delta**: -1 file.
+- **SG-1 authority already landed**: `src/v3/compiler/tokenize.dag` +
+  `regen_tokenize` + `tokenize_generated.rs` all exist on main.
+- `tokenize.rs` is already a 23-line shim routing to generated.
+- **PB-2 work**: delete `tokenize.rs` entirely, route call sites
+  directly through `tokenize_generated.rs` (or a `pub use` in
+  `lib.rs`); remove from `hand_maintained_src`.
+- **Dependencies**: none (authority landed).
+- **Counter delta**: -1 file. Dispatchable now.
 
 ### PB-3 — parse retire
 
-- Requires `parse.dag` authority (currently SG-2 prep in-flight).
-- SG-2 full cutover lane (#557 followup) completes this.
-- **Dependencies**: SG-2 full cutover.
-- **Counter delta**: -1 file (~2K LOC — the biggest single move).
+- **Authority creation**: in progress via SG-2 (parse cutover).
+  SG-2 prep (#557) snapshotted incumbent output; full cutover
+  authoring `parse.dag` + `regen_parse` + `parse_generated.rs` is
+  the SG-2 followup lane.
+- **PB-3 work** (after SG-2 authority lands): delete `parse.rs`,
+  route through generated.
+- **Dependencies**: SG-2 full cutover landed.
+- **Counter delta**: -1 file (~2K LOC — biggest single hand file).
 
 ### PB-4 — lower retire
 
-- Requires `lower.dag` authority. SG-3 series is laying groundwork
-  (SG-3a retiring `operators.rs`).
-- **Dependencies**: SG-3 series complete.
-- **Counter delta**: -1 file + supporting files (~1K LOC).
+- **Authority creation**: requires `lower.dag`. SG-3 series retired
+  specific support files (operators.rs); full `lower.dag` authority
+  is larger scope and not yet on the SG queue.
+- **PB-4 work** (after authority lands): delete `lower.rs` + support.
+- **Dependencies**: lower.dag authority creation lane (to be named).
+- **Counter delta**: -1 primary file + supporting files.
 
 ### PB-5 — infer retire
 
-- Requires `infer.dag` authority.
-- SG-4 (SG-4-prep-a landed; full SG-4 dispatch queued).
-- **Dependencies**: SG-4 complete.
-- **Counter delta**: -1 primary file + helpers.
+- **Authority creation**: SG-4. SG-4-prep-a (result_port read
+  authority) landed. Full `infer.dag` + `regen_infer` +
+  `infer_generated.rs` triplet is the next SG-4 dispatch.
+- **PB-5 work** (after SG-4 authority lands): delete `infer.rs` +
+  inference helpers that the generated module subsumes.
+- **Dependencies**: SG-4 full dispatch.
+- **Counter delta**: -1 primary file + helpers (~5-10 files).
 
 ### PB-6 — emit retire
 
-- Collapses `emit.rs`, `emit/rust_target.rs`, `emit/python_target.rs`,
-  `emit_go.rs`, `emit_python.rs`, `emit_rust.rs` into spec-driven
-  single walker + per-target spec tiles.
+- **Authority creation**: Lane 1e — single walker + per-target spec
+  tiles (`src/v3/spec/rust.dag`, `go.dag`, `python.dag`). Design doc
+  in `docs/single-emitter-design.md`.
+- **PB-6 work** (after Lane 1e lands): delete `emit.rs`,
+  `emit/rust_target.rs`, `emit/python_target.rs`, `emit_go.rs`,
+  `emit_python.rs`, `emit_rust.rs` — everything consumed by the
+  spec-driven walker.
 - **Dependencies**: Lane 1e complete.
 - **Counter delta**: -6 to -8 files, -10K LOC. Biggest counter move.
 
 ### PB-7 — full fixed-point
 
-- DB-8 already runs `self_host_fixed_point` in CI on a **fixture**.
-- Extend to **full compiler.dag**: v3 compiles compiler.dag → emits
-  complete stage0 → git-diff clean against checked-in stage0.
-- **Dependencies**: PB-2 through PB-6 complete.
+- **DB-8 already runs** `self_host_fixed_point` in CI on a fixture
+  (`default_fixed_point_source`).
+- **PB-7 work**: extend the gate's source input to `compiler.dag`
+  itself — v3 compiles `compiler.dag` → emits complete stage0 →
+  git-diff clean against checked-in stage0.
+- **Dependencies**: PB-2 through PB-6 landed (generated Rust must
+  match checked-in stage0 bit-for-bit).
 
 ### PB-8 — graduation
 
-- `hand_maintained_src` list reaches ≤5 entries.
-- Delete scaffolding: `include_str!` loader, runtime-parse paths,
-  census accommodations.
+- `hand_maintained_src` list reaches ≤5 entries (CLI entry + runtime
+  bridge + build shim + possibly lib.rs + bootstrap entry).
+- Delete scaffolding: `include_str!` constants, runtime-parse paths,
+  census accommodations for not-yet-retired files.
 - **Dependencies**: PB-7 green.
 
 ## Acceptance criteria (strict)
