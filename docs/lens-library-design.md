@@ -217,6 +217,36 @@ hand-found in existing reviews.
 the same structural shape, flagging duplicates regardless of
 name.
 
+**Alias vs duplicate policy (load-bearing before ship):** The lens
+must not treat a sanctioned **type alias** as a second copy of the
+same product shape. Per `feedback_naming_is_aliasing` (see
+`CODING.md` — "Names are namespaces, not aliases"): a `TypeAlias`
+declaration is a namespace into the substrate, not a new
+materialized structure. Concretely:
+
+1. **Transparent alias (excluded by default)** — Declarations lowered
+   as a type alias to a single underlying named type (e.g.
+   `type FileClassification = FileEntry`, including
+   `= Carrier where predicate` where the field shape is not
+   re-declared independently) **do not** enter the structural-hash
+   multiset keyed on anonymous `{field → type}` product shape, **or**
+   they normalize to the canonical target declaration id so they
+   cannot pair with that target as "two equal anonymous shapes."
+2. **True duplicate (always in scope)** — Two declarations that
+   each carry an **independent** product, coproduct, or `data` body
+   whose structural hash matches (same fields and field types, or
+   same data body connective) are reported. That is the failure
+   class the audit hit before PR #596.
+3. **Re-exports** — Already orthogonal: `ignore_re_exports` filters
+   pairs where one declaration exists only to forward another across
+   a module boundary.
+
+The sketch `DuplicatesConfig` below includes
+`ignore_transparent_type_aliases` (default **true**) so CI and local
+runs agree on the policy without substring heuristics on source
+text; implementation keys off whatever the substrate already marks as
+alias vs nominal record (same authority the typechecker uses).
+
 **Motivation from the reviewer's std/extdeps audit (2026-04-15):**
 
 - **`FileClassification` vs `FileEntry`** in `dsl/std/filesystem.dag`
@@ -257,6 +287,10 @@ pub struct DuplicatesConfig {
     /// explicit import relationship are ignored (a re-export
     /// is not a duplicate).
     pub ignore_re_exports: bool,
+    /// When true (default), transparent `type A = B` / refinement
+    /// aliases do not participate in duplicate-shape hashing (§2.1
+    /// alias policy).
+    pub ignore_transparent_type_aliases: bool,
 }
 
 pub struct Duplicate {
@@ -296,6 +330,9 @@ impl StructuralDuplicatesLens {
    declaration.
 5. If `ignore_re_exports` is set, filter out duplicates where one
    declaration imports the other transitively.
+6. If `ignore_transparent_type_aliases` is set, skip or normalize
+   alias declarations per §2.1 before step 2 so sanctioned names
+   never inflate duplicate counts.
 
 **Expected initial findings** (from the reviewer's audit):
 
@@ -311,6 +348,9 @@ impl StructuralDuplicatesLens {
 - Unit test: construct a Dag where one declaration re-exports
   another; assert the lens does NOT report it when
   `ignore_re_exports` is true.
+- Unit test: one record plus `type Alias = Record`; assert the lens
+  does NOT report a duplicate when
+  `ignore_transparent_type_aliases` is true (PR #596 shape).
 - Unit test: construct a Dag with three data declarations of the
   same value; assert the lens reports all three.
 - Integration test: run the lens against `dsl/std/` and
@@ -927,7 +967,7 @@ The library is successful when:
    `wire_contract` / `default_edition` / `NonEmptyStr` vs
    `NonEmptyString` — surfaced by `lens_structural_duplicates`, fixed
    structurally, with the lens returning clean on the fixed shape
-   afterward (and intentional aliases excluded per policy).
+   afterward (transparent type aliases excluded per §2.1 policy).
 4. **The existing layer-opacity grep-gate proposal in
    `INVARIANTS.md` is fully superseded** — the §"Layer opacity"
    invariant points at `lens_layer_opacity` as its primary
