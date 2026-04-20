@@ -3,7 +3,8 @@
 // Structural direct-Dag cases live in in-crate unit tests so they can
 // use the crate-private builder surface without widening the public API.
 // This file keeps only compile-path receipts that still need real
-// lowering or stdlib callable wiring.
+// lowering or stdlib callable wiring. Direct-Dag structural claims
+// such as branch max-vs-sum behavior live in `src/lib.rs::lens_cost::tests`.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId};
@@ -24,14 +25,6 @@ fn expect_cost(dag: &v3_compiler::dag::Dag, port: PortId) -> usize {
 
 fn bind_cost(dag: &v3_compiler::dag::Dag, name: &str) -> usize {
     expect_cost(dag, find_bind_value(dag, name))
-}
-
-#[test]
-fn cost_lens_branch_uses_max_not_sum_across_paths() {
-    let dag = compile_to_dag("let r = if 1 > 0 then 20 + 30 else 40 + 50 + 60", "test.v3")
-        .expect("compiles");
-
-    assert_eq!(expect_cost(&dag, find_bind_value(&dag, "r")), 4);
 }
 
 #[test]

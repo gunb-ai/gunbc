@@ -2,8 +2,10 @@
 //
 // Structural direct-Dag cases live in in-crate unit tests so they can
 // use the crate-private builder surface without widening the public API.
-// This file keeps only receipts that still need real source parsing or
-// lowering to reach the behavior under test.
+// This file keeps receipts that still need real source parsing or
+// lowering to reach the behavior under test. The in-crate unit tests
+// cover direct-Dag structural walks; recursive source examples stay
+// here because they are the lowering receipts for Loop.body reachability.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
