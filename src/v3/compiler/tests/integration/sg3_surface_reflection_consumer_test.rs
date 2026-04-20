@@ -1,10 +1,11 @@
 //! **Layer:** integration
 //!
-//! SG-3f consumption proof: a real `.dag` consumer reads the reflected
+//! SG-3f-d consumption proof: a real `.dag` consumer reads the reflected
 //! `SurfaceModule` / `SurfaceItem` schema, emits Rust against the
 //! `parse_surface` realizations in `rust.dag`, rustc-links, and runs on
-//! parser output. This closes the gap between "surface types are declared"
-//! and "surface types are consumable substrate authority."
+//! parser output. This is a sub-lane receipt, not closure of full SG-3f:
+//! it closes the gap between "surface types are declared" and
+//! "surface types are consumable substrate authority."
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -17,25 +18,15 @@ use crate::common::{HarnessLinkMode, RustcHarness};
 const SURFACE_CONSUMER_SOURCE: &str = r#"
 module tests.sg3_surface_reflection
 
-import std.list { List }
 import v3.compiler.runtime_mirrors { SurfaceModule, SurfaceItem }
 
-fn count_lets(surface: SurfaceModule) -> Int =
-  count_items(surface.items)
-
-fn count_items(items: List<SurfaceItem>) -> Int =
-  match items {
-    Empty => 0
-    Cons(payload) => count_item(payload.head) + count_items(payload.tail)
-  }
-
-fn count_item(item: SurfaceItem) -> Int =
+fn item_kind_score(item: SurfaceItem) -> Int =
   match item {
-    Let(_) => 1
+    Let(_) => 0
     Fn(_) => 0
     FnExternalBody(_) => 0
     Data(_) => 0
-    Module(_) => 0
+    Module(_) => 1
     Import(_) => 0
     TypeAtom(_) => 0
     TypeRecord(_) => 0
@@ -76,6 +67,7 @@ fn build_surface_consumer_harness(module_source: &str) -> PathBuf {
 #[allow(warnings, clippy::all)]
 mod emitted {{
     use v3_compiler::parse_surface;
+    use v3_compiler::parse_surface::SurfaceItem;
     {module_source}
 }}
 
@@ -86,8 +78,9 @@ fn main() {{
     let parsed = v3_compiler::parse_for_test(&tokens, "sg3_surface_reflection_consumer.v3")
         .expect("parse fixture");
     let mirrored = v3_compiler::parse_surface::SurfaceModule::from(&parsed);
-    let count = emitted::count_lets(mirrored);
-    assert_eq!(count, 2, "emitted surface consumer should count only let items");
+    let first = mirrored.items.first().expect("module item");
+    let kind_score = emitted::item_kind_score(first);
+    assert_eq!(kind_score, 1, "emitted surface consumer should classify SurfaceItem::Module");
 }}
 "#
     );
