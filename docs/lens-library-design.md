@@ -328,6 +328,12 @@ plus any others the reviewer missed.
 
 **Signature:**
 
+**Sketch note (reporting ids vs bucket keys):** `DeclarationId` on
+`Duplicate` is only for **blame / span** attachment. Channel (2)
+bucket identity is **exclusively** `structural_refinement_key` from §2.1
+— **never** `canonical_refinement_id` (lowering mints fresh predicate
+ids; see channel (2) prose above).
+
 ```rust
 // src/v3/compiler/src/lens_structural_duplicates.rs
 
@@ -349,7 +355,10 @@ pub struct DuplicatesConfig {
 }
 
 pub struct Duplicate {
+    /// Bucket hash (product or refinement channel); refinement half
+    /// mixes in `structural_refinement_key`, not predicate `DeclarationId`.
     pub hash: u64,
+    /// Blamed declarations + spans — **not** the refinement identity key.
     pub declarations: Vec<(DeclarationId, SourceSpan)>,
     pub kind: DuplicateKind,
 }
