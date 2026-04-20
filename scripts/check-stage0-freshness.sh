@@ -22,6 +22,19 @@ rm -rf "$CHECK_DIR"
 # Regenerate into temp dir using the same script (single implementation)
 "$SCRIPT_DIR/regenerate-stage0.sh" --output-dir "$CHECK_DIR"
 
+# `cargo fmt` needs hand-maintained modules that lib.rs references (same as
+# bootstrap `copy_stage0_support_modules` / regenerate in-place + workspace fmt).
+STAGE0_SRC="$ROOT/src/v2/stage0/src"
+for name in v2_interpreter.rs cli_run.rs rest_transport_facts.rs; do
+  if [ -f "$STAGE0_SRC/$name" ]; then
+    cp "$STAGE0_SRC/$name" "$CHECK_DIR/src/$name"
+  fi
+done
+
+# Full in-place regen ends with `cargo fmt --all` on the workspace; `--output-dir`
+# mode exits before that, so normalize the temp crate the same way before diff.
+cargo fmt --all --manifest-path "$CHECK_DIR/Cargo.toml"
+
 echo "=== Comparing ==="
 # Exclude hand-maintained files (not generated, survive regen).
 # These are declared in 05_emit_rust.dag via hand_maintained_mods.
