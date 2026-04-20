@@ -227,6 +227,13 @@ existing authority; that governs **Rule 1**. Redundant **second**
 names for the **same** authority still violate single naming surface —
 that is **Rule 2**.
 
+**Single-authority boundary (read this before implementing):** Nothing
+here “excludes all `= Carrier where …` refinements from the lens.”
+That would incorrectly hide `NonEmptyStr` / `NonEmptyString`. Those
+rows stay in **channel (2)**; **Rule 1** only blocks **alias vs its
+canonical expandee** false positives, and **Rule 2** is what surfaces
+**two peer refinements** with the same fingerprint.
+
 **Rule 1 — Alias vs canonical (exclusion, never a finding):** If
 declaration `D` exists only to re-name canonical declaration `C`
 (same expanded type / same refinement witness chain), then **do not**
