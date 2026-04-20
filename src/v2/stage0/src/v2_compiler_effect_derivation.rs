@@ -24,7 +24,7 @@ pub fn re_export_check_modifier(op: Rc<DerivedOpEffect>, declared_idempotent: bo
     check_modifier_vs_derivation(&op, &declared_idempotent, &declared_readonly)
 }
 
-pub fn re_export_parse_path_template(raw: String) -> Rc<PathTemplate> {
+pub fn re_export_parse_path_template(raw: String) -> Option<Rc<PathTemplate>> {
     parse_path_template(&raw)
 }
 

@@ -149,20 +149,28 @@ fn parse_path_template(raw: String) -> PathTemplate? {
     None => raw
   }
   let segments = path_only |> split(delimiter: "/") |> filter(s => s != "")
-  let tokens = fold(segments,
-    init: Some([]),
-    f: (acc, seg) => match acc {
-      None => None
-      Some(parsed) =>
-        match parse_segment_tokens(seg: seg) {
-          Some(seg_tokens) => Some(concat(parsed, seg_tokens))
-          None => None
-        }
-    }
-  )
-  match tokens {
-    Some(parsed) => Some(PathTemplate { tokens: parsed })
-    None => None
+  match segments |> first {
+    None => Some(PathTemplate { tokens: [] })
+    Some(first_seg) =>
+      match parse_segment_tokens(seg: first_seg) {
+        None => None
+        Some(first_tokens) =>
+          let tokens = fold(segments |> skip(1),
+            init: Some(first_tokens),
+            f: (acc, seg) => match acc {
+              None => None
+              Some(parsed) =>
+                match parse_segment_tokens(seg: seg) {
+                  Some(seg_tokens) => Some(concat(parsed, seg_tokens))
+                  None => None
+                }
+            }
+          )
+          match tokens {
+            Some(parsed) => Some(PathTemplate { tokens: parsed })
+            None => None
+          }
+      }
   }
 }
 

@@ -31,7 +31,14 @@ pub fn parse_path_template(raw: &String) -> Option<Rc<PathTemplate>> {
     None => raw.clone(),
 };
 let segments = Rc::new({ let mut __result = Vec::new(); for s in Rc::new(path_only.split(&"/".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).iter().cloned() { if (s.clone().as_str() != "".to_string().as_str()) { __result.push(s); } } __result });
-let tokens = segments.iter().cloned().fold(Some(Rc::new(vec![])), |acc: Option<Rc<Vec<()>>>, seg: String| match acc.clone() {
+match segments.first().cloned() {
+    None => Some(Rc::new(PathTemplate {
+    tokens: Rc::new(vec![]),
+})),
+    Some(first_seg) => match parse_segment_tokens(&first_seg) {
+    None => None,
+    Some(first_tokens) => {
+    let tokens = segments.iter().skip(1).cloned().fold(Some(first_tokens.clone()), |acc: Option<Rc<Vec<Rc<UrlPathToken>>>>, seg: String| match acc.clone() {
     None => None,
     Some(parsed) => match parse_segment_tokens(&seg) {
     Some(seg_tokens) => Some(v2_rt::concat(parsed.clone(), seg_tokens.clone())),
@@ -43,6 +50,9 @@ match tokens {
     tokens: parsed.clone(),
 })),
     None => None,
+}
+},
+}
 }
 }
 }

@@ -57,7 +57,7 @@ fn re_export_check_modifier(
   )
 }
 
-fn re_export_parse_path_template(raw: String) -> PathTemplate {
+fn re_export_parse_path_template(raw: String) -> PathTemplate? {
   parse_path_template(raw: raw)
 }
 

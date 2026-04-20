@@ -29,20 +29,29 @@ fn parse_path_template(raw: String) -> PathTemplate? {
     None => raw
   }
   let segments = path_only |> split(delimiter: "/") |> filter(s => s != "")
-  let tokens = fold(segments,
-    init: Some { value: [] },
-    f: (acc, seg) => match acc {
-      None => none
-      Some { value: parsed } =>
-        match parse_segment_tokens(seg: seg) {
-          Some { value: seg_tokens } => Some { value: concat(parsed, seg_tokens) }
-          None => none
+  match segments |> first {
+    None => Some { value: PathTemplate { tokens: [] } }
+    Some { value: first_seg } =>
+      match parse_segment_tokens(seg: first_seg) {
+        None => none
+        Some { value: first_tokens } => {
+          let tokens = fold(segments |> skip(1),
+            init: Some { value: first_tokens },
+            f: (acc, seg) => match acc {
+              None => none
+              Some { value: parsed } =>
+                match parse_segment_tokens(seg: seg) {
+                  Some { value: seg_tokens } => Some { value: concat(parsed, seg_tokens) }
+                  None => none
+                }
+            }
+          )
+          match tokens {
+            Some { value: parsed } => Some { value: PathTemplate { tokens: parsed } }
+            None => none
+          }
         }
-    }
-  )
-  match tokens {
-    Some { value: parsed } => Some { value: PathTemplate { tokens: parsed } }
-    None => none
+      }
   }
 }
 
