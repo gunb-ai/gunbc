@@ -26,7 +26,7 @@ PB-1 must cover **all four**. The design doc spells out staged variants (PB-1a t
 - `src/v3/compiler/build.rs` — where `STAGED_FILES` / `V3_SPECS` / `COMPILER_FILES` / `extdeps_generated` / `gunbc_generated` are built at compile time. The build script is the natural home for PB-1's generator.
 - `src/v3/compiler/src/dag/builder.rs` — the Dag builder API that TM-1 landed. `push_value`, `push_transform`, `push_bind`, `push_branch`, `push_loop`, `push_atom`, `push_conj`, `alloc_port_with_shape`. These are what the generated bootstrap loader calls.
 - `src/v2/stage0/src/std_*.rs` — v2's reference implementation. These are hand-shaped generated Rust that build v2's primed DAG at bootstrap. Study the shape to understand the output contract.
-- `src/v3/compiler/src/serialize.rs` / `serialize_generated.rs` — current serialization (used for fixed-point snapshots, not bootstrap). Useful for understanding the Dag's serializable shape.
+- `src/v3/compiler/src/serialize_generated.rs` — current serialization (used for fixed-point snapshots, not bootstrap). Useful for understanding the Dag's serializable shape. Note: there is no hand-authored `serialize.rs` on main; the generated file is the full surface.
 - `src/v3/compiler/src/bin/regen_v3.rs` — the existing regen binary pattern; PB-1's bootstrap generator follows this template.
 
 ## Work
