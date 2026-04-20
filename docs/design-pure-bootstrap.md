@@ -62,7 +62,7 @@ authority**. Only the system boundary does.
 1. **`std_fixtures`** — 7 `dsl/std/*.dag` files embedded via `include_str!` (`LOGIC_DAG`, `BIT_DAG`, `ALGEBRA_DAG`, `INTEGER_DAG`, `FLOAT_DAG`, `STRING_TYPE_DAG`, `TYPES_DAG`)
 2. **`STAGED_FILES`** — `src/v3/std/*.dag` (build-script-enumerated)
 3. **`V3_SPECS`** — `src/v3/spec/*.dag` (Rust/Go/Python language specs)
-4. **`COMPILER_FILES`** — `src/v3/compiler/*.dag` (compiler.dag, pipeline.dag, tokenize.dag, operators.dag, regen.dag, runtime_mirrors.dag)
+4. **`COMPILER_FILES`** — `src/v3/compiler/*.dag` (operators.dag, pipeline.dag, regen.dag, runtime_mirrors.dag, tokenize.dag). Note: `dsl/gunbc/compiler.dag` is a separate authority, not part of `COMPILER_FILES`.
 
 All four chain into a single `fixtures` array that bootstrap.rs tokenizes + parses + lowers on every `Dag::new()`. **PB-1 must replace the runtime tokenize/parse/lower path for all four input authorities**, not just `std_fixtures`.
 
