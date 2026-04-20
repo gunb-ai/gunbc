@@ -29,8 +29,6 @@
 # Keep this list narrow: every entry below exceeded 2000ms in that run,
 # and each reason points at an existing migration/paydown authority.
 
-bootstrap::tests::malformed_pipeline_stage_attaches_diagnostic  # Bootstrap fixture load is compile-heavy; pay down under test-infra compile caching, not TM-0.
-
 db8_rust_emit_avoids_time_paths_and_float_hooks_on_program_matrix  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; 5x re-emit by design.
 emit_matrix_module_go_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; module re-emit sweep.
 emit_matrix_module_python_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; module re-emit sweep.
@@ -41,10 +39,8 @@ emit_matrix_program_rust_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8
 four_fixture_disk_sources_emit_deterministically  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; four-fixture disk corpus.
 
 common::cached_compile::tests::cached_compile_any_returns_clean_dag_when_key_warmed_by_strict  # TESTING.md "Mocks over compile" paydown; compile-cache behavior test still performs real compile work.
-four_fixture_regression_test::four_fixture_suite_shares_one_reachability_shape  # Four-fixture regression still recompiles representative fixtures; test-infra sharing paydown, not TM-0.
 lane2_stage_2d_symbolic_cost_test::cost_dag_compiles_cleanly  # ROADMAP Lane 2 Stage 2d symbolic-cost migration; DAG compile smoke still cold-compiles authority input.
 
-m0_acceptance::compile_boundary_is_fail_closed  # M0 acceptance compile-boundary coverage still exercises full compile path; any reshaping belongs to test-layer migration work.
 m0_acceptance::post_sweep_port_state_matches_diagnostic_table  # M0 acceptance compile-boundary coverage still exercises full compile path; any reshaping belongs to test-layer migration work.
 
 m1_3_emit_rust_test::rustc_roundtrip_emitted_module_compares_reflected_port_ids_in_list_contains  # Lane 1 Stage 1e SG-7 Rust roundtrip emits + rustc harness; optimize in emitter/test-harness lane, not TM-0.
