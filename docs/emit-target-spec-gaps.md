@@ -15,7 +15,7 @@
 | **ALREADY_SPEC_COVERED** — walker consumes existing `spec/*.dag` rows | 21 initially, +3 reclassified after verification = **24** | ~0 (no new work) |
 | **MISSING_SPEC_ROW** — spec extension required before walker can dissolve the branch | 20 initially organized into 10 candidate clusters; 3 reclassified to Category 1, leaving **5 Phase 2 clusters** | ~3,500-4,200 LOC dissolvable |
 | **RESIDUAL_PER_TARGET** — genuine per-target dispatch; stays as narrow Rust | 4 | ~680-780 LOC residual |
-| **Total audit points** | 45 (Category 1: 21, Category 2: 20 → 5 Phase 2 clusters + Cluster D as dedup, Category 3: 4) | — |
+| **Total audit points** | 45 *(snapshot, 2026-04-20)* — Category 1: 21, Category 2: 20 → 5 Phase 2 clusters + Cluster D as dedup, Category 3: 4 | — |
 
 Note: the initial audit listed **5** items under Category 3 including the "shared port-liveness helper." That helper is cross-target *code dedup*, not a genuine per-target semantic residual — moved to Cluster D inside Category 2 where it belongs. Residual count is honestly 4. Total audit points went 46 → 45 (one absorbed into an existing cluster rather than counted twice).
 
