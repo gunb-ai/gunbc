@@ -6,9 +6,8 @@ use crate::dag::{
     ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern,
     CardinalityBound, Cluster, ClusterId, ComparisonOp, Dag, Declaration, DeclarationId, Field,
     FieldValue, IntraClusterCall, LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent,
-    NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PortId,
-    PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueBody,
-    ValueNode,
+    NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PortId, PortState,
+    TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueBody, ValueNode,
 };
 use crate::diagnostics::Diagnostic;
 
