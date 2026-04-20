@@ -565,16 +565,26 @@ fn create_comment_rest_path_matches_github_issues_comments_api() {
 }
 
 #[test]
-fn extdep_method_path_maps_to_single_operation_name() {
-    let mut by_method_path: std::collections::HashMap<(String, String), String> =
-        std::collections::HashMap::new();
+fn extdep_operation_names_are_unique_in_authority_closure() {
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for op in all_parsed_extdep_rest_ops() {
-        let key = (op.method.clone(), op.path.clone());
-        if let Some(prev_name) = by_method_path.insert(key, op.name.clone()) {
-            assert_eq!(
-                prev_name, op.name,
-                "REST (method, path) must not map to two operation names (authority split)"
-            );
-        }
+        assert!(
+            seen.insert(op.name.clone()),
+            "duplicate operation name `{}` in extdep .dag parse (ambiguous authority)",
+            op.name
+        );
+    }
+}
+
+#[test]
+fn tracked_rest_ops_list_has_no_duplicate_operation_names() {
+    let ops = tracked_extdep_rest_ops();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for op in &ops {
+        assert!(
+            seen.insert(op.name.clone()),
+            "tracked REST op list unexpectedly listed `{}` twice",
+            op.name
+        );
     }
 }
