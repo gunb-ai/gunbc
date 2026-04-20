@@ -155,7 +155,16 @@ type SurfaceExpr
       span: SourceSpan
     }
 
-// 🟡 SCAFFOLD — top-level item carrier mirror; same dissolution trigger as `SurfaceType`.
+// 🟡 SCAFFOLD — top-level item carrier mirror (substrate schema). **Named trigger (carrier /
+// parse-rule authority, SG-2b):** same as `SurfaceType` — `parse_parser_body.txt` header +
+// roadmap-active-deferrals.md (emit parse from `.dag` alone; no Rust body splice).
+// **`FnExternalBody` ledger (DB-16 — not the same paydown as SG-2b):** one variant, three
+// pipeline-reconciled cases — (1) parse lag → `ArrowBody::Unparsed(body_span)` until M2 surface
+// catches the form; (2a) host pipeline stages → `ExternalRealization` at bootstrap; (2c)
+// `pipeline.dag` `compile` keeps `Unparsed` with body-span ordering authority. Do not fold
+// these into the SG-2b text-file deletion trigger; authority + scheduled deletions live in
+// `docs/design-fn-external-body-reconciliation.md` and `docs/history/roadmap-active-deferrals.md`
+// (DB-16 / PR #524).
 type SurfaceItem
   = Let {
       name: String
