@@ -1,9 +1,8 @@
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, LiteralBits, PortState,
+    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, PortState,
     TransformTarget, TypeConnective,
 };
-use v3_compiler::diagnostics::SourceSpan;
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use v3_compiler::Diagnostic;
 
@@ -37,31 +36,6 @@ fn operator_helpers_round_trip_from_dag_authority() {
         assert_eq!(v3_compiler::operators::symbol(op), symbol);
         assert_eq!(v3_compiler::operators::algebra_field_name(op), field_name);
     }
-}
-
-#[test]
-fn hand_built_operator_add_transform_carries_structural_target_and_int_shape() {
-    // Direct Dag builder receipt: the substrate accepts an operator
-    // transform with resolved Int output without parse/lower/infer.
-    // `m17_operator_lowers_to_structural_transform_target` remains the
-    // compile-path proof that surface `+` lowers to this shape.
-    let mut dag = Dag::new();
-    let span = || SourceSpan::new("<hand-built>", 0, 0);
-    let a = dag.push_value(LiteralBits::Int(1), span());
-    let b = dag.push_value(LiteralBits::Int(2), span());
-    let out = dag.push_transform(
-        TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
-        vec![a, b],
-        span(),
-    );
-    let int_shape = dag.int_shape().expect("bootstrap Int");
-    assert_eq!(dag.port(out).state(), &PortState::Resolved(int_shape));
-    let producer = dag.port(out).produced_by.expect("transform producer");
-    let t = dag.node(producer).as_transform().expect("transform node");
-    assert!(matches!(
-        t.target,
-        TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add))
-    ));
 }
 
 #[test]

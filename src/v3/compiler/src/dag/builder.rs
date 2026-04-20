@@ -9,7 +9,7 @@ impl Dag {
     /// Test-facing builder: allocate a detached port that already carries a
     /// resolved shape. This keeps unit-style graph construction on the same
     /// Port-state invariant as post-infer dags.
-    pub fn alloc_port_with_shape(&mut self, shape: TypeShape) -> PortId {
+    pub(crate) fn alloc_port_with_shape(&mut self, shape: TypeShape) -> PortId {
         let port = self.alloc_port(None);
         self.set_port_type(port, shape);
         port
@@ -17,7 +17,7 @@ impl Dag {
 
     /// Test-facing builder: append a `Value` node and return its output port.
     /// The output port is resolved to the corresponding primitive shape.
-    pub fn push_value(&mut self, bits: LiteralBits, span: SourceSpan) -> PortId {
+    pub(crate) fn push_value(&mut self, bits: LiteralBits, span: SourceSpan) -> PortId {
         let node_id = self.alloc_node_id();
         let output = self.alloc_port(Some(node_id));
         let output_shape = self.literal_shape(&bits);
@@ -35,7 +35,7 @@ impl Dag {
     /// Test-facing builder: append a `Transform` node and return its output
     /// port. The builder validates referenced input ports and seeds the output
     /// port shape when the target carries enough structural information.
-    pub fn push_transform(
+    pub(crate) fn push_transform(
         &mut self,
         target: TransformTarget,
         inputs: Vec<PortId>,
@@ -61,7 +61,7 @@ impl Dag {
     /// Test-facing builder: append a `Bind` node and return its `NodeId`.
     /// `Bind` reuses the supplied value port as its result port rather than
     /// synthesizing a parallel output edge.
-    pub fn push_bind(
+    pub(crate) fn push_bind(
         &mut self,
         name: impl Into<String>,
         value: PortId,
@@ -86,7 +86,12 @@ impl Dag {
     /// Every path body/output reference is validated before the node is pushed.
     /// The output port is resolved when every arm output already has the same
     /// resolved shape.
-    pub fn push_branch(&mut self, input: PortId, paths: Vec<Path>, span: SourceSpan) -> PortId {
+    pub(crate) fn push_branch(
+        &mut self,
+        input: PortId,
+        paths: Vec<Path>,
+        span: SourceSpan,
+    ) -> PortId {
         assert!(!paths.is_empty(), "push_branch requires at least one path");
         self.assert_port_exists(input, "push_branch(input)");
         for path in &paths {
@@ -121,7 +126,7 @@ impl Dag {
     /// Test-facing builder: append a `Loop` node and return its output port.
     /// The output port inherits the init-port shape when that shape is already
     /// resolved on the supplied graph fragment.
-    pub fn push_loop(
+    pub(crate) fn push_loop(
         &mut self,
         source: PortId,
         init: PortId,
@@ -164,7 +169,7 @@ impl Dag {
 
     /// Test-facing builder: append a `Conj` declaration and return its
     /// `DeclarationId`.
-    pub fn push_conj(
+    pub(crate) fn push_conj(
         &mut self,
         name: Option<String>,
         children: Vec<Field>,
@@ -188,7 +193,7 @@ impl Dag {
 
     /// Test-facing builder: append an `Atom` declaration and return its
     /// `DeclarationId`.
-    pub fn push_atom(
+    pub(crate) fn push_atom(
         &mut self,
         name: Option<String>,
         payload: AtomPayload,
@@ -734,7 +739,7 @@ impl Dag {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operators::{ArithmeticOp, ComparisonOp};
+    use crate::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
 
     fn span() -> SourceSpan {
         SourceSpan::new("<builder-test>", 0, 0)
@@ -783,6 +788,30 @@ mod tests {
             dag.port(output).state(),
             &PortState::Resolved(dag.int_shape().expect("bootstrap Int"))
         );
+    }
+
+    /// Hand-built substrate receipt for `+` as `TransformTarget::Operator`:
+    /// resolved `Int` output without the compile pipeline. Lowering coverage
+    /// for surface `+` stays in `m1_substrate_test::m17_operator_lowers_to_structural_transform_target`.
+    #[test]
+    fn hand_built_operator_add_transform_carries_structural_target_and_int_shape() {
+        let mut dag = Dag::new();
+        let span = || SourceSpan::new("<hand-built>", 0, 0);
+        let a = dag.push_value(LiteralBits::Int(1), span());
+        let b = dag.push_value(LiteralBits::Int(2), span());
+        let out = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![a, b],
+            span(),
+        );
+        let int_shape = dag.int_shape().expect("bootstrap Int");
+        assert_eq!(dag.port(out).state(), &PortState::Resolved(int_shape));
+        let producer = dag.port(out).produced_by.expect("transform producer");
+        let t = dag.node(producer).as_transform().expect("transform node");
+        assert!(matches!(
+            t.target,
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add))
+        ));
     }
 
     #[test]
