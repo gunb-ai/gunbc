@@ -3,18 +3,28 @@
 // The Rust projection (`tokenize_generated.rs`) is produced by
 // `cargo run -p v3-compiler --bin regen_tokenize` — do not hand-edit it.
 //
-// **Authority split.** This file declares token kinds, keyword/punct tables,
+// **Authority boundary.** This file declares token kinds, tokenizer-local
+// punctuation that is not modeled in `dsl/extdeps/languages/dag/syntax.dag`,
 // string escape behavior, line-comment prefix, string delimiter, and fixed
-// tokenizer diagnostic bodies. `regen_tokenize` is a pure projection (plus
-// fixed Rust control-flow scaffolding: loops, `match` shape, and the
-// `format!`/`i64::parse` bridge for integer literals) — it does not introduce
-// parallel spellings for data that appears here.
+// tokenizer diagnostic bodies. `regen_tokenize` derives the dedicated keyword
+// subset and the shared-operator punctuation subset from the shared syntax
+// authority at `dsl/extdeps/languages/dag/syntax.dag`, then merges those with
+// the tokenizer-local rows below. That keeps authored spellings for keywords /
+// shared operators out of this file.
+//
+// **Tracked scaffold (SG-1a).** The shared authority handoff is not yet a pure
+// structural read: `regen_tokenize` currently parses the raw source text for
+// `dag_keyword_set` / `dag_operators` because those bodies still lower as
+// `ValueBody::Unparsed`. Named dissolution trigger: once those two shared
+// syntax bodies lower structurally under `compile_to_dag`, delete the raw-text
+// extractor and derive directly from the lowered Dag in the same PR.
 //
 // **Scan phases (spec).** After skipping ASCII whitespace, the scanner applies
 // in order: line comment (`line_comment_prefix` to newline), punctuation
-// (longest `PunctSpec` match), ASCII digit run → decimal `IntLit`, identifier
-// run → keyword table or `Ident`, string (`string_literal_delimiter`) with
-// `StringEscapeSpec` rows after `\`, else `unexpected byte` diagnostic.
+// (longest match across the shared-operator subset plus local punctuation
+// rows), ASCII digit run → decimal `IntLit`, identifier run → keyword table or
+// `Ident`, string (`string_literal_delimiter`) with `StringEscapeSpec` rows
+// after `\`, else `unexpected byte` diagnostic.
 
 module v3.compiler.tokenize
 
@@ -72,6 +82,9 @@ type Token {
   span: SourceSpan
 }
 
+// Dedicated keyword tokens for the v3 tokenizer. Their spellings derive from
+// `dsl/extdeps/languages/dag/syntax.dag`'s `dag_keyword_set`; `tokenize.dag`
+// only declares which dedicated keyword variants exist.
 type KeywordTokenKind
   = KwLet
   | KwIf
@@ -87,6 +100,14 @@ type KeywordTokenKind
   | KwTrue
   | KwFalse
 
+// Dedicated punctuation tokens for the v3 tokenizer. Shared operator spellings
+// derive from `dsl/extdeps/languages/dag/syntax.dag`'s `dag_operators`;
+// `LocalPunctSpec` rows below cover only punctuation that the shared syntax
+// authority does not model (delimiters, assignment, lambda / arm markers).
+// SG-1a banked scaffold: `regen_tokenize` currently classifies each
+// `dag_operators` symbol as either tokenizer-owned punctuation or explicit
+// parser-only debt (`??`, `%`) and fails closed on any drift. Once shared
+// syntax lowers structurally, move that subset relation out of the Rust bridge.
 type PunctTokenKind
   = Eq
   | EqEq
@@ -117,12 +138,7 @@ type PunctTokenKind
   | Pipe
   | Question
 
-type KeywordSpec {
-  spelling: String
-  kind: KeywordTokenKind
-}
-
-type PunctSpec {
+type LocalPunctSpec {
   pattern: String
   kind: PunctTokenKind
 }
@@ -157,46 +173,17 @@ data string_escape_n: StringEscapeSpec = { suffix: "n", output_codepoint: 10 }
 data string_escape_r: StringEscapeSpec = { suffix: "r", output_codepoint: 13 }
 data string_escape_t: StringEscapeSpec = { suffix: "t", output_codepoint: 9 }
 
-data keyword_let: KeywordSpec = { spelling: "let", kind: KwLet }
-data keyword_if: KeywordSpec = { spelling: "if", kind: KwIf }
-data keyword_then: KeywordSpec = { spelling: "then", kind: KwThen }
-data keyword_else: KeywordSpec = { spelling: "else", kind: KwElse }
-data keyword_fn: KeywordSpec = { spelling: "fn", kind: KwFn }
-data keyword_type: KeywordSpec = { spelling: "type", kind: KwType }
-data keyword_module: KeywordSpec = { spelling: "module", kind: KwModule }
-data keyword_import: KeywordSpec = { spelling: "import", kind: KwImport }
-data keyword_match: KeywordSpec = { spelling: "match", kind: KwMatch }
-data keyword_data: KeywordSpec = { spelling: "data", kind: KwData }
-data keyword_where: KeywordSpec = { spelling: "where", kind: KwWhere }
-data keyword_true: KeywordSpec = { spelling: "true", kind: KwTrue }
-data keyword_false: KeywordSpec = { spelling: "false", kind: KwFalse }
-
-data punct_eq_eq: PunctSpec = { pattern: "==", kind: EqEq }
-data punct_eq_fat: PunctSpec = { pattern: "=>", kind: FatArrow }
-data punct_bang_eq: PunctSpec = { pattern: "!=", kind: NotEq }
-data punct_lt_eq: PunctSpec = { pattern: "<=", kind: Le }
-data punct_gt_eq: PunctSpec = { pattern: ">=", kind: Ge }
-data punct_minus_gt: PunctSpec = { pattern: "->", kind: Arrow }
-data punct_pipe_gt: PunctSpec = { pattern: "|>", kind: PipeArrow }
-data punct_amp_amp: PunctSpec = { pattern: "&&", kind: AmpAmp }
-data punct_pipe_pipe: PunctSpec = { pattern: "||", kind: PipePipe }
-
-data punct_eq: PunctSpec = { pattern: "=", kind: Eq }
-data punct_lt: PunctSpec = { pattern: "<", kind: Lt }
-data punct_gt: PunctSpec = { pattern: ">", kind: Gt }
-data punct_plus: PunctSpec = { pattern: "+", kind: Plus }
-data punct_minus: PunctSpec = { pattern: "-", kind: Minus }
-data punct_star: PunctSpec = { pattern: "*", kind: Star }
-data punct_slash: PunctSpec = { pattern: "/", kind: Slash }
-data punct_colon: PunctSpec = { pattern: ":", kind: Colon }
-data punct_dot: PunctSpec = { pattern: ".", kind: Dot }
-data punct_lparen: PunctSpec = { pattern: "(", kind: LParen }
-data punct_rparen: PunctSpec = { pattern: ")", kind: RParen }
-data punct_lbrace: PunctSpec = { pattern: "{", kind: LBrace }
-data punct_rbrace: PunctSpec = { pattern: "}", kind: RBrace }
-data punct_lbracket: PunctSpec = { pattern: "[", kind: LBracket }
-data punct_rbracket: PunctSpec = { pattern: "]", kind: RBracket }
-data punct_comma: PunctSpec = { pattern: ",", kind: Comma }
-data punct_semicolon: PunctSpec = { pattern: ";", kind: Semicolon }
-data punct_pipe: PunctSpec = { pattern: "|", kind: Pipe }
-data punct_question: PunctSpec = { pattern: "?", kind: Question }
+data local_punct_eq: LocalPunctSpec = { pattern: "=", kind: Eq }
+data local_punct_colon: LocalPunctSpec = { pattern: ":", kind: Colon }
+data local_punct_arrow: LocalPunctSpec = { pattern: "->", kind: Arrow }
+data local_punct_fat_arrow: LocalPunctSpec = { pattern: "=>", kind: FatArrow }
+data local_punct_lparen: LocalPunctSpec = { pattern: "(", kind: LParen }
+data local_punct_rparen: LocalPunctSpec = { pattern: ")", kind: RParen }
+data local_punct_lbrace: LocalPunctSpec = { pattern: "{", kind: LBrace }
+data local_punct_rbrace: LocalPunctSpec = { pattern: "}", kind: RBrace }
+data local_punct_lbracket: LocalPunctSpec = { pattern: "[", kind: LBracket }
+data local_punct_rbracket: LocalPunctSpec = { pattern: "]", kind: RBracket }
+data local_punct_comma: LocalPunctSpec = { pattern: ",", kind: Comma }
+data local_punct_semicolon: LocalPunctSpec = { pattern: ";", kind: Semicolon }
+data local_punct_pipe: LocalPunctSpec = { pattern: "|", kind: Pipe }
+data local_punct_question: LocalPunctSpec = { pattern: "?", kind: Question }

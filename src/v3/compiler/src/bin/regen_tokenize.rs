@@ -1,8 +1,16 @@
 //! Regenerate `tokenize_generated.rs` from `src/v3/compiler/tokenize.dag`.
-//
-// Keyword and punctuation tables are read from the lowered Dag; the scanning
-// algorithm is emitted as deterministic Rust (this binary is codegen only).
+//!
+//! Scanner controls and tokenizer-local punctuation come from the lowered
+//! tokenizer Dag. Dedicated keywords and shared operators are derived from the
+//! shared syntax authority text at `dsl/extdeps/languages/dag/syntax.dag`.
+//! The shared file's `dag_keyword_set` / `dag_operators` data bodies still
+//! lower as `Unparsed`, so this driver reads those two sections directly from
+//! source text rather than inventing duplicate authored rows in `tokenize.dag`.
+//! Named dissolution trigger: once those two shared syntax bodies lower as
+//! `ValueBody::Structural`, this raw-source scaffold must be deleted and the
+//! derivation must read the lowered Dag directly.
 
+use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -15,6 +23,8 @@ use v3_compiler::generated_files::GENERATED_FILES;
 use v3_compiler::CompileError;
 
 const GENERATED_FILE: &str = "src/v3/compiler/src/tokenize_generated.rs";
+const TOKENIZE_AUTHORITY_FILE: &str = "src/v3/compiler/tokenize.dag";
+const SHARED_SYNTAX_FILE: &str = "dsl/extdeps/languages/dag/syntax.dag";
 
 const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/tokenize.dag` via\n\
      // `regen_tokenize`. Regenerate instead of hand-editing.\n\n";
@@ -37,17 +47,11 @@ fn main() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let dag_path = manifest_dir.join("tokenize.dag");
     let source = std::fs::read_to_string(&dag_path).expect("read tokenize.dag");
-    let dag = compile_to_dag(&source, "src/v3/compiler/tokenize.dag").unwrap_or_else(|e| match e {
-        CompileError::Semantic(d) => {
-            let mut msg = String::from("compile tokenize.dag failed:\n");
-            for (_, diag) in d.diagnostics().iter() {
-                msg.push_str(&format!("  {diag:?}\n"));
-            }
-            panic!("{msg}");
-        }
-        other => panic!("compile tokenize.dag: {other:?}"),
-    });
-    let rust = generate(&dag);
+    let dag = compile_authority_dag(&source, TOKENIZE_AUTHORITY_FILE);
+    let shared_syntax_source = read_shared_syntax_source(&manifest_dir);
+    assert_shared_syntax_raw_source_scaffold_still_required(&shared_syntax_source);
+    let shared_syntax = SharedSyntaxAuthority::parse(&shared_syntax_source);
+    let rust = generate(&dag, &shared_syntax);
     let combined = format!("{HEADER}{rust}");
 
     let mut child = Command::new("rustfmt")
@@ -72,9 +76,38 @@ fn main() {
     println!("wrote {}", out_path.display());
 }
 
-fn generate(dag: &Dag) -> String {
-    let keywords = collect_keyword_rows(dag);
-    let puncts = collect_punct_rows(dag);
+fn compile_authority_dag(source: &str, file: &str) -> Dag {
+    compile_to_dag(source, file).unwrap_or_else(|e| match e {
+        CompileError::Semantic(d) => {
+            let mut msg = format!("compile {file} failed:\n");
+            for (_, diag) in d.diagnostics().iter() {
+                msg.push_str(&format!("  {diag:?}\n"));
+            }
+            panic!("{msg}");
+        }
+        other => panic!("compile {file}: {other:?}"),
+    })
+}
+
+fn read_shared_syntax_source(manifest_dir: &std::path::Path) -> String {
+    let repo_root = manifest_dir
+        .parent()
+        .and_then(|path| path.parent())
+        .and_then(|path| path.parent())
+        .expect("src/v3/compiler should have a repo root ancestor");
+    let syntax_path = repo_root.join(SHARED_SYNTAX_FILE);
+    std::fs::read_to_string(&syntax_path).unwrap_or_else(|e| {
+        panic!(
+            "read shared syntax authority `{}` from {}: {e}",
+            SHARED_SYNTAX_FILE,
+            syntax_path.display()
+        )
+    })
+}
+
+fn generate(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> String {
+    let keywords = collect_keyword_rows(dag, shared_syntax);
+    let puncts = collect_punct_rows(dag, shared_syntax);
     let line_comment_prefix = string_data_named(dag, "line_comment_prefix");
     let string_delim = string_data_named(dag, "string_literal_delimiter");
     assert_eq!(
@@ -112,6 +145,27 @@ pub struct Token {
     ));
     out.push_str(&emit_punctuation_token(&puncts));
     out
+}
+
+fn assert_shared_syntax_raw_source_scaffold_still_required(shared_syntax_source: &str) {
+    let lowered = match compile_to_dag(shared_syntax_source, SHARED_SYNTAX_FILE) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => dag,
+        Err(other) => panic!("compile {SHARED_SYNTAX_FILE}: {other:?}"),
+    };
+
+    for name in ["dag_keyword_set", "dag_operators"] {
+        let decl = lowered
+            .declaration_by_name(name)
+            .unwrap_or_else(|| panic!("missing `{name}` in `{SHARED_SYNTAX_FILE}`"));
+        if !matches!(decl.value_body, Some(ValueBody::Unparsed(_))) {
+            panic!(
+                "`{SHARED_SYNTAX_FILE}` data `{name}` no longer lowers as `ValueBody::Unparsed`; \
+                 SG-1a raw-source scaffold must dissolve now. Delete the text extractor in \
+                 `regen_tokenize` and derive from the lowered Dag directly."
+            );
+        }
+    }
 }
 
 fn string_data_named(dag: &Dag, expected_name: &str) -> String {
@@ -259,46 +313,264 @@ fn rust_type_for_decl_id(dag: &Dag, id: DeclarationId) -> String {
     }
 }
 
-fn collect_keyword_rows(dag: &Dag) -> Vec<(String, String)> {
-    let mut rows = Vec::new();
-    for decl in dag.declarations() {
-        let Some(name) = &decl.name else {
-            continue;
-        };
-        if !name.starts_with("keyword_") {
-            continue;
-        }
-        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
-            continue;
-        };
-        let spelling = extract_string_field(fields, "spelling");
-        let kind = extract_nullary_variant_field(fields, "kind", "KeywordTokenKind", dag);
-        assert_token_kind_variant_exists(dag, &kind, "KeywordTokenKind");
-        rows.push((spelling, kind));
-    }
+fn collect_keyword_rows(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> Vec<(String, String)> {
+    let shared_keywords: BTreeSet<_> = shared_syntax.keywords.iter().cloned().collect();
+    let mut rows = collect_variant_labels(dag, "KeywordTokenKind")
+        .into_iter()
+        .map(|kind| {
+            let spelling = keyword_spelling_for_token_kind(&kind);
+            assert!(
+                shared_keywords.contains(&spelling),
+                "`KeywordTokenKind::{kind}` expects keyword `{spelling}`, \
+                 but `{SHARED_SYNTAX_FILE}` does not declare it in `dag_keyword_set`"
+            );
+            assert_token_kind_variant_exists(dag, &kind, "KeywordTokenKind");
+            (spelling, kind)
+        })
+        .collect::<Vec<_>>();
     rows.sort_by(|a, b| a.0.cmp(&b.0));
     rows
 }
 
-fn collect_punct_rows(dag: &Dag) -> Vec<(String, String)> {
+fn collect_punct_rows(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> Vec<(String, String)> {
+    let punct_variants: BTreeSet<_> = collect_variant_labels(dag, "PunctTokenKind")
+        .into_iter()
+        .collect();
     let mut rows = Vec::new();
+    let mut covered_kinds = BTreeSet::new();
+
+    for pattern in &shared_syntax.operators {
+        match classify_shared_operator_for_tokenizer(pattern) {
+            SharedOperatorTokenizerBoundary::Tokenized { kind } => {
+                assert!(
+                    punct_variants.contains(kind),
+                    "shared syntax operator `{pattern}` is classified as tokenizer punctuation \
+                     `PunctTokenKind::{kind}`, but `{TOKENIZE_AUTHORITY_FILE}` does not declare \
+                     that variant"
+                );
+                assert_token_kind_variant_exists(dag, kind, "PunctTokenKind");
+                assert!(
+                    covered_kinds.insert(kind.to_string()),
+                    "shared syntax operator `{pattern}` maps to duplicate punctuation kind \
+                     `PunctTokenKind::{kind}`"
+                );
+                rows.push((pattern.clone(), kind.to_string()));
+            }
+            SharedOperatorTokenizerBoundary::ParserOnlyDebt { reason } => {
+                assert!(
+                    !reason.is_empty(),
+                    "parser-only shared operator `{pattern}` should carry a dissolution note"
+                );
+            }
+        }
+    }
+
+    let shared_operator_patterns: BTreeSet<_> = shared_syntax.operators.iter().cloned().collect();
     for decl in dag.declarations() {
         let Some(name) = &decl.name else {
             continue;
         };
-        if !name.starts_with("punct_") {
+        if !name.starts_with("local_punct_") {
             continue;
         }
         let Some(ValueBody::Structural { fields }) = &decl.value_body else {
             continue;
         };
         let pattern = extract_string_field(fields, "pattern");
+        assert!(
+            !shared_operator_patterns.contains(&pattern),
+            "tokenizer-local punctuation row `{name}` duplicates shared operator `{pattern}` \
+             from `{SHARED_SYNTAX_FILE}`"
+        );
         let kind = extract_nullary_variant_field(fields, "kind", "PunctTokenKind", dag);
         assert_token_kind_variant_exists(dag, &kind, "PunctTokenKind");
+        assert!(
+            covered_kinds.insert(kind.clone()),
+            "duplicate punctuation kind `PunctTokenKind::{kind}` across shared/local authority inputs"
+        );
         rows.push((pattern, kind));
     }
+
+    let mut seen_patterns = BTreeSet::new();
+    for (pattern, _) in &rows {
+        assert!(
+            seen_patterns.insert(pattern.clone()),
+            "duplicate punctuation pattern `{pattern}` across shared/local authority inputs"
+        );
+    }
+    let missing_kinds: Vec<_> = punct_variants.difference(&covered_kinds).cloned().collect();
+    assert!(
+        missing_kinds.is_empty(),
+        "`{TOKENIZE_AUTHORITY_FILE}` declares `PunctTokenKind` variants {:?} that are not covered \
+         by either the SG-1a shared-operator bridge or `local_punct_*` rows. Every punctuation \
+         kind must come from exactly one authority input so drift fails closed.",
+        missing_kinds
+    );
     rows.sort_by(|a, b| a.0.cmp(&b.0));
     rows
+}
+
+fn collect_variant_labels(dag: &Dag, type_name: &str) -> Vec<String> {
+    let decl = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some(type_name))
+        .unwrap_or_else(|| panic!("missing `{type_name}` declaration"));
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        panic!("`{type_name}`: expected Disj");
+    };
+    variants
+        .iter()
+        .map(|variant| variant.label.clone())
+        .collect()
+}
+
+fn keyword_spelling_for_token_kind(kind: &str) -> String {
+    kind.strip_prefix("Kw")
+        .unwrap_or_else(|| panic!("keyword token kind `{kind}` should start with `Kw`"))
+        .to_ascii_lowercase()
+}
+
+// SG-1a scaffold boundary: shared syntax still lowers through raw-source reads,
+// so every `dag_operators` symbol must be classified explicitly here as either
+// tokenizer punctuation or parser-only debt. Unknown symbols panic so upstream
+// authority edits cannot silently disappear through the bridge.
+enum SharedOperatorTokenizerBoundary {
+    Tokenized { kind: &'static str },
+    ParserOnlyDebt { reason: &'static str },
+}
+
+fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokenizerBoundary {
+    match pattern {
+        "==" => SharedOperatorTokenizerBoundary::Tokenized { kind: "EqEq" },
+        "!=" => SharedOperatorTokenizerBoundary::Tokenized { kind: "NotEq" },
+        "<" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Lt" },
+        "<=" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Le" },
+        ">" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Gt" },
+        ">=" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Ge" },
+        "+" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Plus" },
+        "-" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Minus" },
+        "*" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Star" },
+        "/" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Slash" },
+        "&&" => SharedOperatorTokenizerBoundary::Tokenized { kind: "AmpAmp" },
+        "||" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipePipe" },
+        "|>" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipeArrow" },
+        "." => SharedOperatorTokenizerBoundary::Tokenized { kind: "Dot" },
+        "??" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
+            reason: "null-coalescing is declared in shared syntax but the v3 tokenizer/parser \
+                     surface does not yet admit it as punctuation",
+        },
+        "%" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
+            reason: "modulo is declared in shared syntax but the v3 tokenizer/parser surface \
+                     does not yet admit it as punctuation",
+        },
+        other => panic!(
+            "shared syntax operator `{other}` has no SG-1a tokenizer bridge classification. \
+             Update `classify_shared_operator_for_tokenizer` to mark it as tokenizer-owned \
+             punctuation or explicit parser-only debt so the authority boundary stays fail-closed."
+        ),
+    }
+}
+
+struct SharedSyntaxAuthority {
+    keywords: Vec<String>,
+    operators: Vec<String>,
+}
+
+impl SharedSyntaxAuthority {
+    fn parse(source: &str) -> Self {
+        Self {
+            keywords: parse_map_string_keys(extract_balanced_section(
+                source,
+                "data dag_keyword_set",
+                '{',
+                '}',
+            )),
+            operators: parse_named_string_fields(
+                extract_balanced_section(source, "data dag_operators", '[', ']'),
+                "symbol",
+            ),
+        }
+    }
+}
+
+fn extract_balanced_section<'a>(source: &'a str, anchor: &str, open: char, close: char) -> &'a str {
+    let anchor_idx = source
+        .find(anchor)
+        .unwrap_or_else(|| panic!("missing `{anchor}` in `{SHARED_SYNTAX_FILE}`"));
+    let tail = &source[anchor_idx..];
+    let open_rel = tail
+        .find(open)
+        .unwrap_or_else(|| panic!("missing `{open}` after `{anchor}` in `{SHARED_SYNTAX_FILE}`"));
+    let start = anchor_idx + open_rel;
+    let mut depth = 0usize;
+    for (offset, ch) in source[start..].char_indices() {
+        if ch == open {
+            depth += 1;
+        } else if ch == close {
+            depth -= 1;
+            if depth == 0 {
+                return &source[start + open.len_utf8()..start + offset];
+            }
+        }
+    }
+    panic!(
+        "unterminated `{}` section `{anchor}` in `{SHARED_SYNTAX_FILE}`",
+        open
+    );
+}
+
+fn parse_map_string_keys(section: &str) -> Vec<String> {
+    parse_all_string_literals(section)
+}
+
+fn parse_named_string_fields(section: &str, field_name: &str) -> Vec<String> {
+    let needle = format!("{field_name}:");
+    let mut out = Vec::new();
+    let mut rest = section;
+    while let Some(idx) = rest.find(&needle) {
+        let after_field = &rest[idx + needle.len()..];
+        let quote_idx = after_field.find('"').unwrap_or_else(|| {
+            panic!("missing string literal for `{field_name}` in `{SHARED_SYNTAX_FILE}`")
+        });
+        let (value, consumed) = parse_string_literal(&after_field[quote_idx..]);
+        out.push(value);
+        rest = &after_field[quote_idx + consumed..];
+    }
+    out
+}
+
+fn parse_all_string_literals(section: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = section;
+    while let Some(idx) = rest.find('"') {
+        let (value, consumed) = parse_string_literal(&rest[idx..]);
+        out.push(value);
+        rest = &rest[idx + consumed..];
+    }
+    out
+}
+
+fn parse_string_literal(source: &str) -> (String, usize) {
+    assert!(
+        source.starts_with('"'),
+        "string literal parser expects to start at a quote"
+    );
+    let mut out = String::new();
+    let mut escaped = false;
+    for (idx, ch) in source[1..].char_indices() {
+        if escaped {
+            out.push(ch);
+            escaped = false;
+            continue;
+        }
+        match ch {
+            '\\' => escaped = true,
+            '"' => return (out, idx + 2),
+            other => out.push(other),
+        }
+    }
+    panic!("unterminated string literal while parsing `{SHARED_SYNTAX_FILE}`");
 }
 
 fn extract_nullary_variant_field(
