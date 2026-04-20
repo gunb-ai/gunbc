@@ -20,6 +20,36 @@ pub(crate) mod rust_target;
 
 use std::collections::{HashMap, HashSet};
 
+/// Shared emitter-side mirror of `std.clean_emission.VariantPayloadFieldAccessRule`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum VariantPayloadFieldAccessRuleBinding {
+    AccessFromPayloadBinding,
+    OverrideNamedFieldsAtBindingSite,
+}
+
+/// Per-payload-port rendering authority used by the emitters.
+#[derive(Debug, Clone)]
+pub(crate) enum VariantPayloadBinding<T> {
+    Direct(T),
+    Fields(HashMap<String, T>),
+}
+
+impl<T> VariantPayloadBinding<T> {
+    pub(crate) fn direct(&self) -> Option<&T> {
+        match self {
+            Self::Direct(value) => Some(value),
+            Self::Fields(_) => None,
+        }
+    }
+
+    pub(crate) fn field(&self, label: &str) -> Option<&T> {
+        match self {
+            Self::Direct(_) => None,
+            Self::Fields(fields) => fields.get(label),
+        }
+    }
+}
+
 use self::python_target::EmitPythonError;
 use self::rust_target::{EmitError, RealizationCategory, SubstrateMarkerRole};
 use crate::dag::{
@@ -29,8 +59,7 @@ use crate::dag::{
 };
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
-    variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
-    VariantPayloadShape,
+    variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup,
 };
 use crate::Dag;
 
@@ -1872,17 +1901,20 @@ impl<'a> Ctx<'a> {
         variant_id: DeclarationId,
         binding_expr: &str,
     ) -> Result<Option<VariantPayloadBinding<String>>, EmitError> {
-        let Some(shape) = variant_payload_shape(self.dag, variant_id) else {
-            return Err(EmitError::UnsupportedBehavior(
-                "variant payload expected a product declaration".to_string(),
-            ));
+        let shape = match variant_payload_shape(self.dag, &variant_id) {
+            VariantPayloadShapeLookup::Missing => {
+                return Err(EmitError::UnsupportedBehavior(
+                    "variant payload expected a product declaration".to_string(),
+                ));
+            }
+            VariantPayloadShapeLookup::Found { _0: shape } => shape,
         };
         Ok(match shape {
             VariantPayloadShape::Empty => None,
             VariantPayloadShape::PositionalSingle => {
                 Some(VariantPayloadBinding::Direct(format!("{binding_expr}._0")))
             }
-            VariantPayloadShape::NamedFields(field_labels) => {
+            VariantPayloadShape::NamedFields { _0: field_labels } => {
                 match self.indexes.clean_emission.variant_payload_field_access {
                     VariantPayloadFieldAccessRuleBinding::AccessFromPayloadBinding => {
                         Some(VariantPayloadBinding::Direct(binding_expr.to_string()))

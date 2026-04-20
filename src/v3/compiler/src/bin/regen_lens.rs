@@ -17,10 +17,10 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::generated_files::GENERATED_FILES;
+use v3_compiler::{compile_to_dag, CompileError};
 
 const LENS_REGISTRY_ENTRY_TYPE: &str = "LensRegistryEntry";
 
@@ -204,8 +204,18 @@ fn regen_entry(root: &Path, entry: &Entry) -> Result<(), String> {
 
     let source = std::fs::read_to_string(&lens_path)
         .map_err(|e| format!("read {}: {e}", lens_path.display()))?;
-    let dag = compile_to_dag(&source, &entry.lens_file)
-        .map_err(|e| format!("compile {}: {e:?}", entry.lens_file))?;
+    let dag = compile_to_dag(&source, &entry.lens_file).map_err(|e| match e {
+        CompileError::Semantic(dag) => format!(
+            "compile {}: {}",
+            entry.lens_file,
+            dag.diagnostics()
+                .iter()
+                .map(|d| format!("{d:?}"))
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        other => format!("compile {}: {other:?}", entry.lens_file),
+    })?;
     let raw = emit_rust_module(&dag).map_err(|e| format!("emit {}: {e:?}", entry.lens_file))?;
     let header = format!(
         "// AUTO-GENERATED from `{}` via\n\

@@ -679,6 +679,17 @@ data rust_declaration_id_eq: OperatorRealization = {
   cost: 1
 }
 
+// String inhabits FreeMonoid (no direct `eq` field); equality uses the same
+// canonical OrderedRing.eq arrow that `algebra_field_for_operator` selects
+// after the monoid walk misses `eq`.
+data rust_string_eq: OperatorRealization = {
+  language: rust_language
+  target: String
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
 data rust_int_ne: OperatorRealization = {
   language: rust_language
   target: Int

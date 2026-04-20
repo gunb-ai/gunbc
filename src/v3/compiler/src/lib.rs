@@ -641,7 +641,27 @@ mod lower;
 mod parse;
 mod pipeline_authority;
 mod tokenize;
-mod variant_payload;
+pub(crate) mod variant_payload {
+    #[allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        unused_variables,
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if,
+        clippy::cmp_owned,
+        clippy::large_enum_variant
+    )]
+    mod generated {
+        use crate::dag::*;
+
+        include!("variant_payload_generated.rs");
+    }
+
+    pub(crate) use generated::{
+        variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup,
+    };
+}
 pub(crate) mod workflow_idempotency;
 pub(crate) mod workflow_parallelism;
 

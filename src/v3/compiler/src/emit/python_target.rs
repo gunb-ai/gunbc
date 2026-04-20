@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::EmitMode;
+use super::{EmitMode, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding};
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, DeclarationId, Field,
     FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
@@ -8,8 +8,7 @@ use crate::dag::{
 };
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
-    variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
-    VariantPayloadShape,
+    variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup,
 };
 use crate::Dag;
 
@@ -957,15 +956,18 @@ impl<'a> Ctx<'a> {
             return Ok(Some(VariantPayloadBinding::Direct("__match".to_string())));
         }
         let variant_id = resolved_pattern_id(path)?;
-        let Some(shape) = variant_payload_shape(self.dag, variant_id) else {
-            return Ok(Some(VariantPayloadBinding::Direct("__match".to_string())));
+        let shape = match variant_payload_shape(self.dag, &variant_id) {
+            VariantPayloadShapeLookup::Missing => {
+                return Ok(Some(VariantPayloadBinding::Direct("__match".to_string())));
+            }
+            VariantPayloadShapeLookup::Found { _0: shape } => shape,
         };
         Ok(match shape {
             VariantPayloadShape::Empty => None,
             VariantPayloadShape::PositionalSingle => {
                 Some(VariantPayloadBinding::Direct("__match._0".to_string()))
             }
-            VariantPayloadShape::NamedFields(field_labels) => {
+            VariantPayloadShape::NamedFields { _0: field_labels } => {
                 match self.indexes.clean_emission.variant_payload_field_access {
                     VariantPayloadFieldAccessRuleBinding::AccessFromPayloadBinding => {
                         Some(VariantPayloadBinding::Direct("__match".to_string()))

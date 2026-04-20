@@ -76,3 +76,9 @@ data lens_infer_helpers_entry: LensRegistryEntry = {
   lens_file: "src/v3/lenses/infer_helpers.dag"
   generated_file: "src/v3/compiler/src/infer_helpers_generated.rs"
 }
+
+data lens_variant_payload_entry: LensRegistryEntry = {
+  name: "variant_payload"
+  lens_file: "src/v3/lenses/variant_payload.dag"
+  generated_file: "src/v3/compiler/src/variant_payload_generated.rs"
+}
