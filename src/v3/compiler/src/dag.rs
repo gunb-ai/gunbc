@@ -54,7 +54,6 @@ use crate::types::TypeShape;
 
 mod builder;
 mod effects;
-mod operators;
 mod ports;
 
 pub use effects::{
@@ -63,7 +62,6 @@ pub use effects::{
     ParallelismUnsupportedDetail, ParallelismUnsupportedKind, WorkflowEffect,
     WorkflowIdempotencyReport, WorkflowParallelismReport,
 };
-pub use operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 pub use ports::{
     BoolPortRef, ElementRef, NonEmptyList, NonSingletonList, ParamRef, Port, TransformRef,
 };
@@ -635,8 +633,45 @@ pub enum ArrowBody {
 // Port, port-reference carriers, and the non-trivial-arity list helpers
 // live in `dag/ports.rs`. See re-exports at the top of this module.
 
-// ArithmeticOp / ComparisonOp / LogicalOp / OperatorKind live in
-// `dag/operators.rs`. See re-exports at the top of this module.
+/// Structural operator identities carried by
+/// [`TransformTarget::Operator`].
+///
+/// **🟡 Scaffold — operator shim family.** Richer source exists in
+/// `dsl/std/algebra.dag`; these enums remain the parse/lower/infer
+/// bridge only until the M2+ parser/desugarer rewrites surface
+/// operators to direct algebra-field calls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ArithmeticOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ComparisonOp {
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LogicalOp {
+    And,
+    Or,
+}
+
+/// Operator family root for [`TransformTarget::Operator`]. Inherits the
+/// scaffold receipt on [`ArithmeticOp`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OperatorKind {
+    Arithmetic(ArithmeticOp),
+    Comparison(ComparisonOp),
+    Logical(LogicalOp),
+}
 
 #[derive(Debug, Clone)]
 pub struct ValueNode {

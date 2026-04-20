@@ -92,8 +92,8 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 //
 // L4b split — `dag.rs` was a 2800-line god-file mixing ports, nodes,
 // declarations, clusters, and the std.effects mirror. The split carves
-// three leaf clusters into sibling submodules (`dag/ports.rs`,
-// `dag/operators.rs`, `dag/effects.rs`) that the module root re-exports
+// two leaf clusters into sibling submodules (`dag/ports.rs`,
+// `dag/effects.rs`) that the module root re-exports
 // verbatim. No behavior change; file count goes up but per-file
 // coupling goes down. These are pure re-organization of already
 // hand-authored substrate, not new handwritten logic. Dissolution path:
@@ -109,7 +109,6 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/src/dag.rs",
     "src/v3/compiler/src/dag/builder.rs",
     "src/v3/compiler/src/dag/effects.rs",
-    "src/v3/compiler/src/dag/operators.rs",
     "src/v3/compiler/src/dag/ports.rs",
     "src/v3/compiler/src/diagnostics.rs",
     "src/v3/compiler/src/dimension.rs",

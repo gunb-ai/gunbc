@@ -287,3 +287,89 @@ fn non_bool_branch_condition_is_rejected() {
         other => panic!("expected TypeMismatch, got {other:?}"),
     }
 }
+
+#[test]
+fn type_mismatch_marks_the_binding_unresolved() {
+    let dag = compile_any("let x: Bool = 1", "m0_type_mismatch.v3");
+    let bind = bind_named(&dag, "x");
+    let port = dag.port(bind.value);
+
+    assert!(matches!(port.state(), PortState::Unresolved));
+    match dag
+        .diagnostics()
+        .get(port.id())
+        .expect("diagnostic recorded")
+    {
+        Diagnostic::TypeMismatch {
+            expected, actual, ..
+        } => {
+            assert_eq!(*expected, primitive_shape(&dag, "Bool"));
+            assert_eq!(*actual, primitive_shape(&dag, "Int"));
+        }
+        other => panic!("expected TypeMismatch, got {other:?}"),
+    }
+}
+
+#[test]
+fn forward_reference_marks_the_binding_unresolved() {
+    let dag = compile_any("let y = x\nlet x = 1", "m0_forward_ref.v3");
+    let bind = bind_named(&dag, "y");
+
+    assert!(matches!(
+        dag.port(bind.value).state(),
+        PortState::Unresolved
+    ));
+    assert!(matches!(
+        dag.diagnostics().get(bind.value),
+        Some(Diagnostic::ResolveError { .. })
+    ));
+}
+
+#[test]
+fn arity_mismatch_marks_the_call_unresolved() {
+    let dag = compile_any("fn f(a: Int) -> Int = a\nlet x = f(1, 2)", "m0_arity.v3");
+    let bind = bind_named(&dag, "x");
+
+    assert!(matches!(
+        dag.port(bind.value).state(),
+        PortState::Unresolved
+    ));
+    assert!(matches!(
+        dag.diagnostics().get(bind.value),
+        Some(Diagnostic::ArityMismatch { .. })
+    ));
+}
+
+#[test]
+fn invalid_function_body_poisons_call_sites() {
+    let dag = compile_any(
+        "fn f(a: Int) -> Bool = 1\nlet x = f(1)",
+        "m0_invalid_body.v3",
+    );
+    let f_bind = bind_named(&dag, "f");
+    let x_bind = bind_named(&dag, "x");
+
+    assert!(matches!(
+        dag.port(f_bind.value).state(),
+        PortState::Unresolved
+    ));
+    assert!(matches!(
+        dag.port(x_bind.value).state(),
+        PortState::Unresolved
+    ));
+}
+
+#[test]
+fn unknown_type_annotation_is_rejected() {
+    let dag = compile_any("let x: NotARealType = 1", "m0_unknown_type.v3");
+    let bind = bind_named(&dag, "x");
+
+    assert!(matches!(
+        dag.port(bind.value).state(),
+        PortState::Unresolved
+    ));
+    assert!(matches!(
+        dag.diagnostics().get(bind.value),
+        Some(Diagnostic::ResolveError { .. })
+    ));
+}
