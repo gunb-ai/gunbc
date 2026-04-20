@@ -94,7 +94,7 @@ import v2.compiler.infer_types {
   enrich_kernel_type
 }
 import v2.compiler.infer_method {
-  infer_builtin_call_type, resolve_builtin_call_type
+  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type
 }
 import v2.compiler.infer_cycle { detect_type_cycles_kahn }
 import v2.compiler.infer_env {
@@ -5538,6 +5538,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   // halt before inference. This makes unresolved nodes structurally impossible
   // downstream -- inference and emit never see them.
   let env_errors = env_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+  let seed_diags = builtin_kernel_seed_diagnostics()
   if env_errors |> count > 0 {
     return TypecheckModuleResult {
       typed: TypedModule {
@@ -5547,7 +5548,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         func_env: ResolvedFuncEnv { signatures: empty_map() },
         item_registry: empty_map()
       },
-      diagnostics: env_diags
+      diagnostics: concat(env_diags, seed_diags)
     }
   }
 
@@ -5630,7 +5631,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       func_env: updated_func_env,
       item_registry: ctx.item_registry
     },
-    diagnostics: concat(env_diags, ctx.diagnostics, infer_diags)
+    diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, seed_diags)
   }
 }
 

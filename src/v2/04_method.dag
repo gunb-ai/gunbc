@@ -15,11 +15,13 @@ import v2.std.core {
   NoConnective,
   Required,
   NoExprData,
+  ErrorNode,
   make_span, with_optional_cardinality,
   unit_type, bool_type, string_type, int_type
 }
 import v2.compiler.infer_types {
-  make_container_type, make_map_type, missing_kernel_container_profile_type
+  make_container_type, make_map_type, missing_kernel_container_profile_type,
+  kernel_container_profile_miss_diagnostic
 }
 
 // =========================================================================
@@ -36,9 +38,9 @@ fn type_variable_node(id: String) -> Node {
 }
 
 // Builtin return-type seeds: if `make_*` returns none, the kernel algebra
-// table is inconsistent — callers in `infer_expr` pair misses with
-// `inference_error` / `list_kernel_ty_from_element`. This registry has no
-// diagnostic sink; the sentinel node is unreachable in a healthy build.
+// table is inconsistent. Pair `missing_kernel_container_profile_type` with
+// `builtin_kernel_seed_diagnostics` (merged in `typecheck_module`) so misses
+// are fail-closed under modeling-discipline §1.
 fn map_of_type_variables() -> Node {
   match make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")) {
     Some { value: n } => n
@@ -70,6 +72,20 @@ fn list_of_element(element: Node) -> Node {
 // not a return-type proxy enum.
 fn seed_node_map(key: String, value: Node) -> Map<String, Node> {
   map_insert(empty_map(), key, value)
+}
+
+// One diagnostic per distinct seed shape (Map + List for collection_element).
+// Callers merge into pipeline diagnostics; avoids in-band-only CompilerError.
+fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
+  let map_miss = match make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")) {
+    Some { value: _ } => []
+    None => [kernel_container_profile_miss_diagnostic(kind_name: "Map")]
+  }
+  let list_miss = match make_container_type(kind_name: "List", element: type_variable_node(id: "collection_element")) {
+    Some { value: _ } => []
+    None => [kernel_container_profile_miss_diagnostic(kind_name: "List")]
+  }
+  concat(map_miss, list_miss)
 }
 
 fn builtin_function_registry() -> Map<String, Node> {

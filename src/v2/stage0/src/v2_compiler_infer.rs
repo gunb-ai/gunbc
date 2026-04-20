@@ -44,7 +44,9 @@ pub use crate::v2_compiler_infer_lookup::{
     lookup_func_sig, lookup_in_scope, map_key_type_in_env, map_value_type_in_env,
     resolve_known_method_node, resolve_scrutinee_type_node, KnownMethodResolution,
 };
-pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_builtin_call_type};
+pub use crate::v2_compiler_infer_method::{
+    builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
+};
 use crate::v2_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v2_compiler_infer_patterns::{
     check_match_exhaustiveness, lookup_field_in_variant, lookup_result_subject,
@@ -10944,6 +10946,7 @@ pub fn typecheck_module(
             }
             __result
         });
+        let seed_diags = builtin_kernel_seed_diagnostics();
         if ((env_errors.len() as i64) > 0) {
             return Rc::new(TypecheckModuleResult {
                 typed: Rc::new(TypedModule {
@@ -10955,7 +10958,7 @@ pub fn typecheck_module(
                     }),
                     item_registry: v2_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
                 }),
-                diagnostics: env_diags.clone(),
+                diagnostics: v2_rt::concat(env_diags.clone(), seed_diags.clone()),
             });
         }
         let resolved_module_name =
@@ -11084,8 +11087,11 @@ pub fn typecheck_module(
                 item_registry: ctx.item_registry.clone(),
             }),
             diagnostics: v2_rt::concat(
-                v2_rt::concat(env_diags.clone(), ctx.diagnostics.clone()),
-                infer_diags,
+                v2_rt::concat(
+                    v2_rt::concat(env_diags.clone(), ctx.diagnostics.clone()),
+                    infer_diags,
+                ),
+                seed_diags.clone(),
             ),
         })
     }
