@@ -2933,11 +2933,12 @@ fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId
 }
 
 fn canonical_operator_field(dag: &Dag, op: OperatorKind) -> Result<DeclarationId, EmitError> {
-    let ordered_ring = dag.declaration_by_name("OrderedRing").ok_or_else(|| {
+    let ordered_ring_id = dag.ordered_ring_decl().ok_or_else(|| {
         EmitError::UnsupportedBehavior(
             "bootstrap is missing the canonical `OrderedRing` declaration".to_string(),
         )
     })?;
+    let ordered_ring = dag.declaration(ordered_ring_id);
     let TypeConnective::Conj { children } = &ordered_ring.connective else {
         return Err(EmitError::UnsupportedBehavior(
             "`OrderedRing` does not lower to a Conj declaration".to_string(),

@@ -1944,11 +1944,12 @@ fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId
 
 fn canonical_operator_field(dag: &Dag, op: OperatorKind) -> Result<DeclarationId, EmitPythonError> {
     let field_label = crate::operators::algebra_field_name(op);
-    let ordered_ring = dag.declaration_by_name("OrderedRing").ok_or_else(|| {
+    let ordered_ring_id = dag.ordered_ring_decl().ok_or_else(|| {
         EmitPythonError::Unsupported(
             "bootstrap is missing canonical OrderedRing declaration".to_string(),
         )
     })?;
+    let ordered_ring = dag.declaration(ordered_ring_id);
     let TypeConnective::Conj { children } = &ordered_ring.connective else {
         return Err(EmitPythonError::Unsupported(
             "OrderedRing did not lower to a Conj".to_string(),
