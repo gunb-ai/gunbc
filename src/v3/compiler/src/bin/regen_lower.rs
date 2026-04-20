@@ -8,9 +8,13 @@
 //! regen + snapshot test harness stay wired for a future `lower.dag` cutover
 //! after substrate reflection (`Surface*` in `substrate.dag`, SELF_HOSTING.md §4).
 //! Do not treat `lower_generated.rs` as the live authority until that migration lands.
+//!
+//! **CLI:** `--out PATH` (or `-o PATH`) writes the formatted snapshot to `PATH` instead
+//! of `src/lower_generated.rs`. Integration tests use this so the workspace tree is not
+//! mutated (TESTING.md hermetic discipline); humans omit the flag.
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use v3_compiler::generated_files::GENERATED_FILES;
@@ -26,14 +30,31 @@ const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/src/lower.rs` via\
      // `lower.rs` pending `lower.dag` + reflected `Surface*` (SELF_HOSTING.md §4).\n\
      \n";
 
-fn main() {
-    assert!(
-        GENERATED_FILES.contains(&GENERATED_FILE),
-        "`regen_lower` writes `{GENERATED_FILE}` but that path is not \
-         registered in `REGEN_OUTPUTS` in `src/v3/compiler/build.rs`."
-    );
+fn out_path_from_args(manifest_dir: &Path) -> PathBuf {
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        if a == "--out" || a == "-o" {
+            let path = args.next().unwrap_or_else(|| {
+                panic!("`regen_lower {a}` requires a path argument");
+            });
+            return PathBuf::from(path);
+        }
+    }
+    manifest_dir.join("src").join("lower_generated.rs")
+}
 
+fn main() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let out_path = out_path_from_args(&manifest_dir);
+    let canonical_out = manifest_dir.join("src").join("lower_generated.rs");
+    if out_path == canonical_out {
+        assert!(
+            GENERATED_FILES.contains(&GENERATED_FILE),
+            "`regen_lower` writes `{GENERATED_FILE}` but that path is not \
+             registered in `REGEN_OUTPUTS` in `src/v3/compiler/build.rs`."
+        );
+    }
+
     let lower_path = manifest_dir.join(LOWER_RS);
     let body = std::fs::read_to_string(&lower_path).unwrap_or_else(|e| {
         panic!(
@@ -60,7 +81,6 @@ fn main() {
     assert!(output.status.success(), "rustfmt failed");
     let formatted = String::from_utf8(output.stdout).expect("utf8");
 
-    let out_path = manifest_dir.join("src").join("lower_generated.rs");
     std::fs::write(&out_path, &formatted).expect("write lower_generated.rs");
     println!("wrote {}", out_path.display());
 }
