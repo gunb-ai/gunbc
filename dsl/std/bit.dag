@@ -1,15 +1,16 @@
 // std/bit.dag -- Bit-level structural types.
 //
-// Machine-width types built from Classical truth values.
-// These are FIXED-WIDTH carriers — not variable-length collections.
-// The machine/container distinction is fundamental:
-//   Word64 = exactly 8 bytes (machine carrier, fixed)
-//   List<Byte> = variable-length byte sequence (container)
+// Machine-width names vs raw lists:
+//   Word64, Byte, … are nominal **records** wrapping `List<…>` fields — distinct
+//   from bare `List<Byte>` / `List<Bit>` in the Dag (machine vs container).
 //
-// Width constraints use type-level refinements (DB-11 / DB-16): each
-// fixed-width carrier is a refined `List<…>` with a unary predicate
-// (`is_byte`, `is_word64_bytes`, …). This matches patterns like
-// `ReadableEntry = FileEntry where is_text_readable` in std.filesystem.
+// Cardinality is **not** enforced by the substrate today: fields stay `List<…>`
+// with no lowered field refinement, and type-alias `where` on `type X = …`
+// is still skipped in the handwritten parser (`parse_type_rhs_after_eq` /
+// `skip_where_clause`, src/v3/compiler/src/parse.rs) until M2+ wires alias
+// refinements. So arbitrary-length lists remain representable in these fields;
+// “exactly N bits/bytes” below is **documented intent** for authors and future
+// validators — not API-level or illegal-state guarantees yet.
 
 module std.bit
 
@@ -18,40 +19,14 @@ import std.logic { Classical }
 // Bit: single Classical truth value (width = 1 bit)
 type Bit = Classical
 
-// Length predicates — discharged at compile time where the compiler
-// supports the predicate shape; named functions double as documentation.
-fn is_nibble(bits: List<Bit>) -> Bool {
-  fold(bits, 0, fn(acc, _: Bit) { acc + 1 }) == 4
-}
+// Nibble (author intent: 4 bits). Field is still List<Bit> — length not checked.
+type Nibble { bits: List<Bit> }
 
-fn is_byte(bits: List<Bit>) -> Bool {
-  fold(bits, 0, fn(acc, _: Bit) { acc + 1 }) == 8
-}
+// Byte (author intent: 8 bits). Field is still List<Bit> — length not checked.
+type Byte { bits: List<Bit> }
 
-// Nibble: exactly 4 bits (half byte)
-type Nibble = List<Bit> where is_nibble
-
-// Byte: exactly 8 bits (fundamental storage unit)
-type Byte = List<Bit> where is_byte
-
-fn is_word16_bytes(bytes: List<Byte>) -> Bool {
-  fold(bytes, 0, fn(acc, _: Byte) { acc + 1 }) == 2
-}
-
-fn is_word32_bytes(bytes: List<Byte>) -> Bool {
-  fold(bytes, 0, fn(acc, _: Byte) { acc + 1 }) == 4
-}
-
-fn is_word64_bytes(bytes: List<Byte>) -> Bool {
-  fold(bytes, 0, fn(acc, _: Byte) { acc + 1 }) == 8
-}
-
-fn is_word128_bytes(bytes: List<Byte>) -> Bool {
-  fold(bytes, 0, fn(acc, _: Byte) { acc + 1 }) == 16
-}
-
-// Machine words: fixed-width byte sequences
-type Word16 = List<Byte> where is_word16_bytes
-type Word32 = List<Byte> where is_word32_bytes
-type Word64 = List<Byte> where is_word64_bytes
-type Word128 = List<Byte> where is_word128_bytes
+// Machine words (author intent: 2 / 4 / 8 / 16 bytes). Fields are List<Byte> — length not checked.
+type Word16 { bytes: List<Byte> }
+type Word32 { bytes: List<Byte> }
+type Word64 { bytes: List<Byte> }
+type Word128 { bytes: List<Byte> }

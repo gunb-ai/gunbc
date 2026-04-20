@@ -87,7 +87,7 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     // `collect_symbols_phase`s every file, allocating top-level
     // declarations + their TypeParam children in one batch. Phase 2
     // fills in each file's bodies, at which point every cross-file
-    // template reference (e.g., `bit.dag`'s `Word64 = List<Byte> where …`
+    // template reference (e.g., `bit.dag`'s `Word64 { bytes: List<Byte> }`
     // where `List` is declared in `types.dag`) finds its template's
     // `type_params` slot already populated — no half-valid template
     // arguments, no post-sweep fixup pass.

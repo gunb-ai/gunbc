@@ -171,7 +171,7 @@ pub fn lower(module: &SurfaceModule) -> Dag {
 /// `collect_symbols_phase` + `lower_bodies_phase` separately so it can
 /// run phase 1 over ALL std/ files before phase 2 on any of them,
 /// which is required for cross-file forward references (e.g.,
-/// `bit.dag`'s `Word64 = List<Byte> where …` references `List` from
+/// `bit.dag`'s `Word64 { bytes: List<Byte> }` references `List` from
 /// `types.dag`, which loads later).
 pub(crate) fn lower_into(dag: &mut Dag, module: &SurfaceModule) {
     let (symbols, is_first) = collect_symbols_phase(dag, &module.items);
