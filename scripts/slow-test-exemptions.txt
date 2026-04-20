@@ -63,7 +63,7 @@ m2_lens_unused_parameters_migration_test::unused_parameters_dag_self_analysis_re
 m1_substrate_test::referenced_port_walk_real_helper_stack_compiles  # Real substrate helper-stack compile smoke is still cold-compile bound on GitHub runners; substrate/test-shape paydown owns any decomposition, not SG-7.4.
 
 sg1_tokenize_authority_test::tokenize_generated_module_matches_checked_in_snapshot  # SG-1 authority snapshot still regenerates/parses full tokenize projection; tokenize authority lane owns future speedup.
-sg3_lower_authority_test::lower_generated_module_matches_regen_snapshot  # SG-3b lower authority: shells out to `cargo run regen_lower` (cold link on CI); same class as SG-1 tokenize snapshot gate.
+sg3_lower_authority_test::lower_generated_module_matches_regen_snapshot  # SG-3f-prep: `cargo run regen_lower` cold-links on CI; snapshot gate mirrors SG-1 tokenize pattern; canonical lowering remains `lower.rs`.
 sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift  # SG-6 regen CLI smoke intentionally shells out to regen path; CLI smoke cost is tracked in SG-6, not TM-0.
 
 thesis_validation_test::kf_1_structural_list_operation_ordering_holds  # KF-1 thesis validation remains compile-heavy on CI runners; TESTING.md test-shape paydown owns future decomposition, not TM-0.
