@@ -266,7 +266,14 @@ fn all_parsed_extdep_rest_ops() -> Vec<RestOp> {
     let mut parsed: Vec<RestOp> = Vec::new();
     for path in FILES {
         let (module, indices) = parse_extdep_module(path);
-        parsed.extend(collect_rest_transport_operations(&module, indices));
+        let collected = collect_rest_transport_operations(&module, indices);
+        assert!(
+            collected.errors.is_empty(),
+            "unexpected REST transport fact errors for {}: {:?}",
+            path,
+            collected.errors
+        );
+        parsed.extend(collected.ops);
     }
     parsed
 }

@@ -666,6 +666,10 @@ dependencies = [
 [[package]]
 name = "v3-compiler"
 version = "0.1.0"
+dependencies = [
+ "v2-compiler",
+ "v2-compiler-tests",
+]
 
 [[package]]
 name = "wasi"

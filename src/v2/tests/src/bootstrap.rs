@@ -65,6 +65,8 @@ fn parse_diagnostic_count(stderr: &str) -> usize {
 /// Copy hand-maintained Rust modules that emitted stage0 still references.
 /// These are excluded from freshness/fixed-point diffs, but they must exist
 /// in temp output dirs so rustfmt and cargo can resolve lib.rs module paths.
+/// rest_transport_facts.rs: same dissolution note as in rest_transport_facts.rs
+/// (graph-exported facts replace this scaffold).
 fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Path) {
     let stage0_src = ws.join("src/v2/stage0/src");
     for name in &["v2_interpreter.rs", "cli_run.rs", "rest_transport_facts.rs"] {

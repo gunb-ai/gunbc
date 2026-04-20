@@ -12,7 +12,10 @@
 //
 // Faithfulness: stage0 has hand-maintained .rs files
 // (cli_run.rs, v2_interpreter.rs, rest_transport_facts.rs) that survive regen and are excluded
-// from the fixed-point diff. The GeneratedCrate type names them
+// from the fixed-point diff. rest_transport_facts.rs is a bounded substrate seed
+// (INVARIANTS.md): delete when REST operation facts are available from the
+// resolved graph (or equivalent single authority) so derivation tests need no
+// parallel AST walk. The GeneratedCrate type names hand-maintained files
 // explicitly. Cargo.toml is also hand-maintained but lives outside
 // source_dir and is never part of the src/ fixed-point — it's noted
 // here but not modeled as a structural field.

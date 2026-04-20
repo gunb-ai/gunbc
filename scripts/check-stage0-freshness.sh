@@ -38,6 +38,10 @@ cargo fmt --all --manifest-path "$CHECK_DIR/Cargo.toml"
 echo "=== Comparing ==="
 # Exclude hand-maintained files (not generated, survive regen).
 # These are declared in 05_emit_rust.dag via hand_maintained_mods.
+#
+# rest_transport_facts.rs: bounded substrate seed (INVARIANTS.md). Dissolution:
+# remove when REST op facts come from the resolved graph / single declaration
+# export so tests do not need a parallel AST walk (see module header in-file).
 DIFF_EXCLUDE="--exclude=v2_interpreter.rs --exclude=cli_run.rs --exclude=rest_transport_facts.rs"
 DIFF_OUTPUT=$(diff -rq $DIFF_EXCLUDE "$CHECK_DIR/src/" "$ROOT/src/v2/stage0/src/" 2>&1 || true)
 
