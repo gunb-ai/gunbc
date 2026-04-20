@@ -2,9 +2,10 @@
 //
 // Structural direct-Dag cases live in in-crate unit tests so they can
 // use the crate-private builder surface without widening the public API.
-// This file keeps only receipts that still need real source parsing or
-// lowering to reach the behavior under test. Direct-Dag branch/loop
-// body-walk cases live in `src/lens_unused_parameters.rs::tests`.
+// This file keeps receipts that still need real source parsing or
+// lowering to reach the behavior under test. The in-crate unit tests
+// cover direct-Dag structural walks; recursive source examples stay
+// here because they are the lowering receipts for Loop.body reachability.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
@@ -47,5 +48,29 @@ fn unused_params_catches_content_upsert_synthetic_equivalent() {
         ),
         vec![1],
         "the synthetic content_upsert shape should report only the ignored second parameter"
+    );
+}
+
+#[test]
+fn unused_params_descends_into_loop_body_for_recursive_calls() {
+    let src = "fn count_down(n: Int, base: Int) -> Int = \
+        if n == 0 then base else count_down(n - 1, base)";
+
+    assert_eq!(
+        unused_parameter_indexes_for_source(src, "recursive.v3"),
+        Vec::<usize>::new(),
+        "recursive source should keep both parameters reachable through the lowered Loop.body"
+    );
+}
+
+#[test]
+fn unused_params_loop_body_descent_finds_param_only_used_in_recursion() {
+    let src = "fn count_down(n: Int, marker: Int) -> Int = \
+        if n == 0 then 0 else count_down(n - 1, marker)";
+
+    assert_eq!(
+        unused_parameter_indexes_for_source(src, "loop_body_descent.v3"),
+        Vec::<usize>::new(),
+        "parameters referenced only through the lowered recursive case should still count as used"
     );
 }
