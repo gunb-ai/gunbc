@@ -1,5 +1,5 @@
-// AUTO-GENERATED from `src/v3/compiler/parse.dag` via
-// `regen_parse`. Regenerate instead of hand-editing.
+// AUTO-GENERATED from `src/v3/compiler/runtime_mirrors.dag` (Surface carriers)
+// via `regen_parse` + `parse_parser_body.txt`. Regenerate instead of hand-editing.
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::OperatorKind;
@@ -236,8 +236,8 @@ impl SurfaceType {
 }
 
 // TEMPORARY STAGING — recursive-descent parse **algorithm** authority until SG-2b.
-// `parse.dag` owns only Surface **carrier** types; `regen_parse` splices this file after emitted
-// `Surface*` definitions inside `parse_generated.rs`.
+// Surface **carrier** types live in `runtime_mirrors.dag` (substrate mirror authority); `regen_parse`
+// splices this file after emitted `Surface*` definitions inside `parse_generated.rs`.
 //
 // Dissolution trigger: delete this file when parse rules live under `.dag` structural authority
 // (SELF_HOSTING §6 Phase 4a/4b) and `regen_parse` emits the full module without an external Rust body.
