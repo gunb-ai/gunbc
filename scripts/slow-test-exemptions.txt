@@ -29,6 +29,8 @@
 # Keep this list narrow: every entry below exceeded 2000ms in that run,
 # and each reason points at an existing migration/paydown authority.
 
+bootstrap::tests::malformed_pipeline_stage_attaches_diagnostic  # Bootstrap fixture load remains compile-heavy on GitHub runners; test-infra bootstrap caching/paydown owns any speedup, not TM-0.
+
 db8_rust_emit_avoids_time_paths_and_float_hooks_on_program_matrix  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; 5x re-emit by design.
 emit_matrix_module_go_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; module re-emit sweep.
 emit_matrix_module_python_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; module re-emit sweep.
@@ -58,3 +60,5 @@ m2_lens_unused_parameters_migration_test::unused_parameters_dag_self_analysis_re
 
 sg1_tokenize_authority_test::tokenize_generated_module_matches_checked_in_snapshot  # SG-1 authority snapshot still regenerates/parses full tokenize projection; tokenize authority lane owns future speedup.
 sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift  # SG-6 regen CLI smoke intentionally shells out to regen path; CLI smoke cost is tracked in SG-6, not TM-0.
+
+thesis_validation_test::kf_1_structural_list_operation_ordering_holds  # KF-1 thesis validation remains compile-heavy on CI runners; TESTING.md test-shape paydown owns future decomposition, not TM-0.
