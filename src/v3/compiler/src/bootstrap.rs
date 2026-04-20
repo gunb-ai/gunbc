@@ -111,7 +111,6 @@ fn bootstrap_inner(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
     let fixtures: Vec<(&str, &str)> = STAGED_FILES
         .iter()
         .copied()
-        .chain(STAGED_FILES.iter().copied())
         .chain(V3_SPECS.iter().copied())
         .chain(compiler_iter)
         .collect();
