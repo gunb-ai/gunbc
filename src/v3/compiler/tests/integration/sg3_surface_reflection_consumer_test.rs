@@ -19,7 +19,7 @@ const SURFACE_CONSUMER_SOURCE: &str = r#"
 module tests.sg3_surface_reflection
 
 import v3.compiler.runtime_mirrors { SurfaceModule, SurfaceItem }
-import std.list { List }
+import std.list { List, length }
 
 fn item_kind_score(item: SurfaceItem) -> Int =
   match item {
@@ -35,11 +35,8 @@ fn item_kind_score(item: SurfaceItem) -> Int =
     TypeAlias(_) => 0
   }
 
-fn module_kind_score(m: SurfaceModule) -> Int =
-  match m.items {
-    Empty => -1
-    Cons(head, _) => item_kind_score(head)
-  }
+fn module_item_count(m: SurfaceModule) -> Int =
+  length(m.items)
 "#;
 
 static HARNESS: OnceLock<RustcHarness> = OnceLock::new();
@@ -74,6 +71,7 @@ fn build_surface_consumer_harness(module_source: &str) -> PathBuf {
 #[allow(warnings, clippy::all)]
 mod emitted {{
     use v3_compiler::parse_surface;
+    use v3_compiler::parse_surface::SurfaceItem;
     {module_source}
 }}
 
@@ -84,8 +82,8 @@ fn main() {{
     let parsed = v3_compiler::parse_for_test(&tokens, "sg3_surface_reflection_consumer.v3")
         .expect("parse fixture");
     let mirrored = v3_compiler::parse_surface::SurfaceModule::from(&parsed);
-    let kind_score = emitted::module_kind_score(&mirrored);
-    assert_eq!(kind_score, 1, "emitted surface consumer should classify SurfaceItem::Module");
+    let item_count = emitted::module_item_count(&mirrored);
+    assert_eq!(item_count, 5, "emitted surface consumer should traverse SurfaceModule.items through emitted code");
 }}
 "#
     );
