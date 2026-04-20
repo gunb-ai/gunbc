@@ -95,6 +95,7 @@ data stage0: GeneratedCrate = {
     "lower.rs",
     "pipeline_authority.rs",
     "post_emit_verifier.rs",
+    "regen_parse_emit.rs",
     "tokenize.rs",
     "workflow_idempotency.rs",
     "workflow_parallelism.rs"
