@@ -406,8 +406,8 @@ type SymlinkTarget
 type TextFilePath   = FilePath where content(Text)
 type BinaryFilePath = FilePath where content(Binary)
 
-// FileClassification: moved to std/filesystem.dag (co-located with
-// FileEntry and Encoding import from std/encoding.dag).
+// FileEntry / FileClassification: std/filesystem.dag — one record, alias
+// name for probe-shaped API; Encoding from std/encoding.dag.
 
 type MimeType = String where pattern("^[a-z]+/[a-z0-9.+-]+$")
 
