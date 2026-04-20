@@ -16,10 +16,11 @@
 | **Total branches classified** | 46 | — |
 
 **Net impact at Lane 1e close:**
-- Delete `emit/rust_target.rs` (~5,700 LOC) + `emit/python_target.rs` (~2,000 LOC) + Go inline emitter in `emit.rs` (~380 LOC) = **~8,000 LOC removed**
+- Delete `emit/rust_target.rs` (~5,700 LOC) + `emit/python_target.rs` (~2,000 LOC) + Go inline emitter in `emit.rs` (~380 LOC) = **~8,080 LOC removed**
 - Add single walker module (`emit/walker.rs` or similar): **~2,000-2,500 LOC**
 - Add spec extensions across `src/v3/spec/rust.dag`, `src/v3/spec/go.dag`, `src/v3/spec/python.dag`: **~500-700 LOC of `.dag` declarations**
-- **Net hand-authored Rust delta: approximately −8,000 to −9,000 LOC**
+- **Net hand-authored Rust delta: approximately −5,500 to −6,000 LOC** (8,080 removed − 2,000 to 2,500 added)
+- **Plus ~500-700 LOC of new `.dag` data declarations** (counted separately from the hand-Rust delta)
 
 **Feasibility: GREEN.** 71% of the three-file codebase is mechanically dissolvable into data-driven logic. No fundamental design surprises. The five residual-per-target items are narrow and semantically necessary (not laziness).
 
@@ -280,7 +281,7 @@ Five items stay as narrow per-target Rust logic after Lane 1e closes. Each is se
 - **Files deleted**: `src/v3/compiler/src/emit/rust_target.rs` (~5,700 LOC), `src/v3/compiler/src/emit/python_target.rs` (~2,000 LOC), Go inline section in `emit.rs` (~380 LOC). Total ~8,080 LOC removed.
 - **Files added**: `src/v3/compiler/src/emit/walker.rs` (or equivalent) ~2,000-2,500 LOC.
 - **`.dag` spec additions**: ~500-700 LOC across `spec/rust.dag`, `spec/go.dag`, `spec/python.dag`.
-- **Net hand-authored Rust delta**: **−8,000 to −9,000 LOC**.
+- **Net hand-authored Rust delta**: **−5,500 to −6,000 LOC** (8,080 removed − 2,000 to 2,500 added). Plus ~500-700 LOC of new `.dag` data declarations tracked separately.
 - **SG-0 census delta**: `emit/rust_target.rs` off + `emit/python_target.rs` off + `walker.rs` on = **net −1 file**. (File count matters less than LOC here; the LOC drop is where the real dissolution lives.)
 - **Thesis claim validated**: adding a new target (TypeScript, Swift, Verilog) is a single `spec/X.dag` file + zero walker/Rust changes. PR-4.2 is the falsifier.
 
