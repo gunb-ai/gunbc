@@ -217,26 +217,128 @@ hand-found in existing reviews.
 the same structural shape, flagging duplicates regardless of
 name.
 
+**Alias policy (load-bearing before ship):** Implementers need an
+explicit split that reviewers can gate on — not “transparent vs
+opaque,” but **which pairs are excluded vs which pairs are findings**.
+
+Per `feedback_naming_is_aliasing` (see `CODING.md` — "Names are
+namespaces, not aliases"), a type alias is a **namespace into** an
+existing authority; that governs **Rule 1**. Redundant **second**
+names for the **same** authority still violate single naming surface —
+that is **Rule 2**.
+
+**Single-authority boundary (read this before implementing):** Nothing
+here “excludes all `= Carrier where …` refinements from the lens.”
+That would incorrectly hide a **Rule 2** refinement-twin class
+(illustrated by the audit-era `NonEmptyStr` / `NonEmptyString` pair
+when both existed). Those
+rows stay in **channel (2)**; **Rule 1** only blocks **alias vs its
+canonical expandee** false positives, and **Rule 2** is what surfaces
+**two peer refinements** with the same **structural refinement key**
+(defined below — not a raw declaration id).
+
+**Rule 1 — Alias vs canonical (exclusion, never a finding):** If
+declaration `D` exists only to re-name canonical declaration `C`
+(same expanded type / same refinement witness chain), then **do not**
+emit `(D, C)` as a duplicate pair. Examples: `type FileClassification =
+FileEntry` (PR #596) must not collide with `FileEntry` in the
+product channel; `type IssueId = NonEmptyStr where brand("IssueId")`
+must not collide with its expanded refinement node as “two different
+surfaces for one fact.” Rule 1 is asymmetric: the canonical row keeps
+the bucket; aliases are absorbed into it.
+
+**Rule 2 — Alias vs alias (detection, always a finding when it fires):**
+If **two distinct declarations** `D1` and `D2` **both** normalize to
+the **same** structural surrogate **and neither pair is covered by Rule
+1 relative to the other** (i.e. they are peers, not namespace→canonical),
+emit a finding. Examples: **historical** twin refinements such as
+`NonEmptyStr` and `NonEmptyString` both spelling `String where non_empty`
+→ same structural refinement key (channel (2) below); two independent
+`data` rows with identical bodies; two
+record types with identical field maps (pre-#596 `FileEntry` vs
+`FileClassification`). Rule 2 is what the audit lists as “expected
+initial findings” once Rule 1 stops false positives.
+
+**Channels (how Rules 1–2 map to hashes):**
+
+1. **Product / coproduct / `data` channel** — Hash materialized bodies.
+   Apply **Rule 1** by skipping or folding pure nominal `type A = B`
+   (no `where`) into `B`'s bucket when `ignore_pure_nominal_type_aliases`
+   is true (default). **Rule 2** remains: two materialized bodies with
+   the same hash still collide.
+2. **Refinement-alias channel** — For `type Name = Carrier where …`,
+   bucket on **`(resolved_carrier_decl_id, structural_refinement_key)`**.
+   **v3 fact (why ids are wrong here):** lowering creates **fresh**
+   helper `DeclarationId`s for each `where` predicate; discharge then
+   **proves refinement equivalence structurally** across those trees, not
+   by reusing a single stable “predicate declaration” id. Keying Rule 2 on
+   any `canonical_refinement_id` derived only from those transient ids
+   would either **mint a parallel authority** next to the verifier or
+   **miss same-shape peers** that lower to different anchors. **Single
+   refinement-identity authority for this lens:** `structural_refinement_key`
+   — the canonical structural hash (or the verifier’s own equivalence
+   class token, if exposed) of the **lowered predicate / constraint DAG**
+   (brands, predicates, referenced ports). Two refinements collide under
+   Rule 2 iff that key matches — i.e. iff v3 refinement discharge would
+   treat them as the **same** refinement fact (DB-11 / `where` forwarding
+   in `m2_feature_parity_test.rs`). Optionally intern **after** hashing so
+   id churn cannot move buckets. That is what “no duplicate
+   representations” demands at this boundary: two names attach to one
+   **semantic** refinement iff their structural keys collide.
+   **Rule 1:** do not count `Name` against bare `Carrier` alone.
+   **Rule 2:** two names with the **same** structural refinement key
+   collide (twin refinement **peer** names — audit used
+   `NonEmptyStr` / `NonEmptyString`; see inventory note below). Distinct predicates /
+   brands → distinct keys → no collision.
+
+3. **Re-exports** — `ignore_re_exports` filters forward-only pairs
+   across module boundaries (orthogonal to Rules 1–2).
+
+The sketch `DuplicatesConfig` below includes
+`ignore_pure_nominal_type_aliases` (default **true**) to implement Rule
+1 in channel (1) only. Refinement channel (2) stays **on** by default
+so Rule 2 refinement twins stay in the expected-findings set.
+
+Implementation reuses the **same structural refinement story** the
+typechecker / DB-11 verifier already owns (alias vs nominal record vs
+lowered predicate shape), not source substring heuristics and **not** a
+new parallel id registry for predicates.
+
 **Motivation from the reviewer's std/extdeps audit (2026-04-15):**
 
-- `FileClassification` and `FileEntry` in `dsl/std/filesystem.dag`
-  are the same record shape (same fields, same types), each
-  claiming to be "what Filesystem.probe returns."
+- **`FileClassification` vs `FileEntry`** in `dsl/std/filesystem.dag`
+  were the same record shape (same fields, same types), each
+  claiming to be "what Filesystem.probe returns." **Resolved in PR
+  #596:** one `FileEntry` record and `type FileClassification =
+  FileEntry` (probe-surface name preserved). Still a motivating
+  example for why duplicate-shape detection matters on code before
+  the fix.
 - `wire_contract: VariantEncoding = StringVariant { naming:
   SnakeCase }` declared identically in `llm.dag`, `anthropic.dag`,
   and `openai.dag` — two redundant duplicates of the imported
   value.
 - `default_edition: String = "2021"` declared in both `cargo.dag`
   and `rust/imports.dag`.
-- `NonEmptyStr` and `NonEmptyString` — two aliases for the same
-  refined type in `dsl/std/types.dag`.
+- `NonEmptyStr` / `NonEmptyString` (**audit-era** illustration) — two
+  names for the same `String where …` refinement; channel **(2)** in
+  §2.1, not a product-body duplicate. **`dsl/std/types.dag` today only
+  carries `NonEmptyStr`;** do not bake both spellings into lens CI as a
+  “must find in std” expectation — use **synthetic** fixtures for Rule
+  2 until a second spelling lands again.
 
-All four were hand-found in a single review pass. A
-`lens_structural_duplicates` applied to `dsl/std/` and
-`dsl/extdeps/` would return all four automatically, plus any
-others the reviewer missed.
+At the time of the audit, four examples were hand-found in a single
+pass. One (`FileClassification` / `FileEntry`, PR #596) is already
+dissolved. A `lens_structural_duplicates` applied to `dsl/std/` and
+`dsl/extdeps/` would still flag the remaining shapes from that pass
+plus any others the reviewer missed.
 
 **Signature:**
+
+**Sketch note (reporting ids vs bucket keys):** `DeclarationId` on
+`Duplicate` is only for **blame / span** attachment. Channel (2)
+bucket identity is **exclusively** `structural_refinement_key` from §2.1
+— **never** `canonical_refinement_id` (lowering mints fresh predicate
+ids; see channel (2) prose above).
 
 ```rust
 // src/v3/compiler/src/lens_structural_duplicates.rs
@@ -252,10 +354,17 @@ pub struct DuplicatesConfig {
     /// explicit import relationship are ignored (a re-export
     /// is not a duplicate).
     pub ignore_re_exports: bool,
+    /// When true (default), implements §2.1 **Rule 1** in the product
+    /// channel: pure nominal `type A = B` (no `where`) folds into `B`.
+    /// Rule 2 refinement twins use a separate channel and stay on.
+    pub ignore_pure_nominal_type_aliases: bool,
 }
 
 pub struct Duplicate {
+    /// Bucket hash (product or refinement channel); refinement half
+    /// mixes in `structural_refinement_key`, not predicate `DeclarationId`.
     pub hash: u64,
+    /// Blamed declarations + spans — **not** the refinement identity key.
     pub declarations: Vec<(DeclarationId, SourceSpan)>,
     pub kind: DuplicateKind,
 }
@@ -268,6 +377,10 @@ pub enum DuplicateKind {
     /// Two type declarations with compatible but differently-named
     /// structures (e.g., same fields in different order).
     CompatibleType,
+    /// Two refinement aliases naming the same (carrier, **structural**
+    /// refinement) fact — §2.1 Rule 2, channel (2); key is structural,
+    /// not opaque id equality.
+    IdenticalRefinementSurface,
 }
 
 impl StructuralDuplicatesLens {
@@ -282,31 +395,56 @@ impl StructuralDuplicatesLens {
 
 1. Walk every declaration in `dag.declarations()` that matches
    `config.include_types` or `config.include_data`.
-2. For each type declaration, compute a structural hash over its
-   field shape: `hash({ (field_name, field_type_declaration_id)
-   for each field })`. For each data declaration, compute a
-   structural hash over its body: `hash(body_connective)`.
-3. Collect hashes into a `HashMap<u64, Vec<DeclarationId>>`.
-4. Emit a `Duplicate` for every hash with more than one
-   declaration.
+2. **Product / coproduct / `data` channel:** For each declaration with
+   a materialized body, compute a structural hash over its field
+   layout or `data` connective. If `ignore_pure_nominal_type_aliases`
+   is set, apply **Rule 1**: omit or fold pure nominal `type A = B`
+   into `B`'s bucket (never emit alias-vs-canonical here).
+3. **Refinement-alias channel:** For each `type Name = Carrier where …`,
+   compute `hash(resolved_carrier_decl_id, structural_refinement_key)`
+   where `structural_refinement_key` is the **structural predicate
+   fingerprint** of the lowered refinement DAG (fresh lowering ids are
+   inputs to the walk, **not** the hash key). Apply **Rule 1** when
+   comparing to bare `Carrier` (no false collision). Apply **Rule 2**
+   among refinement rows whose keys are equal under the verifier’s
+   structural equivalence.
+4. Emit a `Duplicate` for every hash bucket that **Rule 2** says has
+   peer collisions, tagging `DuplicateKind` accordingly.
 5. If `ignore_re_exports` is set, filter out duplicates where one
    declaration imports the other transitively.
 
-**Expected initial findings** (from the reviewer's audit):
+**Expected initial findings** (from the reviewer's audit; std inventory
+drifts):
 
-- `FileClassification` / `FileEntry` in `dsl/std/filesystem.dag`
-- `NonEmptyStr` / `NonEmptyString` in `dsl/std/types.dag`
-- `wire_contract` in `llm.dag` vs `anthropic.dag` vs `openai.dag`
-- `default_edition` in `cargo.dag` vs `rust/imports.dag`
+- **Cross-file / data shapes still typical today:** `wire_contract` in
+  `llm.dag` vs `anthropic.dag` vs `openai.dag`; `default_edition` in
+  `cargo.dag` vs `rust/imports.dag`.
+- **Rule 2 refinement peers — class, not a pinned std row:** the audit
+  named `NonEmptyStr` vs `NonEmptyString`, but **current** `dsl/std/types.dag`
+  does **not** define `NonEmptyString`. Treat the pair as **historical
+  motivation**; lens integration should assert Rule 2 on **constructed**
+  twin refinements, not on “both names exist in std.”
 - Probably others nobody has noticed yet
 
 **Test plan:**
 
-- Unit test: construct a Dag with two records of identical shape
-  and different names, assert the lens reports them.
+- Unit test (**Rule 2**, product): two records, identical field maps,
+  different names — assert `IdenticalType` (or `CompatibleType`).
 - Unit test: construct a Dag where one declaration re-exports
   another; assert the lens does NOT report it when
   `ignore_re_exports` is true.
+- Unit test (**Rule 1**, product): one record plus `type Alias =
+  Record` (no `where`); assert **no** alias-vs-canonical duplicate when
+  `ignore_pure_nominal_type_aliases` is true (PR #596 shape).
+- Unit test (**Rule 2**, refinement): `type X = String where p` and
+  `type Y = String where p` whose lowered predicates are **structurally**
+  the same; assert `IdenticalRefinementSurface` (alias-vs-alias, not
+  alias-vs-`String`). Include a negative control: same surface spellings
+  but non-equivalent predicate DAGs → **no** collision.
+- Positive control for lowering: two refinements whose predicates lower
+  to **different fresh `DeclarationId`s** but **structurally equivalent**
+  subgraphs (what discharge already unifies) → **must** collide — proves
+  the key is not raw id-based.
 - Unit test: construct a Dag with three data declarations of the
   same value; assert the lens reports all three.
 - Integration test: run the lens against `dsl/std/` and
@@ -792,11 +930,17 @@ The recommended order for building the initial library:
    record return, block body, record literal in expression position)
    and pinned by a parse-failure test that flips when the parser
    grows those features.
-2. **`lens_structural_duplicates`** — next. Simple structural hash
-   + collision detection. Expected to catch the
-   `FileClassification`/`FileEntry` duplicate, the `wire_contract`
-   duplicates, `default_edition` duplication, and probably others.
-   Gives immediate value on existing std/ and extdeps/ code.
+2. **`lens_structural_duplicates`** — next. §2.1 **Rules 1–2** across
+   two channels (product/`data` hash + refinement-surface hash).
+   Expected to catch the `wire_contract` duplicates,
+   `default_edition` duplication, and **Rule 2** refinement-twin
+   classes (audit illustrated with `NonEmptyStr` / `NonEmptyString` —
+   **synthetic** fixtures; not assumed present in current `types.dag`),
+   and probably others. (The
+   `FileClassification` / `FileEntry` duplicate from the same audit was
+   dissolved manually in PR #596 — Rule 1 covers `type
+   FileClassification = FileEntry` vs `FileEntry`.) Gives immediate
+   value on existing std/ and extdeps/ code.
 3. **`lens_layer_opacity`** — third, the most sophisticated of the
    three because it needs the `BoundarySpec` reverse index and
    multiple consumer kinds. The one that validates the thesis's
@@ -914,10 +1058,15 @@ The library is successful when:
    dsl/lens_config.dag` locally and see the same output the CI
    sees.
 3. **At least one high-value finding is closed by a lens-driven
-   fix.** Concrete target: the `FileClassification`/`FileEntry`
-   duplicate is surfaced by `lens_structural_duplicates`, fixed
-   by merging the two declarations, and the fix's regression
-   test is the lens returning empty on subsequent runs.
+   fix.** The `FileClassification`/`FileEntry` duplicate was fixed
+   ahead of the lens (PR #596: one record + `type FileClassification =
+   FileEntry`, i.e. **Rule 1** applies and must not regress). **Live-repo**
+   audit-class targets still include `wire_contract` / `default_edition`.
+   **Rule 2** refinement-peer work should prove out on **synthetic** twin
+   refinements (historical audit example: `NonEmptyStr` vs
+   `NonEmptyString` — only the former remains in `types.dag` today). After
+   fixes land, CI expects **Rule 2** clean on the exercised classes while
+   **Rule 1** continues to suppress false alias-vs-canonical pairs (§2.1).
 4. **The existing layer-opacity grep-gate proposal in
    `INVARIANTS.md` is fully superseded** — the §"Layer opacity"
    invariant points at `lens_layer_opacity` as its primary
