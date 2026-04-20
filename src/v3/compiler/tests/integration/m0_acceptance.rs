@@ -8,6 +8,8 @@
 //! - branch lowering and type unification
 //! - bounded self-recursion lowering
 //! - fail-closed semantic diagnostics for representative error classes
+//! - compile-boundary fail-closed behavior
+//! - post-sweep port-state invariants
 
 use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
@@ -195,6 +197,95 @@ fn recursive_body_signature_mismatch_poisons_the_function_and_call_site() {
 }
 
 #[test]
+fn growing_recursive_argument_is_rejected() {
+    let dag = compile_any("fn f(n: Int) -> Int = f(n + 1)", "m0_growing_recursion.v3");
+    let bind = bind_named(&dag, "f");
+
+    match expect_unresolved(&dag, bind.value) {
+        Diagnostic::ResolveError { name, .. } => {
+            assert!(
+                name.contains("cannot prove recursion in `f` terminates"),
+                "expected termination diagnostic, got {name:?}"
+            );
+        }
+        other => panic!("expected ResolveError for growing recursion, got {other:?}"),
+    }
+}
+
+#[test]
+fn type_annotation_does_not_resurrect_an_unresolved_port() {
+    let dag = compile_any("let x: Bool = y", "m0_annotation_after_resolve_error.v3");
+    let bind = bind_named(&dag, "x");
+
+    match expect_unresolved(&dag, bind.value) {
+        Diagnostic::ResolveError { name, .. } => assert_eq!(name, "y"),
+        other => panic!("expected ResolveError for annotated unresolved binding, got {other:?}"),
+    }
+}
+
+#[test]
+fn compile_boundary_is_fail_closed() {
+    assert!(compile_to_dag("let x = 1 + 2", "m0_ok.v3").is_ok());
+    assert!(matches!(
+        compile_to_dag("let x: Bool = 1", "m0_type_mismatch.v3"),
+        Err(CompileError::Semantic(_))
+    ));
+    assert!(matches!(
+        compile_to_dag("let y = x\nlet x = 1", "m0_forward_ref.v3"),
+        Err(CompileError::Semantic(_))
+    ));
+    assert!(matches!(
+        compile_to_dag("fn f(a: Int) -> Int = a\nlet x = f(1, 2)", "m0_arity.v3"),
+        Err(CompileError::Semantic(_))
+    ));
+}
+
+#[test]
+fn post_sweep_port_state_matches_diagnostic_table() {
+    let sources = [
+        "let x = 1 + 2",
+        "let x = 5\nlet result = if x > 0 then 1 else 2",
+        "fn count_down(n: Int) -> Int = if n == 0 then 0 else n + count_down(n - 1)\nlet answer = count_down(3)",
+        "let x: Bool = 1",
+        "let y = x\nlet x = 1",
+        "let x: Bool = y",
+        "fn f(a: Int) -> Int = a\nlet x = f(1, 2)",
+        "fn f(a: Int) -> Bool = 1\nlet x = f(1)",
+        "fn f(n: Int) -> Int = f(n + 1)",
+        "fn bad(n: Int) -> Bool = if n == 0 then 0 else bad(n - 1)\nlet x = bad(5)",
+        "let x: NotARealType = 1",
+    ];
+
+    for src in sources {
+        let dag = compile_any(src, "m0_invariant.v3");
+        for port in dag.all_ports() {
+            match port.state() {
+                PortState::Uninferred => {
+                    panic!(
+                        "port {:?} is Uninferred after compile in source {src:?}",
+                        port.id()
+                    );
+                }
+                PortState::Resolved(_) => {
+                    assert!(
+                        !dag.diagnostics().contains(port.id()),
+                        "Resolved port {:?} has a diagnostic entry in source {src:?}",
+                        port.id(),
+                    );
+                }
+                PortState::Unresolved => {
+                    assert!(
+                        dag.diagnostics().contains(port.id()),
+                        "Unresolved port {:?} has no diagnostic entry in source {src:?}",
+                        port.id(),
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn type_mismatch_marks_the_binding_unresolved() {
     let dag = compile_any("let x: Bool = 1", "m0_type_mismatch.v3");
     let bind = bind_named(&dag, "x");
@@ -246,7 +337,7 @@ fn unknown_type_annotation_is_rejected() {
     let bind = bind_named(&dag, "x");
 
     match expect_unresolved(&dag, bind.value) {
-        Diagnostic::ResolveError { name, .. } => assert_eq!(name, "NotARealType"),
+        Diagnostic::ResolveError { name, .. } => assert_eq!(name, "unknown type `NotARealType`"),
         other => panic!("expected ResolveError for unknown type, got {other:?}"),
     }
 }
