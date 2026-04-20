@@ -796,7 +796,6 @@ mod tests {
     #[test]
     fn hand_built_operator_add_transform_carries_structural_target_and_int_shape() {
         let mut dag = Dag::new();
-        let span = || SourceSpan::new("<hand-built>", 0, 0);
         let a = dag.push_value(LiteralBits::Int(1), span());
         let b = dag.push_value(LiteralBits::Int(2), span());
         let out = dag.push_transform(
