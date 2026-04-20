@@ -831,7 +831,7 @@ impl From<&crate::parse::SurfaceExpr> for SurfaceExpr {
                 }
             }
             crate::parse::SurfaceExpr::Operator { op, args, span } => Self::Operator {
-                op: op.clone(),
+                op: *op,
                 args: args.iter().map(SurfaceExpr::from).collect(),
                 span: span.clone(),
             },
