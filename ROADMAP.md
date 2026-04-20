@@ -672,6 +672,9 @@ Cleared (prior PR #521): `DerivedOpEffect { method, path_template, shape }` coll
 
 - **SG-7.1 — `emit/rust_target.rs` cutover.** Active sub-lane.
 - **SG-7.2 — `emit/python_target.rs` cutover.** Sequenced after SG-7.1 settles (smaller surface, post-Python Stage 1e.0 bridge clear).
+- **SG-7.3 — `variant_payload.rs` retirement.** Re-homed from SG-3a after lane audit proved `variant_payload.rs` is emitter-shared support (used by `emit.rs`, `emit/python_target.rs`, and `emit/rust_target.rs`), not lowering-exclusive ownership.
+
+**SG-3a status (lane-definition blocked).** SG-3a's original "retire one real lowering-owned handwritten file" target is exhausted on main: `operators.rs` was already retired in SG-3. The fallback candidate (`variant_payload.rs`) failed the lane-ownership test because it is cross-target emitter support, not lowering-only authority. SG-3a is therefore closed as blocked-by-lane-definition rather than stretched into non-file bookkeeping edits. The concrete retirement work moves to SG-7.3 (emitter-owned), while SG-5c/SG-5d remain alternative reassignment lanes for runtime-mirror cutovers.
 
 Each sub-PR must reduce handwritten-Rust line count in `src/v3/compiler/src/emit/` net-down vs. its base.
 
