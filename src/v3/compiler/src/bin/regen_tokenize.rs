@@ -393,10 +393,7 @@ fn collect_punct_rows(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> Vec<(
             "duplicate punctuation pattern `{pattern}` across shared/local authority inputs"
         );
     }
-    let missing_kinds: Vec<_> = punct_variants
-        .difference(&covered_kinds)
-        .cloned()
-        .collect();
+    let missing_kinds: Vec<_> = punct_variants.difference(&covered_kinds).cloned().collect();
     assert!(
         missing_kinds.is_empty(),
         "`{TOKENIZE_AUTHORITY_FILE}` declares `PunctTokenKind` variants {:?} that are not covered \
