@@ -67,7 +67,7 @@ fn parse_diagnostic_count(stderr: &str) -> usize {
 /// in temp output dirs so rustfmt and cargo can resolve lib.rs module paths.
 fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Path) {
     let stage0_src = ws.join("src/v2/stage0/src");
-    for name in &["v2_interpreter.rs", "cli_run.rs"] {
+    for name in &["v2_interpreter.rs", "cli_run.rs", "rest_transport_facts.rs"] {
         let src = stage0_src.join(name);
         if src.exists() {
             let dst = stage1_dir.join("src").join(name);
@@ -125,6 +125,7 @@ fn diff_excluding_hand_maintained(
         .arg("-r")
         .arg("--exclude=v2_interpreter.rs")
         .arg("--exclude=cli_run.rs")
+        .arg("--exclude=rest_transport_facts.rs")
         .arg(dir_a)
         .arg(dir_b)
         .output()
