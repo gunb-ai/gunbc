@@ -337,16 +337,27 @@ fn collect_punct_rows(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> Vec<(
         .into_iter()
         .collect();
     let mut rows = Vec::new();
+    let mut covered_kinds = BTreeSet::new();
 
     for pattern in &shared_syntax.operators {
-        let Some(kind) = punct_kind_for_shared_operator(pattern) else {
-            continue;
-        };
-        if !punct_variants.contains(kind) {
-            continue;
+        match classify_shared_operator_for_tokenizer(pattern) {
+            SharedOperatorTokenizerBoundary::Tokenized { kind } => {
+                assert!(
+                    punct_variants.contains(kind),
+                    "shared syntax operator `{pattern}` is classified as tokenizer punctuation \
+                     `PunctTokenKind::{kind}`, but `{TOKENIZE_AUTHORITY_FILE}` does not declare \
+                     that variant"
+                );
+                assert_token_kind_variant_exists(dag, kind, "PunctTokenKind");
+                assert!(
+                    covered_kinds.insert(kind.to_string()),
+                    "shared syntax operator `{pattern}` maps to duplicate punctuation kind \
+                     `PunctTokenKind::{kind}`"
+                );
+                rows.push((pattern.clone(), kind.to_string()));
+            }
+            SharedOperatorTokenizerBoundary::ParserOnlyDebt { .. } => {}
         }
-        assert_token_kind_variant_exists(dag, kind, "PunctTokenKind");
-        rows.push((pattern.clone(), kind.to_string()));
     }
 
     let shared_operator_patterns: BTreeSet<_> = shared_syntax.operators.iter().cloned().collect();
@@ -368,6 +379,10 @@ fn collect_punct_rows(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> Vec<(
         );
         let kind = extract_nullary_variant_field(fields, "kind", "PunctTokenKind", dag);
         assert_token_kind_variant_exists(dag, &kind, "PunctTokenKind");
+        assert!(
+            covered_kinds.insert(kind.clone()),
+            "duplicate punctuation kind `PunctTokenKind::{kind}` across shared/local authority inputs"
+        );
         rows.push((pattern, kind));
     }
 
@@ -378,6 +393,17 @@ fn collect_punct_rows(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> Vec<(
             "duplicate punctuation pattern `{pattern}` across shared/local authority inputs"
         );
     }
+    let missing_kinds: Vec<_> = punct_variants
+        .difference(&covered_kinds)
+        .cloned()
+        .collect();
+    assert!(
+        missing_kinds.is_empty(),
+        "`{TOKENIZE_AUTHORITY_FILE}` declares `PunctTokenKind` variants {:?} that are not covered \
+         by either the SG-1a shared-operator bridge or `local_punct_*` rows. Every punctuation \
+         kind must come from exactly one authority input so drift fails closed.",
+        missing_kinds
+    );
     rows.sort_by(|a, b| a.0.cmp(&b.0));
     rows
 }
@@ -403,23 +429,44 @@ fn keyword_spelling_for_token_kind(kind: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn punct_kind_for_shared_operator(pattern: &str) -> Option<&'static str> {
+// SG-1a scaffold boundary: shared syntax still lowers through raw-source reads,
+// so every `dag_operators` symbol must be classified explicitly here as either
+// tokenizer punctuation or parser-only debt. Unknown symbols panic so upstream
+// authority edits cannot silently disappear through the bridge.
+enum SharedOperatorTokenizerBoundary {
+    Tokenized { kind: &'static str },
+    ParserOnlyDebt { reason: &'static str },
+}
+
+fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokenizerBoundary {
     match pattern {
-        "==" => Some("EqEq"),
-        "!=" => Some("NotEq"),
-        "<" => Some("Lt"),
-        "<=" => Some("Le"),
-        ">" => Some("Gt"),
-        ">=" => Some("Ge"),
-        "+" => Some("Plus"),
-        "-" => Some("Minus"),
-        "*" => Some("Star"),
-        "/" => Some("Slash"),
-        "&&" => Some("AmpAmp"),
-        "||" => Some("PipePipe"),
-        "|>" => Some("PipeArrow"),
-        "." => Some("Dot"),
-        _ => None,
+        "==" => SharedOperatorTokenizerBoundary::Tokenized { kind: "EqEq" },
+        "!=" => SharedOperatorTokenizerBoundary::Tokenized { kind: "NotEq" },
+        "<" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Lt" },
+        "<=" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Le" },
+        ">" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Gt" },
+        ">=" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Ge" },
+        "+" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Plus" },
+        "-" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Minus" },
+        "*" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Star" },
+        "/" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Slash" },
+        "&&" => SharedOperatorTokenizerBoundary::Tokenized { kind: "AmpAmp" },
+        "||" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipePipe" },
+        "|>" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipeArrow" },
+        "." => SharedOperatorTokenizerBoundary::Tokenized { kind: "Dot" },
+        "??" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
+            reason: "null-coalescing is declared in shared syntax but the v3 tokenizer/parser \
+                     surface does not yet admit it as punctuation",
+        },
+        "%" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
+            reason: "modulo is declared in shared syntax but the v3 tokenizer/parser surface \
+                     does not yet admit it as punctuation",
+        },
+        other => panic!(
+            "shared syntax operator `{other}` has no SG-1a tokenizer bridge classification. \
+             Update `classify_shared_operator_for_tokenizer` to mark it as tokenizer-owned \
+             punctuation or explicit parser-only debt so the authority boundary stays fail-closed."
+        ),
     }
 }
 

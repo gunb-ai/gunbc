@@ -104,6 +104,10 @@ type KeywordTokenKind
 // derive from `dsl/extdeps/languages/dag/syntax.dag`'s `dag_operators`;
 // `LocalPunctSpec` rows below cover only punctuation that the shared syntax
 // authority does not model (delimiters, assignment, lambda / arm markers).
+// SG-1a banked scaffold: `regen_tokenize` currently classifies each
+// `dag_operators` symbol as either tokenizer-owned punctuation or explicit
+// parser-only debt (`??`, `%`) and fails closed on any drift. Once shared
+// syntax lowers structurally, move that subset relation out of the Rust bridge.
 type PunctTokenKind
   = Eq
   | EqEq
