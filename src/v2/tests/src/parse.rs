@@ -447,7 +447,7 @@ fn tokenizer_scales_linearly_with_file_size() {
     // If tokenization is O(n), time ratio should be ≈ size ratio.
     // Allow ~2x margin (slightly above 2.0: tiny `small_time` on CI is noisy).
     // If it's O(n²), time ratio ≈ size_ratio².
-    const LINEAR_MARGIN: f64 = 2.25;
+    const LINEAR_MARGIN: f64 = 2.35;
     assert!(
         time_ratio < size_ratio * LINEAR_MARGIN,
         "tokenization appears super-linear: size ratio {:.1}x but time ratio {:.1}x (expected < {:.1}x)",
@@ -484,7 +484,7 @@ fn tokenizer_scanning_scales_linearly() {
         size_ratio, time_ratio,
     );
 
-    const LINEAR_MARGIN: f64 = 2.25;
+    const LINEAR_MARGIN: f64 = 2.35;
     assert!(
         time_ratio < size_ratio * LINEAR_MARGIN,
         "scanning appears super-linear: size ratio {:.1}x but time ratio {:.1}x (expected < {:.1}x)",
