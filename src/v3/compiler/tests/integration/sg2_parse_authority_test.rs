@@ -1,8 +1,8 @@
-//! SG-2 **parser staging** ratchet: `runtime_mirrors.dag` is load-bearing for the **Surface carrier**
-//! schema (shared with `parse_surface_generated.rs`); `parse_generated.rs` (types from that
-//! `.dag` + algorithm from `parse_parser_body.txt`) must stay in sync via `regen_parse`. This is
-//! **not** SG-2b hard cutover until the body fragment is retired — see `parse_parser_body.txt` for
-//! the explicit dissolution trigger.
+//! SG-2 **parser staging** ratchet (PR #589 option 1 — **not** SG-2b closure): `runtime_mirrors.dag`
+//! is load-bearing for the **Surface carrier** schema (shared with `parse_surface_generated.rs`);
+//! `parse_generated.rs` (types from that `.dag` + **temporary semantic** algorithm from
+//! `parse_parser_body.txt`) must stay in sync via `regen_parse`. SG-2b remains the follow-on lane
+//! that deletes the body fragment per the dissolution trigger in `parse_parser_body.txt`.
 
 use v3_compiler::compile_to_dag;
 

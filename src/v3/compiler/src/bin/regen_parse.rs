@@ -1,10 +1,11 @@
 //! Regenerate `parse_generated.rs` from `src/v3/compiler/runtime_mirrors.dag` (Surface carriers)
 //! plus `parse_parser_body.txt` (sibling file under `src/v3/compiler/`).
 //!
-//! **Staging, not SG-2b cutover:** substrate `runtime_mirrors.dag` is the Surface **carrier**
-//! authority (shared with `parse_surface_generated.rs`); the `.txt` file is still checked-in
-//! recursive-descent **algorithm** authority. **Dissolution:** remove the fragment once parse
-//! logic is emitted from `.dag` alone (see `parse_parser_body.txt` header).
+//! **Parser staging (PR posture — option 1), not SG-2b closure:** substrate `runtime_mirrors.dag` is
+//! the Surface **carrier** authority (shared with `parse_surface_generated.rs`); `parse_parser_body.txt`
+//! remains temporary **semantic** algorithm authority until a follow-on lane lands true `.dag` parse
+//! rules. **Dissolution:** same trigger as the header on `parse_parser_body.txt` (delete the fragment
+//! once `regen_parse` emits the algorithm from `.dag` alone).
 
 use std::collections::BTreeSet;
 use std::io::Write;

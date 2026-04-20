@@ -997,14 +997,15 @@ may be slightly longer due to avoiding mutation.
 
 ---
 
-## §6. Stage 4 — `parse.dag`
+## §6. Stage 4 — v3 parser (`runtime_mirrors.dag` + staging)
 
-**Current (SG-2 parser staging):** `src/v3/compiler/runtime_mirrors.dag` declares the
+**Current (SG-2 parser staging — not SG-2b):** `src/v3/compiler/runtime_mirrors.dag` declares the
 `Surface*` carrier schema (substrate mirror authority, shared with `parse_surface_generated.rs`);
-`src/v3/compiler/parse_parser_body.txt` holds the recursive-descent **algorithm** as a checked-in
-Rust fragment; `regen_parse` splices it into producer-owned `src/v3/compiler/src/parse_generated.rs`.
-This is **not** SG-2b hard cutover (`.dag`-owned parse rules) until `parse_parser_body.txt` is
-deleted per the dissolution trigger in that file’s header.
+`src/v3/compiler/parse_parser_body.txt` holds the recursive-descent **algorithm** as checked-in
+**temporary semantic** authority; `regen_parse` splices it into producer-owned
+`src/v3/compiler/src/parse_generated.rs`. **PR posture:** ship this as **parser staging** (option 1 in
+the #589 wrap-up): name the scaffold, keep the dissolution trigger on `parse_parser_body.txt`, and
+treat SG-2b — **.dag**-owned parse **logic** — as a **follow-on** lane; do not claim SG-2b closure here.
 
 **What the shipped parser does:** after tokenization, produces `SurfaceItem` /
 `SurfaceExpr` trees via the generated module (same external behavior as the
@@ -1029,10 +1030,9 @@ grammar spec file — the parser is no longer v3-specific.
 
 **Expected port size — two phases:**
 
-**Phase 4a — direct port.** `parse.dag` as a literal port of
-`parse.rs`, one function per parse rule, recursive descent.
-~1500-2000 lines of `.dag`. Produces identical Surface tree
-output.
+**Phase 4a — direct port (still open).** Literal port of the recursive-descent parser into `.dag`
+functions on tokens (historically `parse.rs`; today the algorithm scaffold is `parse_parser_body.txt`
+until it dissolves). ~1500-2000 lines of `.dag`. Produces identical Surface tree output.
 
 **Corpus snapshot harness (staging ratchet).** `src/v3/compiler/tests/integration.rs`
 (`parse_stage4_prep`) and `parse_corpus_manifest.txt` record the generated parser’s

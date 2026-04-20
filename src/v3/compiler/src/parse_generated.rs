@@ -235,12 +235,15 @@ impl SurfaceType {
     }
 }
 
-// TEMPORARY STAGING — recursive-descent parse **algorithm** authority until SG-2b.
-// Surface **carrier** types live in `runtime_mirrors.dag` (substrate mirror authority); `regen_parse`
-// splices this file after emitted `Surface*` definitions inside `parse_generated.rs`.
+// TEMPORARY STAGING — checked-in recursive-descent parse **algorithm** (semantic authority).
+// This is **parser staging**, not SG-2b: Surface **carrier** schema lives in `runtime_mirrors.dag`;
+// `regen_parse` splices this fragment after emitted `Surface*` definitions inside `parse_generated.rs`.
+// Do not treat this file as omission-grade final authority — it is an explicit scaffold with a
+// named paydown (SG-2b follow-on lane).
 //
-// Dissolution trigger: delete this file when parse rules live under `.dag` structural authority
-// (SELF_HOSTING §6 Phase 4a/4b) and `regen_parse` emits the full module without an external Rust body.
+// Dissolution trigger: delete this file when parse **logic** is structurally `.dag`-owned (SELF_HOSTING
+// §6 Phase 4a direct port or Phase 4b grammar-as-data) and `regen_parse` emits the full module without
+// any external Rust body fragment.
 //
 pub fn parse(tokens: &[Token], file: &str) -> Result<SurfaceModule, Diagnostic> {
     let mut parser = Parser {
