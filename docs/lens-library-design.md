@@ -232,7 +232,8 @@ here “excludes all `= Carrier where …` refinements from the lens.”
 That would incorrectly hide `NonEmptyStr` / `NonEmptyString`. Those
 rows stay in **channel (2)**; **Rule 1** only blocks **alias vs its
 canonical expandee** false positives, and **Rule 2** is what surfaces
-**two peer refinements** with the same fingerprint.
+**two peer refinements** with the same **structural refinement key**
+(defined below — not a raw declaration id).
 
 **Rule 1 — Alias vs canonical (exclusion, never a finding):** If
 declaration `D` exists only to re-name canonical declaration `C`
@@ -249,7 +250,7 @@ If **two distinct declarations** `D1` and `D2` **both** normalize to
 the **same** structural surrogate **and neither pair is covered by Rule
 1 relative to the other** (i.e. they are peers, not namespace→canonical),
 emit a finding. Examples: `NonEmptyStr` and `NonEmptyString` both
-`String where non_empty` → same refinement fingerprint (see channel
+`String where non_empty` → same structural refinement key (channel
 (2) below); two independent `data` rows with identical bodies; two
 record types with identical field maps (pre-#596 `FileEntry` vs
 `FileClassification`). Rule 2 is what the audit lists as “expected
@@ -263,11 +264,22 @@ initial findings” once Rule 1 stops false positives.
    is true (default). **Rule 2** remains: two materialized bodies with
    the same hash still collide.
 2. **Refinement-alias channel** — For `type Name = Carrier where …`,
-   hash `(resolved_carrier_id, canonical_refinement_fingerprint)`.
-   **Rule 1:** do not count `Name` against `Carrier` alone. **Rule 2:**
-   two names with the **same** fingerprint collide (`NonEmptyStr` /
-   `NonEmptyString`). Distinct predicates / brands → distinct
-   fingerprints → no collision.
+   bucket on **`(resolved_carrier_decl_id, structural_refinement_key)`**.
+   The second component is **not** an opaque `DeclarationId` shortcut:
+   v3 refinement discharge already treats refinements as **structurally**
+   equal or distinct (same lowered predicate / constraint DAG → same
+   fact; different shape → different fact — see DB-11 / `where`
+   forwarding tests in `m2_feature_parity_test.rs`). The lens must hash
+   the **same structural authority** the verifier uses (canonical hash
+   over the refinement subgraph: brands, predicates, referenced ports),
+   optionally **interning only after** that structural hash so accidental
+   id churn cannot move buckets. That is what “no duplicate
+   representations” demands at this boundary: two names attach to one
+   **semantic** refinement iff their structural keys collide.
+   **Rule 1:** do not count `Name` against bare `Carrier` alone.
+   **Rule 2:** two names with the **same** structural refinement key
+   collide (`NonEmptyStr` / `NonEmptyString`). Distinct predicates /
+   brands → distinct keys → no collision.
 
 3. **Re-exports** — `ignore_re_exports` filters forward-only pairs
    across module boundaries (orthogonal to Rules 1–2).
@@ -366,10 +378,12 @@ impl StructuralDuplicatesLens {
    is set, apply **Rule 1**: omit or fold pure nominal `type A = B`
    into `B`'s bucket (never emit alias-vs-canonical here).
 3. **Refinement-alias channel:** For each `type Name = Carrier where …`,
-   compute `hash(resolved_carrier_id, canonical_refinement_id)`.
-   Apply **Rule 1** when comparing to bare `Carrier` (no false
-   collision). Apply **Rule 2** among refinement rows with the same
-   fingerprint.
+   compute `hash(resolved_carrier_decl_id, structural_refinement_key)`
+   where `structural_refinement_key` is derived from the lowered
+   refinement DAG, **not** from whichever helper declaration happened
+   to intern first. Apply **Rule 1** when comparing to bare `Carrier`
+   (no false collision). Apply **Rule 2** among refinement rows with
+   the same structural key.
 4. Emit a `Duplicate` for every hash bucket that **Rule 2** says has
    peer collisions, tagging `DuplicateKind` accordingly.
 5. If `ignore_re_exports` is set, filter out duplicates where one
