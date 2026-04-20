@@ -55,11 +55,13 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // end-to-end CLI smoke; it is hand-authored test infrastructure and
 // belongs on this list.
 //
-// SG-6 owns the remaining fold: the per-helper freshness test
-// (`sg4_prep_infer_helpers_freshness_test.rs`) still mirrors the
-// per-lens migration tests' snapshot pattern. It collapses into a
-// single generic snapshot gate in a later SG-6 sub-PR, per the
-// Director sign-off (clever-swift-141 brief, 2026-04-19).
+// SG-6 follow-up landing (director sign-off from the
+// `clever-swift-141` brief, 2026-04-19): the former standalone
+// `sg4_prep_infer_helpers_freshness_test.rs` was absorbed into
+// `sg6_hand_authored_census_test.rs`, so the infer-helpers snapshot
+// gate now resolves through the same `LensRegistryEntry` authority as
+// the unified `regen_lens` driver. One more hand-authored test file
+// retired; no standalone per-helper freshness harness remains.
 //
 // Phase 0 test-taxonomy reorg — four target-emission tests moved from
 // `tests/integration/` to `tests/boundary/` (TESTING.md § test layers,
@@ -158,7 +160,6 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
-    "src/v3/compiler/tests/integration/sg4_prep_infer_helpers_freshness_test.rs",
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",

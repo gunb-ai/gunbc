@@ -53,10 +53,13 @@
 // `lens_path()` helpers, or the `include_str!` targets diverge.
 
 use std::collections::{BTreeSet, HashMap};
+use std::io::Write;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
+use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, Declaration, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::emit_rust::emit_rust_module;
 
 fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -68,6 +71,30 @@ fn bin_dir() -> PathBuf {
 
 fn workspace_root() -> PathBuf {
     manifest_dir().join("..").join("..").join("..")
+}
+
+fn rustfmt_stdout(source: &str, context: &str) -> String {
+    let mut child = Command::new("rustfmt")
+        .arg("--emit")
+        .arg("stdout")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn rustfmt for {context}: {err}"));
+    child
+        .stdin
+        .as_mut()
+        .expect("rustfmt stdin")
+        .write_all(source.as_bytes())
+        .unwrap_or_else(|err| panic!("write source to rustfmt for {context}: {err}"));
+    let output = child
+        .wait_with_output()
+        .unwrap_or_else(|err| panic!("wait for rustfmt for {context}: {err}"));
+    assert!(
+        output.status.success(),
+        "rustfmt failed on {context}"
+    );
+    String::from_utf8(output.stdout).expect("rustfmt output should be utf-8")
 }
 
 /// Enumerate every entry under `src/v3/compiler/src/bin/` that Cargo's
@@ -189,6 +216,56 @@ fn read_registry_rows(dag: &Dag) -> Vec<RegistryRow> {
         .collect()
 }
 
+fn load_registry() -> (Dag, Vec<RegistryRow>) {
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap should load `src/v3/compiler/regen.dag` cleanly, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let rows = read_registry_rows(&dag);
+    (dag, rows)
+}
+
+fn registry_row<'a>(rows: &'a [RegistryRow], name: &str) -> &'a RegistryRow {
+    rows.iter()
+        .find(|row| row.name == name)
+        .unwrap_or_else(|| panic!("registry row for `{name}`"))
+}
+
+fn generated_header(lens_file: &str) -> String {
+    format!(
+        "// AUTO-GENERATED from `{lens_file}` via\n\
+         // `emit_rust_module`. Regenerate instead of hand-editing.\n\n"
+    )
+}
+
+fn emit_registry_module(row: &RegistryRow) -> String {
+    let lens_path = workspace_root().join(&row.lens_file);
+    let lens_source = std::fs::read_to_string(&lens_path)
+        .unwrap_or_else(|err| panic!("read {}: {err}", lens_path.display()));
+    let dag = compile_to_dag(&lens_source, lens_path.to_string_lossy().as_ref())
+        .unwrap_or_else(|diag| panic!("compiled {}: {diag:?}", lens_path.display()));
+    assert!(
+        dag.diagnostics().is_empty(),
+        "{} should compile cleanly, got {:?}",
+        row.lens_file,
+        dag.diagnostics()
+    );
+    let raw = emit_rust_module(&dag)
+        .unwrap_or_else(|err| panic!("emit compiled module for {}: {err:?}", row.name));
+    rustfmt_stdout(
+        &format!("{}{raw}", generated_header(&row.lens_file)),
+        &format!("generated module `{}`", row.name),
+    )
+}
+
+fn checked_in_generated_module(row: &RegistryRow) -> String {
+    let out_path = workspace_root().join(&row.generated_file);
+    std::fs::read_to_string(&out_path)
+        .unwrap_or_else(|err| panic!("read {}: {err}", out_path.display()))
+}
+
 fn structural_fields(decl: &Declaration) -> &[(String, FieldValue)] {
     let Some(ValueBody::Structural { fields }) = &decl.value_body else {
         panic!(
@@ -223,14 +300,7 @@ fn string_field(fields: &[(String, FieldValue)], label: &str, binding: &str) -> 
 // and the referring migration test.
 #[test]
 fn sg6_regen_dag_registry_triples_are_pinned() {
-    let dag = Dag::new();
-    assert!(
-        dag.diagnostics().is_empty(),
-        "bootstrap should load `src/v3/compiler/regen.dag` cleanly, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
-    );
-
-    let mut rows = read_registry_rows(&dag);
+    let (_dag, mut rows) = load_registry();
     rows.sort_by(|a, b| a.name.cmp(&b.name));
 
     let expected: Vec<(&str, &str, &str)> = vec![
@@ -304,8 +374,7 @@ fn sg6_regen_dag_registry_triples_are_pinned() {
 // source so the structural guarantee is visible at the authority.
 #[test]
 fn sg6_lens_registry_names_are_unique() {
-    let dag = Dag::new();
-    let rows = read_registry_rows(&dag);
+    let (_dag, rows) = load_registry();
     let mut seen: HashMap<String, String> = HashMap::new();
     for row in &rows {
         if let Some(prior_binding) = seen.get(&row.name) {
@@ -327,8 +396,7 @@ fn sg6_lens_registry_names_are_unique() {
 // test mirrors that invariant at the registry source.
 #[test]
 fn sg6_lens_registry_generated_files_are_unique() {
-    let dag = Dag::new();
-    let rows = read_registry_rows(&dag);
+    let (_dag, rows) = load_registry();
     let mut seen: HashMap<String, String> = HashMap::new();
     for row in &rows {
         if let Some(prior_binding) = seen.get(&row.generated_file) {
@@ -351,8 +419,7 @@ fn sg6_lens_registry_generated_files_are_unique() {
 // contract the driver's `--lens` argument depends on.
 #[test]
 fn sg6_lens_registry_names_resolve_to_singleton_entry() {
-    let dag = Dag::new();
-    let rows = read_registry_rows(&dag);
+    let (_dag, rows) = load_registry();
     let known_names: Vec<String> = rows.iter().map(|row| row.name.clone()).collect();
     for name in &known_names {
         let matches: Vec<&RegistryRow> = rows.iter().filter(|row| row.name == *name).collect();
@@ -369,6 +436,33 @@ fn sg6_lens_registry_names_resolve_to_singleton_entry() {
     }
 }
 
+#[test]
+fn sg6_infer_helpers_generated_module_matches_checked_in_snapshot() {
+    let (_dag, rows) = load_registry();
+    let row = registry_row(&rows, "infer_helpers");
+    let fresh = emit_registry_module(row);
+    assert_eq!(
+        fresh.trim(),
+        checked_in_generated_module(row).trim(),
+        "checked-in generated module is stale; regenerate {} from {} via `cargo run -p v3-compiler --bin regen_lens -- --lens {}`",
+        row.generated_file,
+        row.lens_file,
+        row.name,
+    );
+}
+
+#[test]
+#[ignore]
+fn sg6_emit_infer_helpers_snapshot() {
+    let (_dag, rows) = load_registry();
+    let row = registry_row(&rows, "infer_helpers");
+    let fresh = emit_registry_module(row);
+    let out_path = workspace_root().join(&row.generated_file);
+    std::fs::write(&out_path, fresh)
+        .unwrap_or_else(|err| panic!("write {}: {err}", out_path.display()));
+    println!("wrote {}", out_path.display());
+}
+
 // Director/Codex follow-up on #560: prove the real CLI path works, not
 // just the structural registry ratchets. This smoke test runs the
 // built `regen_lens` binary against a single concrete registry entry
@@ -383,17 +477,8 @@ budgeted_test! {
     15_000,
     sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift,
     {
-        let dag = Dag::new();
-        assert!(
-            dag.diagnostics().is_empty(),
-            "bootstrap should load `src/v3/compiler/regen.dag` cleanly, got {:?}",
-            dag.diagnostics().iter().collect::<Vec<_>>()
-        );
-
-        let row = read_registry_rows(&dag)
-            .into_iter()
-            .find(|row| row.name == "cost")
-            .expect("registry row for `cost`");
+        let (_dag, rows) = load_registry();
+        let row = registry_row(&rows, "cost");
 
         let out_path = workspace_root().join(&row.generated_file);
         let before = std::fs::read(&out_path).expect("read checked-in generated file");
