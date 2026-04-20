@@ -1,8 +1,15 @@
 #![allow(clippy::disallowed_macros)]
 
+use std::collections::HashMap;
 use std::rc::Rc;
 use v2_compiler::std_effects::*;
 use v2_compiler::std_http_path::{has_path_params, last_path_param, parse_path_template};
+use v2_compiler::v2_compiler_parse::parse;
+use v2_compiler::v2_compiler_tokenize::tokenize;
+use v2_compiler::v2_std_core::{
+    authored_name_at, build_newline_index, find_property, find_property_string, is_rest_transport,
+    transport_method_key, transport_path_template_key, ExprData, NewlineIndex, Node,
+};
 
 fn parse_ok(path: &str) -> Rc<PathTemplate> {
     match &*parse_path_template(&path.to_string()) {
@@ -193,153 +200,186 @@ fn unknown_method_and_malformed_path_are_distinct_failures() {
 // =========================================================================
 // REST ops in scope derive an EffectShape
 //
-// Single authority: paths are parsed from dsl/extdeps/*.dag `transport rest`
-// blocks (same facts as the extdep declarations). No parallel hand-maintained
-// (name, method, path) table — drift against GitHub / GCP / LLM specs is caught
-// when the .dag sources change.
+// Single authority: tokenize + parse extdep `.dag` files, then read `transport
+// rest` facts via `v2_std_core` (same transport property accessors as the
+// compiler). No second text parser over raw source.
 // =========================================================================
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct RestOp {
+    service: String,
     name: String,
     method: String,
     path: String,
 }
 
-fn unescape_extdep_path_template(s: &str) -> String {
-    s.replace("\\{", "{").replace("\\}", "}")
-}
-
-fn extract_method_after_label(block: &str) -> Option<String> {
-    let i = block.find("method:")?;
-    let rest = block[i + 7..].trim_start();
-    let tok = rest.split_whitespace().next()?;
-    Some(tok.trim_end_matches(',').to_string())
-}
-
-fn extract_quoted_path_after_label(block: &str) -> Option<String> {
-    let i = block.find("path:")?;
-    let rest = &block[i + 5..];
-    let q1 = rest.find('"')?;
-    let rest2 = &rest[q1 + 1..];
-    let q2 = rest2.find('"')?;
-    Some(unescape_extdep_path_template(&rest2[..q2]))
-}
-
-/// Parse `operation` / `transport rest` blocks from extdep `.dag` sources.
-fn parse_rest_operations_from_extdep_dag(src: &str) -> Vec<RestOp> {
-    let mut out = Vec::new();
-    for chunk in src.split("operation ") {
-        let Some(name_end) = chunk.find(|c: char| c.is_whitespace() || c == '{') else {
-            continue;
-        };
-        let op_name = chunk[..name_end].trim();
-        if op_name.is_empty() {
-            continue;
-        }
-        let Some(transport_pos) = chunk.find("transport rest") else {
-            continue;
-        };
-        let after = &chunk[transport_pos..];
-        let block_end = after
-            .find("response ")
-            .or_else(|| after.find("\n    mock_response"))
-            .unwrap_or(after.len());
-        let block = &after[..block_end];
-        let Some(method) = extract_method_after_label(block) else {
-            continue;
-        };
-        let Some(path) = extract_quoted_path_after_label(block) else {
-            continue;
-        };
-        out.push(RestOp {
-            name: op_name.to_string(),
-            method,
-            path,
-        });
+fn parse_extdep_module(relative_path: &str) -> (Rc<Node>, Rc<HashMap<String, Rc<NewlineIndex>>>) {
+    let source = crate::helpers::read_v2_file(relative_path);
+    let filename = std::path::Path::new(relative_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("file.dag");
+    let tokens = tokenize(&source.to_string(), filename.to_string());
+    let mut source_indices = HashMap::new();
+    source_indices.insert(
+        filename.to_string(),
+        build_newline_index(filename.to_string(), &source.to_string()),
+    );
+    let source_indices = Rc::new(source_indices);
+    let result = parse(tokens, source_indices.clone());
+    if let Some(err) = result.error.as_ref() {
+        panic!(
+            "failed to parse {}: {}",
+            relative_path,
+            v2_compiler::v2_std_core::diagnostic_to_message(err.diagnostic.clone())
+        );
     }
+    let module = result.module.clone().unwrap_or_else(|| {
+        panic!("{} produced no module", relative_path);
+    });
+    (module, source_indices)
+}
+
+/// `method: GET` and similar use keyword / ident values; `path` is a string literal.
+fn rest_method_or_path_string(
+    props: Rc<Vec<Rc<Node>>>,
+    prop_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    find_property_string(props.clone(), prop_name.clone(), source_indices.clone()).or_else(|| {
+        let n = find_property(props, prop_name, source_indices.clone())?;
+        match (*n.expr_data).clone() {
+            ExprData::ExprVar { .. } => {
+                let s = authored_name_at(source_indices, &n);
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
+            }
+            _ => None,
+        }
+    })
+}
+
+fn collect_rest_ops_from_parsed_module(
+    module: &Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Vec<RestOp> {
+    let mut out = Vec::new();
+    fn walk(
+        n: &Rc<Node>,
+        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        service_ctx: Option<String>,
+        out: &mut Vec<RestOp>,
+    ) {
+        let ctx_for_children = match &n.transport {
+            Some(t)
+                if !is_rest_transport(t.clone(), source_indices.clone()) && !n.name.is_empty() =>
+            {
+                Some(n.name.clone())
+            }
+            _ => service_ctx.clone(),
+        };
+
+        if let Some(t) = &n.transport {
+            if is_rest_transport(t.clone(), source_indices.clone()) {
+                let svc = service_ctx
+                    .clone()
+                    .expect("REST operation without enclosing service scope");
+                let method = rest_method_or_path_string(
+                    t.properties.clone(),
+                    transport_method_key(),
+                    source_indices.clone(),
+                )
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing method value on rest transport for {}::{}",
+                        svc, n.name
+                    )
+                });
+                let path = rest_method_or_path_string(
+                    t.properties.clone(),
+                    transport_path_template_key(),
+                    source_indices.clone(),
+                )
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing path value on rest transport for {}::{}",
+                        svc, n.name
+                    )
+                });
+                out.push(RestOp {
+                    service: svc,
+                    name: n.name.clone(),
+                    method,
+                    path,
+                });
+            }
+        }
+
+        for c in n.children.iter() {
+            walk(c, source_indices.clone(), ctx_for_children.clone(), out);
+        }
+    }
+    walk(module, source_indices, None, &mut out);
     out
 }
 
-const GITHUB_PULLS_DAG: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../dsl/extdeps/github/pulls.dag"
-));
-const GITHUB_GISTS_DAG: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../dsl/extdeps/github/gists.dag"
-));
-const ANTHROPIC_DAG: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../dsl/extdeps/llm/anthropic.dag"
-));
-const OPENAI_DAG: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../dsl/extdeps/llm/openai.dag"
-));
-const GCP_IAM_DAG: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../dsl/extdeps/cloud/gcp/iam.dag"
-));
-const GCP_SECRET_MANAGER_DAG: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../dsl/extdeps/cloud/gcp/secret_manager.dag"
-));
-const GCP_STS_DAG: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../dsl/extdeps/cloud/gcp/sts.dag"
-));
-const GCP_TOP_DAG: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../dsl/extdeps/cloud/gcp/gcp.dag"
-));
-
 fn all_parsed_extdep_rest_ops() -> Vec<RestOp> {
+    const FILES: &[&str] = &[
+        "dsl/extdeps/github/pulls.dag",
+        "dsl/extdeps/github/gists.dag",
+        "dsl/extdeps/llm/anthropic.dag",
+        "dsl/extdeps/llm/openai.dag",
+        "dsl/extdeps/cloud/gcp/iam.dag",
+        "dsl/extdeps/cloud/gcp/secret_manager.dag",
+        "dsl/extdeps/cloud/gcp/sts.dag",
+        "dsl/extdeps/cloud/gcp/gcp.dag",
+    ];
     let mut parsed: Vec<RestOp> = Vec::new();
-    parsed.extend(parse_rest_operations_from_extdep_dag(GITHUB_PULLS_DAG));
-    parsed.extend(parse_rest_operations_from_extdep_dag(GITHUB_GISTS_DAG));
-    parsed.extend(parse_rest_operations_from_extdep_dag(ANTHROPIC_DAG));
-    parsed.extend(parse_rest_operations_from_extdep_dag(OPENAI_DAG));
-    parsed.extend(parse_rest_operations_from_extdep_dag(GCP_IAM_DAG));
-    parsed.extend(parse_rest_operations_from_extdep_dag(
-        GCP_SECRET_MANAGER_DAG,
-    ));
-    parsed.extend(parse_rest_operations_from_extdep_dag(GCP_STS_DAG));
-    parsed.extend(parse_rest_operations_from_extdep_dag(GCP_TOP_DAG));
+    for path in FILES {
+        let (module, indices) = parse_extdep_module(path);
+        parsed.extend(collect_rest_ops_from_parsed_module(&module, indices));
+    }
     parsed
 }
 
 fn tracked_extdep_rest_ops() -> Vec<RestOp> {
     let parsed = all_parsed_extdep_rest_ops();
-    const NAMES: &[&str] = &[
-        "List",
-        "Get",
-        "Diff",
-        "CreateComment",
-        "ListReviews",
-        "CreateReview",
-        "ListComments",
-        "Create",
-        "Messages",
-        "ChatCompletion",
-        "Responses",
-        "GenerateAccessToken",
-        "AccessVersion",
-        "AddVersion",
-        "Refresh",
-        "Exchange",
+    const TRACKED: &[(&str, &str)] = &[
+        ("github.Pulls", "List"),
+        ("github.Pulls", "Get"),
+        ("github.Pulls", "Diff"),
+        ("github.Pulls", "CreateComment"),
+        ("github.Pulls", "ListReviews"),
+        ("github.Pulls", "CreateReview"),
+        ("github.Pulls", "ListComments"),
+        ("github.Gist", "Create"),
+        ("llm.Anthropic", "Messages"),
+        ("llm.OpenAI", "ChatCompletion"),
+        ("llm.OpenAI", "Responses"),
+        ("gcp.IAM", "GenerateAccessToken"),
+        ("gcp.SecretManager", "AccessVersion"),
+        ("gcp.SecretManager", "AddVersion"),
+        ("oauth2.Google", "Refresh"),
+        ("gcp.STS", "Exchange"),
     ];
-    let mut by_name: std::collections::HashMap<String, RestOp> =
-        std::collections::HashMap::with_capacity(NAMES.len());
+    let mut by_key: std::collections::HashMap<(String, String), RestOp> =
+        std::collections::HashMap::with_capacity(TRACKED.len());
     for op in parsed {
-        by_name.entry(op.name.clone()).or_insert(op);
+        by_key
+            .entry((op.service.clone(), op.name.clone()))
+            .or_insert(op);
     }
-    NAMES
+    TRACKED
         .iter()
-        .map(|n| {
-            by_name
-                .remove(*n)
-                .unwrap_or_else(|| panic!("missing extdep REST operation `{n}` in parsed sources"))
+        .map(|(svc, name)| {
+            by_key
+                .remove(&((*svc).to_string(), (*name).to_string()))
+                .unwrap_or_else(|| {
+                    panic!("missing extdep REST operation `{svc}::{name}` in parsed sources")
+                })
         })
         .collect()
 }
@@ -565,26 +605,28 @@ fn create_comment_rest_path_matches_github_issues_comments_api() {
 }
 
 #[test]
-fn extdep_operation_names_are_unique_in_authority_closure() {
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+fn extdep_service_operation_pairs_are_unique_in_authority_closure() {
+    let mut seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
     for op in all_parsed_extdep_rest_ops() {
+        let key = (op.service.clone(), op.name.clone());
         assert!(
-            seen.insert(op.name.clone()),
-            "duplicate operation name `{}` in extdep .dag parse (ambiguous authority)",
-            op.name
+            seen.insert(key.clone()),
+            "duplicate (service, operation) `{:?}` in extdep parse (ambiguous authority)",
+            key
         );
     }
 }
 
 #[test]
-fn tracked_rest_ops_list_has_no_duplicate_operation_names() {
+fn tracked_rest_ops_list_has_no_duplicate_service_operation_keys() {
     let ops = tracked_extdep_rest_ops();
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
     for op in &ops {
+        let key = (op.service.clone(), op.name.clone());
         assert!(
-            seen.insert(op.name.clone()),
-            "tracked REST op list unexpectedly listed `{}` twice",
-            op.name
+            seen.insert(key.clone()),
+            "tracked REST op list unexpectedly listed `{:?}` twice",
+            key
         );
     }
 }
