@@ -90,10 +90,7 @@ fn rustfmt_stdout(source: &str, context: &str) -> String {
     let output = child
         .wait_with_output()
         .unwrap_or_else(|err| panic!("wait for rustfmt for {context}: {err}"));
-    assert!(
-        output.status.success(),
-        "rustfmt failed on {context}"
-    );
+    assert!(output.status.success(), "rustfmt failed on {context}");
     String::from_utf8(output.stdout).expect("rustfmt output should be utf-8")
 }
 
