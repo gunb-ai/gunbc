@@ -14,18 +14,18 @@ pub mod helpers;
 #[cfg(test)]
 mod bootstrap;
 #[cfg(test)]
-mod diagnostics;
-#[cfg(test)]
 mod bug_sentinel_ratchet;
+#[cfg(test)]
+mod diagnostics;
 #[cfg(test)]
 mod effects;
 #[cfg(test)]
 mod infer_semantics;
 #[cfg(test)]
-mod render_repeat_test;
-#[cfg(test)]
 mod parse;
 #[cfg(test)]
 mod pipeline;
+#[cfg(test)]
+mod render_repeat_test;
 #[cfg(test)]
 mod source_audit;

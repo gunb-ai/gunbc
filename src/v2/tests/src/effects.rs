@@ -261,24 +261,38 @@ fn parse_rest_operations_from_extdep_dag(src: &str) -> Vec<RestOp> {
     out
 }
 
-const GITHUB_PULLS_DAG: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../dsl/extdeps/github/pulls.dag"));
-const GITHUB_GISTS_DAG: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../dsl/extdeps/github/gists.dag"));
-const ANTHROPIC_DAG: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../dsl/extdeps/llm/anthropic.dag"));
-const OPENAI_DAG: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../dsl/extdeps/llm/openai.dag"));
-const GCP_IAM_DAG: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../dsl/extdeps/cloud/gcp/iam.dag"));
+const GITHUB_PULLS_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../dsl/extdeps/github/pulls.dag"
+));
+const GITHUB_GISTS_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../dsl/extdeps/github/gists.dag"
+));
+const ANTHROPIC_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../dsl/extdeps/llm/anthropic.dag"
+));
+const OPENAI_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../dsl/extdeps/llm/openai.dag"
+));
+const GCP_IAM_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../dsl/extdeps/cloud/gcp/iam.dag"
+));
 const GCP_SECRET_MANAGER_DAG: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../dsl/extdeps/cloud/gcp/secret_manager.dag"
 ));
-const GCP_STS_DAG: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../dsl/extdeps/cloud/gcp/sts.dag"));
-const GCP_TOP_DAG: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../dsl/extdeps/cloud/gcp/gcp.dag"));
+const GCP_STS_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../dsl/extdeps/cloud/gcp/sts.dag"
+));
+const GCP_TOP_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../dsl/extdeps/cloud/gcp/gcp.dag"
+));
 
 fn all_parsed_extdep_rest_ops() -> Vec<RestOp> {
     let mut parsed: Vec<RestOp> = Vec::new();
@@ -287,7 +301,9 @@ fn all_parsed_extdep_rest_ops() -> Vec<RestOp> {
     parsed.extend(parse_rest_operations_from_extdep_dag(ANTHROPIC_DAG));
     parsed.extend(parse_rest_operations_from_extdep_dag(OPENAI_DAG));
     parsed.extend(parse_rest_operations_from_extdep_dag(GCP_IAM_DAG));
-    parsed.extend(parse_rest_operations_from_extdep_dag(GCP_SECRET_MANAGER_DAG));
+    parsed.extend(parse_rest_operations_from_extdep_dag(
+        GCP_SECRET_MANAGER_DAG,
+    ));
     parsed.extend(parse_rest_operations_from_extdep_dag(GCP_STS_DAG));
     parsed.extend(parse_rest_operations_from_extdep_dag(GCP_TOP_DAG));
     parsed
