@@ -157,6 +157,7 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     // the tokenizer share. Either path retires `regen_tokenize.rs` and
     // shrinks the parallel shim set.
     let expected: BTreeSet<String> = [
+        "regen_bootstrap.rs",
         "regen_lens.rs",
         "regen_lower.rs",
         "regen_parse.rs",
