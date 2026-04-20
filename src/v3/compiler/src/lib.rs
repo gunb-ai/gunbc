@@ -686,6 +686,7 @@ pub(crate) mod infer_helpers {
 pub mod lens_idempotency;
 pub mod lens_parallelism;
 mod lower;
+#[path = "parse_generated.rs"]
 mod parse;
 mod pipeline_authority;
 mod tokenize;

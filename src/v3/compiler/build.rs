@@ -5,7 +5,7 @@
 // Three generated arrays exist:
 //   - `STAGED_FILES`   for `src/v3/std/*.dag`
 //   - `V3_SPECS`       for `src/v3/spec/*.dag`
-//   - `COMPILER_FILES` for `src/v3/compiler/*.dag` (except `tokenize.dag`; see below)
+//   - `COMPILER_FILES` for `src/v3/compiler/*.dag` (except `tokenize.dag` / `parse.dag`; see below)
 //
 // Adding a new staged std/spec/compiler file becomes a pure file-system
 // change — no Rust edits to `bootstrap.rs`, no fixture-array
@@ -45,9 +45,9 @@
 //   pub static COMPILER_FILES: &[(&str, &str)] = &[
 //       ("src/v3/compiler/pipeline.dag", include_str!("...")),
 //   ];
-//   `tokenize.dag` is intentionally omitted: it is tokenizer authority for
-//   `regen_tokenize` and must not be folded into the bootstrap Dag (duplicate
-//   declarations when `compile_to_dag` parses it).
+//   `tokenize.dag` / `parse.dag` are intentionally omitted: tokenizer authority for
+//   `regen_tokenize` and surface AST authority for `regen_parse` must not be folded
+//   into the bootstrap Dag (duplicate declarations when `compile_to_dag` parses them).
 //
 // `bootstrap.rs` uses `include!(concat!(env!("OUT_DIR"), ...))` to
 // pull the arrays in. The `include_str!` calls inside the generated
@@ -202,12 +202,13 @@ fn main() {
     );
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
     let mut compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
-    // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`; it is not part
-    // of the runtime bootstrap Dag (would duplicate declarations when `compile_to_dag` parses it).
+    // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`; `parse.dag` is SG-2
+    // parser surface AST authority consumed by `regen_parse`. Neither is part of the runtime
+    // bootstrap Dag (would duplicate declarations when `compile_to_dag` parses them).
     compiler_entries.retain(|p| {
         p.file_name()
             .and_then(|s| s.to_str())
-            .map(|n| n != "tokenize.dag")
+            .map(|n| n != "tokenize.dag" && n != "parse.dag")
             .unwrap_or(true)
     });
     let extdeps_entries = collect_dag_entries_recursive(&extdeps_dir, &[]);
@@ -294,6 +295,7 @@ fn main() {
         "src/v3/compiler/src/lens_structural_resolution_generated.rs",
         "src/v3/compiler/src/lens_unused_parameters_generated.rs",
         "src/v3/compiler/src/operators_generated.rs",
+        "src/v3/compiler/src/parse_generated.rs",
         "src/v3/compiler/src/parse_surface_generated.rs",
         "src/v3/compiler/src/serialize_generated.rs",
         "src/v3/compiler/src/tokenize_generated.rs",

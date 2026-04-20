@@ -93,7 +93,6 @@ data stage0: GeneratedCrate = {
     "lens_unused_parameters.rs",
     "lib.rs",
     "lower.rs",
-    "parse.rs",
     "pipeline_authority.rs",
     "post_emit_verifier.rs",
     "tokenize.rs",

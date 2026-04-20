@@ -12,7 +12,7 @@
 
 module v3.compiler.parse
 
-import v3.std.substrate { SourceSpan }
+import v3.std.substrate { SourceSpan, Int, Bool }
 import std.list { List }
 import v3.compiler.operators { OperatorKind }
 
@@ -107,9 +107,9 @@ type SurfaceType
     }
 
 type SurfaceLiteral
-  = IntLit(Int)
-  | BoolLit(Bool)
-  | StringLit(String)
+  = Int(Int)
+  | Bool(Bool)
+  | String(String)
 
 type SurfaceRecordField {
   name: String

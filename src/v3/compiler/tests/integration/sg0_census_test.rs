@@ -102,6 +102,7 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
+    "src/v3/compiler/src/bin/regen_parse.rs",
     "src/v3/compiler/src/bin/regen_tokenize.rs",
     "src/v3/compiler/src/bin/regen_v3.rs",
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
@@ -124,7 +125,6 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/src/lens_unused_parameters.rs",
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
-    "src/v3/compiler/src/parse.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
     "src/v3/compiler/src/tokenize.rs",
@@ -170,6 +170,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
+    "src/v3/compiler/tests/integration/sg2_parse_authority_test.rs",
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
