@@ -4,6 +4,10 @@ Function-by-function classification of `src/v3/compiler/src/infer.rs`
 (4344 LOC, 76 functions). Produced by SG-4a (lane
 `fierce-wolf-119`, branch `session/fierce-wolf-119`).
 
+**Snapshot.** Line numbers below are pinned to `infer.rs` at commit
+`05616d166` (the commit that introduced this document). Any edit to
+`infer.rs` will drift them; re-anchor before relying on them.
+
 Categories (per `docs/briefs/sg-4a-infer-foundation.md`):
 
 - **Cat-1 Structural reader** — pure function over typed substrate
@@ -23,7 +27,7 @@ Categories (per `docs/briefs/sg-4a-infer-foundation.md`):
   Per STOP instruction: surface the count; director + SG-manager decide
   whether to extend substrate (separate lanes) or pause SG-4
   indefinitely.
-- **6 distinct substrate gaps named below** — within the 10-gap
+- **5 distinct substrate gaps named below** — within the 10-gap
   threshold; manageable as separate named lanes.
 - **Two ambiguous/high-risk functions** flagged (see end of this doc):
   `bind_expected_decl_to_actual_context` (184 LOC),
@@ -413,15 +417,6 @@ existing `infer_helpers_generated.rs` pattern (single-module .dag →
      declarative collect-then-rewrite pattern (similar to other passes).
    - Dissolution trigger: validation pass matches the pattern-resolution
      shape already used for branches.
-
-6. **Generic-retry status for TypeParam binding** (MINOR)
-   - Consumers: `is_retryable_generic_decl`,
-     `is_retryable_generic_decl_walk`.
-   - Gap: distinguishing bound vs. free TypeParam relies on structural
-     walks over Instantiation.
-   - Extension shape: probably already fine; keep as Cat-1 port and
-     re-evaluate after Group 1 lands.
-   - Dissolution trigger: N/A (likely non-gap).
 
 ## High-risk function detail
 
