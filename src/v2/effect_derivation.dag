@@ -10,7 +10,7 @@ import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.effects {
   EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
   KeySource, PathParam, InputField, CompositeKey,
-  DerivedOpEffect,
+  DerivedOpEffect, DeriveOpEffectResult, DerivedEffect, UnknownHttpMethodInput, MalformedPathInput,
   ModifierAgreement, Agrees, Disagrees, DerivationUnknown,
   ModifierCheck,
   IdempotencyTestObligation,
@@ -27,7 +27,7 @@ import std.effects {
 
 import std.http_path {
   UrlPathToken, LiteralToken, ParamToken,
-  PathTemplate,
+  PathTemplate, PathTemplateParseResult, ParsedPathTemplate, MalformedPathTemplate,
   parse_path_template,
   has_path_params,
   last_path_param
@@ -37,7 +37,7 @@ fn re_export_derive_op_effect(
   operation_name: String,
   method_str: String,
   path_str: String
-) -> DerivedOpEffect? {
+) -> DeriveOpEffectResult {
   derive_op_effect(
     operation_name: operation_name,
     method_str: method_str,
@@ -57,7 +57,7 @@ fn re_export_check_modifier(
   )
 }
 
-fn re_export_parse_path_template(raw: String) -> PathTemplate? {
+fn re_export_parse_path_template(raw: String) -> PathTemplateParseResult {
   parse_path_template(raw: raw)
 }
 

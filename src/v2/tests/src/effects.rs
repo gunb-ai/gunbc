@@ -4,8 +4,22 @@ use std::rc::Rc;
 use v2_compiler::std_effects::*;
 use v2_compiler::std_http_path::{has_path_params, last_path_param, parse_path_template};
 
-fn derive(name: &str, method: &str, path: &str) -> Option<Rc<DerivedOpEffect>> {
+fn parse_ok(path: &str) -> Rc<PathTemplate> {
+    match &*parse_path_template(&path.to_string()) {
+        PathTemplateParseResult::ParsedPathTemplate { template } => template.clone(),
+        other => panic!("expected parsed path template, got {other:?}"),
+    }
+}
+
+fn derive_result(name: &str, method: &str, path: &str) -> Rc<DeriveOpEffectResult> {
     derive_op_effect(name.to_string(), method.to_string(), path.to_string())
+}
+
+fn derive(name: &str, method: &str, path: &str) -> Rc<DerivedOpEffect> {
+    match &*derive_result(name, method, path) {
+        DeriveOpEffectResult::DerivedEffect { effect } => effect.clone(),
+        other => panic!("expected derived effect, got {other:?}"),
+    }
 }
 
 fn check(op: &Rc<DerivedOpEffect>, idempotent: bool, readonly: bool) -> Rc<ModifierCheck> {
@@ -34,67 +48,70 @@ fn is_delete(shape: &EffectShape) -> bool {
 
 #[test]
 fn parse_simple_path() {
-    let t = parse_path_template(&"/repos/{owner}/{repo}/pulls".to_string()).unwrap();
+    let t = parse_ok("/repos/{owner}/{repo}/pulls");
     assert!(has_path_params(t.clone()));
     assert_eq!(last_path_param(t).unwrap(), "repo");
 }
 
 #[test]
 fn parse_path_with_colon_suffix() {
-    let t = parse_path_template(&"/v1/{secret_name}:addVersion".to_string()).unwrap();
+    let t = parse_ok("/v1/{secret_name}:addVersion");
     assert!(has_path_params(t.clone()));
     assert_eq!(last_path_param(t).unwrap(), "secret_name");
 }
 
 #[test]
 fn parse_path_no_params() {
-    let t = parse_path_template(&"/token".to_string()).unwrap();
+    let t = parse_ok("/token");
     assert!(!has_path_params(t.clone()));
     assert!(last_path_param(t).is_none());
 }
 
 #[test]
 fn parse_path_multiple_params() {
-    let t = parse_path_template(
-        &"/v1/projects/{project_id}/secrets/{secret}/versions/{version}:access".to_string(),
-    )
-    .unwrap();
+    let t = parse_ok("/v1/projects/{project_id}/secrets/{secret}/versions/{version}:access");
     assert!(has_path_params(t.clone()));
     assert_eq!(last_path_param(t).unwrap(), "version");
 }
 
 #[test]
 fn parse_path_strips_query_string() {
-    let t = parse_path_template(
-        &"/computeMetadata/v1/instance/service-accounts/default/identity?audience={audience}"
-            .to_string(),
-    )
-    .unwrap();
+    let t = parse_ok(
+        "/computeMetadata/v1/instance/service-accounts/default/identity?audience={audience}",
+    );
     assert!(!has_path_params(t.clone()));
     assert!(last_path_param(t).is_none());
 }
 
 #[test]
 fn parse_deeply_nested_path() {
-    let t = parse_path_template(&"/repos/{owner}/{repo}/pulls/{pull_number}/reviews".to_string())
-        .unwrap();
+    let t = parse_ok("/repos/{owner}/{repo}/pulls/{pull_number}/reviews");
     assert!(has_path_params(t.clone()));
     assert_eq!(last_path_param(t).unwrap(), "pull_number");
 }
 
 #[test]
 fn parse_path_rejects_unclosed_param_segment() {
-    assert!(parse_path_template(&"/repos/{owner/pulls".to_string()).is_none());
+    assert!(matches!(
+        &*parse_path_template(&"/repos/{owner/pulls".to_string()),
+        PathTemplateParseResult::MalformedPathTemplate { .. }
+    ));
 }
 
 #[test]
 fn parse_path_rejects_stray_closing_brace() {
-    assert!(parse_path_template(&"/repos/owner}/pulls".to_string()).is_none());
+    assert!(matches!(
+        &*parse_path_template(&"/repos/owner}/pulls".to_string()),
+        PathTemplateParseResult::MalformedPathTemplate { .. }
+    ));
 }
 
 #[test]
 fn parse_path_rejects_multiple_params_in_one_segment() {
-    assert!(parse_path_template(&"/v1/{project}{secret}".to_string()).is_none());
+    assert!(matches!(
+        &*parse_path_template(&"/v1/{project}{secret}".to_string()),
+        PathTemplateParseResult::MalformedPathTemplate { .. }
+    ));
 }
 
 // =========================================================================
@@ -155,8 +172,22 @@ fn delete_without_path_key_fails_closed() {
 
 #[test]
 fn malformed_path_fails_closed_at_derivation_boundary() {
-    let op = derive("Broken", "PUT", "/repos/{owner/pulls");
-    assert!(op.is_none(), "malformed path should not derive an effect");
+    assert!(matches!(
+        &*derive_result("Broken", "PUT", "/repos/{owner/pulls"),
+        DeriveOpEffectResult::MalformedPathInput { .. }
+    ));
+}
+
+#[test]
+fn unknown_method_and_malformed_path_are_distinct_failures() {
+    assert!(matches!(
+        &*derive_result("Broken", "TRACE", "/repos/{owner}/{repo}"),
+        DeriveOpEffectResult::UnknownHttpMethodInput { .. }
+    ));
+    assert!(matches!(
+        &*derive_result("Broken", "PUT", "/repos/{owner/pulls"),
+        DeriveOpEffectResult::MalformedPathInput { .. }
+    ));
 }
 
 // =========================================================================

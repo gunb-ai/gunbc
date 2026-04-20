@@ -143,42 +143,52 @@ type PathTemplate {
   tokens: List<UrlPathToken>
 }
 
-fn parse_path_template(raw: String) -> PathTemplate? {
+type PathSegmentTokensResult
+  = ParsedSegmentTokens { tokens: List<UrlPathToken> }
+  | MalformedPathSegment { segment: String, reason: String }
+
+type PathTemplateParseResult
+  = ParsedPathTemplate { template: PathTemplate }
+  | MalformedPathTemplate { raw: String, segment: String, reason: String }
+
+fn parse_path_template(raw: String) -> PathTemplateParseResult {
   let path_only = match raw |> split(delimiter: "?") |> first {
     Some(p) => p
     None => raw
   }
   let segments = path_only |> split(delimiter: "/") |> filter(s => s != "")
   match segments |> first {
-    None => Some(PathTemplate { tokens: [] })
+    None => ParsedPathTemplate { template: PathTemplate { tokens: [] } }
     Some(first_seg) =>
       match parse_segment_tokens(seg: first_seg) {
-        None => None
-        Some(first_tokens) =>
-          let tokens = fold(segments |> skip(1),
-            init: Some(first_tokens),
+        MalformedPathSegment { segment: s, reason: r } =>
+          MalformedPathTemplate { raw: raw, segment: s, reason: r }
+        ParsedSegmentTokens { tokens: first_tokens } =>
+          let parsed = fold(segments |> skip(1),
+            init: ParsedPathTemplate { template: PathTemplate { tokens: first_tokens } },
             f: (acc, seg) => match acc {
-              None => None
-              Some(parsed) =>
+              MalformedPathTemplate => acc
+              ParsedPathTemplate { template: path } =>
                 match parse_segment_tokens(seg: seg) {
-                  Some(seg_tokens) => Some(concat(parsed, seg_tokens))
-                  None => None
+                  MalformedPathSegment { segment: s, reason: r } =>
+                    MalformedPathTemplate { raw: raw, segment: s, reason: r }
+                  ParsedSegmentTokens { tokens: seg_tokens } =>
+                    ParsedPathTemplate {
+                      template: PathTemplate { tokens: concat(path.tokens, seg_tokens) }
+                    }
                 }
             }
           )
-          match tokens {
-            Some(parsed) => Some(PathTemplate { tokens: parsed })
-            None => None
-          }
+          parsed
       }
   }
 }
 
-fn parse_segment_tokens(seg: String) -> List<UrlPathToken>? {
+fn parse_segment_tokens(seg: String) -> PathSegmentTokensResult {
   if seg |> contains("{") then
     let before_and_rest = seg |> split(delimiter: "{")
     if count(before_and_rest) != 2 then
-      None
+      MalformedPathSegment { segment: seg, reason: "multiple opening braces in one segment" }
     else
     let prefix = match before_and_rest |> first {
       Some(p) => p
@@ -190,7 +200,7 @@ fn parse_segment_tokens(seg: String) -> List<UrlPathToken>? {
     }
     let name_and_suffix = after_open |> split(delimiter: "}")
     if prefix |> contains("}") || count(name_and_suffix) != 2 then
-      None
+      MalformedPathSegment { segment: seg, reason: "missing closing brace or extra closing brace" }
     else
     let param_name = match name_and_suffix |> first {
       Some(p) => p
@@ -213,14 +223,14 @@ fn parse_segment_tokens(seg: String) -> List<UrlPathToken>? {
     else
       []
     if param_name == "" || suffix |> contains("{") || suffix |> contains("}") then
-      None
+      MalformedPathSegment { segment: seg, reason: "invalid parameter segment structure" }
     else
-      Some(concat(prefix_tokens, param_tokens, suffix_tokens))
+      ParsedSegmentTokens { tokens: concat(prefix_tokens, param_tokens, suffix_tokens) }
   else
     if seg |> contains("}") then
-      None
+      MalformedPathSegment { segment: seg, reason: "stray closing brace" }
     else
-      Some([LiteralToken { text: seg }])
+      ParsedSegmentTokens { tokens: [LiteralToken { text: seg }] }
 }
 
 fn last_path_param(template: PathTemplate) -> String? {
@@ -402,6 +412,17 @@ type OperationEffect {
   operation_name: String
   shape: EffectShape
 }
+
+type DeriveOpEffectResult
+  = DerivedEffect { effect: OperationEffect }
+  | UnknownHttpMethodInput { operation_name: String, method_str: String }
+  | MalformedPathInput {
+      operation_name: String,
+      method: HttpMethod,
+      raw_path: String,
+      segment: String,
+      reason: String
+    }
 
 // 🟢 TERMINAL. The composition of idempotent lattice meets is
 // idempotent; a single non-idempotent operation poisons the chain.
@@ -686,20 +707,33 @@ fn derive_op_effect(
   operation_name: String,
   method_str: String,
   path_str: String
-) -> OperationEffect? {
+) -> DeriveOpEffectResult {
   match parse_http_method(raw: method_str) {
-    None => None
+    None =>
+      UnknownHttpMethodInput {
+        operation_name: operation_name,
+        method_str: method_str
+      }
     Some(method) =>
       match parse_path_template(raw: path_str) {
-        None => None
-        Some(path) =>
-          Some(OperationEffect {
+        ParsedPathTemplate { template: path } =>
+          DerivedEffect {
+            effect: OperationEffect {
+              operation_name: operation_name,
+              shape: derive_effect_shape(
+                method: method,
+                path: path
+              )
+            }
+          }
+        MalformedPathTemplate { raw: raw_path, segment: segment, reason: reason } =>
+          MalformedPathInput {
             operation_name: operation_name,
-            shape: derive_effect_shape(
-              method: method,
-              path: path
-            )
-          })
+            method: method,
+            raw_path: raw_path,
+            segment: segment,
+            reason: reason
+          }
       }
   }
 }

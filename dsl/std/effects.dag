@@ -39,7 +39,11 @@
 module std.effects
 
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
-import std.http_path { PathTemplate, parse_path_template, has_path_params, last_path_param }
+import std.http_path {
+  PathTemplate,
+  PathTemplateParseResult, ParsedPathTemplate, MalformedPathTemplate,
+  parse_path_template, has_path_params, last_path_param
+}
 
 // =========================================================================
 // Effect shapes: how an operation modifies external state
@@ -228,6 +232,17 @@ type DerivedOpEffect {
   shape: EffectShape
 }
 
+type DeriveOpEffectResult
+  = DerivedEffect { effect: DerivedOpEffect }
+  | UnknownHttpMethodInput { operation_name: String, method_str: String }
+  | MalformedPathInput {
+      operation_name: String,
+      method: HttpMethod,
+      raw_path: String,
+      segment: String,
+      reason: String
+    }
+
 // Fail-closed derivation: only classifies effects the model can prove.
 //
 // POST always derives CreateEffect — the table cannot distinguish
@@ -270,21 +285,32 @@ fn derive_op_effect(
   operation_name: String,
   method_str: String,
   path_str: String
-) -> DerivedOpEffect? {
+) -> DeriveOpEffectResult {
   match parse_http_method(raw: method_str) {
-    None => none
+    None =>
+      UnknownHttpMethodInput {
+        operation_name: operation_name,
+        method_str: method_str
+      }
     Some { value: method } => {
       match parse_path_template(raw: path_str) {
-        None => none
-        Some { value: path } => {
+        ParsedPathTemplate { template: path } => {
           let shape = derive_effect_shape(method: method, path: path)
-          Some { value: DerivedOpEffect {
+          DerivedEffect { effect: DerivedOpEffect {
             operation_name: operation_name,
             method: method,
             path_template: path,
             shape: shape
           } }
         }
+        MalformedPathTemplate { raw: raw_path, segment: segment, reason: reason } =>
+          MalformedPathInput {
+            operation_name: operation_name,
+            method: method,
+            raw_path: raw_path,
+            segment: segment,
+            reason: reason
+          }
       }
     }
   }

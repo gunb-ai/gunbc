@@ -23,49 +23,59 @@ type PathTemplate {
   tokens: List<UrlPathToken>
 }
 
-fn parse_path_template(raw: String) -> PathTemplate? {
+type PathSegmentTokensResult
+  = ParsedSegmentTokens { tokens: List<UrlPathToken> }
+  | MalformedPathSegment { segment: String, reason: String }
+
+type PathTemplateParseResult
+  = ParsedPathTemplate { template: PathTemplate }
+  | MalformedPathTemplate { raw: String, segment: String, reason: String }
+
+fn parse_path_template(raw: String) -> PathTemplateParseResult {
   let path_only = match raw |> split(delimiter: "?") |> first {
     Some { value: p } => p
     None => raw
   }
   let segments = path_only |> split(delimiter: "/") |> filter(s => s != "")
   match segments |> first {
-    None => Some { value: PathTemplate { tokens: [] } }
+    None => ParsedPathTemplate { template: PathTemplate { tokens: [] } }
     Some { value: first_seg } =>
       match parse_segment_tokens(seg: first_seg) {
-        None => none
-        Some { value: first_tokens } => {
-          let tokens = fold(segments |> skip(1),
-            init: Some { value: first_tokens },
+        MalformedPathSegment { segment: s, reason: r } =>
+          MalformedPathTemplate { raw: raw, segment: s, reason: r }
+        ParsedSegmentTokens { tokens: first_tokens } => {
+          let parsed = fold(segments |> skip(1),
+            init: ParsedPathTemplate { template: PathTemplate { tokens: first_tokens } },
             f: (acc, seg) => match acc {
-              None => none
-              Some { value: parsed } =>
+              MalformedPathTemplate => acc
+              ParsedPathTemplate { template: path } =>
                 match parse_segment_tokens(seg: seg) {
-                  Some { value: seg_tokens } => Some { value: concat(parsed, seg_tokens) }
-                  None => none
+                  MalformedPathSegment { segment: s, reason: r } =>
+                    MalformedPathTemplate { raw: raw, segment: s, reason: r }
+                  ParsedSegmentTokens { tokens: seg_tokens } =>
+                    ParsedPathTemplate {
+                      template: PathTemplate { tokens: concat(path.tokens, seg_tokens) }
+                    }
                 }
             }
           )
-          match tokens {
-            Some { value: parsed } => Some { value: PathTemplate { tokens: parsed } }
-            None => none
-          }
+          parsed
         }
       }
   }
 }
 
-fn parse_segment_tokens(seg: String) -> List<UrlPathToken>? {
+fn parse_segment_tokens(seg: String) -> PathSegmentTokensResult {
   if !(seg |> contains("{")) {
     if seg |> contains("}") {
-      none
+      MalformedPathSegment { segment: seg, reason: "stray closing brace" }
     } else {
-      Some { value: [LiteralToken { text: seg }] }
+      ParsedSegmentTokens { tokens: [LiteralToken { text: seg }] }
     }
   } else {
     let before_and_rest = seg |> split(delimiter: "{")
     if count(before_and_rest) != 2 {
-      return none
+      return MalformedPathSegment { segment: seg, reason: "multiple opening braces in one segment" }
     }
     let prefix = match before_and_rest |> first {
       Some { value: p } => p
@@ -77,7 +87,7 @@ fn parse_segment_tokens(seg: String) -> List<UrlPathToken>? {
     }
     let name_and_suffix = after_open |> split(delimiter: "}")
     if prefix |> contains("}") || count(name_and_suffix) != 2 {
-      return none
+      return MalformedPathSegment { segment: seg, reason: "missing closing brace or extra closing brace" }
     }
     let param_name = match name_and_suffix |> first {
       Some { value: p } => p
@@ -97,9 +107,9 @@ fn parse_segment_tokens(seg: String) -> List<UrlPathToken>? {
       [LiteralToken { text: suffix }]
     } else { [] }
     if param_name == "" || suffix |> contains("{") || suffix |> contains("}") {
-      none
+      MalformedPathSegment { segment: seg, reason: "invalid parameter segment structure" }
     } else {
-      Some { value: concat(prefix_tokens, param_tokens, suffix_tokens) }
+      ParsedSegmentTokens { tokens: concat(prefix_tokens, param_tokens, suffix_tokens) }
     }
   }
 }
