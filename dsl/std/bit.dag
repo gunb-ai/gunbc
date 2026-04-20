@@ -6,14 +6,10 @@
 //   Word64 = exactly 8 bytes (machine carrier, fixed)
 //   List<Byte> = variable-length byte sequence (container)
 //
-// Width constraints are structural invariants on each type.
-// The v2 parser doesn't support field-level where clauses, so
-// constraints are documented here and enforced by construction
-// (the compiler creates these with the correct fixed widths).
-//
-// These carriers compose with algebras to form numeric types:
-//   Int = OrderedRing<Word64>
-//   Float = Field<Word64>
+// Width constraints use type-level refinements (DB-11 / DB-16): each
+// fixed-width carrier is a refined `List<…>` with a unary predicate
+// (`is_byte`, `is_word64_bytes`, …). This matches patterns like
+// `ReadableEntry = FileEntry where is_text_readable` in std.filesystem.
 
 module std.bit
 
@@ -22,25 +18,40 @@ import std.logic { Classical }
 // Bit: single Classical truth value (width = 1 bit)
 type Bit = Classical
 
+// Length predicates — discharged at compile time where the compiler
+// supports the predicate shape; named functions double as documentation.
+fn is_nibble(bits: List<Bit>) -> Bool {
+  fold(bits, 0, fn(acc, _: Bit) { acc + 1 }) == 4
+}
+
+fn is_byte(bits: List<Bit>) -> Bool {
+  fold(bits, 0, fn(acc, _: Bit) { acc + 1 }) == 8
+}
+
 // Nibble: exactly 4 bits (half byte)
-// Invariant: bits.length == 4
-type Nibble { bits: List<Bit> }
+type Nibble = List<Bit> where is_nibble
 
 // Byte: exactly 8 bits (fundamental storage unit)
-// Invariant: bits.length == 8
-type Byte { bits: List<Bit> }
+type Byte = List<Bit> where is_byte
+
+fn is_word16_bytes(bytes: List<Byte>) -> Bool {
+  fold(bytes, 0, fn(acc, _: Byte) { acc + 1 }) == 2
+}
+
+fn is_word32_bytes(bytes: List<Byte>) -> Bool {
+  fold(bytes, 0, fn(acc, _: Byte) { acc + 1 }) == 4
+}
+
+fn is_word64_bytes(bytes: List<Byte>) -> Bool {
+  fold(bytes, 0, fn(acc, _: Byte) { acc + 1 }) == 8
+}
+
+fn is_word128_bytes(bytes: List<Byte>) -> Bool {
+  fold(bytes, 0, fn(acc, _: Byte) { acc + 1 }) == 16
+}
 
 // Machine words: fixed-width byte sequences
-// Invariant: bytes.length == width / 8
-
-// Word16: exactly 2 bytes (16 bits)
-type Word16 { bytes: List<Byte> }
-
-// Word32: exactly 4 bytes (32 bits)
-type Word32 { bytes: List<Byte> }
-
-// Word64: exactly 8 bytes (64 bits)
-type Word64 { bytes: List<Byte> }
-
-// Word128: exactly 16 bytes (128 bits)
-type Word128 { bytes: List<Byte> }
+type Word16 = List<Byte> where is_word16_bytes
+type Word32 = List<Byte> where is_word32_bytes
+type Word64 = List<Byte> where is_word64_bytes
+type Word128 = List<Byte> where is_word128_bytes
