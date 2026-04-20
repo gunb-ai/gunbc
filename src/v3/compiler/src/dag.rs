@@ -2406,10 +2406,7 @@ mod tests {
             "SubstrateAccessorBinding meta anchor"
         );
         assert!(dag.dag_type_decl().is_some(), "Dag graph type anchor");
-        assert!(
-            dag.std_list_fold_decl().is_some(),
-            "std.list fold anchor"
-        );
+        assert!(dag.std_list_fold_decl().is_some(), "std.list fold anchor");
         assert!(
             dag.rust_functions_syntax_decl().is_some(),
             "rust_functions syntax anchor"
