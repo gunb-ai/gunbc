@@ -1,93 +1,21 @@
-use std::collections::HashMap;
-
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, PortState,
-    TransformTarget, TypeConnective,
+    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, LiteralBits,
+    PortState, TransformTarget, TypeConnective,
 };
+use v3_compiler::diagnostics::SourceSpan;
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use v3_compiler::Diagnostic;
 
+use crate::common::substrate_receipts::{
+    assert_bootstrap_int_ordered_ring_add_arrow, bind_named, bind_value_type_decl,
+    callable_instantiation_arguments, field, find_named, transforms_in_source_file,
+    walk_instantiation_chain,
+};
 use crate::common::{cached_compile_any, cached_compile_to_dag};
 
 fn compile_any(src: &str, file: &str) -> Dag {
     cached_compile_any(src, file)
-}
-
-fn find_named(dag: &Dag, name: &str) -> DeclarationId {
-    dag.declaration_by_name(name)
-        .unwrap_or_else(|| panic!("declaration `{name}` not found"))
-        .id
-}
-
-fn field<'a>(fields: &'a [Field], label: &str) -> &'a Field {
-    fields
-        .iter()
-        .find(|f| f.label == label)
-        .unwrap_or_else(|| panic!("field `{label}` not found"))
-}
-
-fn bind_value_type_decl(dag: &Dag, name: &str) -> DeclarationId {
-    let value_port = dag
-        .nodes()
-        .iter()
-        .find_map(|node| match node {
-            Behavior::Bind(bind) if bind.name == name => Some(bind.value),
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("bind `{name}` not found"));
-    match dag.port(value_port).state() {
-        PortState::Resolved(ty) => ty.declaration,
-        other => panic!("bind `{name}` did not resolve, got {other:?}"),
-    }
-}
-
-fn callable_instantiation_arguments(
-    dag: &Dag,
-    template: DeclarationId,
-) -> Vec<&[v3_compiler::dag::TemplateArgument]> {
-    dag.nodes()
-        .iter()
-        .filter_map(|node| {
-            let Behavior::Transform(transform) = node else {
-                return None;
-            };
-            let TransformTarget::Callable(target) = transform.target else {
-                return None;
-            };
-            let TypeConnective::Instantiation {
-                template: inst_template,
-                arguments,
-            } = &dag.declaration(target).connective
-            else {
-                return None;
-            };
-            (*inst_template == template).then_some(arguments.as_slice())
-        })
-        .collect()
-}
-
-fn walk_instantiation_chain(
-    dag: &Dag,
-    start: DeclarationId,
-    subst: &mut HashMap<DeclarationId, DeclarationId>,
-) -> DeclarationId {
-    let mut current = start;
-    for _ in 0..16 {
-        match &dag.declaration(current).connective {
-            TypeConnective::Instantiation {
-                template,
-                arguments,
-            } => {
-                for arg in arguments {
-                    subst.insert(arg.parameter, arg.value);
-                }
-                current = *template;
-            }
-            _ => return current,
-        }
-    }
-    current
 }
 
 #[test]
@@ -113,42 +41,39 @@ fn operator_helpers_round_trip_from_dag_authority() {
 }
 
 #[test]
+fn hand_built_operator_add_transform_carries_structural_target_and_int_shape() {
+    // Direct Dag builder receipt: the substrate accepts an operator
+    // transform with resolved Int output without parse/lower/infer.
+    // `m17_operator_lowers_to_structural_transform_target` remains the
+    // compile-path proof that surface `+` lowers to this shape.
+    let mut dag = Dag::new();
+    let span = SourceSpan::new("<hand-built>", 0, 0);
+    let a = dag.push_value(LiteralBits::Int(1), span);
+    let b = dag.push_value(LiteralBits::Int(2), span);
+    let out = dag.push_transform(
+        TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+        vec![a, b],
+        span,
+    );
+    let int_shape = dag.int_shape().expect("bootstrap Int");
+    assert_eq!(dag.port(out).state(), &PortState::Resolved(int_shape));
+    let producer = dag
+        .port(out)
+        .produced_by
+        .expect("transform producer");
+    let t = dag
+        .node(producer)
+        .as_transform()
+        .expect("transform node");
+    assert!(matches!(
+        t.target,
+        TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add))
+    ));
+}
+
+#[test]
 fn bootstrap_int_add_walk_reaches_ordered_ring_add_nobody_arrow() {
-    let dag = Dag::new();
-    let int_id = find_named(&dag, "Int");
-    let word64_id = find_named(&dag, "Word64");
-    let ordered_ring_id = find_named(&dag, "OrderedRing");
-
-    let mut subst = HashMap::new();
-    let algebra_id = walk_instantiation_chain(&dag, int_id, &mut subst);
-    assert_eq!(
-        algebra_id, ordered_ring_id,
-        "Int bootstrap chain should still terminate at OrderedRing"
-    );
-
-    let ordered_ring_fields = match &dag.declaration(ordered_ring_id).connective {
-        TypeConnective::Conj { children } => children,
-        other => panic!("OrderedRing should be a Conj, got {other:?}"),
-    };
-    let add_field = field(ordered_ring_fields, "add");
-    let (inputs, output, body) = match &dag.declaration(add_field.ty).connective {
-        TypeConnective::Arrow {
-            inputs,
-            output,
-            body,
-        } => (inputs, output, body),
-        other => panic!("OrderedRing.add should be an Arrow, got {other:?}"),
-    };
-    assert!(
-        matches!(body, ArrowBody::NoBody),
-        "bootstrap algebra arrows must stay NoBody so Pending remains an R13 leak signal"
-    );
-    assert_eq!(inputs.len(), 2, "OrderedRing.add should stay binary");
-
-    let substitute = |id: DeclarationId| -> DeclarationId { *subst.get(&id).unwrap_or(&id) };
-    assert_eq!(substitute(inputs[0]), word64_id);
-    assert_eq!(substitute(inputs[1]), word64_id);
-    assert_eq!(substitute(*output), word64_id);
+    assert_bootstrap_int_ordered_ring_add_arrow(&Dag::new());
 }
 
 #[test]
