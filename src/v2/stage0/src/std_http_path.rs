@@ -31,14 +31,14 @@ pub fn parse_path_template(raw: &String) -> Option<Rc<PathTemplate>> {
     None => raw.clone(),
 };
 let segments = Rc::new({ let mut __result = Vec::new(); for s in Rc::new(path_only.split(&"/".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).iter().cloned() { if (s.clone().as_str() != "".to_string().as_str()) { __result.push(s); } } __result });
-match segments.first().cloned() {
+match segments.clone().first().cloned() {
     None => Some(Rc::new(PathTemplate {
     tokens: Rc::new(vec![]),
 })),
     Some(first_seg) => match parse_segment_tokens(&first_seg) {
     None => None,
     Some(first_tokens) => {
-    let tokens = segments.iter().skip(1).cloned().fold(Some(first_tokens.clone()), |acc: Option<Rc<Vec<Rc<UrlPathToken>>>>, seg: String| match acc.clone() {
+            let tokens = Rc::new(segments.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned().fold(Some(first_tokens.clone()), |acc: Option<Rc<Vec<Rc<UrlPathToken>>>>, seg: String| match acc.clone() {
     None => None,
     Some(parsed) => match parse_segment_tokens(&seg) {
     Some(seg_tokens) => Some(v2_rt::concat(parsed.clone(), seg_tokens.clone())),
@@ -52,7 +52,7 @@ match tokens {
     None => None,
 }
 },
-}
+},
 }
 }
 }
