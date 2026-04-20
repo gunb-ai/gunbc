@@ -1288,7 +1288,7 @@ fn refinement_targets_equal(dag: &Dag, lhs: &TransformTarget, rhs: &TransformTar
         // DB-11 (3a.3) structural callable identity. Call lowering
         // materializes a fresh `Instantiation` declaration per
         // call-site when the callee has retained template arguments
-        // (see `retained_template_arguments_for_target` in lower.rs).
+        // (see `retained_template_arguments_for_target` in lower_generated.rs).
         // Two syntactically identical calls to a generic predicate
         // (e.g., `is_eq(d, 0)`) from two different refinement
         // contexts therefore carry different `Callable(DeclarationId)`

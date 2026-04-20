@@ -507,7 +507,7 @@ fn test_3a3_callable_predicate_structural_identity_across_sites() {
     // discharge each other. Call lowering materializes a fresh
     // `Instantiation` declaration per call-site when the callee has
     // retained template arguments (see
-    // `retained_template_arguments_for_target` in `lower.rs`) — so
+    // `retained_template_arguments_for_target` in `lower_generated.rs`) — so
     // `Callable(DeclarationId)` nominal identity is per-site, not
     // per-callee. Structural comparison via template + substituted
     // arguments (`declaration_shapes_equivalent`) is the true
@@ -857,7 +857,7 @@ fn test_3a4_refined_generic_narrowing_composite_discharges() {
     // if they don't, the bug surfaces now rather than at a future
     // consumer.
     // `pred_b` takes two args because DB-11's `narrowable_var_name`
-    // (`lower.rs:845`) only recognizes 2-argument `Operator`/`Call`
+    // (`lower_generated.rs`) only recognizes 2-argument `Operator`/`Call`
     // conds as narrowing-eligible. Both args are `n` so the cond has
     // exactly one scope-bound free variable — DB-11 narrows.
     let src = "fn pred_a<T>(x: T) -> Bool = 0 == 0\n\

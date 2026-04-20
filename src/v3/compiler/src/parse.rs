@@ -2,13 +2,13 @@
 //
 // G3 guardrail: parse.rs exports SurfaceModule / SurfaceItem / SurfaceExpr /
 // SurfaceType; it does NOT mention Dag or any L1 behavior type. Lowering from
-// surface to DAG happens in lower.rs.
+// surface to DAG happens in the lower stage (`lower_generated.rs`).
 //
 // Operators compile to a structural `SurfaceExpr::Operator` variant.
 // `1 + 2` → `Operator { op: OperatorKind::Arithmetic(ArithmeticOp::Add),
 // args: [1, 2] }`. The parser commits to the operator's enum variant at
 // parse time (it already knows, because operator symbols come from
-// different grammar productions than identifiers); `lower.rs` emits a
+// different grammar productions than identifiers); the lower stage emits a
 // `TransformNode { target: TransformTarget::Operator(OperatorKind) }`;
 // `infer::resolve_operator_arrow` walks the LHS type's algebra chain in
 // `std/algebra.dag` to read the concrete Arrow signature.
@@ -237,7 +237,7 @@ pub struct SurfaceParam {
     /// the parameter. `None` for bare `x: Int`; `Some(expr)` for
     /// `x: Int where x > 0`. Lowered into `Declaration.refinement` via
     /// `lower_parameter_refinements_phase` except where fail-closed:
-    /// out-of-fragment predicate shapes (see `lower.rs`). Generic refined
+    /// out-of-fragment predicate shapes (see `lower_generated.rs`). Generic refined
     /// carriers are materialized at inference via substitution (PR #522).
     pub refinement: Option<SurfaceExpr>,
 }
@@ -589,7 +589,7 @@ pub enum SurfacePattern {
 /// mention any Dag type") is preserved: an alternative frontend
 /// that plugs in at the SurfaceAst boundary works against
 /// `SurfaceLiteral`, not `LiteralBits`. The surface→substrate
-/// translation in `lower.rs` is the bridge.
+/// translation in `lower_generated.rs` is the bridge.
 ///
 /// Dissolution ledger — 🟢 terminal. Each variant is a distinct
 /// user-input boundary (integer literal, boolean literal, string

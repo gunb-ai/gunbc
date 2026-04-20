@@ -136,7 +136,7 @@ fn bin_basenames() -> BTreeSet<String> {
 }
 
 #[test]
-fn sg6_bin_census_is_locked_to_four_shims() {
+fn sg6_bin_census_is_locked_to_five_shims() {
     // SG-1 receipts `regen_tokenize.rs` here. The tokenizer cutover uses
     // `src/v3/compiler/tokenize.dag` as lexical authority and
     // `regen_tokenize.rs` as the host driver that projects it into
@@ -146,14 +146,18 @@ fn sg6_bin_census_is_locked_to_four_shims() {
     // tables — not `LensRegistryEntry`-tagged lens declarations), so
     // for SG-1 it lands as a parallel shim rather than a registry entry.
     //
+    // SG-3b receipts `regen_lower.rs`: lowering authority stages in
+    // `lowering_rust.authority` until `lower.dag` lands (SELF_HOSTING.md §4).
+    //
     // Dissolution trigger (SG-2+): unify `regen_tokenize` with the
     // registry-driven pattern — either extend `regen.dag` to carry a
     // tokenizer-registry shape that `regen_lens` can dispatch on, or
     // introduce a generalized "producer registry" that both lenses and
     // the tokenizer share. Either path retires `regen_tokenize.rs` and
-    // returns the bin census to three shims.
+    // shrinks the parallel shim set.
     let expected: BTreeSet<String> = [
         "regen_lens.rs",
+        "regen_lower.rs",
         "regen_tokenize.rs",
         "regen_v3.rs",
         "self_host_fixed_point.rs",
@@ -166,8 +170,9 @@ fn sg6_bin_census_is_locked_to_four_shims() {
 
     assert_eq!(
         actual, expected,
-        "SG-6 hand-authored bin census changed. The post-SG-1 census is \
-         `regen_lens` (reads `src/v3/compiler/regen.dag`), `regen_tokenize` \
+        "SG-6 hand-authored bin census changed. The post-SG-3b census is \
+         `regen_lens` (reads `src/v3/compiler/regen.dag`), `regen_lower` \
+         (reads `lowering_rust.authority`), `regen_tokenize` \
          (reads `src/v3/compiler/tokenize.dag`), `regen_v3`, and \
          `self_host_fixed_point`. Adding a new bin re-introduces a \
          per-lens (or per-target) Rust driver — the SG-6 lane requires that \
