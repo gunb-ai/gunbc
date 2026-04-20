@@ -131,7 +131,9 @@ pub struct FreeMonoid<T> {
     pub count: Rc<dyn Fn() -> i64>,
     pub first: Rc<dyn Fn() -> Option<T>>,
     pub last: Rc<dyn Fn() -> Option<T>>,
+    pub map: Rc<dyn Fn(Rc<dyn Fn(T) -> T>) -> Rc<FreeMonoid<T>>>,
     pub filter: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> Rc<FreeMonoid<T>>>,
+    pub fold: Rc<dyn Fn(T, Rc<dyn Fn(T, T) -> T>) -> T>,
     pub flat_map: Rc<dyn Fn(Rc<dyn Fn(T) -> Rc<FreeMonoid<T>>>) -> Rc<FreeMonoid<T>>>,
     pub any: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> bool>,
     pub all: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> bool>,
@@ -149,40 +151,12 @@ pub struct PartialFunction<K, V> {
     pub empty: Rc<PartialFunction<K, V>>,
     pub get: Rc<dyn Fn(K) -> Option<V>>,
     pub insert: Rc<dyn Fn(K, V) -> Rc<PartialFunction<K, V>>>,
+    pub merge: Rc<dyn Fn(Rc<PartialFunction<K, V>>) -> Rc<PartialFunction<K, V>>>,
     pub keys: Rc<dyn Fn() -> Rc<FreeMonoid<K>>>,
     pub values: Rc<dyn Fn() -> Rc<FreeMonoid<V>>>,
     pub has: Rc<dyn Fn(K) -> bool>,
     pub contains_key: Rc<dyn Fn(K) -> bool>,
     pub size: Rc<dyn Fn() -> i64>,
-}
-
-pub fn monoid_map(
-    t: T,
-    u: compile_error!("UNRESOLVED_TypeVariable"),
-    m: Rc<Vec<_>>,
-    f: impl Fn(T) -> U + Clone,
-) -> Rc<Vec<_>> {
-    {}
-}
-
-pub fn monoid_fold(
-    t: T,
-    b: compile_error!("UNRESOLVED_TypeVariable"),
-    m: Rc<Vec<_>>,
-    init: compile_error!("UNRESOLVED_TypeVariable"),
-    f: impl Fn(B, T) -> B + Clone,
-) -> compile_error!("UNRESOLVED_TypeVariable") {
-    {}
-}
-
-pub fn partial_function_merge(
-    k: K,
-    v: V,
-    left: Rc<HashMap<_, { 1 }>>,
-    right: Rc<HashMap<_, { 1 }>>,
-    resolve: impl Fn(V, V) -> V + Clone,
-) -> Rc<HashMap<_, { 1 }>> {
-    {}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -269,8 +269,8 @@ type BooleanAlgebra<T> {
 //   length(FreeMonoid<T>) -> Nat                             (carrier count)
 //   index(FreeMonoid<T>, Nat) -> T?                          (positional access)
 //   slice(FreeMonoid<T>, Nat, Nat) -> FreeMonoid<T>          (subsequence)
-//   monoid_map(FreeMonoid<T>, fn(T) -> U) -> FreeMonoid<U>      (functorial; free fn)
-//   monoid_fold(FreeMonoid<T>, init: U, fn(U, T) -> U) -> U    (catamorphism; free fn)
+//   map(FreeMonoid<T>, fn(T) -> U) -> FreeMonoid<U>          (functorial)
+//   fold(FreeMonoid<T>, init: U, fn(U, T) -> U) -> U         (catamorphism)
 //   filter(FreeMonoid<T>, fn(T) -> Bool) -> FreeMonoid<T>    (predicated subsequence)
 //   reverse(FreeMonoid<T>) -> FreeMonoid<T>                  (anti-involution)
 type FreeMonoid<T> {
@@ -285,10 +285,10 @@ type FreeMonoid<T> {
   count: fn() -> Int
   first: fn() -> T?
   last: fn() -> T?
-  // Functorial / catamorphic ops live as module-level generics — see
-  // monoid_map / monoid_fold below (record fields cannot carry method-level
-  // generic parameters the way free functions can).
+  // Catamorphic / functorial operations
+  map: fn(fn(T) -> T) -> FreeMonoid<T>
   filter: fn(fn(T) -> Bool) -> FreeMonoid<T>
+  fold: fn(T, fn(T, T) -> T) -> T
   flat_map: fn(fn(T) -> FreeMonoid<T>) -> FreeMonoid<T>
   any: fn(fn(T) -> Bool) -> Bool
   all: fn(fn(T) -> Bool) -> Bool
@@ -308,7 +308,7 @@ type FreeMonoid<T> {
 //   lookup(Map<K,V>, K) -> V?                    (function application)
 //   insert(Map<K,V>, K, V) -> Map<K,V>           (extend domain)
 //   delete(Map<K,V>, K) -> Map<K,V>              (restrict domain)
-//   partial_function_merge(Map<K,V>, Map<K,V>, fn(V,V)->V) -> Map<K,V>  (union; free fn)
+//   merge(Map<K,V>, Map<K,V>, fn(V,V)->V) -> Map<K,V>  (union with conflict)
 //   keys(Map<K,V>) -> Set<K>                     (domain)
 //   values(Map<K,V>) -> List<V>                  (range, repeated)
 //   size(Map<K,V>) -> Nat                        (domain cardinality)
@@ -317,27 +317,12 @@ type PartialFunction<K, V> {
   empty: PartialFunction<K, V>
   get: fn(K) -> V?
   insert: fn(K, V) -> PartialFunction<K, V>
+  merge: fn(PartialFunction<K, V>) -> PartialFunction<K, V>
   keys: fn() -> FreeMonoid<K>
   values: fn() -> FreeMonoid<V>
   has: fn(K) -> Bool
   contains_key: fn(K) -> Bool
   size: fn() -> Int
-}
-
-// monoid_map / monoid_fold — functor and fold as free functions with
-// method-level generics (same pattern as std/stack.dag's fold_stack<T,B>).
-fn monoid_map<T, U>(m: FreeMonoid<T>, f: fn(T) -> U) -> FreeMonoid<U> {
-}
-
-fn monoid_fold<T, B>(m: FreeMonoid<T>, init: B, f: fn(B, T) -> B) -> B {
-}
-
-// Union of two partial maps with explicit key conflict resolution.
-fn partial_function_merge<K, V>(
-  left: PartialFunction<K, V>,
-  right: PartialFunction<K, V>,
-  resolve: fn(V, V) -> V
-) -> PartialFunction<K, V> {
 }
 
 // =========================================================================
@@ -378,8 +363,8 @@ type Ordering = Less | Equal | Greater
 //   xor(a, b)  = meet(join(a, b), complement(meet(a, b)))
 //
 // From FreeMonoid:
-//   length(m)    = monoid_fold(m, init: 0, f: (acc, _) => acc + 1)
-//   contains(m, x) = monoid_fold(m, init: false, f: (acc, e) => acc || e == x)
+//   length(m)    = fold(m, init: 0, f: (acc, _) => acc + 1)
+//   contains(m, x) = fold(m, init: false, f: (acc, e) => acc || e == x)
 
 // =========================================================================
 // Compiler bridge: algebraic enrichment profiles
