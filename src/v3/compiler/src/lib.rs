@@ -17,6 +17,7 @@
 
 pub mod dag;
 pub mod diagnostics;
+mod regen_bootstrap_emit;
 
 /// SG-0 producer-owned generated-file manifest.
 ///
@@ -54,6 +55,8 @@ pub mod parse_surface {
 
     include!("parse_surface_generated.rs");
 }
+
+pub use regen_bootstrap_emit::render_bootstrap_std_generated_rs;
 
 pub mod operators {
     pub use crate::dag::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
