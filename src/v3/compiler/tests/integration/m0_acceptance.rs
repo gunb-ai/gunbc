@@ -287,4 +287,3 @@ fn non_bool_branch_condition_is_rejected() {
         other => panic!("expected TypeMismatch, got {other:?}"),
     }
 }
-
