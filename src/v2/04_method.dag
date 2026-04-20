@@ -19,7 +19,7 @@ import v2.std.core {
   unit_type, bool_type, string_type, int_type
 }
 import v2.compiler.infer_types {
-  make_container_type, make_map_type
+  make_container_type, make_map_type, missing_kernel_container_profile_type
 }
 
 // =========================================================================
@@ -36,15 +36,24 @@ fn type_variable_node(id: String) -> Node {
 }
 
 fn map_of_type_variables() -> Node {
-  make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value"))
+  match make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")) {
+    Some { value: n } => n
+    None => missing_kernel_container_profile_type(kind_name: "Map")
+  }
 }
 
 fn list_of_type_variable(id: String) -> Node {
-  make_container_type(kind_name: "List", element: type_variable_node(id: id))
+  match make_container_type(kind_name: "List", element: type_variable_node(id: id)) {
+    Some { value: n } => n
+    None => missing_kernel_container_profile_type(kind_name: "List")
+  }
 }
 
 fn list_of_element(element: Node) -> Node {
-  make_container_type(kind_name: "List", element: element)
+  match make_container_type(kind_name: "List", element: element) {
+    Some { value: n } => n
+    None => missing_kernel_container_profile_type(kind_name: "List")
+  }
 }
 
 // Builtin function return type registry.

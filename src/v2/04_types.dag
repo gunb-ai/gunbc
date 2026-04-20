@@ -26,7 +26,7 @@ import v2.std.core {
   find_child_named, NewlineIndex,
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional,
-  NoExprData, ExprLiteral,
+  NoExprData, ExprLiteral, ExprError,
   ExprErrorKind, SemanticExprError,
   make_expr_node, make_expr_error_node,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
@@ -134,18 +134,22 @@ fn is_fully_resolved(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool
   }
 }
 
-fn bare_map_node() -> Node {
+// Kernel Map shape with param names from `container_param_name` only.
+// Absence (`none`) means no algebra profile for Map — not a fake Map node.
+fn bare_map_node() -> Node? {
   match container_param_name(kind_name: "Map", index: 0) {
     Some { value: key_id } =>
       match container_param_name(kind_name: "Map", index: 1) {
         Some { value: val_id } =>
-          Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
-            Node { name: key_id, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: type_variable_node(id: key_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-            Node { name: val_id, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: type_variable_node(id: val_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-          ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-        None => error_type
+          Some {
+            value: Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
+              Node { name: key_id, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: type_variable_node(id: key_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+              Node { name: val_id, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: type_variable_node(id: val_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+            ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+          }
+        None => none
       }
-    None => error_type
+    None => none
   }
 }
 
@@ -160,28 +164,54 @@ fn bare_map_node() -> Node {
 // Dissolution point: Tier 3 / FF-9 (declaration-driven construction).
 // =========================================================================
 
-fn make_container_type(kind_name: String, element: Node) -> Node {
-  match container_param_name(kind_name: kind_name, index: 0) {
-    Some { value: param_name } =>
-      Node { name: kind_name, span: kernel_span(name: kind_name), ident_span: Some { value: kernel_span(name: kind_name) }, children: [
-        Node { name: param_name, span: kernel_span(name: param_name), ident_span: Some { value: kernel_span(name: param_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    None => error_type
+// Type-position sentinel when `kernel_algebra_profile` has no entry for
+// `kind_name` (no `container_param_name` authority). Structurally distinct
+// from synthesized containers: CompilerError in inferred + ExprError, not
+// Resolved { node: … } with real children.
+fn missing_kernel_container_profile_type(kind_name: String) -> Node {
+  let msg = concat("missing kernel container profile: ", kind_name)
+  Node {
+    name: "",
+    span: make_span(start: 0, end: 0),
+    ident_span: none,
+    children: [],
+    connective: NoConnective,
+    params: [],
+    inferred: Some { value: CompilerError { message: msg, span: make_span(start: 0, end: 0) } },
+    return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [], type_annotation: none,
+    is_self_recursive: false, has_non_tail_self_call: false,
+    match_pattern: none,
+    expr_data: ExprError { kind: SemanticExprError, message: msg }
   }
 }
 
-fn make_map_type(key: Node, value: Node) -> Node {
+fn make_container_type(kind_name: String, element: Node) -> Node? {
+  match container_param_name(kind_name: kind_name, index: 0) {
+    Some { value: param_name } =>
+      Some {
+        value: Node { name: kind_name, span: kernel_span(name: kind_name), ident_span: Some { value: kernel_span(name: kind_name) }, children: [
+          Node { name: param_name, span: kernel_span(name: param_name), ident_span: Some { value: kernel_span(name: param_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      }
+    None => none
+  }
+}
+
+fn make_map_type(key: Node, value: Node) -> Node? {
   match container_param_name(kind_name: "Map", index: 0) {
     Some { value: key_name } =>
       match container_param_name(kind_name: "Map", index: 1) {
         Some { value: val_name } =>
-          Node { name: "Map", span: kernel_span(name: "Map"), ident_span: Some { value: kernel_span(name: "Map") }, children: [
-            Node { name: key_name, span: kernel_span(name: key_name), ident_span: Some { value: kernel_span(name: key_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-            Node { name: val_name, span: kernel_span(name: val_name), ident_span: Some { value: kernel_span(name: val_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-          ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-        None => error_type
+          Some {
+            value: Node { name: "Map", span: kernel_span(name: "Map"), ident_span: Some { value: kernel_span(name: "Map") }, children: [
+              Node { name: key_name, span: kernel_span(name: key_name), ident_span: Some { value: kernel_span(name: key_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+              Node { name: val_name, span: kernel_span(name: val_name), ident_span: Some { value: kernel_span(name: val_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+            ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+          }
+        None => none
       }
-    None => error_type
+    None => none
   }
 }
 
@@ -267,7 +297,11 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node, source_in
     AlgebraTypeVariable { id: var_id } => type_variable_node(id: var_id)
     ContainerOf { source: src, element: inner } =>
       let kind_name = match src { SameAsReceiver => authored_name_at(source_indices: source_indices, node: base)  Named { name: n } => n }
-      make_container_type(kind_name: kind_name, element: instantiate_algebra_type(template: inner, base: base, source_indices: source_indices))
+      let inner_t = instantiate_algebra_type(template: inner, base: base, source_indices: source_indices)
+      match make_container_type(kind_name: kind_name, element: inner_t) {
+        Some { value: built } => built
+        None => missing_kernel_container_profile_type(kind_name: kind_name)
+      }
     OptionalOf { inner: inner } => with_optional_cardinality(n: instantiate_algebra_type(template: inner, base: base, source_indices: source_indices))
     TupleOf { first: first, second: second } =>
       make_tuple_type(first: instantiate_algebra_type(template: first, base: base, source_indices: source_indices), second: instantiate_algebra_type(template: second, base: base, source_indices: source_indices))
@@ -418,13 +452,20 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
                 Some { value: v } => v
                 None => type_variable_node(id: "V")
               }
-              make_map_type(key: key, value: val)
+              match make_map_type(key: key, value: val) {
+                Some { value: m } => m
+                None => missing_kernel_container_profile_type(kind_name: "Map")
+              }
             None => receiver
           }
         } else if arity == Some { value: 1 } {
           // Element container (List): enrich from __element__ binding.
           match map_get(subst, "__element__") {
-            Some { value: elem } => make_container_type(kind_name: receiver_name_str, element: elem)
+            Some { value: elem } =>
+              match make_container_type(kind_name: receiver_name_str, element: elem) {
+                Some { value: c } => c
+                None => missing_kernel_container_profile_type(kind_name: receiver_name_str)
+              }
             None => receiver
           }
         } else { receiver }
@@ -438,7 +479,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
             None =>
               match container_param_name(kind_name: authored_name_at(source_indices: source_indices, node: receiver), index: 0) {
                 Some { value: n } => type_variable_node(id: n)
-                None => error_type
+                None => missing_kernel_container_profile_type(kind_name: authored_name_at(source_indices: source_indices, node: receiver))
               }
           }
       }
@@ -451,7 +492,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
             None =>
               match container_param_name(kind_name: authored_name_at(source_indices: source_indices, node: receiver), index: 0) {
                 Some { value: n } => type_variable_node(id: n)
-                None => error_type
+                None => missing_kernel_container_profile_type(kind_name: authored_name_at(source_indices: source_indices, node: receiver))
               }
           }
       }
@@ -464,14 +505,18 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
             None =>
               match container_param_name(kind_name: authored_name_at(source_indices: source_indices, node: receiver), index: 1) {
                 Some { value: n } => type_variable_node(id: n)
-                None => error_type
+                None => missing_kernel_container_profile_type(kind_name: authored_name_at(source_indices: source_indices, node: receiver))
               }
           }
       }
     NamedTemplate { name: n } => nominal_type_ref(name: n)
     ContainerOf { source: src, element: inner } =>
       let kind_name = match src { SameAsReceiver => authored_name_at(source_indices: source_indices, node: receiver)  Named { name: n } => n }
-      make_container_type(kind_name: kind_name, element: apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices))
+      let inner_applied = apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices)
+      match make_container_type(kind_name: kind_name, element: inner_applied) {
+        Some { value: built } => built
+        None => missing_kernel_container_profile_type(kind_name: kind_name)
+      }
     OptionalOf { inner: inner } =>
       with_optional_cardinality(n: apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices))
     TupleOf { first: ft, second: st } =>

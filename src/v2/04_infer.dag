@@ -78,7 +78,7 @@ import v2.std.core {
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
-  nominal_type_ref, make_container_type, make_callable_type,
+  nominal_type_ref, make_container_type, make_callable_type, missing_kernel_container_profile_type,
   node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved,
   resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self,
   bare_map_node,
@@ -496,7 +496,10 @@ fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> 
 }
 
 fn named_collection_type(kind_name: String, element: Node) -> Node {
-  make_container_type(kind_name: kind_name, element: element)
+  match make_container_type(kind_name: kind_name, element: element) {
+    Some { value: n } => n
+    None => missing_kernel_container_profile_type(kind_name: kind_name)
+  }
 }
 
 fn resolved_callable_type(func_params: List<Node>, ret: Node) -> Node {
@@ -1313,27 +1316,72 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           // Built-in: empty_map() → Map. Adopt expected type if it's a
           // fully parameterized keyed collection (e.g. Map<K,V> from struct
           // field or fold accumulator), otherwise emit a diagnostic.
-          let empty_map_type = match expected {
+          let bare_m = bare_map_node()
+          match expected {
             Some { value: exp } =>
-              if node_is_keyed_collection(n: exp, source_indices: scope.type_env.source_indices) { exp }
-              else { bare_map_node() }
-            None => bare_map_node()
-          }
-          let empty_map_diags = match expected {
-            Some { value: exp } =>
-              if node_is_keyed_collection(n: exp, source_indices: scope.type_env.source_indices) { [] }
-              else { [inference_error(message: "empty_map(): expected type is not a keyed collection", span: span, module_name: scope.module_name)] }
-            None => []
-          }
-          InferResult {
-            typed: make_named_expr_node(
-              name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
-              children: typed_arg_nodes,
-              inferred: Some { value: Resolved { node: empty_map_type } },
-              span: span,
-              name_span: node_name_span(n: texpr)
-            ),
-            diagnostics: concat(arg_diags, empty_map_diags)
+              if node_is_keyed_collection(n: exp, source_indices: scope.type_env.source_indices) {
+                InferResult {
+                  typed: make_named_expr_node(
+                    name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                    children: typed_arg_nodes,
+                    inferred: Some { value: Resolved { node: exp } },
+                    span: span,
+                    name_span: node_name_span(n: texpr)
+                  ),
+                  diagnostics: arg_diags
+                }
+              } else {
+                let empty_map_diags = concat(arg_diags, [inference_error(message: "empty_map(): expected type is not a keyed collection", span: span, module_name: scope.module_name)])
+                match bare_m {
+                  Some { value: map_t } =>
+                    InferResult {
+                      typed: make_named_expr_node(
+                        name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                        children: typed_arg_nodes,
+                        inferred: Some { value: Resolved { node: map_t } },
+                        span: span,
+                        name_span: node_name_span(n: texpr)
+                      ),
+                      diagnostics: empty_map_diags
+                    }
+                  None =>
+                    InferResult {
+                      typed: make_named_expr_node(
+                        name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                        children: typed_arg_nodes,
+                        inferred: Some { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
+                        span: span,
+                        name_span: node_name_span(n: texpr)
+                      ),
+                      diagnostics: concat(empty_map_diags, [inference_error(message: "empty_map(): Map kernel container profile missing", span: span, module_name: scope.module_name)])
+                    }
+                }
+              }
+            None =>
+              match bare_m {
+                Some { value: map_t } =>
+                  InferResult {
+                    typed: make_named_expr_node(
+                      name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                      children: typed_arg_nodes,
+                      inferred: Some { value: Resolved { node: map_t } },
+                      span: span,
+                      name_span: node_name_span(n: texpr)
+                    ),
+                    diagnostics: arg_diags
+                  }
+                None =>
+                  InferResult {
+                    typed: make_named_expr_node(
+                      name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                      children: typed_arg_nodes,
+                      inferred: Some { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
+                      span: span,
+                      name_span: node_name_span(n: texpr)
+                    ),
+                    diagnostics: concat(arg_diags, [inference_error(message: "empty_map(): Map kernel container profile missing", span: span, module_name: scope.module_name)])
+                  }
+              }
           }
         } else if infer_builtin_call_type(name: func_name) != none {
           // Tier 2b: runtime built-in functions

@@ -205,7 +205,7 @@ fn malformed_map_index_returns_compiler_error_type() {
     // bare_map_node() now has K/V wrapper children with TypeVariable inferred,
     // so it's recognized as a keyed collection — key type mismatch is diagnosed
     let result = v2_compiler_infer_access::check_index_access_node(
-        bare_map_node(),
+        bare_map_node().expect("Map kernel container profile"),
         leaf_node("String".to_string()),
         &zero_span(),
         "test".to_string(),
@@ -714,7 +714,7 @@ fn keyed_collection_parts_returns_none_for_element_collection() {
 #[test]
 fn keyed_collection_parts_returns_type_variables_for_bare_map() {
     // bare_map_node() now has K/V wrapper children with TypeVariable inferred
-    let bare = bare_map_node();
+    let bare = bare_map_node().expect("Map kernel container profile");
     let parts = v2_compiler_infer_access::keyed_collection_parts(&bare, empty_source_indices());
     assert!(
         parts.is_some(),
