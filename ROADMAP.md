@@ -159,7 +159,7 @@ Findings from two reflective analyses (integration loop health, `main@b014746` a
 
 ### Post-merge debt (2026-04-20 cleanup brief)
 
-- **`src/v3/compiler/parse_parser_body.txt` — 1350 LOC hand-authored recursive-descent parse algorithm**: PR #589 retired `parse.rs` from the `.rs` census, but the algorithm moved here as a `.txt` fragment `include_str!`'d into `regen_parse` output. SG-0 now counts `.txt` scaffolds (`EXPECTED_HAND_AUTHORED_FRAGMENTS`) and `compiler.dag::hand_maintained_src` names the file so both census authorities track it. Dissolution trigger: structural `parse.dag` ownership via SG-2b proper or SG-3f surface reflection follow-on. Owner: queued behind SG-3f.
+- **`src/v3/compiler/parse_parser_body.txt` — 1350 LOC hand-authored recursive-descent parse algorithm**: PR #589 retired `parse.rs` from the `.rs` census, but the algorithm moved here as a `.txt` fragment `include_str!`'d into `regen_parse` output. SG-0 now counts `.txt` scaffolds via `EXPECTED_HAND_AUTHORED_FRAGMENTS` in `sg0_census_test.rs` — the sole census authority for crate-root scaffolds. (Not added to `compiler.dag::stage0.hand_maintained_src`: that list models `source_dir` companions; its freshness/copy consumers never walk the crate root, so an entry there would be dead — extending the model to cover one crate-root file would be premature per `feedback_enumerate_before_substrate`.) Dissolution trigger: structural `parse.dag` ownership via SG-2b proper or SG-3f surface reflection follow-on. Owner: queued behind SG-3f.
 
 ### Reviewer-noise class — a practice, not a debt
 

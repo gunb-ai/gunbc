@@ -109,6 +109,15 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // Dissolution trigger: same as the header on `parse_parser_body.txt`
 // (SG-2b proper / SG-3f surface reflection follow-on).
 //
+// Note on census authority scope: the file is NOT added to
+// `compiler.dag::stage0.hand_maintained_src` — that list models
+// basenames inside `source_dir` (`src/v3/compiler/src/`) whose
+// consumers are the freshness-diff and stage0-copy commands. The
+// parser body fragment lives at the crate root, so the existing
+// consumers never see it; adding it would be a dead entry. The
+// SG-0 fragment ratchet below is the sole census authority for
+// crate-root scaffolds.
+//
 // L4b split — `dag.rs` was a 2800-line god-file mixing ports, nodes,
 // declarations, clusters, and the std.effects mirror. The split carves
 // two leaf clusters into sibling submodules (`dag/ports.rs`,
