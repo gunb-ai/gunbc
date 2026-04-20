@@ -46,7 +46,10 @@ impl fmt::Display for RestTransportFactError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RestTransportFactError::MissingServiceScope { operation } => {
-                write!(f, "REST transport without enclosing service scope (operation={operation})")
+                write!(
+                    f,
+                    "REST transport without enclosing service scope (operation={operation})"
+                )
             }
             RestTransportFactError::MissingMethodProperty { service, operation } => {
                 write!(
@@ -124,7 +127,13 @@ pub fn collect_rest_transport_operations(
                         operation: n.name.clone(),
                     });
                     for c in n.children.iter() {
-                        walk(c, source_indices.clone(), ctx_for_children.clone(), out, errors);
+                        walk(
+                            c,
+                            source_indices.clone(),
+                            ctx_for_children.clone(),
+                            out,
+                            errors,
+                        );
                     }
                     return;
                 };
@@ -139,7 +148,13 @@ pub fn collect_rest_transport_operations(
                         operation: n.name.clone(),
                     });
                     for c in n.children.iter() {
-                        walk(c, source_indices.clone(), ctx_for_children.clone(), out, errors);
+                        walk(
+                            c,
+                            source_indices.clone(),
+                            ctx_for_children.clone(),
+                            out,
+                            errors,
+                        );
                     }
                     return;
                 };
@@ -154,7 +169,13 @@ pub fn collect_rest_transport_operations(
                         operation: n.name.clone(),
                     });
                     for c in n.children.iter() {
-                        walk(c, source_indices.clone(), ctx_for_children.clone(), out, errors);
+                        walk(
+                            c,
+                            source_indices.clone(),
+                            ctx_for_children.clone(),
+                            out,
+                            errors,
+                        );
                     }
                     return;
                 };
@@ -168,7 +189,13 @@ pub fn collect_rest_transport_operations(
         }
 
         for c in n.children.iter() {
-            walk(c, source_indices.clone(), ctx_for_children.clone(), out, errors);
+            walk(
+                c,
+                source_indices.clone(),
+                ctx_for_children.clone(),
+                out,
+                errors,
+            );
         }
     }
     walk(module, source_indices, None, &mut out, &mut errors);
