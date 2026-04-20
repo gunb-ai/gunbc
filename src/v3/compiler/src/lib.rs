@@ -857,7 +857,10 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
 /// `runtime_mirrors.dag` compiler fixture so the fresh parse is first-of-name and can be
 /// lowered without duplicate-declaration diagnostics.
 #[allow(clippy::result_large_err)]
-pub fn compile_runtime_mirrors_authority_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
+pub fn compile_runtime_mirrors_authority_dag(
+    source: &str,
+    file: &str,
+) -> Result<Dag, CompileError> {
     let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
     let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;
     let mut dag = Dag::new_without_runtime_mirrors_compiler_fixture_bootstrap();
