@@ -219,9 +219,13 @@ name.
 
 **Motivation from the reviewer's std/extdeps audit (2026-04-15):**
 
-- `FileClassification` and `FileEntry` in `dsl/std/filesystem.dag`
-  are the same record shape (same fields, same types), each
-  claiming to be "what Filesystem.probe returns."
+- **`FileClassification` vs `FileEntry`** in `dsl/std/filesystem.dag`
+  were the same record shape (same fields, same types), each
+  claiming to be "what Filesystem.probe returns." **Resolved in PR
+  #596:** one `FileEntry` record and `type FileClassification =
+  FileEntry` (probe-surface name preserved). Still a motivating
+  example for why duplicate-shape detection matters on code before
+  the fix.
 - `wire_contract: VariantEncoding = StringVariant { naming:
   SnakeCase }` declared identically in `llm.dag`, `anthropic.dag`,
   and `openai.dag` — two redundant duplicates of the imported
@@ -231,10 +235,11 @@ name.
 - `NonEmptyStr` and `NonEmptyString` — two aliases for the same
   refined type in `dsl/std/types.dag`.
 
-All four were hand-found in a single review pass. A
-`lens_structural_duplicates` applied to `dsl/std/` and
-`dsl/extdeps/` would return all four automatically, plus any
-others the reviewer missed.
+At the time of the audit, four examples were hand-found in a single
+pass. One (`FileClassification` / `FileEntry`, PR #596) is already
+dissolved. A `lens_structural_duplicates` applied to `dsl/std/` and
+`dsl/extdeps/` would still flag the remaining shapes from that pass
+plus any others the reviewer missed.
 
 **Signature:**
 
@@ -294,7 +299,6 @@ impl StructuralDuplicatesLens {
 
 **Expected initial findings** (from the reviewer's audit):
 
-- `FileClassification` / `FileEntry` in `dsl/std/filesystem.dag`
 - `NonEmptyStr` / `NonEmptyString` in `dsl/std/types.dag`
 - `wire_contract` in `llm.dag` vs `anthropic.dag` vs `openai.dag`
 - `default_edition` in `cargo.dag` vs `rust/imports.dag`
@@ -793,10 +797,13 @@ The recommended order for building the initial library:
    and pinned by a parse-failure test that flips when the parser
    grows those features.
 2. **`lens_structural_duplicates`** — next. Simple structural hash
-   + collision detection. Expected to catch the
-   `FileClassification`/`FileEntry` duplicate, the `wire_contract`
-   duplicates, `default_edition` duplication, and probably others.
-   Gives immediate value on existing std/ and extdeps/ code.
+   + collision detection. Expected to catch the `wire_contract`
+   duplicates, `default_edition` duplication, `NonEmptyStr` /
+   `NonEmptyString`, and probably others. (The `FileClassification` /
+   `FileEntry` duplicate from the same audit was dissolved manually
+   in PR #596 — single `FileEntry`, `type FileClassification =
+   FileEntry`.) Gives immediate value on existing std/ and extdeps/
+   code.
 3. **`lens_layer_opacity`** — third, the most sophisticated of the
    three because it needs the `BoundarySpec` reverse index and
    multiple consumer kinds. The one that validates the thesis's
@@ -914,10 +921,13 @@ The library is successful when:
    dsl/lens_config.dag` locally and see the same output the CI
    sees.
 3. **At least one high-value finding is closed by a lens-driven
-   fix.** Concrete target: the `FileClassification`/`FileEntry`
-   duplicate is surfaced by `lens_structural_duplicates`, fixed
-   by merging the two declarations, and the fix's regression
-   test is the lens returning empty on subsequent runs.
+   fix.** The `FileClassification`/`FileEntry` duplicate was fixed
+   ahead of the lens (PR #596: one record + type alias). A concrete
+   remaining target in the same audit class is still
+   `wire_contract` / `default_edition` / `NonEmptyStr` vs
+   `NonEmptyString` — surfaced by `lens_structural_duplicates`, fixed
+   structurally, with the lens returning clean on the fixed shape
+   afterward (and intentional aliases excluded per policy).
 4. **The existing layer-opacity grep-gate proposal in
    `INVARIANTS.md` is fully superseded** — the §"Layer opacity"
    invariant points at `lens_layer_opacity` as its primary

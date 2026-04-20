@@ -142,7 +142,6 @@ Findings from two reflective analyses (integration loop health, `main@b014746` a
 - **Triple `MethodTranslation` schema** across `dsl/extdeps/languages/{rust,python,go}/runtime.dag`: same shape; only the per-target template field-name differs. Dissolution: single generic `MethodTranslation` with a `target: LanguageId` discriminator.
 - **`effects.dag` dual authority** — `dsl/std/effects.dag` (395 lines) vs `src/v3/std/effects.dag` (818 lines, diverged 2×). Dissolution: decide authoritative location, collapse the other; name a convergence lane.
 - **`container_to_algebra` table duplicates type aliases** — `dsl/std/types.dag:140-153` is the string-keyed table; `types.dag:211-214` declares `type List<T> = FreeMonoid<T>` etc. Dissolution: derive the table from the aliases or delete it.
-- **`FileClassification` and `FileEntry` carry identical fields** — `dsl/std/filesystem.dag:27-34` vs `44-51` (same 6 fields, same types). Dissolution: one record; the other becomes an alias or is deleted.
 - **Parallel string-keyed authorities in types.dag + coercion.dag**: `kernel_primitives` (65-74), `container_arity` (79-91), `ordered_collections` (125-130), `TypeCheckpoint.dag_name: String` (38-44), `InhabitantDecl.algebra: String` (59-65). Header labels as transitional. Dissolution: derive from structural declarations.
 
 ### P3 — modeling gaps
