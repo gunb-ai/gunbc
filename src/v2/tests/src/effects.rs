@@ -479,20 +479,11 @@ fn post_with_parent_path_derives_create_not_upsert() {
     );
 
     let create_comment_path = all_parsed_extdep_rest_ops()
-<<<<<<< HEAD
         .into_iter()
-        .find(|o| o.name == "CreateComment")
-        .expect("CreateComment in pulls.dag")
-        .path;
-    let create_comment = derive("CreateComment", "POST", &create_comment_path);
-=======
-        .iter()
         .find(|o| o.service == GITHUB_PULLS && o.name == "CreateComment")
         .expect("CreateComment in github.Pulls (pulls.dag)")
-        .path
-        .clone();
-    let create_comment = derive("CreateComment", "POST", &create_comment_path).unwrap();
->>>>>>> 9839d47a7 (WIP: p0)
+        .path;
+    let create_comment = derive("CreateComment", "POST", &create_comment_path);
     assert!(
         is_create(&create_comment.shape),
         "CreateComment: POST should derive CreateEffect"
