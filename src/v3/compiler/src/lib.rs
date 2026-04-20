@@ -911,6 +911,25 @@ pub fn generated_std_bootstrap_dag() -> Dag {
     Dag::std_fixture_bootstrap_snapshot()
 }
 
+/// PB-1 closure scaffold helper for `regen_bootstrap`: layer the staged/spec/
+/// compiler bootstrap authorities onto an explicitly supplied std seed so all
+/// generated outputs in one regen pass derive from the same `dsl/std/*.dag`
+/// authority. This is not a production bootstrap entry point.
+pub fn compile_full_bootstrap_dag_from_std_seed(std_seed: Dag) -> Dag {
+    let mut dag = std_seed;
+    bootstrap::bootstrap_runtime_authorities_on(&mut dag, &[]);
+    dag
+}
+
+/// PB-1 closure scaffold helper for `regen_bootstrap`: same as
+/// `compile_full_bootstrap_dag_from_std_seed`, but excludes
+/// `runtime_mirrors.dag` so regen/tests can keep that authority first-of-name.
+pub fn compile_full_bootstrap_without_runtime_mirrors_dag_from_std_seed(std_seed: Dag) -> Dag {
+    let mut dag = std_seed;
+    bootstrap::bootstrap_runtime_authorities_on(&mut dag, &["src/v3/compiler/runtime_mirrors.dag"]);
+    dag
+}
+
 pub fn compile_full_bootstrap_dag() -> Dag {
     let mut dag = Dag::empty();
     bootstrap::bootstrap_all_runtime(&mut dag, &[]);

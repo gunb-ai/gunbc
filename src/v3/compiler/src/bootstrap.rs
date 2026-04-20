@@ -116,6 +116,10 @@ pub(crate) fn bootstrap_all_runtime(dag: &mut Dag, excluded_compiler_paths: &[&s
     load_runtime_bootstrap_authorities(dag, excluded_compiler_paths);
 }
 
+pub(crate) fn bootstrap_runtime_authorities_on(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
+    load_runtime_bootstrap_authorities(dag, excluded_compiler_paths);
+}
+
 fn load_runtime_bootstrap_authorities(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
     let compiler_iter = COMPILER_FILES
         .iter()

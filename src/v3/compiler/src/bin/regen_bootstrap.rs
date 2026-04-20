@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
 use v3_compiler::{
-    compile_full_bootstrap_dag, compile_full_bootstrap_without_runtime_mirrors_dag,
-    compile_std_bootstrap_dag, generated_files::GENERATED_FILES, render_bootstrap_generated_rs,
+    compile_full_bootstrap_dag_from_std_seed,
+    compile_full_bootstrap_without_runtime_mirrors_dag_from_std_seed, compile_std_bootstrap_dag,
+    generated_files::GENERATED_FILES, render_bootstrap_generated_rs,
     render_bootstrap_std_generated_rs,
 };
 
@@ -31,7 +32,7 @@ fn main() {
         .unwrap_or_else(|e| panic!("regen_bootstrap std: {e}"));
     write_generated(&manifest_dir, "bootstrap_std_generated.rs", &std_formatted);
 
-    let full_dag = compile_full_bootstrap_dag();
+    let full_dag = compile_full_bootstrap_dag_from_std_seed(std_dag.clone());
     let full_formatted = render_bootstrap_generated_rs(
         &full_dag,
         "dsl/std/*.dag + src/v3/std/*.dag + src/v3/spec/*.dag + src/v3/compiler/*.dag minus tokenize.dag",
@@ -40,7 +41,8 @@ fn main() {
     .unwrap_or_else(|e| panic!("regen_bootstrap full: {e}"));
     write_generated(&manifest_dir, "bootstrap_generated.rs", &full_formatted);
 
-    let full_no_runtime_mirrors_dag = compile_full_bootstrap_without_runtime_mirrors_dag();
+    let full_no_runtime_mirrors_dag =
+        compile_full_bootstrap_without_runtime_mirrors_dag_from_std_seed(std_dag);
     let full_no_runtime_mirrors_formatted = render_bootstrap_generated_rs(
         &full_no_runtime_mirrors_dag,
         "dsl/std/*.dag + src/v3/std/*.dag + src/v3/spec/*.dag + src/v3/compiler/*.dag minus tokenize.dag and runtime_mirrors.dag",
