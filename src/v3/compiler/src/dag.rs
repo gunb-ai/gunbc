@@ -488,7 +488,7 @@ include!("dag_scalar_generated.rs");
 ///      the initial substrate state. `lower_fn_item` is responsible
 ///      for patching every such declaration to
 ///      `ArrowBody::UserDefined(bind_id)` before the Dag is frozen
-///      — including on error paths (R13 fix at `lower.rs:2293`). A
+///      — including on error paths (R13 fix in `lower.rs`). A
 ///      final `Arrow(Pending)` surviving into the Dag is
 ///      structurally equivalent to "body lowering missed a path,"
 ///      which is exactly what `lens_structural_resolution` detects.
@@ -509,8 +509,8 @@ include!("dag_scalar_generated.rs");
 ///   synthesis), all of which represented "no body by construction"
 ///   rather than "body to come." Those sites migrated to `NoBody`
 ///   in the (a)/broader-migration work — see the per-site comments
-///   at `lower.rs:931` (`type_to_connective`), `lower.rs:872`
-///   (anonymous nested Arrow), and `infer.rs:1893`
+///   at `lower.rs` (`type_to_connective`, anonymous nested Arrow synthesis),
+///   and `infer.rs:1893`
 ///   (`resolve_direct_target_signature`).
 ///
 /// - **`NoBody`** — terminal "no body by construction." Used wherever

@@ -2,7 +2,7 @@
 //
 // G3 guardrail: parse.rs exports SurfaceModule / SurfaceItem / SurfaceExpr /
 // SurfaceType; it does NOT mention Dag or any L1 behavior type. Lowering from
-// surface to DAG happens in lower.rs.
+// surface to DAG happens in `lower.rs`.
 //
 // Operators compile to a structural `SurfaceExpr::Operator` variant.
 // `1 + 2` → `Operator { op: OperatorKind::Arithmetic(ArithmeticOp::Add),

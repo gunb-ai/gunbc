@@ -86,6 +86,10 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // a bounded SG-0 exception for the merge-blocking Stage 3b receipt,
 // not a precedent for adding ad hoc integration files.
 //
+// SG-3f-prep (director Option B): `lower.rs` stays on this list — canonical
+// lowering remains hand-maintained Rust until `lower.dag` + reflected `Surface*`.
+// `regen_lower` + `lower_generated.rs` are prep-only (not `lib.rs` authority).
+//
 // Phase 1 Dag builder surface — PR #570 adds one narrow host-side
 // helper file, `src/dag/builder.rs`, to keep the test-facing graph
 // constructors scoped away from the main `dag.rs` body while the
@@ -107,6 +111,7 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
+    "src/v3/compiler/src/bin/regen_lower.rs",
     "src/v3/compiler/src/bin/regen_tokenize.rs",
     "src/v3/compiler/src/bin/regen_v3.rs",
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
@@ -176,6 +181,8 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
+    "src/v3/compiler/tests/integration/sg3_lower_authority_test.rs",
+    "src/v3/compiler/tests/integration/sg3_lower_parse_surface_stack_test.rs",
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",

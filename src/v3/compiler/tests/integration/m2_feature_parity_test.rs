@@ -857,7 +857,7 @@ fn test_3a4_refined_generic_narrowing_composite_discharges() {
     // if they don't, the bug surfaces now rather than at a future
     // consumer.
     // `pred_b` takes two args because DB-11's `narrowable_var_name`
-    // (`lower.rs:845`) only recognizes 2-argument `Operator`/`Call`
+    // (`lower.rs`) only recognizes 2-argument `Operator`/`Call`
     // conds as narrowing-eligible. Both args are `n` so the cond has
     // exactly one scope-bound free variable — DB-11 narrows.
     let src = "fn pred_a<T>(x: T) -> Bool = 0 == 0\n\
