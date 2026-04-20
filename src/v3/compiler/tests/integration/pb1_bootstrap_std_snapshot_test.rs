@@ -1,8 +1,7 @@
 //! **Layer:** integration
 
 use v3_compiler::{
-    compile_std_bootstrap_dag, generated_std_bootstrap_dag,
-    serialize::first_difference,
+    compile_std_bootstrap_dag, generated_std_bootstrap_dag, serialize::first_difference,
 };
 
 #[test]
