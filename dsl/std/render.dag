@@ -17,6 +17,7 @@
 
 module std.render
 
+import std.algebra { replicate_to_list }
 import std.width { truncate_text }
 import std.unicode { string_display_width }
 import std.symbols { SemanticColor, SymbolId, Tier, resolve_symbol }
@@ -176,8 +177,11 @@ fn format_comment(syntax: CommentSyntax, text: String) -> String {
 
 // Repeat a string N times. Local helper until std.strings provides this.
 fn repeat_string(s: String, n: Int) -> String {
-  if n <= 0 { "" }
-  else { [0] |> fold(init: "", f: fn(acc, _) { concat(acc, s) }) }
+  if n <= 0 {
+    ""
+  } else {
+    fold(replicate_to_list(n: n, elem: 0), init: "", f: fn(acc, _) { concat(acc, s) })
+  }
 }
 
 fn format_section_header(syntax: CommentSyntax, title: String) -> String {
