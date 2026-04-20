@@ -356,7 +356,12 @@ fn collect_punct_rows(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> Vec<(
                 );
                 rows.push((pattern.clone(), kind.to_string()));
             }
-            SharedOperatorTokenizerBoundary::ParserOnlyDebt { .. } => {}
+            SharedOperatorTokenizerBoundary::ParserOnlyDebt { reason } => {
+                assert!(
+                    !reason.is_empty(),
+                    "parser-only shared operator `{pattern}` should carry a dissolution note"
+                );
+            }
         }
     }
 

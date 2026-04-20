@@ -179,10 +179,134 @@ fn shared_syntax_text_parsing_scaffold_is_only_allowed_while_keyword_and_operato
     }
 }
 
+#[test]
+fn shared_operator_boundary_is_explicit_and_fail_closed() {
+    let dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
+        .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+    let shared_operators = parse_named_string_fields(
+        extract_balanced_section(SHARED_SYNTAX_DAG, "data dag_operators", '[', ']'),
+        "symbol",
+    );
+    let punct_kind_decl = dag
+        .declaration_by_name("PunctTokenKind")
+        .expect("PunctTokenKind declaration");
+    let TypeConnective::Disj {
+        variants: punct_variants,
+    } = &punct_kind_decl.connective
+    else {
+        panic!("PunctTokenKind should lower to a Disj");
+    };
+    let punct_variant_labels: BTreeSet<_> = punct_variants
+        .iter()
+        .map(|variant| variant.label.clone())
+        .collect();
+
+    let mut shared_tokenized_kinds = BTreeSet::new();
+    let mut parser_only_patterns = BTreeSet::new();
+    for pattern in &shared_operators {
+        match classify_shared_operator_for_tokenizer(pattern) {
+            SharedOperatorTokenizerBoundary::Tokenized { kind } => {
+                assert!(
+                    punct_variant_labels.contains(kind),
+                    "shared operator `{pattern}` expects `PunctTokenKind::{kind}`"
+                );
+                shared_tokenized_kinds.insert(kind.to_string());
+            }
+            SharedOperatorTokenizerBoundary::ParserOnlyDebt { reason } => {
+                assert!(
+                    !reason.is_empty(),
+                    "parser-only shared operator `{pattern}` should carry a dissolution note"
+                );
+                parser_only_patterns.insert(pattern.clone());
+            }
+        }
+    }
+
+    assert_eq!(
+        parser_only_patterns,
+        BTreeSet::from([String::from("%"), String::from("??")]),
+        "SG-1a banks exactly two parser-only shared operators today; changing that boundary \
+         must update the ratchet and the scaffold rationale together"
+    );
+
+    let mut covered_punct_kinds = shared_tokenized_kinds;
+    for decl in dag.declarations() {
+        let Some(name) = &decl.name else {
+            continue;
+        };
+        if !name.starts_with("local_punct_") {
+            continue;
+        }
+        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            panic!("token row `{name}` should carry a structural body");
+        };
+        let kind = fields
+            .iter()
+            .find(|(label, _)| label == "kind")
+            .and_then(|(_, value)| match value {
+                FieldValue::Variant {
+                    constructor,
+                    payload,
+                } if payload.is_empty() => Some(constructor.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("token row `{name}` should carry a nullary `kind` variant"));
+        let kind_label = punct_variants
+            .iter()
+            .find(|variant| variant.ty == kind)
+            .map(|variant| variant.label.clone())
+            .unwrap_or_else(|| panic!("token row `{name}` kind should be a `PunctTokenKind` variant"));
+        assert!(
+            covered_punct_kinds.insert(kind_label.clone()),
+            "punctuation kind `{kind_label}` should be covered by exactly one shared/local source"
+        );
+    }
+
+    assert_eq!(
+        covered_punct_kinds, punct_variant_labels,
+        "every `PunctTokenKind` variant should come from either the shared-operator subset or \
+         a `local_punct_*` row"
+    );
+}
+
 fn keyword_spelling_for_token_kind(kind: &str) -> String {
     kind.strip_prefix("Kw")
         .unwrap_or_else(|| panic!("keyword token kind `{kind}` should start with `Kw`"))
         .to_ascii_lowercase()
+}
+
+enum SharedOperatorTokenizerBoundary {
+    Tokenized { kind: &'static str },
+    ParserOnlyDebt { reason: &'static str },
+}
+
+fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokenizerBoundary {
+    match pattern {
+        "==" => SharedOperatorTokenizerBoundary::Tokenized { kind: "EqEq" },
+        "!=" => SharedOperatorTokenizerBoundary::Tokenized { kind: "NotEq" },
+        "<" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Lt" },
+        "<=" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Le" },
+        ">" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Gt" },
+        ">=" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Ge" },
+        "+" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Plus" },
+        "-" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Minus" },
+        "*" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Star" },
+        "/" => SharedOperatorTokenizerBoundary::Tokenized { kind: "Slash" },
+        "&&" => SharedOperatorTokenizerBoundary::Tokenized { kind: "AmpAmp" },
+        "||" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipePipe" },
+        "|>" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipeArrow" },
+        "." => SharedOperatorTokenizerBoundary::Tokenized { kind: "Dot" },
+        "??" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
+            reason: "null-coalescing remains outside the v3 tokenizer punctuation subset",
+        },
+        "%" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
+            reason: "modulo remains outside the v3 tokenizer punctuation subset",
+        },
+        other => panic!(
+            "shared syntax operator `{other}` must be classified as tokenizer punctuation or \
+             explicit parser-only debt"
+        ),
+    }
 }
 
 fn extract_balanced_section<'a>(source: &'a str, anchor: &str, open: char, close: char) -> &'a str {
