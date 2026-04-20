@@ -104,6 +104,10 @@ fn emit_parse_module(dag: &Dag, parser_body: &str) -> String {
 /// `enum` definitions. `List<T>` becomes `Vec<T>`; recursive `SurfaceType` /
 /// `SurfaceExpr` edges that require indirection in Rust use `Box<…>` where
 /// the handwritten parser did.
+///
+/// **Paydown:** root-name roster and several `rust_type_for_field` / substrate
+/// mappings duplicate facts from `parse.dag` as parallel Rust strings — derive
+/// from `dag` instead (`docs/history/roadmap-active-deferrals.md`, SG-2 staging follow-up).
 fn emit_surface_types(dag: &Dag) -> String {
     let root_names = [
         "SurfaceLiteral",
