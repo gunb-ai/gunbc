@@ -46,8 +46,15 @@ authority**. Only the system boundary does.
 
 ## Current v3 state
 
-**Hand-maintained**: **78 `.rs` files** (SG-0 census at
-`src/v3/compiler/tests/integration/sg0_census_test.rs`).
+**Hand-maintained**: **78 `.rs` files** per the live SG-0 ratchet
+(`EXPECTED_HAND_AUTHORED` in
+`src/v3/compiler/tests/integration/sg0_census_test.rs`, partitioned
+against `GENERATED_FILES` sourced from the producer-owned
+`REGEN_OUTPUTS` manifest in `src/v3/compiler/build.rs`). Note:
+`dsl/gunbc/compiler.dag`'s `hand_maintained_src` field is a
+related-but-separate authority — it names files excluded from the
+stage0 fixed-point diff (regeneration survival list), not the SG-0
+ratchet source. PB metrics below track the SG-0 ratchet.
 
 **Generated files on main** (partial dissolution already landed):
 - `lens_*_generated.rs` (5 files: cost, cost_symbolic, provenance,
@@ -85,10 +92,18 @@ retire projection — not one.
 
 ### PB-0 — ratchet (unblocks everything)
 
-- SG-0 already tracks `hand_maintained_src` list. Add **PB count**
-  as a named column with a trend arrow. Ratchet only down.
+- SG-0's live ratchet (`EXPECTED_HAND_AUTHORED` ∖ `GENERATED_FILES`
+  partition in `sg0_census_test.rs`) already enforces the
+  hand-authored count. Add **PB count** as a named column with a
+  trend arrow. Ratchet only down.
 - **Target trajectory**: 78 → 50 → 20 → 5.
 - **Dependencies**: none. Dispatchable now.
+- **Not the same as `compiler.dag`'s `hand_maintained_src`** —
+  that's the regeneration-survival list (which files don't get
+  overwritten by the emitter); SG-0's `EXPECTED_HAND_AUTHORED`
+  is the ratchet (which files are still hand-authored). Both
+  should shrink in sync; when they diverge, the SG-0 ratchet is
+  authoritative for PB count.
 
 ### PB-1 — bootstrap loader emission (all four authorities)
 
@@ -115,7 +130,8 @@ retire projection — not one.
 - `tokenize.rs` is already a 23-line shim routing to generated.
 - **PB-2 work**: delete `tokenize.rs` entirely, route call sites
   directly through `tokenize_generated.rs` (or a `pub use` in
-  `lib.rs`); remove from `hand_maintained_src`.
+  `lib.rs`); remove from `EXPECTED_HAND_AUTHORED` (SG-0 ratchet)
+  and from `compiler.dag`'s `hand_maintained_src` (regen-survival list).
 - **Dependencies**: none (authority landed).
 - **Counter delta**: -1 file. Dispatchable now.
 
@@ -173,8 +189,10 @@ retire projection — not one.
 
 ### PB-8 — graduation
 
-- `hand_maintained_src` list reaches ≤5 entries (CLI entry + runtime
-  bridge + build shim + possibly lib.rs + bootstrap entry).
+- `EXPECTED_HAND_AUTHORED` (SG-0 ratchet) reaches ≤5 entries (CLI
+  entry + runtime bridge + build shim + possibly lib.rs + bootstrap
+  entry). `compiler.dag`'s `hand_maintained_src` converges to the
+  same set.
 - Delete scaffolding: `include_str!` constants, runtime-parse paths,
   census accommodations for not-yet-retired files.
 - **Dependencies**: PB-7 green.
@@ -183,7 +201,7 @@ retire projection — not one.
 
 1. Every `.rs` file in `src/v3/compiler/src/` is **either**:
    - Generated (ends in `_generated.rs` and has the generated header), **or**
-   - Listed in `compiler.dag`'s `hand_maintained_src` (target: ≤5 entries).
+   - Listed in `EXPECTED_HAND_AUTHORED` (target: ≤5 entries; `compiler.dag`'s `hand_maintained_src` converges to the same set).
 2. `cargo run -p v3-compiler --release --bin regen_v3` produces
    bit-identical Rust (cycle converges in 1 iteration).
 3. CI gate: census partition matches directory contents (no
@@ -274,7 +292,7 @@ Lane 1e complete ──→ PB-6 (emit) ──────────┐
 ## Graduation trigger
 
 PB graduates when:
-1. `hand_maintained_src.len() ≤ 5` in `compiler.dag`
+1. `EXPECTED_HAND_AUTHORED.len() ≤ 5` (SG-0 ratchet authority); `compiler.dag`'s `hand_maintained_src` converges to the same set
 2. DB-8 self-host fixed-point runs on full `compiler.dag` (not fixture) and passes bit-identically
 3. CI census gate blocks unmarked hand-authored files
 
