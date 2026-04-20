@@ -41,7 +41,9 @@ emit_matrix_program_rust_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8
 four_fixture_disk_sources_emit_deterministically  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; four-fixture disk corpus.
 
 common::cached_compile::tests::cached_compile_any_returns_clean_dag_when_key_warmed_by_strict  # TESTING.md "Mocks over compile" paydown; compile-cache behavior test still performs real compile work.
+lane2_stage_2d_symbolic_cost_test::branch_reports_constant_when_both_arms_constant  # ROADMAP Lane 2 Stage 2d (#546): unique `cached_compile` key + cold compile; libtest default parallelism can push wall time over 2s when neighbors compile heavy fixtures — paydown: shared bootstrap / shared cache key (see inline comment on the test).
 lane2_stage_2d_symbolic_cost_test::cost_dag_compiles_cleanly  # ROADMAP Lane 2 Stage 2d symbolic-cost migration; DAG compile smoke still cold-compiles authority input.
+lane2_stage_2d_symbolic_cost_test::cost_generated_module_matches_checked_in_snapshot  # ROADMAP Lane 2 Stage 2d: emit + rustfmt snapshot compare on cold CI can far exceed 2s; `budgeted_test!` owns inner wall-clock; ratchet exemption keeps Phase-0 gate honest (TESTING.md).
 
 m0_acceptance::post_sweep_port_state_matches_diagnostic_table  # M0 acceptance compile-boundary coverage still exercises full compile path; any reshaping belongs to test-layer migration work.
 m1_substrate_test::referenced_port_walk_real_helper_stack_compiles  # SG-3f reflected-surface foundation increases bootstrap/load cost slightly; this helper-stack compile receipt stays explicit until parse/lower cutover work can restructure it.
