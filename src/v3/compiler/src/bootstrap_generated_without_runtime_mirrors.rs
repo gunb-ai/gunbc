@@ -1703,9 +1703,7 @@ pub(crate) fn bootstrapped_fixture_without_runtime_mirrors_dag() -> Dag {
         ports.insert(PortId(355), Port { id: PortId(355), state: PortState::Resolved(TypeShape::new(DeclarationId(182))), produced_by: Some(NodeId(259)) });
         ports }
 ,
-        diagnostics: { let mut table = DiagnosticTable::new();
-        table }
-,
+        diagnostics: DiagnosticTable::new(),
         next_node_id: 261,
         next_declaration_id: 1338,
         next_port_id: 356,
@@ -1719,8 +1717,6 @@ pub(crate) fn bootstrapped_fixture_without_runtime_mirrors_dag() -> Dag {
         variant_payload_field_access_rule_variants: VariantPayloadFieldAccessRuleVariants::default(),
         verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
         clusters: vec![],
-        optional_match_disjs: { let mut map = HashMap::new();
-        map }
-,
+        optional_match_disjs: HashMap::new(),
     }
 }

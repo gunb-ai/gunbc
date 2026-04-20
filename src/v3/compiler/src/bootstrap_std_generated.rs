@@ -7678,14 +7678,8 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 span: SourceSpan::new("dsl/std/types.dag", 5351, 5370),
             },
         ],
-        ports: {
-            let mut ports = HashMap::new();
-            ports
-        },
-        diagnostics: {
-            let mut table = DiagnosticTable::new();
-            table
-        },
+        ports: HashMap::new(),
+        diagnostics: DiagnosticTable::new(),
         next_node_id: 0,
         next_declaration_id: 454,
         next_port_id: 0,
@@ -7700,9 +7694,6 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
         ),
         verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
         clusters: vec![],
-        optional_match_disjs: {
-            let mut map = HashMap::new();
-            map
-        },
+        optional_match_disjs: HashMap::new(),
     }
 }

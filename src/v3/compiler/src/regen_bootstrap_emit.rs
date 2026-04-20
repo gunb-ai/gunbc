@@ -507,6 +507,9 @@ fn render_loop_bound(bound: &LoopBound) -> String {
 
 fn render_ports(dag: &Dag) -> String {
     let ports = dag.ports();
+    if ports.is_empty() {
+        return "HashMap::new()".to_string();
+    }
     let mut out = String::from("{ let mut ports = HashMap::new();\n");
     for port in &ports {
         let _ = writeln!(
@@ -538,6 +541,9 @@ fn render_port_state(state: &PortState) -> String {
 fn render_diagnostics(dag: &Dag) -> String {
     let mut entries: Vec<_> = dag.diagnostics().iter().collect();
     entries.sort_by_key(|(port, _)| port.raw());
+    if entries.is_empty() {
+        return "DiagnosticTable::new()".to_string();
+    }
     let mut out = String::from("{ let mut table = DiagnosticTable::new();\n");
     for (port, diagnostic) in entries {
         let _ = writeln!(
@@ -630,11 +636,7 @@ fn render_corrections(corrections: &[crate::diagnostics::Correction]) -> String 
 }
 
 fn render_clusters(dag: &Dag) -> String {
-    let values: Vec<String> = dag
-        .clusters()
-        .iter()
-        .map(|cluster| render_cluster(cluster))
-        .collect();
+    let values: Vec<String> = dag.clusters().iter().map(render_cluster).collect();
     render_vec(&values)
 }
 
@@ -693,6 +695,9 @@ fn render_intra_cluster_call(value: &IntraClusterCall) -> String {
 fn render_optional_match_disjs(dag: &Dag) -> String {
     let mut entries: Vec<_> = dag.optional_match_disjs().iter().collect();
     entries.sort_by_key(|(key, _)| key.raw());
+    if entries.is_empty() {
+        return "HashMap::new()".to_string();
+    }
     let mut out = String::from("{ let mut map = HashMap::new();\n");
     for (key, value) in entries {
         let _ = writeln!(

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use v3_compiler::{
     compile_full_bootstrap_dag_from_std_seed,
@@ -56,7 +56,7 @@ fn main() {
     );
 }
 
-fn write_generated(manifest_dir: &PathBuf, file_name: &str, contents: &str) {
+fn write_generated(manifest_dir: &Path, file_name: &str, contents: &str) {
     let out_path = manifest_dir.join("src").join(file_name);
     std::fs::write(&out_path, contents).unwrap_or_else(|e| panic!("write {file_name}: {e}"));
     println!("wrote {}", out_path.display());
