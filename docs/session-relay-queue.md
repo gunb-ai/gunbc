@@ -7,6 +7,15 @@
 | #530 | https://github.com/gunb-ai/gunbc/pull/530 |
 | #540 | https://github.com/gunb-ai/gunbc/pull/540 |
 | #556 (SG-1, session `neat-pike-779`) | https://github.com/gunb-ai/gunbc/pull/556 |
+| #589 (parser staging / SG-2, session `quiet-owl-783`) | https://github.com/gunb-ai/gunbc/pull/589 |
+
+#### #589 relay index (dashboard ingest — pointers only)
+
+Full text stays on **GitHub** (and linked external threads where applicable); this index is a stable handle for agents.
+
+| Source | Link |
+|:---|:---|
+| **ChatGPT (meta)** — **`c0161ebd2c091d728cb4464c61a101fdfd6e2941`** @ **2026-04-20T04:20:18Z** — **`chatgpt-meta-review` `status:pending`** — **stub** — loop-health prompt only (“forward progress” vs “shifting debt”); substantive meta **not** posted yet — await **`status:complete`** on the **same** parent SHA — **dashboard:** **+3** more relay items queued (not broken out in this row) | [PR #589](https://github.com/gunb-ai/gunbc/pull/589) (Conversation — [view conversation](https://chatgpt.com/g/g-p-69e42928d3ec819192415828194826d4-gunbc-review/c/69e5a963-e4c4-8332-ad0c-e2bce9900627)) |
 
 #### #556 relay index (dashboard ingest — pointers only)
 
