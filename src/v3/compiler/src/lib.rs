@@ -50,6 +50,12 @@ pub mod types {
 
     include!("types_generated.rs");
 }
+pub mod parse_surface {
+    use crate::diagnostics::SourceSpan;
+    use crate::operators::OperatorKind;
+
+    include!("parse_surface_generated.rs");
+}
 
 pub mod operators {
     pub use crate::dag::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};

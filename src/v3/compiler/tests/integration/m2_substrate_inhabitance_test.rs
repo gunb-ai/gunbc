@@ -1,4 +1,6 @@
 use v3_compiler::dag::{FieldValue, TypeConnective, ValueBody};
+use v3_compiler::parse_surface;
+use v3_compiler::{parse_for_test, tokenize_for_test};
 use v3_compiler::Dag;
 
 fn find_named(dag: &Dag, name: &str) -> v3_compiler::dag::DeclarationId {
@@ -127,6 +129,28 @@ fn substrate_declares_expected_reflection_surface() {
     assert_eq!(
         record_fields(&dag, "Dag"),
         vec!["declarations", "nodes", "ports", "clusters"]
+    );
+    assert_eq!(record_fields(&dag, "SurfaceModule"), vec!["items"]);
+    assert_eq!(
+        record_fields(&dag, "SurfaceParam"),
+        vec!["name", "ty", "refinement"]
+    );
+    assert_eq!(record_fields(&dag, "SurfaceField"), vec!["name", "ty"]);
+    assert_eq!(
+        record_fields(&dag, "SurfaceVariant"),
+        vec!["name", "payload", "span"]
+    );
+    assert_eq!(
+        record_fields(&dag, "SurfaceRecordField"),
+        vec!["name", "value", "span"]
+    );
+    assert_eq!(
+        record_fields(&dag, "SurfaceMatchArm"),
+        vec!["pattern", "body", "span"]
+    );
+    assert_eq!(
+        record_fields(&dag, "SurfacePatternField"),
+        vec!["name", "binding", "span"]
     );
 }
 
@@ -307,6 +331,245 @@ fn substrate_coproducts_match_runtime_carriers() {
             (String::from("Bind"), vec![String::from("_0")]),
         ]
     );
+    assert_eq!(
+        sum_variants(&dag, "VariantPayload"),
+        vec![
+            (String::from("Positional"), vec![String::from("_0")]),
+            (String::from("Record"), vec![String::from("_0")]),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "SurfaceType"),
+        vec![
+            (
+                String::from("Named"),
+                vec![String::from("name"), String::from("span")],
+            ),
+            (
+                String::from("Parameterized"),
+                vec![
+                    String::from("name"),
+                    String::from("args"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("Optional"),
+                vec![String::from("inner"), String::from("span")],
+            ),
+            (
+                String::from("Arrow"),
+                vec![
+                    String::from("inputs"),
+                    String::from("output"),
+                    String::from("span"),
+                ],
+            ),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "SurfacePattern"),
+        vec![
+            (
+                String::from("BareVariant"),
+                vec![String::from("name"), String::from("span")],
+            ),
+            (
+                String::from("VariantWith"),
+                vec![
+                    String::from("name"),
+                    String::from("binding"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("VariantFields"),
+                vec![
+                    String::from("name"),
+                    String::from("fields"),
+                    String::from("span"),
+                ],
+            ),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "SurfaceLiteral"),
+        vec![
+            (String::from("Int"), vec![String::from("_0")]),
+            (String::from("Bool"), vec![String::from("_0")]),
+            (String::from("String"), vec![String::from("_0")]),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "SurfaceExpr"),
+        vec![
+            (
+                String::from("Literal"),
+                vec![String::from("value"), String::from("span")],
+            ),
+            (
+                String::from("Var"),
+                vec![String::from("name"), String::from("span")],
+            ),
+            (
+                String::from("Path"),
+                vec![
+                    String::from("segments"),
+                    String::from("segment_spans"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("Call"),
+                vec![
+                    String::from("target"),
+                    String::from("args"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("VariantRecord"),
+                vec![
+                    String::from("target"),
+                    String::from("fields"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("Operator"),
+                vec![
+                    String::from("op"),
+                    String::from("args"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("Lambda"),
+                vec![
+                    String::from("params"),
+                    String::from("body"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("If"),
+                vec![
+                    String::from("cond"),
+                    String::from("then_branch"),
+                    String::from("else_branch"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("Match"),
+                vec![
+                    String::from("scrutinee"),
+                    String::from("arms"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("Record"),
+                vec![String::from("fields"), String::from("span")],
+            ),
+            (
+                String::from("List"),
+                vec![String::from("elements"), String::from("span")],
+            ),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "SurfaceItem"),
+        vec![
+            (
+                String::from("Let"),
+                vec![
+                    String::from("name"),
+                    String::from("type_ann"),
+                    String::from("expr"),
+                ],
+            ),
+            (
+                String::from("Fn"),
+                vec![
+                    String::from("name"),
+                    String::from("type_params"),
+                    String::from("params"),
+                    String::from("return_type"),
+                    String::from("body"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("FnExternalBody"),
+                vec![
+                    String::from("name"),
+                    String::from("type_params"),
+                    String::from("params"),
+                    String::from("return_type"),
+                    String::from("body_span"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("Data"),
+                vec![
+                    String::from("name"),
+                    String::from("ty"),
+                    String::from("body"),
+                    String::from("body_span"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("Module"),
+                vec![String::from("path"), String::from("span")],
+            ),
+            (
+                String::from("Import"),
+                vec![
+                    String::from("path"),
+                    String::from("names"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("TypeAtom"),
+                vec![
+                    String::from("name"),
+                    String::from("type_params"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("TypeRecord"),
+                vec![
+                    String::from("name"),
+                    String::from("type_params"),
+                    String::from("fields"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("TypeSum"),
+                vec![
+                    String::from("name"),
+                    String::from("type_params"),
+                    String::from("variants"),
+                    String::from("span"),
+                ],
+            ),
+            (
+                String::from("TypeAlias"),
+                vec![
+                    String::from("name"),
+                    String::from("type_params"),
+                    String::from("target"),
+                    String::from("span"),
+                ],
+            ),
+        ]
+    );
 }
 
 #[test]
@@ -344,6 +607,19 @@ fn rust_dag_realizes_reflected_substrate_types() {
         "BranchNode",
         "LoopNode",
         "BindNode",
+        "SurfaceModule",
+        "SurfaceItem",
+        "SurfaceParam",
+        "SurfaceField",
+        "SurfaceVariant",
+        "VariantPayload",
+        "SurfaceType",
+        "SurfaceRecordField",
+        "SurfaceMatchArm",
+        "SurfacePatternField",
+        "SurfacePattern",
+        "SurfaceLiteral",
+        "SurfaceExpr",
     ] {
         let target = find_named(&dag, name);
         let realized = dag.declarations().iter().find(|decl| {
@@ -361,6 +637,46 @@ fn rust_dag_realizes_reflected_substrate_types() {
             realized.is_some(),
             "expected a TypeRealization entry targeting `{name}`"
         );
+    }
+}
+
+#[test]
+fn parse_surface_generated_module_consumes_parser_output_structurally() {
+    let source = "fn id<T>(x: T where x == x) -> T = x\nlet y = if true then id(1) else 2";
+    let tokens = tokenize_for_test(source, "surface_reflection.v3").expect("tokenize source");
+    let parsed = parse_for_test(&tokens, "surface_reflection.v3").expect("parse source");
+    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+
+    assert_eq!(mirrored.items.len(), 2);
+    match &mirrored.items[0] {
+        parse_surface::SurfaceItem::Fn {
+            name,
+            type_params,
+            params,
+            return_type,
+            body,
+            ..
+        } => {
+            assert_eq!(name, "id");
+            assert_eq!(type_params, &vec![String::from("T")]);
+            assert_eq!(params.len(), 1);
+            assert!(matches!(
+                params[0].refinement,
+                Some(parse_surface::SurfaceExpr::Operator { .. })
+            ));
+            assert!(matches!(
+                return_type,
+                parse_surface::SurfaceType::Named { name, .. } if name == "T"
+            ));
+            assert!(matches!(body, parse_surface::SurfaceExpr::Var { name, .. } if name == "x"));
+        }
+        other => panic!("expected reflected fn item, got {other:?}"),
+    }
+    match &mirrored.items[1] {
+        parse_surface::SurfaceItem::Let { expr, .. } => {
+            assert!(matches!(expr, parse_surface::SurfaceExpr::If { .. }));
+        }
+        other => panic!("expected reflected let item, got {other:?}"),
     }
 }
 

@@ -77,6 +77,11 @@ import v3.std.clean_emission {
   CorrectionStyle, PostEmitVerifier,
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
+import v3.compiler.runtime_mirrors {
+  SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
+  VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMatchArm,
+  SurfacePatternField, SurfacePattern, SurfaceLiteral, SurfaceExpr
+}
 
 data rust_execution_model: TargetExecutionModel = {
   memory: OwnershipBased
@@ -596,6 +601,151 @@ data rust_dag: TypeRealization = {
     { dag_name: "ports", access: AccessorMethod("ports"), borrowed_read: false },
     { dag_name: "clusters", access: AccessorMethod("clusters"), borrowed_read: true }
   ]
+  cost: 1
+}
+
+// SG-3f — parse-surface reflection carriers. These realizations make
+// the reflected Surface* schema consumable from Rust-target `.dag`
+// code without re-declaring the parser AST shape in handwritten Rust.
+data rust_surface_module: TypeRealization = {
+  language: rust_language
+  target: SurfaceModule
+  carrier: "parse_surface::SurfaceModule"
+  is_copy: false
+  fields: [
+    { dag_name: "items", access: DirectField("items"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_surface_item: TypeRealization = {
+  language: rust_language
+  target: SurfaceItem
+  carrier: "parse_surface::SurfaceItem"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data rust_surface_param: TypeRealization = {
+  language: rust_language
+  target: SurfaceParam
+  carrier: "parse_surface::SurfaceParam"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "ty", access: DirectField("ty"), borrowed_read: false },
+    { dag_name: "refinement", access: DirectField("refinement"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_surface_field: TypeRealization = {
+  language: rust_language
+  target: SurfaceField
+  carrier: "parse_surface::SurfaceField"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "ty", access: DirectField("ty"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_surface_variant: TypeRealization = {
+  language: rust_language
+  target: SurfaceVariant
+  carrier: "parse_surface::SurfaceVariant"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "payload", access: DirectField("payload"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_variant_payload: TypeRealization = {
+  language: rust_language
+  target: VariantPayload
+  carrier: "parse_surface::VariantPayload"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data rust_surface_type: TypeRealization = {
+  language: rust_language
+  target: SurfaceType
+  carrier: "parse_surface::SurfaceType"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data rust_surface_record_field: TypeRealization = {
+  language: rust_language
+  target: SurfaceRecordField
+  carrier: "parse_surface::SurfaceRecordField"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "value", access: DirectField("value"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_surface_match_arm: TypeRealization = {
+  language: rust_language
+  target: SurfaceMatchArm
+  carrier: "parse_surface::SurfaceMatchArm"
+  is_copy: false
+  fields: [
+    { dag_name: "pattern", access: DirectField("pattern"), borrowed_read: false },
+    { dag_name: "body", access: DirectField("body"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_surface_pattern_field: TypeRealization = {
+  language: rust_language
+  target: SurfacePatternField
+  carrier: "parse_surface::SurfacePatternField"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "binding", access: DirectField("binding"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_surface_pattern: TypeRealization = {
+  language: rust_language
+  target: SurfacePattern
+  carrier: "parse_surface::SurfacePattern"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data rust_surface_literal: TypeRealization = {
+  language: rust_language
+  target: SurfaceLiteral
+  carrier: "parse_surface::SurfaceLiteral"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data rust_surface_expr: TypeRealization = {
+  language: rust_language
+  target: SurfaceExpr
+  carrier: "parse_surface::SurfaceExpr"
+  is_copy: false
+  fields: []
   cost: 1
 }
 

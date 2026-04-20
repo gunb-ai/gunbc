@@ -598,6 +598,412 @@ def render_types_module(substrate_records: dict[str, RecordDef]) -> str:
     )
 
 
+def parse_surface_record_output_name(name: str) -> str:
+    return name
+
+
+def parse_surface_field_type(record_name: str, label: str, ty: str) -> str:
+    if record_name == "SurfaceParam" and label == "refinement":
+        return "Option<SurfaceExpr>"
+    if record_name == "SurfaceRecordField" and label == "value":
+        return "SurfaceExpr"
+    if record_name == "SurfaceMatchArm" and label == "body":
+        return "SurfaceExpr"
+    return rust_type(ty)
+
+
+def render_parse_surface_record(record: RecordDef) -> str:
+    lines = ["#[derive(Debug, Clone, PartialEq, Eq)]", f"pub struct {record.name} {{"]
+    for label, ty in record.fields:
+        lines.append(
+            f"    pub {label}: {parse_surface_field_type(record.name, label, ty)},"
+        )
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def render_parse_surface_sum(name: str, variants: list[VariantDef]) -> str:
+    lines = ["#[derive(Debug, Clone, PartialEq, Eq)]", f"pub enum {name} {{"]
+    for variant in variants:
+        if variant.kind == "unit":
+            lines.append(f"    {variant.name},")
+        elif variant.kind == "tuple":
+            lines.append(f"    {variant.name}({rust_type(variant.payload)}),")
+        elif variant.kind == "record":
+            lines.append(f"    {variant.name} {{")
+            for label, ty in variant.fields or []:
+                rust_ty = rust_type(ty)
+                if name == "SurfaceType" and label in ("inner", "output"):
+                    rust_ty = f"Box<{rust_ty}>"
+                elif name == "SurfaceExpr" and label in (
+                    "body",
+                    "cond",
+                    "then_branch",
+                    "else_branch",
+                    "scrutinee",
+                ):
+                    rust_ty = f"Box<{rust_ty}>"
+                lines.append(f"        {label}: {rust_ty},")
+            lines.append("    },")
+        else:
+            raise ValueError(f"unsupported variant kind {variant.kind}")
+    lines.append("}")
+    return "\n".join(lines)
+
+
+PARSE_SURFACE_CONVERSIONS_TEMPLATE = """
+impl From<&crate::parse::SurfaceModule> for SurfaceModule {
+    fn from(value: &crate::parse::SurfaceModule) -> Self {
+        Self {
+            items: value.items.iter().map(SurfaceItem::from).collect(),
+        }
+    }
+}
+
+impl From<&crate::parse::SurfaceParam> for SurfaceParam {
+    fn from(value: &crate::parse::SurfaceParam) -> Self {
+        Self {
+            name: value.name.clone(),
+            ty: SurfaceType::from(&value.ty),
+            refinement: value.refinement.as_ref().map(SurfaceExpr::from),
+        }
+    }
+}
+
+impl From<&crate::parse::SurfaceField> for SurfaceField {
+    fn from(value: &crate::parse::SurfaceField) -> Self {
+        Self {
+            name: value.name.clone(),
+            ty: SurfaceType::from(&value.ty),
+        }
+    }
+}
+
+impl From<&crate::parse::SurfaceVariant> for SurfaceVariant {
+    fn from(value: &crate::parse::SurfaceVariant) -> Self {
+        Self {
+            name: value.name.clone(),
+            payload: VariantPayload::from(&value.payload),
+            span: value.span.clone(),
+        }
+    }
+}
+
+impl From<&crate::parse::VariantPayload> for VariantPayload {
+    fn from(value: &crate::parse::VariantPayload) -> Self {
+        match value {
+            crate::parse::VariantPayload::Positional(types) => {
+                Self::Positional(types.iter().map(SurfaceType::from).collect())
+            }
+            crate::parse::VariantPayload::Record(fields) => {
+                Self::Record(fields.iter().map(SurfaceField::from).collect())
+            }
+        }
+    }
+}
+
+impl From<&crate::parse::SurfaceType> for SurfaceType {
+    fn from(value: &crate::parse::SurfaceType) -> Self {
+        match value {
+            crate::parse::SurfaceType::Named { name, span } => Self::Named {
+                name: name.clone(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceType::Parameterized { name, args, span } => Self::Parameterized {
+                name: name.clone(),
+                args: args.iter().map(SurfaceType::from).collect(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceType::Optional { inner, span } => Self::Optional {
+                inner: Box::new(SurfaceType::from(inner.as_ref())),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceType::Arrow {
+                inputs,
+                output,
+                span,
+            } => Self::Arrow {
+                inputs: inputs.iter().map(SurfaceType::from).collect(),
+                output: Box::new(SurfaceType::from(output.as_ref())),
+                span: span.clone(),
+            },
+        }
+    }
+}
+
+impl From<&crate::parse::SurfaceRecordField> for SurfaceRecordField {
+    fn from(value: &crate::parse::SurfaceRecordField) -> Self {
+        Self {
+            name: value.name.clone(),
+            value: SurfaceExpr::from(&value.value),
+            span: value.span.clone(),
+        }
+    }
+}
+
+impl From<&crate::parse::SurfaceMatchArm> for SurfaceMatchArm {
+    fn from(value: &crate::parse::SurfaceMatchArm) -> Self {
+        Self {
+            pattern: SurfacePattern::from(&value.pattern),
+            body: SurfaceExpr::from(&value.body),
+            span: value.span.clone(),
+        }
+    }
+}
+
+impl From<&crate::parse::SurfacePatternField> for SurfacePatternField {
+    fn from(value: &crate::parse::SurfacePatternField) -> Self {
+        Self {
+            name: value.name.clone(),
+            binding: value.binding.clone(),
+            span: value.span.clone(),
+        }
+    }
+}
+
+impl From<&crate::parse::SurfacePattern> for SurfacePattern {
+    fn from(value: &crate::parse::SurfacePattern) -> Self {
+        match value {
+            crate::parse::SurfacePattern::BareVariant { name, span } => Self::BareVariant {
+                name: name.clone(),
+                span: span.clone(),
+            },
+            crate::parse::SurfacePattern::VariantWith {
+                name,
+                binding,
+                span,
+            } => Self::VariantWith {
+                name: name.clone(),
+                binding: binding.clone(),
+                span: span.clone(),
+            },
+            crate::parse::SurfacePattern::VariantFields { name, fields, span } => {
+                Self::VariantFields {
+                    name: name.clone(),
+                    fields: fields.iter().map(SurfacePatternField::from).collect(),
+                    span: span.clone(),
+                }
+            }
+        }
+    }
+}
+
+impl From<&crate::parse::SurfaceLiteral> for SurfaceLiteral {
+    fn from(value: &crate::parse::SurfaceLiteral) -> Self {
+        match value {
+            crate::parse::SurfaceLiteral::Int(value) => Self::Int(*value),
+            crate::parse::SurfaceLiteral::Bool(value) => Self::Bool(*value),
+            crate::parse::SurfaceLiteral::String(value) => Self::String(value.clone()),
+        }
+    }
+}
+
+impl From<&crate::parse::SurfaceExpr> for SurfaceExpr {
+    fn from(value: &crate::parse::SurfaceExpr) -> Self {
+        match value {
+            crate::parse::SurfaceExpr::Literal { value, span } => Self::Literal {
+                value: SurfaceLiteral::from(value),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceExpr::Var { name, span } => Self::Var {
+                name: name.clone(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceExpr::Path {
+                segments,
+                segment_spans,
+                span,
+            } => Self::Path {
+                segments: segments.clone(),
+                segment_spans: segment_spans.clone(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceExpr::Call { target, args, span } => Self::Call {
+                target: target.clone(),
+                args: args.iter().map(SurfaceExpr::from).collect(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceExpr::VariantRecord { target, fields, span } => {
+                Self::VariantRecord {
+                    target: target.clone(),
+                    fields: fields.iter().map(SurfaceRecordField::from).collect(),
+                    span: span.clone(),
+                }
+            }
+            crate::parse::SurfaceExpr::Operator { op, args, span } => Self::Operator {
+                op: op.clone(),
+                args: args.iter().map(SurfaceExpr::from).collect(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceExpr::Lambda { params, body, span } => Self::Lambda {
+                params: params.clone(),
+                body: Box::new(SurfaceExpr::from(body.as_ref())),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceExpr::If {
+                cond,
+                then_branch,
+                else_branch,
+                span,
+            } => Self::If {
+                cond: Box::new(SurfaceExpr::from(cond.as_ref())),
+                then_branch: Box::new(SurfaceExpr::from(then_branch.as_ref())),
+                else_branch: Box::new(SurfaceExpr::from(else_branch.as_ref())),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceExpr::Match {
+                scrutinee,
+                arms,
+                span,
+            } => Self::Match {
+                scrutinee: Box::new(SurfaceExpr::from(scrutinee.as_ref())),
+                arms: arms.iter().map(SurfaceMatchArm::from).collect(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceExpr::Record { fields, span } => Self::Record {
+                fields: fields.iter().map(SurfaceRecordField::from).collect(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceExpr::List { elements, span } => Self::List {
+                elements: elements.iter().map(SurfaceExpr::from).collect(),
+                span: span.clone(),
+            },
+        }
+    }
+}
+
+impl From<&crate::parse::SurfaceItem> for SurfaceItem {
+    fn from(value: &crate::parse::SurfaceItem) -> Self {
+        match value {
+            crate::parse::SurfaceItem::Let {
+                name,
+                type_ann,
+                expr,
+            } => Self::Let {
+                name: name.clone(),
+                type_ann: type_ann.as_ref().map(SurfaceType::from),
+                expr: SurfaceExpr::from(expr),
+            },
+            crate::parse::SurfaceItem::Fn {
+                name,
+                type_params,
+                params,
+                return_type,
+                body,
+                span,
+            } => Self::Fn {
+                name: name.clone(),
+                type_params: type_params.clone(),
+                params: params.iter().map(SurfaceParam::from).collect(),
+                return_type: SurfaceType::from(return_type),
+                body: SurfaceExpr::from(body),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceItem::FnExternalBody {
+                name,
+                type_params,
+                params,
+                return_type,
+                body_span,
+                span,
+            } => Self::FnExternalBody {
+                name: name.clone(),
+                type_params: type_params.clone(),
+                params: params.iter().map(SurfaceParam::from).collect(),
+                return_type: SurfaceType::from(return_type),
+                body_span: body_span.clone(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceItem::Data {
+                name,
+                ty,
+                body,
+                body_span,
+                span,
+            } => Self::Data {
+                name: name.clone(),
+                ty: SurfaceType::from(ty),
+                body: body.as_ref().map(SurfaceExpr::from),
+                body_span: body_span.clone(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceItem::Module { path, span } => Self::Module {
+                path: path.clone(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceItem::Import { path, names, span } => Self::Import {
+                path: path.clone(),
+                names: names.clone(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceItem::TypeAtom {
+                name,
+                type_params,
+                span,
+            } => Self::TypeAtom {
+                name: name.clone(),
+                type_params: type_params.clone(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceItem::TypeRecord {
+                name,
+                type_params,
+                fields,
+                span,
+            } => Self::TypeRecord {
+                name: name.clone(),
+                type_params: type_params.clone(),
+                fields: fields.iter().map(SurfaceField::from).collect(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceItem::TypeSum {
+                name,
+                type_params,
+                variants,
+                span,
+            } => Self::TypeSum {
+                name: name.clone(),
+                type_params: type_params.clone(),
+                variants: variants.iter().map(SurfaceVariant::from).collect(),
+                span: span.clone(),
+            },
+            crate::parse::SurfaceItem::TypeAlias {
+                name,
+                type_params,
+                target,
+                span,
+            } => Self::TypeAlias {
+                name: name.clone(),
+                type_params: type_params.clone(),
+                target: SurfaceType::from(target),
+                span: span.clone(),
+            },
+        }
+    }
+}
+"""
+
+
+def render_parse_surface_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
+    parts = [
+        render_parse_surface_record(records["SurfaceModule"]),
+        render_parse_surface_record(records["SurfaceParam"]),
+        render_parse_surface_record(records["SurfaceField"]),
+        render_parse_surface_record(records["SurfaceVariant"]),
+        render_parse_surface_record(records["SurfaceRecordField"]),
+        render_parse_surface_record(records["SurfaceMatchArm"]),
+        render_parse_surface_record(records["SurfacePatternField"]),
+        render_parse_surface_sum("VariantPayload", sums["VariantPayload"]),
+        render_parse_surface_sum("SurfaceType", sums["SurfaceType"]),
+        render_parse_surface_sum("SurfacePattern", sums["SurfacePattern"]),
+        render_parse_surface_sum("SurfaceLiteral", sums["SurfaceLiteral"]),
+        render_parse_surface_sum("SurfaceExpr", sums["SurfaceExpr"]),
+        render_parse_surface_sum("SurfaceItem", sums["SurfaceItem"]),
+        PARSE_SURFACE_CONVERSIONS_TEMPLATE.strip(),
+    ]
+    return "\n\n".join(parts)
+
+
 def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
     parts = [
         render_sum(
@@ -692,6 +1098,10 @@ def expected_outputs() -> dict[Path, str]:
         SRC_DIR / "serialize_generated.rs": format_with_header(
             "src/v3/compiler/runtime_mirrors.dag",
             render_record(records["DagDifference"]) + "\n\n" + SERIALIZE_FUNCTIONS_TEMPLATE.rstrip(),
+        ),
+        SRC_DIR / "parse_surface_generated.rs": format_with_header(
+            "src/v3/compiler/runtime_mirrors.dag",
+            render_parse_surface_module(records, sums),
         ),
         SRC_DIR / "dag_scalar_generated.rs": format_with_header(
             "src/v3/std/substrate.dag",

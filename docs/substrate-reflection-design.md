@@ -2501,6 +2501,17 @@ aren't expressible in `.dag`, so a `.dag` parser can't produce
 them and a `.dag` lowering pass can't consume them. L3 cannot
 start until L1 ships.
 
+**SG-3f status note (2026-04-20).** The parse-surface foundation is
+now materially in place: `src/v3/compiler/runtime_mirrors.dag`
+declares `SurfaceModule`, `SurfaceItem`, `SurfaceExpr`,
+`SurfaceType`, `SurfacePattern`, `SurfaceLiteral`, and the supporting
+record/payload carriers; `scripts/regen_runtime_mirrors.py` projects
+that authority into `src/v3/compiler/src/parse_surface_generated.rs`;
+and `src/v3/spec/rust.dag` binds Rust `TypeRealization` entries for
+the reflected Surface* types. This does **not** retire `parse.rs` or
+`lower.rs`; it discharges the prerequisite that the lowerer cutover
+needs: the parse surface no longer exists only as handwritten Rust.
+
 **Why L2 (consumer migrations) comes before L3 (pipeline
 migrations).** Consumer migrations are less integrated — porting
 complexity from v2 to v3 doesn't break the compile loop. Pipeline

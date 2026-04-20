@@ -1,5 +1,201 @@
 module v3.compiler.runtime_mirrors
 
+import std.list { List }
+import v3.std.substrate { SourceSpan, OperatorKind }
+
 type DagDifference {
   detail: String
 }
+
+// SG-3f — parse-surface reflection foundation.
+//
+// These declarations mirror the parser's Surface* carriers so they
+// exist as substrate authority rather than only as handwritten Rust
+// types in `parse.rs`. The parser still constructs its native Rust
+// structs/enums today; SG-3f's job is the structural foundation:
+// lower.dag can now target a declared surface schema instead of
+// inventing a parallel one later.
+type SurfaceModule {
+  items: List<SurfaceItem>
+}
+
+type SurfaceParam {
+  name: String
+  ty: SurfaceType
+  refinement: SurfaceExpr?
+}
+
+type SurfaceField {
+  name: String
+  ty: SurfaceType
+}
+
+type SurfaceVariant {
+  name: String
+  payload: VariantPayload
+  span: SourceSpan
+}
+
+type VariantPayload
+  = Positional(List<SurfaceType>)
+  | Record(List<SurfaceField>)
+
+type SurfaceType
+  = Named { name: String, span: SourceSpan }
+  | Parameterized {
+      name: String
+      args: List<SurfaceType>
+      span: SourceSpan
+    }
+  | Optional {
+      inner: SurfaceType
+      span: SourceSpan
+    }
+  | Arrow {
+      inputs: List<SurfaceType>
+      output: SurfaceType
+      span: SourceSpan
+    }
+
+type SurfaceRecordField {
+  name: String
+  value: SurfaceExpr
+  span: SourceSpan
+}
+
+type SurfaceMatchArm {
+  pattern: SurfacePattern
+  body: SurfaceExpr
+  span: SourceSpan
+}
+
+type SurfacePatternField {
+  name: String
+  binding: String
+  span: SourceSpan
+}
+
+type SurfacePattern
+  = BareVariant { name: String, span: SourceSpan }
+  | VariantWith {
+      name: String
+      binding: String
+      span: SourceSpan
+    }
+  | VariantFields {
+      name: String
+      fields: List<SurfacePatternField>
+      span: SourceSpan
+    }
+
+type SurfaceLiteral
+  = Int(Int)
+  | Bool(Bool)
+  | String(String)
+
+type SurfaceExpr
+  = Literal { value: SurfaceLiteral, span: SourceSpan }
+  | Var { name: String, span: SourceSpan }
+  | Path {
+      segments: List<String>
+      segment_spans: List<SourceSpan>
+      span: SourceSpan
+    }
+  | Call {
+      target: String
+      args: List<SurfaceExpr>
+      span: SourceSpan
+    }
+  | VariantRecord {
+      target: String
+      fields: List<SurfaceRecordField>
+      span: SourceSpan
+    }
+  | Operator {
+      op: OperatorKind
+      args: List<SurfaceExpr>
+      span: SourceSpan
+    }
+  | Lambda {
+      params: List<String>
+      body: SurfaceExpr
+      span: SourceSpan
+    }
+  | If {
+      cond: SurfaceExpr
+      then_branch: SurfaceExpr
+      else_branch: SurfaceExpr
+      span: SourceSpan
+    }
+  | Match {
+      scrutinee: SurfaceExpr
+      arms: List<SurfaceMatchArm>
+      span: SourceSpan
+    }
+  | Record {
+      fields: List<SurfaceRecordField>
+      span: SourceSpan
+    }
+  | List {
+      elements: List<SurfaceExpr>
+      span: SourceSpan
+    }
+
+type SurfaceItem
+  = Let {
+      name: String
+      type_ann: SurfaceType?
+      expr: SurfaceExpr
+    }
+  | Fn {
+      name: String
+      type_params: List<String>
+      params: List<SurfaceParam>
+      return_type: SurfaceType
+      body: SurfaceExpr
+      span: SourceSpan
+    }
+  | FnExternalBody {
+      name: String
+      type_params: List<String>
+      params: List<SurfaceParam>
+      return_type: SurfaceType
+      body_span: SourceSpan
+      span: SourceSpan
+    }
+  | Data {
+      name: String
+      ty: SurfaceType
+      body: SurfaceExpr?
+      body_span: SourceSpan
+      span: SourceSpan
+    }
+  | Module { path: List<String>, span: SourceSpan }
+  | Import {
+      path: List<String>
+      names: List<String>
+      span: SourceSpan
+    }
+  | TypeAtom {
+      name: String
+      type_params: List<String>
+      span: SourceSpan
+    }
+  | TypeRecord {
+      name: String
+      type_params: List<String>
+      fields: List<SurfaceField>
+      span: SourceSpan
+    }
+  | TypeSum {
+      name: String
+      type_params: List<String>
+      variants: List<SurfaceVariant>
+      span: SourceSpan
+    }
+  | TypeAlias {
+      name: String
+      type_params: List<String>
+      target: SurfaceType
+      span: SourceSpan
+    }
