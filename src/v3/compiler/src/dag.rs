@@ -80,6 +80,10 @@ impl NodeId {
     fn index(self) -> usize {
         self.0 as usize
     }
+
+    pub fn raw(self) -> u32 {
+        self.0
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1747,6 +1751,10 @@ impl Dag {
 
     pub fn clusters(&self) -> &[Cluster] {
         &self.clusters
+    }
+
+    pub(crate) fn optional_match_disjs(&self) -> &HashMap<DeclarationId, DeclarationId> {
+        &self.optional_match_disjs
     }
 
     pub fn cluster(&self, id: ClusterId) -> &Cluster {

@@ -1,0 +1,722 @@
+use std::fmt::Write;
+use std::process::{Command, Stdio};
+
+use crate::dag::{
+    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern,
+    CardinalityBound, Cluster, ClusterId, ComparisonOp, Dag, Declaration, DeclarationId, Field,
+    FieldValue, IntraClusterCall, LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent,
+    NodeId, NonEmptyList, NonSingletonList, OperatorKind, ParamRef, Path, PayloadBinding, Port,
+    PortId, PortState, TemplateArgument, TransformNode, TransformRef, TransformTarget, TypeConnective,
+    ValueBody, ValueNode,
+};
+use crate::diagnostics::{Diagnostic, DiagnosticTable};
+
+const HEADER: &str =
+    "// AUTO-GENERATED from `dsl/std/*.dag` via `regen_bootstrap`.\n\
+     // Regenerate instead of hand-editing.\n\n";
+
+pub fn render_bootstrap_std_generated_rs(dag: &Dag) -> Result<String, String> {
+    let rust = emit_bootstrap_std_module(dag);
+    rustfmt_stdout(&format!("{HEADER}{rust}"))
+}
+
+fn rustfmt_stdout(combined: &str) -> Result<String, String> {
+    let mut child = Command::new("rustfmt")
+        .arg("--emit")
+        .arg("stdout")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn rustfmt: {e}"))?;
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(combined.as_bytes())
+        .map_err(|e| format!("write rustfmt stdin: {e}"))?;
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("wait rustfmt: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "rustfmt failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    String::from_utf8(output.stdout).map_err(|e| format!("rustfmt stdout utf-8: {e}"))
+}
+
+fn emit_bootstrap_std_module(dag: &Dag) -> String {
+    let mut out = String::new();
+    out.push_str("pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {\n");
+    out.push_str("    Dag {\n");
+    push_field(&mut out, "nodes", &render_behaviors(dag.nodes()), 2);
+    push_field(&mut out, "declarations", &render_declarations(dag.declarations()), 2);
+    push_field(&mut out, "ports", &render_ports(dag), 2);
+    push_field(&mut out, "diagnostics", &render_diagnostics(dag), 2);
+    push_field(&mut out, "next_node_id", &dag.nodes().len().to_string(), 2);
+    push_field(
+        &mut out,
+        "next_declaration_id",
+        &dag.declarations().len().to_string(),
+        2,
+    );
+    push_field(&mut out, "next_port_id", &dag.ports().len().to_string(), 2);
+    out.push_str("        primitives: PrimitiveCache::default(),\n");
+    out.push_str("        substrate_markers: SubstrateMarkers::default(),\n");
+    out.push_str("        realization_metas: RealizationMetaCache::default(),\n");
+    out.push_str("        target_syntax: TargetSyntaxCache::default(),\n");
+    out.push_str("        stdlib_types: StdlibTypeCache::default(),\n");
+    out.push_str("        emit_anchors: EmitAnchorCache::default(),\n");
+    out.push_str(
+        "        pattern_binding_rule_variants: PatternBindingRuleVariants::default(),\n",
+    );
+    out.push_str("        variant_payload_field_access_rule_variants: VariantPayloadFieldAccessRuleVariants::default(),\n");
+    out.push_str("        verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),\n");
+    push_field(&mut out, "clusters", &render_clusters(dag), 2);
+    push_field(
+        &mut out,
+        "optional_match_disjs",
+        &render_optional_match_disjs(dag),
+        2,
+    );
+    out.push_str("    }\n");
+    out.push_str("}\n");
+    out
+}
+
+fn push_field(out: &mut String, name: &str, value: &str, indent: usize) {
+    let padding = " ".repeat(indent * 4);
+    let _ = writeln!(out, "{padding}{name}: {value},");
+}
+
+fn render_declarations(declarations: &[Declaration]) -> String {
+    let mut out = String::from("vec![\n");
+    for declaration in declarations {
+        let _ = writeln!(out, "        {},", render_declaration(declaration));
+    }
+    out.push_str("    ]");
+    out
+}
+
+fn render_declaration(declaration: &Declaration) -> String {
+    format!(
+        "Declaration {{ id: {}, name: {}, connective: {}, type_params: {}, meta_tag: {}, inhabits: {}, value_body: {}, refinement: {}, span: {} }}",
+        render_declaration_id(declaration.id),
+        render_opt_string(declaration.name.as_deref()),
+        render_type_connective(&declaration.connective),
+        render_declaration_id_vec(&declaration.type_params),
+        render_opt_declaration_id(declaration.meta_tag),
+        render_opt_declaration_id(declaration.inhabits),
+        render_opt_value_body(declaration.value_body.as_ref()),
+        render_opt_declaration_id(declaration.refinement),
+        render_source_span(&declaration.span),
+    )
+}
+
+fn render_type_connective(connective: &TypeConnective) -> String {
+    match connective {
+        TypeConnective::Atom(payload) => format!("TypeConnective::Atom({})", render_atom_payload(payload)),
+        TypeConnective::Conj { children } => {
+            format!("TypeConnective::Conj {{ children: {} }}", render_fields(children))
+        }
+        TypeConnective::Disj { variants } => {
+            format!("TypeConnective::Disj {{ variants: {} }}", render_fields(variants))
+        }
+        TypeConnective::Arrow {
+            inputs,
+            output,
+            body,
+        } => format!(
+            "TypeConnective::Arrow {{ inputs: {}, output: {}, body: {} }}",
+            render_declaration_id_vec(inputs),
+            render_declaration_id(*output),
+            render_arrow_body(body),
+        ),
+        TypeConnective::Cardinality { element, bound } => format!(
+            "TypeConnective::Cardinality {{ element: {}, bound: {} }}",
+            render_declaration_id(*element),
+            render_cardinality_bound(bound),
+        ),
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => format!(
+            "TypeConnective::Instantiation {{ template: {}, arguments: {} }}",
+            render_declaration_id(*template),
+            render_template_arguments(arguments),
+        ),
+    }
+}
+
+fn render_fields(fields: &[Field]) -> String {
+    let values: Vec<String> = fields
+        .iter()
+        .map(|field| {
+            format!(
+                "Field {{ label: {:?}.to_string(), ty: {} }}",
+                field.label,
+                render_declaration_id(field.ty)
+            )
+        })
+        .collect();
+    render_vec(&values)
+}
+
+fn render_atom_payload(payload: &AtomPayload) -> String {
+    match payload {
+        AtomPayload::Literal(bits) => format!("AtomPayload::Literal({})", render_literal_bits(bits)),
+        AtomPayload::UnresolvedIdentifier(name) => {
+            format!("AtomPayload::UnresolvedIdentifier({name:?}.to_string())")
+        }
+        AtomPayload::ResolvedByStructure(id) => {
+            format!("AtomPayload::ResolvedByStructure({})", render_declaration_id(*id))
+        }
+        AtomPayload::ResolvedByName(id) => {
+            format!("AtomPayload::ResolvedByName({})", render_declaration_id(*id))
+        }
+        AtomPayload::TypeParam(name) => format!("AtomPayload::TypeParam({name:?}.to_string())"),
+    }
+}
+
+fn render_arrow_body(body: &ArrowBody) -> String {
+    match body {
+        ArrowBody::UserDefined(id) => format!("ArrowBody::UserDefined({})", render_node_id(*id)),
+        ArrowBody::ExternalRealization(id) => {
+            format!("ArrowBody::ExternalRealization({})", render_declaration_id(*id))
+        }
+        ArrowBody::Pending => "ArrowBody::Pending".to_string(),
+        ArrowBody::NoBody => "ArrowBody::NoBody".to_string(),
+        ArrowBody::Unparsed(span) => format!("ArrowBody::Unparsed({})", render_source_span(span)),
+    }
+}
+
+fn render_cardinality_bound(bound: &CardinalityBound) -> String {
+    match bound {
+        CardinalityBound::Exact(value) => format!("CardinalityBound::Exact({value})"),
+        CardinalityBound::AtMostOne => "CardinalityBound::AtMostOne".to_string(),
+        CardinalityBound::Unbounded => "CardinalityBound::Unbounded".to_string(),
+    }
+}
+
+fn render_template_arguments(arguments: &[TemplateArgument]) -> String {
+    let values: Vec<String> = arguments
+        .iter()
+        .map(|arg| {
+            format!(
+                "TemplateArgument {{ parameter: {}, value: {} }}",
+                render_declaration_id(arg.parameter),
+                render_declaration_id(arg.value)
+            )
+        })
+        .collect();
+    render_vec(&values)
+}
+
+fn render_opt_value_body(value_body: Option<&ValueBody>) -> String {
+    match value_body {
+        Some(value_body) => format!("Some({})", render_value_body(value_body)),
+        None => "None".to_string(),
+    }
+}
+
+fn render_value_body(value_body: &ValueBody) -> String {
+    match value_body {
+        ValueBody::Unparsed(span) => format!("ValueBody::Unparsed({})", render_source_span(span)),
+        ValueBody::Structural { fields } => {
+            format!("ValueBody::Structural {{ fields: {} }}", render_named_field_values(fields))
+        }
+        ValueBody::Scalar(bits) => format!("ValueBody::Scalar({})", render_literal_bits(bits)),
+    }
+}
+
+fn render_named_field_values(fields: &[(String, FieldValue)]) -> String {
+    let values: Vec<String> = fields
+        .iter()
+        .map(|(label, value)| format!("({label:?}.to_string(), {})", render_field_value(value)))
+        .collect();
+    render_vec(&values)
+}
+
+fn render_field_value(value: &FieldValue) -> String {
+    match value {
+        FieldValue::Literal(bits) => format!("FieldValue::Literal({})", render_literal_bits(bits)),
+        FieldValue::Reference(id) => {
+            format!("FieldValue::Reference({})", render_declaration_id(*id))
+        }
+        FieldValue::Record(fields) => {
+            format!("FieldValue::Record({})", render_named_field_values(fields))
+        }
+        FieldValue::List(values) => {
+            let rendered: Vec<String> = values.iter().map(render_field_value).collect();
+            format!("FieldValue::List({})", render_vec(&rendered))
+        }
+        FieldValue::Variant {
+            constructor,
+            payload,
+        } => {
+            let rendered: Vec<String> = payload.iter().map(render_field_value).collect();
+            format!(
+                "FieldValue::Variant {{ constructor: {}, payload: {} }}",
+                render_declaration_id(*constructor),
+                render_vec(&rendered)
+            )
+        }
+    }
+}
+
+fn render_behaviors(behaviors: &[Behavior]) -> String {
+    let values: Vec<String> = behaviors.iter().map(render_behavior).collect();
+    render_vec(&values)
+}
+
+fn render_behavior(behavior: &Behavior) -> String {
+    match behavior {
+        Behavior::Value(node) => format!("Behavior::Value({})", render_value_node(node)),
+        Behavior::Transform(node) => {
+            format!("Behavior::Transform({})", render_transform_node(node))
+        }
+        Behavior::Branch(node) => format!("Behavior::Branch({})", render_branch_node(node)),
+        Behavior::Loop(node) => format!("Behavior::Loop({})", render_loop_node(node)),
+        Behavior::Bind(node) => format!("Behavior::Bind({})", render_bind_node(node)),
+    }
+}
+
+fn render_value_node(node: &ValueNode) -> String {
+    format!(
+        "ValueNode {{ id: {}, data: {}, output: {}, span: {}, lane2_workflow: None }}",
+        render_node_id(node.id),
+        render_literal_bits(&node.data),
+        render_port_id(node.output),
+        render_source_span(&node.span),
+    )
+}
+
+fn render_transform_node(node: &TransformNode) -> String {
+    format!(
+        "TransformNode {{ id: {}, target: {}, inputs: {}, output: {}, span: {} }}",
+        render_node_id(node.id),
+        render_transform_target(&node.target),
+        render_port_id_vec(&node.inputs),
+        render_port_id(node.output),
+        render_source_span(&node.span),
+    )
+}
+
+fn render_branch_node(node: &BranchNode) -> String {
+    format!(
+        "BranchNode {{ id: {}, input: {}, paths: {}, output: {}, span: {} }}",
+        render_node_id(node.id),
+        render_port_id(node.input),
+        render_paths(&node.paths),
+        render_port_id(node.output),
+        render_source_span(&node.span),
+    )
+}
+
+fn render_loop_node(node: &LoopNode) -> String {
+    format!(
+        "LoopNode {{ id: {}, source: {}, init: {}, body: {}, bound: {}, output: {}, span: {} }}",
+        render_node_id(node.id),
+        render_port_id(node.source),
+        render_port_id(node.init),
+        render_node_id(node.body),
+        render_loop_bound(&node.bound),
+        render_port_id(node.output),
+        render_source_span(&node.span),
+    )
+}
+
+fn render_bind_node(node: &BindNode) -> String {
+    format!(
+        "BindNode {{ id: {}, name: {:?}.to_string(), value: {}, params: {}, span: {}, lane2_workflow: None }}",
+        node.id.raw(),
+        node.name,
+        render_port_id(node.value),
+        render_port_id_vec(&node.params),
+        render_source_span(&node.span),
+    )
+}
+
+fn render_transform_target(target: &TransformTarget) -> String {
+    match target {
+        TransformTarget::Callable(id) => {
+            format!("TransformTarget::Callable({})", render_declaration_id(*id))
+        }
+        TransformTarget::FieldProject {
+            field_label,
+            field_child,
+        } => format!(
+            "TransformTarget::FieldProject {{ field_label: {field_label:?}.to_string(), field_child: {} }}",
+            render_opt_declaration_id(*field_child),
+        ),
+        TransformTarget::Operator(kind) => {
+            format!("TransformTarget::Operator({})", render_operator_kind(kind))
+        }
+    }
+}
+
+fn render_operator_kind(kind: &OperatorKind) -> String {
+    match kind {
+        OperatorKind::Arithmetic(op) => {
+            format!("OperatorKind::Arithmetic({})", render_arithmetic_op(op))
+        }
+        OperatorKind::Comparison(op) => {
+            format!("OperatorKind::Comparison({})", render_comparison_op(op))
+        }
+        OperatorKind::Logical(op) => format!("OperatorKind::Logical({})", render_logical_op(op)),
+    }
+}
+
+fn render_arithmetic_op(op: &ArithmeticOp) -> String {
+    match op {
+        ArithmeticOp::Add => "ArithmeticOp::Add".to_string(),
+        ArithmeticOp::Sub => "ArithmeticOp::Sub".to_string(),
+        ArithmeticOp::Mul => "ArithmeticOp::Mul".to_string(),
+        ArithmeticOp::Div => "ArithmeticOp::Div".to_string(),
+    }
+}
+
+fn render_comparison_op(op: &ComparisonOp) -> String {
+    match op {
+        ComparisonOp::Eq => "ComparisonOp::Eq".to_string(),
+        ComparisonOp::Ne => "ComparisonOp::Ne".to_string(),
+        ComparisonOp::Lt => "ComparisonOp::Lt".to_string(),
+        ComparisonOp::Le => "ComparisonOp::Le".to_string(),
+        ComparisonOp::Gt => "ComparisonOp::Gt".to_string(),
+        ComparisonOp::Ge => "ComparisonOp::Ge".to_string(),
+    }
+}
+
+fn render_logical_op(op: &LogicalOp) -> String {
+    match op {
+        LogicalOp::And => "LogicalOp::And".to_string(),
+        LogicalOp::Or => "LogicalOp::Or".to_string(),
+    }
+}
+
+fn render_paths(paths: &[Path]) -> String {
+    let values: Vec<String> = paths
+        .iter()
+        .map(|path| {
+            format!(
+                "Path {{ body: {}, output: {}, pattern: {}, binding: {} }}",
+                render_node_id(path.body),
+                render_port_id(path.output),
+                render_branch_pattern(&path.pattern),
+                render_opt_payload_binding(path.binding.as_ref()),
+            )
+        })
+        .collect();
+    render_vec(&values)
+}
+
+fn render_branch_pattern(pattern: &BranchPattern) -> String {
+    match pattern {
+        BranchPattern::UnresolvedVariant { name, span } => format!(
+            "BranchPattern::UnresolvedVariant {{ name: {name:?}.to_string(), span: {} }}",
+            render_source_span(span)
+        ),
+        BranchPattern::ResolvedVariant(id) => {
+            format!("BranchPattern::ResolvedVariant({})", render_declaration_id(*id))
+        }
+    }
+}
+
+fn render_opt_payload_binding(binding: Option<&PayloadBinding>) -> String {
+    match binding {
+        Some(binding) => format!(
+            "Some(PayloadBinding {{ binding_name: {:?}.to_string(), payload_port: {} }})",
+            binding.binding_name,
+            render_port_id(binding.payload_port)
+        ),
+        None => "None".to_string(),
+    }
+}
+
+fn render_loop_bound(bound: &LoopBound) -> String {
+    match bound {
+        LoopBound::Cardinality { count } => {
+            format!("LoopBound::Cardinality {{ count: {} }}", render_port_id(*count))
+        }
+        LoopBound::Descent { cluster } => {
+            format!("LoopBound::Descent {{ cluster: {} }}", render_cluster_id(*cluster))
+        }
+    }
+}
+
+fn render_ports(dag: &Dag) -> String {
+    let mut ports: Vec<&Port> = dag.ports().iter().collect();
+    ports.sort_by_key(|port| port.id().raw());
+    let values: Vec<String> = ports
+        .iter()
+        .map(|port| {
+            format!(
+                "({}, Port {{ id: {}, state: {}, produced_by: {} }})",
+                render_port_id(port.id()),
+                render_port_id(port.id()),
+                render_port_state(port.state()),
+                render_opt_node_id(port.produced_by),
+            )
+        })
+        .collect();
+    format!("HashMap::from({})", render_vec(&values))
+}
+
+fn render_port_state(state: &PortState) -> String {
+    match state {
+        PortState::Uninferred => "PortState::Uninferred".to_string(),
+        PortState::Resolved(shape) => {
+            format!("PortState::Resolved(TypeShape::new({}))", render_declaration_id(shape.declaration))
+        }
+        PortState::Unresolved => "PortState::Unresolved".to_string(),
+    }
+}
+
+fn render_diagnostics(dag: &Dag) -> String {
+    let mut entries: Vec<_> = dag.diagnostics().iter().collect();
+    entries.sort_by_key(|(port, _)| port.raw());
+    let mut out = String::from("{ let mut table = DiagnosticTable::new();\n");
+    for (port, diagnostic) in entries {
+        let _ = writeln!(
+            out,
+            "        table.insert({}, {});",
+            render_port_id(port),
+            render_diagnostic(diagnostic)
+        );
+    }
+    out.push_str("        table }\n");
+    out
+}
+
+fn render_diagnostic(diagnostic: &Diagnostic) -> String {
+    match diagnostic {
+        Diagnostic::TokenizerError {
+            message,
+            span,
+            fixes,
+        } => format!(
+            "Diagnostic::TokenizerError {{ message: {message:?}.to_string(), span: {}, fixes: {} }}",
+            render_source_span(span),
+            render_corrections(fixes),
+        ),
+        Diagnostic::ParseError {
+            message,
+            span,
+            fixes,
+        } => format!(
+            "Diagnostic::ParseError {{ message: {message:?}.to_string(), span: {}, fixes: {} }}",
+            render_source_span(span),
+            render_corrections(fixes),
+        ),
+        Diagnostic::TypeMismatch {
+            expected,
+            actual,
+            span,
+            fixes,
+        } => format!(
+            "Diagnostic::TypeMismatch {{ expected: TypeShape::new({}), actual: TypeShape::new({}), span: {}, fixes: {} }}",
+            render_declaration_id(expected.declaration),
+            render_declaration_id(actual.declaration),
+            render_source_span(span),
+            render_corrections(fixes),
+        ),
+        Diagnostic::ArityMismatch {
+            function,
+            expected,
+            actual,
+            span,
+            fixes,
+        } => format!(
+            "Diagnostic::ArityMismatch {{ function: {function:?}.to_string(), expected: {expected}, actual: {actual}, span: {}, fixes: {} }}",
+            render_source_span(span),
+            render_corrections(fixes),
+        ),
+        Diagnostic::ResolveError { name, span, fixes } => format!(
+            "Diagnostic::ResolveError {{ name: {name:?}.to_string(), span: {}, fixes: {} }}",
+            render_source_span(span),
+            render_corrections(fixes),
+        ),
+        Diagnostic::BranchConditionNotBool {
+            port,
+            actual_type,
+            span,
+            fixes,
+        } => format!(
+            "Diagnostic::BranchConditionNotBool {{ port: {}, actual_type: {}, span: {}, fixes: {} }}",
+            render_port_id(*port),
+            render_opt_type_shape(*actual_type),
+            render_source_span(span),
+            render_corrections(fixes),
+        ),
+    }
+}
+
+fn render_corrections(corrections: &[crate::diagnostics::Correction]) -> String {
+    let values: Vec<String> = corrections
+        .iter()
+        .map(|correction| {
+            format!(
+                "Correction {{ description: {:?}.to_string(), span: {}, new_source: {:?}.to_string() }}",
+                correction.description,
+                render_source_span(&correction.span),
+                correction.new_source,
+            )
+        })
+        .collect();
+    render_vec(&values)
+}
+
+fn render_clusters(dag: &Dag) -> String {
+    let values: Vec<String> = dag
+        .clusters()
+        .iter()
+        .map(|cluster| render_cluster(cluster))
+        .collect();
+    render_vec(&values)
+}
+
+fn render_cluster(cluster: &Cluster) -> String {
+    format!(
+        "Cluster {{ members: {}, intra_cluster_calls: {} }}",
+        render_non_singleton_member_descents(&cluster.members),
+        render_non_empty_intra_cluster_calls(&cluster.intra_cluster_calls),
+    )
+}
+
+fn render_non_singleton_member_descents(values: &NonSingletonList<MemberDescent>) -> String {
+    format!(
+        "NonSingletonList {{ first: {}, second: {}, rest: {} }}",
+        render_member_descent(&values.first),
+        render_member_descent(&values.second),
+        render_vec(
+            &values
+                .rest
+                .iter()
+                .map(render_member_descent)
+                .collect::<Vec<_>>()
+        ),
+    )
+}
+
+fn render_member_descent(value: &MemberDescent) -> String {
+    format!(
+        "MemberDescent {{ param: ParamRef {{ member: {}, slot: {} }} }}",
+        render_node_id(value.param.member_of()),
+        value.param.slot_of(),
+    )
+}
+
+fn render_non_empty_intra_cluster_calls(values: &NonEmptyList<IntraClusterCall>) -> String {
+    format!(
+        "NonEmptyList {{ first: {}, rest: {} }}",
+        render_intra_cluster_call(&values.first),
+        render_vec(
+            &values
+                .rest
+                .iter()
+                .map(render_intra_cluster_call)
+                .collect::<Vec<_>>()
+        ),
+    )
+}
+
+fn render_intra_cluster_call(value: &IntraClusterCall) -> String {
+    format!(
+        "IntraClusterCall {{ transform: TransformRef({}) }}",
+        render_node_id(value.transform.node_id())
+    )
+}
+
+fn render_optional_match_disjs(dag: &Dag) -> String {
+    let mut entries: Vec<_> = dag.optional_match_disjs().iter().collect();
+    entries.sort_by_key(|(key, _)| key.raw());
+    let values: Vec<String> = entries
+        .into_iter()
+        .map(|(key, value)| {
+            format!(
+                "({}, {})",
+                render_declaration_id(*key),
+                render_declaration_id(*value)
+            )
+        })
+        .collect();
+    format!("HashMap::from({})", render_vec(&values))
+}
+
+fn render_literal_bits(bits: &LiteralBits) -> String {
+    match bits {
+        LiteralBits::Int(value) => format!("LiteralBits::Int({value})"),
+        LiteralBits::Bool(value) => format!("LiteralBits::Bool({value})"),
+        LiteralBits::String(value) => format!("LiteralBits::String({value:?}.to_string())"),
+    }
+}
+
+fn render_source_span(span: &crate::diagnostics::SourceSpan) -> String {
+    format!(
+        "SourceSpan::new({:?}, {}, {})",
+        span.file, span.byte_start, span.byte_end
+    )
+}
+
+fn render_opt_type_shape(shape: Option<crate::types::TypeShape>) -> String {
+    match shape {
+        Some(shape) => format!("Some(TypeShape::new({}))", render_declaration_id(shape.declaration)),
+        None => "None".to_string(),
+    }
+}
+
+fn render_declaration_id_vec(values: &[DeclarationId]) -> String {
+    let rendered: Vec<String> = values.iter().map(|id| render_declaration_id(*id)).collect();
+    render_vec(&rendered)
+}
+
+fn render_port_id_vec(values: &[PortId]) -> String {
+    let rendered: Vec<String> = values.iter().map(|id| render_port_id(*id)).collect();
+    render_vec(&rendered)
+}
+
+fn render_opt_declaration_id(id: Option<DeclarationId>) -> String {
+    match id {
+        Some(id) => format!("Some({})", render_declaration_id(id)),
+        None => "None".to_string(),
+    }
+}
+
+fn render_opt_node_id(id: Option<NodeId>) -> String {
+    match id {
+        Some(id) => format!("Some({})", render_node_id(id)),
+        None => "None".to_string(),
+    }
+}
+
+fn render_opt_string(value: Option<&str>) -> String {
+    match value {
+        Some(value) => format!("Some({value:?}.to_string())"),
+        None => "None".to_string(),
+    }
+}
+
+fn render_declaration_id(id: DeclarationId) -> String {
+    format!("DeclarationId({})", id.raw())
+}
+
+fn render_port_id(id: PortId) -> String {
+    format!("PortId({})", id.raw())
+}
+
+fn render_node_id(id: NodeId) -> String {
+    format!("NodeId({})", id.index())
+}
+
+fn render_cluster_id(id: ClusterId) -> String {
+    format!("ClusterId({})", id.raw())
+}
+
+fn render_vec(values: &[String]) -> String {
+    if values.is_empty() {
+        "vec![]".to_string()
+    } else {
+        format!("vec![{}]", values.join(", "))
+    }
+}
