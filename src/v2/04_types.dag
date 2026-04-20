@@ -27,7 +27,7 @@ import v2.std.core {
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional,
   NoExprData, ExprLiteral, ExprError,
-  ExprErrorKind, SemanticExprError,
+  ExprErrorKind, SemanticExprError, InternalExprError,
   make_expr_node, make_expr_error_node,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   is_kernel_type,
@@ -38,7 +38,8 @@ import v2.std.core {
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
   default_ident_span, kernel_span,
-  authored_name_at
+  authored_name_at,
+  ErrorNode, make_error_node, InternalError
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -164,10 +165,21 @@ fn bare_map_node() -> Node? {
 // Dissolution point: Tier 3 / FF-9 (declaration-driven construction).
 // =========================================================================
 
+// Typed diagnostic for kernel algebra / container registry mismatch (no
+// `container_param_name` for `kind_name`). Call at every miss boundary that
+// cannot reach `inference_error` with a source span.
+fn kernel_container_profile_miss_diagnostic(kind_name: String) -> ErrorNode {
+  let msg = concat("missing kernel container profile: ", kind_name)
+  make_error_node(
+    diagnostic: InternalError { message: msg, span: make_span(start: 0, end: 0) },
+    module_name: "v2.compiler.infer_types"
+  )
+}
+
 // Type-position sentinel when `kernel_algebra_profile` has no entry for
-// `kind_name` (no `container_param_name` authority). Structurally distinct
-// from synthesized containers: CompilerError in inferred + ExprError, not
-// Resolved { node: … } with real children.
+// `kind_name`. Paired with `kernel_container_profile_miss_diagnostic` wherever
+// a diagnostic list is threaded; expr_data uses InternalExprError (compiler
+// invariant), not user-facing SemanticExprError.
 fn missing_kernel_container_profile_type(kind_name: String) -> Node {
   let msg = concat("missing kernel container profile: ", kind_name)
   Node {
@@ -182,7 +194,7 @@ fn missing_kernel_container_profile_type(kind_name: String) -> Node {
     uses: [], body: none, transport: none, properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false,
     match_pattern: none,
-    expr_data: ExprError { kind: SemanticExprError, message: msg }
+    expr_data: ExprError { kind: InternalExprError, message: msg }
   }
 }
 
