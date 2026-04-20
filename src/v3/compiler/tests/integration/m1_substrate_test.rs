@@ -290,11 +290,8 @@ fn m17_comparison_operator_lowers_to_structural_transform_target() {
     // arithmetic-vs-comparison split is structural, not a sibling
     // string match.
     let dag = cached_compile_to_dag("let y = 1 < 2", "test.v3");
-    let cmp_node = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_transform)
-        .find(|t| t.span.file == "test.v3")
+    let cmp_node = transforms_in_source_file(&dag, "test.v3")
+        .next()
         .expect("Transform node exists");
     match &cmp_node.target {
         TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)) => {}
@@ -311,13 +308,8 @@ fn m17_user_function_call_lowers_to_callable_target() {
     // committed to.
     let src = "fn f(x: Int) -> Int = x + 1\nlet y = f(5)";
     let dag = cached_compile_to_dag(src, "test.v3");
-    // The outermost Transform is the f(5) call — find it by
-    // looking for the one whose target resolves to "f".
-    let f_call = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_transform)
-        .find(|t| t.span.file == "test.v3" && matches!(&t.target, TransformTarget::Callable(_)))
+    let f_call = transforms_in_source_file(&dag, "test.v3")
+        .find(|t| matches!(&t.target, TransformTarget::Callable(_)))
         .expect("Callable Transform exists");
     let target_id = match &f_call.target {
         TransformTarget::Callable(id) => *id,
@@ -455,12 +447,7 @@ fn m17_r9_arithmetic_operator_walks_to_algebra_field() {
     // TypeMismatch. This test asserts the happy path compiles
     // cleanly and the operator output is typed as Int.
     let dag = cached_compile_to_dag("let x = 1 + 2", "test.v3");
-    let bind_x = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "x")
-        .expect("Bind(x) exists");
+    let bind_x = bind_named(&dag, "x");
     let int_shape = dag.int_shape().expect("Int cached at bootstrap");
     match dag.port(bind_x.value).state() {
         v3_compiler::dag::PortState::Resolved(ty) if *ty == int_shape => {}
