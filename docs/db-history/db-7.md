@@ -1,0 +1,11 @@
+# DB-7 History
+
+Collected receipts and reconciliation notes moved out of [ROADMAP.md](../../ROADMAP.md).
+
+**DB-7 symbolic-cost algebra and per-Behavior lens landed.** Authority: [`design-symbolic-cost-algebra.md`](docs/design-symbolic-cost-algebra.md). Three .dag files + a Rust mirror + acceptance tests:
+
+**Loop cost for `LoopBound::Descent` clusters uses `LoopNode.source` as the size-variable carrier.** The cluster's `members: NonSingletonList<MemberDescent>` and `intra_cluster_calls` carry the descent witnesses needed for the termination proof (#519), but the loop's own `source` port is the runtime value being descended upon — which is the honest recursion-depth bound for both `Cardinality` and `Descent` bounds. Richer per-member analysis (distinguishing list-descent from bounded-integer descent so `Descent` clusters report `ConstantCost` for bounded-int descent instead of `LinearCost`) is a Stage 2d follow-up, flagged in DB-7 §"Recursion depth bounds".
+
+**Substrate gap (class-5): `data symbolic_cost_dimension: Dimension<SymbolicCost> = { ... }` remains DEFERRED** — v3's surface grammar still rejects the record-literal `data` body slice (DOWNSTREAM_REQUIREMENTS.md class-5 gap #3) needed to author the four function fields as declaration references. **Stage 2f core shipped without it:** `analyze_symbolic_cost_dimension` + `DimensionReport` are live; the `.dag` **value** receipt waits on the same grammar extension. Rationale + authority: DB-7 §"Dimension<SymbolicCost> wiring"; `cost.dag` points at the Rust interim entry.
+
+**Follow-up — `PolynomialCost.degree` typed carrier (not blocking, degree-arithmetic surface gates graduation).** `PolynomialCost { var, degree: Int }` — post-normalize, `degree >= 2` (degree = 1 collapses to `Linear`, degree = 0 to `Constant`). The raw `Int` admits 0, 1, and negatives; the domain constraint is behavioral, not structural. Replace with a typed carrier (`NonNegativeInt` at minimum; `DegreeAtLeastTwo` ideally). **Dissolution trigger:** DB-7's degree-arithmetic surface lands (multi-variable polynomial composition like `Polynomial(n, 2) * Polynomial(m, 3) = Polynomial<mixed>`), which needs numeric operations on `degree` and is the natural moment to introduce the typed carrier. **Yellow-flag threshold: 1 month** after the first degree-arithmetic fixture lands on the lens side.
