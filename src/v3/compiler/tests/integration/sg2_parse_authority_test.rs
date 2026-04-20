@@ -11,9 +11,9 @@ const CHECKED_IN_GENERATED: &str = include_str!("../../src/parse_generated.rs");
 
 #[test]
 fn runtime_mirrors_dag_compiles_cleanly_for_regen_parse() {
-    compile_to_dag(RUNTIME_MIRRORS_DAG, "src/v3/compiler/runtime_mirrors.dag").unwrap_or_else(|e| {
-        panic!("runtime_mirrors.dag should compile for regen_parse authority: {e:?}")
-    });
+    compile_to_dag(RUNTIME_MIRRORS_DAG, "src/v3/compiler/runtime_mirrors.dag").unwrap_or_else(
+        |e| panic!("runtime_mirrors.dag should compile for regen_parse authority: {e:?}"),
+    );
 }
 
 #[test]

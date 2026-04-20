@@ -20,7 +20,8 @@ const GENERATED_FILE: &str = "src/v3/compiler/src/parse_generated.rs";
 const SURFACE_TYPES_AUTHORITY_FILE: &str = "src/v3/compiler/runtime_mirrors.dag";
 const PARSER_BODY_REL: &str = "parse_parser_body.txt";
 
-const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/runtime_mirrors.dag` (Surface carriers)\n\
+const HEADER: &str =
+    "// AUTO-GENERATED from `src/v3/compiler/runtime_mirrors.dag` (Surface carriers)\n\
      // via `regen_parse` + `parse_parser_body.txt`. Regenerate instead of hand-editing.\n\n";
 
 fn main() {
