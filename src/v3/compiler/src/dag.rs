@@ -54,7 +54,6 @@ use crate::types::TypeShape;
 
 mod bootstrap_std_generated {
     use super::*;
-    use crate::diagnostics::DiagnosticTable;
 
     include!("bootstrap_std_generated.rs");
 }

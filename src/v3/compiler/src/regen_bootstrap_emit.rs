@@ -1,15 +1,16 @@
-use std::fmt::Write;
+use std::fmt::Write as FmtWrite;
+use std::io::Write as IoWrite;
 use std::process::{Command, Stdio};
 
 use crate::dag::{
     ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern,
     CardinalityBound, Cluster, ClusterId, ComparisonOp, Dag, Declaration, DeclarationId, Field,
     FieldValue, IntraClusterCall, LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent,
-    NodeId, NonEmptyList, NonSingletonList, OperatorKind, ParamRef, Path, PayloadBinding, Port,
-    PortId, PortState, TemplateArgument, TransformNode, TransformRef, TransformTarget,
-    TypeConnective, ValueBody, ValueNode,
+    NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PortId,
+    PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueBody,
+    ValueNode,
 };
-use crate::diagnostics::{Diagnostic, DiagnosticTable};
+use crate::diagnostics::Diagnostic;
 
 const HEADER: &str = "// AUTO-GENERATED from `dsl/std/*.dag` via `regen_bootstrap`.\n\
      // Regenerate instead of hand-editing.\n\n";
@@ -481,21 +482,20 @@ fn render_loop_bound(bound: &LoopBound) -> String {
 }
 
 fn render_ports(dag: &Dag) -> String {
-    let mut ports: Vec<&Port> = dag.ports().iter().collect();
-    ports.sort_by_key(|port| port.id().raw());
-    let values: Vec<String> = ports
-        .iter()
-        .map(|port| {
-            format!(
-                "({}, Port {{ id: {}, state: {}, produced_by: {} }})",
-                render_port_id(port.id()),
-                render_port_id(port.id()),
-                render_port_state(port.state()),
-                render_opt_node_id(port.produced_by),
-            )
-        })
-        .collect();
-    format!("HashMap::from({})", render_vec(&values))
+    let ports = dag.ports();
+    let mut out = String::from("{ let mut ports = HashMap::new();\n");
+    for port in &ports {
+        let _ = writeln!(
+            out,
+            "        ports.insert({}, Port {{ id: {}, state: {}, produced_by: {} }});",
+            render_port_id(port.id()),
+            render_port_id(port.id()),
+            render_port_state(port.state()),
+            render_opt_node_id(port.produced_by),
+        );
+    }
+    out.push_str("        ports }\n");
+    out
 }
 
 fn render_port_state(state: &PortState) -> String {
@@ -669,17 +669,17 @@ fn render_intra_cluster_call(value: &IntraClusterCall) -> String {
 fn render_optional_match_disjs(dag: &Dag) -> String {
     let mut entries: Vec<_> = dag.optional_match_disjs().iter().collect();
     entries.sort_by_key(|(key, _)| key.raw());
-    let values: Vec<String> = entries
-        .into_iter()
-        .map(|(key, value)| {
-            format!(
-                "({}, {})",
-                render_declaration_id(*key),
-                render_declaration_id(*value)
-            )
-        })
-        .collect();
-    format!("HashMap::from({})", render_vec(&values))
+    let mut out = String::from("{ let mut map = HashMap::new();\n");
+    for (key, value) in entries {
+        let _ = writeln!(
+            out,
+            "        map.insert({}, {});",
+            render_declaration_id(*key),
+            render_declaration_id(*value)
+        );
+    }
+    out.push_str("        map }\n");
+    out
 }
 
 fn render_literal_bits(bits: &LiteralBits) -> String {
@@ -747,7 +747,7 @@ fn render_port_id(id: PortId) -> String {
 }
 
 fn render_node_id(id: NodeId) -> String {
-    format!("NodeId({})", id.index())
+    format!("NodeId({})", id.raw())
 }
 
 fn render_cluster_id(id: ClusterId) -> String {

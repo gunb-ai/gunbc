@@ -900,6 +900,10 @@ pub fn compile_std_bootstrap_dag() -> Dag {
     dag
 }
 
+pub fn generated_std_bootstrap_dag() -> Dag {
+    Dag::std_fixture_bootstrap_snapshot()
+}
+
 pub fn default_fixed_point_source() -> &'static str {
     "let x: Int = 1 + 2\nlet y: Int = x + 3\n"
 }
