@@ -57,14 +57,8 @@ fn hand_built_operator_add_transform_carries_structural_target_and_int_shape() {
     );
     let int_shape = dag.int_shape().expect("bootstrap Int");
     assert_eq!(dag.port(out).state(), &PortState::Resolved(int_shape));
-    let producer = dag
-        .port(out)
-        .produced_by
-        .expect("transform producer");
-    let t = dag
-        .node(producer)
-        .as_transform()
-        .expect("transform node");
+    let producer = dag.port(out).produced_by.expect("transform producer");
+    let t = dag.node(producer).as_transform().expect("transform node");
     assert!(matches!(
         t.target,
         TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add))
@@ -280,15 +274,8 @@ fn m17_operator_lowers_to_structural_transform_target() {
     // anonymous stub declaration is allocated for the operator
     // symbol; the dispatch fact lives on the Transform's variant.
     let dag = cached_compile_to_dag("let x = 1 + 2", "test.v3");
-    // Scope to user-source transforms — std modules loaded by
-    // bootstrap (e.g. `src/v3/std/algebra.dag`) also push Transform
-    // nodes, so the first entry in `dag.nodes()` is no longer
-    // guaranteed to be the user's.
-    let add_node = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_transform)
-        .find(|t| t.span.file == "test.v3")
+    let add_node = transforms_in_source_file(&dag, "test.v3")
+        .next()
         .expect("Transform node exists");
     match &add_node.target {
         TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)) => {}

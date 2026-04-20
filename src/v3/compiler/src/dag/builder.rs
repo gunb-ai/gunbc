@@ -86,12 +86,7 @@ impl Dag {
     /// Every path body/output reference is validated before the node is pushed.
     /// The output port is resolved when every arm output already has the same
     /// resolved shape.
-    pub fn push_branch(
-        &mut self,
-        input: PortId,
-        paths: Vec<Path>,
-        span: SourceSpan,
-    ) -> PortId {
+    pub fn push_branch(&mut self, input: PortId, paths: Vec<Path>, span: SourceSpan) -> PortId {
         assert!(!paths.is_empty(), "push_branch requires at least one path");
         self.assert_port_exists(input, "push_branch(input)");
         for path in &paths {
