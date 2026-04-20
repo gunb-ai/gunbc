@@ -23,21 +23,73 @@ type PathTemplate {
   tokens: List<UrlPathToken>
 }
 
-fn parse_path_template(raw: String) -> PathTemplate {
+// 🟡 SCAFFOLD. This coproduct distinguishes successful segment tokenization
+// from malformed `{...}` structure while `std.http_path` is still a local
+// helper for effects derivation rather than a full diagnostic-producing
+// frontend surface. Richer source exists: once malformed REST path templates
+// are reported through a shared typed diagnostic/result carrier at the
+// compiler boundary, this local helper coproduct should dissolve into that
+// boundary-owned failure channel instead of originating its own enum.
+type PathSegmentTokensResult
+  = ParsedSegmentTokens { tokens: List<UrlPathToken> }
+  | MalformedPathSegment { segment: String, reason: String }
+
+// 🟡 SCAFFOLD. This is the boundary-facing parse result for HTTP path
+// templates only until effects derivation and its callers consume malformed
+// paths through a shared compiler diagnostic/result surface. Dissolution
+// trigger: the malformed-path signal is wired to the typed diagnostic carrier
+// at the compiler boundary in both v2 and v3, at which point this coproduct
+// becomes redundant and should collapse into that shared channel.
+type PathTemplateParseResult
+  = ParsedPathTemplate { template: PathTemplate }
+  | MalformedPathTemplate { raw: String, segment: String, reason: String }
+
+fn parse_path_template(raw: String) -> PathTemplateParseResult {
   let path_only = match raw |> split(delimiter: "?") |> first {
     Some { value: p } => p
     None => raw
   }
   let segments = path_only |> split(delimiter: "/") |> filter(s => s != "")
-  let tokens = segments |> flat_map(seg => parse_segment_tokens(seg: seg))
-  PathTemplate { tokens: tokens }
+  match segments |> first {
+    None => ParsedPathTemplate { template: PathTemplate { tokens: [] } }
+    Some { value: first_seg } =>
+      match parse_segment_tokens(seg: first_seg) {
+        MalformedPathSegment { segment: s, reason: r } =>
+          MalformedPathTemplate { raw: raw, segment: s, reason: r }
+        ParsedSegmentTokens { tokens: first_tokens } => {
+          let parsed = fold(segments |> skip(1),
+            init: ParsedPathTemplate { template: PathTemplate { tokens: first_tokens } },
+            f: (acc, seg) => match acc {
+              MalformedPathTemplate => acc
+              ParsedPathTemplate { template: path } =>
+                match parse_segment_tokens(seg: seg) {
+                  MalformedPathSegment { segment: s, reason: r } =>
+                    MalformedPathTemplate { raw: raw, segment: s, reason: r }
+                  ParsedSegmentTokens { tokens: seg_tokens } =>
+                    ParsedPathTemplate {
+                      template: PathTemplate { tokens: concat(path.tokens, seg_tokens) }
+                    }
+                }
+            }
+          )
+          parsed
+        }
+      }
+  }
 }
 
-fn parse_segment_tokens(seg: String) -> List<UrlPathToken> {
+fn parse_segment_tokens(seg: String) -> PathSegmentTokensResult {
   if !(seg |> contains("{")) {
-    [LiteralToken { text: seg }]
+    if seg |> contains("}") {
+      MalformedPathSegment { segment: seg, reason: "stray closing brace" }
+    } else {
+      ParsedSegmentTokens { tokens: [LiteralToken { text: seg }] }
+    }
   } else {
     let before_and_rest = seg |> split(delimiter: "{")
+    if count(before_and_rest) != 2 {
+      return MalformedPathSegment { segment: seg, reason: "multiple opening braces in one segment" }
+    }
     let prefix = match before_and_rest |> first {
       Some { value: p } => p
       None => ""
@@ -47,6 +99,9 @@ fn parse_segment_tokens(seg: String) -> List<UrlPathToken> {
       None => ""
     }
     let name_and_suffix = after_open |> split(delimiter: "}")
+    if prefix |> contains("}") || count(name_and_suffix) != 2 {
+      return MalformedPathSegment { segment: seg, reason: "missing closing brace or extra closing brace" }
+    }
     let param_name = match name_and_suffix |> first {
       Some { value: p } => p
       None => ""
@@ -64,7 +119,11 @@ fn parse_segment_tokens(seg: String) -> List<UrlPathToken> {
     let suffix_tokens = if suffix != "" {
       [LiteralToken { text: suffix }]
     } else { [] }
-    concat(prefix_tokens, param_tokens, suffix_tokens)
+    if param_name == "" || suffix |> contains("{") || suffix |> contains("}") {
+      MalformedPathSegment { segment: seg, reason: "invalid parameter segment structure" }
+    } else {
+      ParsedSegmentTokens { tokens: concat(prefix_tokens, param_tokens, suffix_tokens) }
+    }
   }
 }
 

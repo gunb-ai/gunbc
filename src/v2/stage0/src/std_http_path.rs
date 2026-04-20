@@ -6,6 +6,8 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::HashMap;
 use std::rc::Rc;
+use PathSegmentTokensResult::*;
+use PathTemplateParseResult::*;
 use UrlPathToken::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -20,7 +22,27 @@ pub struct PathTemplate {
     pub tokens: Rc<Vec<Rc<UrlPathToken>>>,
 }
 
-pub fn parse_path_template(raw: &String) -> Rc<PathTemplate> {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum PathSegmentTokensResult {
+    ParsedSegmentTokens { tokens: Rc<Vec<Rc<UrlPathToken>>> },
+    MalformedPathSegment { segment: String, reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum PathTemplateParseResult {
+    ParsedPathTemplate {
+        template: Rc<PathTemplate>,
+    },
+    MalformedPathTemplate {
+        raw: String,
+        segment: String,
+        reason: String,
+    },
+}
+
+pub fn parse_path_template(raw: &String) -> Rc<PathTemplateParseResult> {
     {
         let path_only = match Rc::new(
             raw.clone()
@@ -51,22 +73,92 @@ pub fn parse_path_template(raw: &String) -> Rc<PathTemplate> {
             }
             __result
         });
-        let tokens = Rc::new({
-            let mut __result = Vec::new();
-            for seg in segments.iter().cloned() {
-                __result.extend((*parse_segment_tokens(&seg)).iter().cloned());
-            }
-            __result
-        });
-        Rc::new(PathTemplate { tokens: tokens })
+        match segments.clone().first().cloned() {
+            None => Rc::new(PathTemplateParseResult::ParsedPathTemplate {
+                template: Rc::new(PathTemplate {
+                    tokens: Rc::new(vec![]),
+                }),
+            }),
+            Some(first_seg) => match (*parse_segment_tokens(&first_seg)).clone() {
+                PathSegmentTokensResult::MalformedPathSegment {
+                    segment: s,
+                    reason: r,
+                    ..
+                } => Rc::new(PathTemplateParseResult::MalformedPathTemplate {
+                    raw: raw.clone(),
+                    segment: s.clone(),
+                    reason: r.clone(),
+                }),
+                PathSegmentTokensResult::ParsedSegmentTokens {
+                    tokens: first_tokens,
+                    ..
+                } => {
+                    let parsed = Rc::new(
+                        segments
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    )
+                    .iter()
+                    .cloned()
+                    .fold(
+                        Rc::new(PathTemplateParseResult::ParsedPathTemplate {
+                            template: Rc::new(PathTemplate {
+                                tokens: first_tokens.clone(),
+                            }),
+                        }),
+                        |acc: Rc<PathTemplateParseResult>, seg: String| match (*acc.clone()).clone()
+                        {
+                            PathTemplateParseResult::MalformedPathTemplate { .. } => acc.clone(),
+                            PathTemplateParseResult::ParsedPathTemplate {
+                                template: path, ..
+                            } => match (*parse_segment_tokens(&seg)).clone() {
+                                PathSegmentTokensResult::MalformedPathSegment {
+                                    segment: s,
+                                    reason: r,
+                                    ..
+                                } => Rc::new(PathTemplateParseResult::MalformedPathTemplate {
+                                    raw: raw.clone(),
+                                    segment: s.clone(),
+                                    reason: r.clone(),
+                                }),
+                                PathSegmentTokensResult::ParsedSegmentTokens {
+                                    tokens: seg_tokens,
+                                    ..
+                                } => Rc::new(PathTemplateParseResult::ParsedPathTemplate {
+                                    template: Rc::new(PathTemplate {
+                                        tokens: v2_rt::concat(
+                                            path.tokens.clone(),
+                                            seg_tokens.clone(),
+                                        ),
+                                    }),
+                                }),
+                            },
+                        },
+                    );
+                    parsed
+                }
+            },
+        }
     }
 }
 
-pub fn parse_segment_tokens(seg: &String) -> Rc<Vec<Rc<UrlPathToken>>> {
+pub fn parse_segment_tokens(seg: &String) -> Rc<PathSegmentTokensResult> {
     if !v2_rt::contains(seg.clone(), "{".to_string()) {
-        Rc::new(vec![Rc::new(UrlPathToken::LiteralToken {
-            text: seg.clone(),
-        })])
+        if v2_rt::contains(seg.clone(), "}".to_string()) {
+            Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                segment: seg.clone(),
+                reason: "stray closing brace".to_string(),
+            })
+        } else {
+            Rc::new(PathSegmentTokensResult::ParsedSegmentTokens {
+                tokens: Rc::new(vec![Rc::new(UrlPathToken::LiteralToken {
+                    text: seg.clone(),
+                })]),
+            })
+        }
     } else {
         {
             let before_and_rest = Rc::new(
@@ -75,6 +167,12 @@ pub fn parse_segment_tokens(seg: &String) -> Rc<Vec<Rc<UrlPathToken>>> {
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>(),
             );
+            if ((before_and_rest.clone().len() as i64) != 2) {
+                return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                    segment: seg.clone(),
+                    reason: "multiple opening braces in one segment".to_string(),
+                });
+            }
             let prefix = match before_and_rest.clone().first().cloned() {
                 Some(p) => p.clone(),
                 None => "".to_string(),
@@ -89,6 +187,14 @@ pub fn parse_segment_tokens(seg: &String) -> Rc<Vec<Rc<UrlPathToken>>> {
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>(),
             );
+            if (v2_rt::contains(prefix.clone(), "}".to_string())
+                || ((name_and_suffix.clone().len() as i64) != 2))
+            {
+                return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                    segment: seg.clone(),
+                    reason: "missing closing brace or extra closing brace".to_string(),
+                });
+            }
             let param_name = match name_and_suffix.clone().first().cloned() {
                 Some(p) => p.clone(),
                 None => "".to_string(),
@@ -118,7 +224,22 @@ pub fn parse_segment_tokens(seg: &String) -> Rc<Vec<Rc<UrlPathToken>>> {
             } else {
                 Rc::new(vec![])
             };
-            v2_rt::concat(v2_rt::concat(prefix_tokens, param_tokens), suffix_tokens)
+            if (((param_name.clone().as_str() == "".to_string().as_str())
+                || v2_rt::contains(suffix.clone(), "{".to_string()))
+                || v2_rt::contains(suffix.clone(), "}".to_string()))
+            {
+                Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                    segment: seg.clone(),
+                    reason: "invalid parameter segment structure".to_string(),
+                })
+            } else {
+                Rc::new(PathSegmentTokensResult::ParsedSegmentTokens {
+                    tokens: v2_rt::concat(
+                        v2_rt::concat(prefix_tokens, param_tokens),
+                        suffix_tokens,
+                    ),
+                })
+            }
         }
     }
 }

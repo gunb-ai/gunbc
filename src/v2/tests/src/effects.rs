@@ -4,8 +4,22 @@ use std::rc::Rc;
 use v2_compiler::std_effects::*;
 use v2_compiler::std_http_path::{has_path_params, last_path_param, parse_path_template};
 
-fn derive(name: &str, method: &str, path: &str) -> Option<Rc<DerivedOpEffect>> {
-    derive_op_effect(name.to_string(), method.to_string(), path.to_string())
+fn parse_ok(path: &str) -> Rc<PathTemplate> {
+    match &*parse_path_template(&path.to_string()) {
+        PathTemplateParseResult::ParsedPathTemplate { template } => template.clone(),
+        other => panic!("expected parsed path template, got {other:?}"),
+    }
+}
+
+fn derive_result(name: &str, method: &str, path: &str) -> Rc<DeriveOpEffectResult> {
+    derive_op_effect(name.to_string(), &method.to_string(), path.to_string())
+}
+
+fn derive(name: &str, method: &str, path: &str) -> Rc<DerivedOpEffect> {
+    match &*derive_result(name, method, path) {
+        DeriveOpEffectResult::DerivedEffect { effect } => effect.clone(),
+        other => panic!("expected derived effect, got {other:?}"),
+    }
 }
 
 fn check(op: &Rc<DerivedOpEffect>, idempotent: bool, readonly: bool) -> Rc<ModifierCheck> {
@@ -34,39 +48,36 @@ fn is_delete(shape: &EffectShape) -> bool {
 
 #[test]
 fn parse_simple_path() {
-    let t = parse_path_template(&"/repos/{owner}/{repo}/pulls".to_string());
+    let t = parse_ok("/repos/{owner}/{repo}/pulls");
     assert!(has_path_params(t.clone()));
     assert_eq!(last_path_param(t).unwrap(), "repo");
 }
 
 #[test]
 fn parse_path_with_colon_suffix() {
-    let t = parse_path_template(&"/v1/{secret_name}:addVersion".to_string());
+    let t = parse_ok("/v1/{secret_name}:addVersion");
     assert!(has_path_params(t.clone()));
     assert_eq!(last_path_param(t).unwrap(), "secret_name");
 }
 
 #[test]
 fn parse_path_no_params() {
-    let t = parse_path_template(&"/token".to_string());
+    let t = parse_ok("/token");
     assert!(!has_path_params(t.clone()));
     assert!(last_path_param(t).is_none());
 }
 
 #[test]
 fn parse_path_multiple_params() {
-    let t = parse_path_template(
-        &"/v1/projects/{project_id}/secrets/{secret}/versions/{version}:access".to_string(),
-    );
+    let t = parse_ok("/v1/projects/{project_id}/secrets/{secret}/versions/{version}:access");
     assert!(has_path_params(t.clone()));
     assert_eq!(last_path_param(t).unwrap(), "version");
 }
 
 #[test]
 fn parse_path_strips_query_string() {
-    let t = parse_path_template(
-        &"/computeMetadata/v1/instance/service-accounts/default/identity?audience={audience}"
-            .to_string(),
+    let t = parse_ok(
+        "/computeMetadata/v1/instance/service-accounts/default/identity?audience={audience}",
     );
     assert!(!has_path_params(t.clone()));
     assert!(last_path_param(t).is_none());
@@ -74,9 +85,33 @@ fn parse_path_strips_query_string() {
 
 #[test]
 fn parse_deeply_nested_path() {
-    let t = parse_path_template(&"/repos/{owner}/{repo}/pulls/{pull_number}/reviews".to_string());
+    let t = parse_ok("/repos/{owner}/{repo}/pulls/{pull_number}/reviews");
     assert!(has_path_params(t.clone()));
     assert_eq!(last_path_param(t).unwrap(), "pull_number");
+}
+
+#[test]
+fn parse_path_rejects_unclosed_param_segment() {
+    assert!(matches!(
+        &*parse_path_template(&"/repos/{owner/pulls".to_string()),
+        PathTemplateParseResult::MalformedPathTemplate { .. }
+    ));
+}
+
+#[test]
+fn parse_path_rejects_stray_closing_brace() {
+    assert!(matches!(
+        &*parse_path_template(&"/repos/owner}/pulls".to_string()),
+        PathTemplateParseResult::MalformedPathTemplate { .. }
+    ));
+}
+
+#[test]
+fn parse_path_rejects_multiple_params_in_one_segment() {
+    assert!(matches!(
+        &*parse_path_template(&"/v1/{project}{secret}".to_string()),
+        PathTemplateParseResult::MalformedPathTemplate { .. }
+    ));
 }
 
 // =========================================================================
@@ -85,14 +120,14 @@ fn parse_deeply_nested_path() {
 
 #[test]
 fn get_derives_read_effect() {
-    let op = derive("List", "GET", "/repos/{owner}/{repo}/pulls").unwrap();
+    let op = derive("List", "GET", "/repos/{owner}/{repo}/pulls");
     assert!(is_read(&op.shape));
 }
 
 #[test]
 fn post_always_derives_create_effect() {
     // POST with parent-scoped path key — still CreateEffect (fail-closed)
-    let op = derive("CreateSecret", "POST", "/v1/projects/{project_id}/secrets").unwrap();
+    let op = derive("CreateSecret", "POST", "/v1/projects/{project_id}/secrets");
     assert!(
         is_create(&op.shape),
         "POST should always derive CreateEffect"
@@ -101,19 +136,19 @@ fn post_always_derives_create_effect() {
 
 #[test]
 fn post_no_path_key_derives_create_effect() {
-    let op = derive("Messages", "POST", "/v1/messages").unwrap();
+    let op = derive("Messages", "POST", "/v1/messages");
     assert!(is_create(&op.shape));
 }
 
 #[test]
 fn put_with_path_key_derives_upsert() {
-    let op = derive("Update", "PUT", "/repos/{owner}/{repo}/pulls/{pull_number}").unwrap();
+    let op = derive("Update", "PUT", "/repos/{owner}/{repo}/pulls/{pull_number}");
     assert!(is_upsert(&op.shape));
 }
 
 #[test]
 fn put_without_path_key_fails_closed() {
-    let op = derive("Update", "PUT", "/config").unwrap();
+    let op = derive("Update", "PUT", "/config");
     assert!(
         is_create(&op.shape),
         "PUT without path key should fail closed to CreateEffect"
@@ -122,17 +157,37 @@ fn put_without_path_key_fails_closed() {
 
 #[test]
 fn delete_with_path_key_derives_delete() {
-    let op = derive("DeleteItem", "DELETE", "/items/{id}").unwrap();
+    let op = derive("DeleteItem", "DELETE", "/items/{id}");
     assert!(is_delete(&op.shape));
 }
 
 #[test]
 fn delete_without_path_key_fails_closed() {
-    let op = derive("Purge", "DELETE", "/cache").unwrap();
+    let op = derive("Purge", "DELETE", "/cache");
     assert!(
         is_create(&op.shape),
         "DELETE without path key should fail closed to CreateEffect"
     );
+}
+
+#[test]
+fn malformed_path_fails_closed_at_derivation_boundary() {
+    assert!(matches!(
+        &*derive_result("Broken", "PUT", "/repos/{owner/pulls"),
+        DeriveOpEffectResult::MalformedPathInput { .. }
+    ));
+}
+
+#[test]
+fn unknown_method_and_malformed_path_are_distinct_failures() {
+    assert!(matches!(
+        &*derive_result("Broken", "TRACE", "/repos/{owner}/{repo}"),
+        DeriveOpEffectResult::UnknownHttpMethodInput { .. }
+    ));
+    assert!(matches!(
+        &*derive_result("Broken", "PUT", "/repos/{owner/pulls"),
+        DeriveOpEffectResult::MalformedPathInput { .. }
+    ));
 }
 
 // =========================================================================
@@ -236,9 +291,9 @@ const REST_OPS: &[RestOp] = &[
 #[test]
 fn rest_ops_have_derived_effects() {
     for op in REST_OPS {
-        let result = derive(op.name, op.method, op.path);
+        let result = derive_result(op.name, op.method, op.path);
         assert!(
-            result.is_some(),
+            matches!(&*result, DeriveOpEffectResult::DerivedEffect { .. }),
             "failed to derive effect for {} ({} {})",
             op.name,
             op.method,
@@ -255,7 +310,7 @@ fn rest_ops_have_derived_effects() {
 fn obligation_count_matches_idempotent_ops() {
     let derived: Vec<Rc<DerivedOpEffect>> = REST_OPS
         .iter()
-        .filter_map(|op| derive(op.name, op.method, op.path))
+        .map(|op| derive(op.name, op.method, op.path))
         .collect();
     let idempotent_count = derived
         .iter()
@@ -269,7 +324,7 @@ fn obligation_count_matches_idempotent_ops() {
 fn every_idempotent_effect_has_obligation() {
     let derived: Vec<Rc<DerivedOpEffect>> = REST_OPS
         .iter()
-        .filter_map(|op| derive(op.name, op.method, op.path))
+        .map(|op| derive(op.name, op.method, op.path))
         .collect();
     let obligations = generate_idempotency_obligations(Rc::new(derived.clone()));
     for d in &derived {
@@ -305,7 +360,7 @@ fn github_readonly_gets_agree() {
         ),
     ];
     for (name, path) in &readonly_gets {
-        let op = derive(name, "GET", path).unwrap();
+        let op = derive(name, "GET", path);
         let mc = check(&op, false, true);
         assert!(
             matches!(*mc.agreement, ModifierAgreement::Agrees),
@@ -332,8 +387,7 @@ fn gcp_idempotent_sites_classified() {
         "AccessVersion",
         "GET",
         "/v1/projects/{project_id}/secrets/{secret}/versions/{version}:access",
-    )
-    .unwrap();
+    );
     let access_check = check(&access, true, true);
     assert!(
         matches!(*access_check.agreement, ModifierAgreement::Agrees),
@@ -343,7 +397,7 @@ fn gcp_idempotent_sites_classified() {
     // All 4 POST ops: derivation is fail-closed → CreateEffect → non-idempotent.
     // Declared idempotent → DerivationUnknown (can't prove from method+path alone).
 
-    let add = derive("AddVersion", "POST", "/v1/{secret_name}:addVersion").unwrap();
+    let add = derive("AddVersion", "POST", "/v1/{secret_name}:addVersion");
     assert!(
         is_create(&add.shape),
         "AddVersion: POST always derives CreateEffect"
@@ -362,8 +416,7 @@ fn gcp_idempotent_sites_classified() {
         "GenerateAccessToken",
         "POST",
         "/v1/projects/-/serviceAccounts/{target_sa}:generateAccessToken",
-    )
-    .unwrap();
+    );
     assert!(is_create(&gen.shape));
     let gen_check = check(&gen, true, false);
     assert!(
@@ -375,7 +428,7 @@ fn gcp_idempotent_sites_classified() {
         gen_check.agreement
     );
 
-    let refresh = derive("Refresh", "POST", "/token").unwrap();
+    let refresh = derive("Refresh", "POST", "/token");
     assert!(is_create(&refresh.shape));
     let refresh_check = check(&refresh, true, false);
     assert!(
@@ -387,7 +440,7 @@ fn gcp_idempotent_sites_classified() {
         refresh_check.agreement
     );
 
-    let exchange = derive("Exchange", "POST", "/v1/token").unwrap();
+    let exchange = derive("Exchange", "POST", "/v1/token");
     assert!(is_create(&exchange.shape));
     let exchange_check = check(&exchange, true, false);
     assert!(
@@ -408,8 +461,7 @@ fn gcp_idempotent_sites_classified() {
 fn post_with_parent_path_derives_create_not_upsert() {
     // These were the reviewer's counterexamples: POST to parent-scoped paths
     // should NOT derive UpsertEffect.
-    let create_secret =
-        derive("CreateSecret", "POST", "/v1/projects/{project_id}/secrets").unwrap();
+    let create_secret = derive("CreateSecret", "POST", "/v1/projects/{project_id}/secrets");
     assert!(
         is_create(&create_secret.shape),
         "CreateSecret: POST should derive CreateEffect"
@@ -419,8 +471,7 @@ fn post_with_parent_path_derives_create_not_upsert() {
         "CreateComment",
         "POST",
         "/repos/{owner}/{repo}/pulls/{pull_number}/comments",
-    )
-    .unwrap();
+    );
     assert!(
         is_create(&create_comment.shape),
         "CreateComment: POST should derive CreateEffect"
@@ -430,8 +481,7 @@ fn post_with_parent_path_derives_create_not_upsert() {
         "CreateReview",
         "POST",
         "/repos/{owner}/{repo}/pulls/{pull_number}/reviews",
-    )
-    .unwrap();
+    );
     assert!(
         is_create(&create_review.shape),
         "CreateReview: POST should derive CreateEffect"
