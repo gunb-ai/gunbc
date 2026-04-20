@@ -295,9 +295,10 @@ The sketch `DuplicatesConfig` below includes
 1 in channel (1) only. Refinement channel (2) stays **on** by default
 so Rule 2 refinement twins stay in the expected-findings set.
 
-Implementation keys off the same lowered-type facts the typechecker
-already has (alias vs nominal record vs refinement spine), not source
-substring heuristics.
+Implementation reuses the **same structural refinement story** the
+typechecker / DB-11 verifier already owns (alias vs nominal record vs
+lowered predicate shape), not source substring heuristics and **not** a
+new parallel id registry for predicates.
 
 **Motivation from the reviewer's std/extdeps audit (2026-04-15):**
 
@@ -386,11 +387,12 @@ impl StructuralDuplicatesLens {
    into `B`'s bucket (never emit alias-vs-canonical here).
 3. **Refinement-alias channel:** For each `type Name = Carrier where …`,
    compute `hash(resolved_carrier_decl_id, structural_refinement_key)`
-   where `structural_refinement_key` is derived from the lowered
-   refinement DAG, **not** from whichever helper declaration happened
-   to intern first. Apply **Rule 1** when comparing to bare `Carrier`
-   (no false collision). Apply **Rule 2** among refinement rows with
-   the same structural key.
+   where `structural_refinement_key` is the **structural predicate
+   fingerprint** of the lowered refinement DAG (fresh lowering ids are
+   inputs to the walk, **not** the hash key). Apply **Rule 1** when
+   comparing to bare `Carrier` (no false collision). Apply **Rule 2**
+   among refinement rows whose keys are equal under the verifier’s
+   structural equivalence.
 4. Emit a `Duplicate` for every hash bucket that **Rule 2** says has
    peer collisions, tagging `DuplicateKind` accordingly.
 5. If `ignore_re_exports` is set, filter out duplicates where one
@@ -418,6 +420,10 @@ impl StructuralDuplicatesLens {
   the same; assert `IdenticalRefinementSurface` (alias-vs-alias, not
   alias-vs-`String`). Include a negative control: same surface spellings
   but non-equivalent predicate DAGs → **no** collision.
+- Positive control for lowering: two refinements whose predicates lower
+  to **different fresh `DeclarationId`s** but **structurally equivalent**
+  subgraphs (what discharge already unifies) → **must** collide — proves
+  the key is not raw id-based.
 - Unit test: construct a Dag with three data declarations of the
   same value; assert the lens reports all three.
 - Integration test: run the lens against `dsl/std/` and
