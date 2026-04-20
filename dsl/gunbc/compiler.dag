@@ -10,8 +10,8 @@
 //       ▲                                                            │
 //       └────────────────────(reads)─────────────────────────────────┘
 //
-// Faithfulness: stage0 has two hand-maintained .rs files
-// (cli_run.rs, v2_interpreter.rs) that survive regen and are excluded
+// Faithfulness: stage0 has hand-maintained .rs files
+// (cli_run.rs, v2_interpreter.rs, rest_transport_facts.rs) that survive regen and are excluded
 // from the fixed-point diff. The GeneratedCrate type names them
 // explicitly. Cargo.toml is also hand-maintained but lives outside
 // source_dir and is never part of the src/ fixed-point — it's noted

@@ -2,14 +2,14 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
+use v2_compiler::rest_transport_facts::{
+    collect_rest_transport_operations, DeclaredRestTransportOp,
+};
 use v2_compiler::std_effects::*;
 use v2_compiler::std_http_path::{has_path_params, last_path_param, parse_path_template};
 use v2_compiler::v2_compiler_parse::parse;
 use v2_compiler::v2_compiler_tokenize::tokenize;
-use v2_compiler::v2_std_core::{
-    authored_name_at, build_newline_index, find_property, find_property_string, is_rest_transport,
-    transport_method_key, transport_path_template_key, ExprData, NewlineIndex, Node,
-};
+use v2_compiler::v2_std_core::{build_newline_index, NewlineIndex, Node};
 
 fn parse_ok(path: &str) -> Rc<PathTemplate> {
     match &*parse_path_template(&path.to_string()) {
@@ -200,18 +200,17 @@ fn unknown_method_and_malformed_path_are_distinct_failures() {
 // =========================================================================
 // REST ops in scope derive an EffectShape
 //
-// Single authority: tokenize + parse extdep `.dag` files, then read `transport
-// rest` facts via `v2_std_core` (same transport property accessors as the
-// compiler). No second text parser over raw source.
+// Extdep REST rows come from `v2_compiler::rest_transport_facts` (parsed AST +
+// shared transport accessors). Tests only parse files and filter the allowlist.
+//
+// Durable identity for an operation is the full fingerprint
+// `(service, operation_name, method, path_template)` — not `operation_name` alone
+// (extdeps reuse names like `Get` / `List` across different services).
 // =========================================================================
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct RestOp {
-    service: String,
-    name: String,
-    method: String,
-    path: String,
-}
+const GITHUB_PULLS: &str = "github.Pulls";
+
+type RestOp = DeclaredRestTransportOp;
 
 fn parse_extdep_module(relative_path: &str) -> (Rc<Node>, Rc<HashMap<String, Rc<NewlineIndex>>>) {
     let source = crate::helpers::read_v2_file(relative_path);
@@ -240,92 +239,6 @@ fn parse_extdep_module(relative_path: &str) -> (Rc<Node>, Rc<HashMap<String, Rc<
     (module, source_indices)
 }
 
-/// `method: GET` and similar use keyword / ident values; `path` is a string literal.
-fn rest_method_or_path_string(
-    props: Rc<Vec<Rc<Node>>>,
-    prop_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
-    find_property_string(props.clone(), prop_name.clone(), source_indices.clone()).or_else(|| {
-        let n = find_property(props, prop_name, source_indices.clone())?;
-        match (*n.expr_data).clone() {
-            ExprData::ExprVar { .. } => {
-                let s = authored_name_at(source_indices, &n);
-                if s.is_empty() {
-                    None
-                } else {
-                    Some(s)
-                }
-            }
-            _ => None,
-        }
-    })
-}
-
-fn collect_rest_ops_from_parsed_module(
-    module: &Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Vec<RestOp> {
-    let mut out = Vec::new();
-    fn walk(
-        n: &Rc<Node>,
-        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-        service_ctx: Option<String>,
-        out: &mut Vec<RestOp>,
-    ) {
-        let ctx_for_children = match &n.transport {
-            Some(t)
-                if !is_rest_transport(t.clone(), source_indices.clone()) && !n.name.is_empty() =>
-            {
-                Some(n.name.clone())
-            }
-            _ => service_ctx.clone(),
-        };
-
-        if let Some(t) = &n.transport {
-            if is_rest_transport(t.clone(), source_indices.clone()) {
-                let svc = service_ctx
-                    .clone()
-                    .expect("REST operation without enclosing service scope");
-                let method = rest_method_or_path_string(
-                    t.properties.clone(),
-                    transport_method_key(),
-                    source_indices.clone(),
-                )
-                .unwrap_or_else(|| {
-                    panic!(
-                        "missing method value on rest transport for {}::{}",
-                        svc, n.name
-                    )
-                });
-                let path = rest_method_or_path_string(
-                    t.properties.clone(),
-                    transport_path_template_key(),
-                    source_indices.clone(),
-                )
-                .unwrap_or_else(|| {
-                    panic!(
-                        "missing path value on rest transport for {}::{}",
-                        svc, n.name
-                    )
-                });
-                out.push(RestOp {
-                    service: svc,
-                    name: n.name.clone(),
-                    method,
-                    path,
-                });
-            }
-        }
-
-        for c in n.children.iter() {
-            walk(c, source_indices.clone(), ctx_for_children.clone(), out);
-        }
-    }
-    walk(module, source_indices, None, &mut out);
-    out
-}
-
 fn all_parsed_extdep_rest_ops() -> Vec<RestOp> {
     const FILES: &[&str] = &[
         "dsl/extdeps/github/pulls.dag",
@@ -340,13 +253,15 @@ fn all_parsed_extdep_rest_ops() -> Vec<RestOp> {
     let mut parsed: Vec<RestOp> = Vec::new();
     for path in FILES {
         let (module, indices) = parse_extdep_module(path);
-        parsed.extend(collect_rest_ops_from_parsed_module(&module, indices));
+        parsed.extend(collect_rest_transport_operations(&module, indices));
     }
     parsed
 }
 
 fn tracked_extdep_rest_ops() -> Vec<RestOp> {
     let parsed = all_parsed_extdep_rest_ops();
+    // Allowlisted (qualified service, operation) pairs — resolved against the
+    // parsed closure by both fields; never keyed by operation name alone.
     const TRACKED: &[(&str, &str)] = &[
         ("github.Pulls", "List"),
         ("github.Pulls", "Get"),
@@ -365,21 +280,21 @@ fn tracked_extdep_rest_ops() -> Vec<RestOp> {
         ("oauth2.Google", "Refresh"),
         ("gcp.STS", "Exchange"),
     ];
-    let mut by_key: std::collections::HashMap<(String, String), RestOp> =
-        std::collections::HashMap::with_capacity(TRACKED.len());
-    for op in parsed {
-        by_key
-            .entry((op.service.clone(), op.name.clone()))
-            .or_insert(op);
-    }
     TRACKED
         .iter()
         .map(|(svc, name)| {
-            by_key
-                .remove(&((*svc).to_string(), (*name).to_string()))
-                .unwrap_or_else(|| {
-                    panic!("missing extdep REST operation `{svc}::{name}` in parsed sources")
-                })
+            let matches: Vec<&RestOp> = parsed
+                .iter()
+                .filter(|p| p.service == *svc && p.name == *name)
+                .collect();
+            match matches.as_slice() {
+                [op] => (*op).clone(),
+                [] => panic!("missing extdep REST operation `{svc}::{name}` in parsed sources"),
+                _ => panic!(
+                    "ambiguous extdep REST operation `{svc}::{name}`: {} matches (use full fingerprint)",
+                    matches.len()
+                ),
+            }
         })
         .collect()
 }
@@ -564,11 +479,20 @@ fn post_with_parent_path_derives_create_not_upsert() {
     );
 
     let create_comment_path = all_parsed_extdep_rest_ops()
+<<<<<<< HEAD
         .into_iter()
         .find(|o| o.name == "CreateComment")
         .expect("CreateComment in pulls.dag")
         .path;
     let create_comment = derive("CreateComment", "POST", &create_comment_path);
+=======
+        .iter()
+        .find(|o| o.service == GITHUB_PULLS && o.name == "CreateComment")
+        .expect("CreateComment in github.Pulls (pulls.dag)")
+        .path
+        .clone();
+    let create_comment = derive("CreateComment", "POST", &create_comment_path).unwrap();
+>>>>>>> 9839d47a7 (WIP: p0)
     assert!(
         is_create(&create_comment.shape),
         "CreateComment: POST should derive CreateEffect"
@@ -589,8 +513,8 @@ fn post_with_parent_path_derives_create_not_upsert() {
 fn create_comment_rest_path_matches_github_issues_comments_api() {
     let cc = all_parsed_extdep_rest_ops()
         .into_iter()
-        .find(|o| o.name == "CreateComment")
-        .expect("CreateComment operation in pulls.dag");
+        .find(|o| o.service == GITHUB_PULLS && o.name == "CreateComment")
+        .expect("CreateComment operation under github.Pulls (pulls.dag)");
     assert!(
         cc.path.contains("/issues/"),
         "CreateComment must use Issues API path (PR comments are issues); got {}",
@@ -605,24 +529,36 @@ fn create_comment_rest_path_matches_github_issues_comments_api() {
 }
 
 #[test]
-fn extdep_service_operation_pairs_are_unique_in_authority_closure() {
-    let mut seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+fn extdep_rest_fingerprints_are_unique_in_authority_closure() {
+    let mut seen: std::collections::HashSet<(String, String, String, String)> =
+        std::collections::HashSet::new();
     for op in all_parsed_extdep_rest_ops() {
-        let key = (op.service.clone(), op.name.clone());
+        let key = (
+            op.service.clone(),
+            op.name.clone(),
+            op.method.clone(),
+            op.path.clone(),
+        );
         assert!(
             seen.insert(key.clone()),
-            "duplicate (service, operation) `{:?}` in extdep parse (ambiguous authority)",
+            "duplicate REST fingerprint `{:?}` in extdep parse (ambiguous authority)",
             key
         );
     }
 }
 
 #[test]
-fn tracked_rest_ops_list_has_no_duplicate_service_operation_keys() {
+fn tracked_rest_ops_list_has_no_duplicate_fingerprints() {
     let ops = tracked_extdep_rest_ops();
-    let mut seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+    let mut seen: std::collections::HashSet<(String, String, String, String)> =
+        std::collections::HashSet::new();
     for op in &ops {
-        let key = (op.service.clone(), op.name.clone());
+        let key = (
+            op.service.clone(),
+            op.name.clone(),
+            op.method.clone(),
+            op.path.clone(),
+        );
         assert!(
             seen.insert(key.clone()),
             "tracked REST op list unexpectedly listed `{:?}` twice",
