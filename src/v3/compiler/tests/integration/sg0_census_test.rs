@@ -118,6 +118,16 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // SG-0 fragment ratchet below is the sole census authority for
 // crate-root scaffolds.
 //
+// SG-3f-d consumption proof (director review on PR #605, 2026-04-20):
+// `sg3_surface_reflection_consumer_test.rs` is a bounded host-side
+// rustc harness proving reflected `Surface*` carriers are consumable
+// from `.dag`, emitted against `parse_surface`, and executable against
+// real parser output. It is intentionally not modeled as a generated
+// snapshot because the receipt is behavioral end-to-end linkage.
+// Dissolution trigger: when the same proof lands through a
+// producer-owned/generated path, retire this hand-authored harness and
+// drop its census entry.
+//
 // L4b split — `dag.rs` was a 2800-line god-file mixing ports, nodes,
 // declarations, clusters, and the std.effects mirror. The split carves
 // two leaf clusters into sibling submodules (`dag/ports.rs`,
@@ -208,6 +218,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/sg2_parse_authority_test.rs",
     "src/v3/compiler/tests/integration/sg3_lower_authority_test.rs",
     "src/v3/compiler/tests/integration/sg3_lower_parse_surface_stack_test.rs",
+    "src/v3/compiler/tests/integration/sg3_surface_reflection_consumer_test.rs",
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",

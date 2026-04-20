@@ -29,6 +29,11 @@ import v3.std.clean_emission {
   VerifierOutputPolicy, RequireEmptyStdout
 }
 import std.list { List }
+import v3.compiler.runtime_mirrors {
+  SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
+  VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMatchArm,
+  SurfacePatternField, SurfacePattern, SurfaceLiteral, SurfaceExpr
+}
 
 data go_execution_model: TargetExecutionModel = {
   memory: GarbageCollected
@@ -540,6 +545,153 @@ data go_dag: TypeRealization = {
     { dag_name: "ports", access: DirectField("ports"), borrowed_read: false },
     { dag_name: "clusters", access: DirectField("clusters"), borrowed_read: false }
   ]
+  cost: 1
+}
+
+// SG-3f — reflected parse-surface carriers for non-Rust targets too.
+// These rows keep the surface schema in the target-language realization
+// table so cross-target emitters can reason about the same substrate
+// declarations, even though the SG-3f consumer proof currently runs
+// through Rust.
+data go_surface_module: TypeRealization = {
+  language: go_language
+  target: SurfaceModule
+  carrier: "SurfaceModule"
+  is_copy: false
+  fields: [
+    { dag_name: "items", access: DirectField("items"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_surface_item: TypeRealization = {
+  language: go_language
+  target: SurfaceItem
+  carrier: "SurfaceItem"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_surface_param: TypeRealization = {
+  language: go_language
+  target: SurfaceParam
+  carrier: "SurfaceParam"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "ty", access: DirectField("ty"), borrowed_read: false },
+    { dag_name: "refinement", access: DirectField("refinement"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_surface_field: TypeRealization = {
+  language: go_language
+  target: SurfaceField
+  carrier: "SurfaceField"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "ty", access: DirectField("ty"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_surface_variant: TypeRealization = {
+  language: go_language
+  target: SurfaceVariant
+  carrier: "SurfaceVariant"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "payload", access: DirectField("payload"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_variant_payload: TypeRealization = {
+  language: go_language
+  target: VariantPayload
+  carrier: "VariantPayload"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_surface_type: TypeRealization = {
+  language: go_language
+  target: SurfaceType
+  carrier: "SurfaceType"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_surface_record_field: TypeRealization = {
+  language: go_language
+  target: SurfaceRecordField
+  carrier: "SurfaceRecordField"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "value", access: DirectField("value"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_surface_match_arm: TypeRealization = {
+  language: go_language
+  target: SurfaceMatchArm
+  carrier: "SurfaceMatchArm"
+  is_copy: false
+  fields: [
+    { dag_name: "pattern", access: DirectField("pattern"), borrowed_read: false },
+    { dag_name: "body", access: DirectField("body"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_surface_pattern_field: TypeRealization = {
+  language: go_language
+  target: SurfacePatternField
+  carrier: "SurfacePatternField"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "binding", access: DirectField("binding"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_surface_pattern: TypeRealization = {
+  language: go_language
+  target: SurfacePattern
+  carrier: "SurfacePattern"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_surface_literal: TypeRealization = {
+  language: go_language
+  target: SurfaceLiteral
+  carrier: "SurfaceLiteral"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_surface_expr: TypeRealization = {
+  language: go_language
+  target: SurfaceExpr
+  carrier: "SurfaceExpr"
+  is_copy: false
+  fields: []
   cost: 1
 }
 

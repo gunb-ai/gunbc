@@ -36,6 +36,11 @@ import v3.std.clean_emission {
   CorrectionStyle, PostEmitVerifier,
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
+import v3.compiler.runtime_mirrors {
+  SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
+  VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMatchArm,
+  SurfacePatternField, SurfacePattern, SurfaceLiteral, SurfaceExpr
+}
 
 data python_statements: StatementSyntax = {
   let_binding: "{name} = {value}"
@@ -293,6 +298,149 @@ data python_dag: TypeRealization = {
   language: python_language
   target: Dag
   carrier: "Dag"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+// SG-3f — reflected parse-surface carriers for non-Rust targets too.
+data python_surface_module: TypeRealization = {
+  language: python_language
+  target: SurfaceModule
+  carrier: "SurfaceModule"
+  is_copy: false
+  fields: [
+    { dag_name: "items", access: DirectField("items"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data python_surface_item: TypeRealization = {
+  language: python_language
+  target: SurfaceItem
+  carrier: "SurfaceItem"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data python_surface_param: TypeRealization = {
+  language: python_language
+  target: SurfaceParam
+  carrier: "SurfaceParam"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "ty", access: DirectField("ty"), borrowed_read: false },
+    { dag_name: "refinement", access: DirectField("refinement"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data python_surface_field: TypeRealization = {
+  language: python_language
+  target: SurfaceField
+  carrier: "SurfaceField"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "ty", access: DirectField("ty"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data python_surface_variant: TypeRealization = {
+  language: python_language
+  target: SurfaceVariant
+  carrier: "SurfaceVariant"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "payload", access: DirectField("payload"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data python_variant_payload: TypeRealization = {
+  language: python_language
+  target: VariantPayload
+  carrier: "VariantPayload"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data python_surface_type: TypeRealization = {
+  language: python_language
+  target: SurfaceType
+  carrier: "SurfaceType"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data python_surface_record_field: TypeRealization = {
+  language: python_language
+  target: SurfaceRecordField
+  carrier: "SurfaceRecordField"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "value", access: DirectField("value"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data python_surface_match_arm: TypeRealization = {
+  language: python_language
+  target: SurfaceMatchArm
+  carrier: "SurfaceMatchArm"
+  is_copy: false
+  fields: [
+    { dag_name: "pattern", access: DirectField("pattern"), borrowed_read: false },
+    { dag_name: "body", access: DirectField("body"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data python_surface_pattern_field: TypeRealization = {
+  language: python_language
+  target: SurfacePatternField
+  carrier: "SurfacePatternField"
+  is_copy: false
+  fields: [
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "binding", access: DirectField("binding"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data python_surface_pattern: TypeRealization = {
+  language: python_language
+  target: SurfacePattern
+  carrier: "SurfacePattern"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data python_surface_literal: TypeRealization = {
+  language: python_language
+  target: SurfaceLiteral
+  carrier: "SurfaceLiteral"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data python_surface_expr: TypeRealization = {
+  language: python_language
+  target: SurfaceExpr
+  carrier: "SurfaceExpr"
   is_copy: false
   fields: []
   cost: 1

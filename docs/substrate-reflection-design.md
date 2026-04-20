@@ -2501,16 +2501,22 @@ aren't expressible in `.dag`, so a `.dag` parser can't produce
 them and a `.dag` lowering pass can't consume them. L3 cannot
 start until L1 ships.
 
-**SG-3f status note (2026-04-20).** The parse-surface foundation is
-now materially in place: `src/v3/compiler/runtime_mirrors.dag`
-declares `SurfaceModule`, `SurfaceItem`, `SurfaceExpr`,
-`SurfaceType`, `SurfacePattern`, `SurfaceLiteral`, and the supporting
+**SG-3f status note (2026-04-20).** SG-3f's reflection prerequisite is
+now satisfied: `src/v3/compiler/runtime_mirrors.dag` declares
+`SurfaceModule`, `SurfaceItem`, `SurfaceExpr`, `SurfaceType`,
+`SurfacePattern`, `SurfaceLiteral`, and the supporting
 record/payload carriers; `scripts/regen_runtime_mirrors.py` projects
 that authority into `src/v3/compiler/src/parse_surface_generated.rs`;
-and `src/v3/spec/rust.dag` binds Rust `TypeRealization` entries for
-the reflected Surface* types. This does **not** retire `parse.rs` or
-`lower.rs`; it discharges the prerequisite that the lowerer cutover
-needs: the parse surface no longer exists only as handwritten Rust.
+`src/v3/spec/rust.dag`, `src/v3/spec/go.dag`, and
+`src/v3/spec/python.dag` bind `TypeRealization` entries for every
+reflected Surface* carrier; and integration coverage now includes both
+structural parser-output receipts (including recursive sums / patterns /
+literals) and an SG-3f-d `.dag` consumer that emits Rust, rustc-links,
+and runs against `parse_surface` values. This still does **not** retire
+`parse.rs` / `parse_parser_body.txt` or `lower.rs`; it discharges the
+reflection prerequisite they were blocked on. `parse.dag` (SG-2b) and
+`lower.dag` (SG-3b proper) are now honestly dispatchable as follow-on
+lanes because the parse surface no longer exists only as handwritten Rust.
 
 **Why L2 (consumer migrations) comes before L3 (pipeline
 migrations).** Consumer migrations are less integrated — porting
