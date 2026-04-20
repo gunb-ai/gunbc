@@ -86,11 +86,9 @@ Recursive surface forms are tolerated only when they lower to the bounded substr
 
 See [docs/invariants/decidability-invariant.md](docs/invariants/decidability-invariant.md#recursive-syntax-is-sugar).
 
-### Fail-closed compilation
+### C-8
 
-Missing support must reject the program rather than fabricate a plausible output.
-
-See [docs/invariants/decidability-invariant.md](docs/invariants/decidability-invariant.md#fail-closed-compilation).
+Fail-closed compilation: missing support rejects rather than fabricates. See [Decidability Invariant](docs/invariants/decidability-invariant.md#fail-closed-compilation).
 
 ### Tight upper bounds — no exceptions
 
@@ -193,6 +191,24 @@ See [docs/invariants/no-case-enumeration-for-open-sets.md](docs/invariants/no-ca
 Every path either succeeds fully or fails clearly; valid-looking fabricated fallback output is forbidden.
 
 See [docs/invariants/no-fallbacks-that-fabricate.md](docs/invariants/no-fallbacks-that-fabricate.md).
+### C-1
+Missing arguments fail closed; no `LitNull` sentinels. See `docs/debt/`.
+### C-2
+Missing defaults or config fail closed; no `LitNull` sentinels. See `docs/debt/`.
+### C-3
+Parser recovery may not fabricate dummy `LitNull` nodes. See `docs/debt/`.
+### C-4
+Placeholder `<error:*>` types are forbidden as live compatibility carriers. See `docs/debt/`.
+### C-5
+Error detection may not rely on string-sentinel probing. See `docs/debt/`.
+### C-6
+Emit may not use `<error:unknown_*>` sentinels to preserve progress. See `docs/debt/`.
+### C-7
+`Dynamic` is not a universal compatibility fallback. See `docs/debt/`.
+### C-9
+Missing fields or values may not fabricate empty nodes or empty strings. See `docs/debt/`.
+### C-10
+Ownership gaps may not silently fall back to clone-based progress. See `docs/debt/`.
 
 ### Heuristics indicate lost structure
 
@@ -284,15 +300,17 @@ Missing target support must reject or surface unsupported behavior rather than c
 
 See [docs/invariants/e-8-unsupported-core-behaviors-fail-closed-never-collapse-semantically.md](docs/invariants/e-8-unsupported-core-behaviors-fail-closed-never-collapse-semantically.md).
 
-### L-7: Lenses consume declared substrate query functions (2026-04-17)
+### L-7
 
-Lens implementations should read declared substrate query surfaces instead of reaching into hand-written storage details.
+Lenses consume declared substrate query functions: lens implementations should read declared substrate query surfaces instead of reaching into hand-written storage details.
 
 See [docs/invariants/l-7-lenses-consume-declared-substrate-query-functions.md](docs/invariants/l-7-lenses-consume-declared-substrate-query-functions.md).
+### DB-5
+Substrate keyed lookup is single-authority and shared across consumers. See [docs/design-substrate-keyed-lookup-api.md](docs/design-substrate-keyed-lookup-api.md).
 
-### L-8: Lens Rust surfaces preserve typed failure carriers (2026-04-17)
+### L-8
 
-Rust-facing lens APIs must keep typed failure carriers intact instead of flattening them into stringly or nullable conventions.
+Lens Rust surfaces preserve typed failure carriers: Rust-facing lens APIs must keep typed failure carriers intact instead of flattening them into stringly or nullable conventions.
 
 See [docs/invariants/l-8-lens-rust-surfaces-preserve-typed-failure-carriers.md](docs/invariants/l-8-lens-rust-surfaces-preserve-typed-failure-carriers.md).
 
@@ -313,6 +331,14 @@ See [docs/invariants/verification-predicates-are-substrate-consumers.md](docs/in
 External realization is a property of the Arrow body, not a second parallel channel.
 
 See [docs/invariants/e-9-external-realization-lives-on-arrow-body.md](docs/invariants/e-9-external-realization-lives-on-arrow-body.md).
+### DB-14
+Substrate external primitives materialize through declared `Arrow.body` plus target bindings. See [docs/design-substrate-external-primitives.md](docs/design-substrate-external-primitives.md).
+### DB-1
+Corrections are typed diagnostic carriers, not ad hoc warning text. See [docs/design-correction-shape.md](docs/design-correction-shape.md).
+### DB-4
+Clean-emission behavior is a declared contract with real consumers. See [docs/design-clean-emission-contract.md](docs/design-clean-emission-contract.md).
+### DB-9
+Mutual recursion lowers structurally through declared cluster and descent facts. See [docs/design-mutual-recursion-lowering.md](docs/design-mutual-recursion-lowering.md).
 
 ## Engineering Standards
 
@@ -332,15 +358,15 @@ Testing exists to prove structural claims and protect single-authority behavior,
 
 See [docs/invariants/testing-invariants.md](docs/invariants/testing-invariants.md).
 
-## Deterministic emission (Invariant D-1, DB-8)
+## DB-8
 
-The same semantic input should emit the same target output deterministically.
+Deterministic emission: the same semantic input should emit the same target output deterministically.
 
 See [docs/invariants/deterministic-emission-db-8.md](docs/invariants/deterministic-emission-db-8.md).
 
-## Tiered Test Execution (T11)
+## T11
 
-Test execution remains tiered by structural confidence: dry-run structure, selective real computation, and full integration.
+Tiered Test Execution: test execution remains tiered by structural confidence across dry-run structure, selective real computation, and full integration.
 
 See [docs/invariants/tiered-test-execution-t11.md](docs/invariants/tiered-test-execution-t11.md).
 

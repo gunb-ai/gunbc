@@ -1,7 +1,7 @@
 # What .dag catches: concrete examples
 
 Part of: [THESIS.md](../THESIS.md) §[What .dag catches](../THESIS.md#what-dag-catches-that-normal-compilers-dont)
-Related: [ROADMAP.md](../ROADMAP.md) §[Milestones](../ROADMAP.md#milestones-to-gate-1) |
+Related: [ROADMAP.md](../ROADMAP.md) §[Status at a glance](../ROADMAP.md#status-at-a-glance) |
 [std/effects.dag](../dsl/std/effects.dag) |
 [std/algebra.dag](../dsl/std/algebra.dag) |
 [std/termination.dag](../dsl/std/termination.dag)
@@ -79,7 +79,7 @@ syntactically identical to one that recurses on a child — the
 type system can't distinguish them. Only a system with bounded
 iteration primitives and mandatory descent proofs catches this.
 
-**TDD target:** [ROADMAP.md §M1](../ROADMAP.md#milestones-to-gate-1)
+**TDD target:** [ROADMAP.md §Status at a glance](../ROADMAP.md#status-at-a-glance)
 — CX gate. Example 1 is a generalization of our own
 `render_node_type` recursion through `n.inferred`.
 
@@ -152,7 +152,7 @@ error[EFFECT]: non-idempotent operations in retry context
 ```
 
 **Algebra:** [std/effects.dag](../dsl/std/effects.dag) — EffectShape
-composition. [THESIS.md §Algebraic simplification](../THESIS.md#algebraic-simplification-idempotency-cancellation-redundancy).
+composition. [docs/thesis/what-else-falls-out.md §Algebraic simplification](./thesis/what-else-falls-out.md#algebraic-simplification-idempotency-cancellation-redundancy).
 
 **Why a traditional compiler can't catch it:** The types are all
 correct. The function signatures match. The control flow is valid.
@@ -264,7 +264,7 @@ error[CX]: O(n^2) complexity — cheaper equivalent exists
 **Algebra:** [std/algebra.dag](../dsl/std/algebra.dag) — FreeMonoid
 (List) vs BooleanAlgebra (Set). Membership cost is declared per
 algebraic structure. CX composes costs through fold bodies.
-See [ROADMAP.md §KF-2](../ROADMAP.md#kf-2-reject-suboptimal-algorithms).
+See [ROADMAP.md §Post-A/B Lane Plan](../ROADMAP.md#post-ab-lane-plan).
 
 **Why a traditional compiler can't catch it:** The code is
 type-correct. The algorithm is correct. It produces the right
@@ -274,7 +274,7 @@ vectorization) but can't detect algorithmic inefficiency. .dag has
 cost algebra on every operation, so it can compose costs and
 compare against known cheaper patterns.
 
-**TDD target:** [ROADMAP.md §KF-2](../ROADMAP.md#kf-2-reject-suboptimal-algorithms)
+**TDD target:** [ROADMAP.md §Post-A/B Lane Plan](../ROADMAP.md#post-ab-lane-plan)
 — optimization catalog in `std/optimization.dag`.
 
 ---
@@ -448,7 +448,7 @@ CX branching guard. Multiple recursive calls with descent on the
 same path produce exponential cost. The function terminates (each
 call descends), but its complexity is O(2^n), which CX rejects
 when a polynomial equivalent exists.
-See [ROADMAP.md §KF-1](../ROADMAP.md#kf-1-complexity-proof-on-every-compile).
+See [ROADMAP.md §Post-A/B Lane Plan](../ROADMAP.md#post-ab-lane-plan).
 
 **Why a traditional compiler can't catch it:** The code is correct.
 It terminates. The types are fine. Traditional compilers have no
