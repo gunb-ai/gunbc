@@ -95,25 +95,33 @@ pub(crate) fn bootstrap_without_runtime_mirrors_fixture(dag: &mut Dag) {
     bootstrap_inner(dag, &["src/v3/compiler/runtime_mirrors.dag"]);
 }
 
+pub(crate) fn bootstrap_std_fixtures_only(dag: &mut Dag) {
+    *dag = Dag::empty_for_codegen();
+    load_fixtures(dag, std_fixtures());
+    dag.populate_primitive_cache();
+}
+
 fn bootstrap_inner(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
-    // Two-phase loading across all seven std/ files. Phase 1 parses and
-    // `collect_symbols_phase`s every file, allocating top-level
-    // declarations + their TypeParam children in one batch. Phase 2
-    // fills in each file's bodies, at which point every cross-file
-    // template reference (e.g., `bit.dag`'s `Word64 { bytes: List<Byte> }`
-    // where `List` is declared in `types.dag`) finds its template's
-    // `type_params` slot already populated — no half-valid template
-    // arguments, no post-sweep fixup pass.
-    //
-    // Load order within each phase: `logic` → `bit` (needs Classical)
-    // → `algebra` (no deps) → `integer`/`float` (need algebra + bit)
-    // → `types` (needs integer for Int64) → `string_type` (needs
-    // Char from types; the sweep resolves the cross-file forward ref).
-    // Standard library fixtures — shared with v2. The set is
-    // hardcoded because dsl/std/ is the v3 substrate's sibling
-    // tree and adding new std/ files is a coordinated change
-    // that goes through both compilers.
-    let std_fixtures: &[(&str, &str)] = &[
+    *dag = Dag::std_fixture_bootstrap_snapshot();
+
+    let compiler_iter = COMPILER_FILES
+        .iter()
+        .copied()
+        .filter(|(path, _)| !excluded_compiler_paths.contains(path));
+    let fixtures: Vec<(&str, &str)> = STAGED_FILES
+        .iter()
+        .copied()
+        .chain(STAGED_FILES.iter().copied())
+        .chain(V3_SPECS.iter().copied())
+        .chain(compiler_iter)
+        .collect();
+    load_fixtures(dag, &fixtures);
+    materialize_pipeline_realizations(dag);
+    dag.populate_primitive_cache();
+}
+
+fn std_fixtures() -> &'static [(&'static str, &'static str)] {
+    &[
         ("dsl/std/logic.dag", LOGIC_DAG),
         ("dsl/std/bit.dag", BIT_DAG),
         ("dsl/std/algebra.dag", ALGEBRA_DAG),
@@ -121,34 +129,10 @@ fn bootstrap_inner(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
         ("dsl/std/float.dag", FLOAT_DAG),
         ("dsl/std/types.dag", TYPES_DAG),
         ("dsl/std/string_type.dag", STRING_TYPE_DAG),
-    ];
+    ]
+}
 
-    // v3-only staged fixtures — enumerated by build.rs at compile
-    // time from `src/v3/std/*.dag`, `src/v3/spec/*.dag`, and
-    // `src/v3/compiler/*.dag`. Adding a new staged file is a pure
-    // file-system change.
-    let compiler_iter = COMPILER_FILES
-        .iter()
-        .copied()
-        .filter(|(path, _)| !excluded_compiler_paths.contains(path));
-    let fixtures: Vec<(&str, &str)> = std_fixtures
-        .iter()
-        .copied()
-        .chain(STAGED_FILES.iter().copied())
-        .chain(V3_SPECS.iter().copied())
-        .chain(compiler_iter)
-        .collect();
-
-    // Phase 0: parse every fixture. Tokenize/parse errors attach to
-    // `dag.diagnostics()` and the corresponding module is omitted
-    // from later phases.
-    //
-    // Phase 1: per-file `collect_symbols_phase` runs inline with the
-    // parse loop so every file's declarations + type_params land in
-    // the shared `dag` before ANY body lowering runs. The per-file
-    // symbols map is captured but discarded — it's stale by the end
-    // of Phase 1 because later files' declarations aren't in it.
-    // Phase 2 uses a REBUILT shared symbols map below.
+fn load_fixtures(dag: &mut Dag, fixtures: &[(&str, &str)]) {
     let mut parsed: Vec<(SurfaceModule, Vec<bool>)> = Vec::with_capacity(fixtures.len());
     for (file, source) in fixtures.iter() {
         let Some(module) = parse_fixture(dag, source, file) else {
@@ -190,20 +174,7 @@ fn bootstrap_inner(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
         lower_bodies_phase(dag, module, &shared_symbols, is_first);
     }
 
-    // Batch-final resolution for cross-file forward references. In
-    // bootstrap mode the sweep tolerates dangling stubs — the canonical
-    // std/ files reference types that live in modules outside the
-    // M1(2.6) load set (e.g., `Tuple`), and those are not bootstrap
-    // errors. User-code compilation uses the strict variant.
     resolve_pending_identifiers(dag);
-    materialize_pipeline_realizations(dag);
-
-    // Cache the canonical role declarations (Int, Bool, String,
-    // Realization) now that every std/ module has been lowered and the
-    // resolution sweep has linked cross-file references. Downstream
-    // consumers ask `dag.int_shape()` / `dag.realization_meta_id()`
-    // etc. instead of running a name scan per call.
-    dag.populate_primitive_cache();
 }
 
 // DB-14 substrate accessors (`port` / `node` / `resolve_producer`) are

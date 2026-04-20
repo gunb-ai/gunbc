@@ -52,6 +52,13 @@ use std::sync::LazyLock;
 use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
 use crate::types::TypeShape;
 
+mod bootstrap_std_generated {
+    use super::*;
+    use crate::diagnostics::DiagnosticTable;
+
+    include!("bootstrap_std_generated.rs");
+}
+
 mod builder;
 mod effects;
 mod ports;
@@ -1345,6 +1352,9 @@ static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     dag
 });
 
+static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> =
+    LazyLock::new(bootstrap_std_generated::bootstrapped_std_fixture_dag);
+
 static BOOTSTRAPPED_DAG_WITHOUT_RUNTIME_MIRRORS_FIXTURE: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = Dag::empty();
     crate::bootstrap::bootstrap_without_runtime_mirrors_fixture(&mut dag);
@@ -1376,6 +1386,10 @@ impl Dag {
         }
     }
 
+    pub(crate) fn empty_for_codegen() -> Self {
+        Self::empty()
+    }
+
     pub fn new() -> Self {
         (*BOOTSTRAPPED_DAG).clone()
     }
@@ -1385,6 +1399,10 @@ impl Dag {
     /// parsed and lowered again without duplicate top-level names.
     pub(crate) fn new_without_runtime_mirrors_compiler_fixture_bootstrap() -> Self {
         (*BOOTSTRAPPED_DAG_WITHOUT_RUNTIME_MIRRORS_FIXTURE).clone()
+    }
+
+    pub(crate) fn std_fixture_bootstrap_snapshot() -> Self {
+        (*BOOTSTRAPPED_STD_FIXTURE_DAG).clone()
     }
 
     /// Typed accessor for the cached `Int` primitive `TypeShape`. `None`

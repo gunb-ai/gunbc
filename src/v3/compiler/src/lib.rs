@@ -894,6 +894,12 @@ pub fn compile_runtime_mirrors_authority_dag(
     }
 }
 
+pub fn compile_std_bootstrap_dag() -> Dag {
+    let mut dag = Dag::empty_for_codegen();
+    bootstrap::bootstrap_std_fixtures_only(&mut dag);
+    dag
+}
+
 pub fn default_fixed_point_source() -> &'static str {
     "let x: Int = 1 + 2\nlet y: Int = x + 3\n"
 }
