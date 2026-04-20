@@ -23,34 +23,52 @@ Categories (per `docs/briefs/sg-4a-infer-foundation.md`):
 
 ## STOP-and-escalate summary
 
-- **Cat-3 = 43.1% of LOC** — exceeds the 40% threshold from the brief.
-  Per STOP instruction: surface the count; director + SG-manager decide
-  whether to extend substrate (separate lanes) or pause SG-4
-  indefinitely.
-- **5 distinct substrate gaps named below** — within the 10-gap
-  threshold; manageable as separate named lanes.
+**Revised reading (post-review).** The initial draft triggered the
+brief's §STOP clause 1 ("Cat-3 > 40% → substrate design problem") on
+a 47.4% Cat-3 share. Both briansrls and codex flagged that reading as
+miscategorized: the state the Cat-3 functions thread (argument vectors
+in unification, predicate-body clone machinery) is **local per-walk
+state**, not Dag facts and not cross-pass consumption. Under the layer
+model, local traversal state is implementation work inside the future
+`infer.dag` / `regen_infer` scope, not a substrate-expressivity gap.
+
+Revised reading:
+
+- **Cat-3 = 47.4% of classified LOC** (re-baselined — see denominator
+  fix below). This is *volume* of Dag-mutating work, not substrate
+  breakage. The 40% threshold in the brief was about substrate
+  expressivity; since the gaps below are now re-classified as
+  implementation, the threshold is not tripped in its original sense.
+  SG-4b dispatch is a regen-scope question, not a substrate-extension
+  question.
+- **Remaining genuinely substrate-shaped concerns: 0–1** (see revised
+  §gap enumeration). Most "gaps" in the initial draft were local
+  implementation that regen machinery handles.
 - **Two ambiguous/high-risk functions** flagged (see end of this doc):
   `bind_expected_decl_to_actual_context` (184 LOC),
-  `resolve_callable_target` (216 LOC). Both sit on the pure/stateful
-  boundary and need design clarification before porting.
+  `resolve_callable_target` (216 LOC). Pure/stateful boundary
+  clarification is still the real blocker for Cat-3 porting — but
+  again, this is regen-design work, not substrate.
 
-Deliverable B (prototype) and Deliverable C (ROADMAP rows) are
-**parked** pending director decision on the STOP signal. Candidate set
-for B is enumerated below so the decision can be made with the
-prototype scope visible.
+Deliverable B (prototype) and Deliverable C (ROADMAP rows) remain
+**parked** — but the parking rationale has narrowed: the decision is
+now "what's the SG-4b regen shape?" rather than "do we need to extend
+substrate?"
 
 ## Summary table
 
 | Category | Count | LOC | % of classified LOC |
 |----------|-------|-----|---------------------|
-| Cat-1 (Structural reader) | 29 | 1,253 | 28.8% |
-| Cat-2 (Helper logic) | 25 | 701 | 16.1% |
-| Cat-3 (Imperative state machine) | 20 | 1,872 | **43.1%** |
-| Cat-4 (Cross-stage glue) | 2 | 127 | 2.9% |
+| Cat-1 (Structural reader) | 29 | 1,253 | 31.7% |
+| Cat-2 (Helper logic) | 25 | 701 | 17.7% |
+| Cat-3 (Imperative state machine) | 20 | 1,872 | **47.4%** |
+| Cat-4 (Cross-stage glue) | 2 | 127 | 3.2% |
 | **Total** | **76** | **3,953** | **100%** |
 
-Header/comment LOC + trivial trailing helpers account for the delta to
-the 4344 total.
+Denominator is classified LOC (3,953); header/comment LOC + trivial
+trailing helpers account for the delta to the 4,344 total. Initial
+draft divided by 4,344 while labeling the column "classified LOC" —
+corrected here per codex-review observation.
 
 ## Function classifications
 
@@ -85,8 +103,8 @@ rewriting. Risk: low.
 
 #### `resolve_branch_payload_bindings` (L528, 160 LOC) — Cat-3
 Parallel to pattern resolution for payload-binding types. Threads
-`SubstStack` (Rust-side). **Gap #1**: substitution context is Rust-side.
-Risk: medium.
+`SubstStack` (Rust-side). Implementation note: local walk state; not
+a substrate gap (see triage §). Risk: medium.
 
 #### `payload_binding_span` (L688, 13 LOC) — Cat-2
 Span-extraction utility. Risk: low.
@@ -173,7 +191,7 @@ Extract signature context from callable declaration. Risk: low.
 
 #### `bind_expected_callable_to_actual` (L1753, 40 LOC) — Cat-3
 Unifies expected callable against actual declaration. Mutates args vec.
-**Gap #2**: unification state is Rust-side. Risk: medium.
+Implementation note: per-call unification state; not substrate. Risk: medium.
 
 #### `bind_expected_decl_to_actual_context` (L1793, 184 LOC) — Cat-3 (**HIGH-RISK**)
 184-line recursive unification over TypeConnective. Mutates args vec
@@ -370,53 +388,65 @@ Each group can be ported independently and tested against the
 existing `infer_helpers_generated.rs` pattern (single-module .dag →
 `emit_rust_module` → committed `*_generated.rs` read from `infer.rs`).
 
-## Substrate-gap enumeration (Deliverable C candidates)
+## Triage — substrate gaps vs. implementation work
 
-1. **Unification state / argument-vector threading** (CRITICAL)
-   - Consumers: `bind_expected_callable_to_actual`,
-     `bind_expected_decl_to_actual_context`, `resolve_callable_target`.
-   - Gap: no substrate carrier for "active template-argument bindings"
-     or "pending unification assumptions." Arguments vector is
-     Rust-side mutable state threaded through recursive unification.
-   - Extension shape: new `UnificationFrame` fact in substrate, OR keep
-     unification as Rust-side lane with declarative glue.
-   - Dissolution trigger: substrate admits a carrier for partial
-     binding maps + a `.dag`-expressible fixpoint over them.
+Post-review, applying the layer-model filter: **a concern is
+substrate-level only if the fact it represents lives on the Dag or is
+consumed across a pass boundary.** Per-walk local state threaded
+through recursive Rust calls is implementation work inside future
+`infer.dag` (handled by regen machinery), not substrate work.
 
-2. **Cross-stage predicate-body cloning** (CRITICAL)
-   - Consumers: `materialize_substituted_refined_decl` (via
-     `lower.rs::{clone_predicate_body, outer_predicate_slots}`).
-   - Gap: cloning lives in `lower.rs`. Substrate has no fact for
-     "predicate body clone with substitution routing."
-   - Extension shape: either extend `lower.rs` to `.dag` (separate
-     lane), or model the clone as a substrate fact.
-   - Dissolution trigger: DB-16 refined-generic substitution has a
-     substrate carrier rather than a Rust procedure.
+### Re-classified as implementation (not substrate gaps)
 
-3. **Variant → parent Disj reverse link** (NICE-TO-HAVE)
-   - Consumer: `enclosing_disj_for_variant`.
-   - Gap: Dag lacks a direct reverse-parent lookup; current impl is
-     O(n).
-   - Extension shape: variant_parent field or Dag-level reverse map.
-   - Dissolution trigger: Dag exposes parent edges for variants.
+- **Unification argument-vector threading.** Consumers:
+  `bind_expected_callable_to_actual`,
+  `bind_expected_decl_to_actual_context`, `resolve_callable_target`.
+  The `Vec<TemplateArgument>` is per-call scoped; it never becomes a
+  Dag fact and no downstream pass consumes it. Port into `infer.dag`
+  as locally-scoped collection-accumulator patterns when regen
+  machinery supports them. **Not a substrate extension.**
 
-4. **Refinement-derived lambda parameter typing** (MINOR)
-   - Consumer: `resolve_lambda_parameter_types`.
-   - Gap: inference reads predicate structure to derive param types;
-     no explicit substrate fact for "param type constrained by outer
-     refinement."
-   - Extension shape: refinement-to-param-type derivation as a
-     substrate fact.
-   - Dissolution trigger: lambda-param inference expressible as a
-     pure substrate walk.
+- **Predicate-body cloning helpers.** Consumer:
+  `materialize_substituted_refined_decl` via
+  `lower.rs::{clone_predicate_body, outer_predicate_slots}`. The
+  "cross-stage" framing in the initial draft was wrong: these helpers
+  are pure structural Dag-reads that happen to live in `lower.rs` as a
+  code-organization choice. The fact produced (a substituted refined
+  declaration) already lives on the Dag via
+  `materialize_substituted_refined_decl`'s push. Port the clone
+  helpers as shared `.dag` utilities (mirroring the
+  `lenses/infer_helpers.dag` pattern) when porting the caller.
+  **Not a substrate extension.**
 
-5. **Signature-validation failure-list threading** (MINOR)
-   - Consumer: `validate_user_defined_function_signatures`.
-   - Gap: collects failures then applies; state is Rust-side vector.
-   - Extension shape: pass expressed as `.dag` fixpoint with a
-     declarative collect-then-rewrite pattern (similar to other passes).
-   - Dissolution trigger: validation pass matches the pattern-resolution
-     shape already used for branches.
+- **Refinement-derived lambda parameter typing**
+  (`resolve_lambda_parameter_types`). Reads predicate structure and
+  writes port types. All inputs and outputs are Dag facts; the
+  derivation rule is implementation. **Not a substrate extension.**
+
+- **Signature-validation failure-list threading**
+  (`validate_user_defined_function_signatures`). Local failure vector
+  is a regen-codegen concern. Pattern already used for branch pattern
+  resolution — same collect-then-rewrite shape. **Not a substrate
+  extension.**
+
+### Remaining candidate substrate concern (1, low-priority)
+
+- **Variant → parent Disj reverse link.** Consumer:
+  `enclosing_disj_for_variant`. Dag currently lacks a direct
+  reverse-parent lookup; scan is O(n). This *is* a Dag-structure
+  question: does the substrate carry parent edges for variants?
+  - Extension shape: `variant_parent: DeclarationId` field on variant
+    declarations, or Dag-level reverse map.
+  - Dissolution trigger: Dag exposes parent edges for variants.
+  - **Priority: low.** Doesn't block SG-4b; O(n) is acceptable at
+    current Dag sizes. Noted for future optimization.
+
+### Net result
+
+Initial draft claimed 2 critical substrate blockers + 3 minor. After
+re-grounding: **0 blockers, 1 nice-to-have.** SG-4b dispatch is
+**not** gated on substrate extension. The real gating question is the
+regen-codegen shape for the high-Cat-3 volume (see handoff section).
 
 ## High-risk function detail
 
@@ -441,24 +471,38 @@ Cat-3b dispatch.
 
 ## Handoff — decision required
 
-The 43.1% Cat-3 reading means the substrate as it stands cannot cleanly
-express core inference moves (unification state, cross-stage predicate
-cloning). Per brief §STOP-AND-ESCALATE clause 1:
-
-> STOP. That's a signal the substrate as it stands can't express
-> inference and SG-4b is not a compile-authority problem, it's a
-> substrate-design problem. Surface the count; director decides whether
-> to extend substrate (separate lane) or pause SG-4 indefinitely.
+Revised post-review: Cat-3 at 47.4% of classified LOC is *volume*, not
+substrate breakage. Substrate expressivity is not the gating question.
+The gating question is the regen-codegen shape for Cat-3: how does
+`regen_infer` handle local mutable-vector threading, recursive
+unification, and Dag-mutation fixpoint passes?
 
 Three possible handoffs:
 
-1. **Extend substrate then cut over.** Dispatch substrate-extension
-   lanes first (gaps #1 and #2), land them, then SG-4b as sequential
-   Category lanes.
-2. **Cat-1/2 only.** Dispatch Deliverable B's 643 LOC as SG-4b-1;
-   accept ~57% of `infer.rs` remaining hand-written as Cat-3/Cat-4
-   Rust shim.
-3. **Hold SG-4.** Pause indefinitely until substrate modeling for
-   unification + cross-stage cloning catches up.
+1. **Dispatch SG-4b with regen_infer covering Cat-3 as implementation.**
+   Full cutover; `regen_infer` machinery grows to handle Cat-3 patterns
+   (locally-scoped accumulators, shared `.dag` helpers cloned from
+   `lower.rs`, fixpoint passes). No substrate lane needed. Scope is
+   XXL (~3,950 LOC port) and requires regen-machinery design work.
+2. **Cat-1/2 only as SG-4b-1.** Dispatch Deliverable B's 643 LOC; treat
+   Cat-3 as residual Rust shim indefinitely. Accepts ~53% of `infer.rs`
+   staying hand-written. Smallest viable win; preserves optionality.
+3. **Hold SG-4 pending regen-machinery design.** Pause until a written
+   `regen_infer` spec covers the Cat-3 patterns; then re-dispatch as
+   option 1.
 
-Deliverables B and C are parked pending this decision.
+Deliverable B (prototype) and Deliverable C (ROADMAP rows) remain
+parked. Note that C's scope collapses under the revised triage: the
+only carry-forward substrate candidate is variant→parent reverse
+lookup, low-priority.
+
+## Revision trail
+
+- `05616d166` — initial draft (6 substrate gaps, STOP tripped on 43.1%
+  Cat-3).
+- `3a39eee30` — snapshot note + dropped self-described non-gap.
+- **current** — substrate-vs-implementation triage applied per review;
+  gaps re-classified as implementation work inside regen scope;
+  percentages corrected (denominator was total file LOC, not
+  classified LOC); STOP framing revised; handoff options rewritten
+  around regen shape rather than substrate extension.
