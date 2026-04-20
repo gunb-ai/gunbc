@@ -30,12 +30,8 @@ fn main() {
     let source = std::fs::read_to_string(&dag_path).expect("read parse.dag");
     let dag = compile_authority_dag(&source, PARSE_AUTHORITY_FILE);
     let body_path = manifest_dir.join(PARSER_BODY_REL);
-    let parser_body = std::fs::read_to_string(&body_path).unwrap_or_else(|e| {
-        panic!(
-            "read parser body fragment `{}`: {e}",
-            body_path.display()
-        )
-    });
+    let parser_body = std::fs::read_to_string(&body_path)
+        .unwrap_or_else(|e| panic!("read parser body fragment `{}`: {e}", body_path.display()));
 
     let rust = emit_parse_module(&dag, &parser_body);
     let combined = format!("{HEADER}{rust}");
@@ -162,25 +158,14 @@ fn emit_named_declaration(dag: &Dag, name: &str, emitted: &mut BTreeSet<String>,
                     TypeConnective::Conj { children }
                         if children.len() == 1 && children[0].label == "_0" =>
                     {
-                        let rust_ty = rust_type_for_field(
-                            dag,
-                            children[0].ty,
-                            name,
-                            "_0",
-                            false,
-                        );
+                        let rust_ty = rust_type_for_field(dag, children[0].ty, name, "_0", false);
                         out.push_str(&format!("    {}({rust_ty}),\n", v.label));
                     }
                     TypeConnective::Conj { children } => {
                         out.push_str(&format!("    {} {{\n", v.label));
                         for field in children {
-                            let rust_ty = rust_type_for_field(
-                                dag,
-                                field.ty,
-                                name,
-                                &field.label,
-                                false,
-                            );
+                            let rust_ty =
+                                rust_type_for_field(dag, field.ty, name, &field.label, false);
                             out.push_str(&format!("        {}: {rust_ty},\n", field.label));
                         }
                         out.push_str("    },\n");
