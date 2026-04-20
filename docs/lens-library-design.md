@@ -265,14 +265,20 @@ initial findings” once Rule 1 stops false positives.
    the same hash still collide.
 2. **Refinement-alias channel** — For `type Name = Carrier where …`,
    bucket on **`(resolved_carrier_decl_id, structural_refinement_key)`**.
-   The second component is **not** an opaque `DeclarationId` shortcut:
-   v3 refinement discharge already treats refinements as **structurally**
-   equal or distinct (same lowered predicate / constraint DAG → same
-   fact; different shape → different fact — see DB-11 / `where`
-   forwarding tests in `m2_feature_parity_test.rs`). The lens must hash
-   the **same structural authority** the verifier uses (canonical hash
-   over the refinement subgraph: brands, predicates, referenced ports),
-   optionally **interning only after** that structural hash so accidental
+   **v3 fact (why ids are wrong here):** lowering creates **fresh**
+   helper `DeclarationId`s for each `where` predicate; discharge then
+   **proves refinement equivalence structurally** across those trees, not
+   by reusing a single stable “predicate declaration” id. Keying Rule 2 on
+   any `canonical_refinement_id` derived only from those transient ids
+   would either **mint a parallel authority** next to the verifier or
+   **miss same-shape peers** that lower to different anchors. **Single
+   refinement-identity authority for this lens:** `structural_refinement_key`
+   — the canonical structural hash (or the verifier’s own equivalence
+   class token, if exposed) of the **lowered predicate / constraint DAG**
+   (brands, predicates, referenced ports). Two refinements collide under
+   Rule 2 iff that key matches — i.e. iff v3 refinement discharge would
+   treat them as the **same** refinement fact (DB-11 / `where` forwarding
+   in `m2_feature_parity_test.rs`). Optionally intern **after** hashing so
    id churn cannot move buckets. That is what “no duplicate
    representations” demands at this boundary: two names attach to one
    **semantic** refinement iff their structural keys collide.
