@@ -894,10 +894,13 @@ pub fn compile_runtime_mirrors_authority_dag(
     }
 }
 
-/// PB-1-a regression helper: compile only the `std_fixtures`
-/// authority through the legacy runtime parse path.
+/// PB-1 scaffold helper: re-run the pre-snapshot std bootstrap path for
+/// `regen_bootstrap` and the PB-1 drift tests only. This is NOT a second
+/// production bootstrap authority; `Dag::new()` seeds from the committed
+/// generated snapshot. Dissolution trigger: same as
+/// `bootstrap::bootstrap_std_fixtures_only`.
 pub fn compile_std_bootstrap_dag() -> Dag {
-    let mut dag = Dag::empty_for_codegen();
+    let mut dag = Dag::empty();
     bootstrap::bootstrap_std_fixtures_only(&mut dag);
     dag
 }
@@ -909,13 +912,13 @@ pub fn generated_std_bootstrap_dag() -> Dag {
 }
 
 pub fn compile_full_bootstrap_dag() -> Dag {
-    let mut dag = Dag::empty_for_codegen();
+    let mut dag = Dag::empty();
     bootstrap::bootstrap_all_runtime(&mut dag, &[]);
     dag
 }
 
 pub fn compile_full_bootstrap_without_runtime_mirrors_dag() -> Dag {
-    let mut dag = Dag::empty_for_codegen();
+    let mut dag = Dag::empty();
     bootstrap::bootstrap_all_runtime(&mut dag, &["src/v3/compiler/runtime_mirrors.dag"]);
     dag
 }

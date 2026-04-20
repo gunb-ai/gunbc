@@ -88,14 +88,31 @@ fn declaration_name_preference_rank(file: &str) -> usize {
     }
 }
 
+// PB-1 scaffold boundary: this legacy std-only runtime bootstrap path exists
+// solely for `regen_bootstrap` and the PB-1 equivalence tests. Production
+// bootstrap MUST seed from `Dag::std_fixture_bootstrap_snapshot()`, not from a
+// fresh `load_fixtures(std_fixtures())` pass.
+//
+// Named dissolution trigger: delete this helper once the PB-1 drift harness no
+// longer needs to re-run the pre-snapshot std bootstrap path (for example if
+// regen/tests compare against a direct `.dag`-to-snapshot receipt without
+// reconstructing the runtime std Dag in-process).
 pub(crate) fn bootstrap_std_fixtures_only(dag: &mut Dag) {
-    *dag = Dag::empty_for_codegen();
+    *dag = Dag::empty();
     load_fixtures(dag, std_fixtures());
     dag.populate_primitive_cache();
 }
 
 pub(crate) fn bootstrap_all_runtime(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
     *dag = Dag::std_fixture_bootstrap_snapshot();
+    // The std snapshot already represents `load_fixtures(std_fixtures())`
+    // after one `resolve_pending_identifiers` + `populate_primitive_cache`
+    // pass. Loading staged/spec/compiler fixtures on top re-runs both
+    // operations for the *combined* bootstrap Dag. That double-pass shape is
+    // intentional and must stay idempotent: the first pass closes the frozen
+    // std snapshot, the second closes cross-authority references introduced by
+    // `src/v3/std/*.dag`, `src/v3/spec/*.dag`, and `src/v3/compiler/*.dag`
+    // (while still tolerating dangling bootstrap-range stubs such as `Tuple`).
     load_runtime_bootstrap_authorities(dag, excluded_compiler_paths);
 }
 

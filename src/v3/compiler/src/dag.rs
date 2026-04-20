@@ -98,7 +98,7 @@ impl NodeId {
         self.0 as usize
     }
 
-    pub fn raw(self) -> u32 {
+    pub(crate) fn raw(self) -> u32 {
         self.0
     }
 }
@@ -1373,6 +1373,9 @@ static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     dag
 });
 
+// Generated bootstrap snapshots are performance caches over the checked-in
+// `.dag` authorities, not independent authorities. `regen_bootstrap` is the
+// sole writer and the PB-1 equivalence tests ratchet generated == runtime.
 static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_std_generated::bootstrapped_std_fixture_dag();
     dag.populate_primitive_cache();
@@ -1387,7 +1390,7 @@ static BOOTSTRAPPED_DAG_WITHOUT_RUNTIME_MIRRORS_FIXTURE: LazyLock<Dag> = LazyLoc
 });
 
 impl Dag {
-    fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
             nodes: Vec::new(),
             declarations: Vec::new(),
@@ -1409,10 +1412,6 @@ impl Dag {
             clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
         }
-    }
-
-    pub(crate) fn empty_for_codegen() -> Self {
-        Self::empty()
     }
 
     pub fn new() -> Self {

@@ -319,11 +319,12 @@ fn render_behavior(behavior: &Behavior) -> String {
 
 fn render_value_node(node: &ValueNode) -> String {
     format!(
-        "ValueNode {{ id: {}, data: {}, output: {}, span: {}, lane2_workflow: None }}",
+        "ValueNode {{ id: {}, data: {}, output: {}, span: {}, lane2_workflow: {} }}",
         render_node_id(node.id),
         render_literal_bits(&node.data),
         render_port_id(node.output),
         render_source_span(&node.span),
+        render_lane2_workflow("ValueNode", node.id, node.lane2_workflow()),
     )
 }
 
@@ -364,13 +365,28 @@ fn render_loop_node(node: &LoopNode) -> String {
 
 fn render_bind_node(node: &BindNode) -> String {
     format!(
-        "BindNode {{ id: {}, name: {:?}.to_string(), value: {}, params: {}, span: {}, lane2_workflow: None }}",
+        "BindNode {{ id: {}, name: {:?}.to_string(), value: {}, params: {}, span: {}, lane2_workflow: {} }}",
         render_node_id(node.id),
         node.name,
         render_port_id(node.value),
         render_port_id_vec(&node.params),
         render_source_span(&node.span),
+        render_lane2_workflow("BindNode", node.id, node.lane2_workflow()),
     )
+}
+
+fn render_lane2_workflow(
+    behavior: &str,
+    node_id: NodeId,
+    workflow: Option<&crate::dag::WorkflowEffect>,
+) -> String {
+    match workflow {
+        None => "None".to_string(),
+        Some(_) => panic!(
+            "regen_bootstrap does not yet support serializing lane2_workflow on {behavior} {:?}",
+            node_id
+        ),
+    }
 }
 
 fn render_transform_target(target: &TransformTarget) -> String {
