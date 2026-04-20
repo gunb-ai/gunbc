@@ -89,6 +89,16 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // builder back into `dag.rs` or move the surface behind a
 // producer-owned path. This is a bounded migration exception, not a
 // precedent for free-standing handwritten helpers.
+//
+// L4b split — `dag.rs` was a 2800-line god-file mixing ports, nodes,
+// declarations, clusters, and the std.effects mirror. The split carves
+// two leaf clusters into sibling submodules (`dag/ports.rs`,
+// `dag/effects.rs`) that the module root re-exports
+// verbatim. No behavior change; file count goes up but per-file
+// coupling goes down. These are pure re-organization of already
+// hand-authored substrate, not new handwritten logic. Dissolution path:
+// the same `include!` / producer-owned route that eventually replaces
+// `dag.rs` itself replaces these submodules simultaneously.
 const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
@@ -98,6 +108,8 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/src/bootstrap.rs",
     "src/v3/compiler/src/dag.rs",
     "src/v3/compiler/src/dag/builder.rs",
+    "src/v3/compiler/src/dag/effects.rs",
+    "src/v3/compiler/src/dag/ports.rs",
     "src/v3/compiler/src/diagnostics.rs",
     "src/v3/compiler/src/dimension.rs",
     "src/v3/compiler/src/emit.rs",

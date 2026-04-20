@@ -47,13 +47,24 @@
 //   forward through lowering; no side tables, no reconstruction.
 
 use std::collections::{HashMap, HashSet};
-use std::marker::PhantomData;
 use std::sync::LazyLock;
 
 use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
 use crate::types::TypeShape;
 
 mod builder;
+mod effects;
+mod ports;
+
+pub use effects::{
+    BranchArm, BreakingShape, CompositionVerdict, CreateCause, EffectShape, HttpMethodScalar,
+    IdempotencyUnsupportedDetail, IdempotentShape, KeySource, OperationEffect,
+    ParallelismUnsupportedDetail, ParallelismUnsupportedKind, WorkflowEffect,
+    WorkflowIdempotencyReport, WorkflowParallelismReport,
+};
+pub use ports::{
+    BoolPortRef, ElementRef, NonEmptyList, NonSingletonList, ParamRef, Port, TransformRef,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeId(u32);
@@ -619,92 +630,16 @@ pub enum ArrowBody {
     Unparsed(SourceSpan),
 }
 
-/// Three-state port type. Illegal combinations of "has a type" and "has a
-/// diagnostic" are unrepresentable by type:
-///
-///   - `Uninferred`: port exists but inference has not run on it yet.
-///     Transitional state during DAG construction and fixpoint iteration. The
-///     post-infer sweep drives every port to Resolved or Unresolved before
-///     compile_to_dag returns.
-///   - `Resolved(TypeShape)`: inference (or lowering from a declaration) has
-///     committed to a type.
-///   - `Unresolved`: inference or lowering detected a failure and called
-///     `Dag::mark_unresolved`. A diagnostic exists in the DiagnosticTable
-///     keyed by this port's id.
-///
-/// Biconditional (checked by the invariant audit test):
-///   state == Unresolved  iff  diagnostics.contains(port.id())
-///
-/// **Dissolution receipt: TERMINAL.** PortState is substrate, not an annotation.
-/// A Port carries a typed value forward in time.
-///
-/// `state` has a single authoritative location: the Port struct stored in
-/// Dag.ports. There are no stale copies — behaviors hold PortId references, not
-/// embedded Ports.
-#[derive(Debug, Clone)]
-pub struct Port {
-    id: PortId,
-    pub(super) state: PortState,
-    pub produced_by: Option<NodeId>,
-}
-
-impl Port {
-    pub fn id(&self) -> PortId {
-        self.id
-    }
-
-    pub fn state(&self) -> &PortState {
-        &self.state
-    }
-
-    pub fn state_value(&self) -> PortState {
-        self.state.clone()
-    }
-
-    /// Backward-compat accessor: returns `Some(&TypeShape)` for Resolved ports,
-    /// `None` for Uninferred or Unresolved. Prefer `state()` when you need to
-    /// distinguish the three cases.
-    pub fn value_type(&self) -> Option<&TypeShape> {
-        match &self.state {
-            PortState::Resolved(ty) => Some(ty),
-            PortState::Uninferred | PortState::Unresolved => None,
-        }
-    }
-}
+// Port, port-reference carriers, and the non-trivial-arity list helpers
+// live in `dag/ports.rs`. See re-exports at the top of this module.
 
 /// Structural operator identities carried by
 /// [`TransformTarget::Operator`].
 ///
-/// **🟡 Scaffold — operator shim family.** Re-homed receipt from the
-/// deleted `operators.rs`: the richer source already exists in
-/// `dsl/std/algebra.dag`, where arithmetic/comparison/logical
-/// operations are declared as algebra fields. These enums remain the
-/// current parse/lower/infer bridge only until the M2+ parser /
-/// desugarer rewrites surface operators to direct algebra-field calls
-/// (or explicit field-access syntax).
-///
-/// Q3/Q4 audit pointer: `ROADMAP.md` M1(2.7) Class 2 operator
-/// dispatch, plus the mixed-lifecycle `TransformTarget` receipt below.
-///
-/// 4-pattern check on (`ArithmeticOp`, `ComparisonOp`, `LogicalOp`,
-/// `OperatorKind`):
-/// - Pattern 1 (fact placement): fails today. Parse, lowering,
-///   inference, and emit all still dispatch on an operator-family
-///   carrier.
-/// - Pattern 2 (variant-is-data): fails. The labels encode distinct
-///   source operators and typing rules; they are not interchangeable
-///   payloads of one record.
-/// - Pattern 3 (algebraic form): succeeds in the long-term design.
-///   The richer source is the algebra field declaration (`add`, `eq`,
-///   `meet`, `join`, ...), so this family is not terminal.
-/// - Pattern 4 (dimensional): fails. The current surface does not yet
-///   expose a smaller coordinate system that replaces operator
-///   identity.
-///
-/// Verdict: 🟡 scaffold. Dissolution trigger: M2+ operator desugaring
-/// / explicit algebra-field surface syntax eliminates
-/// `TransformTarget::Operator` and these enum carriers collapse to
-/// declaration refs.
+/// **🟡 Scaffold — operator shim family.** Richer source exists in
+/// `dsl/std/algebra.dag`; these enums remain the parse/lower/infer
+/// bridge only until the M2+ parser/desugarer rewrites surface
+/// operators to direct algebra-field calls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ArithmeticOp {
     Add,
@@ -730,9 +665,7 @@ pub enum LogicalOp {
 }
 
 /// Operator family root for [`TransformTarget::Operator`]. Inherits the
-/// scaffold receipt on [`ArithmeticOp`]; do not reclassify this as
-/// terminal without also updating the shared operator-shim trigger in
-/// `ROADMAP.md`.
+/// scaffold receipt on [`ArithmeticOp`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OperatorKind {
     Arithmetic(ArithmeticOp),
@@ -884,368 +817,12 @@ impl Path {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ParamRef {
-    member: NodeId,
-    slot: usize,
-}
+// ParamRef / TransformRef / ElementRef / BoolPortRef /
+// NonEmptyList / NonSingletonList live in `dag/ports.rs`. See
+// re-exports at the top of this module.
 
-impl ParamRef {
-    pub fn member_of(self) -> NodeId {
-        self.member
-    }
-
-    pub fn slot_of(self) -> usize {
-        self.slot
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TransformRef(NodeId);
-
-impl TransformRef {
-    pub fn node_id(self) -> NodeId {
-        self.0
-    }
-}
-
-/// 🟢 **TERMINAL at current Track 9 scope.** Generic index witness parallel to
-/// [`ParamRef`] / [`TransformRef`]. The only Rust constructor is
-/// [`ElementRef::from_slice`], which validates the index against the slice in
-/// scope. The handle does not retain owner identity after construction, so
-/// read sites must still resolve it against the same authority list they
-/// validated it against. The substrate field shape matches
-/// `src/v3/std/substrate.dag`; direct `.dag` construction gains the same
-/// authority in the Lane 3c cycle (ROADMAP Track 9 debt).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ElementRef<T> {
-    index: usize,
-    _marker: PhantomData<fn() -> T>,
-}
-
-impl<T> ElementRef<T> {
-    pub fn index_of(self) -> usize {
-        self.index
-    }
-
-    pub fn from_slice(values: &[T], index: usize) -> Option<Self> {
-        values.get(index)?;
-        Some(Self {
-            index,
-            _marker: PhantomData,
-        })
-    }
-
-    pub fn get(self, values: &[T]) -> Option<&T> {
-        values.get(self.index)
-    }
-}
-
-/// 🟢 **TERMINAL.** Bool-typed branch predicate port — Track 9 parallel to
-/// [`ParamRef`] / [`TransformRef`]. The only Rust constructor is
-/// [`Dag::bool_port_of`], which checks the port resolves to `Bool`. The
-/// substrate field shape matches `src/v3/std/effects.dag`; direct `.dag`
-/// construction gains the same authority in the Lane 3c cycle (ROADMAP Track 9 debt).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct BoolPortRef {
-    port: PortId,
-}
-
-impl BoolPortRef {
-    pub fn port_id(self) -> PortId {
-        self.port
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NonEmptyList<T> {
-    pub first: T,
-    pub rest: Vec<T>,
-}
-
-impl<T> NonEmptyList<T> {
-    pub fn from_vec(values: Vec<T>) -> Option<Self> {
-        let mut iter = values.into_iter();
-        let first = iter.next()?;
-        Some(Self {
-            first,
-            rest: iter.collect(),
-        })
-    }
-
-    pub fn to_vec(&self) -> Vec<T>
-    where
-        T: Clone,
-    {
-        std::iter::once(self.first.clone())
-            .chain(self.rest.iter().cloned())
-            .collect()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        std::iter::once(&self.first).chain(self.rest.iter())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NonSingletonList<T> {
-    pub first: T,
-    pub second: T,
-    pub rest: Vec<T>,
-}
-
-impl<T> NonSingletonList<T> {
-    pub fn from_vec(values: Vec<T>) -> Option<Self> {
-        let mut iter = values.into_iter();
-        let first = iter.next()?;
-        let second = iter.next()?;
-        Some(Self {
-            first,
-            second,
-            rest: iter.collect(),
-        })
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        std::iter::once(&self.first)
-            .chain(std::iter::once(&self.second))
-            .chain(self.rest.iter())
-    }
-
-    pub fn len(&self) -> usize {
-        2 + self.rest.len()
-    }
-
-    /// `NonSingletonList` always has at least two elements by construction;
-    /// this exists to satisfy clippy's `len_without_is_empty` lint and always
-    /// returns `false`.
-    pub fn is_empty(&self) -> bool {
-        false
-    }
-
-    pub fn to_vec(&self) -> Vec<T>
-    where
-        T: Clone,
-    {
-        std::iter::once(self.first.clone())
-            .chain(std::iter::once(self.second.clone()))
-            .chain(self.rest.iter().cloned())
-            .collect()
-    }
-}
-
-// ── std.effects mirror (DB-18 / Lane 2 Stage 2b) ───────────────────
-//
-// Structural carriers aligned with `src/v3/std/effects.dag` — the
-// compiler-side authority for `compose_effects`, `WorkflowEffect`, and
-// `BranchArm` until the self-hosted pipeline consumes the `.dag` forms
-// directly.
-//
-// Each coproduct / boundary carrier below carries its own 🟢/🟡 dissolution
-// stamp (modeling-discipline principle 4); do not rely on this banner alone.
-// 🔴 does not appear in this block — there is no intentionally-wrong deferred
-// carrier here; unsupported control flow is modeled via explicit sums, not
-// silent placeholders.
-
-/// 🟢 **TERMINAL.** HTTP verb literals — 1:1 with `std.effects` `HttpMethod`;
-/// naming authority is `effects.dag`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum HttpMethodScalar {
-    Get,
-    Post,
-    Put,
-    Patch,
-    Delete,
-    Head,
-    Options,
-}
-
-/// 🟢 **TERMINAL.** Where a stable idempotency key comes from — mirrors
-/// `KeySource` in `effects.dag`; no parallel spelling.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum KeySource {
-    PathParam { param: String },
-    InputField { field: String },
-    CompositeKey { fields: Vec<String> },
-}
-
-/// 🟢 **TERMINAL.** Why a create-shaped op is classified breaking — mirrors
-/// `CreateCause` in `effects.dag`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CreateCause {
-    PostAlways,
-    KeylessFallback { method: HttpMethodScalar },
-}
-
-/// 🟢 **TERMINAL.** Idempotent-side effect shapes — mirrors `IdempotentShape`
-/// in `effects.dag`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IdempotentShape {
-    ReadEffect,
-    UpsertEffect { key_source: KeySource },
-    DeleteEffect { key_source: KeySource },
-}
-
-/// 🟢 **TERMINAL.** Breaking-side effect shapes — mirrors `BreakingShape` in
-/// `effects.dag`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BreakingShape {
-    CreateEffect { cause: CreateCause },
-    AppendEffect,
-}
-
-/// 🟢 **TERMINAL.** Classified per-op shape — sum of idempotent vs breaking
-/// carriers; mirrors `EffectShape` in `effects.dag`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EffectShape {
-    IsIdempotent(IdempotentShape),
-    IsBreaking(BreakingShape),
-}
-
-/// 🟢 **TERMINAL.** Named operation plus classified shape — mirrors the
-/// `OperationEffect` record in `effects.dag`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OperationEffect {
-    pub operation_name: String,
-    pub shape: EffectShape,
-}
-
-/// 🟢 **TERMINAL at current Stage 2b scope.** Result of linear
-/// `compose_effects` — mirrors `CompositionVerdict` in `effects.dag`.
-/// `ElementRef<OperationEffect>` closes the "copied standalone breaker
-/// record" hole by replacing the copied payload with a validated index,
-/// but it does not by itself preserve the owner list identity or prove
-/// the pointed operation is breaking. Those facts are still established
-/// by `workflow_idempotency::compose_operation_effects` and by callers
-/// resolving against the matching workflow evidence chain, and are
-/// tracked as the same constructor-validation asymmetry class as other
-/// reflected handles until the substrate grows an owner-bound,
-/// breaking-only witness.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CompositionVerdict {
-    IdempotentComposition,
-    BrokenBy {
-        first_breaker: ElementRef<OperationEffect>,
-    },
-}
-
-/// 🟢 **TERMINAL.** Branch arm: [`BoolPortRef`] condition + nested workflow body.
-/// Construct with [`BranchArm::new`] once [`Dag::bool_port_of`] has validated the
-/// predicate port.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BranchArm {
-    condition: BoolPortRef,
-    body: Box<WorkflowEffect>,
-}
-
-/// 🟢 **TERMINAL.** Four-variant workflow sum aligned with `effects.dag`;
-/// Stage 2b analyzes `LinearEffect` only — non-linear variants surface
-/// `IdempotencyUnsupported` until branch-wise algebra lands.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WorkflowEffect {
-    LinearEffect {
-        ops: Vec<OperationEffect>,
-    },
-    BranchEffect {
-        arms: NonSingletonList<BranchArm>,
-    },
-    LoopEffect {
-        body: Box<WorkflowEffect>,
-    },
-    ParallelEffect {
-        branches: NonSingletonList<Box<WorkflowEffect>>,
-    },
-}
-
-impl BranchArm {
-    pub fn new(condition: BoolPortRef, body: WorkflowEffect) -> Self {
-        Self {
-            condition,
-            body: Box::new(body),
-        }
-    }
-
-    pub fn bool_port(&self) -> BoolPortRef {
-        self.condition
-    }
-
-    /// Back-compat alias for the condition field name used in early DB-18 tests.
-    pub fn branch_predicate(&self) -> BoolPortRef {
-        self.condition
-    }
-
-    pub fn body(&self) -> &WorkflowEffect {
-        &self.body
-    }
-}
-
-impl WorkflowEffect {
-    pub fn operation_at(&self, element: ElementRef<OperationEffect>) -> Option<&OperationEffect> {
-        match self {
-            Self::LinearEffect { ops } => element.get(ops),
-            Self::ParallelEffect { branches } => {
-                let mut remaining = element.index_of();
-                for branch in branches.iter() {
-                    let Self::LinearEffect { ops } = branch.as_ref() else {
-                        return None;
-                    };
-                    if let Some(op) = ops.get(remaining) {
-                        return Some(op);
-                    }
-                    remaining = remaining.checked_sub(ops.len())?;
-                }
-                None
-            }
-            Self::BranchEffect { .. } | Self::LoopEffect { .. } => None,
-        }
-    }
-}
-
-/// 🟢 **TERMINAL.** Explicit unsupported payload — names variant + stage +
-/// reason; not a silent `Option` alongside a verdict.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IdempotencyUnsupportedDetail {
-    pub variant_name: String,
-    pub downstream_stage: String,
-    pub reason: String,
-}
-
-/// 🟢 **TERMINAL.** Stage 2b lens report sum — success path vs explicit
-/// unsupported; mirrors `WorkflowIdempotencyReport` in `effects.dag`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WorkflowIdempotencyReport {
-    WorkflowCompositionVerdict(CompositionVerdict),
-    IdempotencyUnsupported(IdempotencyUnsupportedDetail),
-}
-
-/// 🟢 **TERMINAL.** Stage 2e parallel-lens unsupported classes — mirrors
-/// `ParallelismUnsupportedKind` in `effects.dag` (distinct from Stage 2b
-/// `IdempotencyUnsupportedDetail.variant_name`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParallelismUnsupportedKind {
-    NoWorkflowProjection,
-    NotParallelEffectRoot,
-    NonLinearParallelBranch,
-    PairwiseNonCommute,
-    LensSurfacePending,
-}
-
-/// 🟢 **TERMINAL.** Parallelism lens explicit unsupported payload — mirrors
-/// `ParallelismUnsupportedDetail` in `effects.dag`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParallelismUnsupportedDetail {
-    pub kind: ParallelismUnsupportedKind,
-    pub downstream_stage: String,
-    pub reason: String,
-}
-
-/// 🟢 **TERMINAL.** Lane 2 Stage 2e parallelism lens report — mirrors
-/// `WorkflowParallelismReport` in `effects.dag` (DB-20).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WorkflowParallelismReport {
-    ParallelCompositionVerdict(CompositionVerdict),
-    ParallelismUnsupported(ParallelismUnsupportedDetail),
-}
+// The `std.effects` mirror (DB-18 / Lane 2 Stage 2b) lives in
+// `dag/effects.rs`. See re-exports at the top of this module.
 
 // ── end std.effects mirror (DB-18) ───────────────────────────────────
 // Cluster / loop-bound carriers below are Track 9 mutual-recursion
