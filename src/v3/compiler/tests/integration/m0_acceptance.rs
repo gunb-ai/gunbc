@@ -265,30 +265,6 @@ fn post_sweep_port_state_matches_diagnostic_table() {
 }
 
 #[test]
-fn non_bool_branch_condition_is_rejected() {
-    let dag = compile_any("let x = if 1 then 2 else 3", "m0_branch_condition.v3");
-    let bind = bind_named(&dag, "x");
-
-    assert!(matches!(
-        dag.port(bind.value).state(),
-        PortState::Unresolved
-    ));
-    match dag
-        .diagnostics()
-        .get(bind.value)
-        .expect("diagnostic recorded")
-    {
-        Diagnostic::TypeMismatch {
-            expected, actual, ..
-        } => {
-            assert_eq!(*expected, primitive_shape(&dag, "Bool"));
-            assert_eq!(*actual, primitive_shape(&dag, "Int"));
-        }
-        other => panic!("expected TypeMismatch, got {other:?}"),
-    }
-}
-
-#[test]
 fn type_mismatch_marks_the_binding_unresolved() {
     let dag = compile_any("let x: Bool = 1", "m0_type_mismatch.v3");
     let bind = bind_named(&dag, "x");
@@ -338,6 +314,30 @@ fn arity_mismatch_marks_the_call_unresolved() {
         dag.diagnostics().get(bind.value),
         Some(Diagnostic::ArityMismatch { .. })
     ));
+}
+
+#[test]
+fn non_bool_branch_condition_is_rejected() {
+    let dag = compile_any("let x = if 1 then 2 else 3", "m0_branch_condition.v3");
+    let bind = bind_named(&dag, "x");
+
+    assert!(matches!(
+        dag.port(bind.value).state(),
+        PortState::Unresolved
+    ));
+    match dag
+        .diagnostics()
+        .get(bind.value)
+        .expect("diagnostic recorded")
+    {
+        Diagnostic::TypeMismatch {
+            expected, actual, ..
+        } => {
+            assert_eq!(*expected, primitive_shape(&dag, "Bool"));
+            assert_eq!(*actual, primitive_shape(&dag, "Int"));
+        }
+        other => panic!("expected TypeMismatch, got {other:?}"),
+    }
 }
 
 #[test]
