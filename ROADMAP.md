@@ -102,7 +102,7 @@ The full deferral ledger moved to [docs/history/roadmap-active-deferrals.md](doc
 - `DB-8`: fixed-point ratchet infrastructure landed; full self-hosting cycle remains gated on Lane 1e. See [docs/db-history/db-8.md](docs/db-history/db-8.md).
 - `DB-9`: mutual-recursion lowering shipped under the R2 substrate shape. See [docs/db-history/db-9.md](docs/db-history/db-9.md).
 - `DB-10`: `data` value semantics shipped; the historical trade-off receipt moved out of line. See [docs/db-history/db-10.md](docs/db-history/db-10.md).
-- `DB-11`: `where` refinement shipped; the out-of-fragment rejection and narrowing receipts moved out of line. See [docs/db-history/db-11.md](docs/db-history/db-11.md).
+- `DB-11`: Parameter / generic **`where`** refinement lowered (see `test_3a3_*`); out-of-fragment rejection and narrowing receipts moved out of line. **`type X = … where …` on type aliases is not closed:** the handwritten parser still skips the alias RHS clause (`parse_type_rhs_after_eq` → `skip_where_clause`, `src/v3/compiler/src/parse.rs`). Std surfaces must not treat alias refinements as enforced until that gap lands (see **Type-alias `where` parsing gap** in [docs/db-history/db-11.md](docs/db-history/db-11.md)).
 - `DB-12`: surface generics shipped as a tests-first slice. See [docs/db-history/db-12.md](docs/db-history/db-12.md).
 - `DB-13`: Disj dotted-path support shipped as a tests-first slice. See [docs/db-history/db-13.md](docs/db-history/db-13.md).
 - `DB-14`: substrate accessor follow-on remains open through the E-9 bootstrap rewrite. See [docs/db-history/db-14.md](docs/db-history/db-14.md).
@@ -154,7 +154,7 @@ Findings from two reflective analyses (integration loop health, `main@b014746` a
 
 ### P4 — type refinement / modeling faithfulness
 
-- **Fixed-width types aren't structurally fixed**: `Nibble`, `Byte`, `Word16/32/64/128` in `dsl/std/bit.dag:10-13, 28-47` carry `List<Bit>` / `List<Byte>`. A 3-byte `Word64` is representable. Dissolution: refined cardinality carrier (`Cardinality(element, Exact(8))`) or length-witness pattern.
+- **Fixed-width types aren't structurally fixed**: `dsl/std/bit.dag` uses nominal records with `List<Bit>` / `List<Byte>` fields — cardinality not substrate-enforced; alias-form refinements unavailable until alias `where` parses/lowers ([db-11 gap](docs/db-history/db-11.md)). Dissolution: wire type-alias refinement, field refinement, or a `Cardinality(element, Exact(n))`-style carrier.
 - **`algebra.dag:267-323` signature/comment mismatch**: comments promise `index: (FreeMonoid<T>, Nat) -> T?`, `map: (FreeMonoid<T>, fn T→U) -> FreeMonoid<U>`, `fold: (FreeMonoid<T>, U, fn U,T→U) -> U`, `merge: (Map<K,V>, Map<K,V>, fn V,V→V) -> Map<K,V>`; actual declarations drop the source/second-argument types. Dissolution: reconcile declarations with comments (comments likely correct; declarations drop the polymorphism).
 
 ### Reviewer-noise class — a practice, not a debt

@@ -2,7 +2,7 @@
 # SG-2 prep only: snapshots incumbent handwritten `parse.rs` output; not `.dag` parity proof.
 # path\titems\tdebug_bytes\tfnv1a64
 dsl/std/algebra.dag	33	155456	9746beacd00dcadd
-dsl/std/bit.dag	9	7716	c276b990e7d09bf0
+dsl/std/bit.dag	9	7722	c2e4485cf328ce85
 dsl/std/float.dag	6	3155	2942092bfc8bff49
 dsl/std/integer.dag	13	8930	bd26da8af7eca748
 dsl/std/logic.dag	5	5586	c4823f2b02ffff2d
