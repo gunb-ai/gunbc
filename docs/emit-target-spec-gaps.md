@@ -4,7 +4,7 @@
 
 **Status**: Produced by the director to unblock Phase 2+ work. Replaces the Phase 1 audit that the Lane 1e brief had asked the worker to produce.
 
-**Audit base**: `origin/main` as of 2026-04-20.
+**Audit base**: `origin/main` as of 2026-04-20. 45 audit points identified (reconciled from initial 46 — see Overview table note).
 
 **LOC / count figures in this document are an as-of-snapshot.** File sizes (e.g. `rust_target.rs` ~5,700 LOC) and the "46 audit points" headline will drift as code moves on `main`. Per INVARIANTS.md §"Documentation Describes Live State," treat these numbers as sizing guidance from the snapshot date, not live invariants. **Phase 2 workers should re-measure at Phase 2 kickoff** — the classification (Cluster A-J) is stable; the absolute counts aren't.
 
@@ -14,8 +14,10 @@
 |---|---:|---:|
 | **ALREADY_SPEC_COVERED** — walker consumes existing `spec/*.dag` rows | 21 initially, +3 reclassified after verification = **24** | ~0 (no new work) |
 | **MISSING_SPEC_ROW** — spec extension required before walker can dissolve the branch | 20 initially organized into 10 candidate clusters; 3 reclassified to Category 1, leaving **5 Phase 2 clusters** | ~3,500-4,200 LOC dissolvable |
-| **RESIDUAL_PER_TARGET** — genuine per-target dispatch; stays as narrow Rust | 5 | ~800-1,200 LOC residual |
-| **Total audit points** | 46 | — |
+| **RESIDUAL_PER_TARGET** — genuine per-target dispatch; stays as narrow Rust | 4 | ~680-780 LOC residual |
+| **Total audit points** | 45 (Category 1: 21, Category 2: 20 → 5 Phase 2 clusters + Cluster D as dedup, Category 3: 4) | — |
+
+Note: the initial audit listed **5** items under Category 3 including the "shared port-liveness helper." That helper is cross-target *code dedup*, not a genuine per-target semantic residual — moved to Cluster D inside Category 2 where it belongs. Residual count is honestly 4. Total audit points went 46 → 45 (one absorbed into an existing cluster rather than counted twice).
 
 **Net impact at Lane 1e close:**
 - Delete `emit/rust_target.rs` (~5,700 LOC) + `emit/python_target.rs` (~2,000 LOC) + Go inline emitter in `emit.rs` (~380 LOC) = **~8,080 LOC removed**
@@ -228,17 +230,18 @@ After audit, the 10 proposed clusters reduce to **5 that need Phase 2 work**:
 
 ## Category 3: RESIDUAL_PER_TARGET (narrow + necessary)
 
-Five items stay as narrow per-target Rust logic after Lane 1e closes. Each is semantically necessary — not a gap we can paper over with a spec row.
+**Four** items stay as narrow per-target Rust logic after Lane 1e closes. Each is semantically necessary — not a gap we can paper over with a spec row.
 
-| Item | LOC | Why it stays | Target phase |
-|---|---:|---|---|
-| **Rust ownership pipeline** (clone/move/borrow decisions, lifetime annotations) | 600-700 | Semantic choice about memory model, not a syntactic render. LS-4 (Track 2) owns this modeling. When LS-4 lands, this too can become spec-driven; until then it stays in Rust. | Stays residual post-Lane-1e; revisit when LS-4 lands. |
-| **Go module system** (`package` declaration, `import` block ordering) | ~20 | System-level config with no Rust/Python analog. Small; lives as a per-target hook in the walker. | Phase 3 escape hatch. |
-| **Go Loop unsupported** (explicit fail-closed) | ~10 | Go target doesn't yet support `Behavior::Loop` emission; fails closed with a diagnostic. Temporary until Go-side Loop lands. | Phase 3 flag or code comment; resolves when Go Loop supported. |
-| **Python indentation rules** | ~50 | Intrinsic to Python's whitespace-sensitive syntax; block structure can't be a flat template. Lives as a per-target hook in the walker. | Phase 3 per-target hook. |
-| **Shared port liveness helper** | ~40 | Not really residual — this is the Cluster D code dedup. Listed here only for completeness. | Phase 3 refactor. |
+| # | Item | LOC | Why it stays | Target phase |
+|---|---|---:|---|---|
+| 1 | **Rust ownership pipeline** (clone/move/borrow decisions, lifetime annotations) | 600-700 | Semantic choice about memory model, not a syntactic render. LS-4 (Track 2) owns this modeling. When LS-4 lands, this too can become spec-driven; until then it stays in Rust. | Stays residual post-Lane-1e; revisit when LS-4 lands. |
+| 2 | **Go module system** (`package` declaration, `import` block ordering) | ~20 | System-level config with no Rust/Python analog. Small; lives as a per-target hook in the walker. | Phase 3 escape hatch. |
+| 3 | **Go Loop unsupported** (explicit fail-closed) | ~10 | Go target doesn't yet support `Behavior::Loop` emission; fails closed with a diagnostic. Temporary until Go-side Loop lands. | Phase 3 flag or code comment; resolves when Go Loop supported. |
+| 4 | **Python indentation rules** | ~50 | Intrinsic to Python's whitespace-sensitive syntax; block structure can't be a flat template. Lives as a per-target hook in the walker. | Phase 3 per-target hook. |
 
-**Total residual**: ~800-1,200 LOC. 15-20% of the three-file pre-Lane-1e surface. The walker has named per-target hooks for these items.
+**Total residual**: ~680-780 LOC. 13-16% of the three-file pre-Lane-1e surface. The walker has named per-target hooks for these items.
+
+**Note on the shared port-liveness helper** (formerly listed in this table): it is **not** Category 3. It is Cluster D from Category 2 — cross-target code duplication that collapses via a shared helper in the walker scaffold (Phase 3, PR-3.1). Moved out of the residual count to avoid conflating "can't be spec-driven" with "refactor candidate."
 
 ---
 
@@ -301,6 +304,6 @@ Five items stay as narrow per-target Rust logic after Lane 1e closes. Each is se
 
 ## Open questions for director (flag if reached during execution)
 
-- **Cluster A Go recursion**: does the current substrate's `TypeConnective::Instantiation` carry enough information for the template to work, or does the walker need to walk into the type tree? If the latter, the "template" abstraction leaks.
+- **Cluster A Go recursion — template abstraction leakage check**: the proposed `TypeRecursionStrategy { container_template, recursion_points }` carrier assumes the walker can fill `{element}` / `{key}` / `{value}` positions from `TypeConnective::Instantiation.arguments` in one pass. If Go needs to walk arbitrary-depth nesting (`[]map[string]*Foo`) by recursing into the typed type tree rather than substituting, the template/data abstraction leaks — the walker becomes a mini-interpreter over the type substrate rather than a data consumer. **Director direction**: before PR-2.3 commits to the carrier shape, the Phase 2 worker prototypes the recursive case (`[]map[K]V` or similar) against a hand-built `Dag` and verifies the template pass-through works without walker recursion over `TypeConnective`. If it doesn't, propose the shape revision (likely a richer `RenderingStrategy` carrier that names the recursion point as a typed descent, not a string-positional slot) before landing PR-2.3. Resolves per `modeling-discipline.md` §4 (coproduct dissolution) — the "template + substitution" shape IS a dissolution; verify it holds before committing.
 - **LS-4 dependency** on Rust ownership residual: we're deferring it to "when LS-4 lands." If LS-4 is indefinite, this residual may become the longest-surviving per-target dispatch. Named as such — not hidden.
 - **Spec-row naming convention**: use `<target>_<concept>` consistently (`rust_optional`, `go_optional`, `python_optional`)? Or adopt a per-concept registry shape (`optional_renderings: Map<LanguageId, OptionalTypeRendering>`)? Lane 1e Phase 2 should pick one and stick with it.
