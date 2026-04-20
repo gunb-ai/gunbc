@@ -119,49 +119,6 @@ The full scheduled-deletions table, notes, and enforcement rationale moved to [d
 
 The operational rule is unchanged: every live scaffold needs an explicit dissolution trigger and enforcement path, and deleting the scaffold removes its row.
 
-## Tracked debts — 2026-04 analyses
-
-Findings from two reflective analyses (integration loop health, `main@b014746` and `main@11e66b4`) plus two exploratory analyses (scope: `dsl/std/*.dag`, `src/v2/tests/src/*.rs`, `dsl/extdeps/`, `THESIS.md`, `INVARIANTS.md`, `MODELING.md`, same commits). Items below are grouped by urgency. Each line: 1-sentence fact · dissolution trigger · owner-or-next-step.
-
-### P0 — real bugs (silent wrong execution)
-
-- **render.dag repeat_string ignores `n`**: `repeat_string` folds over singleton `[0]` so any `n > 0` returns one copy of `s`. Propagates to `indent_text`. Dissolution: fold over a length-`n` list or use a `repeat` combinator. Owner: immediate dispatch.
-- **REST_OPS test table drift — `CreateComment` path wrong**: test authority at `src/v2/tests/src/effects.rs:149-218` lists `POST /repos/{...}/pulls/{pull_number}/comments`; extdep authority at `dsl/extdeps/github/pulls.dag:179-195` says `/repos/{...}/issues/{issue_number}/comments`. Dissolution: test table consumes extdep operation facts directly; delete the parallel table. Owner: immediate dispatch.
-- **`__BUG_NO_PROFILE_…` fabrication sentinel in `dsl/std/types.dag:115-119`**: `container_param_name_required` returns `concat("__BUG_NO_PROFILE_", kind_name)` on miss; duplicated as fallback in `src/v2/tests/src/compiler-tests.rs:2350-2354`. Violates M5 and C-8 fail-closed. Dissolution: function returns `Option`, caller handles. Owner: immediate dispatch.
-
-### P1 — fabrication / fail-open boundaries
-
-- **http_path.dag `None => ""` fabrications**: `dsl/std/http_path.dag:37-69` silently normalizes malformed `{...}` segments to empty strings. Dissolution: parser returns `Option` / `Result`, caller handles.
-- **effects.dag reconstructs `HttpMethod` and `PathTemplate` from strings**: `dsl/std/effects.dag:214-223, 270-287` reparses already-modeled structures. Dissolution: `derive_op_effect` parameterized by the typed transport declaration, not `(method_str, path_str)`.
-- **`ResourceHandle` forgeable despite opacity claim**: `dsl/std/resources.dag:18-25` documents "only compiler's acquire nodes can mint these" but carries plain-record fields (user code can construct arbitrary handles). Dissolution: witness-carrier + private constructor, or typed opaque handle per Track 9 pattern.
-
-### P2 — structural compression (biggest ROI)
-
-- **Four hand-rolled `BoundedLattice<T>` / `Lattice<T>` instances**: `FermiDepth` (`dsl/std/fermi.dag`), `Encoding` (`dsl/std/encoding.dag`), `DescentEvidence` (`dsl/std/termination.dag:91-129`), `SubValueRelation` (`dsl/std/induction.dag:202-281`). Each names the intended algebra in comments. Dissolution: declare each type as inhabiting the generic algebra; delete the hand-rolled meet/join pairs. Partially tracked under Tracks 8 / 9.
-- **Language-fact duplication — `languages.dag` vs `dsl/extdeps/languages/*/emit.dag`**: per-target reserved-words/syntax tables exist in both; emit.dag files explicitly say "mirrors std.languages." Dissolution: Lane 1e consumes `languages.dag`, per-target emit files dissolve.
-- **Triple `MethodTranslation` schema** across `dsl/extdeps/languages/{rust,python,go}/runtime.dag`: same shape; only the per-target template field-name differs. Dissolution: single generic `MethodTranslation` with a `target: LanguageId` discriminator.
-- **`effects.dag` dual authority** — `dsl/std/effects.dag` (395 lines) vs `src/v3/std/effects.dag` (818 lines, diverged 2×). Dissolution: decide authoritative location, collapse the other; name a convergence lane.
-- **`container_to_algebra` table duplicates type aliases** — `dsl/std/types.dag:140-153` is the string-keyed table; `types.dag:211-214` declares `type List<T> = FreeMonoid<T>` etc. Dissolution: derive the table from the aliases or delete it.
-- **`FileClassification` and `FileEntry` carry identical fields** — `dsl/std/filesystem.dag:27-34` vs `44-51` (same 6 fields, same types). Dissolution: one record; the other becomes an alias or is deleted.
-- **Parallel string-keyed authorities in types.dag + coercion.dag**: `kernel_primitives` (65-74), `container_arity` (79-91), `ordered_collections` (125-130), `TypeCheckpoint.dag_name: String` (38-44), `InhabitantDecl.algebra: String` (59-65). Header labels as transitional. Dissolution: derive from structural declarations.
-
-### P3 — modeling gaps
-
-- **`declaration_by_name(...)` pattern in emit** — 20 sites on `origin/main`, including `emit.rs`, `emit/rust_target.rs`, `emit/python_target.rs` looking up `"OrderedRing"`, `"SubstrateAccessorBinding"`, `"Dag"`, `"fold"`, `"id"`. Violates Layer Opacity / Semantic Authority (post-lowering). Dissolution: typed substrate access via cached declaration-id (`algebra_field_for_operator` pattern) at every call site.
-- **`pipeline_authority.rs` parses body-span text for stage order**: Semantic Authority leak. Dissolution: typed stage list from `pipeline.dag` declarations.
-- **LLM service flattening**: `dsl/extdeps/llm/llm.dag` declares `Role`, `ContentBlock`, `LlmMessage`, `StopReason`; Anthropic/OpenAI service operations still take `model: String`, `messages: Json`, and extract outputs by string path. Dissolution: service operations consume the typed carriers; outputs returned as typed responses.
-- **GitHub auth model bypass**: `dsl/extdeps/github/github.dag:42-46` declares `GitHubAuthToken { token, scopes, expires_at }` but `dsl/extdeps/github/auth.dag:13-23` returns only `{ token: Secret }` and hardcodes GCP secret-manager policy. Dissolution: `github_token()` returns the full typed token; remove the hardcoded provider policy.
-- **`errors.dag` dead generic layer**: `HttpErrorShape`, `AuthError`, `RateLimitError`, `ConflictError`, `ProviderError` declared at `dsl/std/errors.dag:5-30`; no non-doc consumer; extdeps use only provider-specific shapes. Dissolution: wire the generic layer or delete it.
-
-### P4 — type refinement / modeling faithfulness
-
-- **Fixed-width types aren't structurally fixed**: `Nibble`, `Byte`, `Word16/32/64/128` in `dsl/std/bit.dag:10-13, 28-47` carry `List<Bit>` / `List<Byte>`. A 3-byte `Word64` is representable. Dissolution: refined cardinality carrier (`Cardinality(element, Exact(8))`) or length-witness pattern.
-- **`algebra.dag:267-323` signature/comment mismatch**: comments promise `index: (FreeMonoid<T>, Nat) -> T?`, `map: (FreeMonoid<T>, fn T→U) -> FreeMonoid<U>`, `fold: (FreeMonoid<T>, U, fn U,T→U) -> U`, `merge: (Map<K,V>, Map<K,V>, fn V,V→V) -> Map<K,V>`; actual declarations drop the source/second-argument types. Dissolution: reconcile declarations with comments (comments likely correct; declarations drop the polymorphism).
-
-### Reviewer-noise class — a practice, not a debt
-
-- **Integration-reflection cadence**: every ~few days, run a reflective + exploratory analysis pair. The 2026-04-15 and 2026-04-18 passes caught items individual PR reviews missed (authority split across PRs, silent cross-PR name-based lookups, the `CreateComment` drift, the `repeat_string` bug). Worth institutionalizing.
-
 ## What NOT to build yet
 
 - Any fourth per-language emit file before Stage 1e consolidation finishes.
