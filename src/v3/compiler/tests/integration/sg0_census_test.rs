@@ -208,9 +208,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
 // itself `foo.txt` would silently escape the ratchet otherwise.
 // Every entry here names a dissolution trigger in its own file header.
 // Sorted; one path per line, relative to the workspace root.
-const EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &[
-    "src/v3/compiler/parse_parser_body.txt",
-];
+const EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &["src/v3/compiler/parse_parser_body.txt"];
 
 // Non-`.rs` files under `src/v3/compiler/` whose content is produced
 // by a named generator (an `#[ignore]`'d refresh test, a `regen_*`
