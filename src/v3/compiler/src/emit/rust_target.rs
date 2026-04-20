@@ -5641,10 +5641,7 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
             .bool_shape()
             .expect("Bool is a Disj in bootstrap std")
             .declaration;
-        let int_id = dag
-            .int_shape()
-            .expect("Int in bootstrap std")
-            .declaration;
+        let int_id = dag.int_shape().expect("Int in bootstrap std").declaration;
         // Pick a real Bool variant for `cons_variant` so only
         // `empty_variant` is the illegal pointer.
         let bool_variant_ty = match &dag.declaration(bool_id).connective {
@@ -5683,10 +5680,7 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
             .bool_shape()
             .expect("Bool is a Disj in bootstrap std")
             .declaration;
-        let int_id = dag
-            .int_shape()
-            .expect("Int in bootstrap std")
-            .declaration;
+        let int_id = dag.int_shape().expect("Int in bootstrap std").declaration;
         let bool_variant_ty = match &dag.declaration(bool_id).connective {
             TypeConnective::Disj { variants } => variants[0].ty,
             other => panic!("Bool should be a Disj, got {other:?}"),
