@@ -50,9 +50,8 @@
 //   `compile_to_dag` parses that authority standalone on top of `Dag::new()`'s
 //   bootstrapped clone). `runtime_mirrors.dag` stays in the bundle so the production
 //   substrate matches the staged compiler; `regen_parse` and staging tests compile
-//   it via [`compile_runtime_mirrors_authority_dag`](crate::compile_runtime_mirrors_authority_dag),
-//   which boots from a clone that omits that fixture to avoid the duplicate-name path
-//   (see `compile_runtime_mirrors_authority_dag` in `src/v3/compiler/src/lib.rs`).
+//   it via `compile_runtime_mirrors_authority_dag` in `src/v3/compiler/src/lib.rs`, which
+//   boots from a clone that omits that fixture to avoid the duplicate-name path.
 //
 // `bootstrap.rs` uses `include!(concat!(env!("OUT_DIR"), ...))` to
 // pull the arrays in. The `include_str!` calls inside the generated

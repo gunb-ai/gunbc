@@ -127,11 +127,10 @@ fn bootstrap_inner(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
     // time from `src/v3/std/*.dag`, `src/v3/spec/*.dag`, and
     // `src/v3/compiler/*.dag`. Adding a new staged file is a pure
     // file-system change.
-    let compiler_iter = COMPILER_FILES.iter().copied().filter(|(path, _)| {
-        !excluded_compiler_paths
-            .iter()
-            .any(|excluded| *excluded == *path)
-    });
+    let compiler_iter = COMPILER_FILES
+        .iter()
+        .copied()
+        .filter(|(path, _)| !excluded_compiler_paths.contains(path));
     let fixtures: Vec<(&str, &str)> = std_fixtures
         .iter()
         .copied()
