@@ -18,7 +18,7 @@ const HEADER: &str =
 /// Failure compiling the authority DAG or running `rustfmt` on the combined module text.
 #[derive(Debug)]
 pub enum RenderParseGeneratedError {
-    Compile(CompileError),
+    Compile(Box<CompileError>),
     Rustfmt(String),
 }
 
@@ -26,14 +26,16 @@ impl fmt::Display for RenderParseGeneratedError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Rustfmt(msg) => write!(f, "{msg}"),
-            Self::Compile(CompileError::Semantic(d)) => {
-                writeln!(f, "compile failed:")?;
-                for (_, diag) in d.diagnostics().iter() {
-                    writeln!(f, "  {diag:?}")?;
+            Self::Compile(e) => match e.as_ref() {
+                CompileError::Semantic(d) => {
+                    writeln!(f, "compile failed:")?;
+                    for (_, diag) in d.diagnostics().iter() {
+                        writeln!(f, "  {diag:?}")?;
+                    }
+                    Ok(())
                 }
-                Ok(())
-            }
-            Self::Compile(other) => write!(f, "{other:?}"),
+                other => write!(f, "{other:?}"),
+            },
         }
     }
 }
@@ -46,7 +48,7 @@ pub fn render_parse_generated_rs(
     parser_body: &str,
 ) -> Result<String, RenderParseGeneratedError> {
     let dag = compile_runtime_mirrors_authority_dag(runtime_mirrors_source, runtime_mirrors_file)
-        .map_err(RenderParseGeneratedError::Compile)?;
+        .map_err(|e| RenderParseGeneratedError::Compile(Box::new(e)))?;
     let rust = emit_parse_module(&dag, parser_body);
     let combined = format!("{HEADER}{rust}");
     rustfmt_stdout(&combined).map_err(RenderParseGeneratedError::Rustfmt)
