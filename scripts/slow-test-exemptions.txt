@@ -66,6 +66,8 @@ m2_lens_unused_parameters_migration_test::unused_parameters_dag_self_analysis_re
 
 m1_substrate_test::referenced_port_walk_real_helper_stack_compiles  # Real substrate helper-stack compile smoke is still cold-compile bound on GitHub runners; substrate/test-shape paydown owns any decomposition, not SG-7.4.
 
+p0_std_render_repeat_string_test::std_render_repeat_string_and_indent_text_match_interpreter  # ROADMAP / docs/briefs/p0-render-repeat-string.md — `dsl/std/render.dag` interpreter parity harness; cold CI can run ~50s wall (Phase-0 ratchet); paydown in P0 render / std harness lane, not TM-0.
+
 sg1_tokenize_authority_test::tokenize_generated_module_matches_checked_in_snapshot  # SG-1 authority snapshot still regenerates/parses full tokenize projection; tokenize authority lane owns future speedup.
 sg2_parse_authority_test::parse_generated_module_matches_checked_in_snapshot  # SG-2 parser-staging snapshot: in-process authority compile + rustfmt stdout (same paydown class as SG-1 tokenize snapshot gate).
 sg2_parse_authority_test::runtime_mirrors_dag_compiles_cleanly_for_regen_parse  # SG-2 parser-staging: `compile_runtime_mirrors_authority_dag` + cold bootstrap work can exceed 2s wall under default libtest parallelism; ROADMAP SG-2 / TESTING.md paydown (same lane as `parse_generated_module_matches_checked_in_snapshot`).
