@@ -4,14 +4,15 @@
 //! `parse_parser_body.txt`) must stay in sync via `regen_parse`. SG-2b remains the follow-on lane
 //! that deletes the body fragment per the dissolution trigger in `parse_parser_body.txt`.
 
-use v3_compiler::compile_to_dag;
+use v3_compiler::compile_runtime_mirrors_authority_dag;
 
 const RUNTIME_MIRRORS_DAG: &str = include_str!("../../runtime_mirrors.dag");
 const CHECKED_IN_GENERATED: &str = include_str!("../../src/parse_generated.rs");
 
 #[test]
 fn runtime_mirrors_dag_compiles_cleanly_for_regen_parse() {
-    compile_to_dag(RUNTIME_MIRRORS_DAG, "src/v3/compiler/runtime_mirrors.dag").unwrap_or_else(
+    compile_runtime_mirrors_authority_dag(RUNTIME_MIRRORS_DAG, "src/v3/compiler/runtime_mirrors.dag")
+        .unwrap_or_else(
         |e| panic!("runtime_mirrors.dag should compile for regen_parse authority: {e:?}"),
     );
 }
