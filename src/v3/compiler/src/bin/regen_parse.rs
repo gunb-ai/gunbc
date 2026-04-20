@@ -1,10 +1,10 @@
-//! Regenerate `parse_generated.rs` from `src/v3/compiler/parse.dag` plus
-//! `parse_parser_body.txt` (sibling file under `src/v3/compiler/`).
+//! Regenerate `parse_generated.rs` from `src/v3/compiler/runtime_mirrors.dag` (Surface carriers)
+//! plus `parse_parser_body.txt` (sibling file under `src/v3/compiler/`).
 //!
-//! **Staging, not SG-2b cutover:** `parse.dag` supplies the Surface carrier schema; the `.txt` file
-//! is still checked-in recursive-descent **algorithm** authority. **Dissolution:** remove the
-//! fragment once parse logic is emitted from `.dag` alone (same trigger as the header on
-//! `parse.dag`).
+//! **Staging, not SG-2b cutover:** substrate `runtime_mirrors.dag` is the Surface **carrier**
+//! authority (shared with `parse_surface_generated.rs`); the `.txt` file is still checked-in
+//! recursive-descent **algorithm** authority. **Dissolution:** remove the fragment once parse
+//! logic is emitted from `.dag` alone (see `parse_parser_body.txt` header).
 
 use std::collections::BTreeSet;
 use std::io::Write;
@@ -17,11 +17,11 @@ use v3_compiler::generated_files::GENERATED_FILES;
 use v3_compiler::CompileError;
 
 const GENERATED_FILE: &str = "src/v3/compiler/src/parse_generated.rs";
-const PARSE_AUTHORITY_FILE: &str = "src/v3/compiler/parse.dag";
+const SURFACE_TYPES_AUTHORITY_FILE: &str = "src/v3/compiler/runtime_mirrors.dag";
 const PARSER_BODY_REL: &str = "parse_parser_body.txt";
 
-const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/parse.dag` via\n\
-     // `regen_parse`. Regenerate instead of hand-editing.\n\n";
+const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/runtime_mirrors.dag` (Surface carriers)\n\
+     // via `regen_parse` + `parse_parser_body.txt`. Regenerate instead of hand-editing.\n\n";
 
 fn main() {
     assert!(
@@ -31,9 +31,9 @@ fn main() {
     );
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let dag_path = manifest_dir.join("parse.dag");
-    let source = std::fs::read_to_string(&dag_path).expect("read parse.dag");
-    let dag = compile_authority_dag(&source, PARSE_AUTHORITY_FILE);
+    let dag_path = manifest_dir.join("runtime_mirrors.dag");
+    let source = std::fs::read_to_string(&dag_path).expect("read runtime_mirrors.dag");
+    let dag = compile_authority_dag(&source, SURFACE_TYPES_AUTHORITY_FILE);
     let body_path = manifest_dir.join(PARSER_BODY_REL);
     let parser_body = std::fs::read_to_string(&body_path)
         .unwrap_or_else(|e| panic!("read parser body fragment `{}`: {e}", body_path.display()));
@@ -100,13 +100,13 @@ fn emit_parse_module(dag: &Dag, parser_body: &str) -> String {
     out
 }
 
-/// Surface AST types declared in `parse.dag`, emitted as Rust `struct` /
+/// Surface AST types declared in `runtime_mirrors.dag`, emitted as Rust `struct` /
 /// `enum` definitions. `List<T>` becomes `Vec<T>`; recursive `SurfaceType` /
 /// `SurfaceExpr` edges that require indirection in Rust use `Box<…>` where
 /// the handwritten parser did.
 ///
 /// **Paydown:** root-name roster and several `rust_type_for_field` / substrate
-/// mappings duplicate facts from `parse.dag` as parallel Rust strings — derive
+/// mappings duplicate facts from `runtime_mirrors.dag` as parallel Rust strings — derive
 /// from `dag` instead (`docs/history/roadmap-active-deferrals.md`, SG-2 staging follow-up).
 fn emit_surface_types(dag: &Dag) -> String {
     let root_names = [
@@ -141,7 +141,7 @@ fn emit_named_declaration(dag: &Dag, name: &str, emitted: &mut BTreeSet<String>,
         .declarations()
         .iter()
         .find(|d| d.name.as_deref() == Some(name))
-        .unwrap_or_else(|| panic!("missing `{name}` in parse.dag"));
+        .unwrap_or_else(|| panic!("missing `{name}` in runtime_mirrors.dag"));
 
     match &decl.connective {
         TypeConnective::Conj { children } => {
@@ -253,7 +253,7 @@ fn rust_type_for_field(
         TypeConnective::Conj { .. } | TypeConnective::Disj { .. } => {
             decl.name.clone().unwrap_or_else(|| {
                 panic!(
-                    "anonymous nested type as field `{field_label}` of `{parent_name}` — give it a name in parse.dag"
+                    "anonymous nested type as field `{field_label}` of `{parent_name}` — give it a name in runtime_mirrors.dag"
                 )
             })
         }

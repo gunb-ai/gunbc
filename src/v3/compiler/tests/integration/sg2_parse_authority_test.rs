@@ -1,17 +1,19 @@
-//! SG-2 **parser staging** ratchet: `parse.dag` is load-bearing for the **Surface carrier** schema;
-//! `parse_generated.rs` (types from `.dag` + algorithm from `parse_parser_body.txt`) must stay in
-//! sync via `regen_parse`. This is **not** SG-2b hard cutover until the body fragment is retired —
-//! see `parse.dag` / `parse_parser_body.txt` for the explicit dissolution trigger.
+//! SG-2 **parser staging** ratchet: `runtime_mirrors.dag` is load-bearing for the **Surface carrier**
+//! schema (shared with `parse_surface_generated.rs`); `parse_generated.rs` (types from that
+//! `.dag` + algorithm from `parse_parser_body.txt`) must stay in sync via `regen_parse`. This is
+//! **not** SG-2b hard cutover until the body fragment is retired — see `parse_parser_body.txt` for
+//! the explicit dissolution trigger.
 
 use v3_compiler::compile_to_dag;
 
-const PARSE_DAG: &str = include_str!("../../parse.dag");
+const RUNTIME_MIRRORS_DAG: &str = include_str!("../../runtime_mirrors.dag");
 const CHECKED_IN_GENERATED: &str = include_str!("../../src/parse_generated.rs");
 
 #[test]
-fn parse_dag_compiles_cleanly() {
-    compile_to_dag(PARSE_DAG, "src/v3/compiler/parse.dag")
-        .unwrap_or_else(|e| panic!("parse.dag should compile: {e:?}"));
+fn runtime_mirrors_dag_compiles_cleanly_for_regen_parse() {
+    compile_to_dag(RUNTIME_MIRRORS_DAG, "src/v3/compiler/runtime_mirrors.dag").unwrap_or_else(|e| {
+        panic!("runtime_mirrors.dag should compile for regen_parse authority: {e:?}")
+    });
 }
 
 #[test]

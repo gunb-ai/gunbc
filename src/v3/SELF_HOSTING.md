@@ -999,12 +999,12 @@ may be slightly longer due to avoiding mutation.
 
 ## §6. Stage 4 — `parse.dag`
 
-**Current (SG-2 parser staging):** `src/v3/compiler/parse.dag` declares the
-`Surface*` carrier schema; `src/v3/compiler/parse_parser_body.txt` holds the
-recursive-descent **algorithm** as a checked-in Rust fragment; `regen_parse`
-splices it into producer-owned `src/v3/compiler/src/parse_generated.rs`. This is
-**not** SG-2b hard cutover (`.dag`-owned parse rules) until `parse_parser_body.txt`
-is deleted per the dissolution trigger in `parse.dag` / that file’s header.
+**Current (SG-2 parser staging):** `src/v3/compiler/runtime_mirrors.dag` declares the
+`Surface*` carrier schema (substrate mirror authority, shared with `parse_surface_generated.rs`);
+`src/v3/compiler/parse_parser_body.txt` holds the recursive-descent **algorithm** as a checked-in
+Rust fragment; `regen_parse` splices it into producer-owned `src/v3/compiler/src/parse_generated.rs`.
+This is **not** SG-2b hard cutover (`.dag`-owned parse rules) until `parse_parser_body.txt` is
+deleted per the dissolution trigger in that file’s header.
 
 **What the shipped parser does:** after tokenization, produces `SurfaceItem` /
 `SurfaceExpr` trees via the generated module (same external behavior as the

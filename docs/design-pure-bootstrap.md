@@ -139,7 +139,7 @@ retire projection — not one.
 
 - **Authority creation**: in progress via SG-2 (parse cutover).
   SG-2 prep (#557) snapshotted incumbent output; full cutover
-  authoring `parse.dag` + `regen_parse` + `parse_generated.rs` is
+  authoring `runtime_mirrors.dag` (Surface carriers) + `regen_parse` + `parse_generated.rs` is
   the SG-2 followup lane.
 - **PB-3 work** (after SG-2 authority lands): delete `parse.rs`,
   route through generated.

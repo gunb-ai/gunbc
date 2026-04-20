@@ -189,8 +189,8 @@ mod parse_stage4_prep {
     use v3_compiler::{parse_for_test, tokenize_for_test};
 
     // SG-2 parser staging: corpus manifest snapshots the runtime parse surface
-    // (`parse_generated.rs` = `parse.dag` carriers + `parse_parser_body.txt` algorithm)
-    // for structural parity — not a claim of full `.dag` parse-rule authority (see parse.dag header).
+    // (`parse_generated.rs` = `runtime_mirrors.dag` carriers + `parse_parser_body.txt` algorithm)
+    // for structural parity — not a claim of full `.dag` parse-rule authority.
     const PARSE_CORPUS_MANIFEST: &str = include_str!("integration/parse_corpus_manifest.txt");
 
     fn compiler_root() -> PathBuf {
