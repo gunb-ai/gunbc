@@ -255,7 +255,9 @@ fn shared_operator_boundary_is_explicit_and_fail_closed() {
             .iter()
             .find(|variant| variant.ty == kind)
             .map(|variant| variant.label.clone())
-            .unwrap_or_else(|| panic!("token row `{name}` kind should be a `PunctTokenKind` variant"));
+            .unwrap_or_else(|| {
+                panic!("token row `{name}` kind should be a `PunctTokenKind` variant")
+            });
         assert!(
             covered_punct_kinds.insert(kind_label.clone()),
             "punctuation kind `{kind_label}` should be covered by exactly one shared/local source"
