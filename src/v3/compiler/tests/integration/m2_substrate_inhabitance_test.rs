@@ -1,7 +1,7 @@
 use v3_compiler::dag::{FieldValue, TypeConnective, ValueBody};
 use v3_compiler::parse_surface;
-use v3_compiler::{parse_for_test, tokenize_for_test};
 use v3_compiler::Dag;
+use v3_compiler::{parse_for_test, tokenize_for_test};
 
 fn find_named(dag: &Dag, name: &str) -> v3_compiler::dag::DeclarationId {
     dag.declaration_by_name(name)
