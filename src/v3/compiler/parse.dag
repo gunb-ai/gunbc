@@ -1,0 +1,169 @@
+// v3.compiler.parse — surface AST authority for SG-2b.
+//
+// The Rust projection (`parse_generated.rs`) is produced by
+// `cargo run -p v3-compiler --bin regen_parse` — do not hand-edit it.
+//
+// **Authority boundary.** This file declares the surface module / item /
+// expression / type / pattern carriers the handwritten parser used to own
+// directly in `parse.rs`. Tokenization stays in `tokenize.dag`; lowering stays
+// in `lower.rs`. `regen_parse` merges the lowered Dag type shapes with the
+// checked-in recursive-descent body fragment (`parse_parser_body.txt`) to emit
+// a single generated module — there is no second runtime parser.
+
+module v3.compiler.parse
+
+import v3.std.substrate { SourceSpan }
+import std.list { List }
+import v3.compiler.operators { OperatorKind }
+
+type SurfaceModule {
+  items: List<SurfaceItem>
+}
+
+type SurfaceItem
+  = Let { name: String, type_ann: SurfaceType?, expr: SurfaceExpr }
+  | Fn {
+      name: String
+      type_params: List<String>
+      params: List<SurfaceParam>
+      return_type: SurfaceType
+      body: SurfaceExpr
+      span: SourceSpan
+    }
+  | FnExternalBody {
+      name: String
+      type_params: List<String>
+      params: List<SurfaceParam>
+      return_type: SurfaceType
+      body_span: SourceSpan
+      span: SourceSpan
+    }
+  | Data {
+      name: String
+      ty: SurfaceType
+      body: SurfaceExpr?
+      body_span: SourceSpan
+      span: SourceSpan
+    }
+  | Module { path: List<String>, span: SourceSpan }
+  | Import { path: List<String>, names: List<String>, span: SourceSpan }
+  | TypeAtom {
+      name: String
+      type_params: List<String>
+      span: SourceSpan
+    }
+  | TypeRecord {
+      name: String
+      type_params: List<String>
+      fields: List<SurfaceField>
+      span: SourceSpan
+    }
+  | TypeSum {
+      name: String
+      type_params: List<String>
+      variants: List<SurfaceVariant>
+      span: SourceSpan
+    }
+  | TypeAlias {
+      name: String
+      type_params: List<String>
+      target: SurfaceType
+      span: SourceSpan
+    }
+
+type SurfaceParam {
+  name: String
+  ty: SurfaceType
+  refinement: SurfaceExpr?
+}
+
+type SurfaceField {
+  name: String
+  ty: SurfaceType
+}
+
+type SurfaceVariant {
+  name: String
+  payload: VariantPayload
+  span: SourceSpan
+}
+
+type VariantPayload
+  = Positional(List<SurfaceType>)
+  | Record(List<SurfaceField>)
+
+type SurfaceType
+  = Named { name: String, span: SourceSpan }
+  | Parameterized {
+      name: String
+      args: List<SurfaceType>
+      span: SourceSpan
+    }
+  | Optional { inner: SurfaceType, span: SourceSpan }
+  | Arrow {
+      inputs: List<SurfaceType>
+      output: SurfaceType
+      span: SourceSpan
+    }
+
+type SurfaceLiteral
+  = IntLit(Int)
+  | BoolLit(Bool)
+  | StringLit(String)
+
+type SurfaceRecordField {
+  name: String
+  value: SurfaceExpr
+  span: SourceSpan
+}
+
+type SurfaceMatchArm {
+  pattern: SurfacePattern
+  body: SurfaceExpr
+  span: SourceSpan
+}
+
+type SurfacePatternField {
+  name: String
+  binding: String
+  span: SourceSpan
+}
+
+type SurfacePattern
+  = BareVariant { name: String, span: SourceSpan }
+  | VariantWith { name: String, binding: String, span: SourceSpan }
+  | VariantFields {
+      name: String
+      fields: List<SurfacePatternField>
+      span: SourceSpan
+    }
+
+type SurfaceExpr
+  = Literal { value: SurfaceLiteral, span: SourceSpan }
+  | Var { name: String, span: SourceSpan }
+  | Path {
+      segments: List<String>
+      segment_spans: List<SourceSpan>
+      span: SourceSpan
+    }
+  | Call { target: String, args: List<SurfaceExpr>, span: SourceSpan }
+  | VariantRecord {
+      target: String
+      fields: List<SurfaceRecordField>
+      span: SourceSpan
+    }
+  | Operator { op: OperatorKind, args: List<SurfaceExpr>, span: SourceSpan }
+  | Lambda { params: List<String>, body: SurfaceExpr, span: SourceSpan }
+  | If {
+      cond: SurfaceExpr
+      then_branch: SurfaceExpr
+      else_branch: SurfaceExpr
+      span: SourceSpan
+    }
+  | Match {
+      scrutinee: SurfaceExpr
+      arms: List<SurfaceMatchArm>
+      span: SourceSpan
+    }
+  | Record { fields: List<SurfaceRecordField>, span: SourceSpan }
+  | List { elements: List<SurfaceExpr>, span: SourceSpan }
