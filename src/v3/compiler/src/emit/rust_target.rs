@@ -5097,11 +5097,11 @@ fn is_optional_match_disj(dag: &Dag, disj_id: DeclarationId) -> bool {
 /// `OperatorKind::algebra_field_name()` lookup is the substrate's
 /// existing operator → field mapping (already used by
 /// `infer::resolve_operator_arrow`). It IS a name comparison, but
-/// the name lives ONCE in `operators.rs` (tightly coupled to the
-/// `OperatorKind` enum) and the resolved declaration id is what
-/// flows downstream. The emitter doesn't repeat the comparison;
-/// it asks this helper for the field id and uses it as a typed
-/// index key.
+/// the name lives once in the generated operators authority
+/// (`operators_generated.rs`, re-exported via `crate::operators`)
+/// and the resolved declaration id is what flows downstream.
+/// The emitter doesn't repeat the comparison; it asks this helper
+/// for the field id and uses it as a typed index key.
 fn algebra_field_for_operator(
     dag: &Dag,
     operand_type_id: DeclarationId,
