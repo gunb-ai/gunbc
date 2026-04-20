@@ -282,8 +282,10 @@ substring heuristics.
   value.
 - `default_edition: String = "2021"` declared in both `cargo.dag`
   and `rust/imports.dag`.
-- `NonEmptyStr` and `NonEmptyString` — two aliases for the same
-  refined type in `dsl/std/types.dag`.
+- `NonEmptyStr` / `NonEmptyString` (audit-era example) — two names for
+  the same `String where …` refinement; channel **(2)** in §2.1, not
+  a product-body duplicate. (Today `types.dag` may only carry one
+  spelling; the lens contract still names the class.)
 
 At the time of the audit, four examples were hand-found in a single
 pass. One (`FileClassification` / `FileEntry`, PR #596) is already
@@ -307,10 +309,10 @@ pub struct DuplicatesConfig {
     /// explicit import relationship are ignored (a re-export
     /// is not a duplicate).
     pub ignore_re_exports: bool,
-    /// When true (default), transparent `type A = B` / refinement
-    /// aliases do not participate in duplicate-shape hashing (§2.1
-    /// alias policy).
-    pub ignore_transparent_type_aliases: bool,
+    /// When true (default), pure nominal `type A = B` (no `where` on
+    /// the alias) is skipped in the **product/coproduct/data** channel
+    /// only (§2.1). Refinement twins use a separate channel and stay on.
+    pub ignore_pure_nominal_type_aliases: bool,
 }
 
 pub struct Duplicate {
@@ -327,6 +329,9 @@ pub enum DuplicateKind {
     /// Two type declarations with compatible but differently-named
     /// structures (e.g., same fields in different order).
     CompatibleType,
+    /// Two refinement aliases naming the same (carrier, refinement)
+    /// fact — channel (2) in §2.1.
+    IdenticalRefinementSurface,
 }
 
 impl StructuralDuplicatesLens {
@@ -341,18 +346,19 @@ impl StructuralDuplicatesLens {
 
 1. Walk every declaration in `dag.declarations()` that matches
    `config.include_types` or `config.include_data`.
-2. For each type declaration, compute a structural hash over its
-   field shape: `hash({ (field_name, field_type_declaration_id)
-   for each field })`. For each data declaration, compute a
-   structural hash over its body: `hash(body_connective)`.
-3. Collect hashes into a `HashMap<u64, Vec<DeclarationId>>`.
-4. Emit a `Duplicate` for every hash with more than one
-   declaration.
+2. **Product / coproduct / `data` channel:** For each declaration with
+   a materialized body, compute a structural hash over its field
+   layout or `data` connective. If `ignore_pure_nominal_type_aliases`
+   is set, omit pure nominal `type A = B` aliases from this channel
+   (normalize to `B` or skip).
+3. **Refinement-alias channel:** For each `type Name = Carrier where …`,
+   compute `hash(resolved_carrier_id, canonical_refinement_id)` from
+   the substrate; collect into a **separate** map from the product
+   channel.
+4. Emit a `Duplicate` for every hash bucket with more than one
+   declaration in either channel, tagging `DuplicateKind` accordingly.
 5. If `ignore_re_exports` is set, filter out duplicates where one
    declaration imports the other transitively.
-6. If `ignore_transparent_type_aliases` is set, skip or normalize
-   alias declarations per §2.1 before step 2 so sanctioned names
-   never inflate duplicate counts.
 
 **Expected initial findings** (from the reviewer's audit):
 
@@ -368,9 +374,12 @@ impl StructuralDuplicatesLens {
 - Unit test: construct a Dag where one declaration re-exports
   another; assert the lens does NOT report it when
   `ignore_re_exports` is true.
-- Unit test: one record plus `type Alias = Record`; assert the lens
-  does NOT report a duplicate when
-  `ignore_transparent_type_aliases` is true (PR #596 shape).
+- Unit test: one record plus `type Alias = Record` (no `where`);
+  assert the lens does NOT report a product-channel duplicate when
+  `ignore_pure_nominal_type_aliases` is true (PR #596 shape).
+- Unit test: `type X = String where p` and `type Y = String where p`
+  with the same canonical refinement id; assert channel (2) reports
+  `IdenticalRefinementSurface`.
 - Unit test: construct a Dag with three data declarations of the
   same value; assert the lens reports all three.
 - Integration test: run the lens against `dsl/std/` and
@@ -856,10 +865,11 @@ The recommended order for building the initial library:
    record return, block body, record literal in expression position)
    and pinned by a parse-failure test that flips when the parser
    grows those features.
-2. **`lens_structural_duplicates`** — next. Simple structural hash
-   + collision detection. Expected to catch the `wire_contract`
-   duplicates, `default_edition` duplication, `NonEmptyStr` /
-   `NonEmptyString`, and probably others. (The `FileClassification` /
+2. **`lens_structural_duplicates`** — next. Two channels (§2.1):
+   product/`data` structural hash plus refinement-surface hash.
+   Expected to catch the `wire_contract` duplicates,
+   `default_edition` duplication, `NonEmptyStr` / `NonEmptyString`
+   refinement twins, and probably others. (The `FileClassification` /
    `FileEntry` duplicate from the same audit was dissolved manually
    in PR #596 — single `FileEntry`, `type FileClassification =
    FileEntry`.) Gives immediate value on existing std/ and extdeps/
@@ -987,7 +997,8 @@ The library is successful when:
    `wire_contract` / `default_edition` / `NonEmptyStr` vs
    `NonEmptyString` — surfaced by `lens_structural_duplicates`, fixed
    structurally, with the lens returning clean on the fixed shape
-   afterward (transparent type aliases excluded per §2.1 policy).
+   afterward (pure nominal aliases excluded per §2.1 channel (1);
+   refinement twins remain governed by channel (2)).
 4. **The existing layer-opacity grep-gate proposal in
    `INVARIANTS.md` is fully superseded** — the §"Layer opacity"
    invariant points at `lens_layer_opacity` as its primary
