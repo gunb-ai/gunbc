@@ -108,17 +108,6 @@ fn container_param_name(kind_name: String, index: Int) -> String? {
   }
 }
 
-// Non-optional param name lookup for known kernel container types.
-// Returns a visible error marker if the profile is missing (compiler
-// bug — all kernel containers have profiles in kernel_algebra_profile).
-// Dissolves with Tier 3 / FF-9 when param names come from declarations.
-fn container_param_name_required(kind_name: String, index: Int) -> String {
-  match container_param_name(kind_name: kind_name, index: index) {
-    Some { value: n } => n
-    None => concat("__BUG_NO_PROFILE_", kind_name)
-  }
-}
-
 // Ordered element collections: support positional access (list[0]).
 // FreeMonoid-based collections preserve insertion order.
 // Set-based collections are unordered — no positional access.

@@ -39,6 +39,7 @@ emit_matrix_program_go_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 d
 emit_matrix_program_python_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; program re-emit sweep.
 emit_matrix_program_rust_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; program re-emit sweep.
 four_fixture_disk_sources_emit_deterministically  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; four-fixture disk corpus.
+four_fixture_regression_test::four_fixture_suite_shares_one_reachability_shape  # ROADMAP Lane 3 Stage 3c prep / four-fixture pressure corpus; shared `compile_to_dag` suite can exceed 2s on cold ubuntu-latest (neighbor: `four_fixture_disk_sources_emit_deterministically`).
 
 common::cached_compile::tests::cached_compile_any_returns_clean_dag_when_key_warmed_by_strict  # TESTING.md "Mocks over compile" paydown; compile-cache behavior test still performs real compile work.
 lane2_stage_2d_symbolic_cost_test::branch_reports_constant_when_both_arms_constant  # ROADMAP Lane 2 Stage 2d (#546): unique `cached_compile` key + cold compile; libtest default parallelism can push wall time over 2s when neighbors compile heavy fixtures — paydown: shared bootstrap / shared cache key (see inline comment on the test).
@@ -64,13 +65,19 @@ m2_lens_provenance_migration_test::lens_provenance_dag_runs_end_to_end_via_rustc
 m2_lens_unused_parameters_migration_test::unused_parameters_dag_runs_end_to_end_via_rustc_harness  # Lane 2 migration harness roundtrip; compile-heavy oracle test remains explicit until lens migration paydown.
 m2_lens_unused_parameters_migration_test::unused_parameters_dag_self_analysis_reports_zero_findings  # Lane 2 migration harness roundtrip; compile-heavy self-analysis remains explicit until lens migration paydown.
 
+p0_std_render_repeat_string_test::std_render_repeat_string_and_indent_text_match_interpreter  # ROADMAP P0 (`dsl/std/render.dag` `repeat_string` / `indent_text`); P0-A v2 `compile_to_resolved` + interpreter oracle remains cold-compile heavy on ubuntu-latest; paydown is shared bootstrap / smaller fixture, not TM-0.
+
 m1_substrate_test::referenced_port_walk_real_helper_stack_compiles  # Real substrate helper-stack compile smoke is still cold-compile bound on GitHub runners; substrate/test-shape paydown owns any decomposition, not SG-7.4.
 
 p0_std_render_repeat_string_test::std_render_repeat_string_and_indent_text_match_interpreter  # ROADMAP / docs/briefs/p0-render-repeat-string.md — `dsl/std/render.dag` interpreter parity harness; cold CI can run ~50s wall (Phase-0 ratchet); paydown in P0 render / std harness lane, not TM-0.
 
 sg1_tokenize_authority_test::tokenize_generated_module_matches_checked_in_snapshot  # SG-1 authority snapshot still regenerates/parses full tokenize projection; tokenize authority lane owns future speedup.
+<<<<<<< HEAD
 sg2_parse_authority_test::parse_generated_module_matches_checked_in_snapshot  # SG-2 parser-staging snapshot: in-process authority compile + rustfmt stdout (same paydown class as SG-1 tokenize snapshot gate).
 sg2_parse_authority_test::runtime_mirrors_dag_compiles_cleanly_for_regen_parse  # SG-2 parser-staging: `compile_runtime_mirrors_authority_dag` + cold bootstrap work can exceed 2s wall under default libtest parallelism; ROADMAP SG-2 / TESTING.md paydown (same lane as `parse_generated_module_matches_checked_in_snapshot`).
+=======
+sg3_lower_authority_test::lower_generated_module_matches_regen_snapshot  # SG-3f-prep: `cargo run regen_lower` cold-links on CI; snapshot gate mirrors SG-1 tokenize pattern; canonical lowering remains `lower.rs`.
+>>>>>>> origin/main
 sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift  # SG-6 regen CLI smoke intentionally shells out to regen path; CLI smoke cost is tracked in SG-6, not TM-0.
 
 thesis_validation_test::kf_1_structural_list_operation_ordering_holds  # KF-1 thesis validation remains compile-heavy on CI runners; TESTING.md test-shape paydown owns future decomposition, not TM-0.

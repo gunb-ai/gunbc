@@ -1,5 +1,55 @@
+<<<<<<< HEAD:src/v3/compiler/src/parse_generated.rs
 // AUTO-GENERATED from `src/v3/compiler/runtime_mirrors.dag` (Surface carriers)
 // via `regen_parse` + `parse_parser_body.txt`. Regenerate instead of hand-editing.
+=======
+// Surface AST + hand-recursive parser for the v3 surface grammar.
+//
+// G3 guardrail: parse.rs exports SurfaceModule / SurfaceItem / SurfaceExpr /
+// SurfaceType; it does NOT mention Dag or any L1 behavior type. Lowering from
+// surface to DAG happens in `lower.rs`.
+//
+// Operators compile to a structural `SurfaceExpr::Operator` variant.
+// `1 + 2` → `Operator { op: OperatorKind::Arithmetic(ArithmeticOp::Add),
+// args: [1, 2] }`. The parser commits to the operator's enum variant at
+// parse time (it already knows, because operator symbols come from
+// different grammar productions than identifiers); `lower.rs` emits a
+// `TransformNode { target: TransformTarget::Operator(OperatorKind) }`;
+// `infer::resolve_operator_arrow` walks the LHS type's algebra chain in
+// `std/algebra.dag` to read the concrete Arrow signature.
+//
+// This replaces the M1(2.5)-era design in which operators compiled to
+// identifier-shaped Calls (`Call { target: "+" }`) that were resolved
+// through an `OPERATOR_FIELD_MAP` bridge. See
+// `DOWNSTREAM_REQUIREMENTS.md` M1(2.7) Class 2 for the dissolution.
+//
+// Grammar (M1(2.5)):
+//   module     := item*
+//   item       := let_item | fn_item | type_item
+//   let_item   := `let` ident (`:` type_expr)? `=` expr
+//   fn_item    := `fn` ident `(` params `)` `->` type_expr `=` expr
+//   type_item  := `type` ident type_params? type_body?
+//   type_body  := `{` record_fields `}`                       -- TypeRecord
+//              |  `=` ( sum_variants | type_expr )             -- TypeSum | TypeAlias
+//                                                              -- (no body) TypeAtom
+//   type_params := `<` ident ( `,` ident )* `>`
+//   type_expr  := atom_type ( `?` )?
+//   atom_type  := ident type_args?                             -- Named | Parameterized
+//              |  `fn` `(` type_expr_list `)` `->` type_expr   -- Arrow
+//   type_args  := `<` type_expr ( `,` type_expr )* `>`
+//   record_fields := field_decl*                               -- whitespace-separated
+//   field_decl := ident `:` type_expr (`,` | `;`)?
+//   sum_variants := variant ( `|` variant )*
+//   variant    := ident ( `(` type_expr_list `)` )?
+//   expr       := comparison
+//   pipe_target := ident | ident ( `(` args `)` )
+//   comparison := additive ( cmp_op additive )?
+//   additive   := term ( (`+` | `-`) term )*
+//   term       := pipe ( (`*` | `/`) pipe )*
+//   pipe       := primary ( `|>` pipe_target )*
+//   primary    := int_lit | bool_lit | string_lit
+//              |  ident ( `(` args `)` )?
+//              |  `if` expr `then` expr `else` expr
+>>>>>>> origin/main:src/v3/compiler/src/parse.rs
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::OperatorKind;

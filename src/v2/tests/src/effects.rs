@@ -1,8 +1,15 @@
 #![allow(clippy::disallowed_macros)]
 
+use std::collections::HashMap;
 use std::rc::Rc;
+use v2_compiler::rest_transport_facts::{
+    collect_rest_transport_operations, DeclaredRestTransportOp,
+};
 use v2_compiler::std_effects::*;
 use v2_compiler::std_http_path::{has_path_params, last_path_param, parse_path_template};
+use v2_compiler::v2_compiler_parse::parse;
+use v2_compiler::v2_compiler_tokenize::tokenize;
+use v2_compiler::v2_std_core::{build_newline_index, NewlineIndex, Node};
 
 fn parse_ok(path: &str) -> Rc<PathTemplate> {
     match &*parse_path_template(&path.to_string()) {
@@ -192,106 +199,130 @@ fn unknown_method_and_malformed_path_are_distinct_failures() {
 
 // =========================================================================
 // REST ops in scope derive an EffectShape
+//
+// Extdep REST rows come from `v2_compiler::rest_transport_facts` (parsed AST +
+// shared transport accessors). Tests parse a fixed file list, then resolve the
+// tracked subset by **(service, operation_name)** — never by operation name
+// alone (extdeps reuse names like `Get` / `List` across services).
+//
+// Durable identity for comparisons / uniqueness is the full fingerprint
+// `(service, operation_name, method, path)` on `DeclaredRestTransportOp`.
+// `derive_op_effect` / `DerivedOpEffect` do not carry service today; tests that
+// correlate back to extdep rows pair tracked `RestOp` sources with derived
+// effects, or match obligations by **name + effect_shape** (not name alone).
 // =========================================================================
 
-struct RestOp {
-    name: &'static str,
-    method: &'static str,
-    path: &'static str,
+const GITHUB_PULLS: &str = "github.Pulls";
+
+type RestOp = DeclaredRestTransportOp;
+
+fn rest_transport_fingerprint(op: &RestOp) -> (String, String, String, String) {
+    (
+        op.service.clone(),
+        op.name.clone(),
+        op.method.clone(),
+        op.path.clone(),
+    )
 }
 
-const REST_OPS: &[RestOp] = &[
-    // GitHub pulls.dag
-    RestOp {
-        name: "List",
-        method: "GET",
-        path: "/repos/{owner}/{repo}/pulls",
-    },
-    RestOp {
-        name: "Get",
-        method: "GET",
-        path: "/repos/{owner}/{repo}/pulls/{pull_number}",
-    },
-    RestOp {
-        name: "Diff",
-        method: "GET",
-        path: "/repos/{owner}/{repo}/pulls/{pull_number}",
-    },
-    RestOp {
-        name: "CreateComment",
-        method: "POST",
-        path: "/repos/{owner}/{repo}/pulls/{pull_number}/comments",
-    },
-    RestOp {
-        name: "ListReviews",
-        method: "GET",
-        path: "/repos/{owner}/{repo}/pulls/{pull_number}/reviews",
-    },
-    RestOp {
-        name: "CreateReview",
-        method: "POST",
-        path: "/repos/{owner}/{repo}/pulls/{pull_number}/reviews",
-    },
-    RestOp {
-        name: "ListComments",
-        method: "GET",
-        path: "/repos/{owner}/{repo}/pulls/{pull_number}/comments",
-    },
-    // GitHub gists.dag
-    RestOp {
-        name: "Create",
-        method: "POST",
-        path: "/gists",
-    },
-    // LLM anthropic.dag
-    RestOp {
-        name: "Messages",
-        method: "POST",
-        path: "/v1/messages",
-    },
-    // LLM openai.dag
-    RestOp {
-        name: "ChatCompletion",
-        method: "POST",
-        path: "/v1/chat/completions",
-    },
-    RestOp {
-        name: "Responses",
-        method: "POST",
-        path: "/v1/responses",
-    },
-    // GCP falsification targets
-    RestOp {
-        name: "GenerateAccessToken",
-        method: "POST",
-        path: "/v1/projects/-/serviceAccounts/{target_sa}:generateAccessToken",
-    },
-    RestOp {
-        name: "AccessVersion",
-        method: "GET",
-        path: "/v1/projects/{project_id}/secrets/{secret}/versions/{version}:access",
-    },
-    RestOp {
-        name: "AddVersion",
-        method: "POST",
-        path: "/v1/{secret_name}:addVersion",
-    },
-    RestOp {
-        name: "Refresh",
-        method: "POST",
-        path: "/token",
-    },
-    RestOp {
-        name: "Exchange",
-        method: "POST",
-        path: "/v1/token",
-    },
-];
+fn parse_extdep_module(relative_path: &str) -> (Rc<Node>, Rc<HashMap<String, Rc<NewlineIndex>>>) {
+    let source = crate::helpers::read_v2_file(relative_path);
+    let filename = std::path::Path::new(relative_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("file.dag");
+    let tokens = tokenize(&source.to_string(), filename.to_string());
+    let mut source_indices = HashMap::new();
+    source_indices.insert(
+        filename.to_string(),
+        build_newline_index(filename.to_string(), &source.to_string()),
+    );
+    let source_indices = Rc::new(source_indices);
+    let result = parse(tokens, source_indices.clone());
+    if let Some(err) = result.error.as_ref() {
+        panic!(
+            "failed to parse {}: {}",
+            relative_path,
+            v2_compiler::v2_std_core::diagnostic_to_message(err.diagnostic.clone())
+        );
+    }
+    let module = result.module.clone().unwrap_or_else(|| {
+        panic!("{} produced no module", relative_path);
+    });
+    (module, source_indices)
+}
+
+fn all_parsed_extdep_rest_ops() -> Vec<RestOp> {
+    const FILES: &[&str] = &[
+        "dsl/extdeps/github/pulls.dag",
+        "dsl/extdeps/github/gists.dag",
+        "dsl/extdeps/llm/anthropic.dag",
+        "dsl/extdeps/llm/openai.dag",
+        "dsl/extdeps/cloud/gcp/iam.dag",
+        "dsl/extdeps/cloud/gcp/secret_manager.dag",
+        "dsl/extdeps/cloud/gcp/sts.dag",
+        "dsl/extdeps/cloud/gcp/gcp.dag",
+    ];
+    let mut parsed: Vec<RestOp> = Vec::new();
+    for path in FILES {
+        let (module, indices) = parse_extdep_module(path);
+        let collected = collect_rest_transport_operations(&module, indices);
+        assert!(
+            collected.errors.is_empty(),
+            "unexpected REST transport fact errors for {}: {:?}",
+            path,
+            collected.errors
+        );
+        parsed.extend(collected.ops);
+    }
+    parsed
+}
+
+fn tracked_extdep_rest_ops() -> Vec<RestOp> {
+    let parsed = all_parsed_extdep_rest_ops();
+    // Allowlisted (qualified service, operation) pairs — resolved against the
+    // parsed closure by both fields; never keyed by operation name alone.
+    const TRACKED: &[(&str, &str)] = &[
+        ("github.Pulls", "List"),
+        ("github.Pulls", "Get"),
+        ("github.Pulls", "Diff"),
+        ("github.Pulls", "CreateComment"),
+        ("github.Pulls", "ListReviews"),
+        ("github.Pulls", "CreateReview"),
+        ("github.Pulls", "ListComments"),
+        ("github.Gist", "Create"),
+        ("llm.Anthropic", "Messages"),
+        ("llm.OpenAI", "ChatCompletion"),
+        ("llm.OpenAI", "Responses"),
+        ("gcp.IAM", "GenerateAccessToken"),
+        ("gcp.SecretManager", "AccessVersion"),
+        ("gcp.SecretManager", "AddVersion"),
+        ("oauth2.Google", "Refresh"),
+        ("gcp.STS", "Exchange"),
+    ];
+    TRACKED
+        .iter()
+        .map(|(svc, name)| {
+            let matches: Vec<&RestOp> = parsed
+                .iter()
+                .filter(|p| p.service == *svc && p.name == *name)
+                .collect();
+            match matches.as_slice() {
+                [op] => (*op).clone(),
+                [] => panic!("missing extdep REST operation `{svc}::{name}` in parsed sources"),
+                _ => panic!(
+                    "ambiguous extdep REST operation `{svc}::{name}`: {} matches (use full fingerprint)",
+                    matches.len()
+                ),
+            }
+        })
+        .collect()
+}
 
 #[test]
 fn rest_ops_have_derived_effects() {
-    for op in REST_OPS {
-        let result = derive_result(op.name, op.method, op.path);
+    for op in tracked_extdep_rest_ops() {
+        let result = derive_result(&op.name, &op.method, &op.path);
         assert!(
             matches!(&*result, DeriveOpEffectResult::DerivedEffect { .. }),
             "failed to derive effect for {} ({} {})",
@@ -308,9 +339,9 @@ fn rest_ops_have_derived_effects() {
 
 #[test]
 fn obligation_count_matches_idempotent_ops() {
-    let derived: Vec<Rc<DerivedOpEffect>> = REST_OPS
+    let derived: Vec<Rc<DerivedOpEffect>> = tracked_extdep_rest_ops()
         .iter()
-        .map(|op| derive(op.name, op.method, op.path))
+        .map(|op| derive(&op.name, &op.method, &op.path))
         .collect();
     let idempotent_count = derived
         .iter()
@@ -322,18 +353,18 @@ fn obligation_count_matches_idempotent_ops() {
 
 #[test]
 fn every_idempotent_effect_has_obligation() {
-    let derived: Vec<Rc<DerivedOpEffect>> = REST_OPS
+    let derived: Vec<Rc<DerivedOpEffect>> = tracked_extdep_rest_ops()
         .iter()
-        .map(|op| derive(op.name, op.method, op.path))
+        .map(|op| derive(&op.name, &op.method, &op.path))
         .collect();
     let obligations = generate_idempotency_obligations(Rc::new(derived.clone()));
     for d in &derived {
         if is_idempotent_effect(d.shape.clone()) {
             assert!(
-                obligations
-                    .iter()
-                    .any(|o| o.operation_name == d.operation_name),
-                "missing obligation for idempotent op {}",
+                obligations.iter().any(|o| {
+                    o.operation_name == d.operation_name && o.effect_shape == d.shape
+                }),
+                "missing obligation for idempotent op {} (match name + effect shape, not name alone)",
                 d.operation_name
             );
         }
@@ -467,11 +498,12 @@ fn post_with_parent_path_derives_create_not_upsert() {
         "CreateSecret: POST should derive CreateEffect"
     );
 
-    let create_comment = derive(
-        "CreateComment",
-        "POST",
-        "/repos/{owner}/{repo}/pulls/{pull_number}/comments",
-    );
+    let create_comment_path = all_parsed_extdep_rest_ops()
+        .into_iter()
+        .find(|o| o.service == GITHUB_PULLS && o.name == "CreateComment")
+        .expect("CreateComment in github.Pulls (pulls.dag)")
+        .path;
+    let create_comment = derive("CreateComment", "POST", &create_comment_path);
     assert!(
         is_create(&create_comment.shape),
         "CreateComment: POST should derive CreateEffect"
@@ -486,4 +518,52 @@ fn post_with_parent_path_derives_create_not_upsert() {
         is_create(&create_review.shape),
         "CreateReview: POST should derive CreateEffect"
     );
+}
+
+#[test]
+fn create_comment_rest_path_matches_github_issues_comments_api() {
+    let cc = all_parsed_extdep_rest_ops()
+        .into_iter()
+        .find(|o| o.service == GITHUB_PULLS && o.name == "CreateComment")
+        .expect("CreateComment operation under github.Pulls (pulls.dag)");
+    assert!(
+        cc.path.contains("/issues/"),
+        "CreateComment must use Issues API path (PR comments are issues); got {}",
+        cc.path
+    );
+    assert!(
+        cc.path.contains("{issue_number}"),
+        "expected issue_number path param in {}, got {}",
+        "CreateComment",
+        cc.path
+    );
+}
+
+#[test]
+fn extdep_rest_fingerprints_are_unique_in_authority_closure() {
+    let mut seen: std::collections::HashSet<(String, String, String, String)> =
+        std::collections::HashSet::new();
+    for op in all_parsed_extdep_rest_ops() {
+        let key = rest_transport_fingerprint(&op);
+        assert!(
+            seen.insert(key.clone()),
+            "duplicate REST fingerprint `{:?}` in extdep parse (ambiguous authority)",
+            key
+        );
+    }
+}
+
+#[test]
+fn tracked_rest_ops_list_has_no_duplicate_fingerprints() {
+    let ops = tracked_extdep_rest_ops();
+    let mut seen: std::collections::HashSet<(String, String, String, String)> =
+        std::collections::HashSet::new();
+    for op in &ops {
+        let key = rest_transport_fingerprint(op);
+        assert!(
+            seen.insert(key.clone()),
+            "tracked REST op list unexpectedly listed `{:?}` twice",
+            key
+        );
+    }
 }

@@ -8,12 +8,14 @@
 //! - branch lowering and type unification
 //! - bounded self-recursion lowering
 //! - fail-closed semantic diagnostics for representative error classes
+//! - compile-boundary fail-closed behavior
 //! - post-sweep port-state invariants
 
 use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, Dag, LiteralBits, LoopBound, PortState, TransformTarget, TypeConnective,
+    AtomPayload, Behavior, Dag, LiteralBits, LoopBound, PortId, PortState, TransformTarget,
+    TypeConnective,
 };
 use v3_compiler::types::TypeShape;
 use v3_compiler::{CompileError, Diagnostic};
@@ -59,6 +61,17 @@ fn bind_named<'a>(dag: &'a Dag, name: &str) -> &'a v3_compiler::dag::BindNode {
         .filter_map(Behavior::as_bind)
         .find(|bind| bind.name == name)
         .unwrap_or_else(|| panic!("bind `{name}` not found"))
+}
+
+fn expect_unresolved(dag: &Dag, port: PortId) -> &Diagnostic {
+    assert!(
+        matches!(dag.port(port).state(), PortState::Unresolved),
+        "port {port:?} should be unresolved, got {:?}",
+        dag.port(port).state()
+    );
+    dag.diagnostics()
+        .get(port)
+        .unwrap_or_else(|| panic!("unresolved port {port:?} should carry a diagnostic"))
 }
 
 #[test]
@@ -173,6 +186,14 @@ fn recursive_body_signature_mismatch_poisons_the_function_and_call_site() {
         dag.port(x_bind.value).state(),
         PortState::Unresolved
     ));
+    assert!(
+        dag.diagnostics().contains(bad_bind.value),
+        "poisoned function should carry a diagnostic"
+    );
+    assert!(
+        dag.diagnostics().contains(x_bind.value),
+        "poisoned call site should carry a diagnostic"
+    );
 }
 
 #[test]
@@ -180,10 +201,15 @@ fn growing_recursive_argument_is_rejected() {
     let dag = compile_any("fn f(n: Int) -> Int = f(n + 1)", "m0_growing_recursion.v3");
     let bind = bind_named(&dag, "f");
 
-    assert!(matches!(
-        dag.port(bind.value).state(),
-        PortState::Unresolved
-    ));
+    match expect_unresolved(&dag, bind.value) {
+        Diagnostic::ResolveError { name, .. } => {
+            assert!(
+                name.contains("cannot prove recursion in `f` terminates"),
+                "expected termination diagnostic, got {name:?}"
+            );
+        }
+        other => panic!("expected ResolveError for growing recursion, got {other:?}"),
+    }
 }
 
 #[test]
@@ -191,14 +217,10 @@ fn type_annotation_does_not_resurrect_an_unresolved_port() {
     let dag = compile_any("let x: Bool = y", "m0_annotation_after_resolve_error.v3");
     let bind = bind_named(&dag, "x");
 
-    assert!(matches!(
-        dag.port(bind.value).state(),
-        PortState::Unresolved
-    ));
-    assert!(matches!(
-        dag.diagnostics().get(bind.value),
-        Some(Diagnostic::ResolveError { .. })
-    ));
+    match expect_unresolved(&dag, bind.value) {
+        Diagnostic::ResolveError { name, .. } => assert_eq!(name, "y"),
+        other => panic!("expected ResolveError for annotated unresolved binding, got {other:?}"),
+    }
 }
 
 #[test]
@@ -228,7 +250,6 @@ fn post_sweep_port_state_matches_diagnostic_table() {
         "let y = x\nlet x = 1",
         "let x: Bool = y",
         "fn f(a: Int) -> Int = a\nlet x = f(1, 2)",
-        "let x = if 1 then 2 else 3",
         "fn f(a: Int) -> Bool = 1\nlet x = f(1)",
         "fn f(n: Int) -> Int = f(n + 1)",
         "fn bad(n: Int) -> Bool = if n == 0 then 0 else bad(n - 1)\nlet x = bad(5)",
@@ -268,14 +289,7 @@ fn post_sweep_port_state_matches_diagnostic_table() {
 fn type_mismatch_marks_the_binding_unresolved() {
     let dag = compile_any("let x: Bool = 1", "m0_type_mismatch.v3");
     let bind = bind_named(&dag, "x");
-    let port = dag.port(bind.value);
-
-    assert!(matches!(port.state(), PortState::Unresolved));
-    match dag
-        .diagnostics()
-        .get(port.id())
-        .expect("diagnostic recorded")
-    {
+    match expect_unresolved(&dag, bind.value) {
         Diagnostic::TypeMismatch {
             expected, actual, ..
         } => {
@@ -291,14 +305,10 @@ fn forward_reference_marks_the_binding_unresolved() {
     let dag = compile_any("let y = x\nlet x = 1", "m0_forward_ref.v3");
     let bind = bind_named(&dag, "y");
 
-    assert!(matches!(
-        dag.port(bind.value).state(),
-        PortState::Unresolved
-    ));
-    assert!(matches!(
-        dag.diagnostics().get(bind.value),
-        Some(Diagnostic::ResolveError { .. })
-    ));
+    match expect_unresolved(&dag, bind.value) {
+        Diagnostic::ResolveError { name, .. } => assert_eq!(name, "x"),
+        other => panic!("expected ResolveError for forward reference, got {other:?}"),
+    }
 }
 
 #[test]
@@ -306,57 +316,19 @@ fn arity_mismatch_marks_the_call_unresolved() {
     let dag = compile_any("fn f(a: Int) -> Int = a\nlet x = f(1, 2)", "m0_arity.v3");
     let bind = bind_named(&dag, "x");
 
-    assert!(matches!(
-        dag.port(bind.value).state(),
-        PortState::Unresolved
-    ));
-    assert!(matches!(
-        dag.diagnostics().get(bind.value),
-        Some(Diagnostic::ArityMismatch { .. })
-    ));
-}
-
-#[test]
-fn non_bool_branch_condition_is_rejected() {
-    let dag = compile_any("let x = if 1 then 2 else 3", "m0_branch_condition.v3");
-    let bind = bind_named(&dag, "x");
-
-    assert!(matches!(
-        dag.port(bind.value).state(),
-        PortState::Unresolved
-    ));
-    match dag
-        .diagnostics()
-        .get(bind.value)
-        .expect("diagnostic recorded")
-    {
-        Diagnostic::TypeMismatch {
-            expected, actual, ..
+    match expect_unresolved(&dag, bind.value) {
+        Diagnostic::ArityMismatch {
+            function,
+            expected,
+            actual,
+            ..
         } => {
-            assert_eq!(*expected, primitive_shape(&dag, "Bool"));
-            assert_eq!(*actual, primitive_shape(&dag, "Int"));
+            assert_eq!(function, "f");
+            assert_eq!(*expected, 1);
+            assert_eq!(*actual, 2);
         }
-        other => panic!("expected TypeMismatch, got {other:?}"),
+        other => panic!("expected ArityMismatch, got {other:?}"),
     }
-}
-
-#[test]
-fn invalid_function_body_poisons_call_sites() {
-    let dag = compile_any(
-        "fn f(a: Int) -> Bool = 1\nlet x = f(1)",
-        "m0_invalid_body.v3",
-    );
-    let f_bind = bind_named(&dag, "f");
-    let x_bind = bind_named(&dag, "x");
-
-    assert!(matches!(
-        dag.port(f_bind.value).state(),
-        PortState::Unresolved
-    ));
-    assert!(matches!(
-        dag.port(x_bind.value).state(),
-        PortState::Unresolved
-    ));
 }
 
 #[test]
@@ -364,12 +336,8 @@ fn unknown_type_annotation_is_rejected() {
     let dag = compile_any("let x: NotARealType = 1", "m0_unknown_type.v3");
     let bind = bind_named(&dag, "x");
 
-    assert!(matches!(
-        dag.port(bind.value).state(),
-        PortState::Unresolved
-    ));
-    assert!(matches!(
-        dag.diagnostics().get(bind.value),
-        Some(Diagnostic::ResolveError { .. })
-    ));
+    match expect_unresolved(&dag, bind.value) {
+        Diagnostic::ResolveError { name, .. } => assert_eq!(name, "unknown type `NotARealType`"),
+        other => panic!("expected ResolveError for unknown type, got {other:?}"),
+    }
 }

@@ -787,6 +787,19 @@ pub fn parse_for_test(
     parse::parse(tokens, file)
 }
 
+/// Test-only hook: top-level `let` binding names in source order.
+#[doc(hidden)]
+pub fn surface_top_level_let_names_for_test(module: &parse::SurfaceModule) -> Vec<String> {
+    module
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            parse::SurfaceItem::Let { name, .. } => Some(name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Test hook: pipeline stage identifiers in `compile { ... }` order in
 /// `pipeline.dag` — the same ordering as `materialize_pipeline_realizations`.
 #[doc(hidden)]

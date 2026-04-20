@@ -78,7 +78,7 @@ import v2.std.core {
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
-  nominal_type_ref, make_container_type, make_callable_type,
+  nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
   node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved,
   resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self,
   bare_map_node,
@@ -90,11 +90,10 @@ import v2.compiler.infer_types {
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
   resolved_type, child_type_node,
-  emit_map_has,
-  enrich_kernel_type
+  emit_map_has
 }
 import v2.compiler.infer_method {
-  infer_builtin_call_type, resolve_builtin_call_type, list_of_element
+  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type
 }
 import v2.compiler.infer_cycle { detect_type_cycles_kahn }
 import v2.compiler.infer_env {
@@ -495,10 +494,6 @@ fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> 
   }
 }
 
-fn named_collection_type(kind_name: String, element: Node) -> Node {
-  make_container_type(kind_name: kind_name, element: element)
-}
-
 fn resolved_callable_type(func_params: List<Node>, ret: Node) -> Node {
   make_callable_type(func_params: func_params, ret: ret)
 }
@@ -595,6 +590,100 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
 
 fn inference_error(message: String, span: SourceSpan, module_name: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
+}
+
+// Kernel List construction: diagnostics come from KernelTypeBuild (infer_types).
+type KernelListTyDiag {
+  ty: Node
+  miss_diags: List<ErrorNode>
+}
+
+fn list_kernel_ty_from_element(element: Node) -> KernelListTyDiag {
+  let b = make_container_type(kind_name: "List", element: element)
+  KernelListTyDiag { ty: b.ty, miss_diags: b.diagnostics }
+}
+
+type Tier2bBt {
+  bt: Node
+  kernel_diags: List<ErrorNode>
+}
+
+fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<Node>, scope: InferScope, span: SourceSpan) -> Tier2bBt {
+  if func_name == "lookup" || func_name == "map_get" {
+    Tier2bBt {
+      bt: match typed_args |> first {
+        Some { value: receiver_arg } =>
+          match arg_value(n: receiver_arg).inferred {
+            Some { value: Resolved { node: receiver_type } } =>
+              match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
+                Some { value: value_type } => with_optional_cardinality(n: value_type)
+                None => resolve_builtin_call_type(name: func_name)
+              }
+            _ => resolve_builtin_call_type(name: func_name)
+          }
+        None => resolve_builtin_call_type(name: func_name)
+      },
+      kernel_diags: []
+    }
+  } else if func_name == "map_keys" {
+    match typed_args |> first {
+      Some { value: receiver_arg } =>
+        match arg_value(n: receiver_arg).inferred {
+          Some { value: Resolved { node: receiver_type } } =>
+            match map_key_type_in_env(type_node: receiver_type, env: scope.type_env) {
+              Some { value: key_type } =>
+                let lk = list_kernel_ty_from_element(element: key_type)
+                Tier2bBt { bt: lk.ty, kernel_diags: lk.miss_diags }
+              None => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
+            }
+          _ => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
+        }
+      None => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
+    }
+  } else if func_name == "map_values" {
+    match typed_args |> first {
+      Some { value: receiver_arg } =>
+        match arg_value(n: receiver_arg).inferred {
+          Some { value: Resolved { node: receiver_type } } =>
+            match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
+              Some { value: value_type } =>
+                let lv = list_kernel_ty_from_element(element: value_type)
+                Tier2bBt { bt: lv.ty, kernel_diags: lv.miss_diags }
+              None => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
+            }
+          _ => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
+        }
+      None => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
+    }
+  } else {
+    Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
+  }
+}
+
+// Pipe fallback: `x |> map_keys` when method resolution did not yield a type.
+type MethodPipeFallback {
+  result_ty: Node
+  kernel_diags: List<ErrorNode>
+}
+
+fn method_pipe_map_keys_values_fallback(recv_rt: Node, method_name: String, scope: InferScope, span: SourceSpan) -> MethodPipeFallback {
+  if method_name == "map_keys" {
+    match map_key_type_in_env(type_node: recv_rt, env: scope.type_env) {
+      Some { value: key_type } =>
+        let lk = list_kernel_ty_from_element(element: key_type)
+        MethodPipeFallback { result_ty: lk.ty, kernel_diags: lk.miss_diags }
+      None => MethodPipeFallback { result_ty: recv_rt, kernel_diags: [] }
+    }
+  } else if method_name == "map_values" {
+    match map_value_type_in_env(type_node: recv_rt, env: scope.type_env) {
+      Some { value: value_type } =>
+        let lv = list_kernel_ty_from_element(element: value_type)
+        MethodPipeFallback { result_ty: lv.ty, kernel_diags: lv.miss_diags }
+      None => MethodPipeFallback { result_ty: recv_rt, kernel_diags: [] }
+    }
+  } else {
+    MethodPipeFallback { result_ty: recv_rt, kernel_diags: [] }
+  }
 }
 
 fn categorized_error(message: String, span: SourceSpan, module_name: String, category: String) -> ErrorNode {
@@ -1254,7 +1343,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             Some { value: mt } => mt
             None => error_type
           }
-          let bridge_result_type = if method_resolution.semantics == none { base_result_type } else {
+          let method_tv = if method_resolution.semantics == none {
+            KernelTypeBuild { ty: base_result_type, diagnostics: [] }
+          } else {
             match method_resolution.semantics.value {
               AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } =>
                 match at {
@@ -1263,12 +1354,16 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                       let call_arg_types = remaining |> map(a => resolved_type(n: arg_value(n: a)))
                       let fold_overrides = if call_fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_call_fold_acc_type) } else { empty_override_map() }
                       resolve_type_variables_from_template(template: t, arg_types: call_arg_types, receiver_type: first_arg_type, overrides: fold_overrides, source_indices: scope.type_env.source_indices)
-                    } else { base_result_type }
-                  None => base_result_type
+                    } else {
+                      KernelTypeBuild { ty: base_result_type, diagnostics: [] }
+                    }
+                  None => KernelTypeBuild { ty: base_result_type, diagnostics: [] }
                 }
-              _ => base_result_type
+              _ => KernelTypeBuild { ty: base_result_type, diagnostics: [] }
             }
           }
+          let bridge_result_type = method_tv.ty
+          let template_subst_diags = method_tv.diagnostics
           // Structural witness: does this method's template return ReceiverSelf?
           // Only methods that structurally return the receiver type (map_insert,
           // map_merge, etc.) justify patching the receiver from the result.
@@ -1307,78 +1402,83 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            diagnostics: arg_diags
+            diagnostics: concat(concat(arg_diags, method_resolution.diagnostics), template_subst_diags)
           }
         } else if func_name == "empty_map" {
           // Built-in: empty_map() → Map. Adopt expected type if it's a
           // fully parameterized keyed collection (e.g. Map<K,V> from struct
           // field or fold accumulator), otherwise emit a diagnostic.
-          let empty_map_type = match expected {
+          let bare_m = bare_map_node()
+          match expected {
             Some { value: exp } =>
-              if node_is_keyed_collection(n: exp, source_indices: scope.type_env.source_indices) { exp }
-              else { bare_map_node() }
-            None => bare_map_node()
-          }
-          let empty_map_diags = match expected {
-            Some { value: exp } =>
-              if node_is_keyed_collection(n: exp, source_indices: scope.type_env.source_indices) { [] }
-              else { [inference_error(message: "empty_map(): expected type is not a keyed collection", span: span, module_name: scope.module_name)] }
-            None => []
-          }
-          InferResult {
-            typed: make_named_expr_node(
-              name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
-              children: typed_arg_nodes,
-              inferred: Some { value: Resolved { node: empty_map_type } },
-              span: span,
-              name_span: node_name_span(n: texpr)
-            ),
-            diagnostics: concat(arg_diags, empty_map_diags)
+              if node_is_keyed_collection(n: exp, source_indices: scope.type_env.source_indices) {
+                InferResult {
+                  typed: make_named_expr_node(
+                    name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                    children: typed_arg_nodes,
+                    inferred: Some { value: Resolved { node: exp } },
+                    span: span,
+                    name_span: node_name_span(n: texpr)
+                  ),
+                  diagnostics: arg_diags
+                }
+              } else {
+                let empty_map_diags = concat(arg_diags, [inference_error(message: "empty_map(): expected type is not a keyed collection", span: span, module_name: scope.module_name)])
+                match bare_m {
+                  Some { value: map_t } =>
+                    InferResult {
+                      typed: make_named_expr_node(
+                        name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                        children: typed_arg_nodes,
+                        inferred: Some { value: Resolved { node: map_t } },
+                        span: span,
+                        name_span: node_name_span(n: texpr)
+                      ),
+                      diagnostics: empty_map_diags
+                    }
+                  None =>
+                    InferResult {
+                      typed: make_named_expr_node(
+                        name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                        children: typed_arg_nodes,
+                        inferred: Some { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
+                        span: span,
+                        name_span: node_name_span(n: texpr)
+                      ),
+                      diagnostics: concat(empty_map_diags, [inference_error(message: "empty_map(): Map kernel container profile missing", span: span, module_name: scope.module_name)])
+                    }
+                }
+              }
+            None =>
+              match bare_m {
+                Some { value: map_t } =>
+                  InferResult {
+                    typed: make_named_expr_node(
+                      name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                      children: typed_arg_nodes,
+                      inferred: Some { value: Resolved { node: map_t } },
+                      span: span,
+                      name_span: node_name_span(n: texpr)
+                    ),
+                    diagnostics: arg_diags
+                  }
+                None =>
+                  InferResult {
+                    typed: make_named_expr_node(
+                      name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                      children: typed_arg_nodes,
+                      inferred: Some { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
+                      span: span,
+                      name_span: node_name_span(n: texpr)
+                    ),
+                    diagnostics: concat(arg_diags, [inference_error(message: "empty_map(): Map kernel container profile missing", span: span, module_name: scope.module_name)])
+                  }
+              }
           }
         } else if infer_builtin_call_type(name: func_name) != none {
-          // Tier 2b: runtime built-in functions
-          let bt = if func_name == "lookup" || func_name == "map_get" {
-            match typed_args |> first {
-              Some { value: receiver_arg } =>
-                match arg_value(n: receiver_arg).inferred {
-                  Some { value: Resolved { node: receiver_type } } =>
-                    match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
-                      Some { value: value_type } => with_optional_cardinality(n: value_type)
-                      None => resolve_builtin_call_type(name: func_name)
-                    }
-                  _ => resolve_builtin_call_type(name: func_name)
-                }
-              None => resolve_builtin_call_type(name: func_name)
-            }
-          } else if func_name == "map_keys" {
-            match typed_args |> first {
-              Some { value: receiver_arg } =>
-                match arg_value(n: receiver_arg).inferred {
-                  Some { value: Resolved { node: receiver_type } } =>
-                    match map_key_type_in_env(type_node: receiver_type, env: scope.type_env) {
-                      Some { value: key_type } => list_of_element(element: key_type)
-                      None => resolve_builtin_call_type(name: func_name)
-                    }
-                  _ => resolve_builtin_call_type(name: func_name)
-                }
-              None => resolve_builtin_call_type(name: func_name)
-            }
-          } else if func_name == "map_values" {
-            match typed_args |> first {
-              Some { value: receiver_arg } =>
-                match arg_value(n: receiver_arg).inferred {
-                  Some { value: Resolved { node: receiver_type } } =>
-                    match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
-                      Some { value: value_type } => list_of_element(element: value_type)
-                      None => resolve_builtin_call_type(name: func_name)
-                    }
-                  _ => resolve_builtin_call_type(name: func_name)
-                }
-              None => resolve_builtin_call_type(name: func_name)
-            }
-          } else {
-            resolve_builtin_call_type(name: func_name)
-          }
+          // Tier 2b: runtime built-in functions (kernel List profile miss → diagnostics)
+          let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name: func_name, typed_args: typed_args, scope: scope, span: span)
+          let bt = tier2b.bt
           let call_semantics = if func_name == "lookup" {
             Some { value: LookupCallSemantics }
           } else {
@@ -1392,7 +1492,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            diagnostics: arg_diags
+            diagnostics: concat(arg_diags, tier2b.kernel_diags)
           }
         } else {
           // Tier 2c: callable-typed local (e.g. parameter `recurse: fn(Node) -> String`)
@@ -1489,24 +1589,16 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         service_registry: scope.service_registry,
         source_indices: scope.type_env.source_indices
       )
-      let base_result_type = match method_resolution.result_type {
-        Some { value: rt } => rt
+      let pipe_fb = match method_resolution.result_type {
+        Some { value: rt } => MethodPipeFallback { result_ty: rt, kernel_diags: [] }
         None =>
-          // Fallback: check if method is a builtin function used via pipe (x |> map_keys).
-          // Extract return type from receiver to avoid returning unresolved type variables.
-          if method_name == "map_keys" {
-            match map_key_type_in_env(type_node: recv_rt, env: scope.type_env) {
-              Some { value: key_type } => list_of_element(element: key_type)
-              None => recv_rt
-            }
-          } else if method_name == "map_values" {
-            match map_value_type_in_env(type_node: recv_rt, env: scope.type_env) {
-              Some { value: value_type } => list_of_element(element: value_type)
-              None => recv_rt
-            }
-          } else { recv_rt }
+          // Fallback: builtin used via pipe (x |> map_keys) — kernel List miss → diagnostics.
+          method_pipe_map_keys_values_fallback(recv_rt: recv_rt, method_name: method_name, scope: scope, span: span)
       }
-      let result_type = if method_resolution.semantics == none { base_result_type } else {
+      let base_result_type = pipe_fb.result_ty
+      let method_tv_mc = if method_resolution.semantics == none {
+        KernelTypeBuild { ty: base_result_type, diagnostics: [] }
+      } else {
         match method_resolution.semantics.value {
           AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } =>
             match at {
@@ -1515,12 +1607,16 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                   let mc_arg_types = typed_mc_args |> map(a => resolved_type(n: arg_value(n: a)))
                   let mc_fold_overrides = if fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_fold_acc_type) } else { empty_override_map() }
                   resolve_type_variables_from_template(template: t, arg_types: mc_arg_types, receiver_type: recv_rt, overrides: mc_fold_overrides, source_indices: scope.type_env.source_indices)
-                } else { base_result_type }
-              None => base_result_type
+                } else {
+                  KernelTypeBuild { ty: base_result_type, diagnostics: [] }
+                }
+              None => KernelTypeBuild { ty: base_result_type, diagnostics: [] }
             }
-          _ => base_result_type
+          _ => KernelTypeBuild { ty: base_result_type, diagnostics: [] }
         }
       }
+      let result_type = method_tv_mc.ty
+      let mc_template_diags = method_tv_mc.diagnostics
       let method_semantics = if method_resolution.semantics != none { method_resolution.semantics } else { Some { value: PlainMethodSemantics } }
       // typed_mc_args are already arg nodes
       let typed_mc_arg_nodes = typed_mc_args
@@ -1533,7 +1629,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       )
       InferResult {
         typed: mc_texpr,
-        diagnostics: concat(recv_diags, mc_arg_diags)
+        diagnostics: concat(concat(concat(recv_diags, mc_arg_diags), pipe_fb.kernel_diags), concat(method_resolution.diagnostics, mc_template_diags))
       }
 
     ExprMatch =>
@@ -1820,10 +1916,11 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           None => []
         }
       } else { [] }
-      let ll_texpr = make_expr_node(expr_data: ExprListLit, children: typed_elements, inferred: Some { value: Resolved { node: named_collection_type(kind_name: "List", element: elem_type_node) } }, span: span)
+      let list_k = list_kernel_ty_from_element(element: elem_type_node)
+      let ll_texpr = make_expr_node(expr_data: ExprListLit, children: typed_elements, inferred: Some { value: Resolved { node: list_k.ty } }, span: span)
       InferResult {
         typed: ll_texpr,
-        diagnostics: concat(elem_diags, empty_list_diags)
+        diagnostics: concat(concat(elem_diags, empty_list_diags), list_k.miss_diags)
       }
 
     ExprBinOp { op: op, algebra_field: _ } =>
@@ -5443,6 +5540,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   // halt before inference. This makes unresolved nodes structurally impossible
   // downstream -- inference and emit never see them.
   let env_errors = env_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+  let seed_diags = builtin_kernel_seed_diagnostics()
   if env_errors |> count > 0 {
     return TypecheckModuleResult {
       typed: TypedModule {
@@ -5452,7 +5550,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         func_env: ResolvedFuncEnv { signatures: empty_map() },
         item_registry: empty_map()
       },
-      diagnostics: env_diags
+      diagnostics: concat(env_diags, seed_diags)
     }
   }
 
@@ -5535,7 +5633,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       func_env: updated_func_env,
       item_registry: ctx.item_registry
     },
-    diagnostics: concat(env_diags, ctx.diagnostics, infer_diags)
+    diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, seed_diags)
   }
 }
 

@@ -74,10 +74,10 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
 }
 
 fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
-    let key_name =
-        container_param_name("Map".to_string(), 0).unwrap_or("__BUG_NO_PROFILE_Map".to_string());
-    let val_name =
-        container_param_name("Map".to_string(), 1).unwrap_or("__BUG_NO_PROFILE_Map".to_string());
+    let key_name = container_param_name("Map".to_string(), 0)
+        .expect("kernel Map should resolve K from PartialFunction profile");
+    let val_name = container_param_name("Map".to_string(), 1)
+        .expect("kernel Map should resolve V from PartialFunction profile");
     let sp = make_span(0, 0);
     Rc::new(Node {
         name: "Map".to_string(),
@@ -205,7 +205,7 @@ fn malformed_map_index_returns_compiler_error_type() {
     // bare_map_node() now has K/V wrapper children with TypeVariable inferred,
     // so it's recognized as a keyed collection — key type mismatch is diagnosed
     let result = v2_compiler_infer_access::check_index_access_node(
-        bare_map_node(),
+        bare_map_node().expect("Map kernel container profile"),
         leaf_node("String".to_string()),
         &zero_span(),
         "test".to_string(),
@@ -464,6 +464,7 @@ fn structural_method_lookup_resolves_all_list_collection_methods() {
                 &method_name.to_string(),
                 &empty_source_indices(),
             )
+            .resolution
             .is_some(),
             "lookup_structural_method should resolve '{}' on List<Int>",
             method_name
@@ -479,7 +480,10 @@ fn structural_method_any_on_list_returns_bool() {
         &"any".to_string(),
         &empty_source_indices(),
     )
-    .expect("any must resolve on List<Int>");
+    .resolution
+    .as_ref()
+    .expect("any must resolve on List<Int>")
+    .clone();
     assert_eq!(
         result.result_type.name, "Bool",
         "any on List<Int> should return Bool"
@@ -494,7 +498,10 @@ fn structural_method_all_on_list_returns_bool() {
         &"all".to_string(),
         &empty_source_indices(),
     )
-    .expect("all must resolve on List<Int>");
+    .resolution
+    .as_ref()
+    .expect("all must resolve on List<Int>")
+    .clone();
     assert_eq!(
         result.result_type.name, "Bool",
         "all on List<Int> should return Bool"
@@ -509,7 +516,10 @@ fn structural_method_sort_by_on_list_returns_self() {
         &"sort_by".to_string(),
         &empty_source_indices(),
     )
-    .expect("sort_by must resolve on List<Int>");
+    .resolution
+    .as_ref()
+    .expect("sort_by must resolve on List<Int>")
+    .clone();
     assert_eq!(
         result.result_type.name, "List",
         "sort_by on List<Int> should return List (ReceiverSelf)"
@@ -524,7 +534,10 @@ fn structural_method_first_on_list_returns_optional_element() {
         &"first".to_string(),
         &empty_source_indices(),
     )
-    .expect("first must resolve on List<Int>");
+    .resolution
+    .as_ref()
+    .expect("first must resolve on List<Int>")
+    .clone();
     assert_eq!(
         result.result_type.name, "Int",
         "first on List<Int> should return Int"
@@ -546,7 +559,10 @@ fn structural_method_count_on_list_returns_int() {
         &"count".to_string(),
         &empty_source_indices(),
     )
-    .expect("count must resolve on List<String>");
+    .resolution
+    .as_ref()
+    .expect("count must resolve on List<String>")
+    .clone();
     assert_eq!(result.result_type.name, "Int", "count should return Int");
 }
 
@@ -561,6 +577,7 @@ fn structural_method_lookup_resolves_all_int_ring_methods() {
                 &method_name.to_string(),
                 &empty_source_indices(),
             )
+            .resolution
             .is_some(),
             "lookup_structural_method should resolve '{}' on Int",
             method_name
@@ -576,7 +593,10 @@ fn structural_method_compare_on_int_returns_ordering() {
         &"compare".to_string(),
         &empty_source_indices(),
     )
-    .expect("compare must resolve on Int");
+    .resolution
+    .as_ref()
+    .expect("compare must resolve on Int")
+    .clone();
     assert_eq!(
         result.result_type.name, "Ordering",
         "compare on Int should return Ordering"
@@ -608,6 +628,7 @@ fn structural_method_lookup_resolves_all_map_partial_function_methods() {
                 &method_name.to_string(),
                 &empty_source_indices(),
             )
+            .resolution
             .is_some(),
             "lookup_structural_method should resolve '{}' on Map<String,Int>",
             method_name
@@ -626,7 +647,10 @@ fn structural_method_get_on_map_returns_optional_value() {
         &"get".to_string(),
         &empty_source_indices(),
     )
-    .expect("get must resolve on Map<String,Int>");
+    .resolution
+    .as_ref()
+    .expect("get must resolve on Map<String,Int>")
+    .clone();
     assert_eq!(
         result.result_type.name, "Int",
         "get on Map<String,Int> should return Int"
@@ -651,7 +675,10 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
         &"keys".to_string(),
         &empty_source_indices(),
     )
-    .expect("keys must resolve on Map<String,Int>");
+    .resolution
+    .as_ref()
+    .expect("keys must resolve on Map<String,Int>")
+    .clone();
     assert_eq!(result.result_type.name, "List", "keys should return List");
     assert_eq!(
         result.result_type.children.len(),
@@ -676,6 +703,7 @@ fn structural_method_lookup_returns_none_for_unknown_type() {
             &"add".to_string(),
             &empty_source_indices()
         )
+        .resolution
         .is_none(),
         "custom types without algebra should not have structural methods"
     );
@@ -714,7 +742,7 @@ fn keyed_collection_parts_returns_none_for_element_collection() {
 #[test]
 fn keyed_collection_parts_returns_type_variables_for_bare_map() {
     // bare_map_node() now has K/V wrapper children with TypeVariable inferred
-    let bare = bare_map_node();
+    let bare = bare_map_node().expect("Map kernel container profile");
     let parts = v2_compiler_infer_access::keyed_collection_parts(&bare, empty_source_indices());
     assert!(
         parts.is_some(),

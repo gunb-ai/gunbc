@@ -10,7 +10,7 @@ use crate::v2_std_core::ExprData::NoExprData;
 use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
 pub use crate::v2_std_core::{
     bool_type, int_type, make_span, string_type, unit_type, with_optional_cardinality, Cardinality,
-    Connective, ExprData, InferredNode, Node,
+    Connective, ErrorNode, ExprData, InferredNode, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -45,18 +45,39 @@ pub fn map_of_type_variables() -> Rc<Node> {
         type_variable_node("map_key".to_string()),
         type_variable_node("map_value".to_string()),
     )
+    .ty
+    .clone()
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
     make_container_type(&"List".to_string(), type_variable_node(id))
+        .ty
+        .clone()
 }
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    make_container_type(&"List".to_string(), element)
+    make_container_type(&"List".to_string(), element).ty.clone()
 }
 
 pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
     v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String, Rc<Node>>(), key, value)
+}
+
+pub fn builtin_kernel_seed_diagnostics() -> Rc<Vec<Rc<ErrorNode>>> {
+    v2_rt::concat(
+        make_map_type(
+            type_variable_node("map_key".to_string()),
+            type_variable_node("map_value".to_string()),
+        )
+        .diagnostics
+        .clone(),
+        make_container_type(
+            &"List".to_string(),
+            type_variable_node("collection_element".to_string()),
+        )
+        .diagnostics
+        .clone(),
+    )
 }
 
 pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {

@@ -969,7 +969,7 @@ pub fn emit_lib_rs_from_files(
             __result
         });
         let hand_maintained_mods = if has_compiler_tests.clone() {
-            "\npub mod v2_interpreter;\npub mod cli_run;".to_string()
+            "\npub mod v2_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;".to_string()
         } else {
             "".to_string()
         };

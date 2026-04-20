@@ -97,14 +97,23 @@ mod m2_lens_unused_parameters_migration_test;
 mod m2_lens_variant_payload_migration_test;
 #[path = "integration/m2_substrate_inhabitance_test.rs"]
 mod m2_substrate_inhabitance_test;
+#[path = "integration/p0_std_render_repeat_string_test.rs"]
+mod p0_std_render_repeat_string_test;
 #[path = "integration/pipe_desugar.rs"]
 mod pipe_desugar;
 #[path = "integration/sg0_census_test.rs"]
 mod sg0_census_test;
 #[path = "integration/sg1_tokenize_authority_test.rs"]
 mod sg1_tokenize_authority_test;
+<<<<<<< HEAD
 #[path = "integration/sg2_parse_authority_test.rs"]
 mod sg2_parse_authority_test;
+=======
+#[path = "integration/sg3_lower_authority_test.rs"]
+mod sg3_lower_authority_test;
+#[path = "integration/sg3_lower_parse_surface_stack_test.rs"]
+mod sg3_lower_parse_surface_stack_test;
+>>>>>>> origin/main
 #[path = "integration/sg6_hand_authored_census_test.rs"]
 mod sg6_hand_authored_census_test;
 #[path = "integration/sg7_prep_variant_payload_freshness_test.rs"]

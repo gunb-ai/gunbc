@@ -70,6 +70,11 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // `tests/integration.rs` binary still includes them via `#[path =
 // "boundary/..."]` so the one-bootstrap compile amortization holds.
 //
+// P0-A (PR #595): bounded `repeat_string_loop` receipt — one integration
+// file `tests/integration/p0_std_render_repeat_string_test.rs` asserts
+// `dsl/std/render.dag` structure; not generated. Dissolution: fold into a
+// broader std-render harness or `.dag`-native structural test when one exists.
+//
 // Stage 3b DB-1 parse/apply ratchet bump — PR #564 adds one
 // hand-authored integration file,
 // `tests/integration/lane3_stage_3b_db1_test.rs`, because the
@@ -80,6 +85,10 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // `.dag`-native correction-validation path, drop the entry. This is
 // a bounded SG-0 exception for the merge-blocking Stage 3b receipt,
 // not a precedent for adding ad hoc integration files.
+//
+// SG-3f-prep (director Option B): `lower.rs` stays on this list — canonical
+// lowering remains hand-maintained Rust until `lower.dag` + reflected `Surface*`.
+// `regen_lower` + `lower_generated.rs` are prep-only (not `lib.rs` authority).
 //
 // Phase 1 Dag builder surface — PR #570 adds one narrow host-side
 // helper file, `src/dag/builder.rs`, to keep the test-facing graph
@@ -102,7 +111,11 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
+<<<<<<< HEAD
     "src/v3/compiler/src/bin/regen_parse.rs",
+=======
+    "src/v3/compiler/src/bin/regen_lower.rs",
+>>>>>>> origin/main
     "src/v3/compiler/src/bin/regen_tokenize.rs",
     "src/v3/compiler/src/bin/regen_v3.rs",
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
@@ -168,10 +181,16 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/m2_lens_unused_parameters_migration_test.rs",
     "src/v3/compiler/tests/integration/m2_lens_variant_payload_migration_test.rs",
     "src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs",
+    "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
+<<<<<<< HEAD
     "src/v3/compiler/tests/integration/sg2_parse_authority_test.rs",
+=======
+    "src/v3/compiler/tests/integration/sg3_lower_authority_test.rs",
+    "src/v3/compiler/tests/integration/sg3_lower_parse_surface_stack_test.rs",
+>>>>>>> origin/main
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
