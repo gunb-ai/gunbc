@@ -1275,6 +1275,31 @@ pub(crate) struct VerifierOutputPolicyVariants {
     pub require_empty_stdout_and_stderr: Option<DeclarationId>,
 }
 
+/// Cached `CallableStrategy` variant DeclarationIds resolved from
+/// `src/v3/std/emit_model.dag`. Populated at bootstrap end and
+/// consumed by the shared Go emitter plus the Rust/Python target
+/// emitters when parsing `CallableRealization.strategy`.
+///
+/// This mirrors `PatternBindingRuleVariants`: one bootstrap-time
+/// name walk through the Disj, then downstream consumers compare
+/// typed `DeclarationId`s only. Without the cache, each emitter
+/// re-resolves the same ten variant labels independently at parse
+/// time, recreating the "multiple call sites reconstruct the same
+/// fact" bridge.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct CallableStrategyVariants {
+    pub list_empty: Option<DeclarationId>,
+    pub list_singleton: Option<DeclarationId>,
+    pub list_cons: Option<DeclarationId>,
+    pub list_concat: Option<DeclarationId>,
+    pub list_length: Option<DeclarationId>,
+    pub list_is_empty: Option<DeclarationId>,
+    pub list_fold: Option<DeclarationId>,
+    pub list_map: Option<DeclarationId>,
+    pub list_filter: Option<DeclarationId>,
+    pub list_contains: Option<DeclarationId>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Dag {
     /// Behaviors in construction order. NodeId(k) lives at `nodes[k]`; a forward
@@ -1331,6 +1356,11 @@ pub struct Dag {
     /// .output_policy` — same §Layer opacity shape as
     /// `pattern_binding_rule_variants`.
     verifier_output_policy_variants: VerifierOutputPolicyVariants,
+    /// Cached `CallableStrategy` variant DeclarationIds resolved
+    /// from `src/v3/std/emit_model.dag`. Consumed by the shared Go
+    /// emitter plus Rust/Python target emitters when parsing
+    /// `CallableRealization.strategy`.
+    callable_strategy_variants: CallableStrategyVariants,
     /// Sidecar structural facts for mutually-recursive SCCs.
     clusters: Vec<Cluster>,
     /// Synthetic match carriers for anonymous `T?` cardinalities. Used when
@@ -1371,6 +1401,7 @@ impl Dag {
             variant_payload_field_access_rule_variants:
                 VariantPayloadFieldAccessRuleVariants::default(),
             verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
+            callable_strategy_variants: CallableStrategyVariants::default(),
             clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
         }
@@ -1703,6 +1734,14 @@ impl Dag {
     /// `CleanEmissionContract.post_emit_verifier.output_policy`.
     pub(crate) fn verifier_output_policy_variants(&self) -> &VerifierOutputPolicyVariants {
         &self.verifier_output_policy_variants
+    }
+
+    /// Typed accessor for the cached `CallableStrategy` variant
+    /// handles resolved from `src/v3/std/emit_model.dag` at
+    /// bootstrap end. Consumed by emiters when parsing
+    /// `CallableRealization.strategy`.
+    pub(crate) fn callable_strategy_variants(&self) -> &CallableStrategyVariants {
+        &self.callable_strategy_variants
     }
 
     pub fn nodes(&self) -> &[Behavior] {
@@ -2198,6 +2237,48 @@ impl Dag {
             }
         }
         self.verifier_output_policy_variants = verifier_policy_variants;
+
+        let mut callable_strategy_variants = CallableStrategyVariants::default();
+        if let Some(parent) = self.declaration_by_name("CallableStrategy") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "ListEmpty" => {
+                            callable_strategy_variants.list_empty = Some(variant.ty);
+                        }
+                        "ListSingleton" => {
+                            callable_strategy_variants.list_singleton = Some(variant.ty);
+                        }
+                        "ListCons" => {
+                            callable_strategy_variants.list_cons = Some(variant.ty);
+                        }
+                        "ListConcat" => {
+                            callable_strategy_variants.list_concat = Some(variant.ty);
+                        }
+                        "ListLength" => {
+                            callable_strategy_variants.list_length = Some(variant.ty);
+                        }
+                        "ListIsEmpty" => {
+                            callable_strategy_variants.list_is_empty = Some(variant.ty);
+                        }
+                        "ListFold" => {
+                            callable_strategy_variants.list_fold = Some(variant.ty);
+                        }
+                        "ListMap" => {
+                            callable_strategy_variants.list_map = Some(variant.ty);
+                        }
+                        "ListFilter" => {
+                            callable_strategy_variants.list_filter = Some(variant.ty);
+                        }
+                        "ListContains" => {
+                            callable_strategy_variants.list_contains = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        self.callable_strategy_variants = callable_strategy_variants;
     }
 
     fn populate_target_clean_emission_bindings(&mut self) {
@@ -2425,6 +2506,40 @@ mod tests {
         assert!(
             dag.rust_functions_syntax_decl().is_some(),
             "rust_functions syntax anchor"
+        );
+    }
+
+    #[test]
+    fn callable_strategy_variants_populated_after_bootstrap() {
+        let dag = Dag::new();
+        let variants = dag.callable_strategy_variants();
+        assert!(variants.list_empty.is_some(), "CallableStrategy.ListEmpty");
+        assert!(
+            variants.list_singleton.is_some(),
+            "CallableStrategy.ListSingleton"
+        );
+        assert!(variants.list_cons.is_some(), "CallableStrategy.ListCons");
+        assert!(
+            variants.list_concat.is_some(),
+            "CallableStrategy.ListConcat"
+        );
+        assert!(
+            variants.list_length.is_some(),
+            "CallableStrategy.ListLength"
+        );
+        assert!(
+            variants.list_is_empty.is_some(),
+            "CallableStrategy.ListIsEmpty"
+        );
+        assert!(variants.list_fold.is_some(), "CallableStrategy.ListFold");
+        assert!(variants.list_map.is_some(), "CallableStrategy.ListMap");
+        assert!(
+            variants.list_filter.is_some(),
+            "CallableStrategy.ListFilter"
+        );
+        assert!(
+            variants.list_contains.is_some(),
+            "CallableStrategy.ListContains"
         );
     }
 

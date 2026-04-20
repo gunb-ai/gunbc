@@ -2342,20 +2342,27 @@ fn require_callable_strategy(
             detail: "CallableStrategy variants must not carry payload fields",
         });
     }
+    let variants = dag.callable_strategy_variants();
     let strategies = [
-        ("ListEmpty", CallableStrategyBinding::ListEmpty),
-        ("ListSingleton", CallableStrategyBinding::ListSingleton),
-        ("ListCons", CallableStrategyBinding::ListCons),
-        ("ListConcat", CallableStrategyBinding::ListConcat),
-        ("ListLength", CallableStrategyBinding::ListLength),
-        ("ListIsEmpty", CallableStrategyBinding::ListIsEmpty),
-        ("ListFold", CallableStrategyBinding::ListFold),
-        ("ListMap", CallableStrategyBinding::ListMap),
-        ("ListFilter", CallableStrategyBinding::ListFilter),
-        ("ListContains", CallableStrategyBinding::ListContains),
+        (variants.list_empty, CallableStrategyBinding::ListEmpty),
+        (
+            variants.list_singleton,
+            CallableStrategyBinding::ListSingleton,
+        ),
+        (variants.list_cons, CallableStrategyBinding::ListCons),
+        (variants.list_concat, CallableStrategyBinding::ListConcat),
+        (variants.list_length, CallableStrategyBinding::ListLength),
+        (variants.list_is_empty, CallableStrategyBinding::ListIsEmpty),
+        (variants.list_fold, CallableStrategyBinding::ListFold),
+        (variants.list_map, CallableStrategyBinding::ListMap),
+        (variants.list_filter, CallableStrategyBinding::ListFilter),
+        (
+            variants.list_contains,
+            CallableStrategyBinding::ListContains,
+        ),
     ];
-    for (label, binding) in strategies {
-        let Some(variant_id) = named_variant_id(dag, "CallableStrategy", label) else {
+    for (variant_id, binding) in strategies {
+        let Some(variant_id) = variant_id else {
             return Err(EmitError::MalformedRealization {
                 declaration,
                 detail: "CallableStrategy variant declaration was not found",

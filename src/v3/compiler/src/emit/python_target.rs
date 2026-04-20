@@ -1559,20 +1559,27 @@ fn parse_callable_strategy(
             detail: "CallableStrategy variants must not carry payload",
         });
     }
-    let variants = [
-        ("ListEmpty", CallableStrategyBinding::Empty),
-        ("ListSingleton", CallableStrategyBinding::Singleton),
-        ("ListCons", CallableStrategyBinding::Cons),
-        ("ListConcat", CallableStrategyBinding::Concat),
-        ("ListLength", CallableStrategyBinding::Length),
-        ("ListIsEmpty", CallableStrategyBinding::IsEmpty),
-        ("ListFold", CallableStrategyBinding::Fold),
-        ("ListMap", CallableStrategyBinding::Map),
-        ("ListFilter", CallableStrategyBinding::Filter),
-        ("ListContains", CallableStrategyBinding::Contains),
+    let variants = dag.callable_strategy_variants();
+    let strategies = [
+        (variants.list_empty, CallableStrategyBinding::Empty),
+        (variants.list_singleton, CallableStrategyBinding::Singleton),
+        (variants.list_cons, CallableStrategyBinding::Cons),
+        (variants.list_concat, CallableStrategyBinding::Concat),
+        (variants.list_length, CallableStrategyBinding::Length),
+        (variants.list_is_empty, CallableStrategyBinding::IsEmpty),
+        (variants.list_fold, CallableStrategyBinding::Fold),
+        (variants.list_map, CallableStrategyBinding::Map),
+        (variants.list_filter, CallableStrategyBinding::Filter),
+        (variants.list_contains, CallableStrategyBinding::Contains),
     ];
-    for (name, strategy) in variants {
-        if constructor == named_variant_id(dag, "CallableStrategy", name)? {
+    for (variant_id, strategy) in strategies {
+        let Some(variant_id) = variant_id else {
+            return Err(EmitPythonError::MalformedSpec {
+                declaration,
+                detail: "CallableStrategy variant declaration was not found",
+            });
+        };
+        if constructor == variant_id {
             return Ok(strategy);
         }
     }

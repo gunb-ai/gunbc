@@ -1756,45 +1756,34 @@ fn require_callable_strategy(
             detail: "CallableStrategy variants must not carry payload fields",
         });
     }
+    let variants = dag.callable_strategy_variants();
     let strategies = [
+        (variants.list_empty, RustCallableStrategyBinding::ListEmpty),
         (
-            named_variant_id(dag, "CallableStrategy", "ListEmpty"),
-            RustCallableStrategyBinding::ListEmpty,
-        ),
-        (
-            named_variant_id(dag, "CallableStrategy", "ListSingleton"),
+            variants.list_singleton,
             RustCallableStrategyBinding::ListSingleton,
         ),
+        (variants.list_cons, RustCallableStrategyBinding::ListCons),
         (
-            named_variant_id(dag, "CallableStrategy", "ListCons"),
-            RustCallableStrategyBinding::ListCons,
-        ),
-        (
-            named_variant_id(dag, "CallableStrategy", "ListConcat"),
+            variants.list_concat,
             RustCallableStrategyBinding::ListConcat,
         ),
         (
-            named_variant_id(dag, "CallableStrategy", "ListLength"),
+            variants.list_length,
             RustCallableStrategyBinding::ListLength,
         ),
         (
-            named_variant_id(dag, "CallableStrategy", "ListIsEmpty"),
+            variants.list_is_empty,
             RustCallableStrategyBinding::ListIsEmpty,
         ),
+        (variants.list_fold, RustCallableStrategyBinding::ListFold),
+        (variants.list_map, RustCallableStrategyBinding::ListMap),
         (
-            named_variant_id(dag, "CallableStrategy", "ListFold"),
-            RustCallableStrategyBinding::ListFold,
-        ),
-        (
-            named_variant_id(dag, "CallableStrategy", "ListMap"),
-            RustCallableStrategyBinding::ListMap,
-        ),
-        (
-            named_variant_id(dag, "CallableStrategy", "ListFilter"),
+            variants.list_filter,
             RustCallableStrategyBinding::ListFilter,
         ),
         (
-            named_variant_id(dag, "CallableStrategy", "ListContains"),
+            variants.list_contains,
             RustCallableStrategyBinding::ListContains,
         ),
     ];
