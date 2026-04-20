@@ -293,14 +293,14 @@ fn map_substrate_scalar_to_rust(dag: &Dag, mut id: DeclarationId) -> Option<Stri
 }
 
 fn needs_box_edge(parent: &str, field: &str, rhs: &str) -> bool {
-    match (parent, field, rhs) {
-        ("SurfaceType", "inner", "SurfaceType") => true,
-        ("SurfaceType", "output", "SurfaceType") => true,
-        ("SurfaceExpr", "body", "SurfaceExpr") => true,
-        ("SurfaceExpr", "cond", "SurfaceExpr") => true,
-        ("SurfaceExpr", "then_branch", "SurfaceExpr") => true,
-        ("SurfaceExpr", "else_branch", "SurfaceExpr") => true,
-        ("SurfaceExpr", "scrutinee", "SurfaceExpr") => true,
-        _ => false,
-    }
+    matches!(
+        (parent, field, rhs),
+        ("SurfaceType", "inner", "SurfaceType")
+            | ("SurfaceType", "output", "SurfaceType")
+            | ("SurfaceExpr", "body", "SurfaceExpr")
+            | ("SurfaceExpr", "cond", "SurfaceExpr")
+            | ("SurfaceExpr", "then_branch", "SurfaceExpr")
+            | ("SurfaceExpr", "else_branch", "SurfaceExpr")
+            | ("SurfaceExpr", "scrutinee", "SurfaceExpr")
+    )
 }
