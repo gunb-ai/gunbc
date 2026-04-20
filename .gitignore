@@ -68,6 +68,8 @@ node_modules/
 # Created by scripts/regenerate-stage0.sh; cleaned up on exit
 .regen-sources/
 .regen-output/
+# Output of scripts/check-stage0-freshness.sh --output-dir
+.freshness-check/
 
 # --- Interactive auth/session transcripts ---
 # Should never be committed; may contain OAuth URLs or session state
