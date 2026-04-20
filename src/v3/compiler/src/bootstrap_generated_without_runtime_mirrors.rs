@@ -1716,6 +1716,7 @@ pub(crate) fn bootstrapped_fixture_without_runtime_mirrors_dag() -> Dag {
         pattern_binding_rule_variants: PatternBindingRuleVariants::default(),
         variant_payload_field_access_rule_variants: VariantPayloadFieldAccessRuleVariants::default(),
         verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
+        callable_strategy_variants: CallableStrategyVariants::default(),
         clusters: vec![],
         optional_match_disjs: HashMap::new(),
     }
