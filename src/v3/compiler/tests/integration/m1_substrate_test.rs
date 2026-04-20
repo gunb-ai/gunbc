@@ -1,6 +1,6 @@
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, LiteralBits,
+    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, LiteralBits,
     PortState, TransformTarget, TypeConnective,
 };
 use v3_compiler::diagnostics::SourceSpan;
@@ -10,7 +10,6 @@ use v3_compiler::Diagnostic;
 use crate::common::substrate_receipts::{
     assert_bootstrap_int_ordered_ring_add_arrow, bind_named, bind_value_type_decl,
     callable_instantiation_arguments, field, find_named, transforms_in_source_file,
-    walk_instantiation_chain,
 };
 use crate::common::{cached_compile_any, cached_compile_to_dag};
 
@@ -47,13 +46,13 @@ fn hand_built_operator_add_transform_carries_structural_target_and_int_shape() {
     // `m17_operator_lowers_to_structural_transform_target` remains the
     // compile-path proof that surface `+` lowers to this shape.
     let mut dag = Dag::new();
-    let span = SourceSpan::new("<hand-built>", 0, 0);
-    let a = dag.push_value(LiteralBits::Int(1), span);
-    let b = dag.push_value(LiteralBits::Int(2), span);
+    let span = || SourceSpan::new("<hand-built>", 0, 0);
+    let a = dag.push_value(LiteralBits::Int(1), span());
+    let b = dag.push_value(LiteralBits::Int(2), span());
     let out = dag.push_transform(
         TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
         vec![a, b],
-        span,
+        span(),
     );
     let int_shape = dag.int_shape().expect("bootstrap Int");
     assert_eq!(dag.port(out).state(), &PortState::Resolved(int_shape));
@@ -414,12 +413,7 @@ fn m17_module_and_import_preserve_parsed_facts() {
     let dag = cached_compile_to_dag(src, "imports.v3");
     // The `let x = 1` item still binds, confirming the module /
     // import items didn't break lowering.
-    let bind_x = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "x")
-        .expect("Bind(x) exists");
+    let bind_x = bind_named(&dag, "x");
     assert!(
         matches!(
             dag.port(bind_x.value).state(),
@@ -462,12 +456,7 @@ fn m17_r9_comparison_operator_walks_to_algebra_field() {
     // reads its Arrow signature. OrderedRing.lt: fn(T, T) -> Bool.
     // Substituting receiver T → Int gives (Int, Int) -> Bool.
     let dag = cached_compile_to_dag("let y = 1 < 2", "test.v3");
-    let bind_y = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "y")
-        .expect("Bind(y) exists");
+    let bind_y = bind_named(&dag, "y");
     let bool_shape = dag.bool_shape().expect("Bool cached at bootstrap");
     match dag.port(bind_y.value).state() {
         v3_compiler::dag::PortState::Resolved(ty) if *ty == bool_shape => {}
@@ -900,28 +889,15 @@ fn m18_match_on_user_sum_type_compiles() {
     // This test uses literal RHS bodies so it doesn't hit the
     // variant-expression RHS class-5 gap (bare `True`/`False` as
     // expressions).
+    //
+    // The `Plus` in a call site like `always_zero(Plus)` is a variant
+    // expression — class-5 gap. Compile only the fn body.
     let src = "\
 type Sign = Plus | Minus
 fn always_zero(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }
-let answer = always_zero(Plus)
 ";
-    // The `Plus` in the call site `always_zero(Plus)` IS a variant
-    // expression — it falls into the class-5 gap. Use a simpler
-    // harness that avoids that by compiling just the fn body.
-    let src_without_call = "\
-type Sign = Plus | Minus
-fn always_zero(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }
-";
-    let dag = compile_any(src_without_call, "match.v3");
-    // Find the always_zero fn declaration; its connective should
-    // be an Arrow, and the Bind's sub-DAG should contain a Branch
-    // with exactly two paths, each pattern ResolvedVariant(...).
-    let bind = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "always_zero")
-        .expect("Bind(always_zero) exists");
+    let dag = compile_any(src, "match.v3");
+    let bind = bind_named(&dag, "always_zero");
     // Walk the Bind's value port back to its producer Behavior.
     let body_node_id = dag
         .port(bind.value)
@@ -941,7 +917,6 @@ fn always_zero(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }
             ),
         }
     }
-    let _ = src;
 }
 
 #[test]
@@ -1113,12 +1088,7 @@ let c = a(1)
         !dag.diagnostics().is_empty(),
         "non-terminating mutual recursion should produce a diagnostic"
     );
-    let bind_c = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "c")
-        .expect("Bind(c) exists");
+    let bind_c = bind_named(&dag, "c");
     assert!(
         matches!(
             dag.port(bind_c.value).state(),
@@ -1181,12 +1151,7 @@ fn always_zero(s: Sign) -> Int = match s { Plus => 0 }
         Err(v3_compiler::CompileError::Semantic(dag)) => dag,
         other => panic!("expected CompileError::Semantic, got {other:?}"),
     };
-    let bind = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "always_zero")
-        .expect("Bind(always_zero) exists");
+    let bind = bind_named(&dag, "always_zero");
     // The Bind's value port is the fn body's return port,
     // which is the Branch's output. It must be Unresolved —
     // the cascade from the coverage-check failure reached here.
@@ -1303,12 +1268,7 @@ fn identity(p: Point) -> Point = p
     // Find the corresponding Bind's first param port and read its
     // TypeShape. The port's DeclarationId must equal the Arrow's
     // input DeclarationId.
-    let bind = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "identity")
-        .expect("Bind(identity) exists");
+    let bind = bind_named(&dag, "identity");
     let first_param_port = bind.params.first().expect("one param");
     let param_shape = match dag.port(*first_param_port).state() {
         v3_compiler::dag::PortState::Resolved(ty) => *ty,
@@ -2078,12 +2038,7 @@ fn get_x(point: Point) -> Int = point.x
     let dag = cached_compile_to_dag(src, "field_access.v3");
     let int_id = find_named(&dag, "Int");
 
-    let bind = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "get_x")
-        .expect("Bind(get_x) exists");
+    let bind = bind_named(&dag, "get_x");
     let body_node_id = dag
         .port(bind.value)
         .produced_by
@@ -2120,12 +2075,7 @@ fn get_nested_x(outer: Outer) -> Int = outer.inner.x
 ";
     let dag = cached_compile_to_dag(src, "field_access_multi_hop.v3");
 
-    let bind = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "get_nested_x")
-        .expect("Bind(get_nested_x) exists");
+    let bind = bind_named(&dag, "get_nested_x");
 
     let final_projection = match dag.node(
         dag.port(bind.value)
@@ -2178,12 +2128,7 @@ fn read(boxed: Box<Int>) -> Int = boxed.value
     let box_id = find_named(&dag, "Box");
     let box_t = dag.declaration(box_id).type_params[0];
 
-    let bind = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "read")
-        .expect("Bind(read) exists");
+    let bind = bind_named(&dag, "read");
     let projection = match dag.node(
         dag.port(bind.value)
             .produced_by
@@ -2252,12 +2197,7 @@ fn unwrap_or_zero(b: BoxedInt) -> Int = match b { Boxed(value) => value, Empty =
 ";
     let dag = cached_compile_to_dag(src, "payload_binding.v3");
 
-    let bind = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "unwrap_or_zero")
-        .expect("Bind(unwrap_or_zero) exists");
+    let bind = bind_named(&dag, "unwrap_or_zero");
     let branch = match dag.node(
         dag.port(bind.value)
             .produced_by
@@ -2302,12 +2242,7 @@ fn get_or_zero(m: MaybePoint) -> Int = match id(m) { Some(point) => point.x, Non
 ";
     let dag = cached_compile_to_dag(src, "payload_field_access.v3");
 
-    let bind = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "get_or_zero")
-        .expect("Bind(get_or_zero) exists");
+    let bind = bind_named(&dag, "get_or_zero");
     let branch = match dag.node(
         dag.port(bind.value)
             .produced_by
@@ -2355,12 +2290,7 @@ fn unwrap_or_zero(b: BoxedInt) -> Int = match id(b) { Boxed(value) => value, Emp
 ";
     let dag = cached_compile_to_dag(src, "payload_binding_inferred.v3");
 
-    let bind = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "unwrap_or_zero")
-        .expect("Bind(unwrap_or_zero) exists");
+    let bind = bind_named(&dag, "unwrap_or_zero");
     let branch = match dag.node(
         dag.port(bind.value)
             .produced_by
@@ -2394,12 +2324,7 @@ fn unwrap_or_zero(m: Maybe<Int>) -> Int = match m { Some(value) => value, None =
 ";
     let dag = cached_compile_to_dag(src, "payload_binding_generic.v3");
 
-    let bind = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "unwrap_or_zero")
-        .expect("Bind(unwrap_or_zero) exists");
+    let bind = bind_named(&dag, "unwrap_or_zero");
     let branch = match dag.node(
         dag.port(bind.value)
             .produced_by
@@ -2503,12 +2428,7 @@ fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap { inner: point } => point.
         dag.diagnostics()
     );
 
-    let bind = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "unwrap_or_zero")
-        .expect("Bind(unwrap_or_zero) exists");
+    let bind = bind_named(&dag, "unwrap_or_zero");
     let branch = match dag.node(
         dag.port(bind.value)
             .produced_by
@@ -2613,12 +2533,7 @@ fn count(list: IntList) -> Int = match list { Empty => 0, Cons(payload) => 1 + c
         dag.diagnostics()
     );
 
-    let bind = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "count")
-        .expect("Bind(count) exists");
+    let bind = bind_named(&dag, "count");
     let producer = dag
         .port(bind.value)
         .produced_by
@@ -2726,12 +2641,7 @@ fn odd(n: Int) -> Bool = if n == 0 then false else if n == 1 then apply_once(|ev
         1,
         "real recursive edges still form one cluster"
     );
-    let odd_bind = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "odd")
-        .expect("Bind(odd) exists");
+    let odd_bind = bind_named(&dag, "odd");
     let odd_producer = dag
         .port(odd_bind.value)
         .produced_by
@@ -2813,12 +2723,7 @@ let n: Int = count([1, 2, 3])
     );
     assert_eq!(bind_value_type_decl(&dag, "n"), find_named(&dag, "Int"));
 
-    let bind = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .find(|b| b.name == "count")
-        .expect("Bind(count) exists");
+    let bind = bind_named(&dag, "count");
     let producer = dag
         .port(bind.value)
         .produced_by
@@ -2949,48 +2854,83 @@ let total: Int = double_alias + double_alias
 }
 
 #[test]
-fn substrate_accessor_universe_fully_covered_for_rust() {
-    // Review round 1b.4: if a substrate accessor is declared
-    // (referenced by any SubstrateAccessorBinding, across all
-    // target languages) but no binding for the active Rust target
-    // exists, emit_rust fails closed with an explicit error.
-    // Today in-tree: port / node / resolve_producer are all bound
-    // for rust_language — if that breaks, this test tells you
-    // emit_rust will refuse the affected accessor at emission time.
+fn substrate_accessor_rust_binding_invariants() {
+    // 1b.3: every `SubstrateAccessorBinding` row is Structural and
+    // carries `language: Reference(rust_language)` so emitters filter
+    // deterministically.
+    // 1b.4: the accessor universe has no Rust-exposed hole (every
+    // declared accessor has a rust_language binding).
     use std::collections::HashSet;
+
+    use v3_compiler::dag::{FieldValue, ValueBody};
+
     let dag = v3_compiler::Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap should be clean: {:?}",
+        dag.diagnostics()
+    );
     let binding_meta = dag
         .declaration_by_name("SubstrateAccessorBinding")
         .expect("SubstrateAccessorBinding type exists");
     let rust_language = dag
         .declaration_by_name("rust_language")
         .expect("rust_language exists");
-    let mut universe: HashSet<v3_compiler::dag::DeclarationId> = HashSet::new();
-    let mut rust_covered: HashSet<v3_compiler::dag::DeclarationId> = HashSet::new();
+    let mut universe: HashSet<DeclarationId> = HashSet::new();
+    let mut rust_covered: HashSet<DeclarationId> = HashSet::new();
+    let mut checked = 0;
     for decl in dag.declarations() {
         if decl.meta_tag != Some(binding_meta.id) {
             continue;
         }
-        let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
-            continue;
+        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            panic!("binding `{:?}` must have Structural value body", decl.name);
         };
+        let language_field = fields.iter().find(|(label, _)| label == "language");
+        assert!(
+            language_field.is_some(),
+            "binding `{:?}` missing required `language` field (review 1b.3)",
+            decl.name
+        );
+        let (_, lang_val) = language_field.unwrap();
+        match lang_val {
+            FieldValue::Reference(id) => {
+                assert_eq!(
+                    *id, rust_language.id,
+                    "binding `{:?}` should target rust_language",
+                    decl.name
+                );
+            }
+            other => panic!(
+                "binding `{:?}` language field is not a Reference: {other:?}",
+                decl.name
+            ),
+        }
         let mut accessor = None;
         let mut language = None;
         for (label, value) in fields {
             match (label.as_str(), value) {
-                ("accessor", v3_compiler::dag::FieldValue::Reference(id)) => accessor = Some(*id),
-                ("language", v3_compiler::dag::FieldValue::Reference(id)) => language = Some(*id),
+                ("accessor", FieldValue::Reference(id)) => accessor = Some(*id),
+                ("language", FieldValue::Reference(id)) => language = Some(*id),
                 _ => {}
             }
         }
         let (Some(accessor), Some(language)) = (accessor, language) else {
-            continue;
+            panic!(
+                "binding `{:?}` missing accessor/language references",
+                decl.name
+            );
         };
         universe.insert(accessor);
         if language == rust_language.id {
             rust_covered.insert(accessor);
         }
+        checked += 1;
     }
+    assert_eq!(
+        checked, 4,
+        "expected 4 substrate accessor bindings (port, node, resolve_producer, lane2_workflow)"
+    );
     let missing: Vec<_> = universe.difference(&rust_covered).copied().collect();
     assert!(
         missing.is_empty(),
@@ -3003,60 +2943,6 @@ fn substrate_accessor_universe_fully_covered_for_rust() {
     assert!(
         !universe.is_empty(),
         "universe is empty — SubstrateAccessorBinding records missing entirely"
-    );
-}
-
-#[test]
-fn substrate_accessor_binding_carries_language_selector() {
-    // Review round 1b.3 root cause: `SubstrateAccessorBinding` used
-    // to be `{ accessor, realization }` with no target selector.
-    // Multiple bindings for the same accessor would silently
-    // overwrite by iteration order — a substrate-level illegal
-    // state. Now each binding carries `language: DeclarationRef`
-    // so each emitter can filter for its own target. This test
-    // verifies every in-tree binding carries the new field.
-    let dag = v3_compiler::Dag::new();
-    let binding_meta = dag
-        .declaration_by_name("SubstrateAccessorBinding")
-        .expect("SubstrateAccessorBinding type exists");
-    let rust_language = dag
-        .declaration_by_name("rust_language")
-        .expect("rust_language exists");
-    let mut checked = 0;
-    for decl in dag.declarations() {
-        if decl.meta_tag != Some(binding_meta.id) {
-            continue;
-        }
-        let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
-            panic!("binding `{:?}` must have Structural value body", decl.name);
-        };
-        let language_field = fields.iter().find(|(label, _)| label == "language");
-        assert!(
-            language_field.is_some(),
-            "binding `{:?}` missing required `language` field (review 1b.3)",
-            decl.name
-        );
-        // Every in-tree binding today targets `rust_language`; when
-        // go/python bindings land, this test extends.
-        let (_, value) = language_field.unwrap();
-        match value {
-            v3_compiler::dag::FieldValue::Reference(id) => {
-                assert_eq!(
-                    *id, rust_language.id,
-                    "binding `{:?}` should target rust_language",
-                    decl.name
-                );
-            }
-            other => panic!(
-                "binding `{:?}` language field is not a Reference: {other:?}",
-                decl.name
-            ),
-        }
-        checked += 1;
-    }
-    assert_eq!(
-        checked, 4,
-        "expected 4 substrate accessor bindings (port, node, resolve_producer, lane2_workflow)"
     );
 }
 
