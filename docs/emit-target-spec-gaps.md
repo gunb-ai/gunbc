@@ -12,10 +12,10 @@
 
 | Category | Count | LOC impact |
 |---|---:|---:|
-| **ALREADY_SPEC_COVERED** — walker consumes existing `spec/*.dag` rows | 21 | ~0 (no new work) |
-| **MISSING_SPEC_ROW** — spec extension required before walker can dissolve the branch | 20 | ~3,500-4,200 LOC dissolvable |
+| **ALREADY_SPEC_COVERED** — walker consumes existing `spec/*.dag` rows | 21 initially, +3 reclassified after verification = **24** | ~0 (no new work) |
+| **MISSING_SPEC_ROW** — spec extension required before walker can dissolve the branch | 20 initially organized into 10 candidate clusters; 3 reclassified to Category 1, leaving **5 Phase 2 clusters** | ~3,500-4,200 LOC dissolvable |
 | **RESIDUAL_PER_TARGET** — genuine per-target dispatch; stays as narrow Rust | 5 | ~800-1,200 LOC residual |
-| **Total branches classified** | 46 | — |
+| **Total audit points** | 46 | — |
 
 **Net impact at Lane 1e close:**
 - Delete `emit/rust_target.rs` (~5,700 LOC) + `emit/python_target.rs` (~2,000 LOC) + Go inline emitter in `emit.rs` (~380 LOC) = **~8,080 LOC removed**
@@ -61,7 +61,9 @@ The following 21 audit points are already data-driven. Walker consumes the named
 
 ## Category 2: MISSING_SPEC_ROW (proposed extensions, clustered)
 
-20 audit points across 10 logical clusters. Each cluster becomes one Phase 2 PR.
+20 audit points organized into 10 candidate clusters below. After verification (see the Cluster Summary at the end of this section), **5 clusters require real Phase 2 work**; the other 5 reclassified into Category 1 once I cross-checked against existing spec rows.
+
+Reading order: each cluster is described in sequence; skip to the "Cluster summary (after verification)" subsection for the final 5-cluster action list.
 
 ### Cluster A — Go recursive type-argument substitution `(~120 LOC dissolvable)`
 
