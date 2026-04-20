@@ -1,16 +1,15 @@
 use std::collections::HashMap;
 
-use super::EmitMode;
+use super::{
+    variant_payload_shape, EmitMode, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    VariantPayloadShape,
+};
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, DeclarationId, Field,
     FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective,
 };
 use crate::operators::OperatorKind;
-use crate::variant_payload::{
-    variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
-    VariantPayloadShape,
-};
 use crate::Dag;
 
 #[derive(Debug, Clone)]
