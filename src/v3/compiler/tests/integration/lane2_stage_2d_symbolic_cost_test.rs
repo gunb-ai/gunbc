@@ -565,12 +565,13 @@ fn format_rust_source(source: &str) -> String {
 // Cold-init path for the `cost.dag` OnceLock cache key. Sibling
 // `cost_generated_module_matches_checked_in_snapshot` also compiles
 // cost.dag and reuses the cached Dag, so this test legitimately
-// bears the one-time compile cost on CI (~2.5s on cold runners;
-// busy shared runners sometimes exceed 5s wall-clock). This lane's
-// `8_000`ms wall budget matches that tail; matches the rationale behind the
+// bears the first `compile_to_dag(cost.dag)` cost on CI (~2.5s on typical cold
+// runners; busy shared runners or heavier bootstrap — `runtime_mirrors.dag`
+// in the bundle and substrate growth — can exceed ~7s wall on integration
+// binaries). `15_000`ms keeps headroom under this ratchet without matching the
 // sibling's 45s snapshot-compare budget below.
 budgeted_test! {
-    8_000,
+    15_000,
     cost_dag_compiles_cleanly,
     {
         let source = std::fs::read_to_string(lens_path()).expect("read cost.dag");
