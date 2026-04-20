@@ -16,6 +16,7 @@ Full text stays on **GitHub** (and linked external threads where applicable); th
 | Source | Link |
 |:---|:---|
 | **ChatGPT (meta)** — **`c0161ebd2c091d728cb4464c61a101fdfd6e2941`** @ **2026-04-20T04:20:18Z** — **`chatgpt-meta-review` `status:pending`** — **stub** — loop-health prompt only (“forward progress” vs “shifting debt”); substantive meta **not** posted yet — await **`status:complete`** on the **same** parent SHA — **dashboard:** **+3** more relay items queued (not broken out in this row) | [PR #589](https://github.com/gunb-ai/gunbc/pull/589) (Conversation — [view conversation](https://chatgpt.com/g/g-p-69e42928d3ec819192415828194826d4-gunbc-review/c/69e5a963-e4c4-8332-ad0c-e2bce9900627)) |
+| **ChatGPT (harvester / infra)** — **`18dfc88…`** @ **2026-04-20T04:25:38Z** — **`<!-- [chatgpt-review-error] type:rate_limit -->`** — reviewer account **`gunbc-secondary`** rate-limited or downgraded to **Instant**; harvested response for that SHA **discarded** (no Pro “Thought for …” marker; response finished in under 56 minutes) — account cooldown; retry after window — **dashboard:** **+2** more relay items queued (not broken out in this row) | [PR #589](https://github.com/gunb-ai/gunbc/pull/589) (Conversation — [view conversation](https://chatgpt.com/g/g-p-69e42928d3ec819192415828194826d4-gunbc-review/c/69e59d69-216c-832d-abdb-8ef9084a92e7)) |
 
 #### #556 relay index (dashboard ingest — pointers only)
 
