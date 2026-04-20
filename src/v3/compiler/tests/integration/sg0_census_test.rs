@@ -368,6 +368,102 @@ fn sg0_expected_list_is_sorted_and_unique() {
     }
 }
 
+#[test]
+fn sg0_expected_fragment_lists_are_sorted_and_unique() {
+    for (label, list) in [
+        (
+            "EXPECTED_HAND_AUTHORED_FRAGMENTS",
+            EXPECTED_HAND_AUTHORED_FRAGMENTS,
+        ),
+        ("EXPECTED_GENERATED_FRAGMENTS", EXPECTED_GENERATED_FRAGMENTS),
+    ] {
+        let mut prev: Option<&str> = None;
+        for p in list {
+            if let Some(pv) = prev {
+                assert!(
+                    pv < *p,
+                    "{label} must be sorted ASCII-ascending and unique; \
+                     `{pv}` is not strictly less than `{p}`"
+                );
+            }
+            prev = Some(p);
+        }
+    }
+    let hand: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_FRAGMENTS.iter().copied().collect();
+    let gen: BTreeSet<&str> = EXPECTED_GENERATED_FRAGMENTS.iter().copied().collect();
+    let overlap: Vec<&&str> = hand.intersection(&gen).collect();
+    assert!(
+        overlap.is_empty(),
+        "EXPECTED_HAND_AUTHORED_FRAGMENTS and EXPECTED_GENERATED_FRAGMENTS must be disjoint; \
+         overlap: {overlap:?}"
+    );
+}
+
+#[test]
+fn sg0_v3_hand_authored_txt_fragments() {
+    // Ratchet for non-`.rs` scaffold fragments under `src/v3/compiler/`.
+    // Any `.txt` file found under the census root must be named in
+    // either `EXPECTED_HAND_AUTHORED_FRAGMENTS` (scaffold, on the SG
+    // paydown backlog) or `EXPECTED_GENERATED_FRAGMENTS` (produced by
+    // a named generator). A `.txt` that looks like hand-authored Rust
+    // moved out of a `.rs` file would otherwise escape the `.rs`-only
+    // ratchet above.
+    let ws = workspace_root();
+    let census_root = ws.join(CENSUS_ROOT);
+
+    let mut all_txt: BTreeSet<String> = BTreeSet::new();
+    walk_txt(&census_root, &ws, &mut all_txt);
+
+    let expected_all: BTreeSet<String> = EXPECTED_HAND_AUTHORED_FRAGMENTS
+        .iter()
+        .chain(EXPECTED_GENERATED_FRAGMENTS.iter())
+        .map(|p| (*p).to_string())
+        .collect();
+
+    if all_txt == expected_all {
+        return;
+    }
+
+    let added: Vec<&str> = all_txt
+        .difference(&expected_all)
+        .map(String::as_str)
+        .collect();
+    let removed: Vec<&str> = expected_all
+        .difference(&all_txt)
+        .map(String::as_str)
+        .collect();
+
+    let mut msg = String::from(
+        "SG-0 fragment census drift: `.txt` files under src/v3/compiler/ \
+         do not match EXPECTED_HAND_AUTHORED_FRAGMENTS ∪ EXPECTED_GENERATED_FRAGMENTS.\n\n",
+    );
+    if !added.is_empty() {
+        msg.push_str(
+            "New scaffold fragment(s) (a `.txt` extension does NOT exempt it from SG-0):\n",
+        );
+        for p in &added {
+            msg.push_str("  + ");
+            msg.push_str(p);
+            msg.push('\n');
+        }
+        msg.push_str(
+            "\nFix: port the logic to `.dag` and remove the file, or add the path to \
+             EXPECTED_HAND_AUTHORED_FRAGMENTS with a dissolution-trigger comment in the \
+             file's own header. If the file is produced by a named generator, add it to \
+             EXPECTED_GENERATED_FRAGMENTS instead.\n\n",
+        );
+    }
+    if !removed.is_empty() {
+        msg.push_str("Retired scaffold fragment(s) (remove from the expected list):\n");
+        for p in &removed {
+            msg.push_str("  - ");
+            msg.push_str(p);
+            msg.push('\n');
+        }
+    }
+    panic!("{msg}");
+}
+
 static PROBE_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 struct TempDirGuard(PathBuf);

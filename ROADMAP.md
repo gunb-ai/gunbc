@@ -157,6 +157,10 @@ Findings from two reflective analyses (integration loop health, `main@b014746` a
 - **Fixed-width types aren't structurally fixed**: `dsl/std/bit.dag` uses nominal records with `List<Bit>` / `List<Byte>` fields — cardinality not substrate-enforced; alias-form refinements unavailable until alias `where` parses/lowers ([db-11 gap](docs/db-history/db-11.md)). Dissolution: wire type-alias refinement, field refinement, or a `Cardinality(element, Exact(n))`-style carrier.
 - **`algebra.dag:267-323` signature/comment mismatch**: comments promise `index: (FreeMonoid<T>, Nat) -> T?`, `map: (FreeMonoid<T>, fn T→U) -> FreeMonoid<U>`, `fold: (FreeMonoid<T>, U, fn U,T→U) -> U`, `merge: (Map<K,V>, Map<K,V>, fn V,V→V) -> Map<K,V>`; actual declarations drop the source/second-argument types. Dissolution: reconcile declarations with comments (comments likely correct; declarations drop the polymorphism).
 
+### Post-merge debt (2026-04-20 cleanup brief)
+
+- **`src/v3/compiler/parse_parser_body.txt` — 1350 LOC hand-authored recursive-descent parse algorithm**: PR #589 retired `parse.rs` from the `.rs` census, but the algorithm moved here as a `.txt` fragment `include_str!`'d into `regen_parse` output. SG-0 now counts `.txt` scaffolds (`EXPECTED_HAND_AUTHORED_FRAGMENTS`) and `compiler.dag::hand_maintained_src` names the file so both census authorities track it. Dissolution trigger: structural `parse.dag` ownership via SG-2b proper or SG-3f surface reflection follow-on. Owner: queued behind SG-3f.
+
 ### Reviewer-noise class — a practice, not a debt
 
 - **Integration-reflection cadence**: every ~few days, run a reflective + exploratory analysis pair. The 2026-04-15 and 2026-04-18 passes caught items individual PR reviews missed (authority split across PRs, silent cross-PR name-based lookups, the `CreateComment` drift, the `repeat_string` bug). Worth institutionalizing.
