@@ -99,6 +99,16 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // producer-owned path. This is a bounded migration exception, not a
 // precedent for free-standing handwritten helpers.
 //
+// Post-2026-04-20 merge wave (`cleanup-post-merge-slop` brief): PR #589
+// retired `parse.rs` from this `.rs` census, but the 1350-line
+// recursive-descent parse algorithm migrated to
+// `src/v3/compiler/parse_parser_body.txt` — a scaffold fragment
+// `include_str!`'d into the `regen_parse` output. Ratchet extension
+// below (`EXPECTED_HAND_AUTHORED_FRAGMENTS` + `sg0_v3_hand_authored_txt_fragments`)
+// counts non-`.rs` scaffolds so the net measurement matches reality.
+// Dissolution trigger: same as the header on `parse_parser_body.txt`
+// (SG-2b proper / SG-3f surface reflection follow-on).
+//
 // L4b split — `dag.rs` was a 2800-line god-file mixing ports, nodes,
 // declarations, clusters, and the std.effects mirror. The split carves
 // two leaf clusters into sibling submodules (`dag/ports.rs`,
@@ -191,6 +201,28 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
 ];
 
+// Non-`.rs` scaffold fragments under `src/v3/compiler/` that are
+// hand-authored and text-inlined into generated Rust (or otherwise
+// dissolve when the corresponding `.dag` authority lands). The
+// `.rs`-only census above cannot see these — a scaffold that renames
+// itself `foo.txt` would silently escape the ratchet otherwise.
+// Every entry here names a dissolution trigger in its own file header.
+// Sorted; one path per line, relative to the workspace root.
+const EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &[
+    "src/v3/compiler/parse_parser_body.txt",
+];
+
+// Non-`.rs` files under `src/v3/compiler/` whose content is produced
+// by a named generator (an `#[ignore]`'d refresh test, a `regen_*`
+// binary, etc.) rather than hand-edited. Listed explicitly so the
+// fragments walker can partition without content sniffing (which the
+// `sg0_generated_partition_is_producer_owned` probe forbids for
+// `.rs`; the same discipline applies here).
+const EXPECTED_GENERATED_FRAGMENTS: &[&str] = &[
+    // Produced by `cargo test refresh_handwritten_parse_snapshot_manifest -- --ignored`.
+    "src/v3/compiler/tests/integration/parse_corpus_manifest.txt",
+];
+
 fn workspace_root() -> PathBuf {
     // CARGO_MANIFEST_DIR points at src/v3/compiler/. ancestors():
     //   [0] src/v3/compiler
@@ -220,6 +252,27 @@ fn walk_rs(root: &Path, ws: &Path, out: &mut BTreeSet<String>) {
             }
             walk_rs(&path, ws, out);
         } else if path.extension() == Some(OsStr::new("rs")) {
+            let rel = path
+                .strip_prefix(ws)
+                .expect("census walk stays inside workspace")
+                .to_string_lossy()
+                .replace('\\', "/");
+            out.insert(rel);
+        }
+    }
+}
+
+fn walk_txt(root: &Path, ws: &Path, out: &mut BTreeSet<String>) {
+    let entries = fs::read_dir(root).unwrap_or_else(|e| panic!("read_dir {}: {e}", root.display()));
+    for entry in entries {
+        let entry = entry.expect("read_dir entry");
+        let path = entry.path();
+        if path.is_dir() {
+            if path.file_name() == Some(OsStr::new("target")) {
+                continue;
+            }
+            walk_txt(&path, ws, out);
+        } else if path.extension() == Some(OsStr::new("txt")) {
             let rel = path
                 .strip_prefix(ws)
                 .expect("census walk stays inside workspace")
