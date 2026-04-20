@@ -139,6 +139,7 @@ pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
             __m.insert("return".to_string(), true);
             __m.insert("match".to_string(), true);
             __m.insert("if".to_string(), true);
+            __m.insert("then".to_string(), true);
             __m.insert("else".to_string(), true);
             __m.insert("for".to_string(), true);
             __m.insert("in".to_string(), true);

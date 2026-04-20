@@ -45,7 +45,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::EmitMode;
+use super::{
+    parse_pattern_strategy, EmitMode, PatternStrategyBinding, VariantPayloadBinding,
+    VariantPayloadFieldAccessRuleBinding,
+};
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
     FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
@@ -53,8 +56,7 @@ use crate::dag::{
 };
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
-    variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
-    VariantPayloadShape,
+    variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup,
 };
 
 /// Errors the Rust emitter surfaces when the DAG reaches a shape it
@@ -2033,33 +2035,14 @@ fn require_pattern_realization(
             declaration,
             detail: "PatternRealization is missing required `strategy` field",
         })?;
-    let FieldValue::Variant {
-        constructor,
-        payload,
-    } = value
-    else {
-        return Err(EmitError::MalformedRealization {
-            declaration,
-            detail: "PatternRealization.strategy must be a PatternStrategy variant",
-        });
-    };
-    if !payload.is_empty() {
-        return Err(EmitError::MalformedRealization {
-            declaration,
-            detail: "PatternStrategy variants must not carry payload fields",
-        });
-    }
-    let vector_list = named_variant_id(dag, "PatternStrategy", "VectorList").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "PatternStrategy.VectorList declaration was not found",
-        },
-    )?;
-    if *constructor != vector_list {
-        return Err(EmitError::MalformedRealization {
-            declaration,
-            detail: "PatternStrategy constructor must be VectorList",
-        });
+    match parse_pattern_strategy(dag, value) {
+        Ok(PatternStrategyBinding::VectorList) => {}
+        Err(detail) => {
+            return Err(EmitError::MalformedRealization {
+                declaration,
+                detail,
+            });
+        }
     }
     Ok(PatternRealizationBinding {
         empty_variant: require_field_decl_ref(fields, "empty_variant", declaration)?,
@@ -3584,100 +3567,122 @@ impl<'a> Ctx<'a> {
                 &[("name", &qualified_name)],
             ));
         };
-        let Some(payload_shape) = variant_payload_shape(self.dag, resolved_id) else {
-            return Err(EmitError::UnsupportedBehavior(format!(
-                "matched variant `{variant_name}` does not lower to a payload product"
-            )));
+        let payload_shape = match variant_payload_shape(self.dag, &resolved_id) {
+            VariantPayloadShapeLookup::Missing => {
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "matched variant `{variant_name}` does not lower to a payload product"
+                )));
+            }
+            VariantPayloadShapeLookup::Found { _0: shape } => shape,
         };
         let rendered_binding = self.render_payload_binding_name(path, binding);
-        if matches!(
-            payload_shape,
-            VariantPayloadShape::NamedFields(ref fields) if fields.len() > 1
-        ) {
-            let VariantPayloadShape::NamedFields(field_labels) = payload_shape else {
-                unreachable!("guarded above")
-            };
-            // Multi-field struct-variant: Rust won't let us access
-            // `binding.field` on the enum because the payload has
-            // no nominal type. The body can ONLY consume this payload
-            // via destructured fields routed through `payload_bindings`
-            // — there is no Rust-level value the outer `binding @`
-            // alias could refer to (Rust rejects taking the anonymous
-            // struct payload as a value). So we always omit the
-            // `binding @` prefix here; field destructure carries
-            // everything the body can possibly use.
-            //
-            // When `EmitUnderscoreWhenUnused` reports the payload is
-            // unused, every field renders as wildcard too. When it's
-            // used, every field renders as its aliased local
-            // (`__<binding>_<field>`), and `render_path_body`'s
-            // `payload_bindings` population at the same payload port
-            // routes downstream `binding.field` reads to those locals
-            // via `render_field_project`'s override lookup.
-            let wildcard = self.indexes.syntax.patterns.wildcard.clone();
-            let payload_unused = rendered_binding == wildcard;
-            let field_bindings = field_labels
-                .iter()
-                .map(|child| {
-                    let binding_text = if payload_unused {
-                        wildcard.clone()
-                    } else {
-                        destructured_field_alias(&binding.binding_name, child)
-                    };
-                    Ok(render_named_template(
-                        &self.indexes.syntax.patterns.field_binding,
-                        &[("field", child), ("binding", &binding_text)],
-                    ))
-                })
-                .collect::<Result<Vec<_>, EmitError>>()?;
-            return Ok(render_named_template(
-                &self.indexes.syntax.patterns.variant_pattern,
-                &[
-                    ("name", &qualified_name),
-                    (
-                        "bindings",
-                        &join_rendered(
-                            &field_bindings,
-                            &self.indexes.syntax.patterns.field_binding_separator,
-                        ),
-                    ),
-                ],
-            ));
+        if let Some(rendered) = self.render_multi_field_variant_pattern(
+            &qualified_name,
+            binding,
+            &rendered_binding,
+            &payload_shape,
+        )? {
+            return Ok(rendered);
         }
-        if payload_shape == VariantPayloadShape::PositionalSingle
-            && (self.indexes.types.contains_key(&disj_id) || is_optional_match)
-        {
-            return Ok(render_named_template(
-                &self.indexes.syntax.patterns.variant_pattern_positional,
-                &[("name", &qualified_name), ("binding", &rendered_binding)],
-            ));
+        if let Some(rendered) = self.render_single_field_variant_pattern(
+            disj_id,
+            is_optional_match,
+            &qualified_name,
+            &rendered_binding,
+            &payload_shape,
+        ) {
+            return Ok(rendered);
         }
         match payload_shape {
             VariantPayloadShape::Empty => Ok(render_named_template(
                 &self.indexes.syntax.patterns.variant_pattern_empty,
                 &[("name", &qualified_name)],
             )),
-            VariantPayloadShape::PositionalSingle => {
-                let bindings = render_named_template(
-                    &self.indexes.syntax.patterns.field_binding,
-                    &[("field", "_0"), ("binding", &rendered_binding)],
-                );
-                Ok(render_named_template(
-                    &self.indexes.syntax.patterns.variant_pattern,
-                    &[("name", &qualified_name), ("bindings", &bindings)],
-                ))
-            }
-            VariantPayloadShape::NamedFields(field_labels) => {
-                let bindings = render_named_template(
-                    &self.indexes.syntax.patterns.field_binding,
-                    &[("field", &field_labels[0]), ("binding", &rendered_binding)],
-                );
-                Ok(render_named_template(
-                    &self.indexes.syntax.patterns.variant_pattern,
-                    &[("name", &qualified_name), ("bindings", &bindings)],
-                ))
+            VariantPayloadShape::PositionalSingle | VariantPayloadShape::NamedFields { .. } => {
+                unreachable!("single-field patterns return above")
             }
         }
+    }
+
+    fn render_multi_field_variant_pattern(
+        &self,
+        qualified_name: &str,
+        binding: &crate::dag::PayloadBinding,
+        rendered_binding: &str,
+        payload_shape: &VariantPayloadShape,
+    ) -> Result<Option<String>, EmitError> {
+        if !matches!(
+            payload_shape,
+            VariantPayloadShape::NamedFields { _0: ref fields } if fields.len() > 1
+        ) {
+            return Ok(None);
+        }
+        let VariantPayloadShape::NamedFields { _0: field_labels } = payload_shape else {
+            unreachable!("guarded above")
+        };
+        let wildcard = self.indexes.syntax.patterns.wildcard.clone();
+        let payload_unused = rendered_binding == wildcard;
+        let field_bindings = field_labels
+            .iter()
+            .map(|child| {
+                let binding_text = if payload_unused {
+                    wildcard.clone()
+                } else {
+                    destructured_field_alias(&binding.binding_name, child)
+                };
+                Ok(render_named_template(
+                    &self.indexes.syntax.patterns.field_binding,
+                    &[("field", child), ("binding", &binding_text)],
+                ))
+            })
+            .collect::<Result<Vec<_>, EmitError>>()?;
+        Ok(Some(render_named_template(
+            &self.indexes.syntax.patterns.variant_pattern,
+            &[
+                ("name", qualified_name),
+                (
+                    "bindings",
+                    &join_rendered(
+                        &field_bindings,
+                        &self.indexes.syntax.patterns.field_binding_separator,
+                    ),
+                ),
+            ],
+        )))
+    }
+
+    fn render_single_field_variant_pattern(
+        &self,
+        disj_id: DeclarationId,
+        is_optional_match: bool,
+        qualified_name: &str,
+        rendered_binding: &str,
+        payload_shape: &VariantPayloadShape,
+    ) -> Option<String> {
+        let single_field_label = match payload_shape {
+            VariantPayloadShape::PositionalSingle => None,
+            VariantPayloadShape::NamedFields { _0: field_labels } if field_labels.len() == 1 => {
+                Some(field_labels[0].as_str())
+            }
+            VariantPayloadShape::NamedFields { .. } | VariantPayloadShape::Empty => return None,
+        };
+        if single_field_label.is_none()
+            && (self.indexes.types.contains_key(&disj_id) || is_optional_match)
+        {
+            return Some(render_named_template(
+                &self.indexes.syntax.patterns.variant_pattern_positional,
+                &[("name", qualified_name), ("binding", rendered_binding)],
+            ));
+        }
+        let field_name = single_field_label.unwrap_or("_0");
+        let bindings = render_named_template(
+            &self.indexes.syntax.patterns.field_binding,
+            &[("field", field_name), ("binding", rendered_binding)],
+        );
+        Some(render_named_template(
+            &self.indexes.syntax.patterns.variant_pattern,
+            &[("name", qualified_name), ("bindings", &bindings)],
+        ))
     }
 
     /// E-5 / Lane 1 Stage 1c: render the arm's payload binding name
@@ -3711,8 +3716,9 @@ impl<'a> Ctx<'a> {
         let BranchPattern::ResolvedVariant(variant_id) = &path.pattern else {
             return Ok(None);
         };
-        let Some(shape) = variant_payload_shape(self.dag, *variant_id) else {
-            return Ok(None);
+        let shape = match variant_payload_shape(self.dag, variant_id) {
+            VariantPayloadShapeLookup::Missing => return Ok(None),
+            VariantPayloadShapeLookup::Found { _0: shape } => shape,
         };
         let payload_binding_name = self.render_payload_binding_name(path, binding);
         let wildcard = self.indexes.syntax.patterns.wildcard.clone();
@@ -3721,7 +3727,7 @@ impl<'a> Ctx<'a> {
             VariantPayloadShape::PositionalSingle => Some(VariantPayloadBinding::Direct(
                 LocalBinding::Borrowed(payload_binding_name),
             )),
-            VariantPayloadShape::NamedFields(field_labels) => {
+            VariantPayloadShape::NamedFields { _0: field_labels } => {
                 match self.indexes.clean_emission.variant_payload_field_access {
                     VariantPayloadFieldAccessRuleBinding::AccessFromPayloadBinding => Some(
                         VariantPayloadBinding::Direct(LocalBinding::Borrowed(payload_binding_name)),
@@ -5097,11 +5103,11 @@ fn is_optional_match_disj(dag: &Dag, disj_id: DeclarationId) -> bool {
 /// `OperatorKind::algebra_field_name()` lookup is the substrate's
 /// existing operator → field mapping (already used by
 /// `infer::resolve_operator_arrow`). It IS a name comparison, but
-/// the name lives ONCE in `operators.rs` (tightly coupled to the
-/// `OperatorKind` enum) and the resolved declaration id is what
-/// flows downstream. The emitter doesn't repeat the comparison;
-/// it asks this helper for the field id and uses it as a typed
-/// index key.
+/// the name lives once in the generated operators authority
+/// (`operators_generated.rs`, re-exported via `crate::operators`)
+/// and the resolved declaration id is what flows downstream.
+/// The emitter doesn't repeat the comparison; it asks this helper
+/// for the field id and uses it as a typed index key.
 fn algebra_field_for_operator(
     dag: &Dag,
     operand_type_id: DeclarationId,

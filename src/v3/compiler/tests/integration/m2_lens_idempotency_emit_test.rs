@@ -17,8 +17,9 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::emit_go::emit_go_module;
-use v3_compiler::emit_python::emit_python_module;
+use v3_compiler::emit::{
+    emit_go_module_text as emit_go_module, emit_python_module_text as emit_python_module,
+};
 use v3_compiler::emit_rust::emit_rust_module;
 
 fn lens_path() -> PathBuf {

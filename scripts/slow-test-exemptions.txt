@@ -24,11 +24,43 @@
 # Adding an entry here is a short-term tolerance, not a permanent waiver.
 # The goal remains: every `#[test]` under 2s wall-clock.
 
-# ── Intentionally empty on initial landing. ──
-# Phase 0 shipped the ratchet in **report-only** mode (the CI step has
-# `continue-on-error: true`), so the first green-or-red CI run already
-# publishes the baseline of currently-slow tests in its log. Read that
-# log, populate this file with one line per test + a one-line reason,
-# then flip `continue-on-error: true` off in `.github/workflows/ci.yml`
-# to make the ratchet binding — that is the Phase 0 binding follow-up.
-# See `src/v3/compiler/tests/HANDOFF_PHASE0.md` for the full path.
+# Baseline captured locally on 2026-04-19 by
+# `scripts/check-test-timeout.sh` against `cargo test -p v3-compiler -- -Z unstable-options --report-time`.
+# Keep this list narrow: every entry below exceeded 2000ms in that run,
+# and each reason points at an existing migration/paydown authority.
+
+bootstrap::tests::malformed_pipeline_stage_attaches_diagnostic  # Bootstrap fixture load remains compile-heavy on GitHub runners; test-infra bootstrap caching/paydown owns any speedup, not TM-0.
+
+db8_rust_emit_avoids_time_paths_and_float_hooks_on_program_matrix  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; 5x re-emit by design.
+emit_matrix_module_go_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; module re-emit sweep.
+emit_matrix_module_python_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; module re-emit sweep.
+emit_matrix_module_rust_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; module re-emit sweep.
+emit_matrix_program_go_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; program re-emit sweep.
+emit_matrix_program_python_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; program re-emit sweep.
+emit_matrix_program_rust_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; program re-emit sweep.
+four_fixture_disk_sources_emit_deterministically  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; four-fixture disk corpus.
+
+common::cached_compile::tests::cached_compile_any_returns_clean_dag_when_key_warmed_by_strict  # TESTING.md "Mocks over compile" paydown; compile-cache behavior test still performs real compile work.
+lane2_stage_2d_symbolic_cost_test::cost_dag_compiles_cleanly  # ROADMAP Lane 2 Stage 2d symbolic-cost migration; DAG compile smoke still cold-compiles authority input.
+
+m0_acceptance::post_sweep_port_state_matches_diagnostic_table  # M0 acceptance compile-boundary coverage still exercises full compile path; any reshaping belongs to test-layer migration work.
+
+m1_3_emit_rust_test::rustc_roundtrip_emitted_module_compares_reflected_port_ids_in_list_contains  # Lane 1 Stage 1e SG-7 Rust roundtrip emits + rustc harness; optimize in emitter/test-harness lane, not TM-0.
+m1_3_emit_rust_test::rustc_roundtrip_emitted_module_invokes_reflected_dag_function  # Lane 1 Stage 1e SG-7 Rust roundtrip emits + rustc harness; optimize in emitter/test-harness lane, not TM-0.
+m1_3_emit_rust_test::rustc_roundtrip_emitted_module_matches_reflected_behavior_payloads  # Lane 1 Stage 1e SG-7 Rust roundtrip emits + rustc harness; optimize in emitter/test-harness lane, not TM-0.
+m1_3_emit_rust_test::rustc_roundtrip_emitted_module_returns_reflected_source_span_list  # Lane 1 Stage 1e SG-7 Rust roundtrip emits + rustc harness; optimize in emitter/test-harness lane, not TM-0.
+m1_3_emit_rust_test::rustc_roundtrip_emitted_module_returns_user_record_list_from_reflected_binds  # Lane 1 Stage 1e SG-7 Rust roundtrip emits + rustc harness; optimize in emitter/test-harness lane, not TM-0.
+m1_3_emit_rust_test::rustc_roundtrip_generic_list_fold_prints_one  # Lane 1 Stage 1e SG-7 Rust roundtrip emits + rustc harness; optimize in emitter/test-harness lane, not TM-0.
+
+m2_lens_cost_migration_test::complexity_dag_runs_end_to_end_via_rustc_harness  # Lane 2 migration harness roundtrip; compile-heavy oracle test remains explicit until lens migration paydown.
+m2_lens_idempotency_migration_test::idempotency_emitted_analyze_matches_oracle  # Lane 2 Stage 2b emitted-oracle roundtrip; compile-heavy oracle test remains explicit until lens migration paydown.
+m2_lens_provenance_migration_test::lens_provenance_dag_runs_end_to_end_via_rustc_harness  # Lane 2 migration harness roundtrip; compile-heavy oracle test remains explicit until lens migration paydown.
+m2_lens_unused_parameters_migration_test::unused_parameters_dag_runs_end_to_end_via_rustc_harness  # Lane 2 migration harness roundtrip; compile-heavy oracle test remains explicit until lens migration paydown.
+m2_lens_unused_parameters_migration_test::unused_parameters_dag_self_analysis_reports_zero_findings  # Lane 2 migration harness roundtrip; compile-heavy self-analysis remains explicit until lens migration paydown.
+
+m1_substrate_test::referenced_port_walk_real_helper_stack_compiles  # Real substrate helper-stack compile smoke is still cold-compile bound on GitHub runners; substrate/test-shape paydown owns any decomposition, not SG-7.4.
+
+sg1_tokenize_authority_test::tokenize_generated_module_matches_checked_in_snapshot  # SG-1 authority snapshot still regenerates/parses full tokenize projection; tokenize authority lane owns future speedup.
+sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift  # SG-6 regen CLI smoke intentionally shells out to regen path; CLI smoke cost is tracked in SG-6, not TM-0.
+
+thesis_validation_test::kf_1_structural_list_operation_ordering_holds  # KF-1 thesis validation remains compile-heavy on CI runners; TESTING.md test-shape paydown owns future decomposition, not TM-0.

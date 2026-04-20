@@ -1,6 +1,6 @@
 # PERF: Eliminating Unnecessary Work (Clones are the Symptom, Not the Disease)
 
-Part of: [ROADMAP.md §PERF](../../ROADMAP.md#perf-eliminate-unnecessary-work) |
+Part of: [ROADMAP.md §Active deferrals](../../ROADMAP.md#active-deferrals--follow-up-work-from-merged-prs) |
 [THESIS.md §Concept unification](../../THESIS.md#concept-unification) |
 [INVARIANTS.md](../../INVARIANTS.md)
 
@@ -142,7 +142,7 @@ optimizer.
 ## The meta-principle: no redundant/duplicate work
 
 This connects to the algebraic simplification concept
-unification in [THESIS.md](../../THESIS.md#algebraic-simplification-idempotency-cancellation-redundancy):
+unification in [docs/thesis/what-else-falls-out.md](../thesis/what-else-falls-out.md#algebraic-simplification-idempotency-cancellation-redundancy):
 
 > Idempotency (`f ∘ f = f`), cancellation (`f ∘ f⁻¹ = id`), and
 > redundant work (`f₁ ∘ ... ∘ fₙ = g` where `cost(g) < cost(...)`)

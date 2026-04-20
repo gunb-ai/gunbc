@@ -153,24 +153,20 @@ jobs:
             exit 1
           fi
 
-      # Per-test 2s wall-clock ratchet — Phase 0 **report-only baseline**.
+      # Per-test 2s wall-clock ratchet — binding Phase 0 gate.
       # Parses the timing log captured by the full-suite step above; does not
-      # re-run `cargo test`. `continue-on-error: true` keeps the job green
-      # while the exemption file is empty — a follow-up PR populates
-      # `scripts/slow-test-exemptions.txt` from the first baseline run and
-      # flips this step to blocking, satisfying the Phase 0 acceptance
-      # criterion "CI fails on any test >2s." See
+      # re-run `cargo test`. Tests listed in
+      # `scripts/slow-test-exemptions.txt` remain visible as warnings; any
+      # non-exempt test above the threshold fails this step. See
       # `src/v3/compiler/tests/HANDOFF_PHASE0.md` (TESTING.md § test layers,
       # `feedback_test_timeout_2s`).
       #
-      # **`if: always()`** — the baseline is most interesting precisely on
-      # red runs (full-suite failure, 1200s-budget overflow). The log is
-      # captured via `tee` before the enforcement check, so partial timing
-      # data survives failure. `continue-on-error: true` on this step
-      # prevents the ratchet itself from masking the upstream failure.
-      - name: v3 tests (per-test 2s ratchet, report-only baseline)
+      # **`if: always()`** — the ratchet report is still useful on red runs
+      # (full-suite failure, 1200s-budget overflow). The log is captured via
+      # `tee` before the enforcement check, so partial timing data survives
+      # failure and the ratchet can still emit actionable slow-test output.
+      - name: v3 tests (per-test 2s ratchet)
         if: always()
-        continue-on-error: true
         run: |
           if [ ! -f /tmp/v3-test-timings.log ]; then
             echo "::notice::no timing log captured (full-suite step did not reach the cargo test invocation)"

@@ -264,6 +264,11 @@ fn sg6_regen_dag_registry_triples_are_pinned() {
             "src/v3/lenses/unused_parameters.dag",
             "src/v3/compiler/src/lens_unused_parameters_generated.rs",
         ),
+        (
+            "variant_payload",
+            "src/v3/lenses/variant_payload.dag",
+            "src/v3/compiler/src/variant_payload_generated.rs",
+        ),
     ];
 
     let actual: Vec<(&str, &str, &str)> = rows

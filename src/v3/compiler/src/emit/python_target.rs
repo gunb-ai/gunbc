@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use super::EmitMode;
+use super::{
+    optional_match_variant_roles, parse_pattern_strategy, EmitMode, PatternStrategyBinding,
+    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+};
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, DeclarationId, Field,
     FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
@@ -8,8 +11,7 @@ use crate::dag::{
 };
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
-    variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
-    VariantPayloadShape,
+    variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup,
 };
 use crate::Dag;
 
@@ -902,11 +904,16 @@ impl<'a> Ctx<'a> {
     ) -> Result<String, EmitPythonError> {
         let variant_id = resolved_pattern_id(path)?;
         if is_optional {
-            let variant_name = variant_name_for_decl(self.dag, disj_id, variant_id)?;
-            return Ok(if variant_name == "None" {
+            let (none_variant, some_variant) = optional_match_variant_roles(self.dag, disj_id)
+                .map_err(|detail| EmitPythonError::Unsupported(detail.to_string()))?;
+            return Ok(if variant_id == none_variant {
                 "__match is None".to_string()
-            } else {
+            } else if variant_id == some_variant {
                 "__match is not None".to_string()
+            } else {
+                return Err(EmitPythonError::Unsupported(
+                    "optional match arm resolved to neither optional role".to_string(),
+                ));
             });
         }
         let variant_name = runtime_variant_name_for_decl(self.dag, disj_id, variant_id)?;
@@ -957,15 +964,18 @@ impl<'a> Ctx<'a> {
             return Ok(Some(VariantPayloadBinding::Direct("__match".to_string())));
         }
         let variant_id = resolved_pattern_id(path)?;
-        let Some(shape) = variant_payload_shape(self.dag, variant_id) else {
-            return Ok(Some(VariantPayloadBinding::Direct("__match".to_string())));
+        let shape = match variant_payload_shape(self.dag, &variant_id) {
+            VariantPayloadShapeLookup::Missing => {
+                return Ok(Some(VariantPayloadBinding::Direct("__match".to_string())));
+            }
+            VariantPayloadShapeLookup::Found { _0: shape } => shape,
         };
         Ok(match shape {
             VariantPayloadShape::Empty => None,
             VariantPayloadShape::PositionalSingle => {
                 Some(VariantPayloadBinding::Direct("__match._0".to_string()))
             }
-            VariantPayloadShape::NamedFields(field_labels) => {
+            VariantPayloadShape::NamedFields { _0: field_labels } => {
                 match self.indexes.clean_emission.variant_payload_field_access {
                     VariantPayloadFieldAccessRuleBinding::AccessFromPayloadBinding => {
                         Some(VariantPayloadBinding::Direct("__match".to_string()))
@@ -1191,8 +1201,17 @@ impl<'a> Ctx<'a> {
         if children.is_empty() {
             return Ok(Some(format!("{runtime_name}()")));
         }
-        if children.len() == 1 && children[0].label == "_0" {
-            let arg = self.render_port(inputs[0], locals)?;
+        let payload_shape = match variant_payload_shape(self.dag, &template) {
+            VariantPayloadShapeLookup::Missing => return Ok(None),
+            VariantPayloadShapeLookup::Found { _0: shape } => shape,
+        };
+        if matches!(payload_shape, VariantPayloadShape::PositionalSingle) {
+            let [input] = inputs else {
+                return Err(EmitPythonError::Unsupported(
+                    "positional-single variant construction expects exactly one input".to_string(),
+                ));
+            };
+            let arg = self.render_port(*input, locals)?;
             return Ok(Some(format!("{runtime_name}({arg})")));
         }
         let mut fields = Vec::new();
@@ -1613,18 +1632,22 @@ fn parse_pattern_realization(
     fields: &[(String, FieldValue)],
     declaration: DeclarationId,
 ) -> Result<PatternRealizationBinding, EmitPythonError> {
-    let (constructor, payload) = variant_field(fields, "strategy", declaration)?;
-    if !payload.is_empty() {
-        return Err(EmitPythonError::MalformedSpec {
+    let strategy = fields
+        .iter()
+        .find(|(label, _)| label == "strategy")
+        .map(|(_, value)| value)
+        .ok_or(EmitPythonError::MalformedSpec {
             declaration,
-            detail: "PatternStrategy variants must not carry payload",
-        });
-    }
-    if constructor != named_variant_id(dag, "PatternStrategy", "VectorList")? {
-        return Err(EmitPythonError::MalformedSpec {
-            declaration,
-            detail: "unsupported PatternStrategy variant",
-        });
+            detail: "PatternRealization is missing required `strategy` field",
+        })?;
+    match parse_pattern_strategy(dag, strategy) {
+        Ok(PatternStrategyBinding::VectorList) => {}
+        Err(detail) => {
+            return Err(EmitPythonError::MalformedSpec {
+                declaration,
+                detail,
+            });
+        }
     }
     Ok(PatternRealizationBinding {
         empty_variant: require_field_decl_ref(fields, "empty_variant", declaration)?,

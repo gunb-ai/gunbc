@@ -67,6 +67,13 @@ fn generated_claims() -> &'static [CachedGeneratedClaim] {
         .as_slice()
 }
 
+fn generated_claim(name: &str) -> &'static CachedGeneratedClaim {
+    generated_claims()
+        .iter()
+        .find(|claim| claim_name(claim) == name)
+        .unwrap_or_else(|| panic!("generated claim `{name}` not found"))
+}
+
 fn generated_claim_decl<'a>(dag: &'a Dag, name: &str) -> &'a Declaration {
     dag.declaration_by_name(name)
         .unwrap_or_else(|| panic!("generated claim declaration `{name}` not found"))
@@ -474,6 +481,23 @@ fn executable_today(claim: &CachedGeneratedClaim) -> bool {
     variant_value(claim.dag(), kind).0 != "TypeMismatch"
 }
 
+fn assert_generated_claim_holds(claim_name: &str, expected_predicate: &str) {
+    let claim = generated_claim(claim_name);
+    assert_eq!(
+        variant_field(claim.dag(), claim.fields(), "predicate").0,
+        expected_predicate,
+        "representative generated claim `{claim_name}` should cover the expected predicate family"
+    );
+    assert!(
+        executable_today(claim),
+        "representative generated claim `{claim_name}` should be executable in today's compiler"
+    );
+    assert!(
+        claim_holds(claim),
+        "generated claim should hold: name={claim_name}"
+    );
+}
+
 #[test]
 #[ignore = "slow exhaustive testgen sweep; excluded from required PR CI wall-clock gate"]
 fn testgen_lens_emits_claims_as_structural_testclaim_values() {
@@ -559,7 +583,37 @@ fn testgen_generated_claims_execute_against_compile_boundary() {
 }
 
 #[test]
-fn structural_predicates_cover_representative_regression_fixtures() {
+#[ignore = "bootstrapped testgen corpus query remains too expensive for required PR CI; keep as spot-check coverage only"]
+fn representative_generated_claims_cover_predicate_families() {
+    for (claim_name, expected_predicate) in [
+        ("TestPredicate variant Compiles compiles", "Compiles"),
+        ("List<Int> requires exhaustive match", "FailsWithDiagnostic"),
+        ("TestClaim witness resolves", "PortHasState"),
+        ("TestClaim witness has bounded cost", "CostBounded"),
+    ] {
+        let claim = generated_claim(claim_name);
+        assert_eq!(
+            variant_field(claim.dag(), claim.fields(), "predicate").0,
+            expected_predicate,
+            "representative generated claim `{claim_name}` should cover the expected predicate family"
+        );
+    }
+}
+
+#[test]
+#[ignore = "bootstrapped testgen corpus query remains too expensive for required PR CI; keep as spot-check coverage only"]
+fn representative_generated_claims_execute_against_compile_boundary() {
+    for (claim_name, expected_predicate) in [
+        ("TestPredicate variant Compiles compiles", "Compiles"),
+        ("List<Int> requires exhaustive match", "FailsWithDiagnostic"),
+        ("TestClaim witness has bounded cost", "CostBounded"),
+    ] {
+        assert_generated_claim_holds(claim_name, expected_predicate);
+    }
+}
+
+#[test]
+fn generic_predicate_interpreter_handles_representative_structural_predicates() {
     let dag = Dag::new();
     let positive_source = "type Box<T> { value: T }\nfn wrap(x: Int) -> Box<Int> = { value: x }\n";
     for (label, predicate) in [

@@ -93,6 +93,8 @@ mod m2_lens_provenance_migration_test;
 mod m2_lens_structural_resolution_migration_test;
 #[path = "integration/m2_lens_unused_parameters_migration_test.rs"]
 mod m2_lens_unused_parameters_migration_test;
+#[path = "integration/m2_lens_variant_payload_migration_test.rs"]
+mod m2_lens_variant_payload_migration_test;
 #[path = "integration/m2_substrate_inhabitance_test.rs"]
 mod m2_substrate_inhabitance_test;
 #[path = "integration/pipe_desugar.rs"]
@@ -105,6 +107,8 @@ mod sg1_tokenize_authority_test;
 mod sg4_prep_infer_helpers_freshness_test;
 #[path = "integration/sg6_hand_authored_census_test.rs"]
 mod sg6_hand_authored_census_test;
+#[path = "integration/sg7_prep_variant_payload_freshness_test.rs"]
+mod sg7_prep_variant_payload_freshness_test;
 #[path = "integration/thesis_parallelism_test.rs"]
 mod thesis_parallelism_test;
 #[path = "integration/thesis_validation_test.rs"]

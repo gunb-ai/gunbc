@@ -4,7 +4,9 @@
 //! The Rust projection is `tokenize_generated.rs`, produced by
 //! `cargo run -p v3-compiler --bin regen_tokenize` — do not hand-edit the generated file.
 //!
-//! Keywords, punctuation classification, and token kinds are declared in `tokenize.dag`.
+//! Token kinds, tokenizer-local punctuation, and scanner controls are declared
+//! in `tokenize.dag`. Dedicated keywords and shared-operator punctuation derive
+//! from `dsl/extdeps/languages/dag/syntax.dag` during `regen_tokenize`.
 //! `<`/`>` tokenize as comparison operators; the parser disambiguates them as
 //! type-parameter delimiters by context (M1_DESIGN.md §8.8).
 
