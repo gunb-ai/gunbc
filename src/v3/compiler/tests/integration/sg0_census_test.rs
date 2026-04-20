@@ -117,6 +117,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/src/post_emit_verifier.rs",
     "src/v3/compiler/src/serialize.rs",
     "src/v3/compiler/src/tokenize.rs",
+    "src/v3/compiler/src/variant_payload.rs",
     "src/v3/compiler/src/workflow_idempotency.rs",
     "src/v3/compiler/src/workflow_parallelism.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",

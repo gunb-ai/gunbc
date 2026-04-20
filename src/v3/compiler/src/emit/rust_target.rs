@@ -45,16 +45,17 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::{
-    variant_payload_shape, EmitMode, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
-    VariantPayloadShape,
-};
+use super::EmitMode;
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
     FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective, ValueBody, ValueNode,
 };
 use crate::operators::OperatorKind;
+use crate::variant_payload::{
+    variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    VariantPayloadShape,
+};
 
 /// Errors the Rust emitter surfaces when the DAG reaches a shape it
 /// cannot render under the PR-B scope. Each variant names a specific

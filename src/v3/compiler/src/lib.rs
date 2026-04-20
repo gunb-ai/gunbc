@@ -636,6 +636,7 @@ mod lower;
 mod parse;
 mod pipeline_authority;
 mod tokenize;
+mod variant_payload;
 pub(crate) mod workflow_idempotency;
 pub(crate) mod workflow_parallelism;
 
