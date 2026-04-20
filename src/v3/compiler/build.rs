@@ -178,7 +178,7 @@ fn main() {
 
     // Structural-recursion termination analysis walks a recursing
     // argument back to its declared Disj connective (see
-    // `structural_binding_info_for_variant` in `lower_generated.rs`). The walk
+    // `structural_binding_info_for_variant` in `lower.rs`). The walk
     // only succeeds after the declaring file has been phase-2 lowered,
     // so `std/list.dag` (declares `List<element> = Empty | Cons {...}`)
     // and `std/substrate.dag` (declares `Behavior = Value | Transform

@@ -1,4 +1,5 @@
-//! SG-3b: `lowering_rust.authority` is load-bearing; `lower_generated.rs` must stay in sync.
+//! SG-3f-prep: `lower_generated.rs` is the pass-through output of `regen_lower` from
+//! canonical `lower.rs` (not imported by `lib.rs`); the snapshot must stay in sync.
 
 const CHECKED_IN_GENERATED: &str = include_str!("../../src/lower_generated.rs");
 

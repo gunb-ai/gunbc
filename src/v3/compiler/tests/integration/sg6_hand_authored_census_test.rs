@@ -146,8 +146,9 @@ fn sg6_bin_census_is_locked_to_five_shims() {
     // tables — not `LensRegistryEntry`-tagged lens declarations), so
     // for SG-1 it lands as a parallel shim rather than a registry entry.
     //
-    // SG-3b receipts `regen_lower.rs`: lowering authority stages in
-    // `lowering_rust.authority` until `lower.dag` lands (SELF_HOSTING.md §4).
+    // SG-3f-prep receipts `regen_lower.rs`: pass-through from canonical
+    // `lower.rs` to `lower_generated.rs` (not `lib.rs` authority) until
+    // `lower.dag` lands (SELF_HOSTING.md §4).
     //
     // Dissolution trigger (SG-2+): unify `regen_tokenize` with the
     // registry-driven pattern — either extend `regen.dag` to carry a
@@ -170,9 +171,9 @@ fn sg6_bin_census_is_locked_to_five_shims() {
 
     assert_eq!(
         actual, expected,
-        "SG-6 hand-authored bin census changed. The post-SG-3b census is \
+        "SG-6 hand-authored bin census changed. The post-SG-3f-prep census is \
          `regen_lens` (reads `src/v3/compiler/regen.dag`), `regen_lower` \
-         (reads `lowering_rust.authority`), `regen_tokenize` \
+         (reads `src/v3/compiler/src/lower.rs`), `regen_tokenize` \
          (reads `src/v3/compiler/tokenize.dag`), `regen_v3`, and \
          `self_host_fixed_point`. Adding a new bin re-introduces a \
          per-lens (or per-target) Rust driver — the SG-6 lane requires that \

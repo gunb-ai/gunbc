@@ -81,9 +81,9 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // a bounded SG-0 exception for the merge-blocking Stage 3b receipt,
 // not a precedent for adding ad hoc integration files.
 //
-// SG-3b — `lower.rs` retires to producer-owned `lower_generated.rs`
-// (materialized from `lowering_rust.authority` via `regen_lower`).
-// Dissolution trigger: `lower.dag` + substrate `Surface*` (SELF_HOSTING.md §4).
+// SG-3f-prep (director Option B): `lower.rs` stays on this list — canonical
+// lowering remains hand-maintained Rust until `lower.dag` + reflected `Surface*`.
+// `regen_lower` + `lower_generated.rs` are prep-only (not `lib.rs` authority).
 //
 // Phase 1 Dag builder surface — PR #570 adds one narrow host-side
 // helper file, `src/dag/builder.rs`, to keep the test-facing graph
@@ -116,6 +116,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/src/lens_testgen.rs",
     "src/v3/compiler/src/lens_unused_parameters.rs",
     "src/v3/compiler/src/lib.rs",
+    "src/v3/compiler/src/lower.rs",
     "src/v3/compiler/src/parse.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",

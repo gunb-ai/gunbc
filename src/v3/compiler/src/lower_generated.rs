@@ -1,8 +1,8 @@
-// AUTO-GENERATED from `src/v3/compiler/lowering_rust.authority` via
+// AUTO-GENERATED from `src/v3/compiler/src/lower.rs` via
 // `regen_lower`. Regenerate instead of hand-editing.
 //
-// Authority staging lives in `lowering_rust.authority` until `Surface*`
-// declarations and `lower.dag` absorb this walk (SELF_HOSTING.md §4).
+// SG-3f-prep: not wired into `lib.rs` — canonical implementation is
+// `lower.rs` pending `lower.dag` + reflected `Surface*` (SELF_HOSTING.md §4).
 
 // Surface → Dag lowering.
 //

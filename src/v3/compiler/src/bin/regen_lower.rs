@@ -1,10 +1,13 @@
-//! Regenerate `lower_generated.rs` from `src/v3/compiler/lowering_rust.authority`.
+//! Regenerate `lower_generated.rs` from the canonical hand-maintained
+//! `src/v3/compiler/src/lower.rs` (the `lower` module).
 //!
-//! SG-3b: the merged compiler crate must not carry a hand-maintained
-//! `lower.rs`. The lowering walk stays staged in `lowering_rust.authority`
-//! (not `*.rs`, so SG-0 does not treat it as handwritten Rust surface)
-//! until `Surface*` lives in the substrate and `lower.dag` can own the
-//! algorithm (SELF_HOSTING.md §4).
+//! **SG-3f-prep (Option B):** `lower.rs` remains on the SG-0 census as the real
+//! lowering implementation. This binary is a pass-through + header + rustfmt —
+//! it does not dissolve the algorithm into `.dag`. The emitted
+//! `lower_generated.rs` is **not** imported by `lib.rs`; it exists so the
+//! regen + snapshot test harness stay wired for a future `lower.dag` cutover
+//! after substrate reflection (`Surface*` in `substrate.dag`, SELF_HOSTING.md §4).
+//! Do not treat `lower_generated.rs` as the live authority until that migration lands.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -13,13 +16,14 @@ use std::process::{Command, Stdio};
 use v3_compiler::generated_files::GENERATED_FILES;
 
 const GENERATED_FILE: &str = "src/v3/compiler/src/lower_generated.rs";
-const AUTHORITY_FILE: &str = "lowering_rust.authority";
+/// Canonical lowering source (hand-maintained; counted by SG-0).
+const LOWER_RS: &str = "src/lower.rs";
 
-const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/lowering_rust.authority` via\n\
+const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/src/lower.rs` via\n\
      // `regen_lower`. Regenerate instead of hand-editing.\n\
      //\n\
-     // Authority staging lives in `lowering_rust.authority` until `Surface*`\n\
-     // declarations and `lower.dag` absorb this walk (SELF_HOSTING.md §4).\n\
+     // SG-3f-prep: not wired into `lib.rs` — canonical implementation is\n\
+     // `lower.rs` pending `lower.dag` + reflected `Surface*` (SELF_HOSTING.md §4).\n\
      \n";
 
 fn main() {
@@ -30,11 +34,11 @@ fn main() {
     );
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let authority_path = manifest_dir.join(AUTHORITY_FILE);
-    let body = std::fs::read_to_string(&authority_path).unwrap_or_else(|e| {
+    let lower_path = manifest_dir.join(LOWER_RS);
+    let body = std::fs::read_to_string(&lower_path).unwrap_or_else(|e| {
         panic!(
-            "read lowering authority `{}`: {e}",
-            authority_path.display()
+            "read canonical lowering source `{}`: {e}",
+            lower_path.display()
         )
     });
     let combined = format!("{HEADER}{body}");

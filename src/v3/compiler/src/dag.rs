@@ -477,7 +477,7 @@ include!("dag_scalar_generated.rs");
 ///      the initial substrate state. `lower_fn_item` is responsible
 ///      for patching every such declaration to
 ///      `ArrowBody::UserDefined(bind_id)` before the Dag is frozen
-///      — including on error paths (R13 fix in `lower_generated.rs`). A
+///      — including on error paths (R13 fix in `lower.rs`). A
 ///      final `Arrow(Pending)` surviving into the Dag is
 ///      structurally equivalent to "body lowering missed a path,"
 ///      which is exactly what `lens_structural_resolution` detects.
@@ -498,8 +498,8 @@ include!("dag_scalar_generated.rs");
 ///   synthesis), all of which represented "no body by construction"
 ///   rather than "body to come." Those sites migrated to `NoBody`
 ///   in the (a)/broader-migration work — see the per-site comments
-///   at `lower_generated.rs` (`type_to_connective`, anonymous nested
-///   Arrow synthesis), and `infer.rs:1893`
+///   at `lower.rs` (`type_to_connective`, anonymous nested Arrow synthesis),
+///   and `infer.rs:1893`
 ///   (`resolve_direct_target_signature`).
 ///
 /// - **`NoBody`** — terminal "no body by construction." Used wherever
@@ -547,7 +547,7 @@ include!("dag_scalar_generated.rs");
 ///   M2+ parser extensions can reach in for case 1, or so pipeline authority can
 ///   parse ordering for `compile`.
 ///   **User-range boundary:** `reject_user_unparsed_scaffolds` in
-///   `src/v3/compiler/src/lower_generated.rs` fails-closed any user-range
+///   `src/v3/compiler/src/lower.rs` fails-closed any user-range
 ///   declaration carrying this variant (R14 + M1(2.8) Scaffold
 ///   Boundaries invariant). Bootstrap-range declarations stay
 ///   tolerated. **Case 1** dissolution: M2 surface-grammar extension — when
