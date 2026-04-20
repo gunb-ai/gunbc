@@ -499,10 +499,7 @@ pub mod lens_structural_resolution {
             id
         }
 
-        fn inject_name_keyed_reference(
-            dag: &mut Dag,
-            target: DeclarationId,
-        ) -> DeclarationId {
+        fn inject_name_keyed_reference(dag: &mut Dag, target: DeclarationId) -> DeclarationId {
             let id = dag.alloc_declaration_id();
             dag.push_declaration(Declaration {
                 id,
@@ -533,7 +530,11 @@ pub mod lens_structural_resolution {
             let decl_id = inject_named_pending_arrow(&mut dag, "leaked_fn", int_output);
 
             let found = violations(&dag);
-            assert_eq!(found.len(), 1, "expected exactly one violation, got: {found:?}");
+            assert_eq!(
+                found.len(),
+                1,
+                "expected exactly one violation, got: {found:?}"
+            );
             assert_eq!(found[0].declaration, decl_id);
             assert_eq!(found[0].name, "leaked_fn");
         }
@@ -555,15 +556,19 @@ pub mod lens_structural_resolution {
             let decl_id = inject_anonymous_pending_arrow(&mut dag, int_output);
 
             let found = violations(&dag);
-            assert_eq!(found.len(), 1, "expected exactly one anonymous violation, got: {found:?}");
+            assert_eq!(
+                found.len(),
+                1,
+                "expected exactly one anonymous violation, got: {found:?}"
+            );
             assert_eq!(found[0].declaration, decl_id);
             assert_eq!(found[0].name, "<anonymous>");
         }
 
         #[test]
         fn lens_survives_co_existing_injected_and_compiled_declarations() {
-            let mut dag = compile_to_dag("fn good(x: Int) -> Int = x + 1", "user.v3")
-                .expect("compiles");
+            let mut dag =
+                compile_to_dag("fn good(x: Int) -> Int = x + 1", "user.v3").expect("compiles");
             let int_output = dag.int_shape().expect("Int shape").declaration;
             let leak_id = inject_named_pending_arrow(&mut dag, "leaked", int_output);
             let found = violations(&dag);
