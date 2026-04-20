@@ -814,6 +814,43 @@ pub(crate) fn parse_pattern_strategy(
     Ok(PatternStrategyBinding::VectorList)
 }
 
+pub(crate) fn optional_match_variant_roles(
+    dag: &Dag,
+    disj_id: DeclarationId,
+) -> Result<(DeclarationId, DeclarationId), &'static str> {
+    let TypeConnective::Disj { variants } = &dag.declaration(disj_id).connective else {
+        return Err("optional branch must walk to a Disj");
+    };
+    let mut empty_variant = None;
+    let mut payload_variant = None;
+    for variant in variants {
+        let shape = match variant_payload_shape(dag, &variant.ty) {
+            VariantPayloadShapeLookup::Missing => {
+                return Err("optional branch variants must lower to payload products");
+            }
+            VariantPayloadShapeLookup::Found { _0: shape } => shape,
+        };
+        match shape {
+            VariantPayloadShape::Empty => {
+                if empty_variant.replace(variant.ty).is_some() {
+                    return Err("optional branch requires exactly one empty variant role");
+                }
+            }
+            VariantPayloadShape::PositionalSingle | VariantPayloadShape::NamedFields { .. } => {
+                if payload_variant.replace(variant.ty).is_some() {
+                    return Err(
+                        "optional branch requires exactly one payload-bearing variant role",
+                    );
+                }
+            }
+        }
+    }
+    let empty_variant = empty_variant.ok_or("optional branch requires an empty variant role")?;
+    let payload_variant =
+        payload_variant.ok_or("optional branch requires a payload-bearing variant role")?;
+    Ok((empty_variant, payload_variant))
+}
+
 fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     let indexes = RealizationIndexes::build(dag)?;
     if indexes.execution_model.memory == MemoryModelBinding::OwnershipBased {
@@ -1157,28 +1194,17 @@ impl<'a> Ctx<'a> {
         let disj_id = walk_to_disj(self.dag, scrutinee_type).ok_or_else(|| {
             EmitError::UnsupportedBehavior("optional branch must walk to a Disj".to_string())
         })?;
-        let TypeConnective::Disj { variants } = &self.dag.declaration(disj_id).connective else {
-            unreachable!("walk_to_disj returned non-Disj")
-        };
-        let none_variant = variants
-            .iter()
-            .find(|variant| variant.label == "None")
-            .map(|variant| variant.ty)
-            .ok_or_else(|| {
-                EmitError::UnsupportedBehavior("optional branch requires None".to_string())
-            })?;
-        let some_variant = variants
-            .iter()
-            .find(|variant| variant.label == "Some")
-            .map(|variant| variant.ty)
-            .ok_or_else(|| {
-                EmitError::UnsupportedBehavior("optional branch requires Some".to_string())
-            })?;
+        let (none_variant, some_variant) = optional_match_variant_roles(self.dag, disj_id)
+            .map_err(|detail| EmitError::UnsupportedBehavior(detail.to_string()))?;
         let none_path = find_resolved_branch_path(branch, none_variant).ok_or_else(|| {
-            EmitError::UnsupportedBehavior("optional branch missing None arm".to_string())
+            EmitError::UnsupportedBehavior(
+                "optional branch missing the empty-variant arm".to_string(),
+            )
         })?;
         let some_path = find_resolved_branch_path(branch, some_variant).ok_or_else(|| {
-            EmitError::UnsupportedBehavior("optional branch missing Some arm".to_string())
+            EmitError::UnsupportedBehavior(
+                "optional branch missing the payload-bearing arm".to_string(),
+            )
         })?;
         let ret = self.go_type_name_for_port(branch.output)?;
         let none_expr = self.render_path_body(none_path, locals)?;

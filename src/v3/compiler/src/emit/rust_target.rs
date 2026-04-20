@@ -3576,94 +3576,113 @@ impl<'a> Ctx<'a> {
             VariantPayloadShapeLookup::Found { _0: shape } => shape,
         };
         let rendered_binding = self.render_payload_binding_name(path, binding);
-        if matches!(
-            payload_shape,
-            VariantPayloadShape::NamedFields { _0: ref fields } if fields.len() > 1
-        ) {
-            let VariantPayloadShape::NamedFields { _0: field_labels } = payload_shape else {
-                unreachable!("guarded above")
-            };
-            // Multi-field struct-variant: Rust won't let us access
-            // `binding.field` on the enum because the payload has
-            // no nominal type. The body can ONLY consume this payload
-            // via destructured fields routed through `payload_bindings`
-            // — there is no Rust-level value the outer `binding @`
-            // alias could refer to (Rust rejects taking the anonymous
-            // struct payload as a value). So we always omit the
-            // `binding @` prefix here; field destructure carries
-            // everything the body can possibly use.
-            //
-            // When `EmitUnderscoreWhenUnused` reports the payload is
-            // unused, every field renders as wildcard too. When it's
-            // used, every field renders as its aliased local
-            // (`__<binding>_<field>`), and `render_path_body`'s
-            // `payload_bindings` population at the same payload port
-            // routes downstream `binding.field` reads to those locals
-            // via `render_field_project`'s override lookup.
-            let wildcard = self.indexes.syntax.patterns.wildcard.clone();
-            let payload_unused = rendered_binding == wildcard;
-            let field_bindings = field_labels
-                .iter()
-                .map(|child| {
-                    let binding_text = if payload_unused {
-                        wildcard.clone()
-                    } else {
-                        destructured_field_alias(&binding.binding_name, child)
-                    };
-                    Ok(render_named_template(
-                        &self.indexes.syntax.patterns.field_binding,
-                        &[("field", child), ("binding", &binding_text)],
-                    ))
-                })
-                .collect::<Result<Vec<_>, EmitError>>()?;
-            return Ok(render_named_template(
-                &self.indexes.syntax.patterns.variant_pattern,
-                &[
-                    ("name", &qualified_name),
-                    (
-                        "bindings",
-                        &join_rendered(
-                            &field_bindings,
-                            &self.indexes.syntax.patterns.field_binding_separator,
-                        ),
-                    ),
-                ],
-            ));
+        if let Some(rendered) = self.render_multi_field_variant_pattern(
+            &qualified_name,
+            binding,
+            &rendered_binding,
+            &payload_shape,
+        )? {
+            return Ok(rendered);
         }
-        if matches!(payload_shape, VariantPayloadShape::PositionalSingle)
-            && (self.indexes.types.contains_key(&disj_id) || is_optional_match)
-        {
-            return Ok(render_named_template(
-                &self.indexes.syntax.patterns.variant_pattern_positional,
-                &[("name", &qualified_name), ("binding", &rendered_binding)],
-            ));
+        if let Some(rendered) = self.render_single_field_variant_pattern(
+            disj_id,
+            is_optional_match,
+            &qualified_name,
+            &rendered_binding,
+            &payload_shape,
+        ) {
+            return Ok(rendered);
         }
         match payload_shape {
             VariantPayloadShape::Empty => Ok(render_named_template(
                 &self.indexes.syntax.patterns.variant_pattern_empty,
                 &[("name", &qualified_name)],
             )),
-            VariantPayloadShape::PositionalSingle => {
-                let bindings = render_named_template(
-                    &self.indexes.syntax.patterns.field_binding,
-                    &[("field", "_0"), ("binding", &rendered_binding)],
-                );
-                Ok(render_named_template(
-                    &self.indexes.syntax.patterns.variant_pattern,
-                    &[("name", &qualified_name), ("bindings", &bindings)],
-                ))
-            }
-            VariantPayloadShape::NamedFields { _0: field_labels } => {
-                let bindings = render_named_template(
-                    &self.indexes.syntax.patterns.field_binding,
-                    &[("field", &field_labels[0]), ("binding", &rendered_binding)],
-                );
-                Ok(render_named_template(
-                    &self.indexes.syntax.patterns.variant_pattern,
-                    &[("name", &qualified_name), ("bindings", &bindings)],
-                ))
+            VariantPayloadShape::PositionalSingle | VariantPayloadShape::NamedFields { .. } => {
+                unreachable!("single-field patterns return above")
             }
         }
+    }
+
+    fn render_multi_field_variant_pattern(
+        &self,
+        qualified_name: &str,
+        binding: &crate::dag::PayloadBinding,
+        rendered_binding: &str,
+        payload_shape: &VariantPayloadShape,
+    ) -> Result<Option<String>, EmitError> {
+        if !matches!(
+            payload_shape,
+            VariantPayloadShape::NamedFields { _0: ref fields } if fields.len() > 1
+        ) {
+            return Ok(None);
+        }
+        let VariantPayloadShape::NamedFields { _0: field_labels } = payload_shape else {
+            unreachable!("guarded above")
+        };
+        let wildcard = self.indexes.syntax.patterns.wildcard.clone();
+        let payload_unused = rendered_binding == wildcard;
+        let field_bindings = field_labels
+            .iter()
+            .map(|child| {
+                let binding_text = if payload_unused {
+                    wildcard.clone()
+                } else {
+                    destructured_field_alias(&binding.binding_name, child)
+                };
+                Ok(render_named_template(
+                    &self.indexes.syntax.patterns.field_binding,
+                    &[("field", child), ("binding", &binding_text)],
+                ))
+            })
+            .collect::<Result<Vec<_>, EmitError>>()?;
+        Ok(Some(render_named_template(
+            &self.indexes.syntax.patterns.variant_pattern,
+            &[
+                ("name", qualified_name),
+                (
+                    "bindings",
+                    &join_rendered(
+                        &field_bindings,
+                        &self.indexes.syntax.patterns.field_binding_separator,
+                    ),
+                ),
+            ],
+        )))
+    }
+
+    fn render_single_field_variant_pattern(
+        &self,
+        disj_id: DeclarationId,
+        is_optional_match: bool,
+        qualified_name: &str,
+        rendered_binding: &str,
+        payload_shape: &VariantPayloadShape,
+    ) -> Option<String> {
+        let single_field_label = match payload_shape {
+            VariantPayloadShape::PositionalSingle => None,
+            VariantPayloadShape::NamedFields { _0: field_labels } if field_labels.len() == 1 => {
+                Some(field_labels[0].as_str())
+            }
+            VariantPayloadShape::NamedFields { .. } | VariantPayloadShape::Empty => return None,
+        };
+        if single_field_label.is_none()
+            && (self.indexes.types.contains_key(&disj_id) || is_optional_match)
+        {
+            return Some(render_named_template(
+                &self.indexes.syntax.patterns.variant_pattern_positional,
+                &[("name", qualified_name), ("binding", rendered_binding)],
+            ));
+        }
+        let field_name = single_field_label.unwrap_or("_0");
+        let bindings = render_named_template(
+            &self.indexes.syntax.patterns.field_binding,
+            &[("field", field_name), ("binding", rendered_binding)],
+        );
+        Some(render_named_template(
+            &self.indexes.syntax.patterns.variant_pattern,
+            &[("name", qualified_name), ("bindings", &bindings)],
+        ))
     }
 
     /// E-5 / Lane 1 Stage 1c: render the arm's payload binding name

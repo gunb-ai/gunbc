@@ -64,7 +64,7 @@ use std::path::PathBuf;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, BindNode};
-use v3_compiler::emit_go::emit_go;
+use v3_compiler::emit::emit_go_text as emit_go;
 use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use v3_compiler::Dag;

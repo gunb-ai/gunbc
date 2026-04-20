@@ -32,8 +32,6 @@ pub mod generated_files {
 }
 
 pub mod emit;
-pub mod emit_go;
-pub mod emit_python;
 pub mod emit_rust;
 pub mod lens_depth;
 pub mod lens_testgen;

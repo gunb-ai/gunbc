@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use super::{
-    parse_pattern_strategy, EmitMode, PatternStrategyBinding, VariantPayloadBinding,
-    VariantPayloadFieldAccessRuleBinding,
+    optional_match_variant_roles, parse_pattern_strategy, EmitMode, PatternStrategyBinding,
+    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, DeclarationId, Field,
@@ -904,11 +904,16 @@ impl<'a> Ctx<'a> {
     ) -> Result<String, EmitPythonError> {
         let variant_id = resolved_pattern_id(path)?;
         if is_optional {
-            let variant_name = variant_name_for_decl(self.dag, disj_id, variant_id)?;
-            return Ok(if variant_name == "None" {
+            let (none_variant, some_variant) = optional_match_variant_roles(self.dag, disj_id)
+                .map_err(|detail| EmitPythonError::Unsupported(detail.to_string()))?;
+            return Ok(if variant_id == none_variant {
                 "__match is None".to_string()
-            } else {
+            } else if variant_id == some_variant {
                 "__match is not None".to_string()
+            } else {
+                return Err(EmitPythonError::Unsupported(
+                    "optional match arm resolved to neither optional role".to_string(),
+                ));
             });
         }
         let variant_name = runtime_variant_name_for_decl(self.dag, disj_id, variant_id)?;
