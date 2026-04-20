@@ -19,6 +19,7 @@ const SURFACE_CONSUMER_SOURCE: &str = r#"
 module tests.sg3_surface_reflection
 
 import v3.compiler.runtime_mirrors { SurfaceModule, SurfaceItem }
+import std.list { List }
 
 fn item_kind_score(item: SurfaceItem) -> Int =
   match item {
@@ -32,6 +33,12 @@ fn item_kind_score(item: SurfaceItem) -> Int =
     TypeRecord(_) => 0
     TypeSum(_) => 0
     TypeAlias(_) => 0
+  }
+
+fn module_kind_score(m: SurfaceModule) -> Int =
+  match m.items {
+    Empty => -1
+    Cons(head, _) => item_kind_score(head)
   }
 "#;
 
@@ -67,7 +74,6 @@ fn build_surface_consumer_harness(module_source: &str) -> PathBuf {
 #[allow(warnings, clippy::all)]
 mod emitted {{
     use v3_compiler::parse_surface;
-    use v3_compiler::parse_surface::SurfaceItem;
     {module_source}
 }}
 
@@ -78,8 +84,7 @@ fn main() {{
     let parsed = v3_compiler::parse_for_test(&tokens, "sg3_surface_reflection_consumer.v3")
         .expect("parse fixture");
     let mirrored = v3_compiler::parse_surface::SurfaceModule::from(&parsed);
-    let first = mirrored.items.first().expect("module item");
-    let kind_score = emitted::item_kind_score(first);
+    let kind_score = emitted::module_kind_score(&mirrored);
     assert_eq!(kind_score, 1, "emitted surface consumer should classify SurfaceItem::Module");
 }}
 "#
