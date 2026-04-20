@@ -203,7 +203,8 @@ fn main() {
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
     let mut compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
     // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`; `parse.dag` is SG-2
-    // parser surface AST authority consumed by `regen_parse`. Neither is part of the runtime
+    // parser **carrier** authority consumed by `regen_parse` (algorithm still staged in
+    // `parse_parser_body.txt` until SG-2b). Neither is part of the runtime
     // bootstrap Dag (would duplicate declarations when `compile_to_dag` parses them).
     compiler_entries.retain(|p| {
         p.file_name()

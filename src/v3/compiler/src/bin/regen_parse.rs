@@ -1,5 +1,10 @@
-//! Regenerate `parse_generated.rs` from `src/v3/compiler/parse.dag` plus the
-//! checked-in recursive-descent body fragment (`parse_parser_body.txt`).
+//! Regenerate `parse_generated.rs` from `src/v3/compiler/parse.dag` plus
+//! `parse_parser_body.txt` (sibling file under `src/v3/compiler/`).
+//!
+//! **Staging, not SG-2b cutover:** `parse.dag` supplies the Surface carrier schema; the `.txt` file
+//! is still checked-in recursive-descent **algorithm** authority. **Dissolution:** remove the
+//! fragment once parse logic is emitted from `.dag` alone (same trigger as the header on
+//! `parse.dag`).
 
 use std::collections::BTreeSet;
 use std::io::Write;

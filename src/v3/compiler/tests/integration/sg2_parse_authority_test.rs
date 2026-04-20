@@ -1,4 +1,7 @@
-//! SG-2b: `parse.dag` is load-bearing surface AST authority; `parse_generated.rs` must stay in sync.
+//! SG-2 **parser staging** ratchet: `parse.dag` is load-bearing for the **Surface carrier** schema;
+//! `parse_generated.rs` (types from `.dag` + algorithm from `parse_parser_body.txt`) must stay in
+//! sync via `regen_parse`. This is **not** SG-2b hard cutover until the body fragment is retired —
+//! see `parse.dag` / `parse_parser_body.txt` for the explicit dissolution trigger.
 
 use v3_compiler::compile_to_dag;
 

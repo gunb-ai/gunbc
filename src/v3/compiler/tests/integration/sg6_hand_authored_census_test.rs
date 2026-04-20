@@ -167,7 +167,7 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
 
     assert_eq!(
         actual, expected,
-        "SG-6 hand-authored bin census changed. The post-SG-2b census is \
+        "SG-6 hand-authored bin census changed. The post parser-staging census is \
          `regen_lens` (reads `src/v3/compiler/regen.dag`), `regen_parse` \
          (reads `src/v3/compiler/parse.dag`), `regen_tokenize` \
          (reads `src/v3/compiler/tokenize.dag`), `regen_v3`, and \
