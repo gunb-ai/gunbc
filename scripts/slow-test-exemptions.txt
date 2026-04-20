@@ -53,6 +53,7 @@ m1_3_emit_rust_test::rustc_roundtrip_emitted_module_returns_reflected_source_spa
 m1_3_emit_rust_test::rustc_roundtrip_emitted_module_returns_user_record_list_from_reflected_binds  # Lane 1 Stage 1e SG-7 Rust roundtrip emits + rustc harness; optimize in emitter/test-harness lane, not TM-0.
 m1_3_emit_rust_test::rustc_roundtrip_generic_list_fold_prints_one  # Lane 1 Stage 1e SG-7 Rust roundtrip emits + rustc harness; optimize in emitter/test-harness lane, not TM-0.
 
+m2_lens_cost_migration_test::complexity_dag_compiles_cleanly  # Lane 2 migration harness roundtrip; cold-compiles complexity.dag authority (main baseline 1949ms, sits on 2000ms edge). Paydown owned by lens migration lane, not TM-0.
 m2_lens_cost_migration_test::complexity_dag_runs_end_to_end_via_rustc_harness  # Lane 2 migration harness roundtrip; compile-heavy oracle test remains explicit until lens migration paydown.
 m2_lens_cost_migration_test::complexity_generated_module_matches_checked_in_snapshot  # Lane 2 migration snapshot recompiles + rustfmt-checks the full reflected lens module; optimize with later lens/test-harness paydown, not TM-0.
 m2_lens_idempotency_migration_test::idempotency_emitted_analyze_matches_oracle  # Lane 2 Stage 2b emitted-oracle roundtrip; compile-heavy oracle test remains explicit until lens migration paydown.
