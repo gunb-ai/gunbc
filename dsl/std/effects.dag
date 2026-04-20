@@ -232,6 +232,14 @@ type DerivedOpEffect {
   shape: EffectShape
 }
 
+// 🟡 SCAFFOLD. This coproduct keeps the derivation boundary fail-closed while
+// the caller surface still uses string inputs and has not yet been rewired to
+// a shared typed compiler diagnostic/result boundary. Richer source exists:
+// unknown-method and malformed-path failures should eventually surface through
+// that single boundary-owned channel instead of through a local derivation enum.
+// Dissolution trigger: the effect-derivation entrypoint stops returning local
+// stringly boundary errors because callers consume typed transport facts and
+// report failures through the shared compiler diagnostic/result carrier.
 type DeriveOpEffectResult
   = DerivedEffect { effect: DerivedOpEffect }
   | UnknownHttpMethodInput { operation_name: String, method_str: String }

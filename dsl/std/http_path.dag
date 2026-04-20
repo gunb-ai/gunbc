@@ -23,10 +23,23 @@ type PathTemplate {
   tokens: List<UrlPathToken>
 }
 
+// 🟡 SCAFFOLD. This coproduct distinguishes successful segment tokenization
+// from malformed `{...}` structure while `std.http_path` is still a local
+// helper for effects derivation rather than a full diagnostic-producing
+// frontend surface. Richer source exists: once malformed REST path templates
+// are reported through a shared typed diagnostic/result carrier at the
+// compiler boundary, this local helper coproduct should dissolve into that
+// boundary-owned failure channel instead of originating its own enum.
 type PathSegmentTokensResult
   = ParsedSegmentTokens { tokens: List<UrlPathToken> }
   | MalformedPathSegment { segment: String, reason: String }
 
+// 🟡 SCAFFOLD. This is the boundary-facing parse result for HTTP path
+// templates only until effects derivation and its callers consume malformed
+// paths through a shared compiler diagnostic/result surface. Dissolution
+// trigger: the malformed-path signal is wired to the typed diagnostic carrier
+// at the compiler boundary in both v2 and v3, at which point this coproduct
+// becomes redundant and should collapse into that shared channel.
 type PathTemplateParseResult
   = ParsedPathTemplate { template: PathTemplate }
   | MalformedPathTemplate { raw: String, segment: String, reason: String }

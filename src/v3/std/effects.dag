@@ -143,10 +143,20 @@ type PathTemplate {
   tokens: List<UrlPathToken>
 }
 
+// 🟡 SCAFFOLD. Mirrored from `dsl/std/http_path.dag` while v3 still inlines
+// the HTTP path helper instead of importing a dedicated authority module.
+// Richer source exists: malformed path templates should ultimately flow
+// through a shared typed diagnostic/result carrier at the compiler boundary
+// rather than through an ad hoc local coproduct.
 type PathSegmentTokensResult
   = ParsedSegmentTokens { tokens: List<UrlPathToken> }
   | MalformedPathSegment { segment: String, reason: String }
 
+// 🟡 SCAFFOLD. Mirrored receipt for the staged v3 inline authority. The
+// temporary parse-result coproduct dissolves once malformed-path reporting is
+// attached to the shared compiler diagnostic boundary in v3 and this file can
+// import the dedicated `std.http_path` authority instead of carrying its own
+// local mirror.
 type PathTemplateParseResult
   = ParsedPathTemplate { template: PathTemplate }
   | MalformedPathTemplate { raw: String, segment: String, reason: String }
@@ -413,6 +423,11 @@ type OperationEffect {
   shape: EffectShape
 }
 
+// 🟡 SCAFFOLD. Mirrored staged receipt for the temporary derivation boundary
+// coproduct. Richer source exists: once v3 routes unknown-method and malformed-
+// path failures through the shared compiler diagnostic/result boundary and the
+// string-input bridge dissolves, this local enum should disappear in favor of
+// that boundary-owned channel.
 type DeriveOpEffectResult
   = DerivedEffect { effect: OperationEffect }
   | UnknownHttpMethodInput { operation_name: String, method_str: String }
