@@ -201,16 +201,29 @@ fn unknown_method_and_malformed_path_are_distinct_failures() {
 // REST ops in scope derive an EffectShape
 //
 // Extdep REST rows come from `v2_compiler::rest_transport_facts` (parsed AST +
-// shared transport accessors). Tests only parse files and filter the allowlist.
+// shared transport accessors). Tests parse a fixed file list, then resolve the
+// tracked subset by **(service, operation_name)** — never by operation name
+// alone (extdeps reuse names like `Get` / `List` across services).
 //
-// Durable identity for an operation is the full fingerprint
-// `(service, operation_name, method, path_template)` — not `operation_name` alone
-// (extdeps reuse names like `Get` / `List` across different services).
+// Durable identity for comparisons / uniqueness is the full fingerprint
+// `(service, operation_name, method, path)` on `DeclaredRestTransportOp`.
+// `derive_op_effect` / `DerivedOpEffect` do not carry service today; tests that
+// correlate back to extdep rows pair tracked `RestOp` sources with derived
+// effects, or match obligations by **name + effect_shape** (not name alone).
 // =========================================================================
 
 const GITHUB_PULLS: &str = "github.Pulls";
 
 type RestOp = DeclaredRestTransportOp;
+
+fn rest_transport_fingerprint(op: &RestOp) -> (String, String, String, String) {
+    (
+        op.service.clone(),
+        op.name.clone(),
+        op.method.clone(),
+        op.path.clone(),
+    )
+}
 
 fn parse_extdep_module(relative_path: &str) -> (Rc<Node>, Rc<HashMap<String, Rc<NewlineIndex>>>) {
     let source = crate::helpers::read_v2_file(relative_path);
@@ -341,10 +354,10 @@ fn every_idempotent_effect_has_obligation() {
     for d in &derived {
         if is_idempotent_effect(d.shape.clone()) {
             assert!(
-                obligations
-                    .iter()
-                    .any(|o| o.operation_name == d.operation_name),
-                "missing obligation for idempotent op {}",
+                obligations.iter().any(|o| {
+                    o.operation_name == d.operation_name && o.effect_shape == d.shape
+                }),
+                "missing obligation for idempotent op {} (match name + effect shape, not name alone)",
                 d.operation_name
             );
         }
@@ -524,12 +537,7 @@ fn extdep_rest_fingerprints_are_unique_in_authority_closure() {
     let mut seen: std::collections::HashSet<(String, String, String, String)> =
         std::collections::HashSet::new();
     for op in all_parsed_extdep_rest_ops() {
-        let key = (
-            op.service.clone(),
-            op.name.clone(),
-            op.method.clone(),
-            op.path.clone(),
-        );
+        let key = rest_transport_fingerprint(&op);
         assert!(
             seen.insert(key.clone()),
             "duplicate REST fingerprint `{:?}` in extdep parse (ambiguous authority)",
@@ -544,12 +552,7 @@ fn tracked_rest_ops_list_has_no_duplicate_fingerprints() {
     let mut seen: std::collections::HashSet<(String, String, String, String)> =
         std::collections::HashSet::new();
     for op in &ops {
-        let key = (
-            op.service.clone(),
-            op.name.clone(),
-            op.method.clone(),
-            op.path.clone(),
-        );
+        let key = rest_transport_fingerprint(op);
         assert!(
             seen.insert(key.clone()),
             "tracked REST op list unexpectedly listed `{:?}` twice",
