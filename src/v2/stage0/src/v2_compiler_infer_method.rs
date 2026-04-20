@@ -2,10 +2,7 @@
 // Source module: v2.compiler.infer_method
 
 pub use crate::std_types::SourceSpan;
-pub use crate::v2_compiler_infer_types::{
-    kernel_container_profile_miss_diagnostic, make_container_type, make_map_type,
-    missing_kernel_container_profile_type,
-};
+pub use crate::v2_compiler_infer_types::{make_container_type, make_map_type};
 use crate::v2_rt;
 use crate::v2_std_core::Cardinality::Required;
 use crate::v2_std_core::Connective::NoConnective;
@@ -44,27 +41,22 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
 }
 
 pub fn map_of_type_variables() -> Rc<Node> {
-    match make_map_type(
+    make_map_type(
         type_variable_node("map_key".to_string()),
         type_variable_node("map_value".to_string()),
-    ) {
-        Some(n) => n.clone(),
-        None => missing_kernel_container_profile_type("Map".to_string()),
-    }
+    )
+    .ty
+    .clone()
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
-    match make_container_type(&"List".to_string(), type_variable_node(id)) {
-        Some(n) => n.clone(),
-        None => missing_kernel_container_profile_type("List".to_string()),
-    }
+    make_container_type(&"List".to_string(), type_variable_node(id))
+        .ty
+        .clone()
 }
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    match make_container_type(&"List".to_string(), element) {
-        Some(n) => n.clone(),
-        None => missing_kernel_container_profile_type("List".to_string()),
-    }
+    make_container_type(&"List".to_string(), element).ty.clone()
 }
 
 pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
@@ -72,27 +64,20 @@ pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node
 }
 
 pub fn builtin_kernel_seed_diagnostics() -> Rc<Vec<Rc<ErrorNode>>> {
-    {
-        let map_miss = match make_map_type(
+    v2_rt::concat(
+        make_map_type(
             type_variable_node("map_key".to_string()),
             type_variable_node("map_value".to_string()),
-        ) {
-            Some(_) => Rc::new(vec![]),
-            None => Rc::new(vec![kernel_container_profile_miss_diagnostic(
-                "Map".to_string(),
-            )]),
-        };
-        let list_miss = match make_container_type(
+        )
+        .diagnostics
+        .clone(),
+        make_container_type(
             &"List".to_string(),
             type_variable_node("collection_element".to_string()),
-        ) {
-            Some(_) => Rc::new(vec![]),
-            None => Rc::new(vec![kernel_container_profile_miss_diagnostic(
-                "List".to_string(),
-            )]),
-        };
-        v2_rt::concat(map_miss, list_miss)
-    }
+        )
+        .diagnostics
+        .clone(),
+    )
 }
 
 pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {

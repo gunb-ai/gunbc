@@ -65,14 +65,13 @@ pub use crate::v2_compiler_infer_sigs::{
     resolve_func_sigs, ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig,
 };
 pub use crate::v2_compiler_infer_types::{
-    bare_map_node, callable_inferred, child_type_node, emit_map_has, enrich_kernel_type,
-    extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
-    infer_literal_node, is_fully_resolved, make_callable_type, make_container_type,
-    method_receiver_element_node, missing_kernel_container_profile_type, node_is_collection,
+    bare_map_node, callable_inferred, child_type_node, emit_map_has, extract_optional_inner_node,
+    for_each_element_type_node, infer_binop_type_node, infer_literal_node, is_fully_resolved,
+    make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
     node_is_element_collection, node_is_keyed_collection, node_type_compatible, node_type_deps,
     node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
     prefer_specific_type, resolve_type_variables_from_template, resolved_type,
-    template_return_has_variables, template_return_is_receiver_self,
+    template_return_has_variables, template_return_is_receiver_self, KernelTypeBuild,
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
@@ -828,24 +827,13 @@ pub struct KernelListTyDiag {
     pub miss_diags: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn list_kernel_ty_from_element(
-    element: Rc<Node>,
-    span: Rc<SourceSpan>,
-    module_name: String,
-) -> Rc<KernelListTyDiag> {
-    match make_container_type(&"List".to_string(), element) {
-        Some(n) => Rc::new(KernelListTyDiag {
-            ty: n.clone(),
-            miss_diags: Rc::new(vec![]),
-        }),
-        None => Rc::new(KernelListTyDiag {
-            ty: missing_kernel_container_profile_type("List".to_string()),
-            miss_diags: Rc::new(vec![inference_error(
-                "kernel List container profile missing (algebra/kernel data mismatch)".to_string(),
-                span,
-                module_name,
-            )]),
-        }),
+pub fn list_kernel_ty_from_element(element: Rc<Node>) -> Rc<KernelListTyDiag> {
+    {
+        let b = make_container_type(&"List".to_string(), element);
+        Rc::new(KernelListTyDiag {
+            ty: b.ty.clone(),
+            miss_diags: b.diagnostics.clone(),
+        })
     }
 }
 
@@ -858,7 +846,7 @@ pub struct Tier2bBt {
 pub fn infer_tier2b_builtin_with_kernel_diags(
     func_name: &String,
     typed_args: Rc<Vec<Rc<Node>>>,
-    scope: &Rc<InferScope>,
+    scope: Rc<InferScope>,
     span: Rc<SourceSpan>,
 ) -> Rc<Tier2bBt> {
     if ((func_name.clone().as_str() == "lookup".to_string().as_str())
@@ -903,11 +891,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                     }) => match map_key_type_in_env(receiver_type.clone(), &scope.type_env.clone())
                     {
                         Some(key_type) => {
-                            let lk = list_kernel_ty_from_element(
-                                key_type.clone(),
-                                span,
-                                scope.module_name.clone(),
-                            );
+                            let lk = list_kernel_ty_from_element(key_type.clone());
                             Rc::new(Tier2bBt {
                                 bt: lk.ty.clone(),
                                 kernel_diags: lk.miss_diags.clone(),
@@ -945,11 +929,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                             &scope.type_env.clone(),
                         ) {
                             Some(value_type) => {
-                                let lv = list_kernel_ty_from_element(
-                                    value_type.clone(),
-                                    span,
-                                    scope.module_name.clone(),
-                                );
+                                let lv = list_kernel_ty_from_element(value_type.clone());
                                 Rc::new(Tier2bBt {
                                     bt: lv.ty.clone(),
                                     kernel_diags: lv.miss_diags.clone(),
@@ -989,14 +969,13 @@ pub struct MethodPipeFallback {
 pub fn method_pipe_map_keys_values_fallback(
     recv_rt: &Rc<Node>,
     method_name: &String,
-    scope: &Rc<InferScope>,
+    scope: Rc<InferScope>,
     span: Rc<SourceSpan>,
 ) -> Rc<MethodPipeFallback> {
     if (method_name.clone().as_str() == "map_keys".to_string().as_str()) {
         match map_key_type_in_env(recv_rt.clone(), &scope.type_env.clone()) {
             Some(key_type) => {
-                let lk =
-                    list_kernel_ty_from_element(key_type.clone(), span, scope.module_name.clone());
+                let lk = list_kernel_ty_from_element(key_type.clone());
                 Rc::new(MethodPipeFallback {
                     result_ty: lk.ty.clone(),
                     kernel_diags: lk.miss_diags.clone(),
@@ -1011,11 +990,7 @@ pub fn method_pipe_map_keys_values_fallback(
         if (method_name.clone().as_str() == "map_values".to_string().as_str()) {
             match map_value_type_in_env(recv_rt.clone(), &scope.type_env.clone()) {
                 Some(value_type) => {
-                    let lv = list_kernel_ty_from_element(
-                        value_type.clone(),
-                        span,
-                        scope.module_name.clone(),
-                    );
+                    let lv = list_kernel_ty_from_element(value_type.clone());
                     Rc::new(MethodPipeFallback {
                         result_ty: lv.ty.clone(),
                         kernel_diags: lv.miss_diags.clone(),
@@ -2390,10 +2365,11 @@ pub fn infer_expr(
                                     Some(mt) => mt.clone(),
                                     None => error_type(),
                                 };
-                                let bridge_result_type = if (method_resolution.semantics.clone()
-                                    == None)
-                                {
-                                    base_result_type.clone()
+                                let method_tv = if (method_resolution.semantics.clone() == None) {
+                                    Rc::new(KernelTypeBuild {
+                                        ty: base_result_type.clone(),
+                                        diagnostics: Rc::new(vec![]),
+                                    })
                                 } else {
                                     match (*method_resolution.semantics.clone().clone().unwrap())
                                         .clone()
@@ -2448,14 +2424,25 @@ pub fn infer_expr(
                                                         )
                                                     }
                                                 } else {
-                                                    base_result_type.clone()
+                                                    Rc::new(KernelTypeBuild {
+                                                        ty: base_result_type.clone(),
+                                                        diagnostics: Rc::new(vec![]),
+                                                    })
                                                 }
                                             }
-                                            None => base_result_type.clone(),
+                                            None => Rc::new(KernelTypeBuild {
+                                                ty: base_result_type.clone(),
+                                                diagnostics: Rc::new(vec![]),
+                                            }),
                                         },
-                                        _ => base_result_type.clone(),
+                                        _ => Rc::new(KernelTypeBuild {
+                                            ty: base_result_type.clone(),
+                                            diagnostics: Rc::new(vec![]),
+                                        }),
                                     }
                                 };
+                                let bridge_result_type = method_tv.ty.clone();
+                                let template_subst_diags = method_tv.diagnostics.clone();
                                 let returns_receiver_self = if (method_resolution.semantics.clone()
                                     == None)
                                 {
@@ -2541,7 +2528,13 @@ pub fn infer_expr(
                                         span.clone(),
                                         node_name_span(&texpr),
                                     ),
-                                    diagnostics: arg_diags,
+                                    diagnostics: v2_rt::concat(
+                                        v2_rt::concat(
+                                            arg_diags,
+                                            method_resolution.diagnostics.clone(),
+                                        ),
+                                        template_subst_diags,
+                                    ),
                                 })
                             }
                         } else {
@@ -2614,7 +2607,7 @@ match bare_m {
                                         let tier2b = infer_tier2b_builtin_with_kernel_diags(
                                             &func_name,
                                             typed_args.clone(),
-                                            &scope,
+                                            scope.clone(),
                                             span.clone(),
                                         );
                                         let bt = tier2b.bt.clone();
@@ -2838,13 +2831,16 @@ match bare_m {
                     None => method_pipe_map_keys_values_fallback(
                         &recv_rt,
                         &method_name,
-                        &scope,
+                        scope.clone(),
                         span.clone(),
                     ),
                 };
                 let base_result_type = pipe_fb.result_ty.clone();
-                let result_type = if (method_resolution.semantics.clone() == None) {
-                    base_result_type.clone()
+                let method_tv_mc = if (method_resolution.semantics.clone() == None) {
+                    Rc::new(KernelTypeBuild {
+                        ty: base_result_type.clone(),
+                        diagnostics: Rc::new(vec![]),
+                    })
                 } else {
                     match (*method_resolution.semantics.clone().clone().unwrap()).clone() {
                         MethodSemantics::AlgebraMethodSemantics {
@@ -2883,14 +2879,25 @@ match bare_m {
                                         )
                                     }
                                 } else {
-                                    base_result_type.clone()
+                                    Rc::new(KernelTypeBuild {
+                                        ty: base_result_type.clone(),
+                                        diagnostics: Rc::new(vec![]),
+                                    })
                                 }
                             }
-                            None => base_result_type.clone(),
+                            None => Rc::new(KernelTypeBuild {
+                                ty: base_result_type.clone(),
+                                diagnostics: Rc::new(vec![]),
+                            }),
                         },
-                        _ => base_result_type.clone(),
+                        _ => Rc::new(KernelTypeBuild {
+                            ty: base_result_type.clone(),
+                            diagnostics: Rc::new(vec![]),
+                        }),
                     }
                 };
+                let result_type = method_tv_mc.ty.clone();
+                let mc_template_diags = method_tv_mc.diagnostics.clone();
                 let method_semantics = if (method_resolution.semantics.clone() != None) {
                     method_resolution.semantics.clone()
                 } else {
@@ -2910,8 +2917,11 @@ match bare_m {
                 Rc::new(InferResult {
                     typed: mc_texpr,
                     diagnostics: v2_rt::concat(
-                        v2_rt::concat(recv_diags, mc_arg_diags),
-                        pipe_fb.kernel_diags.clone(),
+                        v2_rt::concat(
+                            v2_rt::concat(recv_diags, mc_arg_diags),
+                            pipe_fb.kernel_diags.clone(),
+                        ),
+                        v2_rt::concat(method_resolution.diagnostics.clone(), mc_template_diags),
                     ),
                 })
             }
@@ -3491,11 +3501,7 @@ match bare_m {
                 } else {
                     Rc::new(vec![])
                 };
-                let list_k = list_kernel_ty_from_element(
-                    elem_type_node.clone(),
-                    span.clone(),
-                    scope.module_name.clone(),
-                );
+                let list_k = list_kernel_ty_from_element(elem_type_node.clone());
                 let ll_texpr = make_expr_node(
                     Rc::new(ExprData::ExprListLit),
                     typed_elements,

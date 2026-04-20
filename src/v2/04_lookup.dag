@@ -20,6 +20,7 @@ import v2.std.core {
   FieldSummary,
   with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
+  ErrorNode,
 
   CardOptional
 }
@@ -65,6 +66,7 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 type KnownMethodResolution {
   semantics: MethodSemantics?
   result_type: Node?
+  diagnostics: List<ErrorNode>
 }
 
 // =========================================================================
@@ -254,6 +256,11 @@ type MethodFieldResult {
   algebra_template: AlgebraFieldTemplate?
 }
 
+type StructuralMethodLookup {
+  resolution: MethodFieldResult?
+  kernel_diagnostics: List<ErrorNode>
+}
+
 fn lookup_field_in_product(product: Node, method_name: String, source_indices: Map<String, NewlineIndex>) -> MethodFieldResult? {
   let matching = product.children |> filter(c => authored_name_at(source_indices: source_indices, node: c) == method_name)
   match matching |> first {
@@ -274,15 +281,12 @@ fn lookup_field_in_product(product: Node, method_name: String, source_indices: M
   }
 }
 
-fn lookup_structural_method(receiver_type: Node, method_name: String, source_indices: Map<String, NewlineIndex>) -> MethodFieldResult? {
+fn lookup_structural_method(receiver_type: Node, method_name: String, source_indices: Map<String, NewlineIndex>) -> StructuralMethodLookup {
   // First: check the receiver's own structural fields (Conj product).
   let is_product = receiver_type.connective == Conj
   if is_product {
     let direct = lookup_field_in_product(product: receiver_type, method_name: method_name, source_indices: source_indices)
-    match direct {
-      Some { value: _ } => direct
-      None => none
-    }
+    StructuralMethodLookup { resolution: direct, kernel_diagnostics: [] }
   } else {
     // Second: check the algebra registry for kernel type methods.
     // enrich_kernel_type builds a Conj product with algebraic fields
@@ -290,8 +294,8 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
     // The enriched node is NOT the type binding — it's a side table
     // so that type nodes in the graph stay as bare leaves.
     let enriched = enrich_kernel_type(name: authored_name_at(source_indices: source_indices, node: receiver_type), base: receiver_type, source_indices: source_indices)
-    if enriched.connective == Conj && enriched.children |> count > 0 {
-      let base_result = lookup_field_in_product(product: enriched, method_name: method_name, source_indices: source_indices)
+    if enriched.ty.connective == Conj && enriched.ty.children |> count > 0 {
+      let base_result = lookup_field_in_product(product: enriched.ty, method_name: method_name, source_indices: source_indices)
       // Enrich with size_effect/cost_shape from the EXACT profile for this receiver type.
       // Scoped to receiver_type.name → no global scan, no method name collisions.
       match base_result {
@@ -303,15 +307,16 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
               templates |> filter(t => t.name == method_name) |> first
             None => none
           }
-          match template_match {
+          let resolution = match template_match {
             Some { value: t } =>
               Some { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape, algebra_template: Some { value: t } } }
             None => base_result
           }
-        None => none
+          StructuralMethodLookup { resolution: resolution, kernel_diagnostics: enriched.diagnostics }
+        None => StructuralMethodLookup { resolution: none, kernel_diagnostics: enriched.diagnostics }
       }
     } else {
-      none
+      StructuralMethodLookup { resolution: none, kernel_diagnostics: enriched.diagnostics }
     }
   }
 }
@@ -322,13 +327,14 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
   // types; user-defined types have their own structural children.
   // Return types from the algebra field are passed through unsubstituted —
   // Phase C structural resolution handles TypeVariable resolution at the call site.
-  let tier0_result = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
-  match tier0_result {
+  let tier0 = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
+  match tier0.resolution {
     Some { value: mfr } =>
       let semantics = AlgebraMethodSemantics { method_def: mfr.field_node, fold_accumulator_type: fold_accumulator_type, size_effect: mfr.size_effect, cost_shape: mfr.cost_shape, algebra_template: mfr.algebra_template }
       KnownMethodResolution {
         semantics: Some { value: semantics },
-        result_type: Some { value: mfr.result_type }
+        result_type: Some { value: mfr.result_type },
+        diagnostics: tier0.kernel_diagnostics
       }
     None =>
   // Tier 1: Service method lookup
@@ -336,11 +342,12 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
     Some { value: svc_result } =>
       KnownMethodResolution {
         semantics: Some { value: ServiceMethodSemantics { service_name: authored_name_at(source_indices: source_indices, node: receiver_type), op_params: svc_result.op_params } },
-        result_type: Some { value: svc_result.result_type }
+        result_type: Some { value: svc_result.result_type },
+        diagnostics: tier0.kernel_diagnostics
       }
     None =>
       // No structural field found, not a service method — method not found.
-      KnownMethodResolution { semantics: none, result_type: none }
+      KnownMethodResolution { semantics: none, result_type: none, diagnostics: tier0.kernel_diagnostics }
   }
   }
 }

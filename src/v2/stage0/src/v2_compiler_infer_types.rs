@@ -290,100 +290,39 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
     }
 }
 
-pub fn make_container_type(kind_name: &String, element: Rc<Node>) -> Option<Rc<Node>> {
-    match container_param_name(kind_name.clone(), 0) {
-        Some(param_name) => Some(Rc::new(Node {
-            name: kind_name.clone(),
-            span: kernel_span(&kind_name),
-            ident_span: Some(kernel_span(&kind_name)),
-            children: Rc::new(vec![Rc::new(Node {
-                name: param_name.clone(),
-                span: kernel_span(&param_name),
-                ident_span: Some(kernel_span(&param_name)),
-                children: Rc::new(vec![]),
-                connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
-                inferred: Some(Rc::new(InferredNode::Resolved { node: element })),
-                return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
-                properties: Rc::new(vec![]),
-                type_annotation: None,
-                is_self_recursive: false,
-                has_non_tail_self_call: false,
-                match_pattern: None,
-                expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
-            })]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
-            properties: Rc::new(vec![]),
-            type_annotation: None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        })),
-        None => None,
-    }
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct KernelTypeBuild {
+    pub ty: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Option<Rc<Node>> {
-    match container_param_name("Map".to_string(), 0) {
-        Some(key_name) => match container_param_name("Map".to_string(), 1) {
-            Some(val_name) => Some(Rc::new(Node {
-                name: "Map".to_string(),
-                span: kernel_span(&"Map".to_string()),
-                ident_span: Some(kernel_span(&"Map".to_string())),
-                children: Rc::new(vec![
-                    Rc::new(Node {
-                        name: key_name.clone(),
-                        span: kernel_span(&key_name),
-                        ident_span: Some(kernel_span(&key_name)),
-                        children: Rc::new(vec![]),
-                        connective: Connective::NoConnective,
-                        params: Rc::new(vec![]),
-                        inferred: Some(Rc::new(InferredNode::Resolved { node: key })),
-                        return_cardinality: Cardinality::Required,
-                        uses: Rc::new(vec![]),
-                        body: None,
-                        transport: None,
-                        properties: Rc::new(vec![]),
-                        type_annotation: None,
-                        is_self_recursive: false,
-                        has_non_tail_self_call: false,
-                        match_pattern: None,
-                        expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
-                    }),
-                    Rc::new(Node {
-                        name: val_name.clone(),
-                        span: kernel_span(&val_name),
-                        ident_span: Some(kernel_span(&val_name)),
-                        children: Rc::new(vec![]),
-                        connective: Connective::NoConnective,
-                        params: Rc::new(vec![]),
-                        inferred: Some(Rc::new(InferredNode::Resolved { node: value })),
-                        return_cardinality: Cardinality::Required,
-                        uses: Rc::new(vec![]),
-                        body: None,
-                        transport: None,
-                        properties: Rc::new(vec![]),
-                        type_annotation: None,
-                        is_self_recursive: false,
-                        has_non_tail_self_call: false,
-                        match_pattern: None,
-                        expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
-                    }),
-                ]),
+pub fn make_container_type(kind_name: &String, element: Rc<Node>) -> Rc<KernelTypeBuild> {
+    match container_param_name(kind_name.clone(), 0) {
+        Some(param_name) => Rc::new(KernelTypeBuild {
+            ty: Rc::new(Node {
+                name: kind_name.clone(),
+                span: kernel_span(&kind_name),
+                ident_span: Some(kernel_span(&kind_name)),
+                children: Rc::new(vec![Rc::new(Node {
+                    name: param_name.clone(),
+                    span: kernel_span(&param_name),
+                    ident_span: Some(kernel_span(&param_name)),
+                    children: Rc::new(vec![]),
+                    connective: Connective::NoConnective,
+                    params: Rc::new(vec![]),
+                    inferred: Some(Rc::new(InferredNode::Resolved { node: element })),
+                    return_cardinality: Cardinality::Required,
+                    uses: Rc::new(vec![]),
+                    body: None,
+                    transport: None,
+                    properties: Rc::new(vec![]),
+                    type_annotation: None,
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: None,
+                    expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
+                })]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
                 inferred: None,
@@ -398,10 +337,98 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Option<Rc<Node>> {
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
-            })),
-            None => None,
+            }),
+            diagnostics: Rc::new(vec![]),
+        }),
+        None => Rc::new(KernelTypeBuild {
+            ty: missing_kernel_container_profile_type(kind_name.clone()),
+            diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
+                kind_name.clone(),
+            )]),
+        }),
+    }
+}
+
+pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
+    match container_param_name("Map".to_string(), 0) {
+        Some(key_name) => match container_param_name("Map".to_string(), 1) {
+            Some(val_name) => Rc::new(KernelTypeBuild {
+                ty: Rc::new(Node {
+                    name: "Map".to_string(),
+                    span: kernel_span(&"Map".to_string()),
+                    ident_span: Some(kernel_span(&"Map".to_string())),
+                    children: Rc::new(vec![
+                        Rc::new(Node {
+                            name: key_name.clone(),
+                            span: kernel_span(&key_name),
+                            ident_span: Some(kernel_span(&key_name)),
+                            children: Rc::new(vec![]),
+                            connective: Connective::NoConnective,
+                            params: Rc::new(vec![]),
+                            inferred: Some(Rc::new(InferredNode::Resolved { node: key })),
+                            return_cardinality: Cardinality::Required,
+                            uses: Rc::new(vec![]),
+                            body: None,
+                            transport: None,
+                            properties: Rc::new(vec![]),
+                            type_annotation: None,
+                            is_self_recursive: false,
+                            has_non_tail_self_call: false,
+                            match_pattern: None,
+                            expr_data: Rc::new(ExprData::NoExprData),
+                            ident: None,
+                        }),
+                        Rc::new(Node {
+                            name: val_name.clone(),
+                            span: kernel_span(&val_name),
+                            ident_span: Some(kernel_span(&val_name)),
+                            children: Rc::new(vec![]),
+                            connective: Connective::NoConnective,
+                            params: Rc::new(vec![]),
+                            inferred: Some(Rc::new(InferredNode::Resolved { node: value })),
+                            return_cardinality: Cardinality::Required,
+                            uses: Rc::new(vec![]),
+                            body: None,
+                            transport: None,
+                            properties: Rc::new(vec![]),
+                            type_annotation: None,
+                            is_self_recursive: false,
+                            has_non_tail_self_call: false,
+                            match_pattern: None,
+                            expr_data: Rc::new(ExprData::NoExprData),
+                            ident: None,
+                        }),
+                    ]),
+                    connective: Connective::NoConnective,
+                    params: Rc::new(vec![]),
+                    inferred: None,
+                    return_cardinality: Cardinality::Required,
+                    uses: Rc::new(vec![]),
+                    body: None,
+                    transport: None,
+                    properties: Rc::new(vec![]),
+                    type_annotation: None,
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: None,
+                    expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
+                }),
+                diagnostics: Rc::new(vec![]),
+            }),
+            None => Rc::new(KernelTypeBuild {
+                ty: missing_kernel_container_profile_type("Map".to_string()),
+                diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
+                    "Map".to_string(),
+                )]),
+            }),
         },
-        None => None,
+        None => Rc::new(KernelTypeBuild {
+            ty: missing_kernel_container_profile_type("Map".to_string()),
+            diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
+                "Map".to_string(),
+            )]),
+        }),
     }
 }
 
@@ -639,19 +666,37 @@ pub fn instantiate_algebra_type(
     template: Rc<AlgebraTypeTemplate>,
     base: &Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Rc<KernelTypeBuild> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let elem = algebra_child_or_placeholder(base.clone(), 0, "T".to_string());
         let key_node = algebra_child_or_placeholder(base.clone(), 0, "K".to_string());
         let val_node = algebra_child_or_placeholder(base.clone(), 1, "V".to_string());
         match (*template).clone() {
-            AlgebraTypeTemplate::ReceiverSelf => base.clone(),
-            AlgebraTypeTemplate::ReceiverElement => elem,
-            AlgebraTypeTemplate::ReceiverKey => key_node,
-            AlgebraTypeTemplate::ReceiverValue => val_node,
-            AlgebraTypeTemplate::NamedTemplate { name: n, .. } => nominal_type_ref(&n),
+            AlgebraTypeTemplate::ReceiverSelf => Rc::new(KernelTypeBuild {
+                ty: base.clone(),
+                diagnostics: Rc::new(vec![]),
+            }),
+            AlgebraTypeTemplate::ReceiverElement => Rc::new(KernelTypeBuild {
+                ty: elem,
+                diagnostics: Rc::new(vec![]),
+            }),
+            AlgebraTypeTemplate::ReceiverKey => Rc::new(KernelTypeBuild {
+                ty: key_node,
+                diagnostics: Rc::new(vec![]),
+            }),
+            AlgebraTypeTemplate::ReceiverValue => Rc::new(KernelTypeBuild {
+                ty: val_node,
+                diagnostics: Rc::new(vec![]),
+            }),
+            AlgebraTypeTemplate::NamedTemplate { name: n, .. } => Rc::new(KernelTypeBuild {
+                ty: nominal_type_ref(&n),
+                diagnostics: Rc::new(vec![]),
+            }),
             AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => {
-                type_variable_node(var_id.clone())
+                Rc::new(KernelTypeBuild {
+                    ty: type_variable_node(var_id.clone()),
+                    diagnostics: Rc::new(vec![]),
+                })
             }
             AlgebraTypeTemplate::ContainerOf {
                 source: src,
@@ -664,33 +709,63 @@ pub fn instantiate_algebra_type(
                     }
                     ContainerSource::Named { name: n, .. } => n.clone(),
                 };
-                let inner_t = instantiate_algebra_type(inner.clone(), &base, &source_indices);
-                match make_container_type(&kind_name, inner_t) {
-                    Some(built) => built.clone(),
-                    None => missing_kernel_container_profile_type(kind_name.clone()),
-                }
+                let inner_b = instantiate_algebra_type(inner.clone(), &base, &source_indices);
+                let built = make_container_type(&kind_name, inner_b.ty.clone());
+                Rc::new(KernelTypeBuild {
+                    ty: built.ty.clone(),
+                    diagnostics: v2_rt::concat(
+                        inner_b.diagnostics.clone(),
+                        built.diagnostics.clone(),
+                    ),
+                })
             }
-            AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(
-                &instantiate_algebra_type(inner.clone(), &base, &source_indices),
-            ),
-            AlgebraTypeTemplate::TupleOf { first, second, .. } => make_tuple_type(
-                instantiate_algebra_type(first.clone(), &base, &source_indices),
-                instantiate_algebra_type(second.clone(), &base, &source_indices),
-            ),
+            AlgebraTypeTemplate::OptionalOf { inner, .. } => {
+                let ib = instantiate_algebra_type(inner.clone(), &base, &source_indices);
+                Rc::new(KernelTypeBuild {
+                    ty: with_optional_cardinality(&ib.ty.clone()),
+                    diagnostics: ib.diagnostics.clone(),
+                })
+            }
+            AlgebraTypeTemplate::TupleOf { first, second, .. } => {
+                let fb = instantiate_algebra_type(first.clone(), &base, &source_indices);
+                let sb = instantiate_algebra_type(second.clone(), &base, &source_indices);
+                Rc::new(KernelTypeBuild {
+                    ty: make_tuple_type(fb.ty.clone(), sb.ty.clone()),
+                    diagnostics: v2_rt::concat(fb.diagnostics.clone(), sb.diagnostics.clone()),
+                })
+            }
             AlgebraTypeTemplate::CallableOf {
                 params: p,
                 return_type: r,
                 ..
-            } => make_callable_type(
-                Rc::new({
+            } => {
+                let param_bs = Rc::new({
                     let mut __result = Vec::new();
                     for tp in p.clone().iter().cloned() {
                         __result.push(instantiate_algebra_type(tp.clone(), &base, &source_indices));
                     }
                     __result
-                }),
-                instantiate_algebra_type(r.clone(), &base, &source_indices),
-            ),
+                });
+                let param_diags = Rc::new({
+                    let mut __result = Vec::new();
+                    for b in param_bs.clone().iter().cloned() {
+                        __result.extend((*b.diagnostics.clone()).iter().cloned());
+                    }
+                    __result
+                });
+                let param_nodes = Rc::new({
+                    let mut __result = Vec::new();
+                    for b in param_bs.clone().iter().cloned() {
+                        __result.push(b.ty.clone());
+                    }
+                    __result
+                });
+                let rb = instantiate_algebra_type(r.clone(), &base, &source_indices);
+                Rc::new(KernelTypeBuild {
+                    ty: make_callable_type(param_nodes, rb.ty.clone()),
+                    diagnostics: v2_rt::concat(param_diags, rb.diagnostics.clone()),
+                })
+            }
         }
     })
 }
@@ -699,22 +774,44 @@ pub fn instantiate_algebra_field(
     template: &Rc<AlgebraFieldTemplate>,
     base: &Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Rc<KernelTypeBuild> {
     {
-        let param_types = Rc::new({
+        let param_bs = Rc::new({
             let mut __result = Vec::new();
             for tp in template.param_types.clone().iter().cloned() {
                 __result.push(instantiate_algebra_type(tp.clone(), &base, &source_indices));
             }
             __result
         });
-        let return_type =
+        let param_types = Rc::new({
+            let mut __result = Vec::new();
+            for b in param_bs.clone().iter().cloned() {
+                __result.push(b.ty.clone());
+            }
+            __result
+        });
+        let param_diags = Rc::new({
+            let mut __result = Vec::new();
+            for b in param_bs.clone().iter().cloned() {
+                __result.extend((*b.diagnostics.clone()).iter().cloned());
+            }
+            __result
+        });
+        let return_b =
             instantiate_algebra_type(template.return_type.clone(), &base, &source_indices);
-        if ((param_types.clone().len() as i64) > 0) {
-            algebra_method_field(&template.name.clone(), param_types.clone(), return_type)
+        let field_ty = if ((param_types.clone().len() as i64) > 0) {
+            algebra_method_field(
+                &template.name.clone(),
+                param_types.clone(),
+                return_b.ty.clone(),
+            )
         } else {
-            algebra_value_field(&template.name.clone(), return_type)
-        }
+            algebra_value_field(&template.name.clone(), return_b.ty.clone())
+        };
+        Rc::new(KernelTypeBuild {
+            ty: field_ty,
+            diagnostics: v2_rt::concat(param_diags, return_b.diagnostics.clone()),
+        })
     }
 }
 
@@ -722,21 +819,41 @@ pub fn enrich_kernel_type(
     name: &String,
     base: &Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Rc<KernelTypeBuild> {
     {
         let profile = v2_rt::map_get(&kernel_algebra_profile(), name.clone());
         match profile {
             Some(p) => {
-                let fields = Rc::new({
+                let field_bs = Rc::new({
                     let mut __result = Vec::new();
                     for template in algebra_templates_for_profile(p.clone()).iter().cloned() {
                         __result.push(instantiate_algebra_field(&template, &base, &source_indices));
                     }
                     __result
                 });
-                enrich_base_with_fields(name.clone(), &base, fields)
+                let fields = Rc::new({
+                    let mut __result = Vec::new();
+                    for b in field_bs.clone().iter().cloned() {
+                        __result.push(b.ty.clone());
+                    }
+                    __result
+                });
+                let field_diags = Rc::new({
+                    let mut __result = Vec::new();
+                    for b in field_bs.clone().iter().cloned() {
+                        __result.extend((*b.diagnostics.clone()).iter().cloned());
+                    }
+                    __result
+                });
+                Rc::new(KernelTypeBuild {
+                    ty: enrich_base_with_fields(name.clone(), &base, fields),
+                    diagnostics: field_diags,
+                })
             }
-            None => base.clone(),
+            None => Rc::new(KernelTypeBuild {
+                ty: base.clone(),
+                diagnostics: Rc::new(vec![]),
+            }),
         }
     }
 }
@@ -985,14 +1102,20 @@ pub fn build_type_substitution(
 pub fn apply_type_substitution(
     template: Rc<AlgebraTypeTemplate>,
     subst: &Rc<HashMap<String, Rc<Node>>>,
-    receiver: Rc<Node>,
+    receiver: &Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Rc<KernelTypeBuild> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*template).clone() {
         AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => {
             match v2_rt::map_get(&subst, var_id.clone()) {
-                Some(resolved) => resolved.clone(),
-                None => type_variable_node(var_id.clone()),
+                Some(resolved) => Rc::new(KernelTypeBuild {
+                    ty: resolved.clone(),
+                    diagnostics: Rc::new(vec![]),
+                }),
+                None => Rc::new(KernelTypeBuild {
+                    ty: type_variable_node(var_id.clone()),
+                    diagnostics: Rc::new(vec![]),
+                }),
             }
         }
         AlgebraTypeTemplate::ReceiverSelf => {
@@ -1028,88 +1151,124 @@ pub fn apply_type_substitution(
                                     Some(v) => v.clone(),
                                     None => type_variable_node("V".to_string()),
                                 };
-                                match make_map_type(key.clone(), val) {
-                                    Some(m) => m.clone(),
-                                    None => {
-                                        missing_kernel_container_profile_type("Map".to_string())
-                                    }
-                                }
+                                make_map_type(key.clone(), val)
                             }
-                            None => receiver.clone(),
+                            None => Rc::new(KernelTypeBuild {
+                                ty: receiver.clone(),
+                                diagnostics: Rc::new(vec![]),
+                            }),
                         }
                     } else {
                         if (arity.clone() == Some(1)) {
                             match v2_rt::map_get(&subst, "__element__".to_string()) {
-                                Some(elem) => {
-                                    match make_container_type(&receiver_name_str, elem.clone()) {
-                                        Some(c) => c.clone(),
-                                        None => missing_kernel_container_profile_type(
-                                            receiver_name_str.clone(),
-                                        ),
-                                    }
-                                }
-                                None => receiver.clone(),
+                                Some(elem) => make_container_type(&receiver_name_str, elem.clone()),
+                                None => Rc::new(KernelTypeBuild {
+                                    ty: receiver.clone(),
+                                    diagnostics: Rc::new(vec![]),
+                                }),
                             }
                         } else {
-                            receiver.clone()
+                            Rc::new(KernelTypeBuild {
+                                ty: receiver.clone(),
+                                diagnostics: Rc::new(vec![]),
+                            })
                         }
                     }
                 }
             } else {
-                receiver.clone()
+                Rc::new(KernelTypeBuild {
+                    ty: receiver.clone(),
+                    diagnostics: Rc::new(vec![]),
+                })
             }
         }
         AlgebraTypeTemplate::ReceiverElement => match receiver.children.clone().first().cloned() {
-            Some(child) => child_type_node(&child),
+            Some(child) => Rc::new(KernelTypeBuild {
+                ty: child_type_node(&child),
+                diagnostics: Rc::new(vec![]),
+            }),
             None => match v2_rt::map_get(&subst, "__element__".to_string()) {
-                Some(elem) => elem.clone(),
-                None => match container_param_name(
-                    authored_name_at(source_indices.clone(), &receiver),
-                    0,
-                ) {
-                    Some(n) => type_variable_node(n.clone()),
-                    None => missing_kernel_container_profile_type(authored_name_at(
-                        source_indices.clone(),
-                        &receiver,
-                    )),
-                },
+                Some(elem) => Rc::new(KernelTypeBuild {
+                    ty: elem.clone(),
+                    diagnostics: Rc::new(vec![]),
+                }),
+                None => {
+                    let rname = authored_name_at(source_indices.clone(), &receiver);
+                    match container_param_name(rname.clone(), 0) {
+                        Some(n) => Rc::new(KernelTypeBuild {
+                            ty: type_variable_node(n.clone()),
+                            diagnostics: Rc::new(vec![]),
+                        }),
+                        None => Rc::new(KernelTypeBuild {
+                            ty: missing_kernel_container_profile_type(rname.clone()),
+                            diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
+                                rname.clone(),
+                            )]),
+                        }),
+                    }
+                }
             },
         },
         AlgebraTypeTemplate::ReceiverKey => match receiver.children.clone().first().cloned() {
-            Some(child) => child_type_node(&child),
+            Some(child) => Rc::new(KernelTypeBuild {
+                ty: child_type_node(&child),
+                diagnostics: Rc::new(vec![]),
+            }),
             None => match v2_rt::map_get(&subst, "__key__".to_string()) {
-                Some(key) => key.clone(),
-                None => match container_param_name(
-                    authored_name_at(source_indices.clone(), &receiver),
-                    0,
-                ) {
-                    Some(n) => type_variable_node(n.clone()),
-                    None => missing_kernel_container_profile_type(authored_name_at(
-                        source_indices.clone(),
-                        &receiver,
-                    )),
-                },
+                Some(key) => Rc::new(KernelTypeBuild {
+                    ty: key.clone(),
+                    diagnostics: Rc::new(vec![]),
+                }),
+                None => {
+                    let rname = authored_name_at(source_indices.clone(), &receiver);
+                    match container_param_name(rname.clone(), 0) {
+                        Some(n) => Rc::new(KernelTypeBuild {
+                            ty: type_variable_node(n.clone()),
+                            diagnostics: Rc::new(vec![]),
+                        }),
+                        None => Rc::new(KernelTypeBuild {
+                            ty: missing_kernel_container_profile_type(rname.clone()),
+                            diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
+                                rname.clone(),
+                            )]),
+                        }),
+                    }
+                }
             },
         },
         AlgebraTypeTemplate::ReceiverValue => {
             match receiver.children.clone().get(1 as usize).cloned() {
-                Some(child) => child_type_node(&child),
+                Some(child) => Rc::new(KernelTypeBuild {
+                    ty: child_type_node(&child),
+                    diagnostics: Rc::new(vec![]),
+                }),
                 None => match v2_rt::map_get(&subst, "__value__".to_string()) {
-                    Some(val) => val,
-                    None => match container_param_name(
-                        authored_name_at(source_indices.clone(), &receiver),
-                        1,
-                    ) {
-                        Some(n) => type_variable_node(n.clone()),
-                        None => missing_kernel_container_profile_type(authored_name_at(
-                            source_indices.clone(),
-                            &receiver,
-                        )),
-                    },
+                    Some(val) => Rc::new(KernelTypeBuild {
+                        ty: val,
+                        diagnostics: Rc::new(vec![]),
+                    }),
+                    None => {
+                        let rname = authored_name_at(source_indices.clone(), &receiver);
+                        match container_param_name(rname.clone(), 1) {
+                            Some(n) => Rc::new(KernelTypeBuild {
+                                ty: type_variable_node(n.clone()),
+                                diagnostics: Rc::new(vec![]),
+                            }),
+                            None => Rc::new(KernelTypeBuild {
+                                ty: missing_kernel_container_profile_type(rname.clone()),
+                                diagnostics: Rc::new(vec![
+                                    kernel_container_profile_miss_diagnostic(rname.clone()),
+                                ]),
+                            }),
+                        }
+                    }
                 },
             }
         }
-        AlgebraTypeTemplate::NamedTemplate { name: n, .. } => nominal_type_ref(&n),
+        AlgebraTypeTemplate::NamedTemplate { name: n, .. } => Rc::new(KernelTypeBuild {
+            ty: nominal_type_ref(&n),
+            diagnostics: Rc::new(vec![]),
+        }),
         AlgebraTypeTemplate::ContainerOf {
             source: src,
             element: inner,
@@ -1122,56 +1281,86 @@ pub fn apply_type_substitution(
                 ContainerSource::Named { name: n, .. } => n.clone(),
             };
             let inner_applied =
-                apply_type_substitution(inner.clone(), &subst, receiver.clone(), &source_indices);
-            match make_container_type(&kind_name, inner_applied) {
-                Some(built) => built.clone(),
-                None => missing_kernel_container_profile_type(kind_name.clone()),
-            }
+                apply_type_substitution(inner.clone(), &subst, &receiver, &source_indices);
+            let built = make_container_type(&kind_name, inner_applied.ty.clone());
+            Rc::new(KernelTypeBuild {
+                ty: built.ty.clone(),
+                diagnostics: v2_rt::concat(
+                    inner_applied.diagnostics.clone(),
+                    built.diagnostics.clone(),
+                ),
+            })
         }
-        AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(
-            &apply_type_substitution(inner.clone(), &subst, receiver.clone(), &source_indices),
-        ),
+        AlgebraTypeTemplate::OptionalOf { inner, .. } => {
+            let ib = apply_type_substitution(inner.clone(), &subst, &receiver, &source_indices);
+            Rc::new(KernelTypeBuild {
+                ty: with_optional_cardinality(&ib.ty.clone()),
+                diagnostics: ib.diagnostics.clone(),
+            })
+        }
         AlgebraTypeTemplate::TupleOf {
             first: ft,
             second: st,
             ..
-        } => make_tuple_type(
-            apply_type_substitution(ft.clone(), &subst, receiver.clone(), &source_indices),
-            apply_type_substitution(st.clone(), &subst, receiver.clone(), &source_indices),
-        ),
+        } => {
+            let fb = apply_type_substitution(ft.clone(), &subst, &receiver, &source_indices);
+            let sb = apply_type_substitution(st.clone(), &subst, &receiver, &source_indices);
+            Rc::new(KernelTypeBuild {
+                ty: make_tuple_type(fb.ty.clone(), sb.ty.clone()),
+                diagnostics: v2_rt::concat(fb.diagnostics.clone(), sb.diagnostics.clone()),
+            })
+        }
         AlgebraTypeTemplate::CallableOf {
             params: p,
             return_type: r,
             ..
         } => {
-            let param_nodes = Rc::new({
+            let param_bs = Rc::new({
                 let mut __result = Vec::new();
                 for tp in p.clone().iter().cloned() {
                     __result.push(apply_type_substitution(
                         tp.clone(),
                         &subst,
-                        receiver.clone(),
+                        &receiver,
                         &source_indices,
                     ));
                 }
                 __result
             });
-            make_callable_type(
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for pn in param_nodes.iter().cloned() {
-                        __result.push(make_param_node(
-                            &"_".to_string(),
-                            pn.clone(),
-                            None,
-                            no_span(),
-                            no_span(),
-                        ));
-                    }
-                    __result
-                }),
-                apply_type_substitution(r.clone(), &subst, receiver.clone(), &source_indices),
-            )
+            let param_nodes = Rc::new({
+                let mut __result = Vec::new();
+                for b in param_bs.clone().iter().cloned() {
+                    __result.push(b.ty.clone());
+                }
+                __result
+            });
+            let param_diags = Rc::new({
+                let mut __result = Vec::new();
+                for b in param_bs.clone().iter().cloned() {
+                    __result.extend((*b.diagnostics.clone()).iter().cloned());
+                }
+                __result
+            });
+            let rb = apply_type_substitution(r.clone(), &subst, &receiver, &source_indices);
+            Rc::new(KernelTypeBuild {
+                ty: make_callable_type(
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for pn in param_nodes.iter().cloned() {
+                            __result.push(make_param_node(
+                                &"_".to_string(),
+                                pn.clone(),
+                                None,
+                                no_span(),
+                                no_span(),
+                            ));
+                        }
+                        __result
+                    }),
+                    rb.ty.clone(),
+                ),
+                diagnostics: v2_rt::concat(param_diags, rb.diagnostics.clone()),
+            })
         }
     })
 }
@@ -1205,7 +1394,7 @@ pub fn resolve_type_variables_from_template(
     receiver_type: &Rc<Node>,
     overrides: Rc<HashMap<String, Rc<Node>>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Rc<KernelTypeBuild> {
     {
         let subst = build_type_substitution(
             &template.param_types.clone(),
@@ -1217,7 +1406,7 @@ pub fn resolve_type_variables_from_template(
         apply_type_substitution(
             template.return_type.clone(),
             &subst,
-            receiver_type.clone(),
+            &receiver_type,
             &source_indices,
         )
     }

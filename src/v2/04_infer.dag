@@ -78,7 +78,7 @@ import v2.std.core {
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
-  nominal_type_ref, make_container_type, make_callable_type, missing_kernel_container_profile_type,
+  nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
   node_is_keyed_collection, node_is_element_collection, node_is_collection, is_fully_resolved,
   resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self,
   bare_map_node,
@@ -90,8 +90,7 @@ import v2.compiler.infer_types {
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
   resolved_type, child_type_node,
-  emit_map_has,
-  enrich_kernel_type
+  emit_map_has
 }
 import v2.compiler.infer_method {
   builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type
@@ -593,24 +592,15 @@ fn inference_error(message: String, span: SourceSpan, module_name: String) -> Er
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
 
-// `make_container_type("List", …)` miss: always pair sentinel type with a diagnostic.
+// Kernel List construction: diagnostics come from KernelTypeBuild (infer_types).
 type KernelListTyDiag {
   ty: Node
   miss_diags: List<ErrorNode>
 }
 
-fn list_kernel_ty_from_element(element: Node, span: SourceSpan, module_name: String) -> KernelListTyDiag {
-  match make_container_type(kind_name: "List", element: element) {
-    Some { value: n } => KernelListTyDiag { ty: n, miss_diags: [] }
-    None => KernelListTyDiag {
-      ty: missing_kernel_container_profile_type(kind_name: "List"),
-      miss_diags: [inference_error(
-        message: "kernel List container profile missing (algebra/kernel data mismatch)",
-        span: span,
-        module_name: module_name
-      )]
-    }
-  }
+fn list_kernel_ty_from_element(element: Node) -> KernelListTyDiag {
+  let b = make_container_type(kind_name: "List", element: element)
+  KernelListTyDiag { ty: b.ty, miss_diags: b.diagnostics }
 }
 
 type Tier2bBt {
@@ -642,7 +632,7 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
           Some { value: Resolved { node: receiver_type } } =>
             match map_key_type_in_env(type_node: receiver_type, env: scope.type_env) {
               Some { value: key_type } =>
-                let lk = list_kernel_ty_from_element(element: key_type, span: span, module_name: scope.module_name)
+                let lk = list_kernel_ty_from_element(element: key_type)
                 Tier2bBt { bt: lk.ty, kernel_diags: lk.miss_diags }
               None => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
             }
@@ -657,7 +647,7 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
           Some { value: Resolved { node: receiver_type } } =>
             match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
               Some { value: value_type } =>
-                let lv = list_kernel_ty_from_element(element: value_type, span: span, module_name: scope.module_name)
+                let lv = list_kernel_ty_from_element(element: value_type)
                 Tier2bBt { bt: lv.ty, kernel_diags: lv.miss_diags }
               None => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
             }
@@ -680,14 +670,14 @@ fn method_pipe_map_keys_values_fallback(recv_rt: Node, method_name: String, scop
   if method_name == "map_keys" {
     match map_key_type_in_env(type_node: recv_rt, env: scope.type_env) {
       Some { value: key_type } =>
-        let lk = list_kernel_ty_from_element(element: key_type, span: span, module_name: scope.module_name)
+        let lk = list_kernel_ty_from_element(element: key_type)
         MethodPipeFallback { result_ty: lk.ty, kernel_diags: lk.miss_diags }
       None => MethodPipeFallback { result_ty: recv_rt, kernel_diags: [] }
     }
   } else if method_name == "map_values" {
     match map_value_type_in_env(type_node: recv_rt, env: scope.type_env) {
       Some { value: value_type } =>
-        let lv = list_kernel_ty_from_element(element: value_type, span: span, module_name: scope.module_name)
+        let lv = list_kernel_ty_from_element(element: value_type)
         MethodPipeFallback { result_ty: lv.ty, kernel_diags: lv.miss_diags }
       None => MethodPipeFallback { result_ty: recv_rt, kernel_diags: [] }
     }
@@ -1353,7 +1343,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             Some { value: mt } => mt
             None => error_type
           }
-          let bridge_result_type = if method_resolution.semantics == none { base_result_type } else {
+          let method_tv = if method_resolution.semantics == none {
+            KernelTypeBuild { ty: base_result_type, diagnostics: [] }
+          } else {
             match method_resolution.semantics.value {
               AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } =>
                 match at {
@@ -1362,12 +1354,16 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                       let call_arg_types = remaining |> map(a => resolved_type(n: arg_value(n: a)))
                       let fold_overrides = if call_fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_call_fold_acc_type) } else { empty_override_map() }
                       resolve_type_variables_from_template(template: t, arg_types: call_arg_types, receiver_type: first_arg_type, overrides: fold_overrides, source_indices: scope.type_env.source_indices)
-                    } else { base_result_type }
-                  None => base_result_type
+                    } else {
+                      KernelTypeBuild { ty: base_result_type, diagnostics: [] }
+                    }
+                  None => KernelTypeBuild { ty: base_result_type, diagnostics: [] }
                 }
-              _ => base_result_type
+              _ => KernelTypeBuild { ty: base_result_type, diagnostics: [] }
             }
           }
+          let bridge_result_type = method_tv.ty
+          let template_subst_diags = method_tv.diagnostics
           // Structural witness: does this method's template return ReceiverSelf?
           // Only methods that structurally return the receiver type (map_insert,
           // map_merge, etc.) justify patching the receiver from the result.
@@ -1406,7 +1402,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            diagnostics: arg_diags
+            diagnostics: concat(concat(arg_diags, method_resolution.diagnostics), template_subst_diags)
           }
         } else if func_name == "empty_map" {
           // Built-in: empty_map() → Map. Adopt expected type if it's a
@@ -1600,7 +1596,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           method_pipe_map_keys_values_fallback(recv_rt: recv_rt, method_name: method_name, scope: scope, span: span)
       }
       let base_result_type = pipe_fb.result_ty
-      let result_type = if method_resolution.semantics == none { base_result_type } else {
+      let method_tv_mc = if method_resolution.semantics == none {
+        KernelTypeBuild { ty: base_result_type, diagnostics: [] }
+      } else {
         match method_resolution.semantics.value {
           AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } =>
             match at {
@@ -1609,12 +1607,16 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                   let mc_arg_types = typed_mc_args |> map(a => resolved_type(n: arg_value(n: a)))
                   let mc_fold_overrides = if fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_fold_acc_type) } else { empty_override_map() }
                   resolve_type_variables_from_template(template: t, arg_types: mc_arg_types, receiver_type: recv_rt, overrides: mc_fold_overrides, source_indices: scope.type_env.source_indices)
-                } else { base_result_type }
-              None => base_result_type
+                } else {
+                  KernelTypeBuild { ty: base_result_type, diagnostics: [] }
+                }
+              None => KernelTypeBuild { ty: base_result_type, diagnostics: [] }
             }
-          _ => base_result_type
+          _ => KernelTypeBuild { ty: base_result_type, diagnostics: [] }
         }
       }
+      let result_type = method_tv_mc.ty
+      let mc_template_diags = method_tv_mc.diagnostics
       let method_semantics = if method_resolution.semantics != none { method_resolution.semantics } else { Some { value: PlainMethodSemantics } }
       // typed_mc_args are already arg nodes
       let typed_mc_arg_nodes = typed_mc_args
@@ -1627,7 +1629,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       )
       InferResult {
         typed: mc_texpr,
-        diagnostics: concat(concat(recv_diags, mc_arg_diags), pipe_fb.kernel_diags)
+        diagnostics: concat(concat(concat(recv_diags, mc_arg_diags), pipe_fb.kernel_diags), concat(method_resolution.diagnostics, mc_template_diags))
       }
 
     ExprMatch =>
@@ -1914,7 +1916,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           None => []
         }
       } else { [] }
-      let list_k = list_kernel_ty_from_element(element: elem_type_node, span: span, module_name: scope.module_name)
+      let list_k = list_kernel_ty_from_element(element: elem_type_node)
       let ll_texpr = make_expr_node(expr_data: ExprListLit, children: typed_elements, inferred: Some { value: Resolved { node: list_k.ty } }, span: span)
       InferResult {
         typed: ll_texpr,

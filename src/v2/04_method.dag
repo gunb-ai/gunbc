@@ -20,8 +20,7 @@ import v2.std.core {
   unit_type, bool_type, string_type, int_type
 }
 import v2.compiler.infer_types {
-  make_container_type, make_map_type, missing_kernel_container_profile_type,
-  kernel_container_profile_miss_diagnostic
+  make_container_type, make_map_type
 }
 
 // =========================================================================
@@ -37,29 +36,18 @@ fn type_variable_node(id: String) -> Node {
   Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-// Builtin return-type seeds: if `make_*` returns none, the kernel algebra
-// table is inconsistent. Pair `missing_kernel_container_profile_type` with
-// `builtin_kernel_seed_diagnostics` (merged in `typecheck_module`) so misses
-// are fail-closed under modeling-discipline §1.
+// Builtin return-type seeds: `make_*` returns KernelTypeBuild (type + miss diags).
+// `builtin_kernel_seed_diagnostics` merges miss diags in `typecheck_module`.
 fn map_of_type_variables() -> Node {
-  match make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")) {
-    Some { value: n } => n
-    None => missing_kernel_container_profile_type(kind_name: "Map")
-  }
+  make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).ty
 }
 
 fn list_of_type_variable(id: String) -> Node {
-  match make_container_type(kind_name: "List", element: type_variable_node(id: id)) {
-    Some { value: n } => n
-    None => missing_kernel_container_profile_type(kind_name: "List")
-  }
+  make_container_type(kind_name: "List", element: type_variable_node(id: id)).ty
 }
 
 fn list_of_element(element: Node) -> Node {
-  match make_container_type(kind_name: "List", element: element) {
-    Some { value: n } => n
-    None => missing_kernel_container_profile_type(kind_name: "List")
-  }
+  make_container_type(kind_name: "List", element: element).ty
 }
 
 // Builtin function return type registry.
@@ -74,18 +62,11 @@ fn seed_node_map(key: String, value: Node) -> Map<String, Node> {
   map_insert(empty_map(), key, value)
 }
 
-// One diagnostic per distinct seed shape (Map + List for collection_element).
-// Callers merge into pipeline diagnostics; avoids in-band-only CompilerError.
 fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
-  let map_miss = match make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")) {
-    Some { value: _ } => []
-    None => [kernel_container_profile_miss_diagnostic(kind_name: "Map")]
-  }
-  let list_miss = match make_container_type(kind_name: "List", element: type_variable_node(id: "collection_element")) {
-    Some { value: _ } => []
-    None => [kernel_container_profile_miss_diagnostic(kind_name: "List")]
-  }
-  concat(map_miss, list_miss)
+  concat(
+    make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).diagnostics,
+    make_container_type(kind_name: "List", element: type_variable_node(id: "collection_element")).diagnostics
+  )
 }
 
 fn builtin_function_registry() -> Map<String, Node> {

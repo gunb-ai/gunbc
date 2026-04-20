@@ -464,6 +464,7 @@ fn structural_method_lookup_resolves_all_list_collection_methods() {
                 &method_name.to_string(),
                 &empty_source_indices(),
             )
+            .resolution
             .is_some(),
             "lookup_structural_method should resolve '{}' on List<Int>",
             method_name
@@ -479,7 +480,10 @@ fn structural_method_any_on_list_returns_bool() {
         &"any".to_string(),
         &empty_source_indices(),
     )
-    .expect("any must resolve on List<Int>");
+    .resolution
+    .as_ref()
+    .expect("any must resolve on List<Int>")
+    .clone();
     assert_eq!(
         result.result_type.name, "Bool",
         "any on List<Int> should return Bool"
@@ -494,7 +498,10 @@ fn structural_method_all_on_list_returns_bool() {
         &"all".to_string(),
         &empty_source_indices(),
     )
-    .expect("all must resolve on List<Int>");
+    .resolution
+    .as_ref()
+    .expect("all must resolve on List<Int>")
+    .clone();
     assert_eq!(
         result.result_type.name, "Bool",
         "all on List<Int> should return Bool"
@@ -509,7 +516,10 @@ fn structural_method_sort_by_on_list_returns_self() {
         &"sort_by".to_string(),
         &empty_source_indices(),
     )
-    .expect("sort_by must resolve on List<Int>");
+    .resolution
+    .as_ref()
+    .expect("sort_by must resolve on List<Int>")
+    .clone();
     assert_eq!(
         result.result_type.name, "List",
         "sort_by on List<Int> should return List (ReceiverSelf)"
@@ -524,7 +534,10 @@ fn structural_method_first_on_list_returns_optional_element() {
         &"first".to_string(),
         &empty_source_indices(),
     )
-    .expect("first must resolve on List<Int>");
+    .resolution
+    .as_ref()
+    .expect("first must resolve on List<Int>")
+    .clone();
     assert_eq!(
         result.result_type.name, "Int",
         "first on List<Int> should return Int"
@@ -546,7 +559,10 @@ fn structural_method_count_on_list_returns_int() {
         &"count".to_string(),
         &empty_source_indices(),
     )
-    .expect("count must resolve on List<String>");
+    .resolution
+    .as_ref()
+    .expect("count must resolve on List<String>")
+    .clone();
     assert_eq!(result.result_type.name, "Int", "count should return Int");
 }
 
@@ -561,6 +577,7 @@ fn structural_method_lookup_resolves_all_int_ring_methods() {
                 &method_name.to_string(),
                 &empty_source_indices(),
             )
+            .resolution
             .is_some(),
             "lookup_structural_method should resolve '{}' on Int",
             method_name
@@ -576,6 +593,7 @@ fn structural_method_compare_on_int_returns_ordering() {
         &"compare".to_string(),
         &empty_source_indices(),
     )
+    .resolution
     .expect("compare must resolve on Int");
     assert_eq!(
         result.result_type.name, "Ordering",
@@ -608,6 +626,7 @@ fn structural_method_lookup_resolves_all_map_partial_function_methods() {
                 &method_name.to_string(),
                 &empty_source_indices(),
             )
+            .resolution
             .is_some(),
             "lookup_structural_method should resolve '{}' on Map<String,Int>",
             method_name
@@ -626,6 +645,7 @@ fn structural_method_get_on_map_returns_optional_value() {
         &"get".to_string(),
         &empty_source_indices(),
     )
+    .resolution
     .expect("get must resolve on Map<String,Int>");
     assert_eq!(
         result.result_type.name, "Int",
@@ -651,6 +671,7 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
         &"keys".to_string(),
         &empty_source_indices(),
     )
+    .resolution
     .expect("keys must resolve on Map<String,Int>");
     assert_eq!(result.result_type.name, "List", "keys should return List");
     assert_eq!(
@@ -676,6 +697,7 @@ fn structural_method_lookup_returns_none_for_unknown_type() {
             &"add".to_string(),
             &empty_source_indices()
         )
+        .resolution
         .is_none(),
         "custom types without algebra should not have structural methods"
     );
