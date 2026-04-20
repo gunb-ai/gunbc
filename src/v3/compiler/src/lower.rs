@@ -8,7 +8,7 @@
 //
 // Computation-side lowering follows M0 semantics unchanged:
 //
-//   IntLit/BoolLit/StringLit → Value(LiteralBits::*)
+//   SurfaceLiteral::{Int,Bool,String} → Value(LiteralBits::*)
 //   Var (local)              → scope lookup
 //   Var (unresolved)         → placeholder port + ResolveError
 //   Call                     → Transform { target: TransformTarget::Callable(DeclarationId), inputs }

@@ -4,8 +4,8 @@
 // `cargo run -p v3-compiler --bin regen_parse` — do not hand-edit it.
 //
 // **Authority boundary.** This file declares the surface module / item /
-// expression / type / pattern carriers the handwritten parser used to own
-// directly in `parse.rs`. Tokenization stays in `tokenize.dag`; lowering stays
+// expression / type / pattern carriers for the v3 surface grammar. Tokenization
+// stays in `tokenize.dag`; lowering stays
 // in `lower.rs`. `regen_parse` merges the lowered Dag type shapes with the
 // checked-in recursive-descent body fragment (`parse_parser_body.txt`) to emit
 // a single generated module — there is no second runtime parser.
@@ -106,6 +106,10 @@ type SurfaceType
       span: SourceSpan
     }
 
+// SurfaceLiteral variant labels MUST stay `Int` / `Bool` / `String` — the same
+// names as the historical handwritten parser — so generated Rust matches
+// `lower.rs` and every `SurfaceLiteral::…` constructor site. Do not rename to
+// `IntLit` / `BoolLit` / `StringLit` (tokenizer token kinds, not surface literals).
 type SurfaceLiteral
   = Int(Int)
   | Bool(Bool)

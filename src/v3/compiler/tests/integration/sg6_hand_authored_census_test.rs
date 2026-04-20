@@ -136,7 +136,7 @@ fn bin_basenames() -> BTreeSet<String> {
 }
 
 #[test]
-fn sg6_bin_census_is_locked_to_four_shims() {
+fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     // SG-1 receipts `regen_tokenize.rs` here. The tokenizer cutover uses
     // `src/v3/compiler/tokenize.dag` as lexical authority and
     // `regen_tokenize.rs` as the host driver that projects it into
