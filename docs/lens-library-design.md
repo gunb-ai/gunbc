@@ -217,51 +217,58 @@ hand-found in existing reviews.
 the same structural shape, flagging duplicates regardless of
 name.
 
-**Alias vs duplicate policy (load-bearing before ship):** The lens
-has **two** structural channels. They must not be conflated, or the
-gate contradicts itself (e.g. excluding all `where` aliases would
-hide the audit's `NonEmptyStr` / `NonEmptyString` class).
+**Alias policy (load-bearing before ship):** Implementers need an
+explicit split that reviewers can gate on — not “transparent vs
+opaque,” but **which pairs are excluded vs which pairs are findings**.
 
 Per `feedback_naming_is_aliasing` (see `CODING.md` — "Names are
-namespaces, not aliases"): a pure nominal alias does not introduce a
-second product body. Refinement aliases still introduce **logical**
-constraints keyed off `(carrier, refinement identity)`; two names
-for the **same** refinement fact are still a single-authority
-violation at the naming layer.
+namespaces, not aliases"), a type alias is a **namespace into** an
+existing authority; that governs **Rule 1**. Redundant **second**
+names for the **same** authority still violate single naming surface —
+that is **Rule 2**.
 
-1. **Product / coproduct / `data` channel (materialized shape)** —
-   Hash independent record, sum, and `data` bodies on field layout /
-   connective as today. **Pure nominal alias (excluded by default):**
-   `type A = B` with **no** `where` clause on the alias — e.g.
-   `type FileClassification = FileEntry` (PR #596) — does **not**
-   contribute a second hash bucket here; it normalizes to `B` (or is
-   skipped) so it cannot collide with `B` as "two anonymous products."
-2. **Refinement-alias channel (same carrier + same constraint, two
-   names)** — Declarations of the form `type Name = Carrier where …`
-   hash on **`(resolved_carrier_id, canonical_refinement_fingerprint)`**
-   (predicate / brand / chain identity from the substrate, not
-   surface spelling). **Matching pairs are reported** even though each
-   row is technically an "alias" — that is exactly the
-   `NonEmptyStr` / `NonEmptyString` audit case: two spellings for one
-   refinement. **Distinct** refinements (`where brand("IssueId")` vs
-   `where brand("IntentId")`) get different fingerprints and do not
-   collide.
-3. **True duplicate (materialized, always in scope)** — Two
-   declarations that each carry an **independent** product, coproduct,
-   or `data` body whose structural hash matches (same fields and field
-   types, or same data body connective) are reported. That is the
-   failure class the audit hit before PR #596 for `FileEntry` /
-   `FileClassification` (two record bodies — fixed by collapsing to
-   one body + nominal alias).
-4. **Re-exports** — `ignore_re_exports` filters pairs where one
-   declaration exists only to forward another across a module
-   boundary (orthogonal to (1)–(3)).
+**Rule 1 — Alias vs canonical (exclusion, never a finding):** If
+declaration `D` exists only to re-name canonical declaration `C`
+(same expanded type / same refinement witness chain), then **do not**
+emit `(D, C)` as a duplicate pair. Examples: `type FileClassification =
+FileEntry` (PR #596) must not collide with `FileEntry` in the
+product channel; `type IssueId = NonEmptyStr where brand("IssueId")`
+must not collide with its expanded refinement node as “two different
+surfaces for one fact.” Rule 1 is asymmetric: the canonical row keeps
+the bucket; aliases are absorbed into it.
+
+**Rule 2 — Alias vs alias (detection, always a finding when it fires):**
+If **two distinct declarations** `D1` and `D2` **both** normalize to
+the **same** structural surrogate **and neither pair is covered by Rule
+1 relative to the other** (i.e. they are peers, not namespace→canonical),
+emit a finding. Examples: `NonEmptyStr` and `NonEmptyString` both
+`String where non_empty` → same refinement fingerprint (see channel
+(2) below); two independent `data` rows with identical bodies; two
+record types with identical field maps (pre-#596 `FileEntry` vs
+`FileClassification`). Rule 2 is what the audit lists as “expected
+initial findings” once Rule 1 stops false positives.
+
+**Channels (how Rules 1–2 map to hashes):**
+
+1. **Product / coproduct / `data` channel** — Hash materialized bodies.
+   Apply **Rule 1** by skipping or folding pure nominal `type A = B`
+   (no `where`) into `B`'s bucket when `ignore_pure_nominal_type_aliases`
+   is true (default). **Rule 2** remains: two materialized bodies with
+   the same hash still collide.
+2. **Refinement-alias channel** — For `type Name = Carrier where …`,
+   hash `(resolved_carrier_id, canonical_refinement_fingerprint)`.
+   **Rule 1:** do not count `Name` against `Carrier` alone. **Rule 2:**
+   two names with the **same** fingerprint collide (`NonEmptyStr` /
+   `NonEmptyString`). Distinct predicates / brands → distinct
+   fingerprints → no collision.
+
+3. **Re-exports** — `ignore_re_exports` filters forward-only pairs
+   across module boundaries (orthogonal to Rules 1–2).
 
 The sketch `DuplicatesConfig` below includes
-`ignore_pure_nominal_type_aliases` (default **true**) for channel (1)
-only. Channel (2) stays **on** by default so refinement twins remain
-in the expected-findings set unless a follow-up policy explicitly
-disables them.
+`ignore_pure_nominal_type_aliases` (default **true**) to implement Rule
+1 in channel (1) only. Refinement channel (2) stays **on** by default
+so Rule 2 refinement twins stay in the expected-findings set.
 
 Implementation keys off the same lowered-type facts the typechecker
 already has (alias vs nominal record vs refinement spine), not source
@@ -309,9 +316,9 @@ pub struct DuplicatesConfig {
     /// explicit import relationship are ignored (a re-export
     /// is not a duplicate).
     pub ignore_re_exports: bool,
-    /// When true (default), pure nominal `type A = B` (no `where` on
-    /// the alias) is skipped in the **product/coproduct/data** channel
-    /// only (§2.1). Refinement twins use a separate channel and stay on.
+    /// When true (default), implements §2.1 **Rule 1** in the product
+    /// channel: pure nominal `type A = B` (no `where`) folds into `B`.
+    /// Rule 2 refinement twins use a separate channel and stay on.
     pub ignore_pure_nominal_type_aliases: bool,
 }
 
@@ -330,7 +337,7 @@ pub enum DuplicateKind {
     /// structures (e.g., same fields in different order).
     CompatibleType,
     /// Two refinement aliases naming the same (carrier, refinement)
-    /// fact — channel (2) in §2.1.
+    /// fact — §2.1 Rule 2, channel (2).
     IdenticalRefinementSurface,
 }
 
@@ -349,14 +356,15 @@ impl StructuralDuplicatesLens {
 2. **Product / coproduct / `data` channel:** For each declaration with
    a materialized body, compute a structural hash over its field
    layout or `data` connective. If `ignore_pure_nominal_type_aliases`
-   is set, omit pure nominal `type A = B` aliases from this channel
-   (normalize to `B` or skip).
+   is set, apply **Rule 1**: omit or fold pure nominal `type A = B`
+   into `B`'s bucket (never emit alias-vs-canonical here).
 3. **Refinement-alias channel:** For each `type Name = Carrier where …`,
-   compute `hash(resolved_carrier_id, canonical_refinement_id)` from
-   the substrate; collect into a **separate** map from the product
-   channel.
-4. Emit a `Duplicate` for every hash bucket with more than one
-   declaration in either channel, tagging `DuplicateKind` accordingly.
+   compute `hash(resolved_carrier_id, canonical_refinement_id)`.
+   Apply **Rule 1** when comparing to bare `Carrier` (no false
+   collision). Apply **Rule 2** among refinement rows with the same
+   fingerprint.
+4. Emit a `Duplicate` for every hash bucket that **Rule 2** says has
+   peer collisions, tagging `DuplicateKind` accordingly.
 5. If `ignore_re_exports` is set, filter out duplicates where one
    declaration imports the other transitively.
 
@@ -369,17 +377,18 @@ impl StructuralDuplicatesLens {
 
 **Test plan:**
 
-- Unit test: construct a Dag with two records of identical shape
-  and different names, assert the lens reports them.
+- Unit test (**Rule 2**, product): two records, identical field maps,
+  different names — assert `IdenticalType` (or `CompatibleType`).
 - Unit test: construct a Dag where one declaration re-exports
   another; assert the lens does NOT report it when
   `ignore_re_exports` is true.
-- Unit test: one record plus `type Alias = Record` (no `where`);
-  assert the lens does NOT report a product-channel duplicate when
+- Unit test (**Rule 1**, product): one record plus `type Alias =
+  Record` (no `where`); assert **no** alias-vs-canonical duplicate when
   `ignore_pure_nominal_type_aliases` is true (PR #596 shape).
-- Unit test: `type X = String where p` and `type Y = String where p`
-  with the same canonical refinement id; assert channel (2) reports
-  `IdenticalRefinementSurface`.
+- Unit test (**Rule 2**, refinement): `type X = String where p` and
+  `type Y = String where p` with the same canonical refinement id;
+  assert `IdenticalRefinementSurface` (alias-vs-alias, not
+  alias-vs-`String`).
 - Unit test: construct a Dag with three data declarations of the
   same value; assert the lens reports all three.
 - Integration test: run the lens against `dsl/std/` and
@@ -865,15 +874,15 @@ The recommended order for building the initial library:
    record return, block body, record literal in expression position)
    and pinned by a parse-failure test that flips when the parser
    grows those features.
-2. **`lens_structural_duplicates`** — next. Two channels (§2.1):
-   product/`data` structural hash plus refinement-surface hash.
+2. **`lens_structural_duplicates`** — next. §2.1 **Rules 1–2** across
+   two channels (product/`data` hash + refinement-surface hash).
    Expected to catch the `wire_contract` duplicates,
    `default_edition` duplication, `NonEmptyStr` / `NonEmptyString`
-   refinement twins, and probably others. (The `FileClassification` /
-   `FileEntry` duplicate from the same audit was dissolved manually
-   in PR #596 — single `FileEntry`, `type FileClassification =
-   FileEntry`.) Gives immediate value on existing std/ and extdeps/
-   code.
+   refinement twins (Rule 2), and probably others. (The
+   `FileClassification` / `FileEntry` duplicate from the same audit was
+   dissolved manually in PR #596 — Rule 1 covers `type
+   FileClassification = FileEntry` vs `FileEntry`.) Gives immediate
+   value on existing std/ and extdeps/ code.
 3. **`lens_layer_opacity`** — third, the most sophisticated of the
    three because it needs the `BoundarySpec` reverse index and
    multiple consumer kinds. The one that validates the thesis's
@@ -992,13 +1001,13 @@ The library is successful when:
    sees.
 3. **At least one high-value finding is closed by a lens-driven
    fix.** The `FileClassification`/`FileEntry` duplicate was fixed
-   ahead of the lens (PR #596: one record + type alias). A concrete
-   remaining target in the same audit class is still
-   `wire_contract` / `default_edition` / `NonEmptyStr` vs
-   `NonEmptyString` — surfaced by `lens_structural_duplicates`, fixed
-   structurally, with the lens returning clean on the fixed shape
-   afterward (pure nominal aliases excluded per §2.1 channel (1);
-   refinement twins remain governed by channel (2)).
+   ahead of the lens (PR #596: one record + `type FileClassification =
+   FileEntry`, i.e. **Rule 1** applies and must not regress). Concrete
+   remaining audit-class targets still include `wire_contract` /
+   `default_edition` and `NonEmptyStr` vs `NonEmptyString` (**Rule 2**
+   refinement peers). After fixes land, CI expects **Rule 2** clean
+   on those classes while **Rule 1** continues to suppress false
+   alias-vs-canonical pairs (§2.1).
 4. **The existing layer-opacity grep-gate proposal in
    `INVARIANTS.md` is fully superseded** — the §"Layer opacity"
    invariant points at `lens_layer_opacity` as its primary
