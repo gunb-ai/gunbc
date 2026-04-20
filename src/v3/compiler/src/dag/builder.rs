@@ -739,7 +739,7 @@ impl Dag {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operators::{ArithmeticOp, ComparisonOp};
+    use crate::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
 
     fn span() -> SourceSpan {
         SourceSpan::new("<builder-test>", 0, 0)
@@ -788,6 +788,29 @@ mod tests {
             dag.port(output).state(),
             &PortState::Resolved(dag.int_shape().expect("bootstrap Int"))
         );
+    }
+
+    /// Hand-built substrate receipt for `+` as `TransformTarget::Operator`:
+    /// resolved `Int` output without the compile pipeline. Lowering coverage
+    /// for surface `+` stays in `m1_substrate_test::m17_operator_lowers_to_structural_transform_target`.
+    #[test]
+    fn hand_built_operator_add_transform_carries_structural_target_and_int_shape() {
+        let mut dag = Dag::new();
+        let a = dag.push_value(LiteralBits::Int(1), span());
+        let b = dag.push_value(LiteralBits::Int(2), span());
+        let out = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![a, b],
+            span(),
+        );
+        let int_shape = dag.int_shape().expect("bootstrap Int");
+        assert_eq!(dag.port(out).state(), &PortState::Resolved(int_shape));
+        let producer = dag.port(out).produced_by.expect("transform producer");
+        let t = dag.node(producer).as_transform().expect("transform node");
+        assert!(matches!(
+            t.target,
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add))
+        ));
     }
 
     #[test]

@@ -128,6 +128,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
     "src/v3/compiler/tests/integration/common/mod.rs",
+    "src/v3/compiler/tests/integration/common/substrate_receipts.rs",
     "src/v3/compiler/tests/integration/four_fixture_regression_test.rs",
     "src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2a_effects_smoke.rs",
