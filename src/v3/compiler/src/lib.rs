@@ -440,6 +440,158 @@ pub mod lens_structural_resolution {
     }
 
     pub use generated::{check, name_keyed_references, NameKeyedReference, UnresolvedArrowBody};
+
+    #[cfg(test)]
+    mod tests {
+        use super::{check, name_keyed_references, NameKeyedReference, UnresolvedArrowBody};
+        use crate::dag::{ArrowBody, AtomPayload, Declaration, DeclarationId, TypeConnective};
+        use crate::diagnostics::SourceSpan;
+        use crate::{compile_to_dag, Dag};
+
+        fn span() -> SourceSpan {
+            SourceSpan::new("<lens-structural-resolution-test>", 0, 0)
+        }
+
+        fn inject_named_pending_arrow(
+            dag: &mut Dag,
+            name: &str,
+            output_type: DeclarationId,
+        ) -> DeclarationId {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some(name.to_string()),
+                connective: TypeConnective::Arrow {
+                    inputs: Vec::new(),
+                    output: output_type,
+                    body: ArrowBody::Pending,
+                },
+                type_params: Vec::new(),
+                meta_tag: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                span: span(),
+            });
+            id
+        }
+
+        fn inject_anonymous_pending_arrow(
+            dag: &mut Dag,
+            output_type: DeclarationId,
+        ) -> DeclarationId {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Arrow {
+                    inputs: Vec::new(),
+                    output: output_type,
+                    body: ArrowBody::Pending,
+                },
+                type_params: Vec::new(),
+                meta_tag: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                span: span(),
+            });
+            id
+        }
+
+        fn inject_name_keyed_reference(
+            dag: &mut Dag,
+            target: DeclarationId,
+        ) -> DeclarationId {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Atom(AtomPayload::ResolvedByName(target)),
+                type_params: Vec::new(),
+                meta_tag: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                span: span(),
+            });
+            id
+        }
+
+        fn violations(dag: &Dag) -> Vec<UnresolvedArrowBody> {
+            check(dag)
+        }
+
+        fn name_keyed(dag: &Dag) -> Vec<NameKeyedReference> {
+            name_keyed_references(dag)
+        }
+
+        #[test]
+        fn lens_flags_named_arrow_pending_injected_into_dag() {
+            let mut dag = Dag::new();
+            let int_output = dag.int_shape().expect("bootstrap Dag has Int").declaration;
+            let decl_id = inject_named_pending_arrow(&mut dag, "leaked_fn", int_output);
+
+            let found = violations(&dag);
+            assert_eq!(found.len(), 1, "expected exactly one violation, got: {found:?}");
+            assert_eq!(found[0].declaration, decl_id);
+            assert_eq!(found[0].name, "leaked_fn");
+        }
+
+        #[test]
+        fn lens_silent_on_empty_bootstrap_dag() {
+            let dag = Dag::new();
+            let found = violations(&dag);
+            assert!(
+                found.is_empty(),
+                "bootstrap Dag must produce zero violations (algebra arrows are anonymous), got: {found:?}"
+            );
+        }
+
+        #[test]
+        fn lens_flags_anonymous_arrow_pending_injected_into_dag() {
+            let mut dag = Dag::new();
+            let int_output = dag.int_shape().expect("bootstrap Dag has Int").declaration;
+            let decl_id = inject_anonymous_pending_arrow(&mut dag, int_output);
+
+            let found = violations(&dag);
+            assert_eq!(found.len(), 1, "expected exactly one anonymous violation, got: {found:?}");
+            assert_eq!(found[0].declaration, decl_id);
+            assert_eq!(found[0].name, "<anonymous>");
+        }
+
+        #[test]
+        fn lens_survives_co_existing_injected_and_compiled_declarations() {
+            let mut dag = compile_to_dag("fn good(x: Int) -> Int = x + 1", "user.v3")
+                .expect("compiles");
+            let int_output = dag.int_shape().expect("Int shape").declaration;
+            let leak_id = inject_named_pending_arrow(&mut dag, "leaked", int_output);
+            let found = violations(&dag);
+            assert_eq!(
+                found.len(),
+                1,
+                "expected exactly one violation amid real declarations, got: {found:?}"
+            );
+            assert_eq!(found[0].declaration, leak_id);
+            assert_eq!(found[0].name, "leaked");
+        }
+
+        #[test]
+        fn lens_flags_injected_name_keyed_reference() {
+            let mut dag = Dag::new();
+            let int_id = dag.int_shape().expect("bootstrap Dag has Int").declaration;
+            let site_id = inject_name_keyed_reference(&mut dag, int_id);
+
+            let found = name_keyed(&dag);
+            let injected = found
+                .iter()
+                .find(|entry| entry.declaration == site_id)
+                .unwrap_or_else(|| {
+                    panic!("expected injected site in name-keyed references, got: {found:?}")
+                });
+            assert_eq!(injected.resolved_to, int_id);
+        }
+    }
 }
 
 mod bootstrap;
@@ -542,94 +694,6 @@ pub struct FixedPointMismatch {
 #[doc(hidden)]
 pub fn tokenize_for_test(source: &str, file: &str) -> Result<Vec<tokenize::Token>, Diagnostic> {
     tokenize::tokenize(source, file)
-}
-
-/// Test-only hook: inject a named Arrow declaration with
-/// `ArrowBody::Pending` directly into `dag`. Synthesizes the exact
-/// shape that `lens_structural_resolution` is designed to flag —
-/// the "named user fn seeded with Pending and never patched" shape
-/// that `lower_fn_item` forbids but that a future regression in the
-/// body-patching path could re-introduce (see the R13 fix in
-/// `lower.rs:2293` for the historical precedent). Lives here and
-/// calls the `pub(crate)` `alloc_declaration_id` / `push_declaration`
-/// primitives directly so that this narrow "inject one named
-/// Arrow(Pending)" form is the only public construction path —
-/// exposing the raw primitives would widen the mutation surface
-/// beyond what the lens's synthetic-Dag test needs.
-#[doc(hidden)]
-pub fn inject_named_pending_arrow_for_test(
-    dag: &mut Dag,
-    name: &str,
-    output_type: dag::DeclarationId,
-) -> dag::DeclarationId {
-    let id = dag.alloc_declaration_id();
-    dag.push_declaration(dag::Declaration {
-        id,
-        name: Some(name.to_string()),
-        connective: dag::TypeConnective::Arrow {
-            inputs: Vec::new(),
-            output: output_type,
-            body: dag::ArrowBody::Pending,
-        },
-        type_params: Vec::new(),
-        meta_tag: None,
-        inhabits: None,
-        value_body: None,
-        refinement: None,
-        span: diagnostics::SourceSpan::new("test", 0, 0),
-    });
-    id
-}
-
-/// Test-only hook: inject an anonymous declaration whose atom payload
-/// is `ResolvedByName(target)`. Narrow helper for the structural-
-/// resolution lens acceptance tests.
-#[doc(hidden)]
-pub fn inject_name_keyed_reference_for_test(
-    dag: &mut Dag,
-    target: dag::DeclarationId,
-) -> dag::DeclarationId {
-    let id = dag.alloc_declaration_id();
-    dag.push_declaration(dag::Declaration {
-        id,
-        name: None,
-        connective: dag::TypeConnective::Atom(dag::AtomPayload::ResolvedByName(target)),
-        type_params: Vec::new(),
-        meta_tag: None,
-        inhabits: None,
-        value_body: None,
-        refinement: None,
-        span: diagnostics::SourceSpan::new("test", 0, 0),
-    });
-    id
-}
-
-/// Test-only hook: inject an anonymous Arrow declaration with
-/// `ArrowBody::Pending` directly into `dag`. This exists solely to
-/// prove the lens no longer relies on `Declaration.name` as a proxy
-/// for the executable-fn leak shape.
-#[doc(hidden)]
-pub fn inject_anonymous_pending_arrow_for_test(
-    dag: &mut Dag,
-    output_type: dag::DeclarationId,
-) -> dag::DeclarationId {
-    let id = dag.alloc_declaration_id();
-    dag.push_declaration(dag::Declaration {
-        id,
-        name: None,
-        connective: dag::TypeConnective::Arrow {
-            inputs: Vec::new(),
-            output: output_type,
-            body: dag::ArrowBody::Pending,
-        },
-        type_params: Vec::new(),
-        meta_tag: None,
-        inhabits: None,
-        value_body: None,
-        refinement: None,
-        span: diagnostics::SourceSpan::new("test", 0, 0),
-    });
-    id
 }
 
 /// Test-only hook: parse a token stream into a surface module.
