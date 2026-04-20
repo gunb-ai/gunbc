@@ -24,58 +24,11 @@
 # Adding an entry here is a short-term tolerance, not a permanent waiver.
 # The goal remains: every `#[test]` under 2s wall-clock.
 
-# Baseline captured locally on 2026-04-19 via
-# `scripts/check-test-timeout.sh` (`cargo test -p v3-compiler -- -Z
-# unstable-options --report-time`). This is the Phase 0 binding
-# follow-up described in `src/v3/compiler/tests/HANDOFF_PHASE0.md`.
-#
-# Determinism / fixed-point ratchet work is intentionally heavy today;
-# ROADMAP "Lane 3 Stage 3c prep — DB-8 fixed-point ratchet" explicitly
-# keeps these matrices as infrastructure before Lane 1e dissolves the
-# remaining emitter/fixed-point debt.
-db8_rust_emit_avoids_time_paths_and_float_hooks_on_program_matrix
-emit_matrix_module_go_is_deterministic
-emit_matrix_module_python_is_deterministic
-emit_matrix_module_rust_is_deterministic
-emit_matrix_program_go_is_deterministic
-emit_matrix_program_python_is_deterministic
-emit_matrix_program_rust_is_deterministic
-four_fixture_disk_sources_emit_deterministically
-
-# Boundary rustc roundtrips are called out in the Phase 0 handoff as
-# likely >2s because they pay real toolchain startup cost; TESTING.md
-# still classifies them as boundary rather than unit/integration.
-m1_3_emit_rust_test::rustc_roundtrip_emitted_module_compares_reflected_port_ids_in_list_contains
-m1_3_emit_rust_test::rustc_roundtrip_emitted_module_invokes_reflected_dag_function
-m1_3_emit_rust_test::rustc_roundtrip_emitted_module_matches_reflected_behavior_payloads
-m1_3_emit_rust_test::rustc_roundtrip_emitted_module_returns_reflected_source_span_list
-m1_3_emit_rust_test::rustc_roundtrip_emitted_module_returns_user_record_list_from_reflected_binds
-m1_3_emit_rust_test::rustc_roundtrip_generic_list_fold_prints_one
-
-# Lane 2 migration / emitted-consumer proofs are intentionally still
-# end-to-end until the follow-up paydown replaces some compile-boundary
-# coverage with cheaper structural checks; see ROADMAP Lane 2 rows.
-lane2_stage_2d_symbolic_cost_test::cost_dag_compiles_cleanly
-lane2_stage_2f_dimension_test::analyze_symbolic_cost_composed_matches_lens_at_workflow_root
-m1_3_lens_cost_test::kf_1_list_operation_cost_ordering
-m2_lens_cost_migration_test::complexity_dag_compiles_cleanly
-m2_lens_cost_migration_test::complexity_dag_runs_end_to_end_via_rustc_harness
-m2_lens_cost_migration_test::complexity_generated_module_matches_checked_in_snapshot
-m2_lens_idempotency_emit_test::lens_idempotency_dag_emits_go_and_python_modules
-m2_lens_idempotency_migration_test::idempotency_emitted_analyze_matches_oracle
-m2_lens_provenance_migration_test::lens_provenance_dag_runs_end_to_end_via_rustc_harness
-m2_lens_unused_parameters_migration_test::unused_parameters_dag_runs_end_to_end_via_rustc_harness
-m2_lens_unused_parameters_migration_test::unused_parameters_dag_self_analysis_reports_zero_findings
-thesis_validation_test::kf_1_structural_list_operation_ordering_holds
-
-# Integration hotspots below remain structurally valuable but are still
-# paying real compile/bootstrap cost on cold runs; Phase 0's point is to
-# name them so later PRs can shrink or reshape them deliberately.
-bootstrap::tests::malformed_pipeline_stage_attaches_diagnostic
-common::cached_compile::tests::cached_compile_any_returns_clean_dag_when_key_warmed_by_strict
-four_fixture_regression_test::four_fixture_suite_shares_one_reachability_shape
-m0_acceptance::compile_boundary_is_fail_closed
-m0_acceptance::post_sweep_port_state_matches_diagnostic_table
-m1_substrate_test::referenced_port_walk_real_helper_stack_compiles
-sg1_tokenize_authority_test::tokenize_generated_module_matches_checked_in_snapshot
-sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift
+# ── Intentionally empty on initial landing. ──
+# Phase 0 shipped the ratchet in **report-only** mode (the CI step has
+# `continue-on-error: true`), so the first green-or-red CI run already
+# publishes the baseline of currently-slow tests in its log. Read that
+# log, populate this file with one line per test + a one-line reason,
+# then flip `continue-on-error: true` off in `.github/workflows/ci.yml`
+# to make the ratchet binding — that is the Phase 0 binding follow-up.
+# See `src/v3/compiler/tests/HANDOFF_PHASE0.md` for the full path.

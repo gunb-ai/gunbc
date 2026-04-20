@@ -119,6 +119,30 @@ pub mod lens_cost {
             assert_eq!(expect_found(cost_of(dag, &port)), expected);
         }
 
+        fn int_value(dag: &mut Dag, value: i64) -> PortId {
+            dag.push_value(LiteralBits::Int(value), span())
+        }
+
+        fn add(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {
+            dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![lhs, rhs],
+                span(),
+            )
+        }
+
+        fn bind_arm(dag: &mut Dag, name: &str, output: PortId) -> Path {
+            Path {
+                body: dag.push_bind(name, output, Vec::new(), span()),
+                output,
+                pattern: BranchPattern::UnresolvedVariant {
+                    name: name.to_string(),
+                    span: span(),
+                },
+                binding: None,
+            }
+        }
+
         #[test]
         fn value_port_has_zero_cost() {
             let mut dag = Dag::new();
@@ -164,7 +188,7 @@ pub mod lens_cost {
             // cond=Bool(true) [0], arm=Int(1) [0] → branch = 1 + 0 + 0 = 1.
             let mut dag = Dag::new();
             let cond = dag.push_value(LiteralBits::Bool(true), span());
-            let arm_output = dag.push_value(LiteralBits::Int(1), span());
+            let arm_output = int_value(&mut dag, 1);
             let arm_body = dag.push_bind("arm", arm_output, Vec::new(), span());
             let branch = dag.push_branch(
                 cond,
@@ -180,6 +204,26 @@ pub mod lens_cost {
                 span(),
             );
             assert_cost(&dag, branch, 1);
+        }
+
+        #[test]
+        fn branch_cost_uses_max_not_sum_across_paths() {
+            let mut dag = Dag::new();
+            let cond = dag.push_value(LiteralBits::Bool(true), span());
+            let cheap = int_value(&mut dag, 20);
+            let forty = int_value(&mut dag, 40);
+            let fifty = int_value(&mut dag, 50);
+            let pricey = add(&mut dag, forty, fifty);
+            let sixty = int_value(&mut dag, 60);
+            let pricier = add(&mut dag, pricey, sixty);
+            let paths = vec![
+                bind_arm(&mut dag, "cheap_arm", cheap),
+                bind_arm(&mut dag, "pricier_arm", pricier),
+            ];
+            let branch = dag.push_branch(cond, paths, span());
+
+            // branch = 1 + cond(0) + max(cheap=0, pricier=((40+50)+60)=2)
+            assert_cost(&dag, branch, 3);
         }
 
         #[test]
