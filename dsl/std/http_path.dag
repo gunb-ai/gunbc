@@ -23,21 +23,41 @@ type PathTemplate {
   tokens: List<UrlPathToken>
 }
 
-fn parse_path_template(raw: String) -> PathTemplate {
+fn parse_path_template(raw: String) -> PathTemplate? {
   let path_only = match raw |> split(delimiter: "?") |> first {
     Some { value: p } => p
     None => raw
   }
   let segments = path_only |> split(delimiter: "/") |> filter(s => s != "")
-  let tokens = segments |> flat_map(seg => parse_segment_tokens(seg: seg))
-  PathTemplate { tokens: tokens }
+  let tokens = fold(segments,
+    init: Some { value: [] },
+    f: (acc, seg) => match acc {
+      None => none
+      Some { value: parsed } =>
+        match parse_segment_tokens(seg: seg) {
+          Some { value: seg_tokens } => Some { value: concat(parsed, seg_tokens) }
+          None => none
+        }
+    }
+  )
+  match tokens {
+    Some { value: parsed } => Some { value: PathTemplate { tokens: parsed } }
+    None => none
+  }
 }
 
-fn parse_segment_tokens(seg: String) -> List<UrlPathToken> {
+fn parse_segment_tokens(seg: String) -> List<UrlPathToken>? {
   if !(seg |> contains("{")) {
-    [LiteralToken { text: seg }]
+    if seg |> contains("}") {
+      none
+    } else {
+      Some { value: [LiteralToken { text: seg }] }
+    }
   } else {
     let before_and_rest = seg |> split(delimiter: "{")
+    if count(before_and_rest) != 2 {
+      return none
+    }
     let prefix = match before_and_rest |> first {
       Some { value: p } => p
       None => ""
@@ -47,6 +67,9 @@ fn parse_segment_tokens(seg: String) -> List<UrlPathToken> {
       None => ""
     }
     let name_and_suffix = after_open |> split(delimiter: "}")
+    if prefix |> contains("}") || count(name_and_suffix) != 2 {
+      return none
+    }
     let param_name = match name_and_suffix |> first {
       Some { value: p } => p
       None => ""
@@ -64,7 +87,11 @@ fn parse_segment_tokens(seg: String) -> List<UrlPathToken> {
     let suffix_tokens = if suffix != "" {
       [LiteralToken { text: suffix }]
     } else { [] }
-    concat(prefix_tokens, param_tokens, suffix_tokens)
+    if param_name == "" || suffix |> contains("{") || suffix |> contains("}") {
+      none
+    } else {
+      Some { value: concat(prefix_tokens, param_tokens, suffix_tokens) }
+    }
   }
 }
 

@@ -143,19 +143,35 @@ type PathTemplate {
   tokens: List<UrlPathToken>
 }
 
-fn parse_path_template(raw: String) -> PathTemplate {
+fn parse_path_template(raw: String) -> PathTemplate? {
   let path_only = match raw |> split(delimiter: "?") |> first {
     Some(p) => p
     None => raw
   }
   let segments = path_only |> split(delimiter: "/") |> filter(s => s != "")
-  let tokens = segments |> flat_map(seg => parse_segment_tokens(seg: seg))
-  PathTemplate { tokens: tokens }
+  let tokens = fold(segments,
+    init: Some([]),
+    f: (acc, seg) => match acc {
+      None => None
+      Some(parsed) =>
+        match parse_segment_tokens(seg: seg) {
+          Some(seg_tokens) => Some(concat(parsed, seg_tokens))
+          None => None
+        }
+    }
+  )
+  match tokens {
+    Some(parsed) => Some(PathTemplate { tokens: parsed })
+    None => None
+  }
 }
 
-fn parse_segment_tokens(seg: String) -> List<UrlPathToken> {
+fn parse_segment_tokens(seg: String) -> List<UrlPathToken>? {
   if seg |> contains("{") then
     let before_and_rest = seg |> split(delimiter: "{")
+    if count(before_and_rest) != 2 then
+      None
+    else
     let prefix = match before_and_rest |> first {
       Some(p) => p
       None => ""
@@ -165,6 +181,9 @@ fn parse_segment_tokens(seg: String) -> List<UrlPathToken> {
       None => ""
     }
     let name_and_suffix = after_open |> split(delimiter: "}")
+    if prefix |> contains("}") || count(name_and_suffix) != 2 then
+      None
+    else
     let param_name = match name_and_suffix |> first {
       Some(p) => p
       None => ""
@@ -185,9 +204,15 @@ fn parse_segment_tokens(seg: String) -> List<UrlPathToken> {
       [LiteralToken { text: suffix }]
     else
       []
-    concat(prefix_tokens, param_tokens, suffix_tokens)
+    if param_name == "" || suffix |> contains("{") || suffix |> contains("}") then
+      None
+    else
+      Some(concat(prefix_tokens, param_tokens, suffix_tokens))
   else
-    [LiteralToken { text: seg }]
+    if seg |> contains("}") then
+      None
+    else
+      Some([LiteralToken { text: seg }])
 }
 
 fn last_path_param(template: PathTemplate) -> String? {
@@ -657,13 +682,17 @@ fn derive_op_effect(
   match parse_http_method(raw: method_str) {
     None => None
     Some(method) =>
-      Some(OperationEffect {
-        operation_name: operation_name,
-        shape: derive_effect_shape(
-          method: method,
-          path: parse_path_template(raw: path_str)
-        )
-      })
+      match parse_path_template(raw: path_str) {
+        None => None
+        Some(path) =>
+          Some(OperationEffect {
+            operation_name: operation_name,
+            shape: derive_effect_shape(
+              method: method,
+              path: path
+            )
+          })
+      }
   }
 }
 

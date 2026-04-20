@@ -34,21 +34,21 @@ fn is_delete(shape: &EffectShape) -> bool {
 
 #[test]
 fn parse_simple_path() {
-    let t = parse_path_template(&"/repos/{owner}/{repo}/pulls".to_string());
+    let t = parse_path_template(&"/repos/{owner}/{repo}/pulls".to_string()).unwrap();
     assert!(has_path_params(t.clone()));
     assert_eq!(last_path_param(t).unwrap(), "repo");
 }
 
 #[test]
 fn parse_path_with_colon_suffix() {
-    let t = parse_path_template(&"/v1/{secret_name}:addVersion".to_string());
+    let t = parse_path_template(&"/v1/{secret_name}:addVersion".to_string()).unwrap();
     assert!(has_path_params(t.clone()));
     assert_eq!(last_path_param(t).unwrap(), "secret_name");
 }
 
 #[test]
 fn parse_path_no_params() {
-    let t = parse_path_template(&"/token".to_string());
+    let t = parse_path_template(&"/token".to_string()).unwrap();
     assert!(!has_path_params(t.clone()));
     assert!(last_path_param(t).is_none());
 }
@@ -57,7 +57,8 @@ fn parse_path_no_params() {
 fn parse_path_multiple_params() {
     let t = parse_path_template(
         &"/v1/projects/{project_id}/secrets/{secret}/versions/{version}:access".to_string(),
-    );
+    )
+    .unwrap();
     assert!(has_path_params(t.clone()));
     assert_eq!(last_path_param(t).unwrap(), "version");
 }
@@ -67,16 +68,33 @@ fn parse_path_strips_query_string() {
     let t = parse_path_template(
         &"/computeMetadata/v1/instance/service-accounts/default/identity?audience={audience}"
             .to_string(),
-    );
+    )
+    .unwrap();
     assert!(!has_path_params(t.clone()));
     assert!(last_path_param(t).is_none());
 }
 
 #[test]
 fn parse_deeply_nested_path() {
-    let t = parse_path_template(&"/repos/{owner}/{repo}/pulls/{pull_number}/reviews".to_string());
+    let t = parse_path_template(&"/repos/{owner}/{repo}/pulls/{pull_number}/reviews".to_string())
+        .unwrap();
     assert!(has_path_params(t.clone()));
     assert_eq!(last_path_param(t).unwrap(), "pull_number");
+}
+
+#[test]
+fn parse_path_rejects_unclosed_param_segment() {
+    assert!(parse_path_template(&"/repos/{owner/pulls".to_string()).is_none());
+}
+
+#[test]
+fn parse_path_rejects_stray_closing_brace() {
+    assert!(parse_path_template(&"/repos/owner}/pulls".to_string()).is_none());
+}
+
+#[test]
+fn parse_path_rejects_multiple_params_in_one_segment() {
+    assert!(parse_path_template(&"/v1/{project}{secret}".to_string()).is_none());
 }
 
 // =========================================================================
@@ -133,6 +151,12 @@ fn delete_without_path_key_fails_closed() {
         is_create(&op.shape),
         "DELETE without path key should fail closed to CreateEffect"
     );
+}
+
+#[test]
+fn malformed_path_fails_closed_at_derivation_boundary() {
+    let op = derive("Broken", "PUT", "/repos/{owner/pulls");
+    assert!(op.is_none(), "malformed path should not derive an effect");
 }
 
 // =========================================================================
