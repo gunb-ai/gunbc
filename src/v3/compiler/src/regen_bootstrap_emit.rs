@@ -6,13 +6,12 @@ use crate::dag::{
     CardinalityBound, Cluster, ClusterId, ComparisonOp, Dag, Declaration, DeclarationId, Field,
     FieldValue, IntraClusterCall, LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent,
     NodeId, NonEmptyList, NonSingletonList, OperatorKind, ParamRef, Path, PayloadBinding, Port,
-    PortId, PortState, TemplateArgument, TransformNode, TransformRef, TransformTarget, TypeConnective,
-    ValueBody, ValueNode,
+    PortId, PortState, TemplateArgument, TransformNode, TransformRef, TransformTarget,
+    TypeConnective, ValueBody, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, DiagnosticTable};
 
-const HEADER: &str =
-    "// AUTO-GENERATED from `dsl/std/*.dag` via `regen_bootstrap`.\n\
+const HEADER: &str = "// AUTO-GENERATED from `dsl/std/*.dag` via `regen_bootstrap`.\n\
      // Regenerate instead of hand-editing.\n\n";
 
 pub fn render_bootstrap_std_generated_rs(dag: &Dag) -> Result<String, String> {
@@ -51,7 +50,12 @@ fn emit_bootstrap_std_module(dag: &Dag) -> String {
     out.push_str("pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {\n");
     out.push_str("    Dag {\n");
     push_field(&mut out, "nodes", &render_behaviors(dag.nodes()), 2);
-    push_field(&mut out, "declarations", &render_declarations(dag.declarations()), 2);
+    push_field(
+        &mut out,
+        "declarations",
+        &render_declarations(dag.declarations()),
+        2,
+    );
     push_field(&mut out, "ports", &render_ports(dag), 2);
     push_field(&mut out, "diagnostics", &render_diagnostics(dag), 2);
     push_field(&mut out, "next_node_id", &dag.nodes().len().to_string(), 2);
@@ -68,11 +72,11 @@ fn emit_bootstrap_std_module(dag: &Dag) -> String {
     out.push_str("        target_syntax: TargetSyntaxCache::default(),\n");
     out.push_str("        stdlib_types: StdlibTypeCache::default(),\n");
     out.push_str("        emit_anchors: EmitAnchorCache::default(),\n");
-    out.push_str(
-        "        pattern_binding_rule_variants: PatternBindingRuleVariants::default(),\n",
-    );
+    out.push_str("        pattern_binding_rule_variants: PatternBindingRuleVariants::default(),\n");
     out.push_str("        variant_payload_field_access_rule_variants: VariantPayloadFieldAccessRuleVariants::default(),\n");
-    out.push_str("        verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),\n");
+    out.push_str(
+        "        verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),\n",
+    );
     push_field(&mut out, "clusters", &render_clusters(dag), 2);
     push_field(
         &mut out,
@@ -116,12 +120,20 @@ fn render_declaration(declaration: &Declaration) -> String {
 
 fn render_type_connective(connective: &TypeConnective) -> String {
     match connective {
-        TypeConnective::Atom(payload) => format!("TypeConnective::Atom({})", render_atom_payload(payload)),
+        TypeConnective::Atom(payload) => {
+            format!("TypeConnective::Atom({})", render_atom_payload(payload))
+        }
         TypeConnective::Conj { children } => {
-            format!("TypeConnective::Conj {{ children: {} }}", render_fields(children))
+            format!(
+                "TypeConnective::Conj {{ children: {} }}",
+                render_fields(children)
+            )
         }
         TypeConnective::Disj { variants } => {
-            format!("TypeConnective::Disj {{ variants: {} }}", render_fields(variants))
+            format!(
+                "TypeConnective::Disj {{ variants: {} }}",
+                render_fields(variants)
+            )
         }
         TypeConnective::Arrow {
             inputs,
@@ -165,15 +177,23 @@ fn render_fields(fields: &[Field]) -> String {
 
 fn render_atom_payload(payload: &AtomPayload) -> String {
     match payload {
-        AtomPayload::Literal(bits) => format!("AtomPayload::Literal({})", render_literal_bits(bits)),
+        AtomPayload::Literal(bits) => {
+            format!("AtomPayload::Literal({})", render_literal_bits(bits))
+        }
         AtomPayload::UnresolvedIdentifier(name) => {
             format!("AtomPayload::UnresolvedIdentifier({name:?}.to_string())")
         }
         AtomPayload::ResolvedByStructure(id) => {
-            format!("AtomPayload::ResolvedByStructure({})", render_declaration_id(*id))
+            format!(
+                "AtomPayload::ResolvedByStructure({})",
+                render_declaration_id(*id)
+            )
         }
         AtomPayload::ResolvedByName(id) => {
-            format!("AtomPayload::ResolvedByName({})", render_declaration_id(*id))
+            format!(
+                "AtomPayload::ResolvedByName({})",
+                render_declaration_id(*id)
+            )
         }
         AtomPayload::TypeParam(name) => format!("AtomPayload::TypeParam({name:?}.to_string())"),
     }
@@ -183,7 +203,10 @@ fn render_arrow_body(body: &ArrowBody) -> String {
     match body {
         ArrowBody::UserDefined(id) => format!("ArrowBody::UserDefined({})", render_node_id(*id)),
         ArrowBody::ExternalRealization(id) => {
-            format!("ArrowBody::ExternalRealization({})", render_declaration_id(*id))
+            format!(
+                "ArrowBody::ExternalRealization({})",
+                render_declaration_id(*id)
+            )
         }
         ArrowBody::Pending => "ArrowBody::Pending".to_string(),
         ArrowBody::NoBody => "ArrowBody::NoBody".to_string(),
@@ -224,7 +247,10 @@ fn render_value_body(value_body: &ValueBody) -> String {
     match value_body {
         ValueBody::Unparsed(span) => format!("ValueBody::Unparsed({})", render_source_span(span)),
         ValueBody::Structural { fields } => {
-            format!("ValueBody::Structural {{ fields: {} }}", render_named_field_values(fields))
+            format!(
+                "ValueBody::Structural {{ fields: {} }}",
+                render_named_field_values(fields)
+            )
         }
         ValueBody::Scalar(bits) => format!("ValueBody::Scalar({})", render_literal_bits(bits)),
     }
@@ -418,7 +444,10 @@ fn render_branch_pattern(pattern: &BranchPattern) -> String {
             render_source_span(span)
         ),
         BranchPattern::ResolvedVariant(id) => {
-            format!("BranchPattern::ResolvedVariant({})", render_declaration_id(*id))
+            format!(
+                "BranchPattern::ResolvedVariant({})",
+                render_declaration_id(*id)
+            )
         }
     }
 }
@@ -437,10 +466,16 @@ fn render_opt_payload_binding(binding: Option<&PayloadBinding>) -> String {
 fn render_loop_bound(bound: &LoopBound) -> String {
     match bound {
         LoopBound::Cardinality { count } => {
-            format!("LoopBound::Cardinality {{ count: {} }}", render_port_id(*count))
+            format!(
+                "LoopBound::Cardinality {{ count: {} }}",
+                render_port_id(*count)
+            )
         }
         LoopBound::Descent { cluster } => {
-            format!("LoopBound::Descent {{ cluster: {} }}", render_cluster_id(*cluster))
+            format!(
+                "LoopBound::Descent {{ cluster: {} }}",
+                render_cluster_id(*cluster)
+            )
         }
     }
 }
@@ -467,7 +502,10 @@ fn render_port_state(state: &PortState) -> String {
     match state {
         PortState::Uninferred => "PortState::Uninferred".to_string(),
         PortState::Resolved(shape) => {
-            format!("PortState::Resolved(TypeShape::new({}))", render_declaration_id(shape.declaration))
+            format!(
+                "PortState::Resolved(TypeShape::new({}))",
+                render_declaration_id(shape.declaration)
+            )
         }
         PortState::Unresolved => "PortState::Unresolved".to_string(),
     }
@@ -661,7 +699,10 @@ fn render_source_span(span: &crate::diagnostics::SourceSpan) -> String {
 
 fn render_opt_type_shape(shape: Option<crate::types::TypeShape>) -> String {
     match shape {
-        Some(shape) => format!("Some(TypeShape::new({}))", render_declaration_id(shape.declaration)),
+        Some(shape) => format!(
+            "Some(TypeShape::new({}))",
+            render_declaration_id(shape.declaration)
+        ),
         None => "None".to_string(),
     }
 }
