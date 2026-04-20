@@ -129,6 +129,7 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // `dag.rs` itself replaces these submodules simultaneously.
 const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/build.rs",
+    "src/v3/compiler/src/bin/regen_bootstrap.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
     "src/v3/compiler/src/bin/regen_lower.rs",
     "src/v3/compiler/src/bin/regen_parse.rs",
@@ -156,6 +157,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/src/lower.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
+    "src/v3/compiler/src/regen_bootstrap_emit.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/tokenize.rs",
     "src/v3/compiler/src/workflow_idempotency.rs",
@@ -198,6 +200,8 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/m2_lens_variant_payload_migration_test.rs",
     "src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs",
     "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
+    "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
+    "src/v3/compiler/tests/integration/pb1_bootstrap_std_snapshot_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",

@@ -17,6 +17,7 @@
 
 pub mod dag;
 pub mod diagnostics;
+mod regen_bootstrap_emit;
 
 /// SG-0 producer-owned generated-file manifest.
 ///
@@ -54,6 +55,8 @@ pub mod parse_surface {
 
     include!("parse_surface_generated.rs");
 }
+
+pub use regen_bootstrap_emit::{render_bootstrap_generated_rs, render_bootstrap_std_generated_rs};
 
 pub mod operators {
     pub use crate::dag::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
@@ -889,6 +892,62 @@ pub fn compile_runtime_mirrors_authority_dag(
     } else {
         Err(CompileError::Semantic(dag))
     }
+}
+
+/// PB-1 scaffold helper: re-run the pre-snapshot std bootstrap path for
+/// `regen_bootstrap` and the PB-1 drift tests only. This is NOT a second
+/// production bootstrap authority; `Dag::new()` seeds from the committed
+/// generated snapshot. Dissolution trigger: same as
+/// `bootstrap::bootstrap_std_fixtures_only`.
+pub fn compile_std_bootstrap_dag() -> Dag {
+    let mut dag = Dag::empty();
+    bootstrap::bootstrap_std_fixtures_only(&mut dag);
+    dag
+}
+
+/// PB-1-a generated snapshot helper: load the committed std-fixture
+/// bootstrap snapshot without re-running tokenize/parse/lower.
+pub fn generated_std_bootstrap_dag() -> Dag {
+    Dag::std_fixture_bootstrap_snapshot()
+}
+
+/// PB-1 closure scaffold helper for `regen_bootstrap`: layer the staged/spec/
+/// compiler bootstrap authorities onto an explicitly supplied std seed so all
+/// generated outputs in one regen pass derive from the same `dsl/std/*.dag`
+/// authority. This is not a production bootstrap entry point.
+pub fn compile_full_bootstrap_dag_from_std_seed(std_seed: Dag) -> Dag {
+    let mut dag = std_seed;
+    bootstrap::bootstrap_runtime_authorities_on(&mut dag, &[]);
+    dag
+}
+
+/// PB-1 closure scaffold helper for `regen_bootstrap`: same as
+/// `compile_full_bootstrap_dag_from_std_seed`, but excludes
+/// `runtime_mirrors.dag` so regen/tests can keep that authority first-of-name.
+pub fn compile_full_bootstrap_without_runtime_mirrors_dag_from_std_seed(std_seed: Dag) -> Dag {
+    let mut dag = std_seed;
+    bootstrap::bootstrap_runtime_authorities_on(&mut dag, &["src/v3/compiler/runtime_mirrors.dag"]);
+    dag
+}
+
+pub fn compile_full_bootstrap_dag() -> Dag {
+    let mut dag = Dag::empty();
+    bootstrap::bootstrap_all_runtime(&mut dag, &[]);
+    dag
+}
+
+pub fn compile_full_bootstrap_without_runtime_mirrors_dag() -> Dag {
+    let mut dag = Dag::empty();
+    bootstrap::bootstrap_all_runtime(&mut dag, &["src/v3/compiler/runtime_mirrors.dag"]);
+    dag
+}
+
+pub fn generated_full_bootstrap_dag() -> Dag {
+    Dag::new()
+}
+
+pub fn generated_full_bootstrap_without_runtime_mirrors_dag() -> Dag {
+    Dag::new_without_runtime_mirrors_compiler_fixture_bootstrap()
 }
 
 pub fn default_fixed_point_source() -> &'static str {

@@ -83,6 +83,25 @@ pub fn first_difference(lhs: &Dag, rhs: &Dag) -> Option<DagDifference> {
         }
     }
 
+    let lhs_clusters = lhs.clusters();
+    let rhs_clusters = rhs.clusters();
+    if lhs_clusters.len() != rhs_clusters.len() {
+        return Some(DagDifference {
+            detail: format!(
+                "cluster count mismatch: pass1={}, pass2={}",
+                lhs_clusters.len(),
+                rhs_clusters.len()
+            ),
+        });
+    }
+    for (left, right) in lhs_clusters.iter().zip(rhs_clusters.iter()) {
+        if format!("{left:?}") != format!("{right:?}") {
+            return Some(DagDifference {
+                detail: format!("cluster diverged: pass1=`{:?}`, pass2=`{:?}`", left, right),
+            });
+        }
+    }
+
     let lhs_ports = lhs.ports();
     let rhs_ports = rhs.ports();
     if lhs_ports.len() != rhs_ports.len() {
@@ -130,6 +149,36 @@ pub fn first_difference(lhs: &Dag, rhs: &Dag) -> Option<DagDifference> {
         if left != right {
             return Some(DagDifference {
                 detail: format!("diagnostic diverged: pass1=`{left}`, pass2=`{right}`"),
+            });
+        }
+    }
+
+    let mut lhs_optional_match_disjs: Vec<_> = lhs.optional_match_disjs().iter().collect();
+    let mut rhs_optional_match_disjs: Vec<_> = rhs.optional_match_disjs().iter().collect();
+    lhs_optional_match_disjs.sort_by_key(|(key, _)| key.raw());
+    rhs_optional_match_disjs.sort_by_key(|(key, _)| key.raw());
+    if lhs_optional_match_disjs.len() != rhs_optional_match_disjs.len() {
+        return Some(DagDifference {
+            detail: format!(
+                "optional_match_disjs count mismatch: pass1={}, pass2={}",
+                lhs_optional_match_disjs.len(),
+                rhs_optional_match_disjs.len()
+            ),
+        });
+    }
+    for ((left_key, left_value), (right_key, right_value)) in lhs_optional_match_disjs
+        .iter()
+        .zip(rhs_optional_match_disjs.iter())
+    {
+        if left_key != right_key || left_value != right_value {
+            return Some(DagDifference {
+                detail: format!(
+                    "optional_match_disjs diverged: pass1=`({}, {})`, pass2=`({}, {})`",
+                    left_key.raw(),
+                    left_value.raw(),
+                    right_key.raw(),
+                    right_value.raw()
+                ),
             });
         }
     }

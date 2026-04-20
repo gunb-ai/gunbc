@@ -278,6 +278,9 @@ fn main() {
     //
     // Paths are workspace-relative and sorted for determinism.
     const REGEN_OUTPUTS: &[&str] = &[
+        "src/v3/compiler/src/bootstrap_generated.rs",
+        "src/v3/compiler/src/bootstrap_generated_without_runtime_mirrors.rs",
+        "src/v3/compiler/src/bootstrap_std_generated.rs",
         // SG-5 substrate / runtime-mirror projections, generated from
         // `src/v3/std/substrate.dag` + `src/v3/compiler/runtime_mirrors.dag`
         // and consumed by hand-authored Rust via `include!(...)`.

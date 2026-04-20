@@ -52,6 +52,30 @@ use std::sync::LazyLock;
 use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
 use crate::types::TypeShape;
 
+mod bootstrap_std_generated {
+    #![allow(unused_mut)]
+
+    use super::*;
+
+    include!("bootstrap_std_generated.rs");
+}
+
+mod bootstrap_generated {
+    #![allow(unused_mut)]
+
+    use super::*;
+
+    include!("bootstrap_generated.rs");
+}
+
+mod bootstrap_generated_without_runtime_mirrors {
+    #![allow(unused_mut)]
+
+    use super::*;
+
+    include!("bootstrap_generated_without_runtime_mirrors.rs");
+}
+
 mod builder;
 mod effects;
 mod ports;
@@ -72,6 +96,10 @@ pub struct NodeId(u32);
 impl NodeId {
     fn index(self) -> usize {
         self.0 as usize
+    }
+
+    pub(crate) fn raw(self) -> u32 {
+        self.0
     }
 }
 
@@ -1388,19 +1416,29 @@ pub struct Dag {
 }
 
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
-    let mut dag = Dag::empty();
-    crate::bootstrap::bootstrap(&mut dag);
+    let mut dag = bootstrap_generated::bootstrapped_fixture_dag();
+    dag.populate_primitive_cache();
+    dag
+});
+
+// Generated bootstrap snapshots are performance caches over the checked-in
+// `.dag` authorities, not independent authorities. `regen_bootstrap` is the
+// sole writer and the PB-1 equivalence tests ratchet generated == runtime.
+static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
+    let mut dag = bootstrap_std_generated::bootstrapped_std_fixture_dag();
+    dag.populate_primitive_cache();
     dag
 });
 
 static BOOTSTRAPPED_DAG_WITHOUT_RUNTIME_MIRRORS_FIXTURE: LazyLock<Dag> = LazyLock::new(|| {
-    let mut dag = Dag::empty();
-    crate::bootstrap::bootstrap_without_runtime_mirrors_fixture(&mut dag);
+    let mut dag =
+        bootstrap_generated_without_runtime_mirrors::bootstrapped_fixture_without_runtime_mirrors_dag();
+    dag.populate_primitive_cache();
     dag
 });
 
 impl Dag {
-    fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
             nodes: Vec::new(),
             declarations: Vec::new(),
@@ -1434,6 +1472,10 @@ impl Dag {
     /// parsed and lowered again without duplicate top-level names.
     pub(crate) fn new_without_runtime_mirrors_compiler_fixture_bootstrap() -> Self {
         (*BOOTSTRAPPED_DAG_WITHOUT_RUNTIME_MIRRORS_FIXTURE).clone()
+    }
+
+    pub(crate) fn std_fixture_bootstrap_snapshot() -> Self {
+        (*BOOTSTRAPPED_STD_FIXTURE_DAG).clone()
     }
 
     /// Typed accessor for the cached `Int` primitive `TypeShape`. `None`
@@ -1810,6 +1852,10 @@ impl Dag {
 
     pub fn clusters(&self) -> &[Cluster] {
         &self.clusters
+    }
+
+    pub(crate) fn optional_match_disjs(&self) -> &HashMap<DeclarationId, DeclarationId> {
+        &self.optional_match_disjs
     }
 
     pub fn cluster(&self, id: ClusterId) -> &Cluster {
