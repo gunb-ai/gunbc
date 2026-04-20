@@ -2390,6 +2390,32 @@ mod tests {
         }
     }
 
+    /// Ratchet: [`Dag::populate_primitive_cache`] must resolve every
+    /// [`EmitAnchorCache`] role on the bootstrapped std/spec surface. If a
+    /// substrate name moves or a fixture omits a declaration, accessors
+    /// flip to `None` and emit paths lose typed anchors (ROADMAP P3).
+    #[test]
+    fn emit_anchor_cache_populated_after_bootstrap() {
+        let dag = Dag::new();
+        assert!(
+            dag.ordered_ring_decl().is_some(),
+            "OrderedRing algebra anchor"
+        );
+        assert!(
+            dag.substrate_accessor_binding_meta().is_some(),
+            "SubstrateAccessorBinding meta anchor"
+        );
+        assert!(dag.dag_type_decl().is_some(), "Dag graph type anchor");
+        assert!(
+            dag.std_list_fold_decl().is_some(),
+            "std.list fold anchor"
+        );
+        assert!(
+            dag.rust_functions_syntax_decl().is_some(),
+            "rust_functions syntax anchor"
+        );
+    }
+
     #[test]
     fn malformed_target_clean_emission_binding_fails_closed() {
         let mut dag = Dag::new();
