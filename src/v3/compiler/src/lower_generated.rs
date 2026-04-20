@@ -14,7 +14,7 @@
 //
 // Computation-side lowering follows M0 semantics unchanged:
 //
-//   IntLit/BoolLit/StringLit → Value(LiteralBits::*)
+//   SurfaceLiteral::{Int,Bool,String} → Value(LiteralBits::*)
 //   Var (local)              → scope lookup
 //   Var (unresolved)         → placeholder port + ResolveError
 //   Call                     → Transform { target: TransformTarget::Callable(DeclarationId), inputs }
@@ -148,14 +148,21 @@ pub fn lower(module: &SurfaceModule) -> Dag {
     let mut dag = Dag::new();
     let user_start = dag.declarations().len();
     lower_into(&mut dag, module);
+    finalize_strict_user_lower_range(&mut dag, user_start);
+    dag
+}
+
+/// Strict identifier resolution + unparsed-scaffold rejection for declarations
+/// allocated at or after `strict_from` (the user module range after bootstrap).
+pub(crate) fn finalize_strict_user_lower_range(dag: &mut Dag, strict_from: usize) {
     // User-module sweep: every Identifier stub allocated during
-    // `lower_into` (id >= user_start) must resolve, or it becomes a
+    // `lower_into` (id >= strict_from) must resolve, or it becomes a
     // fail-closed ResolveError. Stubs in the bootstrap range are
     // resolved opportunistically but tolerated — the canonical std/
     // files (`dsl/std/algebra.dag`, etc.) have dangling references to
     // types that live in std/ modules outside the M1(2.6) load set
     // (e.g., `Tuple`), and those aren't user errors.
-    resolve_pending_identifiers_strict(&mut dag, user_start);
+    resolve_pending_identifiers_strict(dag, strict_from);
     // User-mode scaffold rejection: `FnExternalBody` /
     // `ArrowBody::Unparsed` and `Data` / `ValueBody::Unparsed`
     // are load-bearing scaffolds for the std/bootstrap files
@@ -167,8 +174,7 @@ pub fn lower(module: &SurfaceModule) -> Dag {
     // sweep, `fn foo(x: Int) -> Int { junk }` would compile
     // cleanly and callers would get Resolved types from an
     // unvalidated body.
-    reject_user_unparsed_scaffolds(&mut dag, user_start);
-    dag
+    reject_user_unparsed_scaffolds(dag, strict_from);
 }
 
 /// Lower a surface module into an existing Dag as a single-shot call.
