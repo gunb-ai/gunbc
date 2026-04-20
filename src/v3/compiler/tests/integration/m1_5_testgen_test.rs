@@ -603,14 +603,8 @@ fn testgen_generated_claims_execute_against_compile_boundary() {
 #[test]
 fn representative_generated_claims_compile_as_structural_testclaims() {
     for (claim_name, expected_predicate) in [
-        (
-            "TestPredicate variant Compiles compiles",
-            "Compiles",
-        ),
-        (
-            "List<Int> requires exhaustive match",
-            "FailsWithDiagnostic",
-        ),
+        ("TestPredicate variant Compiles compiles", "Compiles"),
+        ("List<Int> requires exhaustive match", "FailsWithDiagnostic"),
         ("TestClaim witness resolves", "PortHasState"),
         ("TestClaim witness has bounded cost", "CostBounded"),
     ] {
@@ -621,14 +615,8 @@ fn representative_generated_claims_compile_as_structural_testclaims() {
 #[test]
 fn representative_generated_claims_execute_across_predicate_families() {
     for (claim_name, expected_predicate) in [
-        (
-            "TestPredicate variant Compiles compiles",
-            "Compiles",
-        ),
-        (
-            "List<Int> requires exhaustive match",
-            "FailsWithDiagnostic",
-        ),
+        ("TestPredicate variant Compiles compiles", "Compiles"),
+        ("List<Int> requires exhaustive match", "FailsWithDiagnostic"),
         ("TestClaim witness resolves", "PortHasState"),
         ("TestClaim witness has bounded cost", "CostBounded"),
     ] {
