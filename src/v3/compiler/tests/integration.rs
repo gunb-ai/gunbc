@@ -103,6 +103,8 @@ mod p0_std_render_repeat_string_test;
 mod pipe_desugar;
 #[path = "integration/sg0_census_test.rs"]
 mod sg0_census_test;
+#[path = "integration/pb1_bootstrap_std_snapshot_test.rs"]
+mod pb1_bootstrap_std_snapshot_test;
 #[path = "integration/sg1_tokenize_authority_test.rs"]
 mod sg1_tokenize_authority_test;
 #[path = "integration/sg2_parse_authority_test.rs"]

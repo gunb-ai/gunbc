@@ -53,6 +53,8 @@ use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
 use crate::types::TypeShape;
 
 mod bootstrap_std_generated {
+    #![allow(unused_mut)]
+
     use super::*;
 
     include!("bootstrap_std_generated.rs");
