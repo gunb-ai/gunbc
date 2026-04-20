@@ -11,7 +11,7 @@ dsl/std/types.dag	109	138959	e45860e122dcf5fd
 src/v3/compiler/operators.dag	5	47157	b0bd76b89101c791
 src/v3/compiler/pipeline.dag	26	47004	4df6f9da32f6a5b5
 src/v3/compiler/regen.dag	10	27220	e7431380d0c23555
-src/v3/compiler/runtime_mirrors.dag	2	1065	d4161fdda289ef61
+src/v3/compiler/runtime_mirrors.dag	17	94196	cc124f729b3ae762
 src/v3/compiler/tests/four_fixture_pressure/drop.v3	2	2517	00953bc6b6d8c811
 src/v3/compiler/tests/four_fixture_pressure/id.v3	2	2452	ec8b40edc3d3c017
 src/v3/compiler/tests/four_fixture_pressure/is_empty.v3	3	6727	19d9df0f0b2902a2
@@ -19,7 +19,7 @@ src/v3/compiler/tests/four_fixture_pressure/wrap.v3	4	5189	ac633b042c944480
 src/v3/compiler/tokenize.dag	33	95264	0c164cce59b2cca9
 src/v3/spec/go.dag	99	877607	9f074813d48e86e4
 src/v3/spec/python.dag	61	334919	0ec96fa1a0bd01b6
-src/v3/spec/rust.dag	110	933138	d7d6fc3121f82e7e
+src/v3/spec/rust.dag	124	1093620	b77753157b978b01
 src/v3/spec/v3_l1.dag	8	2238	1f55d782265c3bfe
 src/v3/std/algebra.dag	33	281891	2a41cbb4d340fe43
 src/v3/std/clean_emission.dag	15	23643	f0743c9828ee4a8e
