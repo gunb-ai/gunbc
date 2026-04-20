@@ -63,7 +63,7 @@ fn bind_named<'a>(dag: &'a Dag, name: &str) -> &'a v3_compiler::dag::BindNode {
         .unwrap_or_else(|| panic!("bind `{name}` not found"))
 }
 
-fn expect_unresolved<'a>(dag: &'a Dag, port: PortId) -> &'a Diagnostic {
+fn expect_unresolved(dag: &Dag, port: PortId) -> &Diagnostic {
     assert!(
         matches!(dag.port(port).state(), PortState::Unresolved),
         "port {port:?} should be unresolved, got {:?}",
