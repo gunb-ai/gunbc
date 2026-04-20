@@ -355,8 +355,9 @@ pub enum DuplicateKind {
     /// Two type declarations with compatible but differently-named
     /// structures (e.g., same fields in different order).
     CompatibleType,
-    /// Two refinement aliases naming the same (carrier, refinement)
-    /// fact — §2.1 Rule 2, channel (2).
+    /// Two refinement aliases naming the same (carrier, **structural**
+    /// refinement) fact — §2.1 Rule 2, channel (2); key is structural,
+    /// not opaque id equality.
     IdenticalRefinementSurface,
 }
 
@@ -407,9 +408,10 @@ impl StructuralDuplicatesLens {
   Record` (no `where`); assert **no** alias-vs-canonical duplicate when
   `ignore_pure_nominal_type_aliases` is true (PR #596 shape).
 - Unit test (**Rule 2**, refinement): `type X = String where p` and
-  `type Y = String where p` with the same canonical refinement id;
-  assert `IdenticalRefinementSurface` (alias-vs-alias, not
-  alias-vs-`String`).
+  `type Y = String where p` whose lowered predicates are **structurally**
+  the same; assert `IdenticalRefinementSurface` (alias-vs-alias, not
+  alias-vs-`String`). Include a negative control: same surface spellings
+  but non-equivalent predicate DAGs → **no** collision.
 - Unit test: construct a Dag with three data declarations of the
   same value; assert the lens reports all three.
 - Integration test: run the lens against `dsl/std/` and
