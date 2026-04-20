@@ -247,7 +247,7 @@ fn shared_operator_boundary_is_explicit_and_fail_closed() {
                 FieldValue::Variant {
                     constructor,
                     payload,
-                } if payload.is_empty() => Some(constructor.clone()),
+                } if payload.is_empty() => Some(*constructor),
                 _ => None,
             })
             .unwrap_or_else(|| panic!("token row `{name}` should carry a nullary `kind` variant"));
