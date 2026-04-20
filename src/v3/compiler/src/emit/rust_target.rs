@@ -1070,10 +1070,7 @@ fn build_substrate_accessor_index(
 > {
     let mut index: HashMap<DeclarationId, DeclarationId> = HashMap::new();
     let mut universe: HashSet<DeclarationId> = HashSet::new();
-    let Some(binding_meta_id) = dag
-        .declaration_by_name("SubstrateAccessorBinding")
-        .map(|decl| decl.id)
-    else {
+    let Some(binding_meta_id) = dag.substrate_accessor_binding_meta() else {
         // No substrate accessor binding type — pre-DB-14 bootstrap
         // or a minimal fixture that didn't load substrate.dag. Empty
         // universe means render_substrate_accessor falls through on
@@ -5146,11 +5143,12 @@ fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId
 }
 
 fn canonical_operator_field(dag: &Dag, op: OperatorKind) -> Result<DeclarationId, EmitError> {
-    let ordered_ring = dag.declaration_by_name("OrderedRing").ok_or_else(|| {
+    let ordered_ring_id = dag.ordered_ring_decl().ok_or_else(|| {
         EmitError::UnsupportedBehavior(
             "bootstrap is missing the canonical `OrderedRing` declaration".to_string(),
         )
     })?;
+    let ordered_ring = dag.declaration(ordered_ring_id);
     let TypeConnective::Conj { children } = &ordered_ring.connective else {
         return Err(EmitError::UnsupportedBehavior(
             "`OrderedRing` does not lower to a Conj declaration".to_string(),
@@ -5179,9 +5177,8 @@ mod tests {
         let mut dag = Dag::new();
         let parent_port = dag.alloc_port(None);
         let dag_type = dag
-            .declaration_by_name("Dag")
-            .expect("Dag type realization target exists")
-            .id;
+            .dag_type_decl()
+            .expect("Dag type realization target exists");
         let dag_nodes_type = match &dag.declaration(dag_type).connective {
             TypeConnective::Conj { children } => {
                 children
@@ -5233,9 +5230,8 @@ mod tests {
         let mut dag = Dag::new();
         let parent_port = dag.alloc_port(None);
         let dag_type = dag
-            .declaration_by_name("Dag")
-            .expect("Dag type realization target exists")
-            .id;
+            .dag_type_decl()
+            .expect("Dag type realization target exists");
         let dag_nodes_type = match &dag.declaration(dag_type).connective {
             TypeConnective::Conj { children } => {
                 children
@@ -5303,7 +5299,7 @@ mod tests {
             "test.v3",
         )
         .expect("compiles");
-        let fold_template = dag.declaration_by_name("fold").expect("fold decl").id;
+        let fold_template = dag.std_list_fold_decl().expect("fold decl");
         let fold_transform = dag
             .nodes()
             .iter()
@@ -5391,9 +5387,8 @@ fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
         let mut dag =
             compile_to_dag("fn classify(s: Int) -> Int = s", "test.v3").expect("compiles");
         let functions_decl = dag
-            .declaration_by_name("rust_functions")
-            .expect("rust_functions declaration")
-            .id;
+            .rust_functions_syntax_decl()
+            .expect("rust_functions declaration");
         dag.declaration_mut(functions_decl).value_body = Some(ValueBody::Structural {
             fields: vec![
                 (
@@ -5643,13 +5638,10 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
     fn validate_pattern_roles_rejects_non_variant_empty_ref() {
         let dag = Dag::new();
         let bool_id = dag
-            .declaration_by_name("Bool")
+            .bool_shape()
             .expect("Bool is a Disj in bootstrap std")
-            .id;
-        let int_id = dag
-            .declaration_by_name("Int")
-            .expect("Int in bootstrap std")
-            .id;
+            .declaration;
+        let int_id = dag.int_shape().expect("Int in bootstrap std").declaration;
         // Pick a real Bool variant for `cons_variant` so only
         // `empty_variant` is the illegal pointer.
         let bool_variant_ty = match &dag.declaration(bool_id).connective {
@@ -5685,13 +5677,10 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
     fn validate_pattern_roles_rejects_non_variant_cons_ref() {
         let dag = Dag::new();
         let bool_id = dag
-            .declaration_by_name("Bool")
+            .bool_shape()
             .expect("Bool is a Disj in bootstrap std")
-            .id;
-        let int_id = dag
-            .declaration_by_name("Int")
-            .expect("Int in bootstrap std")
-            .id;
+            .declaration;
+        let int_id = dag.int_shape().expect("Int in bootstrap std").declaration;
         let bool_variant_ty = match &dag.declaration(bool_id).connective {
             TypeConnective::Disj { variants } => variants[0].ty,
             other => panic!("Bool should be a Disj, got {other:?}"),
@@ -5726,9 +5715,9 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
     fn validate_pattern_roles_rejects_aliased_role_refs() {
         let dag = Dag::new();
         let bool_id = dag
-            .declaration_by_name("Bool")
+            .bool_shape()
             .expect("Bool is a Disj in bootstrap std")
-            .id;
+            .declaration;
         let bool_variant_ty = match &dag.declaration(bool_id).connective {
             TypeConnective::Disj { variants } => variants[0].ty,
             other => panic!("Bool should be a Disj, got {other:?}"),

@@ -1145,6 +1145,27 @@ pub(crate) struct StdlibTypeCache {
     pub list: Option<DeclarationId>,
 }
 
+/// Substrate declarations emitters used to resolve via
+/// `declaration_by_name("...")` at call time. Populated once at
+/// bootstrap end in [`Dag::populate_primitive_cache`]; downstream code
+/// reads typed [`DeclarationId`] handles (ROADMAP P3 — name-keyed emit
+/// lookups).
+#[derive(Debug, Default, Clone)]
+pub(crate) struct EmitAnchorCache {
+    /// `OrderedRing` algebra Conj — canonical fallback for operator fields.
+    pub ordered_ring: Option<DeclarationId>,
+    /// `SubstrateAccessorBinding` meta-type for substrate accessor data items.
+    pub substrate_accessor_binding: Option<DeclarationId>,
+    /// `Dag` graph type (`src/v3/std/substrate.dag`).
+    pub dag_type: Option<DeclarationId>,
+    /// `fold` from `src/v3/std/list.dag` (list catamorphism).
+    pub std_list_fold: Option<DeclarationId>,
+    /// `rust_functions` syntax record — resolved to the v3 spec copy in
+    /// `src/v3/spec/rust.dag` (bootstrap name resolution prefers `src/v3/`
+    /// over the duplicate carrier in `dsl/std/languages.dag`).
+    pub rust_functions: Option<DeclarationId>,
+}
+
 #[derive(Debug, Default, Clone)]
 pub(crate) struct SubstrateMarkers {
     /// `dsl/std/v3_l1.dag` `Value` marker. Targets values
@@ -1286,6 +1307,9 @@ pub struct Dag {
     target_syntax: TargetSyntaxCache,
     /// Cached stdlib type-template declarations.
     stdlib_types: StdlibTypeCache,
+    /// Cached emit-time substrate anchors (operator fallback, accessors,
+    /// std list fold, Rust function-syntax bundle).
+    emit_anchors: EmitAnchorCache,
     /// Cached `PatternBindingRule` variant DeclarationIds resolved
     /// from `src/v3/std/clean_emission.dag`. Populated at bootstrap
     /// end alongside `SubstrateMarkers` / `RealizationMetaCache`.
@@ -1336,6 +1360,7 @@ impl Dag {
             realization_metas: RealizationMetaCache::default(),
             target_syntax: TargetSyntaxCache::default(),
             stdlib_types: StdlibTypeCache::default(),
+            emit_anchors: EmitAnchorCache::default(),
             pattern_binding_rule_variants: PatternBindingRuleVariants::default(),
             variant_payload_field_access_rule_variants:
                 VariantPayloadFieldAccessRuleVariants::default(),
@@ -1610,6 +1635,32 @@ impl Dag {
     /// Typed accessor for the cached `std.list.List` template.
     pub fn list_template(&self) -> Option<DeclarationId> {
         self.stdlib_types.list
+    }
+
+    /// Typed accessor for the canonical `OrderedRing` algebra declaration.
+    /// Used by emitters for operator-field fallback without per-call name lookup.
+    pub fn ordered_ring_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.ordered_ring
+    }
+
+    /// Meta-type declaration id for `SubstrateAccessorBinding` data items.
+    pub fn substrate_accessor_binding_meta(&self) -> Option<DeclarationId> {
+        self.emit_anchors.substrate_accessor_binding
+    }
+
+    /// The substrate `Dag` graph type declaration id.
+    pub fn dag_type_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.dag_type
+    }
+
+    /// `std.list.fold` — list catamorphism callable declaration.
+    pub fn std_list_fold_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.std_list_fold
+    }
+
+    /// `rust_functions` syntax record from `src/v3/spec/rust.dag`.
+    pub fn rust_functions_syntax_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.rust_functions
     }
 
     /// Typed accessor for the cached `PatternBindingRule` variant
@@ -2043,6 +2094,14 @@ impl Dag {
         self.populate_target_clean_emission_bindings();
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
 
+        self.emit_anchors.ordered_ring = self.declaration_by_name("OrderedRing").map(|d| d.id);
+        self.emit_anchors.substrate_accessor_binding = self
+            .declaration_by_name("SubstrateAccessorBinding")
+            .map(|d| d.id);
+        self.emit_anchors.dag_type = self.declaration_by_name("Dag").map(|d| d.id);
+        self.emit_anchors.std_list_fold = self.declaration_by_name("fold").map(|d| d.id);
+        self.emit_anchors.rust_functions = self.declaration_by_name("rust_functions").map(|d| d.id);
+
         // `PatternBindingRule` variant resolution. Walks the
         // `std/clean_emission.dag` declaration's `Disj` variants
         // once at bootstrap end and caches the typed id per label.
@@ -2331,6 +2390,29 @@ mod tests {
                 ),
             ],
         }
+    }
+
+    /// Ratchet: [`Dag::populate_primitive_cache`] must resolve every
+    /// [`EmitAnchorCache`] role on the bootstrapped std/spec surface. If a
+    /// substrate name moves or a fixture omits a declaration, accessors
+    /// flip to `None` and emit paths lose typed anchors (ROADMAP P3).
+    #[test]
+    fn emit_anchor_cache_populated_after_bootstrap() {
+        let dag = Dag::new();
+        assert!(
+            dag.ordered_ring_decl().is_some(),
+            "OrderedRing algebra anchor"
+        );
+        assert!(
+            dag.substrate_accessor_binding_meta().is_some(),
+            "SubstrateAccessorBinding meta anchor"
+        );
+        assert!(dag.dag_type_decl().is_some(), "Dag graph type anchor");
+        assert!(dag.std_list_fold_decl().is_some(), "std.list fold anchor");
+        assert!(
+            dag.rust_functions_syntax_decl().is_some(),
+            "rust_functions syntax anchor"
+        );
     }
 
     #[test]
