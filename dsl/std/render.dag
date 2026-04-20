@@ -175,9 +175,17 @@ fn format_comment(syntax: CommentSyntax, text: String) -> String {
 // -- Format-aware section header ------------------------------------
 
 // Repeat a string N times. Local helper until std.strings provides this.
+// Bounded loop: `remaining` descends (complexity: arithmetic descent, not same-argument).
+fn repeat_string_loop(acc: String, s: String, remaining: Int) -> String {
+  if remaining <= 0 {
+    acc
+  } else {
+    repeat_string_loop(concat(acc, s), s: s, remaining: remaining - 1)
+  }
+}
+
 fn repeat_string(s: String, n: Int) -> String {
-  if n <= 0 { "" }
-  else { [0] |> fold(init: "", f: fn(acc, _) { concat(acc, s) }) }
+  repeat_string_loop(acc: "", s: s, remaining: n)
 }
 
 fn format_section_header(syntax: CommentSyntax, title: String) -> String {

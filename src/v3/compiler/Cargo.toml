@@ -15,3 +15,8 @@ license.workspace = true
 # Zero dependencies at M0.1. Add only when a concrete need surfaces.
 
 [dependencies]
+
+[dev-dependencies]
+# Interpreter-backed receipts for substrate behavior (repeat_string, etc.).
+v2-compiler = { path = "../../v2/stage0" }
+v2-compiler-tests = { path = "../../v2/tests" }

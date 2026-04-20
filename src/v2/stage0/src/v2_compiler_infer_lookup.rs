@@ -34,7 +34,7 @@ use crate::v2_std_core::MethodSemantics::{
 };
 pub use crate::v2_std_core::{
     authored_name_at, find_child_named, has_child_named, param_node_type_expr,
-    with_optional_cardinality, with_required_cardinality, Cardinality, Connective,
+    with_optional_cardinality, with_required_cardinality, Cardinality, Connective, ErrorNode,
     FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MethodSemantics, NewlineIndex,
     Node,
 };
@@ -54,6 +54,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 pub struct KnownMethodResolution {
     pub semantics: Option<Rc<MethodSemantics>>,
     pub result_type: Option<Rc<Node>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn lookup_in_scope(
@@ -358,6 +359,12 @@ pub struct MethodFieldResult {
     pub algebra_template: Option<Rc<AlgebraFieldTemplate>>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StructuralMethodLookup {
+    pub resolution: Option<Rc<MethodFieldResult>>,
+    pub kernel_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
 pub fn lookup_field_in_product(
     product: Rc<Node>,
     method_name: String,
@@ -418,7 +425,7 @@ pub fn lookup_structural_method(
     receiver_type: &Rc<Node>,
     method_name: &String,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<MethodFieldResult>> {
+) -> Rc<StructuralMethodLookup> {
     {
         let is_product = (receiver_type.connective.clone() == Connective::Conj);
         if is_product {
@@ -428,10 +435,10 @@ pub fn lookup_structural_method(
                     method_name.clone(),
                     source_indices.clone(),
                 );
-                match direct.clone() {
-                    Some(_) => direct.clone(),
-                    None => None,
-                }
+                Rc::new(StructuralMethodLookup {
+                    resolution: direct,
+                    kernel_diagnostics: Rc::new(vec![]),
+                })
             }
         } else {
             {
@@ -440,12 +447,12 @@ pub fn lookup_structural_method(
                     &receiver_type,
                     source_indices.clone(),
                 );
-                if ((enriched.connective.clone() == Connective::Conj)
-                    && ((enriched.children.clone().len() as i64) > 0))
+                if ((enriched.ty.clone().connective.clone() == Connective::Conj)
+                    && ((enriched.ty.clone().children.clone().len() as i64) > 0))
                 {
                     {
                         let base_result = lookup_field_in_product(
-                            enriched.clone(),
+                            enriched.ty.clone(),
                             method_name.clone(),
                             source_indices.clone(),
                         );
@@ -474,7 +481,7 @@ pub fn lookup_structural_method(
                                     }
                                     None => None,
                                 };
-                                match template_match {
+                                let resolution = match template_match {
                                     Some(t) => Some(Rc::new(MethodFieldResult {
                                         field_node: mfr.field_node.clone(),
                                         result_type: mfr.result_type.clone(),
@@ -483,13 +490,23 @@ pub fn lookup_structural_method(
                                         algebra_template: Some(t.clone()),
                                     })),
                                     None => base_result.clone(),
-                                }
+                                };
+                                Rc::new(StructuralMethodLookup {
+                                    resolution: resolution,
+                                    kernel_diagnostics: enriched.diagnostics.clone(),
+                                })
                             }
-                            None => None,
+                            None => Rc::new(StructuralMethodLookup {
+                                resolution: None,
+                                kernel_diagnostics: enriched.diagnostics.clone(),
+                            }),
                         }
                     }
                 } else {
-                    None
+                    Rc::new(StructuralMethodLookup {
+                        resolution: None,
+                        kernel_diagnostics: enriched.diagnostics.clone(),
+                    })
                 }
             }
         }
@@ -505,8 +522,8 @@ pub fn resolve_known_method_node(
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KnownMethodResolution> {
     {
-        let tier0_result = lookup_structural_method(&receiver_type, &method_name, &source_indices);
-        match tier0_result {
+        let tier0 = lookup_structural_method(&receiver_type, &method_name, &source_indices);
+        match tier0.resolution.clone() {
             Some(mfr) => {
                 let semantics = Rc::new(MethodSemantics::AlgebraMethodSemantics {
                     method_def: mfr.field_node.clone(),
@@ -518,6 +535,7 @@ pub fn resolve_known_method_node(
                 Rc::new(KnownMethodResolution {
                     semantics: Some(semantics),
                     result_type: Some(mfr.result_type.clone()),
+                    diagnostics: tier0.kernel_diagnostics.clone(),
                 })
             }
             None => match check_service_method_call_node(
@@ -532,10 +550,12 @@ pub fn resolve_known_method_node(
                         op_params: svc_result.op_params.clone(),
                     })),
                     result_type: Some(svc_result.result_type.clone()),
+                    diagnostics: tier0.kernel_diagnostics.clone(),
                 }),
                 None => Rc::new(KnownMethodResolution {
                     semantics: None,
                     result_type: None,
+                    diagnostics: tier0.kernel_diagnostics.clone(),
                 }),
             },
         }

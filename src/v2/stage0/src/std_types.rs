@@ -122,13 +122,6 @@ pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
     }
 }
 
-pub fn container_param_name_required(kind_name: &String, index: i64) -> String {
-    match container_param_name(kind_name.clone(), index) {
-        Some(n) => n.clone(),
-        None => v2_rt::concat("__BUG_NO_PROFILE_".to_string(), kind_name.clone()),
-    }
-}
-
 pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
