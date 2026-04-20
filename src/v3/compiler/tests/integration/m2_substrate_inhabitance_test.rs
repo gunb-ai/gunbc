@@ -9,6 +9,21 @@ fn find_named(dag: &Dag, name: &str) -> v3_compiler::dag::DeclarationId {
         .id
 }
 
+fn structural_reference_field(
+    decl: &v3_compiler::dag::Declaration,
+    label: &str,
+) -> Option<v3_compiler::dag::DeclarationId> {
+    let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+        return None;
+    };
+    fields
+        .iter()
+        .find_map(|(field_label, value)| match (field_label.as_str(), value) {
+            (want, FieldValue::Reference(id)) if want == label => Some(*id),
+            _ => None,
+        })
+}
+
 fn record_fields(dag: &Dag, name: &str) -> Vec<String> {
     let id = find_named(dag, name);
     match &dag.declaration(id).connective {
@@ -641,6 +656,46 @@ fn rust_dag_realizes_reflected_substrate_types() {
 }
 
 #[test]
+fn all_target_languages_realize_reflected_surface_types() {
+    let dag = Dag::new();
+    let type_realization_meta = find_named(&dag, "TypeRealization");
+    let languages = [
+        find_named(&dag, "rust_language"),
+        find_named(&dag, "go_language"),
+        find_named(&dag, "python_language"),
+    ];
+
+    for name in [
+        "SurfaceModule",
+        "SurfaceItem",
+        "SurfaceParam",
+        "SurfaceField",
+        "SurfaceVariant",
+        "VariantPayload",
+        "SurfaceType",
+        "SurfaceRecordField",
+        "SurfaceMatchArm",
+        "SurfacePatternField",
+        "SurfacePattern",
+        "SurfaceLiteral",
+        "SurfaceExpr",
+    ] {
+        let target = find_named(&dag, name);
+        for language in languages {
+            let realized = dag.declarations().iter().find(|decl| {
+                decl.meta_tag == Some(type_realization_meta)
+                    && structural_reference_field(decl, "target") == Some(target)
+                    && structural_reference_field(decl, "language") == Some(language)
+            });
+            assert!(
+                realized.is_some(),
+                "expected `{name}` to have a TypeRealization for language declaration {language:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn parse_surface_generated_module_consumes_parser_output_structurally() {
     let source = "fn id<T>(x: T where x == x) -> T = x\nlet y = if true then id(1) else 2";
     let tokens = tokenize_for_test(source, "surface_reflection.v3").expect("tokenize source");
@@ -677,6 +732,135 @@ fn parse_surface_generated_module_consumes_parser_output_structurally() {
             assert!(matches!(expr, parse_surface::SurfaceExpr::If { .. }));
         }
         other => panic!("expected reflected let item, got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_surface_generated_module_covers_recursive_surface_shapes() {
+    let source = "\
+type Point { x: Int }\n\
+type Wrapped = Wrap { inner: Point } | Empty\n\
+fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap { inner: point } => point.x, Empty => 0 }\n\
+let yes = true\n\
+let note = \"ok\"\n";
+    let tokens = tokenize_for_test(source, "surface_reflection_recursive.v3").expect("tokenize");
+    let parsed = parse_for_test(&tokens, "surface_reflection_recursive.v3").expect("parse");
+    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+
+    assert_eq!(mirrored.items.len(), 5);
+
+    match &mirrored.items[0] {
+        parse_surface::SurfaceItem::TypeRecord {
+            name,
+            fields,
+            type_params,
+            ..
+        } => {
+            assert_eq!(name, "Point");
+            assert!(type_params.is_empty());
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0].name, "x");
+            assert!(matches!(
+                fields[0].ty,
+                parse_surface::SurfaceType::Named { ref name, .. } if name == "Int"
+            ));
+        }
+        other => panic!("expected reflected type record, got {other:?}"),
+    }
+
+    match &mirrored.items[1] {
+        parse_surface::SurfaceItem::TypeSum {
+            name,
+            variants,
+            type_params,
+            ..
+        } => {
+            assert_eq!(name, "Wrapped");
+            assert!(type_params.is_empty());
+            assert_eq!(variants.len(), 2);
+            assert_eq!(variants[0].name, "Wrap");
+            assert!(matches!(
+                &variants[0].payload,
+                parse_surface::VariantPayload::Record(fields)
+                    if fields.len() == 1 && fields[0].name == "inner"
+            ));
+            assert_eq!(variants[1].name, "Empty");
+            assert!(matches!(
+                &variants[1].payload,
+                parse_surface::VariantPayload::Positional(fields) if fields.is_empty()
+            ));
+        }
+        other => panic!("expected reflected type sum, got {other:?}"),
+    }
+
+    match &mirrored.items[2] {
+        parse_surface::SurfaceItem::Fn {
+            body, return_type, ..
+        } => {
+            assert!(matches!(
+                return_type,
+                parse_surface::SurfaceType::Named { name, .. } if name == "Int"
+            ));
+            match body {
+                parse_surface::SurfaceExpr::Match { arms, .. } => {
+                    assert_eq!(arms.len(), 2);
+                    assert!(matches!(
+                        &arms[0].pattern,
+                        parse_surface::SurfacePattern::VariantFields { name, fields, .. }
+                            if name == "Wrap"
+                                && fields.len() == 1
+                                && fields[0].name == "inner"
+                                && fields[0].binding == "point"
+                    ));
+                    assert!(matches!(
+                        &arms[0].body,
+                        parse_surface::SurfaceExpr::Path { segments, .. }
+                            if segments == &vec![String::from("point"), String::from("x")]
+                    ));
+                    assert!(matches!(
+                        &arms[1].pattern,
+                        parse_surface::SurfacePattern::BareVariant { name, .. } if name == "Empty"
+                    ));
+                    assert!(matches!(
+                        &arms[1].body,
+                        parse_surface::SurfaceExpr::Literal {
+                            value: parse_surface::SurfaceLiteral::Int(0),
+                            ..
+                        }
+                    ));
+                }
+                other => panic!("expected reflected match expr, got {other:?}"),
+            }
+        }
+        other => panic!("expected reflected fn item, got {other:?}"),
+    }
+
+    match &mirrored.items[3] {
+        parse_surface::SurfaceItem::Let { name, expr, .. } => {
+            assert_eq!(name, "yes");
+            assert!(matches!(
+                expr,
+                parse_surface::SurfaceExpr::Literal {
+                    value: parse_surface::SurfaceLiteral::Bool(true),
+                    ..
+                }
+            ));
+        }
+        other => panic!("expected bool let, got {other:?}"),
+    }
+
+    match &mirrored.items[4] {
+        parse_surface::SurfaceItem::Let { name, expr, .. } => {
+            assert_eq!(name, "note");
+            assert!(matches!(
+                expr,
+                parse_surface::SurfaceExpr::Literal {
+                    value: parse_surface::SurfaceLiteral::String(s),
+                    ..
+                } if s == "ok"
+            ));
+        }
+        other => panic!("expected string let, got {other:?}"),
     }
 }
 

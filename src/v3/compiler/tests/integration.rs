@@ -115,6 +115,8 @@ mod sg2_parse_authority_test;
 mod sg3_lower_authority_test;
 #[path = "integration/sg3_lower_parse_surface_stack_test.rs"]
 mod sg3_lower_parse_surface_stack_test;
+#[path = "integration/sg3_surface_reflection_consumer_test.rs"]
+mod sg3_surface_reflection_consumer_test;
 #[path = "integration/sg6_hand_authored_census_test.rs"]
 mod sg6_hand_authored_census_test;
 #[path = "integration/sg7_prep_variant_payload_freshness_test.rs"]

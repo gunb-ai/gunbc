@@ -1423,35 +1423,47 @@ fn declaration_is_callable(dag: &Dag, current: DeclarationId, depth: usize) -> b
 }
 
 fn is_retryable_generic_decl(dag: &Dag, current: DeclarationId) -> bool {
-    is_retryable_generic_decl_walk(dag, current, 0)
+    let mut visiting = Vec::new();
+    is_retryable_generic_decl_walk(dag, current, 0, &mut visiting)
 }
 
-fn is_retryable_generic_decl_walk(dag: &Dag, current: DeclarationId, depth: usize) -> bool {
+fn is_retryable_generic_decl_walk(
+    dag: &Dag,
+    current: DeclarationId,
+    depth: usize,
+    visiting: &mut Vec<DeclarationId>,
+) -> bool {
     if depth >= WALK_DEPTH_LIMIT {
         return false;
     }
-    match &dag.declaration(current).connective {
+    if visiting.contains(&current) {
+        return false;
+    }
+    visiting.push(current);
+    let retryable = match &dag.declaration(current).connective {
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => true,
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
-            is_retryable_generic_decl_walk(dag, *next, depth + 1)
+            is_retryable_generic_decl_walk(dag, *next, depth + 1, visiting)
         }
         TypeConnective::Instantiation { arguments, .. } => arguments
             .iter()
-            .any(|arg| is_retryable_generic_decl_walk(dag, arg.value, depth + 1)),
+            .any(|arg| is_retryable_generic_decl_walk(dag, arg.value, depth + 1, visiting)),
         TypeConnective::Cardinality { element, .. } => {
-            is_retryable_generic_decl_walk(dag, *element, depth + 1)
+            is_retryable_generic_decl_walk(dag, *element, depth + 1, visiting)
         }
         TypeConnective::Conj { children } => children
             .iter()
-            .any(|field| is_retryable_generic_decl_walk(dag, field.ty, depth + 1)),
+            .any(|field| is_retryable_generic_decl_walk(dag, field.ty, depth + 1, visiting)),
         TypeConnective::Disj { variants } => variants
             .iter()
-            .any(|field| is_retryable_generic_decl_walk(dag, field.ty, depth + 1)),
+            .any(|field| is_retryable_generic_decl_walk(dag, field.ty, depth + 1, visiting)),
         TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
         | TypeConnective::Atom(AtomPayload::Literal(_))
         | TypeConnective::Arrow { .. } => false,
-    }
+    };
+    visiting.pop();
+    retryable
 }
 
 fn callable_template_arguments(

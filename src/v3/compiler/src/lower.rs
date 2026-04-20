@@ -4272,6 +4272,9 @@ fn specialize_decl_for_lowering(
     arguments: &[TemplateArgument],
     depth: usize,
 ) -> DeclarationId {
+    if arguments.is_empty() {
+        return current;
+    }
     if depth >= 32 {
         return current;
     }

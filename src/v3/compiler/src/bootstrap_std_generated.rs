@@ -7693,6 +7693,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
         variant_payload_field_access_rule_variants: VariantPayloadFieldAccessRuleVariants::default(
         ),
         verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
+        callable_strategy_variants: CallableStrategyVariants::default(),
         clusters: vec![],
         optional_match_disjs: HashMap::new(),
     }
