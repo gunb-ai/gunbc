@@ -1,0 +1,66 @@
+// lenses.variant_payload — emitter-side classification for resolved variant
+// payload shapes (empty / positional single / named fields).
+//
+// Authority lives here; Rust projection is regenerated via `emit_rust_module`
+// into `src/v3/compiler/src/variant_payload_generated.rs`. Bootstrap
+// placement mirrors other lenses under `src/v3/lenses/` (not `src/v3/std/`)
+// so build.rs does not double-load this file into the bootstrap Dag.
+
+module lenses.variant_payload
+
+import std.list { List, empty, cons, map, fold }
+import std.substrate {
+  Dag, Declaration, DeclarationId, TypeConnective, ConjField
+}
+
+type VariantPayloadShape
+  = Empty
+  | PositionalSingle
+  | NamedFields(List<String>)
+
+type VariantPayloadShapeLookup
+  = Missing
+  | Found(VariantPayloadShape)
+
+type DeclarationLookup
+  = DeclarationMissing
+  | DeclarationFound(Declaration)
+
+fn find_declaration(decls: List<Declaration>, target: DeclarationId) -> DeclarationLookup =
+  fold(decls, DeclarationMissing, |acc, decl|
+    match acc {
+      DeclarationFound(_) => acc
+      DeclarationMissing =>
+        if decl.id == target then DeclarationFound(decl) else DeclarationMissing
+    }
+  )
+
+fn conj_field_label(f: ConjField) -> String =
+  f.label
+
+fn conj_payload_shape(children: List<ConjField>) -> VariantPayloadShape =
+  match children {
+    Empty => Empty
+    Cons(payload) =>
+      match payload.tail {
+        Empty =>
+          if payload.head.label == "_0" then PositionalSingle
+          else NamedFields(cons(payload.head.label, empty()))
+        Cons(_) =>
+          NamedFields(map(children, conj_field_label))
+      }
+  }
+
+fn variant_payload_shape(d: Dag, variant_id: DeclarationId) -> VariantPayloadShapeLookup =
+  match find_declaration(d.declarations, variant_id) {
+    DeclarationMissing => Missing
+    DeclarationFound(decl) =>
+      match decl.connective {
+        Conj(c) => Found(conj_payload_shape(c.children))
+        Atom(_) => Missing
+        Disj(_) => Missing
+        Arrow(_) => Missing
+        Cardinality(_) => Missing
+        Instantiation(_) => Missing
+      }
+  }
