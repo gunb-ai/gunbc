@@ -39,6 +39,7 @@ emit_matrix_program_go_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 d
 emit_matrix_program_python_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; program re-emit sweep.
 emit_matrix_program_rust_is_deterministic  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; program re-emit sweep.
 four_fixture_disk_sources_emit_deterministically  # ROADMAP Lane 3 Stage 3c prep / DB-8 determinism matrix; four-fixture disk corpus.
+four_fixture_regression_test::four_fixture_suite_shares_one_reachability_shape  # ROADMAP Lane 3 Stage 3c prep / four-fixture pressure corpus; shared `compile_to_dag` suite can exceed 2s on cold ubuntu-latest (neighbor: `four_fixture_disk_sources_emit_deterministically`).
 
 common::cached_compile::tests::cached_compile_any_returns_clean_dag_when_key_warmed_by_strict  # TESTING.md "Mocks over compile" paydown; compile-cache behavior test still performs real compile work.
 lane2_stage_2d_symbolic_cost_test::cost_dag_compiles_cleanly  # ROADMAP Lane 2 Stage 2d symbolic-cost migration; DAG compile smoke still cold-compiles authority input.
