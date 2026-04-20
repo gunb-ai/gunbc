@@ -597,12 +597,3 @@ fn algebra_type_param_names(profile: AlgebraProfile) -> List<String> {
   }
 }
 
-// replicate_to_list: n copies of `elem` as a bounded fold source (FreeMonoid lift).
-fn replicate_to_list<T>(n: Int, elem: T) -> List<T> {
-  if n <= 0 {
-    []
-  } else {
-    concat(replicate_to_list(n - 1, elem), [elem])
-  }
-}
-

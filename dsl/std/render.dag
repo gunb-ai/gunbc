@@ -17,7 +17,6 @@
 
 module std.render
 
-import std.algebra { replicate_to_list }
 import std.width { truncate_text }
 import std.unicode { string_display_width }
 import std.symbols { SemanticColor, SymbolId, Tier, resolve_symbol }
@@ -176,12 +175,17 @@ fn format_comment(syntax: CommentSyntax, text: String) -> String {
 // -- Format-aware section header ------------------------------------
 
 // Repeat a string N times. Local helper until std.strings provides this.
-fn repeat_string(s: String, n: Int) -> String {
-  if n <= 0 {
-    ""
+// Bounded loop: `remaining` descends (complexity: arithmetic descent, not same-argument).
+fn repeat_string_loop(acc: String, s: String, remaining: Int) -> String {
+  if remaining <= 0 {
+    acc
   } else {
-    fold(replicate_to_list(n: n, elem: 0), init: "", f: fn(acc, _) { concat(acc, s) })
+    repeat_string_loop(concat(acc, s), s: s, remaining: remaining - 1)
   }
+}
+
+fn repeat_string(s: String, n: Int) -> String {
+  repeat_string_loop(acc: "", s: s, remaining: n)
 }
 
 fn format_section_header(syntax: CommentSyntax, title: String) -> String {

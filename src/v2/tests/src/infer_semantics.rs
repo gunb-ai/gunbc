@@ -74,10 +74,10 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
 }
 
 fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
-    let key_name =
-        container_param_name("Map".to_string(), 0).unwrap_or("__BUG_NO_PROFILE_Map".to_string());
-    let val_name =
-        container_param_name("Map".to_string(), 1).unwrap_or("__BUG_NO_PROFILE_Map".to_string());
+    let key_name = container_param_name("Map".to_string(), 0)
+        .expect("kernel Map should resolve K from PartialFunction profile");
+    let val_name = container_param_name("Map".to_string(), 1)
+        .expect("kernel Map should resolve V from PartialFunction profile");
     let sp = make_span(0, 0);
     Rc::new(Node {
         name: "Map".to_string(),
