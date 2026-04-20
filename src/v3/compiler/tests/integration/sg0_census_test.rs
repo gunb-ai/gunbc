@@ -70,6 +70,11 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // `tests/integration.rs` binary still includes them via `#[path =
 // "boundary/..."]` so the one-bootstrap compile amortization holds.
 //
+// P0-A (PR #595): bounded `repeat_string_loop` receipt — one integration
+// file `tests/integration/p0_std_render_repeat_string_test.rs` asserts
+// `dsl/std/render.dag` structure; not generated. Dissolution: fold into a
+// broader std-render harness or `.dag`-native structural test when one exists.
+//
 // Stage 3b DB-1 parse/apply ratchet bump — PR #564 adds one
 // hand-authored integration file,
 // `tests/integration/lane3_stage_3b_db1_test.rs`, because the
@@ -167,6 +172,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/m2_lens_unused_parameters_migration_test.rs",
     "src/v3/compiler/tests/integration/m2_lens_variant_payload_migration_test.rs",
     "src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs",
+    "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
