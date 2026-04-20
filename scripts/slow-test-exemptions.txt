@@ -58,6 +58,8 @@ m2_lens_provenance_migration_test::lens_provenance_dag_runs_end_to_end_via_rustc
 m2_lens_unused_parameters_migration_test::unused_parameters_dag_runs_end_to_end_via_rustc_harness  # Lane 2 migration harness roundtrip; compile-heavy oracle test remains explicit until lens migration paydown.
 m2_lens_unused_parameters_migration_test::unused_parameters_dag_self_analysis_reports_zero_findings  # Lane 2 migration harness roundtrip; compile-heavy self-analysis remains explicit until lens migration paydown.
 
+m1_substrate_test::referenced_port_walk_real_helper_stack_compiles  # Real substrate helper-stack compile smoke is still cold-compile bound on GitHub runners; substrate/test-shape paydown owns any decomposition, not SG-7.4.
+
 sg1_tokenize_authority_test::tokenize_generated_module_matches_checked_in_snapshot  # SG-1 authority snapshot still regenerates/parses full tokenize projection; tokenize authority lane owns future speedup.
 sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift  # SG-6 regen CLI smoke intentionally shells out to regen path; CLI smoke cost is tracked in SG-6, not TM-0.
 

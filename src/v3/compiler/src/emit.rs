@@ -123,6 +123,11 @@ struct PatternRealizationBinding {
     tail_expr: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PatternStrategyBinding {
+    VectorList,
+}
+
 #[derive(Debug, Clone)]
 struct StatementSyntaxBinding {
     let_binding: String,
@@ -710,6 +715,66 @@ pub fn emit_module(dag: &Dag, target: EmitTarget) -> Result<EmittedSource, EmitD
     emit_with_mode(dag, target, EmitMode::Module)
 }
 
+pub fn emit_go_text(dag: &Dag) -> Result<String, rust_target::EmitError> {
+    match emit(dag, EmitTarget::Go) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Core(error)) => Err(error),
+        Err(EmitDispatchError::Python(_)) => {
+            unreachable!("EmitTarget::Go cannot yield a Python emission error")
+        }
+    }
+}
+
+pub fn emit_go_module_text(dag: &Dag) -> Result<String, rust_target::EmitError> {
+    match emit_module(dag, EmitTarget::Go) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Core(error)) => Err(error),
+        Err(EmitDispatchError::Python(_)) => {
+            unreachable!("EmitTarget::Go cannot yield a Python emission error")
+        }
+    }
+}
+
+pub fn emit_rust_text(dag: &Dag) -> Result<String, rust_target::EmitError> {
+    match emit(dag, EmitTarget::Rust) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Core(error)) => Err(error),
+        Err(EmitDispatchError::Python(_)) => {
+            unreachable!("EmitTarget::Rust cannot yield a Python emission error")
+        }
+    }
+}
+
+pub fn emit_rust_module_text(dag: &Dag) -> Result<String, rust_target::EmitError> {
+    match emit_module(dag, EmitTarget::Rust) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Core(error)) => Err(error),
+        Err(EmitDispatchError::Python(_)) => {
+            unreachable!("EmitTarget::Rust cannot yield a Python emission error")
+        }
+    }
+}
+
+pub fn emit_python_text(dag: &Dag) -> Result<String, python_target::EmitPythonError> {
+    match emit(dag, EmitTarget::Python) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Python(error)) => Err(error),
+        Err(EmitDispatchError::Core(_)) => {
+            unreachable!("EmitTarget::Python cannot yield a core emission error")
+        }
+    }
+}
+
+pub fn emit_python_module_text(dag: &Dag) -> Result<String, python_target::EmitPythonError> {
+    match emit_module(dag, EmitTarget::Python) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Python(error)) => Err(error),
+        Err(EmitDispatchError::Core(_)) => {
+            unreachable!("EmitTarget::Python cannot yield a core emission error")
+        }
+    }
+}
+
 fn emit_with_mode(
     dag: &Dag,
     target: EmitTarget,
@@ -725,6 +790,65 @@ fn emit_with_mode(
         }
     };
     Ok(EmittedSource { text, target, mode })
+}
+
+pub(crate) fn parse_pattern_strategy(
+    dag: &Dag,
+    value: &FieldValue,
+) -> Result<PatternStrategyBinding, &'static str> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err("PatternRealization.strategy must be a PatternStrategy variant");
+    };
+    if !payload.is_empty() {
+        return Err("PatternStrategy variants must not carry payload fields");
+    }
+    let vector_list = named_variant_id(dag, "PatternStrategy", "VectorList")
+        .ok_or("PatternStrategy.VectorList declaration was not found")?;
+    if *constructor != vector_list {
+        return Err("PatternStrategy constructor must be VectorList");
+    }
+    Ok(PatternStrategyBinding::VectorList)
+}
+
+pub(crate) fn optional_match_variant_roles(
+    dag: &Dag,
+    disj_id: DeclarationId,
+) -> Result<(DeclarationId, DeclarationId), &'static str> {
+    let TypeConnective::Disj { variants } = &dag.declaration(disj_id).connective else {
+        return Err("optional branch must walk to a Disj");
+    };
+    let mut empty_variant = None;
+    let mut payload_variant = None;
+    for variant in variants {
+        let shape = match variant_payload_shape(dag, &variant.ty) {
+            VariantPayloadShapeLookup::Missing => {
+                return Err("optional branch variants must lower to payload products");
+            }
+            VariantPayloadShapeLookup::Found { _0: shape } => shape,
+        };
+        match shape {
+            VariantPayloadShape::Empty => {
+                if empty_variant.replace(variant.ty).is_some() {
+                    return Err("optional branch requires exactly one empty variant role");
+                }
+            }
+            VariantPayloadShape::PositionalSingle | VariantPayloadShape::NamedFields { .. } => {
+                if payload_variant.replace(variant.ty).is_some() {
+                    return Err(
+                        "optional branch requires exactly one payload-bearing variant role",
+                    );
+                }
+            }
+        }
+    }
+    let empty_variant = empty_variant.ok_or("optional branch requires an empty variant role")?;
+    let payload_variant =
+        payload_variant.ok_or("optional branch requires a payload-bearing variant role")?;
+    Ok((empty_variant, payload_variant))
 }
 
 fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
@@ -1070,28 +1194,17 @@ impl<'a> Ctx<'a> {
         let disj_id = walk_to_disj(self.dag, scrutinee_type).ok_or_else(|| {
             EmitError::UnsupportedBehavior("optional branch must walk to a Disj".to_string())
         })?;
-        let TypeConnective::Disj { variants } = &self.dag.declaration(disj_id).connective else {
-            unreachable!("walk_to_disj returned non-Disj")
-        };
-        let none_variant = variants
-            .iter()
-            .find(|variant| variant.label == "None")
-            .map(|variant| variant.ty)
-            .ok_or_else(|| {
-                EmitError::UnsupportedBehavior("optional branch requires None".to_string())
-            })?;
-        let some_variant = variants
-            .iter()
-            .find(|variant| variant.label == "Some")
-            .map(|variant| variant.ty)
-            .ok_or_else(|| {
-                EmitError::UnsupportedBehavior("optional branch requires Some".to_string())
-            })?;
+        let (none_variant, some_variant) = optional_match_variant_roles(self.dag, disj_id)
+            .map_err(|detail| EmitError::UnsupportedBehavior(detail.to_string()))?;
         let none_path = find_resolved_branch_path(branch, none_variant).ok_or_else(|| {
-            EmitError::UnsupportedBehavior("optional branch missing None arm".to_string())
+            EmitError::UnsupportedBehavior(
+                "optional branch missing the empty-variant arm".to_string(),
+            )
         })?;
         let some_path = find_resolved_branch_path(branch, some_variant).ok_or_else(|| {
-            EmitError::UnsupportedBehavior("optional branch missing Some arm".to_string())
+            EmitError::UnsupportedBehavior(
+                "optional branch missing the payload-bearing arm".to_string(),
+            )
         })?;
         let ret = self.go_type_name_for_port(branch.output)?;
         let none_expr = self.render_path_body(none_path, locals)?;

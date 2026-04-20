@@ -11,8 +11,10 @@ use v3_compiler::dag::{
     Behavior, BindNode, BranchNode, LoopBound, LoopNode, Path as DagPath, Port, TransformNode,
     ValueNode,
 };
-use v3_compiler::emit::{emit as shared_emit, emit_module as shared_emit_module, EmitTarget};
-use v3_compiler::emit_python::emit_python_module;
+use v3_compiler::emit::{
+    emit as shared_emit, emit_module as shared_emit_module,
+    emit_python_module_text as emit_python_module, emit_python_text, EmitTarget,
+};
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::Dag;
 
@@ -57,7 +59,7 @@ let result: Int = double(21)
     let shared = shared_emit(&program_dag, EmitTarget::Python)
         .expect("shared emit")
         .text;
-    let wrapper = v3_compiler::emit_python::emit_python(&program_dag).expect("wrapper emit");
+    let wrapper = emit_python_text(&program_dag).expect("wrapper emit");
     assert_eq!(
         shared, wrapper,
         "emit_python wrapper drifted from emit::emit"

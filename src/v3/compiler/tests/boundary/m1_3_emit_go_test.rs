@@ -8,8 +8,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
-use v3_compiler::emit::{emit, emit_module, EmitTarget};
-use v3_compiler::emit_go::{emit_go, emit_go_module};
+use v3_compiler::emit::{
+    emit, emit_go_module_text as emit_go_module, emit_go_text as emit_go, emit_module, EmitTarget,
+};
 use v3_compiler::emit_rust::emit_rust;
 
 static ROUNDTRIP_ID: AtomicUsize = AtomicUsize::new(0);

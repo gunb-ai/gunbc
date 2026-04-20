@@ -101,8 +101,6 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/src/emit.rs",
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
-    "src/v3/compiler/src/emit_go.rs",
-    "src/v3/compiler/src/emit_python.rs",
     "src/v3/compiler/src/emit_rust.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/lens_depth.rs",

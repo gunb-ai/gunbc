@@ -97,7 +97,7 @@ The earlier **“≥ 86 sites”** lane estimate used a looser union/overlap men
 
 ---
 
-### B13 — Std sum-type **variant labels** in control flow (Python + Go; Rust list patterns)
+### B13 — Std sum-type role / payload-shape bridges (partial dissolution in SG-7.4)
 
 | Where | What | Dissolution |
 |-------|------|-------------|
@@ -106,9 +106,18 @@ The earlier **“≥ 86 sites”** lane estimate used a looser union/overlap men
 | `emit_go.rs` `render_vector_list_pattern_branch` | `Empty` / `Cons` arms | Same as Python list branch. |
 | `emit_rust.rs` vector list pattern | `Empty` / `Cons` | Same. |
 | `emit_python.rs` `render_branch_condition` | `variant_name == "None"` for optional | Name bridge — optional **DeclarationId**-backed display or spec rule. |
-| `emit_python.rs` `render_match_binding` (and ctor path) | `children[0].label == "_0"` when arity-1 tuple payload | **P1:** Same — positional payload as a **substrate fact**, not a string sentinel. |
+| `emit/python_target.rs` constructor lowering | Positional-single payload construction used to branch on `children[0].label == "_0"` | **Dissolved in SG-7.4 partial**: Python now dispatches on `variant_payload_shape(...)` (`PositionalSingle` vs `NamedFields`) instead of reading the `_0` label string out of the variant carrier. |
 | `emit_rust.rs` `render_path_body` | `child.label != "_0"` — multi-field vs single **positional** `_0` branch for `field_overrides` | **P1:** Same dissolution — **named fields vs anonymous `_0`** should be data on the variant payload Conj, not string-compare in emit. |
 | `emit_rust.rs` `render_branch_pattern` | `children[0].label == "_0"` → `variant_pattern_positional` template vs field-bound pattern | **P1:** Positional vs named payload is a **pattern strategy** in spec (already partially via templates; remove `_0` string anchor). |
+
+**SG-7.4 partial receipt.** The Python constructor `_0` sentinel is gone,
+optional-role dispatch now derives from optional payload-shape roles instead of
+`None` / `Some` name checks in Python and Go, and `PatternStrategy.VectorList`
+parsing now flows through the shared emit surface instead of three
+target-private handwritten copies. The cluster is still partial because Rust
+still carries handwritten payload-shape decisions in pattern/payload lowering,
+even though the single-field cases now route through a shared helper rather
+than open-coded positional-vs-named branches.
 
 **Kills it:** Spec / substrate declares **which variant DeclarationIds** play which role for optional/list **and** whether a single-field payload uses **positional** vs **named** projection — emit compares **DeclarationId** roles / strategy enums, not magic labels.
 
