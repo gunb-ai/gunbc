@@ -78,3 +78,17 @@ type TargetExecutionModel {
   memory: MemoryModel
   scope: ScopeModel
 }
+
+// 🟢 TERMINAL. The walker needs a single source-exclusion policy so
+// target emitters stop hardcoding bootstrap/internal file prefixes.
+type SourceFiltering {
+  excluded_prefixes: List<String>
+}
+
+// 🟡 PHASE 2 PREP. Coarser-than-MemoryModel summary of whether a
+// target takes the ownership-sensitive render path or the GC/value
+// path. Added for Lane 1e PR-2.1; the current emitters still read the
+// richer `TargetExecutionModel` until the walker consumes this row.
+type ExecutionModelRequirement
+  = OwnershipBased
+  | GarbageCollected
