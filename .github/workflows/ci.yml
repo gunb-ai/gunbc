@@ -43,6 +43,9 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Fabrication sentinel ratchet (P0-C)
+        run: bash scripts/check-fabrication-sentinels.sh
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
