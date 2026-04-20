@@ -7,6 +7,15 @@
 | #530 | https://github.com/gunb-ai/gunbc/pull/530 |
 | #540 | https://github.com/gunb-ai/gunbc/pull/540 |
 | #556 (SG-1, session `neat-pike-779`) | https://github.com/gunb-ai/gunbc/pull/556 |
+| #593 (SG-3b, session `nimble-bee-243`) | https://github.com/gunb-ai/gunbc/pull/593 |
+
+#### #593 relay index (dashboard ingest — pointers only)
+
+Full text stays on **GitHub**; this index is a stable handle for agents.
+
+| Source | Link |
+|:---|:---|
+| briansrls — **issue comment** **2026-04-20T03:47:32Z** — rebased `session/nimble-bee-243` onto then-current `main` (includes **#590** as `a14a75a0e`); conflicts in `integration.rs` / `sg0_census_test.rs` (keep **sg3**; no **sg4** — absorbed on `main`), `sg6` rustfmt assert, duplicate SG-3f mirror tweaks (`*op` vs `clone`) resolved in favor of `main`; redundant commits dropped; force-pushed tip `c584df76d` | [PR #593](https://github.com/gunb-ai/gunbc/pull/593) (Conversation — authoritative text on GitHub) |
 
 #### #556 relay index (dashboard ingest — pointers only)
 
