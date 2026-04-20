@@ -26,7 +26,7 @@ src/v3/std/clean_emission.dag	15	23643	f0743c9828ee4a8e
 src/v3/std/computation_model.dag	10	14806	6bd80483473479ed
 src/v3/std/diagnostics.dag	6	7167	be32b095b1f3d208
 src/v3/std/dimensions.dag	8	15284	349e3f5d10f4e320
-src/v3/std/effects.dag	50	85653	c933b2b6581e7670
+src/v3/std/effects.dag	53	97500	69d05f81c3fc7eb5
 src/v3/std/emit_model.dag	31	60719	7f63d532f431fcc5
 src/v3/std/list.dag	19	40241	721142de8452531f
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
