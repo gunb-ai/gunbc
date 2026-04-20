@@ -45,7 +45,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::{EmitMode, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding};
+use super::{
+    parse_pattern_strategy, EmitMode, PatternStrategyBinding, VariantPayloadBinding,
+    VariantPayloadFieldAccessRuleBinding,
+};
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
     FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
@@ -2032,33 +2035,14 @@ fn require_pattern_realization(
             declaration,
             detail: "PatternRealization is missing required `strategy` field",
         })?;
-    let FieldValue::Variant {
-        constructor,
-        payload,
-    } = value
-    else {
-        return Err(EmitError::MalformedRealization {
-            declaration,
-            detail: "PatternRealization.strategy must be a PatternStrategy variant",
-        });
-    };
-    if !payload.is_empty() {
-        return Err(EmitError::MalformedRealization {
-            declaration,
-            detail: "PatternStrategy variants must not carry payload fields",
-        });
-    }
-    let vector_list = named_variant_id(dag, "PatternStrategy", "VectorList").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "PatternStrategy.VectorList declaration was not found",
-        },
-    )?;
-    if *constructor != vector_list {
-        return Err(EmitError::MalformedRealization {
-            declaration,
-            detail: "PatternStrategy constructor must be VectorList",
-        });
+    match parse_pattern_strategy(dag, value) {
+        Ok(PatternStrategyBinding::VectorList) => {}
+        Err(detail) => {
+            return Err(EmitError::MalformedRealization {
+                declaration,
+                detail,
+            });
+        }
     }
     Ok(PatternRealizationBinding {
         empty_variant: require_field_decl_ref(fields, "empty_variant", declaration)?,

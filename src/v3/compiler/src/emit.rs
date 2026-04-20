@@ -123,6 +123,11 @@ struct PatternRealizationBinding {
     tail_expr: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PatternStrategyBinding {
+    VectorList,
+}
+
 #[derive(Debug, Clone)]
 struct StatementSyntaxBinding {
     let_binding: String,
@@ -710,6 +715,66 @@ pub fn emit_module(dag: &Dag, target: EmitTarget) -> Result<EmittedSource, EmitD
     emit_with_mode(dag, target, EmitMode::Module)
 }
 
+pub fn emit_go_text(dag: &Dag) -> Result<String, rust_target::EmitError> {
+    match emit(dag, EmitTarget::Go) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Core(error)) => Err(error),
+        Err(EmitDispatchError::Python(_)) => {
+            unreachable!("EmitTarget::Go cannot yield a Python emission error")
+        }
+    }
+}
+
+pub fn emit_go_module_text(dag: &Dag) -> Result<String, rust_target::EmitError> {
+    match emit_module(dag, EmitTarget::Go) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Core(error)) => Err(error),
+        Err(EmitDispatchError::Python(_)) => {
+            unreachable!("EmitTarget::Go cannot yield a Python emission error")
+        }
+    }
+}
+
+pub fn emit_rust_text(dag: &Dag) -> Result<String, rust_target::EmitError> {
+    match emit(dag, EmitTarget::Rust) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Core(error)) => Err(error),
+        Err(EmitDispatchError::Python(_)) => {
+            unreachable!("EmitTarget::Rust cannot yield a Python emission error")
+        }
+    }
+}
+
+pub fn emit_rust_module_text(dag: &Dag) -> Result<String, rust_target::EmitError> {
+    match emit_module(dag, EmitTarget::Rust) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Core(error)) => Err(error),
+        Err(EmitDispatchError::Python(_)) => {
+            unreachable!("EmitTarget::Rust cannot yield a Python emission error")
+        }
+    }
+}
+
+pub fn emit_python_text(dag: &Dag) -> Result<String, python_target::EmitPythonError> {
+    match emit(dag, EmitTarget::Python) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Python(error)) => Err(error),
+        Err(EmitDispatchError::Core(_)) => {
+            unreachable!("EmitTarget::Python cannot yield a core emission error")
+        }
+    }
+}
+
+pub fn emit_python_module_text(dag: &Dag) -> Result<String, python_target::EmitPythonError> {
+    match emit_module(dag, EmitTarget::Python) {
+        Ok(source) => Ok(source.text),
+        Err(EmitDispatchError::Python(error)) => Err(error),
+        Err(EmitDispatchError::Core(_)) => {
+            unreachable!("EmitTarget::Python cannot yield a core emission error")
+        }
+    }
+}
+
 fn emit_with_mode(
     dag: &Dag,
     target: EmitTarget,
@@ -725,6 +790,28 @@ fn emit_with_mode(
         }
     };
     Ok(EmittedSource { text, target, mode })
+}
+
+pub(crate) fn parse_pattern_strategy(
+    dag: &Dag,
+    value: &FieldValue,
+) -> Result<PatternStrategyBinding, &'static str> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err("PatternRealization.strategy must be a PatternStrategy variant");
+    };
+    if !payload.is_empty() {
+        return Err("PatternStrategy variants must not carry payload fields");
+    }
+    let vector_list = named_variant_id(dag, "PatternStrategy", "VectorList")
+        .ok_or("PatternStrategy.VectorList declaration was not found")?;
+    if *constructor != vector_list {
+        return Err("PatternStrategy constructor must be VectorList");
+    }
+    Ok(PatternStrategyBinding::VectorList)
 }
 
 fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
