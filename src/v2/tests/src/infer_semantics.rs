@@ -594,7 +594,9 @@ fn structural_method_compare_on_int_returns_ordering() {
         &empty_source_indices(),
     )
     .resolution
-    .expect("compare must resolve on Int");
+    .as_ref()
+    .expect("compare must resolve on Int")
+    .clone();
     assert_eq!(
         result.result_type.name, "Ordering",
         "compare on Int should return Ordering"
@@ -646,7 +648,9 @@ fn structural_method_get_on_map_returns_optional_value() {
         &empty_source_indices(),
     )
     .resolution
-    .expect("get must resolve on Map<String,Int>");
+    .as_ref()
+    .expect("get must resolve on Map<String,Int>")
+    .clone();
     assert_eq!(
         result.result_type.name, "Int",
         "get on Map<String,Int> should return Int"
@@ -672,7 +676,9 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
         &empty_source_indices(),
     )
     .resolution
-    .expect("keys must resolve on Map<String,Int>");
+    .as_ref()
+    .expect("keys must resolve on Map<String,Int>")
+    .clone();
     assert_eq!(result.result_type.name, "List", "keys should return List");
     assert_eq!(
         result.result_type.children.len(),
