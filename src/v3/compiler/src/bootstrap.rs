@@ -1,11 +1,17 @@
 // Dag::new() bootstrap.
 //
-// Parses the production `dsl/std/*.dag` files in dependency order and
-// lowers them into the freshly-created Dag so that the declaration table
-// is primed with primitive types and algebraic structures before any
-// user code runs. The seven files are embedded via `include_str!` so
-// bootstrap is hermetic at runtime and the declaration table stays in
-// sync with the `.dag` source at build time.
+// PB-1 closure: `Dag::new()` no longer tokenizes/parses/lowers any
+// bootstrap authority at runtime. All four bootstrap authority sets
+// are loaded from committed generated snapshots:
+//
+// - `std_fixtures`   (`dsl/std/*.dag`)
+// - `STAGED_FILES`   (`src/v3/std/*.dag`)
+// - `V3_SPECS`       (`src/v3/spec/*.dag`)
+// - `COMPILER_FILES` (`src/v3/compiler/*.dag`, minus `tokenize.dag`)
+//
+// `compile_runtime_mirrors_authority_dag` uses the companion snapshot
+// that omits `runtime_mirrors.dag`, so a fresh parse+lower of that
+// authority still stays first-of-name.
 //
 // **Production bootstrap does not inject target-language
 // realizations.** Realization facts for emitted languages live in
@@ -82,28 +88,18 @@ fn declaration_name_preference_rank(file: &str) -> usize {
     }
 }
 
-pub(crate) fn bootstrap(dag: &mut Dag) {
-    bootstrap_inner(dag, &[]);
-}
-
-/// Production bootstrap minus `src/v3/compiler/runtime_mirrors.dag`.
-///
-/// Used by [`crate::compile_runtime_mirrors_authority_dag`] so a fresh parse+lower of
-/// that file is first-of-name (no duplicate-declaration diagnostics against the
-/// embedded compiler fixture).
-pub(crate) fn bootstrap_without_runtime_mirrors_fixture(dag: &mut Dag) {
-    bootstrap_inner(dag, &["src/v3/compiler/runtime_mirrors.dag"]);
-}
-
 pub(crate) fn bootstrap_std_fixtures_only(dag: &mut Dag) {
     *dag = Dag::empty_for_codegen();
     load_fixtures(dag, std_fixtures());
     dag.populate_primitive_cache();
 }
 
-fn bootstrap_inner(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
+pub(crate) fn bootstrap_all_runtime(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
     *dag = Dag::std_fixture_bootstrap_snapshot();
+    load_runtime_bootstrap_authorities(dag, excluded_compiler_paths);
+}
 
+fn load_runtime_bootstrap_authorities(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
     let compiler_iter = COMPILER_FILES
         .iter()
         .copied()

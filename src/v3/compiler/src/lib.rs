@@ -56,7 +56,7 @@ pub mod parse_surface {
     include!("parse_surface_generated.rs");
 }
 
-pub use regen_bootstrap_emit::render_bootstrap_std_generated_rs;
+pub use regen_bootstrap_emit::{render_bootstrap_generated_rs, render_bootstrap_std_generated_rs};
 
 pub mod operators {
     pub use crate::dag::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
@@ -894,14 +894,38 @@ pub fn compile_runtime_mirrors_authority_dag(
     }
 }
 
+/// PB-1-a regression helper: compile only the `std_fixtures`
+/// authority through the legacy runtime parse path.
 pub fn compile_std_bootstrap_dag() -> Dag {
     let mut dag = Dag::empty_for_codegen();
     bootstrap::bootstrap_std_fixtures_only(&mut dag);
     dag
 }
 
+/// PB-1-a generated snapshot helper: load the committed std-fixture
+/// bootstrap snapshot without re-running tokenize/parse/lower.
 pub fn generated_std_bootstrap_dag() -> Dag {
     Dag::std_fixture_bootstrap_snapshot()
+}
+
+pub fn compile_full_bootstrap_dag() -> Dag {
+    let mut dag = Dag::empty_for_codegen();
+    bootstrap::bootstrap_all_runtime(&mut dag, &[]);
+    dag
+}
+
+pub fn compile_full_bootstrap_without_runtime_mirrors_dag() -> Dag {
+    let mut dag = Dag::empty_for_codegen();
+    bootstrap::bootstrap_all_runtime(&mut dag, &["src/v3/compiler/runtime_mirrors.dag"]);
+    dag
+}
+
+pub fn generated_full_bootstrap_dag() -> Dag {
+    Dag::new()
+}
+
+pub fn generated_full_bootstrap_without_runtime_mirrors_dag() -> Dag {
+    Dag::new_without_runtime_mirrors_compiler_fixture_bootstrap()
 }
 
 pub fn default_fixed_point_source() -> &'static str {

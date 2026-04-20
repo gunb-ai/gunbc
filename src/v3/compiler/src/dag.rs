@@ -60,6 +60,22 @@ mod bootstrap_std_generated {
     include!("bootstrap_std_generated.rs");
 }
 
+mod bootstrap_generated {
+    #![allow(unused_mut)]
+
+    use super::*;
+
+    include!("bootstrap_generated.rs");
+}
+
+mod bootstrap_generated_without_runtime_mirrors {
+    #![allow(unused_mut)]
+
+    use super::*;
+
+    include!("bootstrap_generated_without_runtime_mirrors.rs");
+}
+
 mod builder;
 mod effects;
 mod ports;
@@ -1352,17 +1368,21 @@ pub struct Dag {
 }
 
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
-    let mut dag = Dag::empty();
-    crate::bootstrap::bootstrap(&mut dag);
+    let mut dag = bootstrap_generated::bootstrapped_fixture_dag();
+    dag.populate_primitive_cache();
     dag
 });
 
-static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> =
-    LazyLock::new(bootstrap_std_generated::bootstrapped_std_fixture_dag);
+static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
+    let mut dag = bootstrap_std_generated::bootstrapped_std_fixture_dag();
+    dag.populate_primitive_cache();
+    dag
+});
 
 static BOOTSTRAPPED_DAG_WITHOUT_RUNTIME_MIRRORS_FIXTURE: LazyLock<Dag> = LazyLock::new(|| {
-    let mut dag = Dag::empty();
-    crate::bootstrap::bootstrap_without_runtime_mirrors_fixture(&mut dag);
+    let mut dag =
+        bootstrap_generated_without_runtime_mirrors::bootstrapped_fixture_without_runtime_mirrors_dag();
+    dag.populate_primitive_cache();
     dag
 });
 

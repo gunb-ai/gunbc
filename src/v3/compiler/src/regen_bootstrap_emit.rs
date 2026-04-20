@@ -11,12 +11,21 @@ use crate::dag::{
 };
 use crate::diagnostics::Diagnostic;
 
-const HEADER: &str = "// AUTO-GENERATED from `dsl/std/*.dag` via `regen_bootstrap`.\n\
-     // Regenerate instead of hand-editing.\n\n";
+pub fn render_bootstrap_generated_rs(
+    dag: &Dag,
+    authority_label: &str,
+    function_name: &str,
+) -> Result<String, String> {
+    let header = format!(
+        "// AUTO-GENERATED from `{authority_label}` via `regen_bootstrap`.\n\
+         // Regenerate instead of hand-editing.\n\n"
+    );
+    let rust = emit_bootstrap_module(dag, function_name);
+    rustfmt_stdout(&format!("{header}{rust}"))
+}
 
 pub fn render_bootstrap_std_generated_rs(dag: &Dag) -> Result<String, String> {
-    let rust = emit_bootstrap_std_module(dag);
-    rustfmt_stdout(&format!("{HEADER}{rust}"))
+    render_bootstrap_generated_rs(dag, "dsl/std/*.dag", "bootstrapped_std_fixture_dag")
 }
 
 fn rustfmt_stdout(combined: &str) -> Result<String, String> {
@@ -45,9 +54,9 @@ fn rustfmt_stdout(combined: &str) -> Result<String, String> {
     String::from_utf8(output.stdout).map_err(|e| format!("rustfmt stdout utf-8: {e}"))
 }
 
-fn emit_bootstrap_std_module(dag: &Dag) -> String {
+fn emit_bootstrap_module(dag: &Dag, function_name: &str) -> String {
     let mut out = String::new();
-    out.push_str("pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {\n");
+    out.push_str(&format!("pub(crate) fn {function_name}() -> Dag {{\n"));
     out.push_str("    Dag {\n");
     push_field(&mut out, "nodes", &render_behaviors(dag.nodes()), 2);
     push_field(
@@ -356,7 +365,7 @@ fn render_loop_node(node: &LoopNode) -> String {
 fn render_bind_node(node: &BindNode) -> String {
     format!(
         "BindNode {{ id: {}, name: {:?}.to_string(), value: {}, params: {}, span: {}, lane2_workflow: None }}",
-        node.id.raw(),
+        render_node_id(node.id),
         node.name,
         render_port_id(node.value),
         render_port_id_vec(&node.params),

@@ -107,21 +107,21 @@ retire projection — not one.
 
 ### PB-1 — bootstrap loader emission (all four authorities)
 
-- Replace `bootstrap.rs`'s runtime `include_str!` + tokenize + parse +
-  lower for **all four input authorities** (`std_fixtures` +
+- **Landed.** `Dag::new()` now boots from committed generated Rust
+  snapshots rather than runtime tokenize/parse/lower.
+- Coverage: all four input authorities (`std_fixtures` +
   `STAGED_FILES` + `V3_SPECS` + `COMPILER_FILES`, per current-state
-  section above). Covering only `dsl/std/*.dag` is insufficient —
-  `Dag::new()` today chains all four into a single `fixtures` array.
-- Output: `bootstrap_generated.rs` that calls `Dag::push_*` builders
-  to construct the primed Dag directly at `Dag::new()`, with no
-  runtime tokenize/parse/lower path.
-- Matches v2's pattern (no runtime `.dag` parsing at bootstrap).
-- **Dependencies**: Dag builder API (TM-1); generator that walks
-  the 4 authorities at build time and emits the constructor module.
-- **Not done in one shot**: can stage per-authority (e.g., ship
-  `std_fixtures` first as PB-1a, then STAGED/SPECS/COMPILER as
-  PB-1b/c/d). Each sub-stage dissolves one include_str block + its
-  runtime parse path.
+  section above).
+- Outputs:
+  `bootstrap_std_generated.rs`,
+  `bootstrap_generated.rs`,
+  `bootstrap_generated_without_runtime_mirrors.rs`.
+- `compile_runtime_mirrors_authority_dag` consumes the
+  no-`runtime_mirrors` snapshot so `runtime_mirrors.dag` can still
+  compile first-of-name for regen/tests.
+- Drift checks: integration snapshot tests compare the generated
+  full bootstrap and the no-`runtime_mirrors` variant against the
+  legacy runtime bootstrap builders.
 
 ### PB-2 — tokenize retire
 
