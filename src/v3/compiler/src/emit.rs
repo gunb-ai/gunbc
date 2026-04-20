@@ -204,6 +204,11 @@ struct TargetExecutionModelBinding {
     scope: ScopeModelBinding,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct SourceFilteringBinding {
+    excluded_prefixes: Vec<String>,
+}
+
 /// Typed read of `data go_clean_emission: CleanEmissionContract`
 /// from `src/v3/spec/go.dag` — the portion this pilot consumes (E-5
 /// / Lane 1 Stage 1c PR 2). Other contract rules land here as their
@@ -243,6 +248,7 @@ struct RealizationIndexes {
     patterns: HashMap<DeclarationId, PatternRealizationBinding>,
     syntax: GoLanguageSyntax,
     execution_model: TargetExecutionModelBinding,
+    source_filtering: SourceFilteringBinding,
     /// The Go clean-emission contract loaded from `data
     /// go_clean_emission: CleanEmissionContract` (E-5 / Lane 1 Stage
     /// 1c PR 2). Rule variants dispatch inside the emitter to shape
@@ -441,6 +447,11 @@ impl RealizationIndexes {
                 "emit_go requires lexical scoping targets".to_string(),
             ));
         }
+        let source_filtering = SourceFilteringBinding::build(
+            dag,
+            dag.go_source_filtering_spec()
+                .ok_or(EmitError::MissingTargetSyntax("go_source_filtering"))?,
+        )?;
         let syntax = GoLanguageSyntax::build(dag)?;
         let clean_emission = CleanEmissionContractBinding::build(dag)?;
 
@@ -454,6 +465,7 @@ impl RealizationIndexes {
             patterns,
             syntax,
             execution_model,
+            source_filtering,
             clean_emission,
         })
     }
@@ -864,7 +876,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     let type_decls: Vec<_> = dag
         .declarations()
         .iter()
-        .filter(|decl| !is_bootstrap_file(&decl.span.file))
+        .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
         .filter(|decl| {
             matches!(
@@ -876,7 +888,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     let function_decls: Vec<_> = dag
         .declarations()
         .iter()
-        .filter(|decl| !is_bootstrap_file(&decl.span.file))
+        .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
         .filter(|decl| {
             !decl
@@ -2725,6 +2737,43 @@ fn require_scope_model(
     })
 }
 
+impl SourceFilteringBinding {
+    pub(crate) fn build(dag: &Dag, declaration: DeclarationId) -> Result<Self, EmitError> {
+        let fields = structural_fields_for_decl(dag, declaration)?;
+        let value = fields
+            .iter()
+            .find(|(label, _)| label == "excluded_prefixes")
+            .map(|(_, value)| value)
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "SourceFiltering is missing required `excluded_prefixes` field",
+            })?;
+        let FieldValue::List(entries) = value else {
+            return Err(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "SourceFiltering.excluded_prefixes must be a list",
+            });
+        };
+        let mut excluded_prefixes = Vec::with_capacity(entries.len());
+        for entry in entries {
+            let FieldValue::Literal(LiteralBits::String(prefix)) = entry else {
+                return Err(EmitError::MalformedTargetSyntax {
+                    declaration,
+                    detail: "SourceFiltering.excluded_prefixes entries must be string literals",
+                });
+            };
+            excluded_prefixes.push(prefix.clone());
+        }
+        Ok(Self { excluded_prefixes })
+    }
+
+    pub(crate) fn excludes(&self, file: &str) -> bool {
+        self.excluded_prefixes
+            .iter()
+            .any(|prefix| file.starts_with(prefix))
+    }
+}
+
 fn named_variant_id(dag: &Dag, parent_name: &str, variant_label: &str) -> Option<DeclarationId> {
     let parent = dag.declaration_by_name(parent_name)?;
     let TypeConnective::Disj { variants } = &parent.connective else {
@@ -2856,13 +2905,6 @@ fn render_value(v: &crate::dag::ValueNode, literals: &LiteralSyntaxBinding) -> S
             literals.string_delimiter
         ),
     }
-}
-
-fn is_bootstrap_file(file: &str) -> bool {
-    file.starts_with("dsl/std/")
-        || file.starts_with("src/v3/std/")
-        || file.starts_with("src/v3/spec/")
-        || file.starts_with("src/v3/compiler/")
 }
 
 fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, EmitError> {

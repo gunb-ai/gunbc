@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::{
     optional_match_variant_roles, parse_pattern_strategy, EmitMode, PatternStrategyBinding,
-    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    SourceFilteringBinding, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, DeclarationId, Field,
@@ -144,6 +144,7 @@ struct PythonIndexes {
     patterns: HashMap<DeclarationId, PatternRealizationBinding>,
     syntax: PythonSyntax,
     target: PythonTarget,
+    source_filtering: SourceFilteringBinding,
     /// The Python clean-emission contract loaded from `data
     /// python_clean_emission: CleanEmissionContract` (E-5 / Lane 1
     /// Stage 1c PR 3). Rule variants dispatch inside the emitter so
@@ -287,6 +288,21 @@ impl PythonIndexes {
             .python_target_spec()
             .ok_or(EmitPythonError::MissingSpec("python_target"))?;
         let target_fields = structural_fields_for_decl(dag, target_decl)?;
+        let source_filtering = SourceFilteringBinding::build(
+            dag,
+            dag.python_source_filtering_spec()
+                .ok_or(EmitPythonError::MissingSpec("python_source_filtering"))?,
+        )
+        .map_err(|err| match err {
+            super::rust_target::EmitError::MalformedTargetSyntax {
+                declaration,
+                detail,
+            } => EmitPythonError::MalformedSpec {
+                declaration,
+                detail,
+            },
+            other => EmitPythonError::Unsupported(format!("{other:?}")),
+        })?;
 
         let syntax = PythonSyntax {
             binary_op: require_field_string(
@@ -381,6 +397,7 @@ impl PythonIndexes {
             patterns,
             syntax,
             target,
+            source_filtering,
             clean_emission,
         })
     }
@@ -585,7 +602,7 @@ pub(crate) fn emit_python_with_mode(
     let type_decls: Vec<_> = dag
         .declarations()
         .iter()
-        .filter(|decl| !is_bootstrap_file(&decl.span.file))
+        .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
         .filter(|decl| {
             matches!(
@@ -597,7 +614,7 @@ pub(crate) fn emit_python_with_mode(
     let function_decls: Vec<_> = dag
         .declarations()
         .iter()
-        .filter(|decl| !is_bootstrap_file(&decl.span.file))
+        .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
         .filter(|decl| {
             !decl
@@ -1851,12 +1868,6 @@ fn indent(source: &str, level: usize) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-fn is_bootstrap_file(file: &str) -> bool {
-    file.starts_with("dsl/std/")
-        || file.starts_with("src/v3/std/")
-        || file.starts_with("src/v3/spec/")
 }
 
 fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, EmitPythonError> {

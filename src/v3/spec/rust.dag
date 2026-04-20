@@ -50,6 +50,7 @@ module v3.spec.rust
 
 import v3.spec.v3_l1 { Bind, Branch, Main }
 import v3.std.computation_model { TargetExecutionModel, OwnershipBased, LexicalScoping }
+import v3.std.computation_model { SourceFiltering, ExecutionModelRequirement }
 import v3.std.emit_model {
   TypeRealization, FieldBinding, FieldAccess,
   OperatorRealization, BehaviorRealization, CallableRealization,
@@ -87,6 +88,12 @@ data rust_execution_model: TargetExecutionModel = {
   memory: OwnershipBased
   scope: LexicalScoping
 }
+
+data rust_source_filtering: SourceFiltering = {
+  excluded_prefixes: ["dsl/std/", "src/v3/std/", "src/v3/spec/", "src/v3/compiler/"]
+}
+
+data rust_execution_requirement: ExecutionModelRequirement = OwnershipBased
 
 // ─────────────────────────────────────────────────────────────────
 // Type realizations — primitive type mappings.

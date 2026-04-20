@@ -1100,6 +1100,12 @@ pub(crate) struct TargetSyntaxCache {
     /// `src/v3/spec/rust.dag`. Used by emitters to gate the
     /// ownership stage on the target memory model.
     pub rust_execution_model: Option<DeclarationId>,
+    /// `rust_source_filtering` declaration loaded from
+    /// `src/v3/spec/rust.dag`.
+    pub rust_source_filtering: Option<DeclarationId>,
+    /// `rust_execution_requirement` declaration loaded from
+    /// `src/v3/spec/rust.dag`.
+    pub rust_execution_requirement: Option<DeclarationId>,
     /// `dag_model` declaration loaded from
     /// `src/v3/std/computation_model.dag`. The source-side
     /// computation-model fact the emitter reads alongside the
@@ -1111,12 +1117,24 @@ pub(crate) struct TargetSyntaxCache {
     /// `go_execution_model` declaration loaded from
     /// `src/v3/spec/go.dag`.
     pub go_execution_model: Option<DeclarationId>,
+    /// `go_source_filtering` declaration loaded from
+    /// `src/v3/spec/go.dag`.
+    pub go_source_filtering: Option<DeclarationId>,
+    /// `go_execution_requirement` declaration loaded from
+    /// `src/v3/spec/go.dag`.
+    pub go_execution_requirement: Option<DeclarationId>,
     /// `python_language` syntax bundle declaration loaded from
     /// `src/v3/spec/python.dag`.
     pub python_language: Option<DeclarationId>,
     /// `python_target` execution-model declaration loaded from
     /// `src/v3/spec/python.dag`.
     pub python_target: Option<DeclarationId>,
+    /// `python_source_filtering` declaration loaded from
+    /// `src/v3/spec/python.dag`.
+    pub python_source_filtering: Option<DeclarationId>,
+    /// `python_execution_requirement` declaration loaded from
+    /// `src/v3/spec/python.dag`.
+    pub python_execution_requirement: Option<DeclarationId>,
     /// Shared target-authority bindings scanned from
     /// `TargetCleanEmissionBinding` data items. This is the single
     /// cached bridge from `LanguageSpec` to `CleanEmissionContract`;
@@ -1569,6 +1587,14 @@ impl Dag {
         self.target_syntax.rust_execution_model
     }
 
+    pub fn rust_source_filtering_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.rust_source_filtering
+    }
+
+    pub fn rust_execution_requirement_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.rust_execution_requirement
+    }
+
     /// Typed accessor for the source computation-model declaration
     /// declared in `src/v3/std/computation_model.dag`.
     pub fn computation_model_spec(&self) -> Option<DeclarationId> {
@@ -1585,6 +1611,14 @@ impl Dag {
     /// declaration loaded from `src/v3/spec/go.dag`.
     pub fn go_execution_model_spec(&self) -> Option<DeclarationId> {
         self.target_syntax.go_execution_model
+    }
+
+    pub fn go_source_filtering_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.go_source_filtering
+    }
+
+    pub fn go_execution_requirement_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.go_execution_requirement
     }
 
     /// Typed accessor for the Go `CleanEmissionContract`
@@ -1620,6 +1654,14 @@ impl Dag {
     /// declaration loaded from `src/v3/spec/python.dag`.
     pub fn python_target_spec(&self) -> Option<DeclarationId> {
         self.target_syntax.python_target
+    }
+
+    pub fn python_source_filtering_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.python_source_filtering
+    }
+
+    pub fn python_execution_requirement_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.python_execution_requirement
     }
 
     /// Typed accessor for the Python `CleanEmissionContract`
@@ -2136,13 +2178,31 @@ impl Dag {
         self.target_syntax.rust_execution_model = self
             .declaration_by_name("rust_execution_model")
             .map(|d| d.id);
+        self.target_syntax.rust_source_filtering = self
+            .declaration_by_name("rust_source_filtering")
+            .map(|d| d.id);
+        self.target_syntax.rust_execution_requirement = self
+            .declaration_by_name("rust_execution_requirement")
+            .map(|d| d.id);
         self.target_syntax.dag_model = self.declaration_by_name("dag_model").map(|d| d.id);
         self.target_syntax.go_language = self.declaration_by_name("go_language").map(|d| d.id);
         self.target_syntax.go_execution_model =
             self.declaration_by_name("go_execution_model").map(|d| d.id);
+        self.target_syntax.go_source_filtering = self
+            .declaration_by_name("go_source_filtering")
+            .map(|d| d.id);
+        self.target_syntax.go_execution_requirement = self
+            .declaration_by_name("go_execution_requirement")
+            .map(|d| d.id);
         self.target_syntax.python_language =
             self.declaration_by_name("python_language").map(|d| d.id);
         self.target_syntax.python_target = self.declaration_by_name("python_target").map(|d| d.id);
+        self.target_syntax.python_source_filtering = self
+            .declaration_by_name("python_source_filtering")
+            .map(|d| d.id);
+        self.target_syntax.python_execution_requirement = self
+            .declaration_by_name("python_execution_requirement")
+            .map(|d| d.id);
         self.populate_target_clean_emission_bindings();
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
 

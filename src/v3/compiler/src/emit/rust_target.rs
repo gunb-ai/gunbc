@@ -46,8 +46,8 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    parse_pattern_strategy, EmitMode, PatternStrategyBinding, VariantPayloadBinding,
-    VariantPayloadFieldAccessRuleBinding,
+    parse_pattern_strategy, EmitMode, PatternStrategyBinding, SourceFilteringBinding,
+    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
@@ -582,6 +582,9 @@ struct RealizationIndexes {
     /// The target-side Rust execution model loaded from
     /// `data rust_execution_model: TargetExecutionModel`.
     execution: TargetExecutionModelBinding,
+    /// Source exclusion policy loaded from
+    /// `data rust_source_filtering: SourceFiltering`.
+    source_filtering: SourceFilteringBinding,
     /// The Rust clean-emission contract loaded from
     /// `data rust_clean_emission: CleanEmissionContract` (E-5 /
     /// Lane 1 Stage 1c). Rule variants dispatch inside the emitter
@@ -859,6 +862,11 @@ impl RealizationIndexes {
         let rendering = RenderingModelBinding::build(dag)?;
         let computation = ComputationModelBinding::build(dag)?;
         let execution = TargetExecutionModelBinding::build(dag)?;
+        let source_filtering = SourceFilteringBinding::build(
+            dag,
+            dag.rust_source_filtering_spec()
+                .ok_or(EmitError::MissingTargetSyntax("rust_source_filtering"))?,
+        )?;
         let clean_emission = CleanEmissionContractBinding::build(dag)?;
         let callable_dispositions =
             derive_callable_dispositions(dag, &external_callable_dispositions)?;
@@ -877,6 +885,7 @@ impl RealizationIndexes {
             rendering,
             computation,
             execution,
+            source_filtering,
             clean_emission,
             substrate_accessors,
             substrate_accessor_universe,
@@ -2624,7 +2633,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
     let type_decls: Vec<_> = dag
         .declarations()
         .iter()
-        .filter(|decl| !is_bootstrap_file(&decl.span.file))
+        .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
         .filter(|decl| {
             matches!(
@@ -2636,7 +2645,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
     let function_decls: Vec<_> = dag
         .declarations()
         .iter()
-        .filter(|decl| !is_bootstrap_file(&decl.span.file))
+        .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
         .filter(|decl| {
             !decl
@@ -4971,13 +4980,6 @@ fn behavior_result_port(behavior: &Behavior) -> PortId {
         Behavior::Loop(l) => l.result_port(),
         Behavior::Bind(b) => b.result_port(),
     }
-}
-
-fn is_bootstrap_file(file: &str) -> bool {
-    file.starts_with("dsl/std/")
-        || file.starts_with("src/v3/std/")
-        || file.starts_with("src/v3/spec/")
-        || file.starts_with("src/v3/compiler/")
 }
 
 /// Walk a port's resolved TypeShape declaration through anonymous

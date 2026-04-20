@@ -11,7 +11,8 @@ import std.list {
 import std.algebra { OrderedRing }
 import v3.std.computation_model {
   TargetExecutionModel, MemoryModel,
-  GarbageCollected, LexicalScoping
+  GarbageCollected, LexicalScoping,
+  SourceFiltering, ExecutionModelRequirement
 }
 import v3.std.emit_model {
   TypeRealization, OperatorRealization, CallableRealization,
@@ -137,6 +138,12 @@ data python_target: TargetExecutionModel = {
   memory: GarbageCollected
   scope: LexicalScoping
 }
+
+data python_source_filtering: SourceFiltering = {
+  excluded_prefixes: ["dsl/std/", "src/v3/std/", "src/v3/spec/"]
+}
+
+data python_execution_requirement: ExecutionModelRequirement = GarbageCollected
 
 data python_int: TypeRealization = {
   language: python_language

@@ -13,7 +13,8 @@ import v3.std.emit_model {
   ValueConstructionSyntax, LanguageSpec
 }
 import v3.std.computation_model {
-  TargetExecutionModel, GarbageCollected, LexicalScoping
+  TargetExecutionModel, GarbageCollected, LexicalScoping,
+  SourceFiltering, ExecutionModelRequirement
 }
 import v3.std.clean_emission {
   CleanEmissionContract,
@@ -33,6 +34,12 @@ data go_execution_model: TargetExecutionModel = {
   memory: GarbageCollected
   scope: LexicalScoping
 }
+
+data go_source_filtering: SourceFiltering = {
+  excluded_prefixes: ["dsl/std/", "src/v3/std/", "src/v3/spec/", "src/v3/compiler/"]
+}
+
+data go_execution_requirement: ExecutionModelRequirement = GarbageCollected
 
 data go_int: TypeRealization = {
   language: go_language
