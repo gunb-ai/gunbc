@@ -1,7 +1,7 @@
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, LiteralBits,
-    PortState, TransformTarget, TypeConnective,
+    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, LiteralBits, PortState,
+    TransformTarget, TypeConnective,
 };
 use v3_compiler::diagnostics::SourceSpan;
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
