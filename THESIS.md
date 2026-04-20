@@ -228,6 +228,28 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
   the Rust tree is one realization of it — not a parallel
   authority requiring manual sync.
 
+**Pure bootstrap (self-hosted stage0):**
+- Editing compiler behavior requires editing `.dag` source only.
+  No matching hand edits to a Rust stage0 file. Cost-of-change
+  for any compiler concept — a new pass, a new substrate fact,
+  a new target-language detail — stays at 1.
+- Stage0 is regeneratable from the `.dag` graph. Compiler
+  internals (tokenize, parse, lower, infer, emit, lenses, std
+  library) are emitted as Rust source and committed — not hand
+  authored. The hand-maintained surface is an irreducible shim
+  (CLI entry + runtime bridge), target ≤5 files. v2 achieves
+  this pattern at ~97% (2 hand-maintained of 62 stage0 files);
+  v3's trajectory is the Pure Bootstrap program (see
+  `docs/design-pure-bootstrap.md`).
+- Fixed-point acceptance: v3 binary compiles `compiler.dag` →
+  produces bit-identical stage0 Rust + bit-identical emitted
+  artifacts. `compiler.dag`'s `hand_maintained_src` list
+  monotonically shrinks to the irreducible shim.
+- Strictly stronger than "the compiler can compile itself":
+  the compiler's own source of truth is the `.dag` graph, and
+  the Rust tree is one realization of it — not a parallel
+  authority requiring manual sync.
+
 **Modeling discipline:**
 - Every declared type has at least one structural consumer.
 - Every service boundary uses typed enums, not String/Bool proxies.
