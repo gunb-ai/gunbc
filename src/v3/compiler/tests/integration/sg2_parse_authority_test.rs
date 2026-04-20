@@ -5,9 +5,11 @@
 //! that deletes the body fragment per the dissolution trigger in `parse_parser_body.txt`.
 
 use v3_compiler::compile_runtime_mirrors_authority_dag;
+use v3_compiler::render_parse_generated_rs;
 
 const RUNTIME_MIRRORS_DAG: &str = include_str!("../../runtime_mirrors.dag");
 const CHECKED_IN_GENERATED: &str = include_str!("../../src/parse_generated.rs");
+const PARSER_BODY: &str = include_str!("../../parse_parser_body.txt");
 
 #[test]
 fn runtime_mirrors_dag_compiles_cleanly_for_regen_parse() {

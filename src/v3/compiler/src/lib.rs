@@ -689,7 +689,10 @@ mod lower;
 #[path = "parse_generated.rs"]
 mod parse;
 mod pipeline_authority;
+mod regen_parse_emit;
 mod tokenize;
+
+pub use regen_parse_emit::{render_parse_generated_rs, RenderParseGeneratedError};
 pub(crate) mod variant_payload {
     #[allow(
         dead_code,
