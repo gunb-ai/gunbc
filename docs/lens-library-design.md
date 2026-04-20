@@ -218,34 +218,54 @@ the same structural shape, flagging duplicates regardless of
 name.
 
 **Alias vs duplicate policy (load-bearing before ship):** The lens
-must not treat a sanctioned **type alias** as a second copy of the
-same product shape. Per `feedback_naming_is_aliasing` (see
-`CODING.md` — "Names are namespaces, not aliases"): a `TypeAlias`
-declaration is a namespace into the substrate, not a new
-materialized structure. Concretely:
+has **two** structural channels. They must not be conflated, or the
+gate contradicts itself (e.g. excluding all `where` aliases would
+hide the audit's `NonEmptyStr` / `NonEmptyString` class).
 
-1. **Transparent alias (excluded by default)** — Declarations lowered
-   as a type alias to a single underlying named type (e.g.
-   `type FileClassification = FileEntry`, including
-   `= Carrier where predicate` where the field shape is not
-   re-declared independently) **do not** enter the structural-hash
-   multiset keyed on anonymous `{field → type}` product shape, **or**
-   they normalize to the canonical target declaration id so they
-   cannot pair with that target as "two equal anonymous shapes."
-2. **True duplicate (always in scope)** — Two declarations that
-   each carry an **independent** product, coproduct, or `data` body
-   whose structural hash matches (same fields and field types, or
-   same data body connective) are reported. That is the failure
-   class the audit hit before PR #596.
-3. **Re-exports** — Already orthogonal: `ignore_re_exports` filters
-   pairs where one declaration exists only to forward another across
-   a module boundary.
+Per `feedback_naming_is_aliasing` (see `CODING.md` — "Names are
+namespaces, not aliases"): a pure nominal alias does not introduce a
+second product body. Refinement aliases still introduce **logical**
+constraints keyed off `(carrier, refinement identity)`; two names
+for the **same** refinement fact are still a single-authority
+violation at the naming layer.
+
+1. **Product / coproduct / `data` channel (materialized shape)** —
+   Hash independent record, sum, and `data` bodies on field layout /
+   connective as today. **Pure nominal alias (excluded by default):**
+   `type A = B` with **no** `where` clause on the alias — e.g.
+   `type FileClassification = FileEntry` (PR #596) — does **not**
+   contribute a second hash bucket here; it normalizes to `B` (or is
+   skipped) so it cannot collide with `B` as "two anonymous products."
+2. **Refinement-alias channel (same carrier + same constraint, two
+   names)** — Declarations of the form `type Name = Carrier where …`
+   hash on **`(resolved_carrier_id, canonical_refinement_fingerprint)`**
+   (predicate / brand / chain identity from the substrate, not
+   surface spelling). **Matching pairs are reported** even though each
+   row is technically an "alias" — that is exactly the
+   `NonEmptyStr` / `NonEmptyString` audit case: two spellings for one
+   refinement. **Distinct** refinements (`where brand("IssueId")` vs
+   `where brand("IntentId")`) get different fingerprints and do not
+   collide.
+3. **True duplicate (materialized, always in scope)** — Two
+   declarations that each carry an **independent** product, coproduct,
+   or `data` body whose structural hash matches (same fields and field
+   types, or same data body connective) are reported. That is the
+   failure class the audit hit before PR #596 for `FileEntry` /
+   `FileClassification` (two record bodies — fixed by collapsing to
+   one body + nominal alias).
+4. **Re-exports** — `ignore_re_exports` filters pairs where one
+   declaration exists only to forward another across a module
+   boundary (orthogonal to (1)–(3)).
 
 The sketch `DuplicatesConfig` below includes
-`ignore_transparent_type_aliases` (default **true**) so CI and local
-runs agree on the policy without substring heuristics on source
-text; implementation keys off whatever the substrate already marks as
-alias vs nominal record (same authority the typechecker uses).
+`ignore_pure_nominal_type_aliases` (default **true**) for channel (1)
+only. Channel (2) stays **on** by default so refinement twins remain
+in the expected-findings set unless a follow-up policy explicitly
+disables them.
+
+Implementation keys off the same lowered-type facts the typechecker
+already has (alias vs nominal record vs refinement spine), not source
+substring heuristics.
 
 **Motivation from the reviewer's std/extdeps audit (2026-04-15):**
 
