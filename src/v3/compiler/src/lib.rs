@@ -39,7 +39,12 @@ pub mod lens_depth;
 pub mod lens_testgen;
 pub mod lens_unused_parameters;
 pub mod post_emit_verifier;
-pub mod serialize;
+pub mod serialize {
+    use crate::dag::{Behavior, Dag};
+    use crate::diagnostics::Diagnostic;
+
+    include!("serialize_generated.rs");
+}
 pub mod types {
     use crate::dag::DeclarationId;
 
