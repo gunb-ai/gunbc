@@ -52,21 +52,20 @@ Downstream consumers (lens queries, algebra-driven operator dispatch, cost algeb
 - **`DeleteEffect`** — lattice meet with bottom on a key. Applied twice = once.
 - **`AppendEffect`** — free monoid concatenation. Grounds in monoid theory.
 
-Because each effect inhabits a known algebraic structure, **idempotency is not a declared flag** — it falls out of *which structure the effect inhabits*. The compiler checks "does this effect inhabit a lattice?" rather than "did the author mark this idempotent?". This dissolves `dsl/std/behavioral.dag`'s `idempotent: Bool` field — the flag becomes redundant once the algebra is wired.
+Because each effect is declared as an inhabitant of a known algebraic structure, idempotency *becomes a derivable structural fact* rather than something a separate flag must assert. The pattern the substrate enables: when a behavioral property is definable from structure, the declared boolean for that property can be dropped — the algebra *is* the definition. (Current downstream consumers that read the algebra shape — idempotency proofs, composed-effect verification, `f(f(x)) == f(x)` test generation — are partly in-progress; the substrate carries the modeling, consumer wiring completes the dissolution.)
 
 External authority: lattice theory (Birkhoff 1940), effect algebras (Foulis & Bennett 1994), idempotent semirings (dataflow analysis, routing algebras, tropical geometry).
 
 ### Worked example: termination via descent evidence
 
-`dsl/std/termination.dag` models the *proof* of termination as a structural artifact, not a heuristic:
+`dsl/std/termination.dag` models the *proof* of termination as a structural artifact:
 
 - **`DescentEvidence` = `Strict` | `NonIncreasing` | `DescentUnknown`** — at each recursive call edge, the ranking dimension either provably decreases, possibly stays the same, or is unknown.
 - **`DescentEvidence` inhabits `BoundedLattice<DescentEvidence>`** with top = `Strict`, bottom = `DescentUnknown` (fail-closed), meet = conservative branch merge, join = optimistic branch merge.
-- The complexity analyzer is a **checker** of termination proofs, not a **discoverer**. It constructs candidate proofs from code and validates them against this model. Failure to construct = rejection.
+
+The substrate's stated design principle (from `termination.dag`'s header): the complexity analyzer *should be* a **checker** of termination proofs constructed from this model rather than a **discoverer**. Currently the substrate carries the proof structure as typed facts; the fail-closed analyzer that validates proofs against the model is design, not landed behavior — today's analyzer derives cost from bounded structure rather than validating proofs (see `docs/invariants/decidability-invariant.md`). What is landed: the substrate-level evidence carriers, so Strict Forward Progress (P4) has a typed representation to reason about. The same `BoundedLattice` machinery types `DescentEvidence`, cost-algebra merges, and effect composition — one algebra, many consumers.
 
 External authority: well-founded relations (Zermelo 1904, von Neumann 1929), ranking functions (Floyd 1967, Turing 1949), size-change termination (Lee, Jones, Ben-Amram 2001), lexicographic + multiset orderings (Dershowitz, Manna 1979).
-
-This makes Strict Forward Progress (P4) operational: the substrate carries termination *evidence*, not just a termination *requirement*. The same `BoundedLattice` machinery that types `DescentEvidence` is reused in cost algebra, effect composition, and branch merging — every lattice-shaped lens reads the same algebra.
 
 ### Problem shape: Ungrounded heuristic
 
