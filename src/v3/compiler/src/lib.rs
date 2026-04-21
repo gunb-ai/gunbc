@@ -96,7 +96,8 @@ pub mod lens_cost {
         unused_parens,
         unused_variables,
         clippy::clone_on_copy,
-        clippy::collapsible_else_if
+        clippy::collapsible_else_if,
+        clippy::large_enum_variant
     )]
     mod generated {
         use crate::dag::*;
