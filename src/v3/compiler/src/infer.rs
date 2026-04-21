@@ -33,7 +33,11 @@ use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
     Diagnostic, SourceSpan,
 };
-use crate::infer_helpers::behavior_output_port;
+use crate::infer_helpers::{
+    behavior_output_port,
+    resolve_template_argument_value as generated_resolve_template_argument_value,
+    template_argument_value as generated_template_argument_value, TemplateArgumentLookup,
+};
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
 use crate::types::TypeShape;
@@ -1483,10 +1487,10 @@ fn template_argument_value(
     arguments: &[TemplateArgument],
     parameter: DeclarationId,
 ) -> Option<DeclarationId> {
-    arguments
-        .iter()
-        .find(|arg| arg.parameter == parameter)
-        .map(|arg| arg.value)
+    match generated_template_argument_value(arguments, &parameter) {
+        TemplateArgumentLookup::FoundTemplateArgument { _0: value } => Some(value),
+        TemplateArgumentLookup::MissingTemplateArgument => None,
+    }
 }
 
 fn resolve_template_argument_value(
@@ -1494,16 +1498,11 @@ fn resolve_template_argument_value(
     current: DeclarationId,
     depth: usize,
 ) -> DeclarationId {
-    if depth >= WALK_DEPTH_LIMIT {
-        return current;
-    }
-    let Some(next) = template_argument_value(arguments, current) else {
-        return current;
-    };
-    if next == current {
-        return current;
-    }
-    resolve_template_argument_value(arguments, next, depth + 1)
+    generated_resolve_template_argument_value(
+        &(WALK_DEPTH_LIMIT.saturating_sub(depth) as i64),
+        arguments,
+        current,
+    )
 }
 
 fn retained_template_arguments_for_target(

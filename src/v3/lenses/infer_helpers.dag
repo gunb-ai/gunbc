@@ -1,32 +1,30 @@
-// SG-4 prep — first .dag-authority slice of `infer.rs`.
+// SG-4b-1 prototype tranche — bounded Cat-1/Cat-2 infer helpers.
 //
-// `behavior_output_port` is the smallest pure read helper in the
-// 4276-line `src/v3/compiler/src/infer.rs`: a five-arm match over
-// `Behavior` returning the variant's result port. Functionally
-// identical to `behavior_port` in `lenses/unused_parameters.dag`;
-// the duplication is the price of avoiding an `infer → lens`
-// dependency for now and dissolves when a shared `behavior.dag`
-// helper module surfaces.
+// This prototype deliberately stops short of the refinement/discharge
+// readers. The existing reflected `BindNode` carrier does not expose
+// the predicate body port that `predicate_info` needs, so the helper
+// path cannot move that slice honestly without substrate work.
 //
-// Lives under `lenses/` (not `compiler/`) so build.rs's auto-stager
-// for `src/v3/compiler/*.dag` doesn't load it into the bootstrap.
-// The regen reads it standalone via `compile_to_dag` exactly the way
-// the lens regens do — see `regen_infer_helpers.rs`. SG-6 owns
-// reorganizing the regen-and-stage layout once the consolidated
-// driver lands.
-//
-// Hard cutover for SG-4 itself remains blocked on the substrate
-// research called out in `src/v3/SELF_HOSTING.md` §5 (inferred-state
-// representation, I1–I8 write-surface experiments, L2.5 infer-domain
-// modeling). This file is the smallest credible step that proves
-// the existing `.dag → emit_rust_module → committed *_generated.rs`
-// path on infer-shaped code: the function comes out of `infer.rs`,
-// the .dag becomes the authority, and the regenerated Rust module
-// is the surface `infer.rs` consumes.
+// It also leaves `walk_to_optional_cardinality_decl`,
+// `callable_template_arguments`, `is_retryable_generic_decl_walk`,
+// `declaration_is_callable`, and `template_arguments_match` in Rust for
+// now: the current reflected helper surface does not expose the
+// canonical total `Dag::declaration(id)` accessor, so the first two
+// cannot move honestly without parallel lookup authority; the current
+// lens path cannot yet express the former's termination proof, and the
+// latter two currently emit invalid Rust `Bool::True/False` in this
+// helper path. `infer.rs` remains authoritative for those remainders.
 
 module lenses.infer_helpers
 
-import std.substrate { Behavior, PortId }
+import std.list { List }
+import std.substrate {
+  Behavior, DeclarationId, TemplateArgument
+}
+
+type TemplateArgumentLookup
+  = MissingTemplateArgument
+  | FoundTemplateArgument(DeclarationId)
 
 fn behavior_output_port(behavior: Behavior) -> PortId =
   match behavior {
@@ -36,3 +34,33 @@ fn behavior_output_port(behavior: Behavior) -> PortId =
     Loop(l) => l.result_port
     Bind(bind) => bind.result_port
   }
+
+fn template_argument_value(
+  arguments: List<TemplateArgument>,
+  parameter: DeclarationId
+) -> TemplateArgumentLookup =
+  match arguments {
+    Empty => MissingTemplateArgument
+    Cons(payload) =>
+      if payload.head.parameter == parameter then
+        FoundTemplateArgument(payload.head.value)
+      else
+        template_argument_value(payload.tail, parameter)
+  }
+
+fn resolve_template_argument_value(
+  remaining: Int,
+  arguments: List<TemplateArgument>,
+  current: DeclarationId
+) -> DeclarationId =
+  if remaining <= 0 then
+    current
+  else
+    match template_argument_value(arguments, current) {
+      MissingTemplateArgument => current
+      FoundTemplateArgument(next) =>
+        if next == current then
+          current
+        else
+          resolve_template_argument_value(remaining - 1, arguments, next)
+    }

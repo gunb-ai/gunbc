@@ -114,7 +114,8 @@ pub mod lens_cost {
         unused_parens,
         unused_variables,
         clippy::clone_on_copy,
-        clippy::collapsible_else_if
+        clippy::collapsible_else_if,
+        clippy::large_enum_variant
     )]
     mod generated {
         use crate::dag::*;
@@ -701,7 +702,10 @@ pub(crate) mod infer_helpers {
         include!("infer_helpers_generated.rs");
     }
 
-    pub(crate) use generated::behavior_output_port;
+    pub(crate) use generated::{
+        behavior_output_port, resolve_template_argument_value, template_argument_value,
+        TemplateArgumentLookup,
+    };
 }
 
 pub mod lens_idempotency;
