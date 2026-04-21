@@ -99,7 +99,10 @@ fi
 # Strip those before matching the `^test ... <N.NNNs>$` shape.
 if command -v perl >/dev/null 2>&1; then
   awk_input() {
-    perl -pe 's/\r\n/\n/g; s/\r/\n/g; s/\e\[[0-9;]*m//g' "$log_file"
+    # `set -o pipefail` is enabled for this script: if `perl` exits non-zero
+    # (IO/regex edge case on a tee'd CI log), fall back to the raw file so the
+    # ratchet still runs instead of aborting before diagnostics.
+    perl -pe 's/\r\n/\n/g; s/\r/\n/g; s/\e\[[0-9;]*m//g' "$log_file" 2>/dev/null || cat "$log_file"
   }
 else
   awk_input() {
