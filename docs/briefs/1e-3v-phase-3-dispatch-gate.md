@@ -8,7 +8,7 @@
 
 **Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** — this file is **live dispatch guidance** only.
 
-**PR #621 audit trail (archival):** **[`1e-3v-pr621-review-ingest.md`](1e-3v-pr621-review-ingest.md)** — api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, and **Review Z** (receipt that the chronicle was split out per **`INVARIANTS.md`** “Documentation Describes Live State,” codex `bc6bf2c8`).
+**PR #621 audit trail (archival):** **[`1e-3v-pr621-review-ingest.md`](1e-3v-pr621-review-ingest.md)** — api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, **Review Z** (split receipt per **`INVARIANTS.md`** “Documentation Describes Live State,” codex `bc6bf2c8`), **Review AA** (post-split APPROVE, codex `273efd3e`).
 
 ---
 

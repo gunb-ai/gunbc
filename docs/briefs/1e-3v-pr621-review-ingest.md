@@ -2,7 +2,7 @@
 
 **Companion:** [1e-3v-phase-3-dispatch-gate.md](1e-3v-phase-3-dispatch-gate.md) — **live dispatch guidance** (Executive summary, cluster table, Phase 3.0, checklist).
 
-This file is **archival only**: api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, and **Review Z** (split receipt). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
+This file is **archival only**: api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, **Review Z** (split receipt), and **Review AA** (post-split APPROVE). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
 
 ---
 
@@ -196,3 +196,7 @@ Relayed **BLOCKING** comment repeats the first review’s two claims: (1) `emit.
 - **Finding (resolved by splitting):** `INVARIANTS.md` live-state discipline is strained when a **dispatch gate** embeds a large **archived review chronicle**; the parent brief had already committed to moving ingest (**line 9** at review time). **Action:** chronicle moved **here** — not deferred to the next lane.
 
 - **Substantive claims:** Spot-checked against the tree; Phase 3.0 guidance in the parent brief has no modeling/coding/testing violation.
+
+**Review AA (codex / gpt-5.4, schedule, commit `273efd3e`, 2026-04-21T23:29:53Z)**
+
+- **Verdict:** APPROVE — documentation-only diff; split looks clean. Separating the live dispatch brief from the archival review chronicle matches **`INVARIANTS.md`** live-state guidance; no concrete violation of **`docs/modeling-discipline.md`**, **`CODING.md`**, or **`TESTING.md`** in the added lines.
