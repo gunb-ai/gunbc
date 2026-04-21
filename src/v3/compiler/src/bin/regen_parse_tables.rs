@@ -28,8 +28,12 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Dag, FieldValue, LiteralBits, TypeConnective, ValueBody};
+use v3_compiler::dag::{
+    ArithmeticOp, ComparisonOp, Dag, FieldValue, LiteralBits, LogicalOp, OperatorKind,
+    TypeConnective, ValueBody,
+};
 use v3_compiler::generated_files::GENERATED_FILES;
+use v3_compiler::operators;
 use v3_compiler::CompileError;
 
 const GENERATED_FILE: &str = "src/v3/compiler/src/parse_tables_generated.rs";
@@ -145,7 +149,7 @@ fn collect_binary_op_rows(
             "`parse_tables.dag::{name}`: level `{level}` is not a `BinaryOpLevel` variant"
         );
         assert!(
-            operator_kind_expr_from_symbol(&operator_symbol).is_some(),
+            operators::from_symbol(&operator_symbol).is_some(),
             "`parse_tables.dag::{name}`: operator_symbol `{operator_symbol}` has no \
              `OperatorKind` mapping in `operators.dag::from_symbol`"
         );
@@ -200,21 +204,49 @@ fn variant_field(
         .unwrap_or_else(|| panic!("`{name}`: field `{key}` constructor {constructor:?} is not a BinaryOpLevel variant"))
 }
 
-fn operator_kind_expr_from_symbol(symbol: &str) -> Option<&'static str> {
-    match symbol {
-        "+" => Some("OperatorKind::Arithmetic(ArithmeticOp::Add)"),
-        "-" => Some("OperatorKind::Arithmetic(ArithmeticOp::Sub)"),
-        "*" => Some("OperatorKind::Arithmetic(ArithmeticOp::Mul)"),
-        "/" => Some("OperatorKind::Arithmetic(ArithmeticOp::Div)"),
-        "==" => Some("OperatorKind::Comparison(ComparisonOp::Eq)"),
-        "!=" => Some("OperatorKind::Comparison(ComparisonOp::Ne)"),
-        "<" => Some("OperatorKind::Comparison(ComparisonOp::Lt)"),
-        "<=" => Some("OperatorKind::Comparison(ComparisonOp::Le)"),
-        ">" => Some("OperatorKind::Comparison(ComparisonOp::Gt)"),
-        ">=" => Some("OperatorKind::Comparison(ComparisonOp::Ge)"),
-        "&&" => Some("OperatorKind::Logical(LogicalOp::And)"),
-        "||" => Some("OperatorKind::Logical(LogicalOp::Or)"),
-        _ => None,
+/// Render an `OperatorKind` as the Rust source expression that constructs it.
+/// Structural projection — reads the value, emits the matching constructor
+/// path — with no symbol → operator table. The symbol → `OperatorKind`
+/// authority is `operators.dag::from_symbol`; this driver consumes that
+/// projection via [`operators::from_symbol`] and only formats the result.
+fn operator_kind_expr(op: OperatorKind) -> String {
+    match op {
+        OperatorKind::Arithmetic(a) => {
+            format!("OperatorKind::Arithmetic(ArithmeticOp::{})", arithmetic_variant(a))
+        }
+        OperatorKind::Comparison(c) => {
+            format!("OperatorKind::Comparison(ComparisonOp::{})", comparison_variant(c))
+        }
+        OperatorKind::Logical(l) => {
+            format!("OperatorKind::Logical(LogicalOp::{})", logical_variant(l))
+        }
+    }
+}
+
+fn arithmetic_variant(a: ArithmeticOp) -> &'static str {
+    match a {
+        ArithmeticOp::Add => "Add",
+        ArithmeticOp::Sub => "Sub",
+        ArithmeticOp::Mul => "Mul",
+        ArithmeticOp::Div => "Div",
+    }
+}
+
+fn comparison_variant(c: ComparisonOp) -> &'static str {
+    match c {
+        ComparisonOp::Eq => "Eq",
+        ComparisonOp::Ne => "Ne",
+        ComparisonOp::Lt => "Lt",
+        ComparisonOp::Le => "Le",
+        ComparisonOp::Gt => "Gt",
+        ComparisonOp::Ge => "Ge",
+    }
+}
+
+fn logical_variant(l: LogicalOp) -> &'static str {
+    match l {
+        LogicalOp::And => "And",
+        LogicalOp::Or => "Or",
     }
 }
 
@@ -240,11 +272,13 @@ fn emit_module(levels: &[String], rows: &[BinaryOpRow]) -> String {
     );
     s.push_str("    match (tk, level) {\n");
     for row in rows {
-        let op = operator_kind_expr_from_symbol(&row.operator_symbol)
+        let op = operators::from_symbol(&row.operator_symbol)
             .expect("validated in collect_binary_op_rows");
         s.push_str(&format!(
             "        (TokenKind::{}, BinaryOpLevel::{}) => Some({}),\n",
-            row.token_variant, row.level, op
+            row.token_variant,
+            row.level,
+            operator_kind_expr(op)
         ));
     }
     s.push_str("        _ => None,\n");
