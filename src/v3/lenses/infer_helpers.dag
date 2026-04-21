@@ -5,36 +5,26 @@
 // the predicate body port that `predicate_info` needs, so the helper
 // path cannot move that slice honestly without substrate work.
 //
-// It also leaves `is_retryable_generic_decl_walk`,
+// It also leaves `walk_to_optional_cardinality_decl`,
+// `callable_template_arguments`, `is_retryable_generic_decl_walk`,
 // `declaration_is_callable`, and `template_arguments_match` in Rust for
-// now: the current lens path cannot yet express the former's
-// termination proof, and the latter two currently emit invalid Rust
-// `Bool::True/False` in this helper path. `infer.rs` remains
-// authoritative for those remainders.
+// now: the current reflected helper surface does not expose the
+// canonical total `Dag::declaration(id)` accessor, so the first two
+// cannot move honestly without parallel lookup authority; the current
+// lens path cannot yet express the former's termination proof, and the
+// latter two currently emit invalid Rust `Bool::True/False` in this
+// helper path. `infer.rs` remains authoritative for those remainders.
 
 module lenses.infer_helpers
 
-import std.list { List, empty }
+import std.list { List }
 import std.substrate {
-  AtomPayload, Behavior, Dag, Declaration, DeclarationId, TemplateArgument, TypeConnective
+  Behavior, DeclarationId, TemplateArgument
 }
-
-type CallableTemplateInfo {
-  template: DeclarationId
-  arguments: List<TemplateArgument>
-}
-
-type OptionalCardinalityDeclLookup
-  = MissingOptionalCardinality
-  | FoundOptionalCardinality(DeclarationId)
 
 type TemplateArgumentLookup
   = MissingTemplateArgument
   | FoundTemplateArgument(DeclarationId)
-
-type DeclarationLookup
-  = MissingDeclaration
-  | FoundDeclaration(Declaration)
 
 fn behavior_output_port(behavior: Behavior) -> PortId =
   match behavior {
@@ -43,85 +33,6 @@ fn behavior_output_port(behavior: Behavior) -> PortId =
     Branch(b) => b.result_port
     Loop(l) => l.result_port
     Bind(bind) => bind.result_port
-  }
-
-fn find_declaration(decls: List<Declaration>, target: DeclarationId) -> DeclarationLookup =
-  match decls {
-    Empty => MissingDeclaration
-    Cons(payload) =>
-      if payload.head.id == target then FoundDeclaration(payload.head)
-      else find_declaration(payload.tail, target)
-  }
-
-fn walk_to_optional_cardinality_decl(
-  remaining: Int,
-  d: Dag,
-  start: DeclarationId
-) -> OptionalCardinalityDeclLookup =
-  if remaining <= 0 then
-    MissingOptionalCardinality
-  else
-    match find_declaration(d.declarations, start) {
-      MissingDeclaration => MissingOptionalCardinality
-      FoundDeclaration(decl) =>
-        match decl.connective {
-          Cardinality(c) =>
-            match c.bound {
-              AtMostOne => FoundOptionalCardinality(start)
-              Exact(_) => MissingOptionalCardinality
-              Unbounded => MissingOptionalCardinality
-            }
-          Instantiation(i) =>
-            walk_to_optional_cardinality_decl(remaining - 1, d, i.template)
-          Atom(payload) =>
-            match payload {
-              ResolvedByStructure(next) =>
-                walk_to_optional_cardinality_decl(remaining - 1, d, next)
-              ResolvedByName(next) =>
-                walk_to_optional_cardinality_decl(remaining - 1, d, next)
-              UnresolvedIdentifier(_) => MissingOptionalCardinality
-              TypeParam(_) => MissingOptionalCardinality
-              Literal(_) => MissingOptionalCardinality
-            }
-          Conj(_) => MissingOptionalCardinality
-          Disj(_) => MissingOptionalCardinality
-          Arrow(_) => MissingOptionalCardinality
-        }
-    }
-
-fn callable_template_arguments(d: Dag, target: DeclarationId) -> CallableTemplateInfo =
-  match find_declaration(d.declarations, target) {
-    MissingDeclaration => {
-      template: target
-      arguments: empty()
-    }
-    FoundDeclaration(decl) =>
-      match decl.connective {
-        Instantiation(i) => {
-          template: i.template
-          arguments: i.arguments
-        }
-        Atom(_) => {
-          template: target
-          arguments: empty()
-        }
-        Conj(_) => {
-          template: target
-          arguments: empty()
-        }
-        Disj(_) => {
-          template: target
-          arguments: empty()
-        }
-        Arrow(_) => {
-          template: target
-          arguments: empty()
-        }
-        Cardinality(_) => {
-          template: target
-          arguments: empty()
-        }
-      }
   }
 
 fn template_argument_value(
