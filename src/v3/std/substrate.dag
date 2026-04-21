@@ -368,6 +368,15 @@ fn resolve_producer(d: Dag, port_id: PortId) -> Behavior? {
   host resolve_producer
 }
 
+// Declaration-by-id accessor — id-keyed lookup parity with `port` / `node`.
+// `Declaration?` mirrors the permissive reflected-substrate shape; C-8
+// fail-closed lives at the caller, which treats `None` as a
+// constructor-layer violation (valid `DeclarationId`s can't legitimately
+// miss).
+fn declaration_by_id(d: Dag, id: DeclarationId) -> Declaration? {
+  host declaration_by_id
+}
+
 // Lane 2 Stage 2b — reads the optional workflow fact installed on `Value` /
 // `Bind` roots (same authority as `Dag::lane2_workflow_effect_at` on the Rust
 // side). Target emitters map this accessor via `SubstrateAccessorBinding`.

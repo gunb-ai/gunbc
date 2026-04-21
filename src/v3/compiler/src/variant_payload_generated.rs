@@ -9,27 +9,9 @@ pub enum VariantPayloadShape {
 }
 #[derive(Clone, Debug)]
 pub enum VariantPayloadShapeLookup {
-    Missing,
+    DeclarationMissing,
+    NotPayloadProduct,
     Found { _0: VariantPayloadShape },
-}
-#[derive(Clone, Debug)]
-pub enum DeclarationLookup {
-    LookupMissing,
-    LookupFound { _0: Declaration },
-}
-pub fn find_declaration(p0: &[Declaration], p1: &DeclarationId) -> DeclarationLookup {
-    match p0 {
-        [] => DeclarationLookup::LookupMissing,
-        [__list_head, __list_tail @ ..] => {
-            if ((__list_head).id == (*(p1))) {
-                DeclarationLookup::LookupFound {
-                    _0: (__list_head).clone(),
-                }
-            } else {
-                find_declaration(__list_tail, p1)
-            }
-        }
-    }
 }
 pub fn conj_field_label(p0: &Field) -> String {
     ((p0).label).clone()
@@ -61,27 +43,27 @@ pub fn conj_payload_shape(p0: &[Field]) -> VariantPayloadShape {
     }
 }
 pub fn variant_payload_shape(p0: &Dag, p1: &DeclarationId) -> VariantPayloadShapeLookup {
-    match &(find_declaration((p0).declarations(), p1)) {
-        DeclarationLookup::LookupMissing => VariantPayloadShapeLookup::Missing,
-        DeclarationLookup::LookupFound { _0: decl } => match &((decl).connective) {
+    match &((p0).declaration_opt(p1).cloned()) {
+        None => VariantPayloadShapeLookup::DeclarationMissing,
+        Some(decl) => match &((decl).connective) {
             TypeConnective::Conj { children: c } => VariantPayloadShapeLookup::Found {
                 _0: conj_payload_shape(c),
             },
-            TypeConnective::Atom(_) => VariantPayloadShapeLookup::Missing,
-            TypeConnective::Disj { variants: _ } => VariantPayloadShapeLookup::Missing,
+            TypeConnective::Atom(_) => VariantPayloadShapeLookup::NotPayloadProduct,
+            TypeConnective::Disj { variants: _ } => VariantPayloadShapeLookup::NotPayloadProduct,
             TypeConnective::Arrow {
                 inputs: _,
                 output: _,
                 body: _,
-            } => VariantPayloadShapeLookup::Missing,
+            } => VariantPayloadShapeLookup::NotPayloadProduct,
             TypeConnective::Cardinality {
                 element: _,
                 bound: _,
-            } => VariantPayloadShapeLookup::Missing,
+            } => VariantPayloadShapeLookup::NotPayloadProduct,
             TypeConnective::Instantiation {
                 template: _,
                 arguments: _,
-            } => VariantPayloadShapeLookup::Missing,
+            } => VariantPayloadShapeLookup::NotPayloadProduct,
         },
     }
 }

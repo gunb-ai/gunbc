@@ -10,7 +10,7 @@ module lenses.variant_payload
 
 import std.list { List, empty, cons, map }
 import std.substrate {
-  Dag, Declaration, DeclarationId, TypeConnective, ConjField
+  Dag, DeclarationId, TypeConnective, ConjField, declaration_by_id
 }
 
 type VariantPayloadShape
@@ -18,21 +18,19 @@ type VariantPayloadShape
   | PositionalSingle
   | NamedFields(List<String>)
 
+// `DeclarationMissing` carries the substrate-integrity violation
+// (`declaration_by_id` returned `None`): id-carriers can't legitimately
+// reference an absent declaration, so consumers must fail closed.
+// `NotPayloadProduct` is the ordinary outcome for declarations whose
+// connective is not `Conj` (atoms, arrows, cardinalities, …) — callers
+// that only care about product-shaped variants legitimately ignore it.
+// Keeping the two distinct prevents a C-8 fail-open where a caller's
+// `not-a-product` fallback would otherwise swallow a substrate-integrity
+// miss.
 type VariantPayloadShapeLookup
-  = Missing
+  = DeclarationMissing
+  | NotPayloadProduct
   | Found(VariantPayloadShape)
-
-type DeclarationLookup
-  = LookupMissing
-  | LookupFound(Declaration)
-
-fn find_declaration(decls: List<Declaration>, target: DeclarationId) -> DeclarationLookup =
-  match decls {
-    Empty => LookupMissing
-    Cons(payload) =>
-      if payload.head.id == target then LookupFound(payload.head)
-      else find_declaration(payload.tail, target)
-  }
 
 fn conj_field_label(f: ConjField) -> String =
   f.label
@@ -51,15 +49,15 @@ fn conj_payload_shape(children: List<ConjField>) -> VariantPayloadShape =
   }
 
 fn variant_payload_shape(d: Dag, variant_id: DeclarationId) -> VariantPayloadShapeLookup =
-  match find_declaration(d.declarations, variant_id) {
-    LookupMissing => Missing
-    LookupFound(decl) =>
+  match declaration_by_id(d, variant_id) {
+    None => DeclarationMissing
+    Some(decl) =>
       match decl.connective {
         Conj(c) => Found(conj_payload_shape(c.children))
-        Atom(_) => Missing
-        Disj(_) => Missing
-        Arrow(_) => Missing
-        Cardinality(_) => Missing
-        Instantiation(_) => Missing
+        Atom(_) => NotPayloadProduct
+        Disj(_) => NotPayloadProduct
+        Arrow(_) => NotPayloadProduct
+        Cardinality(_) => NotPayloadProduct
+        Instantiation(_) => NotPayloadProduct
       }
   }
