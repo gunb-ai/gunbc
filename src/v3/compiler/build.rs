@@ -208,10 +208,14 @@ fn main() {
     let mut compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
     // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`; it is
     // stripped from the runtime bootstrap bundle — see COMPILER_FILES header.
+    // `parse_tables.dag` is SG-2c-1 grammar-tables authority consumed by
+    // `regen_parse_tables`; same exclusion rationale — `compile_to_dag` parses it
+    // standalone at regen time, so bundling it into the bootstrap Dag would create
+    // duplicate-declaration diagnostics.
     compiler_entries.retain(|p| {
         p.file_name()
             .and_then(|s| s.to_str())
-            .map(|n| n != "tokenize.dag")
+            .map(|n| n != "tokenize.dag" && n != "parse_tables.dag")
             .unwrap_or(true)
     });
     let extdeps_entries = collect_dag_entries_recursive(&extdeps_dir, &[]);

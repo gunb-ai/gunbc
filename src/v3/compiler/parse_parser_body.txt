@@ -1,12 +1,25 @@
-// TEMPORARY STAGING — checked-in recursive-descent parse **algorithm** (semantic authority).
-// This is **parser staging**, not SG-2b: Surface **carrier** schema lives in `runtime_mirrors.dag`;
-// `regen_parse` splices this fragment after emitted `Surface*` definitions inside `parse_generated.rs`.
-// Do not treat this file as omission-grade final authority — it is an explicit scaffold with a
-// named paydown (SG-2b follow-on lane).
+// RESIDUAL SEMANTIC AUTHORITY — recursive-descent parse algorithm.
+// This is **parser staging**, not SG-2c closure: the Surface carrier schema lives in
+// `runtime_mirrors.dag`, the binary-operator-at-precedence-level table lives in
+// `parse_tables.dag` (SG-2c-1 grammar-tables prototype), and `regen_parse` splices this
+// fragment after the emitted `Surface*` definitions inside `parse_generated.rs`.
 //
-// Dissolution trigger: delete this file when parse **logic** is structurally `.dag`-owned (SELF_HOSTING
-// §6 Phase 4a direct port or Phase 4b grammar-as-data) and `regen_parse` emits the full module without
-// any external Rust body fragment.
+// **SG-2c-1 reduction (not retirement).** The per-precedence-level functions below
+// (`parse_logical_or`, `parse_logical_and`, `parse_comparison`, `parse_additive`,
+// `parse_term`) used to open-code the token → `OperatorKind` mapping in five separate
+// match blocks. That mapping is now authored as `binary_op_*` data rows in
+// `parse_tables.dag` and consumed here via `binary_op_at_level`. The parser's control
+// flow — cursor mechanics, recursive descent, error recovery, span fusion — remains
+// semantic authority in this file.
+//
+// Dissolution trigger (SG-2c proper): delete this file when parse **logic** is
+// structurally `.dag`-owned (SELF_HOSTING §6 Phase 4a direct port or Phase 4b
+// grammar-as-data) and `regen_parse` emits the full module without any external
+// Rust body fragment. SG-2c proper is blocked on a named substrate capability —
+// recursive list-body emission over `List<Token>` with cursor threading — declared
+// in `src/v3/std/list.dag:13-15` ("the current compiler still lacks full structural
+// recursion + list-body emission support"). Until that lands, any `.dag` port of
+// the recursive-descent algorithm routes through a hidden Rust host layer.
 //
 pub fn parse(tokens: &[Token], file: &str) -> Result<SurfaceModule, Diagnostic> {
     let mut parser = Parser {
@@ -856,15 +869,21 @@ impl<'a> Parser<'a> {
         self.parse_logical_or()
     }
 
+    // Per-precedence-level functions below are lowest-to-highest binding
+    // (Or → And → Comparison → Additive → Multiplicative). The token →
+    // `OperatorKind` map for each level is authored declaratively in
+    // `parse_tables.dag` and consumed via `binary_op_at_level`; this file
+    // owns control flow (chaining, non-chaining, span fusion) only.
+
     fn parse_logical_or(&mut self) -> Result<SurfaceExpr, Diagnostic> {
         let mut lhs = self.parse_logical_and()?;
-        while matches!(self.peek().kind, TokenKind::PipePipe) {
+        while let Some(op) = binary_op_at_level(&self.peek().kind, BinaryOpLevel::Or) {
             self.bump();
             let rhs = self.parse_logical_and()?;
             let start = expr_span(&lhs).byte_start;
             let end = expr_span(&rhs).byte_end;
             lhs = SurfaceExpr::Operator {
-                op: crate::operators::OperatorKind::Logical(crate::operators::LogicalOp::Or),
+                op,
                 args: vec![lhs, rhs],
                 span: SourceSpan::new(self.file, start, end),
             };
@@ -874,13 +893,13 @@ impl<'a> Parser<'a> {
 
     fn parse_logical_and(&mut self) -> Result<SurfaceExpr, Diagnostic> {
         let mut lhs = self.parse_comparison()?;
-        while matches!(self.peek().kind, TokenKind::AmpAmp) {
+        while let Some(op) = binary_op_at_level(&self.peek().kind, BinaryOpLevel::And) {
             self.bump();
             let rhs = self.parse_comparison()?;
             let start = expr_span(&lhs).byte_start;
             let end = expr_span(&rhs).byte_end;
             lhs = SurfaceExpr::Operator {
-                op: crate::operators::OperatorKind::Logical(crate::operators::LogicalOp::And),
+                op,
                 args: vec![lhs, rhs],
                 span: SourceSpan::new(self.file, start, end),
             };
@@ -890,28 +909,7 @@ impl<'a> Parser<'a> {
 
     fn parse_comparison(&mut self) -> Result<SurfaceExpr, Diagnostic> {
         let lhs = self.parse_additive()?;
-        let op = match &self.peek().kind {
-            TokenKind::EqEq => Some(crate::operators::OperatorKind::Comparison(
-                crate::operators::ComparisonOp::Eq,
-            )),
-            TokenKind::NotEq => Some(crate::operators::OperatorKind::Comparison(
-                crate::operators::ComparisonOp::Ne,
-            )),
-            TokenKind::Lt => Some(crate::operators::OperatorKind::Comparison(
-                crate::operators::ComparisonOp::Lt,
-            )),
-            TokenKind::Le => Some(crate::operators::OperatorKind::Comparison(
-                crate::operators::ComparisonOp::Le,
-            )),
-            TokenKind::Gt => Some(crate::operators::OperatorKind::Comparison(
-                crate::operators::ComparisonOp::Gt,
-            )),
-            TokenKind::Ge => Some(crate::operators::OperatorKind::Comparison(
-                crate::operators::ComparisonOp::Ge,
-            )),
-            _ => None,
-        };
-        if let Some(op) = op {
+        if let Some(op) = binary_op_at_level(&self.peek().kind, BinaryOpLevel::Comparison) {
             self.bump();
             let rhs = self.parse_additive()?;
             let start = expr_span(&lhs).byte_start;
@@ -928,16 +926,7 @@ impl<'a> Parser<'a> {
 
     fn parse_additive(&mut self) -> Result<SurfaceExpr, Diagnostic> {
         let mut lhs = self.parse_term()?;
-        loop {
-            let op = match &self.peek().kind {
-                TokenKind::Plus => {
-                    crate::operators::OperatorKind::Arithmetic(crate::operators::ArithmeticOp::Add)
-                }
-                TokenKind::Minus => {
-                    crate::operators::OperatorKind::Arithmetic(crate::operators::ArithmeticOp::Sub)
-                }
-                _ => break,
-            };
+        while let Some(op) = binary_op_at_level(&self.peek().kind, BinaryOpLevel::Additive) {
             self.bump();
             let rhs = self.parse_term()?;
             let start = expr_span(&lhs).byte_start;
@@ -953,16 +942,7 @@ impl<'a> Parser<'a> {
 
     fn parse_term(&mut self) -> Result<SurfaceExpr, Diagnostic> {
         let mut lhs = self.parse_pipe()?;
-        loop {
-            let op = match &self.peek().kind {
-                TokenKind::Star => {
-                    crate::operators::OperatorKind::Arithmetic(crate::operators::ArithmeticOp::Mul)
-                }
-                TokenKind::Slash => {
-                    crate::operators::OperatorKind::Arithmetic(crate::operators::ArithmeticOp::Div)
-                }
-                _ => break,
-            };
+        while let Some(op) = binary_op_at_level(&self.peek().kind, BinaryOpLevel::Multiplicative) {
             self.bump();
             let rhs = self.parse_pipe()?;
             let start = expr_span(&lhs).byte_start;

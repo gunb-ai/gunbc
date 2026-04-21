@@ -79,6 +79,24 @@ pub mod operators {
     pub use generated::{algebra_field_name, from_symbol, symbol};
 }
 
+/// SG-2c-1 grammar-tables prototype. Authority: `src/v3/compiler/parse_tables.dag`.
+/// The generated Rust projection is emitted by `regen_parse_tables` and consumed
+/// from `parse_parser_body.txt` so the per-precedence-level parser functions no
+/// longer open-code the token → `OperatorKind` match. Full parser authority (SG-2c
+/// proper) is blocked on recursive list-body emission over `List<Token>`; see
+/// `parse_tables.dag` header for the dissolution trigger.
+pub mod parse_tables {
+    #![allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if
+    )]
+
+    include!("parse_tables_generated.rs");
+}
+
 /// Cost lens. The authority lives in `src/v3/lenses/complexity.dag`;
 /// the Rust projection is auto-emitted into
 /// `src/v3/compiler/src/lens_cost_generated.rs` and re-exported here
