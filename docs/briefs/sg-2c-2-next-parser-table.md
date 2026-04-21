@@ -13,7 +13,7 @@ PR #611 (SG-2c-1) proved the pattern: extract a parser-owned table from `parse_p
 - `src/v3/compiler/parse_tables.dag` — existing authority; extend in the same shape.
 - `src/v3/compiler/src/parse_tables_generated.rs` — generated projection; SG-2c-2 extends.
 - `src/v3/compiler/src/bin/regen_parse_tables.rs` — regen pattern.
-- `src/v3/compiler/tests/integration/sg2_parse_authority_test.rs` — the ratchet pattern for parser authority.
+- `src/v3/compiler/tests/integration/sg2c1_parse_tables_authority_test.rs` — the SG-2c-1 parse-tables ratchet pattern. **This is the template SG-2c-2 should extend**. (Not `sg2_parse_authority_test.rs` — that's the older parser-staging authority test from #589, different scope.)
 
 ## Candidate tables (worker picks ONE)
 
@@ -42,7 +42,7 @@ Follows the SG-2c-1 template:
 
 4. **Wire the live parser** in `parse_parser_body.txt` to consume the generated table instead of its inline data. Preserve parser behavior bit-identically.
 
-5. **Extend the ratchet test** (`sg2_parse_authority_test.rs`) to cover the new table — structural snapshot or field-count check, matching the SG-2c-1 pattern.
+5. **Extend the ratchet test** (`sg2c1_parse_tables_authority_test.rs`) to cover the new table — structural snapshot or field-count check, matching the SG-2c-1 pattern already in that file.
 
 6. **Verify** parse corpus output is bit-identical. Parse-side integration tests (`real_stdlib_parse_smoke`, `sg0_census`, etc.) all green.
 
