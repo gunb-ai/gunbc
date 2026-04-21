@@ -45,6 +45,19 @@ type OperatorRealization {
   cost: Int
 }
 
+// 🟢 TERMINAL. Per-target rendered symbols for the Bool-monomorphic
+// logical connectives. `OperatorRealization` above is keyed by a
+// substrate algebra-field declaration (e.g. `int_add`); logical
+// conjunction/disjunction do not dispatch through a Bool algebra
+// today and so have no algebra-field anchor for that carrier.
+// Authored per target as a flat record so emitters read the rendered
+// symbol from spec rather than branching on a target enum.
+type LogicalOperatorCarrier {
+  language: DeclarationRef
+  and_symbol: String
+  or_symbol: String
+}
+
 type BehaviorRealization {
   language: DeclarationRef
   target: DeclarationRef
