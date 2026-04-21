@@ -28,6 +28,7 @@ import v3.std.clean_emission {
   CorrectionStyle, PostEmitVerifier,
   VerifierOutputPolicy, RequireEmptyStdout
 }
+import std.algebra { BooleanAlgebra }
 import std.list { List }
 import v3.compiler.runtime_mirrors {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
@@ -820,6 +821,22 @@ data go_int_ge: OperatorRealization = {
   target: Int
   op: OrderedRing.ge
   carrier: ">="
+  cost: 1
+}
+
+data go_bool_meet: OperatorRealization = {
+  language: go_language
+  target: Bool
+  op: BooleanAlgebra.meet
+  carrier: "&&"
+  cost: 1
+}
+
+data go_bool_join: OperatorRealization = {
+  language: go_language
+  target: Bool
+  op: BooleanAlgebra.join
+  carrier: "||"
   cost: 1
 }
 

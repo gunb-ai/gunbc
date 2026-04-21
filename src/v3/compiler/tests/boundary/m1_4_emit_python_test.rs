@@ -49,6 +49,16 @@ fn emit_python_module_from_source(source: &str, file_name: &str) -> String {
 }
 
 #[test]
+fn emit_python_bool_logical_ops_use_keyword_carriers() {
+    let src = "fn f(a: Bool, b: Bool, c: Bool) -> Bool = a && b || c\n";
+    let out = emit_python_module_from_source(src, "bool_logic_py.v3");
+    assert!(
+        out.contains(" and ") && out.contains(" or "),
+        "expected Python `and` / `or` from Bool OperatorRealization rows; got:\n{out}"
+    );
+}
+
+#[test]
 fn emit_python_wrappers_match_shared_entrypoint() {
     let program_source = "\
 fn double(x: Int) -> Int = x + x

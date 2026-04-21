@@ -60,7 +60,7 @@ pub fn algebra_field_name(p0: OperatorKind) -> String {
         OperatorKind::Comparison(ComparisonOp::Le) => String::from("le"),
         OperatorKind::Comparison(ComparisonOp::Gt) => String::from("gt"),
         OperatorKind::Comparison(ComparisonOp::Ge) => String::from("ge"),
-        OperatorKind::Logical(LogicalOp::And) => String::from("and"),
-        OperatorKind::Logical(LogicalOp::Or) => String::from("or"),
+        OperatorKind::Logical(LogicalOp::And) => String::from("meet"),
+        OperatorKind::Logical(LogicalOp::Or) => String::from("join"),
     }
 }

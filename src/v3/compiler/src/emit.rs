@@ -57,6 +57,7 @@ use crate::dag::{
     Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective, ValueBody,
 };
+use crate::infer::strip_refinement_to_base;
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
     variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup,
@@ -1133,29 +1134,14 @@ impl<'a> Ctx<'a> {
                 t.inputs.len()
             )));
         }
-        // Logical operators are Bool-monomorphic and do not dispatch
-        // through a Bool algebra today — render the symbol directly.
-        // Go uses `&&` / `||`; same as the source surface.
-        if let OperatorKind::Logical(logical_op) = op {
-            let symbol = match logical_op {
-                crate::dag::LogicalOp::And => "&&",
-                crate::dag::LogicalOp::Or => "||",
-            };
-            let lhs = self.render_port(t.inputs[0], locals)?;
-            let rhs = self.render_port(t.inputs[1], locals)?;
-            return Ok(render_named_template(
-                &self.indexes.syntax.expressions.binary_op,
-                &[("lhs", &lhs), ("op", symbol), ("rhs", &rhs)],
-            ));
-        }
         let operand_type = primitive_type_id_for_port(self.dag, t.inputs[0])?;
         let op_decl = algebra_field_for_operator(self.dag, operand_type, op)?;
-        let carrier = self.indexes.operators.get(&(operand_type, op_decl)).ok_or(
-            EmitError::MissingOperatorRealization {
-                target: operand_type,
-                op: op_decl,
-            },
-        )?;
+        let carrier =
+            operator_carrier_realization(&self.indexes.operators, self.dag, operand_type, op_decl)
+                .ok_or(EmitError::MissingOperatorRealization {
+                    target: operand_type,
+                    op: op_decl,
+                })?;
         let lhs = self.render_port(t.inputs[0], locals)?;
         let rhs = self.render_port(t.inputs[1], locals)?;
         Ok(render_named_template(
@@ -2938,6 +2924,57 @@ fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, 
     ))
 }
 
+/// Peel named empty `Instantiation` chains (`type MyBool = Bool` → `Bool`).
+///
+/// Used **only after** refinement stripping and **only as a fallback** in
+/// [`operator_carrier_realization`]: kernel types like `Int` are also named
+/// `Instantiation` rows, so the peeled id must not replace the surface key when
+/// the direct lookup succeeds.
+pub(crate) fn operator_realization_lookup_type(
+    dag: &Dag,
+    mut current: DeclarationId,
+) -> DeclarationId {
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &decl.connective
+        else {
+            break;
+        };
+        if !(decl.name.is_some() && arguments.is_empty() && *template != current) {
+            break;
+        }
+        current = *template;
+    }
+    current
+}
+
+/// Operand-side lookup for [`crate::operators`] realization keys. Strips
+/// refinements via [`crate::infer::strip_refinement_to_base`] (same rule as
+/// `resolve_operator_arrow`) before optional named-alias peeling.
+pub(crate) fn operator_carrier_realization<'a>(
+    operators: &'a HashMap<(DeclarationId, DeclarationId), String>,
+    dag: &Dag,
+    primitive_operand_decl: DeclarationId,
+    op_decl: DeclarationId,
+) -> Option<&'a String> {
+    let stripped = strip_refinement_to_base(dag, primitive_operand_decl);
+    let peeled = operator_realization_lookup_type(dag, stripped);
+    let mut prev: Option<DeclarationId> = None;
+    for candidate in [primitive_operand_decl, stripped, peeled] {
+        if prev == Some(candidate) {
+            continue;
+        }
+        prev = Some(candidate);
+        if let Some(carrier) = operators.get(&(candidate, op_decl)) {
+            return Some(carrier);
+        }
+    }
+    None
+}
+
 fn walk_to_disj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
     let mut current = start;
     for _ in 0..32 {
@@ -2978,12 +3015,19 @@ fn algebra_field_for_operator(
 fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
     let mut current = start;
     for _ in 0..32 {
-        match &dag.declaration(current).connective {
+        let decl = dag.declaration(current);
+        match &decl.connective {
             TypeConnective::Conj { .. } => return Some(current),
             TypeConnective::Instantiation { template, .. } => current = *template,
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
-            _ => return None,
+            _ => {
+                if let Some(inh) = decl.inhabits {
+                    current = inh;
+                } else {
+                    return None;
+                }
+            }
         }
     }
     None

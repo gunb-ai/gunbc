@@ -464,7 +464,7 @@ fn test_3a3_narrowed_already_refined_param_preserves_outer_refinement() {
     // operand positions — otherwise the literal `10` would be typed
     // as `Int where d != 0` (the mirrored lhs carrier) and fail
     // discharge before narrowing ever runs. See
-    // `strip_refinement_to_base` in `infer.rs`.
+    // `infer::strip_refinement_to_base` (also used by emit carrier lookup).
     let src = "fn div(n: Int, d: Int where d != 0) -> Int = n\n\
                fn caller(n: Int, d: Int where d != 0) -> Int = \
                  if d > 10 then div(n, d) else 0";

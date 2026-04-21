@@ -58,6 +58,11 @@ pub mod parse_surface {
 
 pub use regen_bootstrap_emit::{render_bootstrap_generated_rs, render_bootstrap_std_generated_rs};
 
+/// Operator symbols and `algebra_field_name` projections.
+///
+/// **Single authority:** `src/v3/compiler/operators.dag` → `operators_generated.rs`
+/// (see the generated file header; do not add a parallel hand-written
+/// `operators.rs` — reviewers sometimes misread the crate layout that way).
 pub mod operators {
     pub use crate::dag::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 
@@ -711,6 +716,10 @@ pub(crate) mod infer_helpers {
 
 pub mod lens_idempotency;
 pub mod lens_parallelism;
+// Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
+// `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs` (see `tokenize.rs`),
+// `parse_parser_body.txt` → `regen_parse` → `parse_generated.rs` (`parse` module),
+// then hand-authored `lower.rs` consumes `parse::SurfaceItem` (including `inhabits`).
 mod lower;
 #[path = "parse_generated.rs"]
 mod parse;

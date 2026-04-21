@@ -212,6 +212,7 @@ pub enum SurfaceItem {
         name: String,
         type_params: Vec<String>,
         variants: Vec<SurfaceVariant>,
+        inhabits: Option<SurfaceType>,
         span: SourceSpan,
     },
     TypeAlias {
@@ -746,9 +747,24 @@ impl<'a> Parser<'a> {
                     span: SourceSpan::new(self.file, type_kw.span.byte_start, close.span.byte_end),
                 })
             }
+            TokenKind::Ident(ref s) if s == "inhabits" => {
+                let clause_start = self.peek().span.byte_start;
+                self.bump();
+                let inhabits = self.parse_type_expr()?;
+                let eq = self.expect_kind(TokenKind::Eq)?;
+                let inhabits_clause_span =
+                    SourceSpan::new(self.file, clause_start, eq.span.byte_end);
+                self.parse_type_rhs_after_eq(
+                    name,
+                    type_params,
+                    type_kw.span,
+                    Some(inhabits),
+                    Some(inhabits_clause_span),
+                )
+            }
             TokenKind::Eq => {
                 self.bump();
-                self.parse_type_rhs_after_eq(name, type_params, type_kw.span)
+                self.parse_type_rhs_after_eq(name, type_params, type_kw.span, None, None)
             }
             _ => Ok(SurfaceItem::TypeAtom {
                 name,
@@ -820,8 +836,21 @@ impl<'a> Parser<'a> {
         name: String,
         type_params: Vec<String>,
         type_kw_span: SourceSpan,
+        inhabits: Option<SurfaceType>,
+        inhabits_clause_span: Option<SourceSpan>,
     ) -> Result<SurfaceItem, Diagnostic> {
         if !self.rhs_is_sum() {
+            if inhabits.is_some() {
+                return Err(Diagnostic::ParseError {
+                    message: String::from(
+                        "`inhabits` is only supported when the type RHS is a sum (`A | B | ...`)",
+                    ),
+                    span: inhabits_clause_span
+                        .clone()
+                        .unwrap_or_else(|| type_kw_span.clone()),
+                    fixes: Vec::new(),
+                });
+            }
             let target = self.parse_type_expr()?;
             let mut end = target.span().byte_end;
             if matches!(self.peek().kind, TokenKind::KwWhere) {
@@ -844,6 +873,7 @@ impl<'a> Parser<'a> {
             name,
             type_params,
             variants,
+            inhabits,
             span: SourceSpan::new(self.file, type_kw_span.byte_start, end),
         })
     }
@@ -851,8 +881,10 @@ impl<'a> Parser<'a> {
     /// Consume a `where constraint1(args), constraint2(args)` clause
     /// and return the final byte offset. The clause ends at the next
     /// top-level item keyword (`let`/`fn`/`type`/`data`/`module`/
-    /// `import`) or EOF. Refinement predicates land in M2+; at M1(2.6)
-    /// we drop them after consuming their tokens.
+    /// `import`) or EOF — not at [`TokenKind::Ident`] spelling `inhabits`,
+    /// which can appear as a variant/field label inside the skipped span.
+    /// Refinement predicates land in M2+; at M1(2.6) we drop them after
+    /// consuming their tokens.
     fn skip_where_clause(&mut self) -> Result<u32, Diagnostic> {
         let where_kw = self.expect_kind(TokenKind::KwWhere)?;
         let mut end = where_kw.span.byte_end;
@@ -889,6 +921,16 @@ impl<'a> Parser<'a> {
     /// Lookahead: after `=`, is the RHS a sum (contains `|` at top level before
     /// the next item boundary)? Tracks paren/brace depth so a `|` inside a
     /// payload list doesn't confuse the scan.
+    ///
+    /// Do **not** treat [`TokenKind::Ident`] `inhabits` as an item boundary: it
+    /// can spell a sum variant / record field (see [`Self::parse_field_label`],
+    /// [`Self::parse_variant`]).
+    ///
+    /// [`TokenKind::KwType`] is likewise accepted as a variant/field spelling,
+    /// but it also begins every top-level `type` declaration. Whitespace is
+    /// not tokenized, so distinguish `type | …` (variant label) from
+    /// `type Name =` / `type Name<` / `type Name inhabits` (next decl) via a
+    /// two-token lookahead when depth is zero.
     fn rhs_is_sum(&self) -> bool {
         let mut i = self.pos;
         let mut depth: i32 = 0;
@@ -904,9 +946,24 @@ impl<'a> Parser<'a> {
                     depth -= 1;
                 }
                 TokenKind::Pipe if depth == 0 => return true,
+                TokenKind::KwType if depth == 0 => {
+                    let next = self.tokens.get(i + 1).map(|t| &t.kind);
+                    let next2 = self.tokens.get(i + 2).map(|t| &t.kind);
+                    let next_decl = match (next, next2) {
+                        (Some(TokenKind::Ident(_)), Some(TokenKind::Eq | TokenKind::Lt)) => true,
+                        (Some(TokenKind::Ident(_)), Some(TokenKind::Ident(s)))
+                            if s == "inhabits" =>
+                        {
+                            true
+                        }
+                        _ => false,
+                    };
+                    if next_decl {
+                        return false;
+                    }
+                }
                 TokenKind::KwLet
                 | TokenKind::KwFn
-                | TokenKind::KwType
                 | TokenKind::KwData
                 | TokenKind::KwModule
                 | TokenKind::KwImport
@@ -936,6 +993,7 @@ impl<'a> Parser<'a> {
         let name_token = self.bump().clone();
         let name = match &name_token.kind {
             TokenKind::Ident(n) => n.clone(),
+            TokenKind::KwType => String::from("type"),
             other => {
                 return Err(Diagnostic::ParseError {
                     message: format!("expected variant name, got {other:?}"),

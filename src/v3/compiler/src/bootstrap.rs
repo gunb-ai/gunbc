@@ -30,7 +30,7 @@
 // go through. A failed bootstrap is visible to callers without a
 // side channel.
 
-use crate::dag::{ArrowBody, Dag, DeclarationId, TypeConnective};
+use crate::dag::{ArrowBody, Dag, Declaration, DeclarationId, TemplateArgument, TypeConnective};
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lower::{collect_symbols_phase, lower_bodies_phase, resolve_pending_identifiers};
 use crate::parse::{parse, SurfaceModule};
@@ -191,6 +191,89 @@ fn load_fixtures(dag: &mut Dag, fixtures: &[(&str, &str)]) {
     }
 
     resolve_pending_identifiers(dag);
+    patch_kernel_bool_boolean_algebra_inhabits(dag);
+}
+
+/// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).
+///
+/// `dsl/std/types.dag` must stay free of `inhabits` so v2 can parse every
+/// `dsl/` file. After the std fixtures lower, wire `Bool` to
+/// `BooleanAlgebra<Bool>` the same way surface `inhabits` lowering would,
+/// without shadowing `Bool` (which would reallocate sum variants and break
+/// `src/v3/std/algebra.dag` pattern wiring).
+///
+/// Preconditions are checked: any failure attaches a bootstrap
+/// `Diagnostic::ResolveError` via `Dag::attach_diagnostic` so compilation
+/// fails closed instead of silently omitting `inhabits`.
+///
+/// **Dissolution:** remove this patch once the v2 compiler surface accepts
+/// `type … inhabits … =` in `dsl/` (then express
+/// `type Bool inhabits BooleanAlgebra<Bool> = True | False` in
+/// `dsl/std/types.dag` and delete `patch_kernel_bool_boolean_algebra_inhabits`).
+fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
+    const BOOL_TYPES_FILE: &str = "dsl/std/types.dag";
+    let Some(bool_decl) = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("Bool") && d.span.file == BOOL_TYPES_FILE)
+    else {
+        dag.attach_diagnostic(Diagnostic::ResolveError {
+            name: format!(
+                "bootstrap: Lane 1e-2b Path A — kernel `Bool` not found in `{BOOL_TYPES_FILE}`; \
+                 cannot set `Declaration.inhabits` for `BooleanAlgebra<Bool>`"
+            ),
+            span: SourceSpan::new(BOOL_TYPES_FILE, 0, 0),
+            fixes: Vec::new(),
+        });
+        return;
+    };
+    let bool_id = bool_decl.id;
+    let span_for_inst = bool_decl.span.clone();
+    if dag.declaration(bool_id).inhabits.is_some() {
+        return;
+    }
+    let (ba_template, param_id) = {
+        let Some(ba) = dag.declaration_by_name("BooleanAlgebra") else {
+            dag.attach_diagnostic(Diagnostic::ResolveError {
+                name: "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` not present in the \
+                       bootstrap Dag; cannot wire kernel `Bool` `inhabits`"
+                    .to_string(),
+                span: span_for_inst.clone(),
+                fixes: Vec::new(),
+            });
+            return;
+        };
+        let Some(&param_id) = ba.type_params.first() else {
+            dag.attach_diagnostic(Diagnostic::ResolveError {
+                name: "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` has no type parameters; \
+                       cannot instantiate `BooleanAlgebra<Bool>` for kernel `Bool` `inhabits`"
+                    .to_string(),
+                span: span_for_inst.clone(),
+                fixes: Vec::new(),
+            });
+            return;
+        };
+        (ba.id, param_id)
+    };
+    let inst_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: inst_id,
+        name: None,
+        connective: TypeConnective::Instantiation {
+            template: ba_template,
+            arguments: vec![TemplateArgument {
+                parameter: param_id,
+                value: bool_id,
+            }],
+        },
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span: span_for_inst,
+    });
+    dag.declaration_mut(bool_id).inhabits = Some(inst_id);
 }
 
 // DB-14 substrate accessors (`port` / `node` / `resolve_producer`) are
@@ -467,6 +550,46 @@ mod tests {
                         && span.file == PIPELINE_AUTHORITY_FILE
             )),
             "malformed pipeline authority should fail closed with a diagnostic"
+        );
+    }
+
+    #[test]
+    fn kernel_bool_path_a_attaches_diagnostic_when_boolean_algebra_unresolvable() {
+        let mut dag = Dag::new();
+        assert!(
+            dag.diagnostics().is_empty(),
+            "production bootstrap should satisfy Path A preconditions: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+
+        let bool_id = dag
+            .declaration_by_name("Bool")
+            .expect("kernel Bool from std")
+            .id;
+        dag.declaration_mut(bool_id).inhabits = None;
+
+        let ba_id = dag
+            .declaration_by_name("BooleanAlgebra")
+            .expect("BooleanAlgebra from std")
+            .id;
+        dag.declaration_mut(ba_id).name = Some("__test_hidden_BooleanAlgebra".to_string());
+
+        super::patch_kernel_bool_boolean_algebra_inhabits(&mut dag);
+
+        assert!(
+            dag.declaration(bool_id).inhabits.is_none(),
+            "inhabits must stay unset when the patch cannot complete"
+        );
+        assert!(
+            dag.diagnostics().iter().any(|(_, diag)| {
+                matches!(
+                    diag,
+                    Diagnostic::ResolveError { name, .. }
+                        if name.contains("Lane 1e-2b Path A") && name.contains("BooleanAlgebra")
+                )
+            }),
+            "expected bootstrap Path A diagnostic, got {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
         );
     }
 }

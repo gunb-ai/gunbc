@@ -44,6 +44,32 @@ fn emit_module(source: &str) -> String {
 }
 
 #[test]
+fn emit_rust_bool_logical_ops_use_spec_carriers() {
+    let src = "let x: Bool = true && false || true\n";
+    let out = emit(src);
+    assert!(
+        out.contains("&&") && out.contains("||"),
+        "expected Rust `&&` / `||` from Bool OperatorRealization rows; got:\n{out}"
+    );
+}
+
+#[test]
+fn emit_rust_bool_alias_logical_ops_use_base_operator_realization() {
+    // Bool literals type as kernel `Bool`, so exercise `&&` / `||` on `MyBool`
+    // parameters (operand ports carry the alias id while spec rows key `Bool`).
+    let src = "\
+type MyBool = Bool
+fn f(a: MyBool, b: MyBool) -> MyBool = a && b
+fn g(a: MyBool, b: MyBool) -> MyBool = a || b
+";
+    let out = emit_module(src);
+    assert!(
+        out.contains("&&") && out.contains("||"),
+        "expected alias-of-Bool to reuse Bool OperatorRealization carriers; got:\n{out}"
+    );
+}
+
+#[test]
 fn emit_rust_wrappers_match_shared_entrypoint() {
     let program_source = "\
 fn double(x: Int) -> Int = x + x

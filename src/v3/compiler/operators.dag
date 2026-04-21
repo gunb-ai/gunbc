@@ -61,9 +61,13 @@ fn algebra_field_name(op: OperatorKind) -> String =
         Gt => "gt"
         Ge => "ge"
       }
+    // Logical ops map to `BooleanAlgebra` record fields in `dsl/std/algebra.dag`
+    // (`meet` / `join`), not surface spellings `and` / `or`.
+    // Single Rust projection: `operators_generated.rs` (`crate::operators::algebra_field_name`)
+    // — there is no parallel `src/operators.rs` (infer/emit both import this crate only).
     Logical(logical) =>
       match logical {
-        And => "and"
-        Or => "or"
+        And => "meet"
+        Or => "join"
       }
   }

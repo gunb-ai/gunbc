@@ -1,6 +1,7 @@
 use v3_compiler::dag::{FieldValue, TypeConnective, ValueBody};
 use v3_compiler::parse_surface;
 use v3_compiler::Dag;
+use v3_compiler::Diagnostic;
 use v3_compiler::{parse_for_test, tokenize_for_test};
 
 fn find_named(dag: &Dag, name: &str) -> v3_compiler::dag::DeclarationId {
@@ -571,6 +572,7 @@ fn substrate_coproducts_match_runtime_carriers() {
                     String::from("name"),
                     String::from("type_params"),
                     String::from("variants"),
+                    String::from("inhabits"),
                     String::from("span"),
                 ],
             ),
@@ -692,6 +694,137 @@ fn all_target_languages_realize_reflected_surface_types() {
                 "expected `{name}` to have a TypeRealization for language declaration {language:?}"
             );
         }
+    }
+}
+
+#[test]
+fn parse_sum_type_first_variant_may_be_named_inhabits() {
+    let source = "type T = inhabits | Other\n";
+    let tokens = tokenize_for_test(source, "kw_variant_sum.v3").expect("tokenize");
+    let parsed = parse_for_test(&tokens, "kw_variant_sum.v3").expect("parse");
+    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+    assert_eq!(mirrored.items.len(), 1);
+    match &mirrored.items[0] {
+        parse_surface::SurfaceItem::TypeSum { name, variants, .. } => {
+            assert_eq!(name, "T");
+            assert_eq!(variants.len(), 2);
+            assert_eq!(variants[0].name, "inhabits");
+            assert_eq!(variants[1].name, "Other");
+        }
+        other => panic!("expected TypeSum, got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_sum_type_first_variant_may_be_named_type_keyword() {
+    let source = "type T = type | Other\n";
+    let tokens = tokenize_for_test(source, "kw_type_variant_sum.v3").expect("tokenize");
+    let parsed = parse_for_test(&tokens, "kw_type_variant_sum.v3").expect("parse");
+    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+    assert_eq!(mirrored.items.len(), 1);
+    match &mirrored.items[0] {
+        parse_surface::SurfaceItem::TypeSum { name, variants, .. } => {
+            assert_eq!(name, "T");
+            assert_eq!(variants.len(), 2);
+            assert_eq!(variants[0].name, "type");
+            assert_eq!(variants[1].name, "Other");
+        }
+        other => panic!("expected TypeSum, got {other:?}"),
+    }
+}
+
+/// Regression: `type … inhabits … =` is v3 surface-only (std `types.dag` stays
+/// v2-shaped); this pins the parser + `rhs_is_sum` lookahead for the clause.
+#[test]
+fn parse_type_inhabits_clause_with_parameterized_algebra_and_sum_rhs() {
+    let source = concat!(
+        "type Widget<T> inhabits AlgebraExpr<T> = ",
+        "Leaf | Node { left: Widget<T>; right: Widget<T> }\n",
+    );
+    let tokens =
+        tokenize_for_test(source, "inhabits_sum_surface.v3").expect("tokenize inhabits sum");
+    let parsed = parse_for_test(&tokens, "inhabits_sum_surface.v3").expect("parse inhabits sum");
+    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+    assert_eq!(mirrored.items.len(), 1);
+    match &mirrored.items[0] {
+        parse_surface::SurfaceItem::TypeSum {
+            name,
+            type_params,
+            variants,
+            inhabits,
+            ..
+        } => {
+            assert_eq!(name, "Widget");
+            assert_eq!(type_params, &[String::from("T")]);
+            let inh = inhabits
+                .as_ref()
+                .expect("inhabits clause should surface on TypeSum");
+            assert!(matches!(
+                inh,
+                parse_surface::SurfaceType::Parameterized { name, args, .. }
+                    if name == "AlgebraExpr"
+                        && args.len() == 1
+                        && matches!(&args[0], parse_surface::SurfaceType::Named { name, .. } if name == "T")
+            ));
+            assert_eq!(variants.len(), 2);
+            assert_eq!(variants[0].name, "Leaf");
+            assert_eq!(variants[1].name, "Node");
+            assert!(matches!(
+                &variants[1].payload,
+                parse_surface::VariantPayload::Record(fields)
+                    if fields.len() == 2
+                        && fields[0].name == "left"
+                        && fields[1].name == "right"
+            ));
+        }
+        other => panic!("expected TypeSum with inhabits, got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_type_inhabits_clause_rejects_non_sum_rhs() {
+    let source = "type T inhabits Algebra = Int\n";
+    let tokens =
+        tokenize_for_test(source, "inhabits_alias_reject.v3").expect("tokenize inhabits alias");
+    let err = parse_for_test(&tokens, "inhabits_alias_reject.v3")
+        .expect_err("non-sum RHS with inhabits must be rejected");
+    match err {
+        Diagnostic::ParseError { message, .. } => {
+            assert!(
+                message.contains("inhabits") && message.contains("sum"),
+                "unexpected parse diagnostic: {message}"
+            );
+        }
+        other => panic!("expected ParseError, got {other:?}"),
+    }
+}
+
+/// `inhabits` is not in `dag_keyword_set` (shared syntax): it must tokenize as
+/// an ordinary identifier so it can spell a declared type name — distinct from
+/// the `type <Name> inhabits <Ty> = …` clause introducer.
+#[test]
+fn parse_type_declared_name_may_be_inhabits_sum() {
+    let source = "type inhabits = True | False\n";
+    let tokens =
+        tokenize_for_test(source, "type_named_inhabits.v3").expect("tokenize type_named_inhabits");
+    let parsed =
+        parse_for_test(&tokens, "type_named_inhabits.v3").expect("parse type_named_inhabits");
+    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+    assert_eq!(mirrored.items.len(), 1);
+    match &mirrored.items[0] {
+        parse_surface::SurfaceItem::TypeSum {
+            name,
+            variants,
+            inhabits,
+            ..
+        } => {
+            assert_eq!(name, "inhabits");
+            assert!(inhabits.is_none());
+            assert_eq!(variants.len(), 2);
+            assert_eq!(variants[0].name, "True");
+            assert_eq!(variants[1].name, "False");
+        }
+        other => panic!("expected TypeSum, got {other:?}"),
     }
 }
 

@@ -104,6 +104,17 @@ fn go_stdout(source: &str) -> Option<String> {
     Some(String::from_utf8_lossy(&run.stdout).trim().to_string())
 }
 
+#[test]
+fn emit_go_bool_logical_ops_use_spec_carriers() {
+    let source = "let x: Bool = true && false || true\n";
+    let dag = compile_to_dag(source, "bool_logic_go.v3").expect("compiles");
+    let rendered = emit(&dag, EmitTarget::Go).expect("emits go").text;
+    assert!(
+        rendered.contains("&&") && rendered.contains("||"),
+        "expected Go `&&` / `||` from Bool OperatorRealization rows; got:\n{rendered}"
+    );
+}
+
 // The unused_parameters lens uses recursive helpers (e.g. walk_steps,
 // expand_frontier_list, behavior_result_port) which v3 lowers to
 // `Behavior::Loop`. emit_go does not yet emit Loop — it now

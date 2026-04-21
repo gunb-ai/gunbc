@@ -82,7 +82,7 @@ else
   fi
 fi
 
-# Parse lines of shape:  test foo::bar_baz ... ok <0.123s>
+# Parse lines of shape:  test foo::bar_baz ... ok <0.123s>  (fraction optional, e.g. <2s>)
 # report-time normalizes to `<N.NNNs>`. POSIX awk (BSD on macOS,
 # gawk on Ubuntu CI) lacks the `match(s, r, arr)` submatch form, so
 # extract via field indexing: `$1=="test", $2=name, $3="...", $4=status, $5=<time>`.
@@ -92,20 +92,43 @@ fi
 # can **fail closed** when zero test-result lines were parsed — protects
 # against silent false-green if libtest output drifts (the format is
 # explicitly unstable, rust-lang/rust#64888).
-awk_output=$(awk -v budget_ms="$budget_ms" '
-  /^test[[:space:]]+[^ ]+[[:space:]]+\.\.\.[[:space:]]+(ok|FAILED)[[:space:]]+<[0-9]+\.[0-9]+s>$/ {
+#
+# Normalize captured CI logs: GitHub Actions sets `CARGO_TERM_COLOR=always`
+# at the workflow level, and libtest lines can theoretically pick up leading
+# ANSI escapes or CRLF line endings depending on how the stream is tee'd.
+# Strip those before matching the `^test ... <N.NNNs>$` shape.
+if command -v perl >/dev/null 2>&1; then
+  awk_input() {
+    # `set -o pipefail` is enabled for this script: if `perl` exits non-zero
+    # (IO/regex edge case on a tee'd CI log), fall back to the raw file so the
+    # ratchet still runs instead of aborting before diagnostics.
+    perl -pe 's/\r\n/\n/g; s/\r/\n/g; s/\e\[[0-9;]*m//g' "$log_file" 2>/dev/null || cat "$log_file"
+  }
+else
+  awk_input() {
+    tr -d '\r' <"$log_file"
+  }
+fi
+awk_output=$(awk_input | awk -v budget_ms="$budget_ms" '
+  /^test[[:space:]]+[^ ]+[[:space:]]+\.\.\.[[:space:]]+(ok|FAILED)[[:space:]]+<[0-9]+(\.[0-9]*)?s>$/ {
     parsed_count++
     name = $2
     timestr = $NF
-    # timestr looks like "<1.234s>" — strip brackets and the "s" suffix.
+    # timestr looks like "<1.234s>" or "<2s>" — strip brackets and the "s" suffix.
     gsub(/[<>s]/, "", timestr)
     n = split(timestr, parts, ".")
-    if (n != 2) next
-    whole = parts[1] + 0
-    frac = parts[2]
-    while (length(frac) < 3) frac = frac "0"
-    frac = substr(frac, 1, 3)
-    elapsed_ms = whole * 1000 + (frac + 0)
+    if (n == 1) {
+      whole = parts[1] + 0
+      frac_ms = 0
+    } else if (n == 2) {
+      whole = parts[1] + 0
+      frac = parts[2]
+      while (length(frac) < 3) frac = frac "0"
+      frac_ms = substr(frac, 1, 3) + 0
+    } else {
+      next
+    }
+    elapsed_ms = whole * 1000 + frac_ms
     if (elapsed_ms > budget_ms) {
       printf "%s\t%d\n", name, elapsed_ms
     }
@@ -113,7 +136,7 @@ awk_output=$(awk -v budget_ms="$budget_ms" '
   END {
     printf "__PARSED_COUNT=%d\n", parsed_count
   }
-' "$log_file")
+')
 
 parsed_count=$(printf '%s\n' "$awk_output" | awk -F= '/^__PARSED_COUNT=/ {print $2}')
 violations=$(printf '%s\n' "$awk_output" | awk '!/^__PARSED_COUNT=/ {print}' | awk 'NF')
@@ -130,7 +153,7 @@ echo "Parsed ${parsed_count} test-result lines from timing log."
 # after it is a comment. Blank lines ignored.
 exempt_set=""
 if [ -f "$exempt_file" ]; then
-  exempt_set=$(sed -e 's/#.*$//' -e 's/[[:space:]]*$//' "$exempt_file" | grep -v '^[[:space:]]*$' || true)
+  exempt_set=$(sed -e 's/^[[:space:]]*//' -e 's/#.*$//' -e 's/[[:space:]]*$//' "$exempt_file" | grep -v '^[[:space:]]*$' || true)
 fi
 
 unexpected=""

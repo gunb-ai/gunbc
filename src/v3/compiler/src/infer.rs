@@ -3673,10 +3673,12 @@ const WALK_DEPTH_LIMIT: usize = 32;
 ///
 /// **Not yet covered** (tracked in DOWNSTREAM_REQUIREMENTS.md as
 /// class-5 gaps):
-/// - `Bool`: no structural link from `Classical` to
-///   `BooleanAlgebra`. Requires either `inhabits` surface syntax
-///   and a `logic.dag` edit, or consumption of the
-///   `kernel_algebra_profile` data table.
+/// - `Bool`: ~~no structural link~~ now uses `Declaration.inhabits` on
+///   the kernel `Bool` sum in `dsl/std/types.dag`, populated at bootstrap
+///   (`bootstrap::patch_kernel_bool_boolean_algebra_inhabits`) so v2
+///   keeps a plain `type Bool = True | False` surface. The walk follows
+///   `Declaration.inhabits` when the connective chain hits a `Disj`
+///   without an inline algebra.
 /// - `String` / collection-level algebras whose receiver is
 ///   `FreeMonoid<T>` / `Set<T>` / `Map<K, V>` (the whole
 ///   instantiation, not just `T`): needs a refinement to the
@@ -3730,13 +3732,20 @@ fn resolve_operator_arrow(
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
-            // Terminal non-follow cases — no algebra in this chain.
+            // Terminal connectives: try `Declaration.inhabits` (e.g. Bool
+            // → BooleanAlgebra<Bool>) before giving up.
             TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
             | TypeConnective::Atom(AtomPayload::TypeParam(_))
             | TypeConnective::Atom(AtomPayload::Literal(_))
             | TypeConnective::Disj { .. }
             | TypeConnective::Arrow { .. }
-            | TypeConnective::Cardinality { .. } => break,
+            | TypeConnective::Cardinality { .. } => {
+                if let Some(inh) = decl.inhabits {
+                    current = inh;
+                } else {
+                    break;
+                }
+            }
         }
     }
     // Fallback: Rust-side scaffold bridge for primitives whose
@@ -3770,10 +3779,13 @@ fn resolve_operator_arrow(
 /// refinements are surface-level facts about values, not part of an
 /// operator's arrow contract.
 ///
+/// Also used by [`crate::emit::operator_carrier_realization`] so emit
+/// and infer share one refinement-stripping rule (no drift).
+///
 /// Terminates at the first un-refined declaration OR when the chain
 /// can no longer be followed (any non-ResolvedIdentifier connective).
 /// Depth-bounded by `WALK_DEPTH_LIMIT`.
-fn strip_refinement_to_base(dag: &Dag, decl_id: DeclarationId) -> DeclarationId {
+pub(crate) fn strip_refinement_to_base(dag: &Dag, decl_id: DeclarationId) -> DeclarationId {
     let mut current = decl_id;
     for _ in 0..WALK_DEPTH_LIMIT {
         let decl = dag.declaration(current);
@@ -4351,5 +4363,44 @@ fn declaration_shapes_equivalent(
                     })
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod bool_logical_operator_arrow_tests {
+    use super::*;
+
+    #[test]
+    fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {
+        let dag = Dag::new();
+        let bool_shape = dag.bool_shape().expect("bootstrap Bool");
+        let sig = resolve_operator_arrow(&dag, OperatorKind::Logical(LogicalOp::And), &bool_shape)
+            .expect("&& should resolve on Bool");
+        assert!(
+            !matches!(sig.body, ArrowBody::Pending),
+            "expected Bool && via inhabits → BooleanAlgebra.meet, not Pending scaffold; got {:?}",
+            sig.body
+        );
+        assert_eq!(sig.inputs.len(), 2);
+        assert_eq!(sig.inputs[0].declaration, bool_shape.declaration);
+        assert_eq!(sig.inputs[1].declaration, bool_shape.declaration);
+        assert_eq!(sig.output.declaration, bool_shape.declaration);
+    }
+
+    #[test]
+    fn bool_logical_or_resolves_via_boolean_algebra_join_not_pending_fallback() {
+        let dag = Dag::new();
+        let bool_shape = dag.bool_shape().expect("bootstrap Bool");
+        let sig = resolve_operator_arrow(&dag, OperatorKind::Logical(LogicalOp::Or), &bool_shape)
+            .expect("|| should resolve on Bool");
+        assert!(
+            !matches!(sig.body, ArrowBody::Pending),
+            "expected Bool || via inhabits → BooleanAlgebra.join, not Pending scaffold; got {:?}",
+            sig.body
+        );
+        assert_eq!(sig.inputs.len(), 2);
+        assert_eq!(sig.inputs[0].declaration, bool_shape.declaration);
+        assert_eq!(sig.inputs[1].declaration, bool_shape.declaration);
+        assert_eq!(sig.output.declaration, bool_shape.declaration);
     }
 }

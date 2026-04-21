@@ -8,7 +8,7 @@ import v3.std.substrate {
 import std.list {
   List, empty, singleton, cons, concat, length, is_empty, fold, map, filter, contains
 }
-import std.algebra { OrderedRing }
+import std.algebra { BooleanAlgebra, OrderedRing }
 import v3.std.computation_model {
   TargetExecutionModel, MemoryModel,
   GarbageCollected, LexicalScoping,
@@ -491,6 +491,22 @@ data python_declaration_id_eq: OperatorRealization = {
   target: DeclarationId
   op: OrderedRing.eq
   carrier: "=="
+  cost: 1
+}
+
+data python_bool_meet: OperatorRealization = {
+  language: python_language
+  target: Bool
+  op: BooleanAlgebra.meet
+  carrier: "and"
+  cost: 1
+}
+
+data python_bool_join: OperatorRealization = {
+  language: python_language
+  target: Bool
+  op: BooleanAlgebra.join
+  carrier: "or"
   cost: 1
 }
 

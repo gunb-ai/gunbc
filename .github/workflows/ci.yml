@@ -151,6 +151,11 @@ jobs:
       # `RUSTC_BOOTSTRAP=1` prefix is the documented narrow unlock for libtest flags
       # and does not enable unstable language features.
       - name: v3 tests (full suite, 1200s budget)
+        env:
+          # Keep libtest lines plain for `scripts/check-test-timeout.sh` (Phase-0
+          # ratchet); workflow-level `CARGO_TERM_COLOR=always` would otherwise
+          # inject ANSI into cargo's stream.
+          CARGO_TERM_COLOR: never
         run: |
           start=$(date +%s)
           RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log
@@ -181,8 +186,8 @@ jobs:
       - name: v3 tests (per-test 2s ratchet)
         if: always()
         run: |
-          if [ ! -f /tmp/v3-test-timings.log ]; then
-            echo "::notice::no timing log captured (full-suite step did not reach the cargo test invocation)"
+          if [ ! -s /tmp/v3-test-timings.log ]; then
+            echo "::notice::no timing log captured or log is empty (full-suite step did not reach cargo test, or tee wrote nothing) — skipping per-test ratchet"
             exit 0
           fi
           scripts/check-test-timeout.sh /tmp/v3-test-timings.log
