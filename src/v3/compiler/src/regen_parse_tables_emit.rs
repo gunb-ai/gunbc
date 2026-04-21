@@ -1,7 +1,12 @@
 //! Shared `regen_parse_tables` emission: compile `parse_tables.dag` +
-//! `tokenize.dag`, cross-validate each row against the shared-syntax
-//! operator authority at `dsl/extdeps/languages/dag/syntax.dag`, project
-//! into the SG-2c-1 grammar-tables Rust module, run `rustfmt --emit stdout`.
+//! `tokenize.dag`, cross-validate rows, project into `parse_tables_generated.rs`,
+//! run `rustfmt --emit stdout`.
+//!
+//! **Tables projected.** **SG-2c-1:** `BinaryOpRow` → `binary_op_at_level` (plus
+//! shared-syntax checks below). **SG-2c-2:** `TopLevelItemKwRow.token_variant`
+//! rows → Rust `ItemDispatchKind` + `top_level_item_dispatch` (dispatch labels
+//! derived via `Kw`-strip; validated against `tokenize.dag`'s `TokenKind`).
+//!
 //! Used by the `regen_parse_tables` binary (writes the file) and by the
 //! hermetic integration snapshot test (compare in-memory only — avoids a
 //! `cargo run` subprocess that blows the 2s per-test ratchet on cold CI).
@@ -66,9 +71,12 @@ impl fmt::Display for RenderParseTablesGeneratedError {
     }
 }
 
-/// Compile `parse_tables.dag` and `tokenize.dag`, cross-validate the rows
-/// against `TokenKind` + `operators.dag::from_symbol`, emit the projection,
-/// format with `rustfmt --emit stdout`. Does not read or write workspace paths.
+/// Compile `parse_tables.dag` and `tokenize.dag`, cross-validate rows, emit
+/// `parse_tables_generated.rs`, format with `rustfmt --emit stdout`.
+///
+/// Validation: `BinaryOpRow` vs `tokenize.dag` + `operators.dag` + shared-syntax
+/// `dag_operators`; `TopLevelItemKwRow` vs `tokenize.dag` + `Kw`-strip dispatch
+/// labels (SG-2c-2). Does not read or write workspace paths.
 pub fn render_parse_tables_generated_rs(
     parse_tables_source: &str,
     parse_tables_file: &str,
@@ -84,7 +92,17 @@ pub fn render_parse_tables_generated_rs(
     let levels = collect_variant_labels(&tables_dag, "BinaryOpLevel");
     let rows = collect_binary_op_rows(&tables_dag, &token_variants, &levels, &shared_operators);
 
-    let rust = emit_module(&levels, &rows);
+    // SG-2c-2: Rust `ItemDispatchKind` variants are **only** the unique `Kw`-stripped
+    // labels from `TopLevelItemKwRow` rows below — never
+    // `collect_variant_labels(dag, "ItemDispatchKind")`; `parse_tables.dag` does not
+    // author that coproduct (M7 single authority on `token_variant` rows).
+    let item_kw_rows = collect_top_level_item_kw_rows(&tables_dag, &token_variants);
+    let mut item_dispatch_variants: Vec<String> =
+        item_kw_rows.iter().map(|r| r.dispatch.clone()).collect();
+    item_dispatch_variants.sort_unstable();
+    item_dispatch_variants.dedup();
+
+    let rust = emit_module(&levels, &rows, &item_dispatch_variants, &item_kw_rows);
     let combined = format!("{HEADER}{rust}");
     rustfmt_stdout(&combined).map_err(RenderParseTablesGeneratedError::Rustfmt)
 }
@@ -132,6 +150,14 @@ struct BinaryOpRow {
     token_variant: String,
     operator_symbol: String,
     level: String,
+}
+
+/// Scratch shape for SG-2c-2 emission: `dispatch` is derived from `token_variant`
+/// (`Kw`-strip rule); it is never read from the `.dag` row body (substrate carries
+/// only `token_variant`).
+struct TopLevelItemKwRow {
+    token_variant: String,
+    dispatch: String,
 }
 
 fn collect_binary_op_rows(
@@ -182,7 +208,7 @@ fn collect_binary_op_rows(
         };
         let token_variant = string_field(fields, "token_variant", name);
         let operator_symbol = string_field(fields, "operator_symbol", name);
-        let level = variant_field(fields, "level", level_variants, name);
+        let level = variant_field(fields, "level", level_variants, name, "BinaryOpLevel");
 
         assert!(
             token_variant_set.contains(token_variant.as_str()),
@@ -261,6 +287,86 @@ fn collect_binary_op_rows(
     rows
 }
 
+fn collect_top_level_item_kw_rows(dag: &Dag, token_variants: &[String]) -> Vec<TopLevelItemKwRow> {
+    let token_variant_set: BTreeSet<&str> = token_variants.iter().map(String::as_str).collect();
+
+    let row_type_id = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("TopLevelItemKwRow"))
+        .map(|d| d.id)
+        .expect("TopLevelItemKwRow declaration");
+
+    let mut rows: Vec<TopLevelItemKwRow> = Vec::new();
+    let mut seen_token_variants: BTreeSet<String> = BTreeSet::new();
+    for decl in dag.declarations() {
+        if decl.meta_tag != Some(row_type_id) {
+            continue;
+        }
+        let name = decl.name.as_deref().unwrap_or("<anonymous>");
+        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            panic!(
+                "`parse_tables.dag::{name}`: `TopLevelItemKwRow` binding must carry a structural value body"
+            );
+        };
+        let token_variant = string_field(fields, "token_variant", name);
+
+        assert!(
+            token_variant_set.contains(token_variant.as_str()),
+            "`parse_tables.dag::{name}`: token_variant `{token_variant}` is not a \
+             `TokenKind` variant in `tokenize.dag`"
+        );
+
+        let dispatch = item_dispatch_label_from_kw_token_variant(&token_variant, name);
+
+        assert!(
+            seen_token_variants.insert(token_variant.clone()),
+            "`parse_tables.dag`: duplicate top-level item row for `TokenKind::{token_variant}`"
+        );
+
+        rows.push(TopLevelItemKwRow {
+            token_variant,
+            dispatch,
+        });
+    }
+    rows.sort_by(|a, b| a.token_variant.cmp(&b.token_variant));
+    rows
+}
+
+/// `TopLevelItemKwRow.token_variant` is authoritative; dispatch label is
+/// `strip_prefix("Kw")` — there is no separately authored substrate enum.
+fn item_dispatch_label_from_kw_token_variant(token_variant: &str, decl_name: &str) -> String {
+    let Some(rest) = token_variant.strip_prefix("Kw") else {
+        panic!(
+            "`parse_tables.dag::{decl_name}`: token_variant `{token_variant}` must start with \
+             `Kw` (dispatch label is the remainder; no parallel coproduct in `parse_tables.dag`)"
+        );
+    };
+    assert!(
+        !rest.is_empty(),
+        "`parse_tables.dag::{decl_name}`: token_variant `{token_variant}` has nothing after `Kw`"
+    );
+    assert_dispatch_label_is_rust_identifier(rest, decl_name);
+    // `format!("Kw{rest}") == token_variant` would be tautological after a successful
+    // `strip_prefix("Kw")`; identifier validation above is the substantive guard.
+    rest.to_string()
+}
+
+fn assert_dispatch_label_is_rust_identifier(label: &str, decl_name: &str) {
+    let mut chars = label.chars();
+    let Some(first) = chars.next() else {
+        panic!("`parse_tables.dag::{decl_name}`: empty dispatch label");
+    };
+    assert!(
+        first.is_ascii_alphabetic() || first == '_',
+        "`parse_tables.dag::{decl_name}`: dispatch `{label}` must start with ASCII letter or `_`"
+    );
+    assert!(
+        chars.all(|c| c.is_ascii_alphanumeric() || c == '_'),
+        "`parse_tables.dag::{decl_name}`: dispatch `{label}` must be ASCII identifier characters"
+    );
+}
+
 fn string_field(fields: &[(String, FieldValue)], key: &str, name: &str) -> String {
     match fields.iter().find(|(k, _)| k == key).map(|(_, v)| v) {
         Some(FieldValue::Literal(LiteralBits::String(s))) => s.clone(),
@@ -271,8 +377,9 @@ fn string_field(fields: &[(String, FieldValue)], key: &str, name: &str) -> Strin
 fn variant_field(
     fields: &[(String, FieldValue)],
     key: &str,
-    level_variants: &[Field],
+    variants: &[Field],
     name: &str,
+    type_label: &str,
 ) -> String {
     let fv = fields
         .iter()
@@ -290,13 +397,13 @@ fn variant_field(
         payload.is_empty(),
         "`{name}`: field `{key}` expects a nullary variant"
     );
-    level_variants
+    variants
         .iter()
         .find(|v| v.ty == *constructor)
         .map(|v| v.label.clone())
         .unwrap_or_else(|| {
             panic!(
-                "`{name}`: field `{key}` constructor {constructor:?} is not a BinaryOpLevel variant"
+                "`{name}`: field `{key}` constructor {constructor:?} is not a {type_label} variant"
             )
         })
 }
@@ -349,7 +456,12 @@ fn logical_variant(l: LogicalOp) -> &'static str {
     }
 }
 
-fn emit_module(levels: &[String], rows: &[BinaryOpRow]) -> String {
+fn emit_module(
+    levels: &[String],
+    rows: &[BinaryOpRow],
+    item_dispatch_variants: &[String],
+    item_kw_rows: &[TopLevelItemKwRow],
+) -> String {
     let mut s = String::new();
     s.push_str("use crate::dag::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};\n");
     s.push_str("use crate::tokenize::TokenKind;\n\n");
@@ -378,6 +490,30 @@ fn emit_module(levels: &[String], rows: &[BinaryOpRow]) -> String {
             row.token_variant,
             row.level,
             operator_kind_expr(op)
+        ));
+    }
+    s.push_str("        _ => None,\n");
+    s.push_str("    }\n");
+    s.push_str("}\n\n");
+
+    s.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
+    s.push_str("pub enum ItemDispatchKind {\n");
+    for v in item_dispatch_variants {
+        s.push_str(&format!("    {v},\n"));
+    }
+    s.push_str("}\n\n");
+
+    s.push_str(
+        "/// Top-level item keyword (`parse_item`) → dispatch class.\n\
+         /// `ItemDispatchKind` is emitted from unique `Kw`-stripped labels of\n\
+         /// `TopLevelItemKwRow { token_variant }` rows — not authored as a substrate coproduct.\n",
+    );
+    s.push_str("pub fn top_level_item_dispatch(kind: &TokenKind) -> Option<ItemDispatchKind> {\n");
+    s.push_str("    match kind {\n");
+    for row in item_kw_rows {
+        s.push_str(&format!(
+            "        TokenKind::{} => Some(ItemDispatchKind::{}),\n",
+            row.token_variant, row.dispatch
         ));
     }
     s.push_str("        _ => None,\n");

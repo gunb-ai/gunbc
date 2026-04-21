@@ -11,9 +11,11 @@
 //
 // **What this file is.** The bounded, honest subset of parser
 // authority that DOES fit current `.dag` capabilities: pure
-// declarative tables. Specifically, the binary operator token-to-
-// semantics mapping previously hand-coded across five parser
-// precedence functions in `parse_parser_body.txt`
+// declarative tables: (1) binary operator token-to-semantics mapping
+// (SG-2c-1), and (2) top-level item keyword → `parse_item` dispatch
+// class (SG-2c-2). The binary-operator table replaced hand-coded
+// matches across five parser precedence functions in
+// `parse_parser_body.txt`
 // (`parse_logical_or`, `parse_logical_and`, `parse_comparison`,
 // `parse_additive`, `parse_term`). Those functions now call the
 // generated helper `binary_op_at_level` instead of open-coding the
@@ -35,6 +37,11 @@
 // is produced by `cargo run -p v3-compiler --bin regen_parse_tables`
 // — do not hand-edit it. The freshness ratchet lives in
 // `tests/integration/sg2c1_parse_tables_authority_test.rs`.
+//
+// **Same-PR consumer (E-6).** SG-2c-2 projection `top_level_item_dispatch`
+// / Rust `ItemDispatchKind` (derived from keyword rows only) is consumed by the
+// live parser: `parse_item` in `parse_parser_body.txt` (spliced into
+// `parse_generated.rs` via `regen_parse`).
 
 module v3.compiler.parse_tables
 
@@ -196,4 +203,80 @@ data binary_op_slash: BinaryOpRow = {
   token_variant: "Slash"
   operator_symbol: "/"
   level: Multiplicative
+}
+
+// --- SG-2c-2: top-level item keyword dispatch (`parse_item` in
+// `parse_parser_body.txt`). Each row lists one dedicated keyword
+// `TokenKind` variant. **Substrate authority is only `token_variant`**.
+// Regen emits the Rust projection `ItemDispatchKind` by taking the unique
+// set of `strip_prefix("Kw")` labels from all rows (`KwLet` → `Let`) — there
+// is **no** separate `ItemDispatchKind` coproduct authored here (M7 / one
+// domain, one authority in `parse_tables.dag`).
+//
+// Dispatch classification for top-level item forms — discriminant-only
+// projection keyed by authoritative lexer tokens (join `tokenize.dag`).
+//
+// Dissolution classification: **🟡 YELLOW (scaffold)** per
+// `docs/modeling-discipline.md` §4. Same structural situation as
+// `BinaryOpLevel`: each emitted enum variant is a parser entry coordinate, not a
+// distinct payload algebra; full dissolution rides SG-2c proper (blocked
+// on recursive list-body emission over `List<Token>`).
+//
+// Dissolution ledger (4-pattern check):
+// - **Pattern 1 (fact placement)**: fails. Dispatch keys are coordinate keys for
+//   `parse_*_item` entry points, not relocatable facts.
+// - **Pattern 2 (variant-is-data)**: **passes**: substrate rows are
+//   `token_variant` only; the Rust `ItemDispatchKind` enum is a pure projection
+//   over those strings, not a second `.dag` coproduct.
+// - **Pattern 3 (algebraic form)**: fails. No shared algebra across item forms.
+// - **Pattern 4 (dimensional)**: fails / not applicable (cardinality comes only from
+//   how many `TopLevelItemKwRow` facts exist, not from a substrate enum type).
+//
+// **M7 note:** there is **no** `type ItemDispatchKind` in `parse_tables.dag` — only
+// `TopLevelItemKwRow` rows. Rust `ItemDispatchKind` is regen-only (unique `Kw`-strip
+// labels); not a second authored closed set in substrate.
+//
+// **Named trigger (YELLOW):** dissolve with SG-2c proper when
+// `parse_parser_body.txt` ports to `.dag` list-body recursion.
+
+// Authored fact: which `TokenKind` keyword opens a top-level item (dispatch
+// label for Rust is `token_variant.strip_prefix("Kw")`, validated at regen).
+//
+// **M7 / INVARIANTS (single authority, consumed).** Not a shadow table: regen
+// (`regen_parse_tables_emit::collect_top_level_item_kw_rows` → `emit_module`)
+// validates each row against `tokenize.dag` and emits
+// `parse_tables_generated.rs` (`ItemDispatchKind` + `top_level_item_dispatch`; enum is projection-only).
+// The live parser calls `top_level_item_dispatch` from `parse_item`
+// (`parse_parser_body.txt`, spliced into `parse_generated.rs`). Ratchet:
+// `sg2c1_parse_tables_authority_test` + checked-in generated module snapshot.
+type TopLevelItemKwRow {
+  token_variant: String
+}
+
+// Each row below feeds `collect_top_level_item_kw_rows` → emitted
+// `parse_tables_generated.rs::top_level_item_dispatch`; `parse_item` calls that
+// helper instead of matching `TokenKind::Kw*` — not a duplicate dispatch table.
+
+data top_level_kw_let: TopLevelItemKwRow = {
+  token_variant: "KwLet"
+}
+
+data top_level_kw_fn: TopLevelItemKwRow = {
+  token_variant: "KwFn"
+}
+
+data top_level_kw_type: TopLevelItemKwRow = {
+  token_variant: "KwType"
+}
+
+data top_level_kw_module: TopLevelItemKwRow = {
+  token_variant: "KwModule"
+}
+
+data top_level_kw_import: TopLevelItemKwRow = {
+  token_variant: "KwImport"
+}
+
+data top_level_kw_data: TopLevelItemKwRow = {
+  token_variant: "KwData"
 }

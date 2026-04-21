@@ -79,10 +79,11 @@ pub mod operators {
     pub use generated::{algebra_field_name, from_symbol, symbol};
 }
 
-/// SG-2c-1 grammar-tables prototype. Authority: `src/v3/compiler/parse_tables.dag`.
+/// SG-2c grammar-tables prototype (SG-2c-1 binary ops, SG-2c-2 item-keyword dispatch).
+/// Authority: `src/v3/compiler/parse_tables.dag`.
 /// The generated Rust projection is emitted by `regen_parse_tables` and consumed
-/// from `parse_parser_body.txt` so the per-precedence-level parser functions no
-/// longer open-code the token → `OperatorKind` match. Full parser authority (SG-2c
+/// from `parse_parser_body.txt` so the parser no longer open-codes token → operator
+/// matches or top-level keyword dispatch. Full parser authority (SG-2c
 /// proper) is blocked on recursive list-body emission over `List<Token>`; see
 /// `parse_tables.dag` header for the dissolution trigger.
 pub mod parse_tables {
