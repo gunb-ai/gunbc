@@ -45,7 +45,8 @@ pub fn render_parse_generated_rs(
     runtime_mirrors_file: &str,
     parser_body: &str,
 ) -> Result<String, RenderParseGeneratedError> {
-    let dag = compile_runtime_mirrors_authority_dag(runtime_mirrors_source, runtime_mirrors_file)
+    let _dag =
+        compile_runtime_mirrors_authority_dag(runtime_mirrors_source, runtime_mirrors_file)
         .map_err(|e| RenderParseGeneratedError::Compile(Box::new(e)))?;
     let rust = emit_parse_module(parser_body);
     let combined = format!("{HEADER}{rust}");
