@@ -1570,6 +1570,9 @@ fn lower_item(
             lower_type_record(dag, symbols, name, type_params, fields);
             scope
         }
+        // E-6: `SurfaceItem::TypeSum.inhabits` is not parse-only — `lower_type_sum`
+        // writes `Declaration.inhabits`, then `infer::resolve_operator_arrow` and
+        // emitters' `walk_to_algebra_conj` follow it (Lane 1e-2b / BooleanAlgebra).
         SurfaceItem::TypeSum {
             name,
             type_params,
