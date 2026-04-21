@@ -78,6 +78,7 @@ import v3.std.clean_emission {
   CorrectionStyle, PostEmitVerifier,
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
+import std.algebra { BooleanAlgebra }
 import v3.compiler.runtime_mirrors {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
   VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMatchArm,
@@ -908,6 +909,22 @@ data rust_int_ge: OperatorRealization = {
   target: Int
   op: OrderedRing.ge
   carrier: ">="
+  cost: 1
+}
+
+data rust_bool_meet: OperatorRealization = {
+  language: rust_language
+  target: Bool
+  op: BooleanAlgebra.meet
+  carrier: "&&"
+  cost: 1
+}
+
+data rust_bool_join: OperatorRealization = {
+  language: rust_language
+  target: Bool
+  op: BooleanAlgebra.join
+  carrier: "||"
   cost: 1
 }
 

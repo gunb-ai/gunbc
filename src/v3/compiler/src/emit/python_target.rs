@@ -780,21 +780,6 @@ impl<'a> Ctx<'a> {
                 t.inputs.len()
             )));
         }
-        // Logical operators are Bool-monomorphic and do not dispatch
-        // through a Bool algebra today — render the Python keyword
-        // form directly. `&&` / `||` in source become `and` / `or`.
-        if let OperatorKind::Logical(logical_op) = op {
-            let symbol = match logical_op {
-                crate::dag::LogicalOp::And => "and",
-                crate::dag::LogicalOp::Or => "or",
-            };
-            let lhs = self.render_port(t.inputs[0], locals)?;
-            let rhs = self.render_port(t.inputs[1], locals)?;
-            return Ok(render_named_template(
-                &self.indexes.syntax.binary_op,
-                &[("lhs", &lhs), ("op", symbol), ("rhs", &rhs)],
-            ));
-        }
         let operand_type = primitive_type_id_for_port(self.dag, t.inputs[0])?;
         let op_decl = algebra_field_for_operator(self.dag, operand_type, op)?;
         let carrier = self.indexes.operators.get(&(operand_type, op_decl)).ok_or(
@@ -1959,12 +1944,19 @@ fn algebra_field_for_operator(
 fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
     let mut current = start;
     for _ in 0..32 {
-        match &dag.declaration(current).connective {
+        let decl = dag.declaration(current);
+        match &decl.connective {
             TypeConnective::Conj { .. } => return Some(current),
             TypeConnective::Instantiation { template, .. } => current = *template,
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
-            _ => return None,
+            _ => {
+                if let Some(inh) = decl.inhabits {
+                    current = inh;
+                } else {
+                    return None;
+                }
+            }
         }
     }
     None

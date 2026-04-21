@@ -44,6 +44,16 @@ fn emit_module(source: &str) -> String {
 }
 
 #[test]
+fn emit_rust_bool_logical_ops_use_spec_carriers() {
+    let src = "let x: Bool = true && false || true\n";
+    let out = emit(src);
+    assert!(
+        out.contains("&&") && out.contains("||"),
+        "expected Rust `&&` / `||` from Bool OperatorRealization rows; got:\n{out}"
+    );
+}
+
+#[test]
 fn emit_rust_wrappers_match_shared_entrypoint() {
     let program_source = "\
 fn double(x: Int) -> Int = x + x

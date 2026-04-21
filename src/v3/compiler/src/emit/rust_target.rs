@@ -3309,29 +3309,6 @@ impl<'a> Ctx<'a> {
                 t.inputs.len()
             )));
         }
-        // Logical operators are Bool-monomorphic and do not dispatch
-        // through a Bool algebra today — render the symbol directly.
-        // Rust uses `&&` / `||`; same as the source surface.
-        if let OperatorKind::Logical(logical_op) = op {
-            let symbol = match logical_op {
-                crate::dag::LogicalOp::And => "&&",
-                crate::dag::LogicalOp::Or => "||",
-            };
-            let lhs = self.render_copy_input_use(
-                InputConsumer::Transform(t),
-                InputSlot::Positional(0),
-                locals,
-            )?;
-            let rhs = self.render_copy_input_use(
-                InputConsumer::Transform(t),
-                InputSlot::Positional(1),
-                locals,
-            )?;
-            return Ok(render_named_template(
-                &self.indexes.syntax.expressions.binary_op,
-                &[("lhs", &lhs), ("op", symbol), ("rhs", &rhs)],
-            ));
-        }
         // Resolve the operand type's declaration id by walking the
         // input port's TypeShape through aliases / instantiations.
         let operand_type_id = primitive_type_id_for_port(self.dag, t.inputs[0])?;
@@ -5132,12 +5109,19 @@ fn algebra_field_for_operator(
 fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
     let mut current = start;
     for _ in 0..32 {
-        match &dag.declaration(current).connective {
+        let decl = dag.declaration(current);
+        match &decl.connective {
             TypeConnective::Conj { .. } => return Some(current),
             TypeConnective::Instantiation { template, .. } => current = *template,
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
-            _ => return None,
+            _ => {
+                if let Some(inh) = decl.inhabits {
+                    current = inh;
+                } else {
+                    return None;
+                }
+            }
         }
     }
     None

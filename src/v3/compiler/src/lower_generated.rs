@@ -1574,9 +1574,10 @@ fn lower_item(
             name,
             type_params,
             variants,
+            inhabits,
             ..
         } => {
-            lower_type_sum(dag, symbols, name, type_params, variants);
+            lower_type_sum(dag, symbols, name, type_params, variants, inhabits.as_ref());
             scope
         }
         SurfaceItem::TypeAlias {
@@ -1652,6 +1653,7 @@ fn lower_type_sum(
     name: &str,
     _type_params: &[String],
     variants: &[SurfaceVariant],
+    inhabits: Option<&SurfaceType>,
 ) {
     let decl_id = symbols[name];
     let local = local_scope_from_parent(dag, decl_id);
@@ -1715,6 +1717,10 @@ fn lower_type_sum(
     dag.declaration_mut(decl_id).connective = TypeConnective::Disj {
         variants: variant_fields,
     };
+    if let Some(inh_ty) = inhabits {
+        let inh_id = type_to_declaration_id(inh_ty, symbols, &local, dag);
+        dag.declaration_mut(decl_id).inhabits = Some(inh_id);
+    }
 }
 
 fn lower_type_alias(

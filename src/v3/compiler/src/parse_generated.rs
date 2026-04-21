@@ -212,6 +212,7 @@ pub enum SurfaceItem {
         name: String,
         type_params: Vec<String>,
         variants: Vec<SurfaceVariant>,
+        inhabits: Option<SurfaceType>,
         span: SourceSpan,
     },
     TypeAlias {
@@ -746,9 +747,15 @@ impl<'a> Parser<'a> {
                     span: SourceSpan::new(self.file, type_kw.span.byte_start, close.span.byte_end),
                 })
             }
+            TokenKind::KwInhabits => {
+                self.bump();
+                let inhabits = self.parse_type_expr()?;
+                self.expect_kind(TokenKind::Eq)?;
+                self.parse_type_rhs_after_eq(name, type_params, type_kw.span, Some(inhabits))
+            }
             TokenKind::Eq => {
                 self.bump();
-                self.parse_type_rhs_after_eq(name, type_params, type_kw.span)
+                self.parse_type_rhs_after_eq(name, type_params, type_kw.span, None)
             }
             _ => Ok(SurfaceItem::TypeAtom {
                 name,
@@ -781,6 +788,7 @@ impl<'a> Parser<'a> {
         let name = match name_token.kind {
             TokenKind::Ident(n) => n,
             TokenKind::KwType => "type".to_string(),
+            TokenKind::KwInhabits => "inhabits".to_string(),
             other => {
                 return Err(Diagnostic::ParseError {
                     message: format!("expected field label, got {other:?}"),
@@ -820,8 +828,18 @@ impl<'a> Parser<'a> {
         name: String,
         type_params: Vec<String>,
         type_kw_span: SourceSpan,
+        inhabits: Option<SurfaceType>,
     ) -> Result<SurfaceItem, Diagnostic> {
         if !self.rhs_is_sum() {
+            if inhabits.is_some() {
+                return Err(Diagnostic::ParseError {
+                    message: String::from(
+                        "`inhabits` is only supported when the type RHS is a sum (`A | B | ...`)",
+                    ),
+                    span: type_kw_span.clone(),
+                    fixes: Vec::new(),
+                });
+            }
             let target = self.parse_type_expr()?;
             let mut end = target.span().byte_end;
             if matches!(self.peek().kind, TokenKind::KwWhere) {
@@ -844,6 +862,7 @@ impl<'a> Parser<'a> {
             name,
             type_params,
             variants,
+            inhabits,
             span: SourceSpan::new(self.file, type_kw_span.byte_start, end),
         })
     }
@@ -874,6 +893,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::KwData
                 | TokenKind::KwModule
                 | TokenKind::KwImport
+                | TokenKind::KwInhabits
                     if depth == 0 =>
                 {
                     break;
@@ -910,6 +930,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::KwData
                 | TokenKind::KwModule
                 | TokenKind::KwImport
+                | TokenKind::KwInhabits
                 | TokenKind::KwWhere
                 | TokenKind::Eof
                     if depth == 0 =>

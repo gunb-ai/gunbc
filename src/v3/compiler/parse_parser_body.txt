@@ -547,6 +547,7 @@ impl<'a> Parser<'a> {
         let name = match name_token.kind {
             TokenKind::Ident(n) => n,
             TokenKind::KwType => "type".to_string(),
+            TokenKind::KwInhabits => "inhabits".to_string(),
             other => {
                 return Err(Diagnostic::ParseError {
                     message: format!("expected field label, got {other:?}"),

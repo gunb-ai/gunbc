@@ -3673,10 +3673,10 @@ const WALK_DEPTH_LIMIT: usize = 32;
 ///
 /// **Not yet covered** (tracked in DOWNSTREAM_REQUIREMENTS.md as
 /// class-5 gaps):
-/// - `Bool`: no structural link from `Classical` to
-///   `BooleanAlgebra`. Requires either `inhabits` surface syntax
-///   and a `logic.dag` edit, or consumption of the
-///   `kernel_algebra_profile` data table.
+/// - `Bool`: ~~no structural link~~ now uses `type Bool inhabits
+///   BooleanAlgebra<Bool> = ...` in `std/types.dag`; the walk follows
+///   `Declaration.inhabits` when the connective chain hits a `Disj`
+///   without an inline algebra.
 /// - `String` / collection-level algebras whose receiver is
 ///   `FreeMonoid<T>` / `Set<T>` / `Map<K, V>` (the whole
 ///   instantiation, not just `T`): needs a refinement to the
@@ -3730,13 +3730,20 @@ fn resolve_operator_arrow(
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
-            // Terminal non-follow cases — no algebra in this chain.
+            // Terminal connectives: try `Declaration.inhabits` (e.g. Bool
+            // → BooleanAlgebra<Bool>) before giving up.
             TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
             | TypeConnective::Atom(AtomPayload::TypeParam(_))
             | TypeConnective::Atom(AtomPayload::Literal(_))
             | TypeConnective::Disj { .. }
             | TypeConnective::Arrow { .. }
-            | TypeConnective::Cardinality { .. } => break,
+            | TypeConnective::Cardinality { .. } => {
+                if let Some(inh) = decl.inhabits {
+                    current = inh;
+                } else {
+                    break;
+                }
+            }
         }
     }
     // Fallback: Rust-side scaffold bridge for primitives whose

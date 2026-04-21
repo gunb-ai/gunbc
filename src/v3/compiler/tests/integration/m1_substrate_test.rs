@@ -29,8 +29,8 @@ fn operator_helpers_round_trip_from_dag_authority() {
         ("<=", OperatorKind::Comparison(ComparisonOp::Le), "le"),
         (">", OperatorKind::Comparison(ComparisonOp::Gt), "gt"),
         (">=", OperatorKind::Comparison(ComparisonOp::Ge), "ge"),
-        ("&&", OperatorKind::Logical(LogicalOp::And), "and"),
-        ("||", OperatorKind::Logical(LogicalOp::Or), "or"),
+        ("&&", OperatorKind::Logical(LogicalOp::And), "meet"),
+        ("||", OperatorKind::Logical(LogicalOp::Or), "join"),
     ] {
         assert_eq!(v3_compiler::operators::from_symbol(symbol), Some(op));
         assert_eq!(v3_compiler::operators::symbol(op), symbol);

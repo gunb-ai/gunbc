@@ -571,6 +571,7 @@ fn substrate_coproducts_match_runtime_carriers() {
                     String::from("name"),
                     String::from("type_params"),
                     String::from("variants"),
+                    String::from("inhabits"),
                     String::from("span"),
                 ],
             ),
