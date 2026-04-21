@@ -59,11 +59,15 @@ fn every_binary_op_row_token_variant_is_a_token_kind_variant() {
     let token_variant_names: std::collections::BTreeSet<String> =
         token_variants.iter().map(|v| v.label.clone()).collect();
 
+    let binary_op_row_type_id = tables_dag
+        .declaration_by_name("BinaryOpRow")
+        .expect("BinaryOpRow declaration")
+        .id;
     for decl in tables_dag.declarations() {
-        let Some(name) = &decl.name else { continue };
-        if !name.starts_with("binary_op_") {
+        if decl.meta_tag != Some(binary_op_row_type_id) {
             continue;
         }
+        let name = decl.name.as_deref().unwrap_or("<anonymous>");
         let Some(ValueBody::Structural { fields }) = &decl.value_body else {
             continue;
         };
@@ -102,9 +106,12 @@ fn binary_op_rows_cover_every_operator_token_the_parser_dispatches_on() {
     let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
         .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
     let mut got: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let binary_op_row_type_id = tables_dag
+        .declaration_by_name("BinaryOpRow")
+        .expect("BinaryOpRow declaration")
+        .id;
     for decl in tables_dag.declarations() {
-        let Some(name) = &decl.name else { continue };
-        if !name.starts_with("binary_op_") {
+        if decl.meta_tag != Some(binary_op_row_type_id) {
             continue;
         }
         let Some(ValueBody::Structural { fields }) = &decl.value_body else {

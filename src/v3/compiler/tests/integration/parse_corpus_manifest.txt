@@ -9,7 +9,7 @@ dsl/std/logic.dag	5	5586	c4823f2b02ffff2d
 dsl/std/string_type.dag	4	1845	3810f615d6874bcd
 dsl/std/types.dag	108	137329	592f0e09041b3abb
 src/v3/compiler/operators.dag	5	47157	b0bd76b89101c791
-src/v3/compiler/parse_tables.dag	15	45768	e3947b57f7379d0a
+src/v3/compiler/parse_tables.dag	15	45768	3fff86d17083c78a
 src/v3/compiler/pipeline.dag	26	47004	4df6f9da32f6a5b5
 src/v3/compiler/regen.dag	10	27220	e7431380d0c23555
 src/v3/compiler/runtime_mirrors.dag	17	94215	7bbd605c7d9a4eb8

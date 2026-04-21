@@ -110,15 +110,29 @@ fn collect_binary_op_rows(
         panic!("BinaryOpLevel should be a Disj");
     };
 
+    // Discover rows by typed fact (`decl.meta_tag == BinaryOpRow`),
+    // not by `name.starts_with("binary_op_")`. Mirrors the registry
+    // pattern `regen_lens` uses against `LensRegistryEntry`; avoids
+    // baking a name-prefix calling convention into the consumer,
+    // which would let a mistyped row escape (a `BinaryOpRow` bound
+    // to a name that happens not to start with `binary_op_`) or a
+    // correctly-prefixed row of the wrong type sneak in.
+    let binary_op_row_type_id = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("BinaryOpRow"))
+        .map(|d| d.id)
+        .expect("BinaryOpRow declaration");
+
     let mut rows: Vec<BinaryOpRow> = Vec::new();
     let mut seen_token_variants: BTreeSet<String> = BTreeSet::new();
     for decl in dag.declarations() {
-        let Some(name) = &decl.name else { continue };
-        if !name.starts_with("binary_op_") {
+        if decl.meta_tag != Some(binary_op_row_type_id) {
             continue;
         }
+        let name = decl.name.as_deref().unwrap_or("<anonymous>");
         let Some(ValueBody::Structural { fields }) = &decl.value_body else {
-            continue;
+            panic!("`parse_tables.dag::{name}`: `BinaryOpRow` binding must carry a structural value body");
         };
         let token_variant = string_field(fields, "token_variant", name);
         let operator_symbol = string_field(fields, "operator_symbol", name);
