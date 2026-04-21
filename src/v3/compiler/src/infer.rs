@@ -34,8 +34,7 @@ use crate::diagnostics::{
     Diagnostic, SourceSpan,
 };
 use crate::infer_helpers::{
-    behavior_output_port, behavior_span,
-    payload_binding_span as generated_payload_binding_span,
+    behavior_output_port, behavior_span, payload_binding_span as generated_payload_binding_span,
     resolve_template_argument_value as generated_resolve_template_argument_value,
     template_argument_value as generated_template_argument_value, TemplateArgumentLookup,
 };
