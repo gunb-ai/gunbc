@@ -7,7 +7,6 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 use crate::compile_runtime_mirrors_authority_dag;
-use crate::dag::{AtomPayload, CardinalityBound, Dag, DeclarationId, TypeConnective};
 use crate::CompileError;
 
 const HEADER: &str =
@@ -48,7 +47,7 @@ pub fn render_parse_generated_rs(
 ) -> Result<String, RenderParseGeneratedError> {
     let dag = compile_runtime_mirrors_authority_dag(runtime_mirrors_source, runtime_mirrors_file)
         .map_err(|e| RenderParseGeneratedError::Compile(Box::new(e)))?;
-    let rust = emit_parse_module(&dag, parser_body);
+    let rust = emit_parse_module(parser_body);
     let combined = format!("{HEADER}{rust}");
     rustfmt_stdout(&combined).map_err(RenderParseGeneratedError::Rustfmt)
 }
@@ -79,10 +78,9 @@ fn rustfmt_stdout(combined: &str) -> Result<String, String> {
     String::from_utf8(output.stdout).map_err(|e| format!("rustfmt stdout utf-8: {e}"))
 }
 
-fn emit_parse_module(dag: &Dag, parser_body: &str) -> String {
+fn emit_parse_module(parser_body: &str) -> String {
     let mut out = String::new();
     out.push_str("use crate::diagnostics::{Diagnostic, SourceSpan};\n");
-    out.push_str("use crate::operators::OperatorKind;\n");
     out.push_str(
         "pub use crate::parse_surface::{SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, \
          SurfaceMatchArm, SurfaceModule, SurfaceParam, SurfacePattern, SurfacePatternField, \
@@ -109,130 +107,4 @@ fn emit_parse_module(dag: &Dag, parser_body: &str) -> String {
     );
     out.push_str(parser_body);
     out
-}
-
-fn rust_type_for_field(
-    dag: &Dag,
-    id: DeclarationId,
-    parent_name: &str,
-    field_label: &str,
-    in_list: bool,
-) -> String {
-    let decl = dag.declaration(id);
-    if let Some(mapped) = map_substrate_scalar_to_rust(dag, id) {
-        return mapped;
-    }
-    let base = match &decl.connective {
-        TypeConnective::Atom(ap) => match ap {
-            AtomPayload::ResolvedByName(inner) | AtomPayload::ResolvedByStructure(inner) => {
-                return rust_type_for_field(dag, *inner, parent_name, field_label, in_list);
-            }
-            AtomPayload::TypeParam(label) => label.clone(),
-            AtomPayload::Literal(_) | AtomPayload::UnresolvedIdentifier(_) => {
-                panic!("unexpected atom in field type: {ap:?}")
-            }
-        },
-        TypeConnective::Instantiation {
-            template,
-            arguments,
-        } => {
-            let template_decl = dag.declaration(*template);
-            let template_name = template_decl
-                .name
-                .as_deref()
-                .unwrap_or_else(|| panic!("anonymous list template"));
-            if template_name == "String" {
-                return "String".to_string();
-            }
-            if template_name == "List"
-                || (template_name == "FreeMonoid" && arguments.len() == 1)
-            {
-                assert_eq!(arguments.len(), 1, "List/FreeMonoid arity");
-                let elem = arguments[0].value;
-                let inner = rust_type_for_field(dag, elem, parent_name, field_label, true);
-                return format!("Vec<{inner}>");
-            }
-            if matches!(template_name, "Int" | "Int64") {
-                return "i64".to_string();
-            }
-            if template_name == "Bool" {
-                return "bool".to_string();
-            }
-            if template_name == "String" {
-                return "String".to_string();
-            }
-            panic!("unsupported instantiation `{template_name}`");
-        }
-        TypeConnective::Cardinality { element, bound } => {
-            let inner = rust_type_for_field(dag, *element, parent_name, field_label, in_list);
-            return match bound {
-                CardinalityBound::AtMostOne => format!("Option<{inner}>"),
-                CardinalityBound::Unbounded => format!("Vec<{inner}>"),
-                CardinalityBound::Exact(n) => {
-                    panic!("unsupported exact cardinality {n} for field `{field_label}`")
-                }
-            };
-        }
-        TypeConnective::Conj { .. } | TypeConnective::Disj { .. } => {
-            decl.name.clone().unwrap_or_else(|| {
-                panic!(
-                    "anonymous nested type as field `{field_label}` of `{parent_name}` — give it a name in runtime_mirrors.dag"
-                )
-            })
-        }
-        other => panic!("unsupported field connective: {other:?}"),
-    };
-
-    let needs_box = !in_list && needs_box_edge(parent_name, field_label, &base);
-    let inner = if base == "Int" {
-        "i64".to_string()
-    } else if base == "Bool" {
-        "bool".to_string()
-    } else if base == "String" || base == "SourceSpan" || base == "OperatorKind" {
-        base
-    } else {
-        base.clone()
-    };
-    if needs_box {
-        format!("Box<{inner}>")
-    } else {
-        inner
-    }
-}
-
-fn map_substrate_scalar_to_rust(dag: &Dag, mut id: DeclarationId) -> Option<String> {
-    for _ in 0..64 {
-        let decl = dag.declaration(id);
-        if let Some(name) = decl.name.as_deref() {
-            match name {
-                "String" => return Some("String".to_string()),
-                "Int" | "Int64" => return Some("i64".to_string()),
-                "Bool" => return Some("bool".to_string()),
-                "SourceSpan" => return Some("SourceSpan".to_string()),
-                "OperatorKind" => return Some("OperatorKind".to_string()),
-                _ => {}
-            }
-        }
-        match &decl.connective {
-            TypeConnective::Atom(AtomPayload::ResolvedByName(inner))
-            | TypeConnective::Atom(AtomPayload::ResolvedByStructure(inner)) => {
-                id = *inner;
-            }
-            _ => break,
-        }
-    }
-    None
-}
-
-fn needs_box_edge(parent: &str, field: &str, rhs: &str) -> bool {
-    matches!(
-        (parent, field, rhs),
-        ("SurfaceType", "inner", "SurfaceType")
-            | ("SurfaceType", "output", "SurfaceType")
-            | ("SurfaceExpr", "body", "SurfaceExpr")
-            | ("SurfaceExpr", "cond", "SurfaceExpr")
-            | ("SurfaceExpr", "then_branch", "SurfaceExpr")
-            | ("SurfaceExpr", "else_branch", "SurfaceExpr")
-            | ("SurfaceExpr", "scrutinee", "SurfaceExpr")
-    )
 }

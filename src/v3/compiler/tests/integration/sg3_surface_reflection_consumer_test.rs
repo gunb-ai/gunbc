@@ -81,7 +81,7 @@ fn main() {{
         .expect("tokenize fixture");
     let parsed = v3_compiler::parse_for_test(&tokens, "sg3_surface_reflection_consumer.v3")
         .expect("parse fixture");
-    let mirrored = v3_compiler::parse_surface::SurfaceModule::from(&parsed);
+    let mirrored: &v3_compiler::parse_surface::SurfaceModule = &parsed;
     let item_count = emitted::module_item_count(&mirrored);
     assert_eq!(item_count, 5, "emitted surface consumer should traverse SurfaceModule.items through emitted code");
 }}
