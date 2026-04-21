@@ -16,7 +16,7 @@ Every rule in this repo descends from one of five first principles. Growing sub-
 
 Two load-bearing headings from the previous organization map directly into these principles: **Verifiability** rolls into Decidability (verification is a structural consequence of a closed system), and **Sustainability** rolls into Progress Is Dissolution (sustainability is the long-run framing of cost-of-change). Their sub-rules distribute into the principles where their motivating teeth live — detailed in the appendix.
 
-Each principle below carries: the rule, why it stands alone, problem/solution shapes for pattern-matching, a historical dissolution receipt, and a cross-reference to the related rule IDs that elaborate it. Per-ID subdocs under `docs/invariants/` hold the long-form rationale.
+Each principle below carries: the rule, why it stands alone, problem/solution shapes for pattern-matching, a historical dissolution receipt, and a cross-reference to the related rule IDs that elaborate it. Per-rule long-form rationale lives in subdocs — the prose-named rules and E-/L-series rules under [`docs/invariants/*.md`](docs/invariants/), the DB-series under [`docs/design-*.md`](docs/), and the C-series cluster in [`docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md`](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md). The appendix below names the exact subdoc per ID.
 
 ---
 
@@ -25,6 +25,46 @@ Each principle below carries: the rule, why it stands alone, problem/solution sh
 **Rule:** Every construct grounds in an identifiable external fact or a structural derivation from one; ungrounded constructs are not valid authorities.
 
 **Why it stands alone:** Faithfulness is upstream of the rest. Performance, decidability, verifiability, and sustainability only matter if the model itself is faithful to the reality it claims to represent. Ungrounded authorities are structural fiction — no amount of downstream rigor recovers from them.
+
+**Grounding is intersubjective, not internal.** Every grounding step should point at a framework with *shared agreement* — mathematical structures, widely-adopted computer science abstractions, standardized machine representations. Internal taxonomies we invented ourselves are not grounding; they're restating the same claim at a different layer. Appealing to intersubjective frameworks lets the model's claims be verified against external consensus, not just against other parts of itself. (See [docs/thesis/epistemic-stacking.md](docs/thesis/epistemic-stacking.md) for the long form.)
+
+### Worked example: integer modeling from the ground up
+
+The integer chain in `dsl/std/{bit,integer,algebra}.dag` illustrates what a fully-grounded composition looks like. Every level points at an external consensus framework; no level invents an internal category:
+
+- **`Bit` = `Classical`** (from `std.logic`) — a single classical truth value. Grounds in two-valued propositional logic (pre-computing mathematical consensus).
+- **`Byte` = `{ bits: List<Bit> }`**, **`Word64` = `{ bytes: List<Byte> }`** — records with declared cardinality intent. Grounds in byte-addressable machine-word standards (IEEE / ISO).
+- **`OrderedRing<T>`** (from `std.algebra`) — algebra structure carrying `add`, `negate`, `mul`, and a total order. Grounds in ring theory (centuries of mathematical consensus).
+- **`Semiring<T>`** — OrderedRing minus `negate`. Grounds in semiring theory (same lineage, explicit weakening).
+- **`Int64` = `OrderedRing<Word64>`** — the language-level signed 64-bit integer. Carrier is `Word64`; operations come from the `OrderedRing` algebra witness. Signedness is not a tag but a *structural consequence* of inhabiting `OrderedRing` vs `Semiring` (additive inverses exist / don't exist).
+- **`Int = Int64`** — default alias.
+
+Downstream consumers (lens queries, algebra-driven operator dispatch, cost algebra) read these declared structural facts. Operator symbols come from the algebra's field declarations, not a per-target string table. Sign semantics come from the witness, not a flag. The chain is *verifiable against consensus at every step*; that is what "grounded in a declared source" means concretely.
+
+### Worked example: effect algebra (idempotency as derived structure)
+
+`dsl/std/effects.dag` models operation effects as inhabitants of algebraic structures declared in `dsl/std/algebra.dag`:
+
+- **`ReadEffect`** — identity function on state. Trivially idempotent.
+- **`UpsertEffect`** — lattice **meet** on `Map<K, V>`. Setting a key to a value, applied twice, equals once. Grounds in lattice theory (Birkhoff 1940).
+- **`DeleteEffect`** — lattice meet with bottom on a key. Applied twice = once.
+- **`AppendEffect`** — free monoid concatenation. Grounds in monoid theory.
+
+Because each effect inhabits a known algebraic structure, **idempotency is not a declared flag** — it falls out of *which structure the effect inhabits*. The compiler checks "does this effect inhabit a lattice?" rather than "did the author mark this idempotent?". This dissolves `dsl/std/behavioral.dag`'s `idempotent: Bool` field — the flag becomes redundant once the algebra is wired.
+
+External authority: lattice theory (Birkhoff 1940), effect algebras (Foulis & Bennett 1994), idempotent semirings (dataflow analysis, routing algebras, tropical geometry).
+
+### Worked example: termination via descent evidence
+
+`dsl/std/termination.dag` models the *proof* of termination as a structural artifact, not a heuristic:
+
+- **`DescentEvidence` = `Strict` | `NonIncreasing` | `DescentUnknown`** — at each recursive call edge, the ranking dimension either provably decreases, possibly stays the same, or is unknown.
+- **`DescentEvidence` inhabits `BoundedLattice<DescentEvidence>`** with top = `Strict`, bottom = `DescentUnknown` (fail-closed), meet = conservative branch merge, join = optimistic branch merge.
+- The complexity analyzer is a **checker** of termination proofs, not a **discoverer**. It constructs candidate proofs from code and validates them against this model. Failure to construct = rejection.
+
+External authority: well-founded relations (Zermelo 1904, von Neumann 1929), ranking functions (Floyd 1967, Turing 1949), size-change termination (Lee, Jones, Ben-Amram 2001), lexicographic + multiset orderings (Dershowitz, Manna 1979).
+
+This makes Strict Forward Progress (P4) operational: the substrate carries termination *evidence*, not just a termination *requirement*. The same `BoundedLattice` machinery that types `DescentEvidence` is reused in cost algebra, effect composition, and branch merging — every lattice-shaped lens reads the same algebra.
 
 ### Problem shape: Ungrounded heuristic
 
@@ -123,8 +163,8 @@ Behavior is driven by a string-keyed case list — operator symbols, target-lang
 ### Related rules (home-of-record here)
 
 - **No Fallbacks That Fabricate** — canonical statement
-- **C-8: Fail-Closed Compilation** — missing support rejects rather than fabricates
-- **C-1..C-7, C-9, C-10** — nine canonical sentinel patterns (missing args, missing defaults, parser recovery dummies, `<error:*>` types, string-sentinel probing, `<error:unknown_*>` in emit, `Dynamic` fallback, empty-node/empty-string fabrication, ownership clone fallback) — each is C-8 applied to a specific fabrication point
+- **C-8: Fail-Closed Compilation** — missing support rejects rather than fabricates (canonical rule)
+- **Nine C-series sentinel patterns**, each C-8 applied at a specific fabrication point: **C-1** missing args; **C-2** missing defaults; **C-3** parser recovery dummies; **C-4** placeholder `<error:*>` types; **C-5** string-sentinel error probing; **C-6** `<error:unknown_*>` in emit; **C-7** `Dynamic` as universal fallback; **C-9** empty-node / empty-string fabrication; **C-10** ownership clone as progress fallback
 - **Early Detection Invariant** — structural errors fail at the earliest stage that can prove them
 - **No Case Enumeration For Open Sets** — case-list fall-through is a fabrication pattern
 - **E-8: Unsupported Core Behaviors Fail Closed, Never Collapse Semantically** — missing target support rejects or surfaces unsupported behavior (the "fail closed" choice is fail-closed teeth, not boundary discipline)
@@ -136,7 +176,7 @@ Behavior is driven by a string-keyed case list — operator symbols, target-lang
 
 **Rule:** Every accepted program stays within a closed, fail-closed system whose correctness questions are structurally decidable.
 
-**Why it stands alone:** Decidability is the semantic commitment that makes the language work. Bounded iteration, explicit lowering, and closed composition are load-bearing here. Recursion is sugar over a bounded substrate primitive, not a new capability. The previous `Verifiability Invariant` section lived here in substance — verification is what falls out when a closed, faithful system's structural properties become provable by construction; it's not a parallel authority.
+**Why it stands alone:** Decidability is the semantic commitment that makes the language work. Its foundational premise is **Strict Forward Progress**: time flows forward, execution walks a bounded structure, and cycles are expressible only as relations over acyclic values — never as direct cyclic values. Bounded iteration, explicit lowering, and closed composition all follow from this premise. Recursion is sugar over a bounded substrate primitive, not a new capability. The previous `Verifiability Invariant` section lived here in substance — verification is what falls out when a closed, faithful system's structural properties become provable by construction; it's not a parallel authority.
 
 ### Problem shape: Unbounded semantic
 
@@ -156,7 +196,8 @@ A verification predicate reads its own parallel copy of the facts — a second t
 
 ### Related rules (home-of-record here)
 
-- **Decidability Invariant** — canonical statement
+- **Strict Forward Progress** — *the foundational premise*: time flows strictly forward; every execution step moves the computation forward through a bounded structure, never revisiting, never cycling. Decidability, complexity analysis, and termination all follow from this. Cyclic *relations* are expressible (via acyclic encodings — adjacency maps keyed by stable IDs), but direct cyclic *values* are not, and every traversal over a cyclic relation must be bounded by an explicit finite measure.
+- **Decidability Invariant** — the canonical statement at the language level (follows from Strict Forward Progress)
 - **Structural Proof From Primitives** — decidability grounds in the primitive algebra
 - **Recursive Syntax Is Sugar** — recursive surface forms lower to the bounded substrate without adding semantic power
 - **Tight Upper Bounds — No Exceptions**
@@ -196,8 +237,8 @@ A scaffold (hand-maintained generated file, interim API surface, staged declarat
 
 ### Related rules (home-of-record here)
 
-- **Strict Forward Progress** — canonical statement
-- **Sustainability Invariants** (entire heading, folded in) — cost of change should approach 1
+- **Sustainability Invariants** (entire heading, folded in) — canonical statement: cost of change should approach 1
+  - Note: "Strict Forward Progress" in the old INVARIANTS.md was a misnamed stub; its actual subdoc content is about bounded execution and belongs under P4 Decidability (see there). The dissolution/sustainability framing previously attached to the name is captured here via the rules below.
 - **No Short-Term Solutions** — this is not a production codebase; no bridges, staged migrations, or compatibility shims justified
 - **No Bridges** — bridges normalize half-migrations and hide cleanup cost
 - **No Deprecations** — deprecation markers are a production-code tool, not a legitimate steady state
@@ -214,30 +255,39 @@ A scaffold (hand-maintained generated file, interim API surface, staged declarat
 
 Every numbered ID (C-N, E-N, L-N, DB-N) descends from one principle. The prose-name invariants are indexed under their principle above; this appendix exists so PR-history references like "violates C-8" or "see E-9" resolve quickly.
 
-| ID | Home principle | Short form |
-|---|---|---|
-| C-1..C-7, C-9, C-10 | P3: Fail-Closed | canonical sentinel patterns, each is C-8 applied to a specific fabrication point |
-| C-8 | P3: Fail-Closed | fail-closed compilation (canonical) |
-| DB-1 | P3: Fail-Closed (cross-ref P2) | typed diagnostic carriers, not ad hoc warning text |
-| DB-4 | P5: Progress Is Dissolution | clean-emission as declared contract with real consumers |
-| DB-5 | P2: Boundary Discipline | substrate keyed lookup single-authority |
-| DB-8 | P4: Decidability | deterministic emission |
-| DB-9 | P4: Decidability | mutual recursion lowers structurally |
-| DB-14 | P2: Boundary Discipline | external primitives materialize through `Arrow.body` |
-| E-5 | P5: Progress Is Dissolution | clean-emission contract by construction |
-| E-6 | P2: Boundary Discipline | no target-spec field without a same-PR consumer |
-| E-7 | P5: Progress Is Dissolution | no target-private realization schema without a dissolution ratchet |
-| E-8 | P3: Fail-Closed | unsupported core behaviors fail closed, never collapse semantically |
-| E-9 | P2: Boundary Discipline | external realization lives on `Arrow.body` |
-| L-7 | P2: Boundary Discipline | lenses consume declared substrate query functions |
-| L-8 | P2: Boundary Discipline | lens Rust surfaces preserve typed failure carriers |
-| T11 | P4: Decidability | tiered test execution (Tier 1/2/3 sub-rules under T11) |
+| ID | Home principle | Short form | Subdoc |
+|---|---|---|---|
+| C-1 | P3: Fail-Closed | missing args fail closed; no `LitNull` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| C-2 | P3: Fail-Closed | missing defaults / config fail closed; no `LitNull` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| C-3 | P3: Fail-Closed | parser recovery may not fabricate dummy `LitNull` nodes | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| C-4 | P3: Fail-Closed | placeholder `<error:*>` types forbidden as live carriers | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| C-5 | P3: Fail-Closed | error detection may not rely on string-sentinel probing | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| C-6 | P3: Fail-Closed | emit may not use `<error:unknown_*>` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| C-7 | P3: Fail-Closed | `Dynamic` is not a universal compatibility fallback | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| C-8 | P3: Fail-Closed | fail-closed compilation (canonical) | [invariants/decidability-invariant.md#fail-closed-compilation](docs/invariants/decidability-invariant.md#fail-closed-compilation) |
+| C-9 | P3: Fail-Closed | missing fields / values may not fabricate empty nodes or strings | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| C-10 | P3: Fail-Closed | ownership gaps may not silently clone for progress | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| DB-1 | P3: Fail-Closed (cross-ref P2) | typed diagnostic carriers, not ad hoc warning text | [design-correction-shape.md](docs/design-correction-shape.md) |
+| DB-4 | P5: Progress Is Dissolution | clean-emission as declared contract with real consumers | [design-clean-emission-contract.md](docs/design-clean-emission-contract.md) |
+| DB-5 | P2: Boundary Discipline | substrate keyed lookup single-authority | [design-substrate-keyed-lookup-api.md](docs/design-substrate-keyed-lookup-api.md) |
+| DB-8 | P4: Decidability | deterministic emission | [invariants/deterministic-emission-db-8.md](docs/invariants/deterministic-emission-db-8.md) |
+| DB-9 | P4: Decidability | mutual recursion lowers structurally | [design-mutual-recursion-lowering.md](docs/design-mutual-recursion-lowering.md) |
+| DB-14 | P2: Boundary Discipline | external primitives materialize through `Arrow.body` | [design-substrate-external-primitives.md](docs/design-substrate-external-primitives.md) |
+| E-5 | P5: Progress Is Dissolution | clean-emission contract by construction | [invariants/e-5-…](docs/invariants/e-5-clean-emission-contract-is-satisfied-by-construction.md) |
+| E-6 | P2: Boundary Discipline | no target-spec field without a same-PR consumer | [invariants/e-6-…](docs/invariants/e-6-no-target-spec-field-without-a-same-pr-consumer.md) |
+| E-7 | P5: Progress Is Dissolution | no target-private realization schema without a dissolution ratchet | [invariants/e-7-…](docs/invariants/e-7-no-target-private-realization-schema-without-a-dissolution-ratchet.md) |
+| E-8 | P3: Fail-Closed | unsupported core behaviors fail closed, never collapse semantically | [invariants/e-8-…](docs/invariants/e-8-unsupported-core-behaviors-fail-closed-never-collapse-semantically.md) |
+| E-9 | P2: Boundary Discipline | external realization lives on `Arrow.body` | [invariants/e-9-…](docs/invariants/e-9-external-realization-lives-on-arrow-body.md) |
+| L-7 | P2: Boundary Discipline | lenses consume declared substrate query functions | [invariants/l-7-…](docs/invariants/l-7-lenses-consume-declared-substrate-query-functions.md) |
+| L-8 | P2: Boundary Discipline | lens Rust surfaces preserve typed failure carriers | [invariants/l-8-…](docs/invariants/l-8-lens-rust-surfaces-preserve-typed-failure-carriers.md) |
+| T11 | P4: Decidability | tiered test execution (Tier 1/2/3 sub-rules) | [invariants/tiered-test-execution-t11.md](docs/invariants/tiered-test-execution-t11.md) |
 
 ---
 
 ## Pointers
 
-- `docs/invariants/` — per-rule long-form rationale (one file per rule, preserved from the previous organization)
-- `docs/debt/` — tracked open debt
-- `docs/review-findings/` — archived branch-review receipts
-- `docs/invariants/engineering-standards.md` — engineering standards (pointer)
+- [`docs/invariants/`](docs/invariants/) — per-rule long-form rationale for prose-named rules and the E/L series (one file per rule, preserved from the previous organization)
+- [`docs/design-*.md`](docs/) — long-form rationale for DB-series design decisions (e.g., `design-correction-shape.md` for DB-1, `design-mutual-recursion-lowering.md` for DB-9)
+- [`docs/debt/`](docs/debt/) — tracked open debt, including the C-series cluster receipt `root-cause-c-errors-propagate-as-valid-looking-fabrications.md`
+- [`docs/review-findings/`](docs/review-findings/) — archived branch-review receipts
+- [`docs/invariants/engineering-standards.md`](docs/invariants/engineering-standards.md) — engineering standards
