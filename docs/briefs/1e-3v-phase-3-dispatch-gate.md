@@ -6,7 +6,7 @@
 
 **Authorities read:** `docs/single-emitter-design.md`, `docs/emit-target-spec-gaps.md`, `docs/emit-bridges.md`, `src/v3/compiler/src/emit.rs`, `src/v3/compiler/src/emit/rust_target.rs`, `src/v3/compiler/src/emit/python_target.rs`, `src/v3/spec/{rust,go,python}.dag`, `src/v3/std/computation_model.dag`.
 
-**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–N, blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold (**Review M**, exploratory; reinforces **Review K**).
+**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–O, blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold (**Review M**, exploratory; reinforces **Review K**).
 
 ### PR review ingest (#621, 2026-04-21)
 
@@ -86,6 +86,11 @@
 
 - **Verdict:** APPROVE — docs-only diff; no substrate, emitter implementation, or test code touched; no concrete violation of **`INVARIANTS.md`**, **`docs/modeling-discipline.md`**, **`CODING.md`**, or **`TESTING.md`** in the added brief.
 - **`TESTING.md`:** Unit-first guidance is **explicitly carried forward**, not weakened.
+
+**Review O (codex / gpt-5.4, schedule, commit `fe2d784c`)**
+
+- **Verdict:** APPROVE — **non-blocking strengths:** brief reads as a **real dispatch gate** — remaining work at **implementation layer**, Phase **3.0b** debt **bounded**, explicit **STOP** on paper carriers.
+- **Prior concerns:** Addressed; **no new thesis- or invariant-level issue** in the added brief.
 
 **Blocking inline review (PR #621, 2026-04-21) — finding does not match live tree**
 
