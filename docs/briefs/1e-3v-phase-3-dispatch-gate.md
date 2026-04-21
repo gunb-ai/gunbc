@@ -6,7 +6,7 @@
 
 **Authorities read:** `docs/single-emitter-design.md`, `docs/emit-target-spec-gaps.md`, `docs/emit-bridges.md`, `src/v3/compiler/src/emit.rs`, `src/v3/compiler/src/emit/rust_target.rs`, `src/v3/compiler/src/emit/python_target.rs`, `src/v3/spec/{rust,go,python}.dag`, `src/v3/std/computation_model.dag`.
 
-**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–O, blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold (**Review M**, exploratory; reinforces **Review K**).
+**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–P, blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold — **do not defer the split another round** (**Reviews K, M, P** exploratory).
 
 ### PR review ingest (#621, 2026-04-21)
 
@@ -91,6 +91,12 @@
 
 - **Verdict:** APPROVE — **non-blocking strengths:** brief reads as a **real dispatch gate** — remaining work at **implementation layer**, Phase **3.0b** debt **bounded**, explicit **STOP** on paper carriers.
 - **Prior concerns:** Addressed; **no new thesis- or invariant-level issue** in the added brief.
+
+**Review P (claude / claude-opus-4-7, schedule, commit `fe2d784c`)**
+
+- **Verdict:** APPROVE — docs-only PR (`docs/briefs/`); no substrate, emitter, spec, or test code in diff; factual claims check out; Lane 1e clusters reclassified vs live code; **Phase 3.0** concrete and bounded.
+- **Spot-checks:** No `OperatorKind::Logical` under `emit/`; Bool operator rows in all three specs; duplication callouts (`behavior_result_port`/`go_behavior_result_port`, two `port_is_consumed_from`, `dimension.rs` + `lens_cost_symbolic_generated.rs` for 3.0b) match tree; Phase 3.0 unit-first per **`TESTING.md`**; **STOP-AND-ESCALATE** present.
+- **Exploratory (non-blocking):** Ingest log ≈ **60%** of the brief — **Reviews K/M** already flagged; later reviews note **meta** on the ingest log itself — **split at next lane dispatch** is the right call; **do not slip another round**. **`lens_cost_symbolic_generated.rs`** is **codegen** — Phase **3.0b** must **regenerate** from the lens pipeline (`src/v3/lenses/cost.dag` / regen), **not** hand-edit generated Rust; keep explicit in the **3.0b** follow-on brief.
 
 **Blocking inline review (PR #621, 2026-04-21) — finding does not match live tree**
 
@@ -217,7 +223,7 @@ Aligned with `emit-target-spec-gaps.md` §233–244:
    - **Unit-first (`TESTING.md`):** At least one **focused** test that calls the shared helpers on a **minimal constructed `Dag`** (or smallest hermetic fixture) and asserts the graph-walk behaviors that matter (e.g. `behavior_result_port` matches each `Behavior` variant’s result port; `port_is_consumed_from` reaches / does not reach a payload port across a small `Branch` / `Transform` / `Loop` spine). One claim per test where practical.
    - **Regression belt:** Existing emit / determinism / golden coverage stays green — output **byte-identical** (DB-8).
 
-**Non-goals:** No walker architecture, no spec `.dag` edits, no change to optional/Go sum rendering. **Out of scope for Phase 3.0:** `dimension.rs` and `lens_cost_symbolic_generated.rs` — see **PR review ingest** above; absorb in a follow-on if a crate-visible helper is introduced.
+**Non-goals:** No walker architecture, no spec `.dag` edits, no change to optional/Go sum rendering. **Out of scope for Phase 3.0:** `dimension.rs` and `lens_cost_symbolic_generated.rs` — see **PR review ingest** above; absorb in **Phase 3.0b** if a crate-visible helper is introduced. For the **lens** file: change flows from **`src/v3/lenses/cost.dag`** (or the project’s lens regen entrypoint) — **regenerate** output; do **not** hand-edit `lens_cost_symbolic_generated.rs` (**Review P**).
 
 **STOP-AND-ESCALATE:** If unification requires different `Loop` result-port treatment per target — **report** (would imply the two copies were not actually equivalent — today they match structurally).
 
@@ -234,4 +240,4 @@ That document’s **Phase 3** refers to **v2** `05_emit*.dag` TCO unification �
 - [ ] Do **not** reopen Cluster F or propose `LogicalOperatorCarrier` without a new substrate gap.
 - [ ] Treat **B, C, F, G, H, I, J** as **done** from a spec-gap perspective; remaining work is **walker + DRY + Go optional strings**.
 - [ ] Start Phase 3 implementation with **Phase 3.0** brief above unless director reprioritizes Go optional templating; Phase 3.0 PR must include **unit-first** helper tests per **Review B** and `TESTING.md`, not integration-only.
-- [ ] After Phase 3.0, optionally schedule **Phase 3.0b** — dedupe `behavior_result_port` with `dimension.rs` (and lens codegen path) if a shared `crate::dag`-level or `crate` helper is justified; do not expand Phase 3.0 scope mid-flight.
+- [ ] After Phase 3.0, optionally schedule **Phase 3.0b** — dedupe `behavior_result_port` with `dimension.rs` (and lens codegen path) if a shared `crate::dag`-level or `crate` helper is justified; do not expand Phase 3.0 scope mid-flight; any change to **`lens_cost_symbolic_generated.rs`** must be via **lens/regen**, not a direct edit to generated Rust (**Review P**).
