@@ -8,10 +8,22 @@
 
 ### PR review ingest (#621, 2026-04-21)
 
+**Review A (claude / claude-opus-4-7, schedule)**
+
 - **Verdict:** APPROVE — api-review spot-checks matched this brief: no `OperatorKind::Logical` under `emit/`; emitter `behavior_result_port` / `go_behavior_result_port` and both `port_is_consumed_from` bodies are byte-identical as stated; duplication is correctly scoped as implementation DRY, not a `.dag` gap.
 - **Queued follow-up (optional, not a finding on #621):** Two other `behavior_result_port` definitions exist outside the emit pair:
   - `src/v3/compiler/src/lens_cost_symbolic_generated.rs` — **generated** from the cost lens (`src/v3/lenses/cost.dag`); treat as codegen output; any shared helper likely flows from the lens pipeline, not from a one-off edit to the `.rs` file.
   - `src/v3/compiler/src/dimension.rs` — **hand-authored** third copy (same match on `Behavior` variants). **Phase 3.0** below stays **emit-only** (unify the two emitter copies). A later refactor could move `behavior_result_port` to a small `crate` or `dag` helper and wire **emit + dimension** (and regenerate/consolidate the lens copy per policy) so a “one shared helper” pass does not stop at `rust_target.rs` / `emit.rs` while leaving `dimension.rs` behind.
+
+**Review B (codex / gpt-5.4, schedule)**
+
+- **Verdict:** APPROVE_WITH_COMMENTS — brief is narrowly scoped; no modeling-discipline issue in the doc itself.
+- **Comment ingested:** Phase 3.0’s test plan must not rely **only** on broad emit / determinism / golden suites. Per **`TESTING.md`** (unit-first, behavior-driven, minimal-constructed inputs), the implementation PR for Phase 3.0 should add **at least one focused regression test** that exercises the shared `behavior_result_port` and/or `port_is_consumed_from` directly against a **minimal `Dag` shape** (or other hermetic fixture) that pins the structural graph-walk contract. Keep existing integration/golden runs as a **belt** (DB-8), not the sole proof for a small helper refactor.
+
+**Review C (human / director, #621 thread)**
+
+- **Verdict:** Converged — brief acts as a **real dispatch gate**, not another speculative audit: it reclassifies old paper gaps, narrows the true remaining emitter-gap surface, and names a **concrete deletion-oriented** Phase 3.0 tranche (`behavior_result_port` / `port_is_consumed_from`) instead of only gesturing at a future walker.
+- **Direction locked:** Phase 3.0 is a **small graph-walk dedup** refactor; **unit-first** coverage (focused regression on shared helper behavior or minimal `Dag`) is the right bar — same requirement as **Review B** and §**Tests (required)** below.
 
 ---
 
@@ -102,7 +114,9 @@ Aligned with `emit-target-spec-gaps.md` §233–244:
 1. Introduce **one** module-level `fn behavior_result_port(behavior: &Behavior) -> PortId` in the emit module tree (e.g. `emit.rs` or `emit/helpers.rs`), used everywhere.
 2. Introduce **one** `fn port_is_consumed_from(dag: &Dag, root: PortId, target: PortId) -> bool` using that helper for `Behavior::Loop` traversal — **identical** to current semantics in both copies today.
 3. **Delete** the duplicate `behavior_result_port` / `go_behavior_result_port` and both `port_is_consumed_from` method bodies.
-4. **Tests:** existing emit / determinism / golden tests — **byte-identical** (DB-8).
+4. **Tests (required):**
+   - **Unit-first (`TESTING.md`):** At least one **focused** test that calls the shared helpers on a **minimal constructed `Dag`** (or smallest hermetic fixture) and asserts the graph-walk behaviors that matter (e.g. `behavior_result_port` matches each `Behavior` variant’s result port; `port_is_consumed_from` reaches / does not reach a payload port across a small `Branch` / `Transform` / `Loop` spine). One claim per test where practical.
+   - **Regression belt:** Existing emit / determinism / golden coverage stays green — output **byte-identical** (DB-8).
 
 **Non-goals:** No walker architecture, no spec `.dag` edits, no change to optional/Go sum rendering. **Out of scope for Phase 3.0:** `dimension.rs` and `lens_cost_symbolic_generated.rs` — see **PR review ingest** above; absorb in a follow-on if a crate-visible helper is introduced.
 
@@ -120,5 +134,5 @@ That document’s **Phase 3** refers to **v2** `05_emit*.dag` TCO unification �
 
 - [ ] Do **not** reopen Cluster F or propose `LogicalOperatorCarrier` without a new substrate gap.
 - [ ] Treat **B, C, F, G, H, I, J** as **done** from a spec-gap perspective; remaining work is **walker + DRY + Go optional strings**.
-- [ ] Start Phase 3 implementation with **Phase 3.0** brief above unless director reprioritizes Go optional templating.
+- [ ] Start Phase 3 implementation with **Phase 3.0** brief above unless director reprioritizes Go optional templating; Phase 3.0 PR must include **unit-first** helper tests per **Review B** and `TESTING.md`, not integration-only.
 - [ ] After Phase 3.0, optionally schedule **Phase 3.0b** — dedupe `behavior_result_port` with `dimension.rs` (and lens codegen path) if a shared `crate::dag`-level or `crate` helper is justified; do not expand Phase 3.0 scope mid-flight.
