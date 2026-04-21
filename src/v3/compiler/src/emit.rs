@@ -1135,12 +1135,22 @@ impl<'a> Ctx<'a> {
         }
         let operand_type = primitive_type_id_for_port(self.dag, t.inputs[0])?;
         let op_decl = algebra_field_for_operator(self.dag, operand_type, op)?;
-        let carrier = self.indexes.operators.get(&(operand_type, op_decl)).ok_or(
-            EmitError::MissingOperatorRealization {
+        let peeled = operator_realization_lookup_type(self.dag, operand_type);
+        let carrier = self
+            .indexes
+            .operators
+            .get(&(operand_type, op_decl))
+            .or_else(|| {
+                if peeled != operand_type {
+                    self.indexes.operators.get(&(peeled, op_decl))
+                } else {
+                    None
+                }
+            })
+            .ok_or(EmitError::MissingOperatorRealization {
                 target: operand_type,
                 op: op_decl,
-            },
-        )?;
+            })?;
         let lhs = self.render_port(t.inputs[0], locals)?;
         let rhs = self.render_port(t.inputs[1], locals)?;
         Ok(render_named_template(
@@ -2921,6 +2931,32 @@ fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, 
     Err(EmitError::UnsupportedBehavior(
         "port type walk exceeded depth 32 — likely a cycle".to_string(),
     ))
+}
+
+/// Peel named empty `Instantiation` chains (`type MyBool = Bool` → `Bool`).
+///
+/// Used **only as a fallback** after a direct `(operand_declaration, op)` index
+/// miss: kernel types like `Int` are also named `Instantiation` rows, so the
+/// peeled id must not replace the surface key when the direct lookup succeeds.
+pub(crate) fn operator_realization_lookup_type(
+    dag: &Dag,
+    mut current: DeclarationId,
+) -> DeclarationId {
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &decl.connective
+        else {
+            break;
+        };
+        if !(decl.name.is_some() && arguments.is_empty() && *template != current) {
+            break;
+        }
+        current = *template;
+    }
+    current
 }
 
 fn walk_to_disj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
