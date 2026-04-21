@@ -1135,22 +1135,12 @@ impl<'a> Ctx<'a> {
         }
         let operand_type = primitive_type_id_for_port(self.dag, t.inputs[0])?;
         let op_decl = algebra_field_for_operator(self.dag, operand_type, op)?;
-        let peeled = operator_realization_lookup_type(self.dag, operand_type);
-        let carrier = self
-            .indexes
-            .operators
-            .get(&(operand_type, op_decl))
-            .or_else(|| {
-                if peeled != operand_type {
-                    self.indexes.operators.get(&(peeled, op_decl))
-                } else {
-                    None
-                }
-            })
-            .ok_or(EmitError::MissingOperatorRealization {
-                target: operand_type,
-                op: op_decl,
-            })?;
+        let carrier =
+            operator_carrier_realization(&self.indexes.operators, self.dag, operand_type, op_decl)
+                .ok_or(EmitError::MissingOperatorRealization {
+                    target: operand_type,
+                    op: op_decl,
+                })?;
         let lhs = self.render_port(t.inputs[0], locals)?;
         let rhs = self.render_port(t.inputs[1], locals)?;
         Ok(render_named_template(
@@ -2933,11 +2923,33 @@ fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, 
     ))
 }
 
+/// DB-11 (3a.3) mirror of `infer::strip_refinement_to_base`: realization indexes
+/// key the substrate owner, but a port can still surface a refinement carrier
+/// before `primitive_type_id_for_port` walks it away.
+fn strip_refinement_to_base_decl(dag: &Dag, decl_id: DeclarationId) -> DeclarationId {
+    let mut current = decl_id;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        if decl.refinement.is_none() {
+            return current;
+        }
+        match &decl.connective {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                current = *next;
+            }
+            _ => return current,
+        }
+    }
+    current
+}
+
 /// Peel named empty `Instantiation` chains (`type MyBool = Bool` → `Bool`).
 ///
-/// Used **only as a fallback** after a direct `(operand_declaration, op)` index
-/// miss: kernel types like `Int` are also named `Instantiation` rows, so the
-/// peeled id must not replace the surface key when the direct lookup succeeds.
+/// Used **only after** refinement stripping and **only as a fallback** in
+/// [`operator_carrier_realization`]: kernel types like `Int` are also named
+/// `Instantiation` rows, so the peeled id must not replace the surface key when
+/// the direct lookup succeeds.
 pub(crate) fn operator_realization_lookup_type(
     dag: &Dag,
     mut current: DeclarationId,
@@ -2957,6 +2969,27 @@ pub(crate) fn operator_realization_lookup_type(
         current = *template;
     }
     current
+}
+
+pub(crate) fn operator_carrier_realization<'a>(
+    operators: &'a HashMap<(DeclarationId, DeclarationId), String>,
+    dag: &Dag,
+    primitive_operand_decl: DeclarationId,
+    op_decl: DeclarationId,
+) -> Option<&'a String> {
+    let stripped = strip_refinement_to_base_decl(dag, primitive_operand_decl);
+    let peeled = operator_realization_lookup_type(dag, stripped);
+    let mut prev: Option<DeclarationId> = None;
+    for candidate in [primitive_operand_decl, stripped, peeled] {
+        if prev == Some(candidate) {
+            continue;
+        }
+        prev = Some(candidate);
+        if let Some(carrier) = operators.get(&(candidate, op_decl)) {
+            return Some(carrier);
+        }
+    }
+    None
 }
 
 fn walk_to_disj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {

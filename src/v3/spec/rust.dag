@@ -928,9 +928,10 @@ data rust_bool_join: OperatorRealization = {
   cost: 1
 }
 
-// Bool logical rows key the substrate `Bool` declaration; emit retries
-// operator-realization lookup on peeled named empty-alias instantiations
-// (e.g. `type MyBool = Bool`) when `(alias, op)` misses (`operator_realization_lookup_type`).
+// Bool logical rows key the substrate `Bool` declaration; emit resolves
+// operator carriers via `operator_carrier_realization`: strip refinements
+// (DB-11 mirror), try the surface key, then peeled empty-alias instantiations
+// (e.g. `type MyBool = Bool`) when earlier keys miss.
 
 // ─────────────────────────────────────────────────────────────────
 // Behavior template realizations — substrate-shaped emissions.

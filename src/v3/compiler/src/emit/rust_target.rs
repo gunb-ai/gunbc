@@ -3320,23 +3320,17 @@ impl<'a> Ctx<'a> {
         // sides agree because they read the same algebra field
         // from the substrate.
         let op_decl_id = algebra_field_for_operator(self.dag, operand_type_id, op)?;
-        let peeled = super::operator_realization_lookup_type(self.dag, operand_type_id);
-        let carrier = self
-            .indexes
-            .operators
-            .get(&(operand_type_id, op_decl_id))
-            .or_else(|| {
-                if peeled != operand_type_id {
-                    self.indexes.operators.get(&(peeled, op_decl_id))
-                } else {
-                    None
-                }
-            })
-            .ok_or(EmitError::MissingOperatorRealization {
-                target: operand_type_id,
-                op: op_decl_id,
-            })?
-            .clone();
+        let carrier = super::operator_carrier_realization(
+            &self.indexes.operators,
+            self.dag,
+            operand_type_id,
+            op_decl_id,
+        )
+        .ok_or(EmitError::MissingOperatorRealization {
+            target: operand_type_id,
+            op: op_decl_id,
+        })?
+        .clone();
         let lhs = self.render_copy_input_use(
             InputConsumer::Transform(t),
             InputSlot::Positional(0),
