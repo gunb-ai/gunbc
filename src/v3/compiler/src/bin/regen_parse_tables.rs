@@ -17,6 +17,7 @@ use v3_compiler::render_parse_tables_generated_rs;
 const GENERATED_FILE: &str = "src/v3/compiler/src/parse_tables_generated.rs";
 const PARSE_TABLES_AUTHORITY_FILE: &str = "src/v3/compiler/parse_tables.dag";
 const TOKENIZE_AUTHORITY_FILE: &str = "src/v3/compiler/tokenize.dag";
+const SHARED_SYNTAX_FILE: &str = "dsl/extdeps/languages/dag/syntax.dag";
 
 fn main() {
     assert!(
@@ -26,17 +27,25 @@ fn main() {
     );
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .expect("src/v3/compiler has a repo-root ancestor");
 
     let tables_source = std::fs::read_to_string(manifest_dir.join("parse_tables.dag"))
         .expect("read parse_tables.dag");
     let tokenize_source =
         std::fs::read_to_string(manifest_dir.join("tokenize.dag")).expect("read tokenize.dag");
+    let shared_syntax_source = std::fs::read_to_string(repo_root.join(SHARED_SYNTAX_FILE))
+        .unwrap_or_else(|e| panic!("read shared syntax authority `{SHARED_SYNTAX_FILE}`: {e}"));
 
     let formatted = render_parse_tables_generated_rs(
         &tables_source,
         PARSE_TABLES_AUTHORITY_FILE,
         &tokenize_source,
         TOKENIZE_AUTHORITY_FILE,
+        &shared_syntax_source,
     )
     .unwrap_or_else(|e| panic!("{e}"));
 

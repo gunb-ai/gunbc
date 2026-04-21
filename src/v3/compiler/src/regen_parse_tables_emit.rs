@@ -1,9 +1,29 @@
 //! Shared `regen_parse_tables` emission: compile `parse_tables.dag` +
-//! `tokenize.dag`, project into the SG-2c-1 grammar-tables Rust module,
-//! run `rustfmt --emit stdout`. Used by the `regen_parse_tables` binary
-//! (writes the file) and by the hermetic integration snapshot test
-//! (compare in-memory only — avoids a `cargo run` subprocess that blows
-//! the 2s per-test ratchet on cold CI).
+//! `tokenize.dag`, cross-validate each row against the shared-syntax
+//! operator authority at `dsl/extdeps/languages/dag/syntax.dag`, project
+//! into the SG-2c-1 grammar-tables Rust module, run `rustfmt --emit stdout`.
+//! Used by the `regen_parse_tables` binary (writes the file) and by the
+//! hermetic integration snapshot test (compare in-memory only — avoids a
+//! `cargo run` subprocess that blows the 2s per-test ratchet on cold CI).
+//!
+//! **Cross-validation against shared authority.** `dag_operators` in
+//! `syntax.dag` owns the canonical (symbol, left_bp, right_bp, binop) for
+//! every binary operator. Each `BinaryOpRow` in `parse_tables.dag` is
+//! checked against that authority: the row's `operator_symbol` must
+//! appear in `dag_operators`, and its declared `level` must be consistent
+//! with the shared row's binding power (the coarse parser precedence
+//! level covers a contiguous bp range — see `level_for_bp`). If the
+//! shared authority shifts an operator's bp into a different level, or
+//! drops a symbol, regen fails closed here. This closes the token ↔
+//! symbol ↔ precedence drift surface the initial SG-2c-1 landing left
+//! open (`parse_tables.dag` used to carry `(symbol, level)` without any
+//! structural tie to the shared authority's bp).
+//!
+//! **SG-1a scaffold extension.** `syntax.dag`'s `dag_operators` body
+//! still lowers as `ValueBody::Unparsed` (same scaffold `regen_tokenize`
+//! extends), so this bridge reads the raw source text. When the shared
+//! authority lowers structurally, the raw-text extractor folds into a
+//! typed read — same dissolution trigger as `regen_tokenize`.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -54,17 +74,42 @@ pub fn render_parse_tables_generated_rs(
     parse_tables_file: &str,
     tokenize_source: &str,
     tokenize_file: &str,
+    shared_syntax_source: &str,
 ) -> Result<String, RenderParseTablesGeneratedError> {
     let tables_dag = compile_authority(parse_tables_source, parse_tables_file)?;
     let tokenize_dag = compile_authority(tokenize_source, tokenize_file)?;
+    let shared_operators = extract_shared_operator_bps(shared_syntax_source);
 
     let token_variants = collect_variant_labels(&tokenize_dag, "TokenKind");
     let levels = collect_variant_labels(&tables_dag, "BinaryOpLevel");
-    let rows = collect_binary_op_rows(&tables_dag, &token_variants, &levels);
+    let rows = collect_binary_op_rows(&tables_dag, &token_variants, &levels, &shared_operators);
 
     let rust = emit_module(&levels, &rows);
     let combined = format!("{HEADER}{rust}");
     rustfmt_stdout(&combined).map_err(RenderParseTablesGeneratedError::Rustfmt)
+}
+
+/// Coarse parser precedence level implied by a shared-authority
+/// `left_bp`. The five levels in `BinaryOpLevel` each correspond to one
+/// per-precedence-level parser function in `parse_parser_body.txt`,
+/// which accepts a contiguous bp band:
+/// - `Or` ← bp 5/6 (`||`)
+/// - `And` ← bp 7/8 (`&&`)
+/// - `Comparison` ← bp 9/10 or 11/12 (`== != < <= > >=`)
+/// - `Additive` ← bp 13/14 (`+ -`)
+/// - `Multiplicative` ← bp 15/16 (`* / %`)
+///
+/// If the shared authority introduces an operator at a bp outside these
+/// bands, regen fails closed (`BinaryOpLevel` does not yet cover it).
+fn level_for_bp(left_bp: i64) -> Option<&'static str> {
+    match left_bp {
+        5 => Some("Or"),
+        7 => Some("And"),
+        9 | 11 => Some("Comparison"),
+        13 => Some("Additive"),
+        15 => Some("Multiplicative"),
+        _ => None,
+    }
 }
 
 fn compile_authority(source: &str, file: &str) -> Result<Dag, RenderParseTablesGeneratedError> {
@@ -93,6 +138,7 @@ fn collect_binary_op_rows(
     dag: &Dag,
     token_variants: &[String],
     levels: &[String],
+    shared_operators: &std::collections::BTreeMap<String, i64>,
 ) -> Vec<BinaryOpRow> {
     let token_variant_set: BTreeSet<&str> = token_variants.iter().map(String::as_str).collect();
     let level_set: BTreeSet<&str> = levels.iter().map(String::as_str).collect();
@@ -151,6 +197,31 @@ fn collect_binary_op_rows(
             operators::from_symbol(&operator_symbol).is_some(),
             "`parse_tables.dag::{name}`: operator_symbol `{operator_symbol}` has no \
              `OperatorKind` mapping in `operators.dag::from_symbol`"
+        );
+        // Structural cross-validation against the shared syntax
+        // authority: symbol must exist in `dag_operators` and its
+        // `left_bp` must imply the declared level. Closes token ↔
+        // symbol ↔ precedence drift at regen time.
+        let shared_bp = shared_operators.get(&operator_symbol).unwrap_or_else(|| {
+            panic!(
+                "`parse_tables.dag::{name}`: operator_symbol `{operator_symbol}` is not declared \
+                 in `dag_operators` at `dsl/extdeps/languages/dag/syntax.dag`. Every binary-operator \
+                 row must be grounded in the shared-syntax authority so bp/level drift fails closed."
+            )
+        });
+        let expected_level = level_for_bp(*shared_bp).unwrap_or_else(|| {
+            panic!(
+                "`parse_tables.dag::{name}`: shared-syntax `{operator_symbol}` has `left_bp = {shared_bp}`, \
+                 which falls outside any `BinaryOpLevel` bp band. Either the shared authority moved the \
+                 operator's precedence or a new band is needed in `level_for_bp` + `BinaryOpLevel`."
+            )
+        });
+        assert!(
+            expected_level == level,
+            "`parse_tables.dag::{name}`: declared level `{level}` disagrees with shared-syntax \
+             authority. `dag_operators` assigns `{operator_symbol}` `left_bp = {shared_bp}` which \
+             implies level `{expected_level}`. Either update the row to match or reclassify \
+             `left_bp = {shared_bp}` in `level_for_bp`."
         );
         assert!(
             seen_token_variants.insert(token_variant.clone()),
@@ -316,4 +387,89 @@ fn rustfmt_stdout(source: &str) -> Result<String, String> {
         ));
     }
     String::from_utf8(output.stdout).map_err(|e| format!("rustfmt stdout utf-8: {e}"))
+}
+
+/// SG-1a scaffold extension: read `data dag_operators: List<OperatorSpec>`
+/// directly from `syntax.dag` source text because that body still lowers
+/// as `ValueBody::Unparsed` (same state `regen_tokenize` encountered).
+/// Returns a symbol → `left_bp` map. Fails closed on malformed input.
+/// Dissolution trigger: when `dag_operators` lowers structurally, swap
+/// this extractor for a typed read — same lane as `regen_tokenize`'s
+/// `assert_shared_syntax_raw_source_scaffold_still_required`.
+fn extract_shared_operator_bps(source: &str) -> std::collections::BTreeMap<String, i64> {
+    let section = extract_balanced_section(source, "data dag_operators", '[', ']');
+    let mut out = std::collections::BTreeMap::new();
+    // Each entry is `OperatorSpec { symbol: "X", left_bp: N, ... }`.
+    // Parse sequentially: find `symbol:` → string literal → find `left_bp:` → integer literal.
+    let mut rest = section;
+    loop {
+        let Some(sym_idx) = rest.find("symbol:") else { break };
+        let after_sym = &rest[sym_idx + "symbol:".len()..];
+        let quote_idx = after_sym
+            .find('"')
+            .expect("missing string literal for `symbol` in `dag_operators`");
+        let (symbol, consumed) = parse_string_literal(&after_sym[quote_idx..]);
+        let tail = &after_sym[quote_idx + consumed..];
+
+        let bp_idx = tail
+            .find("left_bp:")
+            .expect("OperatorSpec missing `left_bp` field");
+        let after_bp = &tail[bp_idx + "left_bp:".len()..];
+        let after_bp_trimmed = after_bp.trim_start();
+        let num_end = after_bp_trimmed
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after_bp_trimmed.len());
+        let bp: i64 = after_bp_trimmed[..num_end]
+            .parse()
+            .unwrap_or_else(|_| panic!("malformed left_bp for symbol `{symbol}`"));
+
+        assert!(
+            out.insert(symbol.clone(), bp).is_none(),
+            "duplicate `dag_operators` row for symbol `{symbol}`"
+        );
+        rest = &after_bp_trimmed[num_end..];
+    }
+    out
+}
+
+fn extract_balanced_section<'a>(source: &'a str, anchor: &str, open: char, close: char) -> &'a str {
+    let anchor_idx = source
+        .find(anchor)
+        .unwrap_or_else(|| panic!("missing `{anchor}` in shared syntax authority"));
+    let tail = &source[anchor_idx..];
+    let open_rel = tail
+        .find(open)
+        .unwrap_or_else(|| panic!("missing `{open}` after `{anchor}`"));
+    let start = anchor_idx + open_rel;
+    let mut depth = 0usize;
+    for (offset, ch) in source[start..].char_indices() {
+        if ch == open {
+            depth += 1;
+        } else if ch == close {
+            depth -= 1;
+            if depth == 0 {
+                return &source[start + open.len_utf8()..start + offset];
+            }
+        }
+    }
+    panic!("unterminated `{open}` section `{anchor}`");
+}
+
+fn parse_string_literal(source: &str) -> (String, usize) {
+    assert!(source.starts_with('"'), "string literal expects to start at a quote");
+    let mut out = String::new();
+    let mut escaped = false;
+    for (idx, ch) in source[1..].char_indices() {
+        if escaped {
+            out.push(ch);
+            escaped = false;
+            continue;
+        }
+        match ch {
+            '\\' => escaped = true,
+            '"' => return (out, idx + 2),
+            other => out.push(other),
+        }
+    }
+    panic!("unterminated string literal in shared syntax authority");
 }
