@@ -1,0 +1,69 @@
+// SG-3g prototype — first `.dag`-authority lowering helper.
+//
+// `expr_span` is the smallest real lowering primitive that survives
+// the current emit constraints: a pure match over `SurfaceExpr`'s
+// eleven named-field variants returning each variant's `span`
+// field. Used at 16 sites across `src/v3/compiler/src/lower.rs` —
+// real lowering semantics, not bookkeeping.
+//
+// Two earlier candidate slices hit `emit_rust_module` gaps and were
+// rejected:
+//
+//   1. `SurfaceLiteral -> LiteralBits`. `src/v3/std/substrate.dag`
+//      declares `LiteralBits = LitInt | LitBool | LitString` while
+//      the Rust enum is `Int | Bool | String`. No variant-rename
+//      facility exists in `spec/rust.dag`, and `emit_rust_module`
+//      emits variant names verbatim, so the helper can't construct
+//      the Rust variants from the `.dag` names.
+//
+//   2. `placeholder_connective -> TypeConnective::Atom(
+//      AtomPayload::UnresolvedIdentifier(name))`. The variant names
+//      align (`Atom`, `UnresolvedIdentifier` exist on both sides),
+//      but `render_variant_constructor` at
+//      `src/v3/compiler/src/emit/rust_target.rs:4296` unconditionally
+//      emits `Variant { _0: value }` struct-variant construction.
+//      That works for enums the emit also declares; it doesn't
+//      compile against the real tuple-variant Rust enums in
+//      `crate::dag` (`TypeConnective::Atom(AtomPayload)` is a tuple
+//      variant).
+//
+// Both are tracked as separate prerequisite lanes — SG-3g is not
+// responsible for widening emit_rust_module to construct external
+// substrate variants.
+//
+// `expr_span` only reads variants and returns a struct-typed value
+// (`SourceSpan`), so neither construction gap applies. The generator
+// produces clean Rust for it.
+//
+// Wire-in (consuming the generated helper from `lower.rs`) is parked
+// pending `parse` / `parse_surface` convergence: the generated
+// helper types against `parse_surface::SurfaceExpr` but `lower.rs`
+// operates on `parse::SurfaceExpr`. The only bridge is a `From` impl
+// that deep-clones the expression tree; using it at 16 call sites
+// per lowered body would make the lowerer materially slower, not
+// better. That convergence is SG-3f follow-up, not SG-3g.
+//
+// Placement under `lenses/` mirrors `infer_helpers.dag`: `build.rs`'s
+// auto-stager for `src/v3/compiler/*.dag` does not sweep this file
+// into the bootstrap; `regen_lens` reads it standalone via the
+// `LensRegistryEntry` record in `src/v3/compiler/regen.dag`.
+
+module lenses.lower_helpers
+
+import std.substrate { SourceSpan }
+import v3.compiler.runtime_mirrors { SurfaceExpr }
+
+fn expr_span(expr: SurfaceExpr) -> SourceSpan =
+  match expr {
+    Literal(e) => e.span
+    Var(e) => e.span
+    Path(e) => e.span
+    Call(e) => e.span
+    VariantRecord(e) => e.span
+    Operator(e) => e.span
+    Lambda(e) => e.span
+    If(e) => e.span
+    Match(e) => e.span
+    Record(e) => e.span
+    List(e) => e.span
+  }

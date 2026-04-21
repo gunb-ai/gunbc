@@ -82,3 +82,13 @@ data lens_variant_payload_entry: LensRegistryEntry = {
   lens_file: "src/v3/lenses/variant_payload.dag"
   generated_file: "src/v3/compiler/src/variant_payload_generated.rs"
 }
+
+// SG-3g prototype — first `.dag`-authority lowering helper. Slice
+// rationale and the two separate emitter/parse-surface gaps that
+// block full wire-in are documented in `lenses/lower_helpers.dag`
+// and the SG-3g PR body.
+data lens_lower_helpers_entry: LensRegistryEntry = {
+  name: "lower_helpers"
+  lens_file: "src/v3/lenses/lower_helpers.dag"
+  generated_file: "src/v3/compiler/src/lower_helpers_generated.rs"
+}

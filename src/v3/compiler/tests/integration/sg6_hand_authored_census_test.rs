@@ -334,6 +334,11 @@ fn sg6_regen_dag_registry_triples_are_pinned() {
             "src/v3/compiler/src/infer_helpers_generated.rs",
         ),
         (
+            "lower_helpers",
+            "src/v3/lenses/lower_helpers.dag",
+            "src/v3/compiler/src/lower_helpers_generated.rs",
+        ),
+        (
             "provenance",
             "src/v3/lenses/provenance.dag",
             "src/v3/compiler/src/lens_provenance_generated.rs",
@@ -470,6 +475,33 @@ fn sg6_infer_helpers_generated_module_matches_checked_in_snapshot() {
 fn sg6_emit_infer_helpers_snapshot() {
     let (_dag, rows) = load_registry();
     let row = registry_row(&rows, "infer_helpers");
+    let fresh = emit_registry_module(row);
+    let out_path = workspace_root().join(&row.generated_file);
+    std::fs::write(&out_path, fresh)
+        .unwrap_or_else(|err| panic!("write {}: {err}", out_path.display()));
+    println!("wrote {}", out_path.display());
+}
+
+#[test]
+fn sg6_lower_helpers_generated_module_matches_checked_in_snapshot() {
+    let (_dag, rows) = load_registry();
+    let row = registry_row(&rows, "lower_helpers");
+    let fresh = emit_registry_module(row);
+    assert_eq!(
+        fresh.trim(),
+        checked_in_generated_module(row).trim(),
+        "checked-in generated module is stale; regenerate {} from {} via `cargo run -p v3-compiler --bin regen_lens -- --lens {}`",
+        row.generated_file,
+        row.lens_file,
+        row.name,
+    );
+}
+
+#[test]
+#[ignore]
+fn sg6_emit_lower_helpers_snapshot() {
+    let (_dag, rows) = load_registry();
+    let row = registry_row(&rows, "lower_helpers");
     let fresh = emit_registry_module(row);
     let out_path = workspace_root().join(&row.generated_file);
     std::fs::write(&out_path, fresh)
