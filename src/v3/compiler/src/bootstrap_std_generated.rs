@@ -7690,10 +7690,10 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
         stdlib_types: StdlibTypeCache::default(),
         emit_anchors: EmitAnchorCache::default(),
         pattern_binding_rule_variants: PatternBindingRuleVariants::default(),
+        callable_strategy_variants: CallableStrategyVariants::default(),
         variant_payload_field_access_rule_variants: VariantPayloadFieldAccessRuleVariants::default(
         ),
         verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
-        callable_strategy_variants: CallableStrategyVariants::default(),
         clusters: vec![],
         optional_match_disjs: HashMap::new(),
     }

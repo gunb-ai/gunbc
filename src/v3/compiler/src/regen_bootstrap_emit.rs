@@ -82,6 +82,9 @@ fn emit_bootstrap_module(dag: &Dag, function_name: &str) -> String {
     out.push_str("        stdlib_types: StdlibTypeCache::default(),\n");
     out.push_str("        emit_anchors: EmitAnchorCache::default(),\n");
     out.push_str("        pattern_binding_rule_variants: PatternBindingRuleVariants::default(),\n");
+    out.push_str(
+        "        callable_strategy_variants: CallableStrategyVariants::default(),\n",
+    );
     out.push_str("        variant_payload_field_access_rule_variants: VariantPayloadFieldAccessRuleVariants::default(),\n");
     out.push_str(
         "        verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),\n",

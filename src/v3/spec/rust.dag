@@ -53,7 +53,7 @@ import v3.std.computation_model { TargetExecutionModel, OwnershipBased, LexicalS
 import v3.std.computation_model { SourceFiltering, ExecutionModelRequirement }
 import v3.std.emit_model {
   TypeRealization, FieldBinding, FieldAccess,
-  OperatorRealization, BehaviorRealization, CallableRealization,
+  OperatorRealization, LogicalOperatorCarrier, BehaviorRealization, CallableRealization,
   TypeInstantiationRealization, CallableStrategy,
   ParameterDisposition, Borrowed, Consumed,
   PatternRealization, PatternStrategy,
@@ -1079,6 +1079,17 @@ data rust_list_pattern: PatternRealization = {
 data rust_statements: StatementSyntax = {
   let_binding: "let {name}: {type} = {value};"
   let_binding_inferred: "let {name} = {value};"
+}
+
+// Rendered symbols for `&&` / `||`. The operator substrate maps
+// these logical connectives to `Logical(And)` / `Logical(Or)`; the
+// Rust emitter previously hardcoded the `&&` / `||` literals in
+// `render_operator`. Spec row is the single authority so adding a
+// new target is a `.dag` change only.
+data rust_logical_ops: LogicalOperatorCarrier = {
+  language: rust_language
+  and_symbol: "&&"
+  or_symbol: "||"
 }
 
 data rust_expressions: ExpressionSyntax = {

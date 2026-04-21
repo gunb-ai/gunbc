@@ -209,6 +209,17 @@ pub(crate) struct SourceFilteringBinding {
     excluded_prefixes: Vec<String>,
 }
 
+/// Typed read of `data <target>_logical_ops: LogicalOperatorCarrier`
+/// (Lane 1e Phase 2 Cluster F). Holds the per-target rendered symbols
+/// for `Logical(And)` / `Logical(Or)`. Consumed by every target
+/// emitter's operator-rendering path so the `&&` / `||` vs
+/// `and` / `or` choice is a spec fact, not a hardcoded Rust branch.
+#[derive(Debug, Clone)]
+pub(crate) struct LogicalOperatorCarrierBinding {
+    pub and_symbol: String,
+    pub or_symbol: String,
+}
+
 /// Typed read of `data go_clean_emission: CleanEmissionContract`
 /// from `src/v3/spec/go.dag` — the portion this pilot consumes (E-5
 /// / Lane 1 Stage 1c PR 2). Other contract rules land here as their
@@ -255,6 +266,7 @@ struct RealizationIndexes {
     /// emitted code so `gofmt -l` stays empty and Go's
     /// unused-local compile error never fires.
     clean_emission: CleanEmissionContractBinding,
+    logical_ops: LogicalOperatorCarrierBinding,
 }
 
 impl RealizationIndexes {
@@ -454,6 +466,11 @@ impl RealizationIndexes {
         )?;
         let syntax = GoLanguageSyntax::build(dag)?;
         let clean_emission = CleanEmissionContractBinding::build(dag)?;
+        let logical_ops = LogicalOperatorCarrierBinding::build(
+            dag,
+            dag.go_logical_ops_spec()
+                .ok_or(EmitError::MissingTargetSyntax("go_logical_ops"))?,
+        )?;
 
         Ok(Self {
             types,
@@ -467,6 +484,7 @@ impl RealizationIndexes {
             execution_model,
             source_filtering,
             clean_emission,
+            logical_ops,
         })
     }
 }
@@ -1131,12 +1149,12 @@ impl<'a> Ctx<'a> {
             )));
         }
         // Logical operators are Bool-monomorphic and do not dispatch
-        // through a Bool algebra today — render the symbol directly.
-        // Go uses `&&` / `||`; same as the source surface.
+        // through a Bool algebra today — render the symbol from the
+        // `go_logical_ops` spec row (Lane 1e Phase 2 Cluster F).
         if let OperatorKind::Logical(logical_op) = op {
-            let symbol = match logical_op {
-                crate::dag::LogicalOp::And => "&&",
-                crate::dag::LogicalOp::Or => "||",
+            let symbol: &str = match logical_op {
+                crate::dag::LogicalOp::And => &self.indexes.logical_ops.and_symbol,
+                crate::dag::LogicalOp::Or => &self.indexes.logical_ops.or_symbol,
             };
             let lhs = self.render_port(t.inputs[0], locals)?;
             let rhs = self.render_port(t.inputs[1], locals)?;
@@ -2771,6 +2789,18 @@ impl SourceFilteringBinding {
         self.excluded_prefixes
             .iter()
             .any(|prefix| file.starts_with(prefix))
+    }
+}
+
+impl LogicalOperatorCarrierBinding {
+    pub(crate) fn build(dag: &Dag, declaration: DeclarationId) -> Result<Self, EmitError> {
+        let fields = structural_fields_for_decl(dag, declaration)?;
+        let and_symbol = syntax_field_string(fields, "and_symbol", declaration)?;
+        let or_symbol = syntax_field_string(fields, "or_symbol", declaration)?;
+        Ok(Self {
+            and_symbol,
+            or_symbol,
+        })
     }
 }
 

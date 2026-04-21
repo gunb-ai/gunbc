@@ -15,7 +15,7 @@ import v3.std.computation_model {
   SourceFiltering, ExecutionModelRequirement
 }
 import v3.std.emit_model {
-  TypeRealization, OperatorRealization, CallableRealization,
+  TypeRealization, OperatorRealization, LogicalOperatorCarrier, CallableRealization,
   TypeInstantiationRealization, PatternRealization, CallableStrategy,
   PatternStrategy, CallableParameter, ParameterDisposition,
   Borrowed, Consumed,
@@ -45,6 +45,12 @@ import v3.compiler.runtime_mirrors {
 data python_statements: StatementSyntax = {
   let_binding: "{name} = {value}"
   let_binding_inferred: "{name} = {value}"
+}
+
+data python_logical_ops: LogicalOperatorCarrier = {
+  language: python_language
+  and_symbol: "and"
+  or_symbol: "or"
 }
 
 data python_expressions: ExpressionSyntax = {

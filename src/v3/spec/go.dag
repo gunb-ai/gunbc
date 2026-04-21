@@ -3,7 +3,7 @@ module v3.spec.go
 import v3.spec.v3_l1 { Bind, Branch, Main }
 import v3.std.emit_model {
   TypeRealization, FieldBinding, FieldAccess,
-  OperatorRealization, BehaviorRealization, CallableRealization,
+  OperatorRealization, LogicalOperatorCarrier, BehaviorRealization, CallableRealization,
   TypeInstantiationRealization, CallableStrategy,
   ParameterDisposition, Borrowed, Consumed,
   PatternRealization, PatternStrategy,
@@ -981,6 +981,12 @@ data go_list_pattern: PatternRealization = {
 data go_statements: StatementSyntax = {
   let_binding: "var {name} {type} = {value}"
   let_binding_inferred: "{name} := {value}"
+}
+
+data go_logical_ops: LogicalOperatorCarrier = {
+  language: go_language
+  and_symbol: "&&"
+  or_symbol: "||"
 }
 
 data go_expressions: ExpressionSyntax = {

@@ -46,8 +46,8 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    parse_pattern_strategy, EmitMode, PatternStrategyBinding, SourceFilteringBinding,
-    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    parse_pattern_strategy, EmitMode, LogicalOperatorCarrierBinding, PatternStrategyBinding,
+    SourceFilteringBinding, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
@@ -591,6 +591,10 @@ struct RealizationIndexes {
     /// to shape emitted code so it passes `rustc -D warnings` by
     /// construction.
     clean_emission: CleanEmissionContractBinding,
+    /// Per-target rendered `&&` / `||` symbols loaded from
+    /// `data rust_logical_ops: LogicalOperatorCarrier` (Lane 1e
+    /// Phase 2 Cluster F).
+    logical_ops: LogicalOperatorCarrierBinding,
 }
 
 #[allow(dead_code)]
@@ -868,6 +872,11 @@ impl RealizationIndexes {
                 .ok_or(EmitError::MissingTargetSyntax("rust_source_filtering"))?,
         )?;
         let clean_emission = CleanEmissionContractBinding::build(dag)?;
+        let logical_ops = LogicalOperatorCarrierBinding::build(
+            dag,
+            dag.rust_logical_ops_spec()
+                .ok_or(EmitError::MissingTargetSyntax("rust_logical_ops"))?,
+        )?;
         let callable_dispositions =
             derive_callable_dispositions(dag, &external_callable_dispositions)?;
         let (substrate_accessors, substrate_accessor_universe) =
@@ -887,6 +896,7 @@ impl RealizationIndexes {
             execution,
             source_filtering,
             clean_emission,
+            logical_ops,
             substrate_accessors,
             substrate_accessor_universe,
         })
@@ -3310,12 +3320,12 @@ impl<'a> Ctx<'a> {
             )));
         }
         // Logical operators are Bool-monomorphic and do not dispatch
-        // through a Bool algebra today — render the symbol directly.
-        // Rust uses `&&` / `||`; same as the source surface.
+        // through a Bool algebra today — render the symbol from the
+        // `rust_logical_ops` spec row (Lane 1e Phase 2 Cluster F).
         if let OperatorKind::Logical(logical_op) = op {
-            let symbol = match logical_op {
-                crate::dag::LogicalOp::And => "&&",
-                crate::dag::LogicalOp::Or => "||",
+            let symbol: &str = match logical_op {
+                crate::dag::LogicalOp::And => &self.indexes.logical_ops.and_symbol,
+                crate::dag::LogicalOp::Or => &self.indexes.logical_ops.or_symbol,
             };
             let lhs = self.render_copy_input_use(
                 InputConsumer::Transform(t),

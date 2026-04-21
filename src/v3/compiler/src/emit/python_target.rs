@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use super::{
-    optional_match_variant_roles, parse_pattern_strategy, EmitMode, PatternStrategyBinding,
-    SourceFilteringBinding, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    optional_match_variant_roles, parse_pattern_strategy, EmitMode, LogicalOperatorCarrierBinding,
+    PatternStrategyBinding, SourceFilteringBinding, VariantPayloadBinding,
+    VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, DeclarationId, Field,
@@ -153,6 +154,10 @@ struct PythonIndexes {
     /// is dispatched on; other fields are authored-but-unread until
     /// Lane 1d/1e consolidation.
     clean_emission: CleanEmissionContractBinding,
+    /// Per-target `and` / `or` keyword forms loaded from
+    /// `data python_logical_ops: LogicalOperatorCarrier` (Lane 1e
+    /// Phase 2 Cluster F).
+    logical_ops: LogicalOperatorCarrierBinding,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -388,6 +393,21 @@ impl PythonIndexes {
         };
 
         let clean_emission = CleanEmissionContractBinding::build(dag)?;
+        let logical_ops = LogicalOperatorCarrierBinding::build(
+            dag,
+            dag.python_logical_ops_spec()
+                .ok_or(EmitPythonError::MissingSpec("python_logical_ops"))?,
+        )
+        .map_err(|err| match err {
+            super::rust_target::EmitError::MalformedTargetSyntax {
+                declaration,
+                detail,
+            } => EmitPythonError::MalformedSpec {
+                declaration,
+                detail,
+            },
+            other => EmitPythonError::Unsupported(format!("{other:?}")),
+        })?;
 
         Ok(Self {
             types,
@@ -399,6 +419,7 @@ impl PythonIndexes {
             target,
             source_filtering,
             clean_emission,
+            logical_ops,
         })
     }
 }
@@ -781,12 +802,13 @@ impl<'a> Ctx<'a> {
             )));
         }
         // Logical operators are Bool-monomorphic and do not dispatch
-        // through a Bool algebra today — render the Python keyword
-        // form directly. `&&` / `||` in source become `and` / `or`.
+        // through a Bool algebra today — render the symbol from the
+        // `python_logical_ops` spec row (Lane 1e Phase 2 Cluster F).
+        // `&&` / `||` in source become `and` / `or`.
         if let OperatorKind::Logical(logical_op) = op {
-            let symbol = match logical_op {
-                crate::dag::LogicalOp::And => "and",
-                crate::dag::LogicalOp::Or => "or",
+            let symbol: &str = match logical_op {
+                crate::dag::LogicalOp::And => &self.indexes.logical_ops.and_symbol,
+                crate::dag::LogicalOp::Or => &self.indexes.logical_ops.or_symbol,
             };
             let lhs = self.render_port(t.inputs[0], locals)?;
             let rhs = self.render_port(t.inputs[1], locals)?;

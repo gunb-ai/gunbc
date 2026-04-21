@@ -1163,6 +1163,16 @@ pub(crate) struct TargetSyntaxCache {
     /// `python_execution_requirement` declaration loaded from
     /// `src/v3/spec/python.dag`.
     pub python_execution_requirement: Option<DeclarationId>,
+    /// `rust_logical_ops` declaration loaded from
+    /// `src/v3/spec/rust.dag` — per-target rendered `&&` / `||`
+    /// symbols (Lane 1e Phase 2 Cluster F).
+    pub rust_logical_ops: Option<DeclarationId>,
+    /// `go_logical_ops` declaration loaded from
+    /// `src/v3/spec/go.dag`.
+    pub go_logical_ops: Option<DeclarationId>,
+    /// `python_logical_ops` declaration loaded from
+    /// `src/v3/spec/python.dag` — `and` / `or` keyword form.
+    pub python_logical_ops: Option<DeclarationId>,
     /// Shared target-authority bindings scanned from
     /// `TargetCleanEmissionBinding` data items. This is the single
     /// cached bridge from `LanguageSpec` to `CleanEmissionContract`;
@@ -1637,6 +1647,10 @@ impl Dag {
         self.target_syntax.rust_execution_requirement
     }
 
+    pub fn rust_logical_ops_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.rust_logical_ops
+    }
+
     /// Typed accessor for the source computation-model declaration
     /// declared in `src/v3/std/computation_model.dag`.
     pub fn computation_model_spec(&self) -> Option<DeclarationId> {
@@ -1661,6 +1675,10 @@ impl Dag {
 
     pub fn go_execution_requirement_spec(&self) -> Option<DeclarationId> {
         self.target_syntax.go_execution_requirement
+    }
+
+    pub fn go_logical_ops_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.go_logical_ops
     }
 
     /// Typed accessor for the Go `CleanEmissionContract`
@@ -1704,6 +1722,10 @@ impl Dag {
 
     pub fn python_execution_requirement_spec(&self) -> Option<DeclarationId> {
         self.target_syntax.python_execution_requirement
+    }
+
+    pub fn python_logical_ops_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.python_logical_ops
     }
 
     /// Typed accessor for the Python `CleanEmissionContract`
@@ -2249,6 +2271,12 @@ impl Dag {
         self.target_syntax.python_execution_requirement = self
             .declaration_by_name("python_execution_requirement")
             .map(|d| d.id);
+        self.target_syntax.rust_logical_ops =
+            self.declaration_by_name("rust_logical_ops").map(|d| d.id);
+        self.target_syntax.go_logical_ops =
+            self.declaration_by_name("go_logical_ops").map(|d| d.id);
+        self.target_syntax.python_logical_ops =
+            self.declaration_by_name("python_logical_ops").map(|d| d.id);
         self.populate_target_clean_emission_bindings();
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
 
