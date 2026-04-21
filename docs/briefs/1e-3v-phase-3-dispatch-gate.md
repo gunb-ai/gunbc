@@ -25,6 +25,13 @@
 - **Verdict:** Converged — brief acts as a **real dispatch gate**, not another speculative audit: it reclassifies old paper gaps, narrows the true remaining emitter-gap surface, and names a **concrete deletion-oriented** Phase 3.0 tranche (`behavior_result_port` / `port_is_consumed_from`) instead of only gesturing at a future walker.
 - **Direction locked:** Phase 3.0 is a **small graph-walk dedup** refactor; **unit-first** coverage (focused regression on shared helper behavior or minimal `Dag`) is the right bar — same requirement as **Review B** and §**Tests (required)** below.
 
+**Review D (claude / claude-opus-4-7, schedule, commit `73e3b628`)**
+
+- **Verdict:** APPROVE — documentation-only PR; dispatch-gate brief is appropriate scope.
+- **Spot-checks (worktree at review time; line numbers drift):** No `OperatorKind::Logical` under `src/v3/compiler/src/emit/`; `behavior_result_port` / `go_behavior_result_port` in `rust_target.rs` / `emit.rs` byte-identical modulo name; `port_is_consumed_from` duplicated in those two files; third hand-authored copy in `dimension.rs` called out with Phase 3.0b follow-up — matches **Review A** ingest.
+- **Discipline:** Phase 3.0 implementation must satisfy **`TESTING.md` unit-first** bar via §**Tests (required)** (not belt-only integration); `dimension.rs` tracked debt is documented, bounded, and has a named dissolution trigger — consistent with tracked-debt pattern.
+- **No violations** of INVARIANTS / CODING / TESTING in the doc; Cluster D classified as implementation DRY (not substrate / `.dag` gap); STOP on reviving `LogicalOperatorCarrier` / `TypeRecursionStrategy` as paper carriers — affirmed.
+
 ---
 
 ## Executive summary
