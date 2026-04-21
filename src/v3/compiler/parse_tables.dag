@@ -229,7 +229,12 @@ data binary_op_slash: BinaryOpRow = {
 //   `token_variant` only; the Rust `ItemDispatchKind` enum is a pure projection
 //   over those strings, not a second `.dag` coproduct.
 // - **Pattern 3 (algebraic form)**: fails. No shared algebra across item forms.
-// - **Pattern 4 (dimensional)**: fails / not applicable here (small fixed enum).
+// - **Pattern 4 (dimensional)**: fails / not applicable (cardinality comes only from
+//   how many `TopLevelItemKwRow` facts exist, not from a substrate enum type).
+//
+// **M7 note:** there is **no** `type ItemDispatchKind` in `parse_tables.dag` — only
+// `TopLevelItemKwRow` rows. Rust `ItemDispatchKind` is regen-only (unique `Kw`-strip
+// labels); not a second authored closed set in substrate.
 //
 // **Named trigger (YELLOW):** dissolve with SG-2c proper when
 // `parse_parser_body.txt` ports to `.dag` list-body recursion.
