@@ -206,46 +206,40 @@ data binary_op_slash: BinaryOpRow = {
 
 // --- SG-2c-2: top-level item keyword dispatch (`parse_item` in
 // `parse_parser_body.txt`). Each row lists one dedicated keyword
-// `TokenKind` variant; regen derives `ItemDispatchKind` by stripping the
-// `Kw` prefix (`KwLet` → `Let`). **Single authored field per row** — no
-// parallel `dispatch` column (avoids duplicate representations per
-// `INVARIANTS.md`).
+// `TokenKind` variant. **Substrate authority is only `token_variant`**.
+// Regen emits the Rust projection `ItemDispatchKind` by taking the unique
+// set of `strip_prefix("Kw")` labels from all rows (`KwLet` → `Let`) — there
+// is **no** separate `ItemDispatchKind` coproduct authored here (M7 / one
+// domain, one authority in `parse_tables.dag`).
 //
 // Dispatch classification for top-level item forms — discriminant-only
-// coproduct keyed by authoritative lexer tokens (join `tokenize.dag`).
+// projection keyed by authoritative lexer tokens (join `tokenize.dag`).
 //
 // Dissolution classification: **🟡 YELLOW (scaffold)** per
 // `docs/modeling-discipline.md` §4. Same structural situation as
-// `BinaryOpLevel`: each variant is a parser entry coordinate, not a
+// `BinaryOpLevel`: each emitted enum variant is a parser entry coordinate, not a
 // distinct payload algebra; full dissolution rides SG-2c proper (blocked
 // on recursive list-body emission over `List<Token>`).
 //
 // Dissolution ledger (4-pattern check):
-// - **Pattern 1 (fact placement)**: fails. Variants are coordinate keys for
+// - **Pattern 1 (fact placement)**: fails. Dispatch keys are coordinate keys for
 //   `parse_*_item` entry points, not relocatable facts.
-// - **Pattern 2 (variant-is-data)**: **passes for rows**: `TopLevelItemKwRow`
-//   carries only `token_variant`; `ItemDispatchKind` is derived in regen
-//   (`strip_prefix("Kw")`), not duplicated in the authority.
+// - **Pattern 2 (variant-is-data)**: **passes**: substrate rows are
+//   `token_variant` only; the Rust `ItemDispatchKind` enum is a pure projection
+//   over those strings, not a second `.dag` coproduct.
 // - **Pattern 3 (algebraic form)**: fails. No shared algebra across item forms.
 // - **Pattern 4 (dimensional)**: fails / not applicable here (small fixed enum).
 //
 // **Named trigger (YELLOW):** dissolve with SG-2c proper when
 // `parse_parser_body.txt` ports to `.dag` list-body recursion.
-type ItemDispatchKind
-  = Let
-  | Fn
-  | Type
-  | Module
-  | Import
-  | Data
 
-// Authored fact: which `TokenKind` keyword opens a top-level item.
-// `ItemDispatchKind` label = `token_variant` with `Kw` prefix removed.
+// Authored fact: which `TokenKind` keyword opens a top-level item (dispatch
+// label for Rust is `token_variant.strip_prefix("Kw")`, validated at regen).
 //
 // **M7 / INVARIANTS (single authority, consumed).** Not a shadow table: regen
 // (`regen_parse_tables_emit::collect_top_level_item_kw_rows` → `emit_module`)
 // validates each row against `tokenize.dag` and emits
-// `parse_tables_generated.rs::{ItemDispatchKind, top_level_item_dispatch}`.
+// `parse_tables_generated.rs` (`ItemDispatchKind` + `top_level_item_dispatch`; enum is projection-only).
 // The live parser calls `top_level_item_dispatch` from `parse_item`
 // (`parse_parser_body.txt`, spliced into `parse_generated.rs`). Ratchet:
 // `sg2c1_parse_tables_authority_test` + checked-in generated module snapshot.
