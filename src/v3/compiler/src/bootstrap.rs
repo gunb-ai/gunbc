@@ -202,9 +202,11 @@ fn load_fixtures(dag: &mut Dag, fixtures: &[(&str, &str)]) {
 /// without shadowing `Bool` (which would reallocate sum variants and break
 /// `src/v3/std/algebra.dag` pattern wiring).
 fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
-    let Some(bool_decl) = dag.declarations().iter().find(|d| {
-        d.name.as_deref() == Some("Bool") && d.span.file == "dsl/std/types.dag"
-    }) else {
+    let Some(bool_decl) = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("Bool") && d.span.file == "dsl/std/types.dag")
+    else {
         return;
     };
     let bool_id = bool_decl.id;

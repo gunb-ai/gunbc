@@ -4371,12 +4371,8 @@ mod bool_logical_operator_arrow_tests {
     fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {
         let dag = Dag::new();
         let bool_shape = dag.bool_shape().expect("bootstrap Bool");
-        let sig = resolve_operator_arrow(
-            &dag,
-            OperatorKind::Logical(LogicalOp::And),
-            &bool_shape,
-        )
-        .expect("&& should resolve on Bool");
+        let sig = resolve_operator_arrow(&dag, OperatorKind::Logical(LogicalOp::And), &bool_shape)
+            .expect("&& should resolve on Bool");
         assert!(
             !matches!(sig.body, ArrowBody::Pending),
             "expected Bool && via inhabits → BooleanAlgebra.meet, not Pending scaffold; got {:?}",
@@ -4392,12 +4388,8 @@ mod bool_logical_operator_arrow_tests {
     fn bool_logical_or_resolves_via_boolean_algebra_join_not_pending_fallback() {
         let dag = Dag::new();
         let bool_shape = dag.bool_shape().expect("bootstrap Bool");
-        let sig = resolve_operator_arrow(
-            &dag,
-            OperatorKind::Logical(LogicalOp::Or),
-            &bool_shape,
-        )
-        .expect("|| should resolve on Bool");
+        let sig = resolve_operator_arrow(&dag, OperatorKind::Logical(LogicalOp::Or), &bool_shape)
+            .expect("|| should resolve on Bool");
         assert!(
             !matches!(sig.body, ArrowBody::Pending),
             "expected Bool || via inhabits → BooleanAlgebra.join, not Pending scaffold; got {:?}",
