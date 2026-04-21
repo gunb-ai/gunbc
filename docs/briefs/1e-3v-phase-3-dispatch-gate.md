@@ -6,7 +6,7 @@
 
 **Authorities read:** `docs/single-emitter-design.md`, `docs/emit-target-spec-gaps.md`, `docs/emit-bridges.md`, `src/v3/compiler/src/emit.rs`, `src/v3/compiler/src/emit/rust_target.rs`, `src/v3/compiler/src/emit/python_target.rs`, `src/v3/spec/{rust,go,python}.dag`, `src/v3/std/computation_model.dag`.
 
-**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–M, blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold (**Review M**, exploratory; reinforces **Review K**).
+**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–N, blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold (**Review M**, exploratory; reinforces **Review K**).
 
 ### PR review ingest (#621, 2026-04-21)
 
@@ -81,6 +81,11 @@
 - **Verdict:** APPROVE — docs-only; single dispatch-gate brief under `docs/briefs/`; no substrate/spec/emitter code in diff; no INVARIANTS / modeling-discipline / CODING / TESTING surface to violate.
 - **Spot-checks:** No `OperatorKind::Logical` in `emit/`; Bool operator rows in all three specs; two emit-side dedup pairs + `dimension.rs` / `lens_cost_symbolic_generated.rs` callouts match brief; Phase 3.0 bounded; unit-first explicit (**Reviews B/C**); Phase 3.0b tracked with named trigger; STOP on paper carriers restated.
 - **Exploratory (non-blocking):** Ingest log (~60% of file, growing) — **Reading order** now recommends **doing** a sibling/appendix split **before the next lane’s** dispatch-gate brief so payload isn’t buried (not only “consider”).
+
+**Review N (codex / gpt-5.4, schedule, commit `97620c1a`)**
+
+- **Verdict:** APPROVE — docs-only diff; no substrate, emitter implementation, or test code touched; no concrete violation of **`INVARIANTS.md`**, **`docs/modeling-discipline.md`**, **`CODING.md`**, or **`TESTING.md`** in the added brief.
+- **`TESTING.md`:** Unit-first guidance is **explicitly carried forward**, not weakened.
 
 **Blocking inline review (PR #621, 2026-04-21) — finding does not match live tree**
 
