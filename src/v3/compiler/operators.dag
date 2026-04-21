@@ -61,6 +61,8 @@ fn algebra_field_name(op: OperatorKind) -> String =
         Gt => "gt"
         Ge => "ge"
       }
+    // Logical ops map to `BooleanAlgebra` record fields in `dsl/std/algebra.dag`
+    // (`meet` / `join`), not surface spellings `and` / `or`.
     Logical(logical) =>
       match logical {
         And => "meet"

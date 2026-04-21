@@ -3673,8 +3673,10 @@ const WALK_DEPTH_LIMIT: usize = 32;
 ///
 /// **Not yet covered** (tracked in DOWNSTREAM_REQUIREMENTS.md as
 /// class-5 gaps):
-/// - `Bool`: ~~no structural link~~ now uses `type Bool inhabits
-///   BooleanAlgebra<Bool> = ...` in `std/types.dag`; the walk follows
+/// - `Bool`: ~~no structural link~~ now uses `Declaration.inhabits` on
+///   the kernel `Bool` sum in `dsl/std/types.dag`, populated at bootstrap
+///   (`bootstrap::patch_kernel_bool_boolean_algebra_inhabits`) so v2
+///   keeps a plain `type Bool = True | False` surface. The walk follows
 ///   `Declaration.inhabits` when the connective chain hits a `Disj`
 ///   without an inline algebra.
 /// - `String` / collection-level algebras whose receiver is
@@ -4358,5 +4360,52 @@ fn declaration_shapes_equivalent(
                     })
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod bool_logical_operator_arrow_tests {
+    use super::*;
+
+    #[test]
+    fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {
+        let dag = Dag::new();
+        let bool_shape = dag.bool_shape().expect("bootstrap Bool");
+        let sig = resolve_operator_arrow(
+            &dag,
+            OperatorKind::Logical(LogicalOp::And),
+            &bool_shape,
+        )
+        .expect("&& should resolve on Bool");
+        assert!(
+            !matches!(sig.body, ArrowBody::Pending),
+            "expected Bool && via inhabits → BooleanAlgebra.meet, not Pending scaffold; got {:?}",
+            sig.body
+        );
+        assert_eq!(sig.inputs.len(), 2);
+        assert_eq!(sig.inputs[0].declaration, bool_shape.declaration);
+        assert_eq!(sig.inputs[1].declaration, bool_shape.declaration);
+        assert_eq!(sig.output.declaration, bool_shape.declaration);
+    }
+
+    #[test]
+    fn bool_logical_or_resolves_via_boolean_algebra_join_not_pending_fallback() {
+        let dag = Dag::new();
+        let bool_shape = dag.bool_shape().expect("bootstrap Bool");
+        let sig = resolve_operator_arrow(
+            &dag,
+            OperatorKind::Logical(LogicalOp::Or),
+            &bool_shape,
+        )
+        .expect("|| should resolve on Bool");
+        assert!(
+            !matches!(sig.body, ArrowBody::Pending),
+            "expected Bool || via inhabits → BooleanAlgebra.join, not Pending scaffold; got {:?}",
+            sig.body
+        );
+        assert_eq!(sig.inputs.len(), 2);
+        assert_eq!(sig.inputs[0].declaration, bool_shape.declaration);
+        assert_eq!(sig.inputs[1].declaration, bool_shape.declaration);
+        assert_eq!(sig.output.declaration, bool_shape.declaration);
     }
 }

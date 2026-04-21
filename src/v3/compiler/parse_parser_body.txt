@@ -507,14 +507,23 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::KwInhabits => {
+                let clause_start = self.peek().span.byte_start;
                 self.bump();
                 let inhabits = self.parse_type_expr()?;
-                self.expect_kind(TokenKind::Eq)?;
-                self.parse_type_rhs_after_eq(name, type_params, type_kw.span, Some(inhabits))
+                let eq = self.expect_kind(TokenKind::Eq)?;
+                let inhabits_clause_span =
+                    SourceSpan::new(self.file, clause_start, eq.span.byte_end);
+                self.parse_type_rhs_after_eq(
+                    name,
+                    type_params,
+                    type_kw.span,
+                    Some(inhabits),
+                    Some(inhabits_clause_span),
+                )
             }
             TokenKind::Eq => {
                 self.bump();
-                self.parse_type_rhs_after_eq(name, type_params, type_kw.span, None)
+                self.parse_type_rhs_after_eq(name, type_params, type_kw.span, None, None)
             }
             _ => Ok(SurfaceItem::TypeAtom {
                 name,
@@ -588,6 +597,7 @@ impl<'a> Parser<'a> {
         type_params: Vec<String>,
         type_kw_span: SourceSpan,
         inhabits: Option<SurfaceType>,
+        inhabits_clause_span: Option<SourceSpan>,
     ) -> Result<SurfaceItem, Diagnostic> {
         if !self.rhs_is_sum() {
             if inhabits.is_some() {
@@ -595,7 +605,9 @@ impl<'a> Parser<'a> {
                     message: String::from(
                         "`inhabits` is only supported when the type RHS is a sum (`A | B | ...`)",
                     ),
-                    span: type_kw_span.clone(),
+                    span: inhabits_clause_span
+                        .clone()
+                        .unwrap_or_else(|| type_kw_span.clone()),
                     fixes: Vec::new(),
                 });
             }

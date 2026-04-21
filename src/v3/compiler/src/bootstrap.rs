@@ -30,7 +30,7 @@
 // go through. A failed bootstrap is visible to callers without a
 // side channel.
 
-use crate::dag::{ArrowBody, Dag, DeclarationId, TypeConnective};
+use crate::dag::{ArrowBody, Dag, Declaration, DeclarationId, TemplateArgument, TypeConnective};
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lower::{collect_symbols_phase, lower_bodies_phase, resolve_pending_identifiers};
 use crate::parse::{parse, SurfaceModule};
@@ -191,6 +191,55 @@ fn load_fixtures(dag: &mut Dag, fixtures: &[(&str, &str)]) {
     }
 
     resolve_pending_identifiers(dag);
+    patch_kernel_bool_boolean_algebra_inhabits(dag);
+}
+
+/// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).
+///
+/// `dsl/std/types.dag` must stay free of `inhabits` so v2 can parse every
+/// `dsl/` file. After the std fixtures lower, wire `Bool` to
+/// `BooleanAlgebra<Bool>` the same way surface `inhabits` lowering would,
+/// without shadowing `Bool` (which would reallocate sum variants and break
+/// `src/v3/std/algebra.dag` pattern wiring).
+fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
+    let Some(bool_decl) = dag.declarations().iter().find(|d| {
+        d.name.as_deref() == Some("Bool") && d.span.file == "dsl/std/types.dag"
+    }) else {
+        return;
+    };
+    let bool_id = bool_decl.id;
+    let bool_span = bool_decl.span.clone();
+    if dag.declaration(bool_id).inhabits.is_some() {
+        return;
+    }
+    let (ba_template, param_id) = {
+        let Some(ba) = dag.declaration_by_name("BooleanAlgebra") else {
+            return;
+        };
+        let Some(&param_id) = ba.type_params.first() else {
+            return;
+        };
+        (ba.id, param_id)
+    };
+    let inst_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: inst_id,
+        name: None,
+        connective: TypeConnective::Instantiation {
+            template: ba_template,
+            arguments: vec![TemplateArgument {
+                parameter: param_id,
+                value: bool_id,
+            }],
+        },
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span: bool_span,
+    });
+    dag.declaration_mut(bool_id).inhabits = Some(inst_id);
 }
 
 // DB-14 substrate accessors (`port` / `node` / `resolve_producer`) are
