@@ -241,6 +241,14 @@ type ItemDispatchKind
 
 // Authored fact: which `TokenKind` keyword opens a top-level item.
 // `ItemDispatchKind` label = `token_variant` with `Kw` prefix removed.
+//
+// **M7 / INVARIANTS (single authority, consumed).** Not a shadow table: regen
+// (`regen_parse_tables_emit::collect_top_level_item_kw_rows` → `emit_module`)
+// validates each row against `tokenize.dag` and emits
+// `parse_tables_generated.rs::{ItemDispatchKind, top_level_item_dispatch}`.
+// The live parser calls `top_level_item_dispatch` from `parse_item`
+// (`parse_parser_body.txt`, spliced into `parse_generated.rs`). Ratchet:
+// `sg2c1_parse_tables_authority_test` + checked-in generated module snapshot.
 type TopLevelItemKwRow {
   token_variant: String
 }
