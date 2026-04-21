@@ -12,8 +12,9 @@
 // **What this file is.** The bounded, honest subset of parser
 // authority that DOES fit current `.dag` capabilities: pure
 // declarative tables: (1) binary operator token-to-semantics mapping
-// (SG-2c-1), and (2) top-level item keyword → `parse_item` dispatch
-// class (SG-2c-2). The binary-operator table replaced hand-coded
+// (SG-2c-1), (2) top-level item keyword → `parse_item` dispatch
+// class (SG-2c-2), and (3) type-RHS boundary keyword membership
+// (SG-2c-3). The binary-operator table replaced hand-coded
 // matches across five parser precedence functions in
 // `parse_parser_body.txt`
 // (`parse_logical_or`, `parse_logical_and`, `parse_comparison`,
@@ -42,6 +43,10 @@
 // / Rust `ItemDispatchKind` (derived from keyword rows only) is consumed by the
 // live parser: `parse_item` in `parse_parser_body.txt` (spliced into
 // `parse_generated.rs` via `regen_parse`).
+//
+// **Same-PR consumer (E-6).** SG-2c-3 projection `is_type_rhs_boundary_keyword`
+// is consumed by the live parser's type-RHS lookahead helpers
+// `skip_where_clause` and `rhs_is_sum` in `parse_parser_body.txt`.
 
 module v3.compiler.parse_tables
 
@@ -279,4 +284,46 @@ data top_level_kw_import: TopLevelItemKwRow = {
 
 data top_level_kw_data: TopLevelItemKwRow = {
   token_variant: "KwData"
+}
+
+// --- SG-2c-3: type-RHS boundary keyword table. These are the keyword tokens
+// that terminate a `type ... = ...` RHS lookahead at top level. The live parser
+// consumes the generated helper from `skip_where_clause` / `rhs_is_sum` instead
+// of open-coding this keyword set in multiple places.
+//
+// Scope is intentionally narrow: this owns only flat token membership for
+// "keyword ends a type RHS scan". `KwType` still needs an extra parser-local
+// ambiguity check (`type | ...` variant label vs `type Name = ...` next decl),
+// so the generated helper is consumed as one input into that logic rather than
+// replacing the algorithm.
+type TypeRhsBoundaryKwRow {
+  token_variant: String
+}
+
+data type_rhs_boundary_kw_let: TypeRhsBoundaryKwRow = {
+  token_variant: "KwLet"
+}
+
+data type_rhs_boundary_kw_fn: TypeRhsBoundaryKwRow = {
+  token_variant: "KwFn"
+}
+
+data type_rhs_boundary_kw_type: TypeRhsBoundaryKwRow = {
+  token_variant: "KwType"
+}
+
+data type_rhs_boundary_kw_data: TypeRhsBoundaryKwRow = {
+  token_variant: "KwData"
+}
+
+data type_rhs_boundary_kw_module: TypeRhsBoundaryKwRow = {
+  token_variant: "KwModule"
+}
+
+data type_rhs_boundary_kw_import: TypeRhsBoundaryKwRow = {
+  token_variant: "KwImport"
+}
+
+data type_rhs_boundary_kw_where: TypeRhsBoundaryKwRow = {
+  token_variant: "KwWhere"
 }
