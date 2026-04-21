@@ -42,6 +42,7 @@ type TokenKind
   | KwMatch
   | KwData
   | KwWhere
+  | KwInhabits
   | KwTrue
   | KwFalse
   | Ident(String)
@@ -97,6 +98,7 @@ type KeywordTokenKind
   | KwMatch
   | KwData
   | KwWhere
+  | KwInhabits
   | KwTrue
   | KwFalse
 

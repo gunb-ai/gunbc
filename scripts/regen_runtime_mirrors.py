@@ -1009,11 +1009,13 @@ impl From<&crate::parse::SurfaceItem> for SurfaceItem {
                 name,
                 type_params,
                 variants,
+                inhabits,
                 span,
             } => Self::TypeSum {
                 name: name.clone(),
                 type_params: type_params.clone(),
                 variants: variants.iter().map(SurfaceVariant::from).collect(),
+                inhabits: inhabits.as_ref().map(SurfaceType::from),
                 span: span.clone(),
             },
             crate::parse::SurfaceItem::TypeAlias {

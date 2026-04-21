@@ -215,6 +215,7 @@ type SurfaceItem
       name: String
       type_params: List<String>
       variants: List<SurfaceVariant>
+      inhabits: SurfaceType?
       span: SourceSpan
     }
   | TypeAlias {

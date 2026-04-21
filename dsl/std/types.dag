@@ -159,7 +159,7 @@ fn canonical_container_names() -> List<String> {
 // require v3 to resolve aliases in Branch input type-checking
 // (currently pins Bool as a direct Disj for if/else). Deferred until
 // that compiler work lands; keeps intent-signaling via distinct names.
-type Bool = True | False
+type Bool inhabits BooleanAlgebra<Bool> = True | False
 
 // Unit: terminal object (zero-field product, single inhabitant).
 type Unit

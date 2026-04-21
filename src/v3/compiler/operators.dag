@@ -63,7 +63,7 @@ fn algebra_field_name(op: OperatorKind) -> String =
       }
     Logical(logical) =>
       match logical {
-        And => "and"
-        Or => "or"
+        And => "meet"
+        Or => "join"
       }
   }
