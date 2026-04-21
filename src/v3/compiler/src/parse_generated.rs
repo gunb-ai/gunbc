@@ -2,7 +2,6 @@
 // via `regen_parse` + `parse_parser_body.txt`. Regenerate instead of hand-editing.
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
-use crate::operators::OperatorKind;
 pub use crate::parse_surface::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceMatchArm, SurfaceModule,
     SurfaceParam, SurfacePattern, SurfacePatternField, SurfaceRecordField, SurfaceType,
