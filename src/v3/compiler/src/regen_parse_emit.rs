@@ -2,7 +2,6 @@
 //! body, run `rustfmt --emit stdout`. Used by the `regen_parse` binary (writes the file)
 //! and by hermetic integration tests (compare in-memory only).
 
-use std::collections::BTreeSet;
 use std::fmt;
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -85,11 +84,15 @@ fn emit_parse_module(dag: &Dag, parser_body: &str) -> String {
     out.push_str("use crate::diagnostics::{Diagnostic, SourceSpan};\n");
     out.push_str("use crate::operators::OperatorKind;\n");
     out.push_str(
+        "pub use crate::parse_surface::{SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, \
+         SurfaceMatchArm, SurfaceModule, SurfaceParam, SurfacePattern, SurfacePatternField, \
+         SurfaceRecordField, SurfaceType, SurfaceVariant, VariantPayload};\n",
+    );
+    out.push_str(
         "use crate::parse_tables::{binary_op_at_level, BinaryOpLevel, top_level_item_dispatch, \
          ItemDispatchKind};\n",
     );
     out.push_str("use crate::tokenize::{Token, TokenKind};\n\n");
-    out.push_str(&emit_surface_types(dag));
     out.push_str(
         r#"impl SurfaceType {
     pub fn span(&self) -> &SourceSpan {
@@ -106,86 +109,6 @@ fn emit_parse_module(dag: &Dag, parser_body: &str) -> String {
     );
     out.push_str(parser_body);
     out
-}
-
-fn emit_surface_types(dag: &Dag) -> String {
-    let root_names = [
-        "SurfaceLiteral",
-        "SurfaceField",
-        "VariantPayload",
-        "SurfaceVariant",
-        "SurfaceType",
-        "SurfacePatternField",
-        "SurfacePattern",
-        "SurfaceRecordField",
-        "SurfaceExpr",
-        "SurfaceMatchArm",
-        "SurfaceParam",
-        "SurfaceItem",
-        "SurfaceModule",
-    ];
-    let mut emitted = BTreeSet::new();
-    let mut out = String::new();
-    for name in root_names {
-        emit_named_declaration(dag, name, &mut emitted, &mut out);
-    }
-    out.push('\n');
-    out
-}
-
-fn emit_named_declaration(dag: &Dag, name: &str, emitted: &mut BTreeSet<String>, out: &mut String) {
-    if emitted.contains(name) {
-        return;
-    }
-    let decl = dag
-        .declarations()
-        .iter()
-        .find(|d| d.name.as_deref() == Some(name))
-        .unwrap_or_else(|| panic!("missing `{name}` in runtime_mirrors.dag"));
-
-    match &decl.connective {
-        TypeConnective::Conj { children } => {
-            emitted.insert(name.to_string());
-            out.push_str("#[derive(Debug, Clone)]\n");
-            out.push_str(&format!("pub struct {name} {{\n"));
-            for field in children {
-                let rust_ty = rust_type_for_field(dag, field.ty, name, &field.label, false);
-                out.push_str(&format!("    pub {}: {rust_ty},\n", field.label));
-            }
-            out.push_str("}\n\n");
-        }
-        TypeConnective::Disj { variants } => {
-            emitted.insert(name.to_string());
-            out.push_str("#[derive(Debug, Clone)]\n");
-            out.push_str(&format!("pub enum {name} {{\n"));
-            for v in variants {
-                let payload = dag.declaration(v.ty);
-                match &payload.connective {
-                    TypeConnective::Conj { children } if children.is_empty() => {
-                        out.push_str(&format!("    {},\n", v.label));
-                    }
-                    TypeConnective::Conj { children }
-                        if children.len() == 1 && children[0].label == "_0" =>
-                    {
-                        let rust_ty = rust_type_for_field(dag, children[0].ty, name, "_0", false);
-                        out.push_str(&format!("    {}({rust_ty}),\n", v.label));
-                    }
-                    TypeConnective::Conj { children } => {
-                        out.push_str(&format!("    {} {{\n", v.label));
-                        for field in children {
-                            let rust_ty =
-                                rust_type_for_field(dag, field.ty, name, &field.label, false);
-                            out.push_str(&format!("        {}: {rust_ty},\n", field.label));
-                        }
-                        out.push_str("    },\n");
-                    }
-                    other => panic!("{name}::{}: unexpected payload {other:?}", v.label),
-                }
-            }
-            out.push_str("}\n\n");
-        }
-        other => panic!("{name}: unsupported connective {other:?}"),
-    }
 }
 
 fn rust_type_for_field(
