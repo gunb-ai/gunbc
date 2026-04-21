@@ -64,7 +64,7 @@ import v3.std.emit_model {
 }
 import v3.std.substrate {
   SubstrateAccessorRealization, SubstrateAccessorBinding,
-  port, node, resolve_producer, lane2_workflow_at
+  port, node, resolve_producer, lane2_workflow_at, declaration_by_id
 }
 import v3.std.clean_emission {
   CleanEmissionContract,
@@ -1287,5 +1287,20 @@ data rust_lane2_workflow_accessor: SubstrateAccessorRealization = {
 data lane2_workflow_at_binding_rust: SubstrateAccessorBinding = {
   accessor: lane2_workflow_at
   realization: rust_lane2_workflow_accessor
+  language: rust_language
+}
+
+// `declaration_by_id(d: Dag, id: DeclarationId) -> Declaration?` —
+// id-keyed parity with `port` / `node`. Host realization is
+// `Dag::declaration_opt(&DeclarationId)`; `.cloned()` mirrors the
+// `port` / `node` accessor shape so the reflected `Declaration?`
+// return type carries owned data at the substrate boundary.
+data rust_declaration_by_id_accessor: SubstrateAccessorRealization = {
+  carrier: "({p0}).declaration_opt({p1}).cloned()"
+}
+
+data declaration_by_id_binding_rust: SubstrateAccessorBinding = {
+  accessor: declaration_by_id
+  realization: rust_declaration_by_id_accessor
   language: rust_language
 }

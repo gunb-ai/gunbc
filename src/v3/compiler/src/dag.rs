@@ -1973,6 +1973,15 @@ impl Dag {
         decl
     }
 
+    /// Option-returning variant for the .dag substrate accessor
+    /// `declaration_by_id(d, id) -> Declaration?`. Same pattern as `node_opt`
+    /// / `port_opt`: permissive at the reflected-substrate boundary; C-8
+    /// fail-closed is enforced at the lens consumer that treats `None` as a
+    /// substrate-integrity violation (valid ids can't legitimately miss).
+    pub fn declaration_opt(&self, id: &DeclarationId) -> Option<&Declaration> {
+        self.declarations.get(id.index())
+    }
+
     fn declaration_name_preference_rank(file: &str) -> usize {
         if file.starts_with("src/v3/") {
             2

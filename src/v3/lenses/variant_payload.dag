@@ -10,7 +10,7 @@ module lenses.variant_payload
 
 import std.list { List, empty, cons, map }
 import std.substrate {
-  Dag, Declaration, DeclarationId, TypeConnective, ConjField
+  Dag, DeclarationId, TypeConnective, ConjField, declaration_by_id
 }
 
 type VariantPayloadShape
@@ -21,18 +21,6 @@ type VariantPayloadShape
 type VariantPayloadShapeLookup
   = Missing
   | Found(VariantPayloadShape)
-
-type DeclarationLookup
-  = LookupMissing
-  | LookupFound(Declaration)
-
-fn find_declaration(decls: List<Declaration>, target: DeclarationId) -> DeclarationLookup =
-  match decls {
-    Empty => LookupMissing
-    Cons(payload) =>
-      if payload.head.id == target then LookupFound(payload.head)
-      else find_declaration(payload.tail, target)
-  }
 
 fn conj_field_label(f: ConjField) -> String =
   f.label
@@ -50,10 +38,16 @@ fn conj_payload_shape(children: List<ConjField>) -> VariantPayloadShape =
       }
   }
 
+// `None` from `declaration_by_id` is a constructor-layer violation
+// (id-carriers can't legitimately reference an absent declaration);
+// consumers in `emit.rs` / `emit/rust_target.rs` / `emit/python_target.rs`
+// fail closed on `Missing` via a typed diagnostic. We don't grow a
+// separate "absent-decl" variant here because every consumer already
+// treats `Missing` as a hard error — C-8 is preserved at the caller.
 fn variant_payload_shape(d: Dag, variant_id: DeclarationId) -> VariantPayloadShapeLookup =
-  match find_declaration(d.declarations, variant_id) {
-    LookupMissing => Missing
-    LookupFound(decl) =>
+  match declaration_by_id(d, variant_id) {
+    None => Missing
+    Some(decl) =>
       match decl.connective {
         Conj(c) => Found(conj_payload_shape(c.children))
         Atom(_) => Missing
