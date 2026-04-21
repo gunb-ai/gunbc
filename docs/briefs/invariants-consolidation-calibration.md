@@ -33,7 +33,7 @@ Read the draft below and flag:
 
 **Why this is its own principle:** The cost of change is proportional to how many files encode the same fact. When a fact lives in two places — even "temporarily" — new consumers must choose between them, and the choice drifts. Consolidation later is the hardest refactor in the codebase. This principle prevents duplicate authority from entering the system in the first place.
 
-**When a boundary counts as landed:** the declaration exists, the realization (Rust binding / data table) exists, *and* at least one consumer reads through the typed surface. Declaration alone is staging, not a landed boundary.
+**When a boundary counts as landed:** the declaration exists, the realization (Rust binding / data table) exists, *and a generated consumer proof exists* — i.e., generated code somewhere in the compiler consumes the declared surface. Declaration alone is staging, and a hand-written consumer is not generation.
 
 ### Problem shape: Parallel authority
 
