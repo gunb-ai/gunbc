@@ -186,8 +186,8 @@ jobs:
       - name: v3 tests (per-test 2s ratchet)
         if: always()
         run: |
-          if [ ! -f /tmp/v3-test-timings.log ]; then
-            echo "::notice::no timing log captured (full-suite step did not reach the cargo test invocation)"
+          if [ ! -s /tmp/v3-test-timings.log ]; then
+            echo "::notice::no timing log captured or log is empty (full-suite step did not reach cargo test, or tee wrote nothing) — skipping per-test ratchet"
             exit 0
           fi
           scripts/check-test-timeout.sh /tmp/v3-test-timings.log
