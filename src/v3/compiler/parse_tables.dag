@@ -253,6 +253,10 @@ type TopLevelItemKwRow {
   token_variant: String
 }
 
+// Each row below feeds `collect_top_level_item_kw_rows` → emitted
+// `parse_tables_generated.rs::top_level_item_dispatch`; `parse_item` calls that
+// helper instead of matching `TokenKind::Kw*` — not a duplicate dispatch table.
+
 data top_level_kw_let: TopLevelItemKwRow = {
   token_variant: "KwLet"
 }
