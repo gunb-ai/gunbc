@@ -3779,10 +3779,13 @@ fn resolve_operator_arrow(
 /// refinements are surface-level facts about values, not part of an
 /// operator's arrow contract.
 ///
+/// Also used by [`crate::emit::operator_carrier_realization`] so emit
+/// and infer share one refinement-stripping rule (no drift).
+///
 /// Terminates at the first un-refined declaration OR when the chain
 /// can no longer be followed (any non-ResolvedIdentifier connective).
 /// Depth-bounded by `WALK_DEPTH_LIMIT`.
-fn strip_refinement_to_base(dag: &Dag, decl_id: DeclarationId) -> DeclarationId {
+pub(crate) fn strip_refinement_to_base(dag: &Dag, decl_id: DeclarationId) -> DeclarationId {
     let mut current = decl_id;
     for _ in 0..WALK_DEPTH_LIMIT {
         let decl = dag.declaration(current);

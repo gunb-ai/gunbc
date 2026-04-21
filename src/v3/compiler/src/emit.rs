@@ -57,6 +57,7 @@ use crate::dag::{
     Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective, ValueBody,
 };
+use crate::infer::strip_refinement_to_base;
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
     variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup,
@@ -2921,27 +2922,6 @@ fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, 
     Err(EmitError::UnsupportedBehavior(
         "port type walk exceeded depth 32 — likely a cycle".to_string(),
     ))
-}
-
-/// DB-11 (3a.3) mirror of `infer::strip_refinement_to_base`: realization indexes
-/// key the substrate owner, but a port can still surface a refinement carrier
-/// before `primitive_type_id_for_port` walks it away.
-fn strip_refinement_to_base_decl(dag: &Dag, decl_id: DeclarationId) -> DeclarationId {
-    let mut current = decl_id;
-    for _ in 0..32 {
-        let decl = dag.declaration(current);
-        if decl.refinement.is_none() {
-            return current;
-        }
-        match &decl.connective {
-            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
-                current = *next;
-            }
-            _ => return current,
-        }
-    }
-    current
 }
 
 /// Peel named empty `Instantiation` chains (`type MyBool = Bool` → `Bool`).
