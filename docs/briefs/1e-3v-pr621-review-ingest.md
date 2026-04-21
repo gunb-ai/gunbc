@@ -2,7 +2,7 @@
 
 **Companion:** [1e-3v-phase-3-dispatch-gate.md](1e-3v-phase-3-dispatch-gate.md) — **live dispatch guidance** (Executive summary, cluster table, Phase 3.0, checklist).
 
-This file is **archival only**: api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, same commit). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
+This file is **archival only**: api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** (commit `da72fb9c`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
 
 ---
 
@@ -207,3 +207,10 @@ Relayed **BLOCKING** comment repeats the first review’s two claims: (1) `emit.
 - **Findings:** None — substantive claims (Cluster **F** closure; no `OperatorKind::Logical` in `emit/`; Bool **`OperatorRealization`** rows in all three specs; **`behavior_result_port`** pair byte-identical-modulo-name; **`port_is_consumed_from`** pair structurally equivalent — **Review E**; **`dimension.rs`** + **`lens_cost_symbolic_generated.rs`** as Phase **3.0b** debt) are carefully qualified. Phase **3.0** is small, deletion-oriented, **STOP-AND-ESCALATE**, **unit-first** per **`TESTING.md`**; Phase **3.0b** tracked-debt pattern (bounded, named dissolution); lens **regen** guardrail preserved in § **Non-goals** and **Dispatch checklist**.
 - **Split:** Sibling ingest (**Review Z**) addresses **`INVARIANTS.md`** “Documentation Describes Live State” — dispatch gate **~123 lines** live guidance; chronicle a labeled archival sibling.
 - **Exploratory (non-blocking):** Ingest file (**Reviews A–Z** + three blocking rebuttals) is itself a fairly heavy artifact (~198 lines at review time); future lanes could lean toward **rebuttals-only** as live evidence and drop APPROVE-only summaries — closer to “describe live state, not process” once the rebuttal pattern stabilizes — **not** for this PR.
+
+**Review AC (claude / claude-opus-4-7, schedule, commit `da72fb9c`, 2026-04-21T23:46:41Z)**
+
+- **Verdict:** APPROVE — docs-only: live Phase 3 dispatch-gate brief (**~123 lines**) + archival **PR #621** ingest chronicle (**~209 lines** at review time); no substrate, spec, emitter, or test code touched.
+- **Claim verification (tree; line refs drift):** `rg 'OperatorKind::Logical|LogicalOp::' src/v3/compiler/src/emit` → empty (Cluster **F** — dispatch gate `:17`, `:36`); `bool_meet` / `bool_join` in all three `src/v3/spec/{rust,go,python}.dag`; `behavior_result_port` in four files (`emit.rs`, `emit/rust_target.rs`, `dimension.rs`, `lens_cost_symbolic_generated.rs`) matches `:20`, `:84–87` and **3.0b** deferral; `port_is_consumed_from` in `emit.rs` + `emit/rust_target.rs` matches dedup callout.
+- **Discipline:** Split addresses **`INVARIANTS.md`** “Documentation Describes Live State” (cited at ingest `:5`); Phase **3.0** bounded, **unit-first** (`TESTING.md`, dispatch `:102–105`), **STOP-AND-ESCALATE** (`:108`), **3.0b** dissolution trigger (`:123`); Cluster **D** = implementation DRY not substrate gap (`:34`); director **STOP** on paper carriers (`:23`).
+- **Findings:** None — no **`INVARIANTS.md`** / modeling-discipline / **`CODING.md`** / **`TESTING.md`** violation in the diff.
