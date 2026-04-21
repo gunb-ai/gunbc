@@ -1,5 +1,19 @@
 # SG-3g-b — `lower_helpers` wire-in (real receipt) `(M)`
 
+> **Status (2026-04-21): PARKED.** Wire-in dispatch (deep-stag-261) hit the
+> STOP gate — Phase 0 confirmed `parse::SurfaceExpr` ↔
+> `parse_surface::SurfaceExpr` only bridge is a recursive deep clone. All
+> three in-scope options (A/B/C) either clone per call, clone per lowering,
+> or mutate lens scope. Prerequisite lane opened:
+> `docs/briefs/sg-3f-e-parse-parse-surface-convergence.md` (SG-3f-e). Do **not**
+> re-dispatch SG-3g-b until SG-3f-e lands.
+>
+> **Note for re-dispatch:** the A/B/C "type-convergence options" in the Work
+> section below are superseded by SG-3f-e — that lane resolves convergence.
+> At redispatch, the Work section should be rewritten to contain only the
+> post-convergence wire-in steps (identify 16 call sites, replace, delete
+> local `expr_span`, verify bit-identity, DB-8 fixed-point).
+
 ## Context
 
 PR #612 (SG-3g) landed `lower_helpers.dag` + generated helper + ratchet as **staging only** — explicitly framed in the PR body: *"Lane is not converged until the real lowerer consumes the generated helper; wire-in is blocked on two separate prerequisite lanes, neither of which is SG-3g's work."*
