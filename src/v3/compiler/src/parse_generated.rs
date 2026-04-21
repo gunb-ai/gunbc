@@ -313,6 +313,12 @@ impl<'a> Parser<'a> {
     /// at M1(2.7) per the QW1/QW2/QW3 scaffold-honesty fix. Module,
     /// import, and data items lower to no-ops (or declaration-only
     /// scaffolds) at M1(2.7), but the parsed facts flow forward.
+    ///
+    /// **SG-2c-2 keyword→dispatch edge is table-owned:** which `TokenKind`
+    /// opens which item form comes from `parse_tables.dag` (`TopLevelItemKwRow`),
+    /// projected by `regen_parse_tables` into `parse_tables::top_level_item_dispatch`.
+    /// This function only maps `ItemDispatchKind` → the corresponding `parse_*_item`
+    /// entry point (control flow stays here; the keyword set is not open-coded).
     fn parse_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
         let tk = &self.peek().kind;
         match top_level_item_dispatch(tk) {

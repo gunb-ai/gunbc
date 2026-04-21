@@ -71,9 +71,12 @@ impl fmt::Display for RenderParseTablesGeneratedError {
     }
 }
 
-/// Compile `parse_tables.dag` and `tokenize.dag`, cross-validate the rows
-/// against `TokenKind` + `operators.dag::from_symbol`, emit the projection,
-/// format with `rustfmt --emit stdout`. Does not read or write workspace paths.
+/// Compile `parse_tables.dag` and `tokenize.dag`, cross-validate rows, emit
+/// `parse_tables_generated.rs`, format with `rustfmt --emit stdout`.
+///
+/// Validation: `BinaryOpRow` vs `tokenize.dag` + `operators.dag` + shared-syntax
+/// `dag_operators`; `TopLevelItemKwRow` vs `tokenize.dag` + `Kw`/`ItemDispatchKind`
+/// pairing (SG-2c-2). Does not read or write workspace paths.
 pub fn render_parse_tables_generated_rs(
     parse_tables_source: &str,
     parse_tables_file: &str,
