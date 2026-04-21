@@ -35,6 +35,15 @@ the lowerer rather than improving it. SG-3g-b was parked on this brief.
 
 Make `parse` and `parse_surface` use the **same Rust `Surface*` types**.
 
+**Emission ownership (directional):** `parse_surface` owns Surface carrier
+type emission; `parse` re-exports. Rationale: `parse_surface_generated.rs`
+already carries the richer derive surface (`PartialEq, Eq`) and is the module
+the `lower_helpers` lens (and future `.dag`-authored lenses) already target
+via `v3.compiler.runtime_mirrors` → `parse_surface::…`. Flipping direction
+(having `parse` own, `parse_surface` re-export) would force the lenses to
+re-target, which is out-of-scope churn. Do not revisit this direction in the
+execution PR without escalation.
+
 - **Preferred path**: stop emitting a second `SurfaceExpr` family in
   `parse_generated.rs`; have the `parse` module re-export the `parse_surface`
   carriers (`SurfaceExpr`, `SurfaceLiteral`, `SurfaceModule`, `SurfaceItem`,
