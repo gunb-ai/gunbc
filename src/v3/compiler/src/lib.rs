@@ -711,9 +711,13 @@ mod lower;
 mod parse;
 mod pipeline_authority;
 mod regen_parse_emit;
+mod regen_parse_tables_emit;
 mod tokenize;
 
 pub use regen_parse_emit::{render_parse_generated_rs, RenderParseGeneratedError};
+pub use regen_parse_tables_emit::{
+    render_parse_tables_generated_rs, RenderParseTablesGeneratedError,
+};
 pub(crate) mod variant_payload {
     #[allow(
         dead_code,

@@ -11,6 +11,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
+use v3_compiler::render_parse_tables_generated_rs;
 
 const PARSE_TABLES_DAG: &str = include_str!("../../parse_tables.dag");
 const TOKENIZE_DAG: &str = include_str!("../../tokenize.dag");
