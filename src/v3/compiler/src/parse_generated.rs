@@ -4,7 +4,8 @@
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::OperatorKind;
 use crate::parse_tables::{
-    binary_op_at_level, top_level_item_dispatch, BinaryOpLevel, ItemDispatchKind,
+    binary_op_at_level, is_type_rhs_boundary_keyword, top_level_item_dispatch, BinaryOpLevel,
+    ItemDispatchKind,
 };
 use crate::tokenize::{Token, TokenKind};
 
@@ -880,9 +881,9 @@ impl<'a> Parser<'a> {
 
     /// Consume a `where constraint1(args), constraint2(args)` clause
     /// and return the final byte offset. The clause ends at the next
-    /// top-level item keyword (`let`/`fn`/`type`/`data`/`module`/
-    /// `import`) or EOF — not at [`TokenKind::Ident`] spelling `inhabits`,
-    /// which can appear as a variant/field label inside the skipped span.
+    /// top-level type-RHS boundary keyword from `parse_tables.dag` or
+    /// EOF — not at [`TokenKind::Ident`] spelling `inhabits`, which can
+    /// appear as a variant/field label inside the skipped span.
     /// Refinement predicates land in M2+; at M1(2.6) we drop them after
     /// consuming their tokens.
     fn skip_where_clause(&mut self) -> Result<u32, Diagnostic> {
@@ -900,17 +901,10 @@ impl<'a> Parser<'a> {
                     }
                     depth -= 1;
                 }
-                TokenKind::KwLet
-                | TokenKind::KwFn
-                | TokenKind::KwType
-                | TokenKind::KwData
-                | TokenKind::KwModule
-                | TokenKind::KwImport
-                    if depth == 0 =>
-                {
-                    break;
-                }
                 _ => {}
+            }
+            if depth == 0 && is_type_rhs_boundary_keyword(&self.peek().kind) {
+                break;
             }
             end = self.peek().span.byte_end;
             self.bump();
@@ -962,15 +956,8 @@ impl<'a> Parser<'a> {
                         return false;
                     }
                 }
-                TokenKind::KwLet
-                | TokenKind::KwFn
-                | TokenKind::KwData
-                | TokenKind::KwModule
-                | TokenKind::KwImport
-                | TokenKind::KwWhere
-                | TokenKind::Eof
-                    if depth == 0 =>
-                {
+                TokenKind::Eof if depth == 0 => return false,
+                _ if depth == 0 && is_type_rhs_boundary_keyword(&self.tokens[i].kind) => {
                     return false;
                 }
                 _ => {}
