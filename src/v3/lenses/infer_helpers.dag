@@ -26,7 +26,40 @@
 
 module lenses.infer_helpers
 
-import std.substrate { Behavior, PortId }
+import std.list { List, empty, singleton, cons, concat, contains }
+import std.substrate {
+  ArrowBody, AtomPayload, Behavior, ConjField, Dag, Declaration, DeclarationId, LogicalOp,
+  OperatorKind, PortId, TemplateArgument, TransformTarget, TypeConnective, port, node
+}
+
+// SG-4b-1 prototype tranche:
+// - pure walkers: `walk_to_optional_cardinality_decl`,
+//   `declaration_is_callable`, `is_retryable_generic_decl_walk`
+// - template helpers: `callable_template_arguments`,
+//   `template_argument_value`, `resolve_template_argument_value`,
+//   `template_arguments_match`
+// - refinement/discharge helpers: `predicate_info`,
+//   `conjunct_leaf_ports`
+//
+// Scope is intentionally bounded to Cat-1/Cat-2 helpers that fit the
+// existing lens helper path. `infer.rs` remains authoritative for
+// everything outside this prototype tranche.
+
+type CallableTemplateInfo {
+  template: DeclarationId
+  arguments: List<TemplateArgument>
+}
+
+type PredicateInfo
+  = MissingPredicateInfo
+  | FoundPredicateInfo {
+      param: PortId
+      body: PortId
+    }
+
+type DeclarationLookup
+  = MissingDeclaration
+  | FoundDeclaration(Declaration)
 
 fn behavior_output_port(behavior: Behavior) -> PortId =
   match behavior {
@@ -35,4 +68,352 @@ fn behavior_output_port(behavior: Behavior) -> PortId =
     Branch(b) => b.result_port
     Loop(l) => l.result_port
     Bind(bind) => bind.result_port
+  }
+
+fn find_declaration(decls: List<Declaration>, target: DeclarationId) -> DeclarationLookup =
+  match decls {
+    Empty => MissingDeclaration
+    Cons(payload) =>
+      if payload.head.id == target then FoundDeclaration(payload.head)
+      else find_declaration(payload.tail, target)
+  }
+
+fn walk_to_optional_cardinality_decl(
+  d: Dag,
+  start: DeclarationId,
+  remaining: Int
+) -> DeclarationId? =
+  if remaining <= 0 then
+    None
+  else
+    match find_declaration(d.declarations, start) {
+      MissingDeclaration => None
+      FoundDeclaration(decl) =>
+        match decl.connective {
+          Cardinality(c) =>
+            match c.bound {
+              AtMostOne => Some(start)
+              Exact(_) => None
+              Unbounded => None
+            }
+          Instantiation(i) =>
+            walk_to_optional_cardinality_decl(d, i.template, remaining - 1)
+          Atom(ResolvedByStructure(next)) =>
+            walk_to_optional_cardinality_decl(d, next, remaining - 1)
+          Atom(ResolvedByName(next)) =>
+            walk_to_optional_cardinality_decl(d, next, remaining - 1)
+          Atom(UnresolvedIdentifier(_)) => None
+          Atom(TypeParam(_)) => None
+          Atom(Literal(_)) => None
+          Conj(_) => None
+          Disj(_) => None
+          Arrow(_) => None
+        }
+    }
+
+fn declaration_is_callable(d: Dag, current: DeclarationId, remaining: Int) -> Bool =
+  if remaining <= 0 then
+    False
+  else
+    match find_declaration(d.declarations, current) {
+      MissingDeclaration => False
+      FoundDeclaration(decl) =>
+        match decl.connective {
+          Arrow(_) => True
+          Instantiation(i) =>
+            declaration_is_callable(d, i.template, remaining - 1)
+          Atom(ResolvedByStructure(next)) =>
+            declaration_is_callable(d, next, remaining - 1)
+          Atom(ResolvedByName(next)) =>
+            declaration_is_callable(d, next, remaining - 1)
+          Atom(UnresolvedIdentifier(_)) => False
+          Atom(TypeParam(_)) => False
+          Atom(Literal(_)) => False
+          Conj(_) => False
+          Disj(_) => False
+          Cardinality(_) => False
+        }
+    }
+
+fn is_retryable_generic_decl_walk(
+  d: Dag,
+  current: DeclarationId,
+  remaining: Int,
+  visiting: List<DeclarationId>
+) -> Bool =
+  if remaining <= 0 then
+    False
+  else
+    if contains(visiting, current) then
+      False
+    else
+      match find_declaration(d.declarations, current) {
+        MissingDeclaration => False
+        FoundDeclaration(decl) =>
+          match decl.connective {
+            Atom(TypeParam(_)) => True
+            Atom(ResolvedByStructure(next)) =>
+              is_retryable_generic_decl_walk(
+                d,
+                next,
+                remaining - 1,
+                prepend_visit(current, visiting)
+              )
+            Atom(ResolvedByName(next)) =>
+              is_retryable_generic_decl_walk(
+                d,
+                next,
+                remaining - 1,
+                prepend_visit(current, visiting)
+              )
+            Instantiation(i) =>
+              template_arguments_retryable(
+                d,
+                i.arguments,
+                remaining - 1,
+                prepend_visit(current, visiting)
+              )
+            Cardinality(c) =>
+              is_retryable_generic_decl_walk(
+                d,
+                c.element,
+                remaining - 1,
+                prepend_visit(current, visiting)
+              )
+            Conj(c) =>
+              conj_fields_retryable(
+                d,
+                c.children,
+                remaining - 1,
+                prepend_visit(current, visiting)
+              )
+            Disj(c) =>
+              conj_fields_retryable(
+                d,
+                c.variants,
+                remaining - 1,
+                prepend_visit(current, visiting)
+              )
+            Atom(UnresolvedIdentifier(_)) => False
+            Atom(Literal(_)) => False
+            Arrow(_) => False
+          }
+      }
+
+fn prepend_visit(current: DeclarationId, visiting: List<DeclarationId>) -> List<DeclarationId> =
+  cons(current, visiting)
+
+fn template_arguments_retryable(
+  d: Dag,
+  arguments: List<TemplateArgument>,
+  remaining: Int,
+  visiting: List<DeclarationId>
+) -> Bool =
+  match arguments {
+    Empty => False
+    Cons(payload) =>
+      if is_retryable_generic_decl_walk(d, payload.head.value, remaining, visiting) then
+        True
+      else
+        template_arguments_retryable(d, payload.tail, remaining, visiting)
+  }
+
+fn conj_fields_retryable(
+  d: Dag,
+  fields: List<ConjField>,
+  remaining: Int,
+  visiting: List<DeclarationId>
+) -> Bool =
+  match fields {
+    Empty => False
+    Cons(payload) =>
+      if is_retryable_generic_decl_walk(d, payload.head.ty, remaining, visiting) then
+        True
+      else
+        conj_fields_retryable(d, payload.tail, remaining, visiting)
+  }
+
+fn callable_template_arguments(d: Dag, target: DeclarationId) -> CallableTemplateInfo =
+  match find_declaration(d.declarations, target) {
+    MissingDeclaration => {
+      template: target
+      arguments: empty()
+    }
+    FoundDeclaration(decl) =>
+      match decl.connective {
+        Instantiation(i) => {
+          template: i.template
+          arguments: i.arguments
+        }
+        Atom(_) => {
+          template: target
+          arguments: empty()
+        }
+        Conj(_) => {
+          template: target
+          arguments: empty()
+        }
+        Disj(_) => {
+          template: target
+          arguments: empty()
+        }
+        Arrow(_) => {
+          template: target
+          arguments: empty()
+        }
+        Cardinality(_) => {
+          template: target
+          arguments: empty()
+        }
+      }
+  }
+
+fn template_argument_value(
+  arguments: List<TemplateArgument>,
+  parameter: DeclarationId
+) -> DeclarationId? =
+  match arguments {
+    Empty => None
+    Cons(payload) =>
+      if payload.head.parameter == parameter then
+        Some(payload.head.value)
+      else
+        template_argument_value(payload.tail, parameter)
+  }
+
+fn resolve_template_argument_value(
+  arguments: List<TemplateArgument>,
+  current: DeclarationId,
+  remaining: Int
+) -> DeclarationId =
+  if remaining <= 0 then
+    current
+  else
+    match template_argument_value(arguments, current) {
+      None => current
+      Some(next) =>
+        if next == current then
+          current
+        else
+          resolve_template_argument_value(arguments, next, remaining - 1)
+    }
+
+fn template_arguments_match(
+  lhs: List<TemplateArgument>,
+  rhs: List<TemplateArgument>
+) -> Bool =
+  match lhs {
+    Empty =>
+      match rhs {
+        Empty => True
+        Cons(_) => False
+      }
+    Cons(lhs_payload) =>
+      match rhs {
+        Empty => False
+        Cons(rhs_payload) =>
+          lhs_payload.head.parameter == rhs_payload.head.parameter
+            && lhs_payload.head.value == rhs_payload.head.value
+            && template_arguments_match(lhs_payload.tail, rhs_payload.tail)
+      }
+  }
+
+fn predicate_info(d: Dag, pred_decl: DeclarationId) -> PredicateInfo =
+  match find_declaration(d.declarations, pred_decl) {
+    MissingDeclaration => MissingPredicateInfo
+    FoundDeclaration(decl) =>
+      match decl.connective {
+        Arrow(arrow) =>
+          match arrow.body {
+            UserDefined(bind_id) =>
+              match node(d, bind_id) {
+                Some(Bind(bind)) =>
+                  match bind.params {
+                    Empty => MissingPredicateInfo
+                    Cons(payload) => FoundPredicateInfo {
+                      param: payload.head
+                      body: bind.value
+                    }
+                  }
+                Some(Value(_)) => MissingPredicateInfo
+                Some(Transform(_)) => MissingPredicateInfo
+                Some(Branch(_)) => MissingPredicateInfo
+                Some(Loop(_)) => MissingPredicateInfo
+                None => MissingPredicateInfo
+              }
+            ExternalRealization(_) => MissingPredicateInfo
+            Pending => MissingPredicateInfo
+            NoBody => MissingPredicateInfo
+            Unparsed(_) => MissingPredicateInfo
+          }
+        Atom(_) => MissingPredicateInfo
+        Conj(_) => MissingPredicateInfo
+        Disj(_) => MissingPredicateInfo
+        Cardinality(_) => MissingPredicateInfo
+        Instantiation(_) => MissingPredicateInfo
+      }
+  }
+
+fn conjunct_leaf_ports(d: Dag, body_port: PortId, remaining: Int) -> List<PortId> =
+  if remaining <= 0 then
+    singleton(body_port)
+  else
+    match port(d, body_port) {
+      None => singleton(body_port)
+      Some(p) =>
+        match p.produced_by {
+          None => singleton(body_port)
+          Some(node_id) =>
+            match node(d, node_id) {
+              Some(Transform(t)) =>
+                if transform_is_binary_logical_and(t.target, t.inputs) then
+                  binary_and_leaves(d, t.inputs, remaining - 1)
+                else
+                  singleton(body_port)
+              Some(Value(_)) => singleton(body_port)
+              Some(Branch(_)) => singleton(body_port)
+              Some(Loop(_)) => singleton(body_port)
+              Some(Bind(_)) => singleton(body_port)
+              None => singleton(body_port)
+            }
+        }
+    }
+
+fn transform_is_binary_logical_and(
+  target: TransformTarget,
+  inputs: List<PortId>
+) -> Bool =
+  match target {
+    Operator(Logical(And)) =>
+      match inputs {
+        Empty => False
+        Cons(first) =>
+          match first.tail {
+            Empty => False
+            Cons(second) =>
+              match second.tail {
+                Empty => True
+                Cons(_) => False
+              }
+          }
+      }
+    Callable(_) => False
+    FieldProject(_) => False
+    Operator(Arithmetic(_)) => False
+    Operator(Comparison(_)) => False
+    Operator(Logical(Or)) => False
+  }
+
+fn binary_and_leaves(d: Dag, inputs: List<PortId>, remaining: Int) -> List<PortId> =
+  match inputs {
+    Empty => empty()
+    Cons(first) =>
+      match first.tail {
+        Empty => singleton(first.head)
+        Cons(second) =>
+          concat(
+            conjunct_leaf_ports(d, first.head, remaining),
+            conjunct_leaf_ports(d, second.head, remaining)
+          )
+      }
   }
