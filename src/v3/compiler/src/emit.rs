@@ -2951,13 +2951,16 @@ pub(crate) fn operator_realization_lookup_type(
     current
 }
 
+/// Operand-side lookup for [`crate::operators`] realization keys. Strips
+/// refinements via [`crate::infer::strip_refinement_to_base`] (same rule as
+/// `resolve_operator_arrow`) before optional named-alias peeling.
 pub(crate) fn operator_carrier_realization<'a>(
     operators: &'a HashMap<(DeclarationId, DeclarationId), String>,
     dag: &Dag,
     primitive_operand_decl: DeclarationId,
     op_decl: DeclarationId,
 ) -> Option<&'a String> {
-    let stripped = strip_refinement_to_base_decl(dag, primitive_operand_decl);
+    let stripped = strip_refinement_to_base(dag, primitive_operand_decl);
     let peeled = operator_realization_lookup_type(dag, stripped);
     let mut prev: Option<DeclarationId> = None;
     for candidate in [primitive_operand_decl, stripped, peeled] {
