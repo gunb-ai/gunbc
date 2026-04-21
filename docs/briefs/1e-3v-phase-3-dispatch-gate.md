@@ -49,6 +49,19 @@
 - **Verdict:** APPROVE — documentation-only diff.
 - **Spot-checks:** Concrete claims match the current tree: no `OperatorKind::Logical` special-casing under `emit/`; `behavior_result_port` / `go_behavior_result_port` identical **modulo name**; two `port_is_consumed_from` helpers **structurally equivalent** but **not** text-identical; Phase 3.0 **unit-first** test requirement aligned with **`TESTING.md`**.
 
+**Blocking inline review (PR #621, 2026-04-21) — finding does not match live tree**
+
+A **BLOCKING** comment claimed Cluster F is wrongly marked closed because (1) emitters still special-case `OperatorKind::Logical` and (2) `src/v3/spec/{rust,go,python}.dag` lack Bool `OperatorRealization` rows. **Re-verified on current `main` worktree — both claims are false.**
+
+| Claim | Check | Result |
+|-------|--------|--------|
+| Emitter bypass for logical ops | From repo root: `rg -e OperatorKind::Logical -e 'LogicalOp::' src/v3/compiler/src/emit` | **No output** — emitters do not branch on logical ops; binary ops use shared `render_operator` → `algebra_field_for_operator` + `operator_carrier_realization` (same path as arithmetic). |
+| Missing Bool operator rows in spec | `rg 'bool_meet|bool_join' src/v3/spec/rust.dag src/v3/spec/python.dag src/v3/spec/go.dag` | **Present** — e.g. `data rust_bool_meet` / `rust_bool_join`, `python_bool_meet` / `python_bool_join`, `go_bool_meet` / `go_bool_join` (`target: Bool`, `op: BooleanAlgebra.meet` / `.join`). |
+
+**Note:** `OperatorKind::Logical` appears elsewhere in the compiler (parse, lower, infer — e.g. `infer.rs` resolving logical arrows). That is **not** an emitter bypass; this brief’s Cluster F claim is scoped to **`src/v3/compiler/src/emit/**`**.
+
+**Resolution:** No change to the Executive summary Cluster F bullet; the dispatch gate claim remains **verifiable** via the commands above.
+
 ---
 
 ## Executive summary
