@@ -67,10 +67,7 @@ pub fn render_parse_tables_generated_rs(
     rustfmt_stdout(&combined).map_err(RenderParseTablesGeneratedError::Rustfmt)
 }
 
-fn compile_authority(
-    source: &str,
-    file: &str,
-) -> Result<Dag, RenderParseTablesGeneratedError> {
+fn compile_authority(source: &str, file: &str) -> Result<Dag, RenderParseTablesGeneratedError> {
     compile_to_dag(source, file).map_err(|e| RenderParseTablesGeneratedError::Compile(Box::new(e)))
 }
 
