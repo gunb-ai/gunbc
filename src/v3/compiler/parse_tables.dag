@@ -44,6 +44,14 @@ module v3.compiler.parse_tables
 // multiplicative. The parser consumes this enum by filtering
 // `binary_op_at_level(token, LEVEL)` at each precedence function.
 //
+// Dissolution classification: **🟡 YELLOW (scaffold)** per
+// `docs/modeling-discipline.md` §4. A richer source exists
+// (precedence is a 1D numeric ordering — Pattern 4), but
+// extraction is not cheap today: a precedence-climbing surface
+// grammar reformulation rides the same lane as SG-2c proper,
+// which is blocked on recursive list-body emission over
+// `List<Token>`. See trigger at the bottom of this ledger.
+//
 // Dissolution ledger (4-pattern check per THESIS §"Structural
 // decompression"; MODELING M7 / feedback_coproduct_dissolution):
 // - **Pattern 1 (fact placement)**: fails. Each variant is just a
@@ -57,24 +65,27 @@ module v3.compiler.parse_tables
 // - **Pattern 3 (algebraic form)**: fails. There is no shared
 //   algebra the five variants inhabit; they are distinct parser
 //   control-flow points, not elements of a computed structure.
-// - **Pattern 4 (dimensional)**: borderline. Precedence is a 1D
-//   total order (Or < And < Comparison < Additive < Multiplicative)
-//   and could be encoded as `Int where 1 <= n <= 5`. Rejected on
-//   two grounds: (a) M7 enum principle — enums over *language
-//   constructs* stay, and this enum is over surface-grammar
-//   precedence-function identity, i.e. a language construct; (b)
-//   collapsing to `Int` would convert `binary_op_at_level`'s
-//   exhaustive `match (tk, level)` into a runtime-guarded lookup,
-//   losing the compile-time completeness guarantee that catches a
-//   dropped level if the surface grammar ever gains one.
+// - **Pattern 4 (dimensional)**: **passes structurally, deferred
+//   on substrate**. Precedence is a 1D total order
+//   (Or < And < Comparison < Additive < Multiplicative) and could
+//   be encoded as `Int where 1 <= n <= 5`. Not extracted today
+//   because (a) the only consumer is five hand-authored parser
+//   functions in `parse_parser_body.txt` that select by name —
+//   there is no algebraic consumer that exploits the dimension
+//   yet, so collapsing to `Int` loses `binary_op_at_level`'s
+//   exhaustive `match (tk, level)` without a corresponding gain;
+//   (b) the consumer itself (the recursive-descent parser) is
+//   pinned as residual semantic authority, blocked on the same
+//   substrate gap as SG-2c proper.
 //
-// Verdict: coproduct stays. Dissolution trigger: if surface-grammar
-// precedence is ever reformulated as a structural fact (e.g. a
-// precedence-climbing interpreter over a numeric ordering), re-run
-// this check — Pattern 4 would then pass because the dimension
-// would have an algebraic consumer, not just five named entry
-// points. That reformulation rides the same SG-2c-proper lane as
-// retiring `parse_parser_body.txt`.
+// **Named trigger (YELLOW):** when surface-grammar precedence is
+// reformulated as a structural fact — i.e. a precedence-climbing
+// interpreter reading a numeric ordering — dissolve `BinaryOpLevel`
+// to `Int where 1 <= n <= 5` and let the interpreter consume the
+// dimension. That reformulation rides the same lane as SG-2c
+// proper (retiring `parse_parser_body.txt`), which is blocked on
+// recursive list-body emission over `List<Token>` per
+// `src/v3/std/list.dag:13-15`. Both dissolutions unlock together.
 type BinaryOpLevel
   = Or
   | And
