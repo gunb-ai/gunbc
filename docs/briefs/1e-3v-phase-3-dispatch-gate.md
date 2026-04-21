@@ -6,7 +6,7 @@
 
 **Authorities read:** `docs/single-emitter-design.md`, `docs/emit-target-spec-gaps.md`, `docs/emit-bridges.md`, `src/v3/compiler/src/emit.rs`, `src/v3/compiler/src/emit/rust_target.rs`, `src/v3/compiler/src/emit/python_target.rs`, `src/v3/spec/{rust,go,python}.dag`, `src/v3/std/computation_model.dag`.
 
-**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–T, **three** blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold — **do not defer the split another round** (**Reviews K, M, P, R, T** exploratory).
+**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–U, **three** blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold — **do not defer the split another round** (**Reviews K, M, P, R, T** exploratory).
 
 ### PR review ingest (#621, 2026-04-21)
 
@@ -119,7 +119,13 @@
 
 - **Verdict:** APPROVE — docs-only; single dispatch-gate brief under `docs/briefs/`; no substrate/spec/emitter/test in diff — no discipline **code** surface to violate.
 - **Spot-checks:** Factual claims verify — no `OperatorKind::Logical` under `emit/` (Cluster F); `bool_meet` / `bool_join` in all three specs; duplicate helper pairs + `dimension.rs` + `lens_cost_symbolic_generated.rs` callouts accurate; Phase 3.0 small, unit-first per **`TESTING.md`**; Phase 3.0b deferral tracked (tracked-debt pattern); **lens regen not hand-edit** guardrail present (**Review P**).
-- **Exploratory (non-blocking):** Ingest (**Reviews A–T** + **three** blocking rebuttals) ≈ **60%** and growing — **Reading order** (line 9) already commits to sibling/appendix split **before next lane** — **honor next lane**; nothing blocks this PR (**Review T** reinforces **Reviews K, M, P, R**).
+- **Exploratory (non-blocking):** Ingest section **≈60%** of file (**three** blocking rebuttals) and growing — **Reading order** (line 9) already commits to sibling/appendix split **before next lane** — **honor next lane**; nothing blocks this PR (**Review T** reinforces **Reviews K, M, P, R**).
+
+**Review U (codex / gpt-5.4, schedule, commit `6e45cb31`)**
+
+- **Verdict:** APPROVE.
+- **Spot-checks:** Match brief — Cluster **F** closed via shared **`render_operator`** + Bool **`OperatorRealization`** rows; **`behavior_result_port`** pair identical **modulo name**; two **`port_is_consumed_from`** copies **structurally** equivalent, not text-identical (**Review E**).
+- **Discipline:** No concrete violation of **`INVARIANTS.md`**, **`docs/modeling-discipline.md`**, **`CODING.md`**, or **`TESTING.md`** in this diff.
 
 **Blocking inline review (PR #621, 2026-04-21) — finding does not match live tree**
 
