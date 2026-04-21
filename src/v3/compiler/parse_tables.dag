@@ -100,11 +100,21 @@ type BinaryOpLevel
 // precedence function that should consume this token. Keyed on the
 // textual variant name to avoid importing `tokenize.TokenKind` here
 // (scope: declarative data only, not cross-module structural
-// matching — that widens to SG-2c proper). The regen driver
-// validates each `token_variant` against `tokenize.dag`'s
-// `TokenKind` declaration and each `operator_symbol` against
-// `operators.dag`'s `from_symbol`, so drift in either direction
-// fails closed at regen time.
+// matching — that widens to SG-2c proper).
+//
+// **Grounding in the shared-syntax authority.** Each row is
+// structurally cross-validated at regen time against three
+// authorities, so token ↔ symbol ↔ precedence drift fails closed:
+// - `token_variant` must match a `TokenKind` variant in `tokenize.dag`
+// - `operator_symbol` must map to an `OperatorKind` via
+//   `operators.dag::from_symbol`
+// - `(operator_symbol, level)` must agree with `dag_operators` in
+//   `dsl/extdeps/languages/dag/syntax.dag`: the canonical
+//   `left_bp` for the symbol must fall inside the bp band assigned
+//   to the declared `level` (see `level_for_bp` in
+//   `regen_parse_tables_emit.rs`). If the shared authority shifts
+//   an operator's bp to a different band, regen fails closed here
+//   before any parser change ships.
 type BinaryOpRow {
   token_variant: String
   operator_symbol: String

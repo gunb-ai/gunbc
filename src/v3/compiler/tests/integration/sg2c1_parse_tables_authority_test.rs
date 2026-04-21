@@ -31,6 +31,7 @@ fn parse_tables_generated_module_matches_checked_in_snapshot() {
         "src/v3/compiler/parse_tables.dag",
         TOKENIZE_DAG,
         "src/v3/compiler/tokenize.dag",
+        SHARED_SYNTAX_DAG,
     )
     .unwrap_or_else(|e| panic!("render parse_tables_generated.rs in-process: {e}"));
     assert_eq!(
