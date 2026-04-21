@@ -5,7 +5,7 @@
 //! must stay in sync with the authoring `.dag`; `binary_op_*` rows cover every
 //! binary-operator token the parser dispatches on, `top_level_kw_*` rows cover
 //! every keyword `parse_item` accepts, and `type_rhs_boundary_kw_*` rows cover
-//! the keyword set used by type-RHS lookahead.
+//! the shared top-level item-boundary keyword set used by type-RHS lookahead.
 //!
 //! This lane is explicitly NOT SG-2c proper (parser authority proper).
 //! Full parser-algorithm dissolution is blocked on recursive list-body
@@ -274,7 +274,7 @@ fn every_type_rhs_boundary_kw_row_token_variant_is_a_token_kind_variant() {
 #[test]
 fn type_rhs_boundary_kw_rows_cover_exactly_the_keywords_used_by_type_rhs_lookahead() {
     let expected: std::collections::BTreeSet<&'static str> = [
-        "KwLet", "KwFn", "KwType", "KwData", "KwModule", "KwImport", "KwWhere",
+        "KwLet", "KwFn", "KwType", "KwData", "KwModule", "KwImport",
     ]
     .into_iter()
     .collect();
@@ -303,7 +303,7 @@ fn type_rhs_boundary_kw_rows_cover_exactly_the_keywords_used_by_type_rhs_lookahe
     let got_ref: std::collections::BTreeSet<&str> = got.iter().map(String::as_str).collect();
     assert_eq!(
         expected, got_ref,
-        "type_rhs_boundary_kw_* rows in parse_tables.dag do not cover exactly the keyword \
-         tokens used by type-RHS lookahead"
+        "type_rhs_boundary_kw_* rows in parse_tables.dag do not cover exactly the shared \
+         top-level item-boundary keyword set used by type-RHS lookahead"
     );
 }

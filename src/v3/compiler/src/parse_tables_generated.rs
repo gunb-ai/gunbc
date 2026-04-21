@@ -89,7 +89,6 @@ pub fn is_type_rhs_boundary_keyword(kind: &TokenKind) -> bool {
         TokenKind::KwLet => true,
         TokenKind::KwModule => true,
         TokenKind::KwType => true,
-        TokenKind::KwWhere => true,
         _ => false,
     }
 }
