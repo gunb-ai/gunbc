@@ -7,6 +7,12 @@
 > or mutate lens scope. Prerequisite lane opened:
 > `docs/briefs/sg-3f-e-parse-parse-surface-convergence.md` (SG-3f-e). Do **not**
 > re-dispatch SG-3g-b until SG-3f-e lands.
+>
+> **Note for re-dispatch:** the A/B/C "type-convergence options" in the Work
+> section below are superseded by SG-3f-e — that lane resolves convergence.
+> At redispatch, the Work section should be rewritten to contain only the
+> post-convergence wire-in steps (identify 16 call sites, replace, delete
+> local `expr_span`, verify bit-identity, DB-8 fixed-point).
 
 ## Context
 
