@@ -46,10 +46,12 @@ Make `parse` and `parse_surface` use the **same Rust `Surface*` types**.
 - Update `regen_parse` to skip emitting Surface carrier type declarations —
   only emit parser functions — and to generate imports / `pub use` lines
   against `crate::parse_surface::…`.
-- Remove the recursive `From<&crate::parse::SurfaceExpr>` (and sibling `From`
-  impls on `parse_surface::Surface*`) deep-clone bridge once it becomes
-  unnecessary. If any call site still needs it post-convergence, surface that
-  as an unexpected consumer and diagnose before working around.
+- **Delete** the recursive `From<&crate::parse::SurfaceExpr>` (and sibling
+  `From` impls on `parse_surface::Surface*`) deep-clone bridge. INVARIANTS
+  "no bridges" forbids keeping it in-tree at all; leaving it as tracked debt
+  weakens this lane into partial convergence. If any call site still needs
+  it post-convergence, that's a signal the convergence is incomplete —
+  surface the consumer and fix upstream, don't retain the bridge.
 - Keep parser behavior unchanged. Parser tests must stay bit-identical on
   output.
 
@@ -63,8 +65,10 @@ Make `parse` and `parse_surface` use the **same Rust `Surface*` types**.
   `SurfacePattern`, `SurfaceRecordField`, `SurfaceMatchArm`,
   `SurfaceParam`, `SurfaceField`, `SurfaceVariant`, `VariantPayload`,
   `SurfacePatternField`).
-- No deep-clone `From<&crate::parse::Surface…>` bridge remains on the active
-  path between `parse` and `parse_surface`.
+- No `From<&crate::parse::Surface…>` (or sibling) deep-clone bridge remains
+  **anywhere in-tree** between `parse` and `parse_surface` — the impls are
+  deleted, not merely unreferenced. Per INVARIANTS "no bridges": a dormant
+  adapter is still a second authority waiting to be re-used.
 - `cargo test --workspace --exclude v2-compiler-tests` green.
 - `cargo test -p v2-compiler-tests` green.
 - `cargo clippy --all-targets -- -D warnings` clean.
