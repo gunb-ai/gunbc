@@ -347,11 +347,8 @@ fn item_dispatch_label_from_kw_token_variant(token_variant: &str, decl_name: &st
         "`parse_tables.dag::{decl_name}`: token_variant `{token_variant}` has nothing after `Kw`"
     );
     assert_dispatch_label_is_rust_identifier(rest, decl_name);
-    assert_eq!(
-        format!("Kw{rest}"),
-        token_variant,
-        "`parse_tables.dag::{decl_name}`: round-trip `Kw` + `{rest}` must reconstruct `{token_variant}`"
-    );
+    // `format!("Kw{rest}") == token_variant` would be tautological after a successful
+    // `strip_prefix("Kw")`; identifier validation above is the substantive guard.
     rest.to_string()
 }
 
