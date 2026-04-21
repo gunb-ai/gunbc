@@ -10,7 +10,7 @@
 
 **Review A (claude / claude-opus-4-7, schedule)**
 
-- **Verdict:** APPROVE — api-review spot-checks matched this brief: no `OperatorKind::Logical` under `emit/`; emitter `behavior_result_port` / `go_behavior_result_port` and both `port_is_consumed_from` bodies are byte-identical as stated; duplication is correctly scoped as implementation DRY, not a `.dag` gap.
+- **Verdict:** APPROVE — api-review spot-checks matched this brief: no `OperatorKind::Logical` under `emit/`; `behavior_result_port` / `go_behavior_result_port` are **byte-identical modulo name**; the two `port_is_consumed_from` implementations are **structurally equivalent** (same graph walk) but **not** byte-identical — the Go copy calls `go_behavior_result_port` on `Loop` bodies and the Rust copy calls `behavior_result_port` (see **Review E**). Duplication is still implementation DRY, not a `.dag` gap.
 - **Queued follow-up (optional, not a finding on #621):** Two other `behavior_result_port` definitions exist outside the emit pair:
   - `src/v3/compiler/src/lens_cost_symbolic_generated.rs` — **generated** from the cost lens (`src/v3/lenses/cost.dag`); treat as codegen output; any shared helper likely flows from the lens pipeline, not from a one-off edit to the `.rs` file.
   - `src/v3/compiler/src/dimension.rs` — **hand-authored** third copy (same match on `Behavior` variants). **Phase 3.0** below stays **emit-only** (unify the two emitter copies). A later refactor could move `behavior_result_port` to a small `crate` or `dag` helper and wire **emit + dimension** (and regenerate/consolidate the lens copy per policy) so a “one shared helper” pass does not stop at `rust_target.rs` / `emit.rs` while leaving `dimension.rs` behind.
@@ -28,9 +28,14 @@
 **Review D (claude / claude-opus-4-7, schedule, commit `73e3b628`)**
 
 - **Verdict:** APPROVE — documentation-only PR; dispatch-gate brief is appropriate scope.
-- **Spot-checks (worktree at review time; line numbers drift):** No `OperatorKind::Logical` under `src/v3/compiler/src/emit/`; `behavior_result_port` / `go_behavior_result_port` in `rust_target.rs` / `emit.rs` byte-identical modulo name; `port_is_consumed_from` duplicated in those two files; third hand-authored copy in `dimension.rs` called out with Phase 3.0b follow-up — matches **Review A** ingest.
+- **Spot-checks (worktree at review time; line numbers drift):** No `OperatorKind::Logical` under `src/v3/compiler/src/emit/`; `behavior_result_port` / `go_behavior_result_port` in `rust_target.rs` / `emit.rs` byte-identical modulo name; two `port_is_consumed_from` bodies **structurally** duplicated (not text-identical — see **Review E**); third hand-authored copy in `dimension.rs` called out with Phase 3.0b follow-up — matches **Review A** ingest (as amended by **Review E**).
 - **Discipline:** Phase 3.0 implementation must satisfy **`TESTING.md` unit-first** bar via §**Tests (required)** (not belt-only integration); `dimension.rs` tracked debt is documented, bounded, and has a named dissolution trigger — consistent with tracked-debt pattern.
 - **No violations** of INVARIANTS / CODING / TESTING in the doc; Cluster D classified as implementation DRY (not substrate / `.dag` gap); STOP on reviving `LogicalOperatorCarrier` / `TypeRecursionStrategy` as paper carriers — affirmed.
+
+**Review E (codex / gpt-5.4, schedule, commit `73e3b628`)**
+
+- **Verdict:** APPROVE_WITH_COMMENTS — doc-only; Phase 3.0 conclusion unchanged (emitter-side DRY, not missing `.dag` authority).
+- **Finding (NON-BLOCKING):** Earlier wording that both `port_is_consumed_from` bodies were “byte-identical” **overstated** the evidence: live code is **structurally equivalent** (same walk) but **not** identical text — Go uses `go_behavior_result_port` where Rust uses `behavior_result_port` in the `Behavior::Loop` arm. For a re-verified dispatch gate, prefer **structural equivalence** + explicit naming of the one callsite difference; this matches the verifiability bar in **`INVARIANTS.md`**. **Ingested above** in **Review A**, **Review D**, and the **Executive summary**.
 
 ---
 
@@ -39,7 +44,7 @@
 - **#616 closes the Cluster F modeling gap** that #608/#610 misclassified: there are **no** `OperatorKind::Logical` bypass branches left under `src/v3/compiler/src/emit/`; logical ops route through `algebra_field_for_operator` + `operator_carrier_realization` like arithmetic ops, with per-target `OperatorRealization` rows (e.g. `python_bool_meet` / `python_bool_join`).
 - **Clusters B + C from the old Category 2 list are implemented and consumed:** `TargetExecutionModel`, `SourceFiltering` / `*_source_filtering`, and `ExecutionModelRequirement` data rows exist; emitters filter declarations via `SourceFilteringBinding` (see `emit.rs` Go path, `rust_target.rs`, `python_target.rs`).
 - **Cluster A** is **not** a missing `TypeRecursionStrategy` row in practice: Go type names are built from **`TypeRealization` / instantiation carriers** and `type_applications.optional` (see `emit.rs` `go_type_name_for_decl_at_depth`). Remaining cost is **hand-authored recursive walk** in Rust until a walker owns it — same shape as other type-render paths.
-- **Cluster D** is still accurate as **code dedup**, not a spec gap: **`port_is_consumed_from`** is duplicated between `emit.rs` (Go) and `rust_target.rs` (Rust); **`behavior_result_port` vs `go_behavior_result_port`** are byte-identical duplicates.
+- **Cluster D** is still accurate as **code dedup**, not a spec gap: **`port_is_consumed_from`** is **structurally** duplicated between `emit.rs` (Go) and `rust_target.rs` (Rust) — same graph walk, differing only where each calls `go_behavior_result_port` vs `behavior_result_port` on loop bodies until unified; **`behavior_result_port` / `go_behavior_result_port`** themselves are byte-identical **modulo** the function name.
 - **True remaining emitter-gap surface** for Lane 1e Phase 2+ is **narrow**: expression-level optional lowering for **Go** (`render_optional_branch` nil / deref strings) is still handwritten; everything else from the old “5 clusters” list is either **already covered** or **residual per-target** (see Category 3 below).
 
 **STOP (director):** If a future audit revives **`LogicalOperatorCarrier`** or **`TypeRecursionStrategy`** without new evidence — those were **paper carriers** over existing authorities (#610, 1e-2b).
