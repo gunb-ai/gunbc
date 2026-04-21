@@ -6,7 +6,7 @@
 
 **Authorities read:** `docs/single-emitter-design.md`, `docs/emit-target-spec-gaps.md`, `docs/emit-bridges.md`, `src/v3/compiler/src/emit.rs`, `src/v3/compiler/src/emit/rust_target.rs`, `src/v3/compiler/src/emit/python_target.rs`, `src/v3/spec/{rust,go,python}.dag`, `src/v3/std/computation_model.dag`.
 
-**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–V, **three** blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold — **do not defer the split another round** (**Reviews K, M, P, R, T, V** exploratory).
+**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–W, **three** blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold — **do not defer the split another round** (**Reviews K, M, P, R, T, V, W** exploratory).
 
 ### PR review ingest (#621, 2026-04-21)
 
@@ -132,6 +132,12 @@
 - **Verdict:** APPROVE — docs-only; single file `docs/briefs/1e-3v-phase-3-dispatch-gate.md`; bar is **accuracy** and **coherent dispatch**, not substrate modeling discipline.
 - **Spot-checks:** `rg OperatorKind::Logical src/v3/compiler/src/emit` → no matches; `bool_meet` / `bool_join` in all three `src/v3/spec/{rust,go,python}.dag`; **`behavior_result_port` / `go_behavior_result_port`** at `rust_target.rs` / `emit.rs` (file:line at review time — **drift**); third copy `dimension.rs`, fourth `lens_cost_symbolic_generated.rs`; **`port_is_consumed_from`** at `rust_target.rs` / `emit.rs` (**drift**). Phase 3.0 bounded, deletion-oriented; 3.0b tracked (`dimension.rs` + lens regen); unit-first (**Reviews B/C**); STOP on paper carriers; no discipline violation in diff.
 - **Exploratory (non-blocking):** Ingest **≈60%** (**three** blocking rebuttals) — **Reading order** commits split **before next lane** — **Reviews K/M/P/R/T/V**; nothing blocks PR. Lens regen guardrail: § **Non-goals** (Phase 3.0) and **Dispatch checklist** (3.0b bullet) — aligns with **Review P** (line numbers drift).
+
+**Review W (codex / gpt-5.4, schedule, commit `9a5b3699`)**
+
+- **Verdict:** APPROVE — documentation-only diff.
+- **Spot-checks:** Live-tree claims hold — no `OperatorKind::Logical` under `emit/`; Bool **`OperatorRealization`** rows in all three target specs; Phase **3.0** / **3.0b** duplicate-helper callouts match.
+- **Discipline:** No concrete violation of **`INVARIANTS.md`**, **`docs/modeling-discipline.md`**, **`CODING.md`**, or **`TESTING.md`** in this diff.
 
 **Blocking inline review (PR #621, 2026-04-21) — finding does not match live tree**
 
