@@ -39,11 +39,16 @@ fn conj_payload_shape(children: List<ConjField>) -> VariantPayloadShape =
   }
 
 // `None` from `declaration_by_id` is a constructor-layer violation
-// (id-carriers can't legitimately reference an absent declaration);
-// consumers in `emit.rs` / `emit/rust_target.rs` / `emit/python_target.rs`
-// fail closed on `Missing` via a typed diagnostic. We don't grow a
-// separate "absent-decl" variant here because every consumer already
-// treats `Missing` as a hard error — C-8 is preserved at the caller.
+// (id-carriers can't legitimately reference an absent declaration).
+// The diagnostic-emitting consumers in `emit.rs` and the top-level
+// `emit_variant_constructor` paths in `emit/rust_target.rs` /
+// `emit/python_target.rs` fail closed on `Missing` via a typed
+// diagnostic. Two sibling helpers (`payload_binding_for_path` in
+// `emit/rust_target.rs`, `emit_variant_constructor_call` in
+// `emit/python_target.rs`) currently collapse `Missing` to `Ok(None)`,
+// which is a deferred C-8 cleanup — not a reason to grow a separate
+// "absent-decl" variant here, since the authority for that fix is on
+// the caller side.
 fn variant_payload_shape(d: Dag, variant_id: DeclarationId) -> VariantPayloadShapeLookup =
   match declaration_by_id(d, variant_id) {
     None => Missing
