@@ -105,12 +105,7 @@ pub fn render_parse_tables_generated_rs(
         item_kw_rows.iter().map(|r| r.dispatch.clone()).collect();
     item_dispatch_variants.sort_unstable();
     item_dispatch_variants.dedup();
-    let rust = emit_module(
-        &levels,
-        &rows,
-        &item_dispatch_variants,
-        &item_kw_rows,
-    );
+    let rust = emit_module(&levels, &rows, &item_dispatch_variants, &item_kw_rows);
     let combined = format!("{HEADER}{rust}");
     rustfmt_stdout(&combined).map_err(RenderParseTablesGeneratedError::Rustfmt)
 }
