@@ -92,6 +92,10 @@ pub fn render_parse_tables_generated_rs(
     let levels = collect_variant_labels(&tables_dag, "BinaryOpLevel");
     let rows = collect_binary_op_rows(&tables_dag, &token_variants, &levels, &shared_operators);
 
+    // SG-2c-2: Rust `ItemDispatchKind` variants are **only** the unique `Kw`-stripped
+    // labels from `TopLevelItemKwRow` rows below — never
+    // `collect_variant_labels(dag, "ItemDispatchKind")`; `parse_tables.dag` does not
+    // author that coproduct (M7 single authority on `token_variant` rows).
     let item_kw_rows = collect_top_level_item_kw_rows(&tables_dag, &token_variants);
     let mut item_dispatch_variants: Vec<String> =
         item_kw_rows.iter().map(|r| r.dispatch.clone()).collect();
