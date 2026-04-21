@@ -104,11 +104,11 @@ fn lower_pipeline_fixture_aligns_with_parse_surface_mirror() {
     );
 
     let hand_lets = surface_top_level_let_names_for_test(&parsed);
-    let mirror_lets = top_level_let_names_mirror(&mirrored);
+    let mirror_lets = top_level_let_names_mirror(mirrored);
     assert_eq!(hand_lets, mirror_lets);
     assert_eq!(hand_lets, vec!["x".to_string(), "y".to_string()]);
 
-    assert_default_fixed_point_mirror_shape(&mirrored);
+    assert_default_fixed_point_mirror_shape(mirrored);
 
     compile_to_dag(source, file).expect("lower + infer should succeed on the same surface");
 }
