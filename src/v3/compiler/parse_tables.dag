@@ -45,8 +45,9 @@
 // `parse_generated.rs` via `regen_parse`).
 //
 // **Same-PR consumer (E-6).** SG-2c-3 projection `is_type_rhs_boundary_keyword`
-// is consumed by the live parser's type-RHS lookahead helpers
-// `skip_where_clause` and `rhs_is_sum` in `parse_parser_body.txt`.
+// is emitted from the existing `TopLevelItemKwRow` facts and consumed by the
+// live parser's type-RHS lookahead helpers `skip_where_clause` and
+// `rhs_is_sum` in `parse_parser_body.txt`.
 
 module v3.compiler.parse_tables
 
@@ -284,42 +285,4 @@ data top_level_kw_import: TopLevelItemKwRow = {
 
 data top_level_kw_data: TopLevelItemKwRow = {
   token_variant: "KwData"
-}
-
-// --- SG-2c-3: type-RHS boundary keyword table. These are the keyword tokens
-// that terminate a `type ... = ...` RHS lookahead at top level. The live parser
-// consumes the generated helper from `skip_where_clause` / `rhs_is_sum` for the
-// shared top-level item boundary set instead of open-coding it in multiple places.
-//
-// Scope is intentionally narrow: this owns only flat token membership for
-// "keyword ends a type RHS scan". `KwType` still needs an extra parser-local
-// ambiguity check (`type | ...` variant label vs `type Name = ...` next decl),
-// so the generated helper is consumed as one input into that logic rather than
-// replacing the algorithm.
-type TypeRhsBoundaryKwRow {
-  token_variant: String
-}
-
-data type_rhs_boundary_kw_let: TypeRhsBoundaryKwRow = {
-  token_variant: "KwLet"
-}
-
-data type_rhs_boundary_kw_fn: TypeRhsBoundaryKwRow = {
-  token_variant: "KwFn"
-}
-
-data type_rhs_boundary_kw_type: TypeRhsBoundaryKwRow = {
-  token_variant: "KwType"
-}
-
-data type_rhs_boundary_kw_data: TypeRhsBoundaryKwRow = {
-  token_variant: "KwData"
-}
-
-data type_rhs_boundary_kw_module: TypeRhsBoundaryKwRow = {
-  token_variant: "KwModule"
-}
-
-data type_rhs_boundary_kw_import: TypeRhsBoundaryKwRow = {
-  token_variant: "KwImport"
 }

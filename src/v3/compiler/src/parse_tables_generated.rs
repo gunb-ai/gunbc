@@ -80,7 +80,8 @@ pub fn top_level_item_dispatch(kind: &TokenKind) -> Option<ItemDispatchKind> {
 }
 
 /// Keyword membership table for top-level type-RHS boundary lookahead.
-/// Authored as `TypeRhsBoundaryKwRow` rows in `src/v3/compiler/parse_tables.dag`.
+/// Projected from the existing `TopLevelItemKwRow` rows in
+/// `src/v3/compiler/parse_tables.dag`.
 pub fn is_type_rhs_boundary_keyword(kind: &TokenKind) -> bool {
     matches!(
         kind,

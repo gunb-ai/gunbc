@@ -6,8 +6,9 @@
 //! shared-syntax checks below). **SG-2c-2:** `TopLevelItemKwRow.token_variant`
 //! rows → Rust `ItemDispatchKind` + `top_level_item_dispatch` (dispatch labels
 //! derived via `Kw`-strip; validated against `tokenize.dag`'s `TokenKind`).
-//! **SG-2c-3:** `TypeRhsBoundaryKwRow.token_variant` rows →
-//! `is_type_rhs_boundary_keyword`.
+//! **SG-2c-3:** existing `TopLevelItemKwRow.token_variant` rows also project
+//! `is_type_rhs_boundary_keyword` for the parser's shared top-level item
+//! boundary set.
 //!
 //! Used by the `regen_parse_tables` binary (writes the file) and by the
 //! hermetic integration snapshot test (compare in-memory only — avoids a
@@ -78,7 +79,7 @@ impl fmt::Display for RenderParseTablesGeneratedError {
 ///
 /// Validation: `BinaryOpRow` vs `tokenize.dag` + `operators.dag` + shared-syntax
 /// `dag_operators`; `TopLevelItemKwRow` vs `tokenize.dag` + `Kw`-strip dispatch
-/// labels (SG-2c-2); `TypeRhsBoundaryKwRow` vs `tokenize.dag` (SG-2c-3).
+/// labels (SG-2c-2/SG-2c-3).
 /// Does not read or write workspace paths.
 pub fn render_parse_tables_generated_rs(
     parse_tables_source: &str,
@@ -104,19 +105,11 @@ pub fn render_parse_tables_generated_rs(
         item_kw_rows.iter().map(|r| r.dispatch.clone()).collect();
     item_dispatch_variants.sort_unstable();
     item_dispatch_variants.dedup();
-    let type_rhs_boundary_rows = collect_token_only_rows(
-        &tables_dag,
-        &token_variants,
-        "TypeRhsBoundaryKwRow",
-        "type RHS boundary",
-    );
-
     let rust = emit_module(
         &levels,
         &rows,
         &item_dispatch_variants,
         &item_kw_rows,
-        &type_rhs_boundary_rows,
     );
     let combined = format!("{HEADER}{rust}");
     rustfmt_stdout(&combined).map_err(RenderParseTablesGeneratedError::Rustfmt)
@@ -173,10 +166,6 @@ struct BinaryOpRow {
 struct TopLevelItemKwRow {
     token_variant: String,
     dispatch: String,
-}
-
-struct TokenOnlyRow {
-    token_variant: String,
 }
 
 fn collect_binary_op_rows(
@@ -352,51 +341,6 @@ fn collect_top_level_item_kw_rows(dag: &Dag, token_variants: &[String]) -> Vec<T
     rows
 }
 
-fn collect_token_only_rows(
-    dag: &Dag,
-    token_variants: &[String],
-    row_type_name: &str,
-    duplicate_label: &str,
-) -> Vec<TokenOnlyRow> {
-    let token_variant_set: BTreeSet<&str> = token_variants.iter().map(String::as_str).collect();
-
-    let row_type_id = dag
-        .declarations()
-        .iter()
-        .find(|d| d.name.as_deref() == Some(row_type_name))
-        .map(|d| d.id)
-        .unwrap_or_else(|| panic!("{row_type_name} declaration"));
-
-    let mut rows: Vec<TokenOnlyRow> = Vec::new();
-    let mut seen_token_variants: BTreeSet<String> = BTreeSet::new();
-    for decl in dag.declarations() {
-        if decl.meta_tag != Some(row_type_id) {
-            continue;
-        }
-        let name = decl.name.as_deref().unwrap_or("<anonymous>");
-        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
-            panic!(
-                "`parse_tables.dag::{name}`: `{row_type_name}` binding must carry a structural value body"
-            );
-        };
-        let token_variant = string_field(fields, "token_variant", name);
-
-        assert!(
-            token_variant_set.contains(token_variant.as_str()),
-            "`parse_tables.dag::{name}`: token_variant `{token_variant}` is not a \
-             `TokenKind` variant in `tokenize.dag`"
-        );
-        assert!(
-            seen_token_variants.insert(token_variant.clone()),
-            "`parse_tables.dag`: duplicate {duplicate_label} row for `TokenKind::{token_variant}`"
-        );
-
-        rows.push(TokenOnlyRow { token_variant });
-    }
-    rows.sort_by(|a, b| a.token_variant.cmp(&b.token_variant));
-    rows
-}
-
 /// `TopLevelItemKwRow.token_variant` is authoritative; dispatch label is
 /// `strip_prefix("Kw")` — there is no separately authored substrate enum.
 fn item_dispatch_label_from_kw_token_variant(token_variant: &str, decl_name: &str) -> String {
@@ -525,7 +469,6 @@ fn emit_module(
     rows: &[BinaryOpRow],
     item_dispatch_variants: &[String],
     item_kw_rows: &[TopLevelItemKwRow],
-    type_rhs_boundary_rows: &[TokenOnlyRow],
 ) -> String {
     let mut s = String::new();
     s.push_str("use crate::dag::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};\n");
@@ -586,11 +529,12 @@ fn emit_module(
     s.push_str("}\n");
     s.push_str(
         "\n/// Keyword membership table for top-level type-RHS boundary lookahead.\n\
-         /// Authored as `TypeRhsBoundaryKwRow` rows in `src/v3/compiler/parse_tables.dag`.\n",
+         /// Projected from the existing `TopLevelItemKwRow` rows in\n\
+         /// `src/v3/compiler/parse_tables.dag`.\n",
     );
     s.push_str("pub fn is_type_rhs_boundary_keyword(kind: &TokenKind) -> bool {\n");
     s.push_str("    matches!(kind, ");
-    for (idx, row) in type_rhs_boundary_rows.iter().enumerate() {
+    for (idx, row) in item_kw_rows.iter().enumerate() {
         if idx > 0 {
             s.push_str(" | ");
         }

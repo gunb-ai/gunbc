@@ -4,8 +4,8 @@
 //! dispatch, SG-2c-3 type-RHS boundary keywords. `parse_tables_generated.rs`
 //! must stay in sync with the authoring `.dag`; `binary_op_*` rows cover every
 //! binary-operator token the parser dispatches on, `top_level_kw_*` rows cover
-//! every keyword `parse_item` accepts, and `type_rhs_boundary_kw_*` rows cover
-//! the shared top-level item-boundary keyword set used by type-RHS lookahead.
+//! every keyword `parse_item` accepts, and the same rows also project the shared
+//! top-level item-boundary helper used by type-RHS lookahead.
 //!
 //! This lane is explicitly NOT SG-2c proper (parser authority proper).
 //! Full parser-algorithm dissolution is blocked on recursive list-body
@@ -221,88 +221,5 @@ fn top_level_item_kw_rows_cover_exactly_the_tokens_parse_item_dispatches_on() {
         expected, got_ref,
         "top_level_kw_* rows in parse_tables.dag do not cover exactly the keyword tokens \
          `parse_item` dispatches on"
-    );
-}
-
-#[test]
-fn every_type_rhs_boundary_kw_row_token_variant_is_a_token_kind_variant() {
-    let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
-        .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
-    let tokenize_dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
-        .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
-
-    let token_kind_decl = tokenize_dag
-        .declaration_by_name("TokenKind")
-        .expect("TokenKind declaration in tokenize.dag");
-    let TypeConnective::Disj {
-        variants: token_variants,
-    } = &token_kind_decl.connective
-    else {
-        panic!("TokenKind should lower to a Disj");
-    };
-    let token_variant_names: std::collections::BTreeSet<String> =
-        token_variants.iter().map(|v| v.label.clone()).collect();
-
-    let row_type_id = tables_dag
-        .declaration_by_name("TypeRhsBoundaryKwRow")
-        .expect("TypeRhsBoundaryKwRow declaration")
-        .id;
-    for decl in tables_dag.declarations() {
-        if decl.meta_tag != Some(row_type_id) {
-            continue;
-        }
-        let name = decl.name.as_deref().unwrap_or("<anonymous>");
-        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
-            continue;
-        };
-        let token_variant = fields
-            .iter()
-            .find_map(|(k, v)| (k == "token_variant").then_some(v))
-            .and_then(|v| match v {
-                FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
-                _ => None,
-            })
-            .unwrap_or_else(|| panic!("`{name}`: missing string `token_variant` field"));
-        assert!(
-            token_variant_names.contains(&token_variant),
-            "`parse_tables.dag::{name}`: token_variant `{token_variant}` is not a \
-             `TokenKind` variant in `tokenize.dag`"
-        );
-    }
-}
-
-#[test]
-fn type_rhs_boundary_kw_rows_cover_exactly_the_keywords_used_by_type_rhs_lookahead() {
-    let expected: std::collections::BTreeSet<&'static str> =
-        ["KwLet", "KwFn", "KwType", "KwData", "KwModule", "KwImport"]
-            .into_iter()
-            .collect();
-
-    let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
-        .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
-    let mut got: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    let row_type_id = tables_dag
-        .declaration_by_name("TypeRhsBoundaryKwRow")
-        .expect("TypeRhsBoundaryKwRow declaration")
-        .id;
-    for decl in tables_dag.declarations() {
-        if decl.meta_tag != Some(row_type_id) {
-            continue;
-        }
-        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
-            continue;
-        };
-        if let Some(FieldValue::Literal(LiteralBits::String(s))) = fields
-            .iter()
-            .find_map(|(k, v)| (k == "token_variant").then_some(v))
-        {
-            got.insert(s.clone());
-        }
-    }
-    let got_ref: std::collections::BTreeSet<&str> = got.iter().map(String::as_str).collect();
-    assert_eq!(
-        expected, got_ref,
-        "type_rhs_boundary_kw_* rows in parse_tables.dag do not cover exactly the shared \
-         top-level item-boundary keyword set used by type-RHS lookahead"
     );
 }
