@@ -2,7 +2,7 @@
 
 **Companion:** [1e-3v-phase-3-dispatch-gate.md](1e-3v-phase-3-dispatch-gate.md) — **live dispatch guidance** (Executive summary, cluster table, Phase 3.0, checklist).
 
-This file is **archival only**: api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** (commit `da72fb9c`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
+This file is **archival only**: api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
 
 ---
 
@@ -214,3 +214,7 @@ Relayed **BLOCKING** comment repeats the first review’s two claims: (1) `emit.
 - **Claim verification (tree; line refs drift):** `rg 'OperatorKind::Logical|LogicalOp::' src/v3/compiler/src/emit` → empty (Cluster **F** — dispatch gate `:17`, `:36`); `bool_meet` / `bool_join` in all three `src/v3/spec/{rust,go,python}.dag`; `behavior_result_port` in four files (`emit.rs`, `emit/rust_target.rs`, `dimension.rs`, `lens_cost_symbolic_generated.rs`) matches `:20`, `:84–87` and **3.0b** deferral; `port_is_consumed_from` in `emit.rs` + `emit/rust_target.rs` matches dedup callout.
 - **Discipline:** Split addresses **`INVARIANTS.md`** “Documentation Describes Live State” (cited at ingest `:5`); Phase **3.0** bounded, **unit-first** (`TESTING.md`, dispatch `:102–105`), **STOP-AND-ESCALATE** (`:108`), **3.0b** dissolution trigger (`:123`); Cluster **D** = implementation DRY not substrate gap (`:34`); director **STOP** on paper carriers (`:23`).
 - **Findings:** None — no **`INVARIANTS.md`** / modeling-discipline / **`CODING.md`** / **`TESTING.md`** violation in the diff.
+
+**Review AD (codex / gpt-5.4, schedule, commit `da72fb9c`, 2026-04-21T23:47:04Z)**
+
+- **Verdict:** APPROVE — documentation-only diff; looks clean. Live dispatch guidance stays separate from archival chronicle; spot-checks on `emit/`, `spec/*.dag`, and helper definitions matched the current tree.
