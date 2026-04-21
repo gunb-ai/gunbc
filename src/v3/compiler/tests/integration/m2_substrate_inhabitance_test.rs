@@ -799,6 +799,35 @@ fn parse_type_inhabits_clause_rejects_non_sum_rhs() {
     }
 }
 
+/// `inhabits` is not in `dag_keyword_set` (shared syntax): it must tokenize as
+/// an ordinary identifier so it can spell a declared type name — distinct from
+/// the `type <Name> inhabits <Ty> = …` clause introducer.
+#[test]
+fn parse_type_declared_name_may_be_inhabits_sum() {
+    let source = "type inhabits = True | False\n";
+    let tokens =
+        tokenize_for_test(source, "type_named_inhabits.v3").expect("tokenize type_named_inhabits");
+    let parsed =
+        parse_for_test(&tokens, "type_named_inhabits.v3").expect("parse type_named_inhabits");
+    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+    assert_eq!(mirrored.items.len(), 1);
+    match &mirrored.items[0] {
+        parse_surface::SurfaceItem::TypeSum {
+            name,
+            variants,
+            inhabits,
+            ..
+        } => {
+            assert_eq!(name, "inhabits");
+            assert!(inhabits.is_none());
+            assert_eq!(variants.len(), 2);
+            assert_eq!(variants[0].name, "True");
+            assert_eq!(variants[1].name, "False");
+        }
+        other => panic!("expected TypeSum, got {other:?}"),
+    }
+}
+
 #[test]
 fn parse_surface_generated_module_consumes_parser_output_structurally() {
     let source = "fn id<T>(x: T where x == x) -> T = x\nlet y = if true then id(1) else 2";

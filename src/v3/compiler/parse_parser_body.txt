@@ -506,7 +506,7 @@ impl<'a> Parser<'a> {
                     span: SourceSpan::new(self.file, type_kw.span.byte_start, close.span.byte_end),
                 })
             }
-            TokenKind::KwInhabits => {
+            TokenKind::Ident(ref s) if s == "inhabits" => {
                 let clause_start = self.peek().span.byte_start;
                 self.bump();
                 let inhabits = self.parse_type_expr()?;
@@ -556,7 +556,6 @@ impl<'a> Parser<'a> {
         let name = match name_token.kind {
             TokenKind::Ident(n) => n,
             TokenKind::KwType => "type".to_string(),
-            TokenKind::KwInhabits => "inhabits".to_string(),
             other => {
                 return Err(Diagnostic::ParseError {
                     message: format!("expected field label, got {other:?}"),
@@ -641,8 +640,8 @@ impl<'a> Parser<'a> {
     /// Consume a `where constraint1(args), constraint2(args)` clause
     /// and return the final byte offset. The clause ends at the next
     /// top-level item keyword (`let`/`fn`/`type`/`data`/`module`/
-    /// `import`) or EOF — not at [`TokenKind::KwInhabits`], which can
-    /// appear as a variant/field label spelling inside the skipped span.
+    /// `import`) or EOF — not at [`TokenKind::Ident`] spelling `inhabits`,
+    /// which can appear as a variant/field label inside the skipped span.
     /// Refinement predicates land in M2+; at M1(2.6) we drop them after
     /// consuming their tokens.
     fn skip_where_clause(&mut self) -> Result<u32, Diagnostic> {
@@ -682,9 +681,9 @@ impl<'a> Parser<'a> {
     /// the next item boundary)? Tracks paren/brace depth so a `|` inside a
     /// payload list doesn't confuse the scan.
     ///
-    /// Do **not** treat [`TokenKind::KwInhabits`] as an item boundary: it
-    /// tokenizes the spelling for a sum variant / record field named
-    /// `inhabits` (see [`Self::parse_field_label`], [`Self::parse_variant`]).
+    /// Do **not** treat [`TokenKind::Ident`] `inhabits` as an item boundary: it
+    /// can spell a sum variant / record field (see [`Self::parse_field_label`],
+    /// [`Self::parse_variant`]).
     ///
     /// [`TokenKind::KwType`] is likewise accepted as a variant/field spelling,
     /// but it also begins every top-level `type` declaration. Whitespace is
@@ -709,13 +708,14 @@ impl<'a> Parser<'a> {
                 TokenKind::KwType if depth == 0 => {
                     let next = self.tokens.get(i + 1).map(|t| &t.kind);
                     let next2 = self.tokens.get(i + 2).map(|t| &t.kind);
-                    if matches!(
-                        (next, next2),
-                        (
-                            Some(TokenKind::Ident(_)),
-                            Some(TokenKind::Eq | TokenKind::Lt | TokenKind::KwInhabits)
-                        )
-                    ) {
+                    let next_decl = match (next, next2) {
+                        (Some(TokenKind::Ident(_)), Some(TokenKind::Eq | TokenKind::Lt)) => true,
+                        (Some(TokenKind::Ident(_)), Some(TokenKind::Ident(s))) if s == "inhabits" => {
+                            true
+                        }
+                        _ => false,
+                    };
+                    if next_decl {
                         return false;
                     }
                 }
@@ -751,7 +751,6 @@ impl<'a> Parser<'a> {
         let name = match &name_token.kind {
             TokenKind::Ident(n) => n.clone(),
             TokenKind::KwType => String::from("type"),
-            TokenKind::KwInhabits => String::from("inhabits"),
             other => {
                 return Err(Diagnostic::ParseError {
                     message: format!("expected variant name, got {other:?}"),
