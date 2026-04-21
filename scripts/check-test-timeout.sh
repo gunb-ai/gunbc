@@ -92,7 +92,21 @@ fi
 # can **fail closed** when zero test-result lines were parsed — protects
 # against silent false-green if libtest output drifts (the format is
 # explicitly unstable, rust-lang/rust#64888).
-awk_output=$(awk -v budget_ms="$budget_ms" '
+#
+# Normalize captured CI logs: GitHub Actions sets `CARGO_TERM_COLOR=always`
+# at the workflow level, and libtest lines can theoretically pick up leading
+# ANSI escapes or CRLF line endings depending on how the stream is tee'd.
+# Strip those before matching the `^test ... <N.NNNs>$` shape.
+if command -v perl >/dev/null 2>&1; then
+  awk_input() {
+    perl -pe 's/\r\n/\n/g; s/\r/\n/g; s/\e\[[0-9;]*m//g' "$log_file"
+  }
+else
+  awk_input() {
+    tr -d '\r' <"$log_file"
+  }
+fi
+awk_output=$(awk_input | awk -v budget_ms="$budget_ms" '
   /^test[[:space:]]+[^ ]+[[:space:]]+\.\.\.[[:space:]]+(ok|FAILED)[[:space:]]+<[0-9]+\.[0-9]+s>$/ {
     parsed_count++
     name = $2
@@ -113,7 +127,7 @@ awk_output=$(awk -v budget_ms="$budget_ms" '
   END {
     printf "__PARSED_COUNT=%d\n", parsed_count
   }
-' "$log_file")
+')
 
 parsed_count=$(printf '%s\n' "$awk_output" | awk -F= '/^__PARSED_COUNT=/ {print $2}')
 violations=$(printf '%s\n' "$awk_output" | awk '!/^__PARSED_COUNT=/ {print}' | awk 'NF')
