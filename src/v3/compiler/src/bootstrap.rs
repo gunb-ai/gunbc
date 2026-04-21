@@ -201,24 +201,51 @@ fn load_fixtures(dag: &mut Dag, fixtures: &[(&str, &str)]) {
 /// `BooleanAlgebra<Bool>` the same way surface `inhabits` lowering would,
 /// without shadowing `Bool` (which would reallocate sum variants and break
 /// `src/v3/std/algebra.dag` pattern wiring).
+///
+/// Preconditions are checked: any failure attaches a bootstrap
+/// `Diagnostic::ResolveError` via `Dag::attach_diagnostic` so compilation
+/// fails closed instead of silently omitting `inhabits`.
 fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
+    const BOOL_TYPES_FILE: &str = "dsl/std/types.dag";
     let Some(bool_decl) = dag
         .declarations()
         .iter()
-        .find(|d| d.name.as_deref() == Some("Bool") && d.span.file == "dsl/std/types.dag")
+        .find(|d| d.name.as_deref() == Some("Bool") && d.span.file == BOOL_TYPES_FILE)
     else {
+        dag.attach_diagnostic(Diagnostic::ResolveError {
+            name: format!(
+                "bootstrap: Lane 1e-2b Path A — kernel `Bool` not found in `{BOOL_TYPES_FILE}`; \
+                 cannot set `Declaration.inhabits` for `BooleanAlgebra<Bool>`"
+            ),
+            span: SourceSpan::new(BOOL_TYPES_FILE, 0, 0),
+            fixes: Vec::new(),
+        });
         return;
     };
     let bool_id = bool_decl.id;
-    let bool_span = bool_decl.span.clone();
+    let span_for_inst = bool_decl.span.clone();
     if dag.declaration(bool_id).inhabits.is_some() {
         return;
     }
     let (ba_template, param_id) = {
         let Some(ba) = dag.declaration_by_name("BooleanAlgebra") else {
+            dag.attach_diagnostic(Diagnostic::ResolveError {
+                name: "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` not present in the \
+                       bootstrap Dag; cannot wire kernel `Bool` `inhabits`"
+                    .to_string(),
+                span: span_for_inst.clone(),
+                fixes: Vec::new(),
+            });
             return;
         };
         let Some(&param_id) = ba.type_params.first() else {
+            dag.attach_diagnostic(Diagnostic::ResolveError {
+                name: "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` has no type parameters; \
+                       cannot instantiate `BooleanAlgebra<Bool>` for kernel `Bool` `inhabits`"
+                    .to_string(),
+                span: span_for_inst.clone(),
+                fixes: Vec::new(),
+            });
             return;
         };
         (ba.id, param_id)
@@ -239,7 +266,7 @@ fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
         inhabits: None,
         value_body: None,
         refinement: None,
-        span: bool_span,
+        span: span_for_inst,
     });
     dag.declaration_mut(bool_id).inhabits = Some(inst_id);
 }
@@ -518,6 +545,46 @@ mod tests {
                         && span.file == PIPELINE_AUTHORITY_FILE
             )),
             "malformed pipeline authority should fail closed with a diagnostic"
+        );
+    }
+
+    #[test]
+    fn kernel_bool_path_a_attaches_diagnostic_when_boolean_algebra_unresolvable() {
+        let mut dag = Dag::new();
+        assert!(
+            dag.diagnostics().is_empty(),
+            "production bootstrap should satisfy Path A preconditions: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+
+        let bool_id = dag
+            .declaration_by_name("Bool")
+            .expect("kernel Bool from std")
+            .id;
+        dag.declaration_mut(bool_id).inhabits = None;
+
+        let ba_id = dag
+            .declaration_by_name("BooleanAlgebra")
+            .expect("BooleanAlgebra from std")
+            .id;
+        dag.declaration_mut(ba_id).name = Some("__test_hidden_BooleanAlgebra".to_string());
+
+        super::patch_kernel_bool_boolean_algebra_inhabits(&mut dag);
+
+        assert!(
+            dag.declaration(bool_id).inhabits.is_none(),
+            "inhabits must stay unset when the patch cannot complete"
+        );
+        assert!(
+            dag.diagnostics().iter().any(|(_, diag)| {
+                matches!(
+                    diag,
+                    Diagnostic::ResolveError { name, .. }
+                        if name.contains("Lane 1e-2b Path A") && name.contains("BooleanAlgebra")
+                )
+            }),
+            "expected bootstrap Path A diagnostic, got {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
         );
     }
 }
