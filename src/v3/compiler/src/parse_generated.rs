@@ -923,10 +923,15 @@ impl<'a> Parser<'a> {
     /// the next item boundary)? Tracks paren/brace depth so a `|` inside a
     /// payload list doesn't confuse the scan.
     ///
-    /// Do **not** treat [`TokenKind::KwInhabits`] (or [`TokenKind::KwType`]) as
-    /// an item boundary here: those tokenize spelling positions where a sum
-    /// variant or field may legally use the same labels as reserved words (see
-    /// [`Self::parse_field_label`], [`Self::parse_variant`]).
+    /// Do **not** treat [`TokenKind::KwInhabits`] as an item boundary: it
+    /// tokenizes the spelling for a sum variant / record field named
+    /// `inhabits` (see [`Self::parse_field_label`], [`Self::parse_variant`]).
+    ///
+    /// [`TokenKind::KwType`] is likewise accepted as a variant/field spelling,
+    /// but it also begins every top-level `type` declaration. Whitespace is
+    /// not tokenized, so distinguish `type | …` (variant label) from
+    /// `type Name =` / `type Name<` / `type Name inhabits` (next decl) via a
+    /// two-token lookahead when depth is zero.
     fn rhs_is_sum(&self) -> bool {
         let mut i = self.pos;
         let mut depth: i32 = 0;
@@ -942,9 +947,21 @@ impl<'a> Parser<'a> {
                     depth -= 1;
                 }
                 TokenKind::Pipe if depth == 0 => return true,
+                TokenKind::KwType if depth == 0 => {
+                    let next = self.tokens.get(i + 1).map(|t| &t.kind);
+                    let next2 = self.tokens.get(i + 2).map(|t| &t.kind);
+                    if matches!(
+                        (next, next2),
+                        (
+                            Some(TokenKind::Ident(_)),
+                            Some(TokenKind::Eq | TokenKind::Lt | TokenKind::KwInhabits)
+                        )
+                    ) {
+                        return false;
+                    }
+                }
                 TokenKind::KwLet
                 | TokenKind::KwFn
-                | TokenKind::KwType
                 | TokenKind::KwData
                 | TokenKind::KwModule
                 | TokenKind::KwImport
