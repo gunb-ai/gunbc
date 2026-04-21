@@ -18,8 +18,18 @@ type VariantPayloadShape
   | PositionalSingle
   | NamedFields(List<String>)
 
+// `DeclarationMissing` carries the substrate-integrity violation
+// (`declaration_by_id` returned `None`): id-carriers can't legitimately
+// reference an absent declaration, so consumers must fail closed.
+// `NotPayloadProduct` is the ordinary outcome for declarations whose
+// connective is not `Conj` (atoms, arrows, cardinalities, …) — callers
+// that only care about product-shaped variants legitimately ignore it.
+// Keeping the two distinct prevents a C-8 fail-open where a caller's
+// `not-a-product` fallback would otherwise swallow a substrate-integrity
+// miss.
 type VariantPayloadShapeLookup
-  = Missing
+  = DeclarationMissing
+  | NotPayloadProduct
   | Found(VariantPayloadShape)
 
 fn conj_field_label(f: ConjField) -> String =
@@ -38,27 +48,16 @@ fn conj_payload_shape(children: List<ConjField>) -> VariantPayloadShape =
       }
   }
 
-// `None` from `declaration_by_id` is a constructor-layer violation
-// (id-carriers can't legitimately reference an absent declaration).
-// The diagnostic-emitting consumers in `emit.rs` and the top-level
-// `emit_variant_constructor` paths in `emit/rust_target.rs` /
-// `emit/python_target.rs` fail closed on `Missing` via a typed
-// diagnostic. Two sibling helpers (`payload_binding_for_path` in
-// `emit/rust_target.rs`, `emit_variant_constructor_call` in
-// `emit/python_target.rs`) currently collapse `Missing` to `Ok(None)`,
-// which is a deferred C-8 cleanup — not a reason to grow a separate
-// "absent-decl" variant here, since the authority for that fix is on
-// the caller side.
 fn variant_payload_shape(d: Dag, variant_id: DeclarationId) -> VariantPayloadShapeLookup =
   match declaration_by_id(d, variant_id) {
-    None => Missing
+    None => DeclarationMissing
     Some(decl) =>
       match decl.connective {
         Conj(c) => Found(conj_payload_shape(c.children))
-        Atom(_) => Missing
-        Disj(_) => Missing
-        Arrow(_) => Missing
-        Cardinality(_) => Missing
-        Instantiation(_) => Missing
+        Atom(_) => NotPayloadProduct
+        Disj(_) => NotPayloadProduct
+        Arrow(_) => NotPayloadProduct
+        Cardinality(_) => NotPayloadProduct
+        Instantiation(_) => NotPayloadProduct
       }
   }

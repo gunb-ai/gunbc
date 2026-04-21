@@ -982,7 +982,12 @@ impl<'a> Ctx<'a> {
         }
         let variant_id = resolved_pattern_id(path)?;
         let shape = match variant_payload_shape(self.dag, &variant_id) {
-            VariantPayloadShapeLookup::Missing => {
+            VariantPayloadShapeLookup::DeclarationMissing => {
+                return Err(EmitPythonError::Unsupported(
+                    "variant payload references an absent declaration".to_string(),
+                ));
+            }
+            VariantPayloadShapeLookup::NotPayloadProduct => {
                 return Ok(Some(VariantPayloadBinding::Direct("__match".to_string())));
             }
             VariantPayloadShapeLookup::Found { _0: shape } => shape,
@@ -1219,7 +1224,12 @@ impl<'a> Ctx<'a> {
             return Ok(Some(format!("{runtime_name}()")));
         }
         let payload_shape = match variant_payload_shape(self.dag, &template) {
-            VariantPayloadShapeLookup::Missing => return Ok(None),
+            VariantPayloadShapeLookup::DeclarationMissing => {
+                return Err(EmitPythonError::Unsupported(
+                    "variant constructor references an absent declaration".to_string(),
+                ));
+            }
+            VariantPayloadShapeLookup::NotPayloadProduct => return Ok(None),
             VariantPayloadShapeLookup::Found { _0: shape } => shape,
         };
         if matches!(payload_shape, VariantPayloadShape::PositionalSingle) {

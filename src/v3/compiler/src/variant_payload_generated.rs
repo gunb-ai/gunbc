@@ -9,7 +9,8 @@ pub enum VariantPayloadShape {
 }
 #[derive(Clone, Debug)]
 pub enum VariantPayloadShapeLookup {
-    Missing,
+    DeclarationMissing,
+    NotPayloadProduct,
     Found { _0: VariantPayloadShape },
 }
 pub fn conj_field_label(p0: &Field) -> String {
@@ -43,26 +44,26 @@ pub fn conj_payload_shape(p0: &[Field]) -> VariantPayloadShape {
 }
 pub fn variant_payload_shape(p0: &Dag, p1: &DeclarationId) -> VariantPayloadShapeLookup {
     match &((p0).declaration_opt(p1).cloned()) {
-        None => VariantPayloadShapeLookup::Missing,
+        None => VariantPayloadShapeLookup::DeclarationMissing,
         Some(decl) => match &((decl).connective) {
             TypeConnective::Conj { children: c } => VariantPayloadShapeLookup::Found {
                 _0: conj_payload_shape(c),
             },
-            TypeConnective::Atom(_) => VariantPayloadShapeLookup::Missing,
-            TypeConnective::Disj { variants: _ } => VariantPayloadShapeLookup::Missing,
+            TypeConnective::Atom(_) => VariantPayloadShapeLookup::NotPayloadProduct,
+            TypeConnective::Disj { variants: _ } => VariantPayloadShapeLookup::NotPayloadProduct,
             TypeConnective::Arrow {
                 inputs: _,
                 output: _,
                 body: _,
-            } => VariantPayloadShapeLookup::Missing,
+            } => VariantPayloadShapeLookup::NotPayloadProduct,
             TypeConnective::Cardinality {
                 element: _,
                 bound: _,
-            } => VariantPayloadShapeLookup::Missing,
+            } => VariantPayloadShapeLookup::NotPayloadProduct,
             TypeConnective::Instantiation {
                 template: _,
                 arguments: _,
-            } => VariantPayloadShapeLookup::Missing,
+            } => VariantPayloadShapeLookup::NotPayloadProduct,
         },
     }
 }

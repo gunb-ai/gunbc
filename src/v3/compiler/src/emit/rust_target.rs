@@ -3563,7 +3563,12 @@ impl<'a> Ctx<'a> {
             ));
         };
         let payload_shape = match variant_payload_shape(self.dag, &resolved_id) {
-            VariantPayloadShapeLookup::Missing => {
+            VariantPayloadShapeLookup::DeclarationMissing => {
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "matched variant `{variant_name}` references an absent declaration"
+                )));
+            }
+            VariantPayloadShapeLookup::NotPayloadProduct => {
                 return Err(EmitError::UnsupportedBehavior(format!(
                     "matched variant `{variant_name}` does not lower to a payload product"
                 )));
@@ -3712,7 +3717,12 @@ impl<'a> Ctx<'a> {
             return Ok(None);
         };
         let shape = match variant_payload_shape(self.dag, variant_id) {
-            VariantPayloadShapeLookup::Missing => return Ok(None),
+            VariantPayloadShapeLookup::DeclarationMissing => {
+                return Err(EmitError::UnsupportedBehavior(
+                    "variant payload binding references an absent declaration".to_string(),
+                ));
+            }
+            VariantPayloadShapeLookup::NotPayloadProduct => return Ok(None),
             VariantPayloadShapeLookup::Found { _0: shape } => shape,
         };
         let payload_binding_name = self.render_payload_binding_name(path, binding);

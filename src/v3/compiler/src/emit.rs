@@ -837,7 +837,10 @@ pub(crate) fn optional_match_variant_roles(
     let mut payload_variant = None;
     for variant in variants {
         let shape = match variant_payload_shape(dag, &variant.ty) {
-            VariantPayloadShapeLookup::Missing => {
+            VariantPayloadShapeLookup::DeclarationMissing => {
+                return Err("optional branch variant references an absent declaration");
+            }
+            VariantPayloadShapeLookup::NotPayloadProduct => {
                 return Err("optional branch variants must lower to payload products");
             }
             VariantPayloadShapeLookup::Found { _0: shape } => shape,
@@ -2027,7 +2030,12 @@ impl<'a> Ctx<'a> {
         binding_expr: &str,
     ) -> Result<Option<VariantPayloadBinding<String>>, EmitError> {
         let shape = match variant_payload_shape(self.dag, &variant_id) {
-            VariantPayloadShapeLookup::Missing => {
+            VariantPayloadShapeLookup::DeclarationMissing => {
+                return Err(EmitError::UnsupportedBehavior(
+                    "variant payload references an absent declaration".to_string(),
+                ));
+            }
+            VariantPayloadShapeLookup::NotPayloadProduct => {
                 return Err(EmitError::UnsupportedBehavior(
                     "variant payload expected a product declaration".to_string(),
                 ));
