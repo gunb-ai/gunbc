@@ -24,7 +24,13 @@ After Class 5 Gap 1 lands, logical-operator emission becomes trivially spec-driv
 
 Pick a different Lane 1e-2 cluster from `docs/emit-target-spec-gaps.md` that (1) survives Phase 0 verification (existing authorities do NOT already cover it) and (2) is a pure spec-data gap, not a modeling gap.
 
-**Known mis-classifications to skip**: Cluster A (Go type recursion — already covered), Cluster B (execution model — already covered), Cluster C (bootstrap filtering — already `is_bootstrap_file`), Cluster H (unused pattern binding — already `PatternBindingRule`), Cluster F (logical ops — needs Class 5 Gap 1, not a carrier).
+**Known mis-classifications to skip** (6 confirmed audit errors in #608):
+- Cluster A — Go type recursion (already covered by `TypeInstantiationRealization.carrier` + `TypeApplicationSyntax`)
+- Cluster B — execution model (already covered by `TargetExecutionModel.memory`)
+- Cluster C — bootstrap filtering (already covered by `is_bootstrap_file` behavior)
+- **Cluster E — optional type wrappers (already covered by `TypeApplicationSyntax.optional` in `emit_model.dag`; e.g., `go_type_applications.optional: "*{element}"`)**
+- Cluster F — logical ops (needs Class 5 Gap 1 / Bool grounding, not a new carrier)
+- Cluster H — unused pattern binding (already covered by `CleanEmissionContract.pattern_bindings: PatternBindingRule`)
 
 **Not yet contested** (candidates — worker verifies before committing): none from the current `#608` list are high-confidence. May require reading `#608` critically + re-checking each cluster against live authorities.
 
