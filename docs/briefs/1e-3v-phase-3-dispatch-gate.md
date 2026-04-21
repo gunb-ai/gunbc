@@ -6,7 +6,7 @@
 
 **Authorities read:** `docs/single-emitter-design.md`, `docs/emit-target-spec-gaps.md`, `docs/emit-bridges.md`, `src/v3/compiler/src/emit.rs`, `src/v3/compiler/src/emit/rust_target.rs`, `src/v3/compiler/src/emit/python_target.rs`, `src/v3/spec/{rust,go,python}.dag`, `src/v3/std/computation_model.dag`.
 
-**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–L, blocking rebuttals) is a **session-dashboard / audit trail**; if future briefs grow the same way, consider moving the ingest log to a **sibling file or appendix** so dispatch stays skimmable (**Review K**, exploratory).
+**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–M, blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold (**Review M**, exploratory; reinforces **Review K**).
 
 ### PR review ingest (#621, 2026-04-21)
 
@@ -75,6 +75,12 @@
 - **Verdict:** APPROVE — doc-only diff.
 - **Spot-checks:** No `OperatorKind::Logical` special-casing under `emit/`; Bool `OperatorRealization` rows in all three specs; two `port_is_consumed_from` helpers structurally equivalent, not text-identical; **`TargetExecutionModel`** / **`SourceFiltering`** coverage cited in brief is present in tree.
 - **Discipline:** No concrete violation of **`INVARIANTS.md`**, **`docs/modeling-discipline.md`**, **`CODING.md`**, or **`TESTING.md`** in this diff.
+
+**Review M (claude / claude-opus-4-7, schedule, commit `97620c1a`)**
+
+- **Verdict:** APPROVE — docs-only; single dispatch-gate brief under `docs/briefs/`; no substrate/spec/emitter code in diff; no INVARIANTS / modeling-discipline / CODING / TESTING surface to violate.
+- **Spot-checks:** No `OperatorKind::Logical` in `emit/`; Bool operator rows in all three specs; two emit-side dedup pairs + `dimension.rs` / `lens_cost_symbolic_generated.rs` callouts match brief; Phase 3.0 bounded; unit-first explicit (**Reviews B/C**); Phase 3.0b tracked with named trigger; STOP on paper carriers restated.
+- **Exploratory (non-blocking):** Ingest log (~60% of file, growing) — **Reading order** now recommends **doing** a sibling/appendix split **before the next lane’s** dispatch-gate brief so payload isn’t buried (not only “consider”).
 
 **Blocking inline review (PR #621, 2026-04-21) — finding does not match live tree**
 
