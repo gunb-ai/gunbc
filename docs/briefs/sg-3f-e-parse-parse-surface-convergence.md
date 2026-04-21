@@ -62,7 +62,11 @@ execution PR without escalation.
   it post-convergence, that's a signal the convergence is incomplete —
   surface the consumer and fix upstream, don't retain the bridge.
 - Keep parser behavior unchanged. Parser tests must stay bit-identical on
-  output.
+  output. "Bit-identical" means constructed-value equality (same variants,
+  same field contents, same spans) — not trait-surface equality. After
+  convergence `parse::SurfaceExpr` values transitively gain
+  `parse_surface`'s `PartialEq, Eq` derives; that's additive and expected,
+  not a bit-identity violation.
 
 ## Acceptance
 
