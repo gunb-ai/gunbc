@@ -33,7 +33,13 @@ use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
     Diagnostic, SourceSpan,
 };
-use crate::infer_helpers::behavior_output_port;
+use crate::infer_helpers::{
+    behavior_output_port, callable_template_arguments as generated_callable_template_arguments,
+    resolve_template_argument_value as generated_resolve_template_argument_value,
+    template_argument_value as generated_template_argument_value,
+    walk_to_optional_cardinality_decl as generated_walk_to_optional_cardinality_decl,
+    OptionalCardinalityDeclLookup, TemplateArgumentLookup,
+};
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
 use crate::types::TypeShape;
@@ -198,20 +204,10 @@ fn existing_optional_match_disj_decl(
 }
 
 fn walk_to_optional_cardinality_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
-    let mut current = start;
-    for _ in 0..WALK_DEPTH_LIMIT {
-        match &dag.declaration(current).connective {
-            TypeConnective::Cardinality {
-                bound: crate::dag::CardinalityBound::AtMostOne,
-                ..
-            } => return Some(current),
-            TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
-            _ => return None,
-        }
+    match generated_walk_to_optional_cardinality_decl(&(WALK_DEPTH_LIMIT as i64), dag, start) {
+        OptionalCardinalityDeclLookup::FoundOptionalCardinality { _0: decl_id } => Some(decl_id),
+        OptionalCardinalityDeclLookup::MissingOptionalCardinality => None,
     }
-    None
 }
 
 fn ensure_optional_match_disj(
@@ -1470,23 +1466,18 @@ fn callable_template_arguments(
     dag: &Dag,
     target: DeclarationId,
 ) -> (DeclarationId, Vec<TemplateArgument>) {
-    match &dag.declaration(target).connective {
-        TypeConnective::Instantiation {
-            template,
-            arguments,
-        } => (*template, arguments.clone()),
-        _ => (target, Vec::new()),
-    }
+    let info = generated_callable_template_arguments(dag, target);
+    (info.template, info.arguments)
 }
 
 fn template_argument_value(
     arguments: &[TemplateArgument],
     parameter: DeclarationId,
 ) -> Option<DeclarationId> {
-    arguments
-        .iter()
-        .find(|arg| arg.parameter == parameter)
-        .map(|arg| arg.value)
+    match generated_template_argument_value(arguments, &parameter) {
+        TemplateArgumentLookup::FoundTemplateArgument { _0: value } => Some(value),
+        TemplateArgumentLookup::MissingTemplateArgument => None,
+    }
 }
 
 fn resolve_template_argument_value(
@@ -1494,16 +1485,11 @@ fn resolve_template_argument_value(
     current: DeclarationId,
     depth: usize,
 ) -> DeclarationId {
-    if depth >= WALK_DEPTH_LIMIT {
-        return current;
-    }
-    let Some(next) = template_argument_value(arguments, current) else {
-        return current;
-    };
-    if next == current {
-        return current;
-    }
-    resolve_template_argument_value(arguments, next, depth + 1)
+    generated_resolve_template_argument_value(
+        &(WALK_DEPTH_LIMIT.saturating_sub(depth) as i64),
+        arguments,
+        current,
+    )
 }
 
 fn retained_template_arguments_for_target(

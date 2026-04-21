@@ -684,10 +684,9 @@ pub(crate) mod infer_helpers {
     }
 
     pub(crate) use generated::{
-        behavior_output_port, callable_template_arguments, conjunct_leaf_ports,
-        declaration_is_callable, is_retryable_generic_decl_walk, predicate_info,
-        resolve_template_argument_value, template_argument_value, template_arguments_match,
-        walk_to_optional_cardinality_decl, CallableTemplateInfo, PredicateInfo,
+        behavior_output_port, callable_template_arguments, resolve_template_argument_value,
+        template_argument_value, walk_to_optional_cardinality_decl, OptionalCardinalityDeclLookup,
+        TemplateArgumentLookup,
     };
 }
 
