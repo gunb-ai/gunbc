@@ -905,7 +905,6 @@ impl<'a> Parser<'a> {
                 | TokenKind::KwData
                 | TokenKind::KwModule
                 | TokenKind::KwImport
-                | TokenKind::KwInhabits
                     if depth == 0 =>
                 {
                     break;
@@ -921,6 +920,11 @@ impl<'a> Parser<'a> {
     /// Lookahead: after `=`, is the RHS a sum (contains `|` at top level before
     /// the next item boundary)? Tracks paren/brace depth so a `|` inside a
     /// payload list doesn't confuse the scan.
+    ///
+    /// Do **not** treat [`TokenKind::KwInhabits`] (or [`TokenKind::KwType`]) as
+    /// an item boundary here: those tokenize spelling positions where a sum
+    /// variant or field may legally use the same labels as reserved words (see
+    /// [`Self::parse_field_label`], [`Self::parse_variant`]).
     fn rhs_is_sum(&self) -> bool {
         let mut i = self.pos;
         let mut depth: i32 = 0;
@@ -968,6 +972,8 @@ impl<'a> Parser<'a> {
         let name_token = self.bump().clone();
         let name = match &name_token.kind {
             TokenKind::Ident(n) => n.clone(),
+            TokenKind::KwType => String::from("type"),
+            TokenKind::KwInhabits => String::from("inhabits"),
             other => {
                 return Err(Diagnostic::ParseError {
                     message: format!("expected variant name, got {other:?}"),
