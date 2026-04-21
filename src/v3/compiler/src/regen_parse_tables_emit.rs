@@ -145,6 +145,9 @@ struct BinaryOpRow {
     level: String,
 }
 
+/// Scratch shape for SG-2c-2 emission: `dispatch` is derived from `token_variant`
+/// (`Kw`-strip rule); it is never read from the `.dag` row body (substrate carries
+/// only `token_variant`).
 struct TopLevelItemKwRow {
     token_variant: String,
     dispatch: String,
