@@ -103,8 +103,9 @@ type BinaryOpLevel
 // matching — that widens to SG-2c proper).
 //
 // **Grounding in the shared-syntax authority.** Each row is
-// structurally cross-validated at regen time against three
-// authorities, so token ↔ symbol ↔ precedence drift fails closed:
+// structurally cross-validated at regen time, so the table is a
+// projection of the shared authority rather than a parallel
+// restatement. Four joins close every drift surface:
 // - `token_variant` must match a `TokenKind` variant in `tokenize.dag`
 // - `operator_symbol` must map to an `OperatorKind` via
 //   `operators.dag::from_symbol`
@@ -112,9 +113,13 @@ type BinaryOpLevel
 //   `dsl/extdeps/languages/dag/syntax.dag`: the canonical
 //   `left_bp` for the symbol must fall inside the bp band assigned
 //   to the declared `level` (see `level_for_bp` in
-//   `regen_parse_tables_emit.rs`). If the shared authority shifts
-//   an operator's bp to a different band, regen fails closed here
-//   before any parser change ships.
+//   `regen_parse_tables_emit.rs`)
+// - the `OperatorKind` returned by `operators.dag::from_symbol` must
+//   have a leaf variant whose name matches the shared authority's
+//   `binop` field — so `operators.dag` and `dag_operators` cannot
+//   disagree on what a symbol means
+// If any shared authority shifts, regen fails closed here before
+// any parser change ships.
 type BinaryOpRow {
   token_variant: String
   operator_symbol: String
