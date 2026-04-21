@@ -1,6 +1,7 @@
 use v3_compiler::dag::{FieldValue, TypeConnective, ValueBody};
 use v3_compiler::parse_surface;
 use v3_compiler::Dag;
+use v3_compiler::Diagnostic;
 use v3_compiler::{parse_for_test, tokenize_for_test};
 
 fn find_named(dag: &Dag, name: &str) -> v3_compiler::dag::DeclarationId {
@@ -729,6 +730,72 @@ fn parse_sum_type_first_variant_may_be_named_type_keyword() {
             assert_eq!(variants[1].name, "Other");
         }
         other => panic!("expected TypeSum, got {other:?}"),
+    }
+}
+
+/// Regression: `type … inhabits … =` is v3 surface-only (std `types.dag` stays
+/// v2-shaped); this pins the parser + `rhs_is_sum` lookahead for the clause.
+#[test]
+fn parse_type_inhabits_clause_with_parameterized_algebra_and_sum_rhs() {
+    let source = concat!(
+        "type Widget<T> inhabits AlgebraExpr<T> = ",
+        "Leaf | Node { left: Widget<T>; right: Widget<T> }\n",
+    );
+    let tokens =
+        tokenize_for_test(source, "inhabits_sum_surface.v3").expect("tokenize inhabits sum");
+    let parsed = parse_for_test(&tokens, "inhabits_sum_surface.v3").expect("parse inhabits sum");
+    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+    assert_eq!(mirrored.items.len(), 1);
+    match &mirrored.items[0] {
+        parse_surface::SurfaceItem::TypeSum {
+            name,
+            type_params,
+            variants,
+            inhabits,
+            ..
+        } => {
+            assert_eq!(name, "Widget");
+            assert_eq!(type_params, &[String::from("T")]);
+            let inh = inhabits
+                .as_ref()
+                .expect("inhabits clause should surface on TypeSum");
+            assert!(matches!(
+                inh,
+                parse_surface::SurfaceType::Parameterized { name, args, .. }
+                    if name == "AlgebraExpr"
+                        && args.len() == 1
+                        && matches!(&args[0], parse_surface::SurfaceType::Named { name, .. } if name == "T")
+            ));
+            assert_eq!(variants.len(), 2);
+            assert_eq!(variants[0].name, "Leaf");
+            assert_eq!(variants[1].name, "Node");
+            assert!(matches!(
+                &variants[1].payload,
+                parse_surface::VariantPayload::Record(fields)
+                    if fields.len() == 2
+                        && fields[0].name == "left"
+                        && fields[1].name == "right"
+            ));
+        }
+        other => panic!("expected TypeSum with inhabits, got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_type_inhabits_clause_rejects_non_sum_rhs() {
+    let source = "type T inhabits Algebra = Int\n";
+    let tokens =
+        tokenize_for_test(source, "inhabits_alias_reject.v3").expect("tokenize inhabits alias");
+    let err = parse_for_test(&tokens, "inhabits_alias_reject.v3")
+        .expect_err("non-sum RHS with inhabits must be rejected");
+    match err {
+        Diagnostic::ParseError { message, .. } => {
+            assert!(
+                message.contains("inhabits") && message.contains("sum"),
+                "unexpected parse diagnostic: {message}"
+            );
+        }
+        other => panic!("expected ParseError, got {other:?}"),
     }
 }
 
