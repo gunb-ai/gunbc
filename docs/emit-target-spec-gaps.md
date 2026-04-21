@@ -271,7 +271,7 @@ After audit, the 10 proposed clusters reduce to **5 that need Phase 2 work**:
 | PR | Scope |
 |---|---|
 | PR-4.1 | Replace all call sites in `emit.rs` with walker dispatch; delete `emit/rust_target.rs` and `emit/python_target.rs`; update SG-0 census and `compiler.dag::hand_maintained_src` |
-| PR-4.2 | Stub `src/v3/spec/typescript.dag` (or similar) demonstrating "new target = one spec file, zero walker changes" — the falsifiable proof of the omni-emission claim |
+| PR-4.2 | Stub `src/v3/spec/typescript.dag` (or similar) demonstrating **"new target = one spec file + reuse of existing per-target hook categories"** — targets whose language semantics fit the existing residual hook surface (Go-module-style module system, Python-indent-style whitespace, Go-Loop-style unsupported gap) need no walker changes; targets introducing a *new* language-intrinsic concern need a new narrow hook and should raise an explicit scope question. This is the calibrated falsifier, not the strong "zero walker changes ever" version. |
 
 **Phase 5 — Regression (1 PR):**
 
@@ -290,7 +290,7 @@ After audit, the 10 proposed clusters reduce to **5 that need Phase 2 work**:
 - **`.dag` spec additions**: ~500-700 LOC across `spec/rust.dag`, `spec/go.dag`, `spec/python.dag`.
 - **Net hand-authored Rust delta**: **−5,500 to −6,000 LOC** (8,080 removed − 2,000 to 2,500 added). Plus ~500-700 LOC of new `.dag` data declarations tracked separately.
 - **SG-0 census delta**: `emit/rust_target.rs` off + `emit/python_target.rs` off + `walker.rs` on = **net −1 file**. (File count matters less than LOC here; the LOC drop is where the real dissolution lives.)
-- **Thesis claim validated**: adding a new target (TypeScript, Swift, Verilog) is a single `spec/X.dag` file + zero walker/Rust changes. PR-4.2 is the falsifier.
+- **Thesis claim validated (calibrated)**: adding a new target that fits the existing residual hook surface (Go-module-style module system, Python-indent-style whitespace, Go-Loop-style feature gap) is one `spec/X.dag` file + zero walker changes. A target with a *new* language-intrinsic concern adds one narrow hook — same small surface as the three residual hooks already named. The strong "zero walker changes ever" claim is not what the walker provides; the calibrated claim is "walker-change surface is the narrow per-target-hook surface, not per-target semantic dispatch." PR-4.2 falsifies against the calibrated claim.
 
 ---
 
