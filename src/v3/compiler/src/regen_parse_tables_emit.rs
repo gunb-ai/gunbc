@@ -591,7 +591,10 @@ fn emit_module(
     s.push_str("pub fn is_type_rhs_boundary_keyword(kind: &TokenKind) -> bool {\n");
     s.push_str("    match kind {\n");
     for row in type_rhs_boundary_rows {
-        s.push_str(&format!("        TokenKind::{} => true,\n", row.token_variant));
+        s.push_str(&format!(
+            "        TokenKind::{} => true,\n",
+            row.token_variant
+        ));
     }
     s.push_str("        _ => false,\n");
     s.push_str("    }\n");
