@@ -6,8 +6,8 @@
 //! on cold CI).
 //!
 //! Emitted projection includes **SG-2c-1** `binary_op_at_level` / `BinaryOpLevel`
-//! and **SG-2c-2** `top_level_item_dispatch` / `ItemDispatchKind` (authority rows
-//! and cross-validation live in `regen_parse_tables_emit.rs`, not in this file).
+//! and **SG-2c-2** `top_level_item_dispatch` / Rust `ItemDispatchKind` projected from
+//! `TopLevelItemKwRow.token_variant` rows (`regen_parse_tables_emit.rs`; not in this file).
 //!
 //! Scope (grammar-tables prototype, NOT SG-2c proper) — see
 //! `src/v3/compiler/parse_tables.dag` for the full scope note and

@@ -38,9 +38,10 @@
 // — do not hand-edit it. The freshness ratchet lives in
 // `tests/integration/sg2c1_parse_tables_authority_test.rs`.
 //
-// **Same-PR consumer (E-6).** SG-2c-2 projection `top_level_item_dispatch` /
-// `ItemDispatchKind` is consumed by the live parser: `parse_item` in
-// `parse_parser_body.txt` (spliced into `parse_generated.rs` via `regen_parse`).
+// **Same-PR consumer (E-6).** SG-2c-2 projection `top_level_item_dispatch`
+// / Rust `ItemDispatchKind` (derived from keyword rows only) is consumed by the
+// live parser: `parse_item` in `parse_parser_body.txt` (spliced into
+// `parse_generated.rs` via `regen_parse`).
 
 module v3.compiler.parse_tables
 

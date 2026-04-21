@@ -504,8 +504,8 @@ fn emit_module(
 
     s.push_str(
         "/// Top-level item keyword (`parse_item`) → dispatch class.\n\
-         /// Rows are `TopLevelItemKwRow { token_variant }` only; `ItemDispatchKind` is\n\
-         /// `strip_prefix(\"Kw\")` — see authority header in `parse_tables.dag`.\n",
+         /// `ItemDispatchKind` is emitted from unique `Kw`-stripped labels of\n\
+         /// `TopLevelItemKwRow { token_variant }` rows — not authored as a substrate coproduct.\n",
     );
     s.push_str("pub fn top_level_item_dispatch(kind: &TokenKind) -> Option<ItemDispatchKind> {\n");
     s.push_str("    match kind {\n");
