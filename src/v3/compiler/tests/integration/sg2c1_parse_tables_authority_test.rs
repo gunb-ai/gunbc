@@ -273,11 +273,10 @@ fn every_type_rhs_boundary_kw_row_token_variant_is_a_token_kind_variant() {
 
 #[test]
 fn type_rhs_boundary_kw_rows_cover_exactly_the_keywords_used_by_type_rhs_lookahead() {
-    let expected: std::collections::BTreeSet<&'static str> = [
-        "KwLet", "KwFn", "KwType", "KwData", "KwModule", "KwImport",
-    ]
-    .into_iter()
-    .collect();
+    let expected: std::collections::BTreeSet<&'static str> =
+        ["KwLet", "KwFn", "KwType", "KwData", "KwModule", "KwImport"]
+            .into_iter()
+            .collect();
 
     let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
         .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
