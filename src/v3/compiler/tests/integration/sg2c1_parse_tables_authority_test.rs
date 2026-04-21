@@ -15,6 +15,7 @@ use v3_compiler::render_parse_tables_generated_rs;
 
 const PARSE_TABLES_DAG: &str = include_str!("../../parse_tables.dag");
 const TOKENIZE_DAG: &str = include_str!("../../tokenize.dag");
+const SHARED_SYNTAX_DAG: &str = include_str!("../../../../../dsl/extdeps/languages/dag/syntax.dag");
 const CHECKED_IN_GENERATED: &str = include_str!("../../src/parse_tables_generated.rs");
 
 #[test]

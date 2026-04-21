@@ -403,7 +403,9 @@ fn extract_shared_operator_bps(source: &str) -> std::collections::BTreeMap<Strin
     // Parse sequentially: find `symbol:` → string literal → find `left_bp:` → integer literal.
     let mut rest = section;
     loop {
-        let Some(sym_idx) = rest.find("symbol:") else { break };
+        let Some(sym_idx) = rest.find("symbol:") else {
+            break;
+        };
         let after_sym = &rest[sym_idx + "symbol:".len()..];
         let quote_idx = after_sym
             .find('"')
@@ -456,7 +458,10 @@ fn extract_balanced_section<'a>(source: &'a str, anchor: &str, open: char, close
 }
 
 fn parse_string_literal(source: &str) -> (String, usize) {
-    assert!(source.starts_with('"'), "string literal expects to start at a quote");
+    assert!(
+        source.starts_with('"'),
+        "string literal expects to start at a quote"
+    );
     let mut out = String::new();
     let mut escaped = false;
     for (idx, ch) in source[1..].char_indices() {
