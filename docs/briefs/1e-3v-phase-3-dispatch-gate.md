@@ -6,6 +6,8 @@
 
 **Authorities read:** `docs/single-emitter-design.md`, `docs/emit-target-spec-gaps.md`, `docs/emit-bridges.md`, `src/v3/compiler/src/emit.rs`, `src/v3/compiler/src/emit/rust_target.rs`, `src/v3/compiler/src/emit/python_target.rs`, `src/v3/spec/{rust,go,python}.dag`, `src/v3/std/computation_model.dag`.
 
+**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–K, blocking rebuttals) is a **session-dashboard / audit trail**; if future briefs grow the same way, consider moving the ingest log to a **sibling file or appendix** so dispatch stays skimmable (**Review K**, exploratory).
+
 ### PR review ingest (#621, 2026-04-21)
 
 **Review A (claude / claude-opus-4-7, schedule)**
@@ -60,6 +62,13 @@
 - **Verdict:** APPROVE — doc-only diff.
 - **Spot-checks:** Bool `OperatorRealization` rows present in all three specs; emitters route operators through shared **`render_operator` / `operator_carrier_realization`**; **`port_is_consumed_from`** wording matches live code (**structurally equivalent**, not byte-identical).
 - **Discipline:** No concrete violation of **`INVARIANTS.md`**, **`docs/modeling-discipline.md`**, **`CODING.md`**, or **`TESTING.md`** in this diff.
+
+**Review K (claude / claude-opus-4-7, schedule, commit `cd57869b`)**
+
+- **Verdict:** APPROVE — docs-only dispatch-gate brief; factual claims re-verified against live tree; Phase 3.0 small, bounded, unit-first per **`TESTING.md`**; `dimension.rs` / lens codegen deferred to Phase 3.0b (tracked debt); STOP-AND-ESCALATE on `Loop` arm divergence; no findings.
+- **Spot-checks:** `rg OperatorKind::Logical src/v3/compiler/src/emit` → no matches; `bool_meet` / `bool_join` in all three `src/v3/spec/{rust,python,go}.dag`; two emit-side `behavior_result_port`/`go_behavior_result_port` + two `port_is_consumed_from` + `dimension.rs` + `lens_cost_symbolic_generated.rs` as in brief / 3.0b callout.
+- **Findings:** None — single new file under `docs/briefs/`, no substrate/spec/emitter/test code in diff; no discipline surface to violate in the diff itself.
+- **Exploratory (non-blocking):** Ingest log is a large share of line count — **Reading order** at top of this file records optional steering (appendix / sibling file for future briefs). Cluster D summary vs **Review E** / **Review I** clarity for skimmers — already flagged; no revision required.
 
 **Blocking inline review (PR #621, 2026-04-21) — finding does not match live tree**
 
