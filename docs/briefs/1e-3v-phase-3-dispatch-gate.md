@@ -37,6 +37,18 @@
 - **Verdict:** APPROVE_WITH_COMMENTS — doc-only; Phase 3.0 conclusion unchanged (emitter-side DRY, not missing `.dag` authority).
 - **Finding (NON-BLOCKING):** Earlier wording that both `port_is_consumed_from` bodies were “byte-identical” **overstated** the evidence: live code is **structurally equivalent** (same walk) but **not** identical text — Go uses `go_behavior_result_port` where Rust uses `behavior_result_port` in the `Behavior::Loop` arm. For a re-verified dispatch gate, prefer **structural equivalence** + explicit naming of the one callsite difference; this matches the verifiability bar in **`INVARIANTS.md`**. **Ingested above** in **Review A**, **Review D**, and the **Executive summary**.
 
+**Review F (claude / claude-opus-4-7, schedule, commit `be951483`)**
+
+- **Verdict:** APPROVE — documentation-only PR; dispatch-gate brief under `docs/briefs/` (not substrate, not code): bar is **accurate claims** and **coherent dispatch**, not modeling-discipline on `.dag` sources.
+- **Spot-checks:** Factual structure matches the brief — **two pairs** on the emit side (`behavior_result_port`/`go_behavior_result_port`; two `port_is_consumed_from`), plus the **`dimension.rs`** hand-authored copy and **lens** generated copy called out for Phase 3.0b / codegen; no `OperatorKind::Logical` special-cases in emitters — consistent with **#616** closure claim.
+- **Phase 3.0:** Scope is **concrete and bounded**; **unit-first** per **`TESTING.md`**; **STOP-AND-ESCALATE** present; **`dimension.rs` / `lens_cost_symbolic_generated.rs`** explicitly deferred to tracked **Phase 3.0b** — tracked-debt pattern satisfied.
+- **No violations** of INVARIANTS / CODING / TESTING **in the doc itself**.
+
+**Review G (codex / gpt-5.4, schedule, commit `be951483`)**
+
+- **Verdict:** APPROVE — documentation-only diff.
+- **Spot-checks:** Concrete claims match the current tree: no `OperatorKind::Logical` special-casing under `emit/`; `behavior_result_port` / `go_behavior_result_port` identical **modulo name**; two `port_is_consumed_from` helpers **structurally equivalent** but **not** text-identical; Phase 3.0 **unit-first** test requirement aligned with **`TESTING.md`**.
+
 ---
 
 ## Executive summary
