@@ -6,7 +6,7 @@
 
 **Authorities read:** `docs/single-emitter-design.md`, `docs/emit-target-spec-gaps.md`, `docs/emit-bridges.md`, `src/v3/compiler/src/emit.rs`, `src/v3/compiler/src/emit/rust_target.rs`, `src/v3/compiler/src/emit/python_target.rs`, `src/v3/spec/{rust,go,python}.dag`, `src/v3/std/computation_model.dag`.
 
-**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–Q, blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold — **do not defer the split another round** (**Reviews K, M, P** exploratory).
+**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–R, blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold — **do not defer the split another round** (**Reviews K, M, P, R** exploratory).
 
 ### PR review ingest (#621, 2026-04-21)
 
@@ -103,6 +103,12 @@
 - **Verdict:** APPROVE — **no findings**; documentation-only diff.
 - **Spot-checks:** Claims vs `emit.rs`, `emit/rust_target.rs`, `emit/python_target.rs`, and `src/v3/spec/{rust,go,python}.dag` match live tree; Phase **3.0** testing guidance aligned with **`TESTING.md`** unit-first bar.
 - **Residual risk:** Normal **docs drift** if emitter/spec surface changes without updating this brief.
+
+**Review R (claude / claude-opus-4-7, schedule, commit `15277216`)**
+
+- **Verdict:** APPROVE — docs-only PR (single file under `docs/briefs/`, ~249 lines); no substrate/spec/emitter/test in diff — no INVARIANTS / modeling-discipline / CODING / TESTING **code** surface to violate.
+- **Spot-checks:** No `OperatorKind::Logical` under `emit/`; `bool_meet` / `bool_join` in all three spec files; Cluster F + Bool row claims verifiable; Phase 3.0 bounded + unit-first; Phase 3.0b tracked; director STOP on paper carriers preserved.
+- **Exploratory (non-blocking):** Ingest log ≈ **60%** and grows each round — **Reviews K/M/P** flagged; **Reading order** commits to split **before next lane** — right call; **slipping another round** buries payload (**Review R** reinforces **Review P**).
 
 **Blocking inline review (PR #621, 2026-04-21) — finding does not match live tree**
 
