@@ -62,11 +62,26 @@ A **BLOCKING** comment claimed Cluster F is wrongly marked closed because (1) em
 
 **Resolution:** No change to the Executive summary Cluster F bullet; the dispatch gate claim remains **verifiable** via the commands above.
 
+**Second blocking review (PR #621, api-review codex / gpt-5.4, commit `c8283dea`) — same conclusion**
+
+Claim: Cluster F was “reclassified from review-note assertions” without reading **`render_operator`** or Bool rows — should **reopen** F or narrow wording to “spec only.”
+
+**Code-level verification (live `render_operator`, all targets):**
+
+- **`emit/rust_target.rs` — `Ctx::render_operator`:** Resolves `op_decl_id = algebra_field_for_operator(dag, operand_type_id, op)` then `carrier = operator_carrier_realization(&indexes.operators, dag, operand_type_id, op_decl_id)` — **no** `match` on `OperatorKind`; logical and arithmetic share this path.
+- **`emit/python_target.rs` — `render_operator`:** Same shape (`algebra_field_for_operator` + `operator_carrier_realization`).
+- **`emit.rs` — `GoCtx::render_operator`:** Same shape.
+- **`emit.rs` — `operator_carrier_realization`:** Looks up `(operand_decl_id, op_field_decl_id) -> carrier` in the **`operators`** map populated from **`OperatorRealization`** data in `spec/*.dag` (same mechanism for `Int` and `Bool`).
+
+**Spec-level verification:** `data rust_bool_meet` / `rust_bool_join` (and `python_*`, `go_*`) in `src/v3/spec/*.dag` declare `target: Bool`, `op: BooleanAlgebra.meet` / `.join`, and **carriers** (`"&&"` / `"||"`, `"and"` / `"or"`, etc.). `rust.dag` documents that Bool rows are keyed for `operator_carrier_realization` lookup (comment block above `rust_bool_meet`).
+
+**Verdict:** Cluster F **remains closed** for “emitter bypass” — emitters **do** consume typed Bool `OperatorRealization` carriers through the shared operator path; the earlier blocking hypotheses were **false**. Wording is **not** “spec groundwork only; bypass remains.”
+
 ---
 
 ## Executive summary
 
-- **#616 closes the Cluster F modeling gap** that #608/#610 misclassified: there are **no** `OperatorKind::Logical` bypass branches left under `src/v3/compiler/src/emit/`; logical ops route through `algebra_field_for_operator` + `operator_carrier_realization` like arithmetic ops, with per-target `OperatorRealization` rows (e.g. `python_bool_meet` / `python_bool_join`).
+- **#616 closes the Cluster F modeling gap** that #608/#610 misclassified: there are **no** `OperatorKind::Logical` bypass branches under `src/v3/compiler/src/emit/`; **all** binary ops (including logical) go through **`render_operator` → `algebra_field_for_operator` → `operator_carrier_realization`**, which **reads carriers from indexed `OperatorRealization` rows** in `spec/*.dag` (e.g. `python_bool_meet` / `python_bool_join`, `rust_bool_*`, `go_bool_*`).
 - **Clusters B + C from the old Category 2 list are implemented and consumed:** `TargetExecutionModel`, `SourceFiltering` / `*_source_filtering`, and `ExecutionModelRequirement` data rows exist; emitters filter declarations via `SourceFilteringBinding` (see `emit.rs` Go path, `rust_target.rs`, `python_target.rs`).
 - **Cluster A** is **not** a missing `TypeRecursionStrategy` row in practice: Go type names are built from **`TypeRealization` / instantiation carriers** and `type_applications.optional` (see `emit.rs` `go_type_name_for_decl_at_depth`). Remaining cost is **hand-authored recursive walk** in Rust until a walker owns it — same shape as other type-render paths.
 - **Cluster D** is still accurate as **code dedup**, not a spec gap: **`port_is_consumed_from`** is **structurally** duplicated between `emit.rs` (Go) and `rust_target.rs` (Rust) — same graph walk, differing only where each calls `go_behavior_result_port` vs `behavior_result_port` on loop bodies until unified; **`behavior_result_port` / `go_behavior_result_port`** themselves are byte-identical **modulo** the function name.
@@ -85,7 +100,7 @@ A **BLOCKING** comment claimed Cluster F is wrongly marked closed because (1) em
 | **C** — Bootstrap / stdlib path filtering | MISSING_SPEC_ROW | **Already covered** | `SourceFiltering` + per-target `*_source_filtering` consumed at index build. |
 | **D** — Pattern binding liveness | Category 2 → dedup | **Still missing DRY (implementation debt)** | Shared **graph** fact; should be **one** `fn port_is_consumed_from(dag: &Dag, …)` (+ shared `behavior_result_port`). Not a `.dag` extension. |
 | **E** — Optional type / expr rendering | MISSING (split in 1e-2b) | **Split** | **Wrapper** path: **covered** (`type_applications.optional`). **Expression** path for Go optional branch: **still handwritten** in `emit.rs` (`render_optional_branch`). |
-| **F** — Logical `&&` vs `and` | MISSING_SPEC_ROW | **Already covered (post-#616)** | No logical-op special case in emitters; inference + `OperatorRealization` rows. |
+| **F** — Logical `&&` vs `and` | MISSING_SPEC_ROW | **Already covered (post-#616)** | **Verified:** unified `render_operator` + `operator_carrier_realization` on all targets; Bool rows `*_bool_meet` / `*_bool_join` in `spec/*.dag`; no `OperatorKind::Logical` dispatch in `emit/` (see **Second blocking review** above). |
 | **G** — Callable dispositions | Misclassified | **Already covered** | `ParameterDisposition` / shared schema — as in gap doc. |
 | **H** — Unused pattern bindings | MISSING_SPEC_ROW | **Already covered** | `PatternBindingRule` / clean emission contract (e.g. Go underscore elision). |
 | **I** — Variant payload field access | Misclassified | **Already covered** | `PatternBindingRule` / `clean_emission.dag`. |
