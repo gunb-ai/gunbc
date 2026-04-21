@@ -115,6 +115,10 @@ Claim: Cluster F was “reclassified from review-note assertions” without read
 
 **Verdict:** Cluster F **remains closed** for “emitter bypass” — emitters **do** consume typed Bool `OperatorRealization` carriers through the shared operator path; the earlier blocking hypotheses were **false**. Wording is **not** “spec groundwork only; bypass remains.”
 
+**Third blocking inline review (PR #621, 2026-04-21T22:10Z) — same hypothesis as first; finding is false**
+
+Relayed **BLOCKING** comment repeats the first review’s two claims: (1) `emit.rs` / `emit/rust_target.rs` / `emit/python_target.rs` **special-case `OperatorKind::Logical`**, and (2) **`src/v3/spec/{rust,go,python}.dag` lack Bool `OperatorRealization` rows**. **Re-verified on current tree — both are false** (see **table** in the first **Blocking inline review** section and **`render_operator`** proof in the **Second blocking review** section). This is **not** stale: run the same `rg` commands; do **not** reopen Cluster F without new evidence.
+
 ---
 
 ## Executive summary
@@ -138,7 +142,7 @@ Claim: Cluster F was “reclassified from review-note assertions” without read
 | **C** — Bootstrap / stdlib path filtering | MISSING_SPEC_ROW | **Already covered** | `SourceFiltering` + per-target `*_source_filtering` consumed at index build. |
 | **D** — Pattern binding liveness | Category 2 → dedup | **Still missing DRY (implementation debt)** | Shared **graph** fact; should be **one** `fn port_is_consumed_from(dag: &Dag, …)` (+ shared `behavior_result_port`). Not a `.dag` extension. |
 | **E** — Optional type / expr rendering | MISSING (split in 1e-2b) | **Split** | **Wrapper** path: **covered** (`type_applications.optional`). **Expression** path for Go optional branch: **still handwritten** in `emit.rs` (`render_optional_branch`). |
-| **F** — Logical `&&` vs `and` | MISSING_SPEC_ROW | **Already covered (post-#616)** | **Verified:** unified `render_operator` + `operator_carrier_realization` on all targets; Bool rows `*_bool_meet` / `*_bool_join` in `spec/*.dag`; no `OperatorKind::Logical` dispatch in `emit/` (see **Second blocking review** above). |
+| **F** — Logical `&&` vs `and` | MISSING_SPEC_ROW | **Already covered (post-#616)** | **Verified:** unified `render_operator` + `operator_carrier_realization` on all targets; Bool rows `*_bool_meet` / `*_bool_join` in `spec/*.dag`; no `OperatorKind::Logical` in `emit/` (**rg**-empty — **Blocking inline review** table). **Third blocking** (2026-04-21T22:10Z): same false hypothesis as first; **Third blocking review** subsection + Second blocking **code-level verification**. |
 | **G** — Callable dispositions | Misclassified | **Already covered** | `ParameterDisposition` / shared schema — as in gap doc. |
 | **H** — Unused pattern bindings | MISSING_SPEC_ROW | **Already covered** | `PatternBindingRule` / clean emission contract (e.g. Go underscore elision). |
 | **I** — Variant payload field access | Misclassified | **Already covered** | `PatternBindingRule` / `clean_emission.dag`. |
