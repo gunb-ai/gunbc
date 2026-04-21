@@ -161,6 +161,14 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
         "regen_lens.rs",
         "regen_lower.rs",
         "regen_parse.rs",
+        // SG-2c-1 grammar-tables prototype: `regen_parse_tables` projects
+        // `src/v3/compiler/parse_tables.dag` into
+        // `src/v3/compiler/src/parse_tables_generated.rs`. Same host-shim
+        // posture as `regen_parse` / `regen_tokenize`: this shim
+        // dissolves into a unified producer registry when SG-2c proper
+        // lands (blocked on recursive list-body emission — see
+        // `parse_tables.dag` header).
+        "regen_parse_tables.rs",
         "regen_tokenize.rs",
         "regen_v3.rs",
         "self_host_fixed_point.rs",

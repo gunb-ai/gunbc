@@ -1,0 +1,199 @@
+// v3.compiler.parse_tables — SG-2c-1 grammar-tables prototype authority.
+//
+// **Scope.** SG-2c proper (parser authority proper — retiring
+// `parse_parser_body.txt` as parse logic) is blocked on a named
+// substrate capability: recursive list-body emission over `List<Token>`
+// with cursor threading. See `src/v3/std/list.dag:13-15` ("the current
+// compiler still lacks full structural recursion + list-body emission
+// support") and SELF_HOSTING.md §6 Phase 4a. Until that lands, any full
+// `.dag` parser port routes through a hidden Rust host layer, which
+// SG-2c's STOP-AND-ESCALATE bullet forbids.
+//
+// **What this file is.** The bounded, honest subset of parser
+// authority that DOES fit current `.dag` capabilities: pure
+// declarative tables. Specifically, the binary operator token-to-
+// semantics mapping previously hand-coded across five parser
+// precedence functions in `parse_parser_body.txt`
+// (`parse_logical_or`, `parse_logical_and`, `parse_comparison`,
+// `parse_additive`, `parse_term`). Those functions now call the
+// generated helper `binary_op_at_level` instead of open-coding the
+// token → `OperatorKind` match.
+//
+// **What this file is NOT.** Parser control flow. Cursor mechanics.
+// Error recovery. Item-kind dispatch. Recursive-descent itself. Those
+// remain semantic authority in `parse_parser_body.txt` (explicitly
+// residual; see header there).
+//
+// **Dissolution trigger.** Full parser authority proper (SG-2c
+// proper) is blocked on recursive list-body emission from
+// `std/list.dag`. Once that lands, `parse_parser_body.txt` can be
+// ported to `.dag` as recursive-descent functions on `List<Token>`
+// and this table becomes one data section of a larger `parse.dag`
+// (or merges into a Phase 4b grammar-as-data spec).
+//
+// **Rust projection.** `src/v3/compiler/src/parse_tables_generated.rs`
+// is produced by `cargo run -p v3-compiler --bin regen_parse_tables`
+// — do not hand-edit it. The freshness ratchet lives in
+// `tests/integration/sg2c1_parse_tables_authority_test.rs`.
+
+module v3.compiler.parse_tables
+
+// Precedence level of a binary operator. Mirrors the five parser
+// precedence functions in `parse_parser_body.txt` (lowest to highest
+// binding): logical-or, logical-and, comparison, additive,
+// multiplicative. The parser consumes this enum by filtering
+// `binary_op_at_level(token, LEVEL)` at each precedence function.
+//
+// Dissolution classification: **🟡 YELLOW (scaffold)** per
+// `docs/modeling-discipline.md` §4. A richer source exists
+// (precedence is a 1D numeric ordering — Pattern 4), but
+// extraction is not cheap today: a precedence-climbing surface
+// grammar reformulation rides the same lane as SG-2c proper,
+// which is blocked on recursive list-body emission over
+// `List<Token>`. See trigger at the bottom of this ledger.
+//
+// Dissolution ledger (4-pattern check per THESIS §"Structural
+// decompression"; MODELING M7 / feedback_coproduct_dissolution):
+// - **Pattern 1 (fact placement)**: fails. Each variant is just a
+//   coordinate key, not a distinct payload shape. Scattering into
+//   five per-variant side tables ("is_or_level", "is_and_level", ...)
+//   would duplicate `BinaryOpRow` per level with no payload
+//   difference, adding dispatch rather than removing it.
+// - **Pattern 2 (variant-is-data)**: fails. All variants are nullary
+//   and structurally identical — this IS the discriminant-only shape;
+//   a unified representation would be the enum itself.
+// - **Pattern 3 (algebraic form)**: fails. There is no shared
+//   algebra the five variants inhabit; they are distinct parser
+//   control-flow points, not elements of a computed structure.
+// - **Pattern 4 (dimensional)**: **passes structurally, deferred
+//   on substrate**. Precedence is a 1D total order
+//   (Or < And < Comparison < Additive < Multiplicative) and could
+//   be encoded as `Int where 1 <= n <= 5`. Not extracted today
+//   because (a) the only consumer is five hand-authored parser
+//   functions in `parse_parser_body.txt` that select by name —
+//   there is no algebraic consumer that exploits the dimension
+//   yet, so collapsing to `Int` loses `binary_op_at_level`'s
+//   exhaustive `match (tk, level)` without a corresponding gain;
+//   (b) the consumer itself (the recursive-descent parser) is
+//   pinned as residual semantic authority, blocked on the same
+//   substrate gap as SG-2c proper.
+//
+// **Named trigger (YELLOW):** when surface-grammar precedence is
+// reformulated as a structural fact — i.e. a precedence-climbing
+// interpreter reading a numeric ordering — dissolve `BinaryOpLevel`
+// to `Int where 1 <= n <= 5` and let the interpreter consume the
+// dimension. That reformulation rides the same lane as SG-2c
+// proper (retiring `parse_parser_body.txt`), which is blocked on
+// recursive list-body emission over `List<Token>` per
+// `src/v3/std/list.dag:13-15`. Both dissolutions unlock together.
+type BinaryOpLevel
+  = Or
+  | And
+  | Comparison
+  | Additive
+  | Multiplicative
+
+// One row per binary-operator token. `token_variant` is the
+// `TokenKind` variant name (e.g. "PipePipe"); `operator_symbol` is
+// the canonical operator spelling that `operators.dag::from_symbol`
+// already maps to an `OperatorKind`; `level` is the parser
+// precedence function that should consume this token. Keyed on the
+// textual variant name to avoid importing `tokenize.TokenKind` here
+// (scope: declarative data only, not cross-module structural
+// matching — that widens to SG-2c proper).
+//
+// **Grounding in the shared-syntax authority.** Each row is
+// structurally cross-validated at regen time, so the table is a
+// projection of the shared authority rather than a parallel
+// restatement. Four joins close every drift surface:
+// - `token_variant` must match a `TokenKind` variant in `tokenize.dag`
+// - `operator_symbol` must map to an `OperatorKind` via
+//   `operators.dag::from_symbol`
+// - `(operator_symbol, level)` must agree with `dag_operators` in
+//   `dsl/extdeps/languages/dag/syntax.dag`: the canonical
+//   `left_bp` for the symbol must fall inside the bp band assigned
+//   to the declared `level` (see `level_for_bp` in
+//   `regen_parse_tables_emit.rs`)
+// - the `OperatorKind` returned by `operators.dag::from_symbol` must
+//   have a leaf variant whose name matches the shared authority's
+//   `binop` field — so `operators.dag` and `dag_operators` cannot
+//   disagree on what a symbol means
+// If any shared authority shifts, regen fails closed here before
+// any parser change ships.
+type BinaryOpRow {
+  token_variant: String
+  operator_symbol: String
+  level: BinaryOpLevel
+}
+
+data binary_op_pipepipe: BinaryOpRow = {
+  token_variant: "PipePipe"
+  operator_symbol: "||"
+  level: Or
+}
+
+data binary_op_ampamp: BinaryOpRow = {
+  token_variant: "AmpAmp"
+  operator_symbol: "&&"
+  level: And
+}
+
+data binary_op_eqeq: BinaryOpRow = {
+  token_variant: "EqEq"
+  operator_symbol: "=="
+  level: Comparison
+}
+
+data binary_op_noteq: BinaryOpRow = {
+  token_variant: "NotEq"
+  operator_symbol: "!="
+  level: Comparison
+}
+
+data binary_op_lt: BinaryOpRow = {
+  token_variant: "Lt"
+  operator_symbol: "<"
+  level: Comparison
+}
+
+data binary_op_le: BinaryOpRow = {
+  token_variant: "Le"
+  operator_symbol: "<="
+  level: Comparison
+}
+
+data binary_op_gt: BinaryOpRow = {
+  token_variant: "Gt"
+  operator_symbol: ">"
+  level: Comparison
+}
+
+data binary_op_ge: BinaryOpRow = {
+  token_variant: "Ge"
+  operator_symbol: ">="
+  level: Comparison
+}
+
+data binary_op_plus: BinaryOpRow = {
+  token_variant: "Plus"
+  operator_symbol: "+"
+  level: Additive
+}
+
+data binary_op_minus: BinaryOpRow = {
+  token_variant: "Minus"
+  operator_symbol: "-"
+  level: Additive
+}
+
+data binary_op_star: BinaryOpRow = {
+  token_variant: "Star"
+  operator_symbol: "*"
+  level: Multiplicative
+}
+
+data binary_op_slash: BinaryOpRow = {
+  token_variant: "Slash"
+  operator_symbol: "/"
+  level: Multiplicative
+}
