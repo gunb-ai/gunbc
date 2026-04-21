@@ -55,6 +55,15 @@ execution PR without escalation.
 - Update `regen_parse` to skip emitting Surface carrier type declarations —
   only emit parser functions — and to generate imports / `pub use` lines
   against `crate::parse_surface::…`.
+- **Relocate inherent impls that live only on `parse::Surface*` today.**
+  `parse_generated.rs` currently defines `impl SurfaceType { pub fn span(&self)
+  -> &SourceSpan }` (and may carry similar helpers); under the convergence
+  direction those impls collide with or are shadowed by the re-exported type.
+  Move them onto `parse_surface::Surface*` (preferred: add to the emitted
+  impl blocks in `parse_surface_generated.rs` via the generating lens / regen
+  path) so `lower.rs` and the parser body keep compiling. Audit via grep
+  before cutting the `pub use`: any `impl parse::Surface…` or
+  `parse::Surface…::method` call site must still resolve post-convergence.
 - **Delete** the recursive `From<&crate::parse::SurfaceExpr>` (and sibling
   `From` impls on `parse_surface::Surface*`) deep-clone bridge. INVARIANTS
   "no bridges" forbids keeping it in-tree at all; leaving it as tracked debt
