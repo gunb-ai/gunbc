@@ -641,8 +641,10 @@ impl<'a> Parser<'a> {
     /// Consume a `where constraint1(args), constraint2(args)` clause
     /// and return the final byte offset. The clause ends at the next
     /// top-level item keyword (`let`/`fn`/`type`/`data`/`module`/
-    /// `import`) or EOF. Refinement predicates land in M2+; at M1(2.6)
-    /// we drop them after consuming their tokens.
+    /// `import`) or EOF — not at [`TokenKind::KwInhabits`], which can
+    /// appear as a variant/field label spelling inside the skipped span.
+    /// Refinement predicates land in M2+; at M1(2.6) we drop them after
+    /// consuming their tokens.
     fn skip_where_clause(&mut self) -> Result<u32, Diagnostic> {
         let where_kw = self.expect_kind(TokenKind::KwWhere)?;
         let mut end = where_kw.span.byte_end;

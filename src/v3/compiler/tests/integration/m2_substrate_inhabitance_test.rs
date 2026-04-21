@@ -697,6 +697,24 @@ fn all_target_languages_realize_reflected_surface_types() {
 }
 
 #[test]
+fn parse_sum_type_first_variant_may_be_named_inhabits() {
+    let source = "type T = inhabits | Other\n";
+    let tokens = tokenize_for_test(source, "kw_variant_sum.v3").expect("tokenize");
+    let parsed = parse_for_test(&tokens, "kw_variant_sum.v3").expect("parse");
+    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+    assert_eq!(mirrored.items.len(), 1);
+    match &mirrored.items[0] {
+        parse_surface::SurfaceItem::TypeSum { name, variants, .. } => {
+            assert_eq!(name, "T");
+            assert_eq!(variants.len(), 2);
+            assert_eq!(variants[0].name, "inhabits");
+            assert_eq!(variants[1].name, "Other");
+        }
+        other => panic!("expected TypeSum, got {other:?}"),
+    }
+}
+
+#[test]
 fn parse_surface_generated_module_consumes_parser_output_structurally() {
     let source = "fn id<T>(x: T where x == x) -> T = x\nlet y = if true then id(1) else 2";
     let tokens = tokenize_for_test(source, "surface_reflection.v3").expect("tokenize source");
