@@ -184,9 +184,11 @@ fn every_top_level_item_kw_row_token_variant_is_a_token_kind_variant() {
 
 #[test]
 fn top_level_item_kw_rows_cover_exactly_the_tokens_parse_item_dispatches_on() {
-    // `parse_item` (`parse_parser_body.txt`) accepts exactly these dedicated
-    // keyword tokens. If a new top-level item form is added, extend the
-    // `top_level_kw_*` rows or the parser will diverge from the authority.
+    // Structural authority for which `Kw*` keywords open items is every
+    // `top_level_kw_* : TopLevelItemKwRow` row in `parse_tables.dag` (`got`,
+    // collected below). This literal exists as an explicit crash-on-edit pin:
+    // extending `parse_item` match arms alone does **not** update `got`; you
+    // must author matching rows first (then regen fills `top_level_item_dispatch`).
     let expected: std::collections::BTreeSet<&'static str> =
         ["KwLet", "KwFn", "KwType", "KwModule", "KwImport", "KwData"]
             .into_iter()
