@@ -6,7 +6,7 @@
 
 **Authorities read:** `docs/single-emitter-design.md`, `docs/emit-target-spec-gaps.md`, `docs/emit-bridges.md`, `src/v3/compiler/src/emit.rs`, `src/v3/compiler/src/emit/rust_target.rs`, `src/v3/compiler/src/emit/python_target.rs`, `src/v3/spec/{rust,go,python}.dag`, `src/v3/std/computation_model.dag`.
 
-**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–P, blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold — **do not defer the split another round** (**Reviews K, M, P** exploratory).
+**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–Q, blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold — **do not defer the split another round** (**Reviews K, M, P** exploratory).
 
 ### PR review ingest (#621, 2026-04-21)
 
@@ -97,6 +97,12 @@
 - **Verdict:** APPROVE — docs-only PR (`docs/briefs/`); no substrate, emitter, spec, or test code in diff; factual claims check out; Lane 1e clusters reclassified vs live code; **Phase 3.0** concrete and bounded.
 - **Spot-checks:** No `OperatorKind::Logical` under `emit/`; Bool operator rows in all three specs; duplication callouts (`behavior_result_port`/`go_behavior_result_port`, two `port_is_consumed_from`, `dimension.rs` + `lens_cost_symbolic_generated.rs` for 3.0b) match tree; Phase 3.0 unit-first per **`TESTING.md`**; **STOP-AND-ESCALATE** present.
 - **Exploratory (non-blocking):** Ingest log ≈ **60%** of the brief — **Reviews K/M** already flagged; later reviews note **meta** on the ingest log itself — **split at next lane dispatch** is the right call; **do not slip another round**. **`lens_cost_symbolic_generated.rs`** is **codegen** — Phase **3.0b** must **regenerate** from the lens pipeline (`src/v3/lenses/cost.dag` / regen), **not** hand-edit generated Rust; keep explicit in the **3.0b** follow-on brief.
+
+**Review Q (codex / gpt-5.4, schedule, commit `fe2d784c`)**
+
+- **Verdict:** APPROVE — **no findings**; documentation-only diff.
+- **Spot-checks:** Claims vs `emit.rs`, `emit/rust_target.rs`, `emit/python_target.rs`, and `src/v3/spec/{rust,go,python}.dag` match live tree; Phase **3.0** testing guidance aligned with **`TESTING.md`** unit-first bar.
+- **Residual risk:** Normal **docs drift** if emitter/spec surface changes without updating this brief.
 
 **Blocking inline review (PR #621, 2026-04-21) — finding does not match live tree**
 
