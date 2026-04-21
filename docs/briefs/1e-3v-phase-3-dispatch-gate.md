@@ -6,7 +6,7 @@
 
 **Authorities read:** `docs/single-emitter-design.md`, `docs/emit-target-spec-gaps.md`, `docs/emit-bridges.md`, `src/v3/compiler/src/emit.rs`, `src/v3/compiler/src/emit/rust_target.rs`, `src/v3/compiler/src/emit/python_target.rs`, `src/v3/spec/{rust,go,python}.dag`, `src/v3/std/computation_model.dag`.
 
-**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–W, **three** blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** split the ingest log into a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so the skimmable payload stays above the fold — **do not defer the split another round** (**Reviews K, M, P, R, T, V, W** exploratory).
+**Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** carries the actionable payload. **PR review ingest** (Reviews A–X, **three** blocking rebuttals) is a **session-dashboard / audit trail** — **~60% of line count** and growing each ingest round. **Before the next lane’s dispatch-gate brief:** move this block to a **sibling file** (e.g. `1e-3v-pr621-review-ingest.md`) or an **appendix** so this file stays **dispatch guidance** — **do not defer** (**Reviews K, M, P, R, T, V, W, X** exploratory). **INVARIANTS.md** (“Documentation Describes Live State”): a checked-in **review chronicle** is not the same as **live** dispatch authority (**Review X**).
 
 ### PR review ingest (#621, 2026-04-21)
 
@@ -138,6 +138,12 @@
 - **Verdict:** APPROVE — documentation-only diff.
 - **Spot-checks:** Live-tree claims hold — no `OperatorKind::Logical` under `emit/`; Bool **`OperatorRealization`** rows in all three target specs; Phase **3.0** / **3.0b** duplicate-helper callouts match.
 - **Discipline:** No concrete violation of **`INVARIANTS.md`**, **`docs/modeling-discipline.md`**, **`CODING.md`**, or **`TESTING.md`** in this diff.
+
+**Review X (codex / gpt-5.4, schedule, commit `9a5b3699`)**
+
+- **Verdict:** APPROVE — **no blocking** thesis- or invariant-level issue; dispatch gate grounded in post-**#616** live authorities.
+- **Strengths (non-blocking):** Remaining work at **implementation layer**; Cluster **F** cites live code/spec authorities; Phase **3.0** / **3.0b** bounded with **unit-first** + **regen** guardrails.
+- **Improvement (non-blocking, fix next lane or roadmap):** **`PR review ingest`** as checked-in **chronicle** vs **live dispatch** guidance — aligns with **`INVARIANTS.md`** “Documentation Describes Live State” — **move to sibling ingest file** before next lane’s dispatch brief (**Reading order**; reinforces **Reviews K–W**).
 
 **Blocking inline review (PR #621, 2026-04-21) — finding does not match live tree**
 
