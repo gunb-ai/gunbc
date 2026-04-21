@@ -43,6 +43,38 @@ module v3.compiler.parse_tables
 // binding): logical-or, logical-and, comparison, additive,
 // multiplicative. The parser consumes this enum by filtering
 // `binary_op_at_level(token, LEVEL)` at each precedence function.
+//
+// Dissolution ledger (4-pattern check per THESIS §"Structural
+// decompression"; MODELING M7 / feedback_coproduct_dissolution):
+// - **Pattern 1 (fact placement)**: fails. Each variant is just a
+//   coordinate key, not a distinct payload shape. Scattering into
+//   five per-variant side tables ("is_or_level", "is_and_level", ...)
+//   would duplicate `BinaryOpRow` per level with no payload
+//   difference, adding dispatch rather than removing it.
+// - **Pattern 2 (variant-is-data)**: fails. All variants are nullary
+//   and structurally identical — this IS the discriminant-only shape;
+//   a unified representation would be the enum itself.
+// - **Pattern 3 (algebraic form)**: fails. There is no shared
+//   algebra the five variants inhabit; they are distinct parser
+//   control-flow points, not elements of a computed structure.
+// - **Pattern 4 (dimensional)**: borderline. Precedence is a 1D
+//   total order (Or < And < Comparison < Additive < Multiplicative)
+//   and could be encoded as `Int where 1 <= n <= 5`. Rejected on
+//   two grounds: (a) M7 enum principle — enums over *language
+//   constructs* stay, and this enum is over surface-grammar
+//   precedence-function identity, i.e. a language construct; (b)
+//   collapsing to `Int` would convert `binary_op_at_level`'s
+//   exhaustive `match (tk, level)` into a runtime-guarded lookup,
+//   losing the compile-time completeness guarantee that catches a
+//   dropped level if the surface grammar ever gains one.
+//
+// Verdict: coproduct stays. Dissolution trigger: if surface-grammar
+// precedence is ever reformulated as a structural fact (e.g. a
+// precedence-climbing interpreter over a numeric ordering), re-run
+// this check — Pattern 4 would then pass because the dimension
+// would have an algebraic consumer, not just five named entry
+// points. That reformulation rides the same SG-2c-proper lane as
+// retiring `parse_parser_body.txt`.
 type BinaryOpLevel
   = Or
   | And
