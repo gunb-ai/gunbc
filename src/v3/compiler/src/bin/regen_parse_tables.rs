@@ -212,10 +212,16 @@ fn variant_field(
 fn operator_kind_expr(op: OperatorKind) -> String {
     match op {
         OperatorKind::Arithmetic(a) => {
-            format!("OperatorKind::Arithmetic(ArithmeticOp::{})", arithmetic_variant(a))
+            format!(
+                "OperatorKind::Arithmetic(ArithmeticOp::{})",
+                arithmetic_variant(a)
+            )
         }
         OperatorKind::Comparison(c) => {
-            format!("OperatorKind::Comparison(ComparisonOp::{})", comparison_variant(c))
+            format!(
+                "OperatorKind::Comparison(ComparisonOp::{})",
+                comparison_variant(c)
+            )
         }
         OperatorKind::Logical(l) => {
             format!("OperatorKind::Logical(LogicalOp::{})", logical_variant(l))
