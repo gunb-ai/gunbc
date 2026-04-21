@@ -6,6 +6,13 @@
 
 **Authorities read:** `docs/single-emitter-design.md`, `docs/emit-target-spec-gaps.md`, `docs/emit-bridges.md`, `src/v3/compiler/src/emit.rs`, `src/v3/compiler/src/emit/rust_target.rs`, `src/v3/compiler/src/emit/python_target.rs`, `src/v3/spec/{rust,go,python}.dag`, `src/v3/std/computation_model.dag`.
 
+### PR review ingest (#621, 2026-04-21)
+
+- **Verdict:** APPROVE — api-review spot-checks matched this brief: no `OperatorKind::Logical` under `emit/`; emitter `behavior_result_port` / `go_behavior_result_port` and both `port_is_consumed_from` bodies are byte-identical as stated; duplication is correctly scoped as implementation DRY, not a `.dag` gap.
+- **Queued follow-up (optional, not a finding on #621):** Two other `behavior_result_port` definitions exist outside the emit pair:
+  - `src/v3/compiler/src/lens_cost_symbolic_generated.rs` — **generated** from the cost lens (`src/v3/lenses/cost.dag`); treat as codegen output; any shared helper likely flows from the lens pipeline, not from a one-off edit to the `.rs` file.
+  - `src/v3/compiler/src/dimension.rs` — **hand-authored** third copy (same match on `Behavior` variants). **Phase 3.0** below stays **emit-only** (unify the two emitter copies). A later refactor could move `behavior_result_port` to a small `crate` or `dag` helper and wire **emit + dimension** (and regenerate/consolidate the lens copy per policy) so a “one shared helper” pass does not stop at `rust_target.rs` / `emit.rs` while leaving `dimension.rs` behind.
+
 ---
 
 ## Executive summary
@@ -97,7 +104,7 @@ Aligned with `emit-target-spec-gaps.md` §233–244:
 3. **Delete** the duplicate `behavior_result_port` / `go_behavior_result_port` and both `port_is_consumed_from` method bodies.
 4. **Tests:** existing emit / determinism / golden tests — **byte-identical** (DB-8).
 
-**Non-goals:** No walker architecture, no spec `.dag` edits, no change to optional/Go sum rendering.
+**Non-goals:** No walker architecture, no spec `.dag` edits, no change to optional/Go sum rendering. **Out of scope for Phase 3.0:** `dimension.rs` and `lens_cost_symbolic_generated.rs` — see **PR review ingest** above; absorb in a follow-on if a crate-visible helper is introduced.
 
 **STOP-AND-ESCALATE:** If unification requires different `Loop` result-port treatment per target — **report** (would imply the two copies were not actually equivalent — today they match structurally).
 
@@ -114,3 +121,4 @@ That document’s **Phase 3** refers to **v2** `05_emit*.dag` TCO unification �
 - [ ] Do **not** reopen Cluster F or propose `LogicalOperatorCarrier` without a new substrate gap.
 - [ ] Treat **B, C, F, G, H, I, J** as **done** from a spec-gap perspective; remaining work is **walker + DRY + Go optional strings**.
 - [ ] Start Phase 3 implementation with **Phase 3.0** brief above unless director reprioritizes Go optional templating.
+- [ ] After Phase 3.0, optionally schedule **Phase 3.0b** — dedupe `behavior_result_port` with `dimension.rs` (and lens codegen path) if a shared `crate::dag`-level or `crate` helper is justified; do not expand Phase 3.0 scope mid-flight.
