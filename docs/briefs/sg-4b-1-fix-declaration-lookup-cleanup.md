@@ -55,20 +55,21 @@ fn find_declaration(decls: List<Declaration>, target: DeclarationId) -> Declarat
 ## STOP-AND-ESCALATE
 
 - If any consumer genuinely needs optional lookup semantics (id may or may not exist) — STOP. That's a substrate-integrity question. Likely means the id-carrying type is too weak; propose either strengthening the witness or adding a substrate-level "may be absent" carrier. Don't re-introduce a parallel lookup.
-- If removing `find_declaration` breaks the regen_infer_helpers ratchet in a way that can't be trivially fixed — STOP. The ratchet's contract should hold regardless.
-- If the fix requires touching outside `infer_helpers.dag` / `infer_helpers_generated.rs` (e.g., changing `Dag::declaration` signature) — STOP. Wrong scope.
+- If removing `find_declaration` breaks the variant_payload regen ratchet (or equivalent lens freshness check) in a way that can't be trivially fixed — STOP. The ratchet's contract should hold regardless.
+- If the fix requires touching outside `src/v3/lenses/variant_payload.dag` / `variant_payload_generated.rs` (e.g., changing `Dag::declaration` signature, touching `infer_helpers.dag`, editing emitter code) — STOP. Wrong scope; this lane is variant_payload-only cleanup.
 
 ## Non-goals
 
-- Not extending infer tranche beyond SG-4b-1's original set
-- Not touching `infer.rs` directly (only regen output)
+- Not touching `infer_helpers.dag` or `infer_helpers_generated.rs` (those were cleaned up independently; confirm via sanity grep but do not modify)
+- Not touching `lower.rs` / `parse.rs` / `infer.rs` directly
 - Not changing `Dag::declaration` semantics
 - Not introducing new substrate carriers
+- Not extending the variant_payload lens beyond what's required to remove the parallel lookup
 
 ## Size
 
-S. Scope is narrow: remove an enum + fn + their callers in one `.dag` file, regenerate, verify tests. Expected ~50-100 LOC deleted from `infer_helpers.dag`, corresponding deletion in `infer_helpers_generated.rs`, call sites in the `.dag` consumer walk redirected.
+S. Scope is narrow: remove a `DeclarationLookup` type + `find_declaration` fn + their callers within a single `.dag` file, regenerate, verify tests. Expected ~30-80 LOC deleted from `src/v3/lenses/variant_payload.dag`, corresponding deletion in the generated projection, consumer sites in the same file redirected to the canonical accessor.
 
 ## Dispatch note
 
-Director reviews. Primary acceptance: the parallel authority is gone and inference tests are unchanged. If this reveals substrate-integrity questions, surface them as separate lanes rather than paper over.
+Director reviews. Primary acceptance: the parallel authority is gone from `variant_payload.dag` and variant-payload + adjacent tests are unchanged. If this reveals substrate-integrity questions (e.g., a consumer genuinely wants optional lookup), surface them as separate lanes rather than paper over.
