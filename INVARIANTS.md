@@ -16,7 +16,7 @@ Every rule in this repo descends from one of five first principles. Growing sub-
 
 Two load-bearing headings from the previous organization map directly into these principles: **Verifiability** rolls into Decidability (verification is a structural consequence of a closed system), and **Sustainability** rolls into Progress Is Dissolution (sustainability is the long-run framing of cost-of-change). Their sub-rules distribute into the principles where their motivating teeth live — detailed in the appendix.
 
-Each principle below carries: the rule, why it stands alone, problem/solution shapes for pattern-matching, a historical dissolution receipt, and a cross-reference to the related rule IDs that elaborate it. Per-rule long-form rationale lives in subdocs — the prose-named rules and E-/L-series rules under [`docs/invariants/*.md`](docs/invariants/), the DB-series under [`docs/design-*.md`](docs/), and the C-series cluster in [`docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md`](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md). The appendix below names the exact subdoc per ID.
+Each principle below carries: the rule, why it stands alone, problem/solution shapes for pattern-matching, a historical dissolution receipt, and a cross-reference to the related rule IDs that elaborate it. Per-rule long-form rationale lives in subdocs under [`docs/invariants/`](docs/invariants/), [`docs/design-*.md`](docs/), and [`docs/debt/`](docs/debt/); the appendix below names the exact subdoc per ID and each numbered rule has a stable `#id` anchor for in-file citation (e.g., `INVARIANTS.md#c-8`, `INVARIANTS.md#e-9`).
 
 ---
 
@@ -27,6 +27,8 @@ Each principle below carries: the rule, why it stands alone, problem/solution sh
 **Why it stands alone:** Faithfulness is upstream of the rest. Performance, decidability, verifiability, and sustainability only matter if the model itself is faithful to the reality it claims to represent. Ungrounded authorities are structural fiction — no amount of downstream rigor recovers from them.
 
 **Grounding is intersubjective, not internal.** Every grounding step should point at a framework with *shared agreement* — mathematical structures, widely-adopted computer science abstractions, standardized machine representations. Internal taxonomies we invented ourselves are not grounding; they're restating the same claim at a different layer. Appealing to intersubjective frameworks lets the model's claims be verified against external consensus, not just against other parts of itself. (See [docs/thesis/epistemic-stacking.md](docs/thesis/epistemic-stacking.md) for the long form.)
+
+**In a closed system, heuristics are never structurally necessary.** A heuristic is a compression — a useful shortcut when the modeler doesn't own the reality being modeled. In *open* systems (natural science, user-input domains), the compression is often irreducible: we are consumers of a reality we didn't construct. But the system this codebase builds is *closed* — we wrote every level, from the bounded substrate primitives up through the algebras that ground user-facing types. Every heuristic in our code is therefore *recoverable*: the richer source either exists somewhere in the substrate we wrote, or can be written. The presence of a heuristic is evidence of a missing upstream fact, not proof that the fact is unknowable. Shortcuts are symptoms, not solutions. (See [docs/thesis/structural-decompression.md](docs/thesis/structural-decompression.md) for the long form — the same closure argument generalizes to why coproduct dissolution always terminates in a closed system.)
 
 ### Worked example: integer modeling from the ground up
 
@@ -257,37 +259,38 @@ Every numbered ID (C-N, E-N, L-N, DB-N) descends from one principle. The prose-n
 
 | ID | Home principle | Short form | Subdoc |
 |---|---|---|---|
-| C-1 | P3: Fail-Closed | missing args fail closed; no `LitNull` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| C-2 | P3: Fail-Closed | missing defaults / config fail closed; no `LitNull` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| C-3 | P3: Fail-Closed | parser recovery may not fabricate dummy `LitNull` nodes | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| C-4 | P3: Fail-Closed | placeholder `<error:*>` types forbidden as live carriers | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| C-5 | P3: Fail-Closed | error detection may not rely on string-sentinel probing | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| C-6 | P3: Fail-Closed | emit may not use `<error:unknown_*>` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| C-7 | P3: Fail-Closed | `Dynamic` is not a universal compatibility fallback | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| C-8 | P3: Fail-Closed | fail-closed compilation (canonical) | [invariants/decidability-invariant.md#fail-closed-compilation](docs/invariants/decidability-invariant.md#fail-closed-compilation) |
-| C-9 | P3: Fail-Closed | missing fields / values may not fabricate empty nodes or strings | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| C-10 | P3: Fail-Closed | ownership gaps may not silently clone for progress | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
-| DB-1 | P3: Fail-Closed (cross-ref P2) | typed diagnostic carriers, not ad hoc warning text | [design-correction-shape.md](docs/design-correction-shape.md) |
-| DB-4 | P5: Progress Is Dissolution | clean-emission as declared contract with real consumers | [design-clean-emission-contract.md](docs/design-clean-emission-contract.md) |
-| DB-5 | P2: Boundary Discipline | substrate keyed lookup single-authority | [design-substrate-keyed-lookup-api.md](docs/design-substrate-keyed-lookup-api.md) |
-| DB-8 | P4: Decidability | deterministic emission | [invariants/deterministic-emission-db-8.md](docs/invariants/deterministic-emission-db-8.md) |
-| DB-9 | P4: Decidability | mutual recursion lowers structurally | [design-mutual-recursion-lowering.md](docs/design-mutual-recursion-lowering.md) |
-| DB-14 | P2: Boundary Discipline | external primitives materialize through `Arrow.body` | [design-substrate-external-primitives.md](docs/design-substrate-external-primitives.md) |
-| E-5 | P5: Progress Is Dissolution | clean-emission contract by construction | [invariants/e-5-…](docs/invariants/e-5-clean-emission-contract-is-satisfied-by-construction.md) |
-| E-6 | P2: Boundary Discipline | no target-spec field without a same-PR consumer | [invariants/e-6-…](docs/invariants/e-6-no-target-spec-field-without-a-same-pr-consumer.md) |
-| E-7 | P5: Progress Is Dissolution | no target-private realization schema without a dissolution ratchet | [invariants/e-7-…](docs/invariants/e-7-no-target-private-realization-schema-without-a-dissolution-ratchet.md) |
-| E-8 | P3: Fail-Closed | unsupported core behaviors fail closed, never collapse semantically | [invariants/e-8-…](docs/invariants/e-8-unsupported-core-behaviors-fail-closed-never-collapse-semantically.md) |
-| E-9 | P2: Boundary Discipline | external realization lives on `Arrow.body` | [invariants/e-9-…](docs/invariants/e-9-external-realization-lives-on-arrow-body.md) |
-| L-7 | P2: Boundary Discipline | lenses consume declared substrate query functions | [invariants/l-7-…](docs/invariants/l-7-lenses-consume-declared-substrate-query-functions.md) |
-| L-8 | P2: Boundary Discipline | lens Rust surfaces preserve typed failure carriers | [invariants/l-8-…](docs/invariants/l-8-lens-rust-surfaces-preserve-typed-failure-carriers.md) |
-| T11 | P4: Decidability | tiered test execution (Tier 1/2/3 sub-rules) | [invariants/tiered-test-execution-t11.md](docs/invariants/tiered-test-execution-t11.md) |
+| <a id="c-1"></a>C-1 | P3: Fail-Closed | missing args fail closed; no `LitNull` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-2"></a>C-2 | P3: Fail-Closed | missing defaults / config fail closed; no `LitNull` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-3"></a>C-3 | P3: Fail-Closed | parser recovery may not fabricate dummy `LitNull` nodes | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-4"></a>C-4 | P3: Fail-Closed | placeholder `<error:*>` types forbidden as live carriers | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-5"></a>C-5 | P3: Fail-Closed | error detection may not rely on string-sentinel probing | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-6"></a>C-6 | P3: Fail-Closed | emit may not use `<error:unknown_*>` sentinels | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-7"></a>C-7 | P3: Fail-Closed | `Dynamic` is not a universal compatibility fallback | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-8"></a>C-8 | P3: Fail-Closed | fail-closed compilation (canonical) | [invariants/decidability-invariant.md#fail-closed-compilation](docs/invariants/decidability-invariant.md#fail-closed-compilation) |
+| <a id="c-9"></a>C-9 | P3: Fail-Closed | missing fields / values may not fabricate empty nodes or strings | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="c-10"></a>C-10 | P3: Fail-Closed | ownership gaps may not silently clone for progress | [debt/root-cause-c-…](docs/debt/root-cause-c-errors-propagate-as-valid-looking-fabrications.md) |
+| <a id="db-1"></a>DB-1 | P3: Fail-Closed (cross-ref P2) | typed diagnostic carriers, not ad hoc warning text | [design-correction-shape.md](docs/design-correction-shape.md) |
+| <a id="db-4"></a>DB-4 | P5: Progress Is Dissolution | clean-emission as declared contract with real consumers | [design-clean-emission-contract.md](docs/design-clean-emission-contract.md) |
+| <a id="db-5"></a>DB-5 | P2: Boundary Discipline | substrate keyed lookup single-authority | [design-substrate-keyed-lookup-api.md](docs/design-substrate-keyed-lookup-api.md) |
+| <a id="db-8"></a>DB-8 | P4: Decidability | deterministic emission | [invariants/deterministic-emission-db-8.md](docs/invariants/deterministic-emission-db-8.md) |
+| <a id="db-9"></a>DB-9 | P4: Decidability | mutual recursion lowers structurally | [design-mutual-recursion-lowering.md](docs/design-mutual-recursion-lowering.md) |
+| <a id="db-14"></a>DB-14 | P2: Boundary Discipline | external primitives materialize through `Arrow.body` | [design-substrate-external-primitives.md](docs/design-substrate-external-primitives.md) |
+| <a id="e-5"></a>E-5 | P5: Progress Is Dissolution | clean-emission contract by construction | [invariants/e-5-…](docs/invariants/e-5-clean-emission-contract-is-satisfied-by-construction.md) |
+| <a id="e-6"></a>E-6 | P2: Boundary Discipline | no target-spec field without a same-PR consumer | [invariants/e-6-…](docs/invariants/e-6-no-target-spec-field-without-a-same-pr-consumer.md) |
+| <a id="e-7"></a>E-7 | P5: Progress Is Dissolution | no target-private realization schema without a dissolution ratchet | [invariants/e-7-…](docs/invariants/e-7-no-target-private-realization-schema-without-a-dissolution-ratchet.md) |
+| <a id="e-8"></a>E-8 | P3: Fail-Closed | unsupported core behaviors fail closed, never collapse semantically | [invariants/e-8-…](docs/invariants/e-8-unsupported-core-behaviors-fail-closed-never-collapse-semantically.md) |
+| <a id="e-9"></a>E-9 | P2: Boundary Discipline | external realization lives on `Arrow.body` | [invariants/e-9-…](docs/invariants/e-9-external-realization-lives-on-arrow-body.md) |
+| <a id="l-7"></a>L-7 | P2: Boundary Discipline | lenses consume declared substrate query functions | [invariants/l-7-…](docs/invariants/l-7-lenses-consume-declared-substrate-query-functions.md) |
+| <a id="l-8"></a>L-8 | P2: Boundary Discipline | lens Rust surfaces preserve typed failure carriers | [invariants/l-8-…](docs/invariants/l-8-lens-rust-surfaces-preserve-typed-failure-carriers.md) |
+| <a id="t-11"></a>T11 | P4: Decidability | tiered test execution (Tier 1/2/3 sub-rules) | [invariants/tiered-test-execution-t11.md](docs/invariants/tiered-test-execution-t11.md) |
 
 ---
 
 ## Pointers
 
-- [`docs/invariants/`](docs/invariants/) — per-rule long-form rationale for prose-named rules and the E/L series (one file per rule, preserved from the previous organization)
-- [`docs/design-*.md`](docs/) — long-form rationale for DB-series design decisions (e.g., `design-correction-shape.md` for DB-1, `design-mutual-recursion-lowering.md` for DB-9)
+- [`docs/invariants/`](docs/invariants/) — per-rule long-form rationale (covers the prose-named rules, the E/L series, DB-8, T11)
+- [`docs/design-*.md`](docs/) — long-form rationale for most DB-series design decisions (DB-1, DB-4, DB-5, DB-9, DB-14). DB-8 is the exception and lives under `docs/invariants/`. See appendix for per-ID paths.
 - [`docs/debt/`](docs/debt/) — tracked open debt, including the C-series cluster receipt `root-cause-c-errors-propagate-as-valid-looking-fabrications.md`
 - [`docs/review-findings/`](docs/review-findings/) — archived branch-review receipts
 - [`docs/invariants/engineering-standards.md`](docs/invariants/engineering-standards.md) — engineering standards
+- [`docs/thesis/`](docs/thesis/) — thesis essays, including `epistemic-stacking.md` and `structural-decompression.md` referenced from P1
