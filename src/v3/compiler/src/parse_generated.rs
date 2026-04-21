@@ -930,7 +930,6 @@ impl<'a> Parser<'a> {
                 | TokenKind::KwData
                 | TokenKind::KwModule
                 | TokenKind::KwImport
-                | TokenKind::KwInhabits
                 | TokenKind::KwWhere
                 | TokenKind::Eof
                     if depth == 0 =>
