@@ -22,35 +22,65 @@ fn find_declaration(decls: List<Declaration>, target: DeclarationId) -> Declarat
 
 **Two problems** (same as the original #609 concern, just in a different file):
 
-1. **Parallel authority**: `Dag` already exposes `pub fn declaration(&self, id: DeclarationId) -> &Declaration` as the canonical single-authority accessor (or the `.dag`-side equivalent). `find_declaration` creates a second id-resolution path via O(n) list walk — violates `feedback_parallel_representation_debt` and the Single Authority invariant.
+1. **Parallel authority**: `Dag` (Rust) exposes `pub fn declaration(&self, id: DeclarationId) -> &Declaration` as the canonical single-authority accessor. `find_declaration` creates a second id-resolution path via O(n) list walk — violates `feedback_parallel_representation_debt` and the Single Authority invariant.
 
 2. **Fail-open contract**: `Dag::declaration` treats unknown id as a constructor-layer violation (the id is a witness-bearing handle; invalid ids can't legitimately exist). The new `LookupMissing` variant treats not-found as a normal lens-consumer outcome — silently masks substrate-integrity violations, violating C-8 (fail-closed).
+
+**Prerequisite gap** (flagged by reviewer at 2026-04-21T06:57): the reflected substrate (`src/v3/std/substrate.dag`) currently exposes accessors for `port`, `node`, `resolve_producer`, `lane2_workflow_at` — **but not for declarations by id**. `.dag` lens consumers have no `fn declaration_by_id(d: Dag, id: DeclarationId) -> Declaration?` to call; they must either walk `d.declarations` or use `find_declaration`. This is the real root cause: the parallel authority exists because the reflected substrate is incomplete. SG-4b-1-fix must close the gap as well as delete the workaround — see Work section below.
 
 ## Read first
 
 - `src/v3/lenses/variant_payload.dag` — the authority source (contains `type DeclarationLookup` + `fn find_declaration` to remove, plus their consumers in the same file)
-- `src/v3/compiler/src/dag.rs` — `pub fn declaration(&self, id: DeclarationId) -> &Declaration` is the canonical accessor (or its `.dag` equivalent that the lens consumer can reach)
+- `src/v3/std/substrate.dag` — **currently exposes `port`, `node`, `resolve_producer`, `lane2_workflow_at` but NOT a declaration-by-id accessor**. This is the root cause of the parallel authority and the prerequisite work for this lane.
+- `src/v3/compiler/src/dag.rs` — `pub fn declaration(&self, id: DeclarationId) -> &Declaration` is the canonical Rust accessor (the Host realization the new reflected accessor will bind to)
 - `src/v3/lenses/infer_helpers.dag` (sanity-check only — confirm it no longer has `DeclarationLookup`; the pattern migrated/was cleaned up here)
 - My REQUEST_CHANGES review on #609 for the original rationale (same concern, different file)
 - `INVARIANTS.md` §C-8 (fail-closed discipline) and §Track 9 (constructor-validation)
 
-## Work
+## Work — two-step lane
+
+### Step 1: Substrate extension (the actual prerequisite)
+
+Add a reflected declaration-by-id accessor to `src/v3/std/substrate.dag` so `.dag` lens consumers have a single-authority path:
+
+```
+// Pattern mirrors the existing port / node accessors
+fn declaration_by_id(d: Dag, id: DeclarationId) -> Declaration? {
+  host declaration_by_id
+}
+```
+
+Bind the Rust realization (`host declaration_by_id`) to `Dag::declaration(id)` or the equivalent that returns `Option<Declaration>`. Decision for the worker: should the reflected accessor be `Declaration?` (optional — permissive, matches the existing `port` accessor shape) or panic-on-miss matching `Dag::declaration`'s current Rust behavior? Preferred: `Declaration?` for reflected-side symmetry with `port` / `node`; the C-8 fail-closed contract is enforced at the **caller** (consumers that treat `None` as a bug still fail closed via a diagnostic, not by converting it to a normal outcome like `LookupMissing` does).
+
+Verify the accessor is wired: bootstrap loads the realization binding; a pilot lens consumer can successfully resolve a known declaration id.
+
+### Step 2: variant_payload migration
 
 1. **Delete `DeclarationLookup` enum and `find_declaration` fn** from `src/v3/lenses/variant_payload.dag`.
-2. **Replace consumer sites** in the same file (grep for `find_declaration(` within `variant_payload.dag`) with direct consumption of the canonical declaration accessor — whatever `.dag`-side surface resolves to `Dag::declaration(id)` without going through a parallel enum.
-3. **If any consumer genuinely needs to tolerate "id doesn't exist" as non-error**: STOP and surface. That's a deeper substrate-integrity concern — workaround with a parallel lookup path is not the fix. The invariant here is: a `DeclarationId` is a witness — if it's present, the declaration exists; absence is a constructor-layer violation, not a lens outcome.
+2. **Replace consumer sites** in the same file with calls to the new `declaration_by_id` accessor from Step 1. Use typed `match` on `Declaration?` — `Some(decl) => ...` / `None => ...`.
+3. **For `None` handling**: treat as a constructor-layer violation (emit a typed diagnostic, not a normal lens outcome). The id being present means the declaration should exist — if lookup returns `None`, that's a substrate-integrity violation worth surfacing.
 4. **Regenerate** the affected generated file (`variant_payload_generated.rs` or equivalent per the lens regen pattern).
 5. **Verify** existing variant-payload consumers + tests pass identically (behavior should be unchanged modulo the lookup path).
 
 ## Acceptance
 
+**Step 1 (substrate extension)**:
+- `fn declaration_by_id(d: Dag, id: DeclarationId) -> Declaration?` exists in `src/v3/std/substrate.dag` with `host declaration_by_id` realization
+- Rust-side host binding compiles + resolves known ids correctly
+- Existing substrate accessor tests pass
+
+**Step 2 (variant_payload migration)**:
 - `DeclarationLookup` type removed from `src/v3/lenses/variant_payload.dag`
 - `find_declaration` fn removed from the same file
-- All same-file consumers call the canonical declaration accessor (or its typed realization)
+- All same-file consumers call `declaration_by_id` with typed `match Declaration?`
+- `None` branch emits a typed diagnostic (constructor-layer violation), not a normal lens outcome
+- `variant_payload_generated.rs` freshness ratchet still passes
 - Variant-payload + inference + emit test suites green
-- `variant_payload_generated.rs` (or equivalent) freshness ratchet still passes
+
+**End-state**:
 - No new parallel id-resolution paths introduced
 - Sanity: `git grep "DeclarationLookup\|find_declaration" src/v3/lenses/` returns zero hits after merge
+- Reflected substrate now has id-keyed lookup parity with `port` / `node` accessors
 
 ## STOP-AND-ESCALATE
 
@@ -68,7 +98,12 @@ fn find_declaration(decls: List<Declaration>, target: DeclarationId) -> Declarat
 
 ## Size
 
-S. Scope is narrow: remove a `DeclarationLookup` type + `find_declaration` fn + their callers within a single `.dag` file, regenerate, verify tests. Expected ~30-80 LOC deleted from `src/v3/lenses/variant_payload.dag`, corresponding deletion in the generated projection, consumer sites in the same file redirected to the canonical accessor.
+**S-M** (was S; upsized after substrate-extension prerequisite surfaced).
+
+- Step 1 (substrate extension): ~10-20 LOC in `substrate.dag` + corresponding Rust host realization + bootstrap wiring + pilot test. Small but non-trivial (touches substrate + host binding).
+- Step 2 (variant_payload migration): ~30-80 LOC deleted from `variant_payload.dag`, corresponding deletion in generated projection, ~5-10 consumer sites redirected to `declaration_by_id`.
+
+Total expected delta: ~-20 to -60 LOC hand-authored `.dag`. Small lane, one PR.
 
 ## Dispatch note
 
