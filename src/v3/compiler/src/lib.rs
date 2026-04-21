@@ -704,13 +704,14 @@ pub(crate) mod infer_helpers {
     )]
     mod generated {
         use crate::dag::*;
+        use crate::diagnostics::SourceSpan;
 
         include!("infer_helpers_generated.rs");
     }
 
     pub(crate) use generated::{
-        behavior_output_port, resolve_template_argument_value, template_argument_value,
-        TemplateArgumentLookup,
+        behavior_output_port, behavior_span, payload_binding_span,
+        resolve_template_argument_value, template_argument_value, TemplateArgumentLookup,
     };
 }
 
