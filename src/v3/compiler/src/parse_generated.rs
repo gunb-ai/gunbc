@@ -3,7 +3,9 @@
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::OperatorKind;
-use crate::parse_tables::{binary_op_at_level, BinaryOpLevel};
+use crate::parse_tables::{
+    binary_op_at_level, top_level_item_dispatch, BinaryOpLevel, ItemDispatchKind,
+};
 use crate::tokenize::{Token, TokenKind};
 
 #[derive(Debug, Clone)]
@@ -312,16 +314,17 @@ impl<'a> Parser<'a> {
     /// import, and data items lower to no-ops (or declaration-only
     /// scaffolds) at M1(2.7), but the parsed facts flow forward.
     fn parse_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
-        match &self.peek().kind {
-            TokenKind::KwLet => self.parse_let_item(),
-            TokenKind::KwFn => self.parse_fn_item(),
-            TokenKind::KwType => self.parse_type_item(),
-            TokenKind::KwModule => self.parse_module_item(),
-            TokenKind::KwImport => self.parse_import_item(),
-            TokenKind::KwData => self.parse_data_item(),
-            other => Err(Diagnostic::ParseError {
+        let tk = &self.peek().kind;
+        match top_level_item_dispatch(tk) {
+            Some(ItemDispatchKind::Let) => self.parse_let_item(),
+            Some(ItemDispatchKind::Fn) => self.parse_fn_item(),
+            Some(ItemDispatchKind::Type) => self.parse_type_item(),
+            Some(ItemDispatchKind::Module) => self.parse_module_item(),
+            Some(ItemDispatchKind::Import) => self.parse_import_item(),
+            Some(ItemDispatchKind::Data) => self.parse_data_item(),
+            None => Err(Diagnostic::ParseError {
                 message: format!(
-                    "expected `let`, `fn`, `type`, `module`, `import`, or `data`, got {other:?}"
+                    "expected `let`, `fn`, `type`, `module`, `import`, or `data`, got {tk:?}"
                 ),
                 span: self.peek().span.clone(),
                 fixes: Vec::new(),

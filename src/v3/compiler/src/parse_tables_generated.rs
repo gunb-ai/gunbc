@@ -53,3 +53,28 @@ pub fn binary_op_at_level(tk: &TokenKind, level: BinaryOpLevel) -> Option<Operat
         _ => None,
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ItemDispatchKind {
+    Let,
+    Fn,
+    Type,
+    Module,
+    Import,
+    Data,
+}
+
+/// Top-level item keyword (`parse_item`) → dispatch class.
+/// Rows are `TopLevelItemKwRow { token_variant }` only; `ItemDispatchKind` is
+/// `strip_prefix("Kw")` — see authority header in `parse_tables.dag`.
+pub fn top_level_item_dispatch(kind: &TokenKind) -> Option<ItemDispatchKind> {
+    match kind {
+        TokenKind::KwData => Some(ItemDispatchKind::Data),
+        TokenKind::KwFn => Some(ItemDispatchKind::Fn),
+        TokenKind::KwImport => Some(ItemDispatchKind::Import),
+        TokenKind::KwLet => Some(ItemDispatchKind::Let),
+        TokenKind::KwModule => Some(ItemDispatchKind::Module),
+        TokenKind::KwType => Some(ItemDispatchKind::Type),
+        _ => None,
+    }
+}

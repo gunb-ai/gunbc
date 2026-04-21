@@ -37,6 +37,10 @@
 // is produced by `cargo run -p v3-compiler --bin regen_parse_tables`
 // — do not hand-edit it. The freshness ratchet lives in
 // `tests/integration/sg2c1_parse_tables_authority_test.rs`.
+//
+// **Same-PR consumer (E-6).** SG-2c-2 projection `top_level_item_dispatch` /
+// `ItemDispatchKind` is consumed by the live parser: `parse_item` in
+// `parse_parser_body.txt` (spliced into `parse_generated.rs` via `regen_parse`).
 
 module v3.compiler.parse_tables
 
@@ -201,9 +205,32 @@ data binary_op_slash: BinaryOpRow = {
 }
 
 // --- SG-2c-2: top-level item keyword dispatch (`parse_item` in
-// `parse_parser_body.txt`). Maps dedicated keyword `TokenKind` variants to
-// the parser entry path — pure data; control flow stays in Rust.
-
+// `parse_parser_body.txt`). Each row lists one dedicated keyword
+// `TokenKind` variant; regen derives `ItemDispatchKind` by stripping the
+// `Kw` prefix (`KwLet` → `Let`). **Single authored field per row** — no
+// parallel `dispatch` column (avoids duplicate representations per
+// `INVARIANTS.md`).
+//
+// Dispatch classification for top-level item forms — discriminant-only
+// coproduct keyed by authoritative lexer tokens (join `tokenize.dag`).
+//
+// Dissolution classification: **🟡 YELLOW (scaffold)** per
+// `docs/modeling-discipline.md` §4. Same structural situation as
+// `BinaryOpLevel`: each variant is a parser entry coordinate, not a
+// distinct payload algebra; full dissolution rides SG-2c proper (blocked
+// on recursive list-body emission over `List<Token>`).
+//
+// Dissolution ledger (4-pattern check):
+// - **Pattern 1 (fact placement)**: fails. Variants are coordinate keys for
+//   `parse_*_item` entry points, not relocatable facts.
+// - **Pattern 2 (variant-is-data)**: **passes for rows**: `TopLevelItemKwRow`
+//   carries only `token_variant`; `ItemDispatchKind` is derived in regen
+//   (`strip_prefix("Kw")`), not duplicated in the authority.
+// - **Pattern 3 (algebraic form)**: fails. No shared algebra across item forms.
+// - **Pattern 4 (dimensional)**: fails / not applicable here (small fixed enum).
+//
+// **Named trigger (YELLOW):** dissolve with SG-2c proper when
+// `parse_parser_body.txt` ports to `.dag` list-body recursion.
 type ItemDispatchKind
   = Let
   | Fn
@@ -212,37 +239,32 @@ type ItemDispatchKind
   | Import
   | Data
 
+// Authored fact: which `TokenKind` keyword opens a top-level item.
+// `ItemDispatchKind` label = `token_variant` with `Kw` prefix removed.
 type TopLevelItemKwRow {
   token_variant: String
-  dispatch: ItemDispatchKind
 }
 
 data top_level_kw_let: TopLevelItemKwRow = {
   token_variant: "KwLet"
-  dispatch: Let
 }
 
 data top_level_kw_fn: TopLevelItemKwRow = {
   token_variant: "KwFn"
-  dispatch: Fn
 }
 
 data top_level_kw_type: TopLevelItemKwRow = {
   token_variant: "KwType"
-  dispatch: Type
 }
 
 data top_level_kw_module: TopLevelItemKwRow = {
   token_variant: "KwModule"
-  dispatch: Module
 }
 
 data top_level_kw_import: TopLevelItemKwRow = {
   token_variant: "KwImport"
-  dispatch: Import
 }
 
 data top_level_kw_data: TopLevelItemKwRow = {
   token_variant: "KwData"
-  dispatch: Data
 }

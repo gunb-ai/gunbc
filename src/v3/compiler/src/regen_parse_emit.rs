@@ -84,7 +84,10 @@ fn emit_parse_module(dag: &Dag, parser_body: &str) -> String {
     let mut out = String::new();
     out.push_str("use crate::diagnostics::{Diagnostic, SourceSpan};\n");
     out.push_str("use crate::operators::OperatorKind;\n");
-    out.push_str("use crate::parse_tables::{binary_op_at_level, BinaryOpLevel};\n");
+    out.push_str(
+        "use crate::parse_tables::{binary_op_at_level, BinaryOpLevel, top_level_item_dispatch, \
+         ItemDispatchKind};\n",
+    );
     out.push_str("use crate::tokenize::{Token, TokenKind};\n\n");
     out.push_str(&emit_surface_types(dag));
     out.push_str(
