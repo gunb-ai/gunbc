@@ -163,6 +163,8 @@ fn canonical_container_names() -> List<String> {
 // `Declaration.inhabits` → `BooleanAlgebra<Bool>` is applied in v3 bootstrap
 // (`bootstrap::patch_kernel_bool_boolean_algebra_inhabits`). Surface
 // `type … inhabits … =` is v3-only under `src/v3/compiler/` (generated parser).
+// Dissolution: when v2 accepts `inhabits` on types, move the clause here and
+// delete `patch_kernel_bool_boolean_algebra_inhabits` (see that function's doc).
 type Bool = True | False
 
 // Unit: terminal object (zero-field product, single inhabitant).

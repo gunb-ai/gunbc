@@ -205,6 +205,11 @@ fn load_fixtures(dag: &mut Dag, fixtures: &[(&str, &str)]) {
 /// Preconditions are checked: any failure attaches a bootstrap
 /// `Diagnostic::ResolveError` via `Dag::attach_diagnostic` so compilation
 /// fails closed instead of silently omitting `inhabits`.
+///
+/// **Dissolution:** remove this patch once the v2 compiler surface accepts
+/// `type … inhabits … =` in `dsl/` (then express
+/// `type Bool inhabits BooleanAlgebra<Bool> = True | False` in
+/// `dsl/std/types.dag` and delete `patch_kernel_bool_boolean_algebra_inhabits`).
 fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
     const BOOL_TYPES_FILE: &str = "dsl/std/types.dag";
     let Some(bool_decl) = dag
