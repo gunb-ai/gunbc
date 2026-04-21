@@ -1,0 +1,141 @@
+// v3.compiler.parse_tables — SG-2c-1 grammar-tables prototype authority.
+//
+// **Scope.** SG-2c proper (parser authority proper — retiring
+// `parse_parser_body.txt` as parse logic) is blocked on a named
+// substrate capability: recursive list-body emission over `List<Token>`
+// with cursor threading. See `src/v3/std/list.dag:13-15` ("the current
+// compiler still lacks full structural recursion + list-body emission
+// support") and SELF_HOSTING.md §6 Phase 4a. Until that lands, any full
+// `.dag` parser port routes through a hidden Rust host layer, which
+// SG-2c's STOP-AND-ESCALATE bullet forbids.
+//
+// **What this file is.** The bounded, honest subset of parser
+// authority that DOES fit current `.dag` capabilities: pure
+// declarative tables. Specifically, the binary operator token-to-
+// semantics mapping previously hand-coded across five parser
+// precedence functions in `parse_parser_body.txt`
+// (`parse_logical_or`, `parse_logical_and`, `parse_comparison`,
+// `parse_additive`, `parse_term`). Those functions now call the
+// generated helper `binary_op_at_level` instead of open-coding the
+// token → `OperatorKind` match.
+//
+// **What this file is NOT.** Parser control flow. Cursor mechanics.
+// Error recovery. Item-kind dispatch. Recursive-descent itself. Those
+// remain semantic authority in `parse_parser_body.txt` (explicitly
+// residual; see header there).
+//
+// **Dissolution trigger.** Full parser authority proper (SG-2c
+// proper) is blocked on recursive list-body emission from
+// `std/list.dag`. Once that lands, `parse_parser_body.txt` can be
+// ported to `.dag` as recursive-descent functions on `List<Token>`
+// and this table becomes one data section of a larger `parse.dag`
+// (or merges into a Phase 4b grammar-as-data spec).
+//
+// **Rust projection.** `src/v3/compiler/src/parse_tables_generated.rs`
+// is produced by `cargo run -p v3-compiler --bin regen_parse_tables`
+// — do not hand-edit it. The freshness ratchet lives in
+// `tests/integration/sg2c1_parse_tables_authority_test.rs`.
+
+module v3.compiler.parse_tables
+
+// Precedence level of a binary operator. Mirrors the five parser
+// precedence functions in `parse_parser_body.txt` (lowest to highest
+// binding): logical-or, logical-and, comparison, additive,
+// multiplicative. The parser consumes this enum by filtering
+// `binary_op_at_level(token, LEVEL)` at each precedence function.
+type BinaryOpLevel
+  = Or
+  | And
+  | Comparison
+  | Additive
+  | Multiplicative
+
+// One row per binary-operator token. `token_variant` is the
+// `TokenKind` variant name (e.g. "PipePipe"); `operator_symbol` is
+// the canonical operator spelling that `operators.dag::from_symbol`
+// already maps to an `OperatorKind`; `level` is the parser
+// precedence function that should consume this token. Keyed on the
+// textual variant name to avoid importing `tokenize.TokenKind` here
+// (scope: declarative data only, not cross-module structural
+// matching — that widens to SG-2c proper). The regen driver
+// validates each `token_variant` against `tokenize.dag`'s
+// `TokenKind` declaration and each `operator_symbol` against
+// `operators.dag`'s `from_symbol`, so drift in either direction
+// fails closed at regen time.
+type BinaryOpRow {
+  token_variant: String
+  operator_symbol: String
+  level: BinaryOpLevel
+}
+
+data binary_op_pipepipe: BinaryOpRow = {
+  token_variant: "PipePipe"
+  operator_symbol: "||"
+  level: Or
+}
+
+data binary_op_ampamp: BinaryOpRow = {
+  token_variant: "AmpAmp"
+  operator_symbol: "&&"
+  level: And
+}
+
+data binary_op_eqeq: BinaryOpRow = {
+  token_variant: "EqEq"
+  operator_symbol: "=="
+  level: Comparison
+}
+
+data binary_op_noteq: BinaryOpRow = {
+  token_variant: "NotEq"
+  operator_symbol: "!="
+  level: Comparison
+}
+
+data binary_op_lt: BinaryOpRow = {
+  token_variant: "Lt"
+  operator_symbol: "<"
+  level: Comparison
+}
+
+data binary_op_le: BinaryOpRow = {
+  token_variant: "Le"
+  operator_symbol: "<="
+  level: Comparison
+}
+
+data binary_op_gt: BinaryOpRow = {
+  token_variant: "Gt"
+  operator_symbol: ">"
+  level: Comparison
+}
+
+data binary_op_ge: BinaryOpRow = {
+  token_variant: "Ge"
+  operator_symbol: ">="
+  level: Comparison
+}
+
+data binary_op_plus: BinaryOpRow = {
+  token_variant: "Plus"
+  operator_symbol: "+"
+  level: Additive
+}
+
+data binary_op_minus: BinaryOpRow = {
+  token_variant: "Minus"
+  operator_symbol: "-"
+  level: Additive
+}
+
+data binary_op_star: BinaryOpRow = {
+  token_variant: "Star"
+  operator_symbol: "*"
+  level: Multiplicative
+}
+
+data binary_op_slash: BinaryOpRow = {
+  token_variant: "Slash"
+  operator_symbol: "/"
+  level: Multiplicative
+}

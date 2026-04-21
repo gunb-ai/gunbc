@@ -304,6 +304,7 @@ fn main() {
         "src/v3/compiler/src/operators_generated.rs",
         "src/v3/compiler/src/parse_generated.rs",
         "src/v3/compiler/src/parse_surface_generated.rs",
+        "src/v3/compiler/src/parse_tables_generated.rs",
         "src/v3/compiler/src/serialize_generated.rs",
         "src/v3/compiler/src/tokenize_generated.rs",
         "src/v3/compiler/src/types_generated.rs",
