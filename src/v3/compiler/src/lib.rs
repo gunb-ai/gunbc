@@ -669,7 +669,6 @@ mod infer;
 /// on this crate side. SG-6 owns folding the standalone regen driver
 /// and relocating extracted helper modules out of `lenses/` once the
 /// consolidated regen target lands.
-#[allow(clippy::large_enum_variant)]
 pub(crate) mod infer_helpers {
     #[allow(
         dead_code,
@@ -686,8 +685,7 @@ pub(crate) mod infer_helpers {
     }
 
     pub(crate) use generated::{
-        behavior_output_port, callable_template_arguments, resolve_template_argument_value,
-        template_argument_value, walk_to_optional_cardinality_decl, OptionalCardinalityDeclLookup,
+        behavior_output_port, resolve_template_argument_value, template_argument_value,
         TemplateArgumentLookup,
     };
 }

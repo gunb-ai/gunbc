@@ -34,11 +34,9 @@ use crate::diagnostics::{
     Diagnostic, SourceSpan,
 };
 use crate::infer_helpers::{
-    behavior_output_port, callable_template_arguments as generated_callable_template_arguments,
+    behavior_output_port,
     resolve_template_argument_value as generated_resolve_template_argument_value,
-    template_argument_value as generated_template_argument_value,
-    walk_to_optional_cardinality_decl as generated_walk_to_optional_cardinality_decl,
-    OptionalCardinalityDeclLookup, TemplateArgumentLookup,
+    template_argument_value as generated_template_argument_value, TemplateArgumentLookup,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
@@ -204,10 +202,20 @@ fn existing_optional_match_disj_decl(
 }
 
 fn walk_to_optional_cardinality_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
-    match generated_walk_to_optional_cardinality_decl(&(WALK_DEPTH_LIMIT as i64), dag, start) {
-        OptionalCardinalityDeclLookup::FoundOptionalCardinality { _0: decl_id } => Some(decl_id),
-        OptionalCardinalityDeclLookup::MissingOptionalCardinality => None,
+    let mut current = start;
+    for _ in 0..WALK_DEPTH_LIMIT {
+        match &dag.declaration(current).connective {
+            TypeConnective::Cardinality {
+                bound: crate::dag::CardinalityBound::AtMostOne,
+                ..
+            } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            _ => return None,
+        }
     }
+    None
 }
 
 fn ensure_optional_match_disj(
@@ -1466,8 +1474,13 @@ fn callable_template_arguments(
     dag: &Dag,
     target: DeclarationId,
 ) -> (DeclarationId, Vec<TemplateArgument>) {
-    let info = generated_callable_template_arguments(dag, target);
-    (info.template, info.arguments)
+    match &dag.declaration(target).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => (*template, arguments.clone()),
+        _ => (target, Vec::new()),
+    }
 }
 
 fn template_argument_value(
