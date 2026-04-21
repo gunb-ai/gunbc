@@ -28,7 +28,9 @@ Pick a different Lane 1e-2 cluster from `docs/emit-target-spec-gaps.md` that (1)
 - Cluster A — Go type recursion (already covered by `TypeInstantiationRealization.carrier` + `TypeApplicationSyntax`)
 - Cluster B — execution model (already covered by `TargetExecutionModel.memory`)
 - Cluster C — bootstrap filtering (already covered by `is_bootstrap_file` behavior)
-- **Cluster E — optional type wrappers (already covered by `TypeApplicationSyntax.optional` in `emit_model.dag`; e.g., `go_type_applications.optional: "*{element}"`)**
+- **Cluster E — SPLIT**:
+  - `wrapper_template` (type-wrapper syntax `Option<T>` / `*T` / `Optional[T]`) → Category 1, **already covered** by `TypeApplicationSyntax.optional` in `emit_model.dag` (e.g., `go_type_applications.optional: "*{element}"`). Skip.
+  - `none_literal` / `some_constructor` / `deref_syntax` / `none_check` (expression-level None/Some rendering + check strategy) → **uncertain; requires Phase 0 verification before implementing.** `LiteralSyntax` covers `true_keyword`/`false_keyword`/`string_delimiter` but not None/Some. Current emitters may handle this via variant-constructor/Disj machinery (`PatternBindingRule` + `VariantPayloadFieldAccessRule`) rather than dedicated spec rows. If verification shows expression-level optional behavior is currently handled structurally via variant dispatch, these fields are also Category 1. If verification shows they're hardcoded in emit_rust/emit_python branches, the bundle may be a real Category 2 gap — but narrow it to only those expression-level facts; don't re-propose the `wrapper_template` part.
 - Cluster F — logical ops (needs Class 5 Gap 1 / Bool grounding, not a new carrier)
 - Cluster H — unused pattern binding (already covered by `CleanEmissionContract.pattern_bindings: PatternBindingRule`)
 
