@@ -19,7 +19,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-BASELINE_TRACKED_TOTAL=23
+BASELINE_TRACKED_TOTAL=25
 
 SURFACES=(
   src/v3/compiler/*.dag
@@ -34,8 +34,6 @@ POSITIVE_ROWS=(
   "src/v3/lenses/complexity.dag:CostEntry"
   "src/v3/lenses/cost.dag:SymbolicCostEntry"
   "src/v3/lenses/infer_helpers.dag:TemplateArgumentBinding"
-  "src/v3/lenses/infer_helpers.dag:TemplateArgumentsMatch"
-  "src/v3/lenses/infer_helpers.dag:TemplateArgumentCursor"
   "src/v3/lenses/provenance.dag:Origin"
   "src/v3/lenses/structural_resolution.dag:UnresolvedArrowBody"
   "src/v3/lenses/structural_resolution.dag:NameKeyedReference"
@@ -76,6 +74,8 @@ TRACKED_ROWS=(
   "src/v3/lenses/complexity.dag:CostLookup"
   "src/v3/lenses/cost.dag:SymbolicCostLookup"
   "src/v3/lenses/infer_helpers.dag:TemplateArgumentLookup"
+  "src/v3/lenses/infer_helpers.dag:TemplateArgumentsMatch"
+  "src/v3/lenses/infer_helpers.dag:TemplateArgumentCursor"
 )
 
 collect_type_rows() {

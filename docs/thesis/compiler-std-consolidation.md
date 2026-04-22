@@ -130,6 +130,7 @@ Exempted (pending named trigger, not counted either direction):
 Ratchet-tracked (**migrates to `std/`, counted against the baseline**):
 - Compiler-side types that duplicate user-facing concepts (tokenize, runtime_mirrors)
 - Strict 2-variant `Missing | Found(T)` Lookup-pattern carriers across lenses (`CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup` — 3 instances) — dissolve into a single `Lookup<T>` type in `std/`. Carriers with additional semantic variants (e.g., `VariantPayloadShapeLookup`'s `NotPayloadProduct`, `TemplateArgumentBinding = Conflict | NoOp | Append`) are lens-API, not in-ratchet.
+- Lens-local workaround-shaped coproducts with named dissolution triggers (today: `TemplateArgumentsMatch`, `TemplateArgumentCursor` in `infer_helpers.dag`) also count against the ratchet; these are implementation scaffolds, not genuine lens-API carriers.
 
 Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"`):
 
@@ -144,7 +145,7 @@ Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"`):
 | `src/v3/lenses/complexity.dag` | 2 | 1 positive-def (`CostEntry`) + 1 in-ratchet (`CostLookup` — 2-variant Lookup) |
 | `src/v3/lenses/cost.dag` | 2 | 1 positive-def (`SymbolicCostEntry`) + 1 in-ratchet (`SymbolicCostLookup` — 2-variant Lookup) |
 | `src/v3/lenses/idempotency.dag` | 0 | — |
-| `src/v3/lenses/infer_helpers.dag` | 2 | 1 in-ratchet (`TemplateArgumentLookup` — 2-variant Lookup) + 1 positive-def (`TemplateArgumentBinding = Conflict \| NoOp \| Append` — 3-variant semantic) |
+| `src/v3/lenses/infer_helpers.dag` | 4 | 3 in-ratchet (`TemplateArgumentLookup` — 2-variant Lookup; `TemplateArgumentsMatch` and `TemplateArgumentCursor` — workaround-shaped coproduct scaffolds with named dissolution triggers) + 1 positive-def (`TemplateArgumentBinding = Conflict \| NoOp \| Append \| ReplaceAt` — semantic carrier) |
 | `src/v3/lenses/lower_helpers.dag` | 0 | — |
 | `src/v3/lenses/parallelism.dag` | 0 | — |
 | `src/v3/lenses/provenance.dag` | 1 | positive-def (`Origin` — provenance-specific) |
@@ -152,7 +153,7 @@ Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"`):
 | `src/v3/lenses/unused_parameters.dag` | 1 | positive-def (`UnusedParameter`) |
 | `src/v3/lenses/variant_payload.dag` | 2 | both positive-def (`VariantPayloadShape` domain type + `VariantPayloadShapeLookup` — 3-variant carrier with `NotPayloadProduct` semantic distinction, not generic Lookup) |
 
-**Primary ratchet count today: 23** (20 from tokenize + runtime_mirrors + 3 strict 2-variant Lookup-pattern carriers: `CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup`). All lens-local types now classified — `structural_resolution.dag`'s two record types (`UnresolvedArrowBody`, `NameKeyedReference`) are positive-def lens-API carrying the lens's findings.
+**Primary ratchet count today: 25** (20 from tokenize + runtime_mirrors + 3 strict 2-variant Lookup-pattern carriers: `CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup` + 2 workaround-shaped infer-helper coproducts: `TemplateArgumentsMatch`, `TemplateArgumentCursor`). All lens-local types now classified — `structural_resolution.dag`'s two record types (`UnresolvedArrowBody`, `NameKeyedReference`) are positive-def lens-API carrying the lens's findings.
 
 End state: 0. Each migration lane reduces the count; positive-definition types track growth separately and are not bounded downward by this ratchet.
 
