@@ -130,7 +130,7 @@ this list post-review: `rust_language, go_language, python_language,
 rust_functions` — all four have `dsl/std/languages.dag` duplicates
 and are reclassified (b).)
 
-**Tests, rank-insensitive subset** — 48 of 67 test sites. Unique
+**Tests, rank-insensitive subset** — 44 of 67 test sites. Unique
 names outside the overlap set include `answer, BinaryOpRow,
 BracketRow, cfg, claim_obligation_resources, Classical,
 CompilerHostRealization, DegreeAtLeastTwo, Dimension, div, f, first,
@@ -147,14 +147,16 @@ rank-insensitive — but see dissolution note for **(c)** below.)
 
 ### (b) Silent dependency — load-bearing on rank
 
-**23 call sites** (direct + helper-mediated) look up a name in the
-overlap set: 5 `TestClaim`, 13 `std.effects`/`http_path`, 5 language-
-spec. The initial draft counted only two direct TestClaim sites and
-missed helper-mediated uses; the v4 revision also missed the
-language-spec group entirely. The corrected tally follows. 18 sites
-live in `src/v3/compiler/tests/integration/`; 4 live in
-`src/v3/compiler/src/dag.rs` (the init-pass surface lookups), and 1
-in `m1_substrate_test.rs`.
+**27 call sites** (direct + helper-mediated) look up a name in the
+overlap set: 5 `TestClaim`, 13 `std.effects`/`http_path`, 9 language-
+spec. Revision history: v2 added helper-mediated TestClaim sites;
+v5 added the language-spec group with 5 direct-call sites; v7
+found 4 more helper-mediated language-spec sites
+(`find_named(...)` in `m1_substrate_test.rs:679` and
+`m2_substrate_inhabitance_test.rs:{665,666,667}`) that the earlier
+grep missed. 22 sites live in `src/v3/compiler/tests/integration/`;
+4 live in `src/v3/compiler/src/dag.rs` (the init-pass surface
+lookups); 1 is already counted above under the 22 tests.
 
 1. `src/v3/compiler/tests/integration/m1_5_testgen_test.rs:208`
    ```rust
@@ -209,17 +211,23 @@ in `m1_substrate_test.rs`.
    `ComposedEffect`, in v3 a richer `CompositionVerdict`-bearing
    type). **Helper-mediated silent — the largest cluster.**
 
-5. **Language-spec init-pass lookups** — `dag.rs:2269` (`rust_language`),
-   `dag.rs:2282` (`go_language`), `dag.rs:2292` (`python_language`),
-   `dag.rs:2309` (`rust_functions`), plus `m1_substrate_test.rs:2851`
-   (`rust_language`). All five names exist in both
-   `dsl/std/languages.dag` and `src/v3/spec/{rust,go,python}.dag`.
-   The init-pass assigns `target_syntax.{rust,go,python}_language`
-   and `emit_anchors.rust_functions` from whatever rank returns —
-   i.e. the v3 spec's declaration id. Every downstream emission
-   path that consumes these anchor ids is silently gated on the v3
-   authority. **Systemic silent — the emission pipeline's anchor
-   binding.**
+5. **Language-spec lookups** — 9 sites total. Direct:
+   `dag.rs:2269` (`rust_language`), `dag.rs:2282` (`go_language`),
+   `dag.rs:2292` (`python_language`), `dag.rs:2309`
+   (`rust_functions`); plus `m1_substrate_test.rs:2851`
+   (`rust_language`). Helper-mediated via `find_named`:
+   `m1_substrate_test.rs:679` (`rust_language`) and
+   `m2_substrate_inhabitance_test.rs:{665,666,667}`
+   (`rust_language`/`go_language`/`python_language`). All 9 names
+   exist in both `dsl/std/languages.dag` and
+   `src/v3/spec/{rust,go,python}.dag`. The init-pass assigns
+   `target_syntax.{rust,go,python}_language` and
+   `emit_anchors.rust_functions` from whatever rank returns — i.e.
+   the v3 spec's declaration id; every downstream emission path
+   that consumes these anchor ids is silently gated on the v3
+   authority; test assertions reading these same names via
+   `find_named` likewise see the v3 spec. **Systemic silent — the
+   emission pipeline's anchor binding.**
 
 **Dissolution path.** These sites are not a substrate problem;
 they are symptoms of three convergence blockers — two already
@@ -229,8 +237,8 @@ tracked in ROADMAP, one newly surfaced by this audit:
 - **`std.effects` convergence** (plus embedded `http_path` mirror)
   — governs the 13 `lane2_stage_2a_effects_smoke.rs` sites (item
   4). Tracked.
-- **Language-spec convergence** — governs the 5 `dag.rs`
-  init-pass + test sites (item 5). `dsl/std/languages.dag` vs
+- **Language-spec convergence** — governs the 9 init-pass +
+  test-side sites (item 5). `dsl/std/languages.dag` vs
   `src/v3/spec/{rust,go,python}.dag`. **Not yet tracked as a
   file-preference-scaffold blocker** — the ROADMAP "Post-merge
   debt" row names only the first three pairs. Adding this fourth
@@ -242,7 +250,7 @@ surface emerges). No new substrate work needed — the convergences
 *are* the dissolution for the two tracked groups. The
 language-spec group needs a ROADMAP entry before its convergence
 can be scoped. **The "no new modeling gap" conclusion from the
-draft still holds — but the scale (23 sites, not 2) materially
+draft still holds — but the scale (27 sites, not 2) materially
 changes the cost-of-dissolution estimate for the `std.effects`
 convergence, and surfaces a fourth duplicated-authority group
 (languages vs spec) that the ROADMAP row must also cover.**
@@ -316,22 +324,22 @@ lookup; the rank function and its mirror delete together.
 
 | Category | Count | Sites |
 |---|---:|---|
-| (a) Incidental | 159 | 109 `src/` static-name sites (113 minus 4 language-spec overlap) + 48 test sites + 2 dynamic-form helpers ranging over singletons only (`infer.rs:1619`, `regen_tokenize.rs:159`) |
-| (b) Silent dependency | 23 | 5 TestClaim (`m1_5_testgen_test.rs:208`, `lane2_stage_2c_db15_test.rs:9`, `m1_5_verification_test.rs:{76,203,207}`); 13 in `lane2_stage_2a_effects_smoke.rs:{62,63,64,65,66,76×2,90,94,95,97,98,100}`; 4 in `dag.rs:{2269,2282,2292,2309}` + 1 in `m1_substrate_test.rs:2851` (language-spec) |
+| (a) Incidental | 155 | 109 `src/` static-name sites (113 minus 4 language-spec overlap) + 44 test sites + 2 dynamic-form helpers ranging over singletons only (`infer.rs:1619`, `regen_tokenize.rs:159`) |
+| (b) Silent dependency | 27 | 5 TestClaim (`m1_5_testgen_test.rs:208`, `lane2_stage_2c_db15_test.rs:9`, `m1_5_verification_test.rs:{76,203,207}`); 13 in `lane2_stage_2a_effects_smoke.rs:{62,63,64,65,66,76×2,90,94,95,97,98,100}`; 9 language-spec (4 in `dag.rs:{2269,2282,2292,2309}` + `m1_substrate_test.rs:{679,2851}` + `m2_substrate_inhabitance_test.rs:{665,666,667}`) |
 | (c) Legitimate-looking | 2 classes | `collect_symbols`, stub-resolution sweep |
 
-PR-body framing: **159 safe, 23 silent, 2 class-level legitimate.**
+PR-body framing: **155 safe, 27 silent, 2 class-level legitimate.**
 (Site totals: 113 static `src/` + 67 tests + 2 dynamic-singleton
-helpers = 182 actionable call sites; 182 − 23 (b) = 159 (a). The
+helpers = 182 actionable call sites; 182 − 27 (b) = 155 (a). The
 two (c) classes are consumer patterns, not individual sites, and
 are listed separately.)
 
 ## Recommendations
 
-1. **No lane needed to repair the (b) sites independently.** All 23
+1. **No lane needed to repair the (b) sites independently.** All 27
    sites dissolve automatically when their governing convergence
    lands (5 with `std.verification`, 13 with `std.effects` /
-   http_path mirror, 5 with language-spec convergence).
+   http_path mirror, 9 with language-spec convergence).
 
 2. **Extend the ROADMAP "Post-merge debt" file-preference-scaffold
    row to include a fourth duplicated-authority pair**:
