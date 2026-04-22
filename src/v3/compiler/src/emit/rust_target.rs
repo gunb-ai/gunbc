@@ -3528,12 +3528,18 @@ impl<'a> Ctx<'a> {
         let qualified_name = if is_optional_match {
             variant_name.clone()
         } else {
-            let enum_name = self.dag.declaration(disj_id).name.clone().ok_or(
-                EmitError::UnsupportedBehavior(
-                    "match on anonymous sum declarations is not yet supported in Rust emission"
-                        .to_string(),
-                ),
-            )?;
+            let enum_name = self
+                .dag
+                .declaration(disj_id)
+                .name
+                .clone()
+                .or_else(|| named_disj_enum_for_variant_labels(self.dag, disj_id))
+                .ok_or_else(|| {
+                    EmitError::UnsupportedBehavior(
+                        "match on anonymous sum declarations is not yet supported in Rust emission"
+                            .to_string(),
+                    )
+                })?;
             self.qualified_name(&enum_name, &variant_name)
         };
         let Some(binding) = &path.binding else {
@@ -4804,6 +4810,52 @@ impl<'a> Ctx<'a> {
             Ok(format!("({item_name}).clone()"))
         }
     }
+}
+
+/// Specialized lowering can allocate a fresh `Disj` declaration whose
+/// variant labels match a named template sum while `Declaration::name` is
+/// missing. `render_branch_pattern` needs a Rust enum path (`Enum::Variant`);
+/// recover a stable enum label by scanning named sums with the same ordered
+/// variant labels in the same [`Dag`].
+fn named_disj_enum_for_variant_labels(dag: &Dag, disj_id: DeclarationId) -> Option<String> {
+    let decl = dag.declaration(disj_id);
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        return None;
+    };
+    if variants.is_empty() {
+        return None;
+    }
+    let labels: Vec<&str> = variants.iter().map(|v| v.label.as_str()).collect();
+    let mut candidates: Vec<String> = dag
+        .declarations()
+        .iter()
+        .filter_map(|d| {
+            let enum_name = d.name.as_ref()?;
+            if d.id == disj_id {
+                return None;
+            }
+            let TypeConnective::Disj {
+                variants: other_variants,
+            } = &d.connective
+            else {
+                return None;
+            };
+            if other_variants.len() != labels.len() {
+                return None;
+            }
+            if other_variants
+                .iter()
+                .zip(labels.iter())
+                .all(|(v, l)| v.label.as_str() == *l)
+            {
+                Some(enum_name.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+    candidates.sort();
+    candidates.into_iter().next()
 }
 
 fn variant_name_for_decl(
