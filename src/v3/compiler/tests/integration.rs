@@ -378,7 +378,10 @@ mod parse_stage4_prep {
 
     #[test]
     fn total_order_lattice_helpers_flow_through_shared_min_max_by() {
-        let dag = crate::common::cached_compile::cached_compile_to_dag("let _ = 1", "algebra_total_order_helpers.v3");
+        let dag = crate::common::cached_compile::cached_compile_to_dag(
+            "let _ = 1",
+            "algebra_total_order_helpers.v3",
+        );
 
         assert!(
             dag.declaration_by_name("min_by").is_some(),
@@ -416,8 +419,7 @@ mod parse_stage4_prep {
             "fermi_join should delegate through shared max_by, got: {fermi_join}"
         );
         assert!(
-            merge_evidence.contains("min_by(")
-                && merge_evidence.contains("project: evidence_rank"),
+            merge_evidence.contains("min_by(") && merge_evidence.contains("project: evidence_rank"),
             "merge_evidence should delegate through shared min_by, got: {merge_evidence}"
         );
         assert!(
