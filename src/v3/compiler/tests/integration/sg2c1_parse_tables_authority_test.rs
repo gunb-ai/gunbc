@@ -580,11 +580,10 @@ fn every_primary_atom_row_token_variant_is_a_token_kind_variant() {
 fn primary_atom_rows_cover_exactly_the_tokens_parse_primary_atomic_arm() {
     // Post-prefix bump in `parse_primary` must be one of these
     // `TokenKind` variants; `primary_atom_class` is the fail-closed table.
-    let expected: std::collections::BTreeSet<&'static str> = [
-        "IntLit", "KwTrue", "KwFalse", "StringLit", "Pipe", "Ident",
-    ]
-    .into_iter()
-    .collect();
+    let expected: std::collections::BTreeSet<&'static str> =
+        ["IntLit", "KwTrue", "KwFalse", "StringLit", "Pipe", "Ident"]
+            .into_iter()
+            .collect();
 
     let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
         .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));

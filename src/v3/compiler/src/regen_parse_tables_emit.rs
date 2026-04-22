@@ -503,10 +503,7 @@ fn collect_primary_atom_rows(dag: &Dag, token_variants: &[String]) -> Vec<Primar
 /// `PrimaryAtomRow.token_variant` is the sole authored key; the Rust
 /// `PrimaryAtomClass` label is a closed allowlist at regen — not a second
 /// field in `parse_tables.dag`.
-fn primary_atom_class_label_from_token_variant(
-    token_variant: &str,
-    decl_name: &str,
-) -> String {
+fn primary_atom_class_label_from_token_variant(token_variant: &str, decl_name: &str) -> String {
     let label = match token_variant {
         "IntLit" => "IntLiteral",
         "KwTrue" => "True",
