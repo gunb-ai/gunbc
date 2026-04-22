@@ -578,11 +578,14 @@ include!("dag_scalar_generated.rs");
 ///   bootstrapped DAG. **`fn compile` (case 2c)** has no `PipelineStageBinding`:
 ///   **`Unparsed` persists** on its Arrow body. Pipeline ordering authority is
 ///   the declaration order of the `PipelineStageBinding` records in the Dag —
-///   `ordered_pipeline_stages` reads that structural order directly; the
-///   `compile` body span is no longer consulted. The signature still flows
-///   forward through the declaration table so callers can type-check against
-///   it, and the body source span is preserved so M2+ parser extensions can
-///   reach in for case 1.
+///   `ordered_pipeline_stages` reads that structural order directly at runtime.
+///   The `compile` body is retained as a second surface-level expression of
+///   the same ordering and `ordered_pipeline_stages` fail-closes on any drift
+///   between the two (`reconcile_with_compile_body`) so the bindings remain
+///   the single runtime authority without silently diverging from the
+///   orchestrator surface. The signature still flows forward through the
+///   declaration table so callers can type-check against it, and the body
+///   source span is preserved so M2+ parser extensions can reach in for case 1.
 ///   **User-range boundary:** `reject_user_unparsed_scaffolds` in
 ///   `src/v3/compiler/src/lower.rs` fails-closed any user-range
 ///   declaration carrying this variant (R14 + M1(2.8) Scaffold
