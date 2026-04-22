@@ -11,6 +11,14 @@
 //! derives the required registry `name` keys from `docs/v3-lens-capability-register.md`
 //! (capability table) plus `regen.dag` (`LensRegistryEntry` rows) and asserts the
 //! slice matches exactly.
+//!
+//! **Provenance cementing split.** The `compile_to_dag` exemplar below compares
+//! `origin_of` to `origin_for_behavior` on the resolved producer — both are emitted
+//! from the same `provenance.dag`, so this is a **seam** check (`port` →
+//! `produced_by` → `node` → classification) on the live lowering path, not an
+//! independent second oracle for the `Behavior → Origin` table. That table is
+//! already pinned under `#[cfg(test)]` in `lib.rs::lens_provenance::tests` with
+//! minimal hand-built `Dag` shapes (see `TESTING.md` — v3-native `COMPLETE` path).
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -43,7 +51,11 @@ fn assert_origin_carriers_equal(a: &Origin, b: &Origin, context: &str) {
 }
 
 /// `origin_of` must agree with `origin_for_behavior` on the value port's producer —
-/// the same decomposition `provenance.dag` uses after the `produced_by` walk.
+/// the decomposition `provenance.dag` documents after the `produced_by` walk.
+///
+/// This does **not** independently re-prove the `Behavior → Origin` mapping; a
+/// coordinated regression in both emitted functions could still pass. The
+/// contract for that mapping lives in `lens_provenance::tests` (minimal `Dag`).
 fn assert_provenance_origin_matches_lens_authority(dag: &Dag, bind_name: &str, context: &str) {
     let port = find_bind_value_port(dag, bind_name);
     let got = origin_of(dag, &port);
@@ -248,8 +260,9 @@ fn provenance_origin_of_cements_complete_row_via_compile_to_dag_fixture() {
     // Register row: `provenance.dag` — BEHAVIORALLY COMPLETE, v3-native.
     // Integration crate cannot reach `Dag`'s `pub(crate)` builder helpers
     // (`alloc_port_with_shape`); `compile_to_dag` fixtures still cement the
-    // shipped `origin_of` contract on the live lowering path. Exhaustive
-    // `NoProducer` / `Missing*` cases stay in `lib.rs::lens_provenance::tests`.
+    // shipped `origin_of` **walk + glue** on the live lowering path. Mapping pins
+    // (Value/Transform/Branch/Loop/Bind → `Origin`) stay in-crate unit tests.
+    // Exhaustive `NoProducer` / `Missing*` cases stay in `lib.rs::lens_provenance::tests`.
     let dag = compile_to_dag("let lit: Int = 7", "cementing_provenance_lit.v3").expect("compiles");
     assert_provenance_origin_matches_lens_authority(&dag, "lit", "cementing_provenance_lit");
 
