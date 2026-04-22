@@ -91,13 +91,34 @@ arguments were extracted and cross-checked against the overlap set.
 Dynamic arguments were classified by semantic role.
 
 Totals: **210 call sites total** (210 grep matches including doc
-references). Actionable call sites (non-comment): **113 in
-`src/v3/compiler/src/`**, **67 in `src/v3/compiler/tests/`**, plus
-the two bulk consumers (`collect_symbols` + the stub-resolution
-sweep at `lower.rs:2134` / `lower_generated.rs:2143`). Two
-dynamic-form helpers (`infer.rs:1619`, `regen_tokenize.rs:159`)
-are called out separately; they range only over singleton names
-and are classified (a), not (c) — see §(c).
+references). Actionable call sites (non-comment): **113
+literal-string + 3 named-const `declaration_by_name("...")` /
+`declaration_by_name(CONST)` sites in `src/v3/compiler/src/`**
+(116 total static-valued), **67 in `src/v3/compiler/tests/`**,
+plus **6 dynamic-form sites in `src/v3/compiler/src/`**:
+- 2 bulk consumers (`collect_symbols` + the stub-resolution sweep
+  at `lower.rs:2134` / `lower_generated.rs:2143`) — (c)
+- 2 singletons-only helpers (`infer.rs:1619` →
+  `{Int,Bool,String}`, `regen_tokenize.rs:159` →
+  `{dag_keyword_set,dag_operators}`) — (a) despite dynamic form
+- 2 user-name dispatch helpers that range over arbitrary
+  declaration names (emit `parent_name` path at `emit.rs:2909`,
+  `emit/rust_target.rs:2391`, `emit/python_target.rs:1837`; lens
+  `sum_name` at `lens_testgen.rs:330`) — (c), same class as
+  stub-resolution
+
+**Audit correction (v10, post-review #4).** Earlier drafts
+grepped for the literal-quote form `declaration_by_name("` and so
+under-counted three named-const call sites
+(`PIPELINE_STAGE_BINDING_TYPE = "PipelineStageBinding"` at
+`pipeline_authority.rs:31`; `PIPELINE_REALIZATION_META =
+"CompilerHostRealization"` at `bootstrap.rs:303`;
+`LENS_REGISTRY_ENTRY_TYPE = "LensRegistryEntry"` at
+`bin/regen_lens.rs:111`) and four dynamic-form (c) sites
+(emit-parent + lens-testgen, above). All three const values
+resolve to non-overlap names, so the const sites are (a); the
+four dynamic-form sites join the (c) bucket as
+user-name-dispatch helpers.
 
 ## Classification
 
@@ -270,13 +291,23 @@ at the systemic level rather than at a single call site:
    surfaces of `EffectShape`, `TestClaim`, `PathTemplate`, etc.
    even while legacy `dsl/` duplicates remain ingested.
 
-2. **Stub-resolution sweep** — `lower.rs:2134`,
-   `lower_generated.rs:2143`:
-   ```rust
-   if let Some(target) = dag.declaration_by_name(&name).map(|d| d.id)
-   ```
-   Repairs `UnresolvedIdentifier` stubs after bodies are lowered.
-   Same rank-consumer pattern as `collect_symbols`.
+2. **User-name dispatch helpers** — six sites that look up
+   declarations by a variable name taken from user-authored
+   sources. Same rank-consumer pattern as `collect_symbols`.
+   - Stub-resolution sweep at `lower.rs:2134` /
+     `lower_generated.rs:2143`:
+     ```rust
+     if let Some(target) = dag.declaration_by_name(&name).map(|d| d.id)
+     ```
+     Repairs `UnresolvedIdentifier` stubs after bodies are lowered.
+   - Emit-time parent resolution at `emit.rs:2909`,
+     `emit/rust_target.rs:2391`, `emit/python_target.rs:1837`
+     (`let parent = dag.declaration_by_name(parent_name)?;`). When
+     `parent_name` is an overlap-set name, the emit pipeline binds
+     to the v3 authority.
+   - Lens-testgen sum dispatch at `lens_testgen.rs:330`
+     (`.declaration_by_name(sum_name)`). Looks up user-authored
+     sum types by name.
 
 **Dynamic-form call sites that are nevertheless (a) incidental.**
 Two sites invoke `declaration_by_name(name)` with a variable
@@ -324,15 +355,16 @@ lookup; the rank function and its mirror delete together.
 
 | Category | Count | Sites |
 |---|---:|---|
-| (a) Incidental | 155 | 109 `src/` static-name sites (113 minus 4 language-spec overlap) + 44 test sites + 2 dynamic-form helpers ranging over singletons only (`infer.rs:1619`, `regen_tokenize.rs:159`) |
+| (a) Incidental | 158 | 112 `src/` static-valued sites (116 literal+const minus 4 language-spec overlap) + 44 test sites + 2 dynamic-form helpers ranging over singletons only (`infer.rs:1619`, `regen_tokenize.rs:159`) |
 | (b) Silent dependency | 27 | 5 TestClaim (`m1_5_testgen_test.rs:208`, `lane2_stage_2c_db15_test.rs:9`, `m1_5_verification_test.rs:{76,203,207}`); 13 in `lane2_stage_2a_effects_smoke.rs:{62,63,64,65,66,76×2,90,94,95,97,98,100}`; 9 language-spec (4 in `dag.rs:{2269,2282,2292,2309}` + `m1_substrate_test.rs:{679,2851}` + `m2_substrate_inhabitance_test.rs:{665,666,667}`) |
-| (c) Legitimate-looking | 2 classes | `collect_symbols`, stub-resolution sweep |
+| (c) Legitimate-looking | 2 classes | (i) `collect_symbols` + stub-resolution sweep; (ii) user-name dispatch helpers (`emit.rs:2909`, `emit/rust_target.rs:2391`, `emit/python_target.rs:1837`, `lens_testgen.rs:330`) |
 
-PR-body framing: **155 safe, 27 silent, 2 class-level legitimate.**
-(Site totals: 113 static `src/` + 67 tests + 2 dynamic-singleton
-helpers = 182 actionable call sites; 182 − 27 (b) = 155 (a). The
-two (c) classes are consumer patterns, not individual sites, and
-are listed separately.)
+PR-body framing: **158 safe, 27 silent, 2 class-level legitimate.**
+(Site totals: 116 static-valued `src/` + 67 tests + 2
+dynamic-singleton helpers = 185 actionable call sites; 185 − 27
+(b) = 158 (a). Four additional dynamic-form `src/` sites dispatch
+on user-authored names and are classified (c) rather than counted
+as individual (a) sites — see §(c).)
 
 ## Recommendations
 
