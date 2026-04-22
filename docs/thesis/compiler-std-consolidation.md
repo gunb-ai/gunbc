@@ -59,7 +59,7 @@ Everything else moves to `std/`: Token, File, Path, SourceSpan, Diagnostic, Iden
 
 #### From `src/v3/compiler/parse_tables.dag` → unclear
 
-- `BinaryOpLevel`, `BinaryOpRow`, `TopLevelItemKwRow`, `TypeRhsBoundaryRow` (3 types)
+- `BinaryOpLevel`, `BinaryOpRow`, `TopLevelItemKwRow`, `BracketRow` (4 types)
 
 **Status: debatable.** These are parser-dispatch data tables. On one hand, expression precedence and keyword-dispatch are language properties that tools beyond the compiler might want to read (e.g., a syntax highlighter). On the other hand, the specific row *shapes* are parser-internal. A reasonable split: move the *data* (operator levels, keyword-to-item mappings) to `std/syntax.dag`, keep the dispatch-row *shapes* compiler-specific.
 
