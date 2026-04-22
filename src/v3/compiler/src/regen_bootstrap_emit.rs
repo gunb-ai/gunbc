@@ -115,12 +115,13 @@ fn render_declarations(declarations: &[Declaration]) -> String {
 
 fn render_declaration(declaration: &Declaration) -> String {
     format!(
-        "Declaration {{ id: {}, name: {}, connective: {}, type_params: {}, meta_tag: {}, inhabits: {}, value_body: {}, refinement: {}, span: {} }}",
+        "Declaration {{ id: {}, name: {}, connective: {}, type_params: {}, meta_tag: {}, specialization_parent: {}, inhabits: {}, value_body: {}, refinement: {}, span: {} }}",
         render_declaration_id(declaration.id),
         render_opt_string(declaration.name.as_deref()),
         render_type_connective(&declaration.connective),
         render_declaration_id_vec(&declaration.type_params),
         render_opt_declaration_id(declaration.meta_tag),
+        render_opt_declaration_id(declaration.specialization_parent),
         render_opt_declaration_id(declaration.inhabits),
         render_opt_value_body(declaration.value_body.as_ref()),
         render_opt_declaration_id(declaration.refinement),

@@ -145,8 +145,8 @@ impl ClusterId {
 /// inner types of Cardinality bounds, Arrow inputs, etc.) also live here; only the
 /// `name` field distinguishes them.
 ///
-/// `type_params`, `meta_tag`, `inhabits`, and `value_body` are separate edges
-/// with distinct semantics:
+/// `type_params`, `meta_tag`, `specialization_parent`, `inhabits`, and
+/// `value_body` are separate edges with distinct semantics:
 /// - `type_params`: the canonical carrier for generic parameters declared on
 ///   `type Foo<T, U> { ... }` / sum / alias items. Each entry is a
 ///   DeclarationId whose connective is `Atom(TypeParam(name))`. Keeping type
@@ -157,6 +157,12 @@ impl ClusterId {
 ///   declaration." Used for value construction (records, services,
 ///   transports) per M1_DESIGN.md §Q0. Empty across the M1(2.5) bootstrap
 ///   set except for the §6.5 realization stub.
+/// - `specialization_parent`: optional lowering-only back-pointer from a
+///   **materialized** declaration produced by `lower::specialize_decl_for_lowering`
+///   to the declaration id that was specialized (the immediate template before
+///   substitution). Today only anonymous specialized `Disj` sums set this so
+///   Rust emit can walk to the named template without cloning `Declaration::name`
+///   (P2 / `Dag::declaration_by_name`). `None` for every other declaration.
 /// - `inhabits`: "this declaration additionally satisfies the linked
 ///   algebra's laws." Used for secondary algebra inhabitance on declarations
 ///   with their own primary structure. Empty across M1(2.5).
@@ -173,6 +179,7 @@ pub struct Declaration {
     pub connective: TypeConnective,
     pub type_params: Vec<DeclarationId>,
     pub meta_tag: Option<DeclarationId>,
+    pub specialization_parent: Option<DeclarationId>,
     pub inhabits: Option<DeclarationId>,
     pub value_body: Option<ValueBody>,
     /// DB-11 (3a.3): optional refinement predicate. `None` for
@@ -2747,6 +2754,7 @@ mod tests {
             connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(binding_meta)),
             type_params: Vec::new(),
             meta_tag: Some(binding_meta),
+            specialization_parent: None,
             inhabits: None,
             value_body: Some(binding_fields(rust_language, go_clean_emission)),
             refinement: None,

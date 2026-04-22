@@ -268,6 +268,7 @@ fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
         },
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: None,
@@ -406,6 +407,7 @@ mod tests {
             },
             type_params: Vec::new(),
             meta_tag: None,
+            specialization_parent: None,
             inhabits: None,
 
             value_body: None,
@@ -422,6 +424,7 @@ mod tests {
             },
             type_params: Vec::new(),
             meta_tag: Some(meta_type_id),
+            specialization_parent: None,
             inhabits: None,
 
             value_body: None,
@@ -463,6 +466,7 @@ mod tests {
             },
             type_params: Vec::new(),
             meta_tag: None,
+            specialization_parent: None,
             inhabits: None,
 
             value_body: None,

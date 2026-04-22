@@ -3528,12 +3528,13 @@ impl<'a> Ctx<'a> {
         let qualified_name = if is_optional_match {
             variant_name.clone()
         } else {
-            let enum_name = self.dag.declaration(disj_id).name.clone().ok_or(
-                EmitError::UnsupportedBehavior(
-                    "match on anonymous sum declarations is not yet supported in Rust emission"
-                        .to_string(),
-                ),
-            )?;
+            let enum_name = named_disj_enum_name_for_rust_match_emit(self.dag, disj_id)
+                .ok_or_else(|| {
+                    EmitError::UnsupportedBehavior(
+                        "match on anonymous sum declarations is not yet supported in Rust emission"
+                            .to_string(),
+                    )
+                })?;
             self.qualified_name(&enum_name, &variant_name)
         };
         let Some(binding) = &path.binding else {
@@ -4806,6 +4807,31 @@ impl<'a> Ctx<'a> {
     }
 }
 
+/// Anonymous specialized `Disj` nodes from `lower::specialize_decl_for_lowering`
+/// set `specialization_parent = Some(template_disj_id)` so Rust emit can recover
+/// the template enum name without cloning `Declaration::name` onto a second
+/// declaration id (P2 / single-authority metadata for `Dag::declaration_by_name`).
+///
+/// Returns the template's `Declaration::name` once a named `Disj` is reached.
+fn named_disj_enum_name_for_rust_match_emit(
+    dag: &Dag,
+    mut disj_id: DeclarationId,
+) -> Option<String> {
+    // Chains are one hop in practice (`specialize_decl_for_lowering`); 32 matches
+    // `specialize_decl_for_lowering`'s depth bound so a bug cannot spin forever.
+    for _ in 0..32 {
+        let decl = dag.declaration(disj_id);
+        let TypeConnective::Disj { .. } = &decl.connective else {
+            return None;
+        };
+        if let Some(name) = decl.name.clone() {
+            return Some(name);
+        }
+        disj_id = decl.specialization_parent?;
+    }
+    None
+}
+
 fn variant_name_for_decl(
     dag: &Dag,
     disj_id: DeclarationId,
@@ -5565,5 +5591,46 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
             }
             other => panic!("expected MalformedRealization for aliased role refs, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn named_disj_enum_name_for_rust_match_emit_follows_specialization_parent_to_named_template() {
+        use crate::dag::Declaration;
+
+        let mut dag = Dag::new();
+        let template_id = dag
+            .declarations()
+            .iter()
+            .find(|d| {
+                matches!(&d.connective, TypeConnective::Disj { .. })
+                    && d.name.as_deref() == Some("Classical")
+            })
+            .expect("bootstrap `Classical` sum")
+            .id;
+
+        let anon_id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: anon_id,
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: Vec::new(),
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: Some(template_id),
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<test>", 0, 0),
+        });
+
+        assert_eq!(
+            named_disj_enum_name_for_rust_match_emit(&dag, anon_id).as_deref(),
+            Some("Classical")
+        );
+        assert_eq!(
+            named_disj_enum_name_for_rust_match_emit(&dag, template_id).as_deref(),
+            Some("Classical")
+        );
     }
 }

@@ -357,6 +357,27 @@ let zero: Int = 0",
 }
 
 #[test]
+fn emit_rust_module_match_on_imported_workflow_effect_sum() {
+    let src = "\
+module emit_match_workflow_effect_smoke
+import std.effects { WorkflowEffect }
+import std.list { length }
+fn classify_wf(w: WorkflowEffect) -> Int = match w {
+  LinearEffect { ops: ops } => length(ops)
+  BranchEffect { arms: arms } => 1
+  LoopEffect { body: body } => 2
+  ParallelEffect { branches: branches } => 3
+}
+";
+    let out = emit_module(src);
+    assert!(
+        out.contains("fn classify_wf") && out.contains("WorkflowEffect::LinearEffect"),
+        "expected emitted lens-style module to lower `match` on imported \
+         user-defined `WorkflowEffect` with qualified enum patterns; got:\n{out}"
+    );
+}
+
+#[test]
 fn emit_rust_payload_match_uses_struct_variant_pattern() {
     let out = emit(
         "type BoxedInt = Boxed(Int) | Empty

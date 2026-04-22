@@ -543,6 +543,7 @@ fn lower_parameter_refinement(
         },
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: None,
@@ -556,6 +557,7 @@ fn lower_parameter_refinement(
         connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(base_decl_id)),
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: Some(pred_decl_id),
@@ -940,6 +942,7 @@ fn build_narrowed_refinement(
         },
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: None,
@@ -955,6 +958,7 @@ fn build_narrowed_refinement(
         connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(true_base_decl)),
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: Some(pred_decl_id),
@@ -1337,6 +1341,7 @@ fn collect_symbols(
             connective: placeholder_connective(&name),
             type_params: Vec::new(),
             meta_tag: None,
+            specialization_parent: None,
             inhabits: None,
             value_body: None,
             refinement: None,
@@ -1362,6 +1367,7 @@ fn collect_symbols(
                     connective: TypeConnective::Atom(AtomPayload::TypeParam(param.clone())),
                     type_params: Vec::new(),
                     meta_tag: None,
+                    specialization_parent: None,
                     inhabits: None,
 
                     value_body: None,
@@ -1702,6 +1708,7 @@ fn lower_type_sum(
             connective,
             type_params: Vec::new(),
             meta_tag: None,
+            specialization_parent: None,
             inhabits: None,
 
             value_body: None,
@@ -1775,6 +1782,7 @@ fn type_to_declaration_id(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
 
                 value_body: None,
@@ -1795,6 +1803,7 @@ fn type_to_declaration_id(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
 
                 value_body: None,
@@ -1831,6 +1840,7 @@ fn type_to_declaration_id(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
 
                 value_body: None,
@@ -1994,6 +2004,7 @@ fn alloc_identifier_stub(dag: &mut Dag, name: &str, span: &SourceSpan) -> Declar
         connective: TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name.to_string())),
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
 
         value_body: None,
@@ -4000,6 +4011,7 @@ fn lower_lambda_expr(
         },
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: None,
@@ -4343,6 +4355,7 @@ fn specialize_decl_for_lowering(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
@@ -4375,6 +4388,7 @@ fn specialize_decl_for_lowering(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
@@ -4401,12 +4415,19 @@ fn specialize_decl_for_lowering(
             let id = dag.alloc_declaration_id();
             dag.push_declaration(Declaration {
                 id,
+                // Specialized products stay `name: None`: reusing the template name
+                // would admit two `DeclarationId`s with the same Rust type label if
+                // both were ever emitted outside filtered surfaces.
+                // No `specialization_parent` here: unlike specialized anonymous `Disj`,
+                // emit has no consumer that must recover a template `Conj` label today;
+                // set the edge when a real downstream needs it (E-6 / same-PR consumer).
                 name: None,
                 connective: TypeConnective::Conj {
                     children: specialized_children,
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
@@ -4433,12 +4454,18 @@ fn specialize_decl_for_lowering(
             let id = dag.alloc_declaration_id();
             dag.push_declaration(Declaration {
                 id,
+                // P2: `Declaration::name` is the only surface-visible authority for
+                // `Dag::declaration_by_name` — never clone the template name onto a
+                // fresh `Disj` id (that admits a second winner in name-based lookup).
+                // Emit qualifies Rust match patterns via `Declaration::specialization_parent`
+                // (`rust_target::named_disj_enum_name_for_rust_match_emit`).
                 name: None,
                 connective: TypeConnective::Disj {
                     variants: specialized_variants,
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: Some(current),
                 inhabits: None,
                 value_body: None,
                 refinement: None,
@@ -4926,6 +4953,7 @@ fn lower_expr(
                     },
                     type_params: Vec::new(),
                     meta_tag: None,
+                    specialization_parent: None,
                     inhabits: None,
                     value_body: None,
                     refinement: None,
@@ -5527,6 +5555,7 @@ fn resolve_expected_variant_constructor(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
@@ -6399,6 +6428,7 @@ mod tests {
             connective,
             type_params: Vec::new(),
             meta_tag,
+            specialization_parent: None,
             inhabits: None,
             value_body: None,
             refinement: None,
@@ -6508,5 +6538,62 @@ mod tests {
             ),
             "strict identifier sweep must preserve name-fallback provenance on repaired stubs"
         );
+    }
+
+    /// Receipt for `Declaration::specialization_parent` on specialized anonymous
+    /// `Disj` copies: the walker in `emit::rust_target` depends on this edge shape.
+    #[test]
+    fn specialize_decl_for_lowering_anonymous_disj_sets_specialization_parent() {
+        let mut dag = Dag::new();
+        let t_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: t_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
+            type_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: test_span(),
+        });
+        let int_id = dag.int_shape().expect("bootstrap Int").declaration;
+        let template_id = push_test_declaration(
+            &mut dag,
+            "WithT",
+            TypeConnective::Disj {
+                variants: vec![Field {
+                    label: "V".to_string(),
+                    ty: t_param,
+                }],
+            },
+            None,
+        );
+        let specialized = specialize_decl_for_lowering(
+            &mut dag,
+            template_id,
+            &[TemplateArgument {
+                parameter: t_param,
+                value: int_id,
+            }],
+            0,
+        );
+        assert_ne!(
+            specialized, template_id,
+            "substituting T into the variant payload should allocate a fresh Disj"
+        );
+        let anon = dag.declaration(specialized);
+        assert!(anon.name.is_none());
+        assert_eq!(
+            anon.specialization_parent,
+            Some(template_id),
+            "Rust emit recovers the template enum via specialization_parent"
+        );
+        let TypeConnective::Disj { variants } = &anon.connective else {
+            panic!("expected specialized Disj");
+        };
+        assert_eq!(variants.len(), 1);
+        assert_eq!(variants[0].ty, int_id);
     }
 }
