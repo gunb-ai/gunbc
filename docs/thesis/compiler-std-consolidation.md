@@ -125,7 +125,7 @@ Positive-definition set (NOT counted against the ratchet):
 - Substrate reflection accessor declarations
 
 Exempted (pending named trigger, not counted either direction):
-- `parse_tables.dag` — 4 types, exempted pending SG-2c-proper per-row classification
+- `parse_tables.dag` — 5 types, exempted pending SG-2c-proper per-row classification
 
 Ratchet-tracked (**migrates to `std/`, counted against the baseline**):
 - Compiler-side types that duplicate user-facing concepts (tokenize, runtime_mirrors)
@@ -137,7 +137,7 @@ Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"`):
 |---|---|---|
 | `src/v3/compiler/tokenize.dag` | 6 | **in-ratchet** (migrates to `std/`) |
 | `src/v3/compiler/runtime_mirrors.dag` | 14 | **in-ratchet** (migrates to `std/`) |
-| `src/v3/compiler/parse_tables.dag` | 4 | exempted pending SG-2c-proper |
+| `src/v3/compiler/parse_tables.dag` | 5 | exempted pending SG-2c-proper |
 | `src/v3/compiler/operators.dag` | 0 | — |
 | `src/v3/compiler/pipeline.dag` | 3 | positive-def |
 | `src/v3/compiler/regen.dag` | 1 | positive-def |
@@ -156,7 +156,7 @@ Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"`):
 
 End state: 0. Each migration lane reduces the count; positive-definition types track growth separately and are not bounded downward by this ratchet.
 
-**`parse_tables.dag` exemption protocol.** The gap analysis above (§"From `src/v3/compiler/parse_tables.dag` → unclear") says some row *shapes* (`BinaryOpRow`, `TopLevelItemKwRow`, etc.) may legitimately stay compiler-API as parser-dispatch shapes, while the *data* they carry (operator precedence levels, keyword-to-item mappings) moves to `std/syntax.dag`. That per-row classification is deferred until SG-2c-proper parser cutover. While deferred, `parse_tables.dag` is **exempted from the primary ratchet count** — its 4 types neither count toward the migration target nor against it. When SG-2c-proper classifies:
+**`parse_tables.dag` exemption protocol.** The gap analysis above (§"From `src/v3/compiler/parse_tables.dag` → unclear") says some row *shapes* (`BinaryOpRow`, `TopLevelItemKwRow`, `SoftKeywordIdentRow`, etc.) may legitimately stay compiler-API as parser-dispatch shapes, while the *data* they carry (operator precedence levels, keyword-to-item mappings) moves to `std/syntax.dag`. That per-row classification is deferred until SG-2c-proper parser cutover. While deferred, `parse_tables.dag` is **exempted from the primary ratchet count** — its 5 types neither count toward the migration target nor against it. When SG-2c-proper classifies:
 - Rows classified as **compiler-API dispatch shapes** → formally added to the positive-definition set (same status as `pipeline.dag` / `regen.dag` types).
 - Rows classified as **language-level data** → become ratchet-tracked migrations to `std/syntax.dag`.
 

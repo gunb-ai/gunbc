@@ -6,7 +6,8 @@
 #      `src/v3/lenses/*.dag`.
 #   2. Subtract positive-definition rows.
 #   3. Subtract exempt rows.
-#   4. Fail CI if the remaining tracked total grows above the baseline.
+#   4. Fail CI unless the remaining tracked total matches the ratcheted
+#      baseline exactly.
 #
 # The row lists below are the explicit in-tree classification required to
 # make the thesis rule actionable in CI. The script also fails closed if
@@ -161,5 +162,14 @@ if [ "$TRACKED_TOTAL" -gt "$BASELINE_TRACKED_TOTAL" ]; then
   exit 1
 fi
 
+if [ "$TRACKED_TOTAL" -lt "$BASELINE_TRACKED_TOTAL" ]; then
+  echo
+  echo "::error::compiler-std ratchet improved without lowering the baseline: tracked total $TRACKED_TOTAL < baseline $BASELINE_TRACKED_TOTAL"
+  echo "Action:"
+  echo "  1. Lower BASELINE_TRACKED_TOTAL in this script to the new tracked total, AND"
+  echo "  2. Update the matching baseline / exemption count in docs/thesis/compiler-std-consolidation.md and ROADMAP.md in the same PR."
+  exit 1
+fi
+
 echo
-echo "compiler-std ratchet: clean ($TRACKED_TOTAL <= $BASELINE_TRACKED_TOTAL)"
+echo "compiler-std ratchet: clean ($TRACKED_TOTAL == $BASELINE_TRACKED_TOTAL)"
