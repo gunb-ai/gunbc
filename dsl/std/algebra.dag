@@ -42,7 +42,7 @@
 //   Lattice             | meet ∧ and join ∨ (both idempotent, absorptive)
 //   BoundedLattice      | top (⊤) and bottom (⊥)
 //   BooleanAlgebra      | complement (¬), distributive
-//   FreeMonoid<T>       | concat + empty + length + positional access
+//   FreeMonoid<T>       | concat + empty; Int-indexed length/count + slice/index
 //
 // DENOTATIONAL GROUNDING:
 //
@@ -81,8 +81,8 @@
 //
 //   Map<K,V> inhabits PartialFunction<K,V>
 //     Because: Map<K,V> = K -> (1 + V), a partial function. Lookup is
-//     function application. Merge requires conflict resolution because
-//     two partial functions may disagree on a key.
+//     function application. merge(other) combines maps; how disagreements
+//     on a key are resolved is fixed by the realization, not a merge parameter.
 
 module std.algebra
 
@@ -263,16 +263,13 @@ type BooleanAlgebra<T> {
 // The "free" means: no additional relations beyond the monoid laws.
 // Every element of FreeMonoid<T> is a unique finite sequence of T values.
 //
-// Operations that emerge:
-//   concat(FreeMonoid<T>, FreeMonoid<T>) -> FreeMonoid<T>   (monoid op)
-//   empty: FreeMonoid<T>                                     (identity)
-//   length(FreeMonoid<T>) -> Nat                             (carrier count)
-//   index(FreeMonoid<T>, Nat) -> T?                          (positional access)
-//   slice(FreeMonoid<T>, Nat, Nat) -> FreeMonoid<T>          (subsequence)
-//   map(FreeMonoid<T>, fn(T) -> U) -> FreeMonoid<U>          (functorial)
-//   fold(FreeMonoid<T>, init: U, fn(U, T) -> U) -> U         (catamorphism)
-//   filter(FreeMonoid<T>, fn(T) -> Bool) -> FreeMonoid<T>    (predicated subsequence)
-//   reverse(FreeMonoid<T>) -> FreeMonoid<T>                  (anti-involution)
+// Declared surface (receiver-shaped fields — matches the record below):
+//   Monoid: concat(self, other), empty, append(element)
+//   Int-indexed carrier: length(), count(), index(i: Int) -> T, slice(i, j),
+//     first() -> T?, last() -> T?
+//   map: endomorphic fn(T) -> T -> FreeMonoid<T> (not fn(T)->U with U free)
+//   fold: monoid-shaped on T — init: T plus step fn(T, T) -> T -> T
+//   filter, flat_map, any, all, enumerate, reverse, skip, take, sort_by, contains
 type FreeMonoid<T> {
   // Monoid operations
   concat: fn(FreeMonoid<T>, FreeMonoid<T>) -> FreeMonoid<T>
@@ -304,14 +301,13 @@ type FreeMonoid<T> {
 // PartialFunction<K, V>: finite partial function (Map algebra).
 // Map<K, V> = K -> (1 + V) — a function that may be undefined for some keys.
 //
-// Operations that emerge:
-//   lookup(Map<K,V>, K) -> V?                    (function application)
-//   insert(Map<K,V>, K, V) -> Map<K,V>           (extend domain)
-//   delete(Map<K,V>, K) -> Map<K,V>              (restrict domain)
-//   merge(Map<K,V>, Map<K,V>, fn(V,V)->V) -> Map<K,V>  (union with conflict)
-//   keys(Map<K,V>) -> Set<K>                     (domain)
-//   values(Map<K,V>) -> List<V>                  (range, repeated)
-//   size(Map<K,V>) -> Nat                        (domain cardinality)
+// Declared surface (receiver-shaped fields — matches the record below):
+//   lookup(k), get(k) -> V?        (application / alias accessors)
+//   empty, insert(k, v)
+//   merge(other: PartialFunction<K, V>) -> PartialFunction<K, V>
+//   has(k), contains_key(k) -> Bool
+//   keys() -> FreeMonoid<K>, values() -> FreeMonoid<V>   (sequence views)
+//   size() -> Int
 type PartialFunction<K, V> {
   lookup: fn(K) -> V?
   empty: PartialFunction<K, V>
@@ -363,8 +359,8 @@ type Ordering = Less | Equal | Greater
 //   xor(a, b)  = meet(join(a, b), complement(meet(a, b)))
 //
 // From FreeMonoid:
-//   length(m)    = fold(m, init: 0, f: (acc, _) => acc + 1)
-//   contains(m, x) = fold(m, init: false, f: (acc, e) => acc || e == x)
+//   length and count are declared methods (Int). contains is a declared predicate.
+//   The record's fold is monoid-shaped on T, not a generic catamorphism init: U.
 
 // =========================================================================
 // Compiler bridge: algebraic enrichment profiles
