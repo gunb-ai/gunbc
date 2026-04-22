@@ -31,13 +31,25 @@ declaration, (b) delete templates, or (c) project templates from declaration.
 - Used as nominal aliases: `type Int64 = OrderedRing<Word64>`
   (`std/integer.dag:31-34`), `type Map<key,value> = PartialFunction<key,value>`
   (`std/types.dag:208`).
-- Grep for any walker that enumerates these types' *children* as method
-  authority: none. Method resolution for the kernel types flows through the
-  profile→template path, not through the alias target's field list.
+- **Consumed as executable authority by the v3 operator-resolution
+  pipeline.** `infer.rs::read_algebra_field` (`src/v3/compiler/src/infer.rs:3819`)
+  walks the algebra declaration's fields, unwraps each field's
+  `TypeConnective::Arrow { inputs, output, body }`, substitutes the
+  receiver type parameter, and returns the resolved Arrow for operator
+  dispatch. `lower.rs` (`:3222-3237`, and the generated mirror at
+  `lower_generated.rs:3222-3237`) validates that every
+  `OperatorRealization.op` walks to an algebra field declaration whose
+  connective is Arrow (e.g. `OrderedRing.add`); non-Arrow or non-field
+  targets are rejected with a diagnostic.
+- v2 method materialization does not go through the declaration; it goes
+  through `kernel_algebra_profile` → templates.
 
-**Conclusion:** the type-declaration field lists are not compiler-consumed
-method authority. Templates are the sole executable authority. The
-declarations are prose-shaped-as-code.
+**Conclusion:** both surfaces are compiler-consumed executable authority,
+but by *different pipelines for different purposes*. v3 reads the algebra
+type declaration's field Arrows to resolve surface operators (`+`, `<`,
+...) via `OperatorRealization`. v2 reads templates to materialize method
+fields on kernel types and to decorate lookups with cost/size metadata.
+Neither pipeline consumes the other's surface.
 
 ## Why they're not redundant
 
@@ -80,13 +92,15 @@ structurally cannot carry:
 - In templates, absent from declaration: `clamp` (v2 emission synonym).
 
 **PartialFunction:**
-- In declaration, absent from templates as-is: `empty` (exists in declaration
-  as an identity element, not exposed as a method template anywhere);
-  `insert` vs template `map_insert`; `merge` vs `map_merge`; `contains_key`
-  vs `map_contains_key`; `size` vs template `length`.
-- In templates, absent from declaration: `get` (declaration only has
-  `lookup`), `map_get`, `map_has`, `map_keys`, `map_values`, `with`,
-  `contains`, `length`.
+- In declaration, absent from templates as-is: `empty` (declared as the
+  identity element `empty: PartialFunction<K, V>` — not exposed as a
+  method template); `insert` vs template `map_insert`; `merge` vs
+  `map_merge`; `contains_key` vs `map_contains_key`; `size` vs template
+  `length`.
+- In templates, absent from declaration: `map_get`, `map_has`,
+  `map_keys`, `map_values`, `with`, `contains`, `length`. (Both
+  declaration and templates carry `get`, `lookup`, `has`, `keys`,
+  `values`.)
 
 The drift is not accidental divergence. It is two surfaces tracking two
 different consumer populations.
@@ -97,17 +111,25 @@ different consumer populations.
   carry `size_effect`/`cost_shape`/`callback_element_position` or the
   kernel-synonym name set. Would require extending the type declaration
   with new connectives or violate `no_annotations`.
-- **(b) delete templates.** Blocked: consumers (`enrich_kernel_type`,
-  `resolve_known_method_node`) need the metadata. Declaration cannot
-  supply it.
-- **(c) project templates from declaration.** Blocked symmetrically: the
-  declaration is the *smaller* surface. You cannot project the larger
-  surface from the smaller one.
+- **(b) delete templates.** Blocked: v2 consumers (`enrich_kernel_type`,
+  `resolve_known_method_node`) need the per-method metadata. Declaration
+  cannot supply it, and the v3 operator pipeline only validates Arrow
+  field shape — it has no slot for cost/size/callback either.
+- **(c) project templates from declaration.** Blocked by asymmetric
+  information: each surface carries fields the other does not. Declaration
+  carries `sub`/`div`/`eq`/`ne`/`lt`/`le`/`gt`/`ge` (OrderedRing) and
+  `empty`/`insert`/`merge`/`contains_key`/`size` (PartialFunction) that
+  templates omit. Templates carry `clamp` (OrderedRing) and the
+  `map_*`-prefixed synonyms + `with`/`contains`/`length`
+  (PartialFunction) that the declaration omits, plus metadata the
+  declaration cannot hold. Neither is a subset of the other.
 
 The only shape that would dissolve the parallel is: lift the template
 metadata (size/cost/callback, kernel synonyms) to a modeling primitive that
-*extends* the algebra type declaration — i.e., the declaration becomes rich
-enough that the templates are pure projection. That's not a reconciliation
+*extends* the algebra type declaration, AND fold the v3 operator-surface
+fields (`sub`, `eq`, `lt`, ...) into a sibling structure or template
+metadata too — so a single enriched declaration drives both the v3
+operator walk and v2 kernel materialization. That's not a reconciliation
 edit in `algebra.dag`; it's a substrate-capability lane.
 
 ## Recommendation
