@@ -115,12 +115,12 @@ retire projection — not one.
 - Outputs:
   `bootstrap_std_generated.rs`,
   `bootstrap_generated.rs`,
-  `bootstrap_generated_without_runtime_mirrors.rs`.
-- `compile_runtime_mirrors_authority_dag` consumes the
-  no-`runtime_mirrors` snapshot so `runtime_mirrors.dag` can still
+  `bootstrap_generated_without_parse_surface.rs`.
+- `compile_parse_surface_std_authority_dag` consumes the
+  no-`parse_surface` snapshot so `src/v3/std/parse_surface.dag` can still
   compile first-of-name for regen/tests.
 - Drift checks: integration snapshot tests compare the generated
-  full bootstrap and the no-`runtime_mirrors` variant against the
+  full bootstrap and the no-`parse_surface` variant against the
   legacy runtime bootstrap builders.
 
 ### PB-2 — tokenize retire

@@ -1,4 +1,4 @@
-// AUTO-GENERATED from `src/v3/compiler/runtime_mirrors.dag` (Surface carriers)
+// AUTO-GENERATED from `src/v3/std/parse_surface.dag` (Surface carriers)
 // via `regen_parse` + `parse_parser_body.txt`. Regenerate instead of hand-editing.
 
 use crate::diagnostics::{Diagnostic, SourceSpan};

@@ -79,7 +79,7 @@ import v3.std.clean_emission {
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
 import std.algebra { BooleanAlgebra }
-import v3.compiler.runtime_mirrors {
+import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
   VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMatchArm,
   SurfacePatternField, SurfacePattern, SurfaceLiteral, SurfaceExpr

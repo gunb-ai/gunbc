@@ -49,13 +49,13 @@ Everything else moves to `std/`: Token, File, Path, SourceSpan, Diagnostic, Iden
 
 **Migration note:** `dsl/extdeps/languages/dag/syntax.dag` already carries the shared syntax authority (keyword names, operator symbols) that `regen_tokenize` reads. This migration landed by moving the six declarations into `src/v3/std/tokenize.dag`; `src/v3/compiler/tokenize.dag` now imports them and retains only scanner-local rows/data.
 
-#### From `src/v3/compiler/runtime_mirrors.dag` → `std/syntax.dag` (14 types)
+#### From `src/v3/compiler/runtime_mirrors.dag` → `src/v3/std/parse_surface.dag` (14 types, landed)
 
 - `DagDifference`, `SurfaceModule`, `SurfaceParam`, `SurfaceField`, `SurfaceVariant`, `VariantPayload`, `SurfaceType`, `SurfaceRecordField`, `SurfaceMatchArm`, `SurfacePatternField`, `SurfacePattern`, `SurfaceLiteral`, `SurfaceExpr`, `SurfaceItem`
 
-**Why shared:** the parse-surface AST is the representation any code-manipulation tool would consume. A user macro, a source transformer, an IDE-driven refactor — all would use the same `SurfaceExpr` / `SurfacePattern` shapes. The compiler carrying its own is pure dual-representation debt.
+**Why shared:** the parse-surface AST is the representation any code-manipulation tool would consume. A user macro, a source transformer, an IDE-driven refactor — all would use the same `SurfaceExpr` / `SurfacePattern` shapes. The compiler carrying its own was dual-representation debt.
 
-**Migration note:** `runtime_mirrors.dag` itself calls these out as 🟡 SCAFFOLD with a dissolution trigger ("`parse_parser_body.txt` header emit algorithm from `.dag` alone + SG-2b/SG-3f parse-rule cutover"). The migration target is `dsl/std/syntax.dag` (already exists as a partial syntax authority) or a new `dsl/std/parse_surface.dag`.
+**Migration note:** Landed as `module v3.std.parse_surface` in `src/v3/std/parse_surface.dag`; the old `runtime_mirrors.dag` module is deleted. The 🟡 SCAFFOLD dissolution trigger for parse-rule authority is unchanged ("`parse_parser_body.txt` header emit algorithm from `.dag` alone + SG-2b/SG-3f parse-rule cutover"). Long-term, `dsl/std/` may subsume this file when the v2/v3 `std/` trees merge; the module path stays `v3.std.parse_surface` until then.
 
 #### From `src/v3/compiler/parse_tables.dag` → unclear
 
@@ -128,15 +128,14 @@ Exempted (pending named trigger, not counted either direction):
 - `parse_tables.dag` — 6 types, exempted pending SG-2c-proper per-row classification
 
 Ratchet-tracked (**migrates to `std/`, counted against the baseline**):
-- Compiler-side types that duplicate user-facing concepts (tokenize, runtime_mirrors)
+- Compiler-side types that duplicate user-facing concepts (tokenize types moved; parse-surface family moved — remaining debt is lens Lookup/coproduct scaffolds listed in the inventory)
 - Strict 2-variant `Missing | Found(T)` Lookup-pattern carriers across lenses (`CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup` — 3 instances) — dissolve into a single `Lookup<T>` type in `std/`. Carriers with additional semantic variants (e.g., `VariantPayloadShapeLookup`'s `NotPayloadProduct`, `TemplateArgumentBinding = Conflict | NoOp | Append`) are lens-API, not in-ratchet.
 - Lens-local workaround-shaped coproducts with named dissolution triggers (today: `TemplateArgumentsMatch`, `TemplateArgumentCursor` in `infer_helpers.dag`) also count against the ratchet; these are implementation scaffolds, not genuine lens-API carriers.
 
-Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"` after the tokenizer migration):
+Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"` after the tokenizer migration; **primary ratchet updated 2026-04-22 — consolidation tranche 2** after `parse_surface` migration):
 
 | File | Type decls | Disposition |
 |---|---|---|
-| `src/v3/compiler/runtime_mirrors.dag` | 14 | **in-ratchet** (migrates to `std/`) |
 | `src/v3/compiler/parse_tables.dag` | 6 | exempted pending SG-2c-proper |
 | `src/v3/compiler/operators.dag` | 0 | — |
 | `src/v3/compiler/pipeline.dag` | 3 | positive-def |
@@ -152,7 +151,7 @@ Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"` after the tokenizer 
 | `src/v3/lenses/unused_parameters.dag` | 1 | positive-def (`UnusedParameter`) |
 | `src/v3/lenses/variant_payload.dag` | 2 | both positive-def (`VariantPayloadShape` domain type + `VariantPayloadShapeLookup` — 3-variant carrier with `NotPayloadProduct` semantic distinction, not generic Lookup) |
 
-**Primary ratchet count today: 19** (14 from runtime_mirrors + 3 strict 2-variant Lookup-pattern carriers: `CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup` + 2 workaround-shaped infer-helper coproducts: `TemplateArgumentsMatch`, `TemplateArgumentCursor`). The tokenizer migration removed 6 compiler-local type declarations by moving them to `src/v3/std/tokenize.dag`, so the baseline dropped from 25 to 19. All lens-local types now classified — `structural_resolution.dag`'s two record types (`UnresolvedArrowBody`, `NameKeyedReference`) are positive-def lens-API carrying the lens's findings.
+**Primary ratchet count today: 5** (3 strict 2-variant Lookup-pattern carriers: `CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup` + 2 workaround-shaped infer-helper coproducts: `TemplateArgumentsMatch`, `TemplateArgumentCursor`). The tokenizer migration removed 6 compiler-local type declarations by moving them to `src/v3/std/tokenize.dag` (25 → 19). Consolidation tranche 2 removed 14 by moving the parse-surface family to `src/v3/std/parse_surface.dag` (19 → 5). All lens-local types now classified — `structural_resolution.dag`'s two record types (`UnresolvedArrowBody`, `NameKeyedReference`) are positive-def lens-API carrying the lens's findings.
 
 End state: 0. Each migration lane reduces the count; positive-definition types track growth separately and are not bounded downward by this ratchet.
 
@@ -162,7 +161,7 @@ End state: 0. Each migration lane reduces the count; positive-definition types t
 
 The exemption dissolves at SG-2c-proper completion; both thesis doc and ROADMAP row update the ratchet formula in the same PR as SG-2c-proper lands.
 
-**Secondary ratchet — v3-std tree consolidation.** Count of `type` declarations in `src/v3/std/*.dag`. Baseline: 148 types across 14 files after adding `src/v3/std/tokenize.dag` (the prior 142 plus 6 migrated tokenizer types). These collapse to `dsl/std/*.dag` wholesale when the file-preference scaffold dissolves (ROADMAP: v2 retirement gate). This ratchet is gated by that dissolution, not per-lane moves.
+**Secondary ratchet — v3-std tree consolidation.** Count of `type` declarations in `src/v3/std/*.dag`. Baseline: 162 types across 15 files after adding `src/v3/std/parse_surface.dag` (the post-tokenize 148 plus 14 migrated surface-schema types). These collapse to `dsl/std/*.dag` wholesale when the file-preference scaffold dissolves (ROADMAP: v2 retirement gate). This ratchet is gated by that dissolution, not per-lane moves.
 
 **Tertiary ratchet — hand-Rust surface.** This doc does not duplicate the Pure Bootstrap ratchet; it anchors to it. The authoritative measure is **SG-0's `EXPECTED_HAND_AUTHORED ∖ GENERATED_FILES`** (live in `src/v3/compiler/tests/integration/sg0_census_test.rs`); [docs/design-pure-bootstrap.md](../design-pure-bootstrap.md)'s PB-0 ratchet is the tracking program. **The count is whatever the live ratchet test reads today** — any number in prose drifts stale. For a current snapshot, run the SG-0 census test directly; do not approximate via `grep` on `EXPECTED_HAND_AUTHORED` alone, because that list can include generated-fragment paths that the ratchet subtracts via `GENERATED_FILES` at runtime — grep counts the pre-subtraction set, not the authoritative post-subtraction set. Target: **≤5** per Pure Bootstrap's irreducible-shim goal. Concrete hand-Rust that still needs to dissolve: parse algorithm, lower algorithm body, infer algorithm body, emit backbone, bootstrap shim, and lens-adjacent Rust files (some of which are Band-C-STUB backs per the lens capability register — dissolving when substrate carriers and emit `match` capabilities land).
 

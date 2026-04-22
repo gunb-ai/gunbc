@@ -68,12 +68,12 @@ mod bootstrap_generated {
     include!("bootstrap_generated.rs");
 }
 
-mod bootstrap_generated_without_runtime_mirrors {
+mod bootstrap_generated_without_parse_surface {
     #![allow(unused_mut)]
 
     use super::*;
 
-    include!("bootstrap_generated_without_runtime_mirrors.rs");
+    include!("bootstrap_generated_without_parse_surface.rs");
 }
 
 mod builder;
@@ -1443,9 +1443,9 @@ static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
     dag
 });
 
-static BOOTSTRAPPED_DAG_WITHOUT_RUNTIME_MIRRORS_FIXTURE: LazyLock<Dag> = LazyLock::new(|| {
+static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag =
-        bootstrap_generated_without_runtime_mirrors::bootstrapped_fixture_without_runtime_mirrors_dag();
+        bootstrap_generated_without_parse_surface::bootstrapped_fixture_without_parse_surface_dag();
     dag.populate_primitive_cache();
     dag
 });
@@ -1480,11 +1480,11 @@ impl Dag {
         (*BOOTSTRAPPED_DAG).clone()
     }
 
-    /// Clone of the bootstrapped Dag used by [`crate::compile_runtime_mirrors_authority_dag`]:
-    /// every fixture except `src/v3/compiler/runtime_mirrors.dag`, so that file can be
+    /// Clone of the bootstrapped Dag used by [`crate::compile_parse_surface_std_authority_dag`]:
+    /// every fixture except `src/v3/std/parse_surface.dag`, so that file can be
     /// parsed and lowered again without duplicate top-level names.
-    pub(crate) fn new_without_runtime_mirrors_compiler_fixture_bootstrap() -> Self {
-        (*BOOTSTRAPPED_DAG_WITHOUT_RUNTIME_MIRRORS_FIXTURE).clone()
+    pub(crate) fn new_without_parse_surface_staged_fixture_bootstrap() -> Self {
+        (*BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE).clone()
     }
 
     pub(crate) fn std_fixture_bootstrap_snapshot() -> Self {

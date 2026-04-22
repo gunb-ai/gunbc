@@ -12,7 +12,6 @@ src/v3/compiler/operators.dag	5	47160	b75a91c65bf8a242
 src/v3/compiler/parse_tables.dag	36	80759	0b5768e50a18f286
 src/v3/compiler/pipeline.dag	26	47032	a13b41aa379fd167
 src/v3/compiler/regen.dag	11	30786	49f47c59c626d776
-src/v3/compiler/runtime_mirrors.dag	17	95346	ec2f9c233bfc9d26
 src/v3/compiler/tests/four_fixture_pressure/drop.v3	2	2517	00953bc6b6d8c811
 src/v3/compiler/tests/four_fixture_pressure/id.v3	2	2452	ec8b40edc3d3c017
 src/v3/compiler/tests/four_fixture_pressure/is_empty.v3	3	6755	00117f14eb43dd20
@@ -30,6 +29,7 @@ src/v3/std/dimensions.dag	8	15340	571b6224904e5e30
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
 src/v3/std/emit_model.dag	31	60887	e51e1108edcaae1d
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
+src/v3/std/parse_surface.dag	0	0	0000000000000000
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/substrate.dag	47	106731	53da658223c5328a
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672

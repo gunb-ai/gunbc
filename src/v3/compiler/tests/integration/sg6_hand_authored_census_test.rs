@@ -186,7 +186,7 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
         "SG-6 hand-authored bin census changed. The census is \
          `regen_lens` (reads `src/v3/compiler/regen.dag`), `regen_lower` \
          (reads `src/v3/compiler/src/lower.rs`), `regen_parse` \
-         (reads `src/v3/compiler/runtime_mirrors.dag` for Surface carriers), `regen_tokenize` \
+         (reads `src/v3/std/parse_surface.dag` for Surface carriers), `regen_tokenize` \
          (reads `src/v3/compiler/tokenize.dag`), `regen_v3`, and \
          `self_host_fixed_point`. Adding a new bin re-introduces a \
          per-lens (or per-target) Rust driver — the SG-6 lane requires that \

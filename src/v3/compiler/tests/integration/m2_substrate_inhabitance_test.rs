@@ -1011,6 +1011,6 @@ fn runtime_mirror_snapshots_are_fresh() {
         .expect("run runtime mirror freshness check");
     assert!(
         status.success(),
-        "runtime mirror snapshots are stale; run scripts/regen_runtime_mirrors.py"
+        "parse-surface / serialize snapshots are stale; run scripts/regen_runtime_mirrors.py"
     );
 }

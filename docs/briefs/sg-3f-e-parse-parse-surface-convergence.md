@@ -26,7 +26,7 @@ the lowerer rather than improving it. SG-3g-b was parked on this brief.
 - `src/v3/compiler/src/bin/regen_parse.rs` — the regen flow that emits
   `parse_generated.rs`.
 - `src/v3/compiler/src/lib.rs` — module wiring (`parse`, `parse_surface`) and
-  `compile_to_dag` / `compile_runtime_mirrors_authority_dag` entry points.
+  `compile_to_dag` / `compile_parse_surface_std_authority_dag` entry points.
 - PR #612 body — explicit framing of the parked wire-in and its prerequisites.
 - `docs/briefs/sg-3g-b-lower-helpers-wire-in.md` — the parked wire-in lane;
   this brief unblocks it.
