@@ -27,9 +27,11 @@ type BrowserConfig {
 
 // Opaque handles — the interpreter manages the actual Playwright objects.
 // These are passed between operations but never inspected by .dag code.
-type BrowserContext
-type Page
-type Element
+// Branded-String form lets shell transport interpolate the handle via argv
+// while the type system keeps them disjoint from raw String.
+type BrowserContext = String where brand("BrowserContext")
+type Page           = String where brand("Page")
+type Element        = String where brand("Element")
 
 // -- Services ---------------------------------------------------------
 
@@ -42,27 +44,27 @@ type Element
 service browser.Context {
   operation Launch {
     input { headless: String = "false", profile_path: FilePath }
-    output { context_id: String from "stdout" }
+    output { context: BrowserContext from "stdout" }
     transport shell { argv: ["playwright-runner", "launch", "--headless", "{headless}", "--profile", "{profile_path}"] }
   }
 
   operation Close {
-    input { context_id: String }
+    input { context: BrowserContext }
     output {}
-    transport shell { argv: ["playwright-runner", "close", "{context_id}"] }
+    transport shell { argv: ["playwright-runner", "close", "{context}"] }
   }
 }
 
 service browser.Page {
   operation Goto {
-    input { url: String, wait_until: String = "domcontentloaded" }
-    output { final_url: String from "stdout" }
+    input { url: Url, wait_until: String = "domcontentloaded" }
+    output { final_url: Url from "stdout" }
     transport shell { argv: ["playwright-runner", "goto", "{url}", "--wait-until", "{wait_until}"] }
   }
 
   operation CurrentUrl {
     input {}
-    output { url: String from "stdout" }
+    output { url: Url from "stdout" }
     transport shell { argv: ["playwright-runner", "url"] }
   }
 
