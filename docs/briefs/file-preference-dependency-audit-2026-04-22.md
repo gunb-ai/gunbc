@@ -66,7 +66,10 @@ Totals: **210 call sites total** (210 grep matches including doc
 references). Actionable call sites (non-comment): **113 in
 `src/v3/compiler/src/`**, **67 in `src/v3/compiler/tests/`**, plus
 the two bulk consumers (`collect_symbols` + the stub-resolution
-sweep at `lower.rs:2134` / `lower_generated.rs:2143` / `infer.rs:1619`).
+sweep at `lower.rs:2134` / `lower_generated.rs:2143`). Two
+dynamic-form helpers (`infer.rs:1619`, `regen_tokenize.rs:159`)
+are called out separately; they range only over singleton names
+and are classified (a), not (c) — see §(c).
 
 ## Classification
 
@@ -190,9 +193,9 @@ should reflect when that lane is scoped.**
 
 ### (c) Legitimate-looking — scaffold's intended consumers
 
-Three classes of consumer look up names programmatically (not from
-a static whitelist) and depend on rank at the systemic level rather
-than at a single call site:
+**Two classes** of consumer look up names programmatically from
+inputs that can range over the overlap set, and so depend on rank
+at the systemic level rather than at a single call site:
 
 1. **`collect_symbols`** (`lower.rs:1269-1286`, mirrored in
    `lower_generated.rs:1259-1286`). Seeds the per-Dag symbol table
@@ -211,9 +214,18 @@ than at a single call site:
    Repairs `UnresolvedIdentifier` stubs after bodies are lowered.
    Same rank-consumer pattern as `collect_symbols`.
 
-3. **`infer.rs:1619`** (`dag.declaration_by_name(name)`) and
-   **`regen_tokenize.rs:159`** — general name-lookup helpers used
-   by inference and codegen regen paths. Same pattern.
+**Dynamic-form call sites that are nevertheless (a) incidental.**
+Two sites invoke `declaration_by_name(name)` with a variable
+argument but only range over singleton names and so are
+rank-insensitive despite the dynamic form:
+
+- `infer.rs:1619` — `literal_decl_id` helper, always one of
+  `{"Int", "Bool", "String"}`.
+- `regen_tokenize.rs:159` — iterates literal array
+  `["dag_keyword_set", "dag_operators"]`.
+
+An earlier draft of this audit classified both as (c); both are
+(a). Reclassified after review.
 
 These are the call sites the scaffold exists to serve; they are
 *not* (b) because they are not load-bearing on rank for their own
@@ -246,14 +258,15 @@ delete together.
 
 | Category | Count | Sites |
 |---|---:|---|
-| (a) Incidental | 162 | all 113 `src/` static-name sites + 49 test sites outside the overlap set |
+| (a) Incidental | 164 | 113 `src/` static-name sites + 49 test sites outside the overlap set + 2 dynamic-form helpers ranging over singletons only (`infer.rs:1619`, `regen_tokenize.rs:159`) |
 | (b) Silent dependency | 18 | 5 TestClaim sites (`m1_5_testgen_test.rs:208`, `lane2_stage_2c_db15_test.rs:9`, `m1_5_verification_test.rs:{76,203,207}`); 13 in `lane2_stage_2a_effects_smoke.rs:{62,63,64,65,66,76×2,90,94,95,97,98,100}` |
-| (c) Legitimate-looking | 3 classes | `collect_symbols`, stub-resolution sweep, dynamic name helpers (`infer.rs:1619`, `regen_tokenize.rs:159`) |
+| (c) Legitimate-looking | 2 classes | `collect_symbols`, stub-resolution sweep |
 
-PR-body framing: **162 safe, 18 silent, 3 class-level legitimate.**
-(Site totals: 113 static `src/` + 67 tests = 180 actionable call
-sites; 180 − 18 (b) = 162 (a). The three (c) classes are consumer
-patterns, not individual sites, and are listed separately.)
+PR-body framing: **164 safe, 18 silent, 2 class-level legitimate.**
+(Site totals: 113 static `src/` + 67 tests + 2 dynamic-singleton
+helpers = 182 actionable call sites; 182 − 18 (b) = 164 (a). The
+two (c) classes are consumer patterns, not individual sites, and
+are listed separately.)
 
 ## Recommendations
 
