@@ -14,11 +14,14 @@ on:
 permissions:
   contents: read
 
-# Cancel in-flight runs on new pushes to the same PR. For pushes to `main`,
-# `github.head_ref` is empty, so we fall back to `github.run_id` — each main
-# push gets a unique group and nothing is cancelled.
+# Cancel in-flight runs on new pushes to the same PR. Keyed on the PR
+# number (not `head_ref`) so two fork PRs that happen to share a branch
+# name — e.g. `patch-1` — don't land in the same group and cancel each
+# other. On pushes to `main`, `pull_request.number` is empty, so the
+# fallback `run_id` gives each main push a unique group and nothing is
+# cancelled.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 env:
