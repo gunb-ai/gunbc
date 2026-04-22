@@ -19,6 +19,54 @@
 // syntax bodies lower structurally under `compile_to_dag`, delete the raw-text
 // extractor and derive directly from the lowered Dag in the same PR.
 //
+// **Tracked scaffold (character-level under-consumption — consumption gap,
+// not substrate gap).** The scan phases below slice the ASCII/Unicode
+// codepoint space in two parallel forms, neither of which consumes the
+// character-level authorities that already exist in `dsl/std/`:
+//
+//   1. **Reserved individual codepoints as opaque strings.** `StringEscapeSpec`
+//      fields (`suffix: String`, `output_codepoint: Int`), `LocalPunctSpec.
+//      pattern: String`, `string_literal_delimiter: String`,
+//      `line_comment_prefix: String` — all encode one or more specific
+//      codepoints as byte strings. Parallel authority in
+//      `dsl/extdeps/languages/dag/syntax.dag` does the same for operators
+//      (`OperatorSpec.symbol: String`) and keywords
+//      (`dag_keyword_set: Map<String, Bool>` keys).
+//
+//   2. **Reserved codepoint classes as hidden Rust predicates.**
+//      `regen_tokenize.rs` `push_str`s `is_ascii_whitespace` /
+//      `is_ascii_digit` / `is_ascii_alphabetic` / `is_ascii_alphanumeric`
+//      plus a bare `byte == b'_'` into the generated tokenizer. Not mentioned
+//      in `.dag` at all.
+//
+// **Existing authorities to consume** (already imported cross-tree today —
+// e.g. `src/v3/compiler/regen.dag:3` imports `std.types`):
+//   - `std.types::Char = Int` (Unicode scalar, U+0000–U+10FFFF).
+//   - `std.string_type::String = FreeMonoid<Char>` (String already decomposes).
+//   - `std.unicode` (`DisplayWidth`, `UnicodeBlock`, block/width classification).
+//   - `std.encoding` (`Encoding = ASCII | UTF8 | Latin1 | Text | Binary |
+//     Unknown` lattice with `ASCII <: UTF8 <: Text` — literally the
+//     ASCII→Unicode→… causal chain).
+//   - `std.bit::Byte`.
+//
+// **Missing piece** (the only actual substrate delta needed): a `CharClass`
+// taxonomy relevant to tokenization (`Whitespace | Digit | IdentStart |
+// IdentContinue` or a superset), with a natural home as a sibling to
+// `DisplayWidth` in `std.unicode`, plus classification predicates declared as
+// data or functions.
+//
+// **Framing.** This is not a substrate gap — the character-level modeling is
+// already done. It is a *consumption gap*: tokenize.dag and syntax.dag both
+// encode the same activity (slicing the ASCII/Unicode space) in two parallel
+// non-canonical forms (opaque strings, hidden Rust predicates) instead of
+// consuming the canonical `Char` / `std.unicode` authorities. Named
+// dissolution trigger (tracked in ROADMAP as a follow-up lane): (a) add
+// `CharClass` + predicates to `std.unicode`; (b) retype the opaque-string
+// fields in this file and `syntax.dag` to consume `Char` / `List<Char>`;
+// (c) rewire `regen_tokenize` to read the class-predicate list structurally
+// rather than hardcoding host-stdlib method names. Goal is faithful
+// consumption of an existing borrow, not re-implementing Unicode in `.dag`.
+//
 // **Scan phases (spec).** After skipping ASCII whitespace, the scanner applies
 // in order: line comment (`line_comment_prefix` to newline), punctuation
 // (longest match across the shared-operator subset plus local punctuation
