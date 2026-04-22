@@ -9,15 +9,20 @@
 // path cannot move that slice honestly without substrate work.
 //
 // It also leaves `walk_to_optional_cardinality_decl`,
-// `callable_template_arguments`, `is_retryable_generic_decl_walk`,
-// `declaration_is_callable`, and `template_arguments_match` in Rust for
-// now: the current reflected helper surface does not expose the
-// canonical total `Dag::declaration(id)` accessor, so the first two
-// cannot move honestly without parallel lookup authority, the current
-// lens path cannot yet express the former's termination proof, and the
-// current lens->Rust emitter still shadows nested `Cons` pattern
-// bindings in generated Rust. `infer.rs` remains authoritative for
-// those remainders.
+// `callable_template_arguments`, `is_retryable_generic_decl_walk`, and
+// `declaration_is_callable` in Rust for now: the current reflected
+// helper surface does not expose the canonical total
+// `Dag::declaration(id)` accessor, so the first two cannot move
+// honestly without parallel lookup authority, and the current lens
+// path cannot yet express the third's termination proof. `infer.rs`
+// remains authoritative for those remainders.
+//
+// SG-4b-4 moves `template_arguments_match` as a bounded Cat-2 cluster.
+// The lens->Rust emitter still shadows nested `Cons` pattern bindings,
+// so the function is factored into three single-match helpers that
+// never nest list matches — each function inspects at most one
+// `List<TemplateArgument>` via `match`, with the other side passed as
+// already-destructured components.
 
 module lenses.infer_helpers
 
@@ -39,6 +44,22 @@ type TemplateArgumentBinding
   | NoOp
   | Append
   | ReplaceAt(Int, DeclarationId)
+
+// SG-4b-4 template-argument match result. Pure pairwise equality over
+// two `List<TemplateArgument>`s; mirrors the existing decision-enum
+// pattern (`TemplateArgumentLookup`, `TemplateArgumentBinding`) so the
+// helper avoids a `Bool` return while the lens->Rust emitter's Bool
+// mapping is still untested.
+type TemplateArgumentsMatch
+  = Match
+  | Mismatch
+
+// Non-recursive rhs-cursor used to destructure the second list without
+// a second `match` over `List`, avoiding the lens->Rust emitter's
+// nested-`Cons`-binding shadow. Pure projection.
+type TemplateArgumentCursor
+  = CursorEnd
+  | CursorHead { head: TemplateArgument, tail: List<TemplateArgument> }
 
 fn behavior_output_port(behavior: Behavior) -> PortId =
   match behavior {
@@ -128,4 +149,47 @@ fn push_template_argument_binding_at(
             Conflict
       else
         push_template_argument_binding_at(payload.tail, parameter, value, index + 1)
+  }
+
+// Pairwise equality over two `List<TemplateArgument>`. The sole
+// recursive function is `template_arguments_match`, which matches on
+// `lhs` and recurses on its structurally-smaller tail. The second
+// list is inspected via the non-recursive `template_argument_cursor`
+// helper, so the emitted Rust never contains a `match` over one list
+// nested inside a `match` over another list (the known lens->Rust
+// emitter shadowing bug).
+fn template_arguments_match(
+  lhs: List<TemplateArgument>,
+  rhs: List<TemplateArgument>
+) -> TemplateArgumentsMatch =
+  match lhs {
+    Empty => template_arguments_rhs_empty(rhs)
+    Cons(lp) =>
+      match template_argument_cursor(rhs) {
+        CursorEnd => Mismatch
+        CursorHead(cur) =>
+          if lp.head.parameter == cur.head.parameter then
+            if lp.head.value == cur.head.value then
+              template_arguments_match(lp.tail, cur.tail)
+            else
+              Mismatch
+          else
+            Mismatch
+      }
+  }
+
+fn template_arguments_rhs_empty(
+  rhs: List<TemplateArgument>
+) -> TemplateArgumentsMatch =
+  match rhs {
+    Empty => Match
+    Cons(_) => Mismatch
+  }
+
+fn template_argument_cursor(
+  xs: List<TemplateArgument>
+) -> TemplateArgumentCursor =
+  match xs {
+    Empty => CursorEnd
+    Cons(p) => CursorHead { head: p.head, tail: p.tail }
   }
