@@ -362,7 +362,7 @@ mod parse_stage4_prep {
     }
 
     #[test]
-    fn total_order_lattice_helpers_flow_through_shared_min_max_by() {
+    fn shared_total_order_helpers_export_from_std_bootstrap() {
         let dag = crate::common::cached_compile::cached_compile_to_dag(
             "let _ = 1",
             "algebra_total_order_helpers.v3",
@@ -376,10 +376,22 @@ mod parse_stage4_prep {
             dag.declaration_by_name("max_by").is_some(),
             "std bootstrap should export max_by"
         );
+    }
+
+    #[test]
+    fn descent_evidence_uses_shared_total_order_helpers() {
         assert_eq!(merge_evidence(Strict, DescentUnknown), DescentUnknown);
         assert_eq!(merge_evidence(Strict, NonIncreasing), NonIncreasing);
         assert_eq!(join_evidence(NonIncreasing, Strict), Strict);
         assert_eq!(join_evidence(DescentUnknown, NonIncreasing), NonIncreasing);
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_fermi_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/fermi.dag"),
+            "dsl/std/fermi.dag",
+        );
     }
 
     #[test]
