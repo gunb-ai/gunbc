@@ -275,7 +275,8 @@ fn every_bracket_shaped_token_kind_variant_has_a_bracket_row() {
 
     let bracket_shaped_token_kinds: std::collections::BTreeSet<String> = token_variants
         .iter()
-        .filter_map(|v| is_bracket_shaped(&v.label).then(|| v.label.clone()))
+        .filter(|v| is_bracket_shaped(&v.label))
+        .map(|v| v.label.clone())
         .collect();
 
     let row_type_id = tables_dag
