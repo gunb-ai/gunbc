@@ -14,9 +14,10 @@
 // declarative tables: (1) binary operator token-to-semantics mapping
 // (SG-2c-1), (2) top-level item keyword → `parse_item` dispatch
 // class (SG-2c-2), (3) type-RHS boundary keyword membership
-// (SG-2c-3), and (4) bracket opener/closer role membership
-// (SG-2c-4, consumed by the parser's depth-tracking scan helpers
-// `skip_where_clause` and `rhs_is_sum`). The binary-operator table replaced hand-coded
+// (SG-2c-3), (4) bracket opener/closer role membership (SG-2c-4,
+// consumed by the parser's depth-tracking scan helpers `skip_where_clause`
+// and `rhs_is_sum`), and (5) primary-expression prefix openers (SG-2c-6,
+// consumed by `parse_primary`). The binary-operator table replaced hand-coded
 // matches across five parser precedence functions in
 // `parse_parser_body.txt`
 // (`parse_logical_or`, `parse_logical_and`, `parse_comparison`,

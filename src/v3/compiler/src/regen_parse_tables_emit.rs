@@ -8,7 +8,9 @@
 //! derived via `Kw`-strip; validated against `tokenize.dag`'s `TokenKind`).
 //! **SG-2c-3:** existing `TopLevelItemKwRow.token_variant` rows also project
 //! `is_type_rhs_boundary_keyword` for the parser's shared top-level item
-//! boundary set.
+//! boundary set. **SG-2c-5:** `SoftKeywordIdentRow` → `soft_keyword_ident_spelling`.
+//! **SG-2c-6:** `PrimaryPrefixRow` → `PrimaryPrefixDispatch` +
+//! `primary_prefix_dispatch` for `parse_primary` prefix openers.
 //!
 //! Used by the `regen_parse_tables` binary (writes the file) and by the
 //! hermetic integration snapshot test (compare in-memory only — avoids a
@@ -79,7 +81,8 @@ impl fmt::Display for RenderParseTablesGeneratedError {
 ///
 /// Validation: `BinaryOpRow` vs `tokenize.dag` + `operators.dag` + shared-syntax
 /// `dag_operators`; `TopLevelItemKwRow` vs `tokenize.dag` + `Kw`-strip dispatch
-/// labels (SG-2c-2/SG-2c-3).
+/// labels (SG-2c-2/SG-2c-3); `SoftKeywordIdentRow` vs `tokenize.dag` + shared keyword set
+/// (SG-2c-5); `PrimaryPrefixRow` vs `tokenize.dag` + prefix dispatch labels (SG-2c-6).
 /// Does not read or write workspace paths.
 pub fn render_parse_tables_generated_rs(
     parse_tables_source: &str,
@@ -119,6 +122,13 @@ pub fn render_parse_tables_generated_rs(
     // only carry `token_variant`; role is derived from the `L`/`R`
     // prefix at regen time.
     let bracket_rows = collect_bracket_rows(&tables_dag, &token_variants);
+    let primary_prefix_rows = collect_primary_prefix_rows(&tables_dag, &token_variants);
+    let mut primary_prefix_variants: Vec<String> = primary_prefix_rows
+        .iter()
+        .map(|r| r.dispatch.clone())
+        .collect();
+    primary_prefix_variants.sort_unstable();
+    primary_prefix_variants.dedup();
     let rust = emit_module(
         &levels,
         &rows,
@@ -126,6 +136,8 @@ pub fn render_parse_tables_generated_rs(
         &item_kw_rows,
         &soft_keyword_ident_rows,
         &bracket_rows,
+        &primary_prefix_variants,
+        &primary_prefix_rows,
     );
     let combined = format!("{HEADER}{rust}");
     rustfmt_stdout(&combined).map_err(RenderParseTablesGeneratedError::Rustfmt)
@@ -367,6 +379,13 @@ struct BracketRow {
     role: String,
 }
 
+/// Scratch shape for SG-2c-6 emission: `dispatch` is derived from `token_variant`
+/// at regen time — not read from the `.dag` row body.
+struct PrimaryPrefixRow {
+    token_variant: String,
+    dispatch: String,
+}
+
 /// `BracketRow.token_variant` is the sole authored field; role is derived
 /// from the `L`/`R` prefix (same one-authority shape as `TopLevelItemKwRow` →
 /// `ItemDispatchKind`, where dispatch is `strip_prefix("Kw")`). No separate
@@ -471,6 +490,79 @@ fn collect_soft_keyword_ident_rows(
     }
     rows.sort_by(|a, b| a.token_variant.cmp(&b.token_variant));
     rows
+}
+
+/// Collect `PrimaryPrefixRow` facts for SG-2c-6; dispatch labels are derived
+/// at regen (see `primary_prefix_dispatch_label_from_token_variant`).
+fn collect_primary_prefix_rows(dag: &Dag, token_variants: &[String]) -> Vec<PrimaryPrefixRow> {
+    let token_variant_set: BTreeSet<&str> = token_variants.iter().map(String::as_str).collect();
+
+    let row_type_id = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("PrimaryPrefixRow"))
+        .map(|d| d.id)
+        .expect("PrimaryPrefixRow declaration");
+
+    let mut rows: Vec<PrimaryPrefixRow> = Vec::new();
+    let mut seen_token_variants: BTreeSet<String> = BTreeSet::new();
+    for decl in dag.declarations() {
+        if decl.meta_tag != Some(row_type_id) {
+            continue;
+        }
+        let name = decl.name.as_deref().unwrap_or("<anonymous>");
+        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            panic!(
+                "`parse_tables.dag::{name}`: `PrimaryPrefixRow` binding must carry a structural value body"
+            );
+        };
+        let token_variant = string_field(fields, "token_variant", name);
+
+        assert!(
+            token_variant_set.contains(token_variant.as_str()),
+            "`parse_tables.dag::{name}`: token_variant `{token_variant}` is not a \
+             `TokenKind` variant in `tokenize.dag`"
+        );
+
+        let dispatch = primary_prefix_dispatch_label_from_token_variant(&token_variant, name);
+
+        assert!(
+            seen_token_variants.insert(token_variant.clone()),
+            "`parse_tables.dag`: duplicate primary-prefix row for `TokenKind::{token_variant}`"
+        );
+
+        rows.push(PrimaryPrefixRow {
+            token_variant,
+            dispatch,
+        });
+    }
+    rows.sort_by(|a, b| a.token_variant.cmp(&b.token_variant));
+    rows
+}
+
+/// `PrimaryPrefixRow.token_variant` is authoritative; dispatch label is
+/// `strip_prefix("Kw")` for keyword openers, else `LBrace` → `Record`,
+/// `LBracket` → `List` — no separately authored substrate enum.
+fn primary_prefix_dispatch_label_from_token_variant(
+    token_variant: &str,
+    decl_name: &str,
+) -> String {
+    if let Some(rest) = token_variant.strip_prefix("Kw") {
+        assert!(
+            !rest.is_empty(),
+            "`parse_tables.dag::{decl_name}`: token_variant `{token_variant}` has nothing after `Kw`"
+        );
+        assert_dispatch_label_is_rust_identifier(rest, decl_name);
+        return rest.to_string();
+    }
+    match token_variant {
+        "LBrace" => "Record".to_string(),
+        "LBracket" => "List".to_string(),
+        other => panic!(
+            "`parse_tables.dag::{decl_name}`: token_variant `{other}` must be `Kw*` or \
+             `LBrace` / `LBracket` (primary prefix openers)"
+        ),
+    }
 }
 
 /// Derive `BracketRole` from the `L`/`R` prefix of a bracketing `TokenKind`
@@ -643,6 +735,8 @@ fn emit_module(
     item_kw_rows: &[TopLevelItemKwRow],
     soft_keyword_ident_rows: &[SoftKeywordIdentRow],
     bracket_rows: &[BracketRow],
+    primary_prefix_variants: &[String],
+    primary_prefix_rows: &[PrimaryPrefixRow],
 ) -> String {
     // `BracketRole` variants are the set of distinct roles derived from the
     // authored rows (projection-only). Matches the `ItemDispatchKind` pattern:
@@ -760,6 +854,33 @@ fn emit_module(
         s.push_str(&format!(
             "        TokenKind::{} => Some(BracketRole::{}),\n",
             row.token_variant, row.role
+        ));
+    }
+    s.push_str("        _ => None,\n");
+    s.push_str("    }\n");
+    s.push_str("}\n\n");
+
+    s.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
+    s.push_str("pub enum PrimaryPrefixDispatch {\n");
+    for v in primary_prefix_variants {
+        s.push_str(&format!("    {v},\n"));
+    }
+    s.push_str("}\n\n");
+
+    s.push_str(
+        "/// Peek token at the start of `parse_primary` → which dedicated parser to run.\n\
+         /// Authored as `primary_prefix_*: PrimaryPrefixRow` rows in\n\
+         /// `src/v3/compiler/parse_tables.dag`; regenerated by `regen_parse_tables`.\n\
+         /// `PrimaryPrefixDispatch` is emitted from those rows — not a substrate coproduct.\n",
+    );
+    s.push_str(
+        "pub fn primary_prefix_dispatch(kind: &TokenKind) -> Option<PrimaryPrefixDispatch> {\n",
+    );
+    s.push_str("    match kind {\n");
+    for row in primary_prefix_rows {
+        s.push_str(&format!(
+            "        TokenKind::{} => Some(PrimaryPrefixDispatch::{}),\n",
+            row.token_variant, row.dispatch
         ));
     }
     s.push_str("        _ => None,\n");
