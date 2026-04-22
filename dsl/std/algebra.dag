@@ -282,7 +282,7 @@ type FreeMonoid<T> {
   count: fn() -> Int
   first: fn() -> T?
   last: fn() -> T?
-  // Catamorphic / functorial operations
+  // Iteration-shaped operations (map is endomorphic on T; fold is monoid-shaped on T)
   map: fn(fn(T) -> T) -> FreeMonoid<T>
   filter: fn(fn(T) -> Bool) -> FreeMonoid<T>
   fold: fn(T, fn(T, T) -> T) -> T
