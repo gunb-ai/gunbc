@@ -1,5 +1,13 @@
 // v3.compiler.parse_tables — SG-2c-1 grammar-tables prototype authority.
 //
+// **SG-2c cluster (structural lane) — `parse_primary` prefix + atom family.**
+// Two table surfaces in one function: (A) `PrimaryPrefixRow` / `primary_prefix_dispatch`
+// (SG-2c-6), (B) `PrimaryAtomRow` / `primary_atom_class` (SG-2c-7). Same-PR receipt:
+// authority in this file; `regen_parse_tables` to `parse_tables_generated.rs`;
+// `regen_parse` of `parse_parser_body.txt` to `parse_generated.rs`;
+// `sg2c1_parse_tables_authority_test` ratchet; open-coded `TokenKind` dispatch in
+// `parse_primary` removed in favor of those projections.
+//
 // **Scope.** SG-2c proper (parser authority proper — retiring
 // `parse_parser_body.txt` as parse logic) is blocked on a named
 // substrate capability: recursive list-body emission over `List<Token>`
@@ -16,14 +24,19 @@
 // class (SG-2c-2), (3) type-RHS boundary keyword membership
 // (SG-2c-3), (4) bracket opener/closer role membership (SG-2c-4,
 // consumed by the parser's depth-tracking scan helpers `skip_where_clause`
-// and `rhs_is_sum`), and (5) primary-expression prefix openers (SG-2c-6,
-// consumed by `parse_primary`). The binary-operator table replaced hand-coded
+// and `rhs_is_sum`), (5) primary-expression prefix openers (SG-2c-6,
+// consumed by `parse_primary`), and (6) primary-expression atomic tail tokens
+// after the prefix pass (SG-2c-7, same function). The binary-operator table replaced hand-coded
 // matches across five parser precedence functions in
 // `parse_parser_body.txt`
 // (`parse_logical_or`, `parse_logical_and`, `parse_comparison`,
 // `parse_additive`, `parse_term`). Those functions now call the
 // generated helper `binary_op_at_level` instead of open-coding the
-// token → `OperatorKind` match.
+// token → `OperatorKind` match. **SG-2c cluster (prefix + atom family):** after
+// the `parse_primary` prefix pass (`PrimaryPrefixRow` →
+// `primary_prefix_dispatch`, SG-2c-6), the non-prefix first token of a primary
+// is classified by `PrimaryAtomRow` (SG-2c-7) via `primary_atom_class` so the
+// closed set of `Int`/`true`/`false`/string/lambda/ident forms stays table-owned.
 //
 // **What this file is NOT.** Parser control flow. Cursor mechanics.
 // Error recovery. Item-kind dispatch. Recursive-descent itself. Those
@@ -61,6 +74,11 @@
 // `PrimaryPrefixDispatch` is emitted from `PrimaryPrefixRow` facts and
 // consumed by `parse_primary` in `parse_parser_body.txt`, replacing the
 // four inline `if matches!(peek, …)` prefix probes.
+//
+// **Same-PR consumer (E-6).** SG-2c-7 projection `primary_atom_class` /
+// `PrimaryAtomClass` is emitted from `PrimaryAtomRow` facts and consumed
+// in the same `parse_primary` function after the prefix pass, replacing the
+// open `match` on the post-bump `TokenKind` for atomic primary forms.
 
 module v3.compiler.parse_tables
 
@@ -446,4 +464,54 @@ data primary_prefix_lbrace: PrimaryPrefixRow = {
 
 data primary_prefix_lbracket: PrimaryPrefixRow = {
   token_variant: "LBracket"
+}
+
+// --- SG-2c-7: `parse_primary` atomic tail (after prefix pass). The bump that
+// follows a non-prefix `peek` must be one of: integer literal, boolean
+// keyword literals, string, `Pipe` (single `|`, not `PipeArrow` / `|>`) for
+// lambda syntax, or identifier — the
+// closed set that the parser accepts as a primary expression *atom*. Authored
+// here once; `PrimaryAtomClass` and `primary_atom_class` are regen-only
+// (projection over `token_variant` rows, same M7 shape as
+// `PrimaryPrefixRow` → `PrimaryPrefixDispatch`).
+//
+// **Cluster boundary (SG-2c wave).** This table pairs with SG-2c-6: both are
+// `parse_primary`-local dispatch; together they form one “parser dispatch
+// family” extraction (prefix openers + atomic forms) under a single
+// `parse_tables` authority surface.
+//
+// Dissolution classification: **🟡 YELLOW (scaffold)**. Same as other
+// `parse_tables` row families. Full dissolution rides SG-2c proper (blocked
+// on recursive `List<Token>` list-body emission).
+type PrimaryAtomRow {
+  token_variant: String
+}
+
+// Dispatch labels (Rust `PrimaryAtomClass` variants) derive at regen: see
+// `primary_atom_class_label_from_token_variant` in `regen_parse_tables_emit.rs`
+// (closed allowlist: `IntLit` → `IntLiteral`, `Kw{True,False}` → `{True,False}`,
+// `StringLit` → `String`, `Pipe` → `Pipe`, `Ident` → `Ident`).
+
+data primary_atom_int_lit: PrimaryAtomRow = {
+  token_variant: "IntLit"
+}
+
+data primary_atom_kw_true: PrimaryAtomRow = {
+  token_variant: "KwTrue"
+}
+
+data primary_atom_kw_false: PrimaryAtomRow = {
+  token_variant: "KwFalse"
+}
+
+data primary_atom_string_lit: PrimaryAtomRow = {
+  token_variant: "StringLit"
+}
+
+data primary_atom_pipe: PrimaryAtomRow = {
+  token_variant: "Pipe"
+}
+
+data primary_atom_ident: PrimaryAtomRow = {
+  token_variant: "Ident"
 }

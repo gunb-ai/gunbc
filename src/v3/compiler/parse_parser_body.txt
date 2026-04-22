@@ -8,11 +8,12 @@
 // (`parse_logical_or`, `parse_logical_and`, `parse_comparison`, `parse_additive`,
 // `parse_term`) used to open-code the token → `OperatorKind` mapping in five separate
 // match blocks. That mapping is now authored as `binary_op_*` data rows in
-// `parse_tables.dag` and consumed here via `binary_op_at_level`. SG-2c-6 moves the
-// `parse_primary` prefix opener set (`if` / `match` / `{` / `[`) into `PrimaryPrefixRow`
-// rows, consumed via `primary_prefix_dispatch`. The parser's control flow — cursor
-// mechanics, recursive descent, error recovery, span fusion — remains semantic
-// authority in this file.
+// `parse_tables.dag` and consumed here via `binary_op_at_level`. The SG-2c
+// `parse_primary` cluster: SG-2c-6 `PrimaryPrefixRow` + `primary_prefix_dispatch`
+// (prefix openers) and SG-2c-7 `PrimaryAtomRow` + `primary_atom_class` (int/bool/
+// string/lambda/ident atomic forms). The parser's control flow — cursor mechanics,
+// recursive descent, error recovery, span fusion — remains semantic authority in
+// this file.
 //
 // Dissolution trigger (SG-2c proper): delete this file when parse **logic** is
 // structurally `.dag`-owned (SELF_HOSTING §6 Phase 4a direct port or Phase 4b
@@ -1086,27 +1087,37 @@ impl<'a> Parser<'a> {
             None => {}
         }
         let token = self.bump().clone();
-        match token.kind {
-            TokenKind::IntLit(value) => Ok(SurfaceExpr::Literal {
+        let cls = primary_atom_class(&token.kind).ok_or_else(|| Diagnostic::ParseError {
+            message: format!("expected primary expression, got {:?}", token.kind),
+            span: token.span.clone(),
+            fixes: Vec::new(),
+        })?;
+        match (cls, token.kind) {
+            (PrimaryAtomClass::IntLiteral, TokenKind::IntLit(value)) => Ok(SurfaceExpr::Literal {
                 value: SurfaceLiteral::Int(value),
                 span: token.span,
             }),
-            TokenKind::KwTrue => Ok(SurfaceExpr::Literal {
+            (PrimaryAtomClass::True, TokenKind::KwTrue) => Ok(SurfaceExpr::Literal {
                 value: SurfaceLiteral::Bool(true),
                 span: token.span,
             }),
-            TokenKind::KwFalse => Ok(SurfaceExpr::Literal {
+            (PrimaryAtomClass::False, TokenKind::KwFalse) => Ok(SurfaceExpr::Literal {
                 value: SurfaceLiteral::Bool(false),
                 span: token.span,
             }),
-            TokenKind::StringLit(value) => Ok(SurfaceExpr::Literal {
+            (PrimaryAtomClass::String, TokenKind::StringLit(value)) => Ok(SurfaceExpr::Literal {
                 value: SurfaceLiteral::String(value),
                 span: token.span,
             }),
-            TokenKind::Pipe => self.parse_lambda(token.span),
-            TokenKind::Ident(name) => self.parse_ident_expr(name, token.span),
-            other => Err(Diagnostic::ParseError {
-                message: format!("expected primary expression, got {other:?}"),
+            (PrimaryAtomClass::Pipe, TokenKind::Pipe) => self.parse_lambda(token.span),
+            (PrimaryAtomClass::Ident, TokenKind::Ident(name)) => {
+                self.parse_ident_expr(name, token.span)
+            }
+            (class, other) => Err(Diagnostic::ParseError {
+                message: format!(
+                    "internal: primary-atom class {class:?} does not match `TokenKind` {other:?} \
+                     (fix `PrimaryAtomRow` in `parse_tables.dag` or `regen_parse_tables` output)"
+                ),
                 span: token.span,
                 fixes: Vec::new(),
             }),

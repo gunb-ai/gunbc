@@ -2,13 +2,14 @@
 //! authority for parser-owned tables projected into `parse_tables_generated.rs`:
 //! SG-2c-1 binary-operator precedence rows, SG-2c-2 top-level item keyword
 //! dispatch, SG-2c-3 type-RHS boundary keywords, SG-2c-4 bracket opener/closer
-//! roles, SG-2c-5 soft-keyword ident aliases, SG-2c-6 `parse_primary` prefix opener
-//! dispatch. `parse_tables_generated.rs`
+//! roles, SG-2c-5 soft-keyword ident aliases, SG-2c-6/SG-2c-7 `parse_primary`
+//! prefix + atomic-tail dispatch (cluster). `parse_tables_generated.rs`
 //! must stay in sync with the authoring `.dag`; `binary_op_*` rows cover every
 //! binary-operator token the parser dispatches on, `top_level_kw_*` rows cover
 //! every keyword `parse_item` accepts, and the same rows also project the shared
 //! top-level item-boundary helper used by type-RHS lookahead. `primary_prefix_*`
-//! rows cover the peek tokens `parse_primary` dispatches before its atomic match.
+//! rows cover prefix openers; `primary_atom_*` rows cover the post-bump atomic
+//! `TokenKind` set (see `primary_atom_rows_cover_exactly_the_tokens_parse_primary_atomic_arm`).
 //!
 //! This lane is explicitly NOT SG-2c proper (parser authority proper).
 //! Full parser-algorithm dissolution is blocked on recursive list-body
@@ -525,5 +526,90 @@ fn primary_prefix_rows_cover_exactly_the_tokens_parse_primary_prefix_dispatches_
         expected, got_ref,
         "primary_prefix_* rows in parse_tables.dag do not cover exactly the peek tokens \
          `parse_primary` prefix-dispatches on"
+    );
+}
+
+#[test]
+fn every_primary_atom_row_token_variant_is_a_token_kind_variant() {
+    let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
+        .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
+    let tokenize_dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
+        .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+
+    let token_kind_decl = tokenize_dag
+        .declaration_by_name("TokenKind")
+        .expect("TokenKind declaration in tokenize.dag");
+    let TypeConnective::Disj {
+        variants: token_variants,
+    } = &token_kind_decl.connective
+    else {
+        panic!("TokenKind should lower to a Disj");
+    };
+    let token_variant_names: std::collections::BTreeSet<String> =
+        token_variants.iter().map(|v| v.label.clone()).collect();
+
+    let row_type_id = tables_dag
+        .declaration_by_name("PrimaryAtomRow")
+        .expect("PrimaryAtomRow declaration")
+        .id;
+    for decl in tables_dag.declarations() {
+        if decl.meta_tag != Some(row_type_id) {
+            continue;
+        }
+        let name = decl.name.as_deref().unwrap_or("<anonymous>");
+        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            continue;
+        };
+        let token_variant = fields
+            .iter()
+            .find_map(|(k, v)| (k == "token_variant").then_some(v))
+            .and_then(|v| match v {
+                FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("`{name}`: missing string `token_variant` field"));
+        assert!(
+            token_variant_names.contains(&token_variant),
+            "`parse_tables.dag::{name}`: token_variant `{token_variant}` is not a \
+             `TokenKind` variant in `tokenize.dag`"
+        );
+    }
+}
+
+#[test]
+fn primary_atom_rows_cover_exactly_the_tokens_parse_primary_atomic_arm() {
+    // Post-prefix bump in `parse_primary` must be one of these
+    // `TokenKind` variants; `primary_atom_class` is the fail-closed table.
+    let expected: std::collections::BTreeSet<&'static str> =
+        ["IntLit", "KwTrue", "KwFalse", "StringLit", "Pipe", "Ident"]
+            .into_iter()
+            .collect();
+
+    let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
+        .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
+    let mut got: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let row_type_id = tables_dag
+        .declaration_by_name("PrimaryAtomRow")
+        .expect("PrimaryAtomRow declaration")
+        .id;
+    for decl in tables_dag.declarations() {
+        if decl.meta_tag != Some(row_type_id) {
+            continue;
+        }
+        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            continue;
+        };
+        if let Some(FieldValue::Literal(LiteralBits::String(s))) = fields
+            .iter()
+            .find_map(|(k, v)| (k == "token_variant").then_some(v))
+        {
+            got.insert(s.clone());
+        }
+    }
+    let got_ref: std::collections::BTreeSet<&str> = got.iter().map(String::as_str).collect();
+    assert_eq!(
+        expected, got_ref,
+        "primary_atom_* rows in parse_tables.dag do not cover exactly the `TokenKind` set for \
+         `parse_primary` after the prefix pass"
     );
 }

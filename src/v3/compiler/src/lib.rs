@@ -85,7 +85,8 @@ pub mod operators {
 }
 
 /// SG-2c grammar-tables prototype (SG-2c-1 binary ops, SG-2c-2 item-keyword
-/// dispatch, SG-2c-3 type-RHS boundary keywords).
+/// dispatch, SG-2c-3 type-RHS boundary keywords, SG-2c-4 brackets, SG-2c-5 soft
+/// keyword idents, SG-2c-6/7 `parse_primary` prefix + atom cluster).
 /// Authority: `src/v3/compiler/parse_tables.dag`.
 /// The generated Rust projection is emitted by `regen_parse_tables` and consumed
 /// from `parse_parser_body.txt` so the parser no longer open-codes token → operator
