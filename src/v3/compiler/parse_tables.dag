@@ -13,8 +13,10 @@
 // authority that DOES fit current `.dag` capabilities: pure
 // declarative tables: (1) binary operator token-to-semantics mapping
 // (SG-2c-1), (2) top-level item keyword → `parse_item` dispatch
-// class (SG-2c-2), and (3) type-RHS boundary keyword membership
-// (SG-2c-3). The binary-operator table replaced hand-coded
+// class (SG-2c-2), (3) type-RHS boundary keyword membership
+// (SG-2c-3), and (4) bracket opener/closer role membership
+// (SG-2c-4, consumed by the parser's depth-tracking scan helpers
+// `skip_where_clause` and `rhs_is_sum`). The binary-operator table replaced hand-coded
 // matches across five parser precedence functions in
 // `parse_parser_body.txt`
 // (`parse_logical_or`, `parse_logical_and`, `parse_comparison`,
@@ -48,6 +50,11 @@
 // is emitted from the existing `TopLevelItemKwRow` facts and consumed by the
 // live parser's type-RHS lookahead helpers `skip_where_clause` and
 // `rhs_is_sum` in `parse_parser_body.txt`.
+//
+// **Same-PR consumer (E-6).** SG-2c-4 projection `bracket_role` / `BracketRole`
+// is emitted from `BracketRow` facts and consumed by the same type-RHS
+// helpers `skip_where_clause` and `rhs_is_sum` in `parse_parser_body.txt`,
+// replacing two duplicated inline bracket-membership match blocks.
 
 module v3.compiler.parse_tables
 
@@ -285,4 +292,76 @@ data top_level_kw_import: TopLevelItemKwRow = {
 
 data top_level_kw_data: TopLevelItemKwRow = {
   token_variant: "KwData"
+}
+
+// --- SG-2c-4: bracket opener / closer membership table. Parser helpers
+// that skip or scan token spans while tracking paren/brace/bracket depth
+// (`skip_where_clause`, `rhs_is_sum` in `parse_parser_body.txt`) dispatch
+// on exactly this three-pair set. Authored here once and consumed via
+// the generated `bracket_role` projection; the two duplicated inline
+// `TokenKind::L{Paren,Brace,Bracket}` / `TokenKind::R{Paren,Brace,Bracket}`
+// match blocks collapse to one structural lookup.
+//
+// Dissolution classification: **🟡 YELLOW (scaffold)** per
+// `docs/modeling-discipline.md` §4. Same structural situation as the
+// other SG-2c tables: each emitted `BracketRole` variant is a
+// parser-dispatch coordinate, not a distinct payload algebra; full
+// dissolution rides SG-2c proper (blocked on recursive list-body
+// emission over `List<Token>`).
+//
+// Dissolution ledger (4-pattern check):
+// - **Pattern 1 (fact placement)**: fails. Role is a coordinate key for
+//   depth-tracking control flow, not a relocatable payload.
+// - **Pattern 2 (variant-is-data)**: **passes**: substrate rows are
+//   `token_variant` + `role`; the Rust `BracketRole` enum is a pure
+//   projection over declared roles, not a second `.dag` coproduct.
+// - **Pattern 3 (algebraic form)**: fails. Openers and closers are
+//   not elements of a shared computed algebra at this level; bracket
+//   pairing is enforced by the grammar structurally, not here.
+// - **Pattern 4 (dimensional)**: fails. Not a numeric ordering.
+//
+// **Named trigger (YELLOW):** dissolve with SG-2c proper when
+// `parse_parser_body.txt` ports to `.dag` list-body recursion and the
+// depth-tracking helpers become structural traversals rather than
+// token-index scans.
+type BracketRole
+  = Opener
+  | Closer
+
+// One row per bracketing `TokenKind` variant. Keyed on the textual
+// variant name (same convention as `BinaryOpRow` / `TopLevelItemKwRow`)
+// and cross-validated against `tokenize.dag::TokenKind` at regen.
+type BracketRow {
+  token_variant: String
+  role: BracketRole
+}
+
+data bracket_lparen: BracketRow = {
+  token_variant: "LParen"
+  role: Opener
+}
+
+data bracket_lbrace: BracketRow = {
+  token_variant: "LBrace"
+  role: Opener
+}
+
+data bracket_lbracket: BracketRow = {
+  token_variant: "LBracket"
+  role: Opener
+}
+
+data bracket_rparen: BracketRow = {
+  token_variant: "RParen"
+  role: Closer
+}
+
+data bracket_rbrace: BracketRow = {
+  token_variant: "RBrace"
+  role: Closer
+}
+
+data bracket_rbracket: BracketRow = {
+  token_variant: "RBracket"
+  role: Closer
 }
