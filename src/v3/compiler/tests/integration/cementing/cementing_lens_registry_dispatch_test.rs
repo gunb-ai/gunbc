@@ -56,7 +56,8 @@ fn provenance_origin_of_cements_behavior_complete_row_on_minimal_ports() {
         "Source"
     );
 
-    let dag = compile_to_dag("let sum: Int = 1 + 2", "cementing_provenance_sum.v3").expect("compiles");
+    let dag =
+        compile_to_dag("let sum: Int = 1 + 2", "cementing_provenance_sum.v3").expect("compiles");
     assert_eq!(
         origin_label(&origin_of(&dag, &find_bind_value_port(&dag, "sum"))),
         "Computed"
