@@ -9,6 +9,9 @@ module v3.std.tokenize
 
 import v3.std.substrate { SourceSpan }
 
+// 🟢 TERMINAL at the shared token-taxonomy scope. The token-kind split is the
+// durable surface any `.dag` consumer shares: compiler tokenizer, parser,
+// formatters, linters, and editor tooling all read the same lexical categories.
 type TokenKind
   = KwLet
   | KwIf
@@ -56,6 +59,8 @@ type TokenKind
   | Question
   | Eof
 
+// 🟢 TERMINAL. Source-range-carrying token record used by the tokenizer and any
+// downstream consumer of `.dag` lexical streams.
 type Token {
   kind: TokenKind
   span: SourceSpan
@@ -64,6 +69,8 @@ type Token {
 // Dedicated keyword tokens for the v3 tokenizer. Their spellings derive from
 // `dsl/extdeps/languages/dag/syntax.dag`'s `dag_keyword_set`; tokenizer
 // authority only declares which dedicated keyword variants exist.
+// 🟢 TERMINAL. This keyword-only partition is a durable derived view over the
+// shared token taxonomy, not a bootstrap-local scaffold.
 type KeywordTokenKind
   = KwLet
   | KwIf
@@ -83,6 +90,8 @@ type KeywordTokenKind
 // derive from `dsl/extdeps/languages/dag/syntax.dag`'s `dag_operators`;
 // `LocalPunctSpec` rows in the tokenizer authority cover only punctuation that
 // the shared syntax authority does not model.
+// 🟢 TERMINAL. This punctuation-only partition is the stable target for local
+// punctuation rows plus shared-operator derivation.
 type PunctTokenKind
   = Eq
   | EqEq
@@ -113,6 +122,9 @@ type PunctTokenKind
   | Pipe
   | Question
 
+// 🟢 TERMINAL. Tokenizer-local punctuation rows are shared lexical facts once
+// authored; moving them to `std/` dissolves the old compiler-only duplicate
+// authority rather than creating a new scaffold.
 type LocalPunctSpec {
   pattern: String
   kind: PunctTokenKind
@@ -122,6 +134,8 @@ type LocalPunctSpec {
 // one-character `suffix`) to a Unicode scalar emitted into the string value.
 // Unknown suffixes are not listed here; the projection preserves historical
 // behavior (`\` + literal suffix char).
+// 🟢 TERMINAL. Escape rows are lexical facts of the shared `.dag` token surface,
+// not a temporary compiler bridge.
 type StringEscapeSpec {
   suffix: String
   output_codepoint: Int
