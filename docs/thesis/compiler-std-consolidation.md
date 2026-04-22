@@ -104,7 +104,7 @@ No lane in the wave introduces new dual-representation debt. Two (Algebra Quarte
 Against the deferred-debt section:
 
 - `algebra.dag` signature/comment reconciliation — aligned
-- `container_to_algebra` dissolution — aligned (eliminates a string-keyed dual representation)
+- `container_template_algebra_rows` dissolution — aligned (narrow form landed in #651; the renamed table remains as a bridge until `.dag` alias reflection derives it from the type aliases)
 - `pipeline_authority` (in wave) — aligned
 - Emitter render-helper consolidation — neutral
 - Stale cross-refs — cosmetic

@@ -152,7 +152,7 @@ fn lookup_inhabitant(target: RenderTarget, algebra: String) -> InhabitantDecl? {
 // the single surface for alias/spelling normalization. No parallel table here.
 fn coerce_container_template(target: RenderTarget, container_name: String) -> String? {
   match container_template_algebra(name: container_name) {
-    Some { value: a } => match lookup_inhabitant(target: target, algebra: a) {
+    Some { value: algebra } => match lookup_inhabitant(target: target, algebra: algebra) {
       Some { value: inh } => Some { value: inh.template }
       None => none
     }
