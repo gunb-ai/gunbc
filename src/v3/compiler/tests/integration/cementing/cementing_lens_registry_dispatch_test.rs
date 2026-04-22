@@ -13,19 +13,21 @@
 //! slice matches exactly.
 //!
 //! **Provenance cementing split.** The `compile_to_dag` exemplar below compares
-//! `origin_of` to `origin_for_behavior` on the resolved producer — both are emitted
-//! from the same `provenance.dag`, so this is a **seam** check (`port` →
-//! `produced_by` → `node` → classification) on the live lowering path, not an
-//! independent second oracle for the `Behavior → Origin` table. That table is
-//! already pinned under `#[cfg(test)]` in `lib.rs::lens_provenance::tests` with
-//! minimal hand-built `Dag` shapes (see `TESTING.md` — v3-native `COMPLETE` path).
+//! `origin_of` to a **local** five-way `Behavior → Origin` projection that mirrors
+//! `provenance.dag`’s emitted `origin_for_behavior` (kept crate-private). That keeps
+//! the public `lens_provenance` surface to `origin_of` / `Origin` only. This is a
+//! **seam** check (`port` → `produced_by` → `node` → classification) on the live
+//! lowering path; the `Behavior → Origin` table is also pinned under
+//! `#[cfg(test)]` in `lib.rs::lens_provenance::tests` with minimal hand-built `Dag`
+//! shapes (see `TESTING.md` — v3-native `COMPLETE` path). Regenerate / update the
+//! local mirror when `provenance.dag` changes that table.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, Declaration, FieldValue, LiteralBits, ValueBody};
-use v3_compiler::lens_provenance::{origin_for_behavior, origin_of, Origin};
+use v3_compiler::lens_provenance::{origin_of, Origin};
 
 /// Structural equality for the full published `Origin` carrier (every variant).
 /// `Origin` is generated without `PartialEq`; this is the integration-test oracle.
