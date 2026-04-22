@@ -56,6 +56,10 @@ Structural work on this seam must obey **all** of:
 
 The minimal faithful step **after** this post-mortem is **not** to delete `+ Clone` again. It is to **document and test** the seam: callable param position uses **`impl Fn(...) + Clone`** as the **Rust storage/reuse** contract; **`emit_info.movable`** remains the sole authority for **non-callable** locals. Removing the synthesized bound belongs to a later lane that either lands **declared-bound modeling** or a **single** new carrier that subsumes both typing and use emission.
 
+### Signpost in `05_emit_rust.dag`
+
+The comment block immediately above `emit_rust_param_type` should stay a **short seam signpost**. If more boundary prose is needed, add it **here** (this post-mortem) rather than growing meta “how to maintain this comment” footers in the `.dag` source — those read as defensive noise next to real emission logic.
+
 ### Regression test scope (`pipeline.rs`)
 
 The hermetic test uses two call sites `f(0)` and `f(1)` on the same callable parameter and asserts the **`impl Fn(...) + Clone`** signature. It does **not** assert a `f.clone()` substring: `compile_dag` output for this fixture is plain **`f(0)`** / **`f(1)`** call syntax on the param, with no `.clone()` in the emitted source, while `+ Clone` on the type remains load-bearing elsewhere (stage0 / other emitter paths). A future tightening could pin an explicit clone site once a small fixture is found that **deterministically** materializes asymmetric `f.clone()` in emitted Rust.
