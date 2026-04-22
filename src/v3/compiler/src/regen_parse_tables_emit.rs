@@ -400,6 +400,29 @@ fn collect_bracket_rows(dag: &Dag, token_variants: &[String], roles: &[String]) 
             role_set.contains(role.as_str()),
             "`parse_tables.dag::{name}`: role `{role}` is not a `BracketRole` variant"
         );
+        // Close the illegal-state-combination window (e.g. `LParen -> Closer`)
+        // at the substrate boundary: `role` must agree with the `TokenKind`
+        // variant's `L`/`R` prefix. Cheap derivation check — keeps `role`
+        // explicit for readability while making drift between the two fields
+        // fail closed at regen.
+        let implied_role = if token_variant.starts_with('L') {
+            "Opener"
+        } else if token_variant.starts_with('R') {
+            "Closer"
+        } else {
+            panic!(
+                "`parse_tables.dag::{name}`: bracket token_variant `{token_variant}` does \
+                 not start with `L` or `R`; cannot derive implied `BracketRole` for drift \
+                 check (every bracketing `TokenKind` variant uses one of those prefixes)."
+            )
+        };
+        assert!(
+            role == implied_role,
+            "`parse_tables.dag::{name}`: declared role `{role}` disagrees with the role \
+             implied by `TokenKind::{token_variant}`'s prefix (`{implied_role}`). The two \
+             fields on `BracketRow` must agree — either fix the row or reclassify the prefix \
+             rule in `regen_parse_tables_emit::collect_bracket_rows`."
+        );
         assert!(
             seen_token_variants.insert(token_variant.clone()),
             "`parse_tables.dag`: duplicate bracket row for `TokenKind::{token_variant}`"
