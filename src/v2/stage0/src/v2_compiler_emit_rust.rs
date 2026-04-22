@@ -2859,6 +2859,9 @@ pub fn emit_func_def(
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
+        if ((function_type_params(params.clone()).len() as i64) > 0) {
+            return v2_rt::concat(v2_rt::concat("compile_error!(\"emit_func_def saw type params in `".to_string(), name.clone()), "` — func/pattern/interface don't route through the generic-fn split today; the parser invariant at parse_block_body_from_prefix has changed. Plumb type_params through this path or dissolve via ParamKind/params-slot partition.\");\n".to_string());
+        }
         let depth = 0;
         let service_names = match lookup_item(registry.clone(), name.clone()) {
             Some(info) => info.service_names.clone(),
