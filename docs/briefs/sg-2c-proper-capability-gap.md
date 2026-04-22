@@ -119,8 +119,9 @@ axis are finite and largely exhausted.
   algorithm stays);
 - close the Phase 4a acceptance criteria in SELF_HOSTING §6;
 - move the `parse_tables.dag` four-type exemption in the std/-consolidation
-  ratchet (ROADMAP:188-191 — that exemption unblocks only via SG-2c-proper
-  per-row classification).
+  ratchet (the "Compiler–`std/` consolidation program — specific migrations"
+  row in ROADMAP and its `parse_tables.dag` precedent-rule bullet — that
+  exemption unblocks only via SG-2c-proper per-row classification).
 
 **What cadence continuation *does* do:**
 
@@ -138,7 +139,9 @@ schema?
   `parse_tables.dag`'s header as *bounded* to what fits current capabilities
   and *trigger-gated* to dissolve into a Phase 4a/4b `parse.dag`. The file
   exempts itself from the std/-consolidation ratchet under a precedent rule
-  (ROADMAP:191). Rows are *data*, not *algorithm* — when SG-2c-proper lands,
+  (the `parse_tables.dag` bullet under the "Compiler–`std/` consolidation
+  program — specific migrations" ROADMAP row). Rows are *data*, not
+  *algorithm* — when SG-2c-proper lands,
   a `.dag` parser consuming these rows as plain tables is straightforward;
   the rows do not need inversion or dual-authority reconciliation.
 - **Toward hardening:** the projection helpers (`binary_op_at_level`,
@@ -173,8 +176,10 @@ Specifically:
    clause; surfacing its design doc and lane shape is itself a separate
    lane and should be dispatched as such, not deferred behind SG-2c-6.
 4. **Keep `parse_tables.dag`'s exemption in the std/-consolidation ratchet
-   un-touched** until SG-2c-proper lands. The precedent rule at
-   ROADMAP:191 already handles any opportunistic individual-row migration.
+   un-touched** until SG-2c-proper lands. The `parse_tables.dag`
+   precedent-rule bullet under the "Compiler–`std/` consolidation program
+   — specific migrations" ROADMAP row already handles any opportunistic
+   individual-row migration.
 
 **Why not "continue":** cadence continuation without a sharper dispatch
 bar risks fabricating rows that duplicate SG-2c-3's derive-don't-re-declare
