@@ -53,10 +53,12 @@
 // `lens_path()` helpers, or the `include_str!` targets diverge.
 
 use std::collections::{BTreeSet, HashMap};
+use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+use crate::common::integration_rs_cementing_path_attr_binds_mod_stem;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::emit_rust::emit_rust_module;
@@ -453,6 +455,25 @@ fn sg6_lens_registry_names_resolve_to_singleton_entry() {
                 .collect::<Vec<_>>(),
         );
     }
+}
+
+// Band-C cementing: `cementing_lens_registry_dispatch_test.rs` cannot assert its own
+// `#[path = ...]` wiring from inside the module — if the `mod` line is deleted, the
+// whole subtree is dropped before any in-module test runs. SG-6 owns integration
+// harness glue checks; this ratchet lives here so CI stays honest.
+#[test]
+fn sg6_cementing_lens_registry_dispatch_module_is_wired_in_integration_rs() {
+    let path = manifest_dir().join("tests").join("integration.rs");
+    let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    assert!(
+        integration_rs_cementing_path_attr_binds_mod_stem(
+            &text,
+            "cementing_lens_registry_dispatch_test",
+        ),
+        "{} must bind `#[path = \"integration/cementing/cementing_lens_registry_dispatch_test.rs\"]` \
+         to `mod cementing_lens_registry_dispatch_test;` as one item (Band-C dispatch).",
+        path.display(),
+    );
 }
 
 #[test]
