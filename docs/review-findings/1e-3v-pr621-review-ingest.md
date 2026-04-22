@@ -2,7 +2,7 @@
 
 **Companion:** [1e-3v-phase-3-dispatch-gate.md](../briefs/1e-3v-phase-3-dispatch-gate.md) — **live dispatch guidance** (Executive summary, cluster table, Phase 3.0, checklist). **Path:** `docs/review-findings/` (archival namespace per **`INVARIANTS.md`** + **Review AJ**).
 
-This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **five** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`), **Review AJ** (commit `3be30867`), **Review AK** / **Review AL** (commit `741b2cd3`), **Review AM** / **Review AN** (commit `6e84d559`), **Review AO** / **Review AP** (commit `6968710a`), **Review AQ** (commit `7b77cc41`), **Review AR** (commit `7b77cc41`), **Review AS** / **Review AT** (commit `5b781647`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
+This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **five** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`), **Review AJ** (commit `3be30867`), **Review AK** / **Review AL** (commit `741b2cd3`), **Review AM** / **Review AN** (commit `6e84d559`), **Review AO** / **Review AP** (commit `6968710a`), **Review AQ** (commit `7b77cc41`), **Review AR** (commit `7b77cc41`), **Review AS** / **Review AT** (commit `5b781647`), **Review AU** (commit `f3edacf5`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
 
 ---
 
@@ -338,3 +338,8 @@ Relayed **BLOCKING** root cause: **`lower.rs` never received the scaffold receip
 
 - **Verdict:** APPROVE — diff mostly documentation; only code: clarifying **`regen_lower`** `HEADER` plus regenerated **`lower_generated.rs`** snapshot.
 - **Spot-checks:** No concrete violation of **`INVARIANTS.md`**, **`docs/modeling-discipline.md`**, **`CODING.md`**, or **`TESTING.md`** in the changed lines; **`cargo test -q -p v3-compiler --test integration sg3_lower_authority_test::lower_generated_module_matches_regen_snapshot -- --exact`** passed (generator/snapshot path).
+
+**Review AU (claude / claude-opus-4-7, schedule, commit `f3edacf5`, 2026-04-22T01:56:43Z)**
+
+- **Spot-check:** Generated file matches **`HEADER`** constant verbatim — **`sg3_lower_authority_test`** snapshot stays green.
+- **Verdict:** APPROVE — **3-line** comment clarifying **`lower_generated.rs`** body prose is copied from **`lower.rs`** (edit upstream); **`HEADER`** ↔ committed snapshot consistent; aligns with SG-3f-prep framing (**canonical `lower.rs`**); names single authority for the generated side of scaffolded SSOT. No modeling-discipline, **`CODING.md`**, or **`TESTING.md`** concerns; rest of diff is docs/brief ingestion.
