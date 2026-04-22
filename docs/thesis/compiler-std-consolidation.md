@@ -175,7 +175,7 @@ The exemption dissolves at SG-2c-proper completion; both thesis doc and ROADMAP 
 
 ## Discipline
 
-1. **Every new type declared in `src/v3/compiler/*.dag` or `src/v3/std/*.dag` requires a home-check:** does it belong under the positive definition (pipeline/regen/lens-body/accessor)? If yes, declare here. If no, declare in `dsl/std/` (or `src/v3/std/` with a migration trigger).
+1. **Every new type declared in `src/v3/compiler/*.dag`, `src/v3/lenses/*.dag`, or `src/v3/std/*.dag` requires a home-check:** does it belong under the positive definition (pipeline / regen / lens-specific return-type carrier / accessor)? If yes, declare here. If no, declare in `dsl/std/` (or `src/v3/std/` with a migration trigger). **Lens-local types are positive-def only when genuinely lens-specific** — if the type matches a generalizable pattern (e.g., 2-variant `Missing | Found(T)` Lookup), it counts against the ratchet and the Lookup generic is the dissolution target.
 2. **Every brief that introduces new compiler-side types must cite this doc** and classify each new type as (a) pure compiler API or (b) scheduled migration to `std/` with a named trigger.
 3. **The ratchet-only-down rule applies:** the count of non-positive-definition types in compiler-side files can only decrease except during a tracked upstream substrate-extension lane.
 4. **Downgrades are first-class:** a type that was declared in `std/` and then duplicated compiler-side for any reason needs an explicit justification and a dissolution trigger, not silent drift.
