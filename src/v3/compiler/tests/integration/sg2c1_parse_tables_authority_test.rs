@@ -14,7 +14,9 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
+use v3_compiler::parse_tables::soft_keyword_ident_spelling;
 use v3_compiler::render_parse_tables_generated_rs;
+use v3_compiler::tokenize_for_test;
 
 const PARSE_TABLES_DAG: &str = include_str!("../../parse_tables.dag");
 const TOKENIZE_DAG: &str = include_str!("../../tokenize.dag");
@@ -389,4 +391,54 @@ fn top_level_item_kw_rows_cover_exactly_the_tokens_parse_item_dispatches_on() {
         "top_level_kw_* rows in parse_tables.dag do not cover exactly the keyword tokens \
          `parse_item` dispatches on"
     );
+}
+
+#[test]
+fn soft_keyword_ident_rows_cover_exactly_the_keyword_aliases_parser_accepts_as_names() {
+    // `parse_field_label` and `parse_variant` currently accept exactly one
+    // soft-keyword alias as a bare name: `KwType -> "type"`. Keep the
+    // generated parser-name alias table fail-closed.
+    let expected: std::collections::BTreeSet<&'static str> = ["KwType"].into_iter().collect();
+
+    let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
+        .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
+    let mut got: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let row_type_id = tables_dag
+        .declaration_by_name("SoftKeywordIdentRow")
+        .expect("SoftKeywordIdentRow declaration")
+        .id;
+    for decl in tables_dag.declarations() {
+        if decl.meta_tag != Some(row_type_id) {
+            continue;
+        }
+        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            continue;
+        };
+        if let Some(FieldValue::Literal(LiteralBits::String(s))) = fields
+            .iter()
+            .find_map(|(k, v)| (k == "token_variant").then_some(v))
+        {
+            got.insert(s.clone());
+        }
+    }
+    let got_ref: std::collections::BTreeSet<&str> = got.iter().map(String::as_str).collect();
+    assert_eq!(
+        expected, got_ref,
+        "soft_keyword_ident_* rows in parse_tables.dag do not cover exactly the keyword aliases \
+         the parser accepts as bare names"
+    );
+}
+
+#[test]
+fn soft_keyword_ident_projection_matches_authored_alias_rows() {
+    let kw_type = tokenize_for_test("type", "soft_keyword_ident_kw_type.v3")
+        .expect("tokenize keyword fixture");
+    let kw_let = tokenize_for_test("let", "soft_keyword_ident_kw_let.v3")
+        .expect("tokenize non-alias keyword fixture");
+    let ident = tokenize_for_test("type_name", "soft_keyword_ident_ident.v3")
+        .expect("tokenize identifier fixture");
+
+    assert_eq!(soft_keyword_ident_spelling(&kw_type[0].kind), Some("type"));
+    assert_eq!(soft_keyword_ident_spelling(&kw_let[0].kind), None);
+    assert_eq!(soft_keyword_ident_spelling(&ident[0].kind), None);
 }

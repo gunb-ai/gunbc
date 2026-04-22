@@ -115,6 +115,8 @@ mod sg1_tokenize_authority_test;
 mod sg2_parse_authority_test;
 #[path = "integration/sg2c1_parse_tables_authority_test.rs"]
 mod sg2c1_parse_tables_authority_test;
+#[path = "integration/sg2c5_soft_keyword_ident_test.rs"]
+mod sg2c5_soft_keyword_ident_test;
 #[path = "integration/sg3_lower_authority_test.rs"]
 mod sg3_lower_authority_test;
 #[path = "integration/sg3_lower_parse_surface_stack_test.rs"]
