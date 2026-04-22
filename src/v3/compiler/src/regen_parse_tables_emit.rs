@@ -91,8 +91,10 @@ pub fn render_parse_tables_generated_rs(
     let tables_dag = compile_authority(parse_tables_source, parse_tables_file)?;
     let tokenize_dag = compile_authority(tokenize_source, tokenize_file)?;
     let shared_operators = extract_shared_operator_bps(shared_syntax_source);
+    let shared_keywords = extract_shared_keyword_set(shared_syntax_source);
 
     let token_variants = collect_variant_labels(&tokenize_dag, "TokenKind");
+    let keyword_token_variants = collect_variant_labels(&tokenize_dag, "KeywordTokenKind");
     let levels = collect_variant_labels(&tables_dag, "BinaryOpLevel");
     let rows = collect_binary_op_rows(&tables_dag, &token_variants, &levels, &shared_operators);
 
@@ -105,7 +107,12 @@ pub fn render_parse_tables_generated_rs(
         item_kw_rows.iter().map(|r| r.dispatch.clone()).collect();
     item_dispatch_variants.sort_unstable();
     item_dispatch_variants.dedup();
-    let soft_keyword_ident_rows = collect_soft_keyword_ident_rows(&tables_dag, &token_variants);
+    let soft_keyword_ident_rows = collect_soft_keyword_ident_rows(
+        &tables_dag,
+        &token_variants,
+        &keyword_token_variants,
+        &shared_keywords,
+    );
 
     // SG-2c-4: bracket opener/closer role table. `BracketRole` is
     // projection-only (same shape as `ItemDispatchKind`): authored rows
@@ -414,8 +421,12 @@ fn collect_bracket_rows(dag: &Dag, token_variants: &[String]) -> Vec<BracketRow>
 fn collect_soft_keyword_ident_rows(
     dag: &Dag,
     token_variants: &[String],
+    keyword_token_variants: &[String],
+    shared_keywords: &BTreeSet<String>,
 ) -> Vec<SoftKeywordIdentRow> {
     let token_variant_set: BTreeSet<&str> = token_variants.iter().map(String::as_str).collect();
+    let keyword_token_variant_set: BTreeSet<&str> =
+        keyword_token_variants.iter().map(String::as_str).collect();
 
     let row_type_id = dag
         .declarations()
@@ -442,7 +453,13 @@ fn collect_soft_keyword_ident_rows(
             "`parse_tables.dag::{name}`: token_variant `{token_variant}` is not a \
              `TokenKind` variant in `tokenize.dag`"
         );
-        let spelling = soft_keyword_ident_spelling_from_token_variant(&token_variant, name);
+        assert!(
+            keyword_token_variant_set.contains(token_variant.as_str()),
+            "`parse_tables.dag::{name}`: token_variant `{token_variant}` is not a \
+             `KeywordTokenKind` variant in `tokenize.dag`"
+        );
+        let spelling =
+            soft_keyword_ident_spelling_from_token_variant(&token_variant, name, shared_keywords);
         assert!(
             seen_token_variants.insert(token_variant.clone()),
             "`parse_tables.dag`: duplicate soft-keyword-ident row for `TokenKind::{token_variant}`"
@@ -492,7 +509,21 @@ fn item_dispatch_label_from_kw_token_variant(token_variant: &str, decl_name: &st
     rest.to_string()
 }
 
-fn soft_keyword_ident_spelling_from_token_variant(token_variant: &str, decl_name: &str) -> String {
+fn soft_keyword_ident_spelling_from_token_variant(
+    token_variant: &str,
+    decl_name: &str,
+    shared_keywords: &BTreeSet<String>,
+) -> String {
+    let spelling = keyword_spelling_for_token_variant(token_variant, decl_name);
+    assert!(
+        shared_keywords.contains(&spelling),
+        "`parse_tables.dag::{decl_name}`: token_variant `{token_variant}` expects keyword \
+         `{spelling}` from `dsl/extdeps/languages/dag/syntax.dag::dag_keyword_set`"
+    );
+    spelling
+}
+
+fn keyword_spelling_for_token_variant(token_variant: &str, decl_name: &str) -> String {
     let label = item_dispatch_label_from_kw_token_variant(token_variant, decl_name);
     assert!(
         label.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
@@ -837,6 +868,24 @@ fn extract_shared_operator_bps(
             "duplicate `dag_operators` row for symbol `{symbol}`"
         );
         rest = &after_binop_trimmed[ident_end..];
+    }
+    out
+}
+
+fn extract_shared_keyword_set(source: &str) -> BTreeSet<String> {
+    let section = extract_balanced_section(source, "data dag_keyword_set", '{', '}');
+    let mut out = BTreeSet::new();
+    let mut rest = section;
+    loop {
+        let Some(quote_idx) = rest.find('"') else {
+            break;
+        };
+        let (keyword, consumed) = parse_string_literal(&rest[quote_idx..]);
+        assert!(
+            out.insert(keyword.clone()),
+            "duplicate `dag_keyword_set` row for keyword `{keyword}`"
+        );
+        rest = &rest[quote_idx + consumed..];
     }
     out
 }

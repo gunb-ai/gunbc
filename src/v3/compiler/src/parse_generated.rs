@@ -579,18 +579,16 @@ impl<'a> Parser<'a> {
     /// position is unambiguous (`type` cannot start a type expression here).
     fn parse_field_label(&mut self) -> Result<(String, SourceSpan), Diagnostic> {
         let name_token = self.bump().clone();
-        let name = match &name_token.kind {
-            TokenKind::Ident(n) => n.clone(),
-            other if soft_keyword_ident_spelling(other).is_some() => {
-                soft_keyword_ident_spelling(other).unwrap().to_string()
-            }
-            other => {
-                return Err(Diagnostic::ParseError {
-                    message: format!("expected field label, got {other:?}"),
-                    span: name_token.span,
-                    fixes: Vec::new(),
-                });
-            }
+        let name = if let TokenKind::Ident(name) = &name_token.kind {
+            name.clone()
+        } else if let Some(spelling) = soft_keyword_ident_spelling(&name_token.kind) {
+            spelling.to_string()
+        } else {
+            return Err(Diagnostic::ParseError {
+                message: format!("expected field label, got {:?}", name_token.kind),
+                span: name_token.span,
+                fixes: Vec::new(),
+            });
         };
         Ok((name, name_token.span))
     }
@@ -771,18 +769,16 @@ impl<'a> Parser<'a> {
 
     fn parse_variant(&mut self) -> Result<SurfaceVariant, Diagnostic> {
         let name_token = self.bump().clone();
-        let name = match &name_token.kind {
-            TokenKind::Ident(n) => n.clone(),
-            other if soft_keyword_ident_spelling(other).is_some() => {
-                soft_keyword_ident_spelling(other).unwrap().to_string()
-            }
-            other => {
-                return Err(Diagnostic::ParseError {
-                    message: format!("expected variant name, got {other:?}"),
-                    span: name_token.span.clone(),
-                    fixes: Vec::new(),
-                });
-            }
+        let name = if let TokenKind::Ident(name) = &name_token.kind {
+            name.clone()
+        } else if let Some(spelling) = soft_keyword_ident_spelling(&name_token.kind) {
+            spelling.to_string()
+        } else {
+            return Err(Diagnostic::ParseError {
+                message: format!("expected variant name, got {:?}", name_token.kind),
+                span: name_token.span.clone(),
+                fixes: Vec::new(),
+            });
         };
         match &self.peek().kind {
             TokenKind::LParen => {

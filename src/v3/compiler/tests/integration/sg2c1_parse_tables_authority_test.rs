@@ -14,6 +14,8 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
+use v3_compiler::parse_tables::soft_keyword_ident_spelling;
+use v3_compiler::tokenize::TokenKind;
 use v3_compiler::render_parse_tables_generated_rs;
 
 const PARSE_TABLES_DAG: &str = include_str!("../../parse_tables.dag");
@@ -424,5 +426,15 @@ fn soft_keyword_ident_rows_cover_exactly_the_keyword_aliases_parser_accepts_as_n
         expected, got_ref,
         "soft_keyword_ident_* rows in parse_tables.dag do not cover exactly the keyword aliases \
          the parser accepts as bare names"
+    );
+}
+
+#[test]
+fn soft_keyword_ident_projection_matches_authored_alias_rows() {
+    assert_eq!(soft_keyword_ident_spelling(&TokenKind::KwType), Some("type"));
+    assert_eq!(soft_keyword_ident_spelling(&TokenKind::KwLet), None);
+    assert_eq!(
+        soft_keyword_ident_spelling(&TokenKind::Ident(String::from("type"))),
+        None
     );
 }
