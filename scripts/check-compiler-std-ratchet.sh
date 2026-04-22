@@ -9,9 +9,10 @@
 #   4. Fail CI unless the remaining tracked total matches the ratcheted
 #      baseline exactly.
 #
-# The row lists below are the explicit in-tree classification required to
-# make the thesis rule actionable in CI. The script also fails closed if
-# any counted `type` row on those surfaces is left unclassified.
+# The inventories below classify counted declarations by `file:type-name`
+# rather than `file:line`, so the gate keys off declaration identity
+# instead of incidental source layout. The script still fails closed if
+# any counted `type` declaration on those surfaces is left unclassified.
 
 set -euo pipefail
 
@@ -26,55 +27,55 @@ SURFACES=(
 )
 
 POSITIVE_ROWS=(
-  "src/v3/compiler/pipeline.dag:13"
-  "src/v3/compiler/pipeline.dag:17"
-  "src/v3/compiler/pipeline.dag:19"
-  "src/v3/compiler/regen.dag:38"
-  "src/v3/lenses/complexity.dag:45"
-  "src/v3/lenses/cost.dag:23"
-  "src/v3/lenses/infer_helpers.dag:42"
-  "src/v3/lenses/infer_helpers.dag:65"
-  "src/v3/lenses/infer_helpers.dag:84"
-  "src/v3/lenses/provenance.dag:61"
-  "src/v3/lenses/structural_resolution.dag:37"
-  "src/v3/lenses/structural_resolution.dag:43"
-  "src/v3/lenses/unused_parameters.dag:16"
-  "src/v3/lenses/variant_payload.dag:22"
-  "src/v3/lenses/variant_payload.dag:36"
+  "src/v3/compiler/pipeline.dag:CompilerHostRealization"
+  "src/v3/compiler/pipeline.dag:PipelineSnapshotKind"
+  "src/v3/compiler/pipeline.dag:PipelineStageBinding"
+  "src/v3/compiler/regen.dag:LensRegistryEntry"
+  "src/v3/lenses/complexity.dag:CostEntry"
+  "src/v3/lenses/cost.dag:SymbolicCostEntry"
+  "src/v3/lenses/infer_helpers.dag:TemplateArgumentBinding"
+  "src/v3/lenses/infer_helpers.dag:TemplateArgumentsMatch"
+  "src/v3/lenses/infer_helpers.dag:TemplateArgumentCursor"
+  "src/v3/lenses/provenance.dag:Origin"
+  "src/v3/lenses/structural_resolution.dag:UnresolvedArrowBody"
+  "src/v3/lenses/structural_resolution.dag:NameKeyedReference"
+  "src/v3/lenses/unused_parameters.dag:UnusedParameter"
+  "src/v3/lenses/variant_payload.dag:VariantPayloadShape"
+  "src/v3/lenses/variant_payload.dag:VariantPayloadShapeLookup"
 )
 
 EXEMPT_ROWS=(
-  "src/v3/compiler/parse_tables.dag:109"
-  "src/v3/compiler/parse_tables.dag:143"
-  "src/v3/compiler/parse_tables.dag:265"
-  "src/v3/compiler/parse_tables.dag:310"
-  "src/v3/compiler/parse_tables.dag:361"
+  "src/v3/compiler/parse_tables.dag:BinaryOpLevel"
+  "src/v3/compiler/parse_tables.dag:BinaryOpRow"
+  "src/v3/compiler/parse_tables.dag:TopLevelItemKwRow"
+  "src/v3/compiler/parse_tables.dag:SoftKeywordIdentRow"
+  "src/v3/compiler/parse_tables.dag:BracketRow"
 )
 
 TRACKED_ROWS=(
-  "src/v3/compiler/runtime_mirrors.dag:6"
-  "src/v3/compiler/runtime_mirrors.dag:18"
-  "src/v3/compiler/runtime_mirrors.dag:22"
-  "src/v3/compiler/runtime_mirrors.dag:28"
-  "src/v3/compiler/runtime_mirrors.dag:33"
-  "src/v3/compiler/runtime_mirrors.dag:42"
-  "src/v3/compiler/runtime_mirrors.dag:49"
-  "src/v3/compiler/runtime_mirrors.dag:66"
-  "src/v3/compiler/runtime_mirrors.dag:72"
-  "src/v3/compiler/runtime_mirrors.dag:78"
-  "src/v3/compiler/runtime_mirrors.dag:85"
-  "src/v3/compiler/runtime_mirrors.dag:104"
-  "src/v3/compiler/runtime_mirrors.dag:110"
-  "src/v3/compiler/runtime_mirrors.dag:168"
-  "src/v3/compiler/tokenize.dag:33"
-  "src/v3/compiler/tokenize.dag:80"
-  "src/v3/compiler/tokenize.dag:88"
-  "src/v3/compiler/tokenize.dag:111"
-  "src/v3/compiler/tokenize.dag:141"
-  "src/v3/compiler/tokenize.dag:150"
-  "src/v3/lenses/complexity.dag:50"
-  "src/v3/lenses/cost.dag:28"
-  "src/v3/lenses/infer_helpers.dag:35"
+  "src/v3/compiler/runtime_mirrors.dag:DagDifference"
+  "src/v3/compiler/runtime_mirrors.dag:SurfaceModule"
+  "src/v3/compiler/runtime_mirrors.dag:SurfaceParam"
+  "src/v3/compiler/runtime_mirrors.dag:SurfaceField"
+  "src/v3/compiler/runtime_mirrors.dag:SurfaceVariant"
+  "src/v3/compiler/runtime_mirrors.dag:VariantPayload"
+  "src/v3/compiler/runtime_mirrors.dag:SurfaceType"
+  "src/v3/compiler/runtime_mirrors.dag:SurfaceRecordField"
+  "src/v3/compiler/runtime_mirrors.dag:SurfaceMatchArm"
+  "src/v3/compiler/runtime_mirrors.dag:SurfacePatternField"
+  "src/v3/compiler/runtime_mirrors.dag:SurfacePattern"
+  "src/v3/compiler/runtime_mirrors.dag:SurfaceLiteral"
+  "src/v3/compiler/runtime_mirrors.dag:SurfaceExpr"
+  "src/v3/compiler/runtime_mirrors.dag:SurfaceItem"
+  "src/v3/compiler/tokenize.dag:TokenKind"
+  "src/v3/compiler/tokenize.dag:Token"
+  "src/v3/compiler/tokenize.dag:KeywordTokenKind"
+  "src/v3/compiler/tokenize.dag:PunctTokenKind"
+  "src/v3/compiler/tokenize.dag:LocalPunctSpec"
+  "src/v3/compiler/tokenize.dag:StringEscapeSpec"
+  "src/v3/lenses/complexity.dag:CostLookup"
+  "src/v3/lenses/cost.dag:SymbolicCostLookup"
+  "src/v3/lenses/infer_helpers.dag:TemplateArgumentLookup"
 )
 
 collect_type_rows() {
@@ -82,6 +83,16 @@ collect_type_rows() {
   for pattern in "${SURFACES[@]}"; do
     grep -nH -E '^type [A-Z]' $pattern 2>/dev/null || true
   done
+}
+
+row_key() {
+  local raw="$1"
+  local file rest type_name
+  file="${raw%%:*}"
+  rest="${raw#*:}"
+  rest="${rest#*:type }"
+  type_name="${rest%%[ {=]*}"
+  printf '%s:%s\n' "$file" "$type_name"
 }
 
 TYPE_ROWS="$(collect_type_rows)"
@@ -112,7 +123,7 @@ is_listed_row() {
 UNCLASSIFIED_ROWS=()
 while IFS= read -r raw; do
   [ -n "$raw" ] || continue
-  row_id="$(printf '%s\n' "$raw" | cut -d: -f1,2)"
+  row_id="$(row_key "$raw")"
   if ! is_listed_row "$row_id" "${TRACKED_ROWS[@]}" \
     && ! is_listed_row "$row_id" "${POSITIVE_ROWS[@]}" \
     && ! is_listed_row "$row_id" "${EXEMPT_ROWS[@]}"; then
