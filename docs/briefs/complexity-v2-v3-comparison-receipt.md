@@ -67,22 +67,23 @@ Prefer (a) — the confusion is ongoing debt. The rename surface is bounded (reg
 
 ## Acceptance
 
-### Phase 1
+### Phase 1 (ship as a separate PR from Phase 2)
 - Registry entry name matches its source file (or is docstringed if (b) was taken)
 - Generated file name is consistent
 - Consumer imports updated
 - No test breakage from the rename
 
-### Phase 2
-- One DSL fixture checked in, reachable by both v2 and v3 complexity analyses
+### Phase 2 (the thesis-receipt PR)
+- One DSL fixture checked in, representative (recursion, fold, arithmetic), reachable programmatically by both v2 and v3 complexity analyses
 - Golden file for v3 complexity output checked in
-- Integration test asserts v3 output matches the golden byte-identically (cementing)
-- v2 complexity output on the same fixture is either checked in (as a comparison fixture) or documented in the PR body with the command used to reproduce
+- Integration test asserts v3 output matches the golden via **semantic equality** — parse both into the same typed carrier and compare the data structure, or canonicalize both serializations (sort by `PortId`, normalize whitespace) before byte-compare. Raw byte-identity against a free-form serialization is explicitly disallowed (pins representation, not behavior).
+- Golden file for v2 complexity output on the same fixture checked in; **second** integration test asserts v2 output against its golden via the same semantic-equality discipline. Both sides cemented symmetrically; transcribed-prose fallbacks are disallowed.
 - PR body contains an explicit **diff framing**: "identical", "v3 richer", or "v3 misses X" — pick one and justify it
 
 ## STOP-AND-ESCALATE
 
-- **If Phase 1's rename pulls in a wide consumer surface** (more than ~3 files), switch to option (b) (docstring-only) rather than forcing a large rename. The cosmetic shouldn't dominate the lane.
+- **If Phase 1's rename pulls in a wide consumer surface** (more than ~10 files), switch to option (b) (docstring-only) rather than forcing a large rename. Below ~10 files the rename is expected scope; above it the cosmetic shouldn't dominate.
+- **If v2 stage0 has no programmatic surface for running complexity on an arbitrary fixture**, STOP. Asymmetric cementing (v3 cemented vs v2 transcribed-prose) defeats the receipt; surface the v2-observability gap as a separate lane rather than absorbing it here.
 - **If no existing fixture parseable by both v2 and v3 can be found**, STOP. Building a synthetic fixture is fine but only if it's representative; otherwise the comparison isn't meaningful. Surface the mismatch as its own finding.
 - **If v2 complexity output on the fixture reveals a bug in v2** (not just heuristic-imprecision), STOP. That's a v2 bug lane, not a v3 receipt lane.
 - **If the comparison reveals v3 misses a case v2 catches that requires new substrate carriers** (not just new lens rules), STOP. That's a substrate-modeling lane — surface the specific missing carrier (e.g., "v2 distinguishes X which v3 substrate doesn't carry").
