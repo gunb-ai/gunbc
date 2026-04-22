@@ -240,19 +240,21 @@ type BooleanAlgebra<T> {
 // =========================================================================
 //
 // These patterns describe how lattice operations lift through containers.
-// They are a DESIGN SPECIFICATION for concrete monomorphized instances,
-// not executable generic functions (the emitter does not yet support
-// user-defined generic type parameters).
+// They are a DESIGN SPECIFICATION for concrete monomorphized instances.
 //
 // Concrete instances live next to their lattice declarations:
 //   std/termination.dag: optional_evidence_meet, map_evidence_merge_at
 //   std/induction.dag:   meet_sub_value, join_sub_value
 //
-// Generic patterns (future — blocked on generic emission):
+// Generic patterns (shape; callers instantiate concretely):
 //   optional_meet(meet, a, b):  None is identity (top).
 //   map_merge_at(merge, m, k, v): pointwise per key, absent = identity.
 //   min_by(project, a, b):  compare via projection, keep lesser.
 //   max_by(project, a, b):  compare via projection, keep greater.
+//
+// Generic fn signatures emit faithfully to Rust (no synthesized bounds) —
+// if a concrete instance needs a trait bound, the `.dag` authority must
+// declare it (bound-declaration syntax is out-of-scope here; a future lane).
 
 // =========================================================================
 // Sequence/collection structures
