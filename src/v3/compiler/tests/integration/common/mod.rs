@@ -75,26 +75,97 @@ pub fn find_current_rlib(crate_name: &str) -> PathBuf {
         .expect("compiled rlib for current crate")
 }
 
-/// True when `line` is not a whole-line outer doc / line comment in Rust source.
-///
-/// Band-C wiring ratchets scan `tests/integration.rs` for `#[path = …]` / `mod …;`
-/// declarations. A raw substring match false-greens on commented-out copies
-/// (`// #[path = …]`). Ignore any line whose first non-whitespace token starts
-/// a line comment (`//`, `///`, `//!`).
-///
-/// **Not handled:** `/* … */` block comments — today’s `integration.rs` uses only
-/// line / outer-doc comments; extend this helper if that file ever nests mod
-/// declarations inside block comments.
-fn integration_rs_line_is_active_for_wiring_check(line: &str) -> bool {
-    let s = line.trim_start();
-    !(s.is_empty() || s.starts_with("//"))
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum IntegrationRsScan {
+    Code,
+    LineComment,
+    BlockComment(u32),
+    String,
 }
 
-/// True when some **active** (non-`//`-leading) line in `integration_rs` contains `needle`.
+/// True when `needle` appears in `integration_rs` **outside** Rust line comments
+/// (`//` … including `///` / `//!`), **nested** block comments (`/* … */`), and
+/// normal `"…"` string literals.
+///
+/// Band-C wiring ratchets use this so `#[path = …]` / `mod …;` matches cannot
+/// false-green on commented-out or string-embedded copies. Needles are ASCII
+/// (`#[path`, `mod foo`); the scan is byte-oriented on UTF-8 boundaries.
+///
+/// **Not handled:** raw strings (`r#"…"#`), byte strings, or char literals — none
+/// appear in today’s `tests/integration.rs` module list; extend if those surfaces
+/// start carrying `#[path`-shaped text outside normal strings.
 pub fn integration_rs_active_line_contains(integration_rs: &str, needle: &str) -> bool {
-    integration_rs
-        .lines()
-        .any(|line| integration_rs_line_is_active_for_wiring_check(line) && line.contains(needle))
+    if needle.is_empty() {
+        return true;
+    }
+    let bytes = integration_rs.as_bytes();
+    let mut i = 0usize;
+    let mut state = IntegrationRsScan::Code;
+
+    while i < bytes.len() {
+        match state {
+            IntegrationRsScan::Code => {
+                if bytes[i] == b'/' && i + 1 < bytes.len() {
+                    if bytes[i + 1] == b'/' {
+                        state = IntegrationRsScan::LineComment;
+                        i += 2;
+                        continue;
+                    }
+                    if bytes[i + 1] == b'*' {
+                        state = IntegrationRsScan::BlockComment(1);
+                        i += 2;
+                        continue;
+                    }
+                }
+                if bytes[i] == b'"' {
+                    state = IntegrationRsScan::String;
+                    i += 1;
+                    continue;
+                }
+                if integration_rs[i..].starts_with(needle) {
+                    return true;
+                }
+                i += 1;
+            }
+            IntegrationRsScan::LineComment => {
+                if bytes[i] == b'\n' {
+                    state = IntegrationRsScan::Code;
+                }
+                i += 1;
+            }
+            IntegrationRsScan::BlockComment(depth) => {
+                if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+                    state = IntegrationRsScan::BlockComment(depth + 1);
+                    i += 2;
+                    continue;
+                }
+                if bytes[i] == b'*' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+                    let d = depth - 1;
+                    i += 2;
+                    state = if d == 0 {
+                        IntegrationRsScan::Code
+                    } else {
+                        IntegrationRsScan::BlockComment(d)
+                    };
+                    continue;
+                }
+                i += 1;
+            }
+            IntegrationRsScan::String => match bytes[i] {
+                b'\\' => {
+                    i = (i + 2).min(bytes.len());
+                }
+                b'"' => {
+                    i += 1;
+                    state = IntegrationRsScan::Code;
+                }
+                _ => {
+                    i += 1;
+                }
+            },
+        }
+    }
+    false
 }
 
 /// Harness for spawning rustc against generated-Rust harnesses.

@@ -158,6 +158,43 @@ mod real;
 }
 
 #[test]
+fn integration_rs_active_line_contains_rejects_block_commented_cementing_path() {
+    let src = r#"/*
+#[path = "integration/cementing/ghost.rs"]
+mod ghost;
+*/
+#[path = "integration/cementing/real.rs"]
+mod real;
+"#;
+    assert!(!integration_rs_active_line_contains(
+        src,
+        r#"#[path = "integration/cementing/ghost.rs"]"#,
+    ));
+    assert!(integration_rs_active_line_contains(
+        src,
+        r#"#[path = "integration/cementing/real.rs"]"#,
+    ));
+}
+
+#[test]
+fn integration_rs_active_line_ignores_needle_inside_string_literal() {
+    // Tombstone text appears only inside a `"..."` string — must not satisfy the ratchet.
+    let src = concat!(
+        "let _ = \"#[path = \\\"integration/cementing/decoy.rs\\\"]\";\n",
+        "#[path = \"integration/cementing/real.rs\"]\n",
+        "mod real;\n",
+    );
+    assert!(!integration_rs_active_line_contains(
+        src,
+        r#"#[path = "integration/cementing/decoy.rs"]"#,
+    ));
+    assert!(integration_rs_active_line_contains(
+        src,
+        r#"#[path = "integration/cementing/real.rs"]"#,
+    ));
+}
+
+#[test]
 fn md_table_cells_preserves_escaped_pipes_for_register_capability_rows() {
     // Pin the markdown-as-data split: cementing escalation reads
     // `docs/v3-lens-capability-register.md` through this helper (see review on #638).
