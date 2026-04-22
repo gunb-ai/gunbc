@@ -137,7 +137,7 @@ CompilerHostRealization, DegreeAtLeastTwo, Dimension, div, f, first,
 get_host, id, Int, KeywordTokenKind, LensRegistryEntry, List,
 materialize_test_obligations, MyList, node, OrderedRing, pair, port,
 PostEmitVerifier, PunctTokenKind, resolve_producer, ResourceHandle,
-rust_clean_emission, rust_language, Secret, SoftKeywordIdentRow,
+rust_clean_emission, Secret, SoftKeywordIdentRow,
 SubstrateAccessorBinding, TestObligation, TokenKind,
 TopLevelItemKwRow, WorkflowEffect`. (`WorkflowEffect` and
 `TestObligation` exist only under `src/v3/`, so they are also
@@ -305,10 +305,12 @@ documenting explicitly because reasoning about `dsl/std/effects.dag`
 semantics inside v3 compilation requires knowing this rebind
 happens.
 
-**Dissolution path for (c).** Same as ROADMAP: converge the three
-duplicated authorities. Once converged, these consumers revert to
-vanilla single-authority lookup; the rank function and its mirror
-delete together.
+**Dissolution path for (c).** Same as ROADMAP (extended per
+Recommendation 2): converge all four duplicated authorities —
+`std.effects`, `std.verification`, the `http_path` mirror, and
+`dsl/std/languages.dag` ↔ `src/v3/spec/{rust,go,python}.dag`. Once
+converged, these consumers revert to vanilla single-authority
+lookup; the rank function and its mirror delete together.
 
 ## Summary table
 
