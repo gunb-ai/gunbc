@@ -576,15 +576,13 @@ include!("dag_scalar_generated.rs");
 ///   bootstrap rewrites those Arrow bodies to `ExternalRealization` before
 ///   inference — so `Unparsed` does not persist for those stages in a
 ///   bootstrapped DAG. **`fn compile` (case 2c)** has no `PipelineStageBinding`:
-///   **`Unparsed` persists**; `pipeline_compile_order_stage_names` reads its
-///   **body span** as pipeline ordering authority — **terminal for bootstrap
-///   ordering**, not a host bridge (contrast 2a) and not parse-lag debt
-///   (contrast case 1). **Dissolution for 2c:** a future substrate change that
-///   records stage order structurally and supersedes span extraction (then this
-///   path retires). The signature flows forward through the declaration table
-///   so callers can type-check against it; the body source span is preserved so
-///   M2+ parser extensions can reach in for case 1, or so pipeline authority can
-///   parse ordering for `compile`.
+///   **`Unparsed` persists** on its Arrow body. Pipeline ordering authority is
+///   the declaration order of the `PipelineStageBinding` records in the Dag —
+///   `ordered_pipeline_stages` reads that structural order directly; the
+///   `compile` body span is no longer consulted. The signature still flows
+///   forward through the declaration table so callers can type-check against
+///   it, and the body source span is preserved so M2+ parser extensions can
+///   reach in for case 1.
 ///   **User-range boundary:** `reject_user_unparsed_scaffolds` in
 ///   `src/v3/compiler/src/lower.rs` fails-closed any user-range
 ///   declaration carrying this variant (R14 + M1(2.8) Scaffold
@@ -599,8 +597,8 @@ include!("dag_scalar_generated.rs");
 /// transition state: `Pending` and **case-1** `Unparsed` are scaffolds with
 /// named dissolution (M3 / M2 grammar). **`Unparsed` on `pipeline.dag`'s
 /// `compile` (DB-16 case 2c)** is different — **persistent bootstrap-range
-/// ordering authority** until structural pipeline order supersedes span
-/// extraction; it does **not** share case 1’s “wait for M2 parser” story. User-range
+/// carrier** whose body span is no longer the ordering authority (structural
+/// binding order is); it does **not** share case 1’s “wait for M2 parser” story. User-range
 /// `Unparsed` stays gated (R14).
 #[derive(Debug, Clone)]
 pub enum ArrowBody {
