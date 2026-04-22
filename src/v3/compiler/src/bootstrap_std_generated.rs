@@ -729,14 +729,14 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![DeclarationId(38), DeclarationId(38), DeclarationId(195)],
                     output: DeclarationId(38),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 9622, 9672)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 9682, 9732)),
                 },
                 type_params: vec![DeclarationId(38)],
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 9569, 9672),
+                span: SourceSpan::new("dsl/std/algebra.dag", 9629, 9732),
             },
             Declaration {
                 id: DeclarationId(38),
@@ -747,7 +747,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 9569, 9672),
+                span: SourceSpan::new("dsl/std/algebra.dag", 9629, 9732),
             },
             Declaration {
                 id: DeclarationId(39),
@@ -755,14 +755,14 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![DeclarationId(40), DeclarationId(40), DeclarationId(196)],
                     output: DeclarationId(40),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 9727, 9777)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 9787, 9837)),
                 },
                 type_params: vec![DeclarationId(40)],
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 9674, 9777),
+                span: SourceSpan::new("dsl/std/algebra.dag", 9734, 9837),
             },
             Declaration {
                 id: DeclarationId(40),
@@ -773,7 +773,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 9674, 9777),
+                span: SourceSpan::new("dsl/std/algebra.dag", 9734, 9837),
             },
             Declaration {
                 id: DeclarationId(41),
@@ -871,7 +871,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 10967, 11875),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11027, 11935),
             },
             Declaration {
                 id: DeclarationId(42),
@@ -882,7 +882,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 10967, 11875),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11027, 11935),
             },
             Declaration {
                 id: DeclarationId(43),
@@ -936,7 +936,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12535, 12874),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12595, 12934),
             },
             Declaration {
                 id: DeclarationId(44),
@@ -947,7 +947,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12535, 12874),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12595, 12934),
             },
             Declaration {
                 id: DeclarationId(45),
@@ -958,7 +958,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12535, 12874),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12595, 12934),
             },
             Declaration {
                 id: DeclarationId(46),
@@ -984,7 +984,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 13075, 13113),
+                span: SourceSpan::new("dsl/std/algebra.dag", 13135, 13173),
             },
             Declaration {
                 id: DeclarationId(47),
@@ -1026,7 +1026,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 14983, 15202),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15043, 15262),
             },
             Declaration {
                 id: DeclarationId(48),
@@ -1048,7 +1048,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15204, 15270),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15264, 15330),
             },
             Declaration {
                 id: DeclarationId(49),
@@ -1102,7 +1102,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15272, 15720),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15332, 15780),
             },
             Declaration {
                 id: DeclarationId(50),
@@ -1128,7 +1128,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15936, 16113),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15996, 16173),
             },
             Declaration {
                 id: DeclarationId(51),
@@ -1158,7 +1158,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 16571, 16756),
+                span: SourceSpan::new("dsl/std/algebra.dag", 16631, 16816),
             },
             Declaration {
                 id: DeclarationId(52),
@@ -1196,7 +1196,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 16781, 17212),
+                span: SourceSpan::new("dsl/std/algebra.dag", 16841, 17272),
             },
             Declaration {
                 id: DeclarationId(53),
@@ -1219,11 +1219,11 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: Some(ValueBody::Unparsed(SourceSpan::new(
                     "dsl/std/algebra.dag",
-                    17273,
-                    17524,
+                    17333,
+                    17584,
                 ))),
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 17214, 17524),
+                span: SourceSpan::new("dsl/std/algebra.dag", 17274, 17584),
             },
             Declaration {
                 id: DeclarationId(54),
@@ -1231,14 +1231,14 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![],
                     output: DeclarationId(197),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 17584, 19059)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 17644, 19119)),
                 },
                 type_params: vec![],
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 17526, 19059),
+                span: SourceSpan::new("dsl/std/algebra.dag", 17586, 19119),
             },
             Declaration {
                 id: DeclarationId(55),
@@ -1246,14 +1246,14 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![],
                     output: DeclarationId(198),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 19124, 20218)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 19184, 20278)),
                 },
                 type_params: vec![],
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 19061, 20218),
+                span: SourceSpan::new("dsl/std/algebra.dag", 19121, 20278),
             },
             Declaration {
                 id: DeclarationId(56),
@@ -1261,14 +1261,14 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![],
                     output: DeclarationId(199),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 20281, 21042)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 20341, 21102)),
                 },
                 type_params: vec![],
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 20220, 21042),
+                span: SourceSpan::new("dsl/std/algebra.dag", 20280, 21102),
             },
             Declaration {
                 id: DeclarationId(57),
@@ -1276,14 +1276,14 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![],
                     output: DeclarationId(200),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 21407, 24752)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 21467, 24812)),
                 },
                 type_params: vec![],
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 21335, 24752),
+                span: SourceSpan::new("dsl/std/algebra.dag", 21395, 24812),
             },
             Declaration {
                 id: DeclarationId(58),
@@ -1291,14 +1291,14 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![],
                     output: DeclarationId(201),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 24818, 27885)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 24878, 27945)),
                 },
                 type_params: vec![],
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 24754, 27885),
+                span: SourceSpan::new("dsl/std/algebra.dag", 24814, 27945),
             },
             Declaration {
                 id: DeclarationId(59),
@@ -1306,14 +1306,14 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![],
                     output: DeclarationId(202),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 27955, 33023)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 28015, 33083)),
                 },
                 type_params: vec![],
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 27887, 33023),
+                span: SourceSpan::new("dsl/std/algebra.dag", 27947, 33083),
             },
             Declaration {
                 id: DeclarationId(60),
@@ -1321,14 +1321,14 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![],
                     output: DeclarationId(203),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 33087, 35911)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 33147, 35971)),
                 },
                 type_params: vec![],
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 33025, 35911),
+                span: SourceSpan::new("dsl/std/algebra.dag", 33085, 35971),
             },
             Declaration {
                 id: DeclarationId(61),
@@ -1336,14 +1336,14 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![DeclarationId(47)],
                     output: DeclarationId(204),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 36001, 36464)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 36061, 36524)),
                 },
                 type_params: vec![],
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 35913, 36464),
+                span: SourceSpan::new("dsl/std/algebra.dag", 35973, 36524),
             },
             Declaration {
                 id: DeclarationId(62),
@@ -1351,14 +1351,14 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![DeclarationId(47)],
                     output: DeclarationId(205),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 36806, 37087)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/algebra.dag", 36866, 37147)),
                 },
                 type_params: vec![],
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 36737, 37087),
+                span: SourceSpan::new("dsl/std/algebra.dag", 36797, 37147),
             },
             Declaration {
                 id: DeclarationId(63),
@@ -4002,7 +4002,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 9603, 9615),
+                span: SourceSpan::new("dsl/std/algebra.dag", 9663, 9675),
             },
             Declaration {
                 id: DeclarationId(196),
@@ -4017,7 +4017,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 9708, 9720),
+                span: SourceSpan::new("dsl/std/algebra.dag", 9768, 9780),
             },
             Declaration {
                 id: DeclarationId(197),
@@ -4034,7 +4034,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 17557, 17583),
+                span: SourceSpan::new("dsl/std/algebra.dag", 17617, 17643),
             },
             Declaration {
                 id: DeclarationId(198),
@@ -4051,7 +4051,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 19097, 19123),
+                span: SourceSpan::new("dsl/std/algebra.dag", 19157, 19183),
             },
             Declaration {
                 id: DeclarationId(199),
@@ -4068,7 +4068,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 20254, 20280),
+                span: SourceSpan::new("dsl/std/algebra.dag", 20314, 20340),
             },
             Declaration {
                 id: DeclarationId(200),
@@ -4085,7 +4085,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 21380, 21406),
+                span: SourceSpan::new("dsl/std/algebra.dag", 21440, 21466),
             },
             Declaration {
                 id: DeclarationId(201),
@@ -4102,7 +4102,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 24791, 24817),
+                span: SourceSpan::new("dsl/std/algebra.dag", 24851, 24877),
             },
             Declaration {
                 id: DeclarationId(202),
@@ -4119,7 +4119,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 27928, 27954),
+                span: SourceSpan::new("dsl/std/algebra.dag", 27988, 28014),
             },
             Declaration {
                 id: DeclarationId(203),
@@ -4136,7 +4136,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 33060, 33086),
+                span: SourceSpan::new("dsl/std/algebra.dag", 33120, 33146),
             },
             Declaration {
                 id: DeclarationId(204),
@@ -4153,7 +4153,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 35974, 36000),
+                span: SourceSpan::new("dsl/std/algebra.dag", 36034, 36060),
             },
             Declaration {
                 id: DeclarationId(205),
@@ -4170,7 +4170,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 36793, 36805),
+                span: SourceSpan::new("dsl/std/algebra.dag", 36853, 36865),
             },
             Declaration {
                 id: DeclarationId(206),
@@ -4772,7 +4772,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11024, 11037),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11084, 11097),
             },
             Declaration {
                 id: DeclarationId(246),
@@ -4789,7 +4789,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11039, 11052),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11099, 11112),
             },
             Declaration {
                 id: DeclarationId(247),
@@ -4806,7 +4806,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11057, 11070),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11117, 11130),
             },
             Declaration {
                 id: DeclarationId(248),
@@ -4821,7 +4821,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11021, 11070),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11081, 11130),
             },
             Declaration {
                 id: DeclarationId(249),
@@ -4838,7 +4838,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11080, 11093),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11140, 11153),
             },
             Declaration {
                 id: DeclarationId(250),
@@ -4855,7 +4855,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11113, 11126),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11173, 11186),
             },
             Declaration {
                 id: DeclarationId(251),
@@ -4870,7 +4870,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11104, 11126),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11164, 11186),
             },
             Declaration {
                 id: DeclarationId(252),
@@ -4885,7 +4885,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11207, 11219),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11267, 11279),
             },
             Declaration {
                 id: DeclarationId(253),
@@ -4902,7 +4902,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11245, 11258),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11305, 11318),
             },
             Declaration {
                 id: DeclarationId(254),
@@ -4917,7 +4917,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11229, 11258),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11289, 11318),
             },
             Declaration {
                 id: DeclarationId(255),
@@ -4932,7 +4932,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11269, 11280),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11329, 11340),
             },
             Declaration {
                 id: DeclarationId(256),
@@ -4947,7 +4947,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11290, 11301),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11350, 11361),
             },
             Declaration {
                 id: DeclarationId(257),
@@ -4961,7 +4961,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11319, 11321),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11379, 11381),
             },
             Declaration {
                 id: DeclarationId(258),
@@ -4976,7 +4976,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11311, 11321),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11371, 11381),
             },
             Declaration {
                 id: DeclarationId(259),
@@ -4990,7 +4990,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11338, 11340),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11398, 11400),
             },
             Declaration {
                 id: DeclarationId(260),
@@ -5005,7 +5005,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11330, 11340),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11390, 11400),
             },
             Declaration {
                 id: DeclarationId(261),
@@ -5020,7 +5020,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11392, 11402),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11452, 11462),
             },
             Declaration {
                 id: DeclarationId(262),
@@ -5037,7 +5037,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11407, 11420),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11467, 11480),
             },
             Declaration {
                 id: DeclarationId(263),
@@ -5052,7 +5052,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11389, 11420),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11449, 11480),
             },
             Declaration {
                 id: DeclarationId(264),
@@ -5067,7 +5067,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11434, 11447),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11494, 11507),
             },
             Declaration {
                 id: DeclarationId(265),
@@ -5084,7 +5084,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11452, 11465),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11512, 11525),
             },
             Declaration {
                 id: DeclarationId(266),
@@ -5099,7 +5099,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11431, 11465),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11491, 11525),
             },
             Declaration {
                 id: DeclarationId(267),
@@ -5114,7 +5114,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11480, 11493),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11540, 11553),
             },
             Declaration {
                 id: DeclarationId(268),
@@ -5129,7 +5129,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11474, 11499),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11534, 11559),
             },
             Declaration {
                 id: DeclarationId(269),
@@ -5146,7 +5146,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11524, 11537),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11584, 11597),
             },
             Declaration {
                 id: DeclarationId(270),
@@ -5161,7 +5161,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11515, 11537),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11575, 11597),
             },
             Declaration {
                 id: DeclarationId(271),
@@ -5178,7 +5178,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11542, 11555),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11602, 11615),
             },
             Declaration {
                 id: DeclarationId(272),
@@ -5193,7 +5193,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11512, 11555),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11572, 11615),
             },
             Declaration {
                 id: DeclarationId(273),
@@ -5208,7 +5208,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11566, 11579),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11626, 11639),
             },
             Declaration {
                 id: DeclarationId(274),
@@ -5223,7 +5223,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11563, 11588),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11623, 11648),
             },
             Declaration {
                 id: DeclarationId(275),
@@ -5238,7 +5238,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11599, 11612),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11659, 11672),
             },
             Declaration {
                 id: DeclarationId(276),
@@ -5253,7 +5253,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11596, 11621),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11656, 11681),
             },
             Declaration {
                 id: DeclarationId(277),
@@ -5266,7 +5266,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11686, 11699),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11746, 11759),
             },
             Declaration {
                 id: DeclarationId(278),
@@ -5280,7 +5280,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11686, 11699),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11746, 11759),
             },
             Declaration {
                 id: DeclarationId(279),
@@ -5297,7 +5297,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11675, 11700),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11735, 11760),
             },
             Declaration {
                 id: DeclarationId(280),
@@ -5312,7 +5312,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11667, 11700),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11727, 11760),
             },
             Declaration {
                 id: DeclarationId(281),
@@ -5329,7 +5329,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11720, 11733),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11780, 11793),
             },
             Declaration {
                 id: DeclarationId(282),
@@ -5344,7 +5344,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11712, 11733),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11772, 11793),
             },
             Declaration {
                 id: DeclarationId(283),
@@ -5361,7 +5361,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11753, 11766),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11813, 11826),
             },
             Declaration {
                 id: DeclarationId(284),
@@ -5376,7 +5376,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11742, 11766),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11802, 11826),
             },
             Declaration {
                 id: DeclarationId(285),
@@ -5393,7 +5393,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11786, 11799),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11846, 11859),
             },
             Declaration {
                 id: DeclarationId(286),
@@ -5408,7 +5408,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11775, 11799),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11835, 11859),
             },
             Declaration {
                 id: DeclarationId(287),
@@ -5423,7 +5423,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11814, 11829),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11874, 11889),
             },
             Declaration {
                 id: DeclarationId(288),
@@ -5440,7 +5440,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11834, 11847),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11894, 11907),
             },
             Declaration {
                 id: DeclarationId(289),
@@ -5455,7 +5455,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11811, 11847),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11871, 11907),
             },
             Declaration {
                 id: DeclarationId(290),
@@ -5470,7 +5470,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 11860, 11873),
+                span: SourceSpan::new("dsl/std/algebra.dag", 11920, 11933),
             },
             Declaration {
                 id: DeclarationId(291),
@@ -5484,7 +5484,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12583, 12585),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12643, 12645),
             },
             Declaration {
                 id: DeclarationId(292),
@@ -5499,7 +5499,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12574, 12585),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12634, 12645),
             },
             Declaration {
                 id: DeclarationId(293),
@@ -5522,7 +5522,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12595, 12616),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12655, 12676),
             },
             Declaration {
                 id: DeclarationId(294),
@@ -5536,7 +5536,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12633, 12635),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12693, 12695),
             },
             Declaration {
                 id: DeclarationId(295),
@@ -5551,7 +5551,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12624, 12635),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12684, 12695),
             },
             Declaration {
                 id: DeclarationId(296),
@@ -5574,7 +5574,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12658, 12679),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12718, 12739),
             },
             Declaration {
                 id: DeclarationId(297),
@@ -5589,7 +5589,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12646, 12679),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12706, 12739),
             },
             Declaration {
                 id: DeclarationId(298),
@@ -5612,7 +5612,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12692, 12713),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12752, 12773),
             },
             Declaration {
                 id: DeclarationId(299),
@@ -5635,7 +5635,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12718, 12739),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12778, 12799),
             },
             Declaration {
                 id: DeclarationId(300),
@@ -5650,7 +5650,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12689, 12739),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12749, 12799),
             },
             Declaration {
                 id: DeclarationId(301),
@@ -5667,7 +5667,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12756, 12769),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12816, 12829),
             },
             Declaration {
                 id: DeclarationId(302),
@@ -5682,7 +5682,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12748, 12769),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12808, 12829),
             },
             Declaration {
                 id: DeclarationId(303),
@@ -5699,7 +5699,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12788, 12801),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12848, 12861),
             },
             Declaration {
                 id: DeclarationId(304),
@@ -5714,7 +5714,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12780, 12801),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12840, 12861),
             },
             Declaration {
                 id: DeclarationId(305),
@@ -5729,7 +5729,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12809, 12822),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12869, 12882),
             },
             Declaration {
                 id: DeclarationId(306),
@@ -5744,7 +5744,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12839, 12852),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12899, 12912),
             },
             Declaration {
                 id: DeclarationId(307),
@@ -5759,7 +5759,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 12861, 12872),
+                span: SourceSpan::new("dsl/std/algebra.dag", 12921, 12932),
             },
             Declaration {
                 id: DeclarationId(308),
@@ -5770,7 +5770,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 13091, 13095),
+                span: SourceSpan::new("dsl/std/algebra.dag", 13151, 13155),
             },
             Declaration {
                 id: DeclarationId(309),
@@ -5781,7 +5781,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 13098, 13103),
+                span: SourceSpan::new("dsl/std/algebra.dag", 13158, 13163),
             },
             Declaration {
                 id: DeclarationId(310),
@@ -5792,7 +5792,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 13106, 13113),
+                span: SourceSpan::new("dsl/std/algebra.dag", 13166, 13173),
             },
             Declaration {
                 id: DeclarationId(311),
@@ -5803,7 +5803,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15007, 15025),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15067, 15085),
             },
             Declaration {
                 id: DeclarationId(312),
@@ -5814,7 +5814,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15030, 15053),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15090, 15113),
             },
             Declaration {
                 id: DeclarationId(313),
@@ -5825,7 +5825,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15058, 15079),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15118, 15139),
             },
             Declaration {
                 id: DeclarationId(314),
@@ -5836,7 +5836,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15084, 15115),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15144, 15175),
             },
             Declaration {
                 id: DeclarationId(315),
@@ -5847,7 +5847,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15120, 15143),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15180, 15203),
             },
             Declaration {
                 id: DeclarationId(316),
@@ -5858,7 +5858,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15148, 15175),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15208, 15235),
             },
             Declaration {
                 id: DeclarationId(317),
@@ -5869,7 +5869,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15180, 15202),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15240, 15262),
             },
             Declaration {
                 id: DeclarationId(318),
@@ -5880,7 +5880,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15229, 15243),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15289, 15303),
             },
             Declaration {
                 id: DeclarationId(319),
@@ -5896,7 +5896,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15248, 15270),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15308, 15330),
             },
             Declaration {
                 id: DeclarationId(320),
@@ -5907,7 +5907,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15301, 15313),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15361, 15373),
             },
             Declaration {
                 id: DeclarationId(321),
@@ -5918,7 +5918,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15318, 15333),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15378, 15393),
             },
             Declaration {
                 id: DeclarationId(322),
@@ -5929,7 +5929,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15338, 15349),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15398, 15409),
             },
             Declaration {
                 id: DeclarationId(323),
@@ -5940,7 +5940,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15354, 15367),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15414, 15427),
             },
             Declaration {
                 id: DeclarationId(324),
@@ -5956,7 +5956,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15372, 15402),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15432, 15462),
             },
             Declaration {
                 id: DeclarationId(325),
@@ -5978,7 +5978,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15407, 15476),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15467, 15536),
             },
             Declaration {
                 id: DeclarationId(326),
@@ -5994,7 +5994,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15481, 15522),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15541, 15582),
             },
             Declaration {
                 id: DeclarationId(327),
@@ -6016,7 +6016,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15527, 15594),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15587, 15654),
             },
             Declaration {
                 id: DeclarationId(328),
@@ -6033,7 +6033,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15620, 15645),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15680, 15705),
             },
             Declaration {
                 id: DeclarationId(329),
@@ -6055,7 +6055,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15599, 15681),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15659, 15741),
             },
             Declaration {
                 id: DeclarationId(330),
@@ -6071,7 +6071,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15686, 15720),
+                span: SourceSpan::new("dsl/std/algebra.dag", 15746, 15780),
             },
             Declaration {
                 id: DeclarationId(331),
@@ -6082,7 +6082,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 15966, 15978),
+                span: SourceSpan::new("dsl/std/algebra.dag", 16026, 16038),
             },
             Declaration {
                 id: DeclarationId(332),
@@ -6093,7 +6093,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 16036, 16052),
+                span: SourceSpan::new("dsl/std/algebra.dag", 16096, 16112),
             },
             Declaration {
                 id: DeclarationId(333),
@@ -6104,7 +6104,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 16099, 16113),
+                span: SourceSpan::new("dsl/std/algebra.dag", 16159, 16173),
             },
             Declaration {
                 id: DeclarationId(334),
@@ -6115,7 +6115,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 16590, 16603),
+                span: SourceSpan::new("dsl/std/algebra.dag", 16650, 16663),
             },
             Declaration {
                 id: DeclarationId(335),
@@ -6126,7 +6126,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 16619, 16634),
+                span: SourceSpan::new("dsl/std/algebra.dag", 16679, 16694),
             },
             Declaration {
                 id: DeclarationId(336),
@@ -6137,7 +6137,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 16680, 16696),
+                span: SourceSpan::new("dsl/std/algebra.dag", 16740, 16756),
             },
             Declaration {
                 id: DeclarationId(337),
@@ -6148,7 +6148,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 16743, 16756),
+                span: SourceSpan::new("dsl/std/algebra.dag", 16803, 16816),
             },
             Declaration {
                 id: DeclarationId(338),
@@ -6165,7 +6165,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 16839, 16864),
+                span: SourceSpan::new("dsl/std/algebra.dag", 16899, 16924),
             },
             Declaration {
                 id: DeclarationId(339),
@@ -6179,7 +6179,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 16915, 16936),
+                span: SourceSpan::new("dsl/std/algebra.dag", 16975, 16996),
             },
             Declaration {
                 id: DeclarationId(340),
@@ -6193,7 +6193,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 16951, 16961),
+                span: SourceSpan::new("dsl/std/algebra.dag", 17011, 17021),
             },
             Declaration {
                 id: DeclarationId(341),
@@ -6207,7 +6207,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 17206, 17210),
+                span: SourceSpan::new("dsl/std/algebra.dag", 17266, 17270),
             },
             Declaration {
                 id: DeclarationId(342),
@@ -6230,7 +6230,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                span: SourceSpan::new("dsl/std/algebra.dag", 17243, 17270),
+                span: SourceSpan::new("dsl/std/algebra.dag", 17303, 17330),
             },
             Declaration {
                 id: DeclarationId(343),

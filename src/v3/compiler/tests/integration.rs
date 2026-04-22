@@ -37,8 +37,6 @@
 #[path = "integration/common/mod.rs"]
 mod common;
 
-#[path = "integration/algebra_inhabitance_total_order_test.rs"]
-mod algebra_inhabitance_total_order_test;
 #[path = "integration/four_fixture_regression_test.rs"]
 mod four_fixture_regression_test;
 #[path = "integration/l1_5_fixed_point_test.rs"]
@@ -359,6 +357,72 @@ mod parse_stage4_prep {
         parse_file(
             include_str!("../../../../dsl/std/algebra.dag"),
             "dsl/std/algebra.dag",
+        );
+    }
+
+    fn fn_body<'a>(source: &'a str, fn_name: &str) -> &'a str {
+        let anchor = format!("fn {fn_name}");
+        let start = source
+            .find(&anchor)
+            .unwrap_or_else(|| panic!("expected function `{fn_name}`"));
+        let body_start = source[start..]
+            .find('{')
+            .map(|offset| start + offset + 1)
+            .unwrap_or_else(|| panic!("expected body start for `{fn_name}`"));
+        let body_end = source[body_start..]
+            .find("\n}")
+            .map(|offset| body_start + offset)
+            .unwrap_or_else(|| panic!("expected body end for `{fn_name}`"));
+        source[body_start..body_end].trim()
+    }
+
+    #[test]
+    fn total_order_lattice_helpers_flow_through_shared_min_max_by() {
+        let dag = crate::common::cached_compile::cached_compile_to_dag("let _ = 1", "algebra_total_order_helpers.v3");
+
+        assert!(
+            dag.declaration_by_name("min_by").is_some(),
+            "std bootstrap should export min_by"
+        );
+        assert!(
+            dag.declaration_by_name("max_by").is_some(),
+            "std bootstrap should export max_by"
+        );
+
+        let algebra_source = include_str!("../../../../dsl/std/algebra.dag");
+        let fermi_source = include_str!("../../../../dsl/std/fermi.dag");
+        let termination_source = include_str!("../../../../dsl/std/termination.dag");
+
+        assert!(
+            algebra_source.contains("fn min_by<T>("),
+            "algebra.dag should define min_by"
+        );
+        assert!(
+            algebra_source.contains("fn max_by<T>("),
+            "algebra.dag should define max_by"
+        );
+
+        let fermi_meet = fn_body(fermi_source, "fermi_meet");
+        let fermi_join = fn_body(fermi_source, "fermi_join");
+        let merge_evidence = fn_body(termination_source, "merge_evidence");
+        let join_evidence = fn_body(termination_source, "join_evidence");
+
+        assert!(
+            fermi_meet.contains("min_by(") && fermi_meet.contains("project: fermi_ordinal"),
+            "fermi_meet should delegate through shared min_by, got: {fermi_meet}"
+        );
+        assert!(
+            fermi_join.contains("max_by(") && fermi_join.contains("project: fermi_ordinal"),
+            "fermi_join should delegate through shared max_by, got: {fermi_join}"
+        );
+        assert!(
+            merge_evidence.contains("min_by(")
+                && merge_evidence.contains("project: evidence_rank"),
+            "merge_evidence should delegate through shared min_by, got: {merge_evidence}"
+        );
+        assert!(
+            join_evidence.contains("max_by(") && join_evidence.contains("project: evidence_rank"),
+            "join_evidence should delegate through shared max_by, got: {join_evidence}"
         );
     }
 

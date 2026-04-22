@@ -248,9 +248,11 @@ type BooleanAlgebra<T> {
 //   std/termination.dag: optional_evidence_meet, map_evidence_merge_at
 //   std/induction.dag:   meet_sub_value, join_sub_value
 //
-// Generic patterns (future — blocked on generic emission):
+// Generic patterns still blocked on broader generic emission:
 //   optional_meet(meet, a, b):  None is identity (top).
 //   map_merge_at(merge, m, k, v): pointwise per key, absent = identity.
+//
+// The total-order projection forms below are live now:
 //   min_by(project, a, b):  compare via projection, keep lesser.
 //   max_by(project, a, b):  compare via projection, keep greater.
 
