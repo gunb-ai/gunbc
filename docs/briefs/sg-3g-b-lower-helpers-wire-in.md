@@ -67,8 +67,8 @@ Worker picks based on which has the smallest blast radius; PR body declares the 
 
 ## Acceptance
 
-- Zero hand-authored `match` expressions in `lower.rs` that extract `.span` from `SurfaceExpr` — all go through `lower_helpers::expr_span`
-- The 16 call sites named in #612 all updated
+- No hand-authored `lower.rs` span/projection path that duplicates the current `lower_helpers` surface: `expr_span` / `item_span` / `pattern_binding_names` are imported from `crate::lower_helpers` and used for those concerns (per `lower.rs` `use` line)
+- The `expr_span` call sites named in #612 are all routed through the generated helper (count may grow with upstream edits; grep is authoritative)
 - Lowering tests green
 - DB-8 fixed-point converges bit-identically to pre-wire-in
 - `lower_helpers.dag` → `lower_helpers_generated.rs` freshness ratchet still green
@@ -85,9 +85,9 @@ Worker picks based on which has the smallest blast radius; PR body declares the 
 ## Non-goals
 
 - **Not retiring `lower.rs`** — this is one slice wire-in, not full retirement. `lower.rs` keeps ~99% of its logic hand-authored until more slices land.
-- **Not extending the slice** — pure `expr_span` only; don't pull adjacent functions into this PR.
+- **Not adding new helper families in this receipt** — wire-in consumes whatever the `.dag` already listed at ship time (`expr_span`, `item_span`, `pattern_binding_names` in the current tree). New projections stay in follow-on SG-3g-c / cluster briefs.
 - **Not addressing the two named blockers** (`SurfaceLiteral → LiteralBits`, `render_variant_constructor`) — those get separate ROADMAP debt rows. Not this lane.
-- **Not touching `lower_helpers.dag`** — the authority shape landed in #612 and should not need revision for wire-in.
+- **Not changing `lower_helpers.dag` for the wire-in receipt** — authority landed in #612; lens edits are a different lane unless a bug is found.
 
 ## Size
 
@@ -99,4 +99,4 @@ Expected LOC delta: ~-20 to -40 (the inline match pattern deduplicates into 16 c
 
 Director reviews. Key acceptance signal: DB-8 fixed-point bit-identical + lowering test suite green. If either fails, STOP and diagnose before re-trying.
 
-After this ships: ROADMAP SG-3g lane transitions from "partial-staging" to "prototype receipt landed." The next SG-3 work would be: additional lower.rs slices (SG-3g-c, d, ...) following the same pattern, eventually heading toward SG-3b proper.
+**Shipped outcome:** ROADMAP SG-3g is no longer "staging-only" for these helpers: the live lowerer imports `lower_helpers` and the regen/lens ratchet stays enforced. **Next work** (separate briefs / wave slots): additional `lower.rs` consumption or new `lower_helpers.dag` rows are gated on ROADMAP `emit_rust_module` debt where applicable; the director "Generated Helper Consumption" cluster frames paired lower+infer tranches when those briefs are written.
