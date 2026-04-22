@@ -129,7 +129,7 @@ Exempted (pending named trigger, not counted either direction):
 
 Ratchet-tracked (**migrates to `std/`, counted against the baseline**):
 - Compiler-side types that duplicate user-facing concepts (tokenize, runtime_mirrors)
-- Generic-Lookup-pattern carriers across lenses (`CostLookup`, `TemplateArgumentLookup`, `DeclarationLookup`, etc.) — dissolve into a single `Lookup<T>` type in `std/`
+- Strict 2-variant `Missing | Found(T)` Lookup-pattern carriers across lenses (`CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup` — 3 instances) — dissolve into a single `Lookup<T>` type in `std/`. Carriers with additional semantic variants (e.g., `VariantPayloadShapeLookup`'s `NotPayloadProduct`, `TemplateArgumentBinding = Conflict | NoOp | Append`) are lens-API, not in-ratchet.
 
 Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"`):
 
