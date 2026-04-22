@@ -28,7 +28,7 @@ same-PR E-6 consumer in `parse_parser_body.txt`:
 | SG-2c-2 | `TopLevelItemKwRow` (→ `top_level_item_dispatch`) | `parse_item` keyword dispatch |
 | SG-2c-3 | (derived `is_type_rhs_boundary_keyword` from SG-2c-2 rows) | `skip_where_clause` / `rhs_is_sum` type-RHS lookahead |
 | SG-2c-4 | `BracketRow` (→ `bracket_role`) | two inline bracket-membership match blocks in the same helpers |
-| SG-2c-5 | (landed via PR #636) | further table extraction along the same axis |
+| SG-2c-5 | `SoftKeywordIdentRow` (→ soft-keyword-as-identifier membership, e.g. `KwType`; landed via PR #636) | positions where a soft-keyword variant is accepted as an identifier |
 
 Every row is **pure data** — no control flow, no cursor state, no error
 recovery. The set of rows that fit this shape is finite: operator
@@ -68,9 +68,11 @@ Concretely, SG-2c-proper needs **all** of:
 3. **Tuple-return short-circuit** — the `(Surface*, Int)` + `Result` shape
    that lets a parser function advance the cursor and propagate diagnostics
    in one step.
-4. **Span fusion** — `span.fuse` over `Token` spans is idiomatic throughout
-   `parse_parser_body.txt`; needs to express in `.dag` over the same
-   carriers (lightweight vs. the other three).
+4. **Span construction / fusion** — `parse_parser_body.txt` builds
+   `SourceSpan` ranges manually from `Token` `byte_start` / `byte_end`
+   positions throughout recursive descent (no `span.fuse` helper today);
+   the `.dag` port needs to express the same span-assembly pattern over
+   the same carriers (lightweight vs. the other three).
 
 Of these, (1) is the load-bearing blocker — (2)/(3)/(4) become straightforward
 once the recursive-list-body emission pipe exists, because they are just
@@ -118,7 +120,7 @@ axis are finite and largely exhausted.
 - retire `parse_parser_body.txt` as semantic authority (the residual
   algorithm stays);
 - close the Phase 4a acceptance criteria in SELF_HOSTING §6;
-- move the `parse_tables.dag` four-type exemption in the std/-consolidation
+- move the `parse_tables.dag` type-count exemption in the std/-consolidation
   ratchet (the "Compiler–`std/` consolidation program — specific migrations"
   row in ROADMAP and its `parse_tables.dag` precedent-rule bullet — that
   exemption unblocks only via SG-2c-proper per-row classification).
@@ -151,7 +153,7 @@ schema?
   row data — a small but real coupling cost.
 - **Net:** risk is **modest, not accelerating**. The rows are
   well-bounded, self-documenting about their dissolution trigger, and do
-  not expand the compiler's type surface beyond the exempted four types.
+  not expand the compiler's type surface beyond the exempted `parse_tables.dag` types (SG-2c-5 bumped this from four to five via `SoftKeywordIdentRow`; ROADMAP's exemption count is now itself mildly stale on that axis and will re-stabilize at SG-2c-proper).
   The coupling cost of each additional row grows linearly, not super-
   linearly, in the SG-2c-proper port.
 
