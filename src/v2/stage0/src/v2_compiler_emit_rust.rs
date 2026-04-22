@@ -1831,12 +1831,38 @@ pub fn emit_type_params(
     }
 }
 
+pub fn emit_clone_bound_type_params(
+    params: &Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((params.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        {
+            let names = Rc::new({
+                let mut __result = Vec::new();
+                for p in params.clone().iter().cloned() {
+                    __result.push(v2_rt::concat(
+                        generic_param_name_at(p.clone(), source_indices.clone()),
+                        ": Clone".to_string(),
+                    ));
+                }
+                __result
+            });
+            v2_rt::concat(
+                v2_rt::concat("<".to_string(), names.join(&", ".to_string())),
+                ">".to_string(),
+            )
+        }
+    }
+}
+
 pub fn is_function_type_param(
     param: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (param_node_name_at(param.clone(), source_indices.clone()).as_str()
-        == authored_name_at(source_indices.clone(), param_node_type_expr(&param)).as_str())
+        == authored_name_at(source_indices.clone(), &param_node_type_expr(&param)).as_str())
 }
 
 pub fn function_type_params(
@@ -2616,7 +2642,7 @@ pub fn emit_fn_def(
         let si = scope.type_env.clone().source_indices.clone();
         let type_params = function_type_params(params, si.clone());
         let value_params = function_value_params(params, si.clone());
-        let type_params_str = emit_type_params(&type_params, si.clone());
+        let type_params_str = emit_clone_bound_type_params(&type_params, si.clone());
         let params_str = emit_params(
             value_params.clone(),
             shared_types.clone(),
@@ -2851,7 +2877,7 @@ pub fn emit_func_def(
         let value_params =
             function_value_params(params, scope.type_env.clone().source_indices.clone());
         let type_params_str =
-            emit_type_params(&type_params, scope.type_env.clone().source_indices.clone());
+            emit_clone_bound_type_params(&type_params, scope.type_env.clone().source_indices.clone());
         let service_names = match lookup_item(registry.clone(), name.clone()) {
             Some(info) => info.service_names.clone(),
             None => Rc::new(vec![]),

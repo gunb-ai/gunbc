@@ -120,7 +120,7 @@ pub struct BooleanAlgebra<T> {
     pub bottom: Box<T>,
 }
 
-pub fn min_by(t: T, a: T, b: T, project: impl Fn(T) -> i64 + Clone) -> T {
+pub fn min_by<T: Clone>(a: T, b: T, project: impl Fn(T) -> i64 + Clone) -> T {
     if (project(a.clone()) <= project(b.clone())) {
         a.clone()
     } else {
@@ -128,7 +128,7 @@ pub fn min_by(t: T, a: T, b: T, project: impl Fn(T) -> i64 + Clone) -> T {
     }
 }
 
-pub fn max_by(t: T, a: T, b: T, project: impl Fn(T) -> i64 + Clone) -> T {
+pub fn max_by<T: Clone>(a: T, b: T, project: impl Fn(T) -> i64 + Clone) -> T {
     if (project(a.clone()) >= project(b.clone())) {
         a.clone()
     } else {
