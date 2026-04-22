@@ -77,8 +77,16 @@ pub(super) fn behavior_result_port(behavior: &Behavior) -> PortId {
 }
 
 /// Structural port-liveness walk. Returns true if `target` appears as any port
-/// reachable from `root` via producer→input edges. Used by Go and Rust emit
-/// to decide pattern-binding elision without scanning rendered text.
+/// reachable from `root` via producer→input edges (each behavior visits its
+/// inputs once; cost is bounded by the body subgraph).
+///
+/// Go and Rust emit use this to answer whether an arm body actually consumes a
+/// payload binding — **without** scanning rendered source. The contract is a
+/// graph fact, so the check stays structural.
+///
+/// Ports with no producer (`produced_by = None`, as payload bindings use) are
+/// leaves: the walk either hits `target` there or skips an unrelated parameter
+/// port.
 pub(super) fn port_is_consumed_from(dag: &Dag, root: PortId, target: PortId) -> bool {
     if root == target {
         return true;
@@ -1344,8 +1352,9 @@ impl<'a> Ctx<'a> {
         ))
     }
 
+    /// Thin wrapper; rationale lives on the module-level `port_is_consumed_from`.
     fn port_is_consumed_from(&self, root: PortId, target: PortId) -> bool {
-        crate::emit::port_is_consumed_from(self.dag, root, target)
+        port_is_consumed_from(self.dag, root, target)
     }
 
     fn render_realized_pattern_branch(

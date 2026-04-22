@@ -3738,6 +3738,7 @@ impl<'a> Ctx<'a> {
         })
     }
 
+    /// Thin wrapper; rationale lives on `crate::emit::port_is_consumed_from`.
     fn port_is_consumed_from(&self, root: PortId, target: PortId) -> bool {
         super::port_is_consumed_from(self.dag, root, target)
     }
