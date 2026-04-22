@@ -2,7 +2,7 @@
 
 **Companion:** [1e-3v-phase-3-dispatch-gate.md](../briefs/1e-3v-phase-3-dispatch-gate.md) — **live dispatch guidance** (Executive summary, cluster table, Phase 3.0, checklist). **Path:** `docs/review-findings/` (archival namespace per **`INVARIANTS.md`** + **Review AJ**).
 
-This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`), **Review AJ** (commit `3be30867`), **Review AK** / **Review AL** (commit `741b2cd3`), **Review AM** (commit `6e84d559`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
+This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`), **Review AJ** (commit `3be30867`), **Review AK** / **Review AL** (commit `741b2cd3`), **Review AM** / **Review AN** (commit `6e84d559`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
 
 ---
 
@@ -276,3 +276,9 @@ Relayed **BLOCKING** comment repeats the first review’s two claims: (1) `emit.
 - **Brief claims:** Prior spot-checks in chronicle stand; nothing contradicts live tree.
 - **Findings:** None.
 - **Exploratory (non-blocking):** Ingest **~270+ lines**, **30+** lettered reviews — **Reviews K** / **M** already flagged split before next lane — noted. Scaffold comment parallels **`Dag::declaration_name_preference_rank`** policy prose — two readers of one policy, not dual authority; on dissolution, remove **both** as the comment promises.
+
+**Review AN (codex / gpt-5.4, schedule, commit `6e84d559`, 2026-04-22T00:50:12Z)**
+
+- **Verdict:** APPROVE — documentation-only apart from syncing the existing scaffold/debt comment into `src/v3/compiler/src/lower_generated.rs` (regen snapshot from `lower.rs` — line refs drift).
+- **Spot-checks:** Dispatch brief live-code claims — no `OperatorKind::Logical` under `emit/`; Bool **`OperatorRealization`** rows; helper duplication callouts; **`TargetExecutionModel`** / **`SourceFiltering`** presence — matched tree.
+- **Findings:** None — no concrete **`INVARIANTS.md`**, **`docs/modeling-discipline.md`**, **`CODING.md`**, or **`TESTING.md`** violation in the changed lines.
