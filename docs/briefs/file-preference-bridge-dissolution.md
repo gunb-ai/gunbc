@@ -43,7 +43,9 @@ It also catches multiple invariants at once: P1 Modeling Faithfulness (the prefe
 - `git grep "^module std\.verification"` returns exactly one result
 - No embedded path-template mirror inside `src/v3/std/effects.dag`
 - `declaration_name_preference_rank` deleted from `dag.rs` and `lower.rs`
-- `declaration_by_name` has no preference bias — behavior documented in its docstring
+- **`declaration_by_name` emits a typed diagnostic (not `None`, not silent first-match) when multiple declarations share a name** — `None` for zero, `Some` for exactly one, diagnostic otherwise. This is the dissolution target's load-bearing invariant, not a nice-to-have: returning any "winner" from multiple candidates re-introduces the preference rule by another name.
+- **`collect_symbols` in `lower.rs` similarly fail-closes on duplicate names** — symbol-table seeding surfaces a structural error, not a silently-resolved scaffold.
+- A regression test exists that constructs two same-named declarations and asserts both lookup paths diagnose (defensive against future preference-rule re-introduction).
 - Full test suite green (including self-parse / bootstrap)
 
 ## STOP-AND-ESCALATE
