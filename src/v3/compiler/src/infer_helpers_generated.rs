@@ -162,3 +162,19 @@ pub fn template_argument_cursor(p0: &[TemplateArgument]) -> TemplateArgumentCurs
         },
     }
 }
+pub fn filter_non_self_template_arguments(p0: &[TemplateArgument]) -> Vec<TemplateArgument> {
+    match p0 {
+        [] => Vec::new(),
+        [__list_head, __list_tail @ ..] => {
+            if ((__list_head).parameter == (__list_head).value) {
+                filter_non_self_template_arguments(__list_tail)
+            } else {
+                {
+                    let mut __list = filter_non_self_template_arguments(__list_tail);
+                    __list.insert(0, (__list_head).clone());
+                    __list
+                }
+            }
+        }
+    }
+}

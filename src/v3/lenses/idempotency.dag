@@ -1,16 +1,14 @@
-// lenses.idempotency — Lane 2 Stage 2b workflow idempotency dispatch shim.
+// lenses.idempotency — Lane 2 Stage 2b workflow idempotency dispatch.
 //
-// Status: STRUCTURALLY PARTIAL; BEHAVIORALLY STUB.
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY COMPLETE.
 // See docs/v3-lens-capability-register.md.
 //
 // Reads `lane2_workflow` through the substrate accessor `lane2_workflow_at`
 // (reflected on `ValueNode` / `BindNode` in `v3.std.substrate`) and dispatches
-// to `std.effects::lane2_workflow_idempotency_report`. The authoritative
-// analysis body lives in `src/v3/compiler/src/workflow_idempotency.rs`; the
-// Rust entry `v3_compiler::analyze_workflow` re-exports that oracle. This
-// `.dag` file is a registration/dispatch shim, not the analysis — the
-// `.dag`-as-authority posture blocks on the v3 emitter gaining `match`
-// lowering over user-defined sums (`WorkflowEffect`).
+// to `std.effects::lane2_workflow_idempotency_report`, whose `match` on
+// `WorkflowEffect` is authored in `src/v3/std/effects.dag`. The crate entry
+// `v3_compiler::analyze_workflow` remains a native-`Dag` convenience mirror over
+// the same projection (`workflow_idempotency.rs`).
 //
 // CI exercises lens emission in `m2_lens_idempotency_emit_test` (Rust/Go/Python
 // emit smoke) and rustc round-trip in `m2_lens_idempotency_migration_test`.

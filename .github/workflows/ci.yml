@@ -254,6 +254,9 @@ jobs:
             exit 1
           fi
 
+      - name: Compiler-std consolidation ratchet
+        run: scripts/check-compiler-std-ratchet.sh
+
       - name: Banked-dissolutions ratchet
         run: scripts/check-banked-dissolutions.sh
 

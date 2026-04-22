@@ -6,7 +6,7 @@ Canonical view of what every `.dag` lens under `src/v3/lenses/` actually compute
 
 During the 2026-04-21 audit of the complexity lens we found that `src/v3/lenses/complexity.dag` (162 lines, marked 🟢 TERMINAL) does not subsume v2's complexity analysis. v2's `ComplexitySummary { work, span, output_size, certainty }` carries symbolic cost expressions, size variables, work/span separation, and asymptotic classification. v3's `cost_of(dag, port) -> CostLookup = FoundCost(Int) | MissingCost` carries a single integer depth per port and drops every other dimension. The 13× LOC reduction claim was comparing different functions of the program, not equivalent ones.
 
-Extending the audit to the other nine lenses under `src/v3/lenses/` surfaced the same pattern in three more files (`cost.dag`, `idempotency.dag`, `parallelism.dag`). The common root cause is substrate and emit gaps — the v3 substrate does not yet carry `DescentEvidence`, `CallPattern`, `SubValueRelation`, or `MethodSemantics`, and the v3 emitter cannot yet lower `match` on user-defined sums. So lenses that depend on those facts either compute a structural proxy or forward to a Rust oracle.
+Extending the audit to the other nine lenses under `src/v3/lenses/` surfaced the same pattern in `cost.dag` and (historically) the Lane-2 workflow lenses. The common root cause is substrate gaps — the v3 substrate does not yet carry `DescentEvidence`, `CallPattern`, `SubValueRelation`, or `MethodSemantics` — plus (for some lanes) emit or analysis-porting gaps. Lenses that depend on those facts either compute a structural proxy or forward to a Rust oracle.
 
 The pattern was invisible at the file level because "🟢 TERMINAL" reads as both structural ("this file is a pure catamorphism, fail-closed, bounded") and behavioral ("this lens does the job its name implies") — but only the first claim was ever load-bearing for the marker. This register separates the two.
 
@@ -39,8 +39,8 @@ A lens is only "done" when **both** axes are at their strongest grade for the sc
 |---|---|---|---|---|---|
 | `complexity.dag` | TERMINAL | **PROXY** | `src/v2/complexity.dag` (5488L) | `CostLookup = FoundCost(Int) \| MissingCost` per port | `CostExpr` (Sum/Mul/Log/Const), `SizeExpr`, work/span split, `Certainty`, asymptotic classification, recurrence bounds |
 | `cost.dag` | TERMINAL | **PROXY** | v2 `CostExpr` (embedded in `complexity.dag`) | `SymbolicCostLookup = FoundCost(SymbolicCost) \| MissingCost` per port | Named `SizeVar` with value semantics (v3's `SizeVariable` carries only `source_port: PortId`). `Dimension<SymbolicCost>` wiring deferred on grammar gaps. No cementing test. |
-| `idempotency.dag` | PARTIAL | **STUB** | None (v3-native) | `WorkflowIdempotencyReport` via dispatch | — (analysis lives in `src/v3/compiler/src/workflow_idempotency.rs`; the `.dag` is a registration shim) |
-| `parallelism.dag` | PARTIAL | **STUB** | None (v3-native) | Unconditional `report_parallelism_unsupported(LensSurfacePending, …)` | — (real analysis in `src/v3/compiler/src/workflow_parallelism.rs`; the `.dag` is a fail-closed placeholder) |
+| `idempotency.dag` | TERMINAL | **COMPLETE** | None (v3-native) | `WorkflowIdempotencyReport` via `lane2_workflow_at` + `std.effects::lane2_workflow_idempotency_report` | — (behavioral authority for the `WorkflowEffect` walk is `lane2_workflow_idempotency_report` in `src/v3/std/effects.dag`. `workflow_idempotency.rs` is still **parallel staging** for native `Dag` entry — same projection, hand mirror until an explicit dissolution removes it or routes through generated-only code; INVARIANTS P2 cleanup, not “two competing semantics.”) |
+| `parallelism.dag` | PARTIAL | **STUB** | None (v3-native) | Unconditional `report_parallelism_unsupported(LensSurfacePending, …)` | — (real analysis in `src/v3/compiler/src/workflow_parallelism.rs`. **STUB reason:** Stage 2e parallelism walk not yet ported to `.dag` / `lane2_workflow_at` / `std.effects` — the `.dag` stub’s pending reason matches that gap, not the old “cannot emit `match` on imported user sums” era. `emit_rust_module` already lowers that match path; parallelism stays pending until the lens is rewired like `idempotency.dag`.) |
 | `provenance.dag` | TERMINAL | COMPLETE | None (v3-native) | `Origin = NoProducer \| MissingPort \| MissingBehavior \| Source(NodeId) \| Computed(NodeId) \| Selected(NodeId) \| Accumulated(NodeId)` | N/A |
 | `unused_parameters.dag` | TERMINAL | COMPLETE | None (v3-native) | `List<UnusedParameter>` | N/A |
 | `variant_payload.dag` | TERMINAL | COMPLETE | None (v3-native) | `VariantPayloadShapeLookup` | N/A (see `DeclarationLookup` parallel-authority debt — ROADMAP 2026-04-21 wave, line 170 — which is an internal cleanup, not a behavioral gap) |
@@ -50,7 +50,7 @@ A lens is only "done" when **both** axes are at their strongest grade for the sc
 
 ## Common root causes
 
-The four "not done" rows (complexity, cost, idempotency, parallelism) share two blockers. Fixing these unblocks multiple lenses at once; the register exists in part so that is visible.
+The remaining “not done” rows (**complexity**, **cost**) still share substrate / analysis-porting gaps; **parallelism** stays **STUB** until the Stage 2e `.dag` surface is wired (see table — distinct from the resolved imported-sum `match` emit lane). **idempotency** is now **COMPLETE** (see table). Fixing the shared blockers unblocks multiple lenses at once; the register exists in part so that is visible.
 
 ### Missing substrate carriers (blocks genuine equivalence for complexity, cost)
 
@@ -63,11 +63,15 @@ v2's complexity analysis imports, from `dsl/std/`:
 
 The v3 substrate (`src/v3/std/`) does not carry these. Until it does, v3 lenses over cost or complexity cannot derive symbolic bounds from termination + induction proofs the way v2 does; they can only walk bare DAG topology. This is recorded in `ROADMAP.md` P2 as "four hand-rolled `BoundedLattice<T>` instances" but that entry flags the algebra-declaration gap, not the lens-consumer gap. Both are real; both are on the path to `BEHAVIORALLY COMPLETE` for complexity and cost.
 
-### Missing emit capability (blocks `.dag` authority for idempotency, parallelism)
+### ~~Missing emit capability~~ (resolved for imported user-defined sums)
 
-The v3 `emit_rust_module` cannot yet lower `match` on user-defined sums. That means a lens body that pattern-matches `WorkflowEffect` / `OperationEffect` variants cannot be the authoritative implementation — the emit would fail. So `idempotency.dag` is a thin dispatch-over-`lane2_workflow_at` shim and `parallelism.dag` is a hard `LensSurfacePending` stub. Both file headers name the specific blocker.
+The v3 `emit_rust_module` path historically failed `match` on some user-defined sums when lowering introduced **anonymous** specialized `Disj` copies (`name: None` so `Dag::declaration_by_name` stays single-authority), so Rust emission could not recover the template enum label. **Receipt:** `specialize_decl_for_lowering` sets **`Declaration::specialization_parent: Some(template_disj_id)`** on those anonymous sums (`src/v3/compiler/src/dag.rs`, `src/v3/compiler/src/lower.rs`) — a typed lowering edge distinct from `meta_tag` (realization / data-type rows). Rust emit walks it via **`named_disj_enum_name_for_rust_match_emit`** (`src/v3/compiler/src/emit/rust_target.rs`). **Proof:** `m1_3_emit_rust_test::emit_rust_module_match_on_imported_workflow_effect_sum` (end-to-end `match` on an imported user sum); `lower::tests::specialize_decl_for_lowering_anonymous_disj_sets_specialization_parent` (real `specialize_decl_for_lowering` path); and `named_disj_enum_name_for_rust_match_emit_follows_specialization_parent_to_named_template` in `src/v3/compiler/src/emit/rust_target.rs` (walker-only regression on a synthetic anonymous specialized `Disj` — not `meta_tag`).
 
-This is the same class of gap recorded in `ROADMAP.md` under the 2026-04-21 receipt-closure wave ("emit_rust_module gap: SurfaceLiteral → LiteralBits rename", "emit_rust_module gap: render_variant_constructor fails on external tuple variants"). Those are different emit gaps; the user-sum-match gap belongs alongside them.
+`idempotency.dag` was not blocked on this emit gap in practice (it matches `Option` and delegates `WorkflowEffect` work to `std.effects::lane2_workflow_idempotency_report`, which already lowered). The register row is updated to **COMPLETE** on that basis — meaning the **shipped lens + std.effects** path is emit-faithful for the named analysis, not that parallel Rust staging has already been deleted (see table note).
+
+`parallelism.dag` remains a **STUB** until the Stage 2e walk is authored under `std.effects` (or the lens) and the lens stops returning `LensSurfacePending` — **not** because match-on-`WorkflowEffect` cannot emit anymore.
+
+This is the same class of gap recorded in `ROADMAP.md` under the 2026-04-21 receipt-closure wave ("emit_rust_module gap: SurfaceLiteral → LiteralBits rename", "emit_rust_module gap: render_variant_constructor fails on external tuple variants"). Those are different emit gaps; the user-sum-match gap belonged alongside them and is now closed for the imported-sum / specialized-disj case above.
 
 ## Discipline
 

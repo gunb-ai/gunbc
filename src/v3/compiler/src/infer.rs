@@ -34,8 +34,8 @@ use crate::diagnostics::{
     Diagnostic, SourceSpan,
 };
 use crate::infer_helpers::{
-    behavior_output_port, behavior_span, generated_template_arguments_match,
-    payload_binding_span as generated_payload_binding_span,
+    behavior_output_port, behavior_span, filter_non_self_template_arguments,
+    generated_template_arguments_match, payload_binding_span as generated_payload_binding_span,
     push_template_argument_binding as generated_push_template_argument_binding,
     resolve_template_argument_value as generated_resolve_template_argument_value,
     template_argument_value as generated_template_argument_value, TemplateArgumentBinding,
@@ -248,6 +248,7 @@ fn ensure_optional_match_disj(
         },
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: None,
@@ -263,6 +264,7 @@ fn ensure_optional_match_disj(
         },
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: None,
@@ -287,6 +289,7 @@ fn ensure_optional_match_disj(
         },
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: None,
@@ -2310,6 +2313,7 @@ fn resolve_callable_targets(dag: &mut Dag) -> bool {
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
@@ -2831,6 +2835,7 @@ fn materialize_specialized_payload_record(
         },
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: None,
@@ -2890,6 +2895,7 @@ pub(crate) fn concretize_decl_with_subst(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
@@ -2914,6 +2920,7 @@ pub(crate) fn concretize_decl_with_subst(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
@@ -3123,6 +3130,7 @@ fn materialize_substituted_refined_decl(
         },
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: None,
@@ -3137,6 +3145,7 @@ fn materialize_substituted_refined_decl(
         connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(substituted_base)),
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: Some(fresh_pred_decl_id),
@@ -3415,11 +3424,7 @@ fn normalized_instantiation_args(
     else {
         return None;
     };
-    let filtered: Vec<TemplateArgument> = arguments
-        .iter()
-        .filter(|arg| arg.parameter != arg.value)
-        .cloned()
-        .collect();
+    let filtered = filter_non_self_template_arguments(arguments);
     Some(NormalizedInstantiation {
         template: *template,
         args: filtered,
@@ -4469,5 +4474,37 @@ mod bool_logical_operator_arrow_tests {
         assert!(is_match(&two, &two.clone()));
         assert!(!is_match(&two, &[pair(p0, v0), pair(p1, v0)]));
         assert!(!is_match(&two, &[pair(p0, v0), pair(p0, v1)]));
+    }
+
+    #[test]
+    fn filter_non_self_template_arguments_matches_handwritten_filter() {
+        let dag = Dag::new();
+        let p0 = dag.bool_shape().expect("bootstrap Bool").declaration;
+        let p1 = dag.int_shape().expect("bootstrap Int").declaration;
+        let args = vec![
+            TemplateArgument {
+                parameter: p0,
+                value: p0,
+            },
+            TemplateArgument {
+                parameter: p1,
+                value: p0,
+            },
+            TemplateArgument {
+                parameter: p1,
+                value: p1,
+            },
+        ];
+        let expected: Vec<TemplateArgument> = args
+            .iter()
+            .filter(|a| a.parameter != a.value)
+            .cloned()
+            .collect();
+        let actual = filter_non_self_template_arguments(&args);
+        assert_eq!(actual.len(), expected.len());
+        for (a, e) in actual.iter().zip(expected.iter()) {
+            assert_eq!(a.parameter, e.parameter);
+            assert_eq!(a.value, e.value);
+        }
     }
 }

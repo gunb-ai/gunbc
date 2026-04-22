@@ -1,9 +1,11 @@
 //! Stage 2b idempotency lens — `src/v3/lenses/idempotency.dag` names the API.
 //!
-//! The v3 emitter cannot yet lower `match` on user-defined sums like
-//! `std.effects::WorkflowEffect` inside lens modules; the algebraic walk is
-//! implemented in [`crate::workflow_idempotency`]. Only [`analyze_workflow`] is
-//! exported at the crate root — composition helpers stay `pub(crate)` there.
+//! The behavioral walk over `WorkflowEffect` is authored in
+//! `src/v3/std/effects.dag` (`lane2_workflow_idempotency_report`); this module
+//! re-exports [`analyze_workflow`] over native `Dag` for the same projection as
+//! the emitted `lenses/idempotency.dag` surface (`workflow_idempotency`).
+//! Only [`analyze_workflow`] is exported at the crate root — composition helpers
+//! stay `pub(crate)` in [`crate::workflow_idempotency`].
 //!
 //! **Emit receipt:** `tests/m2_lens_idempotency_emit_test.rs` compiles this `.dag`
 //! and asserts multi-target emission succeeds; `tests/m2_lens_idempotency_migration_test.rs`
