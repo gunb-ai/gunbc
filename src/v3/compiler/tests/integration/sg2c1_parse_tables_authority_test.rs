@@ -16,7 +16,7 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
 use v3_compiler::parse_tables::soft_keyword_ident_spelling;
 use v3_compiler::render_parse_tables_generated_rs;
-use v3_compiler::tokenize::TokenKind;
+use v3_compiler::tokenize_for_test;
 
 const PARSE_TABLES_DAG: &str = include_str!("../../parse_tables.dag");
 const TOKENIZE_DAG: &str = include_str!("../../tokenize.dag");
@@ -431,13 +431,14 @@ fn soft_keyword_ident_rows_cover_exactly_the_keyword_aliases_parser_accepts_as_n
 
 #[test]
 fn soft_keyword_ident_projection_matches_authored_alias_rows() {
-    assert_eq!(
-        soft_keyword_ident_spelling(&TokenKind::KwType),
-        Some("type")
-    );
-    assert_eq!(soft_keyword_ident_spelling(&TokenKind::KwLet), None);
-    assert_eq!(
-        soft_keyword_ident_spelling(&TokenKind::Ident(String::from("type"))),
-        None
-    );
+    let kw_type = tokenize_for_test("type", "soft_keyword_ident_kw_type.v3")
+        .expect("tokenize keyword fixture");
+    let kw_let = tokenize_for_test("let", "soft_keyword_ident_kw_let.v3")
+        .expect("tokenize non-alias keyword fixture");
+    let ident = tokenize_for_test("type_name", "soft_keyword_ident_ident.v3")
+        .expect("tokenize identifier fixture");
+
+    assert_eq!(soft_keyword_ident_spelling(&kw_type[0].kind), Some("type"));
+    assert_eq!(soft_keyword_ident_spelling(&kw_let[0].kind), None);
+    assert_eq!(soft_keyword_ident_spelling(&ident[0].kind), None);
 }

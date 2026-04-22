@@ -261,7 +261,8 @@ impl<'a> Parser<'a> {
         match (t0, t1, t2) {
             (Some(a), Some(b), Some(c)) => {
                 matches!(a.kind, TokenKind::LBrace)
-                    && matches!(b.kind, TokenKind::Ident(_))
+                    && (matches!(b.kind, TokenKind::Ident(_))
+                        || soft_keyword_ident_spelling(&b.kind).is_some())
                     && matches!(c.kind, TokenKind::Colon)
             }
             _ => false,
