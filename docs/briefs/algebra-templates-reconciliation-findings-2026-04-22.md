@@ -62,7 +62,7 @@ structurally cannot carry:
    declared facts consumed by complexity/cost lenses. The type declaration is
    a pure `fn(T,T) -> T` surface — no slot for these structural contracts.
    Moving metadata onto declared fields would either require field-level
-   annotations (violates `feedback_no_annotations.md`) or a new "field with
+   annotations (violates `MODELING.md:19`) or a new "field with
    attached contract" modeling primitive.
 
 2. **Kernel method-naming synonyms.** `partial_function_templates()` emits
