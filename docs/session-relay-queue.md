@@ -13,7 +13,7 @@
 
 #### #664 relay index (dashboard ingest — pointers only)
 
-Full text stays on **GitHub**; this index is a stable handle for agents. **Codex** on **2026-04-22T21:39:43Z** is scoped to **parent `6463d247`**. **api-review** on **21:44:05Z** is scoped to **parent `f046935a`** (post-receipt, pre-merge-`main` head).
+Full text stays on **GitHub**; this index is a stable handle for agents. **Codex** on **2026-04-22T21:39:43Z** is scoped to **parent `6463d247`**. **`api-review` on `f046935a`** (post-receipt, pre-merge-`main` head): **claude** **21:44:05Z** and **codex gpt-5.4** **21:46:25Z** (same parent, second opinion).
 
 | Source | Link |
 |:---|:---|
@@ -21,6 +21,7 @@ Full text stays on **GitHub**; this index is a stable handle for agents. **Codex
 | **Codex** (chatgpt-codex-connector) — **inline** — same **6463d24…** / **P1** `module v3.std.parse_surface` **without** migrating `go.dag` / `python` / `rust` / `lower_helpers` from `v3.compiler.runtime_mirrors` — **superseded** : v3 `*.dag` have **no** `runtime_mirrors` import; all named consumers `import v3.std.parse_surface` — [PR reply](https://github.com/gunb-ai/gunbc/pull/664#issuecomment-4300324916) — [discussion r3127059246](https://github.com/gunb-ai/gunbc/pull/664#discussion_r3127059246) (authoritative text) |
 | **Codex** (umbrella issue comment) — `### 💡 Codex Review` (same timestamp **21:39:43Z**), **Reviewed commit:** `6463d247f0` **only**; metadata-only wrapper — [PR #664 conversation](https://github.com/gunb-ai/gunbc/pull/664) (authoritative text) |
 | **`api-review`** (claude-opus-4-7) — **`f046935a…`** @ **2026-04-22T21:44:05Z** — **`<!-- [api-review] provider:claude model:claude-opus-4-7 sha:f046935a trigger:schedule -->`** — **0** principle violations; **2** **non-blocking** rename nits: (1) `pb1_bootstrap_full_snapshot_test.rs:25` assertion string still says **no-runtime-mirrors** (stale label); (2) `m2_substrate_inhabitance_test.rs:1001` test id **`runtime_mirror_snapshots_are_fresh`** + fail text still name **`regen_runtime_mirrors.py`** (PR body leaves script filename out of scope) — **Verdict:** **APPROVE** — P2 single-authority parse-surface move (`v3.std.parse_surface`, `runtime_mirrors.dag` deleted, consumers + ratchet 19→5 + docs) — [issue comment (authoritative)](https://github.com/gunb-ai/gunbc/pull/664#issuecomment-4300154945) — **+6** in dashboard relay batch = other queued **dashboard** items, **not** additional distinct PR #664 review bodies in this event |
+| **`api-review`** (codex / gpt-5.4) — **`f046935a…`** @ **2026-04-22T21:46:25Z** — **`<!-- [api-review] provider:codex model:gpt-5.4 sha:f046935a trigger:schedule -->`** — **Verdict:** **APPROVE** — migration coherent (consumers, regen/bootstrap, coproducts, ratchets); no concrete **INVARIANTS** / **modeling-discipline** / **CODING** / **TESTING** violation in **+** diff; author ran v3-compiler **SG-2** parse-authority, **PB-1** bootstrap-snapshot, and parse-manifest refresh tests (passed) — [issue comment (authoritative)](https://github.com/gunb-ai/gunbc/pull/664#issuecomment-4300167989) — **+5** in dashboard relay batch = other queued **dashboard** items, **not** another distinct PR #664 event |
 
 #### #589 relay index (dashboard ingest — pointers only)
 
