@@ -295,8 +295,8 @@ mod tests {
         let mut stages = bootstrapped_stages();
         assert!(stages.len() >= 2, "need >=2 stages to reorder");
         stages.swap(0, 1);
-        let err = reconcile_with_compile_body(&stages)
-            .expect_err("reordered bindings must be rejected");
+        let err =
+            reconcile_with_compile_body(&stages).expect_err("reordered bindings must be rejected");
         assert!(
             err.contains("pipeline authority drift"),
             "expected drift diagnostic, got: {err}"
