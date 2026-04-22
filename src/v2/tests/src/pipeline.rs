@@ -1649,6 +1649,26 @@ fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
     );
 }
 
+// PR #650 regression: a callable param used twice is not movable; emission
+// relies on `impl Fn(...) + Clone` together with `.clone()` at use sites.
+// Removing `+ Clone` without declared-bound modeling breaks Rust type-checking
+// and splits authority vs `emit_info.movable` (see post-mortem doc).
+#[test]
+fn rust_emit_callable_param_double_use_keeps_clone_bound_and_clones() {
+    let source = "module callable_twice\n\nfn twice(f: fn(Int) -> Int) -> Int {\n  f(0) + f(1)\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/callable_twice.rs");
+    assert!(
+        content.contains("fn twice(f: impl Fn(i64) -> i64 + Clone) -> i64"),
+        "double-use callable param must keep synthesized + Clone: {content}"
+    );
+    assert!(
+        content.contains(".clone()"),
+        "non-movable callable should emit clone at a use site: {content}"
+    );
+}
+
 // ── Python emission tests ───────────────────────────────────────────────
 
 #[test]

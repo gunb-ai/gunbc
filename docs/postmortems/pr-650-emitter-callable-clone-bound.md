@@ -1,0 +1,53 @@
+# Post-mortem: PR #650 — callable generic `Clone` bound vs emitter ownership
+
+**Program:** Emitter Fidelity (callable generic ownership / bounds)  
+**Status:** Receipt for the failed micro-fix; stop boundary for structural follow-up.
+
+---
+
+## Exact attempted change
+
+PR **#650** tried to remove the synthesized Rust trait bound **`+ Clone`** from **first-class callable parameters** emitted as `impl Fn(...) -> T + Clone`, compensating instead inside the Rust emitter (use-site cloning / move decisions) so emitted code would still type-check without advertising `Clone` on the parameter type.
+
+The affected seam is **`emit_rust_param_type`** in `src/v2/05_emit_rust.dag`: callable-shaped parameters (`n.params` non-empty) render as `impl Fn(<args>) -> <ret> + Clone` rather than reflecting only the source `fn(...)->...` type.
+
+---
+
+## Why it was unsound (for this codebase)
+
+1. **Source authority vs target realization** — Source programs declare `fn(A) -> B`; they do **not** declare a Rust `Clone` obligation on that callable. Synthesizing `+ Clone` is already a **target-side admission** (see THESIS.md “two groundings”). Removing the bound without replacing it with an **equivalent declared fact** elsewhere reintroduces “plausible Rust” that is not mechanically justified from one authority.
+
+2. **Second move/clone authority** — The emitter already has a single **by-value vs `.clone()`** authority for ordinary bindings: **`emit_info.movable`** (from `build_movable_set` / ownership proof), documented at `emit_var_ref` in `05_emit_rust.dag`. The #650-style compensation tied callable **typing** to the same movable machinery **without** keeping the type signature consistent with emitted `.clone()` calls. That split **who decides cloning** between the type line (`impl Fn + Clone`) and the ownership map, i.e. parallel authority for overlapping semantics.
+
+3. **Self-host / fixed-point instability** — Stage0 is emitted by the same pipeline. A partial change to callable param typing plus emitter-only fixes perturbs generated `v2_compiler_emit_rust.rs` / `v2_compiler_emit.rs` signatures (many `impl Fn(...) + Clone` closure parameters). The result did **not** converge to a sound, stable fixed point: the diff could not land as a coherent “pure fidelity” migration.
+
+---
+
+## Where ownership authority split
+
+| Authority | Role today |
+|-----------|------------|
+| **`emit_info.movable`** | Sole gate for **plain variable references**: emit by value vs `SharingStrategy` `.clone()` (`emit_var_ref`). |
+| **Synthesized `+ Clone` on `impl Fn` params** | Rust target contract so **callable values** may be **used more than once** via `.clone()` at use sites when not movable. |
+
+#650 effectively asked **`emit_info.movable`** (or ad hoc emitter rules) to **subsume** the second row **without** deleting the need for `Clone` at the type level in Rust. That is the authority split: **two loci** for “when is this callable value copied,” only one of which is grounded in declared source types.
+
+---
+
+## Stop boundary for the Emitter Fidelity lane
+
+Structural work on this seam must obey **all** of:
+
+1. **No second authority beside `emit_info.movable`** for **ordinary binding** move vs clone. Do not re-encode callable cloning decisions in a shadow path keyed only on emitter heuristics.
+
+2. **No “remove `+ Clone`” without a declared substitute** — Either keep the current **explicit** `+ Clone` on `impl Fn` params as the admitted Rust lowering contract until **declared-bound modeling** exists, **or** introduce **one** upstream fact that makes the bound faithful (e.g. explicit source-level or `EmitGraphInfo`-level carrier) and migrate **types + uses** in the **same** change.
+
+3. **No target-only strengthening** of user contracts (no hidden stricter bounds than the source model admits).
+
+4. **Fixed-point first** — Any change must pass **regenerate-stage0** self-compile / fixed-point checks before review.
+
+---
+
+## Honest outcome of this lane (wave 5)
+
+The minimal faithful step **after** this post-mortem is **not** to delete `+ Clone` again. It is to **document and test** the seam: callable param position uses **`impl Fn(...) + Clone`** as the **Rust storage/reuse** contract; **`emit_info.movable`** remains the sole authority for **non-callable** locals. Removing the synthesized bound belongs to a later lane that either lands **declared-bound modeling** or a **single** new carrier that subsumes both typing and use emission.
