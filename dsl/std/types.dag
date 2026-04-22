@@ -119,29 +119,34 @@ fn is_ordered_element_collection(name: String) -> Bool {
   map_contains_key(ordered_element_collections, name)
 }
 
-// Container → algebra mapping: mirrors the type alias declarations below.
-// Co-located with the declarations it describes (List = FreeMonoid, etc.).
-// Includes surface names, snake_case variants, and algebra self-mappings
-// so that any naming convention resolves to the canonical algebra identity.
-// TODO: derive programmatically from type alias declarations once M4
-// structural identity provides a reflection mechanism.
-data container_to_algebra: Map<String, String> = {
+// Canonical query: resolve a container-template name to its algebra.
+// Single surface both consumers (v2/coercion.dag, v2/05_emit.dag) read —
+// neither maintains a parallel spelling table. The rows below are the
+// concrete projection of the three type aliases declared just below
+// (type List = FreeMonoid, Set = BooleanAlgebra, Map = PartialFunction)
+// across the two spellings the compiler sees (PascalCase alias names and
+// their snake-case identifier form) plus the three kernel-algebra
+// self-identities that keep the query total over container-template
+// names. When .dag gains alias reflection, these rows derive from the
+// aliases directly; today the map is the single authority that captures
+// that relationship without requiring case-normalization primitives in std.
+data container_template_algebra_rows: Map<String, String> = {
   "List": "FreeMonoid",
   "list": "FreeMonoid",
-  "FreeMonoid": "FreeMonoid",
-  "free_monoid": "FreeMonoid",
   "Set": "BooleanAlgebra",
   "set": "BooleanAlgebra",
-  "BooleanAlgebra": "BooleanAlgebra",
-  "boolean_algebra": "BooleanAlgebra",
   "Map": "PartialFunction",
   "map": "PartialFunction",
+  "FreeMonoid": "FreeMonoid",
+  "free_monoid": "FreeMonoid",
+  "BooleanAlgebra": "BooleanAlgebra",
+  "boolean_algebra": "BooleanAlgebra",
   "PartialFunction": "PartialFunction",
   "partial_function": "PartialFunction"
 }
 
-fn container_to_algebra_name(name: String) -> String? {
-  map_get(container_to_algebra, name)
+fn container_template_algebra(name: String) -> String? {
+  map_get(container_template_algebra_rows, name)
 }
 
 // Ordered canonical container/algebra names (PascalCase).

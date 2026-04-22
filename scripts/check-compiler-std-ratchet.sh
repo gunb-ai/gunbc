@@ -48,6 +48,7 @@ EXEMPT_ROWS=(
   "src/v3/compiler/parse_tables.dag:TopLevelItemKwRow"
   "src/v3/compiler/parse_tables.dag:SoftKeywordIdentRow"
   "src/v3/compiler/parse_tables.dag:BracketRow"
+  "src/v3/compiler/parse_tables.dag:PrimaryPrefixRow"
 )
 
 TRACKED_ROWS=(

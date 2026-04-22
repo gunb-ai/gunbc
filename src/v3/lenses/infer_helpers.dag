@@ -23,10 +23,16 @@
 // never nest list matches — each function inspects at most one
 // `List<TemplateArgument>` via `match`, with the other side passed as
 // already-destructured components.
+//
+// SG-4b-5 moves `filter_non_self_template_arguments` — the DB-16
+// self-binding strip (`parameter == value`) used when normalizing
+// `Instantiation` argument lists for structural comparison. `infer.rs`
+// keeps the `TypeConnective::Instantiation` unwrap; this helper is
+// pure list mechanics only.
 
 module lenses.infer_helpers
 
-import std.list { List }
+import std.list { List, empty, cons }
 import std.substrate {
   Behavior, BranchPath, BranchPattern, DeclarationId, SourceSpan,
   TemplateArgument
@@ -216,4 +222,21 @@ fn template_argument_cursor(
   match xs {
     Empty => CursorEnd
     Cons(p) => CursorHead { head: p.head, tail: p.tail }
+  }
+
+// Strip only self-bindings (`parameter == value`). See DB-16 / `infer.rs`
+// `normalized_instantiation_args` — non-self bindings must survive.
+// List construction uses `empty`/`cons` (std.list API) so both branches
+// agree on `List<TemplateArgument>`; raw `Empty`/`Cons` mixed with
+// `cons` tripped the v3 typechecker on this surface in SG-4b-5.
+fn filter_non_self_template_arguments(
+  arguments: List<TemplateArgument>
+) -> List<TemplateArgument> =
+  match arguments {
+    Empty => empty()
+    Cons(payload) =>
+      if payload.head.parameter == payload.head.value then
+        filter_non_self_template_arguments(payload.tail)
+      else
+        cons(payload.head, filter_non_self_template_arguments(payload.tail))
   }

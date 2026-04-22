@@ -104,7 +104,7 @@ No lane in the wave introduces new dual-representation debt. Two (Algebra Quarte
 Against the deferred-debt section:
 
 - `algebra.dag` signature/comment reconciliation — aligned
-- `container_to_algebra` dissolution — aligned (eliminates a string-keyed dual representation)
+- `container_template_algebra_rows` dissolution — aligned (narrow form landed in #651; the renamed table remains as a bridge until `.dag` alias reflection derives it from the type aliases)
 - `pipeline_authority` (in wave) — aligned
 - Emitter render-helper consolidation — neutral
 - Stale cross-refs — cosmetic
@@ -125,7 +125,7 @@ Positive-definition set (NOT counted against the ratchet):
 - Substrate reflection accessor declarations
 
 Exempted (pending named trigger, not counted either direction):
-- `parse_tables.dag` — 5 types, exempted pending SG-2c-proper per-row classification
+- `parse_tables.dag` — 6 types, exempted pending SG-2c-proper per-row classification
 
 Ratchet-tracked (**migrates to `std/`, counted against the baseline**):
 - Compiler-side types that duplicate user-facing concepts (tokenize, runtime_mirrors)
@@ -138,7 +138,7 @@ Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"`):
 |---|---|---|
 | `src/v3/compiler/tokenize.dag` | 6 | **in-ratchet** (migrates to `std/`) |
 | `src/v3/compiler/runtime_mirrors.dag` | 14 | **in-ratchet** (migrates to `std/`) |
-| `src/v3/compiler/parse_tables.dag` | 5 | exempted pending SG-2c-proper |
+| `src/v3/compiler/parse_tables.dag` | 6 | exempted pending SG-2c-proper |
 | `src/v3/compiler/operators.dag` | 0 | — |
 | `src/v3/compiler/pipeline.dag` | 3 | positive-def |
 | `src/v3/compiler/regen.dag` | 1 | positive-def |
@@ -157,7 +157,7 @@ Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"`):
 
 End state: 0. Each migration lane reduces the count; positive-definition types track growth separately and are not bounded downward by this ratchet.
 
-**`parse_tables.dag` exemption protocol.** The gap analysis above (§"From `src/v3/compiler/parse_tables.dag` → unclear") says some row *shapes* (`BinaryOpRow`, `TopLevelItemKwRow`, `SoftKeywordIdentRow`, etc.) may legitimately stay compiler-API as parser-dispatch shapes, while the *data* they carry (operator precedence levels, keyword-to-item mappings) moves to `std/syntax.dag`. That per-row classification is deferred until SG-2c-proper parser cutover. While deferred, `parse_tables.dag` is **exempted from the primary ratchet count** — its 5 types neither count toward the migration target nor against it. When SG-2c-proper classifies:
+**`parse_tables.dag` exemption protocol.** The gap analysis above (§"From `src/v3/compiler/parse_tables.dag` → unclear") says some row *shapes* (`BinaryOpRow`, `TopLevelItemKwRow`, `SoftKeywordIdentRow`, `PrimaryPrefixRow`, etc.) may legitimately stay compiler-API as parser-dispatch shapes, while the *data* they carry (operator precedence levels, keyword-to-item mappings) moves to `std/syntax.dag`. That per-row classification is deferred until SG-2c-proper parser cutover. While deferred, `parse_tables.dag` is **exempted from the primary ratchet count** — its 6 types neither count toward the migration target nor against it. When SG-2c-proper classifies:
 - Rows classified as **compiler-API dispatch shapes** → formally added to the positive-definition set (same status as `pipeline.dag` / `regen.dag` types).
 - Rows classified as **language-level data** → become ratchet-tracked migrations to `std/syntax.dag`.
 
@@ -165,7 +165,7 @@ The exemption dissolves at SG-2c-proper completion; both thesis doc and ROADMAP 
 
 **Secondary ratchet — v3-std tree consolidation.** Count of `type` declarations in `src/v3/std/*.dag`. Baseline: 142 types across 13 files (substrate.dag 38, emit_model.dag 28, effects.dag 26, clean_emission.dag 12, computation_model.dag 10, verification.dag 8, substrate_minimal.dag 6, dimensions.dag 4, algebra.dag 3, diagnostics.dag 3, list.dag 2, resources.dag 2, workflows.dag 0). These collapse to `dsl/std/*.dag` wholesale when the file-preference scaffold dissolves (ROADMAP: v2 retirement gate). This ratchet is gated by that dissolution, not per-lane moves.
 
-**Tertiary ratchet — hand-Rust surface.** This doc does not duplicate the Pure Bootstrap ratchet; it anchors to it. The authoritative measure is **SG-0's `EXPECTED_HAND_AUTHORED ∖ GENERATED_FILES`** (live in `src/v3/compiler/tests/integration/sg0_census_test.rs`); [docs/design-pure-bootstrap.md](../design-pure-bootstrap.md)'s PB-0 ratchet is the tracking program. **Do not hardcode a count here** — the live census is the source of truth and any number in prose ages immediately. Spot count on 2026-04-22 to confirm the signal: `grep -c "^\s*\"src/v3/compiler/" src/v3/compiler/tests/integration/sg0_census_test.rs` → **89 entries** under `src/v3/compiler/` (vs PB design doc's stale "78"; PB doc's drift tracked separately). Target: **≤5** per Pure Bootstrap's irreducible-shim goal. Concrete hand-Rust that still needs to dissolve: parse algorithm, lower algorithm body, infer algorithm body, emit backbone, bootstrap shim, and lens-adjacent Rust files (some of which are Band-C-STUB backs per the lens capability register — dissolving when substrate carriers and emit `match` capabilities land).
+**Tertiary ratchet — hand-Rust surface.** This doc does not duplicate the Pure Bootstrap ratchet; it anchors to it. The authoritative measure is **SG-0's `EXPECTED_HAND_AUTHORED ∖ GENERATED_FILES`** (live in `src/v3/compiler/tests/integration/sg0_census_test.rs`); [docs/design-pure-bootstrap.md](../design-pure-bootstrap.md)'s PB-0 ratchet is the tracking program. **The count is whatever the live ratchet test reads today** — any number in prose drifts stale. For a current snapshot, run the SG-0 census test directly; do not approximate via `grep` on `EXPECTED_HAND_AUTHORED` alone, because that list can include generated-fragment paths that the ratchet subtracts via `GENERATED_FILES` at runtime — grep counts the pre-subtraction set, not the authoritative post-subtraction set. Target: **≤5** per Pure Bootstrap's irreducible-shim goal. Concrete hand-Rust that still needs to dissolve: parse algorithm, lower algorithm body, infer algorithm body, emit backbone, bootstrap shim, and lens-adjacent Rust files (some of which are Band-C-STUB backs per the lens capability register — dissolving when substrate carriers and emit `match` capabilities land).
 
 ## How this claim composes with existing tracked work
 

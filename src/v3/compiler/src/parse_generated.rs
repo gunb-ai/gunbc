@@ -8,8 +8,9 @@ pub use crate::parse_surface::{
     SurfaceVariant, VariantPayload,
 };
 use crate::parse_tables::{
-    binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, soft_keyword_ident_spelling,
-    top_level_item_dispatch, BinaryOpLevel, BracketRole, ItemDispatchKind,
+    binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, primary_prefix_dispatch,
+    soft_keyword_ident_spelling, top_level_item_dispatch, BinaryOpLevel, BracketRole,
+    ItemDispatchKind, PrimaryPrefixDispatch,
 };
 use crate::tokenize::{Token, TokenKind};
 
@@ -34,9 +35,11 @@ impl SurfaceType {
 // (`parse_logical_or`, `parse_logical_and`, `parse_comparison`, `parse_additive`,
 // `parse_term`) used to open-code the token → `OperatorKind` mapping in five separate
 // match blocks. That mapping is now authored as `binary_op_*` data rows in
-// `parse_tables.dag` and consumed here via `binary_op_at_level`. The parser's control
-// flow — cursor mechanics, recursive descent, error recovery, span fusion — remains
-// semantic authority in this file.
+// `parse_tables.dag` and consumed here via `binary_op_at_level`. SG-2c-6 moves the
+// `parse_primary` prefix opener set (`if` / `match` / `{` / `[`) into `PrimaryPrefixRow`
+// rows, consumed via `primary_prefix_dispatch`. The parser's control flow — cursor
+// mechanics, recursive descent, error recovery, span fusion — remains semantic
+// authority in this file.
 //
 // Dissolution trigger (SG-2c proper): delete this file when parse **logic** is
 // structurally `.dag`-owned (SELF_HOSTING §6 Phase 4a direct port or Phase 4b
@@ -1103,17 +1106,13 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_primary(&mut self) -> Result<SurfaceExpr, Diagnostic> {
-        if matches!(self.peek().kind, TokenKind::KwIf) {
-            return self.parse_if();
-        }
-        if matches!(self.peek().kind, TokenKind::KwMatch) {
-            return self.parse_match();
-        }
-        if matches!(self.peek().kind, TokenKind::LBrace) {
-            return self.parse_record_literal();
-        }
-        if matches!(self.peek().kind, TokenKind::LBracket) {
-            return self.parse_list_literal();
+        let peek = &self.peek().kind;
+        match primary_prefix_dispatch(peek) {
+            Some(PrimaryPrefixDispatch::If) => return self.parse_if(),
+            Some(PrimaryPrefixDispatch::Match) => return self.parse_match(),
+            Some(PrimaryPrefixDispatch::Record) => return self.parse_record_literal(),
+            Some(PrimaryPrefixDispatch::List) => return self.parse_list_literal(),
+            None => {}
         }
         let token = self.bump().clone();
         match token.kind {

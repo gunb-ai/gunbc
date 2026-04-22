@@ -34,7 +34,7 @@ use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
 };
 use crate::infer::{concretize_decl_with_subst, SubstStack};
-use crate::lower_helpers::{expr_span, pattern_binding_names};
+use crate::lower_helpers::{expr_span, item_span, pattern_binding_names};
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
@@ -1396,21 +1396,6 @@ fn collect_symbols(
 
 fn placeholder_connective(name: &str) -> TypeConnective {
     TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name.to_string()))
-}
-
-fn item_span(item: &SurfaceItem) -> SourceSpan {
-    match item {
-        SurfaceItem::Let { expr, .. } => expr_span(expr),
-        SurfaceItem::Fn { span, .. }
-        | SurfaceItem::FnExternalBody { span, .. }
-        | SurfaceItem::Data { span, .. }
-        | SurfaceItem::Module { span, .. }
-        | SurfaceItem::Import { span, .. }
-        | SurfaceItem::TypeAtom { span, .. }
-        | SurfaceItem::TypeRecord { span, .. }
-        | SurfaceItem::TypeSum { span, .. }
-        | SurfaceItem::TypeAlias { span, .. } => span.clone(),
-    }
 }
 
 fn lower_item(

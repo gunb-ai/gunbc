@@ -14,9 +14,10 @@
 // declarative tables: (1) binary operator token-to-semantics mapping
 // (SG-2c-1), (2) top-level item keyword → `parse_item` dispatch
 // class (SG-2c-2), (3) type-RHS boundary keyword membership
-// (SG-2c-3), and (4) bracket opener/closer role membership
-// (SG-2c-4, consumed by the parser's depth-tracking scan helpers
-// `skip_where_clause` and `rhs_is_sum`). The binary-operator table replaced hand-coded
+// (SG-2c-3), (4) bracket opener/closer role membership (SG-2c-4,
+// consumed by the parser's depth-tracking scan helpers `skip_where_clause`
+// and `rhs_is_sum`), and (5) primary-expression prefix openers (SG-2c-6,
+// consumed by `parse_primary`). The binary-operator table replaced hand-coded
 // matches across five parser precedence functions in
 // `parse_parser_body.txt`
 // (`parse_logical_or`, `parse_logical_and`, `parse_comparison`,
@@ -55,6 +56,11 @@
 // is emitted from `BracketRow` facts and consumed by the same type-RHS
 // helpers `skip_where_clause` and `rhs_is_sum` in `parse_parser_body.txt`,
 // replacing two duplicated inline bracket-membership match blocks.
+//
+// **Same-PR consumer (E-6).** SG-2c-6 projection `primary_prefix_dispatch` /
+// `PrimaryPrefixDispatch` is emitted from `PrimaryPrefixRow` facts and
+// consumed by `parse_primary` in `parse_parser_body.txt`, replacing the
+// four inline `if matches!(peek, …)` prefix probes.
 
 module v3.compiler.parse_tables
 
@@ -384,4 +390,60 @@ data bracket_rbrace: BracketRow = {
 
 data bracket_rbracket: BracketRow = {
   token_variant: "RBracket"
+}
+
+// --- SG-2c-6: `parse_primary` prefix opener dispatch. Before the
+// post-bump atomic match (`IntLit`, booleans, `StringLit`, `|`, ident),
+// `parse_primary` dispatches on exactly this closed set of peek tokens:
+// `if`, `match`, `{`, `[` → dedicated parsers. Authored here once;
+// `PrimaryPrefixDispatch` is regen-only (projection over `token_variant`
+// rows — same M7 shape as `TopLevelItemKwRow` → `ItemDispatchKind`).
+//
+// Dissolution classification: **🟡 YELLOW (scaffold)** per
+// `docs/modeling-discipline.md` §4. Same structural situation as the
+// other SG-2c tables: each emitted `PrimaryPrefixDispatch` variant is a
+// parser entry coordinate for a dedicated `parse_*` arm, not a distinct
+// payload algebra; full dissolution rides SG-2c proper (blocked on
+// recursive list-body emission over `List<Token>`).
+//
+// Dissolution ledger (4-pattern check):
+// - **Pattern 1 (fact placement)**: fails. Prefix keys are coordinate keys
+//   for `parse_if` / `parse_match` / `parse_record_literal` /
+//   `parse_list_literal` entry points, not relocatable facts.
+// - **Pattern 2 (variant-is-data)**: **passes**: substrate rows are
+//   `token_variant` only; the Rust `PrimaryPrefixDispatch` enum is a pure
+//   projection at regen time, not a second `.dag` coproduct.
+// - **Pattern 3 (algebraic form)**: fails. No shared algebra across these
+//   four distinct primary forms at this token-dispatch layer.
+// - **Pattern 4 (dimensional)**: fails. Not a numeric ordering.
+//
+// **Named trigger (YELLOW):** dissolve with SG-2c proper when
+// `parse_parser_body.txt` ports to `.dag` list-body recursion over
+// `List<Token>` (substrate capability per `src/v3/std/list.dag:13-15`) and
+// `parse_primary` prefix openers become structural dispatch in the ported
+// parse module — this `PrimaryPrefixRow` table folds into that parse
+// authority instead of a separate regen-only Rust host shim.
+//
+// **M7 note:** no `type PrimaryPrefixDispatch` in substrate — only
+// `PrimaryPrefixRow { token_variant }`; Rust enum labels derive at regen
+// (`Kw*` → `strip_prefix("Kw")`; `LBrace` → `Record`; `LBracket` → `List`).
+
+type PrimaryPrefixRow {
+  token_variant: String
+}
+
+data primary_prefix_kw_if: PrimaryPrefixRow = {
+  token_variant: "KwIf"
+}
+
+data primary_prefix_kw_match: PrimaryPrefixRow = {
+  token_variant: "KwMatch"
+}
+
+data primary_prefix_lbrace: PrimaryPrefixRow = {
+  token_variant: "LBrace"
+}
+
+data primary_prefix_lbracket: PrimaryPrefixRow = {
+  token_variant: "LBracket"
 }
