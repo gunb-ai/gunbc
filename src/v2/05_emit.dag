@@ -67,7 +67,7 @@ import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 import std.induction { InductiveField, SubValueUnknown }
 // NamingCase, PascalCase, SnakeCase imported via v2.compiler.languages (bootstrap-local mirror)
 import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like }
-import std.types { is_container_type, container_to_algebra_name }
+import std.types { is_container_type }
 import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
@@ -1076,7 +1076,11 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     // Named conjunction with container template
     if n.ident_span != none {
       let snake = to_snake(name: tn)
-      let has_template = match container_to_algebra_name(name: snake) { Some { value: _ } => true  None => false }
+      // Snake-form names for the three container aliases and their kernel algebras
+      // (List=FreeMonoid, Set=BooleanAlgebra, Map=PartialFunction). Local, explicit
+      // check — snake/Pascal normalization is a consumer concern, not central authority.
+      let has_template = snake == "list" || snake == "set" || snake == "map" ||
+        snake == "free_monoid" || snake == "boolean_algebra" || snake == "partial_function"
       if has_template {
         let base = if snake == "map" {
           emit_map_type(key_type: "_", val_type: "_", target: target)
@@ -1102,7 +1106,9 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   if n.children |> count == 0 {
     let bare_is_map = is_container_type(name: tn) && to_snake(name: tn) == "map"
     let bare_is_collection = is_container_type(name: tn) && !bare_is_map
-    let has_container_template = match container_to_algebra_name(name: to_snake(name: tn)) { Some { value: _ } => true  None => false }
+    let leaf_snake = to_snake(name: tn)
+    let has_container_template = leaf_snake == "list" || leaf_snake == "set" || leaf_snake == "map" ||
+      leaf_snake == "free_monoid" || leaf_snake == "boolean_algebra" || leaf_snake == "partial_function"
     let param_count = n.params |> count
     let base = if bare_is_map {
       emit_map_type(key_type: "_", val_type: "_", target: target)

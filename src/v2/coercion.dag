@@ -149,28 +149,25 @@ fn lookup_inhabitant(target: RenderTarget, algebra: String) -> InhabitantDecl? {
 }
 
 // container_to_algebra_name (in std/types.dag) is a structural read of
-// the type aliases (List = FreeMonoid, etc.) and accepts only PascalCase
-// container aliases. Callers here normalize snake_case input and treat
-// kernel algebra names as identity — those are the consumer-side concerns,
-// not authority duplicated in a central table.
-fn container_algebra_for_coercion(container_name: String) -> String? {
-  if container_name == "List" || container_name == "list" ||
-     container_name == "FreeMonoid" || container_name == "free_monoid" {
-    Some { value: "FreeMonoid" }
-  } else if container_name == "Set" || container_name == "set" ||
-            container_name == "BooleanAlgebra" || container_name == "boolean_algebra" {
-    Some { value: "BooleanAlgebra" }
-  } else if container_name == "Map" || container_name == "map" ||
-            container_name == "PartialFunction" || container_name == "partial_function" {
-    Some { value: "PartialFunction" }
-  } else {
-    none
-  }
-}
-
+// the type aliases (type List = FreeMonoid, etc.). It accepts only the
+// PascalCase container aliases. Snake_case inputs and kernel algebra
+// self-names (FreeMonoid/BooleanAlgebra/PartialFunction) are normalized
+// here — consumer-side concerns, not duplicated authority.
 fn coerce_container_template(target: RenderTarget, container_name: String) -> String? {
-  match container_algebra_for_coercion(container_name: container_name) {
-    Some { value: algebra } => match lookup_inhabitant(target: target, algebra: algebra) {
+  let pascal = if container_name == "list" { "List" }
+    else if container_name == "set" { "Set" }
+    else if container_name == "map" { "Map" }
+    else if container_name == "free_monoid" { "FreeMonoid" }
+    else if container_name == "boolean_algebra" { "BooleanAlgebra" }
+    else if container_name == "partial_function" { "PartialFunction" }
+    else { container_name }
+  let algebra = if pascal == "FreeMonoid" || pascal == "BooleanAlgebra" || pascal == "PartialFunction" {
+    Some { value: pascal }
+  } else {
+    container_to_algebra_name(name: pascal)
+  }
+  match algebra {
+    Some { value: a } => match lookup_inhabitant(target: target, algebra: a) {
       Some { value: inh } => Some { value: inh.template }
       None => none
     }
