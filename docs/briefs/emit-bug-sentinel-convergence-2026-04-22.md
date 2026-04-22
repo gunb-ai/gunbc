@@ -23,10 +23,11 @@ Consumer: `src/v2/05_emit.dag:996, 1046` — `apply_type_template1(template: spe
 ### Rust — has the escape hatch
 `compile_error!("...")` is a macro that fails at macro expansion *regardless of syntactic position* (including type position). It is Rust's native "halt the build with a message" primitive.
 
-### Python — no direct equivalent in annotation position
-- Annotations are expressions. The only failure modes available in expression position are (a) undefined identifier → `NameError` when the annotation is evaluated, or (b) expressions that raise when evaluated (e.g. `(lambda: (_ for _ in ()).throw(RuntimeError("EMIT BUG: {0}")))()`).
-- Under `from __future__ import annotations` (default in many modern Python codebases) annotations are stored as strings and **never evaluated at import**, so both (a) and (b) defer failure to runtime type-checkers or typed reflection — weaker than Rust's guarantee.
-- The current `__EMIT_BUG_{0}__` sentinel is mode (a). It **is** the native fail-closed form Python has to offer in this position; there is no stronger Python construct.
+### Python — **not fail-closed** in the current emitter
+- The Python emitter unconditionally prepends `from __future__ import annotations` (`src/v2/05_emit_python.dag:301`, mirrored in `src/v2/stage0/src/v2_compiler_emit_python.rs:528`, and explicitly locked in by `src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs:553`).
+- Under PEP 563 deferred evaluation, annotations are stored as **string literals** and never evaluated at import. `__EMIT_BUG_UNRESOLVED_TypeVariable__` in a type annotation therefore **imports cleanly** — failure is deferred to whatever runtime reflection (typed dispatch, `get_type_hints`, a type checker) later tries to resolve it.
+- In expression position Python has native fail-closed forms (`raise`, or `python_error_expr_template = "raise RuntimeError({0})"` at `dsl/extdeps/languages/python/emit.dag:111`). In annotation position, given the emitter's deferred-annotation policy, **no Python construct fails at import**.
+- This is a genuine gap: Python is the one target where the brief's acceptance criterion ("each target fails at its own compile time if the template fires") is **not** currently met.
 
 ### Go — no equivalent in type position
 - Go has no macros, no `#error`, no `static_assert`.
@@ -39,9 +40,11 @@ Consumer: `src/v2/05_emit.dag:996, 1046` — `apply_type_template1(template: spe
 
 ## The real observation
 
-All four sentinels **are** fail-closed in their target's native sense — they all guarantee the downstream compile/import step fails. The asymmetry is only that Rust has a construct that **carries the error message through**. Python/Go/dag have only "undefined identifier" to work with, and its text cannot be arbitrary.
+Three of the four sentinels (Rust, Go, dag) are fail-closed in their target's native sense — they guarantee the downstream compile step fails. The asymmetry is that Rust carries the message through (`compile_error!`); Go/dag rely on "undefined identifier."
 
-So the brief's acceptance criterion — "each target fails at its own compile time if the template fires" — is **already satisfied** today. What the current sentinel violates is not fail-closed, it's *legibility*: the sentinel is a valid identifier, so (a) it reads like regular code in diffs, and (b) a user could theoretically shadow it by declaring `__EMIT_BUG_UNRESOLVED_TypeVariable__` themselves.
+**Python is the outlier.** The emitter's `from __future__ import annotations` policy (PEP 563) stores annotations as strings, so the sentinel never evaluates and never fails. The acceptance criterion is **not** currently met for Python — this is a real P3 gap, not just a legibility concern.
+
+For Go and dag, what the sentinel violates is legibility, not fail-closedness: the sentinel is a valid identifier, so (a) it reads like regular code in diffs, and (b) a user could shadow it by declaring it themselves.
 
 ## The dissolution that actually works
 
@@ -69,9 +72,10 @@ None of these move the real needle (upstream halt). All of them add churn withou
 
 ## Recommendation
 
-1. **No template changes in this PR.** The sentinels are already the native fail-closed form for Python/Go/dag.
-2. **Open a C1 lane** (or attach to an existing Diagnostic-propagation lane) to dissolve the error-type emission path entirely: the condition at `05_emit.dag:996, 1046` should produce a Diagnostic and halt. When that lands, all four templates can be deleted — including Rust's `compile_error!` bridge.
-3. **Document the receipt**: this file serves as the explicit surfaced finding per STOP-AND-ESCALATE clause #1 ("target-capability limitation worth surfacing explicitly, not papering over").
+1. **No template changes in this PR.** For Go/dag the sentinels are already the native fail-closed form; renaming them is a legibility tweak that doesn't change the receipt. For Python no template change can close the gap on its own — the `from __future__ import annotations` policy short-circuits any annotation-position expression.
+2. **Python has a live P3 gap today.** The correct fix lives upstream (see #3) and/or at the emitter-policy layer: either stop emitting error types at all, or revisit the unconditional `from __future__ import annotations` for files where error-type sentinels could appear. Either way it's not a template edit.
+3. **Open a C1 lane** (or attach to an existing Diagnostic-propagation lane) to dissolve the error-type emission path entirely: the condition at `05_emit.dag:996, 1046` should produce a Diagnostic and halt. When that lands, all four templates can be deleted — including Rust's `compile_error!` bridge — and the Python gap closes by construction.
+4. **Document the receipt**: this file serves as the explicit surfaced finding per STOP-AND-ESCALATE clause #1 ("target-capability limitation worth surfacing explicitly, not papering over"), and flags Python's deferred-annotation gap as a live P3 concern that the upstream-halt dissolution resolves.
 
 ## PR framing
 
