@@ -29,22 +29,25 @@ Consumer: `src/v2/05_emit.dag:996, 1046` — `apply_type_template1(template: spe
 - In expression position Python has native fail-closed forms (`raise`, or `python_error_expr_template = "raise RuntimeError({0})"` at `dsl/extdeps/languages/python/emit.dag:111`). In annotation position, given the emitter's deferred-annotation policy, **no valid-expression template fails at import** — any syntactically-valid expression is stored as a string and never evaluated. (A deliberately malformed template would fail at parse with `SyntaxError`, but that's a file-level parse failure, not an annotation-evaluation fail-closed; the message would not carry the `{0}` label through cleanly, and it couples the fail-closed guarantee to the parser rather than to type resolution.)
 - This is a genuine gap: Python is the one target where the brief's acceptance criterion ("each target fails at its own compile time if the template fires") is **not** met by any well-formed annotation-valued template under the emitter's current deferred-annotation policy.
 
-### Go — no equivalent in type position
+### Go — shadowable, not truly fail-closed
 - Go has no macros, no `#error`, no `static_assert`.
-- An undefined identifier in type position **does** yield a Go compile error (`undefined: __EMIT_BUG_FOO__`). The current sentinel is mode "undefined identifier" — which is Go's native fail-closed form in this position.
-- There is no Go construct that carries a message through a compile error in type position.
+- An undefined identifier in type position yields a Go compile error (`undefined: __EMIT_BUG_FOO__`) — **only if the name is actually undefined**. Go identifier syntax (letter-or-`_` start) accepts `__EMIT_BUG_UNRESOLVED_TypeVariable__` as a valid user identifier. If any source file in the same package (user code, generated code, a second error-emitting site in the same compilation, or accidental collision with another tool's sentinels) declares a type of this name, the emission resolves cleanly and the error is silently swallowed.
+- This is a C-8 violation, not mere legibility: the sentinel relies on a *negative* property ("no one has declared this name") rather than a *positive* fail-closed mechanism.
 
-### dag — self-referential
-- `.dag` emitted with `__EMIT_BUG_FOO__` in a type position is rejected by the dag compiler (undefined identifier → diagnostic). Same class as Go.
-- Could plausibly emit a Diagnostic carrier instead, but this is the *emit* spec — a Diagnostic at this layer is equivalent to the upstream-halt argument below.
+### dag — shadowable, not truly fail-closed
+- `.dag` identifier rules (`01_tokenize.dag:516-522`) accept `_` as an ident start and `__EMIT_BUG_*__` is a well-formed `.dag` identifier. The dag compiler's unresolved-name diagnostic is what makes the sentinel bite today, but the same shadowing concern as Go applies: any declaration of the sentinel name in scope satisfies the reference.
+- The dag parser does not reserve `__*__` forms. `NAME_LIKELY_UNUSED_STOP_SYMBOL`-style conventions are not structurally enforced here.
 
 ## The real observation
 
-Three of the four sentinels (Rust, Go, dag) are fail-closed in their target's native sense — they guarantee the downstream compile step fails. The asymmetry is that Rust carries the message through (`compile_error!`); Go/dag rely on "undefined identifier."
+**Only Rust is genuinely fail-closed.** `compile_error!` is a macro invocation that fails at macro expansion regardless of surrounding declarations — no user code can shadow or intercept it.
 
-**Python is the outlier.** The emitter's `from __future__ import annotations` policy (PEP 563) stores annotations as strings, so the sentinel never evaluates and never fails. The acceptance criterion is **not** currently met for Python — this is a real P3 gap, not just a legibility concern.
+**Python, Go, and dag all have live fail-closed gaps**, of two different shapes:
 
-For Go and dag, what the sentinel violates is legibility, not fail-closedness: the sentinel is a valid identifier, so (a) it reads like regular code in diffs, and (b) a user could shadow it by declaring it themselves.
+- **Python:** the emitter's `from __future__ import annotations` policy (PEP 563) stores annotations as strings, so the sentinel never evaluates at import. Gap is *deferred evaluation*.
+- **Go and dag:** the sentinel is a syntactically-valid user identifier. If any declaration of that name exists in scope (user code, generated code, another emission site in the same compilation, cross-tool collision), the sentinel resolves and the error is silently swallowed. Gap is *shadowable identifier*.
+
+Both gaps are **C-8 violations**: the sentinels rely on negative properties ("annotations aren't evaluated," "no one has declared this name") rather than positive fail-closed mechanisms. The previous framing that classified Go/dag as "legibility, not fail-closedness" was wrong — a name that can be shadowed is not fail-closed, it's a weak bridge that happens to work by convention.
 
 ## The dissolution that actually works
 
@@ -72,10 +75,13 @@ None of these move the real needle (upstream halt). All of them add churn withou
 
 ## Recommendation
 
-1. **No template changes in this PR.** For Go/dag the sentinels are already the native fail-closed form; renaming them is a legibility tweak that doesn't change the receipt. For Python no template change can close the gap on its own — the `from __future__ import annotations` policy short-circuits any annotation-position expression.
-2. **Python has a live P3 gap today.** No well-formed annotation-valued template closes it while the emitter unconditionally emits `from __future__ import annotations`. The correct fix lives upstream (see #3) and/or at the emitter-policy layer: either stop emitting error types at all, or revisit the deferred-annotation policy for files where error-type sentinels could appear. A syntactically-malformed template would fail at parse time but is a coarse escape hatch (file-level parse failure, label doesn't carry through cleanly) and not the right dissolution.
-3. **Open a C1 lane** (or attach to an existing Diagnostic-propagation lane) to dissolve the error-type emission path entirely: the condition at `05_emit.dag:996, 1046` should produce a Diagnostic and halt. When that lands, all four templates can be deleted — including Rust's `compile_error!` bridge — and the Python gap closes by construction.
-4. **Document the receipt**: this file serves as the explicit surfaced finding per STOP-AND-ESCALATE clause #1 ("target-capability limitation worth surfacing explicitly, not papering over"), and flags Python's deferred-annotation gap as a live P3 concern that the upstream-halt dissolution resolves.
+1. **No template changes in this PR.** All three non-Rust sentinels have real C-8 gaps (Python deferred-annotation; Go/dag shadowable identifier). A rename to a still-valid-identifier form does not close the shadowing gap. Only upstream dissolution does.
+2. **Three targets have live P3/C-8 gaps today.** Python via `from __future__ import annotations`; Go and dag via shadowable identifier. No template-only edit closes any of them:
+   - For Python, any valid annotation expression is stored as a string and never evaluated.
+   - For Go/dag, any identifier the template could emit is user-shadowable in the same package/module.
+   The correct fix lives upstream (see #3). Emitter-policy workarounds (dropping the future-import; reserving an `__*__` identifier class in `.dag`) are larger changes than the upstream halt and less structurally sound.
+3. **Open a C1 lane** (or attach to an existing Diagnostic-propagation lane) to dissolve the error-type emission path entirely: the condition at `05_emit.dag:996, 1046` should produce a Diagnostic and halt. When that lands, all four templates can be deleted — including Rust's `compile_error!` bridge — and all three gaps (Python deferred-annotation; Go/dag shadowable identifier) close by construction.
+4. **Document the receipt**: this file serves as the explicit surfaced finding per STOP-AND-ESCALATE clause #1 ("target-capability limitation worth surfacing explicitly, not papering over"), and flags three live C-8 gaps (Python, Go, dag) that the upstream-halt dissolution resolves.
 
 ## PR framing
 
