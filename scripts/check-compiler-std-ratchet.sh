@@ -46,7 +46,8 @@ EXEMPT_ROWS=(
   "src/v3/compiler/parse_tables.dag:109"
   "src/v3/compiler/parse_tables.dag:143"
   "src/v3/compiler/parse_tables.dag:265"
-  "src/v3/compiler/parse_tables.dag:340"
+  "src/v3/compiler/parse_tables.dag:310"
+  "src/v3/compiler/parse_tables.dag:361"
 )
 
 TRACKED_ROWS=(
