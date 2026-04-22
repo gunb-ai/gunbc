@@ -468,7 +468,8 @@ data primary_prefix_lbracket: PrimaryPrefixRow = {
 
 // --- SG-2c-7: `parse_primary` atomic tail (after prefix pass). The bump that
 // follows a non-prefix `peek` must be one of: integer literal, boolean
-// keyword literals, string, pipe-(`|>`) lambda start, or identifier — the
+// keyword literals, string, `Pipe` (single `|`, not `PipeArrow` / `|>`) for
+// lambda syntax, or identifier — the
 // closed set that the parser accepts as a primary expression *atom*. Authored
 // here once; `PrimaryAtomClass` and `primary_atom_class` are regen-only
 // (projection over `token_variant` rows, same M7 shape as
