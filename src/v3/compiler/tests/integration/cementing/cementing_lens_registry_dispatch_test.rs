@@ -100,10 +100,6 @@ fn expected_origin_from_producer_behavior(behavior: &Behavior) -> Origin {
 /// `tests/integration.rs` in the same PR.
 const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[(&str, &str)] = &[];
 
-/// Ratchet owner module — kept wired so `cargo test … cementing` always
-/// exercises this file; see `cementing_lens_registry_dispatch_test_is_wired_in_integration_rs`.
-const CEMENTING_REGISTRY_DISPATCH_STEM: &str = "cementing_lens_registry_dispatch_test";
-
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -284,16 +280,6 @@ fn provenance_origin_of_cements_complete_row_via_compile_to_dag_fixture() {
     let dag =
         compile_to_dag("let sum: Int = 1 + 2", "cementing_provenance_sum.v3").expect("compiles");
     assert_provenance_origin_matches_lens_authority(&dag, "sum", "cementing_provenance_sum");
-}
-
-#[test]
-fn cementing_lens_registry_dispatch_test_is_wired_in_integration_rs() {
-    let integration_rs = integration_rs_text();
-    assert_cementing_stem_wired_in_integration_rs(
-        &integration_rs,
-        CEMENTING_REGISTRY_DISPATCH_STEM,
-        "<cementing dispatch ratchet>",
-    );
 }
 
 #[test]
