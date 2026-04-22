@@ -35,8 +35,11 @@ use crate::diagnostics::{
 };
 use crate::infer_helpers::{
     behavior_output_port, behavior_span, payload_binding_span as generated_payload_binding_span,
+    push_template_argument_binding as generated_push_template_argument_binding,
     resolve_template_argument_value as generated_resolve_template_argument_value,
-    template_argument_value as generated_template_argument_value, TemplateArgumentLookup,
+    template_argument_value as generated_template_argument_value,
+    template_arguments_match as generated_template_arguments_match, TemplateArgumentBinding,
+    TemplateArgumentLookup,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
@@ -1543,11 +1546,7 @@ fn retained_template_arguments_for_target(
 }
 
 fn template_arguments_match(lhs: &[TemplateArgument], rhs: &[TemplateArgument]) -> bool {
-    lhs.len() == rhs.len()
-        && lhs
-            .iter()
-            .zip(rhs.iter())
-            .all(|(a, b)| a.parameter == b.parameter && a.value == b.value)
+    generated_template_arguments_match(lhs, rhs)
 }
 
 fn push_template_argument_binding(
@@ -1555,17 +1554,13 @@ fn push_template_argument_binding(
     parameter: DeclarationId,
     value: DeclarationId,
 ) -> bool {
-    for existing in arguments.iter_mut() {
-        if existing.parameter == parameter {
-            if existing.value == parameter {
-                existing.value = value;
-                return true;
-            }
-            return existing.value == value;
+    match generated_push_template_argument_binding(arguments, &parameter, &value) {
+        TemplateArgumentBinding::TemplateArgumentBindingConflict => false,
+        TemplateArgumentBinding::TemplateArgumentsBound { _0: updated } => {
+            *arguments = updated;
+            true
         }
     }
-    arguments.push(TemplateArgument { parameter, value });
-    true
 }
 
 fn resolve_arrow_decl_walk(
@@ -4399,5 +4394,39 @@ mod bool_logical_operator_arrow_tests {
         assert_eq!(sig.inputs[0].declaration, bool_shape.declaration);
         assert_eq!(sig.inputs[1].declaration, bool_shape.declaration);
         assert_eq!(sig.output.declaration, bool_shape.declaration);
+    }
+
+    #[test]
+    fn template_argument_reconciliation_helpers_match_and_update_consistently() {
+        let p0 = DeclarationId(1);
+        let p1 = DeclarationId(2);
+        let v0 = DeclarationId(10);
+        let v1 = DeclarationId(11);
+        let mut arguments = vec![
+            TemplateArgument {
+                parameter: p0,
+                value: p0,
+            },
+            TemplateArgument {
+                parameter: p1,
+                value: v1,
+            },
+        ];
+
+        assert!(push_template_argument_binding(&mut arguments, p0, v0));
+        assert!(template_arguments_match(
+            &arguments,
+            &[
+                TemplateArgument {
+                    parameter: p0,
+                    value: v0,
+                },
+                TemplateArgument {
+                    parameter: p1,
+                    value: v1,
+                },
+            ]
+        ));
+        assert!(!push_template_argument_binding(&mut arguments, p1, v0));
     }
 }
