@@ -8,13 +8,9 @@
 
 use std::path::PathBuf;
 
-use v3_compiler::dag::{Dag, LiteralBits};
-use v3_compiler::diagnostics::SourceSpan;
+use v3_compiler::compile_to_dag;
+use v3_compiler::dag::Behavior;
 use v3_compiler::lens_provenance::{origin_of, Origin};
-
-fn span() -> SourceSpan {
-    SourceSpan::new("<cementing-provenance>", 0, 0)
-}
 
 fn origin_label(origin: &Origin) -> &'static str {
     match origin {
@@ -38,18 +34,33 @@ fn origin_label(origin: &Origin) -> &'static str {
 /// `tests/integration.rs` in the same PR.
 const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[(&str, &str)] = &[];
 
+fn find_bind_value_port(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::PortId {
+    dag.nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|bind| bind.name == name)
+        .unwrap_or_else(|| panic!("bind `{name}` not found"))
+        .value
+}
+
 #[test]
 fn provenance_origin_of_cements_behavior_complete_row_on_minimal_ports() {
     // Register row: `provenance.dag` — BEHAVIORALLY COMPLETE, v3-native.
-    // Cementing here pins the public `Origin` classification contract the
-    // same way a future v2-oracle test would pin cross-implementation parity.
-    let mut dag = Dag::new();
-    let int_shape = dag.int_shape().expect("bootstrap Int");
-    let param = dag.alloc_port_with_shape(int_shape);
-    assert_eq!(origin_label(&origin_of(&dag, &param)), "NoProducer");
+    // Integration crate cannot reach `Dag`’s `pub(crate)` builder helpers
+    // (`alloc_port_with_shape`); `compile_to_dag` fixtures still cement the
+    // shipped `origin_of` contract on the live lowering path. Exhaustive
+    // `NoProducer` / `Missing*` cases stay in `lib.rs::lens_provenance::tests`.
+    let dag = compile_to_dag("let lit: Int = 7", "cementing_provenance_lit.v3").expect("compiles");
+    assert_eq!(
+        origin_label(&origin_of(&dag, &find_bind_value_port(&dag, "lit"))),
+        "Source"
+    );
 
-    let literal = dag.push_value(LiteralBits::Int(7), span());
-    assert_eq!(origin_label(&origin_of(&dag, &literal)), "Source");
+    let dag = compile_to_dag("let sum: Int = 1 + 2", "cementing_provenance_sum.v3").expect("compiles");
+    assert_eq!(
+        origin_label(&origin_of(&dag, &find_bind_value_port(&dag, "sum"))),
+        "Computed"
+    );
 }
 
 #[test]
