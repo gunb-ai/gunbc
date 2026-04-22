@@ -63,7 +63,7 @@ Everything else moves to `std/`: Token, File, Path, SourceSpan, Diagnostic, Iden
 
 **Status: debatable.** These are parser-dispatch data tables. On one hand, expression precedence and keyword-dispatch are language properties that tools beyond the compiler might want to read (e.g., a syntax highlighter). On the other hand, the specific row *shapes* are parser-internal. A reasonable split: move the *data* (operator levels, keyword-to-item mappings) to `std/syntax.dag`, keep the dispatch-row *shapes* compiler-specific.
 
-**Defer:** decide this as part of the specific migration lane, not now.
+**Named decision trigger: SG-2c proper cutover.** The decision about which rows are "parser internal dispatch" vs "language-level syntax facts" is genuinely under-determined until the parser itself moves to `.dag` authority — only then can we see which rows the `.dag` parser actually dispatches on (stays compiler-API) versus which are pure language data downstream tools should consume (moves to `std/syntax.dag`). Whoever picks up SG-2c proper's parser cutover is the owner of this decision. **Precedent rule:** if any individual row needs to move before SG-2c proper lands, the mover-lane sets the classification for that row and the others follow the same rule when touched.
 
 #### v3-specific `std/` tree → unified `dsl/std/`
 
