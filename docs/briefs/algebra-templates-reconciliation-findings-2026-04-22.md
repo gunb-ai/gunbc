@@ -110,7 +110,8 @@ different consumer populations.
 - **(a) derive templates from declaration.** Blocked: declaration cannot
   carry `size_effect`/`cost_shape`/`callback_element_position` or the
   kernel-synonym name set. Would require extending the type declaration
-  with new connectives or violate `no_annotations`.
+  with new connectives or violate `MODELING.md:19` ("extend the
+  structure rather than add annotations or metadata").
 - **(b) delete templates.** Blocked: v2 consumers (`enrich_kernel_type`,
   `resolve_known_method_node`) need the per-method metadata. Declaration
   cannot supply it, and the v3 operator pipeline only validates Arrow
