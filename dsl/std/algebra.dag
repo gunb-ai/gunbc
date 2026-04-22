@@ -259,7 +259,7 @@ type BooleanAlgebra<T> {
 //   - Higher-order value params still emit as `impl Fn(...) + Clone` at the
 //     callable-bound layer (see 05_emit_rust.dag line ~1401).
 //   - The type/value-param split in the emitter keys on the post-resolve
-//     invariant that resolve_item_types (04_resolve.dag:909) installs:
+//     invariant that resolve_item_types (04_resolve.dag:923) installs:
 //     declared type params get an env binding with
 //     `inferred: TypeVariable { id: T }`, so a param whose type_expr
 //     carries TypeVariable AND whose Node.name matches the type_expr's

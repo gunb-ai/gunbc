@@ -954,7 +954,7 @@ fn emit_type_params(params: List<Node>, source_indices: Map<String, NewlineIndex
 // params, per parse_fn_body_from_prefix) at emit time, post-resolve.
 //
 // Structural basis (post-resolve):
-//   - resolve_item_types (04_resolve.dag:909) registers each declared type
+//   - resolve_item_types (04_resolve.dag:923) registers each declared type
 //     param T as a TypeEnv binding whose resolved node carries
 //     `inferred: Some(TypeVariable { id: T })`.
 //   - For a type-param Node `T: T`, resolve rewrites the type_expr to that
@@ -1011,7 +1011,7 @@ fn function_value_params(params: List<Node>) -> List<Node> {
 // ParamKind).
 //
 // Primary fail-closed for this ambiguity already lives upstream as a typed
-// gunbc Diagnostic at resolve_item_types (04_resolve.dag:909, using
+// gunbc Diagnostic at resolve_item_types (04_resolve.dag:923, using
 // has_duplicate_type_param_name). This emit-time `compile_error!` is kept
 // as belt-and-suspenders against pipelines that bypass resolve (direct
 // emit_fn_def calls in tests, partial pipelines) and would otherwise emit
