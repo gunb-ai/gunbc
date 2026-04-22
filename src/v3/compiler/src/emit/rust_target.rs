@@ -4955,10 +4955,6 @@ fn walk_to_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
     None
 }
 
-/// Walk a declaration through aliases / instantiations to a `Disj`.
-/// Returns the Disj declaration's id, or None if the chain bottoms
-/// out without hitting a Disj. Mirrors `walk_to_conj_decl` in
-/// `lower.rs` for symmetry.
 fn is_optional_match_disj(dag: &Dag, disj_id: DeclarationId) -> bool {
     dag.declarations()
         .iter()

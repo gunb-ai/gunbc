@@ -132,6 +132,15 @@ pub(super) fn port_is_consumed_from(dag: &Dag, root: PortId, target: PortId) -> 
     false
 }
 
+/// Shared lookup failures for the emitter-internal type/operator walk helpers.
+///
+/// **Dissolution note — 🟢 TERMINAL (local helper error coproduct).** Two
+/// structurally distinct failure modes remain after consolidating the target
+/// walkers: either the queried port has no resolved type yet, or the walk
+/// reached a target-unsupported / malformed anchor and carries a diagnostic
+/// string. The target emitters immediately map this local coproduct into their
+/// own public error surfaces, so this enum is an implementation-layer bridge,
+/// not a second user-facing authority.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum SharedEmitLookupError {
     UntypedPort(PortId),

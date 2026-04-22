@@ -1875,6 +1875,8 @@ fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, 
     primitive_type_id_for_port_shared(dag, port).map_err(|err| match err {
         SharedEmitLookupError::UntypedPort(port) => EmitPythonError::UntypedPort(port),
         SharedEmitLookupError::Unsupported(detail) => {
+            // Preserve the pre-consolidation Python diagnostic wording while the
+            // target still owns its public error strings.
             EmitPythonError::Unsupported(detail.replace(" — likely a cycle", ""))
         }
     })
@@ -1901,6 +1903,8 @@ fn algebra_field_for_operator(
 ) -> Result<DeclarationId, EmitPythonError> {
     algebra_field_for_operator_shared(dag, operand_type_id, op).map_err(|err| match err {
         SharedEmitLookupError::UntypedPort(port) => EmitPythonError::UntypedPort(port),
+        // Preserve the pre-consolidation Python diagnostic wording while the
+        // target still owns its public error strings.
         SharedEmitLookupError::Unsupported(detail) => EmitPythonError::Unsupported(
             detail
                 .replace("the canonical `OrderedRing`", "canonical OrderedRing")
