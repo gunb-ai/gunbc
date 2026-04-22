@@ -294,6 +294,27 @@ data top_level_kw_data: TopLevelItemKwRow = {
   token_variant: "KwData"
 }
 
+// --- SG-2c-5: keyword-token aliases that the parser accepts as bare
+// identifier spellings in label/name positions. Today this is the
+// single `KwType -> "type"` carveout used by both record-field labels
+// and sum-variant names. The parser consumes the generated
+// `soft_keyword_ident_spelling` projection rather than duplicating the
+// `TokenKind::KwType => "type"` match at each call site.
+//
+// Dissolution classification: **🟡 YELLOW (scaffold)**. Same shape as
+// `TopLevelItemKwRow`: substrate rows author only `token_variant`; the
+// Rust string spelling is a projection (`Kw` prefix stripped and
+// lowercased), not a second `.dag` field. Full dissolution rides
+// SG-2c proper when parser control flow ports out of
+// `parse_parser_body.txt`.
+type SoftKeywordIdentRow {
+  token_variant: String
+}
+
+data soft_keyword_ident_type: SoftKeywordIdentRow = {
+  token_variant: "KwType"
+}
+
 // --- SG-2c-4: bracket opener / closer membership table. Parser helpers
 // that skip or scan token spans while tracking paren/brace/bracket depth
 // (`skip_where_clause`, `rhs_is_sum` in `parse_parser_body.txt`) dispatch

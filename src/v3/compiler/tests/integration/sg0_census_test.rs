@@ -220,6 +220,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
     "src/v3/compiler/tests/integration/sg2_parse_authority_test.rs",
     "src/v3/compiler/tests/integration/sg2c1_parse_tables_authority_test.rs",
+    "src/v3/compiler/tests/integration/sg2c5_soft_keyword_ident_test.rs",
     "src/v3/compiler/tests/integration/sg3_lower_authority_test.rs",
     "src/v3/compiler/tests/integration/sg3_lower_parse_surface_stack_test.rs",
     "src/v3/compiler/tests/integration/sg3_surface_reflection_consumer_test.rs",

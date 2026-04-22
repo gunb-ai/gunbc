@@ -8,8 +8,8 @@ pub use crate::parse_surface::{
     SurfaceVariant, VariantPayload,
 };
 use crate::parse_tables::{
-    binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, top_level_item_dispatch,
-    BinaryOpLevel, BracketRole, ItemDispatchKind,
+    binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, soft_keyword_ident_spelling,
+    top_level_item_dispatch, BinaryOpLevel, BracketRole, ItemDispatchKind,
 };
 use crate::tokenize::{Token, TokenKind};
 
@@ -261,7 +261,8 @@ impl<'a> Parser<'a> {
         match (t0, t1, t2) {
             (Some(a), Some(b), Some(c)) => {
                 matches!(a.kind, TokenKind::LBrace)
-                    && matches!(b.kind, TokenKind::Ident(_))
+                    && (matches!(b.kind, TokenKind::Ident(_))
+                        || soft_keyword_ident_spelling(&b.kind).is_some())
                     && matches!(c.kind, TokenKind::Colon)
             }
             _ => false,
@@ -579,16 +580,16 @@ impl<'a> Parser<'a> {
     /// position is unambiguous (`type` cannot start a type expression here).
     fn parse_field_label(&mut self) -> Result<(String, SourceSpan), Diagnostic> {
         let name_token = self.bump().clone();
-        let name = match name_token.kind {
-            TokenKind::Ident(n) => n,
-            TokenKind::KwType => "type".to_string(),
-            other => {
-                return Err(Diagnostic::ParseError {
-                    message: format!("expected field label, got {other:?}"),
-                    span: name_token.span,
-                    fixes: Vec::new(),
-                });
-            }
+        let name = if let TokenKind::Ident(name) = &name_token.kind {
+            name.clone()
+        } else if let Some(spelling) = soft_keyword_ident_spelling(&name_token.kind) {
+            spelling.to_string()
+        } else {
+            return Err(Diagnostic::ParseError {
+                message: format!("expected field label, got {:?}", name_token.kind),
+                span: name_token.span,
+                fixes: Vec::new(),
+            });
         };
         Ok((name, name_token.span))
     }
@@ -769,16 +770,16 @@ impl<'a> Parser<'a> {
 
     fn parse_variant(&mut self) -> Result<SurfaceVariant, Diagnostic> {
         let name_token = self.bump().clone();
-        let name = match &name_token.kind {
-            TokenKind::Ident(n) => n.clone(),
-            TokenKind::KwType => String::from("type"),
-            other => {
-                return Err(Diagnostic::ParseError {
-                    message: format!("expected variant name, got {other:?}"),
-                    span: name_token.span.clone(),
-                    fixes: Vec::new(),
-                });
-            }
+        let name = if let TokenKind::Ident(name) = &name_token.kind {
+            name.clone()
+        } else if let Some(spelling) = soft_keyword_ident_spelling(&name_token.kind) {
+            spelling.to_string()
+        } else {
+            return Err(Diagnostic::ParseError {
+                message: format!("expected variant name, got {:?}", name_token.kind),
+                span: name_token.span.clone(),
+                fixes: Vec::new(),
+            });
         };
         match &self.peek().kind {
             TokenKind::LParen => {
