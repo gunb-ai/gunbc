@@ -133,6 +133,123 @@ pub(super) fn port_is_consumed_from(dag: &Dag, root: PortId, target: PortId) -> 
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum SharedEmitLookupError {
+    UntypedPort(PortId),
+    Unsupported(String),
+}
+
+pub(super) fn primitive_type_id_for_port_shared(
+    dag: &Dag,
+    port: PortId,
+) -> Result<DeclarationId, SharedEmitLookupError> {
+    let ts = dag
+        .port(port)
+        .value_type()
+        .ok_or(SharedEmitLookupError::UntypedPort(port))?;
+    let mut current = ts.declaration;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        if decl.name.is_some() {
+            return Ok(current);
+        }
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            _ => return Ok(current),
+        }
+    }
+    Err(SharedEmitLookupError::Unsupported(
+        "port type walk exceeded depth 32 — likely a cycle".to_string(),
+    ))
+}
+
+pub(super) fn walk_to_disj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        match &dag.declaration(current).connective {
+            TypeConnective::Disj { .. } => return Some(current),
+            TypeConnective::Cardinality {
+                bound: CardinalityBound::AtMostOne,
+                ..
+            } => return dag.optional_match_disj(current),
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            _ => return None,
+        }
+    }
+    None
+}
+
+pub(super) fn algebra_field_for_operator_shared(
+    dag: &Dag,
+    operand_type_id: DeclarationId,
+    op: OperatorKind,
+) -> Result<DeclarationId, SharedEmitLookupError> {
+    let Some(algebra_conj_id) = walk_to_algebra_conj(dag, operand_type_id) else {
+        return canonical_operator_field_shared(dag, op);
+    };
+    let field_label = crate::operators::algebra_field_name(op);
+    let children = match &dag.declaration(algebra_conj_id).connective {
+        TypeConnective::Conj { children } => children,
+        _ => unreachable!("walk_to_algebra_conj returned a non-Conj"),
+    };
+    if let Some(field) = children.iter().find(|field| field.label == field_label) {
+        return Ok(field.ty);
+    }
+    canonical_operator_field_shared(dag, op)
+}
+
+fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Conj { .. } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            _ => {
+                if let Some(inh) = decl.inhabits {
+                    current = inh;
+                } else {
+                    return None;
+                }
+            }
+        }
+    }
+    None
+}
+
+fn canonical_operator_field_shared(
+    dag: &Dag,
+    op: OperatorKind,
+) -> Result<DeclarationId, SharedEmitLookupError> {
+    let ordered_ring_id = dag.ordered_ring_decl().ok_or_else(|| {
+        SharedEmitLookupError::Unsupported(
+            "bootstrap is missing the canonical `OrderedRing` declaration".to_string(),
+        )
+    })?;
+    let ordered_ring = dag.declaration(ordered_ring_id);
+    let TypeConnective::Conj { children } = &ordered_ring.connective else {
+        return Err(SharedEmitLookupError::Unsupported(
+            "`OrderedRing` does not lower to a Conj declaration".to_string(),
+        ));
+    };
+    let field_label = crate::operators::algebra_field_name(op);
+    children
+        .iter()
+        .find(|field| field.label == field_label)
+        .map(|field| field.ty)
+        .ok_or_else(|| {
+            SharedEmitLookupError::Unsupported(format!(
+                "`OrderedRing` has no canonical field labeled {field_label}"
+            ))
+        })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum GoFieldAccessBinding {
     DirectField(String),
     AccessorMethod(String),
@@ -2913,26 +3030,10 @@ fn render_value(v: &crate::dag::ValueNode, literals: &LiteralSyntaxBinding) -> S
 }
 
 fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, EmitError> {
-    let ts = dag
-        .port(port)
-        .value_type()
-        .ok_or(EmitError::UntypedPort(port))?;
-    let mut current = ts.declaration;
-    for _ in 0..32 {
-        let decl = dag.declaration(current);
-        if decl.name.is_some() {
-            return Ok(current);
-        }
-        match &decl.connective {
-            TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
-            _ => return Ok(current),
-        }
-    }
-    Err(EmitError::UnsupportedBehavior(
-        "port type walk exceeded depth 32 — likely a cycle".to_string(),
-    ))
+    primitive_type_id_for_port_shared(dag, port).map_err(|err| match err {
+        SharedEmitLookupError::UntypedPort(port) => EmitError::UntypedPort(port),
+        SharedEmitLookupError::Unsupported(detail) => EmitError::UnsupportedBehavior(detail),
+    })
 }
 
 /// Peel named empty `Instantiation` chains (`type MyBool = Bool` → `Bool`).
@@ -2986,86 +3087,15 @@ pub(crate) fn operator_carrier_realization<'a>(
     None
 }
 
-fn walk_to_disj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
-    let mut current = start;
-    for _ in 0..32 {
-        match &dag.declaration(current).connective {
-            TypeConnective::Disj { .. } => return Some(current),
-            TypeConnective::Cardinality {
-                bound: CardinalityBound::AtMostOne,
-                ..
-            } => return dag.optional_match_disj(current),
-            TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
-            _ => return None,
-        }
-    }
-    None
-}
-
 fn algebra_field_for_operator(
     dag: &Dag,
     operand_type_id: DeclarationId,
     op: OperatorKind,
 ) -> Result<DeclarationId, EmitError> {
-    let Some(algebra_conj_id) = walk_to_algebra_conj(dag, operand_type_id) else {
-        return canonical_operator_field(dag, op);
-    };
-    let field_label = crate::operators::algebra_field_name(op);
-    let children = match &dag.declaration(algebra_conj_id).connective {
-        TypeConnective::Conj { children } => children,
-        _ => unreachable!("walk_to_algebra_conj returned a non-Conj"),
-    };
-    if let Some(field) = children.iter().find(|field| field.label == field_label) {
-        return Ok(field.ty);
-    }
-    canonical_operator_field(dag, op)
-}
-
-fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
-    let mut current = start;
-    for _ in 0..32 {
-        let decl = dag.declaration(current);
-        match &decl.connective {
-            TypeConnective::Conj { .. } => return Some(current),
-            TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
-            _ => {
-                if let Some(inh) = decl.inhabits {
-                    current = inh;
-                } else {
-                    return None;
-                }
-            }
-        }
-    }
-    None
-}
-
-fn canonical_operator_field(dag: &Dag, op: OperatorKind) -> Result<DeclarationId, EmitError> {
-    let ordered_ring_id = dag.ordered_ring_decl().ok_or_else(|| {
-        EmitError::UnsupportedBehavior(
-            "bootstrap is missing the canonical `OrderedRing` declaration".to_string(),
-        )
-    })?;
-    let ordered_ring = dag.declaration(ordered_ring_id);
-    let TypeConnective::Conj { children } = &ordered_ring.connective else {
-        return Err(EmitError::UnsupportedBehavior(
-            "`OrderedRing` does not lower to a Conj declaration".to_string(),
-        ));
-    };
-    let field_label = crate::operators::algebra_field_name(op);
-    children
-        .iter()
-        .find(|field| field.label == field_label)
-        .map(|field| field.ty)
-        .ok_or_else(|| {
-            EmitError::UnsupportedBehavior(format!(
-                "`OrderedRing` has no canonical field labeled {field_label}"
-            ))
-        })
+    algebra_field_for_operator_shared(dag, operand_type_id, op).map_err(|err| match err {
+        SharedEmitLookupError::UntypedPort(port) => EmitError::UntypedPort(port),
+        SharedEmitLookupError::Unsupported(detail) => EmitError::UnsupportedBehavior(detail),
+    })
 }
 
 #[cfg(test)]
@@ -3112,6 +3142,55 @@ mod tests {
             .text;
         assert!(!rendered.contains("parse_realization"), "got: {rendered}");
         assert!(!rendered.contains("DeclarationRef"), "got: {rendered}");
+    }
+
+    #[test]
+    fn shared_primitive_type_lookup_preserves_named_aliases() {
+        let dag = compile_to_dag(
+            "type MyInt = Int\nfn id(x: MyInt) -> MyInt = x",
+            "named_alias_emit_helper.v3",
+        )
+        .expect("compiles");
+        let param_port = dag
+            .nodes()
+            .iter()
+            .find_map(|node| match node {
+                Behavior::Bind(bind) if bind.span.file == "named_alias_emit_helper.v3" => {
+                    bind.params.first().copied()
+                }
+                _ => None,
+            })
+            .expect("user function param");
+        let my_int = dag.declaration_by_name("MyInt").expect("MyInt decl").id;
+
+        assert_eq!(
+            primitive_type_id_for_port_shared(&dag, param_port),
+            Ok(my_int),
+        );
+    }
+
+    #[test]
+    fn shared_walk_to_disj_finds_match_scrutinee_sum_type() {
+        let dag = compile_to_dag(
+            "type Sign = Plus | Minus\nfn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
+            "match_emit_helper.v3",
+        )
+        .expect("compiles");
+        let branch_input = dag
+            .nodes()
+            .iter()
+            .find_map(|node| match node {
+                Behavior::Branch(branch) if branch.span.file == "match_emit_helper.v3" => {
+                    Some(branch.input)
+                }
+                _ => None,
+            })
+            .expect("user branch input");
+        let scrutinee_type =
+            primitive_type_id_for_port_shared(&dag, branch_input).expect("scrutinee type");
+        let sign = dag.declaration_by_name("Sign").expect("Sign decl").id;
+
+        assert_eq!(walk_to_disj(&dag, scrutinee_type), Some(sign));
     }
 
     #[test]

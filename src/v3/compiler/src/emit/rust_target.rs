@@ -46,7 +46,8 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    parse_pattern_strategy, EmitMode, PatternStrategyBinding, SourceFilteringBinding,
+    algebra_field_for_operator_shared, parse_pattern_strategy, primitive_type_id_for_port_shared,
+    walk_to_disj, EmitMode, PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding,
     VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
@@ -4933,26 +4934,10 @@ fn render_value(v: &ValueNode, literals: &LiteralSyntaxBinding) -> String {
 /// runaway cycles; the std/ types we actually consume bottom out
 /// in 1–2 hops.
 fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, EmitError> {
-    let ts = dag
-        .port(port)
-        .value_type()
-        .ok_or(EmitError::UntypedPort(port))?;
-    let mut current = ts.declaration;
-    for _ in 0..32 {
-        let decl = dag.declaration(current);
-        if decl.name.is_some() {
-            return Ok(current);
-        }
-        match &decl.connective {
-            TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
-            _ => return Ok(current),
-        }
-    }
-    Err(EmitError::UnsupportedBehavior(
-        "port type walk exceeded depth 32 — likely a cycle".to_string(),
-    ))
+    primitive_type_id_for_port_shared(dag, port).map_err(|err| match err {
+        SharedEmitLookupError::UntypedPort(port) => EmitError::UntypedPort(port),
+        SharedEmitLookupError::Unsupported(detail) => EmitError::UnsupportedBehavior(detail),
+    })
 }
 
 fn walk_to_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
@@ -4974,31 +4959,6 @@ fn walk_to_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
 /// Returns the Disj declaration's id, or None if the chain bottoms
 /// out without hitting a Disj. Mirrors `walk_to_conj_decl` in
 /// `lower.rs` for symmetry.
-fn walk_to_disj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
-    let mut current = start;
-    for _ in 0..32 {
-        match &dag.declaration(current).connective {
-            TypeConnective::Disj { .. } => return Some(current),
-            TypeConnective::Cardinality {
-                bound: crate::dag::CardinalityBound::AtMostOne,
-                ..
-            } => return optional_match_disj_for_cardinality(dag, current),
-            TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
-            _ => return None,
-        }
-    }
-    None
-}
-
-fn optional_match_disj_for_cardinality(
-    dag: &Dag,
-    cardinality_decl_id: DeclarationId,
-) -> Option<DeclarationId> {
-    dag.optional_match_disj(cardinality_decl_id)
-}
-
 fn is_optional_match_disj(dag: &Dag, disj_id: DeclarationId) -> bool {
     dag.declarations()
         .iter()
@@ -5028,67 +4988,10 @@ fn algebra_field_for_operator(
     operand_type_id: DeclarationId,
     op: OperatorKind,
 ) -> Result<DeclarationId, EmitError> {
-    // Walk the operand type to its algebra Conj. The same walk is
-    // used by infer.rs's resolve_operator_arrow.
-    let Some(algebra_conj_id) = walk_to_algebra_conj(dag, operand_type_id) else {
-        return canonical_operator_field(dag, op);
-    };
-    let field_label = crate::operators::algebra_field_name(op);
-    let children = match &dag.declaration(algebra_conj_id).connective {
-        TypeConnective::Conj { children } => children,
-        _ => unreachable!("walk_to_algebra_conj returned a non-Conj"),
-    };
-    if let Some(field) = children.iter().find(|f| f.label == field_label) {
-        return Ok(field.ty);
-    }
-    canonical_operator_field(dag, op)
-}
-
-/// Walk a declaration through aliases / instantiations until it
-/// reaches a Conj (the algebra declaration). Returns the Conj's id.
-fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
-    let mut current = start;
-    for _ in 0..32 {
-        let decl = dag.declaration(current);
-        match &decl.connective {
-            TypeConnective::Conj { .. } => return Some(current),
-            TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
-            _ => {
-                if let Some(inh) = decl.inhabits {
-                    current = inh;
-                } else {
-                    return None;
-                }
-            }
-        }
-    }
-    None
-}
-
-fn canonical_operator_field(dag: &Dag, op: OperatorKind) -> Result<DeclarationId, EmitError> {
-    let ordered_ring_id = dag.ordered_ring_decl().ok_or_else(|| {
-        EmitError::UnsupportedBehavior(
-            "bootstrap is missing the canonical `OrderedRing` declaration".to_string(),
-        )
-    })?;
-    let ordered_ring = dag.declaration(ordered_ring_id);
-    let TypeConnective::Conj { children } = &ordered_ring.connective else {
-        return Err(EmitError::UnsupportedBehavior(
-            "`OrderedRing` does not lower to a Conj declaration".to_string(),
-        ));
-    };
-    let field_label = crate::operators::algebra_field_name(op);
-    children
-        .iter()
-        .find(|field| field.label == field_label)
-        .map(|field| field.ty)
-        .ok_or_else(|| {
-            EmitError::UnsupportedBehavior(format!(
-                "`OrderedRing` has no canonical field labeled {field_label}"
-            ))
-        })
+    algebra_field_for_operator_shared(dag, operand_type_id, op).map_err(|err| match err {
+        SharedEmitLookupError::UntypedPort(port) => EmitError::UntypedPort(port),
+        SharedEmitLookupError::Unsupported(detail) => EmitError::UnsupportedBehavior(detail),
+    })
 }
 
 #[cfg(test)]
