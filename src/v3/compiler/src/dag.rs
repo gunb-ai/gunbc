@@ -1984,11 +1984,12 @@ impl Dag {
     ///
     /// **Dissolution trigger.** When every module currently duplicated
     /// between `dsl/std/` and `src/v3/std/` (or `src/v3/spec/`) has
-    /// converged to a single canonical home, delete this rank function and
-    /// the mirrored policy in `lower.rs::collect_symbols`, then update
-    /// `declaration_by_name` to either return the first match or fail-closed
-    /// on multiple matches. Convergence checklist tracked in ROADMAP.md
-    /// "Post-merge debt" under the file-preference scaffold row:
+    /// converged to a single canonical home, delete this preference rule
+    /// and the mirrored policy in `lower.rs::collect_symbols`. After
+    /// convergence there must be no rank-based duplicate-authority bridge:
+    /// lookup either resolves against the single surviving authority or
+    /// fails closed on multiple matches. Convergence checklist tracked in
+    /// ROADMAP.md "Post-merge debt" under the file-preference scaffold row:
     ///   - `module std.effects` (`dsl/std/effects.dag` ↔ `src/v3/std/effects.dag`)
     ///   - `module std.verification` (`dsl/std/verification.dag` ↔ `src/v3/std/verification.dag`)
     ///   - embedded `http_path` mirror inside `src/v3/std/effects.dag:118-260`
@@ -2002,16 +2003,21 @@ impl Dag {
         }
     }
 
-    /// Find a top-level declaration by name. Prefer v3 declarations
-    /// over legacy `dsl/` duplicates; otherwise keep the earliest
-    /// declaration at the same precedence level.
+    /// Find a top-level declaration by name. During the duplicate-authority
+    /// bootstrap window this applies the temporary preference scaffold:
+    /// `src/v3/` declarations outrank legacy `dsl/` duplicates; equal-rank
+    /// ties remain deterministic by scan order but are not a semantic rule.
     ///
     /// **The preference bias is a v3-migration scaffold**, not a durable
     /// lookup policy — see `declaration_name_preference_rank` for the
     /// dissolution trigger. Once duplicate `std.effects` /
     /// `std.verification` authorities converge to a single home this
-    /// function should drop the `max_by_key` rank and return the first
-    /// match (or fail-closed on multiple).
+    /// function should drop the rank-based bridge and require
+    /// single-authority lookup, failing closed on multiple matches.
+    ///
+    /// **Dissolution trigger.** Once duplicate authorities converge,
+    /// delete the preference scaffold and require single-authority
+    /// lookup; multiple surviving matches become a fail-closed error.
     ///
     /// **This scan only finds declarations that carry a surface-
     /// visible name** — TypeParams, sum variants, and realization

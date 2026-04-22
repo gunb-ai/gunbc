@@ -1239,12 +1239,13 @@ fn collect_scope_bound_free_vars(
 /// item and record `name → DeclarationId` in the symbol table. Let /
 /// Module / Import items produce no declaration.
 ///
-/// Returns `(symbols, is_first)`. `symbols` maps each name to its
-/// **first** declaration id (consistent with `Dag::declaration_by_name`'s
-/// linear first-match semantics). `is_first[idx]` is false for items
-/// whose name already appears in the symbols table at the time they're
-/// processed — i.e., duplicates. `lower_into` skips duplicates so the
-/// first-of-name's filled connective is not overwritten later.
+/// Returns `(symbols, is_first)`. `symbols` maps each name to the
+/// declaration currently selected by the temporary duplicate-authority
+/// preference scaffold shared with `Dag::declaration_by_name`.
+/// `is_first[idx]` is false for items whose name already appears in the
+/// symbols table at the time they're processed — i.e., duplicates.
+/// `lower_into` skips duplicates so the selected declaration's filled
+/// connective is not overwritten later.
 ///
 /// Duplicate declarations emit a fail-closed `ResolveError` via a
 /// phantom port, so the compile surfaces through
@@ -1255,20 +1256,24 @@ fn collect_symbols(
     dag: &mut Dag,
     items: &[SurfaceItem],
 ) -> (HashMap<String, DeclarationId>, Vec<bool>) {
-    // Seed from already-present declarations with the same preference
-    // policy as `Dag::declaration_by_name`: v3 declarations shadow
-    // legacy `dsl/` duplicates, otherwise earlier declarations win.
+    // Seed from already-present declarations with the same temporary
+    // duplicate-authority preference scaffold as
+    // `Dag::declaration_by_name`: `src/v3/` declarations outrank
+    // legacy `dsl/` duplicates. Equal-rank ties remain deterministic
+    // by insertion order but are not the intended steady-state rule.
     //
     // **🟡 Scaffold — v3 migration preference mirror.** This mirrors the
     // rank policy defined at `Dag::declaration_name_preference_rank`. Kept
     // as a scaffold (not deleted) because the duplicates it resolves carry
     // v3-only substrate content that cannot yet be hosted under `dsl/std/`.
-    // Dissolution trigger: when every module currently duplicated between
-    // `dsl/std/` and `src/v3/std/` (or `src/v3/spec/`) has converged to a
-    // single canonical home, delete this seeding branch together with the
-    // rank function in `dag.rs`. Convergence checklist (ROADMAP.md
-    // "Post-merge debt"): `module std.effects`, `module std.verification`,
-    // and the embedded `http_path` mirror inside `src/v3/std/effects.dag`.
+    // Dissolution trigger: when duplicate authorities converge to a single
+    // canonical home, delete this seeding branch together with the rank
+    // function in `dag.rs` and remove the preference rule entirely. At that
+    // point name lookup must resolve against the single surviving authority
+    // or fail closed on multiple matches. Convergence checklist
+    // (ROADMAP.md "Post-merge debt"): `module std.effects`,
+    // `module std.verification`, and the embedded `http_path` mirror inside
+    // `src/v3/std/effects.dag`.
     let mut symbols: HashMap<String, DeclarationId> = HashMap::new();
     for d in dag.declarations() {
         if let Some(name) = &d.name {
