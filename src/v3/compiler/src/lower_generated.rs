@@ -3,6 +3,9 @@
 //
 // SG-3f-prep: not wired into `lib.rs` — canonical implementation is
 // `lower.rs` pending `lower.dag` + reflected `Surface*` (SELF_HOSTING.md §4).
+//
+// Body text (including scaffold / tracked-debt comments) is copied verbatim
+// from `lower.rs`; edit `lower.rs` for any change to that prose — not here.
 
 // Surface → Dag lowering.
 //

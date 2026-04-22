@@ -2,7 +2,7 @@
 
 **Companion:** [1e-3v-phase-3-dispatch-gate.md](../briefs/1e-3v-phase-3-dispatch-gate.md) — **live dispatch guidance** (Executive summary, cluster table, Phase 3.0, checklist). **Path:** `docs/review-findings/` (archival namespace per **`INVARIANTS.md`** + **Review AJ**).
 
-This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`), **Review AJ** (commit `3be30867`), **Review AK** / **Review AL** (commit `741b2cd3`), **Review AM** / **Review AN** (commit `6e84d559`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
+This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **four** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`), **Review AJ** (commit `3be30867`), **Review AK** / **Review AL** (commit `741b2cd3`), **Review AM** / **Review AN** (commit `6e84d559`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
 
 ---
 
@@ -182,6 +182,19 @@ Claim: Cluster F was “reclassified from review-note assertions” without read
 
 Relayed **BLOCKING** comment repeats the first review’s two claims: (1) `emit.rs` / `emit/rust_target.rs` / `emit/python_target.rs` **special-case `OperatorKind::Logical`**, and (2) **`src/v3/spec/{rust,go,python}.dag` lack Bool `OperatorRealization` rows**. **Re-verified on current tree — both are false** (see **table** in the first **Blocking inline review** section and **`render_operator`** proof in the **Second blocking review** section). This is **not** stale: run the same `rg` commands; do **not** reopen Cluster F without new evidence.
 
+**Fourth blocking inline review (PR #621, 2026-04-22T01:05Z) — finding is false**
+
+Relayed **BLOCKING** comment: scaffold / tracked-debt receipt at `lower_generated.rs` **~1268** lives **only** in a generated file, so authority is “off-authority” and will **disappear on next regen** — violates single-authority / strict forward progress.
+
+**Re-verified on current tree — claim is false.**
+
+| Check | Result |
+|-------|--------|
+| Same prose in canonical `lower.rs`? | **Yes** — `fn collect_symbols` in `src/v3/compiler/src/lower.rs` contains the **identical** 🟡 scaffold block (tracked-debt checklist, dissolution trigger, `ROADMAP.md` pointers). **`lower_generated.rs` is not the authority; it is a rustfmt’d pass-through of `lower.rs`** (`regen_lower`; see `src/v3/compiler/src/bin/regen_lower.rs` and `sg3_lower_authority_test::lower_generated_module_matches_regen_snapshot`). |
+| Next `regen_lower` drops the receipt? | **No** — regen **re-copies** from `lower.rs`; the receipt persists until removed from **`lower.rs`** (then both files lose it together). |
+
+**Resolution:** Header on `lower_generated.rs` now states explicitly that body comments are verbatim from **`lower.rs`**. No algorithm or policy change — documentation of authority only.
+
 
 ---
 
@@ -260,7 +273,7 @@ Relayed **BLOCKING** comment repeats the first review’s two claims: (1) `emit.
 - **Verdict:** APPROVE — docs-only diff (dispatch brief under **`docs/briefs/`**, chronicle under **`docs/review-findings/`**); no substrate, spec, emitter, or test code touched.
 - **Spot-checks:** `OperatorKind::Logical` / `LogicalOp::` → no matches under `src/v3/compiler/src/emit` (Cluster **F**); `bool_meet` / `bool_join` → present in each of `src/v3/spec/{rust,go,python}.dag`; **`behavior_result_port`** → four copies (`emit.rs`, `emit/rust_target.rs`, `dimension.rs`, `lens_cost_symbolic_generated.rs`) matching dedup + **3.0b** deferral. Split **`docs/briefs/`** / **`docs/review-findings/`** addresses **`INVARIANTS.md`** “Documentation Describes Live State” (**Reviews Z** / **AF** / **AJ**); cross-links consistent; Phase **3.0** **`TESTING.md`** + **3.0b** lens-regen guardrail carried through.
 - **Findings:** None — no **`INVARIANTS.md`**, modeling-discipline, **`CODING.md`**, or **`TESTING.md`** violation.
-- **Exploratory (non-blocking):** Ingest **A–AJ** + many APPROVE echoes — **Reviews AB** / **AE** / **AI** prune note; **three** blocking rebuttals = substantive verification value; rest = convergence signal. Future format: condensed **verification table + rebuttals + director locks** — next lane, not this PR.
+- **Exploratory (non-blocking):** Ingest **A–AJ** + many APPROVE echoes — **Reviews AB** / **AE** / **AI** prune note; **four** blocking rebuttals = substantive verification value; rest = convergence signal. Future format: condensed **verification table + rebuttals + director locks** — next lane, not this PR.
 
 **Review AL (codex / gpt-5.4, schedule, commit `741b2cd3`, 2026-04-22T00:33:55Z)**
 
