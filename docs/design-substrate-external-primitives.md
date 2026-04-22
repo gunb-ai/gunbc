@@ -4,7 +4,7 @@
 
 **Design blocker:** DB-14 (substrate primitives backed by target-native implementations)
 **Consumer:** Lane 1 Stage 1b (substrate keyed-lookup accessors: `port`, `node`, `resolve_producer`)
-**Status:** Third revision. Rewritten against [E-9](../INVARIANTS.md#e-9-external-realization-lives-on-arrowbody-2026-04-17) landed in the same PR.
+**Status:** Third revision. Rewritten against [E-9](./invariants/e-9-external-realization-lives-on-arrow-body.md) landed in the same PR.
 
 ---
 
@@ -14,7 +14,7 @@
 
 **Revision 2.** Moved target dispatch out of bootstrap to emission. Used `meta_tag = substrate_accessor` + per-target `CallableRealization` in each spec. Reviewers (round 2, unanimous) flagged: authority split three ways (Arrow stub-body + meta_tag + spec lookup); external-vs-user-defined distinction moved OFF `Arrow.body` onto side marker; violates the thesis's "substrates meet at `Transform → Arrow` and `Arrow → body`." Meta-review issued PAUSE_AND_REGROUP: "bank the rule first, then redesign."
 
-**Revision 3.** Banked [E-9](../INVARIANTS.md#e-9-external-realization-lives-on-arrowbody-2026-04-17) in the same PR. Placed the "external" fact on `Arrow.body` via a `SubstrateAccessor` marker type + `SubstrateAccessorBinding` table; bootstrap walked bindings, rewrote Arrow bodies. Reviewer flagged a smaller version of the same authority-split class: the `accessor → marker` relation lived twice (in the binding table AND in the rewritten Arrow body), the "one binding per accessor" invariant was prose not shape, and duplicate/malformed bindings admitted illegal states the model said were impossible.
+**Revision 3.** Banked [E-9](./invariants/e-9-external-realization-lives-on-arrow-body.md) in the same PR. Placed the "external" fact on `Arrow.body` via a `SubstrateAccessor` marker type + `SubstrateAccessorBinding` table; bootstrap walked bindings, rewrote Arrow bodies. Reviewer flagged a smaller version of the same authority-split class: the `accessor → marker` relation lived twice (in the binding table AND in the rewritten Arrow body), the "one binding per accessor" invariant was prose not shape, and duplicate/malformed bindings admitted illegal states the model said were impossible.
 
 **This revision (R4).** Drops the `SubstrateAccessor` marker type and `SubstrateAccessorBinding` binding table entirely. The accessor's own declaration IS the identity the spec realizes — `ExternalRealization` self-references. One enumeration list (`substrate_accessors: List<DeclarationRef>`) tells bootstrap which Arrows to rewrite; duplicates are a fail-closed bootstrap diagnostic. Spec realizations reference the accessor declaration directly.
 
@@ -264,7 +264,7 @@ Arrow.body still carries the "externally realized" fact structurally. The walk `
 
 ## Associations
 
-- **[E-9 (INVARIANTS.md)](../INVARIANTS.md#e-9-external-realization-lives-on-arrowbody-2026-04-17)** — the rule this design implements. Landed in the same PR.
+- **[E-9 (INVARIANTS.md)](./invariants/e-9-external-realization-lives-on-arrow-body.md)** — the rule this design implements. Landed in the same PR.
 - **Lane 1 Stage 1b** ([lane1-stage-b-substrate-keyed-lookup.md](./lane1-stage-b-substrate-keyed-lookup.md)) — the stage that consumes DB-14.
 - **DB-5** ([design-substrate-keyed-lookup-api.md](./design-substrate-keyed-lookup-api.md)) — specifies the three accessor signatures (`port`, `node`, `resolve_producer`) this design realizes.
 - **DB-16** ([design-fn-external-body-reconciliation.md](./design-fn-external-body-reconciliation.md)) — companion: clarifies that `FnExternalBody` + bootstrap-rewrite pattern applies to both pipeline stages AND substrate accessors.
