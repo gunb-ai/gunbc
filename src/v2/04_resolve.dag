@@ -906,10 +906,27 @@ fn fn_type_param_names(item: Node, source_indices: Map<String, NewlineIndex>) ->
   ) |> map(p => param_node_name_at(n: p, source_indices: source_indices))
 }
 
+// Detect the `fn f<T>(T: T)` name-shadowing ambiguity. Both the declared
+// type param and the value param satisfy the self-reference heuristic, so
+// fn_type_param_names returns duplicate entries. Surface as a gunbc
+// Diagnostic at the detection point (P3 / modeling-discipline §1):
+// fail-closed means the compiler boundary rejects with a typed diagnostic,
+// not that it succeeds and outsources rejection to rustc.
+fn has_duplicate_type_param_name(names: List<String>) -> Bool {
+  names |> enumerate |> any(pair =>
+    let idx = pair.first
+    let s = pair.second
+    names |> skip(idx + 1) |> any(other => other == s)
+  )
+}
+
 fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResult {
   // Register function type params (e.g., <T, B>) as TypeVariable bindings
   // so bare references to T/B in params/body don't produce UnresolvedType.
   let tp_names = fn_type_param_names(item: item, source_indices: env.source_indices)
+  let collision_diags = if has_duplicate_type_param_name(names: tp_names) {
+    [make_error_node(diagnostic: InternalError { message: concat("type param name collides with a value param in fn '", authored_name_at(source_indices: env.source_indices, node: item), "' — a value param shares its name with a declared type param (e.g., `fn f<T>(T: T)`). Rename the value param, or dissolve via ParamKind / params-slot partition."), span: item.span }, module_name: module_name)]
+  } else { [] }
   let env = fold(tp_names, init: env, f: (e, tp_name) =>
     TypeEnv {
       bindings: map_insert(e.bindings, intern(table: e.intern_table, s: tp_name).id, TypeBinding {
@@ -987,6 +1004,6 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
       properties: resolved_props, type_annotation: resolved_anno,
       is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
     },
-    diagnostics: concat(param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, prop_diags, child_diags)
+    diagnostics: concat(collision_diags, param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, prop_diags, child_diags)
   }
 }

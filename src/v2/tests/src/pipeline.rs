@@ -216,40 +216,22 @@ fn generic_fn_emits_type_params_without_synthesized_bounds() {
 // flagged by codex on PR #661. The emit-time type/value-param splitter keys
 // on name equality + post-resolve TypeVariable, so it can't distinguish the
 // declared type param from a value param that shadows it. Until ParamKind
-// / params-slot partition dissolves the splitter, the emitter must fail
-// closed rather than silently emit `<T, T>`. See emit_fn_def in
-// 05_emit_rust.dag.
-//
-// When the resolve-layer collision diagnostic lands (target lane: surface
-// the shadowing as a gunbc Diagnostic at resolve_item_types, where
-// fn_type_param_names already has the same heuristic), this test should
-// flip to asserting a gunbc-level diagnostic and drop the compile_error!
-// assertion. The pin here is deliberately scaffolded to the current
-// emit-time guard; it does not promise that that guard is the long-term
-// shape.
+// / params-slot partition dissolves the splitter, fail-closed lives at the
+// resolve boundary (resolve_item_types in 04_resolve.dag) as a typed gunbc
+// Diagnostic. The emit-side compile_error! guard in emit_fn_def is kept as
+// a belt-and-suspenders second layer.
 #[test]
 fn generic_fn_with_value_param_shadowing_type_param_fails_closed() {
     let source = "module shadow_test\n\nfn weird<T>(t: T) -> T {\n  t\n}\n\nfn collide<T>(T: T) -> T {\n  T\n}\n";
     let result = compile_dag(source);
-    // Compilation proceeds (the upstream resolve layer doesn't yet diagnose
-    // the collision — that's a separate dissolution lane), but the emitted
-    // Rust for the colliding fn is a target-compile-time compile_error!,
-    // not a silently-malformed `<T, T>` signature.
-    let content = find_file(&result, "src/shadow_test.rs");
-    // Sanity: the non-shadowing case still emits correctly.
+    // Primary fail-closed: resolve emits a gunbc Diagnostic naming the
+    // colliding fn, so compilation does not succeed silently.
+    let messages = diagnostic_messages(&result);
     assert!(
-        content.contains("fn weird<T>(") || content.contains("pub fn weird<T>("),
-        "expected `fn weird<T>(` to emit normally; got:\n{content}"
-    );
-    // Fail-closed: no `<T, T>` in the colliding fn.
-    assert!(
-        !content.contains("<T, T>"),
-        "emitter silently produced `<T, T>` for name-shadowing fn; got:\n{content}"
-    );
-    // Fail-closed: a compile_error! fires for the colliding fn.
-    assert!(
-        content.contains("compile_error!") && content.contains("collide"),
-        "expected a target-compile-time error for `fn collide<T>(T: T)`; got:\n{content}"
+        messages
+            .iter()
+            .any(|m| m.contains("collide") && m.contains("type param name collides")),
+        "expected a gunbc diagnostic naming `collide` for the name-shadowing fn; got messages:\n{messages:#?}"
     );
 }
 
