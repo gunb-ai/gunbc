@@ -1348,6 +1348,8 @@ fn emit_params(params: List<Node>, shared_types: Map<String, Bool>, source_indic
 //   here and "compensate" only in the emitter: that splits clone authority
 //   between the type signature and ownership analysis and breaks fixed-point.
 //   See docs/postmortems/pr-650-emitter-callable-clone-bound.md.
+// Scaling: if more long boundary notes accumulate on this fn, collapse to a
+// one-liner here and keep essay-length rationale in `docs/postmortems/`.
 fn emit_rust_param_type(n: Node, shared_types: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> String {
   if n.params |> count > 0 {
     let param_types = n.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices))

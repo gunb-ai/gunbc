@@ -1661,6 +1661,11 @@ fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
 // The receipt here is the **signature** plus those two call sites; tighten if we
 // add a hermetic module that deterministically materializes `f.clone()` on one branch.
 //
+// **Not sufficient alone:** re-attempting #650 could still satisfy this fixture while
+// breaking stage0 self-host. For structural edits here, also run
+// `./scripts/regenerate-stage0.sh` and `cargo test -p v2-compiler-tests ci_ -- --ignored`
+// (`ci_freshness` / `ci_fixed_point`); see post-mortem stop boundary item 4.
+//
 // TESTING.md §4 (one claim per test): signature + dual call sites are **one**
 // receipt for the same seam (double-use callable param), not unrelated claims.
 // Prefer not to copy this pattern for loose multi-claim bundles elsewhere.
