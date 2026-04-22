@@ -966,6 +966,12 @@ fn source_spans_equal(a: SourceSpan, b: SourceSpan) -> Bool {
   a.start == b.start && a.end == b.end && a.file == b.file
 }
 
+// Note on recovery dummies: parse_param's error-path dummy
+// (02_parse.dag:3232) constructs a param with name_span == type_expr.span ==
+// start_span, which would satisfy this check. That's fine: recovery dummies
+// only appear when parse already emitted an error, and fail-closed
+// discipline halts the pipeline before emission is reached, so a
+// misclassified dummy can't reach this code.
 fn is_function_type_param(param: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match param.ident_span {
     Some { value: ps } =>
