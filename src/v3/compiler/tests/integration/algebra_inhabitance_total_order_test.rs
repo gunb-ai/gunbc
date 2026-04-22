@@ -44,8 +44,14 @@ impl ArrowConnectiveExt for v3_compiler::dag::TypeConnective {
 fn total_order_lattice_helpers_flow_through_shared_min_max_by() {
     let dag = compile_std_bootstrap_dag();
 
-    assert!(dag.declaration_by_name("min_by").is_some(), "std bootstrap should export min_by");
-    assert!(dag.declaration_by_name("max_by").is_some(), "std bootstrap should export max_by");
+    assert!(
+        dag.declaration_by_name("min_by").is_some(),
+        "std bootstrap should export min_by"
+    );
+    assert!(
+        dag.declaration_by_name("max_by").is_some(),
+        "std bootstrap should export max_by"
+    );
 
     let fermi_meet = unparsed_body_text(&dag, "fermi_meet");
     let fermi_join = unparsed_body_text(&dag, "fermi_join");

@@ -37,10 +37,10 @@
 #[path = "integration/common/mod.rs"]
 mod common;
 
-#[path = "integration/four_fixture_regression_test.rs"]
-mod four_fixture_regression_test;
 #[path = "integration/algebra_inhabitance_total_order_test.rs"]
 mod algebra_inhabitance_total_order_test;
+#[path = "integration/four_fixture_regression_test.rs"]
+mod four_fixture_regression_test;
 #[path = "integration/l1_5_fixed_point_test.rs"]
 mod l1_5_fixed_point_test;
 #[path = "integration/lane2_stage_2a_effects_smoke.rs"]
