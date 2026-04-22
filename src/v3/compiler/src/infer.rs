@@ -4491,6 +4491,11 @@ mod bool_logical_operator_arrow_tests {
             .filter(|a| a.parameter != a.value)
             .cloned()
             .collect();
-        assert_eq!(filter_non_self_template_arguments(&args), expected);
+        let actual = filter_non_self_template_arguments(&args);
+        assert_eq!(actual.len(), expected.len());
+        for (a, e) in actual.iter().zip(expected.iter()) {
+            assert_eq!(a.parameter, e.parameter);
+            assert_eq!(a.value, e.value);
+        }
     }
 }
