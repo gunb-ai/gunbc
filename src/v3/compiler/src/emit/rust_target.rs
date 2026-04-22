@@ -3528,11 +3528,20 @@ impl<'a> Ctx<'a> {
         let qualified_name = if is_optional_match {
             variant_name.clone()
         } else {
-            let enum_name = self.dag.declaration(disj_id).name.clone().ok_or(
-                EmitError::UnsupportedBehavior(
-                    "match on anonymous sum declarations is not yet supported in Rust emission"
-                        .to_string(),
-                ),
+            let named_enum_disj_id =
+                named_disj_root_for_rust_match_emit(self.dag, disj_id).ok_or_else(|| {
+                    EmitError::UnsupportedBehavior(
+                        "match on anonymous sum declarations is not yet supported in Rust emission"
+                            .to_string(),
+                    )
+                })?;
+            let enum_name = self.dag.declaration(named_enum_disj_id).name.clone().ok_or_else(
+                || {
+                    EmitError::UnsupportedBehavior(
+                        "Rust match emission requires a named sum declaration (template chain missing)"
+                            .to_string(),
+                    )
+                },
             )?;
             self.qualified_name(&enum_name, &variant_name)
         };
@@ -4804,6 +4813,28 @@ impl<'a> Ctx<'a> {
             Ok(format!("({item_name}).clone()"))
         }
     }
+}
+
+/// Anonymous specialized `Disj` nodes from `lower::specialize_decl_for_lowering`
+/// carry `meta_tag = Some(template_disj_id)` so Rust emit can recover the template
+/// enum name without cloning `Declaration::name` onto a second declaration id
+/// (P2 / single-authority metadata for `Dag::declaration_by_name`).
+///
+/// This is **not** a realization `meta_tag` row (`Type` / `Operator` / …); those
+/// only attach to `data` items with `Structural` bodies and compare equal to the
+/// bootstrap meta-type declaration ids. Here `meta_tag` points at another `Disj`.
+fn named_disj_root_for_rust_match_emit(dag: &Dag, mut disj_id: DeclarationId) -> Option<DeclarationId> {
+    for _ in 0..32 {
+        let decl = dag.declaration(disj_id);
+        let TypeConnective::Disj { .. } = &decl.connective else {
+            return None;
+        };
+        if decl.name.is_some() {
+            return Some(disj_id);
+        }
+        disj_id = decl.meta_tag?;
+    }
+    None
 }
 
 fn variant_name_for_decl(

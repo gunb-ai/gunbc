@@ -4436,15 +4436,17 @@ fn specialize_decl_for_lowering(
             let id = dag.alloc_declaration_id();
             dag.push_declaration(Declaration {
                 id,
-                // Preserve the template sum's name on specialized `Disj` copies so
-                // emit can qualify `Enum::Variant` patterns structurally (no
-                // emit-time reconstruction of the enum label).
-                name: decl.name.clone(),
+                // P2: `Declaration::name` is the only surface-visible authority for
+                // `Dag::declaration_by_name` — never clone the template name onto a
+                // fresh `Disj` id (that admits a second winner in name-based lookup).
+                // Emit qualifies Rust match patterns by walking `meta_tag` back to
+                // the template sum (`rust_target::named_disj_root_for_rust_match_emit`).
+                name: None,
                 connective: TypeConnective::Disj {
                     variants: specialized_variants,
                 },
                 type_params: Vec::new(),
-                meta_tag: None,
+                meta_tag: Some(current),
                 inhabits: None,
                 value_body: None,
                 refinement: None,
