@@ -6,7 +6,7 @@ Single source of truth for project status, active work, and deferred items. Long
 > Validation: [docs/v3-validation-experiments.md](docs/v3-validation-experiments.md)
 > Lineage: [docs/design-lineage.md](docs/design-lineage.md)
 > **Lens capability register: [docs/v3-lens-capability-register.md](docs/v3-lens-capability-register.md) — read before dispatching any brief that assumes "v3 subsumes v2 X".**
-> **Compiler–`std/` consolidation end state: [docs/thesis/compiler-std-consolidation.md](docs/thesis/compiler-std-consolidation.md) — new types in `src/v3/compiler/*.dag` or `src/v3/std/*.dag` require a home-check against the positive definition (pipeline / regen / lens-body / accessor). Everything else schedules migration to `std/`.**
+> **Compiler–`std/` consolidation end state: [docs/thesis/compiler-std-consolidation.md](docs/thesis/compiler-std-consolidation.md) — new types in `src/v3/compiler/*.dag`, `src/v3/lenses/*.dag`, or `src/v3/std/*.dag` require a home-check against the positive definition (pipeline types / regen types / lens-specific return carriers / substrate accessors). Lens-local 2-variant `Missing | Found(T)` Lookup duplicates count against the ratchet; carriers with distinct semantic variants stay lens-API. Everything else schedules migration to `std/`.**
 
 ## How this doc is organized
 

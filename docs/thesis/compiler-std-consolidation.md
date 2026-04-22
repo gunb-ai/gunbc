@@ -148,11 +148,11 @@ Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"`):
 | `src/v3/lenses/lower_helpers.dag` | 0 | — |
 | `src/v3/lenses/parallelism.dag` | 0 | — |
 | `src/v3/lenses/provenance.dag` | 1 | positive-def (`Origin` — provenance-specific) |
-| `src/v3/lenses/structural_resolution.dag` | 2 | classification pending (likely lens-API + regression pin carrier) |
+| `src/v3/lenses/structural_resolution.dag` | 2 | both positive-def (`UnresolvedArrowBody` and `NameKeyedReference` — both are lens-API record types carrying the lens's findings, not Lookup patterns) |
 | `src/v3/lenses/unused_parameters.dag` | 1 | positive-def (`UnusedParameter`) |
 | `src/v3/lenses/variant_payload.dag` | 2 | both positive-def (`VariantPayloadShape` domain type + `VariantPayloadShapeLookup` — 3-variant carrier with `NotPayloadProduct` semantic distinction, not generic Lookup) |
 
-**Primary ratchet count today: 23** (20 from tokenize + runtime_mirrors + 3 strict 2-variant Lookup-pattern carriers: `CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup`). Classifications for the two `structural_resolution.dag` types to be pinned in a follow-up once that file's header is reviewed for lens-API vs regression-pin intent.
+**Primary ratchet count today: 23** (20 from tokenize + runtime_mirrors + 3 strict 2-variant Lookup-pattern carriers: `CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup`). All lens-local types now classified — `structural_resolution.dag`'s two record types (`UnresolvedArrowBody`, `NameKeyedReference`) are positive-def lens-API carrying the lens's findings.
 
 End state: 0. Each migration lane reduces the count; positive-definition types track growth separately and are not bounded downward by this ratchet.
 
