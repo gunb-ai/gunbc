@@ -66,6 +66,12 @@ The same substrate that models user programs should be able to model and analyze
 
 See [docs/thesis/self-inspection.md](docs/thesis/self-inspection.md).
 
+### Compiler–`std/` consolidation: no dual representations at the compiler/user boundary
+
+The mature compiler uses only `std/` concepts plus a minimal set of pure `.dag` compiler APIs. A "token" in the compiler is the same `Token` a user's formatter uses; a "file" is the same `File`. Compiler-specific taxonomies that duplicate user-facing concepts are dual representations at the architectural layer, dissolved by consolidation.
+
+See [docs/thesis/compiler-std-consolidation.md](docs/thesis/compiler-std-consolidation.md).
+
 ### Two groundings: static validation vs efficient realization
 
 The thesis separates semantic grounding from efficient target realization without duplicating authority.
