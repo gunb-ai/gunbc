@@ -20,8 +20,8 @@ for, how to tell whether the invariant is structurally enforced vs
 merely behaviorally respected.
 
 Mapping:
-- Practice 1 (Fail-closed) — implements **P3: Fail-Closed**
-- Practice 2 (Illegal states unrepresentable) — implements **P3: Fail-Closed** (state-space shape)
+- Practice 1 (Fail-closed) — implements **P3: Fail-Closed** (detection behavior)
+- Practice 2 (Illegal states unrepresentable) — implements **P2: Boundary Discipline** (structural type shape — make illegal states impossible to construct at the stage boundary, not merely detect them)
 - Practice 3 (Facts flow forward) — implements **P2: Boundary Discipline**
 - Practice 4 (Coproduct dissolution) — implements **P1: Modeling Faithfulness**
 - Practice 5 (Single-authority metadata) — implements **P2: Boundary Discipline**

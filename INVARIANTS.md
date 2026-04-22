@@ -63,7 +63,7 @@ External authority: lattice theory (Birkhoff 1940), effect algebras (Foulis & Be
 - **`DescentEvidence` = `Strict` | `NonIncreasing` | `DescentUnknown`** — at each recursive call edge, the ranking dimension either provably decreases, possibly stays the same, or is unknown.
 - **`DescentEvidence` inhabits `BoundedLattice<DescentEvidence>`** with top = `Strict`, bottom = `DescentUnknown` (fail-closed), meet = conservative branch merge, join = optimistic branch merge.
 
-The substrate's stated design principle (from `termination.dag`'s header): the complexity analyzer *should be* a **checker** of termination proofs constructed from this model rather than a **discoverer**. Currently the substrate carries the proof structure as typed facts; the fail-closed analyzer that validates proofs against the model is design, not landed behavior — today's analyzer derives cost from bounded structure rather than validating proofs (see `docs/invariants/decidability-invariant.md`). What is landed: the substrate-level evidence carriers, so Strict Forward Progress (P4) has a typed representation to reason about. The same `BoundedLattice` machinery types `DescentEvidence`, cost-algebra merges, and effect composition — one algebra, many consumers.
+The substrate's stated design principle (from `termination.dag`'s header): the complexity analyzer *should be* a **checker** of termination proofs constructed from this model rather than a **discoverer**. Currently the substrate carries the proof structure as typed facts; the fail-closed analyzer that validates proofs against the model is design, not landed behavior — today's analyzer derives cost from bounded structure rather than validating proofs (see `docs/invariants/decidability-invariant.md`). What is landed: the substrate-level evidence carriers, so P4's bounded forward execution premise has a typed representation to reason about. The same `BoundedLattice` machinery types `DescentEvidence`, cost-algebra merges, and effect composition — one algebra, many consumers.
 
 External authority: well-founded relations (Zermelo 1904, von Neumann 1929), ranking functions (Floyd 1967, Turing 1949), size-change termination (Lee, Jones, Ben-Amram 2001), lexicographic + multiset orderings (Dershowitz, Manna 1979).
 
@@ -177,7 +177,9 @@ Behavior is driven by a string-keyed case list — operator symbols, target-lang
 
 **Rule:** Every accepted program stays within a closed, fail-closed system whose correctness questions are structurally decidable.
 
-**Why it stands alone:** Decidability is the semantic commitment that makes the language work. Its foundational premise is **Strict Forward Progress**: time flows forward, execution walks a bounded structure, and cycles are expressible only as relations over acyclic values — never as direct cyclic values. Bounded iteration, explicit lowering, and closed composition all follow from this premise. Recursion is sugar over a bounded substrate primitive, not a new capability. The previous `Verifiability Invariant` section lived here in substance — verification is what falls out when a closed, faithful system's structural properties become provable by construction; it's not a parallel authority.
+**Why it stands alone:** Decidability is the semantic commitment that makes the language work. Its foundational premise is **bounded forward execution**: time flows forward, execution walks a bounded structure, and cycles are expressible only as relations over acyclic values — never as direct cyclic values. Bounded iteration, explicit lowering, and closed composition all follow from this premise. Recursion is sugar over a bounded substrate primitive, not a new capability. The previous `Verifiability Invariant` section lived here in substance — verification is what falls out when a closed, faithful system's structural properties become provable by construction; it's not a parallel authority.
+
+> **Note on naming.** The subdoc at `docs/invariants/strict-forward-progress.md` describes bounded forward execution, which is where the content belongs (here, P4). The top-level rule name **"Strict Forward Progress"** as used in reviewer discourse has historically been tied to the dissolution-progress concern — see P5 for that home. The rule-name-vs-subdoc-content drift is pre-existing and not resolved by this rewrite; the subdoc likely wants a rename or split in a future cleanup. Reviewers continue to use "Strict Forward Progress" to mean the dissolution-progress rule until that cleanup lands.
 
 ### Problem shape: Unbounded semantic
 
@@ -197,8 +199,8 @@ A verification predicate reads its own parallel copy of the facts — a second t
 
 ### Related rules (home-of-record here)
 
-- **Strict Forward Progress** — *the foundational premise*: time flows strictly forward; every execution step moves the computation forward through a bounded structure, never revisiting, never cycling. Decidability, complexity analysis, and termination all follow from this. Cyclic *relations* are expressible (via acyclic encodings — adjacency maps keyed by stable IDs), but direct cyclic *values* are not, and every traversal over a cyclic relation must be bounded by an explicit finite measure.
-- **Decidability Invariant** — the canonical statement at the language level (follows from Strict Forward Progress)
+- **Bounded forward execution** (the foundational premise; subdoc content at `docs/invariants/strict-forward-progress.md`): time flows strictly forward; every execution step moves the computation forward through a bounded structure, never revisiting, never cycling. Decidability, complexity analysis, and termination all follow from this. Cyclic *relations* are expressible (via acyclic encodings — adjacency maps keyed by stable IDs), but direct cyclic *values* are not, and every traversal over a cyclic relation must be bounded by an explicit finite measure.
+- **Decidability Invariant** — the canonical statement at the language level (follows from bounded forward execution)
 - **Structural Proof From Primitives** — decidability grounds in the primitive algebra
 - **Recursive Syntax Is Sugar** — recursive surface forms lower to the bounded substrate without adding semantic power
 - **Tight Upper Bounds — No Exceptions**
@@ -238,8 +240,9 @@ A scaffold (hand-maintained generated file, interim API surface, staged declarat
 
 ### Related rules (home-of-record here)
 
-- **Sustainability Invariants** (entire heading, folded in) — canonical statement: cost of change should approach 1
-  - Note: "Strict Forward Progress" in the old INVARIANTS.md was a misnamed stub; its actual subdoc content is about bounded execution and belongs under P4 Decidability (see there). The dissolution/sustainability framing previously attached to the name is captured here via the rules below.
+- **Strict Forward Progress** — canonical statement as used in reviewer discourse: a change counts as progress only if it reduces ad-hoc state, duplicate authority, or implicit behavior. Transitional scaffolds need explicit dissolution paths and cannot become the new steady state.
+  - *Note:* the subdoc at `docs/invariants/strict-forward-progress.md` describes bounded forward execution (the P4 concept), not the dissolution-progress rule the reviewer-facing name has historically carried. This is pre-existing drift between the subdoc and the heading; reviewers continue to use "Strict Forward Progress" for the dissolution-progress rule (this bullet). Reconciling the subdoc content (either rename it or split into two) is future cleanup, not resolved by this rewrite.
+- **Sustainability Invariants** (entire heading, folded in) — cost of change should approach 1
 - **No Short-Term Solutions** — this is not a production codebase; no bridges, staged migrations, or compatibility shims justified
 - **No Bridges** — bridges normalize half-migrations and hide cleanup cost
 - **No Deprecations** — deprecation markers are a production-code tool, not a legitimate steady state
