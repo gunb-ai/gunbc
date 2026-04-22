@@ -96,8 +96,8 @@ pub fn is_type_rhs_boundary_keyword(kind: &TokenKind) -> bool {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BracketRole {
-    Opener,
     Closer,
+    Opener,
 }
 
 /// Bracket opener/closer role for depth-tracking token scans

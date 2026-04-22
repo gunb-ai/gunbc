@@ -106,15 +106,16 @@ pub fn render_parse_tables_generated_rs(
     item_dispatch_variants.sort_unstable();
     item_dispatch_variants.dedup();
 
-    // SG-2c-4: bracket opener/closer role table.
-    let bracket_roles = collect_variant_labels(&tables_dag, "BracketRole");
-    let bracket_rows = collect_bracket_rows(&tables_dag, &token_variants, &bracket_roles);
+    // SG-2c-4: bracket opener/closer role table. `BracketRole` is
+    // projection-only (same shape as `ItemDispatchKind`): authored rows
+    // only carry `token_variant`; role is derived from the `L`/`R`
+    // prefix at regen time.
+    let bracket_rows = collect_bracket_rows(&tables_dag, &token_variants);
     let rust = emit_module(
         &levels,
         &rows,
         &item_dispatch_variants,
         &item_kw_rows,
-        &bracket_roles,
         &bracket_rows,
     );
     let combined = format!("{HEADER}{rust}");
@@ -352,22 +353,13 @@ struct BracketRow {
     role: String,
 }
 
-fn collect_bracket_rows(dag: &Dag, token_variants: &[String], roles: &[String]) -> Vec<BracketRow> {
+/// `BracketRow.token_variant` is the sole authored field; role is derived
+/// from the `L`/`R` prefix (same one-authority shape as `TopLevelItemKwRow` →
+/// `ItemDispatchKind`, where dispatch is `strip_prefix("Kw")`). No separate
+/// `role` field is read from `.dag` and no substrate `BracketRole` coproduct
+/// is authored — the emitted Rust enum is projection-only.
+fn collect_bracket_rows(dag: &Dag, token_variants: &[String]) -> Vec<BracketRow> {
     let token_variant_set: BTreeSet<&str> = token_variants.iter().map(String::as_str).collect();
-    let role_set: BTreeSet<&str> = roles.iter().map(String::as_str).collect();
-
-    let role_type_id = dag
-        .declarations()
-        .iter()
-        .find(|d| d.name.as_deref() == Some("BracketRole"))
-        .map(|d| d.id)
-        .expect("BracketRole declaration");
-    let TypeConnective::Disj {
-        variants: role_variants,
-    } = &dag.declaration(role_type_id).connective
-    else {
-        panic!("BracketRole should be a Disj");
-    };
 
     let row_type_id = dag
         .declarations()
@@ -389,40 +381,13 @@ fn collect_bracket_rows(dag: &Dag, token_variants: &[String], roles: &[String]) 
             );
         };
         let token_variant = string_field(fields, "token_variant", name);
-        let role = variant_field(fields, "role", role_variants, name, "BracketRole");
 
         assert!(
             token_variant_set.contains(token_variant.as_str()),
             "`parse_tables.dag::{name}`: token_variant `{token_variant}` is not a \
              `TokenKind` variant in `tokenize.dag`"
         );
-        assert!(
-            role_set.contains(role.as_str()),
-            "`parse_tables.dag::{name}`: role `{role}` is not a `BracketRole` variant"
-        );
-        // Close the illegal-state-combination window (e.g. `LParen -> Closer`)
-        // at the substrate boundary: `role` must agree with the `TokenKind`
-        // variant's `L`/`R` prefix. Cheap derivation check — keeps `role`
-        // explicit for readability while making drift between the two fields
-        // fail closed at regen.
-        let implied_role = if token_variant.starts_with('L') {
-            "Opener"
-        } else if token_variant.starts_with('R') {
-            "Closer"
-        } else {
-            panic!(
-                "`parse_tables.dag::{name}`: bracket token_variant `{token_variant}` does \
-                 not start with `L` or `R`; cannot derive implied `BracketRole` for drift \
-                 check (every bracketing `TokenKind` variant uses one of those prefixes)."
-            )
-        };
-        assert!(
-            role == implied_role,
-            "`parse_tables.dag::{name}`: declared role `{role}` disagrees with the role \
-             implied by `TokenKind::{token_variant}`'s prefix (`{implied_role}`). The two \
-             fields on `BracketRow` must agree — either fix the row or reclassify the prefix \
-             rule in `regen_parse_tables_emit::collect_bracket_rows`."
-        );
+        let role = bracket_role_from_token_variant(&token_variant, name);
         assert!(
             seen_token_variants.insert(token_variant.clone()),
             "`parse_tables.dag`: duplicate bracket row for `TokenKind::{token_variant}`"
@@ -430,11 +395,28 @@ fn collect_bracket_rows(dag: &Dag, token_variants: &[String], roles: &[String]) 
 
         rows.push(BracketRow {
             token_variant,
-            role,
+            role: role.to_string(),
         });
     }
     rows.sort_by(|a, b| a.token_variant.cmp(&b.token_variant));
     rows
+}
+
+/// Derive `BracketRole` from the `L`/`R` prefix of a bracketing `TokenKind`
+/// variant name. Single authority for opener/closer: row authors only the
+/// token variant, role projects structurally — no parallel field in `.dag`.
+fn bracket_role_from_token_variant(token_variant: &str, decl_name: &str) -> &'static str {
+    if token_variant.starts_with('L') {
+        "Opener"
+    } else if token_variant.starts_with('R') {
+        "Closer"
+    } else {
+        panic!(
+            "`parse_tables.dag::{decl_name}`: bracket token_variant `{token_variant}` does \
+             not start with `L` or `R`; every bracketing `TokenKind` variant must carry one \
+             of those prefixes so role can be projected from the token authority."
+        )
+    }
 }
 
 /// `TopLevelItemKwRow.token_variant` is authoritative; dispatch label is
@@ -565,9 +547,14 @@ fn emit_module(
     rows: &[BinaryOpRow],
     item_dispatch_variants: &[String],
     item_kw_rows: &[TopLevelItemKwRow],
-    bracket_roles: &[String],
     bracket_rows: &[BracketRow],
 ) -> String {
+    // `BracketRole` variants are the set of distinct roles derived from the
+    // authored rows (projection-only). Matches the `ItemDispatchKind` pattern:
+    // unique labels, sorted, no substrate coproduct.
+    let mut bracket_roles: Vec<String> = bracket_rows.iter().map(|r| r.role.clone()).collect();
+    bracket_roles.sort_unstable();
+    bracket_roles.dedup();
     let mut s = String::new();
     s.push_str("use crate::dag::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};\n");
     s.push_str("use crate::tokenize::TokenKind;\n\n");
@@ -643,7 +630,7 @@ fn emit_module(
 
     s.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
     s.push_str("pub enum BracketRole {\n");
-    for role in bracket_roles {
+    for role in &bracket_roles {
         s.push_str(&format!("    {role},\n"));
     }
     s.push_str("}\n\n");

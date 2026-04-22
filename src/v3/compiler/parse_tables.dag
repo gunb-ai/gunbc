@@ -313,8 +313,10 @@ data top_level_kw_data: TopLevelItemKwRow = {
 // - **Pattern 1 (fact placement)**: fails. Role is a coordinate key for
 //   depth-tracking control flow, not a relocatable payload.
 // - **Pattern 2 (variant-is-data)**: **passes**: substrate rows are
-//   `token_variant` + `role`; the Rust `BracketRole` enum is a pure
-//   projection over declared roles, not a second `.dag` coproduct.
+//   `token_variant` only; the Rust `BracketRole` enum is a pure
+//   projection derived from the `L`/`R` prefix at regen time, not a
+//   second `.dag` coproduct and not a separately authored field (same
+//   one-authority shape as `TopLevelItemKwRow` → `ItemDispatchKind`).
 // - **Pattern 3 (algebraic form)**: fails. Openers and closers are
 //   not elements of a shared computed algebra at this level; bracket
 //   pairing is enforced by the grammar structurally, not here.
@@ -324,44 +326,41 @@ data top_level_kw_data: TopLevelItemKwRow = {
 // `parse_parser_body.txt` ports to `.dag` list-body recursion and the
 // depth-tracking helpers become structural traversals rather than
 // token-index scans.
-type BracketRole
-  = Opener
-  | Closer
 
 // One row per bracketing `TokenKind` variant. Keyed on the textual
 // variant name (same convention as `BinaryOpRow` / `TopLevelItemKwRow`)
 // and cross-validated against `tokenize.dag::TokenKind` at regen.
+//
+// **M7 / INVARIANTS (single authority).** `token_variant` is the only
+// authored field; `BracketRole` is emitted by regen as a pure projection
+// over the `L`/`R` prefix of each row's `token_variant` — not authored
+// here as a separate field or as a `.dag` coproduct. Mirrors
+// `TopLevelItemKwRow` → `ItemDispatchKind` (dispatch label derived via
+// `strip_prefix("Kw")`): one authored fact, role follows structurally.
 type BracketRow {
   token_variant: String
-  role: BracketRole
 }
 
 data bracket_lparen: BracketRow = {
   token_variant: "LParen"
-  role: Opener
 }
 
 data bracket_lbrace: BracketRow = {
   token_variant: "LBrace"
-  role: Opener
 }
 
 data bracket_lbracket: BracketRow = {
   token_variant: "LBracket"
-  role: Opener
 }
 
 data bracket_rparen: BracketRow = {
   token_variant: "RParen"
-  role: Closer
 }
 
 data bracket_rbrace: BracketRow = {
   token_variant: "RBrace"
-  role: Closer
 }
 
 data bracket_rbracket: BracketRow = {
   token_variant: "RBracket"
-  role: Closer
 }
