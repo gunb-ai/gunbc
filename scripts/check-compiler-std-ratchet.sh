@@ -19,7 +19,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-BASELINE_TRACKED_TOTAL=19
+BASELINE_TRACKED_TOTAL=5
 
 SURFACES=(
   src/v3/compiler/*.dag
@@ -52,20 +52,6 @@ EXEMPT_ROWS=(
 )
 
 TRACKED_ROWS=(
-  "src/v3/compiler/runtime_mirrors.dag:DagDifference"
-  "src/v3/compiler/runtime_mirrors.dag:SurfaceModule"
-  "src/v3/compiler/runtime_mirrors.dag:SurfaceParam"
-  "src/v3/compiler/runtime_mirrors.dag:SurfaceField"
-  "src/v3/compiler/runtime_mirrors.dag:SurfaceVariant"
-  "src/v3/compiler/runtime_mirrors.dag:VariantPayload"
-  "src/v3/compiler/runtime_mirrors.dag:SurfaceType"
-  "src/v3/compiler/runtime_mirrors.dag:SurfaceRecordField"
-  "src/v3/compiler/runtime_mirrors.dag:SurfaceMatchArm"
-  "src/v3/compiler/runtime_mirrors.dag:SurfacePatternField"
-  "src/v3/compiler/runtime_mirrors.dag:SurfacePattern"
-  "src/v3/compiler/runtime_mirrors.dag:SurfaceLiteral"
-  "src/v3/compiler/runtime_mirrors.dag:SurfaceExpr"
-  "src/v3/compiler/runtime_mirrors.dag:SurfaceItem"
   "src/v3/lenses/complexity.dag:CostLookup"
   "src/v3/lenses/cost.dag:SymbolicCostLookup"
   "src/v3/lenses/infer_helpers.dag:TemplateArgumentLookup"

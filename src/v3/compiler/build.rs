@@ -48,10 +48,11 @@
 //   `tokenize.dag` is intentionally omitted: tokenizer authority for `regen_tokenize`
 //   must not be folded into the bootstrap Dag (duplicate declarations when
 //   `compile_to_dag` parses that authority standalone on top of `Dag::new()`'s
-//   bootstrapped clone). `runtime_mirrors.dag` stays in the bundle so the production
-//   substrate matches the staged compiler; `regen_parse` and staging tests compile
-//   it via `compile_runtime_mirrors_authority_dag` in `src/v3/compiler/src/lib.rs`, which
-//   boots from a clone that omits that fixture to avoid the duplicate-name path.
+//   bootstrapped clone). `src/v3/std/parse_surface.dag` stays in the bundle so the
+//   production substrate matches the staged std surface; `regen_parse` and staging
+//   tests compile it via `compile_parse_surface_std_authority_dag` in
+//   `src/v3/compiler/src/lib.rs`, which boots from a clone that omits that staged
+//   fixture to avoid the duplicate-name path.
 //
 // `bootstrap.rs` uses `include!(concat!(env!("OUT_DIR"), ...))` to
 // pull the arrays in. The `include_str!` calls inside the generated
@@ -283,10 +284,10 @@ fn main() {
     // Paths are workspace-relative and sorted for determinism.
     const REGEN_OUTPUTS: &[&str] = &[
         "src/v3/compiler/src/bootstrap_generated.rs",
-        "src/v3/compiler/src/bootstrap_generated_without_runtime_mirrors.rs",
+        "src/v3/compiler/src/bootstrap_generated_without_parse_surface.rs",
         "src/v3/compiler/src/bootstrap_std_generated.rs",
         // SG-5 substrate / runtime-mirror projections, generated from
-        // `src/v3/std/substrate.dag` + `src/v3/compiler/runtime_mirrors.dag`
+        // `src/v3/std/substrate.dag` + `src/v3/std/parse_surface.dag`
         // and consumed by hand-authored Rust via `include!(...)`.
         // Registering them here keeps SG-0's census honest: they carry
         // `// AUTO-GENERATED` headers AND are listed as producer-owned

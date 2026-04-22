@@ -51,7 +51,7 @@ module lenses.lower_helpers
 
 import std.substrate { SourceSpan }
 import std.list { List, empty, cons, singleton }
-import v3.compiler.runtime_mirrors { SurfaceExpr, SurfaceItem, SurfacePattern, SurfacePatternField }
+import v3.std.parse_surface { SurfaceExpr, SurfaceItem, SurfacePattern, SurfacePatternField }
 
 fn expr_span(expr: SurfaceExpr) -> SourceSpan =
   match expr {

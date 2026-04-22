@@ -18,7 +18,7 @@ use crate::common::{HarnessLinkMode, RustcHarness};
 const SURFACE_CONSUMER_SOURCE: &str = r#"
 module tests.sg3_surface_reflection
 
-import v3.compiler.runtime_mirrors { SurfaceModule, SurfaceItem }
+import v3.std.parse_surface { SurfaceModule, SurfaceItem }
 import std.list { List, length }
 
 fn item_kind_score(item: SurfaceItem) -> Int =

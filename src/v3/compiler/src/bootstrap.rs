@@ -9,9 +9,9 @@
 // - `V3_SPECS`       (`src/v3/spec/*.dag`)
 // - `COMPILER_FILES` (`src/v3/compiler/*.dag`, minus `tokenize.dag`)
 //
-// `compile_runtime_mirrors_authority_dag` uses the companion snapshot
-// that omits `runtime_mirrors.dag`, so a fresh parse+lower of that
-// authority still stays first-of-name.
+// `compile_parse_surface_std_authority_dag` uses the companion snapshot
+// that omits `src/v3/std/parse_surface.dag`, so a fresh parse+lower of
+// that authority still stays first-of-name.
 //
 // **Production bootstrap does not inject target-language
 // realizations.** Realization facts for emitted languages live in
@@ -103,7 +103,11 @@ pub(crate) fn bootstrap_std_fixtures_only(dag: &mut Dag) {
     dag.populate_primitive_cache();
 }
 
-pub(crate) fn bootstrap_all_runtime(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
+pub(crate) fn bootstrap_all_runtime(
+    dag: &mut Dag,
+    excluded_staged_paths: &[&str],
+    excluded_compiler_paths: &[&str],
+) {
     *dag = Dag::std_fixture_bootstrap_snapshot();
     // The std snapshot already represents `load_fixtures(std_fixtures())`
     // after one `resolve_pending_identifiers` + `populate_primitive_cache`
@@ -113,21 +117,31 @@ pub(crate) fn bootstrap_all_runtime(dag: &mut Dag, excluded_compiler_paths: &[&s
     // std snapshot, the second closes cross-authority references introduced by
     // `src/v3/std/*.dag`, `src/v3/spec/*.dag`, and `src/v3/compiler/*.dag`
     // (while still tolerating dangling bootstrap-range stubs such as `Tuple`).
-    load_runtime_bootstrap_authorities(dag, excluded_compiler_paths);
+    load_runtime_bootstrap_authorities(dag, excluded_staged_paths, excluded_compiler_paths);
 }
 
-pub(crate) fn bootstrap_runtime_authorities_on(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
-    load_runtime_bootstrap_authorities(dag, excluded_compiler_paths);
+pub(crate) fn bootstrap_runtime_authorities_on(
+    dag: &mut Dag,
+    excluded_staged_paths: &[&str],
+    excluded_compiler_paths: &[&str],
+) {
+    load_runtime_bootstrap_authorities(dag, excluded_staged_paths, excluded_compiler_paths);
 }
 
-fn load_runtime_bootstrap_authorities(dag: &mut Dag, excluded_compiler_paths: &[&str]) {
+fn load_runtime_bootstrap_authorities(
+    dag: &mut Dag,
+    excluded_staged_paths: &[&str],
+    excluded_compiler_paths: &[&str],
+) {
+    let staged_iter = STAGED_FILES
+        .iter()
+        .copied()
+        .filter(|(path, _)| !excluded_staged_paths.contains(path));
     let compiler_iter = COMPILER_FILES
         .iter()
         .copied()
         .filter(|(path, _)| !excluded_compiler_paths.contains(path));
-    let fixtures: Vec<(&str, &str)> = STAGED_FILES
-        .iter()
-        .copied()
+    let fixtures: Vec<(&str, &str)> = staged_iter
         .chain(V3_SPECS.iter().copied())
         .chain(compiler_iter)
         .collect();

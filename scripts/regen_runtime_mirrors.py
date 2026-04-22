@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 COMPILER_DIR = ROOT / "src" / "v3" / "compiler"
 SRC_DIR = COMPILER_DIR / "src"
-AUTHORITY_PATH = COMPILER_DIR / "runtime_mirrors.dag"
+AUTHORITY_PATH = ROOT / "src" / "v3" / "std" / "parse_surface.dag"
 SUBSTRATE_PATH = ROOT / "src" / "v3" / "std" / "substrate.dag"
 
 
@@ -811,11 +811,11 @@ def expected_outputs() -> dict[Path, str]:
             render_diagnostics_module(records, sums),
         ),
         SRC_DIR / "serialize_generated.rs": format_with_header(
-            "src/v3/compiler/runtime_mirrors.dag",
+            "src/v3/std/parse_surface.dag",
             render_record(records["DagDifference"]) + "\n\n" + SERIALIZE_FUNCTIONS_TEMPLATE.rstrip(),
         ),
         SRC_DIR / "parse_surface_generated.rs": format_with_header(
-            "src/v3/compiler/runtime_mirrors.dag",
+            "src/v3/std/parse_surface.dag",
             render_parse_surface_module(records, sums),
         ),
         SRC_DIR / "dag_scalar_generated.rs": format_with_header(

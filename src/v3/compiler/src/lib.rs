@@ -1028,19 +1028,19 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     }
 }
 
-/// Lower `runtime_mirrors.dag` for codegen (`regen_parse`, SG-2 staging tests).
+/// Lower `src/v3/std/parse_surface.dag` for codegen (`regen_parse`, SG-2 staging tests).
 ///
 /// Unlike [`compile_to_dag`], this starts from a bootstrap Dag that omits the embedded
-/// `runtime_mirrors.dag` compiler fixture so the fresh parse is first-of-name and can be
+/// `parse_surface.dag` staged fixture so the fresh parse is first-of-name and can be
 /// lowered without duplicate-declaration diagnostics.
 #[allow(clippy::result_large_err)]
-pub fn compile_runtime_mirrors_authority_dag(
+pub fn compile_parse_surface_std_authority_dag(
     source: &str,
     file: &str,
 ) -> Result<Dag, CompileError> {
     let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
     let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;
-    let mut dag = Dag::new_without_runtime_mirrors_compiler_fixture_bootstrap();
+    let mut dag = Dag::new_without_parse_surface_staged_fixture_bootstrap();
     let user_start = dag.declarations().len();
     lower::lower_into(&mut dag, &surface);
     lower::finalize_strict_user_lower_range(&mut dag, user_start);
@@ -1075,28 +1075,28 @@ pub fn generated_std_bootstrap_dag() -> Dag {
 /// authority. This is not a production bootstrap entry point.
 pub fn compile_full_bootstrap_dag_from_std_seed(std_seed: Dag) -> Dag {
     let mut dag = std_seed;
-    bootstrap::bootstrap_runtime_authorities_on(&mut dag, &[]);
+    bootstrap::bootstrap_runtime_authorities_on(&mut dag, &[], &[]);
     dag
 }
 
 /// PB-1 closure scaffold helper for `regen_bootstrap`: same as
 /// `compile_full_bootstrap_dag_from_std_seed`, but excludes
-/// `runtime_mirrors.dag` so regen/tests can keep that authority first-of-name.
-pub fn compile_full_bootstrap_without_runtime_mirrors_dag_from_std_seed(std_seed: Dag) -> Dag {
+/// `src/v3/std/parse_surface.dag` so regen/tests can keep that authority first-of-name.
+pub fn compile_full_bootstrap_without_parse_surface_dag_from_std_seed(std_seed: Dag) -> Dag {
     let mut dag = std_seed;
-    bootstrap::bootstrap_runtime_authorities_on(&mut dag, &["src/v3/compiler/runtime_mirrors.dag"]);
+    bootstrap::bootstrap_runtime_authorities_on(&mut dag, &["src/v3/std/parse_surface.dag"], &[]);
     dag
 }
 
 pub fn compile_full_bootstrap_dag() -> Dag {
     let mut dag = Dag::empty();
-    bootstrap::bootstrap_all_runtime(&mut dag, &[]);
+    bootstrap::bootstrap_all_runtime(&mut dag, &[], &[]);
     dag
 }
 
-pub fn compile_full_bootstrap_without_runtime_mirrors_dag() -> Dag {
+pub fn compile_full_bootstrap_without_parse_surface_dag() -> Dag {
     let mut dag = Dag::empty();
-    bootstrap::bootstrap_all_runtime(&mut dag, &["src/v3/compiler/runtime_mirrors.dag"]);
+    bootstrap::bootstrap_all_runtime(&mut dag, &["src/v3/std/parse_surface.dag"], &[]);
     dag
 }
 
@@ -1104,8 +1104,8 @@ pub fn generated_full_bootstrap_dag() -> Dag {
     Dag::new()
 }
 
-pub fn generated_full_bootstrap_without_runtime_mirrors_dag() -> Dag {
-    Dag::new_without_runtime_mirrors_compiler_fixture_bootstrap()
+pub fn generated_full_bootstrap_without_parse_surface_dag() -> Dag {
+    Dag::new_without_parse_surface_staged_fixture_bootstrap()
 }
 
 pub fn default_fixed_point_source() -> &'static str {

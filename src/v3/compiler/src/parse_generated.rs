@@ -1,4 +1,4 @@
-// AUTO-GENERATED from `src/v3/compiler/runtime_mirrors.dag` (Surface carriers)
+// AUTO-GENERATED from `src/v3/std/parse_surface.dag` (Surface carriers)
 // via `regen_parse` + `parse_parser_body.txt`. Regenerate instead of hand-editing.
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
@@ -27,7 +27,7 @@ impl SurfaceType {
 
 // RESIDUAL SEMANTIC AUTHORITY — recursive-descent parse algorithm.
 // This is **parser staging**, not SG-2c closure: the Surface carrier schema lives in
-// `runtime_mirrors.dag`, the binary-operator-at-precedence-level table lives in
+// `src/v3/std/parse_surface.dag`, the binary-operator-at-precedence-level table lives in
 // `parse_tables.dag` (SG-2c-1 grammar-tables prototype), and `regen_parse` splices this
 // fragment after the emitted `Surface*` definitions inside `parse_generated.rs`.
 //

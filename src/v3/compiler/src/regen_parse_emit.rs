@@ -1,16 +1,16 @@
-//! Shared `regen_parse` emission: compile `runtime_mirrors.dag`, emit `parse_generated.rs`
-//! body, run `rustfmt --emit stdout`. Used by the `regen_parse` binary (writes the file)
-//! and by hermetic integration tests (compare in-memory only).
+//! Shared `regen_parse` emission: compile `src/v3/std/parse_surface.dag`, emit
+//! `parse_generated.rs` body, run `rustfmt --emit stdout`. Used by the
+//! `regen_parse` binary (writes the file) and by hermetic integration tests
+//! (compare in-memory only).
 
 use std::fmt;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-use crate::compile_runtime_mirrors_authority_dag;
+use crate::compile_parse_surface_std_authority_dag;
 use crate::CompileError;
 
-const HEADER: &str =
-    "// AUTO-GENERATED from `src/v3/compiler/runtime_mirrors.dag` (Surface carriers)\n\
+const HEADER: &str = "// AUTO-GENERATED from `src/v3/std/parse_surface.dag` (Surface carriers)\n\
      // via `regen_parse` + `parse_parser_body.txt`. Regenerate instead of hand-editing.\n\n";
 
 /// Failure compiling the authority DAG or running `rustfmt` on the combined module text.
@@ -38,14 +38,14 @@ impl fmt::Display for RenderParseGeneratedError {
     }
 }
 
-/// Compile [`runtime_mirrors_source`] with [`compile_runtime_mirrors_authority_dag`], splice
+/// Compile [`parse_surface_source`] with [`compile_parse_surface_std_authority_dag`], splice
 /// [`parser_body`], format with `rustfmt --emit stdout`. Does not read or write workspace paths.
 pub fn render_parse_generated_rs(
-    runtime_mirrors_source: &str,
-    runtime_mirrors_file: &str,
+    parse_surface_source: &str,
+    parse_surface_file: &str,
     parser_body: &str,
 ) -> Result<String, RenderParseGeneratedError> {
-    let _dag = compile_runtime_mirrors_authority_dag(runtime_mirrors_source, runtime_mirrors_file)
+    let _dag = compile_parse_surface_std_authority_dag(parse_surface_source, parse_surface_file)
         .map_err(|e| RenderParseGeneratedError::Compile(Box::new(e)))?;
     let rust = emit_parse_module(parser_body);
     let combined = format!("{HEADER}{rust}");
