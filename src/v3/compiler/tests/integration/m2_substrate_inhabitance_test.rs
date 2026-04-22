@@ -702,7 +702,7 @@ fn parse_sum_type_first_variant_may_be_named_inhabits() {
     let source = "type T = inhabits | Other\n";
     let tokens = tokenize_for_test(source, "kw_variant_sum.v3").expect("tokenize");
     let parsed = parse_for_test(&tokens, "kw_variant_sum.v3").expect("parse");
-    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+    let mirrored: &parse_surface::SurfaceModule = &parsed;
     assert_eq!(mirrored.items.len(), 1);
     match &mirrored.items[0] {
         parse_surface::SurfaceItem::TypeSum { name, variants, .. } => {
@@ -720,7 +720,7 @@ fn parse_sum_type_first_variant_may_be_named_type_keyword() {
     let source = "type T = type | Other\n";
     let tokens = tokenize_for_test(source, "kw_type_variant_sum.v3").expect("tokenize");
     let parsed = parse_for_test(&tokens, "kw_type_variant_sum.v3").expect("parse");
-    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+    let mirrored: &parse_surface::SurfaceModule = &parsed;
     assert_eq!(mirrored.items.len(), 1);
     match &mirrored.items[0] {
         parse_surface::SurfaceItem::TypeSum { name, variants, .. } => {
@@ -744,7 +744,7 @@ fn parse_type_inhabits_clause_with_parameterized_algebra_and_sum_rhs() {
     let tokens =
         tokenize_for_test(source, "inhabits_sum_surface.v3").expect("tokenize inhabits sum");
     let parsed = parse_for_test(&tokens, "inhabits_sum_surface.v3").expect("parse inhabits sum");
-    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+    let mirrored: &parse_surface::SurfaceModule = &parsed;
     assert_eq!(mirrored.items.len(), 1);
     match &mirrored.items[0] {
         parse_surface::SurfaceItem::TypeSum {
@@ -809,7 +809,7 @@ fn parse_type_declared_name_may_be_inhabits_sum() {
         tokenize_for_test(source, "type_named_inhabits.v3").expect("tokenize type_named_inhabits");
     let parsed =
         parse_for_test(&tokens, "type_named_inhabits.v3").expect("parse type_named_inhabits");
-    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+    let mirrored: &parse_surface::SurfaceModule = &parsed;
     assert_eq!(mirrored.items.len(), 1);
     match &mirrored.items[0] {
         parse_surface::SurfaceItem::TypeSum {
@@ -833,7 +833,7 @@ fn parse_surface_generated_module_consumes_parser_output_structurally() {
     let source = "fn id<T>(x: T where x == x) -> T = x\nlet y = if true then id(1) else 2";
     let tokens = tokenize_for_test(source, "surface_reflection.v3").expect("tokenize source");
     let parsed = parse_for_test(&tokens, "surface_reflection.v3").expect("parse source");
-    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+    let mirrored: &parse_surface::SurfaceModule = &parsed;
 
     assert_eq!(mirrored.items.len(), 2);
     match &mirrored.items[0] {
@@ -878,7 +878,7 @@ let yes = true\n\
 let note = \"ok\"\n";
     let tokens = tokenize_for_test(source, "surface_reflection_recursive.v3").expect("tokenize");
     let parsed = parse_for_test(&tokens, "surface_reflection_recursive.v3").expect("parse");
-    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+    let mirrored: &parse_surface::SurfaceModule = &parsed;
 
     assert_eq!(mirrored.items.len(), 5);
 

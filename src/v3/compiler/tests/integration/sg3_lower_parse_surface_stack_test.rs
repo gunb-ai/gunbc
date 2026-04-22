@@ -1,10 +1,9 @@
 //! **Layer:** integration
 //!
-//! SG-3f-prep / lower lane: lowering still reads `parse::Surface*`, while `parse_surface`
-//! is the reflected mirror (`From<&parse::…>`). This pins that fixtures exercised through
-//! the full compile boundary also round-trip through the mirror (names, annotated types,
-//! and representative expression shape). Spans and exhaustive subtree parity remain
-//! follow-ups when this becomes the parse→lower handoff guard (Codex #593, 2026-04-20).
+//! SG-3f parse/parse_surface convergence guard: lowering still reads `parse::Surface*`,
+//! but `parse_surface` now names the same Rust carrier family. This pins that fixtures
+//! exercised through the full compile boundary remain consumable through the public
+//! `parse_surface` namespace with no bridging clone path in between.
 
 use v3_compiler::operators::{ArithmeticOp, OperatorKind};
 use v3_compiler::parse_surface;
@@ -96,7 +95,7 @@ fn lower_pipeline_fixture_aligns_with_parse_surface_mirror() {
     let source = default_fixed_point_source();
     let tokens = tokenize_for_test(source, file).expect("tokenize");
     let parsed = parse_for_test(&tokens, file).expect("parse");
-    let mirrored = parse_surface::SurfaceModule::from(&parsed);
+    let mirrored: &parse_surface::SurfaceModule = &parsed;
 
     assert_eq!(
         mirrored.items.len(),
@@ -105,11 +104,11 @@ fn lower_pipeline_fixture_aligns_with_parse_surface_mirror() {
     );
 
     let hand_lets = surface_top_level_let_names_for_test(&parsed);
-    let mirror_lets = top_level_let_names_mirror(&mirrored);
+    let mirror_lets = top_level_let_names_mirror(mirrored);
     assert_eq!(hand_lets, mirror_lets);
     assert_eq!(hand_lets, vec!["x".to_string(), "y".to_string()]);
 
-    assert_default_fixed_point_mirror_shape(&mirrored);
+    assert_default_fixed_point_mirror_shape(mirrored);
 
     compile_to_dag(source, file).expect("lower + infer should succeed on the same surface");
 }
