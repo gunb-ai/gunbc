@@ -985,6 +985,12 @@ fn is_function_type_param(param: Node) -> Bool {
   }
   // Name match via Node.name — stable across both source spans and the
   // kernel spans installed by resolve_item_types's TypeVariable bindings.
+  // The param.name != "" guard is belt-and-suspenders: the primary filter
+  // for parse_param's recovery dummy (name: "", type_expr.inferred: none)
+  // is type_expr_is_var above. The empty-string guard only fires if some
+  // future pipeline change populates TypeVariable on an unnamed node —
+  // in which case falling through "" == "" would silently classify it as
+  // a type param. Cheap to keep until ParamKind dissolves the classifier.
   type_expr_is_var && param.name != "" && param.name == type_expr.name
 }
 

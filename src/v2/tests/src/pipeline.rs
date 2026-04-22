@@ -219,6 +219,14 @@ fn generic_fn_emits_type_params_without_synthesized_bounds() {
 // / params-slot partition dissolves the splitter, the emitter must fail
 // closed rather than silently emit `<T, T>`. See emit_fn_def in
 // 05_emit_rust.dag.
+//
+// When the resolve-layer collision diagnostic lands (target lane: surface
+// the shadowing as a gunbc Diagnostic at resolve_item_types, where
+// fn_type_param_names already has the same heuristic), this test should
+// flip to asserting a gunbc-level diagnostic and drop the compile_error!
+// assertion. The pin here is deliberately scaffolded to the current
+// emit-time guard; it does not promise that that guard is the long-term
+// shape.
 #[test]
 fn generic_fn_with_value_param_shadowing_type_param_fails_closed() {
     let source = "module shadow_test\n\nfn weird<T>(t: T) -> T {\n  t\n}\n\nfn collide<T>(T: T) -> T {\n  T\n}\n";
