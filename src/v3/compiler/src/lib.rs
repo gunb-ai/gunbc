@@ -776,6 +776,7 @@ pub(crate) mod lower_helpers {
             assert_eq!(
                 item_span(&SurfaceItem::Fn {
                     name: "f".into(),
+                    type_params: vec![],
                     params: vec![],
                     return_type: crate::parse_surface::SurfaceType::Named {
                         name: "Int".into(),
