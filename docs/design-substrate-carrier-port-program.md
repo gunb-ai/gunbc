@@ -40,7 +40,7 @@ Full inventories (names only — read source files for shapes):
 **`src/v2/00_core.dag` (compiler-side)** — method dispatch metadata.
 - `MethodSemantics = PlainMethodSemantics | AlgebraMethodSemantics { method_def, fold_accumulator_type, size_effect, cost_shape, algebra_template } | ServiceMethodSemantics { service_name, op_params }`.
 - Attached to `ExprMethodCall { method_semantics: MethodSemantics? }`; consumed by `src/v2/04_lookup.dag` and complexity.
-- Transitive carriers: `CollectionSizeEffect`, `CostShape`, `AlgebraFieldTemplate`.
+- Transitive carriers: `CollectionSizeEffect`, `CostShape`, `AlgebraFieldTemplate` — already in `dsl/std/algebra.dag:409`, `:419`, `:425` (not compiler-internal). Only `MethodSemantics` itself is compiler-internal.
 
 ## 3. Per-carrier analysis
 
@@ -76,13 +76,13 @@ For each family: **Shape** (sum/product/record/constraint) · **Consumers** (v2 
 
 ### 3.4 Family M — `MethodSemantics`
 
-- **Shape.** 3-variant coproduct. Variants carry `Node?`, `String`, `List<Node>`, `CollectionSizeEffect?`, `CostShape?`, `AlgebraFieldTemplate?`. **This family has transitive dependencies on other v2-compiler-specific carriers** (`CollectionSizeEffect`, `CostShape`, `AlgebraFieldTemplate`) that are not in the "port from `dsl/std/`" corpus — they live in `src/v2/00_core.dag`.
+- **Shape.** 3-variant coproduct. Variants carry `Node?`, `String`, `List<Node>`, `CollectionSizeEffect?`, `CostShape?`, `AlgebraFieldTemplate?`. Transitive carriers (`CollectionSizeEffect`, `CostShape`, `AlgebraFieldTemplate`) are already `std/`-grade (`dsl/std/algebra.dag:409-430`); only `MethodSemantics` itself is compiler-internal (`src/v2/00_core.dag:168`).
 - **Consumers.** v2: `04_lookup.dag` populates `MethodSemantics` on `ExprMethodCall`; complexity and emit consume it. v3 analogue: would let lens dispatch read method semantics directly rather than going through the Rust `method_semantics` field on a reflected expression node. Current v3 does not have an `ExprMethodCall` at all — v3's `TransformTarget::FieldProject` + `Callable` cover some of the same ground via structural resolution.
-- **Dependencies.** Much larger than T/C/I. The transitive carriers are themselves compiler-internal, not `std/`-grade abstractions. A clean port requires either:
-  - **(M-a)** First promoting `CollectionSizeEffect` / `CostShape` / `AlgebraFieldTemplate` out of compiler-internal into `std/` or into v3 substrate on their own merits, OR
-  - **(M-b)** Recognizing that v3's structural-resolution model (`TransformTarget`, typed transforms) *replaces* `MethodSemantics` rather than absorbing it — in which case the "port" is a design receipt showing no carrier needs to cross over because the information it carries is already reachable structurally from v3 substrate.
-- **Blockers.** Unknown until (M-a vs M-b) is decided. This is **not ready for execution**. The audit mentions it alongside T/C/I, but closer inspection shows it's a different class of artifact.
-- **Lane size.** ? — needs a design-decision lane first (ship after T/C/I so v3 evidence informs the (a)/(b) call).
+- **Dependencies.** Two options — and with the corrected carrier locations, these are no longer symmetric:
+  - **(M-a) Routine port.** `CollectionSizeEffect` / `CostShape` / `AlgebraFieldTemplate` port alongside `MethodSemantics` from `dsl/std/algebra.dag` (they're already there). Scope is ~4 carriers + the `ExprMethodCall` attachment point. Smaller than family I.
+  - **(M-b) Structural subsumption.** v3's structural-resolution model (`TransformTarget`, typed transforms) already replaces `MethodSemantics` — no carrier crosses over; the register gains a footnote explaining the subsumption. Needs a design call, not a port.
+- **Blockers.** The (M-a vs M-b) call is the only genuine design question — if v3's structural resolution already carries the equivalent facts, M-a is pure duplication and M-b is correct. If it doesn't, M-a is a routine port.
+- **Lane size.** S–M (M-a path) or design-only (M-b path). Queue after T/C/I so v3 evidence informs the call.
 
 ## 4. Port order
 
@@ -131,11 +131,11 @@ Each placeholder below gets promoted to a full brief when dispatched. Stop-signa
 - **Acceptance:** `cost.dag` and `complexity.dag` promote to `BEHAVIORALLY COMPLETE` with cementing tests. "What v2 has that v3 drops" column reads N/A for both rows.
 - **STOP-AND-ESCALATE:** master-theorem machinery doesn't lower → surface as decidability/emit gap.
 
-### Lane E-M — `MethodSemantics` design decision `(?, design-only first)`
+### Lane E-M — `MethodSemantics` port-or-subsume `(S–M)`
 
-- **Work:** small design doc (mirror of this one's §3.4) deciding between M-a (port transitive carriers first) and M-b (declare v3's structural resolution the replacement; add register footnote). Queue only after E-T, E-C, E-I land.
-- **Acceptance:** design decision + ROADMAP row update. If M-b: no further work. If M-a: spawn concrete port lanes per transitive carrier.
-- **STOP-AND-ESCALATE:** either branch opens up new substrate-shape questions → C1 territory.
+- **Work:** decide M-a vs M-b based on whether v3's structural-resolution model (`TransformTarget::Callable` + `FieldProject` + typed transforms) already carries the facts `MethodSemantics` carries in v2. If M-a: port `MethodSemantics` + its three `dsl/std/algebra.dag` transitive carriers into a v3-reachable module, plus the `ExprMethodCall` attachment point (~4 carriers, routine). If M-b: add a footnote row to the register explaining the structural subsumption, no port. Queue after E-T/E-C/E-I land so v3 evidence informs the call.
+- **Acceptance:** either a ported `MethodSemantics` surface with a cementing test, or a register footnote + ROADMAP update receipt.
+- **STOP-AND-ESCALATE:** v3 structural resolution turns out to carry *some* of the facts but not all → hybrid shape, escalate before papering over.
 
 ## 7. What this program explicitly does NOT touch
 
@@ -148,6 +148,6 @@ Each placeholder below gets promoted to a full brief when dispatched. Stop-signa
 
 - `docs/v3-lens-capability-register.md` — the receipt this program closes.
 - `INVARIANTS.md` P1 Modeling Faithfulness — the invariant the PROXY/STUB markers flag as at-risk.
-- `feedback_checkpoint_dissolution_default.md` — governs stop-signals in each lane.
-- `feedback_substrate_principle_audit.md` — pre-port audit checklist each lane runs before adding/modifying a substrate field/variant.
+- `feedback_checkpoint_dissolution_default` — governs stop-signals in each lane (named principle, not a tree file).
+- `feedback_substrate_principle_audit` — pre-port audit checklist each lane runs before adding/modifying a substrate field/variant (named principle, not a tree file).
 - `ROADMAP.md` — new row in the "v3 lens capability honesty pass" vicinity pointing at this doc plus the four lane placeholders.
