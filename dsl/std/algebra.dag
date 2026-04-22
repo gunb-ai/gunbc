@@ -263,6 +263,12 @@ type BooleanAlgebra<T> {
 // The "free" means: no additional relations beyond the monoid laws.
 // Every element of FreeMonoid<T> is a unique finite sequence of T values.
 //
+// Layering (single semantic authority): the `type FreeMonoid` / `type PartialFunction`
+// records — and the "Declared surface" bullets for each — are the abstract algebra.
+// `free_monoid_scalar_templates`, `free_monoid_collection_templates`, and
+// `partial_function_templates` below only project that algebra onto kernel types for
+// compiler enrichment (receiver/param templates); they do not define a second method shape.
+//
 // Declared surface (receiver-shaped fields — matches the record below):
 //   Monoid: concat(self, other), empty, append(element)
 //   Int-indexed carrier: length(), count(), index(i: Int) -> T, slice(i, j),
