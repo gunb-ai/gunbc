@@ -91,9 +91,9 @@ Dependencies dictate a strict order:
 1. **T** (`DescentEvidence` + proof) — no deps, unblocks C and I.
 2. **C** (`CallPattern` + lowering) — depends on T, unblocks I and the first partial lens promotion.
 3. **I** (`SubValueRelation` + cost) — depends on T and C. Largest payoff on the non-method-dispatch slice: promotes `cost.dag` + `complexity.dag` on every analysis path that does *not* consume `MethodSemantics`. Full `BEHAVIORALLY COMPLETE` is gated on E-M because v2's complexity imports `MethodSemantics` as part of its carrier set.
-4. **M** (`MethodSemantics`) — **design-decision lane**, not a port lane. Run after T/C/I so v3's evidence ("does structural resolution subsume method semantics?") informs the shape. Full promotion of the two lens rows depends on M landing (either a ported surface or a documented subsumption receipt).
+4. **M** (`MethodSemantics`) — **design-decision lane**, not a port lane. Run after T/C/I so v3's evidence ("does structural resolution subsume method semantics?") informs the shape. M closing clears the **carrier-parity** portion of `cost.dag` / `complexity.dag`'s drop-lists. Full `BEHAVIORALLY COMPLETE` for `cost.dag` also requires the non-carrier blockers the register records (`Dimension<SymbolicCost>` wiring on grammar/data-body gaps; named `SizeVariable` value semantics) — those are grammar/emit work, outside this program.
 
-**Shortest path to first Band C receipt:** T + C land → `cost.dag` can adopt `CallPattern` + `LoweringTarget` as its carrier vocabulary and begin the PROXY→COMPLETE promotion (partial — still needs I for symbolic sizes and M for method-dispatch). Full promotion after both I and M.
+**Shortest path to first Band C receipt:** T + C land → `cost.dag` can adopt `CallPattern` + `LoweringTarget` as its carrier vocabulary and begin the PROXY advance on the non-method-dispatch slice. Carrier parity closes after I and M. Full `BEHAVIORALLY COMPLETE` for `cost.dag` closes separately on the grammar/emit side.
 
 ## 5. Success per carrier
 
@@ -104,7 +104,7 @@ Each lane closes with a receipt per `docs/v3-lens-capability-register.md § Disc
 | T | — (no direct lens depends on T alone) | `complexity.dag` / `cost.dag` partial progress | prerequisite only |
 | C | `cost.dag` begins PROXY → partial | PROXY still, but "What v2 has that v3 drops" column shrinks | golden for `CallPattern` dispatch |
 | I | `complexity.dag` / `cost.dag` advance on the non-method-dispatch slice; "What v2 has that v3 drops" column shrinks to `MethodSemantics`-only | PROXY still (pending E-M) | v2-oracle-vs-v3 symbolic-cost golden for non-method-dispatch inputs |
-| M | either a ported `MethodSemantics` surface (M-a) or a register footnote explaining v3's structural subsumption (M-b); `complexity.dag` / `cost.dag` promote to COMPLETE after this lands | both rows promote | design receipt (M-b) or cementing test covering method-dispatch (M-a) |
+| M | either a ported `MethodSemantics` surface (M-a) or a register footnote explaining v3's structural subsumption (M-b). Closes carrier-parity for `complexity.dag` / `cost.dag`. Full `BEHAVIORALLY COMPLETE` still requires `cost.dag`'s separate non-carrier blockers to clear (`Dimension<SymbolicCost>` wiring deferred on grammar/data-body gaps per the register; named `SizeVariable` with v2's value semantics). Those live outside this program. | carrier-parity column goes to N/A; the remaining `cost.dag` drop-list lives on after E-M | design receipt (M-b) or cementing test covering method-dispatch (M-a) |
 
 `idempotency.dag` (STUB) and `parallelism.dag` (STUB) are **not** unblocked by this program — their blocker is the emit-side gap (match-on-user-sums), tracked separately in ROADMAP's receipt-closure wave.
 
@@ -134,7 +134,7 @@ Each placeholder below gets promoted to a full brief when dispatched. Stop-signa
 ### Lane E-M — `MethodSemantics` port-or-subsume `(S–M)`
 
 - **Work:** decide M-a vs M-b based on whether v3's structural-resolution model (`TransformTarget::Callable` + `FieldProject` + typed transforms) already carries the facts `MethodSemantics` carries in v2. If M-a: port `MethodSemantics` + its three `dsl/std/algebra.dag` transitive carriers into a v3-reachable module, plus the `ExprMethodCall` attachment point (~4 carriers, routine). If M-b: add a footnote row to the register explaining the structural subsumption, no port. Queue after E-T/E-C/E-I land so v3 evidence informs the call.
-- **Acceptance:** either a ported `MethodSemantics` surface with a cementing test over method-dispatch inputs (M-a), or a register footnote + ROADMAP update receipt explaining the structural subsumption (M-b). Either way, `cost.dag` and `complexity.dag` promote to `BEHAVIORALLY COMPLETE` once this lane closes.
+- **Acceptance:** either a ported `MethodSemantics` surface with a cementing test over method-dispatch inputs (M-a), or a register footnote + ROADMAP update receipt explaining the structural subsumption (M-b). Either way, the **carrier-parity** portion of the "What v2 has that v3 drops" column clears for `cost.dag` and `complexity.dag`. Full `BEHAVIORALLY COMPLETE` for `cost.dag` also requires the separate non-carrier blockers the register already records (`Dimension<SymbolicCost>` wiring deferred on grammar/data-body gaps; named `SizeVariable` with v2's value semantics) — those are tracked elsewhere (grammar/emit work) and are **not** in scope for this program.
 - **STOP-AND-ESCALATE:** v3 structural resolution turns out to carry *some* of the facts but not all → hybrid shape, escalate before papering over.
 
 ## 6a. Per-method metadata — related carrier question
