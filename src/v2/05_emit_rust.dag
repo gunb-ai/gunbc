@@ -1342,7 +1342,7 @@ fn emit_rust_param_type(n: Node, shared_types: Map<String, Bool>, source_indices
       Some { value: Resolved { node: rt } } => render_rust_type(n: rt, shared_types: shared_types, source_indices: source_indices)
       _ => "()"
     }
-    concat("impl Fn(", param_str, ") -> ", ret_str, " + Clone")
+    concat("impl Fn(", param_str, ") -> ", ret_str)
   } else {
     render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
   }

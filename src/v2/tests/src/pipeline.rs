@@ -1634,7 +1634,7 @@ fn emit_field_access_with_types() {
 }
 
 #[test]
-fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
+fn rust_emit_uses_faithful_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
     let source = "module callable_sig\n\ntype Mapper = fn(Int) -> Int\n\nfn apply(f: fn(Int) -> Int, x: Int) -> Int {\n  f(x)\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
@@ -1644,8 +1644,12 @@ fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
         "callable aliases should stay in type-position-safe Rc<dyn Fn> form: {content}"
     );
     assert!(
-        content.contains("fn apply(f: impl Fn(i64) -> i64 + Clone, x: i64) -> i64"),
-        "callable params should use impl Fn + Clone in Rust signatures: {content}"
+        content.contains("fn apply(f: impl Fn(i64) -> i64, x: i64) -> i64"),
+        "callable params should match authority without synthesized Clone bounds: {content}"
+    );
+    assert!(
+        !content.contains("impl Fn(i64) -> i64 + Clone"),
+        "callable params should not pick up undeclared Clone bounds: {content}"
     );
 }
 

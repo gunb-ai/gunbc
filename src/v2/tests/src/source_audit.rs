@@ -662,6 +662,50 @@ fn emit_backends_do_not_consume_inductive_fields() {
 }
 
 #[test]
+fn rust_callable_param_stage0_signatures_do_not_synthesize_clone_bounds() {
+    let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
+    let emit_stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_emit.rs");
+    let tokenize_stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_tokenize.rs");
+    let core_stage0 = read_v2_file("src/v2/stage0/src/v2_std_core.rs");
+
+    assert_live_not_contains(
+        &rust_source,
+        "\" + Clone\"",
+        "05_emit_rust.dag should not synthesize Clone bounds for callable params",
+    );
+    assert_live_contains(
+        &emit_stage0,
+        "render_rest: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String",
+        "stage0 shared emit helper should keep callable params unconstrained",
+    );
+    assert_live_not_contains(
+        &emit_stage0,
+        "render_rest: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String + Clone",
+        "stage0 shared emit helper should not invent Clone on callable params",
+    );
+    assert_live_contains(
+        &tokenize_stage0,
+        "mut pred: impl Fn(String) -> bool,",
+        "stage0 tokenizer helper should keep callable params unconstrained",
+    );
+    assert_live_not_contains(
+        &tokenize_stage0,
+        "mut pred: impl Fn(String) -> bool + Clone,",
+        "stage0 tokenizer helper should not invent Clone on callable params",
+    );
+    assert_live_contains(
+        &core_stage0,
+        "transform: impl Fn(Rc<Node>) -> Rc<Node>",
+        "stage0 core helper should keep callable params unconstrained",
+    );
+    assert_live_not_contains(
+        &core_stage0,
+        "transform: impl Fn(Rc<Node>) -> Rc<Node> + Clone",
+        "stage0 core helper should not invent Clone on callable params",
+    );
+}
+
+#[test]
 fn compile_gate_keeps_infer_errors_blocking_in_stage0() {
     let source = read_v2_file("src/v2/compile.dag");
     let stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_compile.rs");
