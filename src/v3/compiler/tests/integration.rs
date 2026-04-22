@@ -202,7 +202,6 @@ mod parse_stage4_prep {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use v2_compiler::std_termination::{join_evidence, merge_evidence, DescentEvidence::*};
     use v3_compiler::{parse_for_test, tokenize_for_test};
 
     // SG-2 parser staging: corpus manifest snapshots the runtime parse surface
@@ -364,14 +363,6 @@ mod parse_stage4_prep {
     }
 
     #[test]
-    fn descent_evidence_total_order_receipt_still_holds() {
-        assert_eq!(merge_evidence(Strict, DescentUnknown), DescentUnknown);
-        assert_eq!(merge_evidence(Strict, NonIncreasing), NonIncreasing);
-        assert_eq!(join_evidence(NonIncreasing, Strict), Strict);
-        assert_eq!(join_evidence(DescentUnknown, NonIncreasing), NonIncreasing);
-    }
-
-    #[test]
     fn handwritten_parser_accepts_fermi_dag() {
         parse_file(
             include_str!("../../../../dsl/std/fermi.dag"),
@@ -430,5 +421,29 @@ mod parse_stage4_prep {
             include_str!("../../std/effects.dag"),
             "src/v3/std/effects.dag",
         );
+    }
+}
+
+mod termination_receipts {
+    use v2_compiler::std_termination::{join_evidence, merge_evidence, DescentEvidence::*};
+
+    #[test]
+    fn merge_evidence_strict_with_descent_unknown_returns_descent_unknown() {
+        assert_eq!(merge_evidence(Strict, DescentUnknown), DescentUnknown);
+    }
+
+    #[test]
+    fn merge_evidence_strict_with_non_increasing_returns_non_increasing() {
+        assert_eq!(merge_evidence(Strict, NonIncreasing), NonIncreasing);
+    }
+
+    #[test]
+    fn join_evidence_non_increasing_with_strict_returns_strict() {
+        assert_eq!(join_evidence(NonIncreasing, Strict), Strict);
+    }
+
+    #[test]
+    fn join_evidence_descent_unknown_with_non_increasing_returns_non_increasing() {
+        assert_eq!(join_evidence(DescentUnknown, NonIncreasing), NonIncreasing);
     }
 }
