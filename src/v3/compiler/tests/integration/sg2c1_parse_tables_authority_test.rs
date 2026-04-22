@@ -1,7 +1,8 @@
 //! SG-2c / grammar-tables prototype: `parse_tables.dag` is load-bearing
 //! authority for parser-owned tables projected into `parse_tables_generated.rs`:
 //! SG-2c-1 binary-operator precedence rows, SG-2c-2 top-level item keyword
-//! dispatch, SG-2c-3 type-RHS boundary keywords. `parse_tables_generated.rs`
+//! dispatch, SG-2c-3 type-RHS boundary keywords, SG-2c-4 bracket opener/closer
+//! roles. `parse_tables_generated.rs`
 //! must stay in sync with the authoring `.dag`; `binary_op_*` rows cover every
 //! binary-operator token the parser dispatches on, `top_level_kw_*` rows cover
 //! every keyword `parse_item` accepts, and the same rows also project the shared
@@ -181,6 +182,172 @@ fn every_top_level_item_kw_row_token_variant_is_a_token_kind_variant() {
              `TokenKind` variant in `tokenize.dag`"
         );
     }
+}
+
+#[test]
+fn every_bracket_row_token_variant_is_a_token_kind_variant() {
+    let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
+        .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
+    let tokenize_dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
+        .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+
+    let token_kind_decl = tokenize_dag
+        .declaration_by_name("TokenKind")
+        .expect("TokenKind declaration in tokenize.dag");
+    let TypeConnective::Disj {
+        variants: token_variants,
+    } = &token_kind_decl.connective
+    else {
+        panic!("TokenKind should lower to a Disj");
+    };
+    let token_variant_names: std::collections::BTreeSet<String> =
+        token_variants.iter().map(|v| v.label.clone()).collect();
+
+    let row_type_id = tables_dag
+        .declaration_by_name("BracketRow")
+        .expect("BracketRow declaration")
+        .id;
+    for decl in tables_dag.declarations() {
+        if decl.meta_tag != Some(row_type_id) {
+            continue;
+        }
+        let name = decl.name.as_deref().unwrap_or("<anonymous>");
+        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            continue;
+        };
+        let token_variant = fields
+            .iter()
+            .find_map(|(k, v)| (k == "token_variant").then_some(v))
+            .and_then(|v| match v {
+                FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("`{name}`: missing string `token_variant` field"));
+        assert!(
+            token_variant_names.contains(&token_variant),
+            "`parse_tables.dag::{name}`: token_variant `{token_variant}` is not a \
+             `TokenKind` variant in `tokenize.dag`"
+        );
+    }
+}
+
+#[test]
+fn every_bracket_shaped_token_kind_variant_has_a_bracket_row() {
+    // Reverse drift check (catches the gap the forward pin leaves open):
+    // if a new bracketing `TokenKind` variant ever lands in `tokenize.dag`
+    // and no one adds a matching `BracketRow`, `bracket_role` would silently
+    // return `None` and the parser's depth tracker would miscount — the
+    // forward membership pin wouldn't fire because it only checks the rows
+    // against a hardcoded expected set.
+    //
+    // Heuristic: any `TokenKind` variant whose name is `L[A-Z]…` or
+    // `R[A-Z]…` (capital second letter) is bracket-shaped. That rules
+    // out comparison operators like `Lt` / `Le` (lowercase second char)
+    // while catching hypothetical future `LAngle` / `RAngle` etc.
+    // Matches the prefix convention already enforced at regen time by
+    // `bracket_role_from_token_variant`.
+    let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
+        .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
+    let tokenize_dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
+        .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+
+    let token_kind_decl = tokenize_dag
+        .declaration_by_name("TokenKind")
+        .expect("TokenKind declaration in tokenize.dag");
+    let TypeConnective::Disj {
+        variants: token_variants,
+    } = &token_kind_decl.connective
+    else {
+        panic!("TokenKind should lower to a Disj");
+    };
+
+    let is_bracket_shaped = |name: &str| -> bool {
+        let mut chars = name.chars();
+        let first = match chars.next() {
+            Some(c) => c,
+            None => return false,
+        };
+        if first != 'L' && first != 'R' {
+            return false;
+        }
+        matches!(chars.next(), Some(c) if c.is_ascii_uppercase())
+    };
+
+    let bracket_shaped_token_kinds: std::collections::BTreeSet<String> = token_variants
+        .iter()
+        .filter(|v| is_bracket_shaped(&v.label))
+        .map(|v| v.label.clone())
+        .collect();
+
+    let row_type_id = tables_dag
+        .declaration_by_name("BracketRow")
+        .expect("BracketRow declaration")
+        .id;
+    let authored: std::collections::BTreeSet<String> = tables_dag
+        .declarations()
+        .iter()
+        .filter(|d| d.meta_tag == Some(row_type_id))
+        .filter_map(|d| match &d.value_body {
+            Some(ValueBody::Structural { fields }) => fields
+                .iter()
+                .find_map(|(k, v)| (k == "token_variant").then_some(v))
+                .and_then(|v| match v {
+                    FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
+                    _ => None,
+                }),
+            _ => None,
+        })
+        .collect();
+
+    let missing: Vec<&String> = bracket_shaped_token_kinds.difference(&authored).collect();
+    assert!(
+        missing.is_empty(),
+        "TokenKind variants look bracket-shaped (`L[A-Z]…` / `R[A-Z]…`) but \
+         have no matching `BracketRow` in `parse_tables.dag`: {missing:?}. Either \
+         author a row, or if the variant is genuinely not a bracket, adjust the \
+         bracket-shape heuristic in this test."
+    );
+}
+
+#[test]
+fn bracket_rows_cover_exactly_the_tokens_depth_tracking_helpers_dispatch_on() {
+    // `skip_where_clause` and `rhs_is_sum` in `parse_parser_body.txt` scan
+    // token spans while tracking paren/brace/bracket depth. Pinned here as
+    // the closed set so SG-2c-4 dispatch fails closed if a new bracketing
+    // token ever appears in `TokenKind` without a matching `BracketRow`.
+    let expected: std::collections::BTreeSet<&'static str> = [
+        "LParen", "LBrace", "LBracket", "RParen", "RBrace", "RBracket",
+    ]
+    .into_iter()
+    .collect();
+
+    let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
+        .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
+    let mut got: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let row_type_id = tables_dag
+        .declaration_by_name("BracketRow")
+        .expect("BracketRow declaration")
+        .id;
+    for decl in tables_dag.declarations() {
+        if decl.meta_tag != Some(row_type_id) {
+            continue;
+        }
+        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            continue;
+        };
+        if let Some(FieldValue::Literal(LiteralBits::String(s))) = fields
+            .iter()
+            .find_map(|(k, v)| (k == "token_variant").then_some(v))
+        {
+            got.insert(s.clone());
+        }
+    }
+    let got_ref: std::collections::BTreeSet<&str> = got.iter().map(String::as_str).collect();
+    assert_eq!(
+        expected, got_ref,
+        "bracket_* rows in parse_tables.dag do not cover exactly the bracketing tokens the \
+         parser's depth-tracking helpers dispatch on"
+    );
 }
 
 #[test]

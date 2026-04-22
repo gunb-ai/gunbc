@@ -649,17 +649,16 @@ impl<'a> Parser<'a> {
         let mut end = where_kw.span.byte_end;
         let mut depth: i32 = 0;
         while !self.at_eof() {
-            match &self.peek().kind {
-                TokenKind::LParen | TokenKind::LBrace | TokenKind::LBracket => {
-                    depth += 1;
-                }
-                TokenKind::RParen | TokenKind::RBrace | TokenKind::RBracket => {
-                    if depth == 0 {
-                        break;
+            if let Some(role) = bracket_role(&self.peek().kind) {
+                match role {
+                    BracketRole::Opener => depth += 1,
+                    BracketRole::Closer => {
+                        if depth == 0 {
+                            break;
+                        }
+                        depth -= 1;
                     }
-                    depth -= 1;
                 }
-                _ => {}
             }
             if depth == 0 && is_type_rhs_boundary_keyword(&self.peek().kind) {
                 break;
@@ -687,16 +686,24 @@ impl<'a> Parser<'a> {
         let mut i = self.pos;
         let mut depth: i32 = 0;
         while i < self.tokens.len() {
-            match &self.tokens[i].kind {
-                TokenKind::LParen | TokenKind::LBrace | TokenKind::LBracket => {
-                    depth += 1;
-                }
-                TokenKind::RParen | TokenKind::RBrace | TokenKind::RBracket => {
-                    if depth == 0 {
-                        return false;
+            if let Some(role) = bracket_role(&self.tokens[i].kind) {
+                match role {
+                    BracketRole::Opener => {
+                        depth += 1;
+                        i += 1;
+                        continue;
                     }
-                    depth -= 1;
+                    BracketRole::Closer => {
+                        if depth == 0 {
+                            return false;
+                        }
+                        depth -= 1;
+                        i += 1;
+                        continue;
+                    }
                 }
+            }
+            match &self.tokens[i].kind {
                 TokenKind::Pipe if depth == 0 => return true,
                 TokenKind::KwType if depth == 0 => {
                     let next = self.tokens.get(i + 1).map(|t| &t.kind);
