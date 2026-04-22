@@ -953,6 +953,10 @@ fn emit_type_params(params: List<Node>, source_indices: Map<String, NewlineIndex
 // Split a fn item's `params` slot (which holds type params prepended to value params,
 // per parse_fn_body_from_prefix) by structural self-reference: a type param node
 // satisfies param_node_name == param_node_type_expr.name (e.g., T: T).
+// This is a soft heuristic reflecting the parser's storage convention.
+// Dissolution target: partition the `params` slot on Node into
+// `type_params` / `value_params`, or add a `ParamKind` discriminator. When
+// that lands, these helpers collapse to the partitioned read.
 fn is_function_type_param(param: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   param_node_name_at(n: param, source_indices: source_indices) == authored_name_at(source_indices: source_indices, node: param_node_type_expr(n: param))
 }
@@ -1234,25 +1238,27 @@ fn emit_func_def(
   shared_types: Map<String, Bool>,
   emit_info: EmitGraphInfo
 ) -> String {
+  // Note: `func`/`pattern`/`interface` items parse through
+  // parse_block_body_from_prefix, which stores `prefix.params` directly and
+  // drops `prefix.type_params`. Unlike `fn` (parse_fn_body_from_prefix), the
+  // `params` slot here carries value params only, so no type/value split is
+  // needed. If these forms ever gain generics, revisit.
   let depth = 0
-  let si = scope.type_env.source_indices
-  let type_params = function_type_params(params: params, source_indices: si)
-  let value_params = function_value_params(params: params, source_indices: si)
-  let type_params_str = emit_type_params(params: type_params, source_indices: si)
   let service_names = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.service_names
     None => []
   }
-  let params_str = emit_func_params(params: value_params, uses: uses, service_names: service_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params)
-  let ret_str = emit_func_inferred(inferred: inferred, shared_types: shared_types, source_indices: si)
-  let body_scope = build_params_scope(scope: scope, params: value_params)
+  let params_str = emit_func_params(params: params, uses: uses, service_names: service_names, shared_types: shared_types, source_indices: scope.type_env.source_indices, read_only_params: emit_info.read_only_params)
+  let ret_str = emit_func_inferred(inferred: inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  let body_scope = build_params_scope(scope: scope, params: params)
+  let si = scope.type_env.source_indices
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
     extend_scope(scope: s, name: resource_use_name_at(n: u, source_indices: si), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
   )
   let body_str = emit_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
   let items = rust_items()
   concat(rust_visibility_prefix(), items.async_prefix, items.func_keyword, " ", emit_ident(name: name, target: Rust),
-    type_params_str, "(", params_str, ")", ret_str, " {\n",
+    "(", params_str, ")", ret_str, " {\n",
     make_indent(level: depth + 1),body_str, "\n}")
 }
 
