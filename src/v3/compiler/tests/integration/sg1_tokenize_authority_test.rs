@@ -2,8 +2,8 @@
 
 use std::collections::BTreeSet;
 
-use v3_compiler::{compile_to_dag, generated_full_bootstrap_dag};
 use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
+use v3_compiler::{compile_to_dag, generated_full_bootstrap_dag};
 
 const TOKENIZE_DAG: &str = include_str!("../../tokenize.dag");
 const SHARED_SYNTAX_DAG: &str = include_str!("../../../../../dsl/extdeps/languages/dag/syntax.dag");
