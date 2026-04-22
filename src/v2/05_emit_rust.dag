@@ -1008,17 +1008,20 @@ fn function_value_params(params: List<Node>) -> List<Node> {
 // resolve_item_types registered T as a TypeVariable binding). The emit-time
 // splitter can't tell them apart — that's the P1 shape flagged by the
 // dissolution target (partition Node.params into type/value, or add
-// ParamKind). Until then, detect the collision here and fail-closed via
-// a target-compile-time `compile_error!`.
+// ParamKind).
 //
-// Dissolution trigger: before any non-rustc consumer of generated text
-// lands (e.g., a dag → wasm emitter, a lint over emitted text that
-// doesn't route through rustc, a manifest snapshot that caches output
-// pre-rustc), flip this detection to a gunbc-level Diagnostic at
-// resolve_item_types (04_resolve.dag:903, where fn_type_param_names has
-// the same heuristic). The test
-// `generic_fn_with_value_param_shadowing_type_param_fails_closed` will
-// need to flip its assertion at the same time.
+// Primary fail-closed for this ambiguity already lives upstream as a typed
+// gunbc Diagnostic at resolve_item_types (04_resolve.dag:909, using
+// has_duplicate_type_param_name). This emit-time `compile_error!` is kept
+// as belt-and-suspenders against pipelines that bypass resolve (direct
+// emit_fn_def calls in tests, partial pipelines) and would otherwise emit
+// silent `<T, T>`.
+//
+// Dissolution trigger for deleting THIS emit-time guard: when the
+// ParamKind / params-slot partition dissolution lands, the classifier and
+// this collision detector both evaporate — the boundary becomes
+// structural instead of heuristic. (The upstream resolve-layer diagnostic
+// would likely also change shape or dissolve at the same time.)
 fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
   let names = type_params |> map(p => p.name)
   (names |> count) > (unique_strings(items: names) |> count)
