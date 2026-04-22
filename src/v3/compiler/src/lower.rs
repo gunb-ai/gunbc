@@ -534,6 +534,7 @@ fn lower_parameter_refinement(
         },
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: None,
@@ -547,6 +548,7 @@ fn lower_parameter_refinement(
         connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(base_decl_id)),
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: Some(pred_decl_id),
@@ -931,6 +933,7 @@ fn build_narrowed_refinement(
         },
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: None,
@@ -946,6 +949,7 @@ fn build_narrowed_refinement(
         connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(true_base_decl)),
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: Some(pred_decl_id),
@@ -1328,6 +1332,7 @@ fn collect_symbols(
             connective: placeholder_connective(&name),
             type_params: Vec::new(),
             meta_tag: None,
+            specialization_parent: None,
             inhabits: None,
             value_body: None,
             refinement: None,
@@ -1353,6 +1358,7 @@ fn collect_symbols(
                     connective: TypeConnective::Atom(AtomPayload::TypeParam(param.clone())),
                     type_params: Vec::new(),
                     meta_tag: None,
+                    specialization_parent: None,
                     inhabits: None,
 
                     value_body: None,
@@ -1693,6 +1699,7 @@ fn lower_type_sum(
             connective,
             type_params: Vec::new(),
             meta_tag: None,
+            specialization_parent: None,
             inhabits: None,
 
             value_body: None,
@@ -1766,6 +1773,7 @@ fn type_to_declaration_id(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
 
                 value_body: None,
@@ -1786,6 +1794,7 @@ fn type_to_declaration_id(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
 
                 value_body: None,
@@ -1822,6 +1831,7 @@ fn type_to_declaration_id(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
 
                 value_body: None,
@@ -1985,6 +1995,7 @@ fn alloc_identifier_stub(dag: &mut Dag, name: &str, span: &SourceSpan) -> Declar
         connective: TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name.to_string())),
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
 
         value_body: None,
@@ -3991,6 +4002,7 @@ fn lower_lambda_expr(
         },
         type_params: Vec::new(),
         meta_tag: None,
+        specialization_parent: None,
         inhabits: None,
         value_body: None,
         refinement: None,
@@ -4334,6 +4346,7 @@ fn specialize_decl_for_lowering(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
@@ -4366,6 +4379,7 @@ fn specialize_decl_for_lowering(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
@@ -4401,6 +4415,7 @@ fn specialize_decl_for_lowering(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
@@ -4430,14 +4445,15 @@ fn specialize_decl_for_lowering(
                 // P2: `Declaration::name` is the only surface-visible authority for
                 // `Dag::declaration_by_name` — never clone the template name onto a
                 // fresh `Disj` id (that admits a second winner in name-based lookup).
-                // Emit qualifies Rust match patterns by walking `meta_tag` back to
-                // the template sum (`rust_target::named_disj_root_for_rust_match_emit`).
+                // Emit qualifies Rust match patterns via `Declaration::specialization_parent`
+                // (`rust_target::named_disj_root_for_rust_match_emit`).
                 name: None,
                 connective: TypeConnective::Disj {
                     variants: specialized_variants,
                 },
                 type_params: Vec::new(),
-                meta_tag: Some(current),
+                meta_tag: None,
+                specialization_parent: Some(current),
                 inhabits: None,
                 value_body: None,
                 refinement: None,
@@ -4925,6 +4941,7 @@ fn lower_expr(
                     },
                     type_params: Vec::new(),
                     meta_tag: None,
+                    specialization_parent: None,
                     inhabits: None,
                     value_body: None,
                     refinement: None,
@@ -5526,6 +5543,7 @@ fn resolve_expected_variant_constructor(
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
+                specialization_parent: None,
                 inhabits: None,
                 value_body: None,
                 refinement: None,
@@ -6398,6 +6416,7 @@ mod tests {
             connective,
             type_params: Vec::new(),
             meta_tag,
+            specialization_parent: None,
             inhabits: None,
             value_body: None,
             refinement: None,

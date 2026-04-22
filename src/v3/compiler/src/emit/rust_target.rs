@@ -4816,13 +4816,9 @@ impl<'a> Ctx<'a> {
 }
 
 /// Anonymous specialized `Disj` nodes from `lower::specialize_decl_for_lowering`
-/// carry `meta_tag = Some(template_disj_id)` so Rust emit can recover the template
-/// enum name without cloning `Declaration::name` onto a second declaration id
-/// (P2 / single-authority metadata for `Dag::declaration_by_name`).
-///
-/// This is **not** a realization `meta_tag` row (`Type` / `Operator` / …); those
-/// only attach to `data` items with `Structural` bodies and compare equal to the
-/// bootstrap meta-type declaration ids. Here `meta_tag` points at another `Disj`.
+/// set `specialization_parent = Some(template_disj_id)` so Rust emit can recover
+/// the template enum name without cloning `Declaration::name` onto a second
+/// declaration id (P2 / single-authority metadata for `Dag::declaration_by_name`).
 fn named_disj_root_for_rust_match_emit(
     dag: &Dag,
     mut disj_id: DeclarationId,
@@ -4835,7 +4831,7 @@ fn named_disj_root_for_rust_match_emit(
         if decl.name.is_some() {
             return Some(disj_id);
         }
-        disj_id = decl.meta_tag?;
+        disj_id = decl.specialization_parent?;
     }
     None
 }
@@ -5599,5 +5595,46 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
             }
             other => panic!("expected MalformedRealization for aliased role refs, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn named_disj_root_for_rust_match_emit_follows_specialization_parent_to_named_template() {
+        use crate::dag::Declaration;
+
+        let mut dag = Dag::new();
+        let template_id = dag
+            .declarations()
+            .iter()
+            .find(|d| {
+                matches!(&d.connective, TypeConnective::Disj { .. })
+                    && d.name.as_deref() == Some("Classical")
+            })
+            .expect("bootstrap `Classical` sum")
+            .id;
+
+        let anon_id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: anon_id,
+            name: None,
+            connective: TypeConnective::Disj {
+                variants: Vec::new(),
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: Some(template_id),
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<test>", 0, 0),
+        });
+
+        assert_eq!(
+            named_disj_root_for_rust_match_emit(&dag, anon_id),
+            Some(template_id)
+        );
+        assert_eq!(
+            named_disj_root_for_rust_match_emit(&dag, template_id),
+            Some(template_id)
+        );
     }
 }
