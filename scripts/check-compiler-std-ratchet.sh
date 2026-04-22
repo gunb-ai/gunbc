@@ -19,7 +19,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-BASELINE_TRACKED_TOTAL=25
+BASELINE_TRACKED_TOTAL=19
 
 SURFACES=(
   src/v3/compiler/*.dag
@@ -66,12 +66,6 @@ TRACKED_ROWS=(
   "src/v3/compiler/runtime_mirrors.dag:SurfaceLiteral"
   "src/v3/compiler/runtime_mirrors.dag:SurfaceExpr"
   "src/v3/compiler/runtime_mirrors.dag:SurfaceItem"
-  "src/v3/compiler/tokenize.dag:TokenKind"
-  "src/v3/compiler/tokenize.dag:Token"
-  "src/v3/compiler/tokenize.dag:KeywordTokenKind"
-  "src/v3/compiler/tokenize.dag:PunctTokenKind"
-  "src/v3/compiler/tokenize.dag:LocalPunctSpec"
-  "src/v3/compiler/tokenize.dag:StringEscapeSpec"
   "src/v3/lenses/complexity.dag:CostLookup"
   "src/v3/lenses/cost.dag:SymbolicCostLookup"
   "src/v3/lenses/infer_helpers.dag:TemplateArgumentLookup"
