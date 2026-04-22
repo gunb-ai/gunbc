@@ -4449,7 +4449,7 @@ fn specialize_decl_for_lowering(
                 // `Dag::declaration_by_name` — never clone the template name onto a
                 // fresh `Disj` id (that admits a second winner in name-based lookup).
                 // Emit qualifies Rust match patterns via `Declaration::specialization_parent`
-                // (`rust_target::named_disj_root_for_rust_match_emit`).
+                // (`rust_target::named_disj_enum_name_for_rust_match_emit`).
                 name: None,
                 connective: TypeConnective::Disj {
                     variants: specialized_variants,
@@ -6529,5 +6529,62 @@ mod tests {
             ),
             "strict identifier sweep must preserve name-fallback provenance on repaired stubs"
         );
+    }
+
+    /// Receipt for `Declaration::specialization_parent` on specialized anonymous
+    /// `Disj` copies: the walker in `emit::rust_target` depends on this edge shape.
+    #[test]
+    fn specialize_decl_for_lowering_anonymous_disj_sets_specialization_parent() {
+        let mut dag = Dag::new();
+        let t_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: t_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
+            type_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: test_span(),
+        });
+        let int_id = dag.int_shape().expect("bootstrap Int").declaration;
+        let template_id = push_test_declaration(
+            &mut dag,
+            "WithT",
+            TypeConnective::Disj {
+                variants: vec![Field {
+                    label: "V".to_string(),
+                    ty: t_param,
+                }],
+            },
+            None,
+        );
+        let specialized = specialize_decl_for_lowering(
+            &mut dag,
+            template_id,
+            &[TemplateArgument {
+                parameter: t_param,
+                value: int_id,
+            }],
+            0,
+        );
+        assert_ne!(
+            specialized, template_id,
+            "substituting T into the variant payload should allocate a fresh Disj"
+        );
+        let anon = dag.declaration(specialized);
+        assert!(anon.name.is_none());
+        assert_eq!(
+            anon.specialization_parent,
+            Some(template_id),
+            "Rust emit recovers the template enum via specialization_parent"
+        );
+        let TypeConnective::Disj { variants } = &anon.connective else {
+            panic!("expected specialized Disj");
+        };
+        assert_eq!(variants.len(), 1);
+        assert_eq!(variants[0].ty, int_id);
     }
 }

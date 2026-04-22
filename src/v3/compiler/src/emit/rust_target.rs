@@ -3528,21 +3528,13 @@ impl<'a> Ctx<'a> {
         let qualified_name = if is_optional_match {
             variant_name.clone()
         } else {
-            let named_enum_disj_id = named_disj_root_for_rust_match_emit(self.dag, disj_id)
+            let enum_name = named_disj_enum_name_for_rust_match_emit(self.dag, disj_id)
                 .ok_or_else(|| {
                     EmitError::UnsupportedBehavior(
                         "match on anonymous sum declarations is not yet supported in Rust emission"
                             .to_string(),
                     )
                 })?;
-            let enum_name = self.dag.declaration(named_enum_disj_id).name.clone().ok_or_else(
-                || {
-                    EmitError::UnsupportedBehavior(
-                        "Rust match emission requires a named sum declaration (template chain missing)"
-                            .to_string(),
-                    )
-                },
-            )?;
             self.qualified_name(&enum_name, &variant_name)
         };
         let Some(binding) = &path.binding else {
@@ -4819,10 +4811,12 @@ impl<'a> Ctx<'a> {
 /// set `specialization_parent = Some(template_disj_id)` so Rust emit can recover
 /// the template enum name without cloning `Declaration::name` onto a second
 /// declaration id (P2 / single-authority metadata for `Dag::declaration_by_name`).
-fn named_disj_root_for_rust_match_emit(
+///
+/// Returns the template's `Declaration::name` once a named `Disj` is reached.
+fn named_disj_enum_name_for_rust_match_emit(
     dag: &Dag,
     mut disj_id: DeclarationId,
-) -> Option<DeclarationId> {
+) -> Option<String> {
     // Chains are one hop in practice (`specialize_decl_for_lowering`); 32 matches
     // `specialize_decl_for_lowering`'s depth bound so a bug cannot spin forever.
     for _ in 0..32 {
@@ -4830,8 +4824,8 @@ fn named_disj_root_for_rust_match_emit(
         let TypeConnective::Disj { .. } = &decl.connective else {
             return None;
         };
-        if decl.name.is_some() {
-            return Some(disj_id);
+        if let Some(name) = decl.name.clone() {
+            return Some(name);
         }
         disj_id = decl.specialization_parent?;
     }
@@ -5600,7 +5594,8 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
     }
 
     #[test]
-    fn named_disj_root_for_rust_match_emit_follows_specialization_parent_to_named_template() {
+    fn named_disj_enum_name_for_rust_match_emit_follows_specialization_parent_to_named_template(
+    ) {
         use crate::dag::Declaration;
 
         let mut dag = Dag::new();
@@ -5631,12 +5626,12 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
         });
 
         assert_eq!(
-            named_disj_root_for_rust_match_emit(&dag, anon_id),
-            Some(template_id)
+            named_disj_enum_name_for_rust_match_emit(&dag, anon_id).as_deref(),
+            Some("Classical")
         );
         assert_eq!(
-            named_disj_root_for_rust_match_emit(&dag, template_id),
-            Some(template_id)
+            named_disj_enum_name_for_rust_match_emit(&dag, template_id).as_deref(),
+            Some("Classical")
         );
     }
 }
