@@ -116,13 +116,26 @@ Against the deferred-debt section:
 
 The consolidation can be measured:
 
-**Primary ratchet:** count of `type` declarations in `src/v3/compiler/*.dag` AND `src/v3/std/*.dag` (outside of `pipeline.dag`, `regen.dag`, and `lenses/*.dag`).
+**Primary ratchet:** count of `type` declarations in `src/v3/compiler/*.dag` outside of `pipeline.dag`, `regen.dag`, and `lenses/*.dag`.
 
-Current state: ~26 types (6 tokenize + 14 runtime_mirrors + 3 parse_tables + ~3 from other compiler .dag files I haven't fully catalogued + the `src/v3/std/` tree contents which collapse to shared `dsl/std/`).
+Baseline (2026-04-22, measured by `grep -cE "^type [A-Z]" src/v3/compiler/*.dag`):
 
-End state: 0 outside the positive-definition set.
+| File | Type decls | Category |
+|---|---|---|
+| `tokenize.dag` | 6 | **migrates to `std/`** |
+| `runtime_mirrors.dag` | 14 | **migrates to `std/`** |
+| `parse_tables.dag` | 4 | **migrates** (per-type decision deferred; some may stay compiler-API as dispatch-row shapes) |
+| `operators.dag` | 0 | — |
+| `pipeline.dag` | 3 | positive-def: stays |
+| `regen.dag` | 1 | positive-def: stays |
 
-**Secondary ratchet:** count of hand-maintained Rust files in `src/v3/compiler/src/`. Target: ≤5. Current: somewhere in the 5-10 range with named capability gaps.
+**Primary ratchet count today: 24 (tokenize + runtime_mirrors + parse_tables).**
+
+End state: 0. Each migration lane reduces the count; `pipeline.dag` and `regen.dag` type counts track positive-definition growth separately and are not bounded downward by this ratchet.
+
+**Secondary ratchet — v3-std tree consolidation.** Count of `type` declarations in `src/v3/std/*.dag`. Baseline: 142 types across 13 files (substrate.dag 38, emit_model.dag 28, effects.dag 26, clean_emission.dag 12, computation_model.dag 10, verification.dag 8, substrate_minimal.dag 6, dimensions.dag 4, algebra.dag 3, diagnostics.dag 3, list.dag 2, resources.dag 2, workflows.dag 0). These collapse to `dsl/std/*.dag` wholesale when the file-preference scaffold dissolves (ROADMAP: v2 retirement gate). This ratchet is gated by that dissolution, not per-lane moves.
+
+**Tertiary ratchet — hand-Rust surface.** Count of hand-maintained Rust files in `src/v3/compiler/src/` (excluding generated files). Target: ≤5 per the Pure Bootstrap design. Current: 5-10 substantial hand-Rust files with named capability gaps (parse algorithm, lower algorithm body, infer algorithm body, emit backbone, bootstrap shim).
 
 ## How this claim composes with existing tracked work
 

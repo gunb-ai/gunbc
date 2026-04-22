@@ -189,7 +189,7 @@ Tracked debt not dispatched with the 2026-04-21 lane wave currently in flight (L
   - **`tokenize.dag` → `std/tokenize.dag`** — move `Token`, `TokenKind`, `KeywordTokenKind`, `PunctTokenKind`, `LocalPunctSpec`, `StringEscapeSpec` to `std/`. ~6 types. Owner: unassigned; migration-gate: none (types already composable).
   - **`runtime_mirrors.dag` → `std/syntax.dag` (or new `std/parse_surface.dag`)** — move `Surface*` carriers (~14 types). Owner: unassigned; migration-gate: `SG-2b/SG-3f` parse-rule cutover (the existing 🟡 SCAFFOLD trigger in `runtime_mirrors.dag` already names this).
   - **`parse_tables.dag`** — decide per-type whether `BinaryOpLevel` / `BinaryOpRow` / `TopLevelItemKwRow` / `BracketRow` stay compiler-API (dispatch-row shapes) or move to `std/syntax.dag` (language-level precedence/dispatch facts). Defer to the specific migration lane.
-  - **`src/v3/std/*.dag` → `dsl/std/*.dag`** — the whole v3-specific std tree collapses when the file-preference-scaffold dissolves (gated on v2 retirement or `dsl/std/` learning v3 grammar). Largest single consolidation; tracked separately at ROADMAP:169 (file-preference rank scaffold).
+  - **`src/v3/std/*.dag` → `dsl/std/*.dag`** — the whole v3-specific std tree collapses when the file-preference-scaffold dissolves (gated on v2 retirement or `dsl/std/` learning v3 grammar). Largest single consolidation; tracked separately in the **"File-preference rank is a ratified-parallel-authority scaffold"** row (earlier in the 2026-04-21 receipt-closure wave post-merge-debt section).
   - **`Node` → `std/node.dag`** — already captured in `project_node_to_std` memory as prior pattern. Relevant to this program as a precedent.
 
 ### Reviewer-noise class — a practice, not a debt
