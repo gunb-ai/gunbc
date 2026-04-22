@@ -1972,6 +1972,26 @@ impl Dag {
         self.declarations.get(id.index())
     }
 
+    /// **🟡 Scaffold — v3 migration preference rank.** Ranks declarations by
+    /// source-tree location so that same-named declarations in `src/v3/` win
+    /// over `dsl/` duplicates during the bootstrap window. This rule is a
+    /// ratified-parallel-authority pattern (P2 Boundary Discipline), kept
+    /// as a scaffold rather than deleted because the duplicates it resolves
+    /// carry v3-only content (`v3.std.substrate` imports, `ElementRef` /
+    /// `PortId` references, partitioned `EffectShape`, substrate-coupled
+    /// diagnostic surface) that cannot yet be hosted under `dsl/std/` — v2
+    /// CI still recursively ingests `dsl/` and cannot parse v3 grammar.
+    ///
+    /// **Dissolution trigger.** When every module currently duplicated
+    /// between `dsl/std/` and `src/v3/std/` (or `src/v3/spec/`) has
+    /// converged to a single canonical home, delete this rank function and
+    /// the mirrored policy in `lower.rs::collect_symbols`, then update
+    /// `declaration_by_name` to either return the first match or fail-closed
+    /// on multiple matches. Convergence checklist tracked in ROADMAP.md
+    /// "Post-merge debt" under the file-preference scaffold row:
+    ///   - `module std.effects` (`dsl/std/effects.dag` ↔ `src/v3/std/effects.dag`)
+    ///   - `module std.verification` (`dsl/std/verification.dag` ↔ `src/v3/std/verification.dag`)
+    ///   - embedded `http_path` mirror inside `src/v3/std/effects.dag:118-260`
     fn declaration_name_preference_rank(file: &str) -> usize {
         if file.starts_with("src/v3/") {
             2
@@ -1985,6 +2005,13 @@ impl Dag {
     /// Find a top-level declaration by name. Prefer v3 declarations
     /// over legacy `dsl/` duplicates; otherwise keep the earliest
     /// declaration at the same precedence level.
+    ///
+    /// **The preference bias is a v3-migration scaffold**, not a durable
+    /// lookup policy — see `declaration_name_preference_rank` for the
+    /// dissolution trigger. Once duplicate `std.effects` /
+    /// `std.verification` authorities converge to a single home this
+    /// function should drop the `max_by_key` rank and return the first
+    /// match (or fail-closed on multiple).
     ///
     /// **This scan only finds declarations that carry a surface-
     /// visible name** — TypeParams, sum variants, and realization
