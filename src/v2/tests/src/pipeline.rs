@@ -197,13 +197,11 @@ fn generic_fn_emits_type_params_without_synthesized_bounds() {
     let content = find_file(&result, "src/gen_emit.rs");
     // Type params appear in the signature with no `: Clone` / `: Trait` bounds.
     assert!(
-        content.contains("fn identity<T>(")
-            || content.contains("pub fn identity<T>("),
+        content.contains("fn identity<T>(") || content.contains("pub fn identity<T>("),
         "expected `fn identity<T>(` in emitted Rust; got:\n{content}"
     );
     assert!(
-        content.contains("fn fold_stack<T, B>(")
-            || content.contains("pub fn fold_stack<T, B>("),
+        content.contains("fn fold_stack<T, B>(") || content.contains("pub fn fold_stack<T, B>("),
         "expected `fn fold_stack<T, B>(` in emitted Rust; got:\n{content}"
     );
     // The type param must not appear as a value param (would indicate the
