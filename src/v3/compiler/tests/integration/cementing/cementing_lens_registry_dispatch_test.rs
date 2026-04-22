@@ -52,12 +52,13 @@ fn assert_origin_carriers_equal(a: &Origin, b: &Origin, context: &str) {
     }
 }
 
-/// `origin_of` must agree with `origin_for_behavior` on the value port's producer —
-/// the decomposition `provenance.dag` documents after the `produced_by` walk.
+/// `origin_of` must agree with the provenance lens’s `Behavior → Origin` table on
+/// the value port's producer after the `produced_by` walk.
 ///
-/// This does **not** independently re-prove the `Behavior → Origin` mapping; a
-/// coordinated regression in both emitted functions could still pass. The
-/// contract for that mapping lives in `lens_provenance::tests` (minimal `Dag`).
+/// The table is duplicated here (not re-exported from the crate) so integration
+/// tests do not widen the public API with `origin_for_behavior`. Keep this match in
+/// lockstep with `src/v3/lenses/provenance.dag` / `lens_provenance_generated.rs`.
+/// Independent minimal-`Dag` pins live in `lens_provenance::tests`.
 fn assert_provenance_origin_matches_lens_authority(dag: &Dag, bind_name: &str, context: &str) {
     let port = find_bind_value_port(dag, bind_name);
     let got = origin_of(dag, &port);
@@ -73,8 +74,19 @@ fn assert_provenance_origin_matches_lens_authority(dag: &Dag, bind_name: &str, c
         .iter()
         .find(|b| b.id() == produced_by)
         .unwrap_or_else(|| panic!("{context}: missing producer node {produced_by:?}"));
-    let expected = origin_for_behavior(behavior);
+    let expected = expected_origin_from_producer_behavior(behavior);
     assert_origin_carriers_equal(&got, &expected, context);
+}
+
+/// Mirrors `origin_for_behavior` from `provenance.dag` (see `lens_provenance_generated.rs`).
+fn expected_origin_from_producer_behavior(behavior: &Behavior) -> Origin {
+    match behavior {
+        Behavior::Value(v) => Origin::Source { _0: v.id },
+        Behavior::Transform(t) => Origin::Computed { _0: t.id },
+        Behavior::Branch(b) => Origin::Selected { _0: b.id },
+        Behavior::Loop(l) => Origin::Accumulated { _0: l.id },
+        Behavior::Bind(bind) => Origin::Source { _0: bind.id },
+    }
 }
 
 /// Pairs of (`regen_lens --lens <name>` registry key, cementing module stem
@@ -262,8 +274,9 @@ fn provenance_origin_of_cements_complete_row_via_compile_to_dag_fixture() {
     // Register row: `provenance.dag` — BEHAVIORALLY COMPLETE, v3-native.
     // Integration crate cannot reach `Dag`'s `pub(crate)` builder helpers
     // (`alloc_port_with_shape`); `compile_to_dag` fixtures still cement the
-    // shipped `origin_of` **walk + glue** on the live lowering path. Mapping pins
-    // (Value/Transform/Branch/Loop/Bind → `Origin`) stay in-crate unit tests.
+    // shipped `origin_of` **walk + glue** on the live lowering path. The five-way
+    // `Behavior → Origin` mirror in this file stays in sync with `provenance.dag`;
+    // richer mapping pins stay in-crate unit tests.
     // Exhaustive `NoProducer` / `Missing*` cases stay in `lib.rs::lens_provenance::tests`.
     let dag = compile_to_dag("let lit: Int = 7", "cementing_provenance_lit.v3").expect("compiles");
     assert_provenance_origin_matches_lens_authority(&dag, "lit", "cementing_provenance_lit");
