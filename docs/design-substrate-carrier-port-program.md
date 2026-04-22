@@ -90,10 +90,11 @@ Dependencies dictate a strict order:
 
 1. **T** (`DescentEvidence` + proof) — no deps, unblocks C and I.
 2. **C** (`CallPattern` + lowering) — depends on T, unblocks I and the first partial lens promotion.
-3. **I** (`SubValueRelation` + cost) — depends on T and C. Largest payoff on the non-method-dispatch slice: promotes `cost.dag` + `complexity.dag` on every analysis path that does *not* consume `MethodSemantics`. Full `BEHAVIORALLY COMPLETE` is gated on E-M because v2's complexity imports `MethodSemantics` as part of its carrier set.
-4. **M** (`MethodSemantics`) — **design-decision lane**, not a port lane. Run after T/C/I so v3's evidence ("does structural resolution subsume method semantics?") informs the shape. M closing clears the **carrier-parity** portion of `cost.dag` / `complexity.dag`'s drop-lists. Full `BEHAVIORALLY COMPLETE` for `cost.dag` also requires the non-carrier blockers the register records (`Dimension<SymbolicCost>` wiring on grammar/data-body gaps; named `SizeVariable` value semantics) — those are grammar/emit work, outside this program.
+3. **I** (`SubValueRelation` + cost) — depends on T and C. Ports the carrier *types*. On its own does not promote any lens row: the types are inert until a producer attaches them to call sites.
+4. **P** (per-call descent-evidence provenance) — depends on T, C, I. Decides where/how v3 produces the per-call witness v2 stores on `ExprCall.descent_evidence`. Carrier parity for `cost.dag` / `complexity.dag` on the non-method-dispatch slice closes here, not at E-I. See §6 Lane E-P.
+5. **M** (`MethodSemantics`) — **design-decision lane**, not a port lane. Run after T/C/I/P so v3's evidence ("does structural resolution subsume method semantics?") informs the shape. M closing clears the **carrier-parity** portion of `cost.dag` / `complexity.dag`'s drop-lists. Full `BEHAVIORALLY COMPLETE` for `cost.dag` also requires the non-carrier blockers the register records (`Dimension<SymbolicCost>` wiring on grammar/data-body gaps; named `SizeVariable` value semantics) — those are grammar/emit work, outside this program.
 
-**Shortest path to first Band C receipt:** T + C land → `cost.dag` can adopt `CallPattern` + `LoweringTarget` as its carrier vocabulary and begin the PROXY advance on the non-method-dispatch slice. Carrier parity closes after I and M. Full `BEHAVIORALLY COMPLETE` for `cost.dag` closes separately on the grammar/emit side.
+**Shortest path to first Band C receipt:** T + C land → `cost.dag` can adopt `CallPattern` + `LoweringTarget` as its carrier vocabulary. I + P close carrier parity on the non-method-dispatch slice (types + producer both present). M closes carrier parity on the method-dispatch slice. Full `BEHAVIORALLY COMPLETE` for `cost.dag` closes separately on the grammar/emit side (`Dimension<SymbolicCost>`, named `SizeVariable`).
 
 ## 5. Success per carrier
 
@@ -103,7 +104,8 @@ Each lane closes with a receipt per `docs/v3-lens-capability-register.md § Disc
 |---|---|---|---|
 | T | — (no direct lens depends on T alone) | `complexity.dag` / `cost.dag` partial progress | prerequisite only |
 | C | `cost.dag` begins PROXY → partial | PROXY still, but "What v2 has that v3 drops" column shrinks | golden for `CallPattern` dispatch |
-| I | `complexity.dag` / `cost.dag` advance on the non-method-dispatch slice; "What v2 has that v3 drops" column shrinks to `MethodSemantics`-only | PROXY still (pending E-M) | v2-oracle-vs-v3 symbolic-cost golden for non-method-dispatch inputs |
+| I | types ported; no lens row moves yet — producer still missing | PROXY still (pending E-P) | carrier round-trip tests only |
+| P | `complexity.dag` / `cost.dag` advance on the non-method-dispatch slice; "What v2 has that v3 drops" column shrinks to `MethodSemantics` + grammar/emit items | PROXY still (pending E-M for method-dispatch) | v2-oracle-vs-v3 per-call descent-evidence golden for non-method-dispatch inputs |
 | M | either a ported `MethodSemantics` surface (M-a) or a register footnote explaining v3's structural subsumption (M-b). Closes carrier-parity for `complexity.dag` / `cost.dag`. Full `BEHAVIORALLY COMPLETE` still requires `cost.dag`'s separate non-carrier blockers to clear (`Dimension<SymbolicCost>` wiring deferred on grammar/data-body gaps per the register; named `SizeVariable` with v2's value semantics). Those live outside this program. | carrier-parity column goes to N/A; the remaining `cost.dag` drop-list lives on after E-M | design receipt (M-b) or cementing test covering method-dispatch (M-a) |
 
 `idempotency.dag` (STUB) and `parallelism.dag` (STUB) are **not** unblocked by this program — their blocker is the emit-side gap (match-on-user-sums), tracked separately in ROADMAP's receipt-closure wave.
@@ -128,8 +130,20 @@ Each placeholder below gets promoted to a full brief when dispatched. Stop-signa
 
 - **Work:** port Tier 1 (structural carriers) + Tier 2 (lattice fns) + Tier 3 (cost algebra). Requires E-T and E-C landed.
 - **Pre-flight verification (first step of the lane):** prove `CostBound`'s self-referential-through-`List` shape lowers/emits on v3 today (mirrors `FieldValue`). If it does not → stop, scope a substrate-capability lane, don't hack the carrier.
-- **Acceptance:** `cost.dag` and `complexity.dag` advance on the non-method-dispatch analysis slice with cementing tests over inputs that do not exercise `MethodSemantics`. "What v2 has that v3 drops" column shrinks to `MethodSemantics`-only for both rows. Full `BEHAVIORALLY COMPLETE` is deferred to E-M.
+- **Acceptance:** `cost.dag` and `complexity.dag` advance on the non-method-dispatch analysis slice with cementing tests over inputs that do not exercise `MethodSemantics`. "What v2 has that v3 drops" column shrinks to `MethodSemantics`-only for both rows. Full `BEHAVIORALLY COMPLETE` is deferred to E-M (method-dispatch) and the separate grammar/emit non-carrier blockers. **Carrier parity additionally depends on E-P landing** — the carrier types are inert without a producer that attaches them to call sites.
 - **STOP-AND-ESCALATE:** master-theorem machinery doesn't lower → surface as decidability/emit gap.
+
+### Lane E-P — Per-call descent-evidence provenance `(M)`
+
+- **Context:** v2 stores per-call witness facts as `descent_evidence: List<SubValueRelation>?` directly on `ExprCall` (`src/v2/00_core.dag:199`), populated by the v2 complexity/lookup passes. v3's call-site node (`TransformNode`, `src/v3/std/substrate.dag:264-270`) has no analogous attachment and v3 has no pass that produces the evidence. Porting the carrier *types* (E-I) without scoping *where v3 produces and stores/derives the per-call witnesses* is a modeling hole — the types are inert vocabulary without a producer.
+- **Work:** decide the attachment shape and producer. Three options to scope:
+  - **(P-a) On-substrate attachment.** Add `descent_evidence: List<SubValueRelation>?` (or equivalent) to `TransformNode`. Substrate change; parallels v2's shape. Requires a pass that populates it.
+  - **(P-b) Lens-derived.** A lens walks calls and computes `SubValueRelation` on demand from argument structure + declared inductive fields. No substrate change; evidence lives in the lens result.
+  - **(P-c) Side-table.** A `Map<NodeId, List<SubValueRelation>>` installed by a dedicated pass alongside `lane2_workflow_at`-style reflected accessors. Intermediate between (a) and (b).
+- **Decision gate:** pick one based on how `cost.dag` / `complexity.dag` want to consume the facts. Option (b) aligns with v3's "analyses are lenses" principle; option (a) aligns with v2's shape. Option (c) keeps the substrate minimal while giving the evidence a named home.
+- **Acceptance:** a v3 call in a test fixture produces per-call `SubValueRelation` readable by a lens, verified by a cementing test that compares against v2's `expr_call_descent_evidence` oracle on the same input.
+- **Dependencies:** E-T, E-C, E-I (carriers must exist before a producer can emit them). Runs **concurrently-with or immediately-after** E-I; E-I's carrier-parity acceptance is not met until E-P lands, because `cost.dag` cannot consume evidence that does not exist at call sites.
+- **STOP-AND-ESCALATE:** option (a) requires new substrate connective → C1 lane; option (b) requires a lens capability v3 does not yet have → surface emit gap; any option reveals v3's `TransformTarget` distinctions collapse information v2's `ExprCall` preserved → modeling discovery, escalate.
 
 ### Lane E-M — `MethodSemantics` port-or-subsume `(S–M)`
 
