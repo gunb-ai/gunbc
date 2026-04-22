@@ -37,6 +37,8 @@
 #[path = "integration/common/mod.rs"]
 mod common;
 
+#[path = "integration/cementing/cementing_lens_registry_dispatch_test.rs"]
+mod cementing_lens_registry_dispatch_test;
 #[path = "integration/four_fixture_regression_test.rs"]
 mod four_fixture_regression_test;
 #[path = "integration/l1_5_fixed_point_test.rs"]
@@ -123,8 +125,6 @@ mod sg3_surface_reflection_consumer_test;
 mod sg6_hand_authored_census_test;
 #[path = "integration/sg7_prep_variant_payload_freshness_test.rs"]
 mod sg7_prep_variant_payload_freshness_test;
-#[path = "integration/cementing/cementing_lens_registry_dispatch_test.rs"]
-mod cementing_lens_registry_dispatch_test;
 #[path = "integration/thesis_parallelism_test.rs"]
 mod thesis_parallelism_test;
 #[path = "integration/thesis_validation_test.rs"]
