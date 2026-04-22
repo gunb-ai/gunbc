@@ -137,20 +137,20 @@ pub fn is_ordered_element_collection(name: String) -> bool {
     v2_rt::map_contains_key(&ordered_element_collections(), name)
 }
 
-pub fn container_to_algebra() -> Rc<HashMap<String, String>> {
+pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
             __m.insert("list".to_string(), "FreeMonoid".to_string());
-            __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
-            __m.insert("free_monoid".to_string(), "FreeMonoid".to_string());
             __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
             __m.insert("set".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
             __m.insert("Map".to_string(), "PartialFunction".to_string());
             __m.insert("map".to_string(), "PartialFunction".to_string());
+            __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
+            __m.insert("free_monoid".to_string(), "FreeMonoid".to_string());
+            __m.insert("BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
             __m.insert("PartialFunction".to_string(), "PartialFunction".to_string());
             __m.insert("partial_function".to_string(), "PartialFunction".to_string());
             Rc::new(__m)
@@ -159,8 +159,8 @@ pub fn container_to_algebra() -> Rc<HashMap<String, String>> {
     CACHED.with(|c| c.clone())
 }
 
-pub fn container_to_algebra_name(name: String) -> Option<String> {
-    v2_rt::map_get(&container_to_algebra(), name)
+pub fn container_template_algebra(name: String) -> Option<String> {
+    v2_rt::map_get(&container_template_algebra_rows(), name)
 }
 
 pub fn canonical_container_names() -> Rc<Vec<String>> {

@@ -3,7 +3,7 @@
 
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-pub use crate::std_types::{container_to_algebra_name, is_container_type};
+pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 pub use crate::v2_compiler_coercion::{
@@ -1973,7 +1973,7 @@ pub fn render_node_type(
                 if (n.ident_span.clone() != None) {
                     {
                         let snake = to_snake(tn.clone());
-                        let has_template = match container_to_algebra_name(snake.clone()) {
+                        let has_template = match container_template_algebra(snake.clone()) {
                             Some(_) => true,
                             None => false,
                         };
@@ -2023,7 +2023,8 @@ pub fn render_node_type(
                 let bare_is_map = (is_container_type(tn.clone())
                     && (to_snake(tn.clone()).as_str() == "map".to_string().as_str()));
                 let bare_is_collection = (is_container_type(tn.clone()) && !bare_is_map.clone());
-                let has_container_template = match container_to_algebra_name(to_snake(tn.clone())) {
+                let has_container_template = match container_template_algebra(to_snake(tn.clone()))
+                {
                     Some(_) => true,
                     None => false,
                 };
