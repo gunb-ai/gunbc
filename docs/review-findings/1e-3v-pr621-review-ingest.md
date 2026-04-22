@@ -2,7 +2,7 @@
 
 **Companion:** [1e-3v-phase-3-dispatch-gate.md](../briefs/1e-3v-phase-3-dispatch-gate.md) — **live dispatch guidance** (Executive summary, cluster table, Phase 3.0, checklist). **Path:** `docs/review-findings/` (archival namespace per **`INVARIANTS.md`** + **Review AJ**).
 
-This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **five** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`), **Review AJ** (commit `3be30867`), **Review AK** / **Review AL** (commit `741b2cd3`), **Review AM** / **Review AN** (commit `6e84d559`), **Review AO** (commit `6968710a`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
+This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **five** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`), **Review AJ** (commit `3be30867`), **Review AK** / **Review AL** (commit `741b2cd3`), **Review AM** / **Review AN** (commit `6e84d559`), **Review AO** / **Review AP** (commit `6968710a`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
 
 ---
 
@@ -306,3 +306,11 @@ Relayed **BLOCKING** root cause: **`lower.rs` never received the scaffold receip
 
 - **Verdict:** APPROVE — documentation-heavy plus synced scaffold annotation in `src/v3/compiler/src/lower_generated.rs`; no concrete **`INVARIANTS.md`**, **`docs/modeling-discipline.md`**, **`CODING.md`**, or **`TESTING.md`** violation in the changed lines.
 - **Scaffold:** `lower_generated.rs` comment **matches** existing **`lower.rs`** / **`ROADMAP.md`** tracked-debt story — **not** a new authority or behavior change. (Same commit as **Fifth blocking** codex pass — different verdict after full read; **Fifth blocking** rebuttal stands on tree facts.)
+
+**Review AP (claude / claude-opus-4-7, schedule, commit `6968710a`, 2026-04-22T01:06:36Z)**
+
+- **Verdict:** APPROVE — three-file diff: **11-line** comment block in `lower_generated.rs` + two new docs (dispatch brief + this ingest); no substrate, no behavior change, no tests.
+- **Scaffold (`lower_generated.rs` ~1267–1277 — drift):** Documents existing v3-migration seeding + dissolution trigger. **`origin/main`**’s **`lower.rs`** already held the **identical** comment (canonical source; `lower_generated.rs` header: auto-generated from **`lower.rs`** via **`regen_lower`**). Diff = **regen mirror** to match canonical copy (consistent with **`8281bde5`** “refresh `lower_generated.rs` after merge main”); no hand-edit drift.
+- **Tracked-debt / tracked-bridge rule:** **Documented** ✓; **bounded** ✓ (`std.effects`, `std.verification`, `http_path` mirror); **dissolution trigger** ✓ (converge duplicates → delete branch + rank in **`dag.rs`**). **`declaration_name_preference_rank`** exists in **`dag.rs`** (review cited **~:2005** — drift).
+- **Docs:** Live brief vs archival ingest — **Review Z** / **`INVARIANTS.md`** shape; spot-checks align with diff/tree.
+- **Findings:** None — no concrete **`INVARIANTS.md`** / modeling-discipline / **`CODING.md`** / **`TESTING.md`** violation.
