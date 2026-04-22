@@ -375,7 +375,9 @@ cementing module exists and `tests/integration.rs` wires it. Extend
 when the register row is upgraded; the test
 `cementing_test_modules_exist_for_escalated_v2_complete_registry_claims`
 requires each listed stem to resolve to an on-disk `.rs` file under
-`cementing/`.
+`cementing/` **and** to appear in `tests/integration.rs` behind an
+exact `#[path = "integration/cementing/<stem>.rs"]` attribute (so an
+orphan file cannot satisfy the ratchet).
 
 **Anti-scope.** This section is not a mandate to prove full lens
 equivalence for every `.dag` file, and it does not require new

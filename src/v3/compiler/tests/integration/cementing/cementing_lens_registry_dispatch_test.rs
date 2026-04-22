@@ -34,6 +34,32 @@ fn origin_label(origin: &Origin) -> &'static str {
 /// `tests/integration.rs` in the same PR.
 const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[(&str, &str)] = &[];
 
+/// Ratchet owner module — kept wired so `cargo test … cementing` always
+/// exercises this file; see `cementing_lens_registry_dispatch_test_is_wired_in_integration_rs`.
+const CEMENTING_REGISTRY_DISPATCH_STEM: &str = "cementing_lens_registry_dispatch_test";
+
+fn integration_rs_text() -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("integration.rs");
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
+
+fn assert_cementing_stem_wired_in_integration_rs(
+    integration_rs: &str,
+    stem: &str,
+    registry_name: &str,
+) {
+    let expected = format!(r#"#[path = "integration/cementing/{stem}.rs"]"#);
+    assert!(
+        integration_rs.contains(&expected),
+        "registry lens `{registry_name}` lists cementing stem `{stem}` but \
+         `tests/integration.rs` does not contain `{expected}` — add a \
+         `#[path = \"integration/cementing/{stem}.rs\"]` module declaration \
+         in the same PR as the on-disk module (API-level wiring, not convention-only)."
+    );
+}
+
 fn find_bind_value_port(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::PortId {
     dag.nodes()
         .iter()
@@ -65,11 +91,22 @@ fn provenance_origin_of_cements_behavior_complete_row_on_minimal_ports() {
 }
 
 #[test]
+fn cementing_lens_registry_dispatch_test_is_wired_in_integration_rs() {
+    let integration_rs = integration_rs_text();
+    assert_cementing_stem_wired_in_integration_rs(
+        &integration_rs,
+        CEMENTING_REGISTRY_DISPATCH_STEM,
+        "<cementing dispatch ratchet>",
+    );
+}
+
+#[test]
 fn cementing_test_modules_exist_for_escalated_v2_complete_registry_claims() {
     let cementing_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("integration")
         .join("cementing");
+    let integration_rs = integration_rs_text();
     for (registry_name, stem) in CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS {
         let path = cementing_dir.join(format!("{stem}.rs"));
         assert!(
@@ -77,5 +114,6 @@ fn cementing_test_modules_exist_for_escalated_v2_complete_registry_claims() {
             "registry lens `{registry_name}` is listed for v2-complete cementing; expected cementing module at {}",
             path.display()
         );
+        assert_cementing_stem_wired_in_integration_rs(&integration_rs, stem, registry_name);
     }
 }

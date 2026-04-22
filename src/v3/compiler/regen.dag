@@ -29,8 +29,9 @@ import std.types { FilePath, NonEmptyStr }
 // update `docs/v3-lens-capability-register.md` (see its Discipline
 // section). If the register row is `BEHAVIORALLY COMPLETE` and names
 // a concrete v2 counterpart, add a matching behavioral cementing
-// module under `src/v3/compiler/tests/integration/cementing/` and
-// extend the ratchet slice in
+// module under `src/v3/compiler/tests/integration/cementing/`, wire it
+// in `tests/integration.rs` via `#[path = "integration/cementing/<stem>.rs"]`,
+// and extend the ratchet slice in
 // `cementing_lens_registry_dispatch_test.rs` in the same PR. See
 // `TESTING.md` ("Cementing tests (Band C — lens subsumption)").
 
