@@ -57,3 +57,9 @@ The minimal faithful step **after** this post-mortem is **not** to delete `+ Clo
 ### Regression test scope (`pipeline.rs`)
 
 The hermetic test uses two call sites `f(0)` and `f(1)` on the same callable parameter and asserts the **`impl Fn(...) + Clone`** signature. It does **not** assert a `f.clone()` substring: for this shape Rust emission often uses `Fn::call(&f, …)` twice without spelling `f.clone()`, while `+ Clone` remains load-bearing elsewhere (stage0 / other emitter paths). A future tightening could pin an explicit clone site once a small fixture is found that **deterministically** materializes asymmetric `f.clone()` in emitted Rust.
+
+**Verify locally** (workspace package name is `v2-compiler-tests`, hyphenated — not the underscored Rust crate id used in test binary paths):
+
+```bash
+cargo test -p v2-compiler-tests rust_emit_callable_param_double_use_keeps_clone_bound_on_signature
+```

@@ -1652,6 +1652,8 @@ fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
 // PR #650 regression: keep synthesized `+ Clone` on `impl Fn` callable params.
 // Removing it (and compensating only in the emitter) split authority vs
 // `emit_info.movable` and broke self-host; see docs/postmortems/pr-650-emitter-callable-clone-bound.md.
+// Run: `cargo test -p v2-compiler-tests rust_emit_callable_param_double_use_keeps_clone_bound_on_signature`
+// (`-p` uses the workspace package name `v2-compiler-tests`, not `v2_compiler_tests`.)
 //
 // Review note (non-blocking): a stricter assert on *which* use site carries
 // `f.clone()` would catch wrong-site refactors, but this fixture (`f(0) + f(1)`)
