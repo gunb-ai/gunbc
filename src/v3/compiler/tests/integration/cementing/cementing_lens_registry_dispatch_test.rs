@@ -25,7 +25,9 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use crate::common::integration_rs_active_line_contains;
+use crate::common::{
+    integration_rs_active_line_contains, integration_rs_cementing_path_attr_binds_mod_stem,
+};
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::lens_provenance::{origin_of, Origin};
@@ -181,6 +183,60 @@ mod real;
 fn integration_rs_active_line_contains_panics_on_raw_string_in_code() {
     let src = concat!("fn f() { r#\"", "hi", "\"#; }");
     integration_rs_active_line_contains(src, "nope");
+}
+
+#[test]
+fn integration_rs_cementing_path_attr_binds_mod_accepts_multiline() {
+    let src = concat!(
+        "#[path = \"integration/cementing/real.rs\"]\n",
+        "mod real;\n",
+    );
+    assert!(integration_rs_cementing_path_attr_binds_mod_stem(
+        src, "real"
+    ));
+}
+
+#[test]
+fn integration_rs_cementing_path_attr_binds_mod_accepts_same_line() {
+    let src = "#[path = \"integration/cementing/real.rs\"] mod real;\n";
+    assert!(integration_rs_cementing_path_attr_binds_mod_stem(
+        src, "real"
+    ));
+}
+
+#[test]
+fn integration_rs_cementing_path_attr_binds_mod_accepts_interleaved_attribute() {
+    let src = concat!(
+        "#[path = \"integration/cementing/real.rs\"]\n",
+        "#[allow(dead_code)]\n",
+        "mod real;\n",
+    );
+    assert!(integration_rs_cementing_path_attr_binds_mod_stem(
+        src, "real"
+    ));
+}
+
+#[test]
+fn integration_rs_cementing_path_attr_binds_mod_rejects_mismatched_mod_name() {
+    let src = concat!(
+        "#[path = \"integration/cementing/real.rs\"]\n",
+        "mod decoy;\n\n",
+        "mod real;\n",
+    );
+    assert!(!integration_rs_cementing_path_attr_binds_mod_stem(
+        src, "real"
+    ));
+}
+
+#[test]
+fn integration_rs_cementing_path_attr_binds_mod_rejects_stem_extra_mod_name() {
+    let src = concat!(
+        "#[path = \"integration/cementing/stem.rs\"]\n",
+        "mod stem_extra;\n",
+    );
+    assert!(!integration_rs_cementing_path_attr_binds_mod_stem(
+        src, "stem"
+    ));
 }
 
 #[test]
@@ -353,17 +409,11 @@ fn assert_cementing_stem_wired_in_integration_rs(
 ) {
     let expected = format!(r#"#[path = "integration/cementing/{stem}.rs"]"#);
     assert!(
-        integration_rs_active_line_contains(integration_rs, &expected),
+        integration_rs_cementing_path_attr_binds_mod_stem(integration_rs, stem),
         "registry lens `{registry_name}` lists cementing stem `{stem}` but \
-         `tests/integration.rs` has no **active** (non-`//`-comment) line with `{expected}` — add \
-         `#[path = \"integration/cementing/{stem}.rs\"]` plus `mod {stem};` in the same PR as the \
-         on-disk module. Commented-out `// #[path = …]` does not count."
-    );
-    let mod_needle = format!("mod {stem}");
-    assert!(
-        integration_rs_active_line_contains(integration_rs, &mod_needle),
-        "registry lens `{registry_name}` lists cementing stem `{stem}` but \
-         `tests/integration.rs` has no active line declaring `{mod_needle};` — wire the module."
+         `tests/integration.rs` does not bind `{expected}` to `mod {stem};` in the same item \
+         (Band-C dispatch — not a stray `#[path]` plus an unrelated `mod` line). \
+         Land both lines in the same PR as the on-disk `cementing/{stem}.rs` module."
     );
 }
 
