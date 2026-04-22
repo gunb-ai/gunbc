@@ -716,6 +716,46 @@ pub(crate) mod infer_helpers {
     };
 }
 
+/// SG-3g-b: `.dag`-authority `expr_span` for `SurfaceExpr` (see `lenses/lower_helpers.dag`).
+/// Consumed from `lower.rs`; `parse_generated.rs` keeps its own `&SourceSpan` helper for
+/// parser-local span fusion without cloning.
+pub(crate) mod lower_helpers {
+    #[allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        unused_variables,
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if
+    )]
+    mod generated {
+        use crate::diagnostics::SourceSpan;
+        use crate::parse_surface;
+        use crate::parse_surface::SurfaceExpr;
+
+        include!("lower_helpers_generated.rs");
+    }
+
+    pub(crate) use generated::expr_span;
+
+    #[cfg(test)]
+    mod tests {
+        use super::expr_span;
+        use crate::diagnostics::SourceSpan;
+        use crate::parse_surface::SurfaceExpr;
+
+        #[test]
+        fn expr_span_matches_variant_span_field() {
+            let span = SourceSpan::new("t.v3", 10, 20);
+            let e = SurfaceExpr::Literal {
+                value: crate::parse_surface::SurfaceLiteral::Int(1),
+                span: span.clone(),
+            };
+            assert_eq!(expr_span(&e), span);
+        }
+    }
+}
+
 pub mod lens_idempotency;
 pub mod lens_parallelism;
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):

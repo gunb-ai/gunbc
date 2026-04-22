@@ -34,6 +34,7 @@ use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
 };
 use crate::infer::{concretize_decl_with_subst, SubstStack};
+use crate::lower_helpers::expr_span;
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
@@ -489,7 +490,7 @@ fn lower_parameter_refinement(
     dag: &mut Dag,
     param_span: SourceSpan,
 ) -> DeclarationId {
-    let pred_span = crate::parse::expr_span(predicate).clone();
+    let pred_span = expr_span(predicate);
     let pred_param_port = dag.alloc_port(None);
     match declaration_to_port_shape(base_decl_id, dag, &param_span) {
         Ok(shape) => dag.set_port_type(pred_param_port, shape),
@@ -773,7 +774,7 @@ fn narrow_scope_for_predicate(
         &narrow_name,
     )?;
     let narrow_port = dag.alloc_port(None);
-    match declaration_to_port_shape(refined_decl, dag, expr_span(cond)) {
+    match declaration_to_port_shape(refined_decl, dag, &expr_span(cond)) {
         Ok(shape) => dag.set_port_type(narrow_port, shape),
         Err(_) => return None,
     }
@@ -846,11 +847,11 @@ fn build_narrowed_refinement(
             narrow_name,
             symbols,
             dag,
-            expr_span(new_cond).clone(),
+            expr_span(new_cond),
         ));
     };
 
-    let pred_span = expr_span(new_cond).clone();
+    let pred_span = expr_span(new_cond);
     // Allocate a fresh composite parameter port typed as the true
     // base — the composite predicate's sole parameter slot.
     let composite_param_port = dag.alloc_port(None);
@@ -1409,7 +1410,7 @@ fn placeholder_connective(name: &str) -> TypeConnective {
 
 fn item_span(item: &SurfaceItem) -> SourceSpan {
     match item {
-        SurfaceItem::Let { expr, .. } => expr_span(expr).clone(),
+        SurfaceItem::Let { expr, .. } => expr_span(expr),
         SurfaceItem::Fn { span, .. }
         | SurfaceItem::FnExternalBody { span, .. }
         | SurfaceItem::Data { span, .. }
@@ -1502,7 +1503,7 @@ fn lower_item(
             let bind_id = dag.alloc_node_id();
             let bind_span = match type_ann {
                 Some(ty) => ty.span().clone(),
-                None => expr_span(expr).clone(),
+                None => expr_span(expr),
             };
             dag.push_node(Behavior::Bind(BindNode {
                 id: bind_id,
@@ -2698,7 +2699,7 @@ fn lower_structural_field_value(
                 symbols,
                 dag,
                 None,
-                expr_span(element),
+                &expr_span(element),
             )?);
         }
         return Some(crate::dag::FieldValue::List(lowered));
@@ -2917,7 +2918,7 @@ fn lower_structural_field_value(
                     symbols,
                     dag,
                     None,
-                    expr_span(arg),
+                    &expr_span(arg),
                 )?);
             }
         } else if let Some(fields) = named_fields {
@@ -3516,7 +3517,7 @@ fn lower_fn_item_expr_body(
     //    shape via the common bottom-of-function code.
     if let Some(invalid_cluster) = mutual_recursion.invalid_by_member.get(&fn_decl_id) {
         let err_port = dag.alloc_port(None);
-        let body_span = expr_span(body).clone();
+        let body_span = expr_span(body);
         dag.mark_unresolved(
             err_port,
             Diagnostic::ResolveError {
@@ -3558,7 +3559,7 @@ fn lower_fn_item_expr_body(
         Some(return_decl_id),
     );
     let body_root = dag.port(body_return_port).produced_by;
-    let body_span = expr_span(body).clone();
+    let body_span = expr_span(body);
     let body_end_index = dag.nodes().len();
 
     let mutual_cluster = mutual_recursion.cluster_for_member(fn_decl_id);
@@ -4038,7 +4039,7 @@ fn resolve_callable_reference(
         SurfaceExpr::Path { segments, span, .. } => {
             alloc_identifier_stub(dag, &segments.join("."), span)
         }
-        other => alloc_identifier_stub(dag, "__callable_argument__", expr_span(other)),
+        other => alloc_identifier_stub(dag, "__callable_argument__", &expr_span(other)),
     }
 }
 
@@ -4898,7 +4899,7 @@ fn lower_expr(
                             let port = dag.alloc_port(None);
                             dag.mark_unresolved(
                                 port,
-                                callable_binding_conflict_diagnostic(target, idx, expr_span(arg)),
+                                callable_binding_conflict_diagnostic(target, idx, &expr_span(arg)),
                             );
                             return port;
                         }
@@ -5058,7 +5059,7 @@ fn lower_expr(
                         output: then_port,
                         pattern: BranchPattern::UnresolvedVariant {
                             name: "True".to_string(),
-                            span: expr_span(then_branch).clone(),
+                            span: expr_span(then_branch),
                         },
                         binding: None,
                     },
@@ -5067,7 +5068,7 @@ fn lower_expr(
                         output: else_port,
                         pattern: BranchPattern::UnresolvedVariant {
                             name: "False".to_string(),
-                            span: expr_span(else_branch).clone(),
+                            span: expr_span(else_branch),
                         },
                         binding: None,
                     },
@@ -5501,7 +5502,7 @@ fn lower_list_literal_expr(
         dag,
         singleton_decl,
         vec![last],
-        expr_span(elements.last().expect("non-empty")).clone(),
+        expr_span(elements.last().expect("non-empty")),
     );
     while let Some(head) = element_ports.pop() {
         current = lower_constructor_invocation(dag, cons_decl, vec![head, current], span.clone());
@@ -5890,22 +5891,6 @@ fn canonical_decl_for_descent(dag: &Dag, start: DeclarationId) -> DeclarationId 
         }
     }
     current
-}
-
-fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
-    match expr {
-        SurfaceExpr::Literal { span, .. }
-        | SurfaceExpr::Var { span, .. }
-        | SurfaceExpr::Path { span, .. }
-        | SurfaceExpr::Call { span, .. }
-        | SurfaceExpr::VariantRecord { span, .. }
-        | SurfaceExpr::Operator { span, .. }
-        | SurfaceExpr::Lambda { span, .. }
-        | SurfaceExpr::If { span, .. }
-        | SurfaceExpr::Match { span, .. }
-        | SurfaceExpr::Record { span, .. }
-        | SurfaceExpr::List { span, .. } => span,
-    }
 }
 
 #[derive(Clone, Copy)]

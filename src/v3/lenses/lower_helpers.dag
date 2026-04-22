@@ -38,13 +38,9 @@
 // (`SourceSpan`), so neither construction gap applies. The generator
 // produces clean Rust for it.
 //
-// Wire-in (consuming the generated helper from `lower.rs`) is parked
-// pending `parse` / `parse_surface` convergence: the generated
-// helper types against `parse_surface::SurfaceExpr` but `lower.rs`
-// operates on `parse::SurfaceExpr`. The only bridge is a `From` impl
-// that deep-clones the expression tree; using it at 16 call sites
-// per lowered body would make the lowerer materially slower, not
-// better. That convergence is SG-3f follow-up, not SG-3g.
+// Wire-in: `lower.rs` imports `crate::lower_helpers::expr_span` (SG-3g-b).
+// `parse::SurfaceExpr` is the same type as `parse_surface::SurfaceExpr`
+// (`parse_generated.rs` re-exports the mirror), so no clone bridge.
 //
 // Placement under `lenses/` mirrors `infer_helpers.dag`: `build.rs`'s
 // auto-stager for `src/v3/compiler/*.dag` does not sweep this file
