@@ -2,7 +2,7 @@
 
 **Companion:** [1e-3v-phase-3-dispatch-gate.md](../briefs/1e-3v-phase-3-dispatch-gate.md) — **live dispatch guidance** (Executive summary, cluster table, Phase 3.0, checklist). **Path:** `docs/review-findings/` (archival namespace per **`INVARIANTS.md`** + **Review AJ**).
 
-This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **five** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`), **Review AJ** (commit `3be30867`), **Review AK** / **Review AL** (commit `741b2cd3`), **Review AM** / **Review AN** (commit `6e84d559`), **Review AO** / **Review AP** (commit `6968710a`), **Review AQ** (commit `7b77cc41`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
+This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **five** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`), **Review AJ** (commit `3be30867`), **Review AK** / **Review AL** (commit `741b2cd3`), **Review AM** / **Review AN** (commit `6e84d559`), **Review AO** / **Review AP** (commit `6968710a`), **Review AQ** (commit `7b77cc41`), **Review AR** (commit `7b77cc41`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
 
 ---
 
@@ -321,3 +321,8 @@ Relayed **BLOCKING** root cause: **`lower.rs` never received the scaffold receip
 - **Authority:** `regen_lower::main` reads **`lower.rs`** as a string + `HEADER`; prose unchanged through pipeline — **single authority (`lower.rs`)** explicit. No substrate, type surface, or runtime behavior.
 - **Docs:** Dispatch brief + this chronicle — additive narrative matching lane pattern.
 - **Findings:** None — no modeling, coding, or **`TESTING.md`** discipline concerns in the diff.
+
+**Review AR (codex / gpt-5.4, schedule, commit `7b77cc41`, 2026-04-22T01:23:55Z)**
+
+- **Verdict:** APPROVE_WITH_COMMENTS — substantive claims spot-checked; **`regen_lower`** note matches generator behavior.
+- **Finding (NON-BLOCKING, addressed in this commit):** Dispatch **:11** still inlined a long archival ledger (reviews, rebuttals, hashes, placement) while claiming **live dispatch guidance only** — re-blurs live vs archive (**`INVARIANTS.md`** + **`docs/review-findings/`** split). **Fix:** parent brief **:11** trimmed to a **pointer-only** line; full ledger remains **here** only.
