@@ -177,6 +177,13 @@ mod real;
 }
 
 #[test]
+#[should_panic(expected = "raw/byte string literal")]
+fn integration_rs_active_line_contains_panics_on_raw_string_in_code() {
+    let src = concat!("fn f() { r#\"", "hi", "\"#; }");
+    integration_rs_active_line_contains(src, "nope");
+}
+
+#[test]
 fn integration_rs_active_line_ignores_needle_inside_string_literal() {
     // Tombstone text appears only inside a `"..."` string — must not satisfy the ratchet.
     let src = concat!(

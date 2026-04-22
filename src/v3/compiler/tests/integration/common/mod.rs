@@ -75,6 +75,35 @@ pub fn find_current_rlib(crate_name: &str) -> PathBuf {
         .expect("compiled rlib for current crate")
 }
 
+/// `true` when `bytes[i..]` opens a `b"…"`, `br#"…"#`, `r#"…"#`, or `r"…"` literal in
+/// Rust source. The wiring scanner does not model these — fail loud if they appear
+/// in `Code` so Band-C ratchets cannot silently mis-scan `tests/integration.rs`.
+fn code_opens_raw_or_byte_string_literal(bytes: &[u8], i: usize) -> bool {
+    match bytes.get(i) {
+        Some(b'b') => {
+            if bytes.get(i + 1) == Some(&b'"') {
+                return true;
+            }
+            if bytes.get(i + 1) == Some(&b'r') {
+                let mut j = i + 2;
+                while bytes.get(j) == Some(&b'#') {
+                    j += 1;
+                }
+                return bytes.get(j) == Some(&b'"');
+            }
+            false
+        }
+        Some(b'r') => {
+            let mut j = i + 1;
+            while bytes.get(j) == Some(&b'#') {
+                j += 1;
+            }
+            bytes.get(j) == Some(&b'"')
+        }
+        _ => false,
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum IntegrationRsScan {
     Code,
@@ -91,9 +120,11 @@ enum IntegrationRsScan {
 /// false-green on commented-out or string-embedded copies. Needles are ASCII
 /// (`#[path`, `mod foo`); the scan is byte-oriented on UTF-8 boundaries.
 ///
-/// **Not handled:** raw strings (`r#"…"#`), byte strings, or char literals — none
-/// appear in today’s `tests/integration.rs` module list; extend if those surfaces
-/// start carrying `#[path`-shaped text outside normal strings.
+/// **Not handled:** raw strings (`r#"…"#`), byte strings (`b"…"`, `br#"…"#`), or
+/// char literals — none appear in today’s `tests/integration.rs` module list. If
+/// they do, extend [`IntegrationRsScan`] **or** the scan will **panic** when
+/// [`code_opens_raw_or_byte_string_literal`] fires in `Code` (loud failure vs a
+/// silent false green).
 pub fn integration_rs_active_line_contains(integration_rs: &str, needle: &str) -> bool {
     if needle.is_empty() {
         return true;
@@ -105,6 +136,13 @@ pub fn integration_rs_active_line_contains(integration_rs: &str, needle: &str) -
     while i < bytes.len() {
         match state {
             IntegrationRsScan::Code => {
+                if code_opens_raw_or_byte_string_literal(bytes, i) {
+                    panic!(
+                        "integration_rs_active_line_contains: raw/byte string literal at byte offset {i} \
+                         (e.g. r\"…\", r#\"…\"#, b\"…\", br#\"…\"#). The wiring scanner does not model these \
+                         yet — extend IntegrationRsScan before relying on Band-C integration.rs ratchets."
+                    );
+                }
                 if bytes[i] == b'/' && i + 1 < bytes.len() {
                     if bytes[i + 1] == b'/' {
                         state = IntegrationRsScan::LineComment;
