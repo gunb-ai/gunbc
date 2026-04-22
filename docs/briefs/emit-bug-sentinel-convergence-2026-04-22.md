@@ -48,7 +48,7 @@ For Go and dag, what the sentinel violates is legibility, not fail-closedness: t
 
 ## The dissolution that actually works
 
-Per `feedback_fail_closed_discipline.md` (C-8) and `feedback_construction_over_ratchets.md`, the correct model is:
+Per `feedback_fail_closed_discipline` (C-8) and `feedback_construction_over_ratchets`, the correct model is:
 
 > The template firing means the compiler already knows an error exists and chose to **emit sentinel output** rather than surface a Diagnostic and halt.
 
