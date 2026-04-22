@@ -54,10 +54,10 @@ Prefer (a) — the confusion is ongoing debt. The rename surface is bounded (reg
 2. **Capture v3 output as a golden.** Run v3 complexity lens on the fixture; serialize the per-port cost map (or equivalent structural output) to a golden file checked into the repo. Add an integration test that re-runs the lens and asserts byte-equality against the golden. This is the cementing test — any future edit to `complexity.dag` that changes output will trip this test, and the worker must either update the golden (if intentional) or fix the regression (if not).
 
 3. **Capture v2 output for comparison.** Either:
-   - **(a)** Run v2 stage0 `complexity` on the same fixture, capture output
-   - **(b)** If (a) is too costly to wire up in-test, run it once manually and transcribe output into a comparison fixture file under `docs/history/` or `docs/perf/`
+   - **(a) Strongly preferred:** Run v2 stage0 `complexity` on the same fixture programmatically and capture output into a golden file; a second integration test asserts v2's output against that golden. Both sides are cemented — any drift on either side surfaces as a test failure.
+   - **(b) Fallback only:** if (a) is genuinely un-wireable (no CLI surface, hermetic test harness missing), run v2 once manually and transcribe output into a comparison fixture file under `docs/history/` or `docs/perf/`. **This is a mild fail-open** — transcribed prose doesn't re-execute, so v2 could drift silently while v3 stays cemented. Option (b) must be justified explicitly in the PR body with the specific technical blocker that made (a) infeasible.
 
-   (a) is stronger (regression-tested going forward); (b) is pragmatic if v2's stage0 doesn't expose a clean CLI path. Prefer (a) — the PR body should state the choice and rationale.
+   Cementing symmetry is load-bearing: the thesis receipt is only meaningful if *both* sides are pinned to a re-executable baseline. (b) breaks the symmetry, so the bar for taking (b) should be high.
 
 4. **Document the diff in the PR body.** Three possible outcomes:
    - **Identical (up to output-shape translation)**: thesis receipt. PR body shows both outputs side-by-side, notes the 13× LOC reduction, closes as a post-merge debt *closure* in ROADMAP.
