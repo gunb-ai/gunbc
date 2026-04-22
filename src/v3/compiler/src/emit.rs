@@ -64,6 +64,66 @@ use crate::variant_payload::{
 };
 use crate::Dag;
 
+/// Result port of a finished `behavior` subgraph — shared by Go and Rust emit
+/// paths for [`port_is_consumed_from`] (including `Behavior::Loop` body walks).
+pub(super) fn behavior_result_port(behavior: &Behavior) -> PortId {
+    match behavior {
+        Behavior::Value(v) => v.result_port(),
+        Behavior::Transform(t) => t.result_port(),
+        Behavior::Branch(b) => b.result_port(),
+        Behavior::Loop(l) => l.result_port(),
+        Behavior::Bind(b) => b.result_port(),
+    }
+}
+
+/// Structural port-liveness walk. Returns true if `target` appears as any port
+/// reachable from `root` via producer→input edges. Used by Go and Rust emit
+/// to decide pattern-binding elision without scanning rendered text.
+pub(super) fn port_is_consumed_from(dag: &Dag, root: PortId, target: PortId) -> bool {
+    if root == target {
+        return true;
+    }
+    let mut visited: HashSet<PortId> = HashSet::new();
+    let mut queue: Vec<PortId> = vec![root];
+    while let Some(port) = queue.pop() {
+        if !visited.insert(port) {
+            continue;
+        }
+        if port == target {
+            return true;
+        }
+        let Some(producer) = dag.port(port).produced_by else {
+            continue;
+        };
+        match dag.node(producer) {
+            Behavior::Value(_) => {}
+            Behavior::Transform(t) => {
+                for input in t.inputs.iter().copied() {
+                    queue.push(input);
+                }
+            }
+            Behavior::Branch(b) => {
+                queue.push(b.input);
+                for path in &b.paths {
+                    queue.push(path.output);
+                }
+            }
+            Behavior::Loop(l) => {
+                queue.push(l.source);
+                queue.push(l.init);
+                if let Some(count) = l.bound.count_port() {
+                    queue.push(count);
+                }
+                queue.push(behavior_result_port(dag.node(l.body)));
+            }
+            Behavior::Bind(b) => {
+                queue.push(b.value);
+            }
+        }
+    }
+    false
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum GoFieldAccessBinding {
     DirectField(String),
@@ -1284,56 +1344,8 @@ impl<'a> Ctx<'a> {
         ))
     }
 
-    /// Structural port-liveness walk. Returns true if `target` appears
-    /// as any port reachable from `root` via producer→input edges.
-    /// Mirrors `emit_rust::Ctx::port_is_consumed_from` — the fact is
-    /// structural, so the check is structural too (no textual scan of
-    /// rendered arm bodies). Ports with no producer are leaves; the
-    /// walk hits them and either returns true (hit the target) or
-    /// skips (unrelated parameter port).
     fn port_is_consumed_from(&self, root: PortId, target: PortId) -> bool {
-        if root == target {
-            return true;
-        }
-        let mut visited: HashSet<PortId> = HashSet::new();
-        let mut queue: Vec<PortId> = vec![root];
-        while let Some(port) = queue.pop() {
-            if !visited.insert(port) {
-                continue;
-            }
-            if port == target {
-                return true;
-            }
-            let Some(producer) = self.dag.port(port).produced_by else {
-                continue;
-            };
-            match self.dag.node(producer) {
-                Behavior::Value(_) => {}
-                Behavior::Transform(t) => {
-                    for input in t.inputs.iter().copied() {
-                        queue.push(input);
-                    }
-                }
-                Behavior::Branch(b) => {
-                    queue.push(b.input);
-                    for path in &b.paths {
-                        queue.push(path.output);
-                    }
-                }
-                Behavior::Loop(l) => {
-                    queue.push(l.source);
-                    queue.push(l.init);
-                    if let Some(count) = l.bound.count_port() {
-                        queue.push(count);
-                    }
-                    queue.push(go_behavior_result_port(self.dag.node(l.body)));
-                }
-                Behavior::Bind(b) => {
-                    queue.push(b.value);
-                }
-            }
-        }
-        false
+        crate::emit::port_is_consumed_from(self.dag, root, target)
     }
 
     fn render_realized_pattern_branch(
@@ -2050,16 +2062,6 @@ impl<'a> Ctx<'a> {
                 }
             }
         })
-    }
-}
-
-fn go_behavior_result_port(behavior: &Behavior) -> PortId {
-    match behavior {
-        Behavior::Value(v) => v.result_port(),
-        Behavior::Transform(t) => t.result_port(),
-        Behavior::Branch(b) => b.result_port(),
-        Behavior::Loop(l) => l.result_port(),
-        Behavior::Bind(b) => b.result_port(),
     }
 }
 
@@ -3061,6 +3063,8 @@ fn canonical_operator_field(dag: &Dag, op: OperatorKind) -> Result<DeclarationId
 mod tests {
     use super::*;
     use crate::compile_to_dag;
+    use crate::dag::TransformTarget;
+    use crate::diagnostics::SourceSpan;
 
     // DELETED: go_gc_targets_skip_rendering_model_loading
     //
@@ -3183,5 +3187,58 @@ mod tests {
             "got: {rendered}"
         );
         assert!(!rendered.contains("payload := v.inner;"), "got: {rendered}");
+    }
+
+    #[test]
+    fn behavior_result_port_returns_the_behavior_output_port() {
+        let mut dag = Dag::new();
+        let file = "emit_port_liveness_test.v3";
+        let left = dag.push_value(LiteralBits::Int(1), SourceSpan::new(file, 0, 1));
+        let right = dag.push_value(LiteralBits::Int(2), SourceSpan::new(file, 0, 1));
+        let sum = dag.push_transform(
+            TransformTarget::Operator(crate::dag::OperatorKind::Arithmetic(
+                crate::dag::ArithmeticOp::Add,
+            )),
+            vec![left, right],
+            SourceSpan::new(file, 0, 1),
+        );
+        let producer = dag.port(sum).produced_by.expect("transform port");
+        let behavior = dag.node(producer);
+        assert_eq!(super::behavior_result_port(behavior), sum);
+    }
+
+    #[test]
+    fn port_is_consumed_from_reaches_operand_ports_from_add_output() {
+        let mut dag = Dag::new();
+        let file = "emit_port_liveness_test.v3";
+        let left = dag.push_value(LiteralBits::Int(1), SourceSpan::new(file, 0, 1));
+        let right = dag.push_value(LiteralBits::Int(2), SourceSpan::new(file, 0, 1));
+        let sum = dag.push_transform(
+            TransformTarget::Operator(crate::dag::OperatorKind::Arithmetic(
+                crate::dag::ArithmeticOp::Add,
+            )),
+            vec![left, right],
+            SourceSpan::new(file, 0, 1),
+        );
+        assert!(super::port_is_consumed_from(&dag, sum, left));
+        assert!(super::port_is_consumed_from(&dag, sum, right));
+    }
+
+    #[test]
+    fn port_is_consumed_from_is_false_for_unrelated_leaf_port() {
+        let mut dag = Dag::new();
+        let file = "emit_port_liveness_test.v3";
+        let left = dag.push_value(LiteralBits::Int(1), SourceSpan::new(file, 0, 1));
+        let right = dag.push_value(LiteralBits::Int(2), SourceSpan::new(file, 0, 1));
+        let sum = dag.push_transform(
+            TransformTarget::Operator(crate::dag::OperatorKind::Arithmetic(
+                crate::dag::ArithmeticOp::Add,
+            )),
+            vec![left, right],
+            SourceSpan::new(file, 0, 1),
+        );
+        let int_ty = dag.int_shape().expect("bootstrap Int");
+        let stray = dag.alloc_port_with_shape(int_ty);
+        assert!(!super::port_is_consumed_from(&dag, sum, stray));
     }
 }

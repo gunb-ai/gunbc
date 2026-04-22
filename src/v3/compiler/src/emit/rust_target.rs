@@ -2534,7 +2534,7 @@ fn analyze_user_defined_callable(
                     }
                     queue.push(input);
                 }
-                let body_port = behavior_result_port(dag.node(l.body));
+                let body_port = super::behavior_result_port(dag.node(l.body));
                 if let Some(&index) = runtime_index.get(&body_port) {
                     observed[index] = observed[index].merge(ParameterDispositionBinding::Consumed);
                 }
@@ -3738,61 +3738,8 @@ impl<'a> Ctx<'a> {
         })
     }
 
-    /// Structural port-liveness walk. Returns true if `target`
-    /// appears as any port reachable from `root` via
-    /// producer→input edges. Cost is bounded by the size of the
-    /// arm's body subgraph; each behavior visits its inputs once.
-    ///
-    /// Used to answer "does the arm body actually consume this
-    /// payload binding?" without textually scanning the rendered
-    /// body string — the fact is structural, so the check is
-    /// structural too. Ports with no producer (`produced_by = None`,
-    /// the shape payload bindings themselves take) are leaves: the
-    /// walk hits them and either returns true (hit the target) or
-    /// skips them (unrelated parameter port).
     fn port_is_consumed_from(&self, root: PortId, target: PortId) -> bool {
-        if root == target {
-            return true;
-        }
-        let mut visited: HashSet<PortId> = HashSet::new();
-        let mut queue: Vec<PortId> = vec![root];
-        while let Some(port) = queue.pop() {
-            if !visited.insert(port) {
-                continue;
-            }
-            if port == target {
-                return true;
-            }
-            let Some(producer) = self.dag.port(port).produced_by else {
-                continue;
-            };
-            match self.dag.node(producer) {
-                Behavior::Value(_) => {}
-                Behavior::Transform(t) => {
-                    for input in t.inputs.iter().copied() {
-                        queue.push(input);
-                    }
-                }
-                Behavior::Branch(b) => {
-                    queue.push(b.input);
-                    for path in &b.paths {
-                        queue.push(path.output);
-                    }
-                }
-                Behavior::Loop(l) => {
-                    queue.push(l.source);
-                    queue.push(l.init);
-                    if let Some(count) = l.bound.count_port() {
-                        queue.push(count);
-                    }
-                    queue.push(behavior_result_port(self.dag.node(l.body)));
-                }
-                Behavior::Bind(b) => {
-                    queue.push(b.value);
-                }
-            }
-        }
-        false
+        super::port_is_consumed_from(self.dag, root, target)
     }
 
     fn render_bool_pattern(
@@ -4372,7 +4319,7 @@ impl<'a> Ctx<'a> {
         l: &crate::dag::LoopNode,
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
-        let body_port = behavior_result_port(self.dag.node(l.body));
+        let body_port = super::behavior_result_port(self.dag.node(l.body));
         self.render_port(body_port, locals, RenderMode::OwnedConstructLastUse)
     }
 
@@ -4958,16 +4905,6 @@ fn render_value(v: &ValueNode, literals: &LiteralSyntaxBinding) -> String {
             rust_string_literal_body(s),
             literals.string_delimiter
         ),
-    }
-}
-
-fn behavior_result_port(behavior: &Behavior) -> PortId {
-    match behavior {
-        Behavior::Value(v) => v.result_port(),
-        Behavior::Transform(t) => t.result_port(),
-        Behavior::Branch(b) => b.result_port(),
-        Behavior::Loop(l) => l.result_port(),
-        Behavior::Bind(b) => b.result_port(),
     }
 }
 
