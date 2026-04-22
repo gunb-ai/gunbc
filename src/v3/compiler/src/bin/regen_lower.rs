@@ -28,6 +28,9 @@ const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/src/lower.rs` via\
      //\n\
      // SG-3f-prep: not wired into `lib.rs` — canonical implementation is\n\
      // `lower.rs` pending `lower.dag` + reflected `Surface*` (SELF_HOSTING.md §4).\n\
+     //\n\
+     // Body text (including scaffold / tracked-debt comments) is copied verbatim\n\
+     // from `lower.rs`; edit `lower.rs` for any change to that prose — not here.\n\
      \n";
 
 fn out_path_from_args(manifest_dir: &Path) -> PathBuf {
