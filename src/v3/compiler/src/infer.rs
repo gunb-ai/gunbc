@@ -1545,13 +1545,6 @@ fn retained_template_arguments_for_target(
     retained
 }
 
-fn template_arguments_match(lhs: &[TemplateArgument], rhs: &[TemplateArgument]) -> bool {
-    matches!(
-        generated_template_arguments_match(lhs, rhs),
-        TemplateArgumentsMatch::Match
-    )
-}
-
 fn push_template_argument_binding(
     arguments: &mut Vec<TemplateArgument>,
     parameter: DeclarationId,
@@ -2284,7 +2277,11 @@ fn resolve_callable_targets(dag: &mut Dag) -> bool {
             continue;
         };
         let (current_template, current_arguments) = callable_template_arguments(dag, target);
-        if current_template == template && template_arguments_match(&current_arguments, &arguments)
+        if current_template == template
+            && matches!(
+                generated_template_arguments_match(&current_arguments, &arguments),
+                TemplateArgumentsMatch::Match,
+            )
         {
             continue;
         }
@@ -4429,18 +4426,21 @@ mod bool_logical_operator_arrow_tests {
         ];
 
         assert!(push_template_argument_binding(&mut arguments, p0, v0));
-        assert!(template_arguments_match(
-            &arguments,
-            &[
-                TemplateArgument {
-                    parameter: p0,
-                    value: v0,
-                },
-                TemplateArgument {
-                    parameter: p1,
-                    value: v1,
-                },
-            ]
+        assert!(matches!(
+            generated_template_arguments_match(
+                &arguments,
+                &[
+                    TemplateArgument {
+                        parameter: p0,
+                        value: v0,
+                    },
+                    TemplateArgument {
+                        parameter: p1,
+                        value: v1,
+                    },
+                ]
+            ),
+            TemplateArgumentsMatch::Match,
         ));
         assert!(!push_template_argument_binding(&mut arguments, p1, v0));
     }
@@ -4453,21 +4453,21 @@ mod bool_logical_operator_arrow_tests {
         let v0 = dag.string_shape().expect("bootstrap String").declaration;
         let v1 = dag.bool_shape().expect("bootstrap Bool").declaration;
         let pair = |parameter, value| TemplateArgument { parameter, value };
+        let is_match = |lhs: &[TemplateArgument], rhs: &[TemplateArgument]| -> bool {
+            matches!(
+                generated_template_arguments_match(lhs, rhs),
+                TemplateArgumentsMatch::Match,
+            )
+        };
 
         let empty: Vec<TemplateArgument> = vec![];
-        assert!(template_arguments_match(&empty, &empty));
-        assert!(!template_arguments_match(&empty, &[pair(p0, v0)]));
-        assert!(!template_arguments_match(&[pair(p0, v0)], &empty));
+        assert!(is_match(&empty, &empty));
+        assert!(!is_match(&empty, &[pair(p0, v0)]));
+        assert!(!is_match(&[pair(p0, v0)], &empty));
 
         let two = vec![pair(p0, v0), pair(p1, v1)];
-        assert!(template_arguments_match(&two, &two.clone()));
-        assert!(!template_arguments_match(
-            &two,
-            &[pair(p0, v0), pair(p1, v0)],
-        ));
-        assert!(!template_arguments_match(
-            &two,
-            &[pair(p0, v0), pair(p0, v1)],
-        ));
+        assert!(is_match(&two, &two.clone()));
+        assert!(!is_match(&two, &[pair(p0, v0), pair(p1, v0)]));
+        assert!(!is_match(&two, &[pair(p0, v0), pair(p0, v1)]));
     }
 }
