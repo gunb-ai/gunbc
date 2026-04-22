@@ -93,7 +93,7 @@ SubstrateAccessorBinding, TargetCleanEmissionBinding, Transform,
 TypeInstantiationRealization, TypeRealization, use_callback, Value,
 VariantPayloadFieldAccessRule, VerifierOutputPolicy`.
 
-**Tests, rank-insensitive subset** — 65 of 67 test sites. Unique
+**Tests, rank-insensitive subset** — 49 of 67 test sites. Unique
 names outside the overlap set include `answer, BinaryOpRow,
 BracketRow, cfg, claim_obligation_resources, Classical,
 CompilerHostRealization, DegreeAtLeastTwo, Dimension, div, f, first,
@@ -110,10 +110,11 @@ rank-insensitive — but see dissolution note for **(c)** below.)
 
 ### (b) Silent dependency — load-bearing on rank
 
-**21 call sites** (direct + helper-mediated) look up a name in the
-overlap set. The initial draft counted only the two direct-call
-sites and missed helper-mediated uses; the corrected tally follows.
-All 21 live in `src/v3/compiler/tests/integration/`.
+**18 call sites** (direct + helper-mediated) look up a name in the
+overlap set — 5 `TestClaim` lookups + 13 `std.effects`/`http_path`
+lookups. The initial draft counted only the two direct-call sites
+and missed helper-mediated uses; the corrected tally follows. All
+18 live in `src/v3/compiler/tests/integration/`.
 
 1. `src/v3/compiler/tests/integration/m1_5_testgen_test.rs:208`
    ```rust
@@ -171,7 +172,7 @@ All 21 live in `src/v3/compiler/tests/integration/`.
 **Dissolution path.** These sites are not a substrate problem;
 they are symptoms of the two convergence blockers already tracked
 in ROADMAP:
-- **`std.verification` convergence** — governs the 4 `TestClaim`
+- **`std.verification` convergence** — governs the 5 `TestClaim`
   sites (items 1, 2, 3 above).
 - **`std.effects` convergence** (plus embedded `http_path` mirror)
   — governs the 13 `lane2_stage_2a_effects_smoke.rs` sites (item
@@ -182,7 +183,7 @@ Per convergence, tests either become (a) incidental (v3 authority
 survives), or migrate to the surviving shape (dsl wins / merged
 surface emerges). No new substrate work needed — the convergences
 *are* the dissolution. **The "no new modeling gap" conclusion from
-the draft still holds — but the scale (21 sites, not 2)
+the draft still holds — but the scale (18 sites, not 2)
 materially changes the cost-of-dissolution estimate for the
 `std.effects` convergence in particular, which the ROADMAP row
 should reflect when that lane is scoped.**
@@ -245,17 +246,20 @@ delete together.
 
 | Category | Count | Sites |
 |---|---:|---|
-| (a) Incidental | 159 | all 113 `src/` static-name sites + 46 test sites outside the overlap set |
-| (b) Silent dependency | 21 | 5 TestClaim sites (`m1_5_testgen_test.rs:208`, `lane2_stage_2c_db15_test.rs:9`, `m1_5_verification_test.rs:{76,203,207}`); 16 in `lane2_stage_2a_effects_smoke.rs:{62-66,76×2,90,94,95,97,98,100}` |
+| (a) Incidental | 162 | all 113 `src/` static-name sites + 49 test sites outside the overlap set |
+| (b) Silent dependency | 18 | 5 TestClaim sites (`m1_5_testgen_test.rs:208`, `lane2_stage_2c_db15_test.rs:9`, `m1_5_verification_test.rs:{76,203,207}`); 13 in `lane2_stage_2a_effects_smoke.rs:{62,63,64,65,66,76×2,90,94,95,97,98,100}` |
 | (c) Legitimate-looking | 3 classes | `collect_symbols`, stub-resolution sweep, dynamic name helpers (`infer.rs:1619`, `regen_tokenize.rs:159`) |
 
-PR-body framing: **159 safe, 21 silent, 3 class-level legitimate.**
+PR-body framing: **162 safe, 18 silent, 3 class-level legitimate.**
+(Site totals: 113 static `src/` + 67 tests = 180 actionable call
+sites; 180 − 18 (b) = 162 (a). The three (c) classes are consumer
+patterns, not individual sites, and are listed separately.)
 
 ## Recommendations
 
-1. **No lane needed to repair the (b) sites independently.** All 21
+1. **No lane needed to repair the (b) sites independently.** All 18
    sites dissolve automatically when their governing convergence
-   lands (5 with `std.verification`, 16 with `std.effects` /
+   lands (5 with `std.verification`, 13 with `std.effects` /
    http_path mirror). The existing ROADMAP rows already own the
    work.
 
@@ -269,7 +273,7 @@ PR-body framing: **159 safe, 21 silent, 3 class-level legitimate.**
    scaffold's dissolution blocker is the three known duplicated
    modules, nothing more. But the reflective-analysis concern
    that "new lanes may silently depend on rank preference" *is*
-   realized — the lane2 Stage 2a effects-smoke lane added 16
+   realized — the lane2 Stage 2a effects-smoke lane added 13
    silent-dependency sites (via `arrow_body` / `assert_record_type`
    helpers) after the scaffold went in. Every site is still
    governed by an already-tracked convergence row, but the cost
