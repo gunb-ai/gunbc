@@ -3528,8 +3528,8 @@ impl<'a> Ctx<'a> {
         let qualified_name = if is_optional_match {
             variant_name.clone()
         } else {
-            let named_enum_disj_id =
-                named_disj_root_for_rust_match_emit(self.dag, disj_id).ok_or_else(|| {
+            let named_enum_disj_id = named_disj_root_for_rust_match_emit(self.dag, disj_id)
+                .ok_or_else(|| {
                     EmitError::UnsupportedBehavior(
                         "match on anonymous sum declarations is not yet supported in Rust emission"
                             .to_string(),
@@ -4823,7 +4823,10 @@ impl<'a> Ctx<'a> {
 /// This is **not** a realization `meta_tag` row (`Type` / `Operator` / …); those
 /// only attach to `data` items with `Structural` bodies and compare equal to the
 /// bootstrap meta-type declaration ids. Here `meta_tag` points at another `Disj`.
-fn named_disj_root_for_rust_match_emit(dag: &Dag, mut disj_id: DeclarationId) -> Option<DeclarationId> {
+fn named_disj_root_for_rust_match_emit(
+    dag: &Dag,
+    mut disj_id: DeclarationId,
+) -> Option<DeclarationId> {
     for _ in 0..32 {
         let decl = dag.declaration(disj_id);
         let TypeConnective::Disj { .. } = &decl.connective else {
