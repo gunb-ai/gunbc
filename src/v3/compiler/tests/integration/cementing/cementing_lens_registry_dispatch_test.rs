@@ -5,11 +5,18 @@
 //!
 //! - `TESTING.md` — *Cementing tests (Band C — lens subsumption)*
 //! - `src/v3/compiler/regen.dag` — header comment on cementing dispatch
+//!
+//! **Authority cross-check.** `CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` is not a
+//! second source of truth: `cementing_escalation_slice_matches_capability_register`
+//! derives the required registry `name` keys from `docs/v3-lens-capability-register.md`
+//! (capability table) plus `regen.dag` (`LensRegistryEntry` rows) and asserts the
+//! slice matches exactly.
 
-use std::path::PathBuf;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::Behavior;
+use v3_compiler::dag::{Behavior, Dag, Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::lens_provenance::{origin_of, Origin};
 
 fn origin_label(origin: &Origin) -> &'static str {
@@ -27,9 +34,10 @@ fn origin_label(origin: &Origin) -> &'static str {
 /// Pairs of (`regen_lens --lens <name>` registry key, cementing module stem
 /// under `tests/integration/cementing/` without `.rs`).
 ///
-/// Append an entry when `docs/v3-lens-capability-register.md` promotes a
-/// lens to `BEHAVIORALLY COMPLETE` **and** the v2 counterpart column names a
-/// concrete v2 artifact (not `None (v3-native)` / not `N/A`). Land the new
+/// **Must match register + regen mechanically** — see
+/// `cementing_escalation_slice_matches_capability_register`. Append when the
+/// capability table row is plain `COMPLETE` (not `**PROXY**` / `**STUB**` / `N/A`)
+/// **and** the v2 counterpart cell is not `None (v3-native)`. Land the new
 /// `cementing/<stem>.rs` module and a `#[path = ...]` line in
 /// `tests/integration.rs` in the same PR.
 const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[(&str, &str)] = &[];
@@ -37,6 +45,140 @@ const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[(&str, &str)] = &[];
 /// Ratchet owner module — kept wired so `cargo test … cementing` always
 /// exercises this file; see `cementing_lens_registry_dispatch_test_is_wired_in_integration_rs`.
 const CEMENTING_REGISTRY_DISPATCH_STEM: &str = "cementing_lens_registry_dispatch_test";
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("expected src/v3/compiler -> workspace root")
+        .to_path_buf()
+}
+
+fn md_table_cells(line: &str) -> Vec<String> {
+    // Capability rows escape `|` inside cells as `\|` (see v3 output column).
+    let tmp = line.replace("\\|", "\u{241f}");
+    tmp.split('|')
+        .map(|s| s.replace('\u{241f}', "|").trim().to_string())
+        .collect()
+}
+
+/// Lens basenames (e.g. `complexity.dag`) whose register row is `COMPLETE` with a
+/// v2 counterpart beyond `None (v3-native)`.
+fn lens_basenames_requiring_v2_cementing_from_register_md() -> BTreeSet<String> {
+    let md_path = workspace_root().join("docs/v3-lens-capability-register.md");
+    let md = std::fs::read_to_string(&md_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", md_path.display()));
+    let mut basenames = BTreeSet::new();
+    for raw in md.lines() {
+        let line = raw.trim();
+        if !line.starts_with('|') || line.starts_with("|---") || line.contains("---|---") {
+            continue;
+        }
+        let cells = md_table_cells(line);
+        if cells.len() < 5 {
+            continue;
+        }
+        let lens_cell = cells[1].trim();
+        if lens_cell == "Lens" || !lens_cell.contains(".dag") {
+            continue;
+        }
+        let behavioral = cells[3].trim();
+        let v2 = cells[4].trim();
+        if behavioral != "COMPLETE" {
+            continue;
+        }
+        if v2.contains("None (v3-native)") {
+            continue;
+        }
+        let basename = lens_cell.trim_matches('`').trim();
+        if !basename.ends_with(".dag") {
+            continue;
+        }
+        basenames.insert(basename.to_string());
+    }
+    basenames
+}
+
+fn structural_fields(decl: &Declaration) -> &[(String, FieldValue)] {
+    let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "lens registry entry `{}` must carry a structural value body",
+            decl.name.as_deref().unwrap_or("<anonymous>")
+        );
+    };
+    fields.as_slice()
+}
+
+fn string_field(fields: &[(String, FieldValue)], label: &str, binding: &str) -> String {
+    fields
+        .iter()
+        .find(|(field_label, _)| field_label == label)
+        .and_then(|(_, value)| match value {
+            FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!("lens registry entry `{binding}` is missing a String `{label}` field")
+        })
+}
+
+fn read_lens_registry_name_lens_file_pairs(dag: &Dag) -> Vec<(String, String)> {
+    let entry_type_id = dag
+        .declaration_by_name("LensRegistryEntry")
+        .map(|decl| decl.id)
+        .expect("regen.dag must declare `LensRegistryEntry`");
+
+    dag.declarations()
+        .iter()
+        .filter(|decl| decl.meta_tag == Some(entry_type_id))
+        .map(|decl| {
+            let binding = decl
+                .name
+                .clone()
+                .unwrap_or_else(|| "<anonymous>".to_string());
+            let fields = structural_fields(decl);
+            (
+                string_field(fields, "name", &binding),
+                string_field(fields, "lens_file", &binding),
+            )
+        })
+        .collect()
+}
+
+/// `regen_lens --lens <name>` keys that must have cementing modules per the
+/// capability register escalation rule.
+fn registry_names_required_by_register_and_regen() -> BTreeSet<String> {
+    let basenames = lens_basenames_requiring_v2_cementing_from_register_md();
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap should load `src/v3/compiler/regen.dag` cleanly, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let rows = read_lens_registry_name_lens_file_pairs(&dag);
+    let mut names = BTreeSet::new();
+    let mut matched_basenames = BTreeSet::new();
+    for (name, lens_file) in rows {
+        let basename = Path::new(&lens_file)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or_else(|| {
+                panic!("registry entry `{name}` has lens_file without basename: {lens_file}")
+            });
+        if basenames.contains(basename) {
+            names.insert(name);
+            matched_basenames.insert(basename.to_string());
+        }
+    }
+    let missing: Vec<_> = basenames.difference(&matched_basenames).cloned().collect();
+    assert!(
+        missing.is_empty(),
+        "docs/v3-lens-capability-register.md escalates v2 cementing for lens basenames {missing:?}, \
+         but no `LensRegistryEntry` in src/v3/compiler/regen.dag names those files — \
+         fix the register table or add registry entries."
+    );
+    names
+}
 
 fn integration_rs_text() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -97,6 +239,23 @@ fn cementing_lens_registry_dispatch_test_is_wired_in_integration_rs() {
         &integration_rs,
         CEMENTING_REGISTRY_DISPATCH_STEM,
         "<cementing dispatch ratchet>",
+    );
+}
+
+#[test]
+fn cementing_escalation_slice_matches_capability_register() {
+    let expected = registry_names_required_by_register_and_regen();
+    let declared: BTreeSet<&str> = CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS
+        .iter()
+        .map(|(name, _)| *name)
+        .collect();
+    let expected_refs: BTreeSet<&str> = expected.iter().map(String::as_str).collect();
+    assert_eq!(
+        declared, expected_refs,
+        "`CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` must list exactly the registry `name` keys \
+         for rows where docs/v3-lens-capability-register.md marks `COMPLETE` with a v2 counterpart \
+         other than `None (v3-native)` — update the slice (and cementing modules + `#[path]` wiring) \
+         in the same PR as the register promotion."
     );
 }
 

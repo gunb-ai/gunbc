@@ -373,8 +373,12 @@ cementing module exists and `tests/integration.rs` wires it. Extend
 `CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` in
 `tests/integration/cementing/cementing_lens_registry_dispatch_test.rs`
 when the register row is upgraded; the test
+`cementing_escalation_slice_matches_capability_register` derives the
+required registry `name` keys from `docs/v3-lens-capability-register.md`
+plus `regen.dag` and asserts the slice matches **exactly** (the slice
+is a projection, not a parallel inventory). The test
 `cementing_test_modules_exist_for_escalated_v2_complete_registry_claims`
-requires each listed stem to resolve to an on-disk `.rs` file under
+then requires each listed stem to resolve to an on-disk `.rs` file under
 `cementing/` **and** to appear in `tests/integration.rs` behind an
 exact `#[path = "integration/cementing/<stem>.rs"]` attribute (so an
 orphan file cannot satisfy the ratchet).
