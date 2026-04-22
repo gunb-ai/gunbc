@@ -2,7 +2,7 @@
 
 **Companion:** [1e-3v-phase-3-dispatch-gate.md](../briefs/1e-3v-phase-3-dispatch-gate.md) — **live dispatch guidance** (Executive summary, cluster table, Phase 3.0, checklist). **Path:** `docs/review-findings/` (archival namespace per **`INVARIANTS.md`** + **Review AJ**).
 
-This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`), **Review AJ** (commit `3be30867`), **Review AK** / **Review AL** (commit `741b2cd3`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
+This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`), **Review AJ** (commit `3be30867`), **Review AK** / **Review AL** (commit `741b2cd3`), **Review AM** (commit `6e84d559`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
 
 ---
 
@@ -267,3 +267,12 @@ Relayed **BLOCKING** comment repeats the first review’s two claims: (1) `emit.
 - **Verdict:** APPROVE — docs-only diff looks clean.
 - **Split:** Live dispatch [`1e-3v-phase-3-dispatch-gate.md`](../briefs/1e-3v-phase-3-dispatch-gate.md) vs archival ingest (this file) matches **`INVARIANTS.md`** live-state guidance. Phase **3.0** test language still carries **`TESTING.md`** **unit-first** bar (dispatch § **Tests (required)** — line refs drift).
 - **Scope:** Nothing in the diff touches substrate, emitter, or test implementation code.
+
+**Review AM (claude / claude-opus-4-7, schedule, commit `6e84d559`, 2026-04-22T00:49:35Z)**
+
+- **Verdict:** APPROVE — doc-heavy, narrow diff.
+- **Summary under review:** [`1e-3v-phase-3-dispatch-gate.md`](../briefs/1e-3v-phase-3-dispatch-gate.md) (live dispatch brief); chronicle (this file, **Reviews A–AL** before **Review AM**); `src/v3/compiler/src/lower_generated.rs` **+11 lines** — **comment-only** scaffold annotation on `collect_symbols` (mirrors `lower.rs`), no logic change.
+- **Code delta (scaffold):** Meets tracked-debt bar — **documented** in-code + **`ROADMAP.md`** Post-merge debt (anchors **~160** / **~164** — drift); **`declaration_name_preference_rank`** in `dag.rs`; **bounded** to three named items (`std.effects`, `std.verification`, `http_path` mirror); **named dissolution trigger** (delete seeding branch with rank helper in `dag.rs`). No **`INVARIANTS.md`** / modeling-discipline / **`CODING.md`** / **`TESTING.md`** finding.
+- **Brief claims:** Prior spot-checks in chronicle stand; nothing contradicts live tree.
+- **Findings:** None.
+- **Exploratory (non-blocking):** Ingest **~270+ lines**, **30+** lettered reviews — **Reviews K** / **M** already flagged split before next lane — noted. Scaffold comment parallels **`Dag::declaration_name_preference_rank`** policy prose — two readers of one policy, not dual authority; on dissolution, remove **both** as the comment promises.
