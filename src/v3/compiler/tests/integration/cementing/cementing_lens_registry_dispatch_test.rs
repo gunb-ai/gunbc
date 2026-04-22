@@ -244,7 +244,7 @@ fn find_bind_value_port(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler:
 }
 
 #[test]
-fn provenance_origin_of_cements_behavior_complete_row_on_minimal_ports() {
+fn provenance_origin_of_cements_complete_row_via_compile_to_dag_fixture() {
     // Register row: `provenance.dag` — BEHAVIORALLY COMPLETE, v3-native.
     // Integration crate cannot reach `Dag`'s `pub(crate)` builder helpers
     // (`alloc_port_with_shape`); `compile_to_dag` fixtures still cement the
