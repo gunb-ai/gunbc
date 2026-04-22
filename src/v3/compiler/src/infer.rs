@@ -34,7 +34,7 @@ use crate::diagnostics::{
     Diagnostic, SourceSpan,
 };
 use crate::infer_helpers::{
-    behavior_output_port,
+    behavior_output_port, behavior_span, payload_binding_span as generated_payload_binding_span,
     resolve_template_argument_value as generated_resolve_template_argument_value,
     template_argument_value as generated_template_argument_value, TemplateArgumentLookup,
 };
@@ -690,10 +690,7 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
 }
 
 fn payload_binding_span(path: &crate::dag::Path, branch_span: &SourceSpan) -> SourceSpan {
-    match &path.pattern {
-        crate::dag::BranchPattern::UnresolvedVariant { span, .. } => span.clone(),
-        crate::dag::BranchPattern::ResolvedVariant(_) => branch_span.clone(),
-    }
+    generated_payload_binding_span(path, branch_span.clone())
 }
 
 enum Decision {
@@ -4247,7 +4244,7 @@ fn transform_target_display_name(dag: &Dag, target: &TransformTarget) -> String 
 fn node_span_for_port(dag: &Dag, port: PortId) -> Option<SourceSpan> {
     dag.port(port)
         .produced_by
-        .map(|node_id| dag.node(node_id).span().clone())
+        .map(|node_id| behavior_span(dag.node(node_id)))
 }
 
 fn synthetic_span() -> SourceSpan {
