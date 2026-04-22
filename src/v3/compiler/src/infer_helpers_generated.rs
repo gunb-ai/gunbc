@@ -6,6 +6,11 @@ pub enum TemplateArgumentLookup {
     MissingTemplateArgument,
     FoundTemplateArgument { _0: DeclarationId },
 }
+#[derive(Clone, Debug)]
+pub enum TemplateArgumentBinding {
+    TemplateArgumentBindingConflict,
+    TemplateArgumentsBound { _0: Vec<TemplateArgument> },
+}
 pub fn behavior_output_port(p0: &Behavior) -> PortId {
     match p0 {
         Behavior::Value(v) => (v).result_port(),
@@ -65,6 +70,89 @@ pub fn resolve_template_argument_value(
                     p2
                 } else {
                     resolve_template_argument_value(&((*(p0)) - 1), p1, (*(next)))
+                }
+            }
+        }
+    }
+}
+pub fn template_arguments_match(p0: &[TemplateArgument], p1: &[TemplateArgument]) -> bool {
+    match p0 {
+        [] => match p1 {
+            [] => true,
+            [__list_head, __list_tail @ ..] => false,
+        },
+        [__list_head, __list_tail @ ..] => match p1 {
+            [] => false,
+            [__list_head, __list_tail @ ..] => {
+                if ((__list_head).parameter == (__list_head).parameter) {
+                    if ((__list_head).value == (__list_head).value) {
+                        template_arguments_match(__list_tail, __list_tail)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+        },
+    }
+}
+pub fn push_template_argument_binding(
+    p0: Vec<TemplateArgument>,
+    p1: DeclarationId,
+    p2: DeclarationId,
+) -> TemplateArgumentBinding {
+    match &p0 {
+        [] => TemplateArgumentBinding::TemplateArgumentsBound {
+            _0: {
+                let mut __list = Vec::new();
+                __list.insert(
+                    0,
+                    TemplateArgument {
+                        parameter: p1,
+                        value: p2,
+                    },
+                );
+                __list
+            },
+        },
+        [__list_head, __list_tail @ ..] => {
+            if ((__list_head).parameter == p1) {
+                if ((__list_head).value == p1) {
+                    TemplateArgumentBinding::TemplateArgumentsBound {
+                        _0: {
+                            let mut __list = (__list_tail).to_vec();
+                            __list.insert(
+                                0,
+                                TemplateArgument {
+                                    parameter: (__list_head).parameter,
+                                    value: p2,
+                                },
+                            );
+                            __list
+                        },
+                    }
+                } else {
+                    if ((__list_head).value == p2) {
+                        TemplateArgumentBinding::TemplateArgumentsBound { _0: (p0).clone() }
+                    } else {
+                        TemplateArgumentBinding::TemplateArgumentBindingConflict
+                    }
+                }
+            } else {
+                match &(push_template_argument_binding((__list_tail).to_vec(), p1, p2)) {
+                    TemplateArgumentBinding::TemplateArgumentBindingConflict => {
+                        TemplateArgumentBinding::TemplateArgumentBindingConflict
+                    }
+                    TemplateArgumentBinding::TemplateArgumentsBound { _0: updated_tail } => {
+                        TemplateArgumentBinding::TemplateArgumentsBound {
+                            _0: {
+                                let mut __list = (updated_tail).to_vec();
+                                __list.insert(0, (__list_head).clone());
+                                __list
+                            },
+                        }
+                    }
                 }
             }
         }

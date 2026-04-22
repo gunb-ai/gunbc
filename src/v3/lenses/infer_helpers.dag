@@ -31,7 +31,9 @@ type TemplateArgumentLookup
 // helpers that `infer.rs` uses while resolving callable targets.
 type TemplateArgumentBinding
   = TemplateArgumentBindingConflict
-  | TemplateArgumentsBound(List<TemplateArgument>)
+  | TemplateArgumentBindingNoOp
+  | TemplateArgumentBindingAppend
+  | TemplateArgumentBindingReplaceAt(Int, DeclarationId)
 
 fn behavior_output_port(behavior: Behavior) -> PortId =
   match behavior {
@@ -124,30 +126,25 @@ fn push_template_argument_binding(
   parameter: DeclarationId,
   value: DeclarationId
 ) -> TemplateArgumentBinding =
+  push_template_argument_binding_at(arguments, parameter, value, 0)
+
+fn push_template_argument_binding_at(
+  arguments: List<TemplateArgument>,
+  parameter: DeclarationId,
+  value: DeclarationId,
+  index: Int
+) -> TemplateArgumentBinding =
   match arguments {
-    Empty =>
-      TemplateArgumentsBound(cons({ parameter: parameter, value: value }, empty()))
+    Empty => TemplateArgumentBindingAppend
     Cons(payload) =>
       if payload.head.parameter == parameter then
         if payload.head.value == parameter then
-          TemplateArgumentsBound(
-            cons(
-              {
-                parameter: payload.head.parameter
-                value: value
-              },
-              payload.tail
-            )
-          )
+          TemplateArgumentBindingReplaceAt(index, value)
         else
           if payload.head.value == value then
-            TemplateArgumentsBound(arguments)
+            TemplateArgumentBindingNoOp
           else
             TemplateArgumentBindingConflict
       else
-        match push_template_argument_binding(payload.tail, parameter, value) {
-          TemplateArgumentBindingConflict => TemplateArgumentBindingConflict
-          TemplateArgumentsBound(updated_tail) =>
-            TemplateArgumentsBound(cons(payload.head, updated_tail))
-        }
+        push_template_argument_binding_at(payload.tail, parameter, value, index + 1)
   }

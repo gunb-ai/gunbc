@@ -1556,8 +1556,16 @@ fn push_template_argument_binding(
 ) -> bool {
     match generated_push_template_argument_binding(arguments, &parameter, &value) {
         TemplateArgumentBinding::TemplateArgumentBindingConflict => false,
-        TemplateArgumentBinding::TemplateArgumentsBound { _0: updated } => {
-            *arguments = updated;
+        TemplateArgumentBinding::TemplateArgumentBindingNoOp => true,
+        TemplateArgumentBinding::TemplateArgumentBindingAppend => {
+            arguments.push(TemplateArgument { parameter, value });
+            true
+        }
+        TemplateArgumentBinding::TemplateArgumentBindingReplaceAt { _0: index, _1: updated } => {
+            let Some(existing) = arguments.get_mut(*index as usize) else {
+                return false;
+            };
+            existing.value = *updated;
             true
         }
     }
@@ -4398,10 +4406,11 @@ mod bool_logical_operator_arrow_tests {
 
     #[test]
     fn template_argument_reconciliation_helpers_match_and_update_consistently() {
-        let p0 = DeclarationId(1);
-        let p1 = DeclarationId(2);
-        let v0 = DeclarationId(10);
-        let v1 = DeclarationId(11);
+        let dag = Dag::new();
+        let p0 = dag.bool_shape().expect("bootstrap Bool").declaration;
+        let p1 = dag.int_shape().expect("bootstrap Int").declaration;
+        let v0 = dag.string_shape().expect("bootstrap String").declaration;
+        let v1 = dag.int_shape().expect("bootstrap Int").declaration;
         let mut arguments = vec![
             TemplateArgument {
                 parameter: p0,
