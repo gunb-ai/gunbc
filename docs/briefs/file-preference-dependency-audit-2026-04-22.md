@@ -154,9 +154,9 @@ v5 added the language-spec group with 5 direct-call sites; v7
 found 4 more helper-mediated language-spec sites
 (`find_named(...)` in `m1_substrate_test.rs:679` and
 `m2_substrate_inhabitance_test.rs:{665,666,667}`) that the earlier
-grep missed. 22 sites live in `src/v3/compiler/tests/integration/`;
+grep missed. 23 sites live in `src/v3/compiler/tests/integration/`;
 4 live in `src/v3/compiler/src/dag.rs` (the init-pass surface
-lookups); 1 is already counted above under the 22 tests.
+lookups).
 
 1. `src/v3/compiler/tests/integration/m1_5_testgen_test.rs:208`
    ```rust
