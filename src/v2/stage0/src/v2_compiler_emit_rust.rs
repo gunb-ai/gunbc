@@ -1831,6 +1831,45 @@ pub fn emit_type_params(
     }
 }
 
+pub fn source_spans_equal(a: &Rc<SourceSpan>, b: &Rc<SourceSpan>) -> bool {
+    (((a.start.clone() == b.start.clone()) && (a.end.clone() == b.end.clone()))
+        && (a.file.clone().as_str() == b.file.clone().as_str()))
+}
+
+pub fn is_function_type_param(param: &Rc<Node>) -> bool {
+    match param.ident_span.clone() {
+        Some(ps) => match param_node_type_expr(&param).ident_span.clone() {
+            Some(ts) => source_spans_equal(&ps, &ts),
+            None => false,
+        },
+        None => false,
+    }
+}
+
+pub fn function_type_params(params: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in params.iter().cloned() {
+            if is_function_type_param(&p) {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+}
+
+pub fn function_value_params(params: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in params.iter().cloned() {
+            if !is_function_type_param(&p) {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+}
+
 pub fn emit_type_def_from_connective(
     item: &Rc<Node>,
     recursive_types: Rc<HashMap<String, bool>>,
@@ -2576,14 +2615,17 @@ pub fn emit_fn_def(
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
+        let type_params = function_type_params(params.clone());
+        let value_params = function_value_params(params.clone());
+        let type_params_str = emit_type_params(&type_params, si.clone());
         let params_str = emit_params(
-            params.clone(),
+            value_params.clone(),
             shared_types.clone(),
             si.clone(),
             emit_info.read_only_params.clone(),
         );
         let ret_str = emit_inferred(inferred, shared_types.clone(), si.clone());
-        let body_scope = build_params_scope(&scope, params.clone());
+        let body_scope = build_params_scope(&scope, value_params.clone());
         let depth = 0;
         let use_tco = is_tco_eligible(&name, &body, registry.clone(), &si);
         let needs_stacker = (is_self_recursive(&name, body.clone(), registry.clone(), si.clone())
@@ -2591,11 +2633,11 @@ pub fn emit_fn_def(
         if use_tco.clone() {
             {
                 let tco_params_str =
-                    emit_tco_params(params.clone(), shared_types.clone(), si.clone());
+                    emit_tco_params(value_params.clone(), shared_types.clone(), si.clone());
                 let body_str = emit_typed_tco_body(
                     body.clone(),
                     name.clone(),
-                    params.clone(),
+                    value_params.clone(),
                     registry.clone(),
                     body_scope,
                     (depth.clone() + 1),
@@ -2613,10 +2655,19 @@ pub fn emit_fn_def(
                                             v2_rt::concat(
                                                 v2_rt::concat(
                                                     v2_rt::concat(
-                                                        v2_rt::concat(rust_visibility_prefix(), kw),
-                                                        " ".to_string(),
+                                                        v2_rt::concat(
+                                                            v2_rt::concat(
+                                                                rust_visibility_prefix(),
+                                                                kw,
+                                                            ),
+                                                            " ".to_string(),
+                                                        ),
+                                                        emit_ident(
+                                                            name.clone(),
+                                                            RenderTarget::Rust,
+                                                        ),
                                                     ),
-                                                    emit_ident(name.clone(), RenderTarget::Rust),
+                                                    type_params_str,
                                                 ),
                                                 "(".to_string(),
                                             ),
@@ -2638,6 +2689,7 @@ pub fn emit_fn_def(
         } else {
             emit_fn_def_non_tco(
                 name.clone(),
+                type_params_str,
                 params_str,
                 ret_str,
                 body.clone(),
@@ -2654,6 +2706,7 @@ pub fn emit_fn_def(
 
 pub fn emit_fn_def_non_tco(
     name: String,
+    type_params_str: String,
     params_str: String,
     ret_str: String,
     body: Rc<Node>,
@@ -2691,15 +2744,19 @@ pub fn emit_fn_def_non_tco(
                                                             v2_rt::concat(
                                                                 v2_rt::concat(
                                                                     v2_rt::concat(
-                                                                        rust_visibility_prefix(),
-                                                                        kw,
+                                                                        v2_rt::concat(
+                                                                            rust_visibility_prefix(
+                                                                            ),
+                                                                            kw,
+                                                                        ),
+                                                                        " ".to_string(),
                                                                     ),
-                                                                    " ".to_string(),
+                                                                    emit_ident(
+                                                                        name,
+                                                                        RenderTarget::Rust,
+                                                                    ),
                                                                 ),
-                                                                emit_ident(
-                                                                    name,
-                                                                    RenderTarget::Rust,
-                                                                ),
+                                                                type_params_str,
                                                             ),
                                                             "(".to_string(),
                                                         ),
@@ -2749,10 +2806,13 @@ pub fn emit_fn_def_non_tco(
                                         v2_rt::concat(
                                             v2_rt::concat(
                                                 v2_rt::concat(
-                                                    v2_rt::concat(rust_visibility_prefix(), kw),
-                                                    " ".to_string(),
+                                                    v2_rt::concat(
+                                                        v2_rt::concat(rust_visibility_prefix(), kw),
+                                                        " ".to_string(),
+                                                    ),
+                                                    emit_ident(name, RenderTarget::Rust),
                                                 ),
-                                                emit_ident(name, RenderTarget::Rust),
+                                                type_params_str,
                                             ),
                                             "(".to_string(),
                                         ),
