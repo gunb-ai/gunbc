@@ -116,22 +116,28 @@ Against the deferred-debt section:
 
 The consolidation can be measured:
 
-**Primary ratchet:** count of `type` declarations in `src/v3/compiler/*.dag` outside of `pipeline.dag`, `regen.dag`, and `lenses/*.dag`.
+**Primary ratchet:** count of `type` declarations in `src/v3/compiler/*.dag` outside of `pipeline.dag`, `regen.dag`, `lenses/*.dag`, **and `parse_tables.dag` (temporarily exempted pending SG-2c-proper classification — see below)**.
 
 Baseline (2026-04-22, measured by `grep -cE "^type [A-Z]" src/v3/compiler/*.dag`):
 
 | File | Type decls | Category |
 |---|---|---|
-| `tokenize.dag` | 6 | **migrates to `std/`** |
-| `runtime_mirrors.dag` | 14 | **migrates to `std/`** |
-| `parse_tables.dag` | 4 | **migrates** (per-type decision deferred; some may stay compiler-API as dispatch-row shapes) |
+| `tokenize.dag` | 6 | **migrates to `std/`** (counts toward ratchet) |
+| `runtime_mirrors.dag` | 14 | **migrates to `std/`** (counts toward ratchet) |
+| `parse_tables.dag` | 4 | **exempted** pending SG-2c-proper per-row classification |
 | `operators.dag` | 0 | — |
 | `pipeline.dag` | 3 | positive-def: stays |
 | `regen.dag` | 1 | positive-def: stays |
 
-**Primary ratchet count today: 24 (tokenize + runtime_mirrors + parse_tables).**
+**Primary ratchet count today: 20 (tokenize + runtime_mirrors).**
 
 End state: 0. Each migration lane reduces the count; `pipeline.dag` and `regen.dag` type counts track positive-definition growth separately and are not bounded downward by this ratchet.
+
+**`parse_tables.dag` exemption protocol.** The gap analysis above (§"From `src/v3/compiler/parse_tables.dag` → unclear") says some row *shapes* (`BinaryOpRow`, `TopLevelItemKwRow`, etc.) may legitimately stay compiler-API as parser-dispatch shapes, while the *data* they carry (operator precedence levels, keyword-to-item mappings) moves to `std/syntax.dag`. That per-row classification is deferred until SG-2c-proper parser cutover. While deferred, `parse_tables.dag` is **exempted from the primary ratchet count** — its 4 types neither count toward the migration target nor against it. When SG-2c-proper classifies:
+- Rows classified as **compiler-API dispatch shapes** → formally added to the positive-definition set (same status as `pipeline.dag` / `regen.dag` types).
+- Rows classified as **language-level data** → become ratchet-tracked migrations to `std/syntax.dag`.
+
+The exemption dissolves at SG-2c-proper completion; both thesis doc and ROADMAP row update the ratchet formula in the same PR as SG-2c-proper lands.
 
 **Secondary ratchet — v3-std tree consolidation.** Count of `type` declarations in `src/v3/std/*.dag`. Baseline: 142 types across 13 files (substrate.dag 38, emit_model.dag 28, effects.dag 26, clean_emission.dag 12, computation_model.dag 10, verification.dag 8, substrate_minimal.dag 6, dimensions.dag 4, algebra.dag 3, diagnostics.dag 3, list.dag 2, resources.dag 2, workflows.dag 0). These collapse to `dsl/std/*.dag` wholesale when the file-preference scaffold dissolves (ROADMAP: v2 retirement gate). This ratchet is gated by that dissolution, not per-lane moves.
 
