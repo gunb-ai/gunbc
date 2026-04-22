@@ -4444,4 +4444,30 @@ mod bool_logical_operator_arrow_tests {
         ));
         assert!(!push_template_argument_binding(&mut arguments, p1, v0));
     }
+
+    #[test]
+    fn template_arguments_match_generated_projection_agrees_across_length_and_value_cases() {
+        let dag = Dag::new();
+        let p0 = dag.bool_shape().expect("bootstrap Bool").declaration;
+        let p1 = dag.int_shape().expect("bootstrap Int").declaration;
+        let v0 = dag.string_shape().expect("bootstrap String").declaration;
+        let v1 = dag.bool_shape().expect("bootstrap Bool").declaration;
+        let pair = |parameter, value| TemplateArgument { parameter, value };
+
+        let empty: Vec<TemplateArgument> = vec![];
+        assert!(template_arguments_match(&empty, &empty));
+        assert!(!template_arguments_match(&empty, &[pair(p0, v0)]));
+        assert!(!template_arguments_match(&[pair(p0, v0)], &empty));
+
+        let two = vec![pair(p0, v0), pair(p1, v1)];
+        assert!(template_arguments_match(&two, &two.clone()));
+        assert!(!template_arguments_match(
+            &two,
+            &[pair(p0, v0), pair(p1, v0)],
+        ));
+        assert!(!template_arguments_match(
+            &two,
+            &[pair(p0, v0), pair(p0, v1)],
+        ));
+    }
 }
