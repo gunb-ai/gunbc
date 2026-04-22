@@ -1916,8 +1916,14 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   let inferred = prefix.inferred
   let ctx = prefix.ctx
   // Type params prepend to params (same slot as type definitions).
-  // Type params are structurally distinguishable: param_node_name == param_node_type_expr.name
-  // (self-referential), while function params have name != type_expr.name.
+  // At parse time they're distinguishable via span-identity
+  // (collect_type_param_names builds both the param's name_span and the
+  // type_expr's span from the same token). Post-resolve, consumers use
+  // the grounded invariant installed by resolve_item_types:909 —
+  // type_expr.inferred == TypeVariable && param.name == type_expr.name.
+  // See is_function_type_param in src/v2/05_emit_rust.dag for the
+  // emit-time classifier. Dissolution: partition this slot into
+  // type_params/value_params or add a ParamKind discriminator.
   let all_params = concat(type_params, params)
   let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: all_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 

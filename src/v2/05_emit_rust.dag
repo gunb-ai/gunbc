@@ -950,6 +950,83 @@ fn emit_type_params(params: List<Node>, source_indices: Map<String, NewlineIndex
   }
 }
 
+// Split a fn item's `params` slot (which holds type params prepended to value
+// params, per parse_fn_body_from_prefix) at emit time, post-resolve.
+//
+// Structural basis (post-resolve):
+//   - resolve_item_types (04_resolve.dag:923) registers each declared type
+//     param T as a TypeEnv binding whose resolved node carries
+//     `inferred: Some(TypeVariable { id: T })`.
+//   - For a type-param Node `T: T`, resolve rewrites the type_expr to that
+//     binding node, so after resolve the type_expr carries
+//     `inferred: TypeVariable` AND the authored name of the type_expr
+//     matches the authored name of the param.
+//   - For a value-param Node `x: T`, only the type_expr carries TypeVariable;
+//     the param's authored name differs from the type_expr's authored name.
+//   - For any other value-param `n: Int` etc., the type_expr carries
+//     `inferred: Resolved { ... }`, not TypeVariable.
+// These two conditions together uniquely identify a declared type param
+// after resolve has run.
+//
+// Recovery-dummy note: parse_param's error-path dummy (02_parse.dag:3232)
+// has identical spans but its type_expr has `inferred: none`, so this check
+// correctly returns false. In any case, recovery dummies only appear when
+// parse already emitted an error, and fail-closed discipline halts the
+// pipeline before emission is reached.
+//
+// Dissolution target: partition Node's `params` slot into `type_params` /
+// `value_params`, or add a `ParamKind` discriminator. When that lands,
+// these helpers collapse to the partitioned read.
+fn is_function_type_param(param: Node) -> Bool {
+  let type_expr = param_node_type_expr(n: param)
+  let type_expr_is_var = match type_expr.inferred {
+    Some { value: inf } => is_type_variable(inferred: inf)
+    None => false
+  }
+  // Name match via Node.name — stable across both source spans and the
+  // kernel spans installed by resolve_item_types's TypeVariable bindings.
+  // The param.name != "" guard is belt-and-suspenders: the primary filter
+  // for parse_param's recovery dummy (name: "", type_expr.inferred: none)
+  // is type_expr_is_var above. The empty-string guard only fires if some
+  // future pipeline change populates TypeVariable on an unnamed node —
+  // in which case falling through "" == "" would silently classify it as
+  // a type param. Cheap to keep until ParamKind dissolves the classifier.
+  type_expr_is_var && param.name != "" && param.name == type_expr.name
+}
+
+fn function_type_params(params: List<Node>) -> List<Node> {
+  params |> filter(p => is_function_type_param(param: p))
+}
+
+fn function_value_params(params: List<Node>) -> List<Node> {
+  params |> filter(p => !is_function_type_param(param: p))
+}
+
+// Detect the ambiguity `fn f<T>(T: T)` where a value param's name collides
+// with a declared type param. Both params satisfy is_function_type_param
+// (name == type_expr.name AND type_expr.inferred is TypeVariable, because
+// resolve_item_types registered T as a TypeVariable binding). The emit-time
+// splitter can't tell them apart — that's the P1 shape flagged by the
+// dissolution target (partition Node.params into type/value, or add
+// ParamKind).
+//
+// Primary fail-closed for this ambiguity already lives upstream as a typed
+// gunbc Diagnostic at resolve_item_types (04_resolve.dag:923, using
+// has_duplicate_type_param_name). This emit-time `compile_error!` is kept
+// as belt-and-suspenders against pipelines that bypass resolve (direct
+// emit_fn_def calls in tests, partial pipelines) and would otherwise emit
+// silent `<T, T>`.
+//
+// Dissolution trigger for deleting THIS emit-time guard: when the
+// ParamKind / params-slot partition dissolution lands, the classifier and
+// this collision detector both evaporate — the boundary becomes
+// structural instead of heuristic. (The upstream resolve-layer diagnostic
+// would likely also change shape or dissolve at the same time.)
+fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
+  let names = type_params |> map(p => p.name)
+  (names |> count) > (unique_strings(items: names) |> count)
+}
+
 fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?) -> String {
   let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
   let item_text = authored_name(env: env, node: item)
@@ -1163,38 +1240,50 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, shar
 
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
-  let params_str = emit_params(params: params, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params)
+  // Split the prepended type params from value params. Type params emit verbatim
+  // as `<T, U>` with no synthesized bounds — `.dag` authority is source of truth.
+  let type_params = function_type_params(params: params)
+  let value_params = function_value_params(params: params)
+  // Fail closed on the `fn f<T>(T: T)` name-shadowing ambiguity — the
+  // emit-time splitter can't distinguish the declared type param from the
+  // value param. Emit a target-compile-time error rather than silent
+  // `<T, T>`. Dissolution: partition Node.params or add ParamKind.
+  if function_type_params_have_collision(type_params: type_params) {
+    return concat("compile_error!(\"type param name collides with a value param in fn '", name, "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n")
+  }
+  let type_params_str = emit_type_params(params: type_params, source_indices: si)
+  let params_str = emit_params(params: value_params, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params)
   let ret_str = emit_inferred(inferred: inferred, shared_types: shared_types, source_indices: si)
-  let body_scope = build_params_scope(scope: scope, params: params)
+  let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
   let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_indices: si)
   // Stacker wrapping: recursive non-TCO functions need stack growth to avoid
   // overflow on large .dag files (e.g., 02_parse.dag at ~4000 lines).
   let needs_stacker = is_self_recursive(name: name, body: body, registry: registry, source_indices: si) && use_tco == false
   if use_tco {
-    let tco_params_str = emit_tco_params(params: params, shared_types: shared_types, source_indices: si)
-    let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
+    let tco_params_str = emit_tco_params(params: value_params, shared_types: shared_types, source_indices: si)
+    let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: value_params, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
     let kw = rust_items().func_keyword
-    concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), "(", tco_params_str, ")", ret_str, " {\n",
+    concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", tco_params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1),body_str, "\n}")
   } else {
-    emit_fn_def_non_tco(name: name, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_stacker: needs_stacker)
+    emit_fn_def_non_tco(name: name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_stacker: needs_stacker)
   }
 }
 
 // Emit a non-TCO function body, optionally wrapped in stacker::maybe_grow for recursive functions.
-fn emit_fn_def_non_tco(name: String, params_str: String, ret_str: String, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, needs_stacker: Bool) -> String {
+fn emit_fn_def_non_tco(name: String, type_params_str: String, params_str: String, ret_str: String, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, needs_stacker: Bool) -> String {
   if needs_stacker {
     let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth + 2, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     let kw = rust_items().func_keyword
-    concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
+    concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1), "stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {\n",
       make_indent(level: depth + 2), body_str, "\n",
       make_indent(level: depth + 1), "})\n}")
   } else {
     let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     let kw = rust_items().func_keyword
-    concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
+    concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1), body_str, "\n}")
   }
 }
@@ -1214,6 +1303,16 @@ fn emit_func_def(
   shared_types: Map<String, Bool>,
   emit_info: EmitGraphInfo
 ) -> String {
+  // Note: `func`/`pattern`/`interface` items parse through
+  // parse_block_body_from_prefix, which stores `prefix.params` directly and
+  // drops `prefix.type_params`. Unlike `fn` (parse_fn_body_from_prefix), the
+  // `params` slot here carries value params only, so no type/value split is
+  // needed. Fail closed if that invariant ever breaks — e.g., a future
+  // parser change that prepends type params into this slot would silently
+  // emit them as value params without the guard below.
+  if function_type_params(params: params) |> count > 0 {
+    return concat("compile_error!(\"emit_func_def saw type params in `", name, "` — func/pattern/interface don't route through the generic-fn split today; the parser invariant at parse_block_body_from_prefix has changed. Plumb type_params through this path or dissolve via ParamKind/params-slot partition.\");\n")
+  }
   let depth = 0
   let service_names = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.service_names

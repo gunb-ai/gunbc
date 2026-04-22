@@ -33,7 +33,7 @@ jobs:
     # Skip draft PRs. `github.event.pull_request.draft` is undefined on push
     # events, so `!= true` keeps main-branch pushes running.
     if: github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -54,7 +54,7 @@ jobs:
 
   ci:
     if: github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -99,7 +99,7 @@ jobs:
 
   v3:
     if: github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     # Full suite is capped at 1200s, plus clippy + lens gates + cold compile — 15m
     # can cancel the job before the final steps finish.
     timeout-minutes: 25
@@ -264,7 +264,7 @@ jobs:
   # Lane 1 Stage 1e closes: do not block merges on this job yet.
   self_host_ratchet:
     if: github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 20
     needs: [v3]
     continue-on-error: true

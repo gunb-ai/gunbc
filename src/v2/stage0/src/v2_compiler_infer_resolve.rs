@@ -2382,6 +2382,53 @@ pub fn fn_type_param_names(
     })
 }
 
+pub fn has_duplicate_type_param_name(names: &Rc<Vec<String>>) -> bool {
+    {
+        let mut __found = false;
+        for pair in Rc::new(
+            names
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        {
+            if {
+                let idx = pair.0.clone();
+                let s = pair.1.clone();
+                {
+                    let mut __found = false;
+                    for other in Rc::new(
+                        names
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip((idx.clone() + 1) as usize)
+                            .collect::<Vec<_>>(),
+                    )
+                    .iter()
+                    .cloned()
+                    {
+                        if (other.clone().as_str() == s.clone().as_str()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
 pub fn resolve_item_types(
     item: &Rc<Node>,
     env: &Rc<TypeEnv>,
@@ -2389,10 +2436,17 @@ pub fn resolve_item_types(
 ) -> Rc<ItemResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let tp_names = fn_type_param_names(item.clone(), env.source_indices.clone());
-        let env = tp_names
-            .iter()
-            .cloned()
-            .fold(env.clone(), |e: Rc<TypeEnv>, tp_name: String| {
+        let collision_diags = if has_duplicate_type_param_name(&tp_names) {
+            Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: v2_rt::concat(v2_rt::concat("type param name collides with a value param in fn '".to_string(), authored_name_at(env.source_indices.clone(), &item)), "' — a value param shares its name with a declared type param (e.g., `fn f<T>(T: T)`). Rename the value param, or dissolve via ParamKind / params-slot partition.".to_string()),
+    span: item.span.clone(),
+}), module_name.clone())])
+        } else {
+            Rc::new(vec![])
+        };
+        let env = tp_names.clone().iter().cloned().fold(
+            env.clone(),
+            |e: Rc<TypeEnv>, tp_name: String| {
                 Rc::new(TypeEnv {
                     bindings: v2_rt::rc_map_insert(
                         e.bindings.clone(),
@@ -2430,7 +2484,8 @@ pub fn resolve_item_types(
                     source_indices: e.source_indices.clone(),
                     intern_table: e.intern_table.clone(),
                 })
-            });
+            },
+        );
         let param_results = Rc::new({
             let mut __result = Vec::new();
             for p in item.params.clone().iter().cloned() {
@@ -2604,7 +2659,13 @@ pub fn resolve_item_types(
                     v2_rt::concat(
                         v2_rt::concat(
                             v2_rt::concat(
-                                v2_rt::concat(v2_rt::concat(param_diags, ret_diags), use_diags),
+                                v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat(collision_diags, param_diags),
+                                        ret_diags,
+                                    ),
+                                    use_diags,
+                                ),
                                 body_diags,
                             ),
                             anno_diags,

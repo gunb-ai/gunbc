@@ -179,6 +179,62 @@ fn strict_pipeline_smoke() {
     );
 }
 
+// Regression for D-rescope: the Rust emitter must carry generic fn type
+// params through to the emitted signature (no synthesized bounds), and must
+// NOT treat a type param as a value param. This exercises
+// `emit_fn_def` / `emit_func_def` on a `.dag` source with both a generic
+// identity fn and a multi-type-param fn.
+#[test]
+fn generic_fn_emits_type_params_without_synthesized_bounds() {
+    let source = "module gen_emit\n\nfn identity<T>(x: T) -> T {\n  x\n}\n\nfn fold_stack<T, B>(stack: List<T>, init: B, f: fn(B, T) -> B) -> B {\n  init\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/gen_emit.rs");
+    // Type params appear in the signature with no `: Clone` / `: Trait` bounds.
+    assert!(
+        content.contains("fn identity<T>(") || content.contains("pub fn identity<T>("),
+        "expected `fn identity<T>(` in emitted Rust; got:\n{content}"
+    );
+    assert!(
+        content.contains("fn fold_stack<T, B>(") || content.contains("pub fn fold_stack<T, B>("),
+        "expected `fn fold_stack<T, B>(` in emitted Rust; got:\n{content}"
+    );
+    // The type param must not appear as a value param (would indicate the
+    // splitter misclassified it).
+    assert!(
+        !content.contains("identity(x: T, T:"),
+        "type param T leaked into value-param list; got:\n{content}"
+    );
+    // No synthesized trait bounds on type params — authority is source of truth.
+    assert!(
+        !content.contains("<T: Clone>") && !content.contains("<T, B: Clone>"),
+        "emitter synthesized a Clone bound; got:\n{content}"
+    );
+}
+
+// P3 fail-closed receipt for the `fn f<T>(T: T)` name-shadowing ambiguity
+// flagged by codex on PR #661. The emit-time type/value-param splitter keys
+// on name equality + post-resolve TypeVariable, so it can't distinguish the
+// declared type param from a value param that shadows it. Until ParamKind
+// / params-slot partition dissolves the splitter, fail-closed lives at the
+// resolve boundary (resolve_item_types in 04_resolve.dag) as a typed gunbc
+// Diagnostic. The emit-side compile_error! guard in emit_fn_def is kept as
+// a belt-and-suspenders second layer.
+#[test]
+fn generic_fn_with_value_param_shadowing_type_param_fails_closed() {
+    let source = "module shadow_test\n\nfn weird<T>(t: T) -> T {\n  t\n}\n\nfn collide<T>(T: T) -> T {\n  T\n}\n";
+    let result = compile_dag(source);
+    // Primary fail-closed: resolve emits a gunbc Diagnostic naming the
+    // colliding fn, so compilation does not succeed silently.
+    let messages = diagnostic_messages(&result);
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("collide") && m.contains("type param name collides")),
+        "expected a gunbc diagnostic naming `collide` for the name-shadowing fn; got messages:\n{messages:#?}"
+    );
+}
+
 #[test]
 fn generic_type_declaration_smoke() {
     let source = "module generics_smoke\n\ntype Pair<A, B> { first: A  second: B }\n\nfn make_pair(x: Int, y: String) -> Pair<Int, String> {\n  Pair { first: x, second: y }\n}\n\nfn get_first(p: Pair<Int, String>) -> Int {\n  p.first\n}\n";
