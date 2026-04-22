@@ -137,6 +137,26 @@ Each placeholder below gets promoted to a full brief when dispatched. Stop-signa
 - **Acceptance:** either a ported `MethodSemantics` surface with a cementing test, or a register footnote + ROADMAP update receipt.
 - **STOP-AND-ESCALATE:** v3 structural resolution turns out to carry *some* of the facts but not all → hybrid shape, escalate before papering over.
 
+## 6a. Per-method metadata — related carrier question
+
+Surfaced by Lane G (PR #654) during `algebra.dag` template-vs-declaration reconciliation: the `*_templates()` functions in `dsl/std/algebra.dag` (`ordered_ring_templates()`, `partial_function_templates()`, etc.) are **not** redundant with their type declarations. They carry per-method metadata — `size_effect`, `cost_shape`, `callback_element_position` — that lenses (complexity, cost) read. The type declarations have no field-level slot for this metadata; attaching it would require substrate extensions.
+
+This is the same shape as the core port program at a different layer: **per-method contract metadata consumed by the same lenses as `DescentEvidence` / `CallPattern` / `SubValueRelation` / `MethodSemantics`**. Not included in the core four because the carriers above are v2-authored structural facts that already exist; the metadata question is about where per-method contract data *should* live structurally. Worth scoping here so a port-program execution doesn't rediscover it mid-flight.
+
+**Three options:**
+
+1. **Extend type declarations with method-metadata annotations.** Needs substrate support for field-level refinements (currently partial per DB-11). Largest substrate change; smallest std/ surface change.
+2. **Separate metadata carrier per algebra.** Declare `OrderedRingMetadata`, `PartialFunctionMetadata`, etc. paired with the type declarations. No substrate change; additional std/ surface (one carrier per algebra).
+3. **Unified `MethodContract` carrier.** One generic carrier indexed by `(algebra_id, method_id)` that lenses query by id. No substrate change; minimal std/ surface growth (one carrier total). Closest in shape to a `TemplateArgumentBinding`-style lookup.
+
+**Current consumers:** `ordered_ring_templates()`, `partial_function_templates()` and their siblings in `dsl/std/algebra.dag:447-569`; the complexity / cost analyses that read `size_effect` / `cost_shape` / `callback_element_position` off the returned templates.
+
+**Recommendation (deferred):** this scoping doc does not pick a direction. The call interacts with family I (`SubValueRelation` + cost) — a lens that consumes both per-method metadata and `CostBound` may want them co-located, which favors option 3. Defer the pick until lane E-I's pre-flight verification runs: the evidence it produces about `CostBound`'s shape in v3 will inform whether a unified `MethodContract` sits naturally next to it or not.
+
+**Cross-reference:** see PR #654's investigation receipt for the full Lane G findings that surfaced this question.
+
+**Does not block the core four-carrier port program.** Queued as a design follow-up once lane E-I lands.
+
 ## 7. What this program explicitly does NOT touch
 
 - **Emit gaps** (`match` on user-defined sums). Separate blocker bundle for `idempotency.dag` / `parallelism.dag`. Tracked in ROADMAP's 2026-04-21 receipt-closure wave.
