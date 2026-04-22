@@ -352,11 +352,7 @@ struct BracketRow {
     role: String,
 }
 
-fn collect_bracket_rows(
-    dag: &Dag,
-    token_variants: &[String],
-    roles: &[String],
-) -> Vec<BracketRow> {
+fn collect_bracket_rows(dag: &Dag, token_variants: &[String], roles: &[String]) -> Vec<BracketRow> {
     let token_variant_set: BTreeSet<&str> = token_variants.iter().map(String::as_str).collect();
     let role_set: BTreeSet<&str> = roles.iter().map(String::as_str).collect();
 
