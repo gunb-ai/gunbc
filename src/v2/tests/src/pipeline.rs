@@ -1655,7 +1655,8 @@ fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
 // and splits authority vs `emit_info.movable` (see post-mortem doc).
 #[test]
 fn rust_emit_callable_param_double_use_keeps_clone_bound_and_clones() {
-    let source = "module callable_twice\n\nfn twice(f: fn(Int) -> Int) -> Int {\n  f(0) + f(1)\n}\n";
+    let source =
+        "module callable_twice\n\nfn twice(f: fn(Int) -> Int) -> Int {\n  f(0) + f(1)\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/callable_twice.rs");
