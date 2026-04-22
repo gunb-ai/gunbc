@@ -730,7 +730,7 @@ pub(crate) mod lower_helpers {
     )]
     mod generated {
         use crate::diagnostics::SourceSpan;
-        use crate::parse_surface as parse_surface;
+        use crate::parse_surface;
         use crate::parse_surface::SurfaceExpr;
 
         include!("lower_helpers_generated.rs");
