@@ -17,9 +17,9 @@ src/v3/compiler/tests/four_fixture_pressure/id.v3	2	2452	ec8b40edc3d3c017
 src/v3/compiler/tests/four_fixture_pressure/is_empty.v3	3	6755	00117f14eb43dd20
 src/v3/compiler/tests/four_fixture_pressure/wrap.v3	4	5189	ac633b042c944480
 src/v3/compiler/tokenize.dag	27	56809	37569b3f9fb2e6fa
-src/v3/spec/go.dag	118	1053584	a468f379842aa207
-src/v3/spec/python.dag	79	511838	6516d6b747a868e9
-src/v3/spec/rust.dag	132	1115690	c4c2d1d16b37324f
+src/v3/spec/go.dag	118	1053574	0d05b52ac05e8de4
+src/v3/spec/python.dag	79	511829	88a91685f9dc1ad2
+src/v3/spec/rust.dag	132	1115682	8bbe36a9732ea9d8
 src/v3/spec/v3_l1.dag	8	2238	1f55d782265c3bfe
 src/v3/std/algebra.dag	33	281947	fd777e369473acfb
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
@@ -29,7 +29,7 @@ src/v3/std/dimensions.dag	8	15340	571b6224904e5e30
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
 src/v3/std/emit_model.dag	31	60887	e51e1108edcaae1d
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
-src/v3/std/parse_surface.dag	0	0	0000000000000000
+src/v3/std/parse_surface.dag	17	94010	7be32a91b41d60ae
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/substrate.dag	47	106731	53da658223c5328a
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672

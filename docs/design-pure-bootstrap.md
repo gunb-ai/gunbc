@@ -69,7 +69,7 @@ ratchet source. PB metrics below track the SG-0 ratchet.
 1. **`std_fixtures`** — 7 `dsl/std/*.dag` files embedded via `include_str!` (`LOGIC_DAG`, `BIT_DAG`, `ALGEBRA_DAG`, `INTEGER_DAG`, `FLOAT_DAG`, `STRING_TYPE_DAG`, `TYPES_DAG`)
 2. **`STAGED_FILES`** — `src/v3/std/*.dag` (build-script-enumerated)
 3. **`V3_SPECS`** — `src/v3/spec/*.dag` (Rust/Go/Python language specs)
-4. **`COMPILER_FILES`** — `src/v3/compiler/*.dag` minus `tokenize.dag`: actual contents are `pipeline.dag`, `operators.dag`, `regen.dag`, `runtime_mirrors.dag`. `tokenize.dag` is explicitly filtered out in `build.rs` because it is SG-1 tokenizer authority consumed by `regen_tokenize` — folding it into the runtime bootstrap Dag would duplicate declarations when `compile_to_dag` parses it. `dsl/gunbc/compiler.dag` is also a separate authority, not part of `COMPILER_FILES`.
+4. **`COMPILER_FILES`** — `src/v3/compiler/*.dag` minus `tokenize.dag` and `parse_tables.dag` (see `build.rs`). The files that **do** load are `pipeline.dag`, `operators.dag`, and `regen.dag`. `tokenize.dag` is filtered because it is SG-1 tokenizer authority consumed by `regen_tokenize` (duplicate declarations if folded into bootstrap). `parse_tables.dag` is filtered for the same “regen re-parses standalone” reason as the tokenizer. Parse-surface **carrier** types live under `src/v3/std/parse_surface.dag` in `STAGED_FILES`, not in `COMPILER_FILES`. `dsl/gunbc/compiler.dag` is a separate authority, not part of `COMPILER_FILES`.
 
 All four chain into a single `fixtures` array that bootstrap.rs tokenizes + parses + lowers on every `Dag::new()`. **PB-1 must replace the runtime tokenize/parse/lower path for all four input authorities**, not just `std_fixtures`.
 
@@ -138,7 +138,7 @@ retire projection — not one.
 ### PB-3 — parse retire
 
 - **Authority creation**: **SG-2 parser staging** (not SG-2b closure).
-  Surface **carrier** schema is substrate-authoritative in `runtime_mirrors.dag`;
+  Surface **carrier** schema is substrate-authoritative in `src/v3/std/parse_surface.dag`;
   `regen_parse` emits `parse_generated.rs` and splices `parse_parser_body.txt` as
   **temporary semantic authority** for the recursive-descent algorithm until a
   follow-on lane (**SG-2b**) makes parse **logic** structurally `.dag`-owned
