@@ -11,7 +11,7 @@ in `lower_generated.rs`). Rank: `src/v3/` → 2, unknown → 1, `dsl/` → 0.
 
 Ratified-parallel-authority bridge. When two top-level declarations
 share a name, the `src/v3/`-rooted one wins. The scaffold is held
-only because three concrete module pairs remain duplicated; every
+only because four concrete module pairs remain duplicated; every
 other `declaration_by_name` consumer sees a single authority.
 
 Duplicated authorities today (from ROADMAP "Post-merge debt" and
@@ -22,6 +22,19 @@ file inspection):
 | `std.effects` | `dsl/std/effects.dag` | `src/v3/std/effects.dag` |
 | `std.verification` | `dsl/std/verification.dag` | `src/v3/std/verification.dag` |
 | `http_path` mirror | `dsl/std/http_path.dag` | embedded in `src/v3/std/effects.dag:138-260` |
+| language specs | `dsl/std/languages.dag` | `src/v3/spec/{rust,go,python}.dag` |
+
+**Audit correction (v4, post-review #2).** The ROADMAP "Post-merge
+debt" row names only the first three module pairs as blockers, but
+`dsl/std/languages.dag` (1419 lines) overlaps with the three v3
+spec files on 28 names (`comm -12`): `{go,python,rust}_language`
+and the per-language fan-out `{rust,go}_{collection_ops,
+control_flow,expressions,literals,modules,patterns,statements,
+type_defs}`, `{python,rust}_functions`, etc. Four of those names
+are consumed through `declaration_by_name`, making this a fourth
+duplicated-authority group the scaffold silently resolves. The
+ROADMAP row should be extended to include it; called out in
+Recommendations.
 
 The **overlap set** — names declared in both a `dsl/` authority and
 a `src/v3/` authority — is the only set where rank changes behavior:
@@ -42,14 +55,29 @@ TestClaim
 last_path_param, parse_path_template, parse_segment_tokens,
 PathSegmentTokensResult, PathTemplate, PathTemplateParseResult,
 UrlPathToken
+
+# language specs (dsl/std/languages.dag ↔ src/v3/spec/{rust,go,python}.dag)
+# 28 names; only the four consumed through declaration_by_name
+# are load-bearing today. Full set:
+#   go_collection_ops, go_control_flow, go_expressions, go_functions,
+#   go_language, go_literals, go_modules, go_patterns, go_statements,
+#   go_type_defs, python_control_flow, python_expressions,
+#   python_functions, python_language, python_literals, python_modules,
+#   python_patterns, python_statements, rust_collection_ops,
+#   rust_control_flow, rust_expressions, rust_functions, rust_language,
+#   rust_literals, rust_modules, rust_patterns, rust_statements,
+#   rust_type_defs
 ```
 
-**Audit correction (v2, post-review).** The initial overlap set was
-derived from a truncated `head -40` of each authority's declaration
-list and undercounted `std.effects` entries. Full `comm -12` against
-the complete declaration lists yields 24 overlap names, not the 18
-originally listed. The expanded set drives the expanded (b) count
-below.
+**Audit correction (v2, post-review).** The initial overlap set
+was derived from a truncated `head -40` of each authority's
+declaration list and undercounted `std.effects` entries. **Audit
+correction (v5, post-review #3)**: the original audit also missed
+the `dsl/std/languages.dag` ↔ `src/v3/spec/*.dag` duplication
+entirely. Full `comm -12` across all four duplicated pairs yields
+**52 overlap names** — 24 across effects/verification/http_path
+plus 28 language-spec names — not the 18 originally listed. The
+expanded set drives the expanded (b) count below.
 
 Any `declaration_by_name("X")` whose `X` is outside this set is
 rank-insensitive: it returns the sole existing declaration (or
@@ -75,26 +103,32 @@ and are classified (a), not (c) — see §(c).
 
 ### (a) Incidental — rank-insensitive, safe
 
-**Every static-name call site in `src/v3/compiler/src/` (113 sites,
-55 distinct names)** looks up a singleton substrate/spec/stdlib
-authority that does not appear in any `dsl/` duplicate. Rank cannot
-affect which declaration is returned.
+**Of the 113 static-name call sites in `src/v3/compiler/src/`, 109
+are (a) and 4 are (b).** Four static names are in the language-spec
+overlap set and move to (b): `rust_language` (dag.rs:2269),
+`go_language` (dag.rs:2282), `python_language` (dag.rs:2292),
+`rust_functions` (dag.rs:2309). The remaining 109 sites look up
+singleton substrate/spec/stdlib authorities absent from any `dsl/`
+duplicate.
 
-Unique names (all single-authority):
+Unique rank-insensitive names (single-authority):
 `BehaviorRealization, Bind, Bool, BooleanAlgebra, Branch,
 CallableRealization, CallableStrategy, CleanEmissionContract, Dag,
 dag_model, DeclarationId, DeclarationRef, fold, go_execution_model,
-go_execution_requirement, go_language, go_source_filtering,
+go_execution_requirement, go_source_filtering,
 head_or_zero, id, Int, LanguageSpec, List, Loop, Main, MyInt,
 NodeId, OperatorRealization, OrderedRing, parse, PatternBindingRule,
 PatternRealization, PipelineSnapshotKind, PortId,
-python_execution_requirement, python_language,
+python_execution_requirement,
 python_source_filtering, python_target, rust_clean_emission_binding,
-rust_execution_model, rust_execution_requirement, rust_functions,
-rust_language, rust_rendering, rust_source_filtering, Sign, String,
+rust_execution_model, rust_execution_requirement,
+rust_rendering, rust_source_filtering, Sign, String,
 SubstrateAccessorBinding, TargetCleanEmissionBinding, Transform,
 TypeInstantiationRealization, TypeRealization, use_callback, Value,
-VariantPayloadFieldAccessRule, VerifierOutputPolicy`.
+VariantPayloadFieldAccessRule, VerifierOutputPolicy`. (Removed from
+this list post-review: `rust_language, go_language, python_language,
+rust_functions` — all four have `dsl/std/languages.dag` duplicates
+and are reclassified (b).)
 
 **Tests, rank-insensitive subset** — 49 of 67 test sites. Unique
 names outside the overlap set include `answer, BinaryOpRow,
@@ -113,11 +147,14 @@ rank-insensitive — but see dissolution note for **(c)** below.)
 
 ### (b) Silent dependency — load-bearing on rank
 
-**18 call sites** (direct + helper-mediated) look up a name in the
-overlap set — 5 `TestClaim` lookups + 13 `std.effects`/`http_path`
-lookups. The initial draft counted only the two direct-call sites
-and missed helper-mediated uses; the corrected tally follows. All
-18 live in `src/v3/compiler/tests/integration/`.
+**23 call sites** (direct + helper-mediated) look up a name in the
+overlap set: 5 `TestClaim`, 13 `std.effects`/`http_path`, 5 language-
+spec. The initial draft counted only two direct TestClaim sites and
+missed helper-mediated uses; the v4 revision also missed the
+language-spec group entirely. The corrected tally follows. 18 sites
+live in `src/v3/compiler/tests/integration/`; 4 live in
+`src/v3/compiler/src/dag.rs` (the init-pass surface lookups), and 1
+in `m1_substrate_test.rs`.
 
 1. `src/v3/compiler/tests/integration/m1_5_testgen_test.rs:208`
    ```rust
@@ -172,24 +209,43 @@ and missed helper-mediated uses; the corrected tally follows. All
    `ComposedEffect`, in v3 a richer `CompositionVerdict`-bearing
    type). **Helper-mediated silent — the largest cluster.**
 
+5. **Language-spec init-pass lookups** — `dag.rs:2269` (`rust_language`),
+   `dag.rs:2282` (`go_language`), `dag.rs:2292` (`python_language`),
+   `dag.rs:2309` (`rust_functions`), plus `m1_substrate_test.rs:2851`
+   (`rust_language`). All five names exist in both
+   `dsl/std/languages.dag` and `src/v3/spec/{rust,go,python}.dag`.
+   The init-pass assigns `target_syntax.{rust,go,python}_language`
+   and `emit_anchors.rust_functions` from whatever rank returns —
+   i.e. the v3 spec's declaration id. Every downstream emission
+   path that consumes these anchor ids is silently gated on the v3
+   authority. **Systemic silent — the emission pipeline's anchor
+   binding.**
+
 **Dissolution path.** These sites are not a substrate problem;
-they are symptoms of the two convergence blockers already tracked
-in ROADMAP:
+they are symptoms of three convergence blockers — two already
+tracked in ROADMAP, one newly surfaced by this audit:
 - **`std.verification` convergence** — governs the 5 `TestClaim`
-  sites (items 1, 2, 3 above).
+  sites (items 1, 2, 3 above). Tracked.
 - **`std.effects` convergence** (plus embedded `http_path` mirror)
   — governs the 13 `lane2_stage_2a_effects_smoke.rs` sites (item
-  4). Tracked in the same ROADMAP "Post-merge debt" row as the
-  file-preference scaffold.
+  4). Tracked.
+- **Language-spec convergence** — governs the 5 `dag.rs`
+  init-pass + test sites (item 5). `dsl/std/languages.dag` vs
+  `src/v3/spec/{rust,go,python}.dag`. **Not yet tracked as a
+  file-preference-scaffold blocker** — the ROADMAP "Post-merge
+  debt" row names only the first three pairs. Adding this fourth
+  pair is a recommendation below.
 
 Per convergence, tests either become (a) incidental (v3 authority
 survives), or migrate to the surviving shape (dsl wins / merged
 surface emerges). No new substrate work needed — the convergences
-*are* the dissolution. **The "no new modeling gap" conclusion from
-the draft still holds — but the scale (18 sites, not 2)
-materially changes the cost-of-dissolution estimate for the
-`std.effects` convergence in particular, which the ROADMAP row
-should reflect when that lane is scoped.**
+*are* the dissolution for the two tracked groups. The
+language-spec group needs a ROADMAP entry before its convergence
+can be scoped. **The "no new modeling gap" conclusion from the
+draft still holds — but the scale (23 sites, not 2) materially
+changes the cost-of-dissolution estimate for the `std.effects`
+convergence, and surfaces a fourth duplicated-authority group
+(languages vs spec) that the ROADMAP row must also cover.**
 
 ### (c) Legitimate-looking — scaffold's intended consumers
 
@@ -258,42 +314,53 @@ delete together.
 
 | Category | Count | Sites |
 |---|---:|---|
-| (a) Incidental | 164 | 113 `src/` static-name sites + 49 test sites outside the overlap set + 2 dynamic-form helpers ranging over singletons only (`infer.rs:1619`, `regen_tokenize.rs:159`) |
-| (b) Silent dependency | 18 | 5 TestClaim sites (`m1_5_testgen_test.rs:208`, `lane2_stage_2c_db15_test.rs:9`, `m1_5_verification_test.rs:{76,203,207}`); 13 in `lane2_stage_2a_effects_smoke.rs:{62,63,64,65,66,76×2,90,94,95,97,98,100}` |
+| (a) Incidental | 159 | 109 `src/` static-name sites (113 minus 4 language-spec overlap) + 48 test sites + 2 dynamic-form helpers ranging over singletons only (`infer.rs:1619`, `regen_tokenize.rs:159`) |
+| (b) Silent dependency | 23 | 5 TestClaim (`m1_5_testgen_test.rs:208`, `lane2_stage_2c_db15_test.rs:9`, `m1_5_verification_test.rs:{76,203,207}`); 13 in `lane2_stage_2a_effects_smoke.rs:{62,63,64,65,66,76×2,90,94,95,97,98,100}`; 4 in `dag.rs:{2269,2282,2292,2309}` + 1 in `m1_substrate_test.rs:2851` (language-spec) |
 | (c) Legitimate-looking | 2 classes | `collect_symbols`, stub-resolution sweep |
 
-PR-body framing: **164 safe, 18 silent, 2 class-level legitimate.**
+PR-body framing: **159 safe, 23 silent, 2 class-level legitimate.**
 (Site totals: 113 static `src/` + 67 tests + 2 dynamic-singleton
-helpers = 182 actionable call sites; 182 − 18 (b) = 164 (a). The
+helpers = 182 actionable call sites; 182 − 23 (b) = 159 (a). The
 two (c) classes are consumer patterns, not individual sites, and
 are listed separately.)
 
 ## Recommendations
 
-1. **No lane needed to repair the (b) sites independently.** All 18
+1. **No lane needed to repair the (b) sites independently.** All 23
    sites dissolve automatically when their governing convergence
    lands (5 with `std.verification`, 13 with `std.effects` /
-   http_path mirror). The existing ROADMAP rows already own the
-   work.
+   http_path mirror, 5 with language-spec convergence).
 
-2. **Consider a tightening helper** *after* convergence: a
+2. **Extend the ROADMAP "Post-merge debt" file-preference-scaffold
+   row to include a fourth duplicated-authority pair**:
+   `dsl/std/languages.dag` ↔ `src/v3/spec/{rust,go,python}.dag`. 28
+   overlapping names (full list in overlap-set block above); 4
+   currently consumed through `declaration_by_name`. Convergence
+   direction TBD (v3 spec splits languages.dag's surface into
+   per-target files; a design call is needed on whether dsl's
+   monolithic `languages.dag` survives, the v3 per-language split
+   survives, or a merged form emerges).
+
+3. **Consider a tightening helper** *after* convergence: a
    fail-closed `declaration_by_name_unique` that returns the single
    declaration or emits a diagnostic on multiple matches, used as
    the post-scaffold replacement. Not needed now; mentioned here so
    the dissolution PR has a named target.
 
-3. **No modeling gap discovered.** The audit confirms the
-   scaffold's dissolution blocker is the three known duplicated
-   modules, nothing more. But the reflective-analysis concern
-   that "new lanes may silently depend on rank preference" *is*
-   realized — the lane2 Stage 2a effects-smoke lane added 13
-   silent-dependency sites (via `arrow_body` / `assert_record_type`
-   helpers) after the scaffold went in. Every site is still
-   governed by an already-tracked convergence row, but the cost
-   of the `std.effects` convergence when scoped is meaningfully
-   higher than the ROADMAP row suggests.
+4. **One modeling-surface gap surfaced.** The audit confirms the
+   scaffold's dissolution blockers are *four* duplicated module
+   pairs, not the three named in the ROADMAP row. The
+   language-spec pair (`dsl/std/languages.dag` ↔
+   `src/v3/spec/{rust,go,python}.dag`) is newly surfaced here and
+   needs its own convergence decision — see recommendation 2. The
+   reflective-analysis concern that "new lanes may silently depend
+   on rank preference" *is* realized — the lane2 Stage 2a
+   effects-smoke lane added 13 silent-dependency sites (via
+   `arrow_body` / `assert_record_type` helpers) after the scaffold
+   went in. Cost of the `std.effects` convergence when scoped is
+   meaningfully higher than the ROADMAP row suggests.
 
-4. **Watchpoint for future lanes.** Adding any new `declaration_by_name("X")`
+5. **Watchpoint for future lanes.** Adding any new `declaration_by_name("X")`
    where `X` is in the overlap set above reintroduces a (b)
    dependency. A lightweight CI check (grep the overlap-name list
    against `declaration_by_name` call sites outside a known
