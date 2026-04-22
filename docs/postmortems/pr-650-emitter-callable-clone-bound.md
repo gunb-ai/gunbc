@@ -62,7 +62,7 @@ The comment block immediately above `emit_rust_param_type` should stay a **short
 
 ### Regression test scope (`pipeline.rs`)
 
-The hermetic test uses two call sites `f(0)` and `f(1)` on the same callable parameter and asserts the **`impl Fn(...) + Clone`** signature. It does **not** assert a `f.clone()` substring: `compile_dag` output for this fixture is plain **`f(0)`** / **`f(1)`** call syntax on the param, with no `.clone()` in the emitted source, while `+ Clone` on the type remains load-bearing elsewhere (stage0 / other emitter paths). A future tightening could pin an explicit clone site once a small fixture is found that **deterministically** materializes asymmetric `f.clone()` in emitted Rust.
+The hermetic test asserts the **`impl Fn(...) + Clone`** signature on `twice`, then checks `f(0)` / `f(1)` only in the suffix **after** that signature so incidental substring matches elsewhere in the emitted module file cannot satisfy the call-site part. It does **not** assert a `f.clone()` substring: `compile_dag` output for this fixture is plain **`f(0)`** / **`f(1)`** call syntax on the param, with no `.clone()` in the emitted source, while `+ Clone` on the type remains load-bearing elsewhere (stage0 / other emitter paths). A future tightening could pin an explicit clone site once a small fixture is found that **deterministically** materializes asymmetric `f.clone()` in emitted Rust.
 
 This pin is **necessary but not sufficient** for a structural #650-style retry: it can pass while stage0 self-host fails, so **item 4** gates (`regenerate-stage0.sh`, `ci_freshness`, `ci_fixed_point`) remain the authoritative merge evidence for emission changes.
 

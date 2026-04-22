@@ -1658,8 +1658,9 @@ fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
 // Review note (non-blocking): a stricter assert on *which* use site carries
 // `f.clone()` would catch wrong-site refactors, but this fixture (`f(0) + f(1)`)
 // emits **plain** `f(0)` / `f(1)` in generated Rust (no spelled `f.clone()`).
-// The receipt here is the **signature** plus those two call sites; tighten if we
-// add a hermetic module that deterministically materializes `f.clone()` on one branch.
+// Call-site substrings are checked only **after** the `twice` signature so stray
+// `f(0)` text elsewhere in the emitted file cannot satisfy the assert. Tighten
+// further if we add a hermetic module that deterministically materializes `f.clone()`.
 //
 // **Not sufficient alone:** re-attempting #650 could still satisfy this fixture while
 // breaking stage0 self-host. For structural edits here, also run
@@ -1676,13 +1677,18 @@ fn rust_emit_callable_param_double_use_keeps_clone_bound_on_signature() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/callable_twice.rs");
+    let sig = "fn twice(f: impl Fn(i64) -> i64 + Clone) -> i64";
     assert!(
-        content.contains("fn twice(f: impl Fn(i64) -> i64 + Clone) -> i64"),
+        content.contains(sig),
         "double-use callable param must keep synthesized + Clone: {content}"
     );
+    let pos = content
+        .find(sig)
+        .expect("twice signature should appear in emitted Rust");
+    let from_twice = &content[pos..];
     assert!(
-        content.contains("f(0)") && content.contains("f(1)"),
-        "expected two call sites on the callable param: {content}"
+        from_twice.contains("f(0)") && from_twice.contains("f(1)"),
+        "expected two call sites on the callable param inside twice(): {content}"
     );
 }
 
