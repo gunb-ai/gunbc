@@ -150,8 +150,20 @@ pub fn container_alias_targets() -> Rc<HashMap<String, String>> {
     CACHED.with(|c| c.clone())
 }
 
-pub fn container_to_algebra_name(name: String) -> Option<String> {
-    v2_rt::map_get(&container_alias_targets(), name)
+pub fn container_to_algebra_name(name: &String) -> Option<String> {
+    match v2_rt::map_get(&container_alias_targets(), name.clone()) {
+        Some(a) => Some(a.clone()),
+        None => {
+            if (((name.clone().as_str() == "FreeMonoid".to_string().as_str())
+                || (name.clone().as_str() == "BooleanAlgebra".to_string().as_str()))
+                || (name.clone().as_str() == "PartialFunction".to_string().as_str()))
+            {
+                Some(name.clone())
+            } else {
+                None
+            }
+        }
+    }
 }
 
 pub fn canonical_container_names() -> Rc<Vec<String>> {

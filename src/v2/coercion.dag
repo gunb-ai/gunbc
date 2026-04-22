@@ -18,7 +18,7 @@ module v2.compiler.coercion
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax }
-import std.types { container_to_algebra_name, canonical_container_names }
+import std.types { container_template_algebra, canonical_container_names }
 import extdeps.languages.rust.types {
   rust_type_checkpoints, rust_algebra_inhabitants, rust_callable,
   rust_optional_template, rust_cast_syntax
@@ -148,18 +148,10 @@ fn lookup_inhabitant(target: RenderTarget, algebra: String) -> InhabitantDecl? {
   target_inhabitants(target: target) |> filter(inh => inh.algebra == algebra) |> first
 }
 
-// container_to_algebra_name (in std/types.dag) reads the type aliases
-// (type List = FreeMonoid, etc.) in PascalCase. Snake_case inputs are
-// normalized here — a consumer concern, not duplicated central authority.
+// Reads the canonical `container_template_algebra` query in std/types.dag —
+// the single surface for alias/spelling normalization. No parallel table here.
 fn coerce_container_template(target: RenderTarget, container_name: String) -> String? {
-  let pascal = if container_name == "list" { "List" }
-    else if container_name == "set" { "Set" }
-    else if container_name == "map" { "Map" }
-    else if container_name == "free_monoid" { "FreeMonoid" }
-    else if container_name == "boolean_algebra" { "BooleanAlgebra" }
-    else if container_name == "partial_function" { "PartialFunction" }
-    else { container_name }
-  match container_to_algebra_name(name: pascal) {
+  match container_template_algebra(name: container_name) {
     Some { value: a } => match lookup_inhabitant(target: target, algebra: a) {
       Some { value: inh } => Some { value: inh.template }
       None => none

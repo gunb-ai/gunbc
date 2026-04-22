@@ -119,27 +119,34 @@ fn is_ordered_element_collection(name: String) -> Bool {
   map_contains_key(ordered_element_collections, name)
 }
 
-// Container → algebra mapping: one row per type alias declaration below
-// (type List = FreeMonoid, type Set = BooleanAlgebra, type Map = PartialFunction).
-// This is a narrow structural read of those aliases — not a normalization
-// table. Snake_case normalization is a consumer concern and lives at the
-// two consumer sites (v2/coercion.dag, v2/05_emit.dag).
+// Declared alias relationships — one row per `type X = Y<...>` below.
+// This is the sole alias fact; all alias/self-name/spelling normalization
+// for container-template names flows from `container_template_algebra`.
 data container_alias_targets: Map<String, String> = {
   "List": "FreeMonoid",
   "Set": "BooleanAlgebra",
   "Map": "PartialFunction"
 }
 
-// Returns the algebra name for a container-template name. Accepts the
-// PascalCase alias forms (List/Set/Map) and the kernel algebra self-names
-// (FreeMonoid/BooleanAlgebra/PartialFunction) — the latter trivially map
-// to themselves, which keeps this function total over container-template
-// names without an additional passthrough at every caller.
-fn container_to_algebra_name(name: String) -> String? {
-  match map_get(container_alias_targets, name) {
+// Canonical query: resolve a container-template name to its algebra.
+// This is the single surface both consumers (v2/coercion.dag, v2/05_emit.dag)
+// read; neither maintains a parallel spelling table. Accepts snake_case
+// and PascalCase, alias names (List/Set/Map) and algebra self-names
+// (FreeMonoid/BooleanAlgebra/PartialFunction). The algebra surface is
+// fixed (three kernel algebras); the alias rows above drive the alias→
+// algebra direction, the rest is spelling/self-identity over that surface.
+fn container_template_algebra(name: String) -> String? {
+  let pascal = if name == "list" { "List" }
+    else if name == "set" { "Set" }
+    else if name == "map" { "Map" }
+    else if name == "free_monoid" { "FreeMonoid" }
+    else if name == "boolean_algebra" { "BooleanAlgebra" }
+    else if name == "partial_function" { "PartialFunction" }
+    else { name }
+  match map_get(container_alias_targets, pascal) {
     Some { value: a } => Some { value: a }
-    None => if name == "FreeMonoid" || name == "BooleanAlgebra" || name == "PartialFunction" {
-      Some { value: name }
+    None => if pascal == "FreeMonoid" || pascal == "BooleanAlgebra" || pascal == "PartialFunction" {
+      Some { value: pascal }
     } else {
       none
     }

@@ -192,15 +192,7 @@ pub fn coerce_container_template(target: RenderTarget, container_name: &String) 
                 }
             }
         };
-        let algebra = if (((pascal.clone().as_str() == "FreeMonoid".to_string().as_str())
-            || (pascal.clone().as_str() == "BooleanAlgebra".to_string().as_str()))
-            || (pascal.clone().as_str() == "PartialFunction".to_string().as_str()))
-        {
-            Some(pascal.clone())
-        } else {
-            container_to_algebra_name(pascal.clone())
-        };
-        match algebra {
+        match container_to_algebra_name(&pascal) {
             Some(a) => match lookup_inhabitant(target, a.clone()) {
                 Some(inh) => Some(inh.template.clone()),
                 None => None,
