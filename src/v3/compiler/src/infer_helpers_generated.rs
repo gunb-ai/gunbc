@@ -8,10 +8,10 @@ pub enum TemplateArgumentLookup {
 }
 #[derive(Clone, Debug)]
 pub enum TemplateArgumentBinding {
-    TemplateArgumentBindingConflict,
-    TemplateArgumentBindingNoOp,
-    TemplateArgumentBindingAppend,
-    TemplateArgumentBindingReplaceAt { _0: i64, _1: DeclarationId },
+    Conflict,
+    NoOp,
+    Append,
+    ReplaceAt { _0: i64, _1: DeclarationId },
 }
 pub fn behavior_output_port(p0: &Behavior) -> PortId {
     match p0 {
@@ -77,28 +77,6 @@ pub fn resolve_template_argument_value(
         }
     }
 }
-pub fn template_arguments_match(p0: &[TemplateArgument], p1: &[TemplateArgument]) -> bool {
-    match p0 {
-        [] => match p1 {
-            [] => true,
-            [__list_head, __list_tail @ ..] => false,
-        },
-        [__list_head, __list_tail @ ..] => match p1 {
-            [] => false,
-            [__list_head, __list_tail @ ..] => {
-                if ((__list_head).parameter == (__list_head).parameter) {
-                    if ((__list_head).value == (__list_head).value) {
-                        template_arguments_match(__list_tail, __list_tail)
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            }
-        },
-    }
-}
 pub fn push_template_argument_binding(
     p0: &[TemplateArgument],
     p1: &DeclarationId,
@@ -113,16 +91,16 @@ pub fn push_template_argument_binding_at(
     p3: i64,
 ) -> TemplateArgumentBinding {
     match p0 {
-        [] => TemplateArgumentBinding::TemplateArgumentBindingAppend,
+        [] => TemplateArgumentBinding::Append,
         [__list_head, __list_tail @ ..] => {
             if ((__list_head).parameter == (*(p1))) {
                 if ((__list_head).value == (*(p1))) {
-                    TemplateArgumentBinding::TemplateArgumentBindingReplaceAt { _0: p3, _1: p2 }
+                    TemplateArgumentBinding::ReplaceAt { _0: p3, _1: p2 }
                 } else {
                     if ((__list_head).value == p2) {
-                        TemplateArgumentBinding::TemplateArgumentBindingNoOp
+                        TemplateArgumentBinding::NoOp
                     } else {
-                        TemplateArgumentBinding::TemplateArgumentBindingConflict
+                        TemplateArgumentBinding::Conflict
                     }
                 }
             } else {

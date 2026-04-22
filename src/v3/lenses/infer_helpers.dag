@@ -6,13 +6,15 @@
 // path cannot move that slice honestly without substrate work.
 //
 // It also leaves `walk_to_optional_cardinality_decl`,
-// `callable_template_arguments`, `is_retryable_generic_decl_walk`, and
-// `declaration_is_callable` in Rust for now: the current reflected
-// helper surface does not expose the canonical total
-// `Dag::declaration(id)` accessor, so the first two cannot move
-// honestly without parallel lookup authority, and the current lens path
-// cannot yet express the former's termination proof. `infer.rs`
-// remains authoritative for those remainders.
+// `callable_template_arguments`, `is_retryable_generic_decl_walk`,
+// `declaration_is_callable`, and `template_arguments_match` in Rust for
+// now: the current reflected helper surface does not expose the
+// canonical total `Dag::declaration(id)` accessor, so the first two
+// cannot move honestly without parallel lookup authority, the current
+// lens path cannot yet express the former's termination proof, and the
+// current lens->Rust emitter still shadows nested `Cons` pattern
+// bindings in generated Rust. `infer.rs` remains authoritative for
+// those remainders.
 
 module lenses.infer_helpers
 
@@ -30,10 +32,10 @@ type TemplateArgumentLookup
 // Cat-2 list mechanics, but now covering the real equality/update
 // helpers that `infer.rs` uses while resolving callable targets.
 type TemplateArgumentBinding
-  = TemplateArgumentBindingConflict
-  | TemplateArgumentBindingNoOp
-  | TemplateArgumentBindingAppend
-  | TemplateArgumentBindingReplaceAt(Int, DeclarationId)
+  = Conflict
+  | NoOp
+  | Append
+  | ReplaceAt(Int, DeclarationId)
 
 fn behavior_output_port(behavior: Behavior) -> PortId =
   match behavior {
@@ -97,30 +99,6 @@ fn resolve_template_argument_value(
           resolve_template_argument_value(remaining - 1, arguments, next)
     }
 
-fn template_arguments_match(
-  lhs: List<TemplateArgument>,
-  rhs: List<TemplateArgument>
-) -> Bool =
-  match lhs {
-    Empty =>
-      match rhs {
-        Empty => true
-        Cons(_) => false
-      }
-    Cons(left_payload) =>
-      match rhs {
-        Empty => false
-        Cons(right_payload) =>
-          if left_payload.head.parameter == right_payload.head.parameter then
-            if left_payload.head.value == right_payload.head.value then
-              template_arguments_match(left_payload.tail, right_payload.tail)
-            else
-              false
-          else
-            false
-      }
-  }
-
 fn push_template_argument_binding(
   arguments: List<TemplateArgument>,
   parameter: DeclarationId,
@@ -135,16 +113,16 @@ fn push_template_argument_binding_at(
   index: Int
 ) -> TemplateArgumentBinding =
   match arguments {
-    Empty => TemplateArgumentBindingAppend
+    Empty => Append
     Cons(payload) =>
       if payload.head.parameter == parameter then
         if payload.head.value == parameter then
-          TemplateArgumentBindingReplaceAt(index, value)
+          ReplaceAt(index, value)
         else
           if payload.head.value == value then
-            TemplateArgumentBindingNoOp
+            NoOp
           else
-            TemplateArgumentBindingConflict
+            Conflict
       else
         push_template_argument_binding_at(payload.tail, parameter, value, index + 1)
   }

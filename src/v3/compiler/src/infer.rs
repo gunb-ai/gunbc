@@ -1558,16 +1558,13 @@ fn push_template_argument_binding(
     value: DeclarationId,
 ) -> bool {
     match generated_push_template_argument_binding(arguments, &parameter, value) {
-        TemplateArgumentBinding::TemplateArgumentBindingConflict => false,
-        TemplateArgumentBinding::TemplateArgumentBindingNoOp => true,
-        TemplateArgumentBinding::TemplateArgumentBindingAppend => {
+        TemplateArgumentBinding::Conflict => false,
+        TemplateArgumentBinding::NoOp => true,
+        TemplateArgumentBinding::Append => {
             arguments.push(TemplateArgument { parameter, value });
             true
         }
-        TemplateArgumentBinding::TemplateArgumentBindingReplaceAt {
-            _0: index,
-            _1: updated,
-        } => {
+        TemplateArgumentBinding::ReplaceAt { _0: index, _1: updated } => {
             let Some(existing) = arguments.get_mut(index as usize) else {
                 return false;
             };
