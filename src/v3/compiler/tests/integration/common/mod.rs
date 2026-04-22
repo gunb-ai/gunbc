@@ -81,6 +81,10 @@ pub fn find_current_rlib(crate_name: &str) -> PathBuf {
 /// declarations. A raw substring match false-greens on commented-out copies
 /// (`// #[path = …]`). Ignore any line whose first non-whitespace token starts
 /// a line comment (`//`, `///`, `//!`).
+///
+/// **Not handled:** `/* … */` block comments — today’s `integration.rs` uses only
+/// line / outer-doc comments; extend this helper if that file ever nests mod
+/// declarations inside block comments.
 fn integration_rs_line_is_active_for_wiring_check(line: &str) -> bool {
     let s = line.trim_start();
     !(s.is_empty() || s.starts_with("//"))
