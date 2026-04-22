@@ -258,10 +258,14 @@ type BooleanAlgebra<T> {
 // a future lane). Known adjacent gaps, each a separate dissolution lane:
 //   - Higher-order value params still emit as `impl Fn(...) + Clone` at the
 //     callable-bound layer (see 05_emit_rust.dag line ~1345).
-//   - The type/value-param split in the emitter is a soft heuristic
-//     (param_node_name == type_expr.name, per parser convention). Grounded
-//     form is partitioning Node's `params` slot (e.g., `type_params` /
-//     `value_params`) or introducing a `ParamKind` discriminator.
+//   - The type/value-param split in the emitter keys on source-span
+//     identity: collect_type_param_names constructs a type param so its
+//     ident_span and type_expr.ident_span reference the same span value,
+//     whereas a value param always has distinct spans (even for `n: n`).
+//     This is structurally correct under the current parser, but leans on
+//     a parser invariant rather than a declared carrier. Dissolution
+//     target: partition Node's `params` slot into `type_params` /
+//     `value_params`, or introduce a `ParamKind` discriminator.
 
 // =========================================================================
 // Sequence/collection structures
