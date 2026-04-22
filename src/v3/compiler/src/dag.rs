@@ -583,7 +583,14 @@ include!("dag_scalar_generated.rs");
 ///   the same ordering and `ordered_pipeline_stages` fail-closes on any drift
 ///   between the two (`reconcile_with_compile_body`) so the bindings remain
 ///   the single runtime authority without silently diverging from the
-///   orchestrator surface. The signature still flows forward through the
+///   orchestrator surface. The `compile` body is **terminal**, not a scaffold
+///   awaiting dissolution: it is the human-readable pipeline contract that
+///   the binding records satisfy — a reader sees the pipeline in one glance
+///   as `{ parse; lower; infer; ... }` rather than reconstructing it from a
+///   binding table. The bindings are the runtime authority; the body is the
+///   surface the bindings commit to. The fail-closed reconcile is what keeps
+///   that contract honest (P3) without letting the body become a second
+///   runtime source (P2). The signature still flows forward through the
 ///   declaration table so callers can type-check against it, and the body
 ///   source span is preserved so M2+ parser extensions can reach in for case 1.
 ///   **User-range boundary:** `reject_user_unparsed_scaffolds` in
