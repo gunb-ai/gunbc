@@ -14,7 +14,7 @@
 
 module extdeps.browser
 
-import std.types { FilePath, Url }
+import std.types { FilePath }
 
 // -- Browser lifecycle ------------------------------------------------
 
