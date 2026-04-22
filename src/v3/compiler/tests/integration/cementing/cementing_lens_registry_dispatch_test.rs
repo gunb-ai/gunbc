@@ -95,7 +95,8 @@ fn expected_origin_from_producer_behavior(behavior: &Behavior) -> Origin {
 /// **Must match register + regen mechanically** — see
 /// `cementing_escalation_slice_matches_capability_register`. Append when the
 /// capability table row is plain `COMPLETE` (not `**PROXY**` / `**STUB**` / `N/A`)
-/// **and** the v2 counterpart cell is not `None (v3-native)`. Land the new
+/// **and** the v2 counterpart cell names a real v2 path (not `None (v3-native)` /
+/// not `N/A` per `TESTING.md` Band-C). Land the new
 /// `cementing/<stem>.rs` module and a `#[path = ...]` line in
 /// `tests/integration.rs` in the same PR.
 const CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS: &[(&str, &str)] = &[];
@@ -114,6 +115,27 @@ fn md_table_cells(line: &str) -> Vec<String> {
     tmp.split('|')
         .map(|s| s.replace('\u{241f}', "|").trim().to_string())
         .collect()
+}
+
+/// Band-C register column: v2 counterpart exists for cross-implementation cementing.
+/// Must match `TESTING.md` (Cementing tests): treat `None (v3-native)` and `N/A`
+/// as absent — same policy as prose, not a second authority.
+fn register_row_has_real_v2_counterpart(v2_cell: &str) -> bool {
+    let v2 = v2_cell.trim().trim_matches('`');
+    !(v2.contains("None (v3-native)") || v2 == "N/A")
+}
+
+#[test]
+fn register_row_has_real_v2_counterpart_matches_testing_md_band_c() {
+    assert!(!register_row_has_real_v2_counterpart("None (v3-native)"));
+    assert!(!register_row_has_real_v2_counterpart(
+        "  None (v3-native)  "
+    ));
+    assert!(!register_row_has_real_v2_counterpart("N/A"));
+    assert!(!register_row_has_real_v2_counterpart("  `N/A`  "));
+    assert!(register_row_has_real_v2_counterpart(
+        "src/v2/complexity.dag (5488L)"
+    ));
 }
 
 #[test]
@@ -137,7 +159,7 @@ fn md_table_cells_preserves_escaped_pipes_for_register_capability_rows() {
 }
 
 /// Lens basenames (e.g. `complexity.dag`) whose register row is `COMPLETE` with a
-/// v2 counterpart beyond `None (v3-native)`.
+/// real v2 counterpart (excludes `None (v3-native)` and `N/A` — `TESTING.md`).
 fn lens_basenames_requiring_v2_cementing_from_register_md() -> BTreeSet<String> {
     let md_path = workspace_root().join("docs/v3-lens-capability-register.md");
     let md = std::fs::read_to_string(&md_path)
@@ -161,7 +183,7 @@ fn lens_basenames_requiring_v2_cementing_from_register_md() -> BTreeSet<String> 
         if behavioral != "COMPLETE" {
             continue;
         }
-        if v2.contains("None (v3-native)") {
+        if !register_row_has_real_v2_counterpart(v2) {
             continue;
         }
         let basename = lens_cell.trim_matches('`').trim();
@@ -313,9 +335,9 @@ fn cementing_escalation_slice_matches_capability_register() {
     assert_eq!(
         declared, expected_refs,
         "`CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` must list exactly the registry `name` keys \
-         for rows where docs/v3-lens-capability-register.md marks `COMPLETE` with a v2 counterpart \
-         other than `None (v3-native)` — update the slice (and cementing modules + `#[path]` wiring) \
-         in the same PR as the register promotion."
+         for rows where docs/v3-lens-capability-register.md marks `COMPLETE` with a real v2 \
+         counterpart (not `None (v3-native)` / not `N/A` per `TESTING.md`) — update the slice \
+         (and cementing modules + `#[path]` wiring) in the same PR as the register promotion."
     );
 }
 
