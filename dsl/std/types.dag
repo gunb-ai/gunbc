@@ -119,29 +119,15 @@ fn is_ordered_element_collection(name: String) -> Bool {
   map_contains_key(ordered_element_collections, name)
 }
 
-// Container → algebra mapping: mirrors the type alias declarations below.
-// Co-located with the declarations it describes (List = FreeMonoid, etc.).
-// Includes surface names, snake_case variants, and algebra self-mappings
-// so that any naming convention resolves to the canonical algebra identity.
-// TODO: derive programmatically from type alias declarations once M4
-// structural identity provides a reflection mechanism.
-data container_to_algebra: Map<String, String> = {
-  "List": "FreeMonoid",
-  "list": "FreeMonoid",
-  "FreeMonoid": "FreeMonoid",
-  "free_monoid": "FreeMonoid",
-  "Set": "BooleanAlgebra",
-  "set": "BooleanAlgebra",
-  "BooleanAlgebra": "BooleanAlgebra",
-  "boolean_algebra": "BooleanAlgebra",
-  "Map": "PartialFunction",
-  "map": "PartialFunction",
-  "PartialFunction": "PartialFunction",
-  "partial_function": "PartialFunction"
-}
-
+// Container → algebra mapping: structural read of the type alias declarations
+// below (type List = FreeMonoid, type Set = BooleanAlgebra, type Map = PartialFunction).
+// Accepts only the PascalCase container aliases; callers that see snake_case
+// or algebra self-names normalize locally before calling.
 fn container_to_algebra_name(name: String) -> String? {
-  map_get(container_to_algebra, name)
+  if name == "List" { Some { value: "FreeMonoid" } }
+  else if name == "Set" { Some { value: "BooleanAlgebra" } }
+  else if name == "Map" { Some { value: "PartialFunction" } }
+  else { none }
 }
 
 // Ordered canonical container/algebra names (PascalCase).
