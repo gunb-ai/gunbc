@@ -53,3 +53,7 @@ Structural work on this seam must obey **all** of:
 ## Honest outcome of this lane (wave 5)
 
 The minimal faithful step **after** this post-mortem is **not** to delete `+ Clone` again. It is to **document and test** the seam: callable param position uses **`impl Fn(...) + Clone`** as the **Rust storage/reuse** contract; **`emit_info.movable`** remains the sole authority for **non-callable** locals. Removing the synthesized bound belongs to a later lane that either lands **declared-bound modeling** or a **single** new carrier that subsumes both typing and use emission.
+
+### Regression test scope (`pipeline.rs`)
+
+The hermetic test uses two call sites `f(0)` and `f(1)` on the same callable parameter and asserts the **`impl Fn(...) + Clone`** signature. It does **not** assert a `f.clone()` substring: for this shape Rust emission often uses `Fn::call(&f, …)` twice without spelling `f.clone()`, while `+ Clone` remains load-bearing elsewhere (stage0 / other emitter paths). A future tightening could pin an explicit clone site once a small fixture is found that **deterministically** materializes asymmetric `f.clone()` in emitted Rust.

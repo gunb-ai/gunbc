@@ -1652,8 +1652,12 @@ fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
 // PR #650 regression: keep synthesized `+ Clone` on `impl Fn` callable params.
 // Removing it (and compensating only in the emitter) split authority vs
 // `emit_info.movable` and broke self-host; see docs/postmortems/pr-650-emitter-callable-clone-bound.md.
-// Note: two `f(...)` calls often compile via `Fn::call(&f, …)` without a visible
-// `f.clone()`, but the bound is still load-bearing across the emitter and stage0.
+//
+// Review note (non-blocking): a stricter assert on *which* use site carries
+// `f.clone()` would catch wrong-site refactors, but this fixture (`f(0) + f(1)`)
+// typically emits no `f.clone()` substring — `Fn::call` uses `&f`. The receipt
+// here is the **signature** plus two call sites; tighten if we add a hermetic
+// module that deterministically materializes `f.clone()` on one branch.
 #[test]
 fn rust_emit_callable_param_double_use_keeps_clone_bound_on_signature() {
     let source =
