@@ -1705,6 +1705,49 @@ fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
     );
 }
 
+// PR #650 regression: keep synthesized `+ Clone` on `impl Fn` callable params.
+// Removing it (and compensating only in the emitter) split authority vs
+// `emit_info.movable` and broke self-host; see docs/postmortems/pr-650-emitter-callable-clone-bound.md.
+// Run: `cargo test -p v2-compiler-tests rust_emit_callable_param_double_use_keeps_clone_bound_on_signature`
+// (`-p` uses the workspace package name `v2-compiler-tests`, not `v2_compiler_tests`.)
+//
+// Review note (non-blocking): a stricter assert on *which* use site carries
+// `f.clone()` would catch wrong-site refactors, but this fixture (`f(0) + f(1)`)
+// emits **plain** `f(0)` / `f(1)` in generated Rust (no spelled `f.clone()`).
+// Call-site substrings are checked only **after** the `twice` signature so stray
+// `f(0)` text elsewhere in the emitted file cannot satisfy the assert. Tighten
+// further if we add a hermetic module that deterministically materializes `f.clone()`.
+//
+// **Not sufficient alone:** re-attempting #650 could still satisfy this fixture while
+// breaking stage0 self-host. For structural edits here, also run
+// `./scripts/regenerate-stage0.sh` and `cargo test -p v2-compiler-tests ci_ -- --ignored`
+// (`ci_freshness` / `ci_fixed_point`); see post-mortem stop boundary item 4.
+//
+// TESTING.md §4 (one claim per test): signature + dual call sites are **one**
+// receipt for the same seam (double-use callable param), not unrelated claims.
+// Prefer not to copy this pattern for loose multi-claim bundles elsewhere.
+#[test]
+fn rust_emit_callable_param_double_use_keeps_clone_bound_on_signature() {
+    let source =
+        "module callable_twice\n\nfn twice(f: fn(Int) -> Int) -> Int {\n  f(0) + f(1)\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/callable_twice.rs");
+    let sig = "fn twice(f: impl Fn(i64) -> i64 + Clone) -> i64";
+    assert!(
+        content.contains(sig),
+        "double-use callable param must keep synthesized + Clone: {content}"
+    );
+    let pos = content
+        .find(sig)
+        .expect("twice signature should appear in emitted Rust");
+    let from_twice = &content[pos..];
+    assert!(
+        from_twice.contains("f(0)") && from_twice.contains("f(1)"),
+        "expected two call sites on the callable param inside twice(): {content}"
+    );
+}
+
 // ── Python emission tests ───────────────────────────────────────────────
 
 #[test]
