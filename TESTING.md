@@ -331,6 +331,57 @@ See `docs/design-test-infra.md` and ROADMAP §Lane 2 Stage 2c for
 the DB-15 trajectory. This document is the near-term discipline
 for Rust-side tests while that runtime matures.
 
+## Cementing tests (Band C — lens subsumption)
+
+**Where this applies.** Whenever a brief, roadmap line, or review
+claims that v3 **subsumes** or is **behaviorally equivalent** to a
+v2 analysis for the same program text, that claim is a Band-C
+statement about the *function* of the lens, not about whether the
+`.dag` file is structurally terminal. The authoritative inventory
+is `docs/v3-lens-capability-register.md` (behavioral axis + v2
+counterpart column). Any `LensRegistryEntry` in
+`src/v3/compiler/regen.dag` whose row moves to
+`BEHAVIORALLY COMPLETE` while still naming a real v2 counterpart
+(not `None (v3-native)` / not `N/A`) inherits the same obligation.
+
+**What “cementing” means.** A cementing test is a **behavioral**
+regression that would fail if v3 silently changed the analysis
+while prose still claimed parity. Concretely:
+
+- **v2 counterpart exists:** run the same minimal fixture through
+  both implementations (v2 oracle + v3 lens output) and assert
+  semantic equality on the published carrier shape — or assert a
+  documented, reviewed projection when the types differ but the
+  claim is about a specific homomorphism.
+- **No v2 counterpart (`N/A` / v3-native) but the register marks
+  `BEHAVIORALLY COMPLETE`:** pin the lens’s published behavioral
+  contract on **minimal constructed `Dag` shapes** (or a single
+  tiny `compile_to_dag` fixture when the contract genuinely spans
+  the pipeline). This is still a cementing test: it cements the
+  `COMPLETE` row against accidental semantic drift.
+
+**Where tests live.** Add modules under
+`src/v3/compiler/tests/integration/cementing/` and register each
+file from `src/v3/compiler/tests/integration.rs` via `#[path =
+"integration/cementing/<file>.rs"]`. Prefer one focused module per
+lens (or per v2 parity claim), not a kitchen-sink file.
+
+**Dispatch (same PR as the claim).** Editing
+`src/v3/compiler/regen.dag` or promoting a register row to
+`COMPLETE` with v2 parity is not complete until the matching
+cementing module exists and `tests/integration.rs` wires it. Extend
+`CEMENTING_MODULES_FOR_V2_COMPLETE_CLAIMS` in
+`tests/integration/cementing/cementing_lens_registry_dispatch_test.rs`
+when the register row is upgraded; the test
+`cementing_test_modules_exist_for_escalated_v2_complete_registry_claims`
+requires each listed stem to resolve to an on-disk `.rs` file under
+`cementing/`.
+
+**Anti-scope.** This section is not a mandate to prove full lens
+equivalence for every `.dag` file, and it does not require new
+substrate accessors or emitters. It only governs **explicit**
+subsumption or `COMPLETE`-with-counterpart claims.
+
 ## Related
 
 - `INVARIANTS.md` — project-level invariants; some have direct
@@ -339,3 +390,5 @@ for Rust-side tests while that runtime matures.
   the modeled concepts, not rebuild them
 - `docs/design-test-infra.md` (DB-15) — the `.dag`-native test
   infrastructure this document is the stopgap for
+- `docs/v3-lens-capability-register.md` — Band-C behavioral axis;
+  cross-check before dispatching “v3 replaces v2 X” briefs
