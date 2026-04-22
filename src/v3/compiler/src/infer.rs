@@ -35,8 +35,7 @@ use crate::diagnostics::{
 };
 use crate::infer_helpers::{
     behavior_output_port, behavior_span, filter_non_self_template_arguments,
-    generated_template_arguments_match,
-    payload_binding_span as generated_payload_binding_span,
+    generated_template_arguments_match, payload_binding_span as generated_payload_binding_span,
     push_template_argument_binding as generated_push_template_argument_binding,
     resolve_template_argument_value as generated_resolve_template_argument_value,
     template_argument_value as generated_template_argument_value, TemplateArgumentBinding,
