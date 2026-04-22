@@ -3,9 +3,12 @@
 **Date:** 2026-04-22
 **Lane:** A (audit only, no code changes)
 **Scaffold under audit:** `Dag::declaration_name_preference_rank`
-(`src/v3/compiler/src/dag.rs:2012-2020`) and its mirror
-`collect_symbols` (`src/v3/compiler/src/lower.rs:1247-1286`, mirrored
-in `lower_generated.rs`). Rank: `src/v3/` → 2, unknown → 1, `dsl/` → 0.
+(`src/v3/compiler/src/dag.rs:2012-2020`) and its three mirrors:
+`collect_symbols` (`src/v3/compiler/src/lower.rs:1247-1286`,
+mirrored in `lower_generated.rs`); a `shared_symbols` rebuild in
+`src/v3/compiler/src/bootstrap.rs:81` (rank fn) + `:165-185`
+(application) used by the legacy PB-1-equivalence bootstrap path.
+Rank: `src/v3/` → 2, unknown → 1, `dsl/` → 0.
 
 ## Scaffold semantics (recap)
 
@@ -283,13 +286,20 @@ inputs that can range over the overlap set, and so depend on rank
 at the systemic level rather than at a single call site:
 
 1. **`collect_symbols`** (`lower.rs:1269-1286`, mirrored in
-   `lower_generated.rs:1259-1286`). Seeds the per-Dag symbol table
-   used to resolve every identifier in every lowered `.dag` source
-   file. When a surface identifier matches a name in the overlap
-   set, the v3 authority wins. This is the scaffold's *reason for
+   `lower_generated.rs:1259-1286`; also mirrored in
+   `bootstrap.rs:165-185` as the `shared_symbols` rebuild used by
+   the legacy PB-1-equivalence bootstrap path, with its own local
+   copy of `declaration_name_preference_rank` at
+   `bootstrap.rs:81`). Seeds the per-Dag symbol table used to
+   resolve every identifier in every lowered `.dag` source file.
+   When a surface identifier matches a name in the overlap set,
+   the v3 authority wins. This is the scaffold's *reason for
    existing*: it lets v3-authored `.dag` code reference the v3
    surfaces of `EffectShape`, `TestClaim`, `PathTemplate`, etc.
-   even while legacy `dsl/` duplicates remain ingested.
+   even while legacy `dsl/` duplicates remain ingested. Dissolution
+   therefore deletes *three* rank-function copies (`dag.rs`,
+   `lower.rs` import, `bootstrap.rs`) plus their application
+   sites, not two.
 
 2. **User-name dispatch helpers** — six sites that look up
    declarations by a variable name taken from user-authored
@@ -349,7 +359,8 @@ Recommendation 2): converge all four duplicated authorities —
 `std.effects`, `std.verification`, the `http_path` mirror, and
 `dsl/std/languages.dag` ↔ `src/v3/spec/{rust,go,python}.dag`. Once
 converged, these consumers revert to vanilla single-authority
-lookup; the rank function and its mirror delete together.
+lookup; the rank function (three copies — `dag.rs`, `lower.rs`,
+`bootstrap.rs`) and their application sites delete together.
 
 ## Summary table
 
@@ -413,6 +424,7 @@ as individual (a) sites — see §(c).)
 
 ## Non-goals respected
 
-- No change to `dag.rs:2012-2020` or `lower.rs:1247-1286`.
+- No change to `dag.rs:2012-2020`, `lower.rs:1247-1286`, or
+  `bootstrap.rs:{81,165-185}`.
 - No change to any consumer.
 - No attempt to resolve `std.verification` convergence.
