@@ -212,6 +212,39 @@ fn generic_fn_emits_type_params_without_synthesized_bounds() {
     );
 }
 
+// P3 fail-closed receipt for the `fn f<T>(T: T)` name-shadowing ambiguity
+// flagged by codex on PR #661. The emit-time type/value-param splitter keys
+// on name equality + post-resolve TypeVariable, so it can't distinguish the
+// declared type param from a value param that shadows it. Until ParamKind
+// / params-slot partition dissolves the splitter, the emitter must fail
+// closed rather than silently emit `<T, T>`. See emit_fn_def in
+// 05_emit_rust.dag.
+#[test]
+fn generic_fn_with_value_param_shadowing_type_param_fails_closed() {
+    let source = "module shadow_test\n\nfn weird<T>(t: T) -> T {\n  t\n}\n\nfn collide<T>(T: T) -> T {\n  T\n}\n";
+    let result = compile_dag(source);
+    // Compilation proceeds (the upstream resolve layer doesn't yet diagnose
+    // the collision — that's a separate dissolution lane), but the emitted
+    // Rust for the colliding fn is a target-compile-time compile_error!,
+    // not a silently-malformed `<T, T>` signature.
+    let content = find_file(&result, "src/shadow_test.rs");
+    // Sanity: the non-shadowing case still emits correctly.
+    assert!(
+        content.contains("fn weird<T>(") || content.contains("pub fn weird<T>("),
+        "expected `fn weird<T>(` to emit normally; got:\n{content}"
+    );
+    // Fail-closed: no `<T, T>` in the colliding fn.
+    assert!(
+        !content.contains("<T, T>"),
+        "emitter silently produced `<T, T>` for name-shadowing fn; got:\n{content}"
+    );
+    // Fail-closed: a compile_error! fires for the colliding fn.
+    assert!(
+        content.contains("compile_error!") && content.contains("collide"),
+        "expected a target-compile-time error for `fn collide<T>(T: T)`; got:\n{content}"
+    );
+}
+
 #[test]
 fn generic_type_declaration_smoke() {
     let source = "module generics_smoke\n\ntype Pair<A, B> { first: A  second: B }\n\nfn make_pair(x: Int, y: String) -> Pair<Int, String> {\n  Pair { first: x, second: y }\n}\n\nfn get_first(p: Pair<Int, String>) -> Int {\n  p.first\n}\n";
