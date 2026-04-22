@@ -3,13 +3,14 @@
 // The Rust projection (`tokenize_generated.rs`) is produced by
 // `cargo run -p v3-compiler --bin regen_tokenize` — do not hand-edit it.
 //
-// **Authority boundary.** This file declares token kinds, tokenizer-local
-// punctuation that is not modeled in `dsl/extdeps/languages/dag/syntax.dag`,
-// string escape behavior, line-comment prefix, string delimiter, and fixed
-// tokenizer diagnostic bodies. `regen_tokenize` derives the dedicated keyword
-// subset and the shared-operator punctuation subset from the shared syntax
-// authority at `dsl/extdeps/languages/dag/syntax.dag`, then merges those with
-// the tokenizer-local rows below. That keeps authored spellings for keywords /
+// **Authority boundary.** Shared token types live in
+// `src/v3/std/tokenize.dag`. This file declares tokenizer-local punctuation
+// rows not modeled in `dsl/extdeps/languages/dag/syntax.dag`, string escape
+// behavior, line-comment prefix, string delimiter, and fixed tokenizer
+// diagnostic bodies. `regen_tokenize` derives the dedicated keyword subset and
+// the shared-operator punctuation subset from the shared syntax authority at
+// `dsl/extdeps/languages/dag/syntax.dag`, then merges those with the
+// tokenizer-local rows below. That keeps authored spellings for keywords /
 // shared operators out of this file.
 //
 // **Tracked scaffold (SG-1a).** The shared authority handoff is not yet a pure
@@ -76,128 +77,13 @@
 
 module v3.compiler.tokenize
 
-import v3.std.substrate { SourceSpan }
-
-type TokenKind
-  = KwLet
-  | KwIf
-  | KwThen
-  | KwElse
-  | KwFn
-  | KwType
-  | KwModule
-  | KwImport
-  | KwMatch
-  | KwData
-  | KwWhere
-  | KwTrue
-  | KwFalse
-  | Ident(String)
-  | IntLit(Int)
-  | StringLit(String)
-  | Eq
-  | EqEq
-  | NotEq
-  | Lt
-  | Le
-  | Gt
-  | Ge
-  | Plus
-  | Minus
-  | Star
-  | Slash
-  | AmpAmp
-  | PipePipe
-  | Colon
-  | Arrow
-  | FatArrow
-  | PipeArrow
-  | Dot
-  | LParen
-  | RParen
-  | LBrace
-  | RBrace
-  | LBracket
-  | RBracket
-  | Comma
-  | Semicolon
-  | Pipe
-  | Question
-  | Eof
-
-type Token {
-  kind: TokenKind
-  span: SourceSpan
-}
-
-// Dedicated keyword tokens for the v3 tokenizer. Their spellings derive from
-// `dsl/extdeps/languages/dag/syntax.dag`'s `dag_keyword_set`; `tokenize.dag`
-// only declares which dedicated keyword variants exist.
-type KeywordTokenKind
-  = KwLet
-  | KwIf
-  | KwThen
-  | KwElse
-  | KwFn
-  | KwType
-  | KwModule
-  | KwImport
-  | KwMatch
-  | KwData
-  | KwWhere
-  | KwTrue
-  | KwFalse
-
-// Dedicated punctuation tokens for the v3 tokenizer. Shared operator spellings
-// derive from `dsl/extdeps/languages/dag/syntax.dag`'s `dag_operators`;
-// `LocalPunctSpec` rows below cover only punctuation that the shared syntax
-// authority does not model (delimiters, assignment, lambda / arm markers).
-// SG-1a banked scaffold: `regen_tokenize` currently classifies each
-// `dag_operators` symbol as either tokenizer-owned punctuation or explicit
-// parser-only debt (`??`, `%`) and fails closed on any drift. Once shared
-// syntax lowers structurally, move that subset relation out of the Rust bridge.
-type PunctTokenKind
-  = Eq
-  | EqEq
-  | NotEq
-  | Lt
-  | Le
-  | Gt
-  | Ge
-  | Plus
-  | Minus
-  | Star
-  | Slash
-  | AmpAmp
-  | PipePipe
-  | Colon
-  | Arrow
-  | FatArrow
-  | PipeArrow
-  | Dot
-  | LParen
-  | RParen
-  | LBrace
-  | RBrace
-  | LBracket
-  | RBracket
-  | Comma
-  | Semicolon
-  | Pipe
-  | Question
-
-type LocalPunctSpec {
-  pattern: String
-  kind: PunctTokenKind
-}
-
-// After `\` inside a string literal: map the next source byte (as a
-// one-character `suffix`) to a Unicode scalar emitted into the string value.
-// Unknown suffixes are not listed here; the projection preserves historical
-// behavior (`\` + literal suffix char).
-type StringEscapeSpec {
-  suffix: String
-  output_codepoint: Int
+import v3.std.tokenize {
+  KeywordTokenKind,
+  LocalPunctSpec,
+  PunctTokenKind,
+  StringEscapeSpec,
+  Token,
+  TokenKind
 }
 
 // Fixed diagnostic message bodies for tokenizer failures (C-8: errors only).
