@@ -57,6 +57,71 @@ pub fn expr_span(p0: &parse_surface::SurfaceExpr) -> SourceSpan {
         } => (__e_span).clone(),
     }
 }
+pub fn item_span(p0: &parse_surface::SurfaceItem) -> SourceSpan {
+    match p0 {
+        SurfaceItem::Let {
+            name: __i_name,
+            type_ann: __i_type_ann,
+            expr: __i_expr,
+        } => expr_span(__i_expr),
+        SurfaceItem::Fn {
+            name: __i_name,
+            type_params: __i_type_params,
+            params: __i_params,
+            return_type: __i_return_type,
+            body: __i_body,
+            span: __i_span,
+        } => (__i_span).clone(),
+        SurfaceItem::FnExternalBody {
+            name: __i_name,
+            type_params: __i_type_params,
+            params: __i_params,
+            return_type: __i_return_type,
+            body_span: __i_body_span,
+            span: __i_span,
+        } => (__i_span).clone(),
+        SurfaceItem::Data {
+            name: __i_name,
+            ty: __i_ty,
+            body: __i_body,
+            body_span: __i_body_span,
+            span: __i_span,
+        } => (__i_span).clone(),
+        SurfaceItem::Module {
+            path: __i_path,
+            span: __i_span,
+        } => (__i_span).clone(),
+        SurfaceItem::Import {
+            path: __i_path,
+            names: __i_names,
+            span: __i_span,
+        } => (__i_span).clone(),
+        SurfaceItem::TypeAtom {
+            name: __i_name,
+            type_params: __i_type_params,
+            span: __i_span,
+        } => (__i_span).clone(),
+        SurfaceItem::TypeRecord {
+            name: __i_name,
+            type_params: __i_type_params,
+            fields: __i_fields,
+            span: __i_span,
+        } => (__i_span).clone(),
+        SurfaceItem::TypeSum {
+            name: __i_name,
+            type_params: __i_type_params,
+            variants: __i_variants,
+            inhabits: __i_inhabits,
+            span: __i_span,
+        } => (__i_span).clone(),
+        SurfaceItem::TypeAlias {
+            name: __i_name,
+            type_params: __i_type_params,
+            target: __i_target,
+            span: __i_span,
+        } => (__i_span).clone(),
+    }
+}
 pub fn pattern_binding_names(p0: &parse_surface::SurfacePattern) -> Vec<String> {
     match p0 {
         SurfacePattern::BareVariant { name: _, span: _ } => Vec::new(),

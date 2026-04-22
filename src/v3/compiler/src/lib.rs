@@ -718,7 +718,8 @@ pub(crate) mod infer_helpers {
     };
 }
 
-/// SG-3g-b: `.dag`-authority `expr_span` for `SurfaceExpr` (see `lenses/lower_helpers.dag`).
+/// SG-3g-d: `.dag`-authority `expr_span` / `item_span` for surface nodes plus
+/// `pattern_binding_names` (see `lenses/lower_helpers.dag`).
 /// Consumed from `lower.rs`; `parse_generated.rs` keeps its own `&SourceSpan` helper for
 /// parser-local span fusion without cloning.
 pub(crate) mod lower_helpers {
@@ -733,18 +734,18 @@ pub(crate) mod lower_helpers {
     mod generated {
         use crate::diagnostics::SourceSpan;
         use crate::parse_surface;
-        use crate::parse_surface::{SurfaceExpr, SurfacePattern};
+        use crate::parse_surface::{SurfaceExpr, SurfaceItem, SurfacePattern};
 
         include!("lower_helpers_generated.rs");
     }
 
-    pub(crate) use generated::{expr_span, pattern_binding_names};
+    pub(crate) use generated::{expr_span, item_span, pattern_binding_names};
 
     #[cfg(test)]
     mod tests {
-        use super::{expr_span, pattern_binding_names};
+        use super::{expr_span, item_span, pattern_binding_names};
         use crate::diagnostics::SourceSpan;
-        use crate::parse_surface::{SurfaceExpr, SurfacePattern, SurfacePatternField};
+        use crate::parse_surface::{SurfaceExpr, SurfaceItem, SurfacePattern, SurfacePatternField};
 
         #[test]
         fn expr_span_matches_variant_span_field() {
@@ -754,6 +755,40 @@ pub(crate) mod lower_helpers {
                 span: span.clone(),
             };
             assert_eq!(expr_span(&e), span);
+        }
+
+        #[test]
+        fn item_span_matches_item_shape() {
+            let item_span_value = SourceSpan::new("t.v3", 30, 40);
+            let expr_span_value = SourceSpan::new("t.v3", 50, 60);
+
+            assert_eq!(
+                item_span(&SurfaceItem::Let {
+                    name: "x".into(),
+                    type_ann: None,
+                    expr: SurfaceExpr::Literal {
+                        value: crate::parse_surface::SurfaceLiteral::Int(1),
+                        span: expr_span_value.clone(),
+                    },
+                }),
+                expr_span_value
+            );
+            assert_eq!(
+                item_span(&SurfaceItem::Fn {
+                    name: "f".into(),
+                    params: vec![],
+                    return_type: crate::parse_surface::SurfaceType::Named {
+                        name: "Int".into(),
+                        span: item_span_value.clone(),
+                    },
+                    body: SurfaceExpr::Literal {
+                        value: crate::parse_surface::SurfaceLiteral::Int(1),
+                        span: expr_span_value,
+                    },
+                    span: item_span_value.clone(),
+                }),
+                item_span_value
+            );
         }
 
         #[test]
