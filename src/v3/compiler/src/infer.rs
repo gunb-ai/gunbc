@@ -1561,7 +1561,10 @@ fn push_template_argument_binding(
             arguments.push(TemplateArgument { parameter, value });
             true
         }
-        TemplateArgumentBinding::TemplateArgumentBindingReplaceAt { _0: index, _1: updated } => {
+        TemplateArgumentBinding::TemplateArgumentBindingReplaceAt {
+            _0: index,
+            _1: updated,
+        } => {
             let Some(existing) = arguments.get_mut(*index as usize) else {
                 return false;
             };

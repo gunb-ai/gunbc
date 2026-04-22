@@ -9,7 +9,9 @@ pub enum TemplateArgumentLookup {
 #[derive(Clone, Debug)]
 pub enum TemplateArgumentBinding {
     TemplateArgumentBindingConflict,
-    TemplateArgumentsBound { _0: Vec<TemplateArgument> },
+    TemplateArgumentBindingNoOp,
+    TemplateArgumentBindingAppend,
+    TemplateArgumentBindingReplaceAt { _0: i64, _1: DeclarationId },
 }
 pub fn behavior_output_port(p0: &Behavior) -> PortId {
     match p0 {
@@ -79,14 +81,14 @@ pub fn template_arguments_match(p0: &[TemplateArgument], p1: &[TemplateArgument]
     match p0 {
         [] => match p1 {
             [] => true,
-            [__list_head, __list_tail @ ..] => false,
+            [..] => false,
         },
-        [__list_head, __list_tail @ ..] => match p1 {
+        [__left_head, __left_tail @ ..] => match p1 {
             [] => false,
-            [__list_head, __list_tail @ ..] => {
-                if ((__list_head).parameter == (__list_head).parameter) {
-                    if ((__list_head).value == (__list_head).value) {
-                        template_arguments_match(__list_tail, __list_tail)
+            [__right_head, __right_tail @ ..] => {
+                if ((__left_head).parameter == (__right_head).parameter) {
+                    if ((__left_head).value == (__right_head).value) {
+                        template_arguments_match(__left_tail, __right_tail)
                     } else {
                         false
                     }
@@ -98,62 +100,36 @@ pub fn template_arguments_match(p0: &[TemplateArgument], p1: &[TemplateArgument]
     }
 }
 pub fn push_template_argument_binding(
-    p0: Vec<TemplateArgument>,
-    p1: DeclarationId,
-    p2: DeclarationId,
+    p0: &[TemplateArgument],
+    p1: &DeclarationId,
+    p2: &DeclarationId,
 ) -> TemplateArgumentBinding {
-    match &p0 {
-        [] => TemplateArgumentBinding::TemplateArgumentsBound {
-            _0: {
-                let mut __list = Vec::new();
-                __list.insert(
-                    0,
-                    TemplateArgument {
-                        parameter: p1,
-                        value: p2,
-                    },
-                );
-                __list
-            },
-        },
+    push_template_argument_binding_at(p0, p1, p2, &0)
+}
+pub fn push_template_argument_binding_at(
+    p0: &[TemplateArgument],
+    p1: &DeclarationId,
+    p2: &DeclarationId,
+    p3: &i64,
+) -> TemplateArgumentBinding {
+    match p0 {
+        [] => TemplateArgumentBinding::TemplateArgumentBindingAppend,
         [__list_head, __list_tail @ ..] => {
-            if ((__list_head).parameter == p1) {
-                if ((__list_head).value == p1) {
-                    TemplateArgumentBinding::TemplateArgumentsBound {
-                        _0: {
-                            let mut __list = (__list_tail).to_vec();
-                            __list.insert(
-                                0,
-                                TemplateArgument {
-                                    parameter: (__list_head).parameter,
-                                    value: p2,
-                                },
-                            );
-                            __list
-                        },
+            if ((__list_head).parameter == (*(p1))) {
+                if ((__list_head).value == (*(p1))) {
+                    TemplateArgumentBinding::TemplateArgumentBindingReplaceAt {
+                        _0: (*(p3)),
+                        _1: (*(p2)),
                     }
                 } else {
-                    if ((__list_head).value == p2) {
-                        TemplateArgumentBinding::TemplateArgumentsBound { _0: (p0).clone() }
+                    if ((__list_head).value == (*(p2))) {
+                        TemplateArgumentBinding::TemplateArgumentBindingNoOp
                     } else {
                         TemplateArgumentBinding::TemplateArgumentBindingConflict
                     }
                 }
             } else {
-                match &(push_template_argument_binding((__list_tail).to_vec(), p1, p2)) {
-                    TemplateArgumentBinding::TemplateArgumentBindingConflict => {
-                        TemplateArgumentBinding::TemplateArgumentBindingConflict
-                    }
-                    TemplateArgumentBinding::TemplateArgumentsBound { _0: updated_tail } => {
-                        TemplateArgumentBinding::TemplateArgumentsBound {
-                            _0: {
-                                let mut __list = (updated_tail).to_vec();
-                                __list.insert(0, (__list_head).clone());
-                                __list
-                            },
-                        }
-                    }
-                }
+                push_template_argument_binding_at(__list_tail, p1, p2, &((*(p3)) + 1))
             }
         }
     }
