@@ -7,7 +7,7 @@ dsl/std/float.dag	6	3155	2942092bfc8bff49
 dsl/std/integer.dag	13	8930	bd26da8af7eca748
 dsl/std/logic.dag	5	5614	bb0fc43f94c4374f
 dsl/std/string_type.dag	4	1845	3810f615d6874bcd
-dsl/std/types.dag	108	137815	42478679b0276003
+dsl/std/types.dag	108	137844	1fa72880c2e639cf
 src/v3/compiler/operators.dag	5	47160	b75a91c65bf8a242
 src/v3/compiler/parse_tables.dag	29	69841	c2db27c9e6efa073
 src/v3/compiler/pipeline.dag	26	47032	a13b41aa379fd167
