@@ -380,7 +380,7 @@ pub mod lens_provenance {
         include!("lens_provenance_generated.rs");
     }
 
-    pub use generated::{origin_of, Origin};
+    pub use generated::{origin_for_behavior, origin_of, Origin};
 
     #[cfg(test)]
     mod tests {
