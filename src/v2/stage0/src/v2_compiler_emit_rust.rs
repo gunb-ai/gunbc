@@ -3172,10 +3172,13 @@ pub fn emit_rust_param_type(
             };
             v2_rt::concat(
                 v2_rt::concat(
-                    v2_rt::concat("impl Fn(".to_string(), param_str),
-                    ") -> ".to_string(),
+                    v2_rt::concat(
+                        v2_rt::concat("impl Fn(".to_string(), param_str),
+                        ") -> ".to_string(),
+                    ),
+                    ret_str,
                 ),
-                v2_rt::concat(ret_str, " + Clone".to_string()),
+                " + Clone".to_string(),
             )
         }
     } else {
