@@ -3,6 +3,8 @@
 **Program:** Emitter Fidelity (callable generic ownership / bounds)  
 **Status:** Receipt for the failed micro-fix; stop boundary for structural follow-up.
 
+When shipped as its own PR, treat this as the **prerequisite / boundary receipt** (#650 analysis + regression pin), not a claim that the structural emitter-fidelity lane has closed.
+
 ---
 
 ## Exact attempted change
@@ -28,7 +30,7 @@ The affected seam is **`emit_rust_param_type`** in `src/v2/05_emit_rust.dag`: ca
 | Authority | Role today |
 |-----------|------------|
 | **`emit_info.movable`** | Sole gate for **plain variable references**: emit by value vs `SharingStrategy` `.clone()` (`emit_var_ref`). |
-| **Synthesized `+ Clone` on `impl Fn` params** | Rust target contract so **callable values** may be **used more than once** via `.clone()` at use sites when not movable. |
+| **Synthesized `+ Clone` on `impl Fn` params** | Rust target contract for **reusing** the callable value across emitter patterns that **do** materialize `.clone()` (non-movable locals, stage0 closure params, etc.). Some bodies call `f` twice via `Fn::call(&f, …)` without spelling `f.clone()`, but dropping the bound still desyncs type lines from those clone sites elsewhere. |
 
 #650 effectively asked **`emit_info.movable`** (or ad hoc emitter rules) to **subsume** the second row **without** deleting the need for `Clone` at the type level in Rust. That is the authority split: **two loci** for “when is this callable value copied,” only one of which is grounded in declared source types.
 
