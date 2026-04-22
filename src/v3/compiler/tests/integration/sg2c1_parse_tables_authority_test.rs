@@ -298,9 +298,7 @@ fn every_bracket_shaped_token_kind_variant_has_a_bracket_row() {
         })
         .collect();
 
-    let missing: Vec<&String> = bracket_shaped_token_kinds
-        .difference(&authored)
-        .collect();
+    let missing: Vec<&String> = bracket_shaped_token_kinds.difference(&authored).collect();
     assert!(
         missing.is_empty(),
         "TokenKind variants look bracket-shaped (`L[A-Z]…` / `R[A-Z]…`) but \
