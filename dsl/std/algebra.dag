@@ -254,6 +254,17 @@ type BooleanAlgebra<T> {
 //   min_by(project, a, b):  compare via projection, keep lesser.
 //   max_by(project, a, b):  compare via projection, keep greater.
 
+// Shared total-order helpers for concrete lattice carriers that expose an
+// ordinal/rank projection into Int. This keeps the local authority on the
+// carrier-specific rank function while deleting duplicate min/max match trees.
+fn min_by<T>(a: T, b: T, project: fn(T) -> Int) -> T {
+  if project(a) <= project(b) { a } else { b }
+}
+
+fn max_by<T>(a: T, b: T, project: fn(T) -> Int) -> T {
+  if project(a) >= project(b) { a } else { b }
+}
+
 // =========================================================================
 // Sequence/collection structures
 // =========================================================================
@@ -596,4 +607,3 @@ fn algebra_type_param_names(profile: AlgebraProfile) -> List<String> {
     PartialFunctionProfile => ["K", "V"]
   }
 }
-

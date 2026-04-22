@@ -11,6 +11,7 @@
 
 module std.fermi
 
+import std.algebra { min_by, max_by }
 import std.types { FermiDepth, Milliseconds }
 
 // FermiDepth inhabits Lattice<FermiDepth>.
@@ -45,11 +46,11 @@ fn fermi_eq(lhs: FermiDepth, rhs: FermiDepth) -> Bool {
 // --- Composition: lattice meet/join for the total order -------------
 
 fn fermi_meet(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
-  if fermi_gt(lhs: lhs, rhs: rhs) { rhs } else { lhs }
+  min_by(a: lhs, b: rhs, project: fermi_ordinal)
 }
 
 fn fermi_join(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
-  if fermi_gt(lhs: lhs, rhs: rhs) { lhs } else { rhs }
+  max_by(a: lhs, b: rhs, project: fermi_ordinal)
 }
 
 // Historical alias retained for callers that still use magnitude vocabulary.
