@@ -6,13 +6,13 @@
 
 The v3 complexity lens is structurally landed but has no receipt demonstrating it matches or beats v2's heuristic approach, and nothing *cements* its current output so regressions are caught.
 
-Two specific gaps:
+Two core gaps plus an adjacent cosmetic:
 
 1. **No thesis receipt.** v3 `src/v3/lenses/complexity.dag` is 162 lines (🟢 TERMINAL, pure fold over `d.nodes`, fail-closed on malformed refs). v2 `src/v2/complexity.dag` is 5488 lines of heuristics, the majority of which (per `feedback_variant_provenance_shape`) is bridge code rebuilding facts dropped upstream. That's a ~13× LOC reduction with structurally stronger guarantees, but nothing in the repo demonstrates it concretely against the same input.
 
 2. **No cementing test for v3 output.** Integration tests exist (`m1_3_lens_cost_test.rs`, `m2_lens_cost_migration_test.rs`) but they test the lens runs correctly — not that its specific output on a chosen fixture is locked in. An edit to `complexity.dag` that silently changes output would not trip a golden.
 
-3. **Adjacent cosmetic: registry name mismatch.** `src/v3/compiler/regen.dag:34-38` declares `lens_cost_entry` whose `lens_file` is `src/v3/lenses/complexity.dag`. The "cost" registry name vs `complexity.dag` source file is confusing. Similarly, `cost.dag` is registered as `"cost_symbolic"`. Each future reader has to rediscover this.
+3. **Adjacent cosmetic (not a core gap): registry name mismatch.** `src/v3/compiler/regen.dag:34-38` declares `lens_cost_entry` whose `lens_file` is `src/v3/lenses/complexity.dag`. The "cost" registry name vs `complexity.dag` source file is confusing. Similarly, `cost.dag` is registered as `"cost_symbolic"`. Each future reader has to rediscover this. Phase 1 and Phase 2 have **no structural dependency** — the worker should land them as separate PRs. Phase 2 is the load-bearing thesis receipt; bundling the cosmetic rename risks the churn obscuring the diff artifact. If scope pressure is high, skip Phase 1 entirely and do it later as an independent micro-lane.
 
 ## Read first
 
@@ -41,23 +41,22 @@ Rename the registry entry for clarity. Options:
 
 **(b) Keep the names but docstring the historical reason** in `regen.dag`. Cheaper if (a) is wide.
 
-Prefer (a) — the confusion is ongoing debt. The rename surface is bounded (registry + generated file + consumers) and should be grep-able. Switch to (b) only if the consumer surface turns out to be wider than expected (STOP-AND-ESCALATE).
+Prefer (a) — the confusion is ongoing debt. The rename surface is bounded (registry + generated file + consumers) and should be grep-able. Rename churn that stays under ~10 files is expected and worth eating; only if the consumer surface exceeds that and the rename is blowing up scope should the worker switch to (b) or STOP-AND-ESCALATE. Three files is well within the "do it" zone.
 
 ### Phase 2 — Comparison + cementing test `(M)`
 
-1. **Pick a fixture.** Criteria:
-   - Small but representative — a `.dag` file with at least one recursive function, one fold, and one simple arithmetic function
+1. **Pick a fixture.** Criteria, in priority order:
+   - **Representative first** — a `.dag` file with at least one recursive function, one fold, and one simple arithmetic function. Representativeness is the load-bearing property; a purpose-built fixture that hits the right shapes is strictly better than a convenient one that doesn't.
    - Reproducible by v2 — has to be parseable by v2 stage0 so v2 complexity can produce output
-   - Already used by test infrastructure if possible — look at what existing complexity tests consume
-   - Candidates: a fixture from `dsl/examples/` (simple, small), or a synthetic one purpose-built for this lane
+   - Small — keep the fixture tight so the diff is readable
+   - Reused only if it satisfies the above — if an existing test fixture happens to be representative, reuse is a nice-to-have. Do not couple the receipt to whatever fixture was convenient.
+   - Candidates: a fixture from `dsl/examples/` (if representative), or a synthetic one purpose-built for this lane
 
-2. **Capture v3 output as a golden.** Run v3 complexity lens on the fixture; serialize the per-port cost map (or equivalent structural output) to a golden file checked into the repo. Add an integration test that re-runs the lens and asserts byte-equality against the golden. This is the cementing test — any future edit to `complexity.dag` that changes output will trip this test, and the worker must either update the golden (if intentional) or fix the regression (if not).
+2. **Capture v3 output as a golden.** Run v3 complexity lens on the fixture; serialize the per-port cost map (or equivalent structural output) to a golden file checked into the repo. Add an integration test that re-runs the lens and asserts **semantic equality** against the golden — parse both into the same typed carrier (e.g., `Map<PortId, CostLookup>`) and compare the data structures, or canonicalize both serializations (sort by `PortId`, normalize whitespace) before byte-compare. **Do not** assert raw byte-identity against a free-form serialization: formatting or iteration-order changes would produce false regressions that pin representation rather than behavior (TESTING.md prefers semantic carriers over representation pinning). This is the cementing test — any future edit to `complexity.dag` that changes *structural output* will trip this test, and the worker must either update the golden (if intentional) or fix the regression (if not).
 
-3. **Capture v2 output for comparison.** Either:
-   - **(a) Strongly preferred:** Run v2 stage0 `complexity` on the same fixture programmatically and capture output into a golden file; a second integration test asserts v2's output against that golden. Both sides are cemented — any drift on either side surfaces as a test failure.
-   - **(b) Fallback only:** if (a) is genuinely un-wireable (no CLI surface, hermetic test harness missing), run v2 once manually and transcribe output into a comparison fixture file under `docs/history/` or `docs/perf/`. **This is a mild fail-open** — transcribed prose doesn't re-execute, so v2 could drift silently while v3 stays cemented. Option (b) must be justified explicitly in the PR body with the specific technical blocker that made (a) infeasible.
+3. **Capture v2 output programmatically.** Run v2 stage0 `complexity` on the same fixture programmatically and capture output into a golden file; a second integration test asserts v2's output against that golden via the same semantic-equality discipline. Both sides are cemented — any drift on either side surfaces as a test failure.
 
-   Cementing symmetry is load-bearing: the thesis receipt is only meaningful if *both* sides are pinned to a re-executable baseline. (b) breaks the symmetry, so the bar for taking (b) should be high.
+   **Cementing symmetry is load-bearing.** The thesis receipt is only meaningful if both sides are pinned to a re-executable baseline. Transcribed prose that doesn't re-execute is not a substitute — it introduces asymmetric cementing (v3 cemented, v2 frozen prose that could drift silently) and defeats the point of the receipt. If v2 stage0 has no programmatic surface that allows running complexity on an arbitrary fixture, **STOP-AND-ESCALATE**: that's its own finding (v2 observability gap), not a fallback this lane can absorb.
 
 4. **Document the diff in the PR body.** Three possible outcomes:
    - **Identical (up to output-shape translation)**: thesis receipt. PR body shows both outputs side-by-side, notes the 13× LOC reduction, closes as a post-merge debt *closure* in ROADMAP.
