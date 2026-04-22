@@ -130,7 +130,7 @@ this list post-review: `rust_language, go_language, python_language,
 rust_functions` — all four have `dsl/std/languages.dag` duplicates
 and are reclassified (b).)
 
-**Tests, rank-insensitive subset** — 49 of 67 test sites. Unique
+**Tests, rank-insensitive subset** — 48 of 67 test sites. Unique
 names outside the overlap set include `answer, BinaryOpRow,
 BracketRow, cfg, claim_obligation_resources, Classical,
 CompilerHostRealization, DegreeAtLeastTwo, Dimension, div, f, first,
