@@ -19,7 +19,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-BASELINE_TRACKED_TOTAL=5
+BASELINE_TRACKED_TOTAL=6
 
 SURFACES=(
   src/v3/compiler/*.dag
@@ -57,6 +57,7 @@ TRACKED_ROWS=(
   "src/v3/lenses/infer_helpers.dag:TemplateArgumentLookup"
   "src/v3/lenses/infer_helpers.dag:TemplateArgumentsMatch"
   "src/v3/lenses/infer_helpers.dag:TemplateArgumentCursor"
+  "src/v3/lenses/infer_helpers.dag:NormalizedInstantiationArgs"
 )
 
 collect_type_rows() {
