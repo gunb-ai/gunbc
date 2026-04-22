@@ -2,7 +2,7 @@
 
 **Companion:** [1e-3v-phase-3-dispatch-gate.md](1e-3v-phase-3-dispatch-gate.md) — **live dispatch guidance** (Executive summary, cluster table, Phase 3.0, checklist).
 
-This file is **archival only**: api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** (commit `bfce9906`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
+This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
 
 ---
 
@@ -236,3 +236,9 @@ Relayed **BLOCKING** comment repeats the first review’s two claims: (1) `emit.
 - **Verdict:** Looks clean — no new thesis- or invariant-level problem in the added lines.
 - **Strengths (non-blocking):** Dispatch gate stays on live guidance + bounded implementation-layer Phase **3.0** (no paper-carrier reopening). Archival companion preserves verification trail while aligning dispatch with **`INVARIANTS.md`** “Documentation Describes Live State.”
 - **ROADMAP — verified:** Phase **3.0** — concrete, deletion-oriented, **unit-first** tests + **STOP-AND-ESCALATE** explicit. Phase **3.0b** — separated from **3.0**; **`lens_cost_symbolic_generated.rs`** on **regen** path, not hand edits.
+
+**Review AH (openai-pro / gpt-5-4-pro, manual, commit `bfce9906`, 2026-04-22T00:12:05Z)**
+
+- **Conversation:** [chatgpt.com — gunbc review thread](https://chatgpt.com/g/g-p-69e3c70def688191bf8fa7c2cb3292ba-gunbc-review/c/69e81010-43d8-83ea-ae47-3897fd8ecd78)
+- **Verdict:** APPROVE_WITH_COMMENTS — docs-only diff; split clean; live dispatch brief focused; Phase **3.0** bounded / **unit-first**; no concrete modeling / **`CODING.md`** / **`TESTING.md`** concern in the changed lines aside from summary wording below.
+- **Finding (NON-BLOCKING, addressed in this ingest):** Dispatch **:11** / ingest **:5** had called the companion “api-review transcripts (**Reviews A–Y**)” but the ingest includes **Review C** (human/director) and skips letter **H** (**G** → **I**). For the live/archive boundary, that shorthand was slightly loose vs **`INVARIANTS.md`** “Documentation Describes Live State.” **Fix:** both headers now say **Reviews A–Y** with **api-review + Review C director** and **H** unused (line refs drift).
