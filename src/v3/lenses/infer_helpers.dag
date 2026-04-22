@@ -32,7 +32,7 @@
 
 module lenses.infer_helpers
 
-import std.list { List }
+import std.list { List, empty, cons }
 import std.substrate {
   Behavior, BranchPath, BranchPattern, DeclarationId, SourceSpan,
   TemplateArgument
@@ -226,17 +226,17 @@ fn template_argument_cursor(
 
 // Strip only self-bindings (`parameter == value`). See DB-16 / `infer.rs`
 // `normalized_instantiation_args` — non-self bindings must survive.
+// List construction uses `empty`/`cons` (std.list API) so both branches
+// agree on `List<TemplateArgument>`; raw `Empty`/`Cons` mixed with
+// `cons` tripped the v3 typechecker on this surface in SG-4b-5.
 fn filter_non_self_template_arguments(
   arguments: List<TemplateArgument>
 ) -> List<TemplateArgument> =
   match arguments {
-    Empty => Empty
+    Empty => empty()
     Cons(payload) =>
       if payload.head.parameter == payload.head.value then
         filter_non_self_template_arguments(payload.tail)
       else
-        Cons(
-          payload.head,
-          filter_non_self_template_arguments(payload.tail)
-        )
+        cons(payload.head, filter_non_self_template_arguments(payload.tail))
   }
