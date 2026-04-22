@@ -140,6 +140,24 @@ fn register_row_has_real_v2_counterpart_matches_testing_md_band_c() {
 }
 
 #[test]
+fn integration_rs_active_line_contains_rejects_commented_cementing_path() {
+    let src = r#"
+// #[path = "integration/cementing/ghost.rs"]
+// mod ghost;
+#[path = "integration/cementing/real.rs"]
+mod real;
+"#;
+    assert!(!integration_rs_active_line_contains(
+        src,
+        r#"#[path = "integration/cementing/ghost.rs"]"#,
+    ));
+    assert!(integration_rs_active_line_contains(
+        src,
+        r#"#[path = "integration/cementing/real.rs"]"#,
+    ));
+}
+
+#[test]
 fn md_table_cells_preserves_escaped_pipes_for_register_capability_rows() {
     // Pin the markdown-as-data split: cementing escalation reads
     // `docs/v3-lens-capability-register.md` through this helper (see review on #638).
@@ -291,11 +309,17 @@ fn assert_cementing_stem_wired_in_integration_rs(
 ) {
     let expected = format!(r#"#[path = "integration/cementing/{stem}.rs"]"#);
     assert!(
-        integration_rs.contains(&expected),
+        integration_rs_active_line_contains(integration_rs, &expected),
         "registry lens `{registry_name}` lists cementing stem `{stem}` but \
-         `tests/integration.rs` does not contain `{expected}` — add a \
-         `#[path = \"integration/cementing/{stem}.rs\"]` module declaration \
-         in the same PR as the on-disk module (API-level wiring, not convention-only)."
+         `tests/integration.rs` has no **active** (non-`//`-comment) line with `{expected}` — add \
+         `#[path = \"integration/cementing/{stem}.rs\"]` plus `mod {stem};` in the same PR as the \
+         on-disk module. Commented-out `// #[path = …]` does not count."
+    );
+    let mod_needle = format!("mod {stem}");
+    assert!(
+        integration_rs_active_line_contains(integration_rs, &mod_needle),
+        "registry lens `{registry_name}` lists cementing stem `{stem}` but \
+         `tests/integration.rs` has no active line declaring `{mod_needle};` — wire the module."
     );
 }
 

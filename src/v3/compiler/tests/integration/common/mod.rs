@@ -81,16 +81,16 @@ pub fn find_current_rlib(crate_name: &str) -> PathBuf {
 /// declarations. A raw substring match false-greens on commented-out copies
 /// (`// #[path = …]`). Ignore any line whose first non-whitespace token starts
 /// a line comment (`//`, `///`, `//!`).
-pub fn integration_rs_line_is_active_for_wiring_check(line: &str) -> bool {
+fn integration_rs_line_is_active_for_wiring_check(line: &str) -> bool {
     let s = line.trim_start();
     !(s.is_empty() || s.starts_with("//"))
 }
 
 /// True when some **active** (non-`//`-leading) line in `integration_rs` contains `needle`.
 pub fn integration_rs_active_line_contains(integration_rs: &str, needle: &str) -> bool {
-    integration_rs.lines().any(|line| {
-        integration_rs_line_is_active_for_wiring_check(line) && line.contains(needle)
-    })
+    integration_rs
+        .lines()
+        .any(|line| integration_rs_line_is_active_for_wiring_check(line) && line.contains(needle))
 }
 
 /// Harness for spawning rustc against generated-Rust harnesses.

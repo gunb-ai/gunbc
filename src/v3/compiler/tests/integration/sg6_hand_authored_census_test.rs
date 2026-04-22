@@ -58,6 +58,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+use crate::common::integration_rs_active_line_contains;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::emit_rust::emit_rust_module;
@@ -466,14 +467,15 @@ fn sg6_cementing_lens_registry_dispatch_module_is_wired_in_integration_rs() {
     let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let attr = r#"#[path = "integration/cementing/cementing_lens_registry_dispatch_test.rs"]"#;
     assert!(
-        text.contains(attr),
-        "{} must declare `{attr}` so `cementing_lens_registry_dispatch_test` is linked; \
-         otherwise its ratchet tests never run and CI gives a false green.",
+        integration_rs_active_line_contains(&text, attr),
+        "{} must declare `{attr}` on an active (non-`//`-comment) line so \
+         `cementing_lens_registry_dispatch_test` is linked; commented-out text does not count.",
         path.display(),
     );
     assert!(
-        text.contains("mod cementing_lens_registry_dispatch_test"),
-        "{} must declare `mod cementing_lens_registry_dispatch_test` after the #[path] attribute",
+        integration_rs_active_line_contains(&text, "mod cementing_lens_registry_dispatch_test"),
+        "{} must declare `mod cementing_lens_registry_dispatch_test` on an active line after the \
+         #[path] attribute",
         path.display(),
     );
 }
