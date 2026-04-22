@@ -50,7 +50,8 @@
 module lenses.lower_helpers
 
 import std.substrate { SourceSpan }
-import v3.compiler.runtime_mirrors { SurfaceExpr }
+import std.list { List, empty, cons, singleton }
+import v3.compiler.runtime_mirrors { SurfaceExpr, SurfacePattern, SurfacePatternField }
 
 fn expr_span(expr: SurfaceExpr) -> SourceSpan =
   match expr {
@@ -65,4 +66,18 @@ fn expr_span(expr: SurfaceExpr) -> SourceSpan =
     Match(e) => e.span
     Record(e) => e.span
     List(e) => e.span
+  }
+
+fn pattern_binding_names(pattern: SurfacePattern) -> List<String> =
+  match pattern {
+    BareVariant(_) => empty()
+    VariantWith(v) => singleton(v.binding)
+    VariantFields(v) => pattern_field_bindings(v.fields)
+  }
+
+fn pattern_field_bindings(fields: List<SurfacePatternField>) -> List<String> =
+  match fields {
+    Empty => empty()
+    Cons(payload) =>
+      cons(payload.head.binding, pattern_field_bindings(payload.tail))
   }

@@ -13,6 +13,19 @@ pub enum TemplateArgumentBinding {
     Append,
     ReplaceAt { _0: i64, _1: DeclarationId },
 }
+#[derive(Clone, Debug)]
+pub enum TemplateArgumentsMatch {
+    Match,
+    Mismatch,
+}
+#[derive(Clone, Debug)]
+pub enum TemplateArgumentCursor {
+    CursorEnd,
+    CursorHead {
+        head: TemplateArgument,
+        tail: Vec<TemplateArgument>,
+    },
+}
 pub fn behavior_output_port(p0: &Behavior) -> PortId {
     match p0 {
         Behavior::Value(v) => (v).result_port(),
@@ -107,5 +120,45 @@ pub fn push_template_argument_binding_at(
                 push_template_argument_binding_at(__list_tail, p1, p2, (p3 + 1))
             }
         }
+    }
+}
+pub fn template_arguments_match(
+    p0: &[TemplateArgument],
+    p1: &[TemplateArgument],
+) -> TemplateArgumentsMatch {
+    match p0 {
+        [] => template_arguments_rhs_empty(p1),
+        [__list_head, __list_tail @ ..] => match &(template_argument_cursor(p1)) {
+            TemplateArgumentCursor::CursorEnd => TemplateArgumentsMatch::Mismatch,
+            TemplateArgumentCursor::CursorHead {
+                head: __cur_head,
+                tail: __cur_tail,
+            } => {
+                if ((__list_head).parameter == (__cur_head).parameter) {
+                    if ((__list_head).value == (__cur_head).value) {
+                        template_arguments_match(__list_tail, __cur_tail)
+                    } else {
+                        TemplateArgumentsMatch::Mismatch
+                    }
+                } else {
+                    TemplateArgumentsMatch::Mismatch
+                }
+            }
+        },
+    }
+}
+pub fn template_arguments_rhs_empty(p0: &[TemplateArgument]) -> TemplateArgumentsMatch {
+    match p0 {
+        [] => TemplateArgumentsMatch::Match,
+        [__list_head, __list_tail @ ..] => TemplateArgumentsMatch::Mismatch,
+    }
+}
+pub fn template_argument_cursor(p0: &[TemplateArgument]) -> TemplateArgumentCursor {
+    match p0 {
+        [] => TemplateArgumentCursor::CursorEnd,
+        [__list_head, __list_tail @ ..] => TemplateArgumentCursor::CursorHead {
+            head: (__list_head).clone(),
+            tail: (__list_tail).to_vec(),
+        },
     }
 }

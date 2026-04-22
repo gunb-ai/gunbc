@@ -57,3 +57,28 @@ pub fn expr_span(p0: &parse_surface::SurfaceExpr) -> SourceSpan {
         } => (__e_span).clone(),
     }
 }
+pub fn pattern_binding_names(p0: &parse_surface::SurfacePattern) -> Vec<String> {
+    match p0 {
+        SurfacePattern::BareVariant { name: _, span: _ } => Vec::new(),
+        SurfacePattern::VariantWith {
+            name: __v_name,
+            binding: __v_binding,
+            span: __v_span,
+        } => vec![(__v_binding).clone()],
+        SurfacePattern::VariantFields {
+            name: __v_name,
+            fields: __v_fields,
+            span: __v_span,
+        } => pattern_field_bindings(__v_fields),
+    }
+}
+pub fn pattern_field_bindings(p0: &[parse_surface::SurfacePatternField]) -> Vec<String> {
+    match p0 {
+        [] => Vec::new(),
+        [__list_head, __list_tail @ ..] => {
+            let mut __list = pattern_field_bindings(__list_tail);
+            __list.insert(0, ((__list_head).binding).clone());
+            __list
+        }
+    }
+}

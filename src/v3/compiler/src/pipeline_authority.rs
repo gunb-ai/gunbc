@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::dag::{Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
 use crate::parse::{self, SurfaceItem};
 use crate::tokenize;
@@ -25,42 +23,10 @@ pub(crate) struct PipelineStageAuthority {
     pub(crate) snapshot_kind: PipelineSnapshotKind,
 }
 
+/// Pipeline stage order, read structurally from `PipelineStageBinding`
+/// declarations in the Dag. The declaration order of the bindings in
+/// `pipeline.dag` is the ordering authority.
 pub(crate) fn ordered_pipeline_stages(dag: &Dag) -> Result<Vec<PipelineStageAuthority>, String> {
-    let mut bindings = pipeline_stage_bindings(dag)?;
-    let stage_names = pipeline_compile_order_names()?;
-    let mut ordered = Vec::with_capacity(stage_names.len());
-
-    for stage_name in stage_names {
-        let stage_id = dag
-            .declaration_by_name(&stage_name)
-            .map(|decl| decl.id)
-            .ok_or_else(|| {
-                format!("pipeline compile body references missing stage declaration `{stage_name}`")
-            })?;
-        let authority = bindings.remove(&stage_id).ok_or_else(|| {
-            format!("pipeline stage `{stage_name}` is used by compile but has no stage binding")
-        })?;
-        ordered.push(authority);
-    }
-
-    if !bindings.is_empty() {
-        let mut extras: Vec<_> = bindings
-            .into_values()
-            .map(|authority| authority.stage_name)
-            .collect();
-        extras.sort();
-        return Err(format!(
-            "pipeline stage bindings not used by compile: {}",
-            extras.join(", ")
-        ));
-    }
-
-    Ok(ordered)
-}
-
-fn pipeline_stage_bindings(
-    dag: &Dag,
-) -> Result<HashMap<DeclarationId, PipelineStageAuthority>, String> {
     let binding_type_id = dag
         .declaration_by_name(PIPELINE_STAGE_BINDING_TYPE)
         .map(|decl| decl.id)
@@ -68,7 +34,9 @@ fn pipeline_stage_bindings(
             format!("missing pipeline authority type `{PIPELINE_STAGE_BINDING_TYPE}`")
         })?;
 
-    let mut bindings = HashMap::new();
+    let mut ordered: Vec<PipelineStageAuthority> = Vec::new();
+    let mut seen_stages: Vec<DeclarationId> = Vec::new();
+
     for declaration in dag.declarations() {
         if declaration.meta_tag != Some(binding_type_id) {
             continue;
@@ -108,29 +76,117 @@ fn pipeline_stage_bindings(
             )
         })?;
 
-        if bindings.contains_key(&stage) {
+        if seen_stages.contains(&stage) {
             return Err(format!(
                 "pipeline stage `{stage_name}` has multiple stage bindings"
             ));
         }
+        seen_stages.push(stage);
 
-        bindings.insert(
+        ordered.push(PipelineStageAuthority {
             stage,
-            PipelineStageAuthority {
-                stage,
-                stage_name,
-                realization,
-                realization_name,
-                snapshot_kind,
-            },
-        );
+            stage_name,
+            realization,
+            realization_name,
+            snapshot_kind,
+        });
     }
 
-    if bindings.is_empty() {
+    if ordered.is_empty() {
         return Err("pipeline authority contains no stage bindings".to_string());
     }
 
-    Ok(bindings)
+    reconcile_with_compile_body(&ordered)?;
+
+    Ok(ordered)
+}
+
+/// Fail-closed cross-check: the `fn compile { ... }` body in
+/// `pipeline.dag` must list the same stages, in the same order, as the
+/// `PipelineStageBinding` declarations. The bindings are the runtime
+/// ordering authority; this check ensures the `compile` orchestrator
+/// surface cannot silently drift from that authority. Any divergence is
+/// surfaced as a bootstrap diagnostic (via the caller).
+fn reconcile_with_compile_body(ordered: &[PipelineStageAuthority]) -> Result<(), String> {
+    let body_names = compile_body_stage_names_from_source()?;
+    let binding_names: Vec<&str> = ordered
+        .iter()
+        .map(|stage| stage.stage_name.as_str())
+        .collect();
+    let body_refs: Vec<&str> = body_names.iter().map(|name| name.as_str()).collect();
+    if binding_names != body_refs {
+        return Err(format!(
+            "pipeline authority drift: `fn compile` body lists [{}] but \
+             `PipelineStageBinding` declaration order is [{}]. The bindings \
+             are the runtime authority — update `fn compile` to match, or \
+             reorder the bindings to match `fn compile`.",
+            body_refs.join(", "),
+            binding_names.join(", ")
+        ));
+    }
+    Ok(())
+}
+
+fn compile_body_stage_names_from_source() -> Result<Vec<String>, String> {
+    let source = include_str!("../pipeline.dag");
+    let tokens = tokenize::tokenize(source, PIPELINE_AUTHORITY_FILE)
+        .map_err(|diag| format!("failed to tokenize pipeline authority: {diag:?}"))?;
+    let module = parse::parse(&tokens, PIPELINE_AUTHORITY_FILE)
+        .map_err(|diag| format!("failed to parse pipeline authority: {diag:?}"))?;
+
+    let body_span = module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::FnExternalBody {
+                name, body_span, ..
+            } if name == PIPELINE_COMPILE_FN => Some(body_span.clone()),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            format!("pipeline authority is missing external-body fn `{PIPELINE_COMPILE_FN}`")
+        })?;
+
+    let body = source
+        .get(body_span.byte_start as usize..body_span.byte_end as usize)
+        .ok_or_else(|| "pipeline compile body span is out of bounds".to_string())?;
+    let body = body.trim();
+    let body = body
+        .strip_prefix('{')
+        .and_then(|body| body.strip_suffix('}'))
+        .ok_or_else(|| "pipeline compile body must be a braced block".to_string())?;
+
+    let mut stages = Vec::new();
+    for line in body.lines() {
+        let candidate = line.trim();
+        if candidate.is_empty() || candidate.starts_with("//") {
+            continue;
+        }
+        if !candidate
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        {
+            return Err(format!(
+                "pipeline compile body contains unsupported stage expression `{candidate}`"
+            ));
+        }
+        stages.push(candidate.to_string());
+    }
+
+    if stages.is_empty() {
+        return Err("pipeline compile body does not list any stages".to_string());
+    }
+
+    Ok(stages)
+}
+
+/// Pipeline stage names in authority order. Thin wrapper over
+/// `ordered_pipeline_stages` for callers that only need the names.
+pub(crate) fn pipeline_compile_order_names(dag: &Dag) -> Result<Vec<String>, String> {
+    Ok(ordered_pipeline_stages(dag)?
+        .into_iter()
+        .map(|stage| stage.stage_name)
+        .collect())
 }
 
 fn require_decl_ref(
@@ -222,55 +278,34 @@ fn require_snapshot_kind(
     }
 }
 
-pub(crate) fn pipeline_compile_order_names() -> Result<Vec<String>, String> {
-    let source = include_str!("../pipeline.dag");
-    let tokens = tokenize::tokenize(source, PIPELINE_AUTHORITY_FILE)
-        .map_err(|diag| format!("failed to tokenize pipeline authority: {diag:?}"))?;
-    let module = parse::parse(&tokens, PIPELINE_AUTHORITY_FILE)
-        .map_err(|diag| format!("failed to parse pipeline authority: {diag:?}"))?;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let body_span = module
-        .items
-        .iter()
-        .find_map(|item| match item {
-            SurfaceItem::FnExternalBody {
-                name, body_span, ..
-            } if name == PIPELINE_COMPILE_FN => Some(body_span.clone()),
-            _ => None,
-        })
-        .ok_or_else(|| {
-            format!("pipeline authority is missing external-body fn `{PIPELINE_COMPILE_FN}`")
-        })?;
-
-    let body = source
-        .get(body_span.byte_start as usize..body_span.byte_end as usize)
-        .ok_or_else(|| "pipeline compile body span is out of bounds".to_string())?;
-    let body = body.trim();
-    let body = body
-        .strip_prefix('{')
-        .and_then(|body| body.strip_suffix('}'))
-        .ok_or_else(|| "pipeline compile body must be a braced block".to_string())?;
-
-    let mut stages = Vec::new();
-    for line in body.lines() {
-        let candidate = line.trim();
-        if candidate.is_empty() || candidate.starts_with("//") {
-            continue;
-        }
-        if !candidate
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-        {
-            return Err(format!(
-                "pipeline compile body contains unsupported stage expression `{candidate}`"
-            ));
-        }
-        stages.push(candidate.to_string());
+    fn bootstrapped_stages() -> Vec<PipelineStageAuthority> {
+        // Bootstrapping includes reconcile_with_compile_body, so any Dag
+        // we build by hand would already match. Start from a Dag that
+        // passes reconciliation and mutate the returned vector.
+        let dag = Dag::new();
+        ordered_pipeline_stages(&dag).expect("bootstrap pipeline authority is clean")
     }
 
-    if stages.is_empty() {
-        return Err("pipeline compile body does not list any stages".to_string());
+    #[test]
+    fn reconcile_rejects_reordered_binding_list() {
+        let mut stages = bootstrapped_stages();
+        assert!(stages.len() >= 2, "need >=2 stages to reorder");
+        stages.swap(0, 1);
+        let err =
+            reconcile_with_compile_body(&stages).expect_err("reordered bindings must be rejected");
+        assert!(
+            err.contains("pipeline authority drift"),
+            "expected drift diagnostic, got: {err}"
+        );
     }
 
-    Ok(stages)
+    #[test]
+    fn reconcile_accepts_matching_order() {
+        let stages = bootstrapped_stages();
+        reconcile_with_compile_body(&stages).expect("matching order must reconcile");
+    }
 }

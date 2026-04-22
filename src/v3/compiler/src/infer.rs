@@ -34,11 +34,12 @@ use crate::diagnostics::{
     Diagnostic, SourceSpan,
 };
 use crate::infer_helpers::{
-    behavior_output_port, behavior_span, payload_binding_span as generated_payload_binding_span,
+    behavior_output_port, behavior_span, generated_template_arguments_match,
+    payload_binding_span as generated_payload_binding_span,
     push_template_argument_binding as generated_push_template_argument_binding,
     resolve_template_argument_value as generated_resolve_template_argument_value,
     template_argument_value as generated_template_argument_value, TemplateArgumentBinding,
-    TemplateArgumentLookup,
+    TemplateArgumentLookup, TemplateArgumentsMatch,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
@@ -1544,14 +1545,6 @@ fn retained_template_arguments_for_target(
     retained
 }
 
-fn template_arguments_match(lhs: &[TemplateArgument], rhs: &[TemplateArgument]) -> bool {
-    lhs.len() == rhs.len()
-        && lhs
-            .iter()
-            .zip(rhs.iter())
-            .all(|(a, b)| a.parameter == b.parameter && a.value == b.value)
-}
-
 fn push_template_argument_binding(
     arguments: &mut Vec<TemplateArgument>,
     parameter: DeclarationId,
@@ -2284,7 +2277,11 @@ fn resolve_callable_targets(dag: &mut Dag) -> bool {
             continue;
         };
         let (current_template, current_arguments) = callable_template_arguments(dag, target);
-        if current_template == template && template_arguments_match(&current_arguments, &arguments)
+        if current_template == template
+            && matches!(
+                generated_template_arguments_match(&current_arguments, &arguments),
+                TemplateArgumentsMatch::Match,
+            )
         {
             continue;
         }
@@ -4429,19 +4426,48 @@ mod bool_logical_operator_arrow_tests {
         ];
 
         assert!(push_template_argument_binding(&mut arguments, p0, v0));
-        assert!(template_arguments_match(
-            &arguments,
-            &[
-                TemplateArgument {
-                    parameter: p0,
-                    value: v0,
-                },
-                TemplateArgument {
-                    parameter: p1,
-                    value: v1,
-                },
-            ]
+        assert!(matches!(
+            generated_template_arguments_match(
+                &arguments,
+                &[
+                    TemplateArgument {
+                        parameter: p0,
+                        value: v0,
+                    },
+                    TemplateArgument {
+                        parameter: p1,
+                        value: v1,
+                    },
+                ]
+            ),
+            TemplateArgumentsMatch::Match,
         ));
         assert!(!push_template_argument_binding(&mut arguments, p1, v0));
+    }
+
+    #[test]
+    fn template_arguments_match_generated_projection_agrees_across_length_and_value_cases() {
+        let dag = Dag::new();
+        let p0 = dag.bool_shape().expect("bootstrap Bool").declaration;
+        let p1 = dag.int_shape().expect("bootstrap Int").declaration;
+        let v0 = dag.string_shape().expect("bootstrap String").declaration;
+        let v1 = dag.bool_shape().expect("bootstrap Bool").declaration;
+        let pair = |parameter, value| TemplateArgument { parameter, value };
+        let is_match = |lhs: &[TemplateArgument], rhs: &[TemplateArgument]| -> bool {
+            matches!(
+                generated_template_arguments_match(lhs, rhs),
+                TemplateArgumentsMatch::Match,
+            )
+        };
+
+        let empty: Vec<TemplateArgument> = vec![];
+        assert!(is_match(&empty, &empty));
+        assert!(!is_match(&empty, &[pair(p0, v0)]));
+        assert!(!is_match(&[pair(p0, v0)], &empty));
+
+        let two = vec![pair(p0, v0), pair(p1, v1)];
+        assert!(is_match(&two, &two.clone()));
+        assert!(!is_match(&two, &[pair(p0, v0), pair(p1, v0)]));
+        assert!(!is_match(&two, &[pair(p0, v0), pair(p0, v1)]));
     }
 }
