@@ -9,6 +9,17 @@
 | #556 (SG-1, session `neat-pike-779`) | https://github.com/gunb-ai/gunbc/pull/556 |
 | #589 (parser staging / SG-2, session `quiet-owl-783`) | https://github.com/gunb-ai/gunbc/pull/589 |
 | #593 (SG-3f-prep / lower lane, session `nimble-bee-243`) | https://github.com/gunb-ai/gunbc/pull/593 |
+| #664 (compiler→std tranche 2 / `v3.std.parse_surface`, session `zesty-lark-436`) | https://github.com/gunb-ai/gunbc/pull/664 |
+
+#### #664 relay index (dashboard ingest — pointers only)
+
+Full text stays on **GitHub**; this index is a stable handle for agents. Codex at **2026-04-22T21:39:43Z** is scoped to **reviewed parent `6463d247`**.
+
+| Source | Link |
+|:---|:---|
+| **Codex** (chatgpt-codex-connector) — **inline** — **`6463d24…`** @ **2026-04-22T21:39:43Z** — **P0** `bootstrap_all_runtime` / `bootstrap_runtime_authorities_on` 3rd arg (staged + compiler path slices) vs **`lib.rs` 2-arg callers (E0061)** — **superseded** on later head commits (`f046935` + merge tip **`3783627`**) : all `lib.rs` call sites pass `(&…, &[], &[])` or `(&…, &["src/v3/std/parse_surface.dag"], &[])` — PR [reply thread](https://github.com/gunb-ai/gunbc/pull/664#issuecomment-4300323633) — [GitHub file discussion](https://github.com/gunb-ai/gunbc/pull/664#discussion_r3127059243) (authoritative text) — **+7** in relay payload = other queued **dashboard** items, **not** extra PR #664 line threads (only **2** inline review comments on this parent) |
+| **Codex** (chatgpt-codex-connector) — **inline** — same **6463d24…** / **P1** `module v3.std.parse_surface` **without** migrating `go.dag` / `python` / `rust` / `lower_helpers` from `v3.compiler.runtime_mirrors` — **superseded** : v3 `*.dag` have **no** `runtime_mirrors` import; all named consumers `import v3.std.parse_surface` — [PR reply](https://github.com/gunb-ai/gunbc/pull/664#issuecomment-4300324916) — [discussion r3127059246](https://github.com/gunb-ai/gunbc/pull/664#discussion_r3127059246) (authoritative text) |
+| **Codex** (umbrella issue comment) — `### 💡 Codex Review` (same timestamp **21:39:43Z**), **Reviewed commit:** `6463d247f0` **only**; metadata-only wrapper — [PR #664 conversation](https://github.com/gunb-ai/gunbc/pull/664) (authoritative text) |
 
 #### #589 relay index (dashboard ingest — pointers only)
 
