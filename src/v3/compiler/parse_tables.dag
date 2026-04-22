@@ -1,5 +1,13 @@
 // v3.compiler.parse_tables — SG-2c-1 grammar-tables prototype authority.
 //
+// **SG-2c cluster (structural lane) — `parse_primary` prefix + atom family.**
+// Two table surfaces in one function: (A) `PrimaryPrefixRow` / `primary_prefix_dispatch`
+// (SG-2c-6), (B) `PrimaryAtomRow` / `primary_atom_class` (SG-2c-7). Same-PR receipt:
+// authority in this file; `regen_parse_tables` to `parse_tables_generated.rs`;
+// `regen_parse` of `parse_parser_body.txt` to `parse_generated.rs`;
+// `sg2c1_parse_tables_authority_test` ratchet; open-coded `TokenKind` dispatch in
+// `parse_primary` removed in favor of those projections.
+//
 // **Scope.** SG-2c proper (parser authority proper — retiring
 // `parse_parser_body.txt` as parse logic) is blocked on a named
 // substrate capability: recursive list-body emission over `List<Token>`

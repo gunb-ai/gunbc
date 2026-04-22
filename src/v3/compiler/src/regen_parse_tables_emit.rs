@@ -9,8 +9,9 @@
 //! **SG-2c-3:** existing `TopLevelItemKwRow.token_variant` rows also project
 //! `is_type_rhs_boundary_keyword` for the parser's shared top-level item
 //! boundary set. **SG-2c-5:** `SoftKeywordIdentRow` → `soft_keyword_ident_spelling`.
-//! **SG-2c-6:** `PrimaryPrefixRow` → `PrimaryPrefixDispatch` +
-//! `primary_prefix_dispatch` for `parse_primary` prefix openers.
+//! **SG-2c-6 / SG-2c-7 (parse_primary cluster):** `PrimaryPrefixRow` →
+//! `primary_prefix_dispatch`; `PrimaryAtomRow` → `primary_atom_class` for the
+//! post-prefix atomic token set in the same `parse_primary` function.
 //!
 //! Used by the `regen_parse_tables` binary (writes the file) and by the
 //! hermetic integration snapshot test (compare in-memory only — avoids a
@@ -82,7 +83,8 @@ impl fmt::Display for RenderParseTablesGeneratedError {
 /// Validation: `BinaryOpRow` vs `tokenize.dag` + `operators.dag` + shared-syntax
 /// `dag_operators`; `TopLevelItemKwRow` vs `tokenize.dag` + `Kw`-strip dispatch
 /// labels (SG-2c-2/SG-2c-3); `SoftKeywordIdentRow` vs `tokenize.dag` + shared keyword set
-/// (SG-2c-5); `PrimaryPrefixRow` vs `tokenize.dag` + prefix dispatch labels (SG-2c-6).
+/// (SG-2c-5); `PrimaryPrefixRow` / `PrimaryAtomRow` vs `tokenize.dag` + regen
+/// dispatch labels (SG-2c-6/SG-2c-7).
 /// Does not read or write workspace paths.
 pub fn render_parse_tables_generated_rs(
     parse_tables_source: &str,
@@ -129,6 +131,13 @@ pub fn render_parse_tables_generated_rs(
         .collect();
     primary_prefix_variants.sort_unstable();
     primary_prefix_variants.dedup();
+    let primary_atom_rows = collect_primary_atom_rows(&tables_dag, &token_variants);
+    let mut primary_atom_variants: Vec<String> = primary_atom_rows
+        .iter()
+        .map(|r| r.dispatch.clone())
+        .collect();
+    primary_atom_variants.sort_unstable();
+    primary_atom_variants.dedup();
     let module = EmitParseTablesModule {
         levels: &levels,
         binary_op_rows: &rows,
@@ -138,6 +147,8 @@ pub fn render_parse_tables_generated_rs(
         bracket_rows: &bracket_rows,
         primary_prefix_variants: &primary_prefix_variants,
         primary_prefix_rows: &primary_prefix_rows,
+        primary_atom_variants: &primary_atom_variants,
+        primary_atom_rows: &primary_atom_rows,
     };
     let rust = emit_module(&module);
     let combined = format!("{HEADER}{rust}");
@@ -387,6 +398,11 @@ struct PrimaryPrefixRow {
     dispatch: String,
 }
 
+struct PrimaryAtomRow {
+    token_variant: String,
+    dispatch: String,
+}
+
 /// `BracketRow.token_variant` is the sole authored field; role is derived
 /// from the `L`/`R` prefix (same one-authority shape as `TopLevelItemKwRow` →
 /// `ItemDispatchKind`, where dispatch is `strip_prefix("Kw")`). No separate
@@ -434,6 +450,88 @@ fn collect_bracket_rows(dag: &Dag, token_variants: &[String]) -> Vec<BracketRow>
     }
     rows.sort_by(|a, b| a.token_variant.cmp(&b.token_variant));
     rows
+}
+
+/// Collect `PrimaryAtomRow` facts for SG-2c-7; `PrimaryAtomClass` labels are
+/// derived at regen (see `primary_atom_class_label_from_token_variant`).
+fn collect_primary_atom_rows(dag: &Dag, token_variants: &[String]) -> Vec<PrimaryAtomRow> {
+    let token_variant_set: BTreeSet<&str> = token_variants.iter().map(String::as_str).collect();
+
+    let row_type_id = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("PrimaryAtomRow"))
+        .map(|d| d.id)
+        .expect("PrimaryAtomRow declaration");
+
+    let mut rows: Vec<PrimaryAtomRow> = Vec::new();
+    let mut seen_token_variants: BTreeSet<String> = BTreeSet::new();
+    for decl in dag.declarations() {
+        if decl.meta_tag != Some(row_type_id) {
+            continue;
+        }
+        let name = decl.name.as_deref().unwrap_or("<anonymous>");
+        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            panic!(
+                "`parse_tables.dag::{name}`: `PrimaryAtomRow` binding must carry a structural value body"
+            );
+        };
+        let token_variant = string_field(fields, "token_variant", name);
+
+        assert!(
+            token_variant_set.contains(token_variant.as_str()),
+            "`parse_tables.dag::{name}`: token_variant `{token_variant}` is not a \
+             `TokenKind` variant in `tokenize.dag`"
+        );
+
+        let dispatch = primary_atom_class_label_from_token_variant(&token_variant, name);
+
+        assert!(
+            seen_token_variants.insert(token_variant.clone()),
+            "`parse_tables.dag`: duplicate primary-atom row for `TokenKind::{token_variant}`"
+        );
+
+        rows.push(PrimaryAtomRow {
+            token_variant,
+            dispatch,
+        });
+    }
+    rows.sort_by(|a, b| a.token_variant.cmp(&b.token_variant));
+    rows
+}
+
+/// `PrimaryAtomRow.token_variant` is the sole authored key; the Rust
+/// `PrimaryAtomClass` label is a closed allowlist at regen — not a second
+/// field in `parse_tables.dag`.
+fn primary_atom_class_label_from_token_variant(
+    token_variant: &str,
+    decl_name: &str,
+) -> String {
+    let label = match token_variant {
+        "IntLit" => "IntLiteral",
+        "KwTrue" => "True",
+        "KwFalse" => "False",
+        "StringLit" => "String",
+        "Pipe" => "Pipe",
+        "Ident" => "Ident",
+        other => panic!(
+            "`parse_tables.dag::{decl_name}`: token_variant `{other}` is not in the SG-2c-7 \
+             primary-atom allowlist (IntLit, KwTrue, KwFalse, StringLit, Pipe, Ident)"
+        ),
+    };
+    assert_dispatch_label_is_rust_identifier(label, decl_name);
+    label.to_string()
+}
+
+/// Rust `match` pattern on `&TokenKind` for payload-carrying variants; nullary
+/// `TokenKind` use the identifier alone.
+fn token_kind_pattern_ref(token_variant: &str) -> String {
+    match token_variant {
+        "Ident" => "Ident(_)".to_string(),
+        "IntLit" => "IntLit(_)".to_string(),
+        "StringLit" => "StringLit(_)".to_string(),
+        other => other.to_string(),
+    }
 }
 
 /// `SoftKeywordIdentRow.token_variant` is authoritative; spelling is the
@@ -741,6 +839,8 @@ struct EmitParseTablesModule<'a> {
     bracket_rows: &'a [BracketRow],
     primary_prefix_variants: &'a [String],
     primary_prefix_rows: &'a [PrimaryPrefixRow],
+    primary_atom_variants: &'a [String],
+    primary_atom_rows: &'a [PrimaryAtomRow],
 }
 
 fn emit_module(ctx: &EmitParseTablesModule<'_>) -> String {
@@ -753,6 +853,8 @@ fn emit_module(ctx: &EmitParseTablesModule<'_>) -> String {
         bracket_rows,
         primary_prefix_variants,
         primary_prefix_rows,
+        primary_atom_variants,
+        primary_atom_rows,
     } = *ctx;
     // `BracketRole` variants are the set of distinct roles derived from the
     // authored rows (projection-only). Matches the `ItemDispatchKind` pattern:
@@ -897,6 +999,32 @@ fn emit_module(ctx: &EmitParseTablesModule<'_>) -> String {
         s.push_str(&format!(
             "        TokenKind::{} => Some(PrimaryPrefixDispatch::{}),\n",
             row.token_variant, row.dispatch
+        ));
+    }
+    s.push_str("        _ => None,\n");
+    s.push_str("    }\n");
+    s.push_str("}\n\n");
+
+    s.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
+    s.push_str("pub enum PrimaryAtomClass {\n");
+    for v in primary_atom_variants {
+        s.push_str(&format!("    {v},\n"));
+    }
+    s.push_str("}\n\n");
+
+    s.push_str(
+        "/// After the `parse_primary` prefix pass, the bumped token is one of the\n\
+         /// atomic primary forms. Authored as `primary_atom_*: PrimaryAtomRow` rows in\n\
+         /// `src/v3/compiler/parse_tables.dag`; regenerated by `regen_parse_tables`.\n\
+         /// `PrimaryAtomClass` is emitted from those rows — not a substrate coproduct.\n",
+    );
+    s.push_str("pub fn primary_atom_class(kind: &TokenKind) -> Option<PrimaryAtomClass> {\n");
+    s.push_str("    match kind {\n");
+    for row in primary_atom_rows {
+        let pat = token_kind_pattern_ref(&row.token_variant);
+        s.push_str(&format!(
+            "        TokenKind::{} => Some(PrimaryAtomClass::{}),\n",
+            pat, row.dispatch
         ));
     }
     s.push_str("        _ => None,\n");

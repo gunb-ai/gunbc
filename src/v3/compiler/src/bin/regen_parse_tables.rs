@@ -8,8 +8,9 @@
 //! Emitted projection includes **SG-2c-1** `binary_op_at_level` / `BinaryOpLevel`,
 //! **SG-2c-2** `top_level_item_dispatch` / `ItemDispatchKind`, **SG-2c-3**
 //! `is_type_rhs_boundary_keyword`, **SG-2c-4** `bracket_role` / `BracketRole`,
-//! **SG-2c-5** `soft_keyword_ident_spelling`, and **SG-2c-6** `primary_prefix_dispatch` /
-//! `PrimaryPrefixDispatch` (see `regen_parse_tables_emit.rs`; not in this file).
+//! **SG-2c-5** `soft_keyword_ident_spelling`, **SG-2c-6** `primary_prefix_dispatch` /
+//! `PrimaryPrefixDispatch`, and **SG-2c-7** `primary_atom_class` / `PrimaryAtomClass`
+//! (see `regen_parse_tables_emit.rs`; not in this file).
 //!
 //! Scope (grammar-tables prototype, NOT SG-2c proper) — see
 //! `src/v3/compiler/parse_tables.dag` for the full scope note and
