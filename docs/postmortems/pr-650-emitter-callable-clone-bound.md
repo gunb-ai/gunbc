@@ -63,3 +63,5 @@ The hermetic test uses two call sites `f(0)` and `f(1)` on the same callable par
 ```bash
 cargo test -p v2-compiler-tests rust_emit_callable_param_double_use_keeps_clone_bound_on_signature
 ```
+
+**TESTING.md §4:** the test checks signature and two call-site substrings in one `#[test]`; that bundles two *surface* checks but one *behavioral* receipt for this seam. It is not precedent for unrelated multi-claim tests.

@@ -1660,6 +1660,10 @@ fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
 // typically emits no `f.clone()` substring — `Fn::call` uses `&f`. The receipt
 // here is the **signature** plus two call sites; tighten if we add a hermetic
 // module that deterministically materializes `f.clone()` on one branch.
+//
+// TESTING.md §4 (one claim per test): signature + dual call sites are **one**
+// receipt for the same seam (double-use callable param), not unrelated claims.
+// Prefer not to copy this pattern for loose multi-claim bundles elsewhere.
 #[test]
 fn rust_emit_callable_param_double_use_keeps_clone_bound_on_signature() {
     let source =
