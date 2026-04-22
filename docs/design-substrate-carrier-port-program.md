@@ -115,7 +115,7 @@ Each placeholder below gets promoted to a full brief when dispatched. Stop-signa
 ### Lane E-T — Port `DescentEvidence` + proof structure `(S)`
 
 - **Work:** port `DescentEvidence`, `RankingDimension`, `DescentSource`, `TerminationProof`, `ProofEdge` + lattice fns into v3-reachable `std/termination.dag` (routing per file-preference-rank decision). Preserve `String` bootstrap-constraint fields; do not widen to structural refs.
-- **Acceptance:** carriers parse, lower, emit in v3. Lattice-fn tests ported. Register row for `DescentEvidence` added (even though no lens promotes yet — it's now a shared-vocabulary receipt).
+- **Acceptance:** carriers parse, lower, emit in v3. Lattice-fn tests ported. Port-progress receipt recorded in this doc's §5 table (not in the lens capability register — that register is lens-only per its own contract; carrier-port receipts stay here).
 - **STOP-AND-ESCALATE:** any carrier requires substrate connective not already present → C1 lane.
 
 ### Lane E-C — Port `CallPattern` + lowering `(S)`
