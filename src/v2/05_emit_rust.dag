@@ -1341,6 +1341,8 @@ fn emit_params(params: List<Node>, shared_types: Map<String, Bool>, source_indic
 // - Source types do not spell a Clone obligation; `+ Clone` is an explicit
 //   Rust target contract so callables may be invoked from multiple use sites
 //   via `.clone()` when `emit_var_ref` decides the binding is not movable.
+//   Emitted call sites are often plain `f(arg)` (no spelled `Fn::call`); some
+//   bodies still omit a visible `f.clone()` while relying on this bound elsewhere.
 // - `emit_info.movable` remains the sole authority for move vs `.clone()` on
 //   ordinary variable references (`emit_var_ref`). Do not remove `+ Clone`
 //   here and "compensate" only in the emitter: that splits clone authority

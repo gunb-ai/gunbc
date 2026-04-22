@@ -1657,9 +1657,9 @@ fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
 //
 // Review note (non-blocking): a stricter assert on *which* use site carries
 // `f.clone()` would catch wrong-site refactors, but this fixture (`f(0) + f(1)`)
-// typically emits no `f.clone()` substring — `Fn::call` uses `&f`. The receipt
-// here is the **signature** plus two call sites; tighten if we add a hermetic
-// module that deterministically materializes `f.clone()` on one branch.
+// emits **plain** `f(0)` / `f(1)` in generated Rust (no spelled `f.clone()`).
+// The receipt here is the **signature** plus those two call sites; tighten if we
+// add a hermetic module that deterministically materializes `f.clone()` on one branch.
 //
 // TESTING.md §4 (one claim per test): signature + dual call sites are **one**
 // receipt for the same seam (double-use callable param), not unrelated claims.

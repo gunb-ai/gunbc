@@ -30,7 +30,7 @@ The affected seam is **`emit_rust_param_type`** in `src/v2/05_emit_rust.dag`: ca
 | Authority | Role today |
 |-----------|------------|
 | **`emit_info.movable`** | Sole gate for **plain variable references**: emit by value vs `SharingStrategy` `.clone()` (`emit_var_ref`). |
-| **Synthesized `+ Clone` on `impl Fn` params** | Rust target contract for **reusing** the callable value across emitter patterns that **do** materialize `.clone()` (non-movable locals, stage0 closure params, etc.). Some bodies call `f` twice via `Fn::call(&f, …)` without spelling `f.clone()`, but dropping the bound still desyncs type lines from those clone sites elsewhere. |
+| **Synthesized `+ Clone` on `impl Fn` params** | Rust target contract for **reusing** the callable value across emitter patterns that **do** materialize `.clone()` (non-movable locals, stage0 closure params, etc.). The v2 Rust emitter lowers call sites to **plain** `f(arg)` text (not a spelled `Fn::call(...)` in generated Rust); two uses can therefore omit a visible `f.clone()` while still type-checking. Dropping the bound still desyncs type lines from clone sites where the emitter **does** spell `.clone()`. |
 
 #650 effectively asked **`emit_info.movable`** (or ad hoc emitter rules) to **subsume** the second row **without** deleting the need for `Clone` at the type level in Rust. That is the authority split: **two loci** for “when is this callable value copied,” only one of which is grounded in declared source types.
 
@@ -56,7 +56,7 @@ The minimal faithful step **after** this post-mortem is **not** to delete `+ Clo
 
 ### Regression test scope (`pipeline.rs`)
 
-The hermetic test uses two call sites `f(0)` and `f(1)` on the same callable parameter and asserts the **`impl Fn(...) + Clone`** signature. It does **not** assert a `f.clone()` substring: for this shape Rust emission often uses `Fn::call(&f, …)` twice without spelling `f.clone()`, while `+ Clone` remains load-bearing elsewhere (stage0 / other emitter paths). A future tightening could pin an explicit clone site once a small fixture is found that **deterministically** materializes asymmetric `f.clone()` in emitted Rust.
+The hermetic test uses two call sites `f(0)` and `f(1)` on the same callable parameter and asserts the **`impl Fn(...) + Clone`** signature. It does **not** assert a `f.clone()` substring: `compile_dag` output for this fixture is plain **`f(0)`** / **`f(1)`** call syntax on the param, with no `.clone()` in the emitted source, while `+ Clone` on the type remains load-bearing elsewhere (stage0 / other emitter paths). A future tightening could pin an explicit clone site once a small fixture is found that **deterministically** materializes asymmetric `f.clone()` in emitted Rust.
 
 **Verify locally** (workspace package name is `v2-compiler-tests`, hyphenated — not the underscored Rust crate id used in test binary paths):
 
