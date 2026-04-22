@@ -96,17 +96,43 @@ fn regen_lens_file_basenames() -> BTreeSet<String> {
 }
 
 /// Lens basenames (first column of the capability table) that appear
-/// as rows in `docs/v3-lens-capability-register.md`. Uses the same
-/// `|`-split discipline as `cementing_lens_registry_dispatch_test`,
-/// but with no behavioral/v2-column filters — *any* row mentioning a
-/// `.dag` lens counts here.
+/// as rows in `docs/v3-lens-capability-register.md`. Scoped to the
+/// `## Capability table` section — any future table elsewhere in the
+/// document (examples, migration notes, appendix) must not produce a
+/// false pass when the capability row itself is missing. Uses the
+/// same `|`-split discipline as `cementing_lens_registry_dispatch_test`,
+/// but with no behavioral/v2-column filters — any row mentioning a
+/// `.dag` lens inside the capability section counts here.
+const CAPABILITY_TABLE_HEADING: &str = "## Capability table";
+
 fn register_lens_basenames() -> BTreeSet<String> {
     let md_path = workspace_root().join("docs/v3-lens-capability-register.md");
     let md = std::fs::read_to_string(&md_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", md_path.display()));
+    assert!(
+        md.lines().any(|l| l.trim() == CAPABILITY_TABLE_HEADING),
+        "docs/v3-lens-capability-register.md must contain a `{CAPABILITY_TABLE_HEADING}` \
+         heading; this test scopes its table scan to that section and cannot run \
+         without it. If the heading was renamed, update `CAPABILITY_TABLE_HEADING` \
+         in this test in the same PR."
+    );
+    let mut in_capability_section = false;
     let mut basenames = BTreeSet::new();
     for raw in md.lines() {
         let line = raw.trim();
+        if line == CAPABILITY_TABLE_HEADING {
+            in_capability_section = true;
+            continue;
+        }
+        // Any subsequent `## ` heading closes the section (sub-headings
+        // `### ` inside capability-table prose are fine; only a peer
+        // `## ` heading ends it).
+        if in_capability_section && line.starts_with("## ") {
+            in_capability_section = false;
+        }
+        if !in_capability_section {
+            continue;
+        }
         if !line.starts_with('|') || line.starts_with("|---") || line.contains("---|---") {
             continue;
         }
