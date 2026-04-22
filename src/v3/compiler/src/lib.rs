@@ -886,7 +886,7 @@ pub fn surface_top_level_let_names_for_test(module: &parse::SurfaceModule) -> Ve
 /// `pipeline.dag` — the same ordering as `materialize_pipeline_realizations`.
 #[doc(hidden)]
 pub fn pipeline_compile_order_stage_names() -> Result<Vec<String>, String> {
-    pipeline_authority::pipeline_compile_order_names()
+    pipeline_authority::pipeline_compile_order_names(&dag::Dag::new())
 }
 
 /// Top-level compile failure. Distinguishes three structural
