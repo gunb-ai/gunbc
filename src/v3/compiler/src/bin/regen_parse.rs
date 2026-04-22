@@ -24,7 +24,10 @@ fn main() {
     );
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let dag_path = manifest_dir.join("..").join("std").join("parse_surface.dag");
+    let dag_path = manifest_dir
+        .join("..")
+        .join("std")
+        .join("parse_surface.dag");
     let source = std::fs::read_to_string(&dag_path).expect("read parse_surface.dag");
     let body_path = manifest_dir.join(PARSER_BODY_REL);
     let parser_body = std::fs::read_to_string(&body_path)

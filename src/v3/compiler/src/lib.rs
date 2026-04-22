@@ -1084,11 +1084,7 @@ pub fn compile_full_bootstrap_dag_from_std_seed(std_seed: Dag) -> Dag {
 /// `src/v3/std/parse_surface.dag` so regen/tests can keep that authority first-of-name.
 pub fn compile_full_bootstrap_without_parse_surface_dag_from_std_seed(std_seed: Dag) -> Dag {
     let mut dag = std_seed;
-    bootstrap::bootstrap_runtime_authorities_on(
-        &mut dag,
-        &["src/v3/std/parse_surface.dag"],
-        &[],
-    );
+    bootstrap::bootstrap_runtime_authorities_on(&mut dag, &["src/v3/std/parse_surface.dag"], &[]);
     dag
 }
 
@@ -1100,11 +1096,7 @@ pub fn compile_full_bootstrap_dag() -> Dag {
 
 pub fn compile_full_bootstrap_without_parse_surface_dag() -> Dag {
     let mut dag = Dag::empty();
-    bootstrap::bootstrap_all_runtime(
-        &mut dag,
-        &["src/v3/std/parse_surface.dag"],
-        &[],
-    );
+    bootstrap::bootstrap_all_runtime(&mut dag, &["src/v3/std/parse_surface.dag"], &[]);
     dag
 }
 

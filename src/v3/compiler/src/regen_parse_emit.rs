@@ -10,8 +10,7 @@ use std::process::{Command, Stdio};
 use crate::compile_parse_surface_std_authority_dag;
 use crate::CompileError;
 
-const HEADER: &str =
-    "// AUTO-GENERATED from `src/v3/std/parse_surface.dag` (Surface carriers)\n\
+const HEADER: &str = "// AUTO-GENERATED from `src/v3/std/parse_surface.dag` (Surface carriers)\n\
      // via `regen_parse` + `parse_parser_body.txt`. Regenerate instead of hand-editing.\n\n";
 
 /// Failure compiling the authority DAG or running `rustfmt` on the combined module text.
