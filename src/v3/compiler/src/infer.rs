@@ -34,12 +34,12 @@ use crate::diagnostics::{
     Diagnostic, SourceSpan,
 };
 use crate::infer_helpers::{
-    behavior_output_port, behavior_span, filter_non_self_template_arguments,
-    generated_template_arguments_match, payload_binding_span as generated_payload_binding_span,
+    behavior_output_port, behavior_span, generated_template_arguments_match,
+    normalize_instantiation_arguments, payload_binding_span as generated_payload_binding_span,
     push_template_argument_binding as generated_push_template_argument_binding,
     resolve_template_argument_value as generated_resolve_template_argument_value,
-    template_argument_value as generated_template_argument_value, TemplateArgumentBinding,
-    TemplateArgumentLookup, TemplateArgumentsMatch,
+    template_argument_value as generated_template_argument_value, NormalizedInstantiationArgs,
+    TemplateArgumentBinding, TemplateArgumentLookup, TemplateArgumentsMatch,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
@@ -3417,18 +3417,12 @@ fn normalized_instantiation_args(
     dag: &Dag,
     decl: DeclarationId,
 ) -> Option<NormalizedInstantiation> {
-    let TypeConnective::Instantiation {
-        template,
-        arguments,
-    } = &dag.declaration(decl).connective
-    else {
-        return None;
-    };
-    let filtered = filter_non_self_template_arguments(arguments);
-    Some(NormalizedInstantiation {
-        template: *template,
-        args: filtered,
-    })
+    match normalize_instantiation_arguments(&dag.declaration(decl).connective) {
+        NormalizedInstantiationArgs::NotInstantiation => None,
+        NormalizedInstantiationArgs::Normalized { template, args } => {
+            Some(NormalizedInstantiation { template, args })
+        }
+    }
 }
 
 fn find_equivalent_anonymous_conj(dag: &Dag, children: &[Field]) -> Option<DeclarationId> {
@@ -3465,11 +3459,10 @@ fn find_equivalent_anonymous_instantiation(
             return None;
         };
         (template == *existing_template
-            && existing_arguments.len() == arguments.len()
-            && existing_arguments
-                .iter()
-                .zip(arguments.iter())
-                .all(|(lhs, rhs)| lhs.parameter == rhs.parameter && lhs.value == rhs.value))
+            && matches!(
+                generated_template_arguments_match(existing_arguments, arguments),
+                TemplateArgumentsMatch::Match,
+            ))
         .then_some(decl.id)
     })
 }
@@ -4377,6 +4370,7 @@ fn declaration_shapes_equivalent(
 #[cfg(test)]
 mod bool_logical_operator_arrow_tests {
     use super::*;
+    use crate::infer_helpers::filter_non_self_template_arguments;
 
     #[test]
     fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {
@@ -4506,5 +4500,84 @@ mod bool_logical_operator_arrow_tests {
             assert_eq!(a.parameter, e.parameter);
             assert_eq!(a.value, e.value);
         }
+    }
+
+    /// SG-4b (callable-instantiation normalization cluster): exercise
+    /// `find_equivalent_anonymous_instantiation` through the real
+    /// declaration-table path so the generated template-argument
+    /// comparison is the one doing the dedup.
+    #[test]
+    fn find_equivalent_anonymous_instantiation_dedups_via_generated_comparison() {
+        let mut dag = Dag::new();
+        let template = dag.bool_shape().expect("bootstrap Bool").declaration;
+        let p0 = dag.int_shape().expect("bootstrap Int").declaration;
+        let p1 = dag.string_shape().expect("bootstrap String").declaration;
+        let v0 = dag.int_shape().expect("bootstrap Int").declaration;
+        let v1 = dag.bool_shape().expect("bootstrap Bool").declaration;
+
+        let args = vec![
+            TemplateArgument {
+                parameter: p0,
+                value: v0,
+            },
+            TemplateArgument {
+                parameter: p1,
+                value: v1,
+            },
+        ];
+
+        let anon_id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: anon_id,
+            name: None,
+            connective: TypeConnective::Instantiation {
+                template,
+                arguments: args.clone(),
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: synthetic_span(),
+        });
+
+        // Exact arguments match → dedup hit.
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(&dag, template, &args),
+            Some(anon_id),
+        );
+
+        // One value differs → no hit.
+        let mut value_diff = args.clone();
+        value_diff[1].value = v0;
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(&dag, template, &value_diff),
+            None,
+        );
+
+        // Length differs → no hit.
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(&dag, template, &args[..1]),
+            None,
+        );
+
+        // Self-binding normalization: a `parameter == value` entry is a
+        // real structural distinction at this call site —
+        // `find_equivalent_anonymous_instantiation` does not strip self
+        // bindings itself; `normalized_instantiation_args` owns that.
+        // An instantiation with a self-binding added does not dedup
+        // against one without it, confirming the comparison is strict
+        // pairwise and the generated helper's length check fires.
+        let mut with_self = args.clone();
+        with_self.push(TemplateArgument {
+            parameter: p0,
+            value: p0,
+        });
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(&dag, template, &with_self),
+            None,
+        );
     }
 }

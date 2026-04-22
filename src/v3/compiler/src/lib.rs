@@ -714,11 +714,15 @@ pub(crate) mod infer_helpers {
     }
 
     pub(crate) use generated::{
-        behavior_output_port, behavior_span, filter_non_self_template_arguments,
+        behavior_output_port, behavior_span, normalize_instantiation_arguments,
         payload_binding_span, push_template_argument_binding, resolve_template_argument_value,
         template_argument_value, template_arguments_match as generated_template_arguments_match,
-        TemplateArgumentBinding, TemplateArgumentLookup, TemplateArgumentsMatch,
+        NormalizedInstantiationArgs, TemplateArgumentBinding, TemplateArgumentLookup,
+        TemplateArgumentsMatch,
     };
+
+    #[cfg(test)]
+    pub(crate) use generated::filter_non_self_template_arguments;
 }
 
 /// SG-3g-d: `.dag`-authority `expr_span` / `item_span` for surface nodes plus

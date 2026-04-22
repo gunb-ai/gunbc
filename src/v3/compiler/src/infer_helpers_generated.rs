@@ -26,6 +26,14 @@ pub enum TemplateArgumentCursor {
         tail: Vec<TemplateArgument>,
     },
 }
+#[derive(Clone, Debug)]
+pub enum NormalizedInstantiationArgs {
+    NotInstantiation,
+    Normalized {
+        template: DeclarationId,
+        args: Vec<TemplateArgument>,
+    },
+}
 pub fn behavior_output_port(p0: &Behavior) -> PortId {
     match p0 {
         Behavior::Value(v) => (v).result_port(),
@@ -176,5 +184,28 @@ pub fn filter_non_self_template_arguments(p0: &[TemplateArgument]) -> Vec<Templa
                 }
             }
         }
+    }
+}
+pub fn normalize_instantiation_arguments(p0: &TypeConnective) -> NormalizedInstantiationArgs {
+    match p0 {
+        TypeConnective::Atom(_) => NormalizedInstantiationArgs::NotInstantiation,
+        TypeConnective::Conj { children: _ } => NormalizedInstantiationArgs::NotInstantiation,
+        TypeConnective::Disj { variants: _ } => NormalizedInstantiationArgs::NotInstantiation,
+        TypeConnective::Arrow {
+            inputs: _,
+            output: _,
+            body: _,
+        } => NormalizedInstantiationArgs::NotInstantiation,
+        TypeConnective::Cardinality {
+            element: _,
+            bound: _,
+        } => NormalizedInstantiationArgs::NotInstantiation,
+        TypeConnective::Instantiation {
+            template: __payload_template,
+            arguments: __payload_arguments,
+        } => NormalizedInstantiationArgs::Normalized {
+            template: (*(__payload_template)),
+            args: filter_non_self_template_arguments(__payload_arguments),
+        },
     }
 }
