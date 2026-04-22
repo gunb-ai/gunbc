@@ -65,7 +65,7 @@ The v3 substrate (`src/v3/std/`) does not carry these. Until it does, v3 lenses 
 
 ### ~~Missing emit capability~~ (resolved for imported user-defined sums)
 
-The v3 `emit_rust_module` path historically failed `match` on some user-defined sums when lowering introduced **anonymous** specialized `Disj` copies (no `Declaration::name`), so Rust emission could not build `Enum::Variant` paths. **Receipt:** `specialize_decl_for_lowering` now preserves the template sum’s `name` on specialized `Disj` copies (`src/v3/compiler/src/lower.rs`), and `emit/rust_target.rs` falls back to a variant-label fingerprint against any **named** sum in the same `Dag` when a name is still missing. **Proof:** `m1_3_emit_rust_test::emit_rust_module_match_on_imported_workflow_effect_sum` emits `match` on `std.effects::WorkflowEffect` inside a `module` surface.
+The v3 `emit_rust_module` path historically failed `match` on some user-defined sums when lowering introduced **anonymous** specialized `Disj` copies (no `Declaration::name`), so Rust emission could not build `Enum::Variant` paths. **Receipt:** `specialize_decl_for_lowering` preserves the template sum’s `name` on specialized `Disj` copies (`src/v3/compiler/src/lower.rs`) so the fact is carried structurally (no emit-time label heuristics). **Proof:** `m1_3_emit_rust_test::emit_rust_module_match_on_imported_workflow_effect_sum` emits `match` on `std.effects::WorkflowEffect` inside a `module` surface.
 
 `idempotency.dag` was not blocked on this emit gap in practice (it matches `Option` and delegates `WorkflowEffect` work to `std.effects::lane2_workflow_idempotency_report`, which already lowered). The register row is updated to **COMPLETE** on that basis.
 

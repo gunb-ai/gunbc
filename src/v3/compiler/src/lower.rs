@@ -4392,6 +4392,9 @@ fn specialize_decl_for_lowering(
             let id = dag.alloc_declaration_id();
             dag.push_declaration(Declaration {
                 id,
+                // Specialized products stay `name: None`: reusing the template name
+                // would admit two `DeclarationId`s with the same Rust type label if
+                // both were ever emitted outside filtered surfaces.
                 name: None,
                 connective: TypeConnective::Conj {
                     children: specialized_children,
@@ -4424,11 +4427,9 @@ fn specialize_decl_for_lowering(
             let id = dag.alloc_declaration_id();
             dag.push_declaration(Declaration {
                 id,
-                // Preserve the template sum's name on specialized Disj copies so
-                // `emit_rust` can render `Enum::Variant` patterns when match
-                // scrutinee types lower through `primitive_type_id_for_port` to
-                // an otherwise-anonymous instantiated sum (see rust_target
-                // `render_branch_pattern`).
+                // Preserve the template sum's name on specialized `Disj` copies so
+                // emit can qualify `Enum::Variant` patterns structurally (no
+                // emit-time reconstruction of the enum label).
                 name: decl.name.clone(),
                 connective: TypeConnective::Disj {
                     variants: specialized_variants,
