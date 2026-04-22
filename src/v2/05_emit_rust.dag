@@ -950,37 +950,42 @@ fn emit_type_params(params: List<Node>, source_indices: Map<String, NewlineIndex
   }
 }
 
-// Split a fn item's `params` slot (which holds type params prepended to value params,
-// per parse_fn_body_from_prefix) by structural identity of source spans:
-// collect_type_param_names constructs a type param as
-//   make_param_node(name: N, type_expr: leaf_type_node(name: N, span: S), name_span: S)
-// so the param's ident_span and its type_expr's ident_span wrap the SAME
-// source position. For a value param like `n: Int` the two spans cover
-// distinct tokens, and even the pathological `n: n` (same name, two tokens)
-// yields distinct spans. Name equality alone would misclassify `n: n` as a
-// type param and drop the value arg; span equality is the grounded check.
+// Split a fn item's `params` slot (which holds type params prepended to value
+// params, per parse_fn_body_from_prefix) at emit time, post-resolve.
+//
+// Structural basis (post-resolve):
+//   - resolve_item_types (04_resolve.dag:909) registers each declared type
+//     param T as a TypeEnv binding whose resolved node carries
+//     `inferred: Some(TypeVariable { id: T })`.
+//   - For a type-param Node `T: T`, resolve rewrites the type_expr to that
+//     binding node, so after resolve the type_expr carries
+//     `inferred: TypeVariable` AND the authored name of the type_expr
+//     matches the authored name of the param.
+//   - For a value-param Node `x: T`, only the type_expr carries TypeVariable;
+//     the param's authored name differs from the type_expr's authored name.
+//   - For any other value-param `n: Int` etc., the type_expr carries
+//     `inferred: Resolved { ... }`, not TypeVariable.
+// These two conditions together uniquely identify a declared type param
+// after resolve has run.
+//
+// Recovery-dummy note: parse_param's error-path dummy (02_parse.dag:3232)
+// has identical spans but its type_expr has `inferred: none`, so this check
+// correctly returns false. In any case, recovery dummies only appear when
+// parse already emitted an error, and fail-closed discipline halts the
+// pipeline before emission is reached.
+//
 // Dissolution target: partition Node's `params` slot into `type_params` /
 // `value_params`, or add a `ParamKind` discriminator. When that lands,
 // these helpers collapse to the partitioned read.
-fn source_spans_equal(a: SourceSpan, b: SourceSpan) -> Bool {
-  a.start == b.start && a.end == b.end && a.file == b.file
-}
-
-// Note on recovery dummies: parse_param's error-path dummy
-// (02_parse.dag:3232) constructs a param with name_span == type_expr.span ==
-// start_span, which would satisfy this check. That's fine: recovery dummies
-// only appear when parse already emitted an error, and fail-closed
-// discipline halts the pipeline before emission is reached, so a
-// misclassified dummy can't reach this code.
 fn is_function_type_param(param: Node) -> Bool {
-  match param.ident_span {
-    Some { value: ps } =>
-      match param_node_type_expr(n: param).ident_span {
-        Some { value: ts } => source_spans_equal(a: ps, b: ts)
-        None => false
-      }
+  let type_expr = param_node_type_expr(n: param)
+  let type_expr_is_var = match type_expr.inferred {
+    Some { value: inf } => is_type_variable(inferred: inf)
     None => false
   }
+  // Name match via Node.name — stable across both source spans and the
+  // kernel spans installed by resolve_item_types's TypeVariable bindings.
+  type_expr_is_var && param.name != "" && param.name == type_expr.name
 }
 
 fn function_type_params(params: List<Node>) -> List<Node> {

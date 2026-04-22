@@ -184,12 +184,7 @@ fn strict_pipeline_smoke() {
 // NOT treat a type param as a value param. This exercises
 // `emit_fn_def` / `emit_func_def` on a `.dag` source with both a generic
 // identity fn and a multi-type-param fn.
-//
-// IGNORED pending regen health: stage0 doesn't yet carry the D authority
-// changes (357 pre-existing CX errors block a faithful regen). Un-ignore
-// once stage0 is refreshed; the assertions below should pass as-is.
 #[test]
-#[ignore = "pending regen health — see PR #661 thread + regen-health prereq lane"]
 fn generic_fn_emits_type_params_without_synthesized_bounds() {
     let source = "module gen_emit\n\nfn identity<T>(x: T) -> T {\n  x\n}\n\nfn fold_stack<T, B>(stack: List<T>, init: B, f: fn(B, T) -> B) -> B {\n  init\n}\n";
     let result = compile_dag(source);
