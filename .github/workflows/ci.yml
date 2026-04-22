@@ -7,9 +7,22 @@ on:
   pull_request:
     branches:
       - main
+    # Default types are opened/synchronize/reopened. Add `ready_for_review`
+    # so CI fires when a draft is promoted without a new push.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
+
+# Cancel in-flight runs on new pushes to the same PR. Keyed on the PR
+# number (not `head_ref`) so two fork PRs that happen to share a branch
+# name — e.g. `patch-1` — don't land in the same group and cancel each
+# other. On pushes to `main`, `pull_request.number` is empty, so the
+# fallback `run_id` gives each main push a unique group and nothing is
+# cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -17,6 +30,9 @@ env:
 
 jobs:
   fmt:
+    # Skip draft PRs. `github.event.pull_request.draft` is undefined on push
+    # events, so `!= true` keeps main-branch pushes running.
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -37,6 +53,7 @@ jobs:
         run: cargo fmt --all --check
 
   ci:
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -81,6 +98,7 @@ jobs:
         run: cat /tmp/v2-ci-timing.txt 2>/dev/null || echo "no timing data"
 
   v3:
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     # Full suite is capped at 1200s, plus clippy + lens gates + cold compile — 15m
     # can cancel the job before the final steps finish.
@@ -242,6 +260,7 @@ jobs:
   # DB-8 — fixed-point ratchet infrastructure (Lane 3 Stage 3c prep). Staged until
   # Lane 1 Stage 1e closes: do not block merges on this job yet.
   self_host_ratchet:
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [v3]
