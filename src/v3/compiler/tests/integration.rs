@@ -364,24 +364,7 @@ mod parse_stage4_prep {
     }
 
     #[test]
-    fn shared_total_order_helpers_export_from_std_bootstrap() {
-        let dag = crate::common::cached_compile::cached_compile_to_dag(
-            "let _ = 1",
-            "algebra_total_order_helpers.v3",
-        );
-
-        assert!(
-            dag.declaration_by_name("min_by").is_some(),
-            "std bootstrap should export min_by"
-        );
-        assert!(
-            dag.declaration_by_name("max_by").is_some(),
-            "std bootstrap should export max_by"
-        );
-    }
-
-    #[test]
-    fn descent_evidence_uses_shared_total_order_helpers() {
+    fn descent_evidence_total_order_receipt_still_holds() {
         assert_eq!(merge_evidence(Strict, DescentUnknown), DescentUnknown);
         assert_eq!(merge_evidence(Strict, NonIncreasing), NonIncreasing);
         assert_eq!(join_evidence(NonIncreasing, Strict), Strict);

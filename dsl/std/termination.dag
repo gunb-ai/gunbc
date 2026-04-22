@@ -32,7 +32,7 @@
 
 module std.termination
 
-import std.algebra { Ordering, min_by, max_by }
+import std.algebra { Ordering }
 // NOTE: is_valid_proof lives in std.graph (graph algorithm needs SCC
 // primitives). Cannot re-export here (circular: termination → graph →
 // termination). Consumers import from std.graph directly.
@@ -89,7 +89,19 @@ fn evidence_rank(e: DescentEvidence) -> Int {
 // If EITHER branch is DescentUnknown, result is DescentUnknown.
 // If both are Strict, result is Strict. Otherwise NonIncreasing.
 fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
-  min_by(a: a, b: b, project: evidence_rank)
+  match a {
+    Strict => match b {
+      Strict => Strict
+      NonIncreasing => NonIncreasing
+      _ => DescentUnknown
+    }
+    NonIncreasing => match b {
+      Strict => NonIncreasing
+      NonIncreasing => NonIncreasing
+      _ => DescentUnknown
+    }
+    _ => DescentUnknown
+  }
 }
 
 // BoundedLattice.join: optimistic merge (max in the ordering).
@@ -100,7 +112,14 @@ fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 // join(NonIncreasing, NonIncreasing) = NonIncreasing
 // join(Strict, X) = Strict
 fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
-  max_by(a: a, b: b, project: evidence_rank)
+  match a {
+    DescentUnknown => b
+    NonIncreasing => match b {
+      Strict => Strict
+      _ => NonIncreasing
+    }
+    Strict => Strict
+  }
 }
 
 // DescentEvidence inhabits BoundedLattice:
