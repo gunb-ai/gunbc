@@ -116,6 +116,26 @@ fn md_table_cells(line: &str) -> Vec<String> {
         .collect()
 }
 
+#[test]
+fn md_table_cells_preserves_escaped_pipes_for_register_capability_rows() {
+    // Pin the markdown-as-data split: cementing escalation reads
+    // `docs/v3-lens-capability-register.md` through this helper (see review on #638).
+    let row = "| a.dag | TERMINAL | COMPLETE | v2 path | FoundCost(Int) \\| MissingCost | note |";
+    let cells = md_table_cells(row);
+    assert!(
+        cells.len() >= 5,
+        "capability ratchet expects Lens, Structural, Behavioral, v2, … columns; got {cells:?}"
+    );
+    assert_eq!(cells[1].trim(), "a.dag");
+    assert_eq!(cells[3].trim(), "COMPLETE");
+    assert_eq!(cells[4].trim(), "v2 path");
+    assert_eq!(
+        cells[5].trim(),
+        "FoundCost(Int) | MissingCost",
+        "cell-internal `|` must survive `\\|` escaping (v3 output column)"
+    );
+}
+
 /// Lens basenames (e.g. `complexity.dag`) whose register row is `COMPLETE` with a
 /// v2 counterpart beyond `None (v3-native)`.
 fn lens_basenames_requiring_v2_cementing_from_register_md() -> BTreeSet<String> {
