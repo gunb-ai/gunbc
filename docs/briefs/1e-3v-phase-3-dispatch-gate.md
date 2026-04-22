@@ -8,7 +8,7 @@
 
 **Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** — this file is **live dispatch guidance** only.
 
-**PR #621 audit trail (archival):** **[`1e-3v-pr621-review-ingest.md`](1e-3v-pr621-review-ingest.md)** — **Reviews A–Y** (api-review + **Review C** director; letter **H** unused), **three** blocking inline rebuttals, **Review Z** (split receipt per **`INVARIANTS.md`** “Documentation Describes Live State,” codex `bc6bf2c8`), **Review AA** / **Review AB** (post-split APPROVE, `273efd3e`), **Review AC** / **Review AD** (APPROVE, `da72fb9c`), **Review AE** (APPROVE, `bfce9906`), **Review AF** (APPROVE_WITH_COMMENTS: chronicle still under `docs/briefs/` vs archival `docs/review-findings/`, non-blocking, `bfce9906`), **Review AG** (strengths + ROADMAP check, clean, `bfce9906`), **Review AH** (APPROVE_WITH_COMMENTS: archive summary wording, `bfce9906`), **Review AI** (APPROVE, `3be30867`).
+**PR #621 audit trail (archival):** **[`1e-3v-pr621-review-ingest.md`](../review-findings/1e-3v-pr621-review-ingest.md)** (`docs/review-findings/`) — **Reviews A–Y** (api-review + **Review C** director; letter **H** unused), **three** blocking inline rebuttals, **Review Z** (split receipt per **`INVARIANTS.md`** “Documentation Describes Live State,” codex `bc6bf2c8`), **Review AA** / **Review AB** (post-split APPROVE, `273efd3e`), **Review AC** / **Review AD** (APPROVE, `da72fb9c`), **Review AE** (APPROVE, `bfce9906`), **Review AF** (placement: chronicle was under `docs/briefs/`, non-blocking, `bfce9906`), **Review AG** (strengths + ROADMAP check, clean, `bfce9906`), **Review AH** (APPROVE_WITH_COMMENTS: archive summary wording, `bfce9906`), **Review AI** (APPROVE, `3be30867`), **Review AJ** (APPROVE_WITH_COMMENTS: ingest moved here, `3be30867`).
 
 ---
 
@@ -33,7 +33,7 @@
 | **C** — Bootstrap / stdlib path filtering | MISSING_SPEC_ROW | **Already covered** | `SourceFiltering` + per-target `*_source_filtering` consumed at index build. |
 | **D** — Pattern binding liveness | Category 2 → dedup | **Still missing DRY (implementation debt)** | Shared **graph** fact; should be **one** `fn port_is_consumed_from(dag: &Dag, …)` (+ shared `behavior_result_port`). Not a `.dag` extension. |
 | **E** — Optional type / expr rendering | MISSING (split in 1e-2b) | **Split** | **Wrapper** path: **covered** (`type_applications.optional`). **Expression** path for Go optional branch: **still handwritten** in `emit.rs` (`render_optional_branch`). |
-| **F** — Logical `&&` vs `and` | MISSING_SPEC_ROW | **Already covered (post-#616)** | **Verified:** unified `render_operator` + `operator_carrier_realization` on all targets; Bool rows `*_bool_meet` / `*_bool_join` in `spec/*.dag`; no `OperatorKind::Logical` in `emit/` (**rg**-empty). **Blocking** inline rebuttals (three threads, `render_operator` proof, `rg` table) — [`1e-3v-pr621-review-ingest.md`](1e-3v-pr621-review-ingest.md). |
+| **F** — Logical `&&` vs `and` | MISSING_SPEC_ROW | **Already covered (post-#616)** | **Verified:** unified `render_operator` + `operator_carrier_realization` on all targets; Bool rows `*_bool_meet` / `*_bool_join` in `spec/*.dag`; no `OperatorKind::Logical` in `emit/` (**rg**-empty). **Blocking** inline rebuttals (three threads, `render_operator` proof, `rg` table) — [`1e-3v-pr621-review-ingest.md`](../review-findings/1e-3v-pr621-review-ingest.md). |
 | **G** — Callable dispositions | Misclassified | **Already covered** | `ParameterDisposition` / shared schema — as in gap doc. |
 | **H** — Unused pattern bindings | MISSING_SPEC_ROW | **Already covered** | `PatternBindingRule` / clean emission contract (e.g. Go underscore elision). |
 | **I** — Variant payload field access | Misclassified | **Already covered** | `PatternBindingRule` / `clean_emission.dag`. |
@@ -51,7 +51,7 @@
 
 **Not Category 2 (do not spec-row blindly):**
 
-- **Cluster F** — **Closed by #616** (Executive summary bullet; ingest rebuttals in [`1e-3v-pr621-review-ingest.md`](1e-3v-pr621-review-ingest.md)).
+- **Cluster F** — **Closed by #616** (Executive summary bullet; ingest rebuttals in [`1e-3v-pr621-review-ingest.md`](../review-findings/1e-3v-pr621-review-ingest.md)).
 - **Cluster A `TypeRecursionStrategy`** — **Superseded** by existing instantiation + optional syntax bindings unless open question §307 proves template abstraction leaks.
 
 ---
@@ -103,7 +103,7 @@ Aligned with `emit-target-spec-gaps.md` §233–244:
    - **Unit-first (`TESTING.md`):** At least one **focused** test that calls the shared helpers on a **minimal constructed `Dag`** (or smallest hermetic fixture) and asserts the graph-walk behaviors that matter (e.g. `behavior_result_port` matches each `Behavior` variant’s result port; `port_is_consumed_from` reaches / does not reach a payload port across a small `Branch` / `Transform` / `Loop` spine). One claim per test where practical.
    - **Regression belt:** Existing emit / determinism / golden coverage stays green — output **byte-identical** (DB-8).
 
-**Non-goals:** No walker architecture, no spec `.dag` edits, no change to optional/Go sum rendering. **Out of scope for Phase 3.0:** `dimension.rs` and `lens_cost_symbolic_generated.rs` — see context in [`1e-3v-pr621-review-ingest.md`](1e-3v-pr621-review-ingest.md) (**Reviews A/P**); absorb in **Phase 3.0b** if a crate-visible helper is introduced. For the **lens** file: change flows from **`src/v3/lenses/cost.dag`** (or the project’s lens regen entrypoint) — **regenerate** output; do **not** hand-edit `lens_cost_symbolic_generated.rs` (**Review P**).
+**Non-goals:** No walker architecture, no spec `.dag` edits, no change to optional/Go sum rendering. **Out of scope for Phase 3.0:** `dimension.rs` and `lens_cost_symbolic_generated.rs` — see context in [`1e-3v-pr621-review-ingest.md`](../review-findings/1e-3v-pr621-review-ingest.md) (**Reviews A/P**); absorb in **Phase 3.0b** if a crate-visible helper is introduced. For the **lens** file: change flows from **`src/v3/lenses/cost.dag`** (or the project’s lens regen entrypoint) — **regenerate** output; do **not** hand-edit `lens_cost_symbolic_generated.rs` (**Review P**).
 
 **STOP-AND-ESCALATE:** If unification requires different `Loop` result-port treatment per target — **report** (would imply the two copies were not actually equivalent — today they match structurally).
 
