@@ -2,7 +2,7 @@
 
 **Companion:** [1e-3v-phase-3-dispatch-gate.md](1e-3v-phase-3-dispatch-gate.md) — **live dispatch guidance** (Executive summary, cluster table, Phase 3.0, checklist).
 
-This file is **archival only**: api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
+This file is **archival only**: api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** (commit `bfce9906`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
 
 ---
 
@@ -218,3 +218,10 @@ Relayed **BLOCKING** comment repeats the first review’s two claims: (1) `emit.
 **Review AD (codex / gpt-5.4, schedule, commit `da72fb9c`, 2026-04-21T23:47:04Z)**
 
 - **Verdict:** APPROVE — documentation-only diff; looks clean. Live dispatch guidance stays separate from archival chronicle; spot-checks on `emit/`, `spec/*.dag`, and helper definitions matched the current tree.
+
+**Review AE (claude / claude-opus-4-7, schedule, commit `bfce9906`, 2026-04-22T00:02:33Z)**
+
+- **Verdict:** APPROVE — docs-only PR (two files, `docs/briefs/`); splits growing review chronicle from live dispatch gate per **Review Z** + **`INVARIANTS.md`** “Documentation Describes Live State”; no substrate, spec, emitter, or test code in the diff.
+- **Claim verification:** `rg OperatorKind::Logical src/v3/compiler/src/emit` → empty; Bool **`OperatorRealization`** rows in all three specs; four **`behavior_result_port`** copies and two **`port_is_consumed_from`** copies match dedup + **3.0b** callouts. Split: live guidance **~123 lines**, chronicle **~220 lines** at review time. Phase **3.0** bounded, **unit-first** (`TESTING.md`), **STOP-AND-ESCALATE**, **3.0b** tracked-debt with named dissolution trigger.
+- **Findings:** None — no **`INVARIANTS.md`** / modeling-discipline / **`CODING.md`** / **`TESTING.md`** violation observed in the diff.
+- **Exploratory (non-blocking):** Echoes **Review AB** — chronicle is now **A–AD** with many APPROVE-only echoes; once the split pattern stabilizes, future lanes could prune to **rebuttals + directional locks only** so the archival file does not regain the weight problem the split fixed — **not** for this PR.
