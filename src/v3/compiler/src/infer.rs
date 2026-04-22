@@ -1554,7 +1554,7 @@ fn push_template_argument_binding(
     parameter: DeclarationId,
     value: DeclarationId,
 ) -> bool {
-    match generated_push_template_argument_binding(arguments, &parameter, &value) {
+    match generated_push_template_argument_binding(arguments, &parameter, value) {
         TemplateArgumentBinding::TemplateArgumentBindingConflict => false,
         TemplateArgumentBinding::TemplateArgumentBindingNoOp => true,
         TemplateArgumentBinding::TemplateArgumentBindingAppend => {
@@ -4413,7 +4413,7 @@ mod bool_logical_operator_arrow_tests {
         let p0 = dag.bool_shape().expect("bootstrap Bool").declaration;
         let p1 = dag.int_shape().expect("bootstrap Int").declaration;
         let v0 = dag.string_shape().expect("bootstrap String").declaration;
-        let v1 = dag.int_shape().expect("bootstrap Int").declaration;
+        let v1 = dag.bool_shape().expect("bootstrap Bool").declaration;
         let mut arguments = vec![
             TemplateArgument {
                 parameter: p0,
