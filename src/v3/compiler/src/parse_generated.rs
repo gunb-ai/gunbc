@@ -8,8 +8,8 @@ pub use crate::parse_surface::{
     SurfaceVariant, VariantPayload,
 };
 use crate::parse_tables::{
-    binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, top_level_item_dispatch,
-    BinaryOpLevel, BracketRole, ItemDispatchKind,
+    binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, soft_keyword_ident_spelling,
+    top_level_item_dispatch, BinaryOpLevel, BracketRole, ItemDispatchKind,
 };
 use crate::tokenize::{Token, TokenKind};
 
@@ -579,9 +579,11 @@ impl<'a> Parser<'a> {
     /// position is unambiguous (`type` cannot start a type expression here).
     fn parse_field_label(&mut self) -> Result<(String, SourceSpan), Diagnostic> {
         let name_token = self.bump().clone();
-        let name = match name_token.kind {
-            TokenKind::Ident(n) => n,
-            TokenKind::KwType => "type".to_string(),
+        let name = match &name_token.kind {
+            TokenKind::Ident(n) => n.clone(),
+            other if soft_keyword_ident_spelling(other).is_some() => {
+                soft_keyword_ident_spelling(other).unwrap().to_string()
+            }
             other => {
                 return Err(Diagnostic::ParseError {
                     message: format!("expected field label, got {other:?}"),
@@ -771,7 +773,9 @@ impl<'a> Parser<'a> {
         let name_token = self.bump().clone();
         let name = match &name_token.kind {
             TokenKind::Ident(n) => n.clone(),
-            TokenKind::KwType => String::from("type"),
+            other if soft_keyword_ident_spelling(other).is_some() => {
+                soft_keyword_ident_spelling(other).unwrap().to_string()
+            }
             other => {
                 return Err(Diagnostic::ParseError {
                     message: format!("expected variant name, got {other:?}"),

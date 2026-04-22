@@ -105,6 +105,7 @@ pub fn render_parse_tables_generated_rs(
         item_kw_rows.iter().map(|r| r.dispatch.clone()).collect();
     item_dispatch_variants.sort_unstable();
     item_dispatch_variants.dedup();
+    let soft_keyword_ident_rows = collect_soft_keyword_ident_rows(&tables_dag, &token_variants);
 
     // SG-2c-4: bracket opener/closer role table. `BracketRole` is
     // projection-only (same shape as `ItemDispatchKind`): authored rows
@@ -116,6 +117,7 @@ pub fn render_parse_tables_generated_rs(
         &rows,
         &item_dispatch_variants,
         &item_kw_rows,
+        &soft_keyword_ident_rows,
         &bracket_rows,
     );
     let combined = format!("{HEADER}{rust}");
@@ -173,6 +175,11 @@ struct BinaryOpRow {
 struct TopLevelItemKwRow {
     token_variant: String,
     dispatch: String,
+}
+
+struct SoftKeywordIdentRow {
+    token_variant: String,
+    spelling: String,
 }
 
 fn collect_binary_op_rows(
@@ -402,6 +409,53 @@ fn collect_bracket_rows(dag: &Dag, token_variants: &[String]) -> Vec<BracketRow>
     rows
 }
 
+/// `SoftKeywordIdentRow.token_variant` is authoritative; spelling is the
+/// lowercased `Kw` suffix, not a second authored string field.
+fn collect_soft_keyword_ident_rows(
+    dag: &Dag,
+    token_variants: &[String],
+) -> Vec<SoftKeywordIdentRow> {
+    let token_variant_set: BTreeSet<&str> = token_variants.iter().map(String::as_str).collect();
+
+    let row_type_id = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("SoftKeywordIdentRow"))
+        .map(|d| d.id)
+        .expect("SoftKeywordIdentRow declaration");
+
+    let mut rows: Vec<SoftKeywordIdentRow> = Vec::new();
+    let mut seen_token_variants: BTreeSet<String> = BTreeSet::new();
+    for decl in dag.declarations() {
+        if decl.meta_tag != Some(row_type_id) {
+            continue;
+        }
+        let name = decl.name.as_deref().unwrap_or("<anonymous>");
+        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            panic!(
+                "`parse_tables.dag::{name}`: `SoftKeywordIdentRow` binding must carry a structural value body"
+            );
+        };
+        let token_variant = string_field(fields, "token_variant", name);
+        assert!(
+            token_variant_set.contains(token_variant.as_str()),
+            "`parse_tables.dag::{name}`: token_variant `{token_variant}` is not a \
+             `TokenKind` variant in `tokenize.dag`"
+        );
+        let spelling = soft_keyword_ident_spelling_from_token_variant(&token_variant, name);
+        assert!(
+            seen_token_variants.insert(token_variant.clone()),
+            "`parse_tables.dag`: duplicate soft-keyword-ident row for `TokenKind::{token_variant}`"
+        );
+        rows.push(SoftKeywordIdentRow {
+            token_variant,
+            spelling,
+        });
+    }
+    rows.sort_by(|a, b| a.token_variant.cmp(&b.token_variant));
+    rows
+}
+
 /// Derive `BracketRole` from the `L`/`R` prefix of a bracketing `TokenKind`
 /// variant name. Single authority for opener/closer: row authors only the
 /// token variant, role projects structurally — no parallel field in `.dag`.
@@ -436,6 +490,15 @@ fn item_dispatch_label_from_kw_token_variant(token_variant: &str, decl_name: &st
     // `format!("Kw{rest}") == token_variant` would be tautological after a successful
     // `strip_prefix("Kw")`; identifier validation above is the substantive guard.
     rest.to_string()
+}
+
+fn soft_keyword_ident_spelling_from_token_variant(token_variant: &str, decl_name: &str) -> String {
+    let label = item_dispatch_label_from_kw_token_variant(token_variant, decl_name);
+    assert!(
+        label.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
+        "`parse_tables.dag::{decl_name}`: soft keyword spelling source `{label}` must be ASCII identifier characters"
+    );
+    label.to_ascii_lowercase()
 }
 
 fn assert_dispatch_label_is_rust_identifier(label: &str, decl_name: &str) {
@@ -547,6 +610,7 @@ fn emit_module(
     rows: &[BinaryOpRow],
     item_dispatch_variants: &[String],
     item_kw_rows: &[TopLevelItemKwRow],
+    soft_keyword_ident_rows: &[SoftKeywordIdentRow],
     bracket_rows: &[BracketRow],
 ) -> String {
     // `BracketRole` variants are the set of distinct roles derived from the
@@ -626,6 +690,24 @@ fn emit_module(
         s.push_str(&format!("TokenKind::{}", row.token_variant));
     }
     s.push_str(")\n");
+    s.push_str("}\n\n");
+
+    s.push_str(
+        "/// Keyword tokens that the parser accepts as bare identifier spellings\n\
+         /// in label/name positions (`parse_field_label`, `parse_variant`).\n\
+         /// Projected from `SoftKeywordIdentRow { token_variant }` rows in\n\
+         /// `src/v3/compiler/parse_tables.dag`.\n",
+    );
+    s.push_str("pub fn soft_keyword_ident_spelling(kind: &TokenKind) -> Option<&'static str> {\n");
+    s.push_str("    match kind {\n");
+    for row in soft_keyword_ident_rows {
+        s.push_str(&format!(
+            "        TokenKind::{} => Some({:?}),\n",
+            row.token_variant, row.spelling
+        ));
+    }
+    s.push_str("        _ => None,\n");
+    s.push_str("    }\n");
     s.push_str("}\n\n");
 
     s.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
