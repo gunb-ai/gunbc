@@ -120,6 +120,43 @@ is_listed_row() {
   return 1
 }
 
+row_count_in_type_rows() {
+  local target="$1"
+  local count=0
+  while IFS= read -r raw; do
+    [ -n "$raw" ] || continue
+    if [ "$(row_key "$raw")" = "$target" ]; then
+      count=$((count + 1))
+    fi
+  done <<EOF
+$TYPE_ROWS
+EOF
+  printf '%s\n' "$count"
+}
+
+verify_inventory_rows_exist_once() {
+  local label="$1"
+  shift
+  local listed count
+  local missing_or_duplicate=()
+  for listed in "$@"; do
+    count="$(row_count_in_type_rows "$listed")"
+    if [ "$count" -ne 1 ]; then
+      missing_or_duplicate+=("$listed (matches in live set: $count)")
+    fi
+  done
+  if [ "${#missing_or_duplicate[@]}" -gt 0 ]; then
+    echo "compiler-std ratchet: $label inventory drift."
+    echo "Each classified declaration must exist exactly once in the live counted set."
+    printf '%s\n' "${missing_or_duplicate[@]}"
+    exit 1
+  fi
+}
+
+verify_inventory_rows_exist_once "tracked" "${TRACKED_ROWS[@]}"
+verify_inventory_rows_exist_once "positive-def" "${POSITIVE_ROWS[@]}"
+verify_inventory_rows_exist_once "exempt" "${EXEMPT_ROWS[@]}"
+
 UNCLASSIFIED_ROWS=()
 while IFS= read -r raw; do
   [ -n "$raw" ] || continue
