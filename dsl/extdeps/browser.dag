@@ -56,13 +56,21 @@ service browser.Context {
 }
 
 service browser.Page {
+  // The current shell transport addresses a single implicit page owned by the
+  // persistent runner session. No argv slot carries a page handle today, so
+  // these operations stay page-singleton until the transport can surface a
+  // `Page` carrier without breaking callers that rely on that assumption.
   operation Goto {
+    // Keep browser locations as raw String: std.types.Url narrows to
+    // `^https?://`, but this transport intentionally supports browser-native
+    // locations such as `about:blank` in existing callers.
     input { url: String, wait_until: String = "domcontentloaded" }
     output { final_url: String from "stdout" }
     transport shell { argv: ["playwright-runner", "goto", "{url}", "--wait-until", "{wait_until}"] }
   }
 
   operation CurrentUrl {
+    // Same rationale as `Goto`: browser-native locations are valid outputs.
     input {}
     output { url: String from "stdout" }
     transport shell { argv: ["playwright-runner", "url"] }
@@ -124,6 +132,9 @@ service browser.Page {
 }
 
 service browser.Element {
+  // The runner's element-facing commands are selector-addressed today rather
+  // than handle-addressed. Keep selectors explicit until the transport can
+  // produce and consume `Element` carriers end-to-end.
   operation IsVisible {
     input { selector: String }
     output { visible: String from "stdout" }
