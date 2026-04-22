@@ -13,10 +13,11 @@
 // `declaration_is_callable`, and `template_arguments_match` in Rust for
 // now: the current reflected helper surface does not expose the
 // canonical total `Dag::declaration(id)` accessor, so the first two
-// cannot move honestly without parallel lookup authority; the current
+// cannot move honestly without parallel lookup authority, the current
 // lens path cannot yet express the former's termination proof, and the
-// latter two currently emit invalid Rust `Bool::True/False` in this
-// helper path. `infer.rs` remains authoritative for those remainders.
+// current lens->Rust emitter still shadows nested `Cons` pattern
+// bindings in generated Rust. `infer.rs` remains authoritative for
+// those remainders.
 
 module lenses.infer_helpers
 
@@ -29,6 +30,15 @@ import std.substrate {
 type TemplateArgumentLookup
   = MissingTemplateArgument
   | FoundTemplateArgument(DeclarationId)
+
+// SG-4b-3 template-argument reconciliation tranche — still pure
+// Cat-2 list mechanics, but now covering the real equality/update
+// helpers that `infer.rs` uses while resolving callable targets.
+type TemplateArgumentBinding
+  = Conflict
+  | NoOp
+  | Append
+  | ReplaceAt(Int, DeclarationId)
 
 fn behavior_output_port(behavior: Behavior) -> PortId =
   match behavior {
@@ -91,3 +101,31 @@ fn resolve_template_argument_value(
         else
           resolve_template_argument_value(remaining - 1, arguments, next)
     }
+
+fn push_template_argument_binding(
+  arguments: List<TemplateArgument>,
+  parameter: DeclarationId,
+  value: DeclarationId
+) -> TemplateArgumentBinding =
+  push_template_argument_binding_at(arguments, parameter, value, 0)
+
+fn push_template_argument_binding_at(
+  arguments: List<TemplateArgument>,
+  parameter: DeclarationId,
+  value: DeclarationId,
+  index: Int
+) -> TemplateArgumentBinding =
+  match arguments {
+    Empty => Append
+    Cons(payload) =>
+      if payload.head.parameter == parameter then
+        if payload.head.value == parameter then
+          ReplaceAt(index, value)
+        else
+          if payload.head.value == value then
+            NoOp
+          else
+            Conflict
+      else
+        push_template_argument_binding_at(payload.tail, parameter, value, index + 1)
+  }

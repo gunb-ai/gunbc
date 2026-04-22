@@ -6,6 +6,13 @@ pub enum TemplateArgumentLookup {
     MissingTemplateArgument,
     FoundTemplateArgument { _0: DeclarationId },
 }
+#[derive(Clone, Debug)]
+pub enum TemplateArgumentBinding {
+    Conflict,
+    NoOp,
+    Append,
+    ReplaceAt { _0: i64, _1: DeclarationId },
+}
 pub fn behavior_output_port(p0: &Behavior) -> PortId {
     match p0 {
         Behavior::Value(v) => (v).result_port(),
@@ -66,6 +73,38 @@ pub fn resolve_template_argument_value(
                 } else {
                     resolve_template_argument_value(&((*(p0)) - 1), p1, (*(next)))
                 }
+            }
+        }
+    }
+}
+pub fn push_template_argument_binding(
+    p0: &[TemplateArgument],
+    p1: &DeclarationId,
+    p2: DeclarationId,
+) -> TemplateArgumentBinding {
+    push_template_argument_binding_at(p0, p1, p2, 0)
+}
+pub fn push_template_argument_binding_at(
+    p0: &[TemplateArgument],
+    p1: &DeclarationId,
+    p2: DeclarationId,
+    p3: i64,
+) -> TemplateArgumentBinding {
+    match p0 {
+        [] => TemplateArgumentBinding::Append,
+        [__list_head, __list_tail @ ..] => {
+            if ((__list_head).parameter == (*(p1))) {
+                if ((__list_head).value == (*(p1))) {
+                    TemplateArgumentBinding::ReplaceAt { _0: p3, _1: p2 }
+                } else {
+                    if ((__list_head).value == p2) {
+                        TemplateArgumentBinding::NoOp
+                    } else {
+                        TemplateArgumentBinding::Conflict
+                    }
+                }
+            } else {
+                push_template_argument_binding_at(__list_tail, p1, p2, (p3 + 1))
             }
         }
     }
