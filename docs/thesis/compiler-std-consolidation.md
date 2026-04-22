@@ -125,11 +125,12 @@ Positive-definition set (NOT counted against the ratchet):
 - Substrate reflection accessor declarations
 
 Exempted (pending named trigger, not counted either direction):
-- `parse_tables.dag` — 4 types, exempted pending SG-2c-proper per-row classification
+- `parse_tables.dag` — 6 types, exempted pending SG-2c-proper per-row classification
 
 Ratchet-tracked (**migrates to `std/`, counted against the baseline**):
 - Compiler-side types that duplicate user-facing concepts (tokenize, runtime_mirrors)
 - Strict 2-variant `Missing | Found(T)` Lookup-pattern carriers across lenses (`CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup` — 3 instances) — dissolve into a single `Lookup<T>` type in `std/`. Carriers with additional semantic variants (e.g., `VariantPayloadShapeLookup`'s `NotPayloadProduct`, `TemplateArgumentBinding = Conflict | NoOp | Append`) are lens-API, not in-ratchet.
+- Lens-local workaround-shaped coproducts with named dissolution triggers (today: `TemplateArgumentsMatch`, `TemplateArgumentCursor` in `infer_helpers.dag`) also count against the ratchet; these are implementation scaffolds, not genuine lens-API carriers.
 
 Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"`):
 
@@ -137,14 +138,14 @@ Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"`):
 |---|---|---|
 | `src/v3/compiler/tokenize.dag` | 6 | **in-ratchet** (migrates to `std/`) |
 | `src/v3/compiler/runtime_mirrors.dag` | 14 | **in-ratchet** (migrates to `std/`) |
-| `src/v3/compiler/parse_tables.dag` | 4 | exempted pending SG-2c-proper |
+| `src/v3/compiler/parse_tables.dag` | 6 | exempted pending SG-2c-proper |
 | `src/v3/compiler/operators.dag` | 0 | — |
 | `src/v3/compiler/pipeline.dag` | 3 | positive-def |
 | `src/v3/compiler/regen.dag` | 1 | positive-def |
 | `src/v3/lenses/complexity.dag` | 2 | 1 positive-def (`CostEntry`) + 1 in-ratchet (`CostLookup` — 2-variant Lookup) |
 | `src/v3/lenses/cost.dag` | 2 | 1 positive-def (`SymbolicCostEntry`) + 1 in-ratchet (`SymbolicCostLookup` — 2-variant Lookup) |
 | `src/v3/lenses/idempotency.dag` | 0 | — |
-| `src/v3/lenses/infer_helpers.dag` | 2 | 1 in-ratchet (`TemplateArgumentLookup` — 2-variant Lookup) + 1 positive-def (`TemplateArgumentBinding = Conflict \| NoOp \| Append` — 3-variant semantic) |
+| `src/v3/lenses/infer_helpers.dag` | 4 | 3 in-ratchet (`TemplateArgumentLookup` — 2-variant Lookup; `TemplateArgumentsMatch` and `TemplateArgumentCursor` — workaround-shaped coproduct scaffolds with named dissolution triggers) + 1 positive-def (`TemplateArgumentBinding = Conflict \| NoOp \| Append \| ReplaceAt` — semantic carrier) |
 | `src/v3/lenses/lower_helpers.dag` | 0 | — |
 | `src/v3/lenses/parallelism.dag` | 0 | — |
 | `src/v3/lenses/provenance.dag` | 1 | positive-def (`Origin` — provenance-specific) |
@@ -152,11 +153,11 @@ Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"`):
 | `src/v3/lenses/unused_parameters.dag` | 1 | positive-def (`UnusedParameter`) |
 | `src/v3/lenses/variant_payload.dag` | 2 | both positive-def (`VariantPayloadShape` domain type + `VariantPayloadShapeLookup` — 3-variant carrier with `NotPayloadProduct` semantic distinction, not generic Lookup) |
 
-**Primary ratchet count today: 23** (20 from tokenize + runtime_mirrors + 3 strict 2-variant Lookup-pattern carriers: `CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup`). All lens-local types now classified — `structural_resolution.dag`'s two record types (`UnresolvedArrowBody`, `NameKeyedReference`) are positive-def lens-API carrying the lens's findings.
+**Primary ratchet count today: 25** (20 from tokenize + runtime_mirrors + 3 strict 2-variant Lookup-pattern carriers: `CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup` + 2 workaround-shaped infer-helper coproducts: `TemplateArgumentsMatch`, `TemplateArgumentCursor`). All lens-local types now classified — `structural_resolution.dag`'s two record types (`UnresolvedArrowBody`, `NameKeyedReference`) are positive-def lens-API carrying the lens's findings.
 
 End state: 0. Each migration lane reduces the count; positive-definition types track growth separately and are not bounded downward by this ratchet.
 
-**`parse_tables.dag` exemption protocol.** The gap analysis above (§"From `src/v3/compiler/parse_tables.dag` → unclear") says some row *shapes* (`BinaryOpRow`, `TopLevelItemKwRow`, etc.) may legitimately stay compiler-API as parser-dispatch shapes, while the *data* they carry (operator precedence levels, keyword-to-item mappings) moves to `std/syntax.dag`. That per-row classification is deferred until SG-2c-proper parser cutover. While deferred, `parse_tables.dag` is **exempted from the primary ratchet count** — its 4 types neither count toward the migration target nor against it. When SG-2c-proper classifies:
+**`parse_tables.dag` exemption protocol.** The gap analysis above (§"From `src/v3/compiler/parse_tables.dag` → unclear") says some row *shapes* (`BinaryOpRow`, `TopLevelItemKwRow`, `SoftKeywordIdentRow`, `PrimaryPrefixRow`, etc.) may legitimately stay compiler-API as parser-dispatch shapes, while the *data* they carry (operator precedence levels, keyword-to-item mappings) moves to `std/syntax.dag`. That per-row classification is deferred until SG-2c-proper parser cutover. While deferred, `parse_tables.dag` is **exempted from the primary ratchet count** — its 6 types neither count toward the migration target nor against it. When SG-2c-proper classifies:
 - Rows classified as **compiler-API dispatch shapes** → formally added to the positive-definition set (same status as `pipeline.dag` / `regen.dag` types).
 - Rows classified as **language-level data** → become ratchet-tracked migrations to `std/syntax.dag`.
 
