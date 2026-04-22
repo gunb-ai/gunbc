@@ -4823,6 +4823,8 @@ fn named_disj_root_for_rust_match_emit(
     dag: &Dag,
     mut disj_id: DeclarationId,
 ) -> Option<DeclarationId> {
+    // Chains are one hop in practice (`specialize_decl_for_lowering`); 32 matches
+    // `specialize_decl_for_lowering`'s depth bound so a bug cannot spin forever.
     for _ in 0..32 {
         let decl = dag.declaration(disj_id);
         let TypeConnective::Disj { .. } = &decl.connective else {

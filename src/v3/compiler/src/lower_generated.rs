@@ -4418,6 +4418,9 @@ fn specialize_decl_for_lowering(
                 // Specialized products stay `name: None`: reusing the template name
                 // would admit two `DeclarationId`s with the same Rust type label if
                 // both were ever emitted outside filtered surfaces.
+                // No `specialization_parent` here: unlike specialized anonymous `Disj`,
+                // emit has no consumer that must recover a template `Conj` label today;
+                // set the edge when a real downstream needs it (E-6 / same-PR consumer).
                 name: None,
                 connective: TypeConnective::Conj {
                     children: specialized_children,
