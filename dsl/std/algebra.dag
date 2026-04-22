@@ -257,15 +257,20 @@ type BooleanAlgebra<T> {
 // authority must declare it (bound-declaration syntax is out-of-scope here;
 // a future lane). Known adjacent gaps, each a separate dissolution lane:
 //   - Higher-order value params still emit as `impl Fn(...) + Clone` at the
-//     callable-bound layer (see 05_emit_rust.dag line ~1345).
-//   - The type/value-param split in the emitter keys on source-span
-//     identity: collect_type_param_names constructs a type param so its
-//     ident_span and type_expr.ident_span reference the same span value,
-//     whereas a value param always has distinct spans (even for `n: n`).
-//     This is structurally correct under the current parser, but leans on
-//     a parser invariant rather than a declared carrier. Dissolution
-//     target: partition Node's `params` slot into `type_params` /
-//     `value_params`, or introduce a `ParamKind` discriminator.
+//     callable-bound layer (see 05_emit_rust.dag line ~1401).
+//   - The type/value-param split in the emitter keys on the post-resolve
+//     invariant that resolve_item_types (04_resolve.dag:909) installs:
+//     declared type params get an env binding with
+//     `inferred: TypeVariable { id: T }`, so a param whose type_expr
+//     carries TypeVariable AND whose Node.name matches the type_expr's
+//     name is a declared type param. The classifier lives in
+//     is_function_type_param (05_emit_rust.dag). Pathological aliasing
+//     like `fn foo<T>(T: T)` — a value param whose name shadows the
+//     type-var — would be misclassified; that's a real (though unusual)
+//     case the current heuristic doesn't handle, and the dissolution
+//     target below closes it cleanly. Dissolution target: partition
+//     Node's `params` slot into `type_params` / `value_params`, or
+//     introduce a `ParamKind` discriminator.
 
 // =========================================================================
 // Sequence/collection structures
