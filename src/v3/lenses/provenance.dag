@@ -1,5 +1,8 @@
 // lenses.provenance — observational lens over `Port.produced_by`.
 //
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY COMPLETE (v3-native, no v2 counterpart).
+// See docs/v3-lens-capability-register.md.
+//
 // One-hop backward walk from a port to the producing Behavior, returning
 // an `Origin` classification tagged by the producer's behavior kind.
 // Zero reconstruction: the lens only follows the edge that `infer`

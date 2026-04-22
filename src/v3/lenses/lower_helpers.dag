@@ -1,5 +1,8 @@
 // SG-3g prototype — first `.dag`-authority lowering helper.
 //
+// Status: STRUCTURALLY PARTIAL; BEHAVIORALLY N/A (intentionally bounded prototype).
+// See docs/v3-lens-capability-register.md.
+//
 // `expr_span` is the smallest real lowering primitive that survives
 // the current emit constraints: a pure match over `SurfaceExpr`'s
 // eleven named-field variants returning each variant's `span`

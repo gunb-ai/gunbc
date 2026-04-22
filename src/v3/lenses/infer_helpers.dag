@@ -1,5 +1,8 @@
 // SG-4b-1 prototype tranche — bounded Cat-1/Cat-2 infer helpers.
 //
+// Status: STRUCTURALLY PARTIAL; BEHAVIORALLY N/A (intentionally bounded prototype).
+// See docs/v3-lens-capability-register.md.
+//
 // This prototype deliberately stops short of the refinement/discharge
 // readers. The existing reflected `BindNode` carrier does not expose
 // the predicate body port that `predicate_info` needs, so the helper

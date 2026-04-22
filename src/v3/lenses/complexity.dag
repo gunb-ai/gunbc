@@ -1,16 +1,31 @@
-// lenses.complexity — structural cost lens for the v3 DAG.
+// lenses.complexity — structural depth lens for the v3 DAG.
 //
-// 🟢 TERMINAL. Forward fold over `d.nodes` builds a per-port cost
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY PROXY.
+// See docs/v3-lens-capability-register.md.
+//
+// Forward fold over `d.nodes` builds a per-port integer depth
 // map. The substrate invariant that producers precede consumers in
 // `d.nodes` makes this a pure catamorphism — no fuel, no mutual
 // recursion, no manual termination measure. Structural termination:
 // `fold` drives the walk on the finite list `d.nodes`.
 //
-// **Equivalent to the original Rust lens** at
+// **This lens does not subsume v2's complexity analysis.** v2's
+// `src/v2/complexity.dag` produces `ComplexitySummary { work, span,
+// output_size, certainty }` with symbolic `CostExpr` / `SizeExpr`
+// and asymptotic classification. This lens produces a single integer
+// per port — the structural depth of the producing behavior in the
+// DAG. The reduction in LOC versus v2 is achieved by computing a
+// weaker function of the program, not by dissolving v2's algebra.
+// Genuine equivalence blocks on porting `DescentEvidence`,
+// `CallPattern`, `SubValueRelation`, and `MethodSemantics` carriers
+// into the v3 substrate. See the register for the full delta.
+//
+// **Equivalent to the prior Rust lens** at
 // `src/v3/compiler/src/lens_cost.rs` on commit 1247f4b1d, which
-// walked `produced_by` recursively. That oracle encodes the same
-// algebra; this forward-fold is the substrate-native rewriting
-// that exchanges recursive graph descent for sequential map build.
+// walked `produced_by` recursively. That oracle encoded the same
+// structural-depth algebra; this forward-fold is the substrate-native
+// rewriting that exchanges recursive graph descent for sequential
+// map build.
 //
 // **Fail-closed on malformed references.** `CostLookup` keeps
 // `MissingCost` distinct from `FoundCost(0)` so a port referenced by

@@ -1,9 +1,15 @@
-// lenses.parallelism — Lane 2 Stage 2e parallel composition safety (staging stub).
+// lenses.parallelism — Lane 2 Stage 2e parallel composition safety (hard stub).
 //
-// Algebraic walk: `v3_compiler::analyze_parallelism` (Rust), kept in sync with
-// `std.effects` carriers. Workflow facts on `Dag` (`lane2_workflow` on native
-// Value/Bind) are not part of the reflected substrate vocabulary here — this stub
-// fails closed until emit-table `match` + reflection land (same boundary as
+// Status: STRUCTURALLY PARTIAL; BEHAVIORALLY STUB.
+// See docs/v3-lens-capability-register.md.
+//
+// This file is not an analysis — `analyze_parallelism` unconditionally returns
+// `report_parallelism_unsupported(LensSurfacePending, …)`. The authoritative
+// analysis lives in `src/v3/compiler/src/workflow_parallelism.rs` (`v3_compiler::
+// analyze_parallelism`); workflow facts on `Dag` (`lane2_workflow` on native
+// Value/Bind) are not part of the reflected substrate vocabulary here. The
+// `.dag`-as-authority posture blocks on the v3 emitter gaining `match` lowering
+// over user-defined sums + reflection of workflow facts (same boundary as
 // `lenses/idempotency.dag`). See ROADMAP Lane 2 Stage 2b “Reflection boundary.”
 
 module lenses.parallelism
