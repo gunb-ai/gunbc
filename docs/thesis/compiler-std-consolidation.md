@@ -144,4 +144,4 @@ End state: 0 outside the positive-definition set.
 - [docs/design-pure-bootstrap.md](../design-pure-bootstrap.md) — the algorithmic-emission side of the bootstrap program
 - [docs/v3-lens-capability-register.md](../v3-lens-capability-register.md) — analysis-side honesty register (parallel discipline, different axis)
 - [INVARIANTS.md](../../INVARIANTS.md) §P1, §P2, §P5 — the invariants this claim extends
-- [feedback_epistemic_stacking memory](../../../.claude/projects/-Users-briansrls-gunbc/memory/feedback_epistemic_stacking.md) — every concept grounds in primitives via ontological DAG
+- [epistemic-stacking.md](epistemic-stacking.md) — every concept grounds in primitives via an ontological DAG (the in-repo long-form of the grounding claim this doc extends to the compiler/user boundary)
