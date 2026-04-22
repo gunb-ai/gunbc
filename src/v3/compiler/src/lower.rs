@@ -1258,6 +1258,17 @@ fn collect_symbols(
     // Seed from already-present declarations with the same preference
     // policy as `Dag::declaration_by_name`: v3 declarations shadow
     // legacy `dsl/` duplicates, otherwise earlier declarations win.
+    //
+    // **🟡 Scaffold — v3 migration preference mirror.** This mirrors the
+    // rank policy defined at `Dag::declaration_name_preference_rank`. Kept
+    // as a scaffold (not deleted) because the duplicates it resolves carry
+    // v3-only substrate content that cannot yet be hosted under `dsl/std/`.
+    // Dissolution trigger: when every module currently duplicated between
+    // `dsl/std/` and `src/v3/std/` (or `src/v3/spec/`) has converged to a
+    // single canonical home, delete this seeding branch together with the
+    // rank function in `dag.rs`. Convergence checklist (ROADMAP.md
+    // "Post-merge debt"): `module std.effects`, `module std.verification`,
+    // and the embedded `http_path` mirror inside `src/v3/std/effects.dag`.
     let mut symbols: HashMap<String, DeclarationId> = HashMap::new();
     for d in dag.declarations() {
         if let Some(name) = &d.name {
