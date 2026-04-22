@@ -61,9 +61,9 @@ service browser.Page {
   // these operations stay page-singleton until the transport can surface a
   // `Page` carrier without breaking callers that rely on that assumption.
   operation Goto {
-    // Keep browser locations as raw String: std.types.Url narrows to
-    // `^https?://`, but this transport intentionally supports browser-native
-    // locations such as `about:blank` in existing callers.
+    // Keep browser locations as raw String as a current modeling choice:
+    // std.types.Url narrows to `^https?://`, but browser navigation and
+    // observation legitimately include locations such as `about:blank`.
     input { url: String, wait_until: String = "domcontentloaded" }
     output { final_url: String from "stdout" }
     transport shell { argv: ["playwright-runner", "goto", "{url}", "--wait-until", "{wait_until}"] }
