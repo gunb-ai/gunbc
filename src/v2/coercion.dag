@@ -148,11 +148,9 @@ fn lookup_inhabitant(target: RenderTarget, algebra: String) -> InhabitantDecl? {
   target_inhabitants(target: target) |> filter(inh => inh.algebra == algebra) |> first
 }
 
-// container_to_algebra_name (in std/types.dag) is a structural read of
-// the type aliases (type List = FreeMonoid, etc.). It accepts only the
-// PascalCase container aliases. Snake_case inputs and kernel algebra
-// self-names (FreeMonoid/BooleanAlgebra/PartialFunction) are normalized
-// here — consumer-side concerns, not duplicated authority.
+// container_to_algebra_name (in std/types.dag) reads the type aliases
+// (type List = FreeMonoid, etc.) in PascalCase. Snake_case inputs are
+// normalized here — a consumer concern, not duplicated central authority.
 fn coerce_container_template(target: RenderTarget, container_name: String) -> String? {
   let pascal = if container_name == "list" { "List" }
     else if container_name == "set" { "Set" }
@@ -161,12 +159,7 @@ fn coerce_container_template(target: RenderTarget, container_name: String) -> St
     else if container_name == "boolean_algebra" { "BooleanAlgebra" }
     else if container_name == "partial_function" { "PartialFunction" }
     else { container_name }
-  let algebra = if pascal == "FreeMonoid" || pascal == "BooleanAlgebra" || pascal == "PartialFunction" {
-    Some { value: pascal }
-  } else {
-    container_to_algebra_name(name: pascal)
-  }
-  match algebra {
+  match container_to_algebra_name(name: pascal) {
     Some { value: a } => match lookup_inhabitant(target: target, algebra: a) {
       Some { value: inh } => Some { value: inh.template }
       None => none

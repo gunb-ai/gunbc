@@ -122,16 +122,28 @@ fn is_ordered_element_collection(name: String) -> Bool {
 // Container → algebra mapping: one row per type alias declaration below
 // (type List = FreeMonoid, type Set = BooleanAlgebra, type Map = PartialFunction).
 // This is a narrow structural read of those aliases — not a normalization
-// table. Snake_case and algebra-self-name handling are consumer concerns
-// and live at the two consumer sites (v2/coercion.dag, v2/05_emit.dag).
+// table. Snake_case normalization is a consumer concern and lives at the
+// two consumer sites (v2/coercion.dag, v2/05_emit.dag).
 data container_alias_targets: Map<String, String> = {
   "List": "FreeMonoid",
   "Set": "BooleanAlgebra",
   "Map": "PartialFunction"
 }
 
+// Returns the algebra name for a container-template name. Accepts the
+// PascalCase alias forms (List/Set/Map) and the kernel algebra self-names
+// (FreeMonoid/BooleanAlgebra/PartialFunction) — the latter trivially map
+// to themselves, which keeps this function total over container-template
+// names without an additional passthrough at every caller.
 fn container_to_algebra_name(name: String) -> String? {
-  map_get(container_alias_targets, name)
+  match map_get(container_alias_targets, name) {
+    Some { value: a } => Some { value: a }
+    None => if name == "FreeMonoid" || name == "BooleanAlgebra" || name == "PartialFunction" {
+      Some { value: name }
+    } else {
+      none
+    }
+  }
 }
 
 // Ordered canonical container/algebra names (PascalCase).
