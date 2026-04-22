@@ -2,7 +2,7 @@
 
 **Companion:** [1e-3v-phase-3-dispatch-gate.md](../briefs/1e-3v-phase-3-dispatch-gate.md) — **live dispatch guidance** (Executive summary, cluster table, Phase 3.0, checklist). **Path:** `docs/review-findings/` (archival namespace per **`INVARIANTS.md`** + **Review AJ**).
 
-This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`), **Review AJ** (commit `3be30867`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
+This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`), **Review AJ** (commit `3be30867`), **Review AK** (commit `741b2cd3`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
 
 ---
 
@@ -254,3 +254,10 @@ Relayed **BLOCKING** comment repeats the first review’s two claims: (1) `emit.
 
 - **Verdict:** APPROVE_WITH_COMMENTS — live dispatch brief is narrow, factual, **`TESTING.md`** **unit-first** intact; would not block.
 - **Finding (NON-BLOCKING, addressed in this commit):** Title line and dispatch **:11** still endorsed an archival chronicle under **`docs/briefs/`** instead of **`docs/review-findings/`**, conflicting with **`INVARIANTS.md`** “Documentation Describes Live State” / branch-review archive split (**Review AF** same theme). **Remediation:** this file moved to **`docs/review-findings/1e-3v-pr621-review-ingest.md`**; companion link updated; [`1e-3v-phase-3-dispatch-gate.md`](../briefs/1e-3v-phase-3-dispatch-gate.md) links adjusted.
+
+**Review AK (claude / claude-opus-4-7, schedule, commit `741b2cd3`, 2026-04-22T00:33:46Z)**
+
+- **Verdict:** APPROVE — docs-only diff (dispatch brief under **`docs/briefs/`**, chronicle under **`docs/review-findings/`**); no substrate, spec, emitter, or test code touched.
+- **Spot-checks:** `OperatorKind::Logical` / `LogicalOp::` → no matches under `src/v3/compiler/src/emit` (Cluster **F**); `bool_meet` / `bool_join` → present in each of `src/v3/spec/{rust,go,python}.dag`; **`behavior_result_port`** → four copies (`emit.rs`, `emit/rust_target.rs`, `dimension.rs`, `lens_cost_symbolic_generated.rs`) matching dedup + **3.0b** deferral. Split **`docs/briefs/`** / **`docs/review-findings/`** addresses **`INVARIANTS.md`** “Documentation Describes Live State” (**Reviews Z** / **AF** / **AJ**); cross-links consistent; Phase **3.0** **`TESTING.md`** + **3.0b** lens-regen guardrail carried through.
+- **Findings:** None — no **`INVARIANTS.md`**, modeling-discipline, **`CODING.md`**, or **`TESTING.md`** violation.
+- **Exploratory (non-blocking):** Ingest **A–AJ** + many APPROVE echoes — **Reviews AB** / **AE** / **AI** prune note; **three** blocking rebuttals = substantive verification value; rest = convergence signal. Future format: condensed **verification table + rebuttals + director locks** — next lane, not this PR.
