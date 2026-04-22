@@ -1,3 +1,8 @@
+// lenses.unused_parameters — detect bind parameters never referenced in the body.
+//
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY COMPLETE (v3-native, no v2 counterpart).
+// See docs/v3-lens-capability-register.md.
+
 module lenses.unused_parameters
 
 import std.list {

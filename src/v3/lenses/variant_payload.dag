@@ -1,6 +1,12 @@
 // lenses.variant_payload — emitter-side classification for resolved variant
 // payload shapes (empty / positional single / named fields).
 //
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY COMPLETE (v3-native, no v2 counterpart).
+// See docs/v3-lens-capability-register.md.
+// (The `DeclarationLookup` parallel-authority cleanup tracked in
+// ROADMAP 2026-04-21 wave is an internal C-8 tightening, not a
+// behavioral gap in what this lens computes.)
+//
 // Authority lives here; Rust projection is regenerated via `emit_rust_module`
 // into `src/v3/compiler/src/variant_payload_generated.rs`. Bootstrap
 // placement mirrors other lenses under `src/v3/lenses/` (not `src/v3/std/`)

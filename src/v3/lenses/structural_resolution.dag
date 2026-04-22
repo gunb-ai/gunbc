@@ -1,6 +1,9 @@
 // lenses.structural_resolution — detect leaked `ArrowBody::Pending`
 // in the final Dag.
 //
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY COMPLETE (v3-native regression pin).
+// See docs/v3-lens-capability-register.md.
+//
 // Defense-in-depth regression pin for the R13 fix (lower.rs).
 // User `fn` declarations are seeded by `seed_function_signature`
 // with `ArrowBody::Pending`, then `lower_fn_item` patches the

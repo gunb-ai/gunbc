@@ -1,3 +1,19 @@
+// lenses.cost — symbolic-cost lens over the v3 DAG.
+//
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY PROXY.
+// See docs/v3-lens-capability-register.md.
+//
+// Produces `SymbolicCostLookup` per port using `SymbolicCost`
+// combinators (`sequential`, `iterate`, `max_path`) from
+// `std.algebra`. Richer than the integer-depth `complexity.dag`
+// output, but `SizeVariable` here carries only `source_port: PortId`
+// — there is no named size variable with value semantics the way v2's
+// `SizeVar { name: String }` has. Output dimensions, certainty, and
+// asymptotic classification from v2 are also not carried. Dimension
+// wiring is deferred on grammar gaps (see the `Dimension<SymbolicCost>`
+// discussion lower in this file). No behavioral cementing test
+// exercises this lens yet.
+
 module lenses.cost
 
 import std.list { List, empty, fold, cons }
