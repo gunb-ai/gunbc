@@ -2,7 +2,7 @@
 
 **Companion:** [1e-3v-phase-3-dispatch-gate.md](1e-3v-phase-3-dispatch-gate.md) — **live dispatch guidance** (Executive summary, cluster table, Phase 3.0, checklist).
 
-This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
+This file is **archival only**: **Reviews A–Y** (api-review and threaded relays; **Review C** human/director; letter **H** unused), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** / **Review AH** (commit `bfce9906`), **Review AI** (commit `3be30867`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
 
 ---
 
@@ -242,3 +242,10 @@ Relayed **BLOCKING** comment repeats the first review’s two claims: (1) `emit.
 - **Conversation:** [chatgpt.com — gunbc review thread](https://chatgpt.com/g/g-p-69e3c70def688191bf8fa7c2cb3292ba-gunbc-review/c/69e81010-43d8-83ea-ae47-3897fd8ecd78)
 - **Verdict:** APPROVE_WITH_COMMENTS — docs-only diff; split clean; live dispatch brief focused; Phase **3.0** bounded / **unit-first**; no concrete modeling / **`CODING.md`** / **`TESTING.md`** concern in the changed lines aside from summary wording below.
 - **Finding (NON-BLOCKING, addressed in this ingest):** Dispatch **:11** / ingest **:5** had called the companion “api-review transcripts (**Reviews A–Y**)” but the ingest includes **Review C** (human/director) and skips letter **H** (**G** → **I**). For the live/archive boundary, that shorthand was slightly loose vs **`INVARIANTS.md`** “Documentation Describes Live State.” **Fix:** both headers now say **Reviews A–Y** with **api-review + Review C director** and **H** unused (line refs drift).
+
+**Review AI (claude / claude-opus-4-7, schedule, commit `3be30867`, 2026-04-22T00:17:37Z)**
+
+- **Verdict:** APPROVE — two new `docs/briefs/` markdown files; no substrate, spec, emitter, or test code touched.
+- **Findings:** None — no concrete **`INVARIANTS.md`** / **`docs/modeling-discipline.md`** / **`CODING.md`** / **`TESTING.md`** violation in the added lines.
+- **Spot-check (line refs drift):** Split matches **`INVARIANTS.md`** “Documentation Describes Live State”; dispatch gate tight (**~123 lines**); Phase **3.0** deletion-oriented, **unit-first** (`TESTING.md`), **STOP-AND-ESCALATE**; Phase **3.0b** tracked debt + named dissolution trigger; spot-checked `dispatch-gate.md` **:11, 17, 23, 34, 102–108, 123**; ingest **:5** boundary language consistent.
+- **Exploratory (non-blocking):** Chronicle under **`docs/briefs/`** vs **`docs/review-findings/`** — **Review AF**; fine for this PR; consider at lane shutdown if similar ingests accumulate. At **Review AI** capture the ingest ran **A–AH** with many APPROVE echoes — **Reviews AB** / **AE** already flagged prune to **rebuttals + directional locks**; agree — **not** for this PR.
