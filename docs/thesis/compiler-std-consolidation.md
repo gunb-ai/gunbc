@@ -78,7 +78,8 @@ Every file under `src/v3/std/*.dag` is a migration candidate once the bootstrap 
 
 - `src/v3/compiler/pipeline.dag` — 3 types (`PipelineStageBinding`, `PipelineSnapshotKind`, `CompilerHostRealization`)
 - `src/v3/compiler/regen.dag` — 1 type (`LensRegistryEntry`)
-- Lens bodies at `src/v3/lenses/*.dag` — bodies only (they import types from `std/` post-consolidation)
+- **Lens-local return-type carriers in `src/v3/lenses/*.dag`** that represent the lens's published API shape (e.g., `Origin` for provenance, `UnusedParameter` for unused_parameters). These declare what the lens returns and stay compiler-API *when genuinely lens-specific*. **Exception — generic-Lookup-pattern candidates** (`CostLookup`, `TemplateArgumentLookup`, `DeclarationLookup`, etc.): these 2-variant `Missing | Found(T)` carriers duplicate a pattern across lenses and are tracked-debt candidates for generalization into a single `Lookup<T>` type in `std/`. See [INVARIANTS.md](../../INVARIANTS.md) P2 "Fail-closed lookup carriers" and the deferred-debt queue in ROADMAP.
+- Lens *bodies* (the `fn` definitions) in `src/v3/lenses/*.dag` — always positive-def; they import types from `std/` (and from `pipeline.dag` / `regen.dag` / lens-local carriers) rather than re-declaring them.
 - Reflected accessors declared in `substrate.dag` (these move to `std/` but their *existence as compiler API* stays)
 
 ### Rust hand-written files (bootstrap shim target)
@@ -116,22 +117,44 @@ Against the deferred-debt section:
 
 The consolidation can be measured:
 
-**Primary ratchet:** count of `type` declarations in `src/v3/compiler/*.dag` outside of `pipeline.dag`, `regen.dag`, `lenses/*.dag`, **and `parse_tables.dag` (temporarily exempted pending SG-2c-proper classification — see below)**.
+**Primary ratchet:** count of `type` declarations in `src/v3/compiler/*.dag` **and `src/v3/lenses/*.dag`** that are NOT in the positive-definition set AND NOT exempted.
 
-Baseline (2026-04-22, measured by `grep -cE "^type [A-Z]" src/v3/compiler/*.dag`):
+Positive-definition set (NOT counted against the ratchet):
+- `pipeline.dag` types, `regen.dag` types
+- Lens-local return-type carriers that represent the lens's published API (e.g., `Origin`, `UnusedParameter`, `CostEntry`) — **except** generic-Lookup-pattern duplicates (see below)
+- Substrate reflection accessor declarations
 
-| File | Type decls | Category |
+Exempted (pending named trigger, not counted either direction):
+- `parse_tables.dag` — 4 types, exempted pending SG-2c-proper per-row classification
+
+Ratchet-tracked (**migrates to `std/`, counted against the baseline**):
+- Compiler-side types that duplicate user-facing concepts (tokenize, runtime_mirrors)
+- Generic-Lookup-pattern carriers across lenses (`CostLookup`, `TemplateArgumentLookup`, `DeclarationLookup`, etc.) — dissolve into a single `Lookup<T>` type in `std/`
+
+Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"`):
+
+| File | Type decls | Disposition |
 |---|---|---|
-| `tokenize.dag` | 6 | **migrates to `std/`** (counts toward ratchet) |
-| `runtime_mirrors.dag` | 14 | **migrates to `std/`** (counts toward ratchet) |
-| `parse_tables.dag` | 4 | **exempted** pending SG-2c-proper per-row classification |
-| `operators.dag` | 0 | — |
-| `pipeline.dag` | 3 | positive-def: stays |
-| `regen.dag` | 1 | positive-def: stays |
+| `src/v3/compiler/tokenize.dag` | 6 | **in-ratchet** (migrates to `std/`) |
+| `src/v3/compiler/runtime_mirrors.dag` | 14 | **in-ratchet** (migrates to `std/`) |
+| `src/v3/compiler/parse_tables.dag` | 4 | exempted pending SG-2c-proper |
+| `src/v3/compiler/operators.dag` | 0 | — |
+| `src/v3/compiler/pipeline.dag` | 3 | positive-def |
+| `src/v3/compiler/regen.dag` | 1 | positive-def |
+| `src/v3/lenses/complexity.dag` | 2 | 1 lens-API (`CostEntry`) + 1 in-ratchet (`CostLookup` — Lookup pattern) |
+| `src/v3/lenses/cost.dag` | 2 | 1 lens-API + 1 in-ratchet (Lookup pattern) |
+| `src/v3/lenses/idempotency.dag` | 0 | — |
+| `src/v3/lenses/infer_helpers.dag` | 2 | both in-ratchet (`TemplateArgumentLookup` shape) |
+| `src/v3/lenses/lower_helpers.dag` | 0 | — |
+| `src/v3/lenses/parallelism.dag` | 0 | — |
+| `src/v3/lenses/provenance.dag` | 1 | positive-def (`Origin` — genuinely provenance-specific) |
+| `src/v3/lenses/structural_resolution.dag` | 2 | classification pending (likely lens-API + regression pin carrier) |
+| `src/v3/lenses/unused_parameters.dag` | 1 | positive-def (`UnusedParameter`) |
+| `src/v3/lenses/variant_payload.dag` | 2 | 1 lens-API + 1 in-ratchet (`DeclarationLookup` — Lookup pattern) |
 
-**Primary ratchet count today: 20 (tokenize + runtime_mirrors).**
+**Primary ratchet count today: ~25** (20 from tokenize + runtime_mirrors + ~5 generic-Lookup-pattern carriers across lenses; exact lens breakdown to firm up as Lookup generalization lane scopes). Classifications for the two `structural_resolution.dag` types to be pinned in a follow-up once that file's header is reviewed for lens-API vs regression-pin intent.
 
-End state: 0. Each migration lane reduces the count; `pipeline.dag` and `regen.dag` type counts track positive-definition growth separately and are not bounded downward by this ratchet.
+End state: 0. Each migration lane reduces the count; positive-definition types track growth separately and are not bounded downward by this ratchet.
 
 **`parse_tables.dag` exemption protocol.** The gap analysis above (§"From `src/v3/compiler/parse_tables.dag` → unclear") says some row *shapes* (`BinaryOpRow`, `TopLevelItemKwRow`, etc.) may legitimately stay compiler-API as parser-dispatch shapes, while the *data* they carry (operator precedence levels, keyword-to-item mappings) moves to `std/syntax.dag`. That per-row classification is deferred until SG-2c-proper parser cutover. While deferred, `parse_tables.dag` is **exempted from the primary ratchet count** — its 4 types neither count toward the migration target nor against it. When SG-2c-proper classifies:
 - Rows classified as **compiler-API dispatch shapes** → formally added to the positive-definition set (same status as `pipeline.dag` / `regen.dag` types).
