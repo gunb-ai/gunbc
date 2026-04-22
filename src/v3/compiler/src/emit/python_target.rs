@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
 use super::{
-    optional_match_variant_roles, parse_pattern_strategy, EmitMode, PatternStrategyBinding,
-    SourceFilteringBinding, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    algebra_field_for_operator_shared, optional_match_variant_roles, parse_pattern_strategy,
+    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
+    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, DeclarationId, Field,
@@ -1870,44 +1872,12 @@ fn indent(source: &str, level: usize) -> String {
 }
 
 fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, EmitPythonError> {
-    let ts = dag
-        .port(port)
-        .value_type()
-        .ok_or(EmitPythonError::UntypedPort(port))?;
-    let mut current = ts.declaration;
-    for _ in 0..32 {
-        let decl = dag.declaration(current);
-        if decl.name.is_some() {
-            return Ok(current);
+    primitive_type_id_for_port_shared(dag, port).map_err(|err| match err {
+        SharedEmitLookupError::UntypedPort(port) => EmitPythonError::UntypedPort(port),
+        SharedEmitLookupError::Unsupported(detail) => {
+            EmitPythonError::Unsupported(detail.replace(" — likely a cycle", ""))
         }
-        match &decl.connective {
-            TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
-            _ => return Ok(current),
-        }
-    }
-    Err(EmitPythonError::Unsupported(
-        "port type walk exceeded depth 32".to_string(),
-    ))
-}
-
-fn walk_to_disj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
-    let mut current = start;
-    for _ in 0..32 {
-        match &dag.declaration(current).connective {
-            TypeConnective::Disj { .. } => return Some(current),
-            TypeConnective::Cardinality {
-                bound: crate::dag::CardinalityBound::AtMostOne,
-                ..
-            } => return dag.optional_match_disj(current),
-            TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
-            _ => return None,
-        }
-    }
-    None
+    })
 }
 
 fn is_optional_match_disj(dag: &Dag, disj_id: DeclarationId) -> bool {
@@ -1929,65 +1899,15 @@ fn algebra_field_for_operator(
     operand_type_id: DeclarationId,
     op: OperatorKind,
 ) -> Result<DeclarationId, EmitPythonError> {
-    if let Some(algebra_conj_id) = walk_to_algebra_conj(dag, operand_type_id) {
-        let field_label = crate::operators::algebra_field_name(op);
-        let children = match &dag.declaration(algebra_conj_id).connective {
-            TypeConnective::Conj { children } => children,
-            _ => unreachable!("walk_to_algebra_conj returned a non-Conj"),
-        };
-        if let Some(field) = children.iter().find(|f| f.label == field_label) {
-            return Ok(field.ty);
-        }
-    }
-    canonical_operator_field(dag, op)
-}
-
-/// Walk a declaration through aliases / instantiations until it
-/// reaches a Conj (the algebra declaration). Returns the Conj's id.
-/// Mirrors emit_rust::walk_to_algebra_conj.
-fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
-    let mut current = start;
-    for _ in 0..32 {
-        let decl = dag.declaration(current);
-        match &decl.connective {
-            TypeConnective::Conj { .. } => return Some(current),
-            TypeConnective::Instantiation { template, .. } => current = *template,
-            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
-            _ => {
-                if let Some(inh) = decl.inhabits {
-                    current = inh;
-                } else {
-                    return None;
-                }
-            }
-        }
-    }
-    None
-}
-
-fn canonical_operator_field(dag: &Dag, op: OperatorKind) -> Result<DeclarationId, EmitPythonError> {
-    let field_label = crate::operators::algebra_field_name(op);
-    let ordered_ring_id = dag.ordered_ring_decl().ok_or_else(|| {
-        EmitPythonError::Unsupported(
-            "bootstrap is missing canonical OrderedRing declaration".to_string(),
-        )
-    })?;
-    let ordered_ring = dag.declaration(ordered_ring_id);
-    let TypeConnective::Conj { children } = &ordered_ring.connective else {
-        return Err(EmitPythonError::Unsupported(
-            "OrderedRing did not lower to a Conj".to_string(),
-        ));
-    };
-    children
-        .iter()
-        .find(|field| field.label == field_label)
-        .map(|field| field.ty)
-        .ok_or_else(|| {
-            EmitPythonError::Unsupported(format!(
-                "OrderedRing has no canonical field labeled {field_label}"
-            ))
-        })
+    algebra_field_for_operator_shared(dag, operand_type_id, op).map_err(|err| match err {
+        SharedEmitLookupError::UntypedPort(port) => EmitPythonError::UntypedPort(port),
+        SharedEmitLookupError::Unsupported(detail) => EmitPythonError::Unsupported(
+            detail
+                .replace("the canonical `OrderedRing`", "canonical OrderedRing")
+                .replace("`OrderedRing` does not lower to a Conj declaration", "OrderedRing did not lower to a Conj")
+                .replace("`OrderedRing` has no canonical field labeled", "OrderedRing has no canonical field labeled"),
+        ),
+    })
 }
 
 fn variant_name_for_decl(
