@@ -55,6 +55,11 @@
 // is emitted from `BracketRow` facts and consumed by the same type-RHS
 // helpers `skip_where_clause` and `rhs_is_sum` in `parse_parser_body.txt`,
 // replacing two duplicated inline bracket-membership match blocks.
+//
+// **Same-PR consumer (E-6).** SG-2c-6 projection `primary_prefix_dispatch` /
+// `PrimaryPrefixDispatch` is emitted from `PrimaryPrefixRow` facts and
+// consumed by `parse_primary` in `parse_parser_body.txt`, replacing the
+// four inline `if matches!(peek, …)` prefix probes.
 
 module v3.compiler.parse_tables
 
@@ -384,4 +389,38 @@ data bracket_rbrace: BracketRow = {
 
 data bracket_rbracket: BracketRow = {
   token_variant: "RBracket"
+}
+
+// --- SG-2c-6: `parse_primary` prefix opener dispatch. Before the
+// post-bump atomic match (`IntLit`, booleans, `StringLit`, `|`, ident),
+// `parse_primary` dispatches on exactly this closed set of peek tokens:
+// `if`, `match`, `{`, `[` → dedicated parsers. Authored here once;
+// `PrimaryPrefixDispatch` is regen-only (projection over `token_variant`
+// rows — same M7 shape as `TopLevelItemKwRow` → `ItemDispatchKind`).
+//
+// Dissolution classification: **🟡 YELLOW (scaffold)** — same structural
+// situation as other SG-2c tables; full dissolution rides SG-2c proper.
+//
+// **M7 note:** no `type PrimaryPrefixDispatch` in substrate — only
+// `PrimaryPrefixRow { token_variant }`; Rust enum labels derive at regen
+// (`Kw*` → `strip_prefix("Kw")`; `LBrace` → `Record`; `LBracket` → `List`).
+
+type PrimaryPrefixRow {
+  token_variant: String
+}
+
+data primary_prefix_kw_if: PrimaryPrefixRow = {
+  token_variant: "KwIf"
+}
+
+data primary_prefix_kw_match: PrimaryPrefixRow = {
+  token_variant: "KwMatch"
+}
+
+data primary_prefix_lbrace: PrimaryPrefixRow = {
+  token_variant: "LBrace"
+}
+
+data primary_prefix_lbracket: PrimaryPrefixRow = {
+  token_variant: "LBracket"
 }
