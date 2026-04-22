@@ -25,6 +25,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use crate::common::integration_rs_active_line_contains;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::lens_provenance::{origin_of, Origin};

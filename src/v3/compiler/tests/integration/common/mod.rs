@@ -75,6 +75,24 @@ pub fn find_current_rlib(crate_name: &str) -> PathBuf {
         .expect("compiled rlib for current crate")
 }
 
+/// True when `line` is not a whole-line outer doc / line comment in Rust source.
+///
+/// Band-C wiring ratchets scan `tests/integration.rs` for `#[path = …]` / `mod …;`
+/// declarations. A raw substring match false-greens on commented-out copies
+/// (`// #[path = …]`). Ignore any line whose first non-whitespace token starts
+/// a line comment (`//`, `///`, `//!`).
+pub fn integration_rs_line_is_active_for_wiring_check(line: &str) -> bool {
+    let s = line.trim_start();
+    !(s.is_empty() || s.starts_with("//"))
+}
+
+/// True when some **active** (non-`//`-leading) line in `integration_rs` contains `needle`.
+pub fn integration_rs_active_line_contains(integration_rs: &str, needle: &str) -> bool {
+    integration_rs.lines().any(|line| {
+        integration_rs_line_is_active_for_wiring_check(line) && line.contains(needle)
+    })
+}
+
 /// Harness for spawning rustc against generated-Rust harnesses.
 /// Holds the per-test-binary scratch root and a counter so parallel
 /// tests within the same binary get distinct temp dirs.
