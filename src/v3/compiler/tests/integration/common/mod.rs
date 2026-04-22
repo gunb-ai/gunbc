@@ -122,9 +122,8 @@ enum IntegrationRsScan {
 ///
 /// **Not handled:** raw strings (`r#"…"#`), byte strings (`b"…"`, `br#"…"#`), or
 /// char literals — none appear in today’s `tests/integration.rs` module list. If
-/// they do, extend [`IntegrationRsScan`] **or** the scan will **panic** when
-/// [`code_opens_raw_or_byte_string_literal`] fires in `Code` (loud failure vs a
-/// silent false green).
+/// they do, extend `IntegrationRsScan` **or** the scan will **panic** when the
+/// raw/byte-string opener probe fires in `Code` (loud failure vs a silent false green).
 pub fn integration_rs_active_line_contains(integration_rs: &str, needle: &str) -> bool {
     if needle.is_empty() {
         return true;
