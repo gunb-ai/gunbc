@@ -57,14 +57,14 @@ service browser.Context {
 
 service browser.Page {
   operation Goto {
-    input { url: Url, wait_until: String = "domcontentloaded" }
-    output { final_url: Url from "stdout" }
+    input { url: String, wait_until: String = "domcontentloaded" }
+    output { final_url: String from "stdout" }
     transport shell { argv: ["playwright-runner", "goto", "{url}", "--wait-until", "{wait_until}"] }
   }
 
   operation CurrentUrl {
     input {}
-    output { url: Url from "stdout" }
+    output { url: String from "stdout" }
     transport shell { argv: ["playwright-runner", "url"] }
   }
 
