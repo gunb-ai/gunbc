@@ -47,8 +47,8 @@ use std::collections::{HashMap, HashSet};
 
 use super::{
     algebra_field_for_operator_shared, parse_pattern_strategy, primitive_type_id_for_port_shared,
-    walk_to_disj, EmitMode, PatternStrategyBinding, SharedEmitLookupError,
-    SourceFilteringBinding, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    walk_to_disj, EmitMode, PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding,
+    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,

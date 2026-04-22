@@ -1904,8 +1904,14 @@ fn algebra_field_for_operator(
         SharedEmitLookupError::Unsupported(detail) => EmitPythonError::Unsupported(
             detail
                 .replace("the canonical `OrderedRing`", "canonical OrderedRing")
-                .replace("`OrderedRing` does not lower to a Conj declaration", "OrderedRing did not lower to a Conj")
-                .replace("`OrderedRing` has no canonical field labeled", "OrderedRing has no canonical field labeled"),
+                .replace(
+                    "`OrderedRing` does not lower to a Conj declaration",
+                    "OrderedRing did not lower to a Conj",
+                )
+                .replace(
+                    "`OrderedRing` has no canonical field labeled",
+                    "OrderedRing has no canonical field labeled",
+                ),
         ),
     })
 }
