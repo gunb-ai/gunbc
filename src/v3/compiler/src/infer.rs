@@ -3465,11 +3465,10 @@ fn find_equivalent_anonymous_instantiation(
             return None;
         };
         (template == *existing_template
-            && existing_arguments.len() == arguments.len()
-            && existing_arguments
-                .iter()
-                .zip(arguments.iter())
-                .all(|(lhs, rhs)| lhs.parameter == rhs.parameter && lhs.value == rhs.value))
+            && matches!(
+                generated_template_arguments_match(existing_arguments, arguments),
+                TemplateArgumentsMatch::Match,
+            ))
         .then_some(decl.id)
     })
 }
@@ -4506,5 +4505,84 @@ mod bool_logical_operator_arrow_tests {
             assert_eq!(a.parameter, e.parameter);
             assert_eq!(a.value, e.value);
         }
+    }
+
+    /// SG-4b (callable-instantiation normalization cluster): exercise
+    /// `find_equivalent_anonymous_instantiation` through the real
+    /// declaration-table path so the generated template-argument
+    /// comparison is the one doing the dedup.
+    #[test]
+    fn find_equivalent_anonymous_instantiation_dedups_via_generated_comparison() {
+        let mut dag = Dag::new();
+        let template = dag.bool_shape().expect("bootstrap Bool").declaration;
+        let p0 = dag.int_shape().expect("bootstrap Int").declaration;
+        let p1 = dag.string_shape().expect("bootstrap String").declaration;
+        let v0 = dag.int_shape().expect("bootstrap Int").declaration;
+        let v1 = dag.bool_shape().expect("bootstrap Bool").declaration;
+
+        let args = vec![
+            TemplateArgument {
+                parameter: p0,
+                value: v0,
+            },
+            TemplateArgument {
+                parameter: p1,
+                value: v1,
+            },
+        ];
+
+        let anon_id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: anon_id,
+            name: None,
+            connective: TypeConnective::Instantiation {
+                template,
+                arguments: args.clone(),
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: synthetic_span(),
+        });
+
+        // Exact arguments match → dedup hit.
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(&dag, template, &args),
+            Some(anon_id),
+        );
+
+        // One value differs → no hit.
+        let mut value_diff = args.clone();
+        value_diff[1].value = v0;
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(&dag, template, &value_diff),
+            None,
+        );
+
+        // Length differs → no hit.
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(&dag, template, &args[..1]),
+            None,
+        );
+
+        // Self-binding normalization: a `parameter == value` entry is a
+        // real structural distinction at this call site —
+        // `find_equivalent_anonymous_instantiation` does not strip self
+        // bindings itself; `normalized_instantiation_args` owns that.
+        // An instantiation with a self-binding added does not dedup
+        // against one without it, confirming the comparison is strict
+        // pairwise and the generated helper's length check fires.
+        let mut with_self = args.clone();
+        with_self.push(TemplateArgument {
+            parameter: p0,
+            value: p0,
+        });
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(&dag, template, &with_self),
+            None,
+        );
     }
 }
