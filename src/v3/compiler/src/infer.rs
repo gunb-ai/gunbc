@@ -1565,10 +1565,10 @@ fn push_template_argument_binding(
             _0: index,
             _1: updated,
         } => {
-            let Some(existing) = arguments.get_mut(*index as usize) else {
+            let Some(existing) = arguments.get_mut(index as usize) else {
                 return false;
             };
-            existing.value = *updated;
+            existing.value = updated;
             true
         }
     }
