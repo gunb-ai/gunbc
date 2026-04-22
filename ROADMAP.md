@@ -173,7 +173,7 @@ Findings from two reflective analyses (integration loop health, `main@b014746` a
 
 ### Post-merge debt (2026-04-21 deferred-from-wave)
 
-Tracked debt not dispatched with the 2026-04-21 lane wave currently in flight (Lane 1e P3.0, SG-3g-b, SG-2c-4, SG-4b-3, cascade cleanup, algebra inhabitance quartet). Opportunistic slots — no blocking dependencies, can be picked up whenever bandwidth frees.
+Tracked debt not dispatched with the 2026-04-21 lane wave (Lane 1e P3.0, SG-2c-4, SG-4b-3, cascade cleanup, algebra inhabitance quartet; **SG-3g-b is closed** — see `docs/briefs/sg-3g-b-lower-helpers-wire-in.md`). Opportunistic slots — no blocking dependencies, can be picked up whenever bandwidth frees.
 
 - **SG-2c growth-discipline checkpoint (2026-04-22)**: SG-2c-1…5 have landed; SG-2c-6 is WIP. Decision doc [docs/briefs/sg-2c-proper-capability-gap.md](docs/briefs/sg-2c-proper-capability-gap.md) names the SG-2c-proper capability blocker concretely (recursive `.dag` function bodies over `List<Token>` with cursor threading + `Token` variant match + `Result<(Surface*, Int), Diagnostic>` short-circuit — load-bearing sub-gap is list-body emission per `src/v3/std/list.dag:13-15`), estimates cadence-vs-pivot scope, and recommends: **natural ceiling** — dispatch SG-2c-6 only under a sharper bar (named same-PR consumer block + non-derivable row family, per SG-2c-3 precedent), do not pre-queue SG-2c-7+, and begin capability-pivot design in parallel as a separate C1-scoped lane rather than serially behind more row lanes. Parallel-authority risk from the accumulated table is judged modest-not-accelerating (rows are data, trigger-gated, exempted in the std/-consolidation ratchet under the `parse_tables.dag` precedent-rule bullet).
 

@@ -1,5 +1,10 @@
 # SG-3f-e — `parse` / `parse_surface` convergence `(M-L)`
 
+> **Downstream (2026-04-22):** SG-3g-b wire-in
+> ([sg-3g-b-lower-helpers-wire-in.md](sg-3g-b-lower-helpers-wire-in.md)) is
+> **shipped** — the lowerer calls generated `lower_helpers` on the converged
+> `Surface*` types.
+
 ## Context
 
 PR #612 (SG-3g) proved `lower_helpers.dag` can generate a correct `expr_span`
