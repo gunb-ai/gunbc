@@ -29,13 +29,35 @@
 // `Instantiation` argument lists for structural comparison. `infer.rs`
 // keeps the `TypeConnective::Instantiation` unwrap; this helper is
 // pure list mechanics only.
+//
+// SG-4b (callable-instantiation normalization / anonymous-instantiation
+// equivalence cluster): this tranche closes the normalization seam by
+// taking the reflected `TypeConnective` directly — no declaration
+// accessor authority added. `normalize_instantiation_arguments` moves
+// the `Instantiation` destructure + self-binding strip into a single
+// pure-reflected-data helper; `infer.rs::normalized_instantiation_args`
+// becomes a thin shell that does the declaration lookup (authority
+// stays in Rust) and hands the connective to this helper. Combined
+// with the generated `template_arguments_match` consumer in
+// `find_equivalent_anonymous_instantiation` (same PR), the full
+// "normalize + compare" seam for anonymous-instantiation equivalence
+// now runs through generated helpers.
+//
+// Intentionally left in Rust (STOP boundary):
+//   - `callable_template_arguments` / `retained_template_arguments_for_target`
+//     — would require a new declaration accessor surface
+//   - `resolve_callable_target` / `materialize_callable_signature_instantiations`
+//     — broader callable-target resolution, not normalization mechanics
+//   - the pairwise walk in `callable_decls_equal_under_subst`
+//     — interleaves `resolve_decl_with_subst` + `declaration_shapes_equivalent`
+//       per element; not pure list mechanics
 
 module lenses.infer_helpers
 
 import std.list { List, empty, cons }
 import std.substrate {
   Behavior, BranchPath, BranchPattern, DeclarationId, SourceSpan,
-  TemplateArgument
+  TemplateArgument, TypeConnective
 }
 
 type TemplateArgumentLookup
@@ -239,4 +261,42 @@ fn filter_non_self_template_arguments(
         filter_non_self_template_arguments(payload.tail)
       else
         cons(payload.head, filter_non_self_template_arguments(payload.tail))
+  }
+
+// SG-4b callable-instantiation normalization decision. Consumers
+// (`infer.rs::normalized_instantiation_args`) look up a declaration in
+// Rust (declaration accessor authority stays there) and hand the
+// resulting `TypeConnective` to this helper. For `Instantiation`,
+// returns the template id plus the DB-16-normalized argument list
+// (self-bindings stripped). For every other connective, returns
+// `NotInstantiation` — the caller's `Option::None` signal.
+//
+// Classification: 🟡 workaround-shaped coproduct (Option-as-enum). This
+// is `Option<NormalizedInstantiation>` spelled as a 2-variant
+// coproduct; exists because the lens->Rust emitter's `T?` mapping for
+// compound helper returns is not yet wired. Dissolution trigger: same
+// as `TemplateArgumentsMatch` — when the emitter lands a verified `T?`
+// return mapping for helper outputs, collapse this and the decision
+// helpers together.
+type NormalizedInstantiationArgs
+  = NotInstantiation
+  | Normalized {
+      template: DeclarationId
+      args: List<TemplateArgument>
+    }
+
+fn normalize_instantiation_arguments(
+  connective: TypeConnective
+) -> NormalizedInstantiationArgs =
+  match connective {
+    Atom(_) => NotInstantiation
+    Conj(_) => NotInstantiation
+    Disj(_) => NotInstantiation
+    Arrow(_) => NotInstantiation
+    Cardinality(_) => NotInstantiation
+    Instantiation(payload) =>
+      Normalized {
+        template: payload.template,
+        args: filter_non_self_template_arguments(payload.arguments)
+      }
   }

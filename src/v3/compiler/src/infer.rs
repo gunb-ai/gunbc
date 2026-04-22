@@ -34,12 +34,12 @@ use crate::diagnostics::{
     Diagnostic, SourceSpan,
 };
 use crate::infer_helpers::{
-    behavior_output_port, behavior_span, filter_non_self_template_arguments,
-    generated_template_arguments_match, payload_binding_span as generated_payload_binding_span,
+    behavior_output_port, behavior_span, generated_template_arguments_match,
+    normalize_instantiation_arguments, payload_binding_span as generated_payload_binding_span,
     push_template_argument_binding as generated_push_template_argument_binding,
     resolve_template_argument_value as generated_resolve_template_argument_value,
-    template_argument_value as generated_template_argument_value, TemplateArgumentBinding,
-    TemplateArgumentLookup, TemplateArgumentsMatch,
+    template_argument_value as generated_template_argument_value, NormalizedInstantiationArgs,
+    TemplateArgumentBinding, TemplateArgumentLookup, TemplateArgumentsMatch,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
@@ -3417,18 +3417,12 @@ fn normalized_instantiation_args(
     dag: &Dag,
     decl: DeclarationId,
 ) -> Option<NormalizedInstantiation> {
-    let TypeConnective::Instantiation {
-        template,
-        arguments,
-    } = &dag.declaration(decl).connective
-    else {
-        return None;
-    };
-    let filtered = filter_non_self_template_arguments(arguments);
-    Some(NormalizedInstantiation {
-        template: *template,
-        args: filtered,
-    })
+    match normalize_instantiation_arguments(&dag.declaration(decl).connective) {
+        NormalizedInstantiationArgs::NotInstantiation => None,
+        NormalizedInstantiationArgs::Normalized { template, args } => {
+            Some(NormalizedInstantiation { template, args })
+        }
+    }
 }
 
 fn find_equivalent_anonymous_conj(dag: &Dag, children: &[Field]) -> Option<DeclarationId> {
@@ -4376,6 +4370,7 @@ fn declaration_shapes_equivalent(
 #[cfg(test)]
 mod bool_logical_operator_arrow_tests {
     use super::*;
+    use crate::infer_helpers::filter_non_self_template_arguments;
 
     #[test]
     fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {
