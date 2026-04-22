@@ -48,11 +48,13 @@ Substrate accessor callables (DB-14) are **out of scope** for this design doc: d
 
 ### Case 2c: `compile` orchestrator (ordering authority)
 
-`pipeline.dag` also declares `fn compile(...) -> String { parse \n lower \n infer \n ... }`. Like other block-bodied compiler fns, it parses as `FnExternalBody` → `ArrowBody::Unparsed(body_span)`. There is **no** `PipelineStageBinding` for `compile` itself — only per-stage fns get that rewrite — so **`Unparsed` persists for `compile` after bootstrap.** Downstream, `pipeline_compile_order_stage_names` reads **`compile`'s body span** as the authoritative ordering surface for which stages exist and in what sequence. This is not case 1 parse lag: the body is intentional structured text consumed by the compiler, not std/ grammar debt waiting for M2.
+`pipeline.dag` also declares `fn compile(...) -> String { parse \n lower \n infer \n ... }`. Like other block-bodied compiler fns, it parses as `FnExternalBody` → `ArrowBody::Unparsed(body_span)`. There is **no** `PipelineStageBinding` for `compile` itself — only per-stage fns get that rewrite — so **`Unparsed` persists for `compile` after bootstrap.**
 
-**Receipt — terminal (bootstrap-range):** 2c is **not** an interim bridge to `ExternalRealization` (nothing to “realize” for `compile` itself). For today’s substrate, the span is the **intended terminal carrier** of ordering facts at the `Arrow → body` edge — the meeting point is still structural (`Unparsed` holds the span token), but the *role* is compiler ordering authority, not user execution body.
+**Runtime authority is structural (PR #637).** Pipeline stage order is read from the declaration order of `PipelineStageBinding` records in the Dag. `ordered_pipeline_stages` walks `dag.declarations()`, filters by `meta_tag == PipelineStageBinding`, and returns them in declaration order. No text slicing, no `body_span` on the runtime path.
 
-**Dissolution trigger (future):** introduce a **first-class structural representation** of pipeline stage order (e.g. ordered data in `pipeline.dag` or a dedicated substrate carrier) that `pipeline_authority` can read without scraping `compile`'s text; migrate consumers, then retire span-based extraction. **Not** “wait for M2 to parse `compile` as `SurfaceExpr`” — that would confuse ordering metadata with user grammar growth.
+**`compile` body role: surface contract, fail-closed cross-check.** The `fn compile { parse \n lower \n ... }` body is the **human-readable pipeline contract**: a reader sees the pipeline in one glance rather than reconstructing it from a binding table. `ordered_pipeline_stages` fail-closes (`reconcile_with_compile_body`) on any drift between the body and the bindings, so the two surfaces cannot silently diverge. Bindings are the single **runtime** authority (P2); the body is the **surface** the bindings commit to; the reconcile keeps that commitment honest (P3).
+
+**Receipt — terminal (bootstrap-range):** 2c is **not** an interim bridge to `ExternalRealization` (nothing to “realize” for `compile` itself). The body is **not** a scaffold awaiting dissolution — it is the intended terminal human-readable carrier of the pipeline contract. The prior doc framed span-based extraction as interim; PR #637 made the structural read the runtime authority and retained the body as the surface contract, not as ordering truth.
 
 ### Why the conflation is a real risk
 
@@ -80,7 +82,7 @@ to something like:
 >
 > **Case 2a — target-native (per-stage).** Compiler-internal fns whose body is a host runtime (e.g., pipeline.dag's `fn parse(...) -> Dag { host parse }`). Dissolves via bootstrap: `PipelineStageBinding` rewrites the Arrow body from `Unparsed` to `ExternalRealization(realization_id)`.
 >
-> **Case 2c — `compile` orchestrator.** `fn compile(...) { ... }` in `pipeline.dag`: **`Unparsed` persists**; `pipeline_compile_order_stage_names` reads the body span for ordering authority. Not dissolved by `PipelineStageBinding`.
+> **Case 2c — `compile` orchestrator.** `fn compile(...) { ... }` in `pipeline.dag`: **`Unparsed` persists**. Runtime ordering authority is the declaration order of `PipelineStageBinding` records (`ordered_pipeline_stages`); the body is the human-readable pipeline contract, cross-checked fail-closed against the bindings (`reconcile_with_compile_body`). Not dissolved by `PipelineStageBinding` — the body is terminal surface, not a scaffold.
 >
 > The parser does not distinguish these cases — all are 'block body that isn't a SurfaceExpr.' The disambiguator is **downstream role** (binding rewrite vs ordering authority vs parse lag), not "no binding ⇒ case 1."
 
@@ -100,7 +102,7 @@ fn pipeline_stages_lower_to_external_realization_not_unparsed() {
     let stages = v3_compiler::pipeline_compile_order_stage_names()
         .expect("pipeline.dag `compile` body must list stages");
     for stage in stages {
-        // Names come from `compile`'s body span — excludes `compile` itself (case 2c: Unparsed persists).
+        // Names come from `PipelineStageBinding` declaration order — excludes `compile` itself (case 2c: Unparsed persists).
         let decl = dag.declaration_by_name(&stage).unwrap();
         // ... assert ArrowBody::ExternalRealization for each listed stage
     }
@@ -120,7 +122,7 @@ Considered: split `SurfaceItem::FnExternalBody` into two variants (`FnExternalBo
 - The divergence genuinely happens downstream, at bootstrap. Splitting at parse time forces the parser to know about compiler-internal concepts (pipeline stages) that are properly below it.
 - One parse-time variant + two bootstrap paths (parser-growth rewrite of `Unparsed` vs `PipelineStageBinding`-style rewrite to `ExternalRealization`) is the right layering.
 
-The proper disambiguator is **downstream bootstrap / authority role**, not a single boolean: `PipelineStageBinding` for per-stage pipeline fns; `pipeline_compile_order_stage_names` + persisted `Unparsed` for `compile`; absence of those *and* no special pipeline role implies parse lag (case 1).
+The proper disambiguator is **downstream bootstrap / authority role**, not a single boolean: `PipelineStageBinding` for per-stage pipeline fns; persisted `Unparsed` + fail-closed reconcile against binding order for `compile`; absence of those *and* no special pipeline role implies parse lag (case 1).
 
 ---
 
