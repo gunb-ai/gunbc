@@ -6,6 +6,9 @@
 //! shared-syntax checks below). **SG-2c-2:** `TopLevelItemKwRow.token_variant`
 //! rows → Rust `ItemDispatchKind` + `top_level_item_dispatch` (dispatch labels
 //! derived via `Kw`-strip; validated against `tokenize.dag`'s `TokenKind`).
+//! **SG-2c-3:** existing `TopLevelItemKwRow.token_variant` rows also project
+//! `is_type_rhs_boundary_keyword` for the parser's shared top-level item
+//! boundary set.
 //!
 //! Used by the `regen_parse_tables` binary (writes the file) and by the
 //! hermetic integration snapshot test (compare in-memory only — avoids a
@@ -76,7 +79,8 @@ impl fmt::Display for RenderParseTablesGeneratedError {
 ///
 /// Validation: `BinaryOpRow` vs `tokenize.dag` + `operators.dag` + shared-syntax
 /// `dag_operators`; `TopLevelItemKwRow` vs `tokenize.dag` + `Kw`-strip dispatch
-/// labels (SG-2c-2). Does not read or write workspace paths.
+/// labels (SG-2c-2/SG-2c-3).
+/// Does not read or write workspace paths.
 pub fn render_parse_tables_generated_rs(
     parse_tables_source: &str,
     parse_tables_file: &str,
@@ -101,7 +105,6 @@ pub fn render_parse_tables_generated_rs(
         item_kw_rows.iter().map(|r| r.dispatch.clone()).collect();
     item_dispatch_variants.sort_unstable();
     item_dispatch_variants.dedup();
-
     let rust = emit_module(&levels, &rows, &item_dispatch_variants, &item_kw_rows);
     let combined = format!("{HEADER}{rust}");
     rustfmt_stdout(&combined).map_err(RenderParseTablesGeneratedError::Rustfmt)
@@ -518,6 +521,21 @@ fn emit_module(
     }
     s.push_str("        _ => None,\n");
     s.push_str("    }\n");
+    s.push_str("}\n");
+    s.push_str(
+        "\n/// Keyword membership table for top-level type-RHS boundary lookahead.\n\
+         /// Projected from the existing `TopLevelItemKwRow` rows in\n\
+         /// `src/v3/compiler/parse_tables.dag`.\n",
+    );
+    s.push_str("pub fn is_type_rhs_boundary_keyword(kind: &TokenKind) -> bool {\n");
+    s.push_str("    matches!(kind, ");
+    for (idx, row) in item_kw_rows.iter().enumerate() {
+        if idx > 0 {
+            s.push_str(" | ");
+        }
+        s.push_str(&format!("TokenKind::{}", row.token_variant));
+    }
+    s.push_str(")\n");
     s.push_str("}\n");
     s
 }

@@ -12,8 +12,9 @@
 // **What this file is.** The bounded, honest subset of parser
 // authority that DOES fit current `.dag` capabilities: pure
 // declarative tables: (1) binary operator token-to-semantics mapping
-// (SG-2c-1), and (2) top-level item keyword → `parse_item` dispatch
-// class (SG-2c-2). The binary-operator table replaced hand-coded
+// (SG-2c-1), (2) top-level item keyword → `parse_item` dispatch
+// class (SG-2c-2), and (3) type-RHS boundary keyword membership
+// (SG-2c-3). The binary-operator table replaced hand-coded
 // matches across five parser precedence functions in
 // `parse_parser_body.txt`
 // (`parse_logical_or`, `parse_logical_and`, `parse_comparison`,
@@ -42,6 +43,11 @@
 // / Rust `ItemDispatchKind` (derived from keyword rows only) is consumed by the
 // live parser: `parse_item` in `parse_parser_body.txt` (spliced into
 // `parse_generated.rs` via `regen_parse`).
+//
+// **Same-PR consumer (E-6).** SG-2c-3 projection `is_type_rhs_boundary_keyword`
+// is emitted from the existing `TopLevelItemKwRow` facts and consumed by the
+// live parser's type-RHS lookahead helpers `skip_where_clause` and
+// `rhs_is_sum` in `parse_parser_body.txt`.
 
 module v3.compiler.parse_tables
 

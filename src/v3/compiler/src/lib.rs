@@ -84,11 +84,12 @@ pub mod operators {
     pub use generated::{algebra_field_name, from_symbol, symbol};
 }
 
-/// SG-2c grammar-tables prototype (SG-2c-1 binary ops, SG-2c-2 item-keyword dispatch).
+/// SG-2c grammar-tables prototype (SG-2c-1 binary ops, SG-2c-2 item-keyword
+/// dispatch, SG-2c-3 type-RHS boundary keywords).
 /// Authority: `src/v3/compiler/parse_tables.dag`.
 /// The generated Rust projection is emitted by `regen_parse_tables` and consumed
 /// from `parse_parser_body.txt` so the parser no longer open-codes token → operator
-/// matches or top-level keyword dispatch. Full parser authority (SG-2c
+/// matches or keyword membership tables for top-level type lookahead. Full parser authority (SG-2c
 /// proper) is blocked on recursive list-body emission over `List<Token>`; see
 /// `parse_tables.dag` header for the dissolution trigger.
 pub mod parse_tables {
@@ -704,13 +705,14 @@ pub(crate) mod infer_helpers {
     )]
     mod generated {
         use crate::dag::*;
+        use crate::diagnostics::SourceSpan;
 
         include!("infer_helpers_generated.rs");
     }
 
     pub(crate) use generated::{
-        behavior_output_port, resolve_template_argument_value, template_argument_value,
-        TemplateArgumentLookup,
+        behavior_output_port, behavior_span, payload_binding_span, resolve_template_argument_value,
+        template_argument_value, TemplateArgumentLookup,
     };
 }
 

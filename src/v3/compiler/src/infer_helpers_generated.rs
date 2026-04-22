@@ -15,6 +15,24 @@ pub fn behavior_output_port(p0: &Behavior) -> PortId {
         Behavior::Bind(bind) => (bind).result_port(),
     }
 }
+pub fn behavior_span(p0: &Behavior) -> SourceSpan {
+    match p0 {
+        Behavior::Value(v) => ((v).span).clone(),
+        Behavior::Transform(t) => ((t).span).clone(),
+        Behavior::Branch(b) => ((b).span).clone(),
+        Behavior::Loop(l) => ((l).span).clone(),
+        Behavior::Bind(bind) => ((bind).span).clone(),
+    }
+}
+pub fn payload_binding_span(p0: &Path, p1: SourceSpan) -> SourceSpan {
+    match &((p0).pattern) {
+        BranchPattern::UnresolvedVariant {
+            name: __u_name,
+            span: __u_span,
+        } => (__u_span).clone(),
+        BranchPattern::ResolvedVariant(_) => p1,
+    }
+}
 pub fn template_argument_value(
     p0: &[TemplateArgument],
     p1: &DeclarationId,

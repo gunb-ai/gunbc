@@ -19,7 +19,8 @@ module lenses.infer_helpers
 
 import std.list { List }
 import std.substrate {
-  Behavior, DeclarationId, TemplateArgument
+  Behavior, BranchPath, BranchPattern, DeclarationId, SourceSpan,
+  TemplateArgument
 }
 
 type TemplateArgumentLookup
@@ -33,6 +34,29 @@ fn behavior_output_port(behavior: Behavior) -> PortId =
     Branch(b) => b.result_port
     Loop(l) => l.result_port
     Bind(bind) => bind.result_port
+  }
+
+// SG-4b-2 span-utility tranche — structurally twin to
+// `behavior_output_port`; reads the reflected `span` field that every
+// `Behavior` variant already carries on the substrate.
+fn behavior_span(behavior: Behavior) -> SourceSpan =
+  match behavior {
+    Value(v) => v.span
+    Transform(t) => t.span
+    Branch(b) => b.span
+    Loop(l) => l.span
+    Bind(bind) => bind.span
+  }
+
+// Pure match over reflected `BranchPattern`; total — the
+// `branch_span` fallback covers the resolved-variant case.
+fn payload_binding_span(
+  path: BranchPath,
+  branch_span: SourceSpan
+) -> SourceSpan =
+  match path.pattern {
+    UnresolvedVariant(u) => u.span
+    ResolvedVariant(_) => branch_span
   }
 
 fn template_argument_value(

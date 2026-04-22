@@ -1,10 +1,11 @@
 //! SG-2c / grammar-tables prototype: `parse_tables.dag` is load-bearing
 //! authority for parser-owned tables projected into `parse_tables_generated.rs`:
 //! SG-2c-1 binary-operator precedence rows, SG-2c-2 top-level item keyword
-//! dispatch. `parse_tables_generated.rs` must stay in sync with the authoring
-//! `.dag`; `binary_op_*` rows cover every binary-operator token the parser
-//! dispatches on, and `top_level_kw_*` rows cover every keyword `parse_item`
-//! accepts.
+//! dispatch, SG-2c-3 type-RHS boundary keywords. `parse_tables_generated.rs`
+//! must stay in sync with the authoring `.dag`; `binary_op_*` rows cover every
+//! binary-operator token the parser dispatches on, `top_level_kw_*` rows cover
+//! every keyword `parse_item` accepts, and the same rows also project the shared
+//! top-level item-boundary helper used by type-RHS lookahead.
 //!
 //! This lane is explicitly NOT SG-2c proper (parser authority proper).
 //! Full parser-algorithm dissolution is blocked on recursive list-body
