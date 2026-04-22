@@ -252,9 +252,13 @@ type BooleanAlgebra<T> {
 //   min_by(project, a, b):  compare via projection, keep lesser.
 //   max_by(project, a, b):  compare via projection, keep greater.
 //
-// Generic fn signatures emit faithfully to Rust (no synthesized bounds) —
-// if a concrete instance needs a trait bound, the `.dag` authority must
-// declare it (bound-declaration syntax is out-of-scope here; a future lane).
+// Type parameters on generic fn signatures emit faithfully to Rust with no
+// synthesized trait bounds — if a concrete instance needs one, the `.dag`
+// authority must declare it (bound-declaration syntax is out-of-scope here;
+// a future lane). Note: higher-order value params still emit as
+// `impl Fn(...) + Clone` at the callable-bound layer (see 05_emit_rust.dag
+// line ~1345); that synthesis is a separate concern from type-parameter
+// emission and is not addressed here.
 
 // =========================================================================
 // Sequence/collection structures
