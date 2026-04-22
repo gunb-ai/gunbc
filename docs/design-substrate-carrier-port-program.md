@@ -40,7 +40,7 @@ Full inventories (names only — read source files for shapes):
 **`src/v2/00_core.dag` (compiler-side)** — method dispatch metadata.
 - `MethodSemantics = PlainMethodSemantics | AlgebraMethodSemantics { method_def, fold_accumulator_type, size_effect, cost_shape, algebra_template } | ServiceMethodSemantics { service_name, op_params }`.
 - Attached to `ExprMethodCall { method_semantics: MethodSemantics? }`; consumed by `src/v2/04_lookup.dag` and complexity.
-- Transitive carriers: `CollectionSizeEffect`, `CostShape`, `AlgebraFieldTemplate` — already in `dsl/std/algebra.dag:409`, `:419`, `:425` (not compiler-internal). Only `MethodSemantics` itself is compiler-internal.
+- Transitive carriers: `CollectionSizeEffect`, `CostShape`, `AlgebraFieldTemplate` — already in `dsl/std/algebra.dag:408`, `:418`, `:424` (not compiler-internal). Only `MethodSemantics` itself is compiler-internal.
 
 ## 3. Per-carrier analysis
 
@@ -143,15 +143,16 @@ Surfaced by Lane G (PR #654) during `algebra.dag` template-vs-declaration reconc
 
 This is the same shape as the core port program at a different layer: **per-method contract metadata consumed by the same lenses as `DescentEvidence` / `CallPattern` / `SubValueRelation` / `MethodSemantics`**. Not included in the core four because the carriers above are v2-authored structural facts that already exist; the metadata question is about where per-method contract data *should* live structurally. Worth scoping here so a port-program execution doesn't rediscover it mid-flight.
 
-**Three options:**
+**Four options (one of which is "keep lens-local"):**
 
+0. **Metadata stays in lens-local lookup tables.** Nothing moves. `*_templates()` (or its successor) stays as the authoritative per-method metadata surface; lenses consume it directly. No substrate change, no std/ change. Valid if the E-I evidence shows the metadata is cleanly separable from the cost/descent carriers — then co-locating isn't a modeling win.
 1. **Extend type declarations with method-metadata annotations.** Needs substrate support for field-level refinements (currently partial per DB-11). Largest substrate change; smallest std/ surface change.
 2. **Separate metadata carrier per algebra.** Declare `OrderedRingMetadata`, `PartialFunctionMetadata`, etc. paired with the type declarations. No substrate change; additional std/ surface (one carrier per algebra).
 3. **Unified `MethodContract` carrier.** One generic carrier indexed by `(algebra_id, method_id)` that lenses query by id. No substrate change; minimal std/ surface growth (one carrier total). Closest in shape to a `TemplateArgumentBinding`-style lookup.
 
 **Current consumers:** `ordered_ring_templates()`, `partial_function_templates()` and their siblings in `dsl/std/algebra.dag:447-569`; the complexity / cost analyses that read `size_effect` / `cost_shape` / `callback_element_position` off the returned templates.
 
-**Recommendation (deferred):** this scoping doc does not pick a direction. The call interacts with family I (`SubValueRelation` + cost) — a lens that consumes both per-method metadata and `CostBound` may want them co-located, which favors option 3. Defer the pick until lane E-I's pre-flight verification runs: the evidence it produces about `CostBound`'s shape in v3 will inform whether a unified `MethodContract` sits naturally next to it or not.
+**Recommendation (deferred):** this scoping doc does not pick a direction. The call interacts with family I (`SubValueRelation` + cost) — a lens that consumes both per-method metadata and `CostBound` may want them co-located, which favors option 3. But if lane E-I's pre-flight evidence shows the metadata is cleanly separable from cost/descent, option 0 ("keep lens-local") is also live. Defer the pick until that evidence lands.
 
 **Cross-reference:** see PR #654's investigation receipt for the full Lane G findings that surfaced this question.
 
