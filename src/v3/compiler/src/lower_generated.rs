@@ -4433,7 +4433,12 @@ fn specialize_decl_for_lowering(
             let id = dag.alloc_declaration_id();
             dag.push_declaration(Declaration {
                 id,
-                name: None,
+                // Preserve the template sum's name on specialized Disj copies so
+                // `emit_rust` can render `Enum::Variant` patterns when match
+                // scrutinee types lower through `primitive_type_id_for_port` to
+                // an otherwise-anonymous instantiated sum (see rust_target
+                // `render_branch_pattern`).
+                name: decl.name.clone(),
                 connective: TypeConnective::Disj {
                     variants: specialized_variants,
                 },
