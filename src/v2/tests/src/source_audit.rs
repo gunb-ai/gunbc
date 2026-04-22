@@ -661,7 +661,6 @@ fn emit_backends_do_not_consume_inductive_fields() {
     }
 }
 
-
 #[test]
 fn compile_gate_keeps_infer_errors_blocking_in_stage0() {
     let source = read_v2_file("src/v2/compile.dag");
