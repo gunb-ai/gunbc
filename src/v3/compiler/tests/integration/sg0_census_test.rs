@@ -194,6 +194,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/integration/lane2_stage_2d_symbolic_cost_test.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2e_parallelism_test.rs",
     "src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs",
+    "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
     "src/v3/compiler/tests/integration/m0_acceptance.rs",
     "src/v3/compiler/tests/integration/m1_3_lens_cost_test.rs",
     "src/v3/compiler/tests/integration/m1_3_lens_unused_parameters_test.rs",

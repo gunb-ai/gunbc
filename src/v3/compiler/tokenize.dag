@@ -3,13 +3,14 @@
 // The Rust projection (`tokenize_generated.rs`) is produced by
 // `cargo run -p v3-compiler --bin regen_tokenize` — do not hand-edit it.
 //
-// **Authority boundary.** This file declares token kinds, tokenizer-local
-// punctuation that is not modeled in `dsl/extdeps/languages/dag/syntax.dag`,
-// string escape behavior, line-comment prefix, string delimiter, and fixed
-// tokenizer diagnostic bodies. `regen_tokenize` derives the dedicated keyword
-// subset and the shared-operator punctuation subset from the shared syntax
-// authority at `dsl/extdeps/languages/dag/syntax.dag`, then merges those with
-// the tokenizer-local rows below. That keeps authored spellings for keywords /
+// **Authority boundary.** Shared token types live in
+// `src/v3/std/tokenize.dag`. This file declares tokenizer-local punctuation
+// rows not modeled in `dsl/extdeps/languages/dag/syntax.dag`, string escape
+// behavior, line-comment prefix, string delimiter, and fixed tokenizer
+// diagnostic bodies. `regen_tokenize` derives the dedicated keyword subset and
+// the shared-operator punctuation subset from the shared syntax authority at
+// `dsl/extdeps/languages/dag/syntax.dag`, then merges those with the
+// tokenizer-local rows below. That keeps authored spellings for keywords /
 // shared operators out of this file.
 //
 // **Tracked scaffold (SG-1a).** The shared authority handoff is not yet a pure
@@ -18,6 +19,54 @@
 // `ValueBody::Unparsed`. Named dissolution trigger: once those two shared
 // syntax bodies lower structurally under `compile_to_dag`, delete the raw-text
 // extractor and derive directly from the lowered Dag in the same PR.
+//
+// **Tracked scaffold (character-level under-consumption — consumption gap,
+// not substrate gap).** The scan phases below slice the ASCII/Unicode
+// codepoint space in two parallel forms, neither of which consumes the
+// character-level authorities that already exist in `dsl/std/`:
+//
+//   1. **Reserved individual codepoints as opaque strings.** `StringEscapeSpec`
+//      fields (`suffix: String`, `output_codepoint: Int`), `LocalPunctSpec.
+//      pattern: String`, `string_literal_delimiter: String`,
+//      `line_comment_prefix: String` — all encode one or more specific
+//      codepoints as byte strings. Parallel authority in
+//      `dsl/extdeps/languages/dag/syntax.dag` does the same for operators
+//      (`OperatorSpec.symbol: String`) and keywords
+//      (`dag_keyword_set: Map<String, Bool>` keys).
+//
+//   2. **Reserved codepoint classes as hidden Rust predicates.**
+//      `regen_tokenize.rs` `push_str`s `is_ascii_whitespace` /
+//      `is_ascii_digit` / `is_ascii_alphabetic` / `is_ascii_alphanumeric`
+//      plus a bare `byte == b'_'` into the generated tokenizer. Not mentioned
+//      in `.dag` at all.
+//
+// **Existing authorities to consume** (already imported cross-tree today —
+// e.g. `src/v3/compiler/regen.dag:3` imports `std.types`):
+//   - `std.types::Char = Int` (Unicode scalar, U+0000–U+10FFFF).
+//   - `std.string_type::String = FreeMonoid<Char>` (String already decomposes).
+//   - `std.unicode` (`DisplayWidth`, `UnicodeBlock`, block/width classification).
+//   - `std.encoding` (`Encoding = ASCII | UTF8 | Latin1 | Text | Binary |
+//     Unknown` lattice with `ASCII <: UTF8 <: Text` — literally the
+//     ASCII→Unicode→… causal chain).
+//   - `std.bit::Byte`.
+//
+// **Missing piece** (the only actual substrate delta needed): a `CharClass`
+// taxonomy relevant to tokenization (`Whitespace | Digit | IdentStart |
+// IdentContinue` or a superset), with a natural home as a sibling to
+// `DisplayWidth` in `std.unicode`, plus classification predicates declared as
+// data or functions.
+//
+// **Framing.** This is not a substrate gap — the character-level modeling is
+// already done. It is a *consumption gap*: tokenize.dag and syntax.dag both
+// encode the same activity (slicing the ASCII/Unicode space) in two parallel
+// non-canonical forms (opaque strings, hidden Rust predicates) instead of
+// consuming the canonical `Char` / `std.unicode` authorities. Named
+// dissolution trigger (tracked in ROADMAP as a follow-up lane): (a) add
+// `CharClass` + predicates to `std.unicode`; (b) retype the opaque-string
+// fields in this file and `syntax.dag` to consume `Char` / `List<Char>`;
+// (c) rewire `regen_tokenize` to read the class-predicate list structurally
+// rather than hardcoding host-stdlib method names. Goal is faithful
+// consumption of an existing borrow, not re-implementing Unicode in `.dag`.
 //
 // **Scan phases (spec).** After skipping ASCII whitespace, the scanner applies
 // in order: line comment (`line_comment_prefix` to newline), punctuation
@@ -28,128 +77,13 @@
 
 module v3.compiler.tokenize
 
-import v3.std.substrate { SourceSpan }
-
-type TokenKind
-  = KwLet
-  | KwIf
-  | KwThen
-  | KwElse
-  | KwFn
-  | KwType
-  | KwModule
-  | KwImport
-  | KwMatch
-  | KwData
-  | KwWhere
-  | KwTrue
-  | KwFalse
-  | Ident(String)
-  | IntLit(Int)
-  | StringLit(String)
-  | Eq
-  | EqEq
-  | NotEq
-  | Lt
-  | Le
-  | Gt
-  | Ge
-  | Plus
-  | Minus
-  | Star
-  | Slash
-  | AmpAmp
-  | PipePipe
-  | Colon
-  | Arrow
-  | FatArrow
-  | PipeArrow
-  | Dot
-  | LParen
-  | RParen
-  | LBrace
-  | RBrace
-  | LBracket
-  | RBracket
-  | Comma
-  | Semicolon
-  | Pipe
-  | Question
-  | Eof
-
-type Token {
-  kind: TokenKind
-  span: SourceSpan
-}
-
-// Dedicated keyword tokens for the v3 tokenizer. Their spellings derive from
-// `dsl/extdeps/languages/dag/syntax.dag`'s `dag_keyword_set`; `tokenize.dag`
-// only declares which dedicated keyword variants exist.
-type KeywordTokenKind
-  = KwLet
-  | KwIf
-  | KwThen
-  | KwElse
-  | KwFn
-  | KwType
-  | KwModule
-  | KwImport
-  | KwMatch
-  | KwData
-  | KwWhere
-  | KwTrue
-  | KwFalse
-
-// Dedicated punctuation tokens for the v3 tokenizer. Shared operator spellings
-// derive from `dsl/extdeps/languages/dag/syntax.dag`'s `dag_operators`;
-// `LocalPunctSpec` rows below cover only punctuation that the shared syntax
-// authority does not model (delimiters, assignment, lambda / arm markers).
-// SG-1a banked scaffold: `regen_tokenize` currently classifies each
-// `dag_operators` symbol as either tokenizer-owned punctuation or explicit
-// parser-only debt (`??`, `%`) and fails closed on any drift. Once shared
-// syntax lowers structurally, move that subset relation out of the Rust bridge.
-type PunctTokenKind
-  = Eq
-  | EqEq
-  | NotEq
-  | Lt
-  | Le
-  | Gt
-  | Ge
-  | Plus
-  | Minus
-  | Star
-  | Slash
-  | AmpAmp
-  | PipePipe
-  | Colon
-  | Arrow
-  | FatArrow
-  | PipeArrow
-  | Dot
-  | LParen
-  | RParen
-  | LBrace
-  | RBrace
-  | LBracket
-  | RBracket
-  | Comma
-  | Semicolon
-  | Pipe
-  | Question
-
-type LocalPunctSpec {
-  pattern: String
-  kind: PunctTokenKind
-}
-
-// After `\` inside a string literal: map the next source byte (as a
-// one-character `suffix`) to a Unicode scalar emitted into the string value.
-// Unknown suffixes are not listed here; the projection preserves historical
-// behavior (`\` + literal suffix char).
-type StringEscapeSpec {
-  suffix: String
-  output_codepoint: Int
+import v3.std.tokenize {
+  KeywordTokenKind,
+  LocalPunctSpec,
+  PunctTokenKind,
+  StringEscapeSpec,
+  Token,
+  TokenKind
 }
 
 // Fixed diagnostic message bodies for tokenizer failures (C-8: errors only).

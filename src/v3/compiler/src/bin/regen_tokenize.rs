@@ -1,11 +1,12 @@
 //! Regenerate `tokenize_generated.rs` from `src/v3/compiler/tokenize.dag`.
 //!
 //! Scanner controls and tokenizer-local punctuation come from the lowered
-//! tokenizer Dag. Dedicated keywords and shared operators are derived from the
-//! shared syntax authority text at `dsl/extdeps/languages/dag/syntax.dag`.
-//! The shared file's `dag_keyword_set` / `dag_operators` data bodies still
-//! lower as `Unparsed`, so this driver reads those two sections directly from
-//! source text rather than inventing duplicate authored rows in `tokenize.dag`.
+//! tokenizer Dag, while token types are imported from `src/v3/std/tokenize.dag`.
+//! Dedicated keywords and shared operators are derived from the shared syntax
+//! authority text at `dsl/extdeps/languages/dag/syntax.dag`. The shared file's
+//! `dag_keyword_set` / `dag_operators` data bodies still lower as `Unparsed`,
+//! so this driver reads those two sections directly from source text rather
+//! than inventing duplicate authored rows in `tokenize.dag`.
 //! Named dissolution trigger: once those two shared syntax bodies lower as
 //! `ValueBody::Structural`, this raw-source scaffold must be deleted and the
 //! derivation must read the lowered Dag directly.
@@ -24,6 +25,7 @@ use v3_compiler::CompileError;
 
 const GENERATED_FILE: &str = "src/v3/compiler/src/tokenize_generated.rs";
 const TOKENIZE_AUTHORITY_FILE: &str = "src/v3/compiler/tokenize.dag";
+const TOKEN_STD_AUTHORITY_FILE: &str = "src/v3/std/tokenize.dag";
 const SHARED_SYNTAX_FILE: &str = "dsl/extdeps/languages/dag/syntax.dag";
 
 const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/tokenize.dag` via\n\
@@ -173,7 +175,7 @@ fn string_data_named(dag: &Dag, expected_name: &str) -> String {
         .declarations()
         .iter()
         .find(|d| d.name.as_deref() == Some(expected_name))
-        .unwrap_or_else(|| panic!("missing `{expected_name}` data in tokenize.dag"));
+        .unwrap_or_else(|| panic!("missing `{expected_name}` data in `{TOKENIZE_AUTHORITY_FILE}`"));
     match &decl.value_body {
         Some(ValueBody::Scalar(LiteralBits::String(s))) => s.clone(),
         Some(ValueBody::Structural { fields }) => {
@@ -234,7 +236,12 @@ fn emit_token_kind_enum(dag: &Dag) -> String {
         .declarations()
         .iter()
         .find(|d| d.name.as_deref() == Some("TokenKind"))
-        .expect("TokenKind declaration");
+        .unwrap_or_else(|| {
+            panic!(
+                "missing `TokenKind` declaration while compiling `{TOKENIZE_AUTHORITY_FILE}`; \
+                 expected it to be imported from `{TOKEN_STD_AUTHORITY_FILE}`"
+            )
+        });
     let TypeConnective::Disj { variants } = &decl.connective else {
         panic!("TokenKind: expected Disj");
     };
