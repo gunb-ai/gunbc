@@ -48,6 +48,8 @@ Structural work on this seam must obey **all** of:
 
 4. **Fixed-point first** — Any change must pass **regenerate-stage0** self-compile / fixed-point checks before review.
 
+   **Enforcement (not added in this receipt PR):** the tree already has operator workflow `./scripts/regenerate-stage0.sh` and ignored CI-style gates **`ci_freshness`** / **`ci_fixed_point`** in `src/v2/tests/src/bootstrap.rs` (typically `cargo test -p v2-compiler-tests ci_ -- --ignored` on the lane that runs full v2 CI). A **structural** follow-up that edits `05_emit_rust.dag` emission should treat regen + those gates as merge evidence; tightening policy (e.g. non-ignored CI) is a separate process change.
+
 ---
 
 ## Honest outcome of this lane (wave 5)
