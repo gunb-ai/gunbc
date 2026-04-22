@@ -1831,18 +1831,15 @@ pub fn emit_type_params(
     }
 }
 
-pub fn source_spans_equal(a: &Rc<SourceSpan>, b: &Rc<SourceSpan>) -> bool {
-    (((a.start.clone() == b.start.clone()) && (a.end.clone() == b.end.clone()))
-        && (a.file.clone().as_str() == b.file.clone().as_str()))
-}
-
 pub fn is_function_type_param(param: &Rc<Node>) -> bool {
-    match param.ident_span.clone() {
-        Some(ps) => match param_node_type_expr(&param).ident_span.clone() {
-            Some(ts) => source_spans_equal(&ps, &ts),
+    {
+        let type_expr = param_node_type_expr(&param);
+        let type_expr_is_var = match type_expr.inferred.clone() {
+            Some(inf) => is_type_variable(inf.clone()),
             None => false,
-        },
-        None => false,
+        };
+        ((type_expr_is_var && (param.name.clone().as_str() != "".to_string().as_str()))
+            && (param.name.clone().as_str() == type_expr.name.clone().as_str()))
     }
 }
 
