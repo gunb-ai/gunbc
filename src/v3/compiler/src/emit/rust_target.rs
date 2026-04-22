@@ -5594,8 +5594,7 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
     }
 
     #[test]
-    fn named_disj_enum_name_for_rust_match_emit_follows_specialization_parent_to_named_template(
-    ) {
+    fn named_disj_enum_name_for_rust_match_emit_follows_specialization_parent_to_named_template() {
         use crate::dag::Declaration;
 
         let mut dag = Dag::new();
