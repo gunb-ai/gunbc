@@ -1242,10 +1242,11 @@ fn collect_scope_bound_free_vars(
 /// Returns `(symbols, is_first)`. `symbols` maps each name to the
 /// declaration currently selected by the temporary duplicate-authority
 /// preference scaffold shared with `Dag::declaration_by_name`.
-/// `is_first[idx]` is false for items whose name already appears in the
-/// symbols table at the time they're processed — i.e., duplicates.
-/// `lower_into` skips duplicates so the selected declaration's filled
-/// connective is not overwritten later.
+/// `is_first[idx]` is false only for items that lose selection to an
+/// already-present declaration of the same name. A later higher-rank
+/// `src/v3/` declaration can replace a seeded lower-rank duplicate and
+/// remain `true`. `lower_into` skips only the losing duplicates so the
+/// selected declaration's filled connective is not overwritten later.
 ///
 /// Duplicate declarations emit a fail-closed `ResolveError` via a
 /// phantom port, so the compile surfaces through
