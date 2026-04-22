@@ -3172,10 +3172,13 @@ pub fn emit_rust_param_type(
             };
             v2_rt::concat(
                 v2_rt::concat(
-                    v2_rt::concat("impl Fn(".to_string(), param_str),
-                    ") -> ".to_string(),
+                    v2_rt::concat(
+                        v2_rt::concat("impl Fn(".to_string(), param_str),
+                        ") -> ".to_string(),
+                    ),
+                    ret_str,
                 ),
-                ret_str,
+                " + Clone".to_string(),
             )
         }
     } else {
@@ -4345,15 +4348,6 @@ pub fn effective_variant_parent(
     }
 }
 
-pub fn is_callable_resolved_type(resolved_type: Option<Rc<InferredNode>>) -> bool {
-    match resolved_type.as_deref().cloned() {
-        Some(InferredNode::Resolved { node: rt, .. }) => {
-            (rt.connective.clone() == Connective::Arrow)
-        }
-        _ => false,
-    }
-}
-
 pub fn emit_var_ref(
     name: &String,
     binding_kind: &Option<Rc<VarBindingKind>>,
@@ -4410,10 +4404,8 @@ pub fn emit_var_ref(
                                             Some(VarBindingKind::FunctionValueBinding) => true,
                                             _ => false,
                                         };
-                                    let is_callable_value = (is_function_value
-                                        || is_callable_resolved_type(resolved_type.clone()));
                                     let ident = emit_ident(name.clone(), RenderTarget::Rust);
-                                    let ident_str = if is_callable_value {
+                                    let ident_str = if is_function_value {
                                         ident
                                     } else {
                                         if moves_by_value {
@@ -4434,18 +4426,14 @@ pub fn emit_var_ref(
                         }
                         None => {
                             let ident = emit_ident(name.clone(), RenderTarget::Rust);
-                            let ident_str = if is_callable_resolved_type(resolved_type.clone()) {
+                            let ident_str = if moves_by_value {
                                 ident
                             } else {
-                                if moves_by_value {
-                                    ident
-                                } else {
-                                    match resolved_type.clone() {
-                                        Some(_) => {
-                                            apply_type_template1(sharing.clone_value.clone(), ident)
-                                        }
-                                        _ => ident,
+                                match resolved_type.clone() {
+                                    Some(_) => {
+                                        apply_type_template1(sharing.clone_value.clone(), ident)
                                     }
+                                    _ => ident,
                                 }
                             };
                             ident_str
@@ -5983,7 +5971,10 @@ pub fn emit_typed_call(
                             v2_rt::concat("&".to_string(), base.clone())
                         }
                     } else {
-                        if is_callable_resolved_type(arg_value(&a).inferred.clone()) {
+                        if v2_rt::map_contains_key(
+                            &callee_borrow_positions,
+                            (idx.clone()).to_string(),
+                        ) {
                             {
                                 let base = emit_typed_expr_base(
                                     &arg_value(&a),
@@ -6001,36 +5992,14 @@ pub fn emit_typed_call(
                                 )
                             }
                         } else {
-                            if v2_rt::map_contains_key(
-                                &callee_borrow_positions,
-                                (idx.clone()).to_string(),
-                            ) {
-                                {
-                                    let base = emit_typed_expr_base(
-                                        &arg_value(&a),
-                                        registry.clone(),
-                                        &collection_scope,
-                                        depth.clone(),
-                                        shared_types.clone(),
-                                        emit_info.clone(),
-                                    );
-                                    apply_type_template1(
-                                        sharing_for_target(RenderTarget::Rust)
-                                            .borrow_arg_template
-                                            .clone(),
-                                        base.clone(),
-                                    )
-                                }
-                            } else {
-                                emit_cloned_arg(
-                                    arg_value(&a),
-                                    registry.clone(),
-                                    collection_scope.clone(),
-                                    depth.clone(),
-                                    shared_types.clone(),
-                                    emit_info.clone(),
-                                )
-                            }
+                            emit_cloned_arg(
+                                arg_value(&a),
+                                registry.clone(),
+                                collection_scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                            )
                         }
                     }
                 });

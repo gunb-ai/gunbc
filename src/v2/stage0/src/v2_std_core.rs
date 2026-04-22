@@ -2367,7 +2367,7 @@ pub fn transport_env(
     })
 }
 
-pub fn map_children(node: &Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node>) -> Rc<Node> {
+pub fn map_children(node: &Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + Clone) -> Rc<Node> {
     Rc::new(Node {
         name: node.name.clone(),
         ident: node.ident.clone(),

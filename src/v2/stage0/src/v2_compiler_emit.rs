@@ -2470,10 +2470,11 @@ pub fn emit_unified_transport_dispatch(
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
     target: RenderTarget,
-    render_rest: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String,
-    render_shell: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String,
-    render_file: impl Fn(String, i64) -> String,
-    render_local: impl Fn(String, i64) -> String,
+    render_rest: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String + Clone,
+    render_shell: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String
+        + Clone,
+    render_file: impl Fn(String, i64) -> String + Clone,
+    render_local: impl Fn(String, i64) -> String + Clone,
 ) -> String {
     if is_rest_transport(transport.clone(), source_indices.clone()) {
         render_rest(op_name, transport.clone(), depth, source_indices.clone())
@@ -2501,12 +2502,8 @@ pub fn emit_unified_operation_method(
     target: &RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     env: &Rc<TypeEnv>,
-    render_transport_body: impl Fn(
-        Rc<Node>,
-        String,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-        i64,
-    ) -> String,
+    render_transport_body: impl Fn(Rc<Node>, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64) -> String
+        + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -2597,18 +2594,10 @@ pub fn emit_unified_service_def(
     target: &RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     env: &Rc<TypeEnv>,
-    render_service_fields: impl Fn(
-        String,
-        Rc<Node>,
-        Rc<Vec<Rc<Node>>>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-    ) -> String,
-    render_transport_body: impl Fn(
-        Rc<Node>,
-        String,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-        i64,
-    ) -> String,
+    render_service_fields: impl Fn(String, Rc<Node>, Rc<Vec<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String
+        + Clone,
+    render_transport_body: impl Fn(Rc<Node>, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64) -> String
+        + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -2631,7 +2620,7 @@ pub fn emit_unified_service_def(
                     &target,
                     registry.clone(),
                     &env,
-                    &render_transport_body,
+                    render_transport_body.clone(),
                 ));
             }
             __result
@@ -2996,13 +2985,13 @@ pub fn tco_reassign_core(
 pub fn emit_shared_tco_expr(
     mut frame: Rc<TcoFrame>,
     mut fn_name: String,
-    mut emit_self_call_reassign: impl Fn(Rc<TcoReassignInput>) -> String,
-    mut emit_non_self_call: impl Fn(Rc<TcoFrame>) -> String,
-    mut emit_if: impl Fn(Rc<TcoFrame>) -> String,
-    mut emit_match: impl Fn(Rc<TcoFrame>) -> String,
-    mut emit_let: impl Fn(Rc<TcoFrame>) -> String,
-    mut emit_block: impl Fn(Rc<TcoFrame>) -> String,
-    mut emit_default_return: impl Fn(Rc<TcoFrame>) -> String,
+    mut emit_self_call_reassign: impl Fn(Rc<TcoReassignInput>) -> String + Clone,
+    mut emit_non_self_call: impl Fn(Rc<TcoFrame>) -> String + Clone,
+    mut emit_if: impl Fn(Rc<TcoFrame>) -> String + Clone,
+    mut emit_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
+    mut emit_let: impl Fn(Rc<TcoFrame>) -> String + Clone,
+    mut emit_block: impl Fn(Rc<TcoFrame>) -> String + Clone,
+    mut emit_default_return: impl Fn(Rc<TcoFrame>) -> String + Clone,
 ) -> String {
     loop {
         let si = frame.scope.clone().type_env.clone().source_indices.clone();
@@ -3082,7 +3071,7 @@ pub fn shared_tco_body(inner: String, depth: i64, spec: &Rc<LanguageSpec>) -> St
 pub fn shared_tco_default_return(
     frame: &Rc<TcoFrame>,
     spec: Rc<LanguageSpec>,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String,
+    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> String {
     {
         let val_str = recurse_expr(frame.expr.clone(), frame.scope.clone(), frame.depth.clone());
@@ -3097,7 +3086,7 @@ pub fn shared_tco_non_self_call(
     frame: &Rc<TcoFrame>,
     target: RenderTarget,
     spec: Rc<LanguageSpec>,
-    recurse_call: impl Fn(String, Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> String,
+    recurse_call: impl Fn(String, Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> String + Clone,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
@@ -3129,8 +3118,8 @@ pub fn shared_tco_if(
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     spec: Rc<LanguageSpec>,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String,
-    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String,
+    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> String {
     {
         let syntax = spec.block_syntax.clone();
@@ -3256,8 +3245,8 @@ pub fn shared_tco_let(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String,
-    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String,
+    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprLet => {
@@ -3293,8 +3282,8 @@ pub fn shared_tco_block(
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     spec: Rc<LanguageSpec>,
-    emit_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState>,
-    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String,
+    emit_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
+    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprBlock => {
@@ -3359,9 +3348,9 @@ pub fn unified_tco_recurse(
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String,
-    render_match: impl Fn(Rc<TcoFrame>) -> String,
-    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState>,
+    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    render_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     emit_unified_tco_expr(
         &Rc::new(TcoFrame {
@@ -3373,9 +3362,9 @@ pub fn unified_tco_recurse(
         params,
         &target,
         registry,
-        &recurse_expr,
-        &render_match,
-        &render_init_stmts,
+        recurse_expr,
+        render_match,
+        render_init_stmts,
     )
 }
 
@@ -3385,9 +3374,9 @@ pub fn emit_unified_tco_expr(
     params: Rc<Vec<Rc<Node>>>,
     target: &RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String,
-    render_match: impl Fn(Rc<TcoFrame>) -> String,
-    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState>,
+    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    render_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -3427,7 +3416,7 @@ pub fn emit_unified_tco_expr(
                     params.clone(),
                     target.clone(),
                     spec.clone(),
-                    &recurse_expr,
+                    recurse_expr.clone(),
                     |expr, scope, depth| {
                         unified_tco_recurse(
                             expr.clone(),
@@ -3437,21 +3426,21 @@ pub fn emit_unified_tco_expr(
                             params.clone(),
                             target.clone(),
                             registry.clone(),
-                            &recurse_expr,
-                            &render_match,
-                            &render_init_stmts,
+                            recurse_expr.clone(),
+                            render_match.clone(),
+                            render_init_stmts.clone(),
                         )
                     },
                 )
             },
-            &render_match,
+            render_match.clone(),
             |frame| {
                 shared_tco_let(
                     &frame,
                     fn_name.clone(),
                     params.clone(),
                     target.clone(),
-                    &recurse_expr,
+                    recurse_expr.clone(),
                     |expr, scope, depth| {
                         unified_tco_recurse(
                             expr.clone(),
@@ -3461,9 +3450,9 @@ pub fn emit_unified_tco_expr(
                             params.clone(),
                             target.clone(),
                             registry.clone(),
-                            &recurse_expr,
-                            &render_match,
-                            &render_init_stmts,
+                            recurse_expr.clone(),
+                            render_match.clone(),
+                            render_init_stmts.clone(),
                         )
                     },
                 )
@@ -3475,7 +3464,7 @@ pub fn emit_unified_tco_expr(
                     params.clone(),
                     target.clone(),
                     spec.clone(),
-                    &render_init_stmts,
+                    render_init_stmts.clone(),
                     |expr, scope, depth| {
                         unified_tco_recurse(
                             expr.clone(),
@@ -3485,14 +3474,14 @@ pub fn emit_unified_tco_expr(
                             params.clone(),
                             target.clone(),
                             registry.clone(),
-                            &recurse_expr,
-                            &render_match,
-                            &render_init_stmts,
+                            recurse_expr.clone(),
+                            render_match.clone(),
+                            render_init_stmts.clone(),
                         )
                     },
                 )
             },
-            |frame| shared_tco_default_return(&frame, spec.clone(), &recurse_expr),
+            |frame| shared_tco_default_return(&frame, spec.clone(), recurse_expr.clone()),
         )
     }
 }
@@ -3505,9 +3494,9 @@ pub fn emit_unified_tco_body(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String,
-    render_match: impl Fn(Rc<TcoFrame>) -> String,
-    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState>,
+    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    render_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -3521,9 +3510,9 @@ pub fn emit_unified_tco_body(
             params,
             &target,
             registry,
-            &recurse_expr,
-            &render_match,
-            &render_init_stmts,
+            recurse_expr,
+            render_match,
+            render_init_stmts,
         );
         shared_tco_body(inner, depth.clone(), &spec)
     }
@@ -3536,7 +3525,7 @@ pub fn emit_unified_init_block_stmts(
     depth: i64,
     target: &RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
 ) -> Rc<BlockEmitState> {
     {
         let prepend = if language_spec(target.clone())
@@ -3557,7 +3546,7 @@ pub fn emit_unified_init_block_stmts(
                 &sc,
                 d.clone(),
                 1024,
-                &render_pattern,
+                render_pattern.clone(),
             )
         })
     }
@@ -3569,8 +3558,8 @@ pub fn emit_unified_tco_match(
     params: Rc<Vec<Rc<Node>>>,
     target: &RenderTarget,
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String,
-    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState>,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprMatch => {
@@ -3583,7 +3572,7 @@ pub fn emit_unified_tco_match(
                 &frame.scope.clone(),
                 frame.depth.clone(),
                 1024,
-                &render_pattern,
+                render_pattern.clone(),
             );
             let arm_strs = Rc::new({
                 let mut __result = Vec::new();
@@ -3596,8 +3585,8 @@ pub fn emit_unified_tco_match(
                         &registry,
                         &frame.scope.clone(),
                         frame.depth.clone(),
-                        &render_pattern,
-                        &render_init_stmts,
+                        render_pattern.clone(),
+                        render_init_stmts.clone(),
                     ));
                 }
                 __result
@@ -3643,8 +3632,8 @@ pub fn emit_unified_tco_match_arm(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String,
-    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState>,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
+    render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     {
         let bs = language_spec(target.clone()).block_syntax.clone();
@@ -3662,7 +3651,7 @@ pub fn emit_unified_tco_match_arm(
                 &scope,
                 depth.clone(),
                 1024,
-                &render_pattern,
+                render_pattern.clone(),
             )
         });
         let body_str = emit_unified_tco_expr(
@@ -3683,7 +3672,7 @@ pub fn emit_unified_tco_match_arm(
                     &scope,
                     depth.clone(),
                     1024,
-                    &render_pattern,
+                    render_pattern.clone(),
                 )
             },
             |frame| {
@@ -3693,11 +3682,11 @@ pub fn emit_unified_tco_match_arm(
                     params.clone(),
                     &target,
                     &registry,
-                    &render_pattern,
-                    &render_init_stmts,
+                    render_pattern.clone(),
+                    render_init_stmts.clone(),
                 )
             },
-            &render_init_stmts,
+            render_init_stmts.clone(),
         );
         emit_match_arm_line(
             arm.clone(),
@@ -3706,7 +3695,7 @@ pub fn emit_unified_tco_match_arm(
             body_depth.clone(),
             body_str,
             guard_str,
-            &render_pattern,
+            render_pattern.clone(),
         )
     }
 }
@@ -3719,7 +3708,7 @@ pub fn emit_tco_unified(
     registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: &Rc<InferScope>,
     depth: i64,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
 ) -> String {
     emit_unified_tco_body(
         texpr,
@@ -3737,7 +3726,7 @@ pub fn emit_tco_unified(
                 &scope,
                 depth.clone(),
                 1024,
-                &render_pattern,
+                render_pattern.clone(),
             )
         },
         |frame| {
@@ -3747,7 +3736,7 @@ pub fn emit_tco_unified(
                 params.clone(),
                 &target,
                 &registry,
-                &render_pattern,
+                render_pattern.clone(),
                 |stmts, scope, depth| {
                     emit_unified_init_block_stmts(
                         stmts.clone(),
@@ -3756,7 +3745,7 @@ pub fn emit_tco_unified(
                         depth.clone(),
                         &target,
                         registry.clone(),
-                        &render_pattern,
+                        render_pattern.clone(),
                     )
                 },
             )
@@ -3769,7 +3758,7 @@ pub fn emit_tco_unified(
                 depth.clone(),
                 &target,
                 registry.clone(),
-                &render_pattern,
+                render_pattern.clone(),
             )
         },
     )
@@ -4166,7 +4155,7 @@ pub fn emit_expr_var_shared(
 pub fn emit_expr_field_access_shared(
     expr: &Rc<Node>,
     target: RenderTarget,
-    emit_field: impl Fn(Rc<Node>) -> String,
+    emit_field: impl Fn(Rc<Node>) -> String + Clone,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if is_typed_service_call_receiver(&expr, source_indices.clone()) {
@@ -4205,7 +4194,7 @@ pub fn emit_typed_cast_shared(
     expr: &Rc<Node>,
     cast_target_node: Rc<Node>,
     target: &RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> String,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -4247,7 +4236,7 @@ pub fn emit_typed_for_each_shared(
     target: &RenderTarget,
     depth: i64,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    recurse: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String,
+    recurse: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
     scope: &Rc<InferScope>,
 ) -> String {
     {
@@ -4320,7 +4309,7 @@ pub fn emit_typed_index_shared(
     base: &Rc<Node>,
     index: Rc<Node>,
     target: &RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> String,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -4357,7 +4346,7 @@ pub fn emit_typed_slice_shared(
     start: Rc<Node>,
     end: Rc<Node>,
     target: &RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> String,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -4387,23 +4376,23 @@ pub fn emit_shared_expr(
     texpr: &Rc<Node>,
     target: &RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    wrap_result: impl Fn(String) -> String,
-    recurse: impl Fn(Rc<Node>) -> String,
-    emit_var: impl Fn(Rc<Node>) -> String,
-    emit_field_access: impl Fn(Rc<Node>) -> String,
-    emit_call: impl Fn(Rc<Node>) -> String,
-    emit_method_call: impl Fn(Rc<Node>) -> String,
-    emit_match: impl Fn(Rc<Node>) -> String,
-    emit_if: impl Fn(Rc<Node>) -> String,
-    emit_let: impl Fn(Rc<Node>) -> String,
-    emit_record_lit: impl Fn(Rc<Node>) -> String,
-    emit_string_interp: impl Fn(Rc<Node>) -> String,
-    emit_block: impl Fn(Rc<Node>) -> String,
-    emit_cast: impl Fn(Rc<Node>) -> String,
-    emit_for_each: impl Fn(Rc<Node>) -> String,
-    emit_index: impl Fn(Rc<Node>) -> String,
-    emit_slice: impl Fn(Rc<Node>) -> String,
-    emit_bin_op: impl Fn(Rc<Node>) -> String,
+    wrap_result: impl Fn(String) -> String + Clone,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    emit_var: impl Fn(Rc<Node>) -> String + Clone,
+    emit_field_access: impl Fn(Rc<Node>) -> String + Clone,
+    emit_call: impl Fn(Rc<Node>) -> String + Clone,
+    emit_method_call: impl Fn(Rc<Node>) -> String + Clone,
+    emit_match: impl Fn(Rc<Node>) -> String + Clone,
+    emit_if: impl Fn(Rc<Node>) -> String + Clone,
+    emit_let: impl Fn(Rc<Node>) -> String + Clone,
+    emit_record_lit: impl Fn(Rc<Node>) -> String + Clone,
+    emit_string_interp: impl Fn(Rc<Node>) -> String + Clone,
+    emit_block: impl Fn(Rc<Node>) -> String + Clone,
+    emit_cast: impl Fn(Rc<Node>) -> String + Clone,
+    emit_for_each: impl Fn(Rc<Node>) -> String + Clone,
+    emit_index: impl Fn(Rc<Node>) -> String + Clone,
+    emit_slice: impl Fn(Rc<Node>) -> String + Clone,
+    emit_bin_op: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => wrap_result(emit_literal(v.clone(), &target)),
@@ -4462,8 +4451,8 @@ pub fn emit_default_bin_op(
     texpr: &Rc<Node>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    recurse: impl Fn(Rc<Node>) -> String,
-    wrap_result: impl Fn(String) -> String,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    wrap_result: impl Fn(String) -> String + Clone,
 ) -> String {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprBinOp {
@@ -4512,7 +4501,7 @@ pub fn emit_block_stmts_shared(
     mut scope: Rc<InferScope>,
     mut depth: i64,
     mut prepend_indent: bool,
-    mut emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String,
+    mut emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> Rc<BlockEmitState> {
     loop {
         match remaining.clone().first().cloned() {
@@ -4556,7 +4545,7 @@ pub fn emit_init_block_stmts_shared(
     mut scope: Rc<InferScope>,
     mut depth: i64,
     mut prepend_indent: bool,
-    mut emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String,
+    mut emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> Rc<BlockEmitState> {
     loop {
         match remaining.clone().first().cloned() {
@@ -4611,7 +4600,7 @@ pub fn emit_typed_let_shared(
     value_str: String,
     body: Option<Rc<Node>>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>, Rc<InferScope>) -> String,
+    recurse: impl Fn(Rc<Node>, Rc<InferScope>) -> String + Clone,
     scope: Rc<InferScope>,
     value_node: Rc<Node>,
 ) -> String {
@@ -4643,7 +4632,7 @@ pub fn emit_typed_if_shared(
     depth: i64,
     target: &RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    recurse: impl Fn(Rc<Node>, i64) -> String,
+    recurse: impl Fn(Rc<Node>, i64) -> String + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -4860,7 +4849,7 @@ pub fn emit_typed_block_join(
     stmts: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    emit_block_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState>,
+    emit_block_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     {
         let state = emit_block_stmts(stmts, scope, depth);
@@ -4896,7 +4885,7 @@ pub fn emit_algebra_method_template(
 pub fn emit_typed_first_arg_shared(
     args: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> String,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
     match args.first().cloned() {
         Some(a) => recurse(arg_value(&a)),
@@ -4907,7 +4896,7 @@ pub fn emit_typed_first_arg_shared(
 pub fn emit_typed_string_interp_unified(
     parts: &Rc<Vec<Rc<StringPart>>>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> String,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
     {
         let spec = language_spec(target);
@@ -5023,7 +5012,7 @@ pub fn emit_typed_record_lit_unified(
     fields: &Rc<Vec<Rc<Node>>>,
     target: &RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    recurse: impl Fn(Rc<Node>) -> String,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
     {
         let rls = language_spec(target.clone()).record_lit.clone();
@@ -5114,7 +5103,7 @@ pub fn emit_typed_call_unified(
     target: &RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-    recurse: impl Fn(Rc<Node>) -> String,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -5194,7 +5183,7 @@ pub fn emit_algebra_method_call_unified(
     args: Rc<Vec<Rc<Node>>>,
     target: &RenderTarget,
     first_arg_str: String,
-    recurse: impl Fn(Rc<Node>) -> String,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -5239,7 +5228,7 @@ pub fn emit_plain_method_call_unified(
     method: String,
     args: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> String,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
     {
         let recv_str = recurse(receiver);
@@ -5276,7 +5265,7 @@ pub fn emit_typed_method_call_unified(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    recurse: impl Fn(Rc<Node>) -> String,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
     {
         let spec = language_spec(target.clone());
@@ -5316,14 +5305,14 @@ pub fn emit_typed_method_call_unified(
                 MethodSemantics::AlgebraMethodSemantics { method_def, .. } => {
                     let mn = authored_name_at(source_indices.clone(), &method_def);
                     let first_arg_str =
-                        emit_typed_first_arg_shared(args.clone(), target.clone(), &recurse);
+                        emit_typed_first_arg_shared(args.clone(), target.clone(), recurse.clone());
                     emit_algebra_method_call_unified(
                         &mn,
                         receiver.clone(),
                         args.clone(),
                         &target,
                         first_arg_str,
-                        &recurse,
+                        recurse.clone(),
                     )
                 }
                 MethodSemantics::PlainMethodSemantics => emit_plain_method_call_unified(
@@ -5331,7 +5320,7 @@ pub fn emit_typed_method_call_unified(
                     method,
                     args.clone(),
                     target.clone(),
-                    &recurse,
+                    recurse.clone(),
                 ),
             }
         } else {
@@ -5374,7 +5363,7 @@ pub fn emit_typed_method_call_unified(
                     method,
                     args.clone(),
                     target.clone(),
-                    &recurse,
+                    recurse.clone(),
                 )
             }
         }
@@ -5473,7 +5462,7 @@ pub fn emit_match_arm_line(
     body_depth: i64,
     body_str: String,
     guard_str: String,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
 ) -> String {
     {
         let spec = language_spec(target);
@@ -5503,7 +5492,7 @@ pub fn emit_match_arm_line(
 pub fn emit_arm_guard(
     arm: Rc<Node>,
     target: &RenderTarget,
-    render_guard_expr: impl Fn(Rc<Node>) -> String,
+    render_guard_expr: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
     {
         let es = language_spec(target.clone()).expression_semantics.clone();
@@ -5525,8 +5514,8 @@ pub fn emit_typed_match_unified(
     arms: Rc<Vec<Rc<Node>>>,
     target: &RenderTarget,
     depth: i64,
-    recurse: impl Fn(Rc<Node>, i64) -> String,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String,
+    recurse: impl Fn(Rc<Node>, i64) -> String + Clone,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -5551,7 +5540,7 @@ pub fn emit_typed_match_unified(
                         body_depth.clone(),
                         body_str.clone(),
                         guard_str.clone(),
-                        &render_pattern,
+                        render_pattern.clone(),
                     )
                 });
             }
@@ -5621,7 +5610,7 @@ pub fn emit_unified_typed_expr(
     scope: &Rc<InferScope>,
     depth: i64,
     fuel: i64,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> String,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let si = scope.type_env.clone().source_indices.clone();
@@ -5639,7 +5628,7 @@ pub fn emit_unified_typed_expr(
                     &scope,
                     depth.clone(),
                     (fuel.clone() - 1),
-                    &render_pattern,
+                    render_pattern.clone(),
                 )
             },
             |expr| emit_expr_var_shared(expr.clone(), target.clone(), si.clone()),
@@ -5656,7 +5645,7 @@ pub fn emit_unified_typed_expr(
                                 &scope,
                                 depth.clone(),
                                 1024,
-                                &render_pattern,
+                                render_pattern.clone(),
                             );
                             emit_field_access_unified(
                                 base_str.clone(),
@@ -5675,7 +5664,7 @@ pub fn emit_unified_typed_expr(
                             &scope,
                             depth.clone(),
                             1024,
-                            &render_pattern,
+                            render_pattern.clone(),
                         );
                         emit_field_access_unified(
                             base_str.clone(),
@@ -5701,7 +5690,7 @@ pub fn emit_unified_typed_expr(
                             &scope,
                             depth.clone(),
                             1024,
-                            &render_pattern,
+                            render_pattern.clone(),
                         )
                     },
                 )
@@ -5724,7 +5713,7 @@ pub fn emit_unified_typed_expr(
                             &scope,
                             depth.clone(),
                             1024,
-                            &render_pattern,
+                            render_pattern.clone(),
                         )
                     },
                 )
@@ -5737,7 +5726,7 @@ pub fn emit_unified_typed_expr(
                     &scope,
                     depth.clone(),
                     1024,
-                    &render_pattern,
+                    render_pattern.clone(),
                 );
                 emit_typed_match_unified(
                     scrut_str.clone(),
@@ -5752,10 +5741,10 @@ pub fn emit_unified_typed_expr(
                             &scope,
                             d.clone(),
                             1024,
-                            &render_pattern,
+                            render_pattern.clone(),
                         )
                     },
-                    &render_pattern,
+                    render_pattern.clone(),
                     si.clone(),
                 )
             },
@@ -5767,7 +5756,7 @@ pub fn emit_unified_typed_expr(
                     &scope,
                     depth.clone(),
                     1024,
-                    &render_pattern,
+                    render_pattern.clone(),
                 );
                 let if_result_type = match spec.expression_semantics.clone().if_value_form.clone() {
                     IfValueForm::IfStatement => Some(resolved_type(expr.clone())),
@@ -5789,7 +5778,7 @@ pub fn emit_unified_typed_expr(
                             &scope,
                             d.clone(),
                             1024,
-                            &render_pattern,
+                            render_pattern.clone(),
                         )
                     },
                 )
@@ -5802,7 +5791,7 @@ pub fn emit_unified_typed_expr(
                     &scope,
                     depth.clone(),
                     1024,
-                    &render_pattern,
+                    render_pattern.clone(),
                 );
                 emit_typed_let_shared(
                     &let_binding_name_at(expr.clone(), si.clone()),
@@ -5817,7 +5806,7 @@ pub fn emit_unified_typed_expr(
                             &sc,
                             depth.clone(),
                             1024,
-                            &render_pattern,
+                            render_pattern.clone(),
                         )
                     },
                     scope.clone(),
@@ -5838,7 +5827,7 @@ pub fn emit_unified_typed_expr(
                             &scope,
                             depth.clone(),
                             1024,
-                            &render_pattern,
+                            render_pattern.clone(),
                         )
                     },
                 )
@@ -5855,7 +5844,7 @@ pub fn emit_unified_typed_expr(
                             &scope,
                             depth.clone(),
                             1024,
-                            &render_pattern,
+                            render_pattern.clone(),
                         )
                     },
                 )
@@ -5885,7 +5874,7 @@ pub fn emit_unified_typed_expr(
                                     &s,
                                     dd.clone(),
                                     1024,
-                                    &render_pattern,
+                                    render_pattern.clone(),
                                 )
                             },
                         )
@@ -5905,7 +5894,7 @@ pub fn emit_unified_typed_expr(
                             &scope,
                             depth.clone(),
                             1024,
-                            &render_pattern,
+                            render_pattern.clone(),
                         )
                     },
                     &si,
@@ -5927,7 +5916,7 @@ pub fn emit_unified_typed_expr(
                             &s,
                             d.clone(),
                             1024,
-                            &render_pattern,
+                            render_pattern.clone(),
                         )
                     },
                     &scope,
@@ -5946,7 +5935,7 @@ pub fn emit_unified_typed_expr(
                             &scope,
                             depth.clone(),
                             1024,
-                            &render_pattern,
+                            render_pattern.clone(),
                         )
                     },
                     &si,
@@ -5966,7 +5955,7 @@ pub fn emit_unified_typed_expr(
                             &scope,
                             depth.clone(),
                             1024,
-                            &render_pattern,
+                            render_pattern.clone(),
                         )
                     },
                     si.clone(),
@@ -5985,7 +5974,7 @@ pub fn emit_unified_typed_expr(
                             &scope,
                             depth.clone(),
                             (fuel.clone() - 1),
-                            &render_pattern,
+                            render_pattern.clone(),
                         )
                     },
                     |result| result.clone(),
@@ -6012,7 +6001,7 @@ pub fn emit_typed_tco_reassign_shared(
     args: Rc<Vec<Rc<Node>>>,
     params: Rc<Vec<Rc<Node>>>,
     target: &RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> String,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
