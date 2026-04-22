@@ -97,6 +97,8 @@ mod m2_lens_structural_resolution_migration_test;
 mod m2_lens_unused_parameters_migration_test;
 #[path = "integration/m2_lens_variant_payload_migration_test.rs"]
 mod m2_lens_variant_payload_migration_test;
+#[path = "integration/lens_register_correspondence_test.rs"]
+mod lens_register_correspondence_test;
 #[path = "integration/m2_substrate_inhabitance_test.rs"]
 mod m2_substrate_inhabitance_test;
 #[path = "integration/p0_std_render_repeat_string_test.rs"]
