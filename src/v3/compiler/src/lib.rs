@@ -712,8 +712,8 @@ pub(crate) mod infer_helpers {
 
     pub(crate) use generated::{
         behavior_output_port, behavior_span, payload_binding_span, push_template_argument_binding,
-        resolve_template_argument_value, template_argument_value, template_arguments_match,
-        TemplateArgumentBinding, TemplateArgumentLookup,
+        resolve_template_argument_value, template_argument_value, TemplateArgumentBinding,
+        TemplateArgumentLookup,
     };
 }
 

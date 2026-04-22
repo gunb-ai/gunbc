@@ -37,8 +37,7 @@ use crate::infer_helpers::{
     behavior_output_port, behavior_span, payload_binding_span as generated_payload_binding_span,
     push_template_argument_binding as generated_push_template_argument_binding,
     resolve_template_argument_value as generated_resolve_template_argument_value,
-    template_argument_value as generated_template_argument_value,
-    template_arguments_match as generated_template_arguments_match, TemplateArgumentBinding,
+    template_argument_value as generated_template_argument_value, TemplateArgumentBinding,
     TemplateArgumentLookup,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
@@ -1546,7 +1545,11 @@ fn retained_template_arguments_for_target(
 }
 
 fn template_arguments_match(lhs: &[TemplateArgument], rhs: &[TemplateArgument]) -> bool {
-    generated_template_arguments_match(lhs, rhs)
+    lhs.len() == rhs.len()
+        && lhs
+            .iter()
+            .zip(rhs.iter())
+            .all(|(a, b)| a.parameter == b.parameter && a.value == b.value)
 }
 
 fn push_template_argument_binding(
