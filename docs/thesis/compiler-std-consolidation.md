@@ -78,7 +78,7 @@ Every file under `src/v3/std/*.dag` is a migration candidate once the bootstrap 
 
 - `src/v3/compiler/pipeline.dag` — 3 types (`PipelineStageBinding`, `PipelineSnapshotKind`, `CompilerHostRealization`)
 - `src/v3/compiler/regen.dag` — 1 type (`LensRegistryEntry`)
-- **Lens-local return-type carriers in `src/v3/lenses/*.dag`** that represent the lens's published API shape (e.g., `Origin` for provenance, `UnusedParameter` for unused_parameters). These declare what the lens returns and stay compiler-API *when genuinely lens-specific*. **Exception — generic-Lookup-pattern candidates** (`CostLookup`, `TemplateArgumentLookup`, `DeclarationLookup`, etc.): these 2-variant `Missing | Found(T)` carriers duplicate a pattern across lenses and are tracked-debt candidates for generalization into a single `Lookup<T>` type in `std/`. This is a P2 Boundary Discipline concern (single-authority for a typed-carrier shape across lenses); see the deferred-debt queue in ROADMAP.
+- **Lens-local return-type carriers in `src/v3/lenses/*.dag`** that represent the lens's published API shape (e.g., `Origin` for provenance, `UnusedParameter` for unused_parameters, `VariantPayloadShapeLookup` for variant_payload — 3-variant with the `NotPayloadProduct` semantic distinction, `TemplateArgumentBinding = Conflict | NoOp | Append` in infer_helpers). These declare what the lens returns and stay compiler-API *when genuinely lens-specific* — including 3-way or more carriers where the variants encode distinct semantic states, not just "missing vs found." **Exception — strict 2-variant `Missing | Found(T)` Lookup pattern** (currently `CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup`): these duplicate the same shape across lenses and are tracked-debt candidates for generalization into a single `Lookup<T>` type in `std/`. This is a P2 Boundary Discipline concern (single-authority for a typed-carrier shape across lenses); see the deferred-debt queue in ROADMAP.
 - Lens *bodies* (the `fn` definitions) in `src/v3/lenses/*.dag` — always positive-def; they import types from `std/` (and from `pipeline.dag` / `regen.dag` / lens-local carriers) rather than re-declaring them.
 - Reflected accessors declared in `substrate.dag` (these move to `std/` but their *existence as compiler API* stays)
 
@@ -141,18 +141,18 @@ Baseline (2026-04-22, measured via `grep -cE "^type [A-Z]"`):
 | `src/v3/compiler/operators.dag` | 0 | — |
 | `src/v3/compiler/pipeline.dag` | 3 | positive-def |
 | `src/v3/compiler/regen.dag` | 1 | positive-def |
-| `src/v3/lenses/complexity.dag` | 2 | 1 lens-API (`CostEntry`) + 1 in-ratchet (`CostLookup` — Lookup pattern) |
-| `src/v3/lenses/cost.dag` | 2 | 1 lens-API + 1 in-ratchet (Lookup pattern) |
+| `src/v3/lenses/complexity.dag` | 2 | 1 positive-def (`CostEntry`) + 1 in-ratchet (`CostLookup` — 2-variant Lookup) |
+| `src/v3/lenses/cost.dag` | 2 | 1 positive-def (`SymbolicCostEntry`) + 1 in-ratchet (`SymbolicCostLookup` — 2-variant Lookup) |
 | `src/v3/lenses/idempotency.dag` | 0 | — |
-| `src/v3/lenses/infer_helpers.dag` | 2 | both in-ratchet (`TemplateArgumentLookup` shape) |
+| `src/v3/lenses/infer_helpers.dag` | 2 | 1 in-ratchet (`TemplateArgumentLookup` — 2-variant Lookup) + 1 positive-def (`TemplateArgumentBinding = Conflict \| NoOp \| Append` — 3-variant semantic) |
 | `src/v3/lenses/lower_helpers.dag` | 0 | — |
 | `src/v3/lenses/parallelism.dag` | 0 | — |
-| `src/v3/lenses/provenance.dag` | 1 | positive-def (`Origin` — genuinely provenance-specific) |
+| `src/v3/lenses/provenance.dag` | 1 | positive-def (`Origin` — provenance-specific) |
 | `src/v3/lenses/structural_resolution.dag` | 2 | classification pending (likely lens-API + regression pin carrier) |
 | `src/v3/lenses/unused_parameters.dag` | 1 | positive-def (`UnusedParameter`) |
-| `src/v3/lenses/variant_payload.dag` | 2 | 1 lens-API + 1 in-ratchet (`DeclarationLookup` — Lookup pattern) |
+| `src/v3/lenses/variant_payload.dag` | 2 | both positive-def (`VariantPayloadShape` domain type + `VariantPayloadShapeLookup` — 3-variant carrier with `NotPayloadProduct` semantic distinction, not generic Lookup) |
 
-**Primary ratchet count today: ~25** (20 from tokenize + runtime_mirrors + ~5 generic-Lookup-pattern carriers across lenses; exact lens breakdown to firm up as Lookup generalization lane scopes). Classifications for the two `structural_resolution.dag` types to be pinned in a follow-up once that file's header is reviewed for lens-API vs regression-pin intent.
+**Primary ratchet count today: 23** (20 from tokenize + runtime_mirrors + 3 strict 2-variant Lookup-pattern carriers: `CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup`). Classifications for the two `structural_resolution.dag` types to be pinned in a follow-up once that file's header is reviewed for lens-API vs regression-pin intent.
 
 End state: 0. Each migration lane reduces the count; positive-definition types track growth separately and are not bounded downward by this ratchet.
 
