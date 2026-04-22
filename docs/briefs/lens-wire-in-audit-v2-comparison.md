@@ -1,5 +1,7 @@
 # Lens wire-in audit + v2/v3 complexity comparison `(M)`
 
+> **Superseded by [`complexity-v2-v3-comparison-receipt.md`](complexity-v2-v3-comparison-receipt.md)** — that brief is the focused thesis-receipt lane. This doc remains for the broader three-phase audit (registry cleanup + v2/v3 comparison + orphaned lens wire-in for `idempotency` / `parallelism`); the supersession narrows scope to just the comparison + cementing test. Pick the narrower brief for dispatch.
+
 ## Problem
 
 The v3 lens infrastructure is in a mixed state. Some lenses are fully registry-driven (`.dag` authority → `regen_lens` → generated Rust, with freshness ratchet tests); others are hand-written Rust with `.dag` siblings that aren't yet registered; others have no `.dag` authority at all. There's no single artifact that *demonstrates* the "algebra does the work" end-to-end or *compares* the v3 structural approach to v2's heuristic complexity analysis.
