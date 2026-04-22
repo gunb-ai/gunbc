@@ -19,15 +19,48 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::lens_provenance::{origin_of, Origin};
 
-fn origin_label(origin: &Origin) -> &'static str {
-    match origin {
-        Origin::NoProducer => "NoProducer",
-        Origin::MissingPort => "MissingPort",
-        Origin::MissingBehavior => "MissingBehavior",
-        Origin::Source { .. } => "Source",
-        Origin::Computed { .. } => "Computed",
-        Origin::Selected { .. } => "Selected",
-        Origin::Accumulated { .. } => "Accumulated",
+/// Assert `origin_of` returns the full published `Origin` carrier for the bind's
+/// value port — variant **and** `NodeId` witness — not a collapsed string label.
+fn assert_provenance_origin_matches_producer_witness(dag: &Dag, bind_name: &str, context: &str) {
+    let port = find_bind_value_port(dag, bind_name);
+    let got = origin_of(dag, &port);
+    let produced_by = dag
+        .port_opt(&port)
+        .unwrap_or_else(|| panic!("{context}: missing port for bind `{bind_name}`"))
+        .produced_by
+        .unwrap_or_else(|| {
+            panic!("{context}: bind `{bind_name}` value port has no producer (expected one)")
+        });
+    let behavior = dag
+        .nodes()
+        .iter()
+        .find(|b| b.id() == produced_by)
+        .unwrap_or_else(|| panic!("{context}: missing producer node {produced_by:?}"));
+
+    match behavior {
+        Behavior::Value(v) => match &got {
+            Origin::Source { _0 } => assert_eq!(
+                *_0,
+                v.id,
+                "{context}: Source origin must carry the Value producer's NodeId"
+            ),
+            other => panic!(
+                "{context}: literal-fed bind `{bind_name}` should classify as Source(value.id); got {other:?}"
+            ),
+        },
+        Behavior::Transform(t) => match &got {
+            Origin::Computed { _0 } => assert_eq!(
+                *_0,
+                t.id,
+                "{context}: Computed origin must carry the Transform producer's NodeId"
+            ),
+            other => panic!(
+                "{context}: transform-fed bind `{bind_name}` should classify as Computed(transform.id); got {other:?}"
+            ),
+        },
+        other => panic!(
+            "{context}: unexpected producer kind for bind `{bind_name}`: {other:?}"
+        ),
     }
 }
 
@@ -219,17 +252,11 @@ fn provenance_origin_of_cements_behavior_complete_row_on_minimal_ports() {
     // shipped `origin_of` contract on the live lowering path. Exhaustive
     // `NoProducer` / `Missing*` cases stay in `lib.rs::lens_provenance::tests`.
     let dag = compile_to_dag("let lit: Int = 7", "cementing_provenance_lit.v3").expect("compiles");
-    assert_eq!(
-        origin_label(&origin_of(&dag, &find_bind_value_port(&dag, "lit"))),
-        "Source"
-    );
+    assert_provenance_origin_matches_producer_witness(&dag, "lit", "cementing_provenance_lit");
 
     let dag =
         compile_to_dag("let sum: Int = 1 + 2", "cementing_provenance_sum.v3").expect("compiles");
-    assert_eq!(
-        origin_label(&origin_of(&dag, &find_bind_value_port(&dag, "sum"))),
-        "Computed"
-    );
+    assert_provenance_origin_matches_producer_witness(&dag, "sum", "cementing_provenance_sum");
 }
 
 #[test]
