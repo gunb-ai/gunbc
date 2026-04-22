@@ -34,7 +34,7 @@ use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
 };
 use crate::infer::{concretize_decl_with_subst, SubstStack};
-use crate::lower_helpers::expr_span;
+use crate::lower_helpers::{expr_span, pattern_binding_names};
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
@@ -1144,16 +1144,6 @@ fn narrowable_var_name(cond: &SurfaceExpr, scope: &HashMap<String, PortId>) -> O
     }
 }
 
-fn pattern_binding_names(pattern: &SurfacePattern) -> Vec<&str> {
-    match pattern {
-        SurfacePattern::BareVariant { .. } => Vec::new(),
-        SurfacePattern::VariantWith { binding, .. } => vec![binding.as_str()],
-        SurfacePattern::VariantFields { fields, .. } => {
-            fields.iter().map(|field| field.binding.as_str()).collect()
-        }
-    }
-}
-
 /// Walk a surface expression and collect the names of all free
 /// variables that resolve to entries in `scope`. Lambda parameter
 /// shadowing and match-arm binding shadowing are respected. Top-level
@@ -1218,7 +1208,7 @@ fn collect_scope_bound_free_vars(
             for arm in arms {
                 let mut arm_scope = scope.clone();
                 for binding in pattern_binding_names(&arm.pattern) {
-                    arm_scope.remove(binding);
+                    arm_scope.remove(&binding);
                 }
                 collect_scope_bound_free_vars(&arm.body, &arm_scope, out);
             }

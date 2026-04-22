@@ -732,18 +732,18 @@ pub(crate) mod lower_helpers {
     mod generated {
         use crate::diagnostics::SourceSpan;
         use crate::parse_surface;
-        use crate::parse_surface::SurfaceExpr;
+        use crate::parse_surface::{SurfaceExpr, SurfacePattern};
 
         include!("lower_helpers_generated.rs");
     }
 
-    pub(crate) use generated::expr_span;
+    pub(crate) use generated::{expr_span, pattern_binding_names};
 
     #[cfg(test)]
     mod tests {
-        use super::expr_span;
+        use super::{expr_span, pattern_binding_names};
         use crate::diagnostics::SourceSpan;
-        use crate::parse_surface::SurfaceExpr;
+        use crate::parse_surface::{SurfaceExpr, SurfacePattern, SurfacePatternField};
 
         #[test]
         fn expr_span_matches_variant_span_field() {
@@ -753,6 +753,45 @@ pub(crate) mod lower_helpers {
                 span: span.clone(),
             };
             assert_eq!(expr_span(&e), span);
+        }
+
+        #[test]
+        fn pattern_binding_names_match_pattern_shape() {
+            let span = SourceSpan::new("t.v3", 10, 20);
+            assert_eq!(
+                pattern_binding_names(&SurfacePattern::BareVariant {
+                    name: "None".into(),
+                    span: span.clone(),
+                }),
+                Vec::<String>::new()
+            );
+            assert_eq!(
+                pattern_binding_names(&SurfacePattern::VariantWith {
+                    name: "Some".into(),
+                    binding: "value".into(),
+                    span: span.clone(),
+                }),
+                vec!["value".to_string()]
+            );
+            assert_eq!(
+                pattern_binding_names(&SurfacePattern::VariantFields {
+                    name: "Pair".into(),
+                    fields: vec![
+                        SurfacePatternField {
+                            name: "left".into(),
+                            binding: "x".into(),
+                            span: span.clone(),
+                        },
+                        SurfacePatternField {
+                            name: "right".into(),
+                            binding: "y".into(),
+                            span: span.clone(),
+                        },
+                    ],
+                    span,
+                }),
+                vec!["x".to_string(), "y".to_string()]
+            );
         }
     }
 }
