@@ -269,6 +269,8 @@ type BooleanAlgebra<T> {
 //     first() -> T?, last() -> T?
 //   map: endomorphic fn(T) -> T -> FreeMonoid<T> (not fn(T)->U with U free)
 //   fold: monoid-shaped on T — init: T plus step fn(T, T) -> T -> T
+//   (Those two stay on T because executable authority here cannot yet name
+//     per-method result/accumulator type parameters — same emitter gap as lattice lifting above.)
 //   filter, flat_map, any, all, enumerate, reverse, skip, take, sort_by, contains
 type FreeMonoid<T> {
   // Monoid operations
