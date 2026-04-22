@@ -301,3 +301,8 @@ Relayed **BLOCKING** root cause: **`lower.rs` never received the scaffold receip
 - **Verdict:** APPROVE — documentation-only apart from syncing the existing scaffold/debt comment into `src/v3/compiler/src/lower_generated.rs` (regen snapshot from `lower.rs` — line refs drift).
 - **Spot-checks:** Dispatch brief live-code claims — no `OperatorKind::Logical` under `emit/`; Bool **`OperatorRealization`** rows; helper duplication callouts; **`TargetExecutionModel`** / **`SourceFiltering`** presence — matched tree.
 - **Findings:** None — no concrete **`INVARIANTS.md`**, **`docs/modeling-discipline.md`**, **`CODING.md`**, or **`TESTING.md`** violation in the changed lines.
+
+**Review AO (codex / gpt-5.4, schedule, commit `6968710a`, 2026-04-22T01:06:25Z)**
+
+- **Verdict:** APPROVE — documentation-heavy plus synced scaffold annotation in `src/v3/compiler/src/lower_generated.rs`; no concrete **`INVARIANTS.md`**, **`docs/modeling-discipline.md`**, **`CODING.md`**, or **`TESTING.md`** violation in the changed lines.
+- **Scaffold:** `lower_generated.rs` comment **matches** existing **`lower.rs`** / **`ROADMAP.md`** tracked-debt story — **not** a new authority or behavior change. (Same commit as **Fifth blocking** codex pass — different verdict after full read; **Fifth blocking** rebuttal stands on tree facts.)
