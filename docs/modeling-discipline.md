@@ -1,18 +1,36 @@
-# Modeling Discipline — Active Review Criteria
+# Modeling Discipline — Practices Implementing the Invariants
 
-> Purpose: a short, review-focused checklist of modeling principles that
-> every code change is checked against. This document is the active
-> authority cited by review bots alongside THESIS.md and INVARIANTS.md.
+> Purpose: a short checklist of *modeling practices* that implement the
+> five invariant principles declared in [INVARIANTS.md](../INVARIANTS.md).
+> The invariants are the reviewer-facing rubric; the practices below are
+> the concrete patterns each invariant manifests in modeling work.
+>
+> This document supplements, rather than parallels, INVARIANTS.md's
+> taxonomy. Each practice names the invariant principle it serves.
 >
 > Full derivations, worked examples, and the background modeling analysis
-> live in [v3-modeling-analysis.md](v3-modeling-analysis.md). This doc is
-> the distilled review-checklist version.
+> live in [v3-modeling-analysis.md](v3-modeling-analysis.md).
 
-## Six Principles
+## Six Modeling Practices
 
-Every PR is checked against all six. A reviewer should name specifically
-whether the diff satisfies each, where it could be violated, and whether
-the existing checks are structural or merely behavioral.
+Each practice implements one of the five invariant principles from
+INVARIANTS.md. A reviewer works from the five principles; the practices
+below are the concrete patterns that inform each check — what to look
+for, how to tell whether the invariant is structurally enforced vs
+merely behaviorally respected.
+
+Mapping:
+- Practice 1 (Fail-closed) — implements **P3: Fail-Closed**
+- Practice 2 (Illegal states unrepresentable) — implements **P3: Fail-Closed** (state-space shape)
+- Practice 3 (Facts flow forward) — implements **P2: Boundary Discipline**
+- Practice 4 (Coproduct dissolution) — implements **P1: Modeling Faithfulness**
+- Practice 5 (Single-authority metadata) — implements **P2: Boundary Discipline**
+- Practice 6 (API-level enforcement over convention) — implements **P2: Boundary Discipline**
+
+A reviewer should name specifically whether the diff satisfies each
+relevant practice, where it could be violated, and whether the existing
+checks are structural (type-system enforced) or merely behavioral
+(convention).
 
 ### 1. Fail-closed
 
@@ -190,9 +208,14 @@ milestones before anyone notices.
 
 ## For Reviewers
 
-A review must actively apply all six principles. For each:
+A review applies the **five invariant principles from
+[INVARIANTS.md](../INVARIANTS.md)**. The six modeling practices above
+are the concrete patterns that inform each check — consult them when a
+principle's abstract statement needs a recognizable failure shape.
 
-1. Name specifically whether the diff satisfies it.
+For each relevant principle and its implementing practices:
+
+1. Name specifically whether the diff satisfies the invariant.
 2. If violated, cite the exact file and line.
 3. State whether the existing check is structural (type system enforced)
    or merely behavioral (convention).
