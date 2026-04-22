@@ -82,7 +82,7 @@ to something like:
 >
 > **Case 2a — target-native (per-stage).** Compiler-internal fns whose body is a host runtime (e.g., pipeline.dag's `fn parse(...) -> Dag { host parse }`). Dissolves via bootstrap: `PipelineStageBinding` rewrites the Arrow body from `Unparsed` to `ExternalRealization(realization_id)`.
 >
-> **Case 2c — `compile` orchestrator.** `fn compile(...) { ... }` in `pipeline.dag`: **`Unparsed` persists**. Runtime ordering authority is the declaration order of `PipelineStageBinding` records (`ordered_pipeline_stages`); the body is the human-readable pipeline contract, cross-checked fail-closed against the bindings (`reconcile_with_compile_body`). Not dissolved by `PipelineStageBinding` — the body is terminal surface, not a scaffold.
+> **Case 2c — `compile` orchestrator.** `fn compile(...) { ... }` in `pipeline.dag`: **`Unparsed` persists**. Runtime ordering authority is the declaration order of `PipelineStageBinding` records (`ordered_pipeline_stages`); the body is the human-readable pipeline contract, cross-checked fail-closed against the bindings (`reconcile_with_compile_body`). Not dissolved by `PipelineStageBinding`: 2c is **bridge shape** (two authored carriers kept consistent by reconcile), scheduled until derivation collapses them to one authored source.
 >
 > The parser does not distinguish these cases — all are 'block body that isn't a SurfaceExpr.' The disambiguator is **downstream role** (binding rewrite vs ordering authority vs parse lag), not "no binding ⇒ case 1."
 
