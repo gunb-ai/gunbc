@@ -16,23 +16,47 @@
 > carrier” outcome; this lane then completed the mechanical wire-in and receipt
 > checks.
 
-## Context
+## Live state (current tree)
+
+Verifiable facts — satisfies **Documentation Describes Live State**
+(`INVARIANTS.md` *Related rules*); use these to audit any prose in this file:
+
+- `src/v3/compiler/src/lower.rs` — `use crate::lower_helpers::{expr_span, item_span, pattern_binding_names}`; live lowering calls the generated surface helpers.
+- `src/v3/compiler/src/parse_generated.rs` — `pub use crate::parse_surface::{ … }` for Surface carriers, so `parse::SurfaceExpr` and `parse_surface::SurfaceExpr` are the same type.
+- `src/v3/lenses/lower_helpers.dag` / `src/v3/compiler/src/lower_helpers_generated.rs` / `regen.dag` `lens_lower_helpers_entry` — authority → generated Rust (ratchet: SG-6 / integration tests).
+- `src/v3/compiler/src/parse_generated.rs` also still defines
+  `pub(crate) fn expr_span(expr: &SurfaceExpr) -> &SourceSpan` for **parser-
+  local** hot paths (see `lib.rs` `lower_helpers` module comment) — that is
+  *not* the generated `lower_helpers` helper; it is intentional and separate
+  from the lowerer wire-in.
+
+## Context (historical — pre-wire-in / PR #612)
 
 PR #612 (SG-3g) landed `lower_helpers.dag` + generated helper + ratchet as **staging only** — explicitly framed in the PR body: *"Lane is not converged until the real lowerer consumes the generated helper; wire-in is blocked on two separate prerequisite lanes, neither of which is SG-3g's work."*
 
-The slice chosen: `expr_span(SurfaceExpr) -> SourceSpan` — a pure match over 11 named-field variants returning each variant's `span` field. Used at **16 sites** across `src/v3/compiler/src/lower.rs`.
+The slice chosen: `expr_span(SurfaceExpr) -> SourceSpan` — a pure match over 11 named-field variants returning each variant's `span` field. At #612, this appeared at **16 sites** in `src/v3/compiler/src/lower.rs` (count may have drifted; grep is authoritative).
 
-SG-3g-b is the wire-in: replace the 16 hand-authored `expr_span` call sites in `lower.rs` with calls to the generated helper. That's what turns #612 from "staging exists" into "real receipt."
+SG-3g-b *was* the wire-in: replace the hand-authored call sites in `lower.rs` with the generated helper — that turns #612 from "staging exists" into "real receipt." **This is now done;** see **Live state** above.
 
-## Read first
+> **Record:** Sections **Read first (historical)**, **Work**, **STOP-AND-ESCALATE**,
+> and the lower portion of **Acceptance** below preserve the *original* lane
+> definition, STOP gates, and pre-convergence blockers. They are **archival**:
+> if anything disagrees with **Live state** or a grep of the current tree, trust
+> the code.
 
-- PR #612's body — explicit framing of what staged vs what's parked. **Read the "What did not land" section carefully** — it names the real wire-in blockers.
+## Read first (historical — pre-convergence / execution planning)
+
+- PR #612's body — explicit framing of what staged vs what was parked. **"What did not land"** names the historical wire-in blockers.
 - `src/v3/lenses/lower_helpers.dag` — the authority source
 - `src/v3/compiler/src/lower_helpers_generated.rs` — the generated helper
-- `src/v3/compiler/src/lower.rs` — the 16 call sites (grep for the current `expr_span` pattern or the 11 `SurfaceExpr` variant matches)
-- **The primary wire-in blocker: `parse` / `parse_surface` convergence** (SG-3f follow-up). Per #612: generated helper types against `parse_surface::SurfaceExpr`; `lower.rs` uses `parse::SurfaceExpr`. The available `From` bridge **deep-clones** across 16 call sites — that wires in but regresses the lowerer, not improves it. Resolving this is the core SG-3g-b work.
-- **Secondary wire-in blocker**: `render_variant_constructor` external tuple-variant handling (blocks connective-producing lens slices in general — not specific to `expr_span` wire-in, but adjacent).
-- **Not a wire-in blocker** (but named debt): `SurfaceLiteral → LiteralBits` rename gap — this was a reason for abandoning *alternative* candidate slices, not a wire-in blocker for the `expr_span` slice that was actually selected.
+- `src/v3/compiler/src/lower.rs` — `expr_span` / `item_span` / `pattern_binding_names` use sites
+- **Resolved:** `parse` / `parse_surface` convergence (SG-3f-e) — the generated
+  helper and `lower.rs` now share a single `SurfaceExpr` type via
+  `parse_generated` re-exports; the old deep-clone `From` bridge is **gone**.
+- **ROADMAP debt (still applies to other lens slices, not to this wire-in):**
+  `render_variant_constructor` external tuple-variants; `SurfaceLiteral →
+  LiteralBits` emit rename — not SG-3g-b wire-in blockers for the `expr_span`
+  slice
 
 ## Work
 

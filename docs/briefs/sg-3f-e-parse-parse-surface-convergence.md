@@ -1,27 +1,52 @@
 # SG-3f-e — `parse` / `parse_surface` convergence `(M-L)`
 
-> **Downstream (2026-04-22):** SG-3g-b wire-in
+> **Status: LANDED** — `parse` re-exports the `parse_surface` Surface carriers;
+> duplicate per-module Rust `Surface*` definitions and the deep-clone
+> `From` bridge are gone. **Downstream:** SG-3g-b wire-in
 > ([sg-3g-b-lower-helpers-wire-in.md](sg-3g-b-lower-helpers-wire-in.md)) is
 > **shipped** — the lowerer calls generated `lower_helpers` on the converged
 > `Surface*` types.
 
-## Context
+## Live state (current tree — check before trusting prose below)
+
+To satisfy **Documentation Describes Live State** (`INVARIANTS.md`, *Related
+rules* — no aspirational doc claims):
+
+- `src/v3/compiler/src/parse_generated.rs` begins with
+  `pub use crate::parse_surface::{ … SurfaceExpr, … }` — one Rust type per
+  carrier; `parse::SurfaceExpr` **is** `parse_surface::SurfaceExpr`.
+- `src/v3/compiler/src/parse_surface_generated.rs` — no cross-module
+  `From<&parse::Surface…>` / deep-clone bridge (grep: **empty** in the landed
+  tree; the bridge was deleted as part of convergence).
+- `src/v3/compiler/src/lower.rs` — `use crate::lower_helpers::{expr_span, item_span, pattern_binding_names}`.
+
+## Problem statement (historical — before this lane shipped)
 
 PR #612 (SG-3g) proved `lower_helpers.dag` can generate a correct `expr_span`
+<<<<<<< HEAD
 helper, but wire-in (SG-3g-b) is blocked because `lower.rs` consumes
 `parse::SurfaceExpr` while the generated helper targets
 `parse_surface::SurfaceExpr`. Today those are duplicate generated Rust types
 from the same authority (`src/v3/std/parse_surface.dag` / `v3.std.parse_surface`), with only
 derive-surface differences — `parse_surface` adds `PartialEq, Eq`.
+=======
+helper, but wire-in (SG-3g-b) *was* blocked because `lower.rs` consumed
+`parse::SurfaceExpr` while the generated helper targeted
+`parse_surface::SurfaceExpr`. At the time, those were duplicate generated Rust
+types from the same authority (`runtime_mirrors.dag` "Surface carriers"), with
+only derive-surface differences — `parse_surface` added `PartialEq, Eq`.
+>>>>>>> b203c0565 (docs(briefs): cite INVARIANTS Related rules (not P3) for live-state; sg-3f-e Work is archival)
 
-This is parallel-representation debt, not a lowerer problem. The available
-`From<&crate::parse::SurfaceExpr>` bridge in `parse_surface_generated.rs`
-recursively deep-clones the full expression tree; using it at 16 `expr_span`
-call sites (or even once per lowering at the `compile_to_dag` entry) regresses
-the lowerer rather than improving it. SG-3g-b was parked on this brief.
+This was parallel-representation debt, not a lowerer problem. The
+`From<&crate::parse::SurfaceExpr>` bridge in `parse_surface_*` (since removed)
+recursively deep-cloned the full expression tree; using it at 16 `expr_span`
+call sites (or even once per lowering at the `compile_to_dag` entry) would have
+regressed the lowerer rather than improving it. SG-3g-b was parked on this
+brief until convergence landed.
 
 ## Read first
 
+<<<<<<< HEAD
 - `src/v3/compiler/src/parse_generated.rs` — defines `parse::SurfaceExpr` and
   family; emitted by `regen_parse`.
 - `src/v3/compiler/src/parse_surface_generated.rs` — defines
@@ -35,8 +60,31 @@ the lowerer rather than improving it. SG-3g-b was parked on this brief.
 - PR #612 body — explicit framing of the parked wire-in and its prerequisites.
 - `docs/briefs/sg-3g-b-lower-helpers-wire-in.md` — the parked wire-in lane;
   this brief unblocks it.
+=======
+**As of the landed tree, start here:**
 
-## Work
+- `src/v3/compiler/src/parse_generated.rs` — `pub use` of `parse_surface`
+  Surface carriers; parser body only in this file, not a second set of
+  `struct SurfaceExpr` definitions.
+- `src/v3/compiler/src/parse_surface_generated.rs` — `parse_surface::Surface*`
+  definitions; no deep-clone `From` from `parse::` (verify with grep).
+- `src/v3/compiler/runtime_mirrors.dag` — shared authority for the Surface
+  carriers both modules reflect.
+- `src/v3/compiler/src/bin/regen_parse.rs` — the regen flow that emits
+  `parse_generated.rs`.
+- `src/v3/compiler/src/lib.rs` — module wiring (`parse`, `parse_surface`) and
+  `compile_to_dag` / `compile_runtime_mirrors_authority_dag` entry points.
+- [sg-3g-b-lower-helpers-wire-in.md](sg-3g-b-lower-helpers-wire-in.md) — wire-in
+  receipt (separate PR lane).
+>>>>>>> b203c0565 (docs(briefs): cite INVARIANTS Related rules (not P3) for live-state; sg-3f-e Work is archival)
+
+**Original execution / PR #612 context (archival):** PR #612 body — explicit
+framing of staged `lower_helpers` vs parked wire-in.
+
+## Work (execution record; landed)
+
+> **Archival plan.** If anything below reads as still-to-do, treat **Live state**
+> (above) and grep of the tree as authority.
 
 Make `parse` and `parse_surface` use the **same Rust `Surface*` types**.
 
