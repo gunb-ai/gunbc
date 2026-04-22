@@ -3250,4 +3250,26 @@ mod tests {
         let stray = dag.alloc_port_with_shape(int_ty);
         assert!(!super::port_is_consumed_from(&dag, sum, stray));
     }
+
+    #[test]
+    fn port_is_consumed_from_reaches_loop_body_result_from_loop_output() {
+        let mut dag = Dag::new();
+        let file = "emit_port_liveness_test.v3";
+        let source = dag.push_value(LiteralBits::Int(0), SourceSpan::new(file, 0, 1));
+        let init = dag.push_value(LiteralBits::Int(0), SourceSpan::new(file, 0, 1));
+        let body_out = dag.push_value(LiteralBits::Int(99), SourceSpan::new(file, 0, 1));
+        let body_node = dag
+            .port(body_out)
+            .produced_by
+            .expect("body value output must have a producer node");
+        let count = dag.push_value(LiteralBits::Int(3), SourceSpan::new(file, 0, 1));
+        let loop_out = dag.push_loop(
+            source,
+            init,
+            body_node,
+            crate::dag::LoopBound::Cardinality { count },
+            SourceSpan::new(file, 0, 1),
+        );
+        assert!(super::port_is_consumed_from(&dag, loop_out, body_out));
+    }
 }
