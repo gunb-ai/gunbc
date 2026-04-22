@@ -642,8 +642,9 @@ fn lane2_workflow_idempotency_report(wf: WorkflowEffect) -> WorkflowIdempotencyR
 
 // `analyze_workflow` lives in `src/v3/lenses/idempotency.dag` (Lane 2 Stage 2b
 // lens) — not here — so the name does not duplicate across bootstrap modules.
-// `analyze_parallelism` — same split: stub in `src/v3/lenses/parallelism.dag`,
-// Rust authority `v3_compiler::analyze_parallelism`.
+// `analyze_parallelism` — same split today: stub in `src/v3/lenses/parallelism.dag`,
+// Rust authority `v3_compiler::analyze_parallelism` (emit can now lower `match`
+// on `WorkflowEffect` in lens modules; port the walk here when ready).
 
 // ── Effect derivation from transport facts ──────────────────────
 //

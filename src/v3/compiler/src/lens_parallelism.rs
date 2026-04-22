@@ -1,9 +1,11 @@
 //! Stage 2e parallelism lens — `src/v3/lenses/parallelism.dag` names the API.
 //!
-//! The v3 emitter cannot yet lower `match` on user-defined sums like
-//! `std.effects::WorkflowEffect` inside lens modules; the walk is implemented in
-//! [`crate::workflow_parallelism`]. Only [`analyze_parallelism`] is exported at
-//! the crate root.
+//! The Stage 2e walk is still implemented in [`crate::workflow_parallelism`]
+//! while `src/v3/lenses/parallelism.dag` remains a `LensSurfacePending` stub.
+//! `emit_rust_module` can lower `match` on imported user sums such as
+//! `WorkflowEffect` in lens modules; follow-on work is to port this analysis
+//! into `.dag` / `std.effects` and rewire the lens like `idempotency.dag`.
+//! Only [`analyze_parallelism`] is exported at the crate root.
 
 use crate::dag::{Dag, NodeId, WorkflowParallelismReport};
 

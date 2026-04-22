@@ -6,11 +6,12 @@
 // This file is not an analysis — `analyze_parallelism` unconditionally returns
 // `report_parallelism_unsupported(LensSurfacePending, …)`. The authoritative
 // analysis lives in `src/v3/compiler/src/workflow_parallelism.rs` (`v3_compiler::
-// analyze_parallelism`); workflow facts on `Dag` (`lane2_workflow` on native
-// Value/Bind) are not part of the reflected substrate vocabulary here. The
-// `.dag`-as-authority posture blocks on the v3 emitter gaining `match` lowering
-// over user-defined sums + reflection of workflow facts (same boundary as
-// `lenses/idempotency.dag`). See ROADMAP Lane 2 Stage 2b “Reflection boundary.”
+// analyze_parallelism`). **Emit note:** `emit_rust_module` can now lower `match`
+// on imported user-defined sums such as `WorkflowEffect` in lens modules (see
+// `docs/v3-lens-capability-register.md`); this lens stays a placeholder until
+// the Stage 2e walk is ported to `.dag` / `std.effects` and wired through
+// `lane2_workflow_at` like `lenses/idempotency.dag`. See ROADMAP Lane 2 Stage 2b
+// “Reflection boundary.”
 
 module lenses.parallelism
 
