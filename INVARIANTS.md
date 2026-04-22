@@ -43,16 +43,16 @@ The integer chain in `dsl/std/{bit,integer,algebra}.dag` illustrates what a full
 
 Downstream consumers (lens queries, algebra-driven operator dispatch, cost algebra) read these declared structural facts. Operator symbols come from the algebra's field declarations, not a per-target string table. Sign semantics come from the witness, not a flag. The chain is *verifiable against consensus at every step*; that is what "grounded in a declared source" means concretely.
 
-### Worked example: effect algebra (idempotency as derived structure)
+### Worked example: effect algebra (idempotency as partitioned structure)
 
-`dsl/std/effects.dag` models operation effects as inhabitants of algebraic structures declared in `dsl/std/algebra.dag`:
+`src/v3/std/effects.dag` models operation effects as inhabitants of algebraic structures declared in `dsl/std/algebra.dag`:
 
 - **`ReadEffect`** — identity function on state. Trivially idempotent.
 - **`UpsertEffect`** — lattice **meet** on `Map<K, V>`. Setting a key to a value, applied twice, equals once. Grounds in lattice theory (Birkhoff 1940).
 - **`DeleteEffect`** — lattice meet with bottom on a key. Applied twice = once.
 - **`AppendEffect`** — free monoid concatenation. Grounds in monoid theory.
 
-Because each effect is declared as an inhabitant of a known algebraic structure, idempotency *becomes a derivable structural fact* rather than something a separate flag must assert. The pattern the substrate enables: when a behavioral property is definable from structure, the declared boolean for that property can be dropped — the algebra *is* the definition. (Current downstream consumers that read the algebra shape — idempotency proofs, composed-effect verification, `f(f(x)) == f(x)` test generation — are partly in-progress; the substrate carries the modeling, consumer wiring completes the dissolution.)
+The v3 copy partitions `EffectShape` into `IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)` — idempotency is now encoded in the *outer variant*, not a separate boolean classifier. `is_idempotent_effect(shape) -> Bool` becomes a trivial match (`IsIdempotent → true`, `IsBreaking → false`) whose work is already done by the variant discriminator. The pattern: when a behavioral property is definable from algebra inhabitance, it migrates onto the variant rather than persisting as a side flag. (The legacy `dsl/std/effects.dag` still carries `is_idempotent_effect` as a standalone classifier function; the partitioned v3 form is the dissolution target. Consumer migration from accessor-call to direct pattern match is in progress.)
 
 External authority: lattice theory (Birkhoff 1940), effect algebras (Foulis & Bennett 1994), idempotent semirings (dataflow analysis, routing algebras, tropical geometry).
 
