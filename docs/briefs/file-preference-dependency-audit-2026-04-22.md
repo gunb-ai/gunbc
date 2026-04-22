@@ -27,14 +27,29 @@ The **overlap set** — names declared in both a `dsl/` authority and
 a `src/v3/` authority — is the only set where rank changes behavior:
 
 ```
-EffectShape, KeySource, IdempotencyEvidence, is_idempotent_effect,
-OperationEffect, DeriveOpEffectResult, compose_effects,
-parse_http_method, derive_effect_shape, derive_op_effect,
-TestClaim,
-UrlPathToken, PathTemplate, PathSegmentTokensResult,
-PathTemplateParseResult, parse_path_template, parse_segment_tokens,
-last_path_param
+# std.effects (dsl/std/effects.dag ↔ src/v3/std/effects.dag)
+check_modifier_vs_derivation, compose_effects, derive_effect_shape,
+derive_op_effect, DeriveOpEffectResult, EffectShape,
+generate_idempotency_obligations, IdempotencyEvidence,
+IdempotencyTestObligation, is_idempotent_effect, KeySource,
+ModifierAgreement, ModifierCheck, OperationEffect,
+parse_http_method, WorkflowEffectConcern
+
+# std.verification
+TestClaim
+
+# http_path mirror (dsl/std/http_path.dag ↔ embedded in src/v3/std/effects.dag)
+last_path_param, parse_path_template, parse_segment_tokens,
+PathSegmentTokensResult, PathTemplate, PathTemplateParseResult,
+UrlPathToken
 ```
+
+**Audit correction (v2, post-review).** The initial overlap set was
+derived from a truncated `head -40` of each authority's declaration
+list and undercounted `std.effects` entries. Full `comm -12` against
+the complete declaration lists yields 24 overlap names, not the 18
+originally listed. The expanded set drives the expanded (b) count
+below.
 
 Any `declaration_by_name("X")` whose `X` is outside this set is
 rank-insensitive: it returns the sole existing declaration (or
@@ -95,7 +110,10 @@ rank-insensitive — but see dissolution note for **(c)** below.)
 
 ### (b) Silent dependency — load-bearing on rank
 
-Exactly **two call sites** look up a name in the overlap set:
+**21 call sites** (direct + helper-mediated) look up a name in the
+overlap set. The initial draft counted only the two direct-call
+sites and missed helper-mediated uses; the corrected tally follows.
+All 21 live in `src/v3/compiler/tests/integration/`.
 
 1. `src/v3/compiler/tests/integration/m1_5_testgen_test.rs:208`
    ```rust
@@ -124,23 +142,50 @@ Exactly **two call sites** look up a name in the overlap set:
    the test would be nondeterministic or fail. **Silent — this is
    the archetype (b) case.**
 
-**Dissolution path.** These two sites are not a substrate problem;
-they are a symptom of the `std.verification` convergence blocker
-already tracked in ROADMAP (the "design call on which surface wins"
-between v2 `AssertKind/TestClaim/TestCase` and v3
-`DiagnosticKind/DiagnosticReference/PortStateExpectation`). Once
-that convergence lands:
+3. **`m1_5_verification_test.rs:76, 203, 207`** — helper-mediated via
+   `record_fields(&dag, "TestClaim")` (line 76) and
+   `find_named(&dag, "TestClaim")` (lines 203, 207). `find_named`
+   is a local helper that wraps `dag.declaration_by_name(name)` at
+   `m1_5_verification_test.rs:13-14`; `record_fields` also reaches
+   `declaration_by_name` through its `find_named` call. All three
+   assertions expect the v3 `TestClaim` shape (with `requires`) and
+   would be silently routed by rank. **Helper-mediated silent —
+   archetype (b).**
 
-- If v3's `TestClaim` survives: both sites become (a) incidental
-  automatically; no test change needed.
-- If dsl's `TestClaim` survives: both sites need to migrate to the
-  surviving shape (lane2 Stage 2c's `requires`-field model would
-  need to move with the surface).
-- If a merged surface emerges: both sites port to the merged
-  shape.
+4. **`lane2_stage_2a_effects_smoke.rs:62-100`** — 13 helper-mediated
+   lookups via `arrow_body(dag, name)` (line 15, calls
+   `declaration_by_name`) and `assert_record_type(dag, name)` (line
+   25, same). Names exercised: `is_idempotent_effect, compose_effects,
+   derive_effect_shape, check_modifier_vs_derivation,
+   generate_idempotency_obligations, parse_path_template,
+   last_path_param, EffectShape, KeySource, IdempotencyEvidence,
+   OperationEffect, ModifierAgreement, ModifierCheck`. All 13 are
+   overlap-set names; the test's assertions (arrow-body presence,
+   record-type shape) depend on the v3 authority's extended surface
+   — the dsl authorities have narrower shapes (e.g., v2's
+   `EffectShape` lacks `IsIdempotent`/`IsBreaking` variants of the
+   v3 form; `compose_effects` arrow body in dsl returns
+   `ComposedEffect`, in v3 a richer `CompositionVerdict`-bearing
+   type). **Helper-mediated silent — the largest cluster.**
 
-No new substrate work needed to unblock dissolution from the
-audit's perspective — the convergence itself is the dissolution.
+**Dissolution path.** These sites are not a substrate problem;
+they are symptoms of the two convergence blockers already tracked
+in ROADMAP:
+- **`std.verification` convergence** — governs the 4 `TestClaim`
+  sites (items 1, 2, 3 above).
+- **`std.effects` convergence** (plus embedded `http_path` mirror)
+  — governs the 13 `lane2_stage_2a_effects_smoke.rs` sites (item
+  4). Tracked in the same ROADMAP "Post-merge debt" row as the
+  file-preference scaffold.
+
+Per convergence, tests either become (a) incidental (v3 authority
+survives), or migrate to the surviving shape (dsl wins / merged
+surface emerges). No new substrate work needed — the convergences
+*are* the dissolution. **The "no new modeling gap" conclusion from
+the draft still holds — but the scale (21 sites, not 2)
+materially changes the cost-of-dissolution estimate for the
+`std.effects` convergence in particular, which the ROADMAP row
+should reflect when that lane is scoped.**
 
 ### (c) Legitimate-looking — scaffold's intended consumers
 
@@ -200,18 +245,19 @@ delete together.
 
 | Category | Count | Sites |
 |---|---:|---|
-| (a) Incidental | 178 | all 113 `src/` static-name sites + 65 of 67 test sites |
-| (b) Silent dependency | 2 | `m1_5_testgen_test.rs:208`, `lane2_stage_2c_db15_test.rs:9` |
+| (a) Incidental | 159 | all 113 `src/` static-name sites + 46 test sites outside the overlap set |
+| (b) Silent dependency | 21 | 5 TestClaim sites (`m1_5_testgen_test.rs:208`, `lane2_stage_2c_db15_test.rs:9`, `m1_5_verification_test.rs:{76,203,207}`); 16 in `lane2_stage_2a_effects_smoke.rs:{62-66,76×2,90,94,95,97,98,100}` |
 | (c) Legitimate-looking | 3 classes | `collect_symbols`, stub-resolution sweep, dynamic name helpers (`infer.rs:1619`, `regen_tokenize.rs:159`) |
 
-PR-body framing: **178 safe, 2 silent, 3 class-level legitimate.**
+PR-body framing: **159 safe, 21 silent, 3 class-level legitimate.**
 
 ## Recommendations
 
-1. **No lane needed to repair the (b) sites independently.** Both
-   sites dissolve automatically when `std.verification` converges.
-   The existing ROADMAP row ("design call on which surface wins")
-   already owns the work.
+1. **No lane needed to repair the (b) sites independently.** All 21
+   sites dissolve automatically when their governing convergence
+   lands (5 with `std.verification`, 16 with `std.effects` /
+   http_path mirror). The existing ROADMAP rows already own the
+   work.
 
 2. **Consider a tightening helper** *after* convergence: a
    fail-closed `declaration_by_name_unique` that returns the single
@@ -221,9 +267,14 @@ PR-body framing: **178 safe, 2 silent, 3 class-level legitimate.**
 
 3. **No modeling gap discovered.** The audit confirms the
    scaffold's dissolution blocker is the three known duplicated
-   modules, nothing more. Reflective-analysis concern that "new
-   lanes may silently depend on rank preference" is not yet
-   realized — only two sites, both in tests, both tracked.
+   modules, nothing more. But the reflective-analysis concern
+   that "new lanes may silently depend on rank preference" *is*
+   realized — the lane2 Stage 2a effects-smoke lane added 16
+   silent-dependency sites (via `arrow_body` / `assert_record_type`
+   helpers) after the scaffold went in. Every site is still
+   governed by an already-tracked convergence row, but the cost
+   of the `std.effects` convergence when scoped is meaningfully
+   higher than the ROADMAP row suggests.
 
 4. **Watchpoint for future lanes.** Adding any new `declaration_by_name("X")`
    where `X` is in the overlap set above reintroduces a (b)
