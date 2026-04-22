@@ -96,7 +96,7 @@ pub fn source_substring(source: Rc<SourceRef>, start: i64, end: i64) -> String {
 pub fn source_scan_while(
     mut source: Rc<SourceRef>,
     mut start: i64,
-    mut pred: impl Fn(String) -> bool + Clone,
+    mut pred: impl Fn(String) -> bool,
 ) -> i64 {
     loop {
         if (start.clone() >= source_len(source.clone())) {
@@ -540,7 +540,7 @@ pub fn emit(
 
 pub fn scan_ident(source: &Rc<SourceRef>, pos: &Rc<TokPos>) -> Rc<ScanResult> {
     {
-        let end = source_scan_while(source.clone(), pos.pos.clone(), is_ident_char);
+        let end = source_scan_while(source.clone(), pos.pos.clone(), &is_ident_char);
         let text = source_substring(source.clone(), pos.pos.clone(), end.clone());
         let shape = if is_keyword_text(text.clone()) {
             TokenShape::ShKeyword
@@ -562,13 +562,13 @@ pub fn scan_ident(source: &Rc<SourceRef>, pos: &Rc<TokPos>) -> Rc<ScanResult> {
 
 pub fn scan_number(source: &Rc<SourceRef>, pos: &Rc<TokPos>) -> Rc<ScanResult> {
     {
-        let int_end = source_scan_while(source.clone(), pos.pos.clone(), is_digit);
+        let int_end = source_scan_while(source.clone(), pos.pos.clone(), &is_digit);
         if ((((int_end.clone() + 1) < source_len(source.clone()))
             && (source_char(source.clone(), int_end.clone()).as_str() == ".".to_string().as_str()))
             && is_digit(source_char(source.clone(), (int_end.clone() + 1))))
         {
             {
-                let frac_end = source_scan_while(source.clone(), (int_end.clone() + 1), is_digit);
+                let frac_end = source_scan_while(source.clone(), (int_end.clone() + 1), &is_digit);
                 let text = source_substring(source.clone(), pos.pos.clone(), frac_end.clone());
                 let token = make_token(
                     text.clone(),
