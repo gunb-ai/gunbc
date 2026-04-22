@@ -60,6 +60,8 @@ The minimal faithful step **after** this post-mortem is **not** to delete `+ Clo
 
 The comment block immediately above `emit_rust_param_type` should stay a **short seam signpost**. If more boundary prose is needed, add it **here** (this post-mortem) rather than growing meta “how to maintain this comment” footers in the `.dag` source — those read as defensive noise next to real emission logic.
 
+This file is **long for a receipt PR** on purpose: it is the single place for incident narrative, authority table, stop boundaries, enforcement hooks, and test scope. The `.dag` signpost overlaps only at the headline facts (seam name + “do not split authority” + link here). **Future emitter-fidelity receipts** can lean even harder on that split—keep `.dag` to a **one-liner pointer** when the seam is already written up under `docs/postmortems/`, and reserve multi-bullet `.dag` prose for seams that do not yet have a doc home.
+
 ### Regression test scope (`pipeline.rs`)
 
 The hermetic test asserts the **`impl Fn(...) + Clone`** signature on `twice`, then checks `f(0)` / `f(1)` only in the suffix **after** that signature so incidental substring matches elsewhere in the emitted module file cannot satisfy the call-site part. It does **not** assert a `f.clone()` substring: `compile_dag` output for this fixture is plain **`f(0)`** / **`f(1)`** call syntax on the param, with no `.clone()` in the emitted source, while `+ Clone` on the type remains load-bearing elsewhere (stage0 / other emitter paths). A future tightening could pin an explicit clone site once a small fixture is found that **deterministically** materializes asymmetric `f.clone()` in emitted Rust.
