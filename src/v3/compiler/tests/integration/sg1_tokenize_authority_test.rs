@@ -5,6 +5,7 @@ use std::collections::BTreeSet;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
 
+const STD_TOKENIZE_DAG: &str = include_str!("../../../std/tokenize.dag");
 const TOKENIZE_DAG: &str = include_str!("../../tokenize.dag");
 const SHARED_SYNTAX_DAG: &str = include_str!("../../../../../dsl/extdeps/languages/dag/syntax.dag");
 const CHECKED_IN_GENERATED: &str = include_str!("../../src/tokenize_generated.rs");
@@ -13,6 +14,36 @@ const CHECKED_IN_GENERATED: &str = include_str!("../../src/tokenize_generated.rs
 fn tokenize_dag_compiles_cleanly() {
     compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
         .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+}
+
+#[test]
+fn std_tokenize_dag_compiles_cleanly() {
+    compile_to_dag(STD_TOKENIZE_DAG, "src/v3/std/tokenize.dag")
+        .unwrap_or_else(|e| panic!("std/tokenize.dag should compile: {e:?}"));
+}
+
+#[test]
+fn compiler_tokenize_dag_imports_moved_types_from_std() {
+    let dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
+        .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+    let moved = [
+        "Token",
+        "TokenKind",
+        "KeywordTokenKind",
+        "PunctTokenKind",
+        "LocalPunctSpec",
+        "StringEscapeSpec",
+    ];
+
+    for name in moved {
+        let decl = dag
+            .declaration_by_name(name)
+            .unwrap_or_else(|| panic!("expected `{name}` in lowered tokenizer authority"));
+        assert_eq!(
+            decl.span.file, "src/v3/std/tokenize.dag",
+            "`{name}` should now be authored in `src/v3/std/tokenize.dag`, not compiler-local authority"
+        );
+    }
 }
 
 #[test]

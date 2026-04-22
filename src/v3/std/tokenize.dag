@@ -1,0 +1,128 @@
+// v3.std.tokenize — shared token taxonomy for `.dag` source text.
+//
+// The tokenizer implementation in `src/v3/compiler/tokenize.dag` consumes these
+// types as imported authority. That keeps token shapes in `std/` so compiler
+// consumers and future user-space tooling read the same `Token` / `TokenKind`
+// vocabulary.
+
+module v3.std.tokenize
+
+import v3.std.substrate { SourceSpan }
+
+type TokenKind
+  = KwLet
+  | KwIf
+  | KwThen
+  | KwElse
+  | KwFn
+  | KwType
+  | KwModule
+  | KwImport
+  | KwMatch
+  | KwData
+  | KwWhere
+  | KwTrue
+  | KwFalse
+  | Ident(String)
+  | IntLit(Int)
+  | StringLit(String)
+  | Eq
+  | EqEq
+  | NotEq
+  | Lt
+  | Le
+  | Gt
+  | Ge
+  | Plus
+  | Minus
+  | Star
+  | Slash
+  | AmpAmp
+  | PipePipe
+  | Colon
+  | Arrow
+  | FatArrow
+  | PipeArrow
+  | Dot
+  | LParen
+  | RParen
+  | LBrace
+  | RBrace
+  | LBracket
+  | RBracket
+  | Comma
+  | Semicolon
+  | Pipe
+  | Question
+  | Eof
+
+type Token {
+  kind: TokenKind
+  span: SourceSpan
+}
+
+// Dedicated keyword tokens for the v3 tokenizer. Their spellings derive from
+// `dsl/extdeps/languages/dag/syntax.dag`'s `dag_keyword_set`; tokenizer
+// authority only declares which dedicated keyword variants exist.
+type KeywordTokenKind
+  = KwLet
+  | KwIf
+  | KwThen
+  | KwElse
+  | KwFn
+  | KwType
+  | KwModule
+  | KwImport
+  | KwMatch
+  | KwData
+  | KwWhere
+  | KwTrue
+  | KwFalse
+
+// Dedicated punctuation tokens for the v3 tokenizer. Shared operator spellings
+// derive from `dsl/extdeps/languages/dag/syntax.dag`'s `dag_operators`;
+// `LocalPunctSpec` rows in the tokenizer authority cover only punctuation that
+// the shared syntax authority does not model.
+type PunctTokenKind
+  = Eq
+  | EqEq
+  | NotEq
+  | Lt
+  | Le
+  | Gt
+  | Ge
+  | Plus
+  | Minus
+  | Star
+  | Slash
+  | AmpAmp
+  | PipePipe
+  | Colon
+  | Arrow
+  | FatArrow
+  | PipeArrow
+  | Dot
+  | LParen
+  | RParen
+  | LBrace
+  | RBrace
+  | LBracket
+  | RBracket
+  | Comma
+  | Semicolon
+  | Pipe
+  | Question
+
+type LocalPunctSpec {
+  pattern: String
+  kind: PunctTokenKind
+}
+
+// After `\` inside a string literal: map the next source byte (as a
+// one-character `suffix`) to a Unicode scalar emitted into the string value.
+// Unknown suffixes are not listed here; the projection preserves historical
+// behavior (`\` + literal suffix char).
+type StringEscapeSpec {
+  suffix: String
+  output_codepoint: Int
+}
