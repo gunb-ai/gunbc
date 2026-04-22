@@ -1867,6 +1867,19 @@ pub fn function_value_params(params: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     })
 }
 
+pub fn function_type_params_have_collision(type_params: Rc<Vec<Rc<Node>>>) -> bool {
+    {
+        let names = Rc::new({
+            let mut __result = Vec::new();
+            for p in type_params.iter().cloned() {
+                __result.push(p.name.clone());
+            }
+            __result
+        });
+        ((names.clone().len() as i64) > (unique_strings(names.clone()).len() as i64))
+    }
+}
+
 pub fn emit_type_def_from_connective(
     item: &Rc<Node>,
     recursive_types: Rc<HashMap<String, bool>>,
@@ -2614,6 +2627,9 @@ pub fn emit_fn_def(
         let si = scope.type_env.clone().source_indices.clone();
         let type_params = function_type_params(params.clone());
         let value_params = function_value_params(params.clone());
+        if function_type_params_have_collision(type_params.clone()) {
+            return v2_rt::concat(v2_rt::concat("compile_error!(\"type param name collides with a value param in fn '".to_string(), name.clone()), "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n".to_string());
+        }
         let type_params_str = emit_type_params(&type_params, si.clone());
         let params_str = emit_params(
             value_params.clone(),
