@@ -129,16 +129,17 @@ pub fn render_parse_tables_generated_rs(
         .collect();
     primary_prefix_variants.sort_unstable();
     primary_prefix_variants.dedup();
-    let rust = emit_module(
-        &levels,
-        &rows,
-        &item_dispatch_variants,
-        &item_kw_rows,
-        &soft_keyword_ident_rows,
-        &bracket_rows,
-        &primary_prefix_variants,
-        &primary_prefix_rows,
-    );
+    let module = EmitParseTablesModule {
+        levels: &levels,
+        binary_op_rows: &rows,
+        item_dispatch_variants: &item_dispatch_variants,
+        item_kw_rows: &item_kw_rows,
+        soft_keyword_ident_rows: &soft_keyword_ident_rows,
+        bracket_rows: &bracket_rows,
+        primary_prefix_variants: &primary_prefix_variants,
+        primary_prefix_rows: &primary_prefix_rows,
+    };
+    let rust = emit_module(&module);
     let combined = format!("{HEADER}{rust}");
     rustfmt_stdout(&combined).map_err(RenderParseTablesGeneratedError::Rustfmt)
 }
@@ -728,16 +729,31 @@ fn logical_variant(l: LogicalOp) -> &'static str {
     }
 }
 
-fn emit_module(
-    levels: &[String],
-    rows: &[BinaryOpRow],
-    item_dispatch_variants: &[String],
-    item_kw_rows: &[TopLevelItemKwRow],
-    soft_keyword_ident_rows: &[SoftKeywordIdentRow],
-    bracket_rows: &[BracketRow],
-    primary_prefix_variants: &[String],
-    primary_prefix_rows: &[PrimaryPrefixRow],
-) -> String {
+/// Row bundles for `emit_module`. SG-2c tables accrue enough parameters that
+/// a single carrier keeps the emission entry under clippy's `too_many_arguments`
+/// threshold (`-D warnings` in CI).
+struct EmitParseTablesModule<'a> {
+    levels: &'a [String],
+    binary_op_rows: &'a [BinaryOpRow],
+    item_dispatch_variants: &'a [String],
+    item_kw_rows: &'a [TopLevelItemKwRow],
+    soft_keyword_ident_rows: &'a [SoftKeywordIdentRow],
+    bracket_rows: &'a [BracketRow],
+    primary_prefix_variants: &'a [String],
+    primary_prefix_rows: &'a [PrimaryPrefixRow],
+}
+
+fn emit_module(ctx: &EmitParseTablesModule<'_>) -> String {
+    let EmitParseTablesModule {
+        levels,
+        binary_op_rows: rows,
+        item_dispatch_variants,
+        item_kw_rows,
+        soft_keyword_ident_rows,
+        bracket_rows,
+        primary_prefix_variants,
+        primary_prefix_rows,
+    } = *ctx;
     // `BracketRole` variants are the set of distinct roles derived from the
     // authored rows (projection-only). Matches the `ItemDispatchKind` pattern:
     // unique labels, sorted, no substrate coproduct.
