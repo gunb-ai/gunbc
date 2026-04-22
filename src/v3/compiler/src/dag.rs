@@ -583,14 +583,19 @@ include!("dag_scalar_generated.rs");
 ///   the same ordering and `ordered_pipeline_stages` fail-closes on any drift
 ///   between the two (`reconcile_with_compile_body`) so the bindings remain
 ///   the single runtime authority without silently diverging from the
-///   orchestrator surface. The `compile` body is **terminal**, not a scaffold
-///   awaiting dissolution: it is the human-readable pipeline contract that
-///   the binding records satisfy — a reader sees the pipeline in one glance
-///   as `{ parse; lower; infer; ... }` rather than reconstructing it from a
-///   binding table. The bindings are the runtime authority; the body is the
-///   surface the bindings commit to. The fail-closed reconcile is what keeps
-///   that contract honest (P3) without letting the body become a second
-///   runtime source (P2). The signature still flows forward through the
+///   orchestrator surface. The `compile` body is the human-readable pipeline
+///   contract that the binding records satisfy — a reader sees the pipeline
+///   in one glance as `{ parse; lower; infer; ... }` rather than
+///   reconstructing it from a binding table. The bindings are the runtime
+///   authority; the body is the surface the bindings commit to; the
+///   fail-closed reconcile keeps that contract honest (P3) without letting
+///   the body become a second runtime source (P2). This is **bridge shape**,
+///   not terminal: two authored carriers kept consistent by reconcile. PR #637
+///   narrowed the prior body-span-as-authority shape; the bridge itself
+///   remains scheduled debt (see `docs/history/roadmap-scheduled-deletions.md`
+///   case 2c) until derivation collapses the two carriers to a single
+///   authored source — e.g., regen emits the `compile` body from binding
+///   declaration order. The signature still flows forward through the
 ///   declaration table so callers can type-check against it, and the body
 ///   source span is preserved so M2+ parser extensions can reach in for case 1.
 ///   **User-range boundary:** `reject_user_unparsed_scaffolds` in
@@ -606,9 +611,12 @@ include!("dag_scalar_generated.rs");
 /// `ExternalRealization`, `NoBody`). The 5-variant shape is a
 /// transition state: `Pending` and **case-1** `Unparsed` are scaffolds with
 /// named dissolution (M3 / M2 grammar). **`Unparsed` on `pipeline.dag`'s
-/// `compile` (DB-16 case 2c)** is different — **persistent bootstrap-range
-/// carrier** whose body span is no longer the ordering authority (structural
-/// binding order is); it does **not** share case 1’s “wait for M2 parser” story. User-range
+/// `compile` (DB-16 case 2c)** is different — a **bootstrap-range carrier
+/// in bridge shape**: body span is no longer the ordering authority
+/// (structural binding order is), but two authored carriers still require
+/// `reconcile_with_compile_body` to stay consistent, so 2c remains scheduled
+/// debt with its own dissolution trigger (derivation, not the M2 parser
+/// milestone). User-range
 /// `Unparsed` stays gated (R14).
 #[derive(Debug, Clone)]
 pub enum ArrowBody {
