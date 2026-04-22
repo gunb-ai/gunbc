@@ -46,7 +46,7 @@ fn find_bind_value_port(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler:
 #[test]
 fn provenance_origin_of_cements_behavior_complete_row_on_minimal_ports() {
     // Register row: `provenance.dag` — BEHAVIORALLY COMPLETE, v3-native.
-    // Integration crate cannot reach `Dag`’s `pub(crate)` builder helpers
+    // Integration crate cannot reach `Dag`'s `pub(crate)` builder helpers
     // (`alloc_port_with_shape`); `compile_to_dag` fixtures still cement the
     // shipped `origin_of` contract on the live lowering path. Exhaustive
     // `NoProducer` / `Missing*` cases stay in `lib.rs::lens_provenance::tests`.
