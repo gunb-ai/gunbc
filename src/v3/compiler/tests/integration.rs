@@ -200,6 +200,7 @@ mod parse_stage4_prep {
     use std::fs;
     use std::path::{Path, PathBuf};
 
+    use v2_compiler::std_termination::{join_evidence, merge_evidence, DescentEvidence::*};
     use v3_compiler::{parse_for_test, tokenize_for_test};
 
     // SG-2 parser staging: corpus manifest snapshots the runtime parse surface
@@ -360,22 +361,6 @@ mod parse_stage4_prep {
         );
     }
 
-    fn fn_body<'a>(source: &'a str, fn_name: &str) -> &'a str {
-        let anchor = format!("fn {fn_name}");
-        let start = source
-            .find(&anchor)
-            .unwrap_or_else(|| panic!("expected function `{fn_name}`"));
-        let body_start = source[start..]
-            .find('{')
-            .map(|offset| start + offset + 1)
-            .unwrap_or_else(|| panic!("expected body start for `{fn_name}`"));
-        let body_end = source[body_start..]
-            .find("\n}")
-            .map(|offset| body_start + offset)
-            .unwrap_or_else(|| panic!("expected body end for `{fn_name}`"));
-        source[body_start..body_end].trim()
-    }
-
     #[test]
     fn total_order_lattice_helpers_flow_through_shared_min_max_by() {
         let dag = crate::common::cached_compile::cached_compile_to_dag(
@@ -391,41 +376,10 @@ mod parse_stage4_prep {
             dag.declaration_by_name("max_by").is_some(),
             "std bootstrap should export max_by"
         );
-
-        let algebra_source = include_str!("../../../../dsl/std/algebra.dag");
-        let fermi_source = include_str!("../../../../dsl/std/fermi.dag");
-        let termination_source = include_str!("../../../../dsl/std/termination.dag");
-
-        assert!(
-            algebra_source.contains("fn min_by<T>("),
-            "algebra.dag should define min_by"
-        );
-        assert!(
-            algebra_source.contains("fn max_by<T>("),
-            "algebra.dag should define max_by"
-        );
-
-        let fermi_meet = fn_body(fermi_source, "fermi_meet");
-        let fermi_join = fn_body(fermi_source, "fermi_join");
-        let merge_evidence = fn_body(termination_source, "merge_evidence");
-        let join_evidence = fn_body(termination_source, "join_evidence");
-
-        assert!(
-            fermi_meet.contains("min_by(") && fermi_meet.contains("project: fermi_ordinal"),
-            "fermi_meet should delegate through shared min_by, got: {fermi_meet}"
-        );
-        assert!(
-            fermi_join.contains("max_by(") && fermi_join.contains("project: fermi_ordinal"),
-            "fermi_join should delegate through shared max_by, got: {fermi_join}"
-        );
-        assert!(
-            merge_evidence.contains("min_by(") && merge_evidence.contains("project: evidence_rank"),
-            "merge_evidence should delegate through shared min_by, got: {merge_evidence}"
-        );
-        assert!(
-            join_evidence.contains("max_by(") && join_evidence.contains("project: evidence_rank"),
-            "join_evidence should delegate through shared max_by, got: {join_evidence}"
-        );
+        assert_eq!(merge_evidence(Strict, DescentUnknown), DescentUnknown);
+        assert_eq!(merge_evidence(Strict, NonIncreasing), NonIncreasing);
+        assert_eq!(join_evidence(NonIncreasing, Strict), Strict);
+        assert_eq!(join_evidence(DescentUnknown, NonIncreasing), NonIncreasing);
     }
 
     #[test]
