@@ -49,6 +49,32 @@ EXEMPT_ROWS=(
   "src/v3/compiler/parse_tables.dag:340"
 )
 
+TRACKED_ROWS=(
+  "src/v3/compiler/runtime_mirrors.dag:6"
+  "src/v3/compiler/runtime_mirrors.dag:18"
+  "src/v3/compiler/runtime_mirrors.dag:22"
+  "src/v3/compiler/runtime_mirrors.dag:28"
+  "src/v3/compiler/runtime_mirrors.dag:33"
+  "src/v3/compiler/runtime_mirrors.dag:42"
+  "src/v3/compiler/runtime_mirrors.dag:49"
+  "src/v3/compiler/runtime_mirrors.dag:66"
+  "src/v3/compiler/runtime_mirrors.dag:72"
+  "src/v3/compiler/runtime_mirrors.dag:78"
+  "src/v3/compiler/runtime_mirrors.dag:85"
+  "src/v3/compiler/runtime_mirrors.dag:104"
+  "src/v3/compiler/runtime_mirrors.dag:110"
+  "src/v3/compiler/runtime_mirrors.dag:168"
+  "src/v3/compiler/tokenize.dag:33"
+  "src/v3/compiler/tokenize.dag:80"
+  "src/v3/compiler/tokenize.dag:88"
+  "src/v3/compiler/tokenize.dag:111"
+  "src/v3/compiler/tokenize.dag:141"
+  "src/v3/compiler/tokenize.dag:150"
+  "src/v3/lenses/complexity.dag:50"
+  "src/v3/lenses/cost.dag:28"
+  "src/v3/lenses/infer_helpers.dag:35"
+)
+
 collect_type_rows() {
   local pattern
   for pattern in "${SURFACES[@]}"; do
@@ -64,9 +90,10 @@ if [ -z "$TYPE_ROWS" ]; then
 fi
 
 TOTAL_TYPE_ROWS=$(printf '%s\n' "$TYPE_ROWS" | sed '/^$/d' | wc -l | tr -d ' ')
+TRACKED_COUNT=${#TRACKED_ROWS[@]}
 POSITIVE_COUNT=${#POSITIVE_ROWS[@]}
 EXEMPT_COUNT=${#EXEMPT_ROWS[@]}
-CLASSIFIED_COUNT=$((POSITIVE_COUNT + EXEMPT_COUNT))
+CLASSIFIED_COUNT=$((TRACKED_COUNT + POSITIVE_COUNT + EXEMPT_COUNT))
 
 is_listed_row() {
   local row="$1"
@@ -81,16 +108,12 @@ is_listed_row() {
 }
 
 UNCLASSIFIED_ROWS=()
-while IFS= read -r row; do
-  [ -n "$row" ] || continue
-  row="${row%%:*}:${row#*:}"
-  row="${row%%:*}:${row#*:}"
-done < /dev/null
-
 while IFS= read -r raw; do
   [ -n "$raw" ] || continue
   row_id="$(printf '%s\n' "$raw" | cut -d: -f1,2)"
-  if ! is_listed_row "$row_id" "${POSITIVE_ROWS[@]}" && ! is_listed_row "$row_id" "${EXEMPT_ROWS[@]}"; then
+  if ! is_listed_row "$row_id" "${TRACKED_ROWS[@]}" \
+    && ! is_listed_row "$row_id" "${POSITIVE_ROWS[@]}" \
+    && ! is_listed_row "$row_id" "${EXEMPT_ROWS[@]}"; then
     UNCLASSIFIED_ROWS+=("$raw")
   fi
 done <<EOF
@@ -105,12 +128,23 @@ if [ "${#UNCLASSIFIED_ROWS[@]}" -gt 0 ]; then
   exit 1
 fi
 
-TRACKED_TOTAL=$((TOTAL_TYPE_ROWS - CLASSIFIED_COUNT))
+if [ "$CLASSIFIED_COUNT" -ne "$TOTAL_TYPE_ROWS" ]; then
+  echo "compiler-std ratchet: row classification drift."
+  echo "Counted rows: $TOTAL_TYPE_ROWS"
+  echo "Tracked rows: $TRACKED_COUNT"
+  echo "Positive-def rows: $POSITIVE_COUNT"
+  echo "Exempt rows: $EXEMPT_COUNT"
+  echo "The explicit row inventory must cover the full counted surface."
+  exit 1
+fi
+
+TRACKED_TOTAL=$TRACKED_COUNT
 
 echo "Compiler-std consolidation ratchet"
 echo "=================================="
 echo "Tracked surfaces: src/v3/compiler/*.dag + src/v3/lenses/*.dag"
 echo "Counted rows:     $TOTAL_TYPE_ROWS"
+echo "Tracked debt:     $TRACKED_COUNT"
 echo "Positive-def:     $POSITIVE_COUNT"
 echo "Exempt:           $EXEMPT_COUNT"
 echo "---"
@@ -122,8 +156,7 @@ if [ "$TRACKED_TOTAL" -gt "$BASELINE_TRACKED_TOTAL" ]; then
   echo "::error::compiler-std ratchet grew: tracked total $TRACKED_TOTAL > baseline $BASELINE_TRACKED_TOTAL"
   echo "Action:"
   echo "  1. Move the new type to std/, OR"
-  echo "  2. Add an explicit positive-def / exemption classification if #642 already covers it, OR"
-  echo "  3. Update docs/thesis/compiler-std-consolidation.md and ROADMAP.md together if the policy itself changed."
+  echo "  2. Add an explicit positive-def / exemption classification if #642 already covers it."
   exit 1
 fi
 
