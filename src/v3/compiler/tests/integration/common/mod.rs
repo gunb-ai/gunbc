@@ -270,11 +270,10 @@ fn mod_decl_follows_cementing_path_tail(mut tail: &str, stem: &str) -> bool {
             tail = rest;
             continue;
         }
-        let rest = tail.trim_start();
-        if !rest.starts_with(&prefix) {
+        if !tail.starts_with(&prefix) {
             return false;
         }
-        let after_prefix = &rest[prefix.len()..];
+        let after_prefix = &tail[prefix.len()..];
         if after_prefix
             .chars()
             .next()
