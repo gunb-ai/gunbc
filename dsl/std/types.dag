@@ -119,38 +119,34 @@ fn is_ordered_element_collection(name: String) -> Bool {
   map_contains_key(ordered_element_collections, name)
 }
 
-// Declared alias relationships — one row per `type X = Y<...>` below.
-// This is the sole alias fact; all alias/self-name/spelling normalization
-// for container-template names flows from `container_template_algebra`.
-data container_alias_targets: Map<String, String> = {
+// Canonical query: resolve a container-template name to its algebra.
+// Single surface both consumers (v2/coercion.dag, v2/05_emit.dag) read —
+// neither maintains a parallel spelling table. The rows below are the
+// concrete projection of the three type aliases declared just below
+// (type List = FreeMonoid, Set = BooleanAlgebra, Map = PartialFunction)
+// across the two spellings the compiler sees (PascalCase alias names and
+// their snake-case identifier form) plus the three kernel-algebra
+// self-identities that keep the query total over container-template
+// names. When .dag gains alias reflection, these rows derive from the
+// aliases directly; today the map is the single authority that captures
+// that relationship without requiring case-normalization primitives in std.
+data container_template_algebra_rows: Map<String, String> = {
   "List": "FreeMonoid",
+  "list": "FreeMonoid",
   "Set": "BooleanAlgebra",
-  "Map": "PartialFunction"
+  "set": "BooleanAlgebra",
+  "Map": "PartialFunction",
+  "map": "PartialFunction",
+  "FreeMonoid": "FreeMonoid",
+  "free_monoid": "FreeMonoid",
+  "BooleanAlgebra": "BooleanAlgebra",
+  "boolean_algebra": "BooleanAlgebra",
+  "PartialFunction": "PartialFunction",
+  "partial_function": "PartialFunction"
 }
 
-// Canonical query: resolve a container-template name to its algebra.
-// This is the single surface both consumers (v2/coercion.dag, v2/05_emit.dag)
-// read; neither maintains a parallel spelling table. Accepts snake_case
-// and PascalCase, alias names (List/Set/Map) and algebra self-names
-// (FreeMonoid/BooleanAlgebra/PartialFunction). The algebra surface is
-// fixed (three kernel algebras); the alias rows above drive the alias→
-// algebra direction, the rest is spelling/self-identity over that surface.
 fn container_template_algebra(name: String) -> String? {
-  let pascal = if name == "list" { "List" }
-    else if name == "set" { "Set" }
-    else if name == "map" { "Map" }
-    else if name == "free_monoid" { "FreeMonoid" }
-    else if name == "boolean_algebra" { "BooleanAlgebra" }
-    else if name == "partial_function" { "PartialFunction" }
-    else { name }
-  match map_get(container_alias_targets, pascal) {
-    Some { value: a } => Some { value: a }
-    None => if pascal == "FreeMonoid" || pascal == "BooleanAlgebra" || pascal == "PartialFunction" {
-      Some { value: pascal }
-    } else {
-      none
-    }
-  }
+  map_get(container_template_algebra_rows, name)
 }
 
 // Ordered canonical container/algebra names (PascalCase).
