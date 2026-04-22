@@ -33,8 +33,8 @@ It also catches multiple invariants at once: P1 Modeling Faithfulness (the prefe
 3. **Resolve the embedded `http_path` mirror.** Two options (pick based on scope):
    - **(a) Stage `http_path.dag` in v3** and let the consolidated `std.effects` import from it. (Prerequisite lane if scope is too big.)
    - **(b) Have `std.effects` depend on the canonical `std.http_path`** directly without an embedded mirror. (Smaller, preferred if imports allow.)
-4. **Delete `declaration_name_preference_rank`** in `dag.rs:1985-2015`. Update `declaration_by_name` to either return the first match (once duplicates are gone) or fail-closed on multiple matches (defensive against future regressions).
-5. **Delete the duplicate policy** in `lower.rs:1258-1274`. Symbol-table seeding picks the first match.
+4. **Delete `declaration_name_preference_rank`** in `dag.rs:1985-2015`. Update `declaration_by_name` to fail-closed on multiple matches: `None` for zero, `Some` for exactly one, **typed diagnostic (not `None`)** for multiple. "Return the first match" is a cryptic preference rule — iteration order becomes the hidden selection criterion, which is strictly worse than the explicit rank since the behavior is invisible to readers. Fail-closed is the only principled target.
+5. **Delete the duplicate policy** in `lower.rs:1258-1274`. Symbol-table seeding also fail-closes on multiple matches; any remaining duplicate surfaces as a structural error, not a silently-resolved scaffold.
 6. **Run the full test suite.** Any remaining duplicate-name failures surface as typed diagnostics now — each must be resolved structurally, not by re-introducing a preference rule.
 
 ## Acceptance
