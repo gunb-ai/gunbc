@@ -94,6 +94,17 @@ pub fn is_type_rhs_boundary_keyword(kind: &TokenKind) -> bool {
     )
 }
 
+/// Keyword tokens that the parser accepts as bare identifier spellings
+/// in label/name positions (`parse_field_label`, `parse_variant`).
+/// Projected from `SoftKeywordIdentRow { token_variant }` rows in
+/// `src/v3/compiler/parse_tables.dag`.
+pub fn soft_keyword_ident_spelling(kind: &TokenKind) -> Option<&'static str> {
+    match kind {
+        TokenKind::KwType => Some("type"),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BracketRole {
     Closer,

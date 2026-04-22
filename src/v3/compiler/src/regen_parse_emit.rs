@@ -88,7 +88,8 @@ fn emit_parse_module(parser_body: &str) -> String {
     );
     out.push_str(
         "use crate::parse_tables::{binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, \
-         top_level_item_dispatch, BinaryOpLevel, BracketRole, ItemDispatchKind};\n",
+         soft_keyword_ident_spelling, top_level_item_dispatch, BinaryOpLevel, BracketRole, \
+         ItemDispatchKind};\n",
     );
     out.push_str("use crate::tokenize::{Token, TokenKind};\n\n");
     out.push_str(
