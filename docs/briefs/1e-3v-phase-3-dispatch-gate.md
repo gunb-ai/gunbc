@@ -8,7 +8,7 @@
 
 **Reading order (handoff):** **Executive summary** → **Per-cluster verdict** → § **Phase 3.0** → **Dispatch checklist** — this file is **live dispatch guidance** only.
 
-**PR #621 audit trail (archival):** **[`1e-3v-pr621-review-ingest.md`](1e-3v-pr621-review-ingest.md)** — api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, **Review Z** (split receipt per **`INVARIANTS.md`** “Documentation Describes Live State,” codex `bc6bf2c8`), **Review AA** / **Review AB** (post-split APPROVE, `273efd3e`), **Review AC** / **Review AD** (APPROVE, `da72fb9c`), **Review AE** (APPROVE, `bfce9906`), **Review AF** (APPROVE_WITH_COMMENTS: chronicle still under `docs/briefs/` vs archival `docs/review-findings/`, non-blocking, `bfce9906`).
+**PR #621 audit trail (archival):** **[`1e-3v-pr621-review-ingest.md`](1e-3v-pr621-review-ingest.md)** — api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, **Review Z** (split receipt per **`INVARIANTS.md`** “Documentation Describes Live State,” codex `bc6bf2c8`), **Review AA** / **Review AB** (post-split APPROVE, `273efd3e`), **Review AC** / **Review AD** (APPROVE, `da72fb9c`), **Review AE** (APPROVE, `bfce9906`), **Review AF** (APPROVE_WITH_COMMENTS: chronicle still under `docs/briefs/` vs archival `docs/review-findings/`, non-blocking, `bfce9906`), **Review AG** (strengths + ROADMAP check, clean, `bfce9906`).
 
 ---
 

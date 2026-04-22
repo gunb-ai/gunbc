@@ -2,7 +2,7 @@
 
 **Companion:** [1e-3v-phase-3-dispatch-gate.md](1e-3v-phase-3-dispatch-gate.md) — **live dispatch guidance** (Executive summary, cluster table, Phase 3.0, checklist).
 
-This file is **archival only**: api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** (commit `bfce9906`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
+This file is **archival only**: api-review transcripts (**Reviews A–Y**), **three** blocking inline rebuttals, **Review Z** (split receipt), **Review AA** / **Review AB** (post-split APPROVE, commit `273efd3e`), **Review AC** / **Review AD** (commit `da72fb9c`), **Review AE** / **Review AF** / **Review AG** (commit `bfce9906`). It is **not** the operational authority for emitter work — separates **chronicle** from **brief** per **`INVARIANTS.md`** “Documentation Describes Live State” (**Review Z**, codex, commit `bc6bf2c8`).
 
 ---
 
@@ -230,3 +230,9 @@ Relayed **BLOCKING** comment repeats the first review’s two claims: (1) `emit.
 
 - **Verdict:** APPROVE_WITH_COMMENTS — Phase 3 dispatch guidance in the parent brief looks clean; no concrete modeling / coding / **`TESTING.md`** violation in that brief itself.
 - **Finding (NON-BLOCKING):** **`INVARIANTS.md`** “Documentation Describes Live State” is only **partially** satisfied: the split fixes the live dispatch brief, but this sibling chronicle still lives under **`docs/briefs/`** rather than the repo’s archival review namespace (**`docs/review-findings/`** at **Review AF** capture — line refs drift); process/history remains in the live-brief area. **Concern is placement of the archival ingest, not the technical guidance.**
+
+**Review AG (codex / gpt-5.4, schedule, commit `bfce9906`, 2026-04-22T00:08:04Z)**
+
+- **Verdict:** Looks clean — no new thesis- or invariant-level problem in the added lines.
+- **Strengths (non-blocking):** Dispatch gate stays on live guidance + bounded implementation-layer Phase **3.0** (no paper-carrier reopening). Archival companion preserves verification trail while aligning dispatch with **`INVARIANTS.md`** “Documentation Describes Live State.”
+- **ROADMAP — verified:** Phase **3.0** — concrete, deletion-oriented, **unit-first** tests + **STOP-AND-ESCALATE** explicit. Phase **3.0b** — separated from **3.0**; **`lens_cost_symbolic_generated.rs`** on **regen** path, not hand edits.
