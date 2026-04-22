@@ -1342,7 +1342,7 @@ fn emit_rust_param_type(n: Node, shared_types: Map<String, Bool>, source_indices
       Some { value: Resolved { node: rt } } => render_rust_type(n: rt, shared_types: shared_types, source_indices: source_indices)
       _ => "()"
     }
-    concat("impl Fn(", param_str, ") -> ", ret_str, " + Clone")
+    concat("impl Fn(", param_str, ") -> ", ret_str)
   } else {
     render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
   }
@@ -1888,6 +1888,13 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
   }
 }
 
+fn is_callable_resolved_type(resolved_type: InferredNode?) -> Bool {
+  match resolved_type {
+    Some { value: Resolved { node: rt } } => rt.connective == Arrow
+    _ => false
+  }
+}
+
 fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Map<String, Bool>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   if name == "none" || name == "None" { emit_keyword(key: "null", target: Rust) }
   else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
@@ -1910,12 +1917,13 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
             let is_data = info.kind == DataItem
             if is_data { concat(to_snake(name: name), "()") }
             else {
-              let is_function_value = match binding_kind {
+            let is_function_value = match binding_kind {
                 Some { value: FunctionValueBinding } => true
                 _ => false
               }
+              let is_callable_value = is_function_value || is_callable_resolved_type(resolved_type: resolved_type)
               let ident = emit_ident(name: name, target: Rust)
-              let ident_str = if is_function_value {
+              let ident_str = if is_callable_value {
                 ident
               } else if moves_by_value {
                 ident
@@ -1927,7 +1935,9 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
             }
           None =>
             let ident = emit_ident(name: name, target: Rust)
-            let ident_str = if moves_by_value {
+            let ident_str = if is_callable_resolved_type(resolved_type: resolved_type) {
+              ident
+            } else if moves_by_value {
               ident
             } else { match resolved_type {
               Some { value: _ } => apply_type_template1(template: sharing.clone_value, arg0: ident)
@@ -2491,6 +2501,9 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     if is_rt_ref_map && idx == 0 {
       let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       concat("&", base)
+    } else if is_callable_resolved_type(resolved_type: arg_value(n: a).inferred) {
+      let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      apply_type_template1(template: sharing_for_target(target: Rust).borrow_arg_template, arg0: base)
     } else if map_contains_key(callee_borrow_positions, to_string(value: idx)) {
       let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       apply_type_template1(template: sharing_for_target(target: Rust).borrow_arg_template, arg0: base)
