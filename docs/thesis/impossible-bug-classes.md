@@ -489,16 +489,42 @@ string. SQL libraries like sqlx offer typed queries but raw
 compile-time SQL parsing, but `query(&string)` (non-macro) still exists.
 C++ has prepared-statement APIs but string APIs are still present.
 
-**gunbc status: IBC.**
-User code cannot concatenate or interpolate strings. No `+` for strings,
-no template-literal syntax, no `concat()` in `dsl/std/` exposed to user
-programs. Database queries must be structured data (typed operation +
-typed parameters). The same property covers shell, log-format, and path
-injection — all are the same construction-level guarantee.
+**gunbc status: CE at structured transport boundaries.**
+Important nuance vs. the earlier framing: string concatenation **does
+exist** in gunbc — `String = FreeMonoid<Char>` per
+`dsl/std/string_type.dag:16`, and `FreeMonoid<T>` has `concat` and
+`empty` as its algebra (`dsl/std/algebra.dag:279-284`). So the "no
+string concat" claim is wrong. The real guarantee is narrower and sits
+at the service-boundary layer:
 
-**Evidence:** `dsl/std/types.dag` (String primitive with no concat
-exposure); `dsl/std/containers.dag:19` (concat for monoid operations,
-not for scalar String in user code).
+- **Typed service operations.** The idiomatic `service`/`fn ... via
+  rest::post("/path")` form takes typed parameters, not raw strings
+  (classes 1, 2, 7). Building a SQL query by concatenating user input
+  and passing it to a typed service op is a compile error because the
+  typed parameter doesn't accept `String` where `StructuredQuery` is
+  required.
+- **Shape-B emission is author-time, not runtime.** Per THESIS
+  §"Omni-emission", targets like SQL schemas, HCL, YAML, OpenAPI are
+  emitted by `.dag` programs walking typed values via `fold` / `match`.
+  That happens at build / codegen time on typed inputs, not at runtime
+  on user input.
+
+**What is NOT protected.** A user can still author a service operation
+that *accepts* `String` (e.g., `fn execute_raw(sql: String) -> Json`);
+nothing in the language forbids declaring that shape. If they do, they
+can pass concatenated strings with user input embedded, and it will
+compile. The structural protection is discipline-via-idiom: the typed
+transport path is the default path; raw-string service operations are
+writable but anti-pattern.
+
+**Structural path to IBC (optional future work).** A lens that flags
+service operations accepting security-sensitive types
+(`String`/`Bytes`/`Json`) as requiring explicit opt-in / review. Size:
+S-M. Not in R1 scope; the CE-at-typed-boundary claim is sufficient.
+
+**Evidence:** `dsl/std/string_type.dag:16`; `dsl/std/algebra.dag:69-74`
+(String inhabits FreeMonoid<Char>); `dsl/std/http_path.dag` (typed
+service boundaries).
 
 ---
 
@@ -563,7 +589,7 @@ Rust can't touch.
 | 5 | Unenumerated effects | no-help | GAP | GAP (carriers partial) | **T-Effects** (L) |
 | 6 | Idempotency violation | no-help | CE | COMPLETE | — |
 | 7 | Suboptimal complexity | no-help | CE | PROXY | **T-LaneE** (XL, in R1) |
-| 8 | Unit / dimension mismatch | idiom | GAP | GAP | **T-Dimensions** (L) |
+| 8 | Unit / dimension mismatch | idiom | PARTIAL | PARTIAL | DB-3 core shipped; **T-Dimensions** wires enforcement (M) |
 | 9 | Nested-optional flatten | idiom | GAP | GAP | **T-Cardinality** (M-L) |
 | 10 | Secret leak to logs | idiom | GAP | GAP | **T-Secret** (S-M) |
 | 11 | Resource leak | idiom | PARTIAL | PARTIAL | **T-Resource-Ownership** (M) |
@@ -571,14 +597,15 @@ Rust can't touch.
 | 13 | Division by zero | runtime | GAP | GAP | **T-Tier2** |
 | 14 | Integer overflow | runtime/UB | GAP | GAP | **T-Tier2** |
 | 15 | Stack overflow from unbounded recursion | no-help | CE | CE | — |
-| 16 | SQL / shell / log injection | idiom | IBC | IBC | — |
+| 16 | SQL / shell / log injection | idiom | CE (typed boundary) | CE (typed boundary) | String concat exists via FreeMonoid; guarantee is at service boundary, not string layer |
 | 17 | Path traversal | idiom | PARTIAL | PARTIAL | Fold into T-Secret |
 
 ## Scoreboard
 
-- **Handled today** (IBC / CE / BEHAVIORALLY COMPLETE): 6/17 interesting classes + 9/9 table stakes
-- **Gap with named structural path:** 8/17 interesting
-- **Special (v3 regression being restored):** 1/17 (complexity — Lane E)
+- **Handled today** (IBC / CE / BEHAVIORALLY COMPLETE): classes 1, 2, 6, 15, 16 (with narrowed scope to typed boundaries) — **5/17** interesting + 9/9 table stakes
+- **PARTIAL** (infrastructure landed, consumer wire-up missing): classes 4, 8, 11, 17 — **4/17**
+- **GAP** with named structural path: classes 5, 9, 10, 12, 13, 14 — **6/17**
+- **Special (v3 regression being restored):** class 7 (complexity — Lane E) — **1/17**
 - **Requires runtime-only mitigation:** 0
 
 Every interesting class Rust/C++ can't / won't catch is either handled
