@@ -252,7 +252,8 @@ the Pure Bootstrap program (see `docs/design-pure-bootstrap.md`).
 Fixed-point acceptance: v3 binary compiles `compiler.dag` → produces
 bit-identical stage0 Rust + bit-identical emitted artifacts.
 `compiler.dag`'s `hand_maintained_src` list monotonically shrinks to the
-irreducible shim (bootstrap entrypoint only).
+irreducible shim set enumerated in `docs/design-pure-bootstrap.md` (the
+design doc is the single authority on which files count).
 
 **Audience duality — opt-in depth (meta-feature):**
 - Core language stays approachable — types, functions, match, effects,

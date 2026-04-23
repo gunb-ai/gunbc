@@ -65,7 +65,7 @@ Full `TestClaim` declarations live in the lane briefs. Each predicate below is e
 - **T-TestGen.** `testgen_structural_coverage · testgen_mock_backed_integration_safe · testgen_manual_claim_is_first_class`
 - **T-LensAPI.** `user_authored_lens_compiles · lens_composition_associative · lens_output_is_queryable_data`
 - **T-PB-A.** `pb_hand_rust_at_shim_floor · pb_self_compile_fixed_point · pb_compiler_std_ratchet_zero` — live baselines read from authorities; not frozen in this doc. Hand-Rust: `EXPECTED_HAND_AUTHORED` in SG-0 census → ≤5 irreducible-shim per `docs/design-pure-bootstrap.md`. Consolidation ratchet: compiler-local types not in positive-def set → 0.
-- **T-PB-B.** `pb_test_file_generated_from_dag`
+- **T-PB-B.** `pb_test_file_generated_from_dag · pb_rust_tests_outside_residual_zero` — the first gates the pipeline-equivalent suite; the second gates the outcome: zero Rust-authored tests exist outside the `TESTING.md §"Post-R2 shape"` residual (compiler-internal unit tests + external-toolchain boundary tests). Single-file generation is insufficient proof of the lane's end-state.
 - **T-Demo.**
   - `fixture_compiler_nerd_canonical` — demonstrates: complexity, ownership, parallelism
   - `fixture_integration_canonical` — demonstrates: effects, idempotency, testgen
