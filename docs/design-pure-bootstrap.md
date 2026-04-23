@@ -204,10 +204,14 @@ retire projection — not one.
 
 ### PB-8 — graduation
 
-- `EXPECTED_HAND_AUTHORED` (SG-0 ratchet) reaches ≤5 entries (CLI
-  entry + runtime bridge + build shim + possibly lib.rs + bootstrap
-  entry). `compiler.dag`'s `hand_maintained_src` converges to the
-  same set.
+- **Non-test entries** in the full SG-0 census (`EXPECTED_HAND_AUTHORED`
+  file-level + `EXPECTED_HAND_AUTHORED_FRAGMENTS` crate-root scaffolds)
+  reach ≤5 irreducible-shim (CLI entry + runtime bridge + build shim +
+  possibly lib.rs + bootstrap entry). Test entries (identified by
+  inspection until the sub-ratchet split lands — see §Graduation
+  trigger) remain at the `TESTING.md §"Post-R2 shape"` residual;
+  TESTING.md is single authority on which tests persist. `compiler.dag`'s
+  `hand_maintained_src` converges to the non-test set.
 - Delete scaffolding: `include_str!` constants, runtime-parse paths,
   census accommodations for not-yet-retired files.
 - **Dependencies**: PB-7 green.
@@ -216,7 +220,17 @@ retire projection — not one.
 
 1. Every `.rs` file in `src/v3/compiler/src/` is **either**:
    - Generated (ends in `_generated.rs` and has the generated header), **or**
-   - Listed in `EXPECTED_HAND_AUTHORED` (target: ≤5 entries; `compiler.dag`'s `hand_maintained_src` converges to the same set).
+   - Listed in the full SG-0 census (`EXPECTED_HAND_AUTHORED` +
+     `EXPECTED_HAND_AUTHORED_FRAGMENTS`) and falls in one of two
+     buckets: (a) **non-test** entries scope to ≤5 irreducible-shim
+     per §"Irreducible shim (target state)" below; `compiler.dag`'s
+     `hand_maintained_src` converges to the same non-test set;
+     (b) **test** entries match the `TESTING.md §"Post-R2 shape"`
+     residual (compiler-internal unit tests + external-toolchain
+     boundary tests invoking rustc/go/python) — TESTING.md is single
+     authority on the residual. Non-test/test partition is currently
+     applied by inspection; mechanical sub-ratchet split in
+     `sg0_census_test.rs` is tracked follow-up.
 2. `cargo run -p v3-compiler --release --bin regen_v3` produces
    bit-identical Rust (cycle converges in 1 iteration).
 3. CI gate: census partition matches directory contents (no
