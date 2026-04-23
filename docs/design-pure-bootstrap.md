@@ -1,6 +1,6 @@
 # Pure Bootstrap (PB program)
 
-**Thesis claim**: `THESIS.md` §"Pure bootstrap (self-hosted stage0)".
+**Thesis claim**: `THESIS.md` §"Self-hosting — three facets" (facet 2: *Compiler self-emits (fixed-point)*) — and the corresponding claim in the `Thesis claims — complete list`.
 
 Editing compiler behavior must be a one-file `.dag` change. No paired
 hand edits to a Rust stage0 file. This document is the trajectory from
@@ -305,5 +305,6 @@ PB graduates when:
 2. DB-8 self-host fixed-point runs on full `compiler.dag` (not fixture) and passes bit-identically
 3. CI census gate blocks unmarked hand-authored files
 
-At that point, the THESIS.md §"Pure bootstrap" claim is structurally
-satisfied. The residual shim is the irreducible system boundary.
+At that point, the THESIS.md §"Self-hosting — three facets" facet 2
+(*Compiler self-emits*) claim is structurally satisfied. The residual
+shim is the irreducible system boundary.
