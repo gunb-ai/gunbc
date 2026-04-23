@@ -282,22 +282,35 @@ verbose phantom-typed values. C++ does this with templates but the
 ergonomics are punishing. Neither is the default path.
 
 **gunbc status: PARTIAL.**
-DB-3 (user-declared dimensions) core landed per ROADMAP:226 —
-`docs/db-history/db-3.md` documents what shipped: the generic dimension
-framework + dimensional type parameters. What hasn't landed: **unit-
-mismatch enforcement consumer** — the lens / pass that rejects
-assigning `Duration<Millisecond>` where `Duration<Second>` is expected.
-Infrastructure exists; enforcement wire-up missing. Plus generic `.dag`
-lowering of user-authored dimensions + example-authoring per DB-3's
-named follow-ups.
+DB-3 (user-declared dimensions) core is shipped and structurally
+terminal — the live authority is `src/v3/std/dimensions.dag`, which
+defines the generic `Dimension<Carrier>` framework, `Witness<Carrier>`
+(with `Inhabits` / `Violates` variants for per-operation evidence), and
+the composition report shape. The file header marks it **🟢 TERMINAL
+for the structural surface (Lane 2 Stage 2f)**. Symbolic-cost dimension
+analysis dispatches through this module. See also DB-3 receipt at
+`docs/db-history/db-3.md` and `docs/design-dimension-abstraction.md`.
 
-**Structural path.** Wire DB-3 carriers into a unit-mismatch lens that
-produces a compile error on dimension-incompatible assignments /
-function applications. Size: M (consumer-wire-up, not substrate
-extension).
+What has NOT landed:
+- **Unit-mismatch enforcement consumer** — a lens / pass that rejects
+  assigning `Duration<Millisecond>` where `Duration<Second>` is expected
+  at a function boundary or assignment site. Carriers exist; the
+  consumer wire-up that produces a compile error on violation is
+  missing.
+- `data symbolic_cost_dimension: Dimension<SymbolicCost>` — the class-5
+  `data` body is blocked on record-bodies per DOWNSTREAM_REQUIREMENTS
+  gap #3 (deferred in the file header).
+- Generic `.dag` lowering of user-authored dimensions +
+  example-authoring (DB-3's named follow-ups).
 
-**R1 status.** PARTIAL → close for R1. T-Dimensions lane now scoped
-against DB-3 core rather than from scratch.
+**Structural path.** Wire the existing `Dimension<Carrier>` /
+`Witness<Carrier>` carriers into a unit-mismatch enforcement lens that
+reads assignment / call sites and produces a compile error on
+dimension-incompatible composition. Size: M (consumer wire-up against
+a terminal substrate surface, not substrate extension).
+
+**R1 status.** PARTIAL → close for R1. T-Dimensions is **a consumer
+lane, not a substrate lane** — DB-3 already shipped the framework.
 
 ---
 
