@@ -69,7 +69,7 @@ Full `TestClaim` declarations live in the lane briefs. Each predicate below is e
 - **T-Demo.**
   - `fixture_compiler_nerd_canonical` — demonstrates: complexity, ownership, parallelism
   - `fixture_integration_canonical` — demonstrates: effects, idempotency, testgen
-  - `impossible_bug_class_suite_r1` — three classes demoed: idempotency-violation, suboptimal-complexity, transport/type-drift. Remaining three (nested-optional flatten, unhandled diagnostic paths, unenumerated effects) are thesis-committed for R2 demo. See THESIS §"Enumerable impossible-bug classes".
+  - `impossible_bug_class_suite_r1` — three classes demoed: idempotency-violation, suboptimal-complexity, transport/type-drift. Remaining three (nested-optional flatten, unhandled diagnostic paths, unenumerated effects) are tagged **[R2+]** in THESIS — thesis-committed but not scheduled to a specific release. THESIS §"Enumerable impossible-bug classes" is the authority on scheduling tags.
   - `demo_user_authored_lens_rejects_violating_program` — operationalizes THESIS §"User-defined dimensions". Demo shows a user-written lens (~20 lines of `.dag`; e.g., "max external HTTP calls per workflow") rejecting a program that violates it, alongside the built-in complexity lens. Proves the ceiling of what gunbc can prove is user-extensible, not compiler-baked. Consumes `user_authored_lens_compiles` from T-LensAPI.
 
 **T-Demo scoping note.** All lanes ship features whole (no compromise per §Goals). T-Demo curates the R1 *narrative* — fixtures and impossible-bug demos selected for visceral audience impact, not exhaustive feature coverage. Audience curation is demo-scoping; feature shipment is lane-scoping.
