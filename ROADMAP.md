@@ -130,6 +130,8 @@ Read bottom-up. Arrows point producer → consumer.
 
 Both land inside T-PB-A because dissolving the compiler-local surface forces both gates down together, but the acceptance claims (`pb_hand_rust_at_shim_floor`, `pb_compiler_std_ratchet_zero`) are independent gates tracked against independent authorities.
 
+**Tracked follow-up — SG-0 ratchet split not yet structural.** The R1 split (T-PB-A owns non-test; T-PB-B owns test) is currently **conceptual only** — `EXPECTED_HAND_AUTHORED` in the SG-0 census counts test and non-test together as one list, and `docs/design-pure-bootstrap.md`'s graduation criterion (`EXPECTED_HAND_AUTHORED.len() ≤ 5`) reads that single count. For the conceptual split to become structurally checkable, the census needs two sub-ratchets (non-test + test), the design-doc graduation needs to encode the non-test-scoped condition, and `pb_hand_rust_at_shim_floor` / `pb_rust_tests_outside_residual_zero` predicates need to name the partition. Scope for T-PB-A's lane brief; until it lands, the live ratchet is total-count and R1 prose names the gap explicitly rather than claiming resolution.
+
 ### Relationship to existing milestone status
 
 R1 absorbs what was "Post-A/B Lane Plan" and L1.5 forward work, framed by release deliverable rather than architectural stage. The status table below stays accurate for backward-looking context; R1 is the forward-looking companion.
