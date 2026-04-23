@@ -161,9 +161,9 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 
 **Correctness is structural, not behavioral (meta-claim):**
 - Every correctness dimension — type, arity, unit, effect, complexity, ownership, idempotency, and any user-declared invariant — is a structural fact carried by the program's data model.
-- Validation is reading the structure; it is not running the code. The Tier 1 / Tier 2 / Tier 3 claims below are what this meta-claim produces, not independent commitments.
+- The proof and test surface is structurally derived, not hand-maintained. Tier 1 and Tier 2 proofs close at compile time by reading the structure. Tier 3 runs emitted code, but the test surface is generated from structural `TestClaim` declarations in `.dag` — not hand-authored behavior assertions. The `TESTING.md §"Post-R2 shape"` residual (compiler-internal unit tests + external-toolchain boundary tests) is the explicit carve-out where hand-authored Rust remains; TESTING.md is the single authority on that residual.
 - The dimension system is first-class user-extensible: a user writes a lens in `.dag`, and the compiler validates every program against it using the same mechanism it uses for built-in dimensions.
-- What mainstream languages catch via testing, profiling, schema validators, integration test suites, and production postmortems, gunbc catches at compile time by reading the structure once.
+- What mainstream languages catch via testing, profiling, schema validators, integration test suites, and production postmortems, gunbc catches by structurally deriving the proof or test — compile-time proofs for Tier 1/2, structurally-derived test surface for Tier 3.
 
 **Tier 1 — Structural correctness (impossible to write the bug):**
 - Type mismatches, field typos, non-exhaustive matches, bare container types, circular dependencies, stale imports, cross-target drift — all caught at compile time.
