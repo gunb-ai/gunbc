@@ -1,6 +1,17 @@
 # Impossible Bug Classes — Worked Examples
 
-> **Parent:** `THESIS.md` §"Enumerable impossible-bug classes" + §"Correctness is structural, not behavioral (meta-claim)"
+> **Relationship to THESIS (single-authority discipline).** `THESIS.md`
+> §"Enumerable impossible-bug classes" currently commits to **6 classes**
+> (3 tagged `[R1]` + 3 tagged `[R2+]`). This doc (a) audits each of those
+> 6 against the current tree, and (b) **proposes extending the list to
+> 26 classes** (17 "interesting" + 9 "table stakes") based on what
+> mainstream structured compilers let through.
+>
+> The expansion from 6 → 26 is a proposal, not yet thesis authority.
+> Until `THESIS.md` is amended to carry the extended list, this doc is
+> an audit + proposal, not parallel authority. When THESIS is amended
+> (follow-up PR), this doc becomes the how/status authority for the list
+> THESIS commits to.
 
 ## Focus
 
@@ -647,7 +658,19 @@ differentiation, not Python-class paper-scores.
 - **Rust/C++ field advances** (e.g., a new effect-system extension):
   update Rust/C++ status so we track where the bar moves.
 
-This doc is parallel authority with THESIS §"Enumerable impossible-bug
-classes" on the *bug-class list*. When they diverge, THESIS is the list
-authority; this doc is the how/status authority. Adding a class means
-touching both.
+**Authority status (until THESIS is amended).** This doc is an **audit +
+proposal**, not parallel authority:
+
+- **Audit role** (now): for THESIS's current 6-class list — classes 2,
+  5, 6, 7, 9, and the division-by-zero / overflow / bounds trio covered
+  by THESIS's "unhandled diagnostic paths" (classes 12-14) — this doc
+  records the how/status honestly.
+- **Proposal role** (now): for the 17 additional classes (the expansion
+  from 6 → 26), this doc proposes adding them to THESIS's committed
+  list. Until that amendment lands in a follow-up PR, they are proposed
+  extensions, not thesis commitments.
+
+**Once THESIS is amended** to carry the extended list, this doc becomes
+the single how/status authority for the list THESIS commits to. At that
+point, adding a class means touching both (THESIS for commitment, this
+doc for audit). Until then, adding a class here is a proposal.
