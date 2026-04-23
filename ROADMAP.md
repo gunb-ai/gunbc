@@ -20,10 +20,10 @@ Read this file for the live plan, milestone state, and current DB status lines. 
 
 **Meta-acceptance (two stages).** R1 ships when every lane's acceptance `TestClaim`:
 
-- **(a) compiles as a `.dag` declaration** — achievable from Day 1; DB-15's TestClaim schema is already in tree.
-- **(b) evaluates true at release** — requires T-TestGen's runner closure. T-TestGen is therefore the gate-enabling lane, not just one lane among many.
+- **(a) compiles as a `.dag` declaration** — predicates already in today's DB-15 schema compile from Day 1; predicates scheduled for T-TestGen schema extensions compile once T-TestGen lands those additions. Not every gate is Day-1 compilable — see `### Lane acceptance` below for the per-predicate split.
+- **(b) evaluates true at release** — requires T-TestGen's runner closure.
 
-The release gate IS a `.dag` program. This is the thesis eating its own dogfood.
+T-TestGen is therefore the gate-enabling lane on two axes: it extends the predicate vocabulary where gates need new predicates, and it lands the runner that evaluates every predicate structurally. The release gate IS a `.dag` program. This is the thesis eating its own dogfood.
 
 **Debt paydown continues in parallel.** R1 does not freeze the tracked-debt ledger. The lane structure names forward deliverables; the ledger below keeps dispatching — CI ratchet audit, stale-brief sweep, INVARIANTS cross-ref cleanup, scheduled-deletion work. Treat debt work as a continuous **T-Receipts** track (bundle 2-4 items per PR per the standing preference).
 

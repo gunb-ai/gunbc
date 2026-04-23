@@ -249,15 +249,18 @@ Self-hosting is not one capability; it's three. All three are targets.
 
 Cost-of-change: editing any compiler concept — a new pass, substrate fact,
 target-language detail, or test assertion — stays at one `.dag` file. No
-matching hand edits to a Rust stage0 file. Stage0 Rust (tokenize, parse,
-lower, infer, emit, lenses, std library, compiler tests) is emitted from
-the `.dag` graph and committed — not hand authored. Hand-maintained
-surface target: the irreducible shim set defined in
-`docs/design-pure-bootstrap.md` (the design doc is the single authority
-on which files count and how many). Generated escape hatch is acceptable
-for additional files; hand-authored beyond the shim is not. v2 achieves
-this pattern at ~97% (2 hand-maintained of 62 stage0 files); v3's
-trajectory is the Pure Bootstrap program.
+matching hand edits to a Rust stage0 file. Stage0 Rust compiler internals
+(tokenize, parse, lower, infer, emit, lenses, std library) are emitted
+from the `.dag` graph and committed — not hand authored. Tests follow
+the carve-out in facet 3 above: pipeline/contract tests are `.dag`
+`TestClaim` data; the `TESTING.md §"Post-R2 shape"` residual categories
+(compiler-internal unit tests + external-toolchain boundary tests) remain
+Rust-authored. Hand-maintained surface target: the irreducible shim set
+defined in `docs/design-pure-bootstrap.md` (the design doc is the single
+authority on which files count and how many). Generated escape hatch is
+acceptable for additional files; hand-authored beyond the shim is not.
+v2 achieves this pattern at ~97% (2 hand-maintained of 62 stage0 files);
+v3's trajectory is the Pure Bootstrap program.
 
 Fixed-point acceptance: v3 binary compiles `compiler.dag` → produces
 bit-identical stage0 Rust + bit-identical emitted artifacts.
