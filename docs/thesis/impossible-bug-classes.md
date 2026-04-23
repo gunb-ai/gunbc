@@ -50,13 +50,29 @@ A class is interesting for gunbc when Rust/C++ is `idiom` / `runtime` /
 
 ## How this doc is used
 
-- THESIS commits to the list of bug classes (the *what*).
-- This doc records *how* Rust/C++ handle each + *how* gunbc handles it +
-  *what's missing* if anything.
+- **THESIS commits to the list of bug classes** (the *what*) — 6 today,
+  proposed expansion to 26.
+- **This doc records** *how* Rust/C++ handle each + *how* gunbc handles
+  it + *what's missing* if anything.
 - Gaps trace to ROADMAP follow-up lanes.
 - When a new bug class surfaces externally (user reports, security
   audits, design-review findings), add it here first; fix structure
   second.
+
+### Mapping to THESIS's current 6-class list
+
+| THESIS class | This doc's class # |
+|---|---|
+| Suboptimal-complexity contract violation | 7 |
+| Idempotency violation | 6 |
+| Transport/type drift | 2 |
+| Nested-optional flatten | 9 |
+| Unenumerated effects | 5 |
+| Unhandled diagnostic paths (Tier 2 safety) | 12, 13, 14 (expanded into three concrete classes) |
+
+The remaining 17 "interesting" classes and 9 "table stakes" classes in
+this doc are **proposed extensions** to THESIS — not yet thesis
+authority. Promotion requires a follow-up PR amending THESIS.
 
 ---
 
