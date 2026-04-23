@@ -56,7 +56,7 @@ Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomp
 
 ### Lane acceptance — `.dag` gates
 
-Full `TestClaim` declarations live in the lane briefs. Each predicate is tagged `[Day 1]` (compiles against today's DB-15 schema — `Compiles`, `FailsWithDiagnostic`, `OutputEquals`, `CostBounded`, `PortHasState`) or `[ext]` (requires a T-TestGen schema extension before compiling). Day-1 predicates are a minority — the majority block on T-TestGen's runner + schema work, which is why T-TestGen is the gate-enabling lane.
+This section lists gate names + schema-compilability tags; full `TestClaim` declarations will land as deliverables of the lane-brief drafting step (lane owners author them as `.dag` after being named). Each predicate is tagged `[Day 1]` (compiles against today's DB-15 schema — `Compiles`, `FailsWithDiagnostic`, `OutputEquals`, `CostBounded`, `PortHasState`) or `[ext]` (requires a T-TestGen schema extension before compiling). Day-1 predicates are a minority — the majority block on T-TestGen's runner + schema work, which is why T-TestGen is the gate-enabling lane.
 
 - **T-P0.** `p0_repeat_string_correct` [Day 1] · `p0_no_fabrication_sentinel` [ext] · `p0_rest_ops_aligned` [ext]
 - **T-Sub.** `sub_match_over_user_sum` [Day 1] · `sub_type_alias_where_lowers` [ext] · `sub_charclass_in_std_unicode` [ext]

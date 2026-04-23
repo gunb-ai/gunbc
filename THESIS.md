@@ -227,9 +227,11 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 Self-hosting is not one capability; it's three. All three are targets.
 
 1. **Compiler written in the language it compiles.** `.dag` source authors
-   the compiler. Substantially true today — most of the compiler is `.dag`;
-   stage0 Rust remains as sketch scaffold. Pre-existing condition, not a
-   Pure Bootstrap deliverable.
+   the compiler. Partially true today — `.dag` authors key compiler passes
+   (visible in `dsl/gunbc/` and emitted Rust), while stage0 Rust (see SG-0
+   census for the live count) remains as sketch scaffold pending
+   dissolution. The direction predates the Pure Bootstrap program; PB is
+   the trajectory, not the origin.
 
 2. **Compiler self-emits (fixed-point).** Compiling `compiler.dag` produces
    bit-identical output to what currently ships. The `.dag` graph is the
