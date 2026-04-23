@@ -281,6 +281,11 @@ irreducible shim set defined in `docs/design-pure-bootstrap.md`.
 - gunbc does not pick a tribe. Normal programmers get glue generation;
   principal engineers get structural proofs. The same compiler serves both
   because depth is a surface the user opts into.
+- **Tracks via ROADMAP:** T-Demo's two fixtures exercise both audiences
+  (`fixture_compiler_nerd_canonical` for structural-proof audience;
+  `fixture_integration_canonical` for glue-generation audience), and
+  T-LensAPI provides the opt-in-depth mechanism (user-authored lenses
+  extend the proof surface without changing the base language).
 
 **Tests are structural data:**
 - Tests outside the `TESTING.md §"Post-R2 shape"` residual are `TestClaim`
