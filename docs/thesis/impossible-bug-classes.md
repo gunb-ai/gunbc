@@ -237,15 +237,29 @@ posts. Classic at-least-once delivery pain.
 **Rust / C++ status: `no-help`.** Idempotency is a property of the body,
 invisible to any mainstream type system.
 
-**gunbc status: IBC** (v3 BEHAVIORALLY COMPLETE).
-Idempotency is a property of the effect shape's algebraic structure.
-`is_idempotent_effect(shape)` pattern-matches on `EffectShape`;
-`compose_effects` checks the composition. `retry_on_failure` applied to
-a workflow with non-idempotent tail is a compile error.
+**gunbc status: PARTIAL.** The lens produces correct verdicts; the
+compile-time gate that rejects `retry_on_failure(non_idempotent_body)`
+is not yet wired.
 
-**Evidence:** `dsl/std/effects.dag:108-150`;
-`docs/v3-lens-capability-register.md:43` (v3 COMPLETE);
-`src/v3/lenses/idempotency.dag`.
+What's landed: `is_idempotent_effect(shape)` and `compose_effects`
+structurally compose the effect algebra (`dsl/std/effects.dag:108-150`).
+`src/v3/lenses/idempotency.dag` is BEHAVIORALLY COMPLETE per
+`docs/v3-lens-capability-register.md:43` — the lens produces correct
+verdicts on whether a composed workflow is retry-safe.
+
+What's NOT landed: the compile-failure wiring that converts those
+verdicts into compile errors at retry-composition sites. Per
+`docs/lane2-compile-time-proofs.md:29` (Lane 2 status matrix),
+Idempotence has ✅ declared + ✅ composed but ❌ **Gate not wired** +
+❌ **compile-time enforcement missing**. The lens knows; the compiler
+does not yet refuse to compile.
+
+**Structural path.** Wire the idempotency lens output into a retry-
+composition diagnostic per Lane 2 M1 plan. Size: S-M (consumer wire-up;
+no substrate extension).
+
+**R1 status.** PARTIAL → close for R1. Lens already produces the
+verdict; needs compile-gate wiring.
 
 ---
 
@@ -654,10 +668,10 @@ Rust can't touch.
 |---|---|---|---|---|---|
 | 1 | Schema drift (client/server) | no-help | CE | CE | — |
 | 2 | Transport/type drift (REST path) | idiom | CE | CE | — |
-| 3 | Cross-language behavior divergence | no-help | partial | CE (Lane E) | Cementing test |
+| 3 | Cross-language behavior divergence | no-help | partial | GAP | `what-falls-out.md:90` records L5 as not implemented; Lane E cementing tests planned, not yet a compile gate |
 | 4 | API version mismatch | no-help | PARTIAL | PARTIAL | Protocol-versioning model |
 | 5 | Unenumerated effects | no-help | GAP | GAP (carriers partial) | **T-Effects** (L) |
-| 6 | Idempotency violation | no-help | CE | COMPLETE | — |
+| 6 | Idempotency violation | no-help | CE | PARTIAL | Lens BEHAVIORALLY COMPLETE per register; compile gate not wired per `lane2-compile-time-proofs.md:29` |
 | 7 | Suboptimal complexity | no-help | CE | PROXY | **T-LaneE** (XL, in R1) |
 | 8 | Unit / dimension mismatch | idiom | PARTIAL | PARTIAL | DB-3 core shipped; **T-Dimensions** wires enforcement (M) |
 | 9 | Nested-optional flatten | idiom | GAP | GAP | **T-Cardinality** (M-L) |
@@ -672,9 +686,9 @@ Rust can't touch.
 
 ## Scoreboard
 
-- **Handled today** (IBC / CE / BEHAVIORALLY COMPLETE): classes 1, 2, 6, 15, 16 (with narrowed scope to typed boundaries) — **5/17** interesting + 9/9 table stakes
-- **PARTIAL** (infrastructure landed, consumer wire-up missing): classes 4, 8, 11 — **3/17**
-- **GAP** with named structural path: classes 5, 9, 10, 12, 13, 14, 17 — **7/17**
+- **Handled today** (IBC / CE): classes 1, 2, 15, 16 (with narrowed scope to typed boundaries) — **4/17** interesting + 9/9 table stakes
+- **PARTIAL** (infrastructure landed, consumer wire-up / gate missing): classes 4, 6, 8, 11 — **4/17**
+- **GAP** with named structural path: classes 3, 5, 9, 10, 12, 13, 14, 17 — **8/17**
 - **Special (v3 regression being restored):** class 7 (complexity — Lane E) — **1/17**
 - **Requires runtime-only mitigation:** 0
 
