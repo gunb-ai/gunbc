@@ -18,7 +18,14 @@ Read this file for the live plan, milestone state, and current DB status lines. 
 
 **Not the goal.** Strict v2 feature parity across every lens; consumer-facing polish; web/agentic marketing push. Those are R2+.
 
-**Meta-acceptance.** R1 ships when every lane's acceptance `TestClaim` compiles and evaluates true as a `.dag` declaration. The release gate IS a `.dag` program. This is the thesis eating its own dogfood.
+**Meta-acceptance (two stages).** R1 ships when every lane's acceptance `TestClaim`:
+
+- **(a) compiles as a `.dag` declaration** — achievable from Day 1; DB-15's TestClaim schema is already in tree.
+- **(b) evaluates true at release** — requires T-TestGen's runner closure. T-TestGen is therefore the gate-enabling lane, not just one lane among many.
+
+The release gate IS a `.dag` program. This is the thesis eating its own dogfood.
+
+**Debt paydown continues in parallel.** R1 does not freeze the tracked-debt ledger. The lane structure names forward deliverables; the ledger below keeps dispatching — CI ratchet audit, stale-brief sweep, INVARIANTS cross-ref cleanup, scheduled-deletion work. Treat debt work as a continuous **T-Receipts** track (bundle 2-4 items per PR per the standing preference).
 
 ### Goals (the six non-negotiables)
 
@@ -31,7 +38,7 @@ Read this file for the live plan, milestone state, and current DB status lines. 
 
 Enablers (prerequisites for the goals): T-P0 (bug sweep), T-Sub (surface syntax completion).
 
-### Eight lanes
+### Nine lanes
 
 Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomposition; this section holds intent and acceptance only.
 
@@ -43,7 +50,7 @@ Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomp
 | T-LaneE | XL | Complexity lens v2 parity via substrate-carrier-port | Existing Lane E-T/C/I/P/M program |
 | T-TestGen | L | Testgen runner, service simulation, first-class TestClaim | DB-15 follow-up |
 | T-LensAPI | M-L | User-authored lenses + composition | Lens capability honesty pass |
-| T-PB-A | XL | Compiler self-emits (fixed-point); zero hand-Rust non-test | Compiler–std consolidation program, hand-Rust census |
+| T-PB-A | XL | Compiler self-emits (fixed-point); `EXPECTED_HAND_AUTHORED` 95 → 0 non-test (generated escape hatch OK) | Compiler–std consolidation program, hand-Rust census |
 | T-PB-B | M | Tests-as-data (no hand-Rust tests) | DB-15 + T-TestGen |
 | T-Demo | M | Two canonical fixtures + impossible-bugs suite + narrative | — (new) |
 
