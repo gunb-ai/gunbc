@@ -86,13 +86,17 @@ See [docs/thesis/target-realization-efficiency.md](docs/thesis/target-realizatio
 
 ## Correctness dimensions
 
-Correctness dimensions are the thesis mechanism for adding new proof obligations without inventing parallel infrastructures.
+Correctness dimensions are the thesis mechanism for adding new proof obligations without inventing parallel infrastructures. A dimension — complexity, cost, idempotency, ownership, parallelism, or any user-declared invariant — is a structural fact carried by the program's data model, not a behavioral check run at test time. Validation is reading the structure; it is not running the code.
+
+Consequence: correctness scales with the structural surface, not with human attention. Mainstream languages catch invariant violations via tests, profilers, schema validators, and production postmortems. gunbc catches them by structural derivation — compile-time proofs for Tier 1/2 dimensions, and a structurally-derived test surface for Tier 3 (where emitted code runs but the test surface is TestClaim data, not hand-authored behavior assertions).
 
 See [docs/thesis/correctness-dimensions.md](docs/thesis/correctness-dimensions.md).
 
 ### User-defined dimensions
 
-User-declared dimensions extend the same structural proof surface rather than opening a second rule system.
+User-declared dimensions extend the same structural proof surface rather than opening a second rule system. A user writes a lens in `.dag` — e.g., "max external HTTP calls per workflow," "bounded memory footprint per request," "no cross-tenant data flow" — and the compiler validates every program against it using the same mechanism it uses for built-in dimensions.
+
+Consequence: the ceiling of what gunbc can prove is user-extensible. Domain-specific correctness concerns that mainstream languages cannot model become structural facts in gunbc.
 
 See [docs/thesis/correctness-dimensions.md](docs/thesis/correctness-dimensions.md#user-defined-dimensions).
 
@@ -155,6 +159,12 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 **Core abstraction:**
 - .dag is dependency modeling software. The program IS a dependency graph. Parallelism is the default; sequential execution requires a data dependency to justify it.
 
+**Correctness is structural, not behavioral (meta-claim):**
+- Every correctness dimension — type, arity, unit, effect, complexity, ownership, idempotency, and any user-declared invariant — is a structural fact carried by the program's data model.
+- The proof and test surface is structurally derived, not hand-maintained. Tier 1 and Tier 2 proofs close at compile time by reading the structure. Tier 3 runs emitted code, but the test surface is generated from structural `TestClaim` declarations in `.dag` — not hand-authored behavior assertions. The `TESTING.md §"Post-R2 shape"` residual (compiler-internal unit tests + external-toolchain boundary tests) is the explicit carve-out where hand-authored Rust remains; TESTING.md is the single authority on that residual.
+- The dimension system is first-class user-extensible: a user writes a lens in `.dag`, and the compiler validates every program against it using the same mechanism it uses for built-in dimensions.
+- What mainstream languages catch via testing, profiling, schema validators, integration test suites, and production postmortems, gunbc catches by structurally deriving the proof or test — compile-time proofs for Tier 1/2, structurally-derived test surface for Tier 3.
+
 **Tier 1 — Structural correctness (impossible to write the bug):**
 - Type mismatches, field typos, non-exhaustive matches, bare container types, circular dependencies, stale imports, cross-target drift — all caught at compile time.
 - CX gate: every recursive function terminates with a proven bound.
@@ -212,49 +222,130 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 - `dag run` is the primary execution path.
 - Adding a CI gate, a Node field, or a target language requires editing one .dag file.
 
-**Pure bootstrap (self-hosted stage0):**
-- Editing compiler behavior requires editing `.dag` source only.
-  No matching hand edits to a Rust stage0 file. Cost-of-change
-  for any compiler concept — a new pass, a new substrate fact,
-  a new target-language detail — stays at 1.
-- Stage0 is regeneratable from the `.dag` graph. Compiler
-  internals (tokenize, parse, lower, infer, emit, lenses, std
-  library) are emitted as Rust source and committed — not hand
-  authored. The hand-maintained surface is an irreducible shim
-  (CLI entry + runtime bridge), target ≤5 files. v2 achieves
-  this pattern at ~97% (2 hand-maintained of 62 stage0 files);
-  v3's trajectory is the Pure Bootstrap program (see
-  `docs/design-pure-bootstrap.md`).
-- Fixed-point acceptance: v3 binary compiles `compiler.dag` →
-  produces bit-identical stage0 Rust + bit-identical emitted
-  artifacts. `compiler.dag`'s `hand_maintained_src` list
-  monotonically shrinks to the irreducible shim.
-- Strictly stronger than "the compiler can compile itself":
-  the compiler's own source of truth is the `.dag` graph, and
-  the Rust tree is one realization of it — not a parallel
-  authority requiring manual sync.
+**Self-hosting — three facets:**
 
-**Pure bootstrap (self-hosted stage0):**
-- Editing compiler behavior requires editing `.dag` source only.
-  No matching hand edits to a Rust stage0 file. Cost-of-change
-  for any compiler concept — a new pass, a new substrate fact,
-  a new target-language detail — stays at 1.
-- Stage0 is regeneratable from the `.dag` graph. Compiler
-  internals (tokenize, parse, lower, infer, emit, lenses, std
-  library) are emitted as Rust source and committed — not hand
-  authored. The hand-maintained surface is an irreducible shim
-  (CLI entry + runtime bridge), target ≤5 files. v2 achieves
-  this pattern at ~97% (2 hand-maintained of 62 stage0 files);
-  v3's trajectory is the Pure Bootstrap program (see
-  `docs/design-pure-bootstrap.md`).
-- Fixed-point acceptance: v3 binary compiles `compiler.dag` →
-  produces bit-identical stage0 Rust + bit-identical emitted
-  artifacts. `compiler.dag`'s `hand_maintained_src` list
-  monotonically shrinks to the irreducible shim.
-- Strictly stronger than "the compiler can compile itself":
-  the compiler's own source of truth is the `.dag` graph, and
-  the Rust tree is one realization of it — not a parallel
-  authority requiring manual sync.
+Self-hosting is not one capability; it's three. All three are targets.
+
+1. **Compiler written in the language it compiles.** `.dag` source authors
+   the compiler. Partially true today — `.dag` authors key compiler passes
+   (visible in `dsl/gunbc/` and emitted Rust), while stage0 Rust (see SG-0
+   census for the live count) remains as sketch scaffold pending
+   dissolution. The direction predates the Pure Bootstrap program; PB is
+   the trajectory, not the origin.
+
+2. **Compiler self-emits (fixed-point).** Compiling `compiler.dag` produces
+   bit-identical output to what currently ships. The `.dag` graph is the
+   source of truth; the emitted Rust tree is one realization of it — not a
+   parallel authority requiring manual sync. **Pure Bootstrap's primary
+   deliverable.** Strictly stronger than "the compiler can compile itself":
+   the compiler's own source of truth is the `.dag` graph.
+
+3. **Tests are data too.** The test suite equivalent of v2's hand-authored
+   `pipeline.rs` (`src/v2/tests/src/pipeline.rs` — the large pipeline/
+   contract test file; live LOC reads from the file) exists only as
+   `.dag` `TestClaim` declarations and generated target-language test code.
+   Per `TESTING.md` §"Post-R2 shape", two residual categories stay
+   Rust-authored: compiler-internal unit tests for Rust-only helpers, and
+   boundary tests that invoke external toolchains (rustc, go, python).
+   Everything else ports to `.dag`. **Pure Bootstrap's secondary
+   deliverable, couples to testgen.**
+
+Cost-of-change: editing any compiler concept — a new pass, substrate fact,
+target-language detail, or pipeline/contract test assertion — stays at
+one `.dag` file. No
+matching hand edits to a Rust stage0 file. Stage0 Rust compiler internals
+(tokenize, parse, lower, infer, emit, lenses, std library) are emitted
+from the `.dag` graph and committed — not hand authored. Tests follow
+the carve-out in facet 3 above: pipeline/contract tests are `.dag`
+`TestClaim` data; the `TESTING.md §"Post-R2 shape"` residual categories
+(compiler-internal unit tests + external-toolchain boundary tests) remain
+Rust-authored. Hand-maintained surface target: the irreducible shim
+floor defined in `docs/design-pure-bootstrap.md` (authority on the **≤5
+bound** and the **current candidate set** for the non-test surface;
+specific files are candidates today and are ratified at graduation).
+The live *count* of currently hand-authored files reads from the full
+SG-0 census — `EXPECTED_HAND_AUTHORED` (file-level) +
+`EXPECTED_HAND_AUTHORED_FRAGMENTS` (crate-root scaffolds) — in
+`src/v3/compiler/tests/integration/sg0_census_test.rs` (authority on
+the census; non-test entries shrink toward the shim floor, test
+entries toward the TESTING.md residual — partition is currently
+applied by inspection, mechanical sub-ratchet split is tracked
+follow-up per ROADMAP).
+Generated escape hatch is acceptable for additional files; hand-authored
+beyond the shim is not.
+v2 achieves this pattern at ~97% (2 hand-maintained of 62 stage0 files);
+v3's trajectory is the Pure Bootstrap program.
+
+Fixed-point acceptance: v3 binary compiles `compiler.dag` → produces
+bit-identical stage0 Rust + bit-identical emitted artifacts.
+`compiler.dag`'s `hand_maintained_src` list monotonically shrinks to the
+irreducible shim set defined in `docs/design-pure-bootstrap.md`.
+
+**Audience duality — opt-in depth (meta-feature):**
+- Core language stays approachable — types, functions, match, effects,
+  workflows. Any engineer can write a gunbc program and get multi-target
+  emission without learning the lens/proof surface.
+- Advanced surface is opt-in — lenses, cementing tests, user-authored static
+  reflection, complexity/cost/idempotency proofs. Opening these adds depth
+  without changing the base language.
+- gunbc does not pick a tribe. Normal programmers get glue generation;
+  principal engineers get structural proofs. The same compiler serves both
+  because depth is a surface the user opts into.
+- **Tracks via ROADMAP:** T-Demo's two fixtures exercise both audiences
+  (`fixture_compiler_nerd_canonical` for structural-proof audience;
+  `fixture_integration_canonical` for glue-generation audience), and
+  T-LensAPI provides the opt-in-depth mechanism (user-authored lenses
+  extend the proof surface without changing the base language).
+
+**Tests are structural data:**
+- Tests outside the `TESTING.md §"Post-R2 shape"` residual are `TestClaim`
+  declarations in `.dag`; the residual (compiler-internal unit tests +
+  external-toolchain boundary tests) remains Rust-authored, per TESTING.md
+  as single authority. Within the `.dag` surface, hand-authored tests and
+  generated tests share one predicate vocabulary — the predicates ARE the
+  test-writing language.
+- Manual tests are upstream of code: behavioral contracts the code must
+  satisfy. Testgen is downstream of code: structural coverage derived from
+  the program the user wrote.
+- Rust tests **outside the `TESTING.md` §"Post-R2 shape" residual**
+  (compiler-internal unit tests + external-toolchain boundary tests) are a
+  language smell. Every hand-authored `.rs` test outside that residual
+  flags a predicate, effect-model, or mock surface the language doesn't
+  yet express. The operational release gate is ROADMAP T-PB-B's
+  `pb_rust_tests_outside_residual_zero`: zero Rust-authored tests exist
+  outside the residual. TESTING.md remains the single authority on the
+  residual categories; the acceptance claim lives in ROADMAP.
+- Consequence of the pure-function posture: effects are explicit parameters,
+  mocking is dependency-injection-by-construction, no hidden state means no
+  flaky tests.
+
+**Enumerable impossible-bug classes:**
+- The thesis obligates naming the bug classes that become impossible by
+  construction. Not "bugs in general" — enumerable, teachable classes.
+- Initial committed list (R1 demo readiness tagged — see ROADMAP §"Release R1 Program"):
+  - **[R1]** Suboptimal-complexity contract violation: a function annotated
+    `complexity ≤ O(n log n)` whose actual complexity exceeds it errors at
+    compile time, not review time. Demo via T-LaneE output on the
+    compiler-nerd fixture.
+  - **[R1]** Idempotency-contract violation: a function marked `@idempotent`
+    whose structure admits non-idempotent composition errors. Lens is
+    already COMPLETE per the lens capability register.
+  - **[R1]** Transport/type drift: client and server cannot hold different
+    types for the same field — both derive from the same declaration. Demo
+    via T-Emit multi-target output on the integration fixture.
+  - **[R2+]** Nested-optional flatten: `Option<Option<T>>` accessor patterns
+    that normal languages require hand-unwrapping. Gated on cardinality
+    refinement substrate work.
+  - **[R2+]** Unenumerated effects: a function's actual effect set must match
+    its declared effect set; silent effect leakage is rejected. Gated on
+    deeper effect-system work beyond R1's Sub-A scope.
+  - **[R2+]** Unhandled diagnostic paths: Tier 2 runtime-safety proofs make
+    division-by-zero, OOB, and force-unwrap either proven safe or made
+    total — never partial. Gated on Tier 2 substrate (post-R1).
+- Adding a bug class to this list is a thesis commitment; removing one
+  requires a named dissolution (the structural proof became trivial).
+- [R1] classes must demo at release; [R2+] classes are thesis-committed but
+  not demo-scope for R1 (see ROADMAP T-Demo scoping note).
 
 **Modeling discipline:**
 - Every declared type has at least one structural consumer.

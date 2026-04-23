@@ -12,6 +12,130 @@ Single source of truth for project status, active work, and deferred items. Long
 
 Read this file for the live plan, milestone state, and current DB status lines. Read [docs/history/roadmap-post-ab-lane-plan.md](docs/history/roadmap-post-ab-lane-plan.md), [docs/history/roadmap-active-deferrals.md](docs/history/roadmap-active-deferrals.md), and [docs/history/roadmap-scheduled-deletions.md](docs/history/roadmap-scheduled-deletions.md) for full receipts and narrative detail.
 
+## Release R1 Program
+
+**Goal.** First external discussion of gunbc, to a compiler-literate audience. Not a toy compiler — a working demonstration of the thesis on real programs, shown to principal engineers and compiler nerds first.
+
+**Not the goal.** Strict v2 feature parity across every lens; consumer-facing polish; web/agentic marketing push. Those are R2+.
+
+**Meta-acceptance (two stages).** R1 ships when every lane's acceptance `TestClaim`:
+
+- **(a) compiles as a `.dag` declaration** — predicates already in today's DB-15 schema compile from Day 1; predicates scheduled for T-TestGen schema extensions compile once T-TestGen lands those additions. Not every gate is Day-1 compilable — see `### Lane acceptance` below for the per-predicate split.
+- **(b) evaluates true at release** — requires T-TestGen's runner closure.
+
+T-TestGen is therefore the gate-enabling lane on two axes: it extends the predicate vocabulary where gates need new predicates, and it lands the runner that evaluates every predicate structurally. The release gate IS a `.dag` program. This is the thesis eating its own dogfood.
+
+**Debt paydown continues in parallel.** R1 does not freeze the tracked-debt ledger. The lane structure names forward deliverables; the ledger below keeps dispatching — CI ratchet audit, stale-brief sweep, INVARIANTS cross-ref cleanup, scheduled-deletion work. Treat debt work as a continuous **T-Receipts** track (bundle 2-4 items per PR per the standing preference).
+
+### Goals (the six non-negotiables)
+
+1. **Complexity lens at v2 parity or beyond — no debt.** Structured `CostExpr(work, span, asymptotic_class)` from structure. Lane T-LaneE.
+2. **Test generation + integration + service simulation — first-class.** Tests are `.dag` data. Lane T-TestGen.
+3. **Multi-target emission.** Rust production-grade; Python/Go demonstrably working. Lane T-Emit.
+4. **Impossible-bugs demo suite.** Enumerated bug classes with compile-time proofs (see THESIS `Enumerable impossible-bug classes`). Lane T-Demo.
+5. **Arbitrary lens composition.** User-authored lenses. Lane T-LensAPI.
+6. **Self-hosting (Pure Bootstrap).** Hand-authored compiler files at the irreducible-shim floor (≤5 per `docs/design-pure-bootstrap.md`); generated escape hatch acceptable for additional files. Lanes T-PB-A + T-PB-B.
+
+Enablers (prerequisites for the goals): T-P0 (bug sweep), T-Sub (surface syntax completion).
+
+### Nine lanes
+
+Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomposition; this section holds intent and acceptance only.
+
+| Lane | Size | Covers | Cross-ref into debt ledger |
+|------|------|--------|----------------------------|
+| T-P0 | S | P0 sweep (repeat_string, REST_OPS, no_profile_sentinel) | §P0 — real bugs |
+| T-Sub | S | `match` over user sums, `CharClass` in std.unicode, type-alias `where` | §P4 (bit.dag refinements), Character-level under-consumption |
+| T-Emit | M | Rust harden, #650 generic-bound fidelity, Python/Go reconcile | SurfaceLiteral→LiteralBits, variant-constructor template |
+| T-LaneE | XL | Complexity lens v2 parity via substrate-carrier-port | Existing Lane E-T/C/I/P/M program |
+| T-TestGen | L | Testgen runner, service simulation, first-class TestClaim | DB-15 follow-up |
+| T-LensAPI | M-L | User-authored lenses + composition | Lens capability honesty pass |
+| T-PB-A | XL | Compiler self-emits (fixed-point); **non-test** hand-Rust surface reaches the ≤5 irreducible-shim floor (per `docs/design-pure-bootstrap.md`; generated escape hatch OK). Live baseline is the non-test subset of the SG-0 census (`EXPECTED_HAND_AUTHORED` file-level + `EXPECTED_HAND_AUTHORED_FRAGMENTS` crate-root scaffolds) in `src/v3/compiler/tests/integration/sg0_census_test.rs` — this doc does not freeze the count. The **test subset** of the same census is T-PB-B's responsibility, not T-PB-A's. | Compiler–std consolidation program, SG-0 census |
+| T-PB-B | M | Tests-as-data — pipeline/contract tests port to `.dag`. The two `TESTING.md §Post-R2 shape` residual categories (compiler-internal unit tests for Rust-only helpers; external-toolchain boundary tests invoking rustc/go/python) remain Rust-authored. | DB-15 + T-TestGen |
+| T-Demo | M | Two canonical fixtures + impossible-bugs suite + narrative | — (new) |
+
+### Lane acceptance — `.dag` gates
+
+This section lists gate names + schema-compilability tags; full `TestClaim` declarations will land as deliverables of the lane-brief drafting step (lane owners author them as `.dag` after being named). Each predicate is tagged `[Day 1]` (compiles against today's DB-15 schema — `Compiles`, `FailsWithDiagnostic`, `OutputEquals`, `CostBounded`, `PortHasState`) or `[ext]` (requires a T-TestGen schema extension before compiling). Day-1 predicates are a minority — the majority block on T-TestGen's runner + schema work, which is why T-TestGen is the gate-enabling lane.
+
+- **T-P0.** `p0_repeat_string_correct` [Day 1] · `p0_no_fabrication_sentinel` [ext] · `p0_rest_ops_aligned` [ext]
+- **T-Sub.** `sub_match_over_user_sum` [Day 1] · `sub_type_alias_where_lowers` [ext] · `sub_charclass_in_std_unicode` [ext]
+- **T-Emit.** `emit_rust_fixtures_rustc_green` [ext: `ExecuteCommand`] · `emit_generic_bounds_survive` [ext] · `emit_omni_demo_fixtures_green` [ext: `ForAllTargets` + `ExecuteCommand`]
+- **T-LaneE.** `complexity_merge_sort_is_nlogn` [ext: `LensOutputEquals`] · `complexity_v3_matches_v2_oracle` [ext: `DifferentialEquals`]
+- **T-TestGen.** `testgen_structural_coverage` [ext] · `testgen_mock_backed_integration_safe` [ext: `MockBackedInvariant` wiring] · `testgen_manual_claim_is_first_class` [ext]
+- **T-LensAPI.** `user_authored_lens_compiles` [Day 1] · `lens_composition_associative` [ext: `AlgebraicLaw`] · `lens_output_is_queryable_data` [ext]
+- **T-PB-A.** `pb_hand_rust_at_shim_floor` [ext] · `pb_self_compile_fixed_point` [ext] · `pb_compiler_std_ratchet_zero` [ext] — live baselines read from authorities; not frozen in this doc. Hand-Rust (**non-test subset**): SG-0 census (file-level + fragments ratchet) minus the test subset owned by T-PB-B → ≤5 irreducible-shim per `docs/design-pure-bootstrap.md`. Consolidation ratchet: compiler-local types not in positive-def set → 0.
+- **T-PB-B.** `pb_test_file_generated_from_dag` [ext] · `pb_rust_tests_outside_residual_zero` [ext] — the first gates the pipeline-equivalent suite; the second gates the outcome: zero Rust-authored tests exist outside the `TESTING.md §"Post-R2 shape"` residual (compiler-internal unit tests + external-toolchain boundary tests). Single-file generation is insufficient proof of the lane's end-state.
+- **T-Demo.**
+  - `fixture_compiler_nerd_canonical` [Day 1 (Compiles) / ext (lens-output demos)] — demonstrates: complexity, ownership, parallelism
+  - `fixture_integration_canonical` [Day 1 (Compiles) / ext (lens-output demos)] — demonstrates: effects, idempotency, testgen
+  - `impossible_bug_class_suite_r1` [ext] — three classes demoed: idempotency-violation, suboptimal-complexity, transport/type-drift. Remaining three (nested-optional flatten, unhandled diagnostic paths, unenumerated effects) are tagged **[R2+]** in THESIS — thesis-committed but not scheduled to a specific release. THESIS §"Enumerable impossible-bug classes" is the authority on scheduling tags.
+  - `demo_user_authored_lens_rejects_violating_program` [ext] — operationalizes THESIS §"User-defined dimensions". Demo shows a user-written lens (~20 lines of `.dag`; e.g., "max external HTTP calls per workflow") rejecting a program that violates it, alongside the built-in complexity lens. Proves the ceiling of what gunbc can prove is user-extensible, not compiler-baked. Consumes `user_authored_lens_compiles` from T-LensAPI.
+
+**T-Demo scoping note.** All lanes ship features whole (no compromise per §Goals). T-Demo curates the R1 *narrative* — fixtures and impossible-bug demos selected for visceral audience impact, not exhaustive feature coverage. Audience curation is demo-scoping; feature shipment is lane-scoping.
+
+### Dependency DAG
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       RELEASE R1 GATE                           │
+│     all lane TestClaim declarations compile + eval true         │
+└────────────────────────────▲────────────────────────────────────┘
+                             │
+                    ┌────────┴──────────┐
+                    │  [M] T-Demo       │
+                    │  fixtures +       │
+                    │  impossible-bugs  │
+                    └────────▲──────────┘
+         ┌───────────┬───────┼───────┬───────────┐
+         │           │       │       │           │
+         │      ┌────┴───┐   │   ┌───┴──────┐    │
+         │      │ [XL]   │   │   │  [M-L]   │    │
+         │      │T-LaneE │   │   │T-LensAPI │    │
+         │      └────────┘   │   └──────────┘    │
+         │                   │                   │
+   ┌─────┴─────┐      ┌──────┴──────┐     ┌─────┴─────┐
+   │ [XL]      │      │ [M] T-PB-B  │     │ [M]       │
+   │ T-PB-A    │      │             │     │ T-Emit    │
+   └─────▲─────┘      └──────▲──────┘     └─────▲─────┘
+         │                   │                   │
+         │          ┌────────┴────────┐          │
+         │          │  [L] T-TestGen  │          │
+         │          └────────▲────────┘          │
+         │                   │                   │
+         └───────────────────┼───────────────────┘
+                             │
+                    ┌────────┴────────┐
+                    │  [S] T-Sub      │
+                    └────────▲────────┘
+                             │
+                    ┌────────┴────────┐
+                    │  [S] T-P0       │
+                    └─────────────────┘
+```
+
+Read bottom-up. Arrows point producer → consumer.
+
+**Critical path.** `max(T-LaneE, T-PB-A, T-Sub → T-TestGen → T-PB-B) → T-Demo`.
+
+- T-LaneE and T-PB-A do not gate each other; both XL. T-LaneE runs from W0 with no upstream dependencies. T-PB-A starts W0 in parallel — its file clusters that don't require match emit run immediately; match-emit-dependent clusters (regen-emits-match, variant-constructor templates) wait on T-Sub's `sub-match-over-user-sum` before they can close. The DAG above is authoritative on the specific cluster-level edges.
+- T-LensAPI is decoupled, starts W0.
+- T-TestGen is the serial hinge for T-PB-B.
+- T-Emit (M) feeds T-Demo but is off the critical path — the XL lanes dominate its duration, so T-Emit is slack relative to T-LaneE / T-PB-A.
+
+**Two distinct baselines inside T-PB-A.** Both read from live authorities — this doc does not freeze counts.
+
+- **Hand-Rust census (T-PB-A owns the non-test subset):** SG-0 census — `EXPECTED_HAND_AUTHORED` (file-level) + `EXPECTED_HAND_AUTHORED_FRAGMENTS` (crate-root scaffolds like `parse_parser_body.txt`) — in `src/v3/compiler/tests/integration/sg0_census_test.rs`. T-PB-A's gate scopes to the **non-test entries** → ≤5 irreducible-shim (per `docs/design-pure-bootstrap.md`). The **test entries** of the same census are T-PB-B's gate: zero Rust-authored tests **outside the TESTING.md §"Post-R2 shape" residual** (compiler-internal unit tests + external-toolchain boundary tests, which stay Rust-authored permanently per TESTING.md as single authority). *The non-test/test partition is currently applied by inspection against the full census; a mechanical sub-ratchet split in `sg0_census_test.rs` is Tracked follow-up (see paragraph below).* The census floor is therefore `(≤5 irreducible-shim per design doc) + (TESTING.md residual)`, not the shim floor alone; neither lane dissolves the TESTING.md residual, and each lane is a scoped half of the census, not blocked on the other for work.
+- **Compiler–std consolidation ratchet:** compiler-local `type` declarations not in the positive-def set and not exempted → 0 (see ROADMAP §"Compiler–`std/` consolidation program"). What's allowed to exist as a compiler-local type name.
+
+Both land inside T-PB-A because dissolving the compiler-local surface forces both gates down together, but the acceptance claims (`pb_hand_rust_at_shim_floor`, `pb_compiler_std_ratchet_zero`) are independent gates tracked against independent authorities.
+
+**Tracked follow-up — SG-0 ratchet split not yet structural (partial).** The R1 split (T-PB-A owns non-test; T-PB-B owns test) is partially structural and partially conceptual. **Structurally resolved in this PR:** `docs/design-pure-bootstrap.md` graduation criterion now scopes to the non-test surface and names the TESTING.md residual explicitly (three doc authorities — design-doc graduation, ROADMAP R1, THESIS Self-hosting — now agree on scope). **Still conceptual, pending follow-up code change:** `EXPECTED_HAND_AUTHORED` in `sg0_census_test.rs` remains a single unsplit list; a non-test/test sub-ratchet split in that test file would make the partition mechanically checkable rather than applied by inspection. `pb_hand_rust_at_shim_floor` / `pb_rust_tests_outside_residual_zero` predicates similarly need to name the partition once T-TestGen extensions support it. Scope for T-PB-A / T-TestGen lane briefs; until those land, the live ratchet is total-count but the doc authorities consistently scope to non-test + residual.
+
+### Relationship to existing milestone status
+
+R1 absorbs what was "Post-A/B Lane Plan" and L1.5 forward work, framed by release deliverable rather than architectural stage. The status table below stays accurate for backward-looking context; R1 is the forward-looking companion.
+
 ## Status at a glance
 
 | Milestone | State | Notes |
@@ -23,7 +147,7 @@ Read this file for the live plan, milestone state, and current DB status lines. 
 | **M1(3)** First downstream consumer | ✅ Landed | End-to-end emitter path proven on PR #445. |
 | **L1** Reflection framework | ✅ Complete | PR #466. |
 | **L1.5** Clean bootstrap | 🟡 In progress | Authority migration and multi-target cleanup remain. |
-| **Post-A/B** Lane plan | 🟡 Planned / active | Four lanes own all remaining thesis obligations. |
+| **Post-A/B** Lane plan | ⏸ Absorbed into R1 Release Program | See §"Release R1 Program" above — the nine-lane R1 structure supersedes the four-lane Post-A/B framing for active planning. |
 | **M2** Feature parity | ⏸ Absorbed into Lane 3 Stage 3a | The remaining tail is tracked through the lane docs. |
 | **M3** Self-hosting | ⏸ Absorbed into Lane 3 Stage 3c | Same cycle, clearer owner. |
 | **M4** Thesis completion | ⏸ Absorbed across Lanes 1–3 | No free-floating milestone debt remains. |
@@ -90,7 +214,7 @@ The thesis-completion surface is fully distributed across lanes and no longer ma
 
 ## Post-A/B Lane Plan
 
-The four-lane plan remains the project’s active structure for the remaining thesis work.
+**Superseded by §"Release R1 Program" above.** The four-lane Post-A/B framing is absorbed into the nine-lane R1 structure; R1 is the active authority for forward planning. The historical receipts remain useful for context.
 
 See [docs/history/roadmap-post-ab-lane-plan.md](docs/history/roadmap-post-ab-lane-plan.md) for the full embedded plan and [docs/post-l15-phase-plan.md](docs/post-l15-phase-plan.md) for the master dependency graph.
 
@@ -124,6 +248,28 @@ The operational rule is unchanged: every live scaffold needs an explicit dissolu
 ## Tracked debts — 2026-04 analyses
 
 Findings from two reflective analyses (integration loop health, `main@b014746` and `main@11e66b4`) plus two exploratory analyses (scope: `dsl/std/*.dag`, `src/v2/tests/src/*.rs`, `dsl/extdeps/`, `THESIS.md`, `INVARIANTS.md`, `MODELING.md`, same commits). Items below are grouped by urgency. Each line: 1-sentence fact · dissolution trigger · owner-or-next-step.
+
+### Debt classification — framing
+
+Items in this ledger fall into three categories. The count alone is a poor health signal; the **flow** (items arriving vs. items dissolved) is the real signal.
+
+- **`[honest-debt]`** — genuine mistakes or bugs caught by review. Small set (P0s, a few emit bugs). These deserve unambiguous blame semantics and fast dispatch.
+- **`[transitional]`** — bridges with named dissolution triggers (file-preference rank, `parse_parser_body.txt`, dual v2/v3 `std/` authority). Not debt in the blame sense; pre-paid scaffold that dissolves by construction when its trigger fires.
+- **`[invariant-reveal]`** — patterns flagged because the thesis sharpened after they were authored (fail-closed discipline, no string-keyed lookups, partitioned `EffectShape`, structural authority). These are **evidence the language grew**, not evidence of sloppiness. An empty `[invariant-reveal]` bucket would mean the thesis stopped evolving.
+
+Per-row tagging is a scheduled follow-up sweep — **trigger:** post-merge of this PR, before the next receipt-closure wave lands; **owner:** ROADMAP maintainer, bundled with the "Stale-receipt sweep in `docs/briefs/`" row earlier in this section. Dominant classification by section:
+
+| Section | Dominant class | Notes |
+|---------|----------------|-------|
+| P0 | `[honest-debt]` | All three are real bugs. |
+| P1 (fabrication / fail-open) | `[invariant-reveal]` | Fail-closed discipline retroactive. |
+| P2 (structural compression) | Mixed | Hand-rolled lattices `[invariant-reveal]`; `languages.dag` dup and `effects.dag` dual authority `[transitional]`. |
+| P3 (modeling gaps) | `[invariant-reveal]` | Twenty `declaration_by_name` sites = retroactive string-lookup smell. |
+| P4 (type refinement) | `[invariant-reveal]` | Cardinality and alias-refinement gaps. |
+| Post-merge 2026-04-20 | `[transitional]` | `parse_parser_body.txt` dissolves with SG-2b proper. |
+| Post-merge 2026-04-21 | Mixed | Class 5 Gap 1 `[invariant-reveal]`; file-preference rank `[transitional]`; emit-gap items `[honest-debt]`. |
+| Lane E substrate-carrier-port | `[invariant-reveal]` | v3 substrate shape revealed missing structural carriers. |
+| Compiler–std consolidation | `[transitional]` | Every migration has a named dissolution trigger. |
 
 ### P0 — real bugs (silent wrong execution)
 
@@ -192,7 +338,7 @@ Tracked debt not dispatched with the 2026-04-21 lane wave (Lane 1e P3.0, SG-2c-4
   - **Lane E-P — per-call descent-evidence provenance (M)**: decide attachment shape (on-substrate vs lens-derived vs side-table) and land the producer that v3 lacks today. v2 stores this on `ExprCall.descent_evidence` (`src/v2/00_core.dag:199`); v3's `TransformNode` (`src/v3/std/substrate.dag:264-270`) has no analogue. Requires E-T, E-C, E-I. Acceptance: v3 call produces `SubValueRelation` per-call readable by a lens; v2-oracle-vs-v3 cementing test against `expr_call_descent_evidence`; carrier parity for `cost.dag` / `complexity.dag` on the non-method-dispatch slice closes here.
   - **Lane E-M — `MethodSemantics` port-or-subsume (S–M)**: transitive carriers (`CollectionSizeEffect` / `CostShape` / `AlgebraFieldTemplate`) are already in `dsl/std/algebra.dag:408-430`, so M-a is a routine port of ~4 carriers (not a promotion-out-of-compiler-internal). M-b is structural subsumption via v3's `TransformTarget` model. Call is "does v3 structural resolution already carry these facts?" — queue after E-T/C/I land.
 - **CI ratchet architecture — exemption widening erodes the per-test timeout ratchet**: surfaced during the 2026-04-21 reflective analysis (`53b3110..ae8825a` range). Commits `37cd6128`, `4898983e`, `f84ed355` hardened the ratchet against CI-log instability, but `2d8396df` widened the exemption list. `scripts/slow-test-exemptions.txt` is 83 lines with no monotonic-shrink rule — `feedback_ratchet_only_down` violated at the meta level (the primary ratchet can drift upward through exemption growth). Dissolution: audit the exemption list, categorize each (stale / paydown / structural), delete stale entries, add a meta-ratchet that fails CI on exemption-count growth or per-exempt budget drift. Dispatch brief: `docs/briefs/ci-ratchet-architecture-audit.md`. Owner: unassigned; queue as infrastructure-principal lane, soon.
-- **Stale-receipt sweep in `docs/briefs/`**: surfaced during the 2026-04-21 reflective analysis. Briefs under `docs/briefs/` and prose references in adjacent docs still point at debt that the final code has partially or fully dissolved — the `DeclarationLookup` cleanup is the cited example where brief prose names debt the code has largely resolved. Integration drag, not code regression. Dissolution: sweep `docs/briefs/` for superseded claims post-wave, convert closed briefs to historical receipts under `docs/history/` or add a "Closed by #NNN" line, update inline prose in sibling docs that cite the resolved debt. Small scope, cosmetic. Owner: unassigned; do soon after the 2026-04-21 wave lands (most of its outputs will trigger more brief-staleness). **Include:** `docs/design-pure-bootstrap.md`'s hand-maintained count ("78 hand-maintained .rs files") is stale — live `EXPECTED_HAND_AUTHORED` in the SG-0 census has 89+ entries under `src/v3/compiler/`. Either refresh the number or delete it and point at the live census; detected during #642 review.
+- **Stale-receipt sweep in `docs/briefs/`**: surfaced during the 2026-04-21 reflective analysis. Briefs under `docs/briefs/` and prose references in adjacent docs still point at debt that the final code has partially or fully dissolved — the `DeclarationLookup` cleanup is the cited example where brief prose names debt the code has largely resolved. Integration drag, not code regression. Dissolution: sweep `docs/briefs/` for superseded claims post-wave, convert closed briefs to historical receipts under `docs/history/` or add a "Closed by #NNN" line, update inline prose in sibling docs that cite the resolved debt. Small scope, cosmetic. Owner: unassigned; do soon after the 2026-04-21 wave lands (most of its outputs will trigger more brief-staleness). **Include:** `docs/design-pure-bootstrap.md`'s hand-maintained count ("78 hand-maintained .rs files") was stale vs. the SG-0 census — **CLOSED in this R1 PR**: all five occurrences (lines 7, 49, 82, 105, 242 of the design doc) now point at the live census, reframed as deltas against the illustrative 78-file baseline, or scoped to the non-test + TESTING residual framing. No frozen absolute count remains.
 - **Compiler–`std/` consolidation program — specific migrations**: end-state defined in [docs/thesis/compiler-std-consolidation.md](docs/thesis/compiler-std-consolidation.md). Each of the migrations below is a standalone lane; together they collapse the compiler-specific type surface toward the positive definition (pipeline + regen + lens-specific return-type carriers + accessor). **Ratchet:** count of `type` declarations in `src/v3/compiler/*.dag` AND `src/v3/lenses/*.dag` that are NOT in the positive-def set AND NOT exempted → 0. Positive-def: pipeline/regen types + lens-API return carriers (`Origin`, `UnusedParameter`, `VariantPayloadShapeLookup` 3-variant, `TemplateArgumentBinding` semantic carrier, etc.). Exempted: `parse_tables.dag` (7 types, pending SG-2c-proper per-row classification). In-ratchet: **strict 2-variant Missing|Found Lookup-pattern carriers across lenses (3 today: `CostLookup`, `SymbolicCostLookup`, `TemplateArgumentLookup`)** + **workaround-shaped infer-helper coproducts with named dissolution triggers (`TemplateArgumentsMatch`, `TemplateArgumentCursor`)**. Baseline: 5. See thesis doc table for per-file disposition.
   - **`tokenize.dag` → `std/tokenize.dag`** — landed: `Token`, `TokenKind`, `KeywordTokenKind`, `PunctTokenKind`, `LocalPunctSpec`, `StringEscapeSpec` now live in `src/v3/std/tokenize.dag`; compiler-local duplicates deleted. Ratchet drop: 25 → 19.
   - **`runtime_mirrors.dag` → `src/v3/std/parse_surface.dag` (tranche 2)** — landed: `DagDifference`, `Surface*`, and related carriers (~14 types) now live in `v3.std.parse_surface`; `runtime_mirrors.dag` deleted. Ratchet drop: 19 → 5. Parse-rule/fragment dissolution triggers (`parse_parser_body.txt`, SG-2b/SG-3f) unchanged.
@@ -200,8 +346,10 @@ Tracked debt not dispatched with the 2026-04-21 lane wave (Lane 1e P3.0, SG-2c-4
   - **`src/v3/std/*.dag` → `dsl/std/*.dag`** — the whole v3-specific std tree collapses when the file-preference-scaffold dissolves (gated on v2 retirement or `dsl/std/` learning v3 grammar). Largest single consolidation; tracked separately in the **"File-preference rank is a ratified-parallel-authority scaffold"** row (earlier in the 2026-04-21 receipt-closure wave post-merge-debt section).
   - **`Node` → `std/node.dag`** — already captured in `project_node_to_std` memory as prior pattern. Relevant to this program as a precedent.
   - **Generic `Lookup<T>` in `std/` — dissolve per-lens `CostLookup` / `SymbolicCostLookup` / `TemplateArgumentLookup` duplicates** — three lenses currently declare their own 2-variant `Missing | Found(T)` carrier. Collapse to a single `std/Lookup<T>` generic consumed by every lens that returns a possibly-missing result. 3 types dissolve into 1. Scope is strict 2-variant shape only — carriers with additional semantic variants (e.g., `VariantPayloadShapeLookup`'s `NotPayloadProduct`, `TemplateArgumentBinding`'s `Conflict | NoOp | Append`) stay lens-API. Owner: unassigned; migration-gate: **ready-to-dispatch** (no capability gap — pure type-declaration work; generics already work per the earlier ParseStep discussion).
+  - **`LanguageSpec` dual authority (`dsl/std/languages.dag` vs `src/v3/std/emit_model.dag`)** — thesis-incompatible parallel authority for the "everything the emitter needs for a target language" carrier. `dsl/std/languages.dag:438` defines `type LanguageSpec` and `:1244` instantiates `data rust_spec: LanguageSpec`. `src/v3/std/emit_model.dag:276` defines a **second, differently-shaped** `type LanguageSpec`, and `src/v3/spec/rust.dag:1186` instantiates `data rust_language: LanguageSpec` against it. The Rust emitter at `src/v3/compiler/src/emit/rust_target.rs:705-707` calls `.rust_language_spec()`, which resolves to the v3-local carrier — bypassing the shared-std authority the consolidation program is built around. Direct contradiction of the compiler–std/ consolidation thesis (P2 single-authority). Dissolution is a carrier-merge design call, not a rename: the two shapes are not trivially compatible (v3 has `statements` / `expressions` / `control_flow` / `literals` / `modules` / ... fields; shared-std `languages.dag` has a different decomposition). Decide canonical shape, migrate emitter consumption, delete loser. Owner: unassigned; migration-gate: reconciliation design + emitter migration. Surfaced by 2026-04-23 meta-review (flagged as highest-value novel finding).
+  - **Operator ontology — three co-existing authorities** — partially tracked via the `parse_tables.dag` migration row above and the Class 5 Gap 1 Bool-inhabits-`BooleanAlgebra` row in the 2026-04-21 post-merge-debt wave, but not called out as one unified debt item. Three surfaces: (1) `dsl/std/syntax.dag:19,80,107` — shared-std `BinOp` / `AlgebraFieldKind` / `OperatorSpec`; (2) `src/v3/std/substrate.dag:133-160` — compiler-local `ArithmeticOp` / `ComparisonOp` / `LogicalOp` / `OperatorKind` (distinct ontology); (3) `src/v3/compiler/operators.dag:5-72` — symbol↔`OperatorKind`↔`algebra_field_name` mapping. Cross-validation against `dag_operators` (in `dsl/extdeps/languages/dag/syntax.dag`) happens via string-match in `src/v3/compiler/src/regen_parse_tables_emit.rs` (`:20-33, :284-291`), not structural identity. P2 Boundary Discipline. Dissolution: decide whether `OperatorKind` promotes to shared-std (v3 ontology wins) or dissolves into `BinOp` + algebra-field projection (shared-std wins); migrate consumers off the loser; delete. Owner: unassigned; migration-gate: coordinates with SG-2c proper `parse_tables.dag` decision — each row's per-type classification depends on which operator ontology survives. Surfaced by 2026-04-23 meta-review.
 
-- **Target emit-spec fabrication sentinels — `__EMIT_BUG_{0}__`** (**rescoped** after Lane F investigation, PR #657): originally framed as "converge three target specs on native compile-time error forms." Investigation (see `docs/briefs/emit-bug-sentinel-convergence-2026-04-22.md`) found all four sentinels (including Rust's `compile_error!`) are **already fail-closed in their target's native sense** — all cause target-compile failure. The legibility concern is real but not a P3 violation at the template layer. **Real dissolution is upstream** at `src/v2/05_emit.dag:996, 1046` where the emitter chooses to emit sentinel output when it detects an error condition (`n_is_type_var || n_is_error`, or anonymous-coproduct branch) — it should produce a Diagnostic and halt emission instead. **Dissolution trigger**: when `05_emit.dag:996, 1046` are refactored to produce Diagnostic + halt, `error_type_template` becomes unreachable and the four template declarations can dissolve or remain as defensive fallback. Surfaced by 2026-04-22 exploratory analysis; rescoped by Lane F. Owner: unassigned (F-rescope brief drafted); M scope.
+- **Target emit-spec fabrication sentinels — `__EMIT_BUG_{0}__`** (**rescoped** after Lane F investigation, PR #657): originally framed as "converge three target specs on native compile-time error forms." Investigation (see `docs/briefs/emit-bug-sentinel-convergence-2026-04-22.md`) found all four sentinels (including Rust's `compile_error!`) are **already fail-closed in their target's native sense** — all cause target-compile failure. The legibility concern is real but not a P3 violation at the template layer. **Real dissolution is upstream** at `src/v2/05_emit.dag:996, 1046` where the emitter chooses to emit sentinel output when it detects an error condition (`n_is_type_var || n_is_error`, or anonymous-coproduct branch) — it should produce a Diagnostic and halt emission instead. **Dissolution trigger**: when `05_emit.dag:996, 1046` are refactored to produce Diagnostic + halt, `error_type_template` becomes unreachable; the four template declarations are then deleted. No defensive-fallback carve-out — per INVARIANTS P5 Progress Is Dissolution, unreachable scaffold is removed, not retained "just in case." Surfaced by 2026-04-22 exploratory analysis; rescoped by Lane F. Owner: unassigned (F-rescope brief drafted); M scope.
 
 - **`algebra.dag` declaration-vs-template surface asymmetry** (**reclassified** after Lane G investigation, PR #654): originally framed as "parallel authority, derive templates from declaration." Investigation found the two surfaces are **not redundant** — `*_templates()` carries per-method metadata (`size_effect`, `cost_shape`, `callback_element_position`) consumed by complexity/cost lenses; the type declaration has no field-level slot for this metadata. Attaching it would require substrate extensions (field-level annotations, currently partial per DB-11). **Real dissolution is a modeling question**: where should per-method metadata live structurally? Three options scoped in the Lane E substrate-carrier-port design doc (options 1/2/3 per the coordination note). **Dissolution trigger**: when Lane E's design lands a chosen option for per-method metadata carriers, `*_templates()` is replaced by the chosen structural form, and the declaration/template surface converges to one. Related to but separate from the four named substrate carriers. Surfaced by 2026-04-22 exploratory analysis; reclassified by Lane G. Owner: blocked on Lane E design doc; L scope once unblocked (substrate work).
 

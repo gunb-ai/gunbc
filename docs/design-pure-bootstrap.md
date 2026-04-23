@@ -1,11 +1,16 @@
 # Pure Bootstrap (PB program)
 
-**Thesis claim**: `THESIS.md` §"Pure bootstrap (self-hosted stage0)".
+**Thesis claim**: `THESIS.md` §"Self-hosting — three facets" (facet 2: *Compiler self-emits (fixed-point)*) — and the corresponding claim in the `Thesis claims — complete list`.
 
 Editing compiler behavior must be a one-file `.dag` change. No paired
 hand edits to a Rust stage0 file. This document is the trajectory from
-today (78 hand-maintained `.rs` files in `src/v3/compiler`) to the
-irreducible shim (target ≤5 files).
+today (live hand-maintained count per SG-0 census in
+`src/v3/compiler/tests/integration/sg0_census_test.rs`) to the
+irreducible shim floor. The target ≤5 scopes the **non-test** hand-
+authored surface; the `TESTING.md §"Post-R2 shape"` residual (compiler-
+internal unit tests + external-toolchain boundary tests) remains
+Rust-authored separately per TESTING.md as single authority on that
+residual.
 
 ## Why this matters
 
@@ -46,11 +51,12 @@ authority**. Only the system boundary does.
 
 ## Current v3 state
 
-**Hand-maintained**: **78 `.rs` files** per the live SG-0 ratchet
-(`EXPECTED_HAND_AUTHORED` in
+**Hand-maintained**: live SG-0 ratchet — `EXPECTED_HAND_AUTHORED` +
+`EXPECTED_HAND_AUTHORED_FRAGMENTS` in
 `src/v3/compiler/tests/integration/sg0_census_test.rs`, partitioned
 against `GENERATED_FILES` sourced from the producer-owned
-`REGEN_OUTPUTS` manifest in `src/v3/compiler/build.rs`). Note:
+`REGEN_OUTPUTS` manifest in `src/v3/compiler/build.rs`. This doc does
+not freeze the count; read the census for live state. Note:
 `dsl/gunbc/compiler.dag`'s `hand_maintained_src` field is a
 related-but-separate authority — it names files excluded from the
 stage0 fixed-point diff (regeneration survival list), not the SG-0
@@ -73,7 +79,7 @@ ratchet source. PB metrics below track the SG-0 ratchet.
 
 All four chain into a single `fixtures` array that bootstrap.rs tokenizes + parses + lowers on every `Dag::new()`. **PB-1 must replace the runtime tokenize/parse/lower path for all four input authorities**, not just `std_fixtures`.
 
-**The 78-file gap decomposes** (approximate):
+**The hand-Rust gap decomposes** (approximate, against the original 78-file baseline; live count reads from SG-0 census):
 - ~30 compiler core files (parse, lower, infer, emit internals, tokenize shim, ...)
 - ~10 lens files (SG-6 migrating to generated; some already done)
 - ~10 diagnostic / utility files (serialize, diagnostics, types, ...)
@@ -96,7 +102,7 @@ retire projection — not one.
   partition in `sg0_census_test.rs`) already enforces the
   hand-authored count. Add **PB count** as a named column with a
   trend arrow. Ratchet only down.
-- **Target trajectory**: 78 → 50 → 20 → 5.
+- **Target trajectory**: live baseline → ~50 → ~20 → ≤5 (intermediate checkpoints illustrative; trigger milestones below are authoritative, not the counts).
 - **Dependencies**: none. Dispatchable now.
 - **Not the same as `compiler.dag`'s `hand_maintained_src`** —
   that's the regeneration-survival list (which files don't get
@@ -198,19 +204,36 @@ retire projection — not one.
 
 ### PB-8 — graduation
 
-- `EXPECTED_HAND_AUTHORED` (SG-0 ratchet) reaches ≤5 entries (CLI
-  entry + runtime bridge + build shim + possibly lib.rs + bootstrap
-  entry). `compiler.dag`'s `hand_maintained_src` converges to the
-  same set.
+- **Non-test entries** in the full SG-0 census (`EXPECTED_HAND_AUTHORED`
+  file-level + `EXPECTED_HAND_AUTHORED_FRAGMENTS` crate-root scaffolds)
+  reach ≤5 irreducible-shim (CLI entry + runtime bridge + build shim +
+  possibly lib.rs + bootstrap entry). Test entries (identified by
+  inspection until the sub-ratchet split lands — see §Graduation
+  trigger) remain at the `TESTING.md §"Post-R2 shape"` residual;
+  TESTING.md is single authority on which tests persist. `compiler.dag`'s
+  `hand_maintained_src` converges to the non-test set.
 - Delete scaffolding: `include_str!` constants, runtime-parse paths,
   census accommodations for not-yet-retired files.
 - **Dependencies**: PB-7 green.
 
 ## Acceptance criteria (strict)
 
-1. Every `.rs` file in `src/v3/compiler/src/` is **either**:
+1. Every `.rs` file under `src/v3/compiler/` (both `src/` and `tests/`
+   trees — the full scope of the SG-0 census) is **either**:
    - Generated (ends in `_generated.rs` and has the generated header), **or**
-   - Listed in `EXPECTED_HAND_AUTHORED` (target: ≤5 entries; `compiler.dag`'s `hand_maintained_src` converges to the same set).
+   - Listed in the full SG-0 census (`EXPECTED_HAND_AUTHORED` +
+     `EXPECTED_HAND_AUTHORED_FRAGMENTS`) and falls in one of two
+     buckets: (a) **non-test** entries (under `src/v3/compiler/src/`
+     plus any crate-root scaffolds) scope to ≤5 irreducible-shim per
+     §"Irreducible shim (target state)" below; `compiler.dag`'s
+     `hand_maintained_src` converges to the same non-test set;
+     (b) **test** entries (under `src/v3/compiler/tests/**`) match
+     the `TESTING.md §"Post-R2 shape"` residual (compiler-internal
+     unit tests + external-toolchain boundary tests invoking
+     rustc/go/python) — TESTING.md is single authority on the
+     residual. Non-test/test partition is currently applied by
+     inspection; mechanical sub-ratchet split in `sg0_census_test.rs`
+     is tracked follow-up.
 2. `cargo run -p v3-compiler --release --bin regen_v3` produces
    bit-identical Rust (cycle converges in 1 iteration).
 3. CI gate: census partition matches directory contents (no
@@ -231,17 +254,19 @@ If (4) and (5) can be generated, the shim is 3 files.
 
 ## Measurement
 
-| Milestone | SG-0 PB count | Trigger |
+Live count comes from SG-0 census (`EXPECTED_HAND_AUTHORED` + `EXPECTED_HAND_AUTHORED_FRAGMENTS` in `sg0_census_test.rs`). Trigger milestones below are authoritative for what PB-N retires; the absolute counts are illustrative against the original 78-file baseline at authoring time and will not match the live census once it drifts.
+
+| Milestone | SG-0 PB count (illustrative, baseline-78) | Trigger |
 |---|---|---|
-| Today | 78 | — |
-| Post-PB-2 | 77 | tokenize.rs deleted |
-| Post-PB-3 | 76 | monolithic `parse.rs` retired (parser staging); **PB-3 done** when SG-2b removes `parse_parser_body.txt` / body splice |
-| Post-PB-4 | 75 | lower.rs deleted (+ support) |
-| Post-PB-5 | 74 | infer.rs deleted |
-| Post-PB-6 | 68 | emit files collapsed (~6 deletions) |
-| Post-cleanup | ~50 | diagnostic/utility files migrated |
-| Post-PB-7 | ~20 | test infra migrated |
-| Post-PB-8 | ≤5 | graduation |
+| Today | baseline (read live) | — |
+| Post-PB-2 | baseline − 1 | tokenize.rs deleted |
+| Post-PB-3 | baseline − 2 | monolithic `parse.rs` retired (parser staging); **PB-3 done** when SG-2b removes `parse_parser_body.txt` / body splice |
+| Post-PB-4 | baseline − 3 | lower.rs deleted (+ support) |
+| Post-PB-5 | baseline − 4 | infer.rs deleted |
+| Post-PB-6 | baseline − 10 | emit files collapsed (~6 deletions) |
+| Post-cleanup | ~baseline − 28 | diagnostic/utility files migrated |
+| Post-PB-7 | ~baseline − 58 | test infra migrated |
+| Post-PB-8 | ≤5 non-test + TESTING residual | graduation |
 
 ## Dependencies map
 
@@ -301,9 +326,10 @@ Lane 1e complete ──→ PB-6 (emit) ──────────┐
 ## Graduation trigger
 
 PB graduates when:
-1. `EXPECTED_HAND_AUTHORED.len() ≤ 5` (SG-0 ratchet authority); `compiler.dag`'s `hand_maintained_src` converges to the same set
+1. Hand-Rust surface at the shim floor: non-test entries in the full SG-0 census (`EXPECTED_HAND_AUTHORED` file-level + `EXPECTED_HAND_AUTHORED_FRAGMENTS` crate-root scaffolds) ≤ 5 irreducible-shim (SG-0 ratchet authority), plus the `TESTING.md §"Post-R2 shape"` residual (compiler-internal unit tests + external-toolchain boundary tests) remaining Rust-authored by TESTING.md's design. Sub-ratchet split (non-test vs test in `sg0_census_test.rs`) is **tracked follow-up** — until it lands, the non-test scope is applied by inspection against the full census (both ratchets). `compiler.dag`'s `hand_maintained_src` converges to the non-test set.
 2. DB-8 self-host fixed-point runs on full `compiler.dag` (not fixture) and passes bit-identically
 3. CI census gate blocks unmarked hand-authored files
 
-At that point, the THESIS.md §"Pure bootstrap" claim is structurally
-satisfied. The residual shim is the irreducible system boundary.
+At that point, the THESIS.md §"Self-hosting — three facets" facet 2
+(*Compiler self-emits*) claim is structurally satisfied. The residual
+shim is the irreducible system boundary.
