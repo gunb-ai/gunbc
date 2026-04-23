@@ -292,9 +292,10 @@ irreducible shim set defined in `docs/design-pure-bootstrap.md`.
   (compiler-internal unit tests + external-toolchain boundary tests) are a
   language smell. Every hand-authored `.rs` test outside that residual
   flags a predicate, effect-model, or mock surface the language doesn't
-  yet express. The release gate is "every test outside the residual can be
-  written in `.dag`." TESTING.md remains the single authority on the
-  residual categories.
+  yet express. The operational release gate is ROADMAP T-PB-B's
+  `pb_rust_tests_outside_residual_zero`: zero Rust-authored tests exist
+  outside the residual. TESTING.md remains the single authority on the
+  residual categories; the acceptance claim lives in ROADMAP.
 - Consequence of the pure-function posture: effects are explicit parameters,
   mocking is dependency-injection-by-construction, no hidden state means no
   flaky tests.
