@@ -212,49 +212,88 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 - `dag run` is the primary execution path.
 - Adding a CI gate, a Node field, or a target language requires editing one .dag file.
 
-**Pure bootstrap (self-hosted stage0):**
-- Editing compiler behavior requires editing `.dag` source only.
-  No matching hand edits to a Rust stage0 file. Cost-of-change
-  for any compiler concept — a new pass, a new substrate fact,
-  a new target-language detail — stays at 1.
-- Stage0 is regeneratable from the `.dag` graph. Compiler
-  internals (tokenize, parse, lower, infer, emit, lenses, std
-  library) are emitted as Rust source and committed — not hand
-  authored. The hand-maintained surface is an irreducible shim
-  (CLI entry + runtime bridge), target ≤5 files. v2 achieves
-  this pattern at ~97% (2 hand-maintained of 62 stage0 files);
-  v3's trajectory is the Pure Bootstrap program (see
-  `docs/design-pure-bootstrap.md`).
-- Fixed-point acceptance: v3 binary compiles `compiler.dag` →
-  produces bit-identical stage0 Rust + bit-identical emitted
-  artifacts. `compiler.dag`'s `hand_maintained_src` list
-  monotonically shrinks to the irreducible shim.
-- Strictly stronger than "the compiler can compile itself":
-  the compiler's own source of truth is the `.dag` graph, and
-  the Rust tree is one realization of it — not a parallel
-  authority requiring manual sync.
+**Self-hosting — three facets:**
 
-**Pure bootstrap (self-hosted stage0):**
-- Editing compiler behavior requires editing `.dag` source only.
-  No matching hand edits to a Rust stage0 file. Cost-of-change
-  for any compiler concept — a new pass, a new substrate fact,
-  a new target-language detail — stays at 1.
-- Stage0 is regeneratable from the `.dag` graph. Compiler
-  internals (tokenize, parse, lower, infer, emit, lenses, std
-  library) are emitted as Rust source and committed — not hand
-  authored. The hand-maintained surface is an irreducible shim
-  (CLI entry + runtime bridge), target ≤5 files. v2 achieves
-  this pattern at ~97% (2 hand-maintained of 62 stage0 files);
-  v3's trajectory is the Pure Bootstrap program (see
-  `docs/design-pure-bootstrap.md`).
-- Fixed-point acceptance: v3 binary compiles `compiler.dag` →
-  produces bit-identical stage0 Rust + bit-identical emitted
-  artifacts. `compiler.dag`'s `hand_maintained_src` list
-  monotonically shrinks to the irreducible shim.
-- Strictly stronger than "the compiler can compile itself":
-  the compiler's own source of truth is the `.dag` graph, and
-  the Rust tree is one realization of it — not a parallel
-  authority requiring manual sync.
+Self-hosting is not one capability; it's three. All three are targets.
+
+1. **Compiler written in the language it compiles.** `.dag` source authors
+   the compiler. Substantially true today — most of the compiler is `.dag`;
+   stage0 Rust remains as sketch scaffold. Pre-existing condition, not a
+   Pure Bootstrap deliverable.
+
+2. **Compiler self-emits (fixed-point).** Compiling `compiler.dag` produces
+   bit-identical output to what currently ships. The `.dag` graph is the
+   source of truth; the emitted Rust tree is one realization of it — not a
+   parallel authority requiring manual sync. **Pure Bootstrap's primary
+   deliverable.** Strictly stronger than "the compiler can compile itself":
+   the compiler's own source of truth is the `.dag` graph.
+
+3. **Tests are data too.** The test suite (equivalent of v2's hand-authored
+   `pipeline.rs` at 8,233 LOC) exists only as `.dag` `TestClaim` declarations
+   and generated target-language test code. No hand-authored Rust tests.
+   **Pure Bootstrap's secondary deliverable, couples to testgen.**
+
+Cost-of-change: editing any compiler concept — a new pass, substrate fact,
+target-language detail, or test assertion — stays at one `.dag` file. No
+matching hand edits to a Rust stage0 file. Stage0 Rust (tokenize, parse,
+lower, infer, emit, lenses, std library, compiler tests) is emitted from the
+`.dag` graph and committed — not hand authored. Hand-maintained surface
+target: 0 (generated escape hatch acceptable; hand-authored not). v2
+achieves this pattern at ~97% (2 hand-maintained of 62 stage0 files); v3's
+trajectory is the Pure Bootstrap program (see
+`docs/design-pure-bootstrap.md`).
+
+Fixed-point acceptance: v3 binary compiles `compiler.dag` → produces
+bit-identical stage0 Rust + bit-identical emitted artifacts.
+`compiler.dag`'s `hand_maintained_src` list monotonically shrinks to the
+irreducible shim (bootstrap entrypoint only).
+
+**Audience duality — opt-in depth (meta-feature):**
+- Core language stays approachable — types, functions, match, effects,
+  workflows. Any engineer can write a gunbc program and get multi-target
+  emission without learning the lens/proof surface.
+- Advanced surface is opt-in — lenses, cementing tests, user-authored static
+  reflection, complexity/cost/idempotency proofs. Opening these adds depth
+  without changing the base language.
+- gunbc does not pick a tribe. Normal programmers get glue generation;
+  principal engineers get structural proofs. The same compiler serves both
+  because depth is a surface the user opts into.
+
+**Tests are structural data:**
+- A test is a `TestClaim` declaration in `.dag`. Hand-authored tests and
+  generated tests share one predicate vocabulary — the predicates ARE the
+  test-writing language.
+- Manual tests are upstream of code: behavioral contracts the code must
+  satisfy. Testgen is downstream of code: structural coverage derived from
+  the program the user wrote.
+- Rust tests are a language smell. Every hand-authored `.rs` test flags a
+  predicate, effect-model, or mock surface the language doesn't yet
+  express. The release gate is "every test we keep can be written in
+  `.dag`."
+- Consequence of the pure-function posture: effects are explicit parameters,
+  mocking is dependency-injection-by-construction, no hidden state means no
+  flaky tests.
+
+**Enumerable impossible-bug classes:**
+- The thesis obligates naming the bug classes that become impossible by
+  construction. Not "bugs in general" — enumerable, teachable classes.
+- Initial committed list:
+  - Nested-optional flatten: `Option<Option<T>>` accessor patterns that
+    normal languages require hand-unwrapping.
+  - Suboptimal-complexity contract violation: a function annotated
+    `complexity ≤ O(n log n)` whose actual complexity exceeds it errors at
+    compile time, not review time.
+  - Unenumerated effects: a function's actual effect set must match its
+    declared effect set; silent effect leakage is rejected.
+  - Unhandled diagnostic paths: Tier 2 runtime-safety proofs make
+    division-by-zero, OOB, and force-unwrap either proven safe or made
+    total — never partial.
+  - Idempotency-contract violation: a function marked `@idempotent` whose
+    structure admits non-idempotent composition errors.
+  - Transport/type drift: client and server cannot hold different types
+    for the same field — both derive from the same declaration.
+- Adding a bug class to this list is a thesis commitment; removing one
+  requires a named dissolution (the structural proof became trivial).
 
 **Modeling discipline:**
 - Every declared type has at least one structural consumer.

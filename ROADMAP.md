@@ -12,6 +12,107 @@ Single source of truth for project status, active work, and deferred items. Long
 
 Read this file for the live plan, milestone state, and current DB status lines. Read [docs/history/roadmap-post-ab-lane-plan.md](docs/history/roadmap-post-ab-lane-plan.md), [docs/history/roadmap-active-deferrals.md](docs/history/roadmap-active-deferrals.md), and [docs/history/roadmap-scheduled-deletions.md](docs/history/roadmap-scheduled-deletions.md) for full receipts and narrative detail.
 
+## Release R1 Program
+
+**Goal.** First external discussion of gunbc, to a compiler-literate audience. Not a toy compiler — a working demonstration of the thesis on real programs, shown to principal engineers and compiler nerds first.
+
+**Not the goal.** Strict v2 feature parity across every lens; consumer-facing polish; web/agentic marketing push. Those are R2+.
+
+**Meta-acceptance.** R1 ships when every lane's acceptance `TestClaim` compiles and evaluates true as a `.dag` declaration. The release gate IS a `.dag` program. This is the thesis eating its own dogfood.
+
+### Goals (the six non-negotiables)
+
+1. **Complexity lens at v2 parity or beyond — no debt.** Structured `CostExpr(work, span, asymptotic_class)` from structure. Lane T-LaneE.
+2. **Test generation + integration + service simulation — first-class.** Tests are `.dag` data. Lane T-TestGen.
+3. **Multi-target emission.** Rust production-grade; Python/Go demonstrably working. Lane T-Emit.
+4. **Impossible-bugs demo suite.** Enumerated bug classes with compile-time proofs (see THESIS `Enumerable impossible-bug classes`). Lane T-Demo.
+5. **Arbitrary lens composition.** User-authored lenses. Lane T-LensAPI.
+6. **Self-hosting (Pure Bootstrap).** Zero hand-authored compiler files; generated escape hatch acceptable. Lanes T-PB-A + T-PB-B.
+
+Enablers (prerequisites for the goals): T-P0 (bug sweep), T-Sub (surface syntax completion).
+
+### Eight lanes
+
+Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomposition; this section holds intent and acceptance only.
+
+| Lane | Size | Covers | Cross-ref into debt ledger |
+|------|------|--------|----------------------------|
+| T-P0 | S | P0 sweep (repeat_string, REST_OPS, no_profile_sentinel) | §P0 — real bugs |
+| T-Sub | S | `match` over user sums, `CharClass` in std.unicode, type-alias `where` | §P4 (bit.dag refinements), Character-level under-consumption |
+| T-Emit | M | Rust harden, #650 generic-bound fidelity, Python/Go reconcile | SurfaceLiteral→LiteralBits, variant-constructor template |
+| T-LaneE | XL | Complexity lens v2 parity via substrate-carrier-port | Existing Lane E-T/C/I/P/M program |
+| T-TestGen | L | Testgen runner, service simulation, first-class TestClaim | DB-15 follow-up |
+| T-LensAPI | M-L | User-authored lenses + composition | Lens capability honesty pass |
+| T-PB-A | XL | Compiler self-emits (fixed-point); zero hand-Rust non-test | Compiler–std consolidation program, hand-Rust census |
+| T-PB-B | M | Tests-as-data (no hand-Rust tests) | DB-15 + T-TestGen |
+| T-Demo | M | Two canonical fixtures + impossible-bugs suite + narrative | — (new) |
+
+### Lane acceptance — `.dag` gates
+
+Full `TestClaim` declarations live in the lane briefs. Each predicate below is either in today's DB-15 schema or scheduled for T-TestGen extension.
+
+- **T-P0.** `p0_repeat_string_correct · p0_no_fabrication_sentinel · p0_rest_ops_aligned`
+- **T-Sub.** `sub_match_over_user_sum · sub_type_alias_where_lowers · sub_charclass_in_std_unicode`
+- **T-Emit.** `emit_rust_fixtures_rustc_green · emit_generic_bounds_survive · emit_omni_demo_fixtures_green`
+- **T-LaneE.** `complexity_merge_sort_is_nlogn · complexity_v3_matches_v2_oracle`
+- **T-TestGen.** `testgen_structural_coverage · testgen_mock_backed_integration_safe · testgen_manual_claim_is_first_class`
+- **T-LensAPI.** `user_authored_lens_compiles · lens_composition_associative · lens_output_is_queryable_data`
+- **T-PB-A.** `pb_zero_hand_authored_nontest · pb_self_compile_fixed_point`
+- **T-PB-B.** `pb_test_file_generated_from_dag`
+- **T-Demo.** `fixture_compiler_nerd_canonical · fixture_integration_canonical · impossible_bug_class_suite`
+
+### Dependency DAG
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       RELEASE R1 GATE                           │
+│     all lane TestClaim declarations compile + eval true         │
+└────────────────────────────▲────────────────────────────────────┘
+                             │
+                    ┌────────┴──────────┐
+                    │  [M] T-Demo       │
+                    │  fixtures +       │
+                    │  impossible-bugs  │
+                    └────────▲──────────┘
+         ┌───────────┬───────┼───────┬───────────┐
+         │           │       │       │           │
+         │      ┌────┴───┐   │   ┌───┴──────┐    │
+         │      │ [XL]   │   │   │  [M-L]   │    │
+         │      │T-LaneE │   │   │T-LensAPI │    │
+         │      └────────┘   │   └──────────┘    │
+         │                   │                   │
+   ┌─────┴─────┐      ┌──────┴──────┐     ┌─────┴─────┐
+   │ [XL]      │      │ [M] T-PB-B  │     │ [M]       │
+   │ T-PB-A    │      │             │     │ T-Emit    │
+   └─────▲─────┘      └──────▲──────┘     └─────▲─────┘
+         │                   │                   │
+         │          ┌────────┴────────┐          │
+         │          │  [L] T-TestGen  │          │
+         │          └────────▲────────┘          │
+         │                   │                   │
+         └───────────────────┼───────────────────┘
+                             │
+                    ┌────────┴────────┐
+                    │  [S] T-Sub      │
+                    └────────▲────────┘
+                             │
+                    ┌────────┴────────┐
+                    │  [S] T-P0       │
+                    └─────────────────┘
+```
+
+Read bottom-up. Arrows point producer → consumer.
+
+**Critical path.** `max(T-LaneE, T-PB-A, T-Sub → T-TestGen → T-PB-B) → T-Demo`.
+
+- T-LaneE and T-PB-A are XL and independent — run fully parallel from W0.
+- T-LensAPI is decoupled, starts W0.
+- T-TestGen is the serial hinge for T-PB-B.
+
+### Relationship to existing milestone status
+
+R1 absorbs what was "Post-A/B Lane Plan" and L1.5 forward work, framed by release deliverable rather than architectural stage. The status table below stays accurate for backward-looking context; R1 is the forward-looking companion.
+
 ## Status at a glance
 
 | Milestone | State | Notes |
