@@ -4,7 +4,8 @@
 
 Editing compiler behavior must be a one-file `.dag` change. No paired
 hand edits to a Rust stage0 file. This document is the trajectory from
-today (78 hand-maintained `.rs` files in `src/v3/compiler`) to the
+today (live hand-maintained count per SG-0 census in
+`src/v3/compiler/tests/integration/sg0_census_test.rs`) to the
 irreducible shim (target ≤5 files).
 
 ## Why this matters
@@ -46,11 +47,12 @@ authority**. Only the system boundary does.
 
 ## Current v3 state
 
-**Hand-maintained**: **78 `.rs` files** per the live SG-0 ratchet
-(`EXPECTED_HAND_AUTHORED` in
+**Hand-maintained**: live SG-0 ratchet — `EXPECTED_HAND_AUTHORED` +
+`EXPECTED_HAND_AUTHORED_FRAGMENTS` in
 `src/v3/compiler/tests/integration/sg0_census_test.rs`, partitioned
 against `GENERATED_FILES` sourced from the producer-owned
-`REGEN_OUTPUTS` manifest in `src/v3/compiler/build.rs`). Note:
+`REGEN_OUTPUTS` manifest in `src/v3/compiler/build.rs`. This doc does
+not freeze the count; read the census for live state. Note:
 `dsl/gunbc/compiler.dag`'s `hand_maintained_src` field is a
 related-but-separate authority — it names files excluded from the
 stage0 fixed-point diff (regeneration survival list), not the SG-0
