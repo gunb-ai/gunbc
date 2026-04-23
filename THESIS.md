@@ -277,23 +277,30 @@ irreducible shim (bootstrap entrypoint only).
 **Enumerable impossible-bug classes:**
 - The thesis obligates naming the bug classes that become impossible by
   construction. Not "bugs in general" — enumerable, teachable classes.
-- Initial committed list:
-  - Nested-optional flatten: `Option<Option<T>>` accessor patterns that
-    normal languages require hand-unwrapping.
-  - Suboptimal-complexity contract violation: a function annotated
+- Initial committed list (R1 demo readiness tagged — see ROADMAP §"Release R1 Program"):
+  - **[R1]** Suboptimal-complexity contract violation: a function annotated
     `complexity ≤ O(n log n)` whose actual complexity exceeds it errors at
-    compile time, not review time.
-  - Unenumerated effects: a function's actual effect set must match its
-    declared effect set; silent effect leakage is rejected.
-  - Unhandled diagnostic paths: Tier 2 runtime-safety proofs make
+    compile time, not review time. Demo via T-LaneE output on the
+    compiler-nerd fixture.
+  - **[R1]** Idempotency-contract violation: a function marked `@idempotent`
+    whose structure admits non-idempotent composition errors. Lens is
+    already COMPLETE per the lens capability register.
+  - **[R1]** Transport/type drift: client and server cannot hold different
+    types for the same field — both derive from the same declaration. Demo
+    via T-Emit multi-target output on the integration fixture.
+  - **[R2+]** Nested-optional flatten: `Option<Option<T>>` accessor patterns
+    that normal languages require hand-unwrapping. Gated on cardinality
+    refinement substrate work.
+  - **[R2+]** Unenumerated effects: a function's actual effect set must match
+    its declared effect set; silent effect leakage is rejected. Gated on
+    deeper effect-system work beyond R1's Sub-A scope.
+  - **[R2+]** Unhandled diagnostic paths: Tier 2 runtime-safety proofs make
     division-by-zero, OOB, and force-unwrap either proven safe or made
-    total — never partial.
-  - Idempotency-contract violation: a function marked `@idempotent` whose
-    structure admits non-idempotent composition errors.
-  - Transport/type drift: client and server cannot hold different types
-    for the same field — both derive from the same declaration.
+    total — never partial. Gated on Tier 2 substrate (post-R1).
 - Adding a bug class to this list is a thesis commitment; removing one
   requires a named dissolution (the structural proof became trivial).
+- [R1] classes must demo at release; [R2+] classes are thesis-committed but
+  not demo-scope for R1 (see ROADMAP T-Demo scoping note).
 
 **Modeling discipline:**
 - Every declared type has at least one structural consumer.

@@ -64,9 +64,14 @@ Full `TestClaim` declarations live in the lane briefs. Each predicate below is e
 - **T-LaneE.** `complexity_merge_sort_is_nlogn · complexity_v3_matches_v2_oracle`
 - **T-TestGen.** `testgen_structural_coverage · testgen_mock_backed_integration_safe · testgen_manual_claim_is_first_class`
 - **T-LensAPI.** `user_authored_lens_compiles · lens_composition_associative · lens_output_is_queryable_data`
-- **T-PB-A.** `pb_zero_hand_authored_nontest · pb_self_compile_fixed_point`
+- **T-PB-A.** `pb_zero_hand_authored_nontest · pb_self_compile_fixed_point · pb_compiler_std_ratchet_zero` (baseline 19 non-exempt → 0)
 - **T-PB-B.** `pb_test_file_generated_from_dag`
-- **T-Demo.** `fixture_compiler_nerd_canonical · fixture_integration_canonical · impossible_bug_class_suite`
+- **T-Demo.**
+  - `fixture_compiler_nerd_canonical` — demonstrates: complexity, ownership, parallelism
+  - `fixture_integration_canonical` — demonstrates: effects, idempotency, testgen
+  - `impossible_bug_class_suite_r1` — three classes demoed: idempotency-violation, suboptimal-complexity, transport/type-drift. Remaining three (nested-optional flatten, unhandled diagnostic paths, unenumerated effects) are thesis-committed for R2 demo. See THESIS §"Enumerable impossible-bug classes".
+
+**T-Demo scoping note.** All lanes ship features whole (no compromise per §Goals). T-Demo curates the R1 *narrative* — fixtures and impossible-bug demos selected for visceral audience impact, not exhaustive feature coverage. Audience curation is demo-scoping; feature shipment is lane-scoping.
 
 ### Dependency DAG
 
