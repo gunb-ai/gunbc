@@ -56,21 +56,21 @@ Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomp
 
 ### Lane acceptance — `.dag` gates
 
-Full `TestClaim` declarations live in the lane briefs. Each predicate below is either in today's DB-15 schema or scheduled for T-TestGen extension.
+Full `TestClaim` declarations live in the lane briefs. Each predicate is tagged `[Day 1]` (compiles against today's DB-15 schema — `Compiles`, `FailsWithDiagnostic`, `OutputEquals`, `CostBounded`, `PortHasState`) or `[ext]` (requires a T-TestGen schema extension before compiling). Day-1 predicates are a minority — the majority block on T-TestGen's runner + schema work, which is why T-TestGen is the gate-enabling lane.
 
-- **T-P0.** `p0_repeat_string_correct · p0_no_fabrication_sentinel · p0_rest_ops_aligned`
-- **T-Sub.** `sub_match_over_user_sum · sub_type_alias_where_lowers · sub_charclass_in_std_unicode`
-- **T-Emit.** `emit_rust_fixtures_rustc_green · emit_generic_bounds_survive · emit_omni_demo_fixtures_green`
-- **T-LaneE.** `complexity_merge_sort_is_nlogn · complexity_v3_matches_v2_oracle`
-- **T-TestGen.** `testgen_structural_coverage · testgen_mock_backed_integration_safe · testgen_manual_claim_is_first_class`
-- **T-LensAPI.** `user_authored_lens_compiles · lens_composition_associative · lens_output_is_queryable_data`
-- **T-PB-A.** `pb_hand_rust_at_shim_floor · pb_self_compile_fixed_point · pb_compiler_std_ratchet_zero` — live baselines read from authorities; not frozen in this doc. Hand-Rust: `EXPECTED_HAND_AUTHORED` in SG-0 census → ≤5 irreducible-shim per `docs/design-pure-bootstrap.md`. Consolidation ratchet: compiler-local types not in positive-def set → 0.
-- **T-PB-B.** `pb_test_file_generated_from_dag · pb_rust_tests_outside_residual_zero` — the first gates the pipeline-equivalent suite; the second gates the outcome: zero Rust-authored tests exist outside the `TESTING.md §"Post-R2 shape"` residual (compiler-internal unit tests + external-toolchain boundary tests). Single-file generation is insufficient proof of the lane's end-state.
+- **T-P0.** `p0_repeat_string_correct` [Day 1] · `p0_no_fabrication_sentinel` [ext] · `p0_rest_ops_aligned` [ext]
+- **T-Sub.** `sub_match_over_user_sum` [Day 1] · `sub_type_alias_where_lowers` [ext] · `sub_charclass_in_std_unicode` [ext]
+- **T-Emit.** `emit_rust_fixtures_rustc_green` [ext: `ExecuteCommand`] · `emit_generic_bounds_survive` [ext] · `emit_omni_demo_fixtures_green` [ext: `ForAllTargets` + `ExecuteCommand`]
+- **T-LaneE.** `complexity_merge_sort_is_nlogn` [ext: `LensOutputEquals`] · `complexity_v3_matches_v2_oracle` [ext: `DifferentialEquals`]
+- **T-TestGen.** `testgen_structural_coverage` [ext] · `testgen_mock_backed_integration_safe` [ext: `MockBackedInvariant` wiring] · `testgen_manual_claim_is_first_class` [ext]
+- **T-LensAPI.** `user_authored_lens_compiles` [Day 1] · `lens_composition_associative` [ext: `AlgebraicLaw`] · `lens_output_is_queryable_data` [ext]
+- **T-PB-A.** `pb_hand_rust_at_shim_floor` [ext] · `pb_self_compile_fixed_point` [ext] · `pb_compiler_std_ratchet_zero` [ext] — live baselines read from authorities; not frozen in this doc. Hand-Rust: `EXPECTED_HAND_AUTHORED` in SG-0 census → ≤5 irreducible-shim per `docs/design-pure-bootstrap.md`. Consolidation ratchet: compiler-local types not in positive-def set → 0.
+- **T-PB-B.** `pb_test_file_generated_from_dag` [ext] · `pb_rust_tests_outside_residual_zero` [ext] — the first gates the pipeline-equivalent suite; the second gates the outcome: zero Rust-authored tests exist outside the `TESTING.md §"Post-R2 shape"` residual (compiler-internal unit tests + external-toolchain boundary tests). Single-file generation is insufficient proof of the lane's end-state.
 - **T-Demo.**
-  - `fixture_compiler_nerd_canonical` — demonstrates: complexity, ownership, parallelism
-  - `fixture_integration_canonical` — demonstrates: effects, idempotency, testgen
-  - `impossible_bug_class_suite_r1` — three classes demoed: idempotency-violation, suboptimal-complexity, transport/type-drift. Remaining three (nested-optional flatten, unhandled diagnostic paths, unenumerated effects) are tagged **[R2+]** in THESIS — thesis-committed but not scheduled to a specific release. THESIS §"Enumerable impossible-bug classes" is the authority on scheduling tags.
-  - `demo_user_authored_lens_rejects_violating_program` — operationalizes THESIS §"User-defined dimensions". Demo shows a user-written lens (~20 lines of `.dag`; e.g., "max external HTTP calls per workflow") rejecting a program that violates it, alongside the built-in complexity lens. Proves the ceiling of what gunbc can prove is user-extensible, not compiler-baked. Consumes `user_authored_lens_compiles` from T-LensAPI.
+  - `fixture_compiler_nerd_canonical` [Day 1 (Compiles) / ext (lens-output demos)] — demonstrates: complexity, ownership, parallelism
+  - `fixture_integration_canonical` [Day 1 (Compiles) / ext (lens-output demos)] — demonstrates: effects, idempotency, testgen
+  - `impossible_bug_class_suite_r1` [ext] — three classes demoed: idempotency-violation, suboptimal-complexity, transport/type-drift. Remaining three (nested-optional flatten, unhandled diagnostic paths, unenumerated effects) are tagged **[R2+]** in THESIS — thesis-committed but not scheduled to a specific release. THESIS §"Enumerable impossible-bug classes" is the authority on scheduling tags.
+  - `demo_user_authored_lens_rejects_violating_program` [ext] — operationalizes THESIS §"User-defined dimensions". Demo shows a user-written lens (~20 lines of `.dag`; e.g., "max external HTTP calls per workflow") rejecting a program that violates it, alongside the built-in complexity lens. Proves the ceiling of what gunbc can prove is user-extensible, not compiler-baked. Consumes `user_authored_lens_compiles` from T-LensAPI.
 
 **T-Demo scoping note.** All lanes ship features whole (no compromise per §Goals). T-Demo curates the R1 *narrative* — fixtures and impossible-bug demos selected for visceral audience impact, not exhaustive feature coverage. Audience curation is demo-scoping; feature shipment is lane-scoping.
 
