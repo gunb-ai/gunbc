@@ -50,7 +50,7 @@ Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomp
 | T-LaneE | XL | Complexity lens v2 parity via substrate-carrier-port | Existing Lane E-T/C/I/P/M program |
 | T-TestGen | L | Testgen runner, service simulation, first-class TestClaim | DB-15 follow-up |
 | T-LensAPI | M-L | User-authored lenses + composition | Lens capability honesty pass |
-| T-PB-A | XL | Compiler self-emits (fixed-point); `EXPECTED_HAND_AUTHORED` 95 → ≤5 irreducible-shim non-test (per `docs/design-pure-bootstrap.md`; generated escape hatch OK) | Compiler–std consolidation program, hand-Rust census |
+| T-PB-A | XL | Compiler self-emits (fixed-point); hand-Rust surface reaches the ≤5 irreducible-shim floor (per `docs/design-pure-bootstrap.md`; generated escape hatch OK). Live baseline is `EXPECTED_HAND_AUTHORED` in `src/v3/compiler/tests/integration/sg0_census_test.rs` — this doc does not freeze the count. | Compiler–std consolidation program, SG-0 census |
 | T-PB-B | M | Tests-as-data (no hand-Rust tests) | DB-15 + T-TestGen |
 | T-Demo | M | Two canonical fixtures + impossible-bugs suite + narrative | — (new) |
 
@@ -64,7 +64,7 @@ Full `TestClaim` declarations live in the lane briefs. Each predicate below is e
 - **T-LaneE.** `complexity_merge_sort_is_nlogn · complexity_v3_matches_v2_oracle`
 - **T-TestGen.** `testgen_structural_coverage · testgen_mock_backed_integration_safe · testgen_manual_claim_is_first_class`
 - **T-LensAPI.** `user_authored_lens_compiles · lens_composition_associative · lens_output_is_queryable_data`
-- **T-PB-A.** `pb_hand_rust_at_shim_floor · pb_self_compile_fixed_point · pb_compiler_std_ratchet_zero` (baselines: 95 non-test → ≤5 irreducible-shim per design doc; consolidation ratchet 19 non-exempt → 0)
+- **T-PB-A.** `pb_hand_rust_at_shim_floor · pb_self_compile_fixed_point · pb_compiler_std_ratchet_zero` — live baselines read from authorities; not frozen in this doc. Hand-Rust: `EXPECTED_HAND_AUTHORED` in SG-0 census → ≤5 irreducible-shim per `docs/design-pure-bootstrap.md`. Consolidation ratchet: compiler-local types not in positive-def set → 0.
 - **T-PB-B.** `pb_test_file_generated_from_dag`
 - **T-Demo.**
   - `fixture_compiler_nerd_canonical` — demonstrates: complexity, ownership, parallelism
@@ -122,11 +122,12 @@ Read bottom-up. Arrows point producer → consumer.
 - T-TestGen is the serial hinge for T-PB-B.
 - T-Emit (M) feeds T-Demo but is off the critical path — the XL lanes dominate its duration, so T-Emit is slack relative to T-LaneE / T-PB-A.
 
-**Two distinct baselines inside T-PB-A.** Don't confuse them:
-- **Hand-Rust census:** `EXPECTED_HAND_AUTHORED` non-test, 95 → ≤5 irreducible-shim (per `docs/design-pure-bootstrap.md`). What's allowed to exist as a hand-authored file.
-- **Compiler–std consolidation ratchet:** compiler-local `type` declarations not in the positive-def set and not exempted, 19 → 0 (see ROADMAP §"Compiler–`std/` consolidation program"). What's allowed to exist as a compiler-local type name.
+**Two distinct baselines inside T-PB-A.** Both read from live authorities — this doc does not freeze counts.
 
-Both land inside T-PB-A because dissolving the compiler-local surface forces both gates down together, but the acceptance claims (`pb_hand_rust_at_shim_floor`, `pb_compiler_std_ratchet_zero`) are independent gates with independent baselines.
+- **Hand-Rust census:** `EXPECTED_HAND_AUTHORED` in `src/v3/compiler/tests/integration/sg0_census_test.rs` → ≤5 irreducible-shim (per `docs/design-pure-bootstrap.md`). What's allowed to exist as a hand-authored file; test subset dissolves via T-PB-B.
+- **Compiler–std consolidation ratchet:** compiler-local `type` declarations not in the positive-def set and not exempted → 0 (see ROADMAP §"Compiler–`std/` consolidation program"). What's allowed to exist as a compiler-local type name.
+
+Both land inside T-PB-A because dissolving the compiler-local surface forces both gates down together, but the acceptance claims (`pb_hand_rust_at_shim_floor`, `pb_compiler_std_ratchet_zero`) are independent gates tracked against independent authorities.
 
 ### Relationship to existing milestone status
 
