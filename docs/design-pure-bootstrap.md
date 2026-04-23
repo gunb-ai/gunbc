@@ -309,7 +309,7 @@ Lane 1e complete ──→ PB-6 (emit) ──────────┐
 ## Graduation trigger
 
 PB graduates when:
-1. Hand-Rust surface at the shim floor: non-test entries in `EXPECTED_HAND_AUTHORED` ≤ 5 irreducible-shim (SG-0 ratchet authority), plus the `TESTING.md §"Post-R2 shape"` residual (compiler-internal unit tests + external-toolchain boundary tests) remaining Rust-authored by TESTING.md's design. Sub-ratchet split (non-test vs test in `sg0_census_test.rs`) is **tracked follow-up** — until it lands, the non-test scope is applied by inspection against the SG-0 census. `compiler.dag`'s `hand_maintained_src` converges to the non-test set.
+1. Hand-Rust surface at the shim floor: non-test entries in the full SG-0 census (`EXPECTED_HAND_AUTHORED` file-level + `EXPECTED_HAND_AUTHORED_FRAGMENTS` crate-root scaffolds) ≤ 5 irreducible-shim (SG-0 ratchet authority), plus the `TESTING.md §"Post-R2 shape"` residual (compiler-internal unit tests + external-toolchain boundary tests) remaining Rust-authored by TESTING.md's design. Sub-ratchet split (non-test vs test in `sg0_census_test.rs`) is **tracked follow-up** — until it lands, the non-test scope is applied by inspection against the full census (both ratchets). `compiler.dag`'s `hand_maintained_src` converges to the non-test set.
 2. DB-8 self-host fixed-point runs on full `compiler.dag` (not fixture) and passes bit-identically
 3. CI census gate blocks unmarked hand-authored files
 
