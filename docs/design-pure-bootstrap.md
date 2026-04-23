@@ -6,7 +6,11 @@ Editing compiler behavior must be a one-file `.dag` change. No paired
 hand edits to a Rust stage0 file. This document is the trajectory from
 today (live hand-maintained count per SG-0 census in
 `src/v3/compiler/tests/integration/sg0_census_test.rs`) to the
-irreducible shim (target ≤5 files).
+irreducible shim floor. The target ≤5 scopes the **non-test** hand-
+authored surface; the `TESTING.md §"Post-R2 shape"` residual (compiler-
+internal unit tests + external-toolchain boundary tests) remains
+Rust-authored separately per TESTING.md as single authority on that
+residual.
 
 ## Why this matters
 
