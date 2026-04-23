@@ -226,6 +226,28 @@ The operational rule is unchanged: every live scaffold needs an explicit dissolu
 
 Findings from two reflective analyses (integration loop health, `main@b014746` and `main@11e66b4`) plus two exploratory analyses (scope: `dsl/std/*.dag`, `src/v2/tests/src/*.rs`, `dsl/extdeps/`, `THESIS.md`, `INVARIANTS.md`, `MODELING.md`, same commits). Items below are grouped by urgency. Each line: 1-sentence fact · dissolution trigger · owner-or-next-step.
 
+### Debt classification — framing
+
+Items in this ledger fall into three categories. The count alone is a poor health signal; the **flow** (items arriving vs. items dissolved) is the real signal.
+
+- **`[honest-debt]`** — genuine mistakes or bugs caught by review. Small set (P0s, a few emit bugs). These deserve unambiguous blame semantics and fast dispatch.
+- **`[transitional]`** — bridges with named dissolution triggers (file-preference rank, `parse_parser_body.txt`, dual v2/v3 `std/` authority). Not debt in the blame sense; pre-paid scaffold that dissolves by construction when its trigger fires.
+- **`[invariant-reveal]`** — patterns flagged because the thesis sharpened after they were authored (fail-closed discipline, no string-keyed lookups, partitioned `EffectShape`, structural authority). These are **evidence the language grew**, not evidence of sloppiness. An empty `[invariant-reveal]` bucket would mean the thesis stopped evolving.
+
+Per-row tagging is a follow-up sweep. Dominant classification by section:
+
+| Section | Dominant class | Notes |
+|---------|----------------|-------|
+| P0 | `[honest-debt]` | All three are real bugs. |
+| P1 (fabrication / fail-open) | `[invariant-reveal]` | Fail-closed discipline retroactive. |
+| P2 (structural compression) | Mixed | Hand-rolled lattices `[invariant-reveal]`; `languages.dag` dup and `effects.dag` dual authority `[transitional]`. |
+| P3 (modeling gaps) | `[invariant-reveal]` | Twenty `declaration_by_name` sites = retroactive string-lookup smell. |
+| P4 (type refinement) | `[invariant-reveal]` | Cardinality and alias-refinement gaps. |
+| Post-merge 2026-04-20 | `[transitional]` | `parse_parser_body.txt` dissolves with SG-2b proper. |
+| Post-merge 2026-04-21 | Mixed | Class 5 Gap 1 `[invariant-reveal]`; file-preference rank `[transitional]`; emit-gap items `[honest-debt]`. |
+| Lane E substrate-carrier-port | `[invariant-reveal]` | v3 substrate shape revealed missing structural carriers. |
+| Compiler–std consolidation | `[transitional]` | Every migration has a named dissolution trigger. |
+
 ### P0 — real bugs (silent wrong execution)
 
 - **render.dag repeat_string ignores `n`**: `repeat_string` folds over singleton `[0]` so any `n > 0` returns one copy of `s`. Propagates to `indent_text`. Dissolution: fold over a length-`n` list or use a `repeat` combinator. Owner: immediate dispatch.
