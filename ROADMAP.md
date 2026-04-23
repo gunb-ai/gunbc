@@ -34,7 +34,7 @@ The release gate IS a `.dag` program. This is the thesis eating its own dogfood.
 3. **Multi-target emission.** Rust production-grade; Python/Go demonstrably working. Lane T-Emit.
 4. **Impossible-bugs demo suite.** Enumerated bug classes with compile-time proofs (see THESIS `Enumerable impossible-bug classes`). Lane T-Demo.
 5. **Arbitrary lens composition.** User-authored lenses. Lane T-LensAPI.
-6. **Self-hosting (Pure Bootstrap).** Zero hand-authored compiler files; generated escape hatch acceptable. Lanes T-PB-A + T-PB-B.
+6. **Self-hosting (Pure Bootstrap).** Hand-authored compiler files at the irreducible-shim floor (≤5 per `docs/design-pure-bootstrap.md`); generated escape hatch acceptable for additional files. Lanes T-PB-A + T-PB-B.
 
 Enablers (prerequisites for the goals): T-P0 (bug sweep), T-Sub (surface syntax completion).
 
@@ -50,7 +50,7 @@ Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomp
 | T-LaneE | XL | Complexity lens v2 parity via substrate-carrier-port | Existing Lane E-T/C/I/P/M program |
 | T-TestGen | L | Testgen runner, service simulation, first-class TestClaim | DB-15 follow-up |
 | T-LensAPI | M-L | User-authored lenses + composition | Lens capability honesty pass |
-| T-PB-A | XL | Compiler self-emits (fixed-point); `EXPECTED_HAND_AUTHORED` 95 → 0 non-test (generated escape hatch OK) | Compiler–std consolidation program, hand-Rust census |
+| T-PB-A | XL | Compiler self-emits (fixed-point); `EXPECTED_HAND_AUTHORED` 95 → ≤5 irreducible-shim non-test (per `docs/design-pure-bootstrap.md`; generated escape hatch OK) | Compiler–std consolidation program, hand-Rust census |
 | T-PB-B | M | Tests-as-data (no hand-Rust tests) | DB-15 + T-TestGen |
 | T-Demo | M | Two canonical fixtures + impossible-bugs suite + narrative | — (new) |
 
@@ -64,7 +64,7 @@ Full `TestClaim` declarations live in the lane briefs. Each predicate below is e
 - **T-LaneE.** `complexity_merge_sort_is_nlogn · complexity_v3_matches_v2_oracle`
 - **T-TestGen.** `testgen_structural_coverage · testgen_mock_backed_integration_safe · testgen_manual_claim_is_first_class`
 - **T-LensAPI.** `user_authored_lens_compiles · lens_composition_associative · lens_output_is_queryable_data`
-- **T-PB-A.** `pb_zero_hand_authored_nontest · pb_self_compile_fixed_point · pb_compiler_std_ratchet_zero` (baseline 19 non-exempt → 0)
+- **T-PB-A.** `pb_hand_rust_at_shim_floor · pb_self_compile_fixed_point · pb_compiler_std_ratchet_zero` (baselines: 95 non-test → ≤5 irreducible-shim per design doc; consolidation ratchet 19 non-exempt → 0)
 - **T-PB-B.** `pb_test_file_generated_from_dag`
 - **T-Demo.**
   - `fixture_compiler_nerd_canonical` — demonstrates: complexity, ownership, parallelism

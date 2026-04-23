@@ -238,10 +238,12 @@ target-language detail, or test assertion — stays at one `.dag` file. No
 matching hand edits to a Rust stage0 file. Stage0 Rust (tokenize, parse,
 lower, infer, emit, lenses, std library, compiler tests) is emitted from the
 `.dag` graph and committed — not hand authored. Hand-maintained surface
-target: 0 (generated escape hatch acceptable; hand-authored not). v2
-achieves this pattern at ~97% (2 hand-maintained of 62 stage0 files); v3's
-trajectory is the Pure Bootstrap program (see
-`docs/design-pure-bootstrap.md`).
+target: **≤5 irreducible-shim files** per `docs/design-pure-bootstrap.md`
+(CLI entry, runtime bridge, build shim, bootstrap entry — the design doc
+is the authoritative count). Generated escape hatch is acceptable for
+additional files; hand-authored beyond the shim is not. v2 achieves this
+pattern at ~97% (2 hand-maintained of 62 stage0 files); v3's trajectory is
+the Pure Bootstrap program (see `docs/design-pure-bootstrap.md`).
 
 Fixed-point acceptance: v3 binary compiles `compiler.dag` → produces
 bit-identical stage0 Rust + bit-identical emitted artifacts.
