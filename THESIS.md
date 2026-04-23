@@ -267,9 +267,10 @@ The live *count* of currently hand-authored files reads from the full
 SG-0 census — `EXPECTED_HAND_AUTHORED` (file-level) +
 `EXPECTED_HAND_AUTHORED_FRAGMENTS` (crate-root scaffolds) — in
 `src/v3/compiler/tests/integration/sg0_census_test.rs` (authority on
-the census; non-test subset shrinks monotonically toward the shim
-floor; test subset shrinks monotonically toward the TESTING.md
-residual).
+the census; non-test entries shrink toward the shim floor, test
+entries toward the TESTING.md residual — partition is currently
+applied by inspection, mechanical sub-ratchet split is tracked
+follow-up per ROADMAP).
 Generated escape hatch is acceptable for additional files; hand-authored
 beyond the shim is not.
 v2 achieves this pattern at ~97% (2 hand-maintained of 62 stage0 files);
