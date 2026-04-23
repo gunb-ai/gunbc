@@ -228,10 +228,14 @@ Self-hosting is not one capability; it's three. All three are targets.
    deliverable.** Strictly stronger than "the compiler can compile itself":
    the compiler's own source of truth is the `.dag` graph.
 
-3. **Tests are data too.** The test suite (equivalent of v2's hand-authored
-   `pipeline.rs` at 8,233 LOC) exists only as `.dag` `TestClaim` declarations
-   and generated target-language test code. No hand-authored Rust tests.
-   **Pure Bootstrap's secondary deliverable, couples to testgen.**
+3. **Tests are data too.** The test suite equivalent of v2's hand-authored
+   `pipeline.rs` (8,233 LOC of pipeline/contract tests) exists only as
+   `.dag` `TestClaim` declarations and generated target-language test code.
+   Per `TESTING.md` §"Post-R2 shape", two residual categories stay
+   Rust-authored: compiler-internal unit tests for Rust-only helpers, and
+   boundary tests that invoke external toolchains (rustc, go, python).
+   Everything else ports to `.dag`. **Pure Bootstrap's secondary
+   deliverable, couples to testgen.**
 
 Cost-of-change: editing any compiler concept — a new pass, substrate fact,
 target-language detail, or test assertion — stays at one `.dag` file. No
@@ -268,10 +272,13 @@ irreducible shim (bootstrap entrypoint only).
 - Manual tests are upstream of code: behavioral contracts the code must
   satisfy. Testgen is downstream of code: structural coverage derived from
   the program the user wrote.
-- Rust tests are a language smell. Every hand-authored `.rs` test flags a
-  predicate, effect-model, or mock surface the language doesn't yet
-  express. The release gate is "every test we keep can be written in
-  `.dag`."
+- Rust tests **outside the `TESTING.md` §"Post-R2 shape" residual**
+  (compiler-internal unit tests + external-toolchain boundary tests) are a
+  language smell. Every hand-authored `.rs` test outside that residual
+  flags a predicate, effect-model, or mock surface the language doesn't
+  yet express. The release gate is "every test outside the residual can be
+  written in `.dag`." TESTING.md remains the single authority on the
+  residual categories.
 - Consequence of the pure-function posture: effects are explicit parameters,
   mocking is dependency-injection-by-construction, no hidden state means no
   flaky tests.

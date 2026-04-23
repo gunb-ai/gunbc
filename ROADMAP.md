@@ -51,7 +51,7 @@ Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomp
 | T-TestGen | L | Testgen runner, service simulation, first-class TestClaim | DB-15 follow-up |
 | T-LensAPI | M-L | User-authored lenses + composition | Lens capability honesty pass |
 | T-PB-A | XL | Compiler self-emits (fixed-point); hand-Rust surface reaches the ≤5 irreducible-shim floor (per `docs/design-pure-bootstrap.md`; generated escape hatch OK). Live baseline is `EXPECTED_HAND_AUTHORED` in `src/v3/compiler/tests/integration/sg0_census_test.rs` — this doc does not freeze the count. | Compiler–std consolidation program, SG-0 census |
-| T-PB-B | M | Tests-as-data (no hand-Rust tests) | DB-15 + T-TestGen |
+| T-PB-B | M | Tests-as-data — pipeline/contract tests port to `.dag`. The two `TESTING.md §Post-R2 shape` residual categories (compiler-internal unit tests for Rust-only helpers; external-toolchain boundary tests invoking rustc/go/python) remain Rust-authored. | DB-15 + T-TestGen |
 | T-Demo | M | Two canonical fixtures + impossible-bugs suite + narrative | — (new) |
 
 ### Lane acceptance — `.dag` gates
@@ -254,7 +254,7 @@ Items in this ledger fall into three categories. The count alone is a poor healt
 - **`[transitional]`** — bridges with named dissolution triggers (file-preference rank, `parse_parser_body.txt`, dual v2/v3 `std/` authority). Not debt in the blame sense; pre-paid scaffold that dissolves by construction when its trigger fires.
 - **`[invariant-reveal]`** — patterns flagged because the thesis sharpened after they were authored (fail-closed discipline, no string-keyed lookups, partitioned `EffectShape`, structural authority). These are **evidence the language grew**, not evidence of sloppiness. An empty `[invariant-reveal]` bucket would mean the thesis stopped evolving.
 
-Per-row tagging is a follow-up sweep. Dominant classification by section:
+Per-row tagging is a scheduled follow-up sweep — **trigger:** post-merge of this PR, before the next receipt-closure wave lands; **owner:** ROADMAP maintainer, bundled with the "Stale-receipt sweep in `docs/briefs/`" row earlier in this section. Dominant classification by section:
 
 | Section | Dominant class | Notes |
 |---------|----------------|-------|
