@@ -118,7 +118,7 @@ Read bottom-up. Arrows point producer → consumer.
 
 **Critical path.** `max(T-LaneE, T-PB-A, T-Sub → T-TestGen → T-PB-B) → T-Demo`.
 
-- T-LaneE and T-PB-A are XL and independent — run fully parallel from W0.
+- T-LaneE and T-PB-A do not gate each other; both XL. T-LaneE runs from W0 with no upstream dependencies. T-PB-A starts W0 in parallel — its file clusters that don't require match emit run immediately; match-emit-dependent clusters (regen-emits-match, variant-constructor templates) wait on T-Sub's `sub-match-over-user-sum` before they can close. The DAG above is authoritative on the specific cluster-level edges.
 - T-LensAPI is decoupled, starts W0.
 - T-TestGen is the serial hinge for T-PB-B.
 - T-Emit (M) feeds T-Demo but is off the critical path — the XL lanes dominate its duration, so T-Emit is slack relative to T-LaneE / T-PB-A.
