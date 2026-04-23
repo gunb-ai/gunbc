@@ -581,16 +581,35 @@ traversal patterns at construction time.
 **Rust / C++ status: `idiom`.** Typed path abstractions exist but
 sanitization is user discipline.
 
-**gunbc status: PARTIAL** (foundation: no string concat; no user code
-can build raw filesystem paths without going through typed APIs).
+**gunbc status: GAP.**
+My earlier "PARTIAL" claim depended on the disproven "no string concat"
+premise from class 16. Live tree:
 
-**Structural path.** Typed `SafePath` with construction rules disallowing
-`..` components; filesystem ops take only `SafePath`. Size: S (extends
-existing no-string-concat guarantee).
+- `String = FreeMonoid<Char>` per `dsl/std/string_type.dag:16` — users
+  can concatenate strings.
+- `FilePath = String where non_empty` per `dsl/std/types.dag:258` —
+  FilePath is a **refined alias**, not an opaque nominal type. The
+  `non_empty` refinement rejects empty strings; it does not reject
+  `..` components or traversal sequences.
+- Filesystem operations in `dsl/extdeps/shell.dag`, `dsl/extdeps/
+  coreutils.dag`, `dsl/extdeps/apt.dag`, `dsl/extdeps/tools.dag`
+  all consume `FilePath` directly.
 
-**R1 status.** PARTIAL → can close for R1 cheaply once
-`T-Secret` pattern is established (nominal types with construction
-rules). Fold into T-Secret lane.
+So a user can write `"/static/" ++ user_input` as `String`, cast to
+`FilePath` (non-empty check passes), and pass to `fs.read` — traversal
+compiles. gunbc's current protection here is no stronger than Rust's
+`PathBuf`.
+
+**Structural path.** A new `SafePath` opaque nominal type with
+construction rules that reject `..` and path-escape sequences at the
+constructor; refine `dsl/extdeps/shell.dag` / `coreutils.dag` /
+`tools.dag` filesystem operations to require `SafePath`, not `FilePath`.
+Size: S (construction-rules + signature migration; no substrate
+extension).
+
+**R1 status.** GAP → close for R1. Fold into T-Secret lane — same
+nominal-type-with-construction-rules pattern applied at a different
+surface.
 
 ---
 
@@ -638,13 +657,13 @@ Rust can't touch.
 | 14 | Integer overflow | runtime/UB | GAP | GAP | **T-Tier2** |
 | 15 | Stack overflow from unbounded recursion | no-help | CE | CE | — |
 | 16 | SQL / shell / log injection | idiom | CE (typed boundary) | CE (typed boundary) | String concat exists via FreeMonoid; guarantee is at service boundary, not string layer |
-| 17 | Path traversal | idiom | PARTIAL | PARTIAL | Fold into T-Secret |
+| 17 | Path traversal | idiom | GAP | GAP | `FilePath = String where non_empty` — refined alias, not opaque; SafePath nominal type needed. Fold into T-Secret |
 
 ## Scoreboard
 
 - **Handled today** (IBC / CE / BEHAVIORALLY COMPLETE): classes 1, 2, 6, 15, 16 (with narrowed scope to typed boundaries) — **5/17** interesting + 9/9 table stakes
-- **PARTIAL** (infrastructure landed, consumer wire-up missing): classes 4, 8, 11, 17 — **4/17**
-- **GAP** with named structural path: classes 5, 9, 10, 12, 13, 14 — **6/17**
+- **PARTIAL** (infrastructure landed, consumer wire-up missing): classes 4, 8, 11 — **3/17**
+- **GAP** with named structural path: classes 5, 9, 10, 12, 13, 14, 17 — **7/17**
 - **Special (v3 regression being restored):** class 7 (complexity — Lane E) — **1/17**
 - **Requires runtime-only mitigation:** 0
 
