@@ -241,7 +241,8 @@ Self-hosting is not one capability; it's three. All three are targets.
    the compiler's own source of truth is the `.dag` graph.
 
 3. **Tests are data too.** The test suite equivalent of v2's hand-authored
-   `pipeline.rs` (8,233 LOC of pipeline/contract tests) exists only as
+   `pipeline.rs` (`src/v2/tests/src/pipeline.rs` — the large pipeline/
+   contract test file; live LOC reads from the file) exists only as
    `.dag` `TestClaim` declarations and generated target-language test code.
    Per `TESTING.md` §"Post-R2 shape", two residual categories stay
    Rust-authored: compiler-internal unit tests for Rust-only helpers, and
