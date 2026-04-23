@@ -254,16 +254,23 @@ variables to distinguish and occasionally lie.
 verbose phantom-typed values. C++ does this with templates but the
 ergonomics are punishing. Neither is the default path.
 
-**gunbc status: GAP.**
-THESIS §"Correctness dimensions" commits to user-declared dimensions
-(`Duration<Second>` vs `Duration<Millisecond>` as distinct types).
-Substrate support for dimension type parameters hasn't landed.
+**gunbc status: PARTIAL.**
+DB-3 (user-declared dimensions) core landed per ROADMAP:226 —
+`docs/db-history/db-3.md` documents what shipped: the generic dimension
+framework + dimensional type parameters. What hasn't landed: **unit-
+mismatch enforcement consumer** — the lens / pass that rejects
+assigning `Duration<Millisecond>` where `Duration<Second>` is expected.
+Infrastructure exists; enforcement wire-up missing. Plus generic `.dag`
+lowering of user-authored dimensions + example-authoring per DB-3's
+named follow-ups.
 
-**Structural path.** Dimension as first-class type parameter; implicit
-conversion is a compile error; explicit conversions are typed
-operators. Size: L.
+**Structural path.** Wire DB-3 carriers into a unit-mismatch lens that
+produces a compile error on dimension-incompatible assignments /
+function applications. Size: M (consumer-wire-up, not substrate
+extension).
 
-**R1 status.** GAP → close for R1. Dedicated lane (T-Dimensions).
+**R1 status.** PARTIAL → close for R1. T-Dimensions lane now scoped
+against DB-3 core rather than from scratch.
 
 ---
 
