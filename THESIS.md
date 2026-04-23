@@ -259,14 +259,17 @@ from the `.dag` graph and committed — not hand authored. Tests follow
 the carve-out in facet 3 above: pipeline/contract tests are `.dag`
 `TestClaim` data; the `TESTING.md §"Post-R2 shape"` residual categories
 (compiler-internal unit tests + external-toolchain boundary tests) remain
-Rust-authored. Hand-maintained surface target: the irreducible shim set
-defined in `docs/design-pure-bootstrap.md` (authority on the target shim
-*set* — which specific files are allowed to remain hand-authored at
-graduation). The live *count* of currently hand-authored files reads from
-the full SG-0 census — `EXPECTED_HAND_AUTHORED` (file-level) +
+Rust-authored. Hand-maintained surface target: the irreducible shim
+floor defined in `docs/design-pure-bootstrap.md` (authority on the **≤5
+bound** and the **current candidate set** for the non-test surface;
+specific files are candidates today and are ratified at graduation).
+The live *count* of currently hand-authored files reads from the full
+SG-0 census — `EXPECTED_HAND_AUTHORED` (file-level) +
 `EXPECTED_HAND_AUTHORED_FRAGMENTS` (crate-root scaffolds) — in
-`src/v3/compiler/tests/integration/sg0_census_test.rs` (authority on the
-census; shrinks monotonically toward the shim set).
+`src/v3/compiler/tests/integration/sg0_census_test.rs` (authority on
+the census; non-test subset shrinks monotonically toward the shim
+floor; test subset shrinks monotonically toward the TESTING.md
+residual).
 Generated escape hatch is acceptable for additional files; hand-authored
 beyond the shim is not.
 v2 achieves this pattern at ~97% (2 hand-maintained of 62 stage0 files);
