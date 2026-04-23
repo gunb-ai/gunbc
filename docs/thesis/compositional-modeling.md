@@ -98,18 +98,33 @@ The algebra is where the behavior comes from:
 
 ```dag
 // dsl/std/algebra.dag (abbreviated)
-type Magma<T>        { op: fn(T, T) -> T, ... }
-type Semigroup<T>    extends Magma<T>    { /* associative */ }
-type Monoid<T>       extends Semigroup<T> { identity: T }
-type Group<T>        extends Monoid<T>   { inverse: fn(T) -> T }
-type Ring<T>         extends Group<T>    { mul: Monoid<T>, ... }
-type OrderedRing<T>  extends Ring<T>     { compare: fn(T,T) -> Ordering }
+
+// Unary (one operation):
+type Magma<T>             { op: fn(T, T) -> T }
+type Semigroup<T>         extends Magma<T>    { /* associative */ }
+type Monoid<T>            extends Semigroup<T> { identity: T }
+type CommutativeMonoid<T> extends Monoid<T>   { /* commutative */ }
+
+// Ring-like (additive + multiplicative monoids + distribution):
+type Semiring<T>     { add: CommutativeMonoid<T>, mul: Monoid<T>, /* distributive */ }
+type Ring<T>         extends Semiring<T> { /* additive part promoted to AbelianGroup — adds negate */ }
+type OrderedRing<T>  extends Ring<T>     { compare: fn(T, T) -> Ordering }
 ```
+
+The jump to Ring-like isn't a single next link in the unary chain —
+it's the composition of **two** unary algebras (an additive
+commutative monoid and a multiplicative monoid) with a distribution
+law tying them together. That shape is what `Semiring` names. `Ring`
+promotes the additive side to an abelian group (adds `negate`);
+`OrderedRing` adds a total order. Each level adds exactly one
+axiom's worth of structure. `[live]` — `dsl/std/algebra.dag:13-45`
+(hierarchy diagram), `:145-150` (Semiring), `:154-160` (Ring),
+`:176-193` (OrderedRing).
 
 `OrderedRing<Word64>` gives you `+`, `-`, `*`, `negate`, `compare`,
 `<`, `>`. These fall out of the algebra, as structural facts on
 `Word64`. Not declared per-type; declared once on the algebra and
-attached by the `inhabits` edge. `[live]` — `dsl/std/algebra.dag:176-195`.
+attached by the `inhabits` edge. `[live]` — `dsl/std/algebra.dag:176-193`.
 
 ### What this buys you
 
