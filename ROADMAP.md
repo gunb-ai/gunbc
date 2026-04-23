@@ -125,7 +125,7 @@ Read bottom-up. Arrows point producer → consumer.
 
 **Two distinct baselines inside T-PB-A.** Both read from live authorities — this doc does not freeze counts.
 
-- **Hand-Rust census:** `EXPECTED_HAND_AUTHORED` in `src/v3/compiler/tests/integration/sg0_census_test.rs` → ≤5 irreducible-shim (per `docs/design-pure-bootstrap.md`). What's allowed to exist as a hand-authored file; test subset dissolves via T-PB-B.
+- **Hand-Rust census:** the full SG-0 census — `EXPECTED_HAND_AUTHORED` (file-level) + `EXPECTED_HAND_AUTHORED_FRAGMENTS` (crate-root scaffolds like `parse_parser_body.txt`) — in `src/v3/compiler/tests/integration/sg0_census_test.rs` → ≤5 irreducible-shim (per `docs/design-pure-bootstrap.md`). What's allowed to exist as a hand-authored file; test subset dissolves via T-PB-B.
 - **Compiler–std consolidation ratchet:** compiler-local `type` declarations not in the positive-def set and not exempted → 0 (see ROADMAP §"Compiler–`std/` consolidation program"). What's allowed to exist as a compiler-local type name.
 
 Both land inside T-PB-A because dissolving the compiler-local surface forces both gates down together, but the acceptance claims (`pb_hand_rust_at_shim_floor`, `pb_compiler_std_ratchet_zero`) are independent gates tracked against independent authorities.
