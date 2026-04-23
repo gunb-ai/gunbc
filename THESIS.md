@@ -86,13 +86,17 @@ See [docs/thesis/target-realization-efficiency.md](docs/thesis/target-realizatio
 
 ## Correctness dimensions
 
-Correctness dimensions are the thesis mechanism for adding new proof obligations without inventing parallel infrastructures.
+Correctness dimensions are the thesis mechanism for adding new proof obligations without inventing parallel infrastructures. A dimension — complexity, cost, idempotency, ownership, parallelism, or any user-declared invariant — is a structural fact carried by the program's data model, not a behavioral check run at test time. Validation is reading the structure; it is not running the code.
+
+Consequence: correctness scales with the structural surface, not with human attention. Mainstream languages catch invariant violations via tests, profilers, schema validators, and production postmortems. gunbc catches them at compile time by reading the structure once.
 
 See [docs/thesis/correctness-dimensions.md](docs/thesis/correctness-dimensions.md).
 
 ### User-defined dimensions
 
-User-declared dimensions extend the same structural proof surface rather than opening a second rule system.
+User-declared dimensions extend the same structural proof surface rather than opening a second rule system. A user writes a lens in `.dag` — e.g., "max external HTTP calls per workflow," "bounded memory footprint per request," "no cross-tenant data flow" — and the compiler validates every program against it using the same mechanism it uses for built-in dimensions.
+
+Consequence: the ceiling of what gunbc can prove is user-extensible. Domain-specific correctness concerns that mainstream languages cannot model become structural facts in gunbc.
 
 See [docs/thesis/correctness-dimensions.md](docs/thesis/correctness-dimensions.md#user-defined-dimensions).
 
@@ -154,6 +158,12 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 
 **Core abstraction:**
 - .dag is dependency modeling software. The program IS a dependency graph. Parallelism is the default; sequential execution requires a data dependency to justify it.
+
+**Correctness is structural, not behavioral (meta-claim):**
+- Every correctness dimension — type, arity, unit, effect, complexity, ownership, idempotency, and any user-declared invariant — is a structural fact carried by the program's data model.
+- Validation is reading the structure; it is not running the code. The Tier 1 / Tier 2 / Tier 3 claims below are what this meta-claim produces, not independent commitments.
+- The dimension system is first-class user-extensible: a user writes a lens in `.dag`, and the compiler validates every program against it using the same mechanism it uses for built-in dimensions.
+- What mainstream languages catch via testing, profiling, schema validators, integration test suites, and production postmortems, gunbc catches at compile time by reading the structure once.
 
 **Tier 1 — Structural correctness (impossible to write the bug):**
 - Type mismatches, field typos, non-exhaustive matches, bare container types, circular dependencies, stale imports, cross-target drift — all caught at compile time.
