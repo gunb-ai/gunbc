@@ -652,10 +652,24 @@ Every interesting class Rust/C++ can't / won't catch is either handled
 today or has a named structural path. No class is "we'll catch it at
 runtime" by default.
 
-## R1 scope implications
+## R1 scope implications — **PROPOSED, not current**
 
-Per the governing rule (every GAP must close for R1), the audit names
-these additions to PR #669's R1 program:
+**Live state (at time of writing).** THESIS.md §"Enumerable
+impossible-bug classes" tags three of its six classes as `[R2+]`
+(nested-optional flatten, unenumerated effects, unhandled diagnostic
+paths / Tier-2 safety). ROADMAP §"Release R1 Program" (PR #669) does
+not include T-Tier2, T-Effects, T-Dimensions, T-Secret,
+T-Resource-Ownership, or T-Cardinality as lanes, and does not name M5.
+
+**This section is a proposal, not current R1 scope.** The "governing
+rule" at the top of this doc (every GAP closes for R1) reflects PM
+direction given after PR #669 merged ("everything related to
+impossible bug classes needs to be R1"), but has not yet been
+codified in THESIS or ROADMAP. Until both are amended, current R1
+scope remains as PR #669 defined it, with classes 12/13/14 scheduled
+[R2+] per THESIS.
+
+**Proposed additions (conditional on THESIS + ROADMAP amendment).**
 
 | Lane | Classes closed | Relative size |
 |---|---|---|
@@ -665,16 +679,21 @@ these additions to PR #669's R1 program:
 | **T-Cardinality** | 9 (nested-optional), partial 12 | M-L (may fold into T-Sub) |
 | **T-Secret** | 10 (secret leak), 17 (path traversal) | S-M |
 | **T-Resource-Ownership** | 11 (resource leak) | M (extends ownership lens) |
-| **T-LaneE** | 7 (complexity) | XL (already in R1) |
+| **T-LaneE** | 7 (complexity) | XL (already in R1 per PR #669) |
 | **T-LLM-Services** extension | 4 (API versioning) | minor extension |
 
-**Critical-path effect:** T-Tier2 becomes a third XL lane alongside
-T-LaneE and T-PB-A. Likely introduces **M5** manager dedicated to
-Tier-2 substrate work.
+**Critical-path effect IF proposal accepted:** T-Tier2 becomes a third
+XL lane alongside T-LaneE and T-PB-A. Likely introduces **M5** manager
+dedicated to Tier-2 substrate work.
 
-**Rough aggregate:** ~50-80% more work than the PR #669 R1 framing
-committed. Not a doubling; not cheap. Every added class is Rust/C++-class
-differentiation, not Python-class paper-scores.
+**Rough aggregate IF proposal accepted:** ~50-80% more work than the
+PR #669 R1 framing. Not a doubling; not cheap. Every added class is
+Rust/C++-class differentiation, not Python-class paper-scores.
+
+**Follow-up PR required to make this R1-authoritative.** THESIS must
+promote classes 12/13/14 (and add 4, 5, 8, 10, 11, 17) from [R2+] to
+[R1]; ROADMAP §"Release R1 Program" must add the named lanes to the
+nine-lane structure.
 
 ## Maintaining this doc
 
