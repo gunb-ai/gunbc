@@ -137,14 +137,25 @@ team. Slight float-rounding behavior differs. Bug in prod under load.
 **Rust / C++ status: `no-help`.** Not in scope for any single-language
 compiler. Cross-language equivalence requires differential testing.
 
-**gunbc status: CE** (gated on v2-oracle cementing test in Lane E;
-structural by emission-from-one-source).
-Same `.dag` emits to Rust, Python, Go. Cementing tests prove behavioral
-equivalence per structural form. Differential drift becomes a compile-
-time assertion in Lane E's acceptance claim.
+**gunbc status: GAP** for cross-language *behavior* equivalence;
+schema-shape drift is separately covered by class 1 (CE via one-
+declaration omni-emission).
 
-**Evidence:** `src/v3/spec/rust.dag` / `python.dag` / `go.dag` (per-
-target specs derive from shared substrate); Lane E cementing test plan.
+Schema-shape drift across targets IS prevented today: `src/v3/spec/rust.dag`,
+`python.dag`, `go.dag` all derive from one `.dag` declaration, so
+field-shape drift is structurally impossible. But cross-language
+behavior equivalence at runtime (same input → same output on Rust vs
+Python emission) is NOT enforced. `docs/thesis/what-falls-out.md:90`
+explicitly records L5 (cross-language equivalence) as "not implemented."
+Cementing tests against a v2 oracle are in Lane E's plan but do not yet
+produce compile-time assertions.
+
+**Structural path.** Lane E cementing tests convert to compile-time
+failures on behavioral drift once the oracle-vs-target comparator is
+wired into the gate layer. Folds into T-LaneE.
+
+**R1 status.** GAP → close for R1 when Lane E cementing tests are a
+compile gate, not a test-time check.
 
 ---
 
