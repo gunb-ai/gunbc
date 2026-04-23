@@ -12,40 +12,44 @@ state all inside the same prose, in present-tense grammar. Each
 round, reviewers caught one or two over-claims; each fix was local;
 the next round found new instances elsewhere.
 
-This is a structural-not-content problem. Local prose tightening
-cannot prevent the pattern. This document is the rule-of-the-road
-that prevents it at the contract level.
+This is a structural-not-content problem; local prose tightening
+cannot prevent the pattern `[live]` (diagnosis grounded in the
+review history of closed PR #671). This document is the
+rule-of-the-road that prevents it at the contract level `[live]`
+(rules codified in the sections below).
 
 ## Four modes
 
 Every thesis-subtree document declares one mode at the top, between
-the title and the body:
+the title and the body `[live]` (rule codified in this section):
 
 - **`LIVE`** — audits current tree state. Claims are about code as it
-  exists today. Every claim cites file:line, test file, or commit SHA.
+  exists today. Every claim cites file:line, test file, or commit
+  SHA `[live]`.
 - **`PROPOSAL`** — proposes commitments to `THESIS.md` or
   `ROADMAP.md`. Claims are about what should be. Promotion to
-  authority requires a follow-up PR amending the authoring authority.
+  authority requires a follow-up PR amending the authoring authority
+  `[live]`.
 - **`TARGET`** — worked example showing the destination. Every claim
-  is paired with a live-state gap pointer.
+  is paired with a live-state gap pointer `[live]`.
 - **`MIXED`** — narrative / pedagogical documents that intentionally
   span live + proposed + target material in one coherent arc (e.g.,
   "how gunbc models X" walk-throughs). Permitted only if
   (a) per-claim tagging per Rule 2 is applied to every structural
   claim in the body, and (b) a claim-status summary table appears
-  near the top of the document showing the live-vs-target split.
-  The pattern the contract is preventing — silent target-as-live
-  narration — is blocked by the tagging discipline, not by a doc-
-  level prohibition. `MIXED` mode exists for narrative docs that
-  would otherwise be artificially split to the detriment of the
-  reader.
+  near the top of the document showing the live-vs-target split
+  `[live]`. The pattern the contract is preventing — silent
+  target-as-live narration — is blocked by the tagging discipline,
+  not by a doc-level prohibition `[live]`. `MIXED` mode exists for
+  narrative docs that would otherwise be artificially split to the
+  detriment of the reader.
 
 ## Claim tagging
 
 Every structural guarantee in a thesis doc ("CE", "IBC", "compiler
 proves X", "complete", "no tests required", "structurally enforced",
 "impossible", "prevented by construction") carries one of three tags
-in the same paragraph:
+in the same paragraph `[live]`:
 
 - **`[live]`** — current tree state. Must cite file:line.
 - **`[proposed]`** — requires amendment to `THESIS.md` or
@@ -54,14 +58,22 @@ in the same paragraph:
   live-state gap (audit row, lane name, or debt-ledger row).
 
 Bare structural claims without a tag fail review by rule, not by
-reviewer judgment. The tag makes mode-mixing visible at the
-paragraph level, not only at document level.
+reviewer judgment `[live]`. The tag makes mode-mixing visible at the
+paragraph level, not only at document level `[live]`.
+
+**Self-application.** This contract is itself a thesis-subtree doc
+in `LIVE` mode, so its own structural claims carry `[live]` tags.
+Where a claim is about a rule codified in this file, the citation
+points to the relevant section of this document; where a claim is
+about another document (`THESIS.md`, `ROADMAP.md`, `INVARIANTS.md`),
+the citation points to that file.
 
 ## R1 scope authority
 
 R1 scope — the lane list, acceptance gates, and schedule — lives only
-in `THESIS.md` and `ROADMAP.md`. No other document maintains
-parallel R1 scope authority. Other documents may:
+in `THESIS.md` and `ROADMAP.md` `[live]` (see `THESIS.md`,
+`ROADMAP.md`). No other document maintains parallel R1 scope
+authority `[live]`. Other documents may:
 
 - **Propose** scope changes in `PROPOSAL` mode, with a follow-up PR
   amending `THESIS.md` / `ROADMAP.md`.
@@ -69,37 +81,40 @@ parallel R1 scope authority. Other documents may:
 - **Audit against** current scope in `LIVE` mode.
 
 Tables titled "R1 lanes" or "R1 gates" or "R1 scope" outside the two
-authoring authorities are violations.
+authoring authorities are violations `[live]`.
 
 ## Worked-example discipline
 
-`TARGET` mode documents carry a claim-status table **near the top of
-the file, before any code**. The table shape:
+`TARGET` and `MIXED` mode documents carry a claim-status table
+**near the top of the file, before any code** `[live]`. The table
+shape:
 
 | Claim | Status | Evidence or gap |
 |---|---|---|
 | X | `[live]` | `file:line` or test name |
 | Y | `[target]` | `T-XYZ` lane, bug-class N, or debt-ledger row |
 
-A caveat dump at the end of a worked example is a violation. Readers
-must see the full live-vs-target picture before reading any code.
-Per-claim tags in the body remain required in addition to the table.
+A caveat dump at the end of a worked example is a violation `[live]`.
+Readers must see the full live-vs-target picture before reading any
+code. Per-claim tags in the body remain required in addition to the
+table `[live]`.
 
 ## GAP / PARTIAL single-ledger rule
 
 A document that flags a gap points to one follow-up artifact — the
-`ROADMAP.md` tracked-debt ledger row. Documents link to the ledger;
-documents do not recreate planning state, proposal queues, or
-sub-ledgers.
+`ROADMAP.md` tracked-debt ledger row `[live]` (see `ROADMAP.md`
+tracked-debts section). Documents link to the ledger; documents do
+not recreate planning state, proposal queues, or sub-ledgers
+`[live]`.
 
 Numbered items (bug classes, lane identifiers, debt rows) live in one
-authoritative doc. Other docs cite by number; they do not renumber.
-Cross-reference drift is a violation of this rule.
+authoritative doc `[live]`. Other docs cite by number; they do not
+renumber. Cross-reference drift is a violation of this rule `[live]`.
 
 ## Relationship to INVARIANTS
 
 This contract is a thesis-doc-specific enforcement shape of two
-existing invariants:
+existing invariants `[live]` (see `INVARIANTS.md`):
 
 - **P1 Modeling Faithfulness** — "Documentation Describes Live
   State." Mode declaration + per-claim tagging make the live-state
@@ -113,28 +128,33 @@ ones for documents that repeatedly drift in the same ways.
 
 ## Applying to existing and new docs
 
-**Existing `docs/thesis/` docs.** At next non-trivial edit:
+**Existing `docs/thesis/` docs.** At next non-trivial edit `[live]`:
 
 - Add a mode tag at the top.
 - Sweep for structural claims; add per-claim tags.
-- If the doc mixes modes, file a plan to split.
+- If the doc intentionally spans live + proposed + target material
+  in one coherent narrative, convert it to `MIXED` mode: per-claim
+  tags plus a claim-status summary table near the top, per the
+  Worked-example discipline above. Otherwise, split into single-mode
+  docs.
 
-Not a bulk-amend-the-tree obligation. Apply when touched.
+Not a bulk-amend-the-tree obligation; apply when touched `[live]`.
 
 **New `docs/thesis/` docs land compliant from the start** —
 contract-compliance is a PR-review line item for any new doc under
-the subtree.
+the subtree `[live]`.
 
 ## Precedent
 
 This is the thesis-doc surface applying the same `[invariant-reveal]`
-discipline that `ROADMAP.md` introduced in PR #669 for tracked debts.
-Pattern: when the same finding class fires across different sites,
-graduate the finding to a rule rather than patching each site.
+discipline that `ROADMAP.md` introduced in PR #669 for tracked
+debts `[live]` (see `ROADMAP.md`, PR #669). Pattern: when the same
+finding class fires across different sites, graduate the finding to
+a rule rather than patching each site.
 
 ## Maintenance
 
 This doc is `LIVE` mode about itself: the rules above describe the
-current contract. If the contract needs to change (new mode,
-different tagging syntax, scope extension), a `PROPOSAL` doc is
-filed, reviewed, and merged here in a follow-up PR.
+current contract `[live]`. If the contract needs to change (new
+mode, different tagging syntax, scope extension), a `PROPOSAL` doc
+is filed, reviewed, and merged here in a follow-up PR.
