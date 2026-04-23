@@ -279,7 +279,10 @@ irreducible shim set defined in `docs/design-pure-bootstrap.md`.
   because depth is a surface the user opts into.
 
 **Tests are structural data:**
-- A test is a `TestClaim` declaration in `.dag`. Hand-authored tests and
+- Tests outside the `TESTING.md §"Post-R2 shape"` residual are `TestClaim`
+  declarations in `.dag`; the residual (compiler-internal unit tests +
+  external-toolchain boundary tests) remains Rust-authored, per TESTING.md
+  as single authority. Within the `.dag` surface, hand-authored tests and
   generated tests share one predicate vocabulary — the predicates ARE the
   test-writing language.
 - Manual tests are upstream of code: behavioral contracts the code must
