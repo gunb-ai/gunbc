@@ -79,7 +79,7 @@ ratchet source. PB metrics below track the SG-0 ratchet.
 
 All four chain into a single `fixtures` array that bootstrap.rs tokenizes + parses + lowers on every `Dag::new()`. **PB-1 must replace the runtime tokenize/parse/lower path for all four input authorities**, not just `std_fixtures`.
 
-**The 78-file gap decomposes** (approximate):
+**The hand-Rust gap decomposes** (approximate, against the original 78-file baseline; live count reads from SG-0 census):
 - ~30 compiler core files (parse, lower, infer, emit internals, tokenize shim, ...)
 - ~10 lens files (SG-6 migrating to generated; some already done)
 - ~10 diagnostic / utility files (serialize, diagnostics, types, ...)
@@ -102,7 +102,7 @@ retire projection — not one.
   partition in `sg0_census_test.rs`) already enforces the
   hand-authored count. Add **PB count** as a named column with a
   trend arrow. Ratchet only down.
-- **Target trajectory**: 78 → 50 → 20 → 5.
+- **Target trajectory**: live baseline → ~50 → ~20 → ≤5 (intermediate checkpoints illustrative; trigger milestones below are authoritative, not the counts).
 - **Dependencies**: none. Dispatchable now.
 - **Not the same as `compiler.dag`'s `hand_maintained_src`** —
   that's the regeneration-survival list (which files don't get
@@ -237,17 +237,19 @@ If (4) and (5) can be generated, the shim is 3 files.
 
 ## Measurement
 
-| Milestone | SG-0 PB count | Trigger |
+Live count comes from SG-0 census (`EXPECTED_HAND_AUTHORED` + `EXPECTED_HAND_AUTHORED_FRAGMENTS` in `sg0_census_test.rs`). Trigger milestones below are authoritative for what PB-N retires; the absolute counts are illustrative against the original 78-file baseline at authoring time and will not match the live census once it drifts.
+
+| Milestone | SG-0 PB count (illustrative, baseline-78) | Trigger |
 |---|---|---|
-| Today | 78 | — |
-| Post-PB-2 | 77 | tokenize.rs deleted |
-| Post-PB-3 | 76 | monolithic `parse.rs` retired (parser staging); **PB-3 done** when SG-2b removes `parse_parser_body.txt` / body splice |
-| Post-PB-4 | 75 | lower.rs deleted (+ support) |
-| Post-PB-5 | 74 | infer.rs deleted |
-| Post-PB-6 | 68 | emit files collapsed (~6 deletions) |
-| Post-cleanup | ~50 | diagnostic/utility files migrated |
-| Post-PB-7 | ~20 | test infra migrated |
-| Post-PB-8 | ≤5 | graduation |
+| Today | baseline (read live) | — |
+| Post-PB-2 | baseline − 1 | tokenize.rs deleted |
+| Post-PB-3 | baseline − 2 | monolithic `parse.rs` retired (parser staging); **PB-3 done** when SG-2b removes `parse_parser_body.txt` / body splice |
+| Post-PB-4 | baseline − 3 | lower.rs deleted (+ support) |
+| Post-PB-5 | baseline − 4 | infer.rs deleted |
+| Post-PB-6 | baseline − 10 | emit files collapsed (~6 deletions) |
+| Post-cleanup | ~baseline − 28 | diagnostic/utility files migrated |
+| Post-PB-7 | ~baseline − 58 | test infra migrated |
+| Post-PB-8 | ≤5 non-test + TESTING residual | graduation |
 
 ## Dependencies map
 
