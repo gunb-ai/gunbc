@@ -2,9 +2,19 @@
 
 > **Parent:** `THESIS.md` §"Enumerable impossible-bug classes" + §"Correctness is structural, not behavioral (meta-claim)"
 
-This document is the completeness-spec audit for gunbc's core thesis claim:
-that entire bug classes engineers struggle with in traditional languages are
-either *impossible by construction* or *caught at compile time* in gunbc.
+## Focus
+
+The compiler industry has already moved past Python-class bugs. Rust catches
+null dereferences, data races, non-exhaustive matches, and use-after-free
+— that's table stakes for any modern production compiler. The interesting
+question, and the one gunbc is accountable to, is:
+
+**Which bugs do Rust and C++ — the most rigorous production compilers in
+common use — still let through? Where do engineers building systems in
+best-in-class structured languages still bleed?**
+
+This doc audits gunbc against *those* classes. Bugs Rust already handles
+are covered briefly at the end as table stakes.
 
 ## Governing rule
 
@@ -13,567 +23,595 @@ bug class is not handled, the response is not "schedule it" — it's a **design
 audit**: where did the structure miss this? Can the structure be enhanced so
 the compiler takes on more of the work?
 
-R1 ships when every class in this list has a satisfactory structural story:
-either it's already IBC/CE, or there is a named structural path to make it
-so.
+R1 ships when every class here has a satisfactory structural story: either
+it's already IBC/CE in gunbc, or there is a named structural path to make
+it so.
 
 ## Classification rubric
 
-Each bug class is tagged with one of four states:
+For each bug class, we record **two independent verdicts**:
 
-| Tag | Meaning |
-|---|---|
-| **IBC** | *Impossible by construction.* The structure itself does not admit the bug — you cannot write it even if you try. |
-| **CE** | *Compile error.* The structure admits the bug, but the compiler rejects it at compile time. (Weaker than IBC; preferred fallback when structural impossibility is impractical.) |
-| **PARTIAL** | Handled in some cases; others slip through. Named gap. |
-| **GAP** | Neither IBC nor CE yet. Concept exists in the ontology but the enforcement is missing. Structural path must be named. |
+- **Rust / C++ status** — what do the best-in-class structured compilers do? One of: `IBC` (impossible by construction), `CE` (compile error), `idiom` (library / discipline only), `runtime` (panics / UB at runtime), `no-help` (compiler offers nothing).
+- **gunbc status** — same rubric: `IBC` / `CE` / `PARTIAL` / `GAP`.
 
-Every `GAP` row is a design-audit trigger. "We'll catch it at runtime" is
-not an acceptable answer.
+A class is interesting for gunbc when Rust/C++ is `idiom` / `runtime` /
+`no-help` AND gunbc is `IBC` / `CE` (or has a named structural path).
 
 ## How this doc is used
 
 - THESIS commits to the list of bug classes (the *what*).
-- This doc records how the structure prevents each class (the *how*) and
-  the current state (IBC / CE / PARTIAL / GAP).
-- Gaps are traced to ROADMAP follow-up lanes.
-- When a new bug class surfaces externally (user reports, review feedback,
-  audit), add it here first; fix structure second.
+- This doc records *how* Rust/C++ handle each + *how* gunbc handles it +
+  *what's missing* if anything.
+- Gaps trace to ROADMAP follow-up lanes.
+- When a new bug class surfaces externally (user reports, security
+  audits, design-review findings), add it here first; fix structure
+  second.
 
 ---
 
-## Group A — Null / optional family
+## Group A — Cross-system correctness (Rust/C++ scope limits)
 
-### 1. Null dereference / use-before-init
+Rust and C++ are single-binary languages. They don't model
+cross-service correctness or cross-target consistency because those are
+out of scope for a traditional compiler. gunbc's omni-emission puts
+these in scope structurally.
 
-**Traditional example (Java).**
-```java
-User u = findUser(id);   // may return null
-String name = u.name();  // NullPointerException at runtime
-```
+### 1. Schema drift between client and server
 
-**Why traditional compilers miss it.** Most mainstream languages treat
-`null` / nil as a value of every reference type. The type system doesn't
-distinguish "definitely a value" from "maybe a value."
-
-**gunbc status: IBC.**
-No raw null exists. Optionality is expressed via `Cardinality<T, AtMost(1)>`
-(surface syntax `T?`). You cannot assign `None` to a non-optional field
-because there is no null value to assign. Extraction is through pattern
-match only; there is no forced unwrap.
-
-**Evidence:** `dsl/std/algebra.dag` (no unwrap method on Option);
-`dsl/std/types.dag` (Option via Cardinality); `src/v3/compiler/src/infer.rs`
-(pattern-match is the only extractor).
-
----
-
-### 2. Empty-list head access
-
-**Traditional example (Python).**
-```python
-items = []
-first = items[0]   # IndexError at runtime
-```
-
-**Why traditional compilers miss it.** List types don't carry cardinality.
-`[]` and `[1, 2, 3]` have the same static type.
-
-**gunbc status: CE** (trending toward IBC).
-`first(List<T>)` returns `Option<T>`, not `T`. The compiler forces the
-caller to pattern-match the result. You cannot extract a value that might
-not be there.
-
-**Path to IBC.** A `NonEmpty<T>` = `Cardinality<T, AtLeast(1)>` would let
-a producer promise non-emptiness and a consumer require it. Then `first` on
-`NonEmpty<T>` returns `T` directly. The `List<T>` case stays CE.
-
-**R1 status.** CE is sufficient; NonEmpty is polish. No gap.
-
----
-
-### 3. Nested-optional flatten
-
-**Traditional example (Rust).**
+**Traditional example (Rust client + Rust server, different crates).**
 ```rust
-let config: Option<Option<PortNumber>> = load_config();
-let port = config.flatten().unwrap_or(8080);  // user flattens by hand
+// Server crate
+#[derive(Serialize)] struct User { id: u64, email: String }
+
+// Client crate — one refactor later, diverges
+#[derive(Deserialize)] struct User { id: u64, email_address: String }
 ```
+Runtime `serde` parse fails; UI breaks; crash in production.
 
-**Why traditional compilers miss it.** Nesting is permitted by generics;
-flattening is user work.
+**Rust / C++ status: `no-help`.** Two crates, two type systems, no
+shared authority. Protobuf / OpenAPI codegen helps but is out-of-band
+tooling.
 
-**gunbc status: GAP.**
-Users can currently construct `Option<Option<T>>`. Cardinality refinement
-(which would make the nesting collapse to `AtMost(1)` automatically) is
-deferred.
-
-**Structural path.** Extend `Cardinality` to compose:
-`Cardinality<Cardinality<T, AtMost(1)>, AtMost(1)> ≡ Cardinality<T, AtMost(1)>`.
-This is substrate work — the compiler's type system must recognize the
-composition law. Once in place, nested optionals are IBC.
-
-**R1 status.** GAP → must close for R1. Lane-level work item.
-
----
-
-### 4. Force-unwrap panic
-
-**Traditional example (Rust).**
-```rust
-let port: Option<u16> = env_port();
-let p = port.unwrap();  // panics if None at runtime
-```
-
-**Why traditional compilers miss it.** `unwrap()` is a library method that
-panics; it's syntactically valid at compile time.
-
-**gunbc status: IBC.**
-There is no `unwrap()` method on Option in `dsl/std/`. Pattern matching is
-the only extractor. You cannot write the bug because the extractor doesn't
-exist.
-
----
-
-## Group B — Type / shape family
-
-### 5. Enum-variant non-exhaustive match
-
-**Traditional example (Go).**
-```go
-switch color {
-  case Red:   ...
-  case Blue:  ...
-  // Green silently falls through to nothing
-}
-```
-
-**Why traditional compilers miss it.** Go's switch is not exhaustive by
-default. Rust warns but doesn't error; most languages don't check.
-
-**gunbc status: CE.**
-`match` over `Disj` must cover every variant. Missing arms produce a
-compile error naming the missing variants.
-
-**Evidence:** `src/v3/compiler/src/infer.rs:492-531` — exhaustiveness
-checker with message `"non-exhaustive match: missing arm(s) for
-variant(s)"`.
-
----
-
-### 6. Schema drift between client and server
-
-**Traditional example (TypeScript + Python).** Frontend expects
-`user.age: string` (typo in TS types); backend returns `age: number`.
-Runtime JSON-parse succeeds; coercion bugs appear in UI.
-
-**Why traditional compilers miss it.** Two codebases, two type systems, no
-shared source of truth. Schema validators help but are out-of-band.
-
-**gunbc status: CE (trending IBC).**
+**gunbc status: CE** (trending IBC).
 Client, server, and any other target derive from the same `.dag`
 declaration. A field's type is declared once; all targets emit from it.
-Drift is impossible because there is no second authority to drift against.
+There is no second authority to drift against.
 
 **Evidence:** `dsl/std/coercion.dag` (single-authority type checkpoint);
-THESIS §"Omni-emission" and §"Target realization efficiency" (one spec,
-many targets, zero per-target drift).
+THESIS §"Omni-emission" and §"Target realization efficiency".
 
 ---
 
-### 7. Transport / type drift (REST path mismatched with typed route)
+### 2. Transport / type drift (REST path mismatched with typed route)
 
-**Traditional example (Express + fetch).** Server declares
-`app.get('/orders/:id', ...)` where `:id` is expected to be a UUID;
-client fetches `/orders/${someNumber}`. No compile-time check.
+**Traditional example.** Server declares `GET /orders/:id` where `id` is
+expected as UUID; Rust client builds URL: `format!("/orders/{}",
+order_number_as_u64)`. No compile-time check that `u64` matches UUID.
 
-**Why traditional compilers miss it.** Route templates are strings on both
-sides; type information doesn't flow through the URL.
+**Rust / C++ status: `idiom`.** Rust web frameworks (axum, actix) have
+typed extractors for server-side; client-side URL construction is still
+`format!` or string concat with type information lost at the boundary.
 
 **gunbc status: CE.**
 Path templates parse into typed tokens (`std.http_path::PathTemplate`).
-Parameter types are declared at the `service` level and consumed at call
-sites. Type mismatch between path parameter and caller argument is a
-compile error.
+Parameter types declared at `service` level, consumed at call sites;
+type mismatch is a compile error across the call boundary.
 
 **Evidence:** `dsl/std/http_path.dag:18-79` (PathTemplate + typed tokens);
 `dsl/std/effects.dag:73-91` (KeySource typed discriminator).
 
 ---
 
-## Group C — Runtime safety (Tier 2)
+### 3. Cross-language behavior divergence (same program, different targets)
 
-### 8. Array out-of-bounds
+**Traditional example.** Service ported from Rust → Python for a new
+team. Slight float-rounding behavior differs. Bug in prod under load.
 
-**Traditional example (C).**
-```c
-int arr[10];
-int x = arr[15];   // undefined behavior / memory corruption
-```
+**Rust / C++ status: `no-help`.** Not in scope for any single-language
+compiler. Cross-language equivalence requires differential testing.
 
-**Why traditional compilers miss it.** Array bounds aren't part of the
-type. Indices aren't proven in range.
+**gunbc status: CE** (gated on v2-oracle cementing test in Lane E;
+structural by emission-from-one-source).
+Same `.dag` emits to Rust, Python, Go. Cementing tests prove behavioral
+equivalence per structural form. Differential drift becomes a compile-
+time assertion in Lane E's acceptance claim.
 
-**gunbc status: GAP.**
-No `FixedArray<T, n>` with bounded index types yet. `List<T>` access is
-through iteration / pattern-match, which is safe; direct indexing with
-unchecked integers is absent.
-
-**Structural path.** `Cardinality(element, Exact(n))` as a type-level
-length constraint; indices typed as `BoundedInt<0, n>`. Then index-in-bounds
-is a type-check.
-
-**R1 status.** GAP → must close for R1. Subsumed by the Tier-2 substrate
-program (see class 9).
+**Evidence:** `src/v3/spec/rust.dag` / `python.dag` / `go.dag` (per-
+target specs derive from shared substrate); Lane E cementing test plan.
 
 ---
 
-### 9. Division by zero
+### 4. API version mismatch between services
 
-**Traditional example (Python).**
-```python
-rate = total / count   # ZeroDivisionError if count == 0
-```
+**Traditional example.** Service A upgrades from `Order v1` to
+`Order v2` (new `currency` field). Service B still speaks v1. Silent
+behavior changes at the boundary.
 
-**Why traditional compilers miss it.** Integer/float division is defined
-for any pair, including `x / 0`. Runtime check required.
+**Rust / C++ status: `no-help`.** Semantic versioning is convention.
+Runtime error-or-surprise.
 
-**gunbc status: GAP.**
-Field operations admit division but don't require a non-zero-divisor
-proof. Tier 2 runtime safety is named in THESIS but the substrate doesn't
-land yet.
+**gunbc status: PARTIAL.**
+Schema drift (class 1) is covered; versioned protocol evolution isn't
+yet explicit. Current thinking: model `OrderV1` / `OrderV2` as distinct
+types with explicit conversion functions. Callers that try to send V2 to
+a V1-expecting endpoint get a compile error.
 
-**Structural path.** Two options:
-- (a) **Total division.** `div(a, b)` returns `Option<T>`; callers
-  pattern-match. IBC via API shape.
-- (b) **Proof-requiring division.** Divisor typed `NonZero<T>`; compiler
-  proves non-zero from surrounding structure or requires an explicit
-  refinement. CE via type wall.
+**Structural path.** Protocol-versioning model in `std.services`. Size:
+M. Folds naturally into T-LLM-Services pattern.
 
-Option (a) is cheaper; option (b) is stronger.
-
-**R1 status.** GAP → must close for R1. Part of the Tier-2 substrate
-program (T-Tier2 lane).
+**R1 status.** PARTIAL → close for R1. Lane extension.
 
 ---
 
-### 10. Integer overflow
+## Group B — Effects and properties (beyond any mainstream compiler)
 
-**Traditional example (C / Java).**
-```java
-int a = Integer.MAX_VALUE;
-int b = a + 1;   // silently wraps to Integer.MIN_VALUE
+Rust's `impl Trait` and effect-adjacent bounds (`Send` / `Sync`) stop at
+thread safety. Effect enumeration, idempotency, and semantic invariants
+aren't there in any mainstream language.
+
+### 5. Unenumerated effects (declared ≠ actual)
+
+**Traditional example.**
+```rust
+/// reads from S3
+async fn process(data: Item) -> Summary {
+    let raw = s3_get(data.key).await?;      // documented
+    slack_post(&format!("{raw}")).await?;   // NOT documented
+    summarize(raw)
+}
 ```
+Docstring lies. Runtime discovers the lie when auditing network
+egress.
 
-**Why traditional compilers miss it.** Fixed-width integer semantics wrap
-(C, Java) or silently promote (Python, Ruby). Some compilers warn on
-constant expressions; none structurally prevent it.
+**Rust / C++ status: `no-help`.** `async` tracks "this function may
+await" but nothing finer. Effect systems require type-system extensions
+(Koka, Eff, OCaml 5 has them partially).
 
 **gunbc status: GAP.**
-`Int` / `Word64` are fixed-width; `OrderedRing<Word64>` admits addition
-without overflow proof.
+`std.effects` has effect-shape carriers (`ReadEffect`, `UpsertEffect`);
+composition logic exists. Missing: declared-effect syntax on function
+signatures + an enumeration walker that aggregates actual effects from
+body up the call graph + a comparator that fails on mismatch.
 
-**Structural path.** Either (a) default to unbounded integers (`BigInt`)
-with explicit fixed-width opt-in, or (b) make fixed-width arithmetic
-return `Option<T>` / require overflow proofs. Option (a) is cheaper and
-likely correct: fixed-width is an emission concern, not a semantics
-concern.
+**Structural path.** Three pieces (size: L):
+1. Surface syntax: `fn foo(...) @effects [Http, Db] ...`
+2. Effect-enumeration walker (lens)
+3. Comparator (declared vs enumerated → compile error)
 
-**R1 status.** GAP → must close for R1. Tier-2 substrate.
+**R1 status.** GAP → close for R1. Dedicated lane (T-Effects, L).
 
 ---
 
-## Group D — Units / dimensions
+### 6. Idempotency violation (retry-replay)
 
-### 11. Unit / dimension mismatch
-
-**Traditional example (any language).**
-```python
-timeout_ms = 5000
-sleep(timeout_ms)   # sleep expects seconds → sleeps 5000s, not 5s
+**Traditional example.**
+```rust
+#[retry(max_attempts = 3)]
+async fn run_workflow() {
+    fetch_issues().await?;
+    summarize().await?;
+    slack_post(summary).await?;   // not idempotent; duplicates on retry
+}
 ```
+`retry` over a tail with non-idempotent steps produces duplicate Slack
+posts. Classic at-least-once delivery pain.
 
-**Why traditional compilers miss it.** Integers are integers. Units live
-in variable names and comments.
+**Rust / C++ status: `no-help`.** Idempotency is a property of the body,
+invisible to any mainstream type system.
 
-**gunbc status: GAP.**
-THESIS §"Correctness dimensions" commits to user-declared dimensions
-(e.g., `Duration<Second>` vs `Duration<Millisecond>` as distinct types).
-The mechanism is conceptually declared; the substrate support for
-dimension type parameters hasn't landed yet.
+**gunbc status: IBC** (v3 BEHAVIORALLY COMPLETE).
+Idempotency is a property of the effect shape's algebraic structure.
+`is_idempotent_effect(shape)` pattern-matches on `EffectShape`;
+`compose_effects` checks the composition. `retry_on_failure` applied to
+a workflow with non-idempotent tail is a compile error.
 
-**Structural path.** Dimension as a first-class type parameter, with
-conversion functions explicit at type boundaries. Implicit coercion
-between different dimensions is a compile error.
-
-**R1 status.** GAP → must close for R1. Dedicated lane (T-Dimensions, L
-size).
+**Evidence:** `dsl/std/effects.dag:108-150`;
+`docs/v3-lens-capability-register.md:43` (v3 COMPLETE);
+`src/v3/lenses/idempotency.dag`.
 
 ---
 
-### 12. Suboptimal complexity (contract violation)
+### 7. Suboptimal complexity (contract violation)
 
 **Traditional example.** Engineer writes `fn dedupe(xs)` with documented
-O(n log n); three refactors later, it's O(n²). Nothing catches it until
-production.
+`O(n log n)`. Three refactors later it's `O(n²)` (hash table replaced
+with nested-loop scan). Nothing catches it until production latency.
 
-**Why traditional compilers miss it.** Complexity isn't part of the type.
-Review catches it sometimes; profilers catch it in production.
+**Rust / C++ status: `no-help`.** Complexity isn't part of any type
+system. Review catches it sometimes; profilers catch it in production.
 
 **gunbc status: CE in v2, PROXY in v3.**
 v2's complexity lens derives `CostExpr(work, span, asymptotic_class,
-certainty)` structurally and rejects functions exceeding declared bounds.
-v3's complexity lens currently produces a single integer depth per port
-— structurally terminal but behaviorally weaker. Lane E is the port
+certainty)` structurally; functions exceeding declared bounds are
+compile errors. v3 currently produces a single integer depth per port
+(structurally terminal, behaviorally weaker). Lane E is the port
 program to restore v2 parity.
 
 **Evidence:** `docs/v3-lens-capability-register.md:40-41` (PROXY
 downgrade); `src/v3/lenses/complexity.dag` (v3 proxy);
 `src/v2/complexity.dag` (v2 CE).
 
-**R1 status.** v3 must reach v2 parity (Lane E, T-LaneE XL — already in
-R1 scope).
+**R1 status.** v3 must reach v2 parity (T-LaneE XL, already in R1).
 
 ---
 
-## Group E — Effects / boundaries
+## Group C — Units / structural constraints (Rust partial via libraries)
 
-### 13. Secret leak to logs
+Rust has `uom` (library) and newtypes; C++ has template meta-programming.
+Both require significant discipline. gunbc makes them substrate.
 
-**Traditional example (Node.js).**
-```javascript
-console.log(`auth failed for token=${token}`);   // token now in CloudWatch
+### 8. Unit / dimension mismatch
+
+**Traditional example.**
+```rust
+fn sleep_ms(duration: Duration) { ... }   // duration actually seconds
+sleep_ms(timeout_seconds);                  // 1000× error, silent
 ```
+`Duration` is often one type for both millis and seconds; engineers name
+variables to distinguish and occasionally lie.
 
-**Why traditional compilers miss it.** A secret is a string; `toString()`
-is universal; logging accepts any stringifiable value.
+**Rust / C++ status: `idiom`.** Rust's `uom` crate is opt-in with
+verbose phantom-typed values. C++ does this with templates but the
+ergonomics are punishing. Neither is the default path.
+
+**gunbc status: GAP.**
+THESIS §"Correctness dimensions" commits to user-declared dimensions
+(`Duration<Second>` vs `Duration<Millisecond>` as distinct types).
+Substrate support for dimension type parameters hasn't landed.
+
+**Structural path.** Dimension as first-class type parameter; implicit
+conversion is a compile error; explicit conversions are typed
+operators. Size: L.
+
+**R1 status.** GAP → close for R1. Dedicated lane (T-Dimensions).
+
+---
+
+### 9. Nested-optional flatten (`Option<Option<T>>`)
+
+**Traditional example (Rust).**
+```rust
+let config: Option<Option<PortNumber>> = load_config();
+let port = config.flatten().unwrap_or(8080);   // user flattens by hand
+```
+This pattern — `Option<Option<_>>`, `Option<Result<_, _>>`, `Result<Result<_, _>, _>` —
+appears constantly in real Rust code. The types are valid; users must
+remember to flatten.
+
+**Rust / C++ status: `idiom`.** Rust allows the nesting; `.flatten()` is
+manual. C++ has `std::optional<std::optional<T>>` with no flatten in
+the standard.
+
+**gunbc status: GAP.**
+Users can currently construct `Option<Option<T>>`. Cardinality
+refinement (which would collapse the nesting to `AtMost(1)`
+automatically) is deferred.
+
+**Structural path.** Extend `Cardinality` composition law:
+`Cardinality<Cardinality<T, AtMost(1)>, AtMost(1)> ≡ Cardinality<T, AtMost(1)>`.
+Substrate type-system work. Size: M-L.
+
+**R1 status.** GAP → close for R1. Lane (T-Cardinality, M-L; may fold
+into T-Sub).
+
+---
+
+### 10. Secret leak to logs / outputs
+
+**Traditional example (Rust).**
+```rust
+#[derive(Debug)] struct Token(String);   // Debug derive leaks in logs
+info!("auth failed: {token:?}");          // token printed to CloudWatch
+```
+Convention: don't derive `Debug` on secrets. Enforcement: code review.
+
+**Rust / C++ status: `idiom`.** Rust's `secrecy` crate wraps and
+restricts `Debug`; still opt-in. No compile-time block against logging.
+Anyone deriving `Debug` or adding a `.to_string()` breaks the discipline.
 
 **gunbc status: GAP.**
 `dsl/std/types.dag:237` declares `Secret = String` as a **type alias**,
 not an opaque nominal type. `dsl/std/coercion.dag:114` documents that
-alias casts are identity at emit — a `Secret` value can be freely cast
-back to `String` and logged.
+alias casts are identity at emit — a `Secret` value coerces freely to
+`String`.
 
 **Structural path.** Make `Secret<T>` a nominal opaque wrapper (not an
-alias). Allow construction only through authenticated sinks; disallow
-coercion back to the underlying type. Logging / string-concat of a
-`Secret<T>` becomes a compile error.
+alias). Construction only through authenticated sinks; coercion back to
+the underlying type disallowed. Logging / string-concat of a `Secret<T>`
+is a compile error. Size: S-M.
 
-**R1 status.** GAP → must close for R1. Dedicated lane (T-Secret, S-M
-size — type-system work, not substrate extension).
-
----
-
-### 14. Unenumerated effects
-
-**Traditional example (Python service).**
-```python
-@doc("reads from S3")
-def process(data):
-    s3.get(...)
-    slack.post(...)   # actually posts to Slack; docstring is wrong
-    return data
-```
-
-**Why traditional compilers miss it.** No language tracks "what this
-function actually touches." Docstrings and type hints are out-of-band
-from the compiler.
-
-**gunbc status: GAP.**
-`dsl/std/effects.dag` and `src/v3/std/effects.dag` have effect-shape
-carriers (ReadEffect, UpsertEffect, etc.) and composition logic. But
-there is **no declared-effect syntax** and **no compiler pass** that
-walks a function body, aggregates effects up the call graph, and
-compares to the declared set.
-
-**Structural path.** Three pieces must land:
-1. Declared-effect annotation syntax: `fn foo(...) @effects [Http, Db] ...`
-2. Effect-enumeration walker: per function, aggregates effects from body
-   + called functions.
-3. Comparator: enumerated ≠ declared → compile error naming the delta.
-
-**R1 status.** GAP → must close for R1. Dedicated lane (T-Effects, L
-size).
+**R1 status.** GAP → close for R1. Lane (T-Secret).
 
 ---
 
-### 15. Idempotency violation
+### 11. Resource leak (file handle, DB connection, transaction not closed)
 
-**Traditional example (retry wrapper around workflow).**
-```python
-@retry(max_attempts=3)
-def run_workflow():
-    fetch_issues()
-    summarize()
-    post_to_slack(summary)   # not idempotent; duplicates on retry
+**Traditional example (Rust).**
+```rust
+let conn = pool.get()?;
+do_thing(&conn);
+// Drop fires at end of scope — but you forgot to commit a transaction
 ```
+Drop covers close, not transaction semantics. `Rc<Cycle>` leaks silently.
+`mem::forget` exists.
 
-**Why traditional compilers miss it.** Retry is a library concern.
-Idempotency is a property of the body, invisible to the compiler.
-
-**gunbc status: IBC (v3 BEHAVIORALLY COMPLETE).**
-Idempotency is a property of the effect shape's algebraic structure.
-`is_idempotent_effect(shape)` pattern-matches on EffectShape;
-`compose_effects` checks composition. `retry_on_failure` applied to a
-workflow with non-idempotent tail steps is a compile error.
-
-**Evidence:** `dsl/std/effects.dag:108-150`;
-`docs/v3-lens-capability-register.md:43` (v3 COMPLETE);
-`src/v3/lenses/idempotency.dag`.
-
-**R1 status.** Done.
-
----
-
-### 16. Resource leak (file / connection not closed)
-
-**Traditional example (Go).**
-```go
-file, _ := os.Open("data.txt")
-// forgot to defer file.Close()
-```
-
-**Why traditional compilers miss it.** File handles are values; closing
-is discipline. Linters warn sometimes.
+**Rust / C++ status: `idiom`.** Rust's `Drop` / RAII handles simple
+close-on-scope-end. `Drop` does NOT run on `mem::forget`, on process
+termination paths, or on `Rc` cycles. C++ RAII is similar. Linear typing
+(Haskell has it) would strictly enforce "use exactly once"; Rust is
+affine (use at most once).
 
 **gunbc status: PARTIAL.**
 `dsl/std/resources.dag` declares `ResourceHandle` with acquire/release
-semantics (opaque-by-documentation, though see class 13 — enforcement is
-weaker than intended). But there is no compile-time check that every
-acquire is paired with a release.
+semantics, opaque by intent (though see class 10 — enforcement is
+weaker than documented). No compile-time check that every acquire is
+paired with a release.
 
-**Structural path.** Linear/affine typing on `ResourceHandle<T>`: a
-handle can be used exactly once (or once-to-release). Forgetting to
-release is a "value not consumed" compile error. v2 has an ownership
-lens that proves no-aliased-mutation — this extends it.
+**Structural path.** Linear typing on `ResourceHandle<T>`: each handle
+must be used exactly once (consumed by release or a transforming op).
+Forgetting to release is a "value not consumed" compile error. Size: M
+(extends ownership lens).
 
-**R1 status.** PARTIAL → must close for R1. Lane (T-Resource-Ownership,
-M size — extends the existing ownership lens).
+**R1 status.** PARTIAL → close for R1. Lane (T-Resource-Ownership).
 
 ---
 
-## Group F — Injection / contract
+## Group D — Runtime-safety footguns (Rust/C++ both lose here)
 
-### 17. SQL injection (string-interpolation family)
+Rust panics on overflow in debug, wraps in release (silently incorrect).
+Array bounds panic at runtime. Division by zero panics. C++ is
+undefined behavior across the board. Neither has compile-time safety
+here by default.
 
-**Traditional example (everywhere).**
-```python
-query = f"SELECT * FROM users WHERE id = {user_id}"
-cursor.execute(query)
+### 12. Array out-of-bounds
+
+**Traditional example.**
+```rust
+let arr = [0u8; 10];
+let x = arr[15];   // panics at runtime in Rust, UB in C++
+```
+Static-length arrays could have this checked at compile time; neither
+language does for arbitrary expressions.
+
+**Rust / C++ status: `runtime`.** Rust panics (safe but crashes prod).
+C++ is undefined behavior (unsafe — memory corruption).
+
+**gunbc status: GAP.**
+No `FixedArray<T, n>` with bounded index types yet. `List<T>` iteration
+is safe; direct indexing with unchecked integers doesn't exist in user
+code, but emission targets need it.
+
+**Structural path.** `Cardinality(element, Exact(n))` as type-level
+length; indices typed `BoundedInt<0, n>`. In-bounds is a type check.
+Size: subsumed by T-Tier2.
+
+**R1 status.** GAP → close for R1. Part of T-Tier2.
+
+---
+
+### 13. Division by zero
+
+**Traditional example.**
+```rust
+let rate = total / count;   // panics if count == 0 in Rust; UB in C++ for ints
 ```
 
-**Why traditional compilers miss it.** Strings are strings; interpolation
-is built into the language; compilers don't distinguish
-"developer-authored literal" from "user input."
+**Rust / C++ status: `runtime`.** Rust panics. C++ integer div by zero
+is UB.
 
-**gunbc status: IBC.**
-User code cannot concatenate or interpolate strings. The surface language
-has no `+` for strings, no template-literal syntax, no `.concat()` in
-`dsl/std/` exposed to user programs. Database queries must be expressed
-as structured data (typed operation + parameters), not string assembly.
+**gunbc status: GAP.**
+`dsl/std/float.dag:13-14` declares `Float` as `Field<Word64>`;
+Field admits division without non-zero-divisor proof. Tier 2 runtime
+safety is THESIS-committed but not substrate-landed.
 
-**Note.** The same construction-level guarantee covers XSS, shell
-injection, log-format-string attacks, and the broader family of
-content-type-confusion bugs. All are one structural property.
+**Structural path.** Either (a) `div` returns `Option<T>`, callers
+pattern-match (IBC via API shape); or (b) divisor typed `NonZero<T>`
+with compile-time proof from surrounding structure (CE via type wall).
+
+**R1 status.** GAP → close for R1. T-Tier2.
 
 ---
 
-### 18. Race condition on shared mutable state
+### 14. Integer overflow
 
-**Traditional example (Go).**
-```go
-var counter int = 0
-go func() { counter++ }()
-go func() { counter++ }()   // data race
+**Traditional example (Rust in release mode).**
+```rust
+let a: u32 = u32::MAX;
+let b = a + 1;   // wraps to 0 silently in release; panics in debug
 ```
+Release builds *silently wrap*, producing wrong answers that pass all
+tests not looking for them.
 
-**Why traditional compilers miss it.** Most languages allow mutable
-shared state; thread/async models bolt on without compile-time ownership
-checks. Rust is the exception and has earned its reputation for it.
+**Rust / C++ status: `runtime`/`UB`.** Rust's split debug-vs-release
+behavior is well-known as a production footgun. C++ is UB for signed
+overflow.
 
-**gunbc status: IBC.**
-Functions are pure by default. The language has no mutable shared cell —
-`.dag` programs compose over the five L1 behaviors (Value, Transform,
-Branch, Loop, Bind), none of which carry mutable references. Parallelism
-is default; sequential is what requires justification. Races are
-impossible because the state they would race on doesn't exist.
+**gunbc status: GAP.**
+`dsl/std/integer.dag` defines `Int64` as `OrderedRing<Word64>`;
+`OrderedRing` doesn't prevent overflow on `+` / `*`.
 
-**Evidence:** THESIS §"Core abstraction" (parallelism default,
-sequential requires data dependency); `dsl/std/computation.dag` (five L1
-behaviors, no mutable state).
+**Structural path.** Default to unbounded integer (`BigInt`) with
+explicit fixed-width opt-in; fixed-width arithmetic returns `Option<T>`
+or requires overflow proof. Size: part of T-Tier2.
+
+**R1 status.** GAP → close for R1. T-Tier2.
 
 ---
 
-## Summary table
+### 15. Stack overflow from unbounded recursion
 
-| # | Bug class | v2 | v3 | Gap note (if any) |
+**Traditional example.**
+```rust
+fn bad(n: u64) -> u64 { bad(n + 1) }   // stack overflow at runtime
+```
+Compiler doesn't prove termination; loops crash at scale.
+
+**Rust / C++ status: `no-help`.** Termination isn't checked.
+Tail-recursion optimization is a runtime implementation detail, not a
+correctness proof.
+
+**gunbc status: CE.**
+`.dag` code is decidable — termination bounds must be structurally
+proven (descent evidence on recursive calls). Infinite recursion is a
+compile error. See `feedback_decidability_invariant` (load-bearing
+invariant).
+
+**Evidence:** INVARIANTS §P4 Decidability; `dsl/std/induction.dag`
+(SubValueRelation carriers).
+
+---
+
+## Group E — Injection family (Rust libraries help; strings still work)
+
+Rust's type-checked query builders (sqlx, diesel) are great; raw string
+query construction is still syntactically valid. SQL, shell, log,
+template, and path injection are all the same structural problem.
+
+### 16. SQL / shell / log / template injection
+
+**Traditional example (Rust, and every other language).**
+```rust
+let query = format!("SELECT * FROM users WHERE id = {user_id}");
+conn.execute(&query)?;
+```
+`format!` is syntactically valid; runtime evaluates the user-controlled
+string. SQL libraries like sqlx offer typed queries but raw
+`execute(&str)` still compiles.
+
+**Rust / C++ status: `idiom`.** Rust's sqlx provides `query!(...)` with
+compile-time SQL parsing, but `query(&string)` (non-macro) still exists.
+C++ has prepared-statement APIs but string APIs are still present.
+
+**gunbc status: IBC.**
+User code cannot concatenate or interpolate strings. No `+` for strings,
+no template-literal syntax, no `concat()` in `dsl/std/` exposed to user
+programs. Database queries must be structured data (typed operation +
+typed parameters). The same property covers shell, log-format, and path
+injection — all are the same construction-level guarantee.
+
+**Evidence:** `dsl/std/types.dag` (String primitive with no concat
+exposure); `dsl/std/containers.dag:19` (concat for monoid operations,
+not for scalar String in user code).
+
+---
+
+### 17. Path traversal
+
+**Traditional example.**
+```rust
+let requested = format!("/static/{user_input}");
+fs::read(&requested)?;   // user_input = "../../etc/passwd"
+```
+Rust's `Path` / `PathBuf` help carry path semantics but don't prevent
+traversal patterns at construction time.
+
+**Rust / C++ status: `idiom`.** Typed path abstractions exist but
+sanitization is user discipline.
+
+**gunbc status: PARTIAL** (foundation: no string concat; no user code
+can build raw filesystem paths without going through typed APIs).
+
+**Structural path.** Typed `SafePath` with construction rules disallowing
+`..` components; filesystem ops take only `SafePath`. Size: S (extends
+existing no-string-concat guarantee).
+
+**R1 status.** PARTIAL → can close for R1 cheaply once
+`T-Secret` pattern is established (nominal types with construction
+rules). Fold into T-Secret lane.
+
+---
+
+## Group F — Table stakes (Rust already handles)
+
+These are well-covered by Rust and any rigorous compiler. gunbc inherits
+the guarantee but does not claim novelty here. Listed for completeness
+so the full bug-class ledger is visible.
+
+| # | Class | Rust status | gunbc status | Note |
 |---|---|---|---|---|
-| 1 | Null dereference | IBC | IBC | — |
-| 2 | Empty-list head | CE | CE | NonEmpty<T> is polish |
-| 3 | Nested-optional flatten | GAP | GAP | **Cardinality refinement** |
-| 4 | Force-unwrap panic | IBC | IBC | — |
-| 5 | Non-exhaustive match | CE | CE | — |
-| 6 | Schema drift | CE | CE | — |
-| 7 | Transport / type drift | CE | CE | — |
-| 8 | Array out-of-bounds | GAP | GAP | **Cardinality + bounded indices** |
-| 9 | Division by zero | GAP | GAP | **Tier 2 substrate** |
-| 10 | Integer overflow | GAP | GAP | **Tier 2 substrate** (or unbounded Int default) |
-| 11 | Unit / dimension mismatch | GAP | GAP | **Dimension type parameters** |
-| 12 | Suboptimal complexity | CE | PROXY | **Lane E port** (in R1) |
-| 13 | Secret leak to logs | GAP | GAP | **Secret nominal type** (not alias) |
-| 14 | Unenumerated effects | GAP | PARTIAL | **Declared-effects syntax + enumeration walker** |
-| 15 | Idempotency violation | CE | COMPLETE | — |
-| 16 | Resource leak | PARTIAL | PARTIAL | **Linear/affine typing on ResourceHandle** |
-| 17 | SQL / shell / XSS injection | IBC | IBC | — |
-| 18 | Race condition | IBC | IBC | — |
+| T1 | Null dereference | IBC (Option) | IBC | Pattern-match only; no null |
+| T2 | Use-after-free | IBC (ownership) | IBC | No raw references; pure-functional |
+| T3 | Double-free | IBC | IBC | Same |
+| T4 | Data race on shared state | IBC (Send/Sync) | IBC | Pure-functional; no mutable shared state |
+| T5 | Non-exhaustive match | CE | CE | Enforced in `src/v3/compiler/src/infer.rs` |
+| T6 | Force-unwrap panic | idiom (exists but not used) | IBC | No `unwrap()` method in `dsl/std/` |
+| T7 | Empty-list head access | CE (Option return) | CE | `first()` returns Option |
+| T8 | Iterator invalidation | IBC | IBC | Immutable collections |
+| T9 | Dangling reference | IBC | IBC | No raw references |
 
-**Score.**
-- **IBC:** 1, 4, 17, 18 (4/18)
-- **CE:** 2, 5, 6, 7 (4/18)
-- **Special CE (v3 regression):** 12 (Lane E restores)
-- **PARTIAL / GAP with structural path named:** 3, 8, 9, 10, 11, 13, 14, 16 (8/18)
+gunbc's guarantee here is no stronger than Rust's; the pitch is that
+these classes *stay* closed while the substrate adds Group A-E coverage
+Rust can't touch.
 
-**Aggregate.** 9/18 fully handled today. 9/18 have named structural paths.
-Zero require runtime-only mitigation.
+---
+
+## Summary table (interesting classes)
+
+| # | Bug class | Rust/C++ | v2 | v3 | Gap → path |
+|---|---|---|---|---|---|
+| 1 | Schema drift (client/server) | no-help | CE | CE | — |
+| 2 | Transport/type drift (REST path) | idiom | CE | CE | — |
+| 3 | Cross-language behavior divergence | no-help | partial | CE (Lane E) | Cementing test |
+| 4 | API version mismatch | no-help | PARTIAL | PARTIAL | Protocol-versioning model |
+| 5 | Unenumerated effects | no-help | GAP | GAP (carriers partial) | **T-Effects** (L) |
+| 6 | Idempotency violation | no-help | CE | COMPLETE | — |
+| 7 | Suboptimal complexity | no-help | CE | PROXY | **T-LaneE** (XL, in R1) |
+| 8 | Unit / dimension mismatch | idiom | GAP | GAP | **T-Dimensions** (L) |
+| 9 | Nested-optional flatten | idiom | GAP | GAP | **T-Cardinality** (M-L) |
+| 10 | Secret leak to logs | idiom | GAP | GAP | **T-Secret** (S-M) |
+| 11 | Resource leak | idiom | PARTIAL | PARTIAL | **T-Resource-Ownership** (M) |
+| 12 | Array out-of-bounds | runtime | GAP | GAP | **T-Tier2** (XL) |
+| 13 | Division by zero | runtime | GAP | GAP | **T-Tier2** |
+| 14 | Integer overflow | runtime/UB | GAP | GAP | **T-Tier2** |
+| 15 | Stack overflow from unbounded recursion | no-help | CE | CE | — |
+| 16 | SQL / shell / log injection | idiom | IBC | IBC | — |
+| 17 | Path traversal | idiom | PARTIAL | PARTIAL | Fold into T-Secret |
+
+## Scoreboard
+
+- **Handled today** (IBC / CE / BEHAVIORALLY COMPLETE): 6/17 interesting classes + 9/9 table stakes
+- **Gap with named structural path:** 8/17 interesting
+- **Special (v3 regression being restored):** 1/17 (complexity — Lane E)
+- **Requires runtime-only mitigation:** 0
+
+Every interesting class Rust/C++ can't / won't catch is either handled
+today or has a named structural path. No class is "we'll catch it at
+runtime" by default.
 
 ## R1 scope implications
 
-Per §"Governing rule" above, every GAP must close for R1. The structural
-paths above name seven distinct substrate/lane additions beyond what the
-R1 program committed in PR #669:
+Per the governing rule (every GAP must close for R1), the audit names
+these additions to PR #669's R1 program:
 
-| Lane | Closes | Relative size |
+| Lane | Classes closed | Relative size |
 |---|---|---|
-| **T-Cardinality** | 3 (nested-optional), 8 (array bounds — partial) | M-L |
-| **T-Tier2** | 8 (bounds), 9 (div-by-zero), 10 (overflow) | XL |
-| **T-Dimensions** | 11 (unit mismatch) | L |
-| **T-Secret** | 13 (secret leak) | S-M |
-| **T-Effects** | 14 (unenumerated effects) | L |
-| **T-Resource-Ownership** | 16 (resource leak) | M |
-| **T-LaneE** | 12 (complexity port) | XL (already in R1) |
+| **T-Tier2** | 12 (bounds), 13 (div-zero), 14 (overflow) | **XL** — new XL lane, likely own manager (M5) |
+| **T-Effects** | 5 (unenumerated effects) | L |
+| **T-Dimensions** | 8 (unit mismatch) | L |
+| **T-Cardinality** | 9 (nested-optional), partial 12 | M-L (may fold into T-Sub) |
+| **T-Secret** | 10 (secret leak), 17 (path traversal) | S-M |
+| **T-Resource-Ownership** | 11 (resource leak) | M (extends ownership lens) |
+| **T-LaneE** | 7 (complexity) | XL (already in R1) |
+| **T-LLM-Services** extension | 4 (API versioning) | minor extension |
 
-Rough aggregate of new work: one XL (Tier-2), three L/M-L, two M/S-M.
+**Critical-path effect:** T-Tier2 becomes a third XL lane alongside
+T-LaneE and T-PB-A. Likely introduces **M5** manager dedicated to
+Tier-2 substrate work.
 
-Critical-path implications:
-- **T-Tier2 becomes a third XL lane** alongside T-LaneE and T-PB-A.
-  Probably its own manager (tentative: M5).
-- **T-Effects and T-Dimensions are L-sized** each; could be one manager
-  or split across M1/M2b depending on substrate vs. lens weight.
-- **T-Cardinality and T-Secret** are smaller; likely fold into M1 as
-  extensions of T-Sub.
-- **T-Resource-Ownership** folds into M4 (ownership discipline is
-  adjacent to the typed-carrier pattern).
+**Rough aggregate:** ~50-80% more work than the PR #669 R1 framing
+committed. Not a doubling; not cheap. Every added class is Rust/C++-class
+differentiation, not Python-class paper-scores.
 
 ## Maintaining this doc
 
 - **New bug class surfaced externally** (user report, security audit,
-  design-review finding): add a row with traditional-example +
-  why-compilers-miss + current status + structural path. If status is
-  GAP, escalate to the ROADMAP debt ledger and R1 scope review.
-- **Structural addition lands:** update status (GAP → CE / IBC), link
-  the closing PR / lane.
-- **v2 / v3 divergence resolved:** collapse to one status column (this
-  doc currently shows both because v3 is a trajectory from v2).
+  design-review finding): add a row with Rust/C++ status + traditional
+  example + gunbc status. If the latter is GAP, escalate to ROADMAP debt
+  ledger and R1 scope review.
+- **Structural addition lands:** update gunbc status (GAP → CE / IBC),
+  link closing PR / lane.
+- **Rust/C++ field advances** (e.g., a new effect-system extension):
+  update Rust/C++ status so we track where the bar moves.
 
 This doc is parallel authority with THESIS §"Enumerable impossible-bug
 classes" on the *bug-class list*. When they diverge, THESIS is the list
