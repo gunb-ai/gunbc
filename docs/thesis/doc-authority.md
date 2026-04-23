@@ -16,7 +16,7 @@ This is a structural-not-content problem. Local prose tightening
 cannot prevent the pattern. This document is the rule-of-the-road
 that prevents it at the contract level.
 
-## Three modes
+## Four modes
 
 Every thesis-subtree document declares one mode at the top, between
 the title and the body:
@@ -28,9 +28,17 @@ the title and the body:
   authority requires a follow-up PR amending the authoring authority.
 - **`TARGET`** — worked example showing the destination. Every claim
   is paired with a live-state gap pointer.
-
-Mixed-mode documents are violations. If a doc would carry claims
-from more than one mode, split into separate files.
+- **`MIXED`** — narrative / pedagogical documents that intentionally
+  span live + proposed + target material in one coherent arc (e.g.,
+  "how gunbc models X" walk-throughs). Permitted only if
+  (a) per-claim tagging per Rule 2 is applied to every structural
+  claim in the body, and (b) a claim-status summary table appears
+  near the top of the document showing the live-vs-target split.
+  The pattern the contract is preventing — silent target-as-live
+  narration — is blocked by the tagging discipline, not by a doc-
+  level prohibition. `MIXED` mode exists for narrative docs that
+  would otherwise be artificially split to the detriment of the
+  reader.
 
 ## Claim tagging
 
