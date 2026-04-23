@@ -100,15 +100,29 @@ The algebra is where the behavior comes from:
 // dsl/std/algebra.dag (abbreviated)
 
 // Unary (one operation):
+
 type Magma<T>             { op: fn(T, T) -> T }
+// a way to combine two T's and get a T back.
+
 type Semigroup<T>         extends Magma<T>    { /* associative */ }
+// combining is associative — grouping doesn't matter: (a·b)·c == a·(b·c).
+
 type Monoid<T>            extends Semigroup<T> { identity: T }
+// there's a "do-nothing" element: combining with it leaves the other unchanged.
+
 type CommutativeMonoid<T> extends Monoid<T>   { /* commutative */ }
+// order doesn't matter: a·b == b·a.
 
 // Ring-like (additive + multiplicative monoids + distribution):
+
 type Semiring<T>     { add: CommutativeMonoid<T>, mul: Monoid<T>, /* distributive */ }
-type Ring<T>         extends Semiring<T> { /* additive part promoted to AbelianGroup — adds negate */ }
+// two combines, add and mul; mul distributes over add. No subtraction.
+
+type Ring<T>         extends Semiring<T> { /* additive inverses: negate */ }
+// Semiring plus subtraction — every element has a negation.
+
 type OrderedRing<T>  extends Ring<T>     { compare: fn(T, T) -> Ordering }
+// Ring plus a total order — you can ask "which is smaller?"
 ```
 
 The jump to Ring-like isn't a single next link in the unary chain —
