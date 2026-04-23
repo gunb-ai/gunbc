@@ -50,7 +50,7 @@ Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomp
 | T-LaneE | XL | Complexity lens v2 parity via substrate-carrier-port | Existing Lane E-T/C/I/P/M program |
 | T-TestGen | L | Testgen runner, service simulation, first-class TestClaim | DB-15 follow-up |
 | T-LensAPI | M-L | User-authored lenses + composition | Lens capability honesty pass |
-| T-PB-A | XL | Compiler self-emits (fixed-point); hand-Rust surface reaches the ≤5 irreducible-shim floor (per `docs/design-pure-bootstrap.md`; generated escape hatch OK). Live baseline is the full SG-0 census (`EXPECTED_HAND_AUTHORED` file-level + `EXPECTED_HAND_AUTHORED_FRAGMENTS` crate-root scaffolds) in `src/v3/compiler/tests/integration/sg0_census_test.rs` — this doc does not freeze the count. | Compiler–std consolidation program, SG-0 census |
+| T-PB-A | XL | Compiler self-emits (fixed-point); **non-test** hand-Rust surface reaches the ≤5 irreducible-shim floor (per `docs/design-pure-bootstrap.md`; generated escape hatch OK). Live baseline is the non-test subset of the SG-0 census (`EXPECTED_HAND_AUTHORED` file-level + `EXPECTED_HAND_AUTHORED_FRAGMENTS` crate-root scaffolds) in `src/v3/compiler/tests/integration/sg0_census_test.rs` — this doc does not freeze the count. The **test subset** of the same census is T-PB-B's responsibility, not T-PB-A's. | Compiler–std consolidation program, SG-0 census |
 | T-PB-B | M | Tests-as-data — pipeline/contract tests port to `.dag`. The two `TESTING.md §Post-R2 shape` residual categories (compiler-internal unit tests for Rust-only helpers; external-toolchain boundary tests invoking rustc/go/python) remain Rust-authored. | DB-15 + T-TestGen |
 | T-Demo | M | Two canonical fixtures + impossible-bugs suite + narrative | — (new) |
 
@@ -64,7 +64,7 @@ This section lists gate names + schema-compilability tags; full `TestClaim` decl
 - **T-LaneE.** `complexity_merge_sort_is_nlogn` [ext: `LensOutputEquals`] · `complexity_v3_matches_v2_oracle` [ext: `DifferentialEquals`]
 - **T-TestGen.** `testgen_structural_coverage` [ext] · `testgen_mock_backed_integration_safe` [ext: `MockBackedInvariant` wiring] · `testgen_manual_claim_is_first_class` [ext]
 - **T-LensAPI.** `user_authored_lens_compiles` [Day 1] · `lens_composition_associative` [ext: `AlgebraicLaw`] · `lens_output_is_queryable_data` [ext]
-- **T-PB-A.** `pb_hand_rust_at_shim_floor` [ext] · `pb_self_compile_fixed_point` [ext] · `pb_compiler_std_ratchet_zero` [ext] — live baselines read from authorities; not frozen in this doc. Hand-Rust: full SG-0 census (`EXPECTED_HAND_AUTHORED` file-level + `EXPECTED_HAND_AUTHORED_FRAGMENTS` crate-root) → ≤5 irreducible-shim per `docs/design-pure-bootstrap.md`. Consolidation ratchet: compiler-local types not in positive-def set → 0.
+- **T-PB-A.** `pb_hand_rust_at_shim_floor` [ext] · `pb_self_compile_fixed_point` [ext] · `pb_compiler_std_ratchet_zero` [ext] — live baselines read from authorities; not frozen in this doc. Hand-Rust (**non-test subset**): SG-0 census (file-level + fragments ratchet) minus the test subset owned by T-PB-B → ≤5 irreducible-shim per `docs/design-pure-bootstrap.md`. Consolidation ratchet: compiler-local types not in positive-def set → 0.
 - **T-PB-B.** `pb_test_file_generated_from_dag` [ext] · `pb_rust_tests_outside_residual_zero` [ext] — the first gates the pipeline-equivalent suite; the second gates the outcome: zero Rust-authored tests exist outside the `TESTING.md §"Post-R2 shape"` residual (compiler-internal unit tests + external-toolchain boundary tests). Single-file generation is insufficient proof of the lane's end-state.
 - **T-Demo.**
   - `fixture_compiler_nerd_canonical` [Day 1 (Compiles) / ext (lens-output demos)] — demonstrates: complexity, ownership, parallelism
@@ -125,7 +125,7 @@ Read bottom-up. Arrows point producer → consumer.
 
 **Two distinct baselines inside T-PB-A.** Both read from live authorities — this doc does not freeze counts.
 
-- **Hand-Rust census:** the full SG-0 census — `EXPECTED_HAND_AUTHORED` (file-level) + `EXPECTED_HAND_AUTHORED_FRAGMENTS` (crate-root scaffolds like `parse_parser_body.txt`) — in `src/v3/compiler/tests/integration/sg0_census_test.rs` → ≤5 irreducible-shim (per `docs/design-pure-bootstrap.md`). What's allowed to exist as a hand-authored file; test subset dissolves via T-PB-B.
+- **Hand-Rust census (T-PB-A owns the non-test subset):** SG-0 census — `EXPECTED_HAND_AUTHORED` (file-level) + `EXPECTED_HAND_AUTHORED_FRAGMENTS` (crate-root scaffolds like `parse_parser_body.txt`) — in `src/v3/compiler/tests/integration/sg0_census_test.rs`. T-PB-A's gate reads the **non-test subset** → ≤5 irreducible-shim (per `docs/design-pure-bootstrap.md`). The **test subset** of the same census is T-PB-B's gate. Together PB-A + PB-B bring the full census to the shim floor; each is a scoped half, not blocked on the other for work.
 - **Compiler–std consolidation ratchet:** compiler-local `type` declarations not in the positive-def set and not exempted → 0 (see ROADMAP §"Compiler–`std/` consolidation program"). What's allowed to exist as a compiler-local type name.
 
 Both land inside T-PB-A because dissolving the compiler-local surface forces both gates down together, but the acceptance claims (`pb_hand_rust_at_shim_floor`, `pb_compiler_std_ratchet_zero`) are independent gates tracked against independent authorities.
