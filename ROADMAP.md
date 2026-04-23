@@ -120,6 +120,13 @@ Read bottom-up. Arrows point producer → consumer.
 - T-LaneE and T-PB-A are XL and independent — run fully parallel from W0.
 - T-LensAPI is decoupled, starts W0.
 - T-TestGen is the serial hinge for T-PB-B.
+- T-Emit (M) feeds T-Demo but is off the critical path — the XL lanes dominate its duration, so T-Emit is slack relative to T-LaneE / T-PB-A.
+
+**Two distinct baselines inside T-PB-A.** Don't confuse them:
+- **Hand-Rust census:** `EXPECTED_HAND_AUTHORED` non-test, 95 → ≤5 irreducible-shim (per `docs/design-pure-bootstrap.md`). What's allowed to exist as a hand-authored file.
+- **Compiler–std consolidation ratchet:** compiler-local `type` declarations not in the positive-def set and not exempted, 19 → 0 (see ROADMAP §"Compiler–`std/` consolidation program"). What's allowed to exist as a compiler-local type name.
+
+Both land inside T-PB-A because dissolving the compiler-local surface forces both gates down together, but the acceptance claims (`pb_hand_rust_at_shim_floor`, `pb_compiler_std_ratchet_zero`) are independent gates with independent baselines.
 
 ### Relationship to existing milestone status
 
