@@ -145,7 +145,7 @@ R1 absorbs what was "Post-A/B Lane Plan" and L1.5 forward work, framed by releas
 | **M1(3)** First downstream consumer | ✅ Landed | End-to-end emitter path proven on PR #445. |
 | **L1** Reflection framework | ✅ Complete | PR #466. |
 | **L1.5** Clean bootstrap | 🟡 In progress | Authority migration and multi-target cleanup remain. |
-| **Post-A/B** Lane plan | 🟡 Planned / active | Four lanes own all remaining thesis obligations. |
+| **Post-A/B** Lane plan | ⏸ Absorbed into R1 Release Program | See §"Release R1 Program" above — the nine-lane R1 structure supersedes the four-lane Post-A/B framing for active planning. |
 | **M2** Feature parity | ⏸ Absorbed into Lane 3 Stage 3a | The remaining tail is tracked through the lane docs. |
 | **M3** Self-hosting | ⏸ Absorbed into Lane 3 Stage 3c | Same cycle, clearer owner. |
 | **M4** Thesis completion | ⏸ Absorbed across Lanes 1–3 | No free-floating milestone debt remains. |
@@ -212,7 +212,7 @@ The thesis-completion surface is fully distributed across lanes and no longer ma
 
 ## Post-A/B Lane Plan
 
-The four-lane plan remains the project’s active structure for the remaining thesis work.
+**Superseded by §"Release R1 Program" above.** The four-lane Post-A/B framing is absorbed into the nine-lane R1 structure; R1 is the active authority for forward planning. The historical receipts remain useful for context.
 
 See [docs/history/roadmap-post-ab-lane-plan.md](docs/history/roadmap-post-ab-lane-plan.md) for the full embedded plan and [docs/post-l15-phase-plan.md](docs/post-l15-phase-plan.md) for the master dependency graph.
 

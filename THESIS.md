@@ -88,7 +88,7 @@ See [docs/thesis/target-realization-efficiency.md](docs/thesis/target-realizatio
 
 Correctness dimensions are the thesis mechanism for adding new proof obligations without inventing parallel infrastructures. A dimension — complexity, cost, idempotency, ownership, parallelism, or any user-declared invariant — is a structural fact carried by the program's data model, not a behavioral check run at test time. Validation is reading the structure; it is not running the code.
 
-Consequence: correctness scales with the structural surface, not with human attention. Mainstream languages catch invariant violations via tests, profilers, schema validators, and production postmortems. gunbc catches them at compile time by reading the structure once.
+Consequence: correctness scales with the structural surface, not with human attention. Mainstream languages catch invariant violations via tests, profilers, schema validators, and production postmortems. gunbc catches them by structural derivation — compile-time proofs for Tier 1/2 dimensions, and a structurally-derived test surface for Tier 3 (where emitted code runs but the test surface is TestClaim data, not hand-authored behavior assertions).
 
 See [docs/thesis/correctness-dimensions.md](docs/thesis/correctness-dimensions.md).
 
