@@ -250,7 +250,8 @@ Self-hosting is not one capability; it's three. All three are targets.
    deliverable, couples to testgen.**
 
 Cost-of-change: editing any compiler concept — a new pass, substrate fact,
-target-language detail, or test assertion — stays at one `.dag` file. No
+target-language detail, or pipeline/contract test assertion — stays at
+one `.dag` file. No
 matching hand edits to a Rust stage0 file. Stage0 Rust compiler internals
 (tokenize, parse, lower, infer, emit, lenses, std library) are emitted
 from the `.dag` graph and committed — not hand authored. Tests follow
