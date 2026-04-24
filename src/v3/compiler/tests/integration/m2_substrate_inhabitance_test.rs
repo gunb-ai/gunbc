@@ -1,12 +1,17 @@
 use std::collections::HashMap;
 
 use v3_compiler::dag::{
+<<<<<<< HEAD
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
     join_evidence, lower_call_pattern, map_evidence_merge_at, merge_evidence,
     optional_evidence_meet, promote_to_strict, size_bound_param, tree_size_bound,
     type_iteration_dimension, AlgebraProfile, ArrowBody, CallPattern, DescentEvidence, FieldValue,
     IterationDimension, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
     TypeConnective, ValueBody,
+=======
+    evidence_rank, join_evidence, map_evidence_merge_at, merge_evidence, optional_evidence_meet,
+    promote_to_strict, ArrowBody, DescentEvidence, FieldValue, TypeConnective, ValueBody,
+>>>>>>> origin/main
 };
 use v3_compiler::parse_surface;
 use v3_compiler::Dag;
@@ -66,6 +71,38 @@ fn sum_variants(dag: &Dag, name: &str) -> Vec<(String, Vec<String>)> {
     }
 }
 
+<<<<<<< HEAD
+=======
+fn variant_payload_field_type_name(
+    dag: &Dag,
+    sum_name: &str,
+    variant_name: &str,
+    field_name: &str,
+) -> String {
+    let id = find_named(dag, sum_name);
+    let TypeConnective::Disj { variants } = &dag.declaration(id).connective else {
+        panic!("expected `{sum_name}` to lower to a Disj");
+    };
+    let variant = variants
+        .iter()
+        .find(|variant| variant.label == variant_name)
+        .unwrap_or_else(|| panic!("variant `{variant_name}` not found under `{sum_name}`"));
+    let TypeConnective::Conj { children } = &dag.declaration(variant.ty).connective else {
+        panic!("expected variant `{variant_name}` under `{sum_name}` to lower to a Conj payload");
+    };
+    let field = children
+        .iter()
+        .find(|field| field.label == field_name)
+        .unwrap_or_else(|| {
+            panic!("field `{field_name}` not found on variant `{variant_name}` under `{sum_name}`")
+        });
+    dag.declaration(field.ty)
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("<anonymous:{}>", field.ty.raw()))
+}
+
+>>>>>>> origin/main
 fn arrow_body(dag: &Dag, name: &str) -> ArrowBody {
     let id = find_named(dag, name);
     match &dag.declaration(id).connective {
@@ -214,7 +251,17 @@ fn termination_carriers_bootstrap_from_v3_std() {
             (String::from("SetCardinality"), vec![String::from("param")]),
         ]
     );
+<<<<<<< HEAD
     let _division_factor = find_named(&dag, "DivisionDescentFactor");
+=======
+    assert_eq!(
+        sum_variants(&dag, "DivisionDescentFactor"),
+        vec![
+            (String::from("Two"), Vec::new()),
+            (String::from("GreaterThanTwo"), vec![String::from("extra")]),
+        ]
+    );
+>>>>>>> origin/main
     assert_eq!(
         sum_variants(&dag, "DescentSource"),
         vec![
@@ -230,6 +277,25 @@ fn termination_carriers_bootstrap_from_v3_std() {
             (String::from("FoldIteration"), Vec::new()),
         ]
     );
+<<<<<<< HEAD
+=======
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DivisionDescentFactor", "GreaterThanTwo", "extra"),
+        "PositiveInt"
+    );
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DescentSource", "ListShrink", "amount"),
+        "PositiveInt"
+    );
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DescentSource", "ArithmeticSubtract", "by"),
+        "PositiveInt"
+    );
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DescentSource", "ArithmeticDivide", "by"),
+        "DivisionDescentFactor"
+    );
+>>>>>>> origin/main
     assert_eq!(record_fields(&dag, "TerminationProof"), vec!["dimensions"]);
     assert_eq!(
         record_fields(&dag, "ProofEdge"),
@@ -302,6 +368,7 @@ fn termination_lattice_rust_mirror_matches_dag_authority() {
 }
 
 #[test]
+<<<<<<< HEAD
 fn computation_carriers_bootstrap_from_v3_std() {
     let dag = Dag::new();
     assert!(
@@ -597,6 +664,8 @@ fn computation_iteration_dimension_helpers_match_kernel_profile_authority() {
 }
 
 #[test]
+=======
+>>>>>>> origin/main
 fn substrate_coproducts_match_runtime_carriers() {
     let dag = Dag::new();
 

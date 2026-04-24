@@ -757,6 +757,7 @@ pub enum RankingDimension {
     SetCardinality { param: String },
 }
 
+<<<<<<< HEAD
 /// 🟢 TERMINAL at positivity scope.
 ///
 /// Rust mirror of `std.types::PositiveInt = Int where range(min: 1)`. The
@@ -770,17 +771,41 @@ pub type PositiveInt = i64;
 /// The executable mirror uses `i64` until refined values carry generated
 /// runtime wrappers.
 pub type DivisionDescentFactor = i64;
+=======
+/// 🟢 TERMINAL at descent-witness scope.
+///
+/// Rust mirror of the structural `DivisionDescentFactor` carrier. `Two` is the
+/// minimum valid divisor; `GreaterThanTwo.extra` is a PositiveInt-shaped offset
+/// above two, represented as `i64` until refined values carry generated runtime
+/// wrappers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DivisionDescentFactor {
+    Two,
+    GreaterThanTwo { extra: i64 },
+}
+>>>>>>> origin/main
 
 /// 🟡 SCAFFOLD.
 ///
 /// The witness taxonomy is durable for E-T; String payloads dissolve when
 /// accessor, operation, witness, and element references become first-class
+<<<<<<< HEAD
 /// substrate values.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescentSource {
     ChildAccessor { accessor: String },
     ListShrink { amount: PositiveInt },
     ArithmeticSubtract { by: PositiveInt },
+=======
+/// substrate values. PositiveInt-shaped payloads are represented as raw `i64`
+/// until refined values carry generated runtime wrappers; the `.dag` authority
+/// remains the source of the positivity contract.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DescentSource {
+    ChildAccessor { accessor: String },
+    ListShrink { amount: i64 },
+    ArithmeticSubtract { by: i64 },
+>>>>>>> origin/main
     ArithmeticDivide { by: DivisionDescentFactor },
     ParserAdvance { witness: String },
     SetRemoval { element: String },
@@ -869,6 +894,7 @@ pub fn map_evidence_merge_at(
     base
 }
 
+<<<<<<< HEAD
 // 🟡 SCAFFOLD — Rust execution mirror for `src/v3/std/computation.dag`.
 //
 // The `.dag` declarations are the carrier authority; these Rust enums and
@@ -1113,6 +1139,8 @@ fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
     }
 }
 
+=======
+>>>>>>> origin/main
 #[derive(Debug, Clone)]
 pub struct ValueNode {
     pub id: NodeId,

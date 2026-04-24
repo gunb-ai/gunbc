@@ -363,11 +363,10 @@ pub fn set_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     (v2_rt::map_get(&m, key) != None)
 }
 
-pub fn strict_given_advance_witness(input: DescentEvidence) -> DescentEvidence {
+pub fn strict_after_parser_witness(input: DescentEvidence) -> DescentEvidence {
     match input {
-        DescentEvidence::NonIncreasing => DescentEvidence::Strict,
-        DescentEvidence::Strict => DescentEvidence::Strict,
-        _ => DescentEvidence::DescentUnknown,
+        DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+        _ => DescentEvidence::Strict,
     }
 }
 
@@ -438,14 +437,14 @@ pub fn parser_result_state_progress(
 ) -> DescentEvidence {
     match (*source).clone() {
         ParserResultSource::ParserResultAdvance { input, .. } => {
-            strict_given_advance_witness(input.clone())
+            strict_after_parser_witness(input.clone())
         }
         ParserResultSource::ParserResultExpect { input, .. } => {
-            strict_given_advance_witness(input.clone())
+            strict_after_parser_witness(input.clone())
         }
         ParserResultSource::ParserResultEat { input, .. } => {
             if set_has(consumed_true_set, result_name) {
-                strict_given_advance_witness(input.clone())
+                strict_after_parser_witness(input.clone())
             } else {
                 input.clone()
             }
@@ -454,7 +453,7 @@ pub fn parser_result_state_progress(
             if (set_has(consumed_true_set, result_name)
                 || set_has(parser_always_advancing, callee.clone()))
             {
-                strict_given_advance_witness(input.clone())
+                strict_after_parser_witness(input.clone())
             } else {
                 input.clone()
             }
@@ -841,7 +840,7 @@ pub fn parser_call_edge_progress(
                 parser_always_advancing.clone(),
                 expr_call_func_at(call_node.clone(), si.clone()),
             ) {
-                strict_given_advance_witness(input_progress)
+                strict_after_parser_witness(input_progress)
             } else {
                 input_progress
             }
