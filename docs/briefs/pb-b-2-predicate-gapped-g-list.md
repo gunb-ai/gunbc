@@ -98,16 +98,25 @@ existing variants like `PortHasState` / `CostBounded`).
    and by the `m1_lens_structural_resolution`, `m2_field_access_
    binding`, and `m2_lens_*_migration` modules.
 
-2. **`BindValueIsTransformTo { bind_name, target }`**
+2. **`BindValueIsTransformTo { bind_name, producer_path, target }`**
    with `target ∈ { CallableNamed(String) | FieldProjection{label}
-   | Operator(OpKind) }`. Closes the `assert_target_name` helper
-   pattern — the dominant assertion in pipe_desugar and in the
-   four `m2_lens_*_migration` suites.
+   | Operator(OpKind) }` and `producer_path: List<PortIndex>`
+   walking `value.produced_by → inputs[path[0]].produced_by → …`
+   (empty path = the bind's direct producer). The path is required
+   to cover the nested producer chains in
+   `pipe_chains_left_to_right` (outer `double` → input[0] producer
+   `add1`), `pipe_result_can_feed_later_addition`
+   (`+` → input[0] producer `negate`), and
+   `pipe_result_can_feed_later_comparison`
+   (`==` → input[0] producer `identity`). Without the path, these
+   three of five pipe_desugar tests remain unport­able.
 
-3. **`TransformInputIsLiteral { bind_name, port_index, literal }`**
-   — closes the `literal_input` helper; needed for
-   pipe-left-injection, comparison-feeding, and the field-access
-   binding tests.
+3. **`TransformInputIsLiteral { bind_name, producer_path,
+   port_index, literal }`** — same `producer_path` convention as
+   #2; closes the `literal_input` helper at any depth
+   (e.g. inner-stage `add1`'s input[0] = 5 in
+   `pipe_chains_left_to_right`, or `negate`'s input[0] = 5 inside
+   the `+` producer in `pipe_result_can_feed_later_addition`).
 
 4. **`NodeCountByBehavior { behavior_kind, count_rel, count }`**
    where `count_rel ∈ { Equals | AtLeast | AtMost }` and `count`
