@@ -1,26 +1,29 @@
 //! **Layer:** integration
 //!
-//! Day-1 R1 gate `user_authored_lens_compiles`: the gate fixture carries a
-//! `TestClaim` whose `source` / `file_name` are the single authority for what a
-//! future runner would compile; this module asserts lockstep with the on-disk
-//! lens file, then compiles that payload via `compile_to_dag` on top of the
-//! standard bootstrap context (`Dag::new()`), without bundling the lens into the
-//! bootstrap.
+//! Day-1 R1 gate `user_authored_lens_compiles`: **canonical** program text is
+//! `src/v3/lenses/named_function_count.dag`. The gate fixture embeds a duplicate
+//! `TestClaim.source` string (P2 parallel copy — see `r1_gates.dag` header); this
+//! module ratchets fixture bytes against `include_str!(.../named_function_count.dag)`
+//! then runs `compile_to_dag` on the extracted `source` over the standard bootstrap
+//! (`Dag::new()`), without bundling the lens into the bootstrap.
 //!
 //! **Behavior receipt (TESTING.md):** `user_authored_lens_testclaim_payload_tracks_on_disk_lens_and_compiles`
 //! lowers the gate fixture, reads `source` off the lowered `TestClaim`, and runs
 //! `compile_to_dag` on that string — this is the executable `Compiles` path, not
-//! merely “the record literal typechecks.” The payload is the **entire**
-//! `lenses.named_function_count` module text (same bytes as the `.dag` file); it
-//! intentionally does **not** use `import lenses.named_function_count { ... }`
-//! from a second file, because that pattern would require the lens to live in
-//! `Dag::new()` bootstrap, which this demo deliberately avoids.
+//! merely “the record literal typechecks.” The lowered payload must match the on-disk
+//! lens byte-for-byte. The fixture does **not** use `import lenses.named_function_count { ... }`
+//! from a second file, because that pattern would require the lens in `Dag::new()`
+//! bootstrap, which this demo deliberately avoids.
+//!
+//! Schedule: ROADMAP.md subsection "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" item 3.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::CompileError;
 
 const R1_GATES_SOURCE: &str = include_str!("../fixtures/r1_gates.dag");
+const R1_LENS_OUTPUT_EQUALS_GATE_SOURCE: &str =
+    include_str!("../fixtures/r1_lens_output_equals_gate.dag");
 const ON_DISK_LENS: &str = include_str!("../../../lenses/named_function_count.dag");
 const ON_DISK_LENS_COMPOSITION_WITNESS: &str =
     include_str!("../../../lenses/lens_composition_associative_witness.dag");
@@ -71,6 +74,15 @@ fn r1_gates_fixture_compiles_against_bootstrap_context() {
 }
 
 #[test]
+fn r1_lens_output_equals_gate_fixture_compiles_against_bootstrap_context() {
+    assert_compile_clean(
+        R1_LENS_OUTPUT_EQUALS_GATE_SOURCE,
+        "src/v3/compiler/tests/fixtures/r1_lens_output_equals_gate.dag",
+        "gate fixture `r1_lens_output_equals_gate.dag`",
+    );
+}
+
+#[test]
 fn user_authored_lens_testclaim_payload_tracks_on_disk_lens_and_compiles() {
     let gate_dag = match compile_to_dag(
         R1_GATES_SOURCE,
@@ -95,8 +107,9 @@ fn user_authored_lens_testclaim_payload_tracks_on_disk_lens_and_compiles() {
 
     assert_eq!(
         source, ON_DISK_LENS,
-        "`TestClaim.source` must stay byte-identical to `src/v3/lenses/named_function_count.dag` \
-         (single authority for the user lens program; update both together)"
+        "`TestClaim.source` in `r1_gates.dag` must stay byte-identical to the canonical \
+         `src/v3/lenses/named_function_count.dag` (P2 parallel copy ratchet until ROADMAP \
+         scheduled cleanup item 3 removes the duplicate)"
     );
     assert_eq!(
         file_name, "src/v3/lenses/named_function_count.dag",
