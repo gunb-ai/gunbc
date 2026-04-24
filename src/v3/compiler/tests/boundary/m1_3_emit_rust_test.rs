@@ -179,6 +179,14 @@ fn run_program(name: &str) -> String {
     RustcHarness::run(program_harness_bin(), &[name])
 }
 
+fn program_expected(name: &str) -> &'static str {
+    PROGRAM_FIXTURES
+        .iter()
+        .find(|f| f.name == name)
+        .unwrap_or_else(|| panic!("no PROGRAM_FIXTURES entry for {name:?}"))
+        .expected_stdout
+}
+
 /// Descriptor for one reflected-module rustc roundtrip fixture. Each
 /// descriptor becomes a submodule in the batched harness; tests
 /// dispatch by `name` at runtime.
@@ -747,56 +755,74 @@ fn roundtrip_temp_dirs_are_unique() {
 
 #[test]
 fn rustc_roundtrip_list_fold_prints_six() {
-    let stdout = run_program("list_fold_six");
-    assert_eq!(stdout, "6", "compiled binary printed {stdout:?}, not `6`");
+    let name = "list_fold_six";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(stdout, expected, "compiled binary printed {stdout:?}, not {expected:?}");
 }
 
 #[test]
 fn rustc_roundtrip_generic_list_fold_prints_one() {
-    let stdout = run_program("generic_list_fold_one");
-    assert_eq!(stdout, "1", "compiled binary printed {stdout:?}, not `1`");
+    let name = "generic_list_fold_one";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(stdout, expected, "compiled binary printed {stdout:?}, not {expected:?}");
 }
 
 #[test]
 fn rustc_roundtrip_list_map_then_fold_prints_twelve() {
-    let stdout = run_program("list_map_then_fold_twelve");
-    assert_eq!(stdout, "12", "compiled binary printed {stdout:?}, not `12`");
+    let name = "list_map_then_fold_twelve";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(stdout, expected, "compiled binary printed {stdout:?}, not {expected:?}");
 }
 
 #[test]
 fn rustc_roundtrip_list_filter_then_fold_prints_seven() {
-    let stdout = run_program("list_filter_then_fold_seven");
-    assert_eq!(stdout, "7", "compiled binary printed {stdout:?}, not `7`");
+    let name = "list_filter_then_fold_seven";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(stdout, expected, "compiled binary printed {stdout:?}, not {expected:?}");
 }
 
 #[test]
 fn rustc_roundtrip_nested_list_builtins_inside_lambda_prints_six() {
-    let stdout = run_program("nested_list_builtins_inside_lambda_six");
-    assert_eq!(stdout, "6", "compiled binary printed {stdout:?}, not `6`");
+    let name = "nested_list_builtins_inside_lambda_six";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(stdout, expected, "compiled binary printed {stdout:?}, not {expected:?}");
 }
 
 #[test]
 fn rustc_roundtrip_user_function_call_prints_three() {
-    let stdout = run_program("user_function_call_three");
-    assert_eq!(stdout, "3", "compiled binary printed {stdout:?}, not `3`");
+    let name = "user_function_call_three";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(stdout, expected, "compiled binary printed {stdout:?}, not {expected:?}");
 }
 
 #[test]
 fn rustc_roundtrip_recursive_function_call_prints_six() {
-    let stdout = run_program("recursive_function_call_six");
-    assert_eq!(stdout, "6", "compiled binary printed {stdout:?}, not `6`");
+    let name = "recursive_function_call_six";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(stdout, expected, "compiled binary printed {stdout:?}, not {expected:?}");
 }
 
 #[test]
 fn rustc_roundtrip_record_literal_through_function_prints_one() {
-    let stdout = run_program("record_literal_through_function_one");
-    assert_eq!(stdout, "1", "compiled binary printed {stdout:?}, not `1`");
+    let name = "record_literal_through_function_one";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(stdout, expected, "compiled binary printed {stdout:?}, not {expected:?}");
 }
 
 #[test]
 fn rustc_roundtrip_user_sum_match_prints_zero() {
-    let stdout = run_program("user_sum_match_zero");
-    assert_eq!(stdout, "0", "compiled binary printed {stdout:?}, not `0`");
+    let name = "user_sum_match_zero";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(stdout, expected, "compiled binary printed {stdout:?}, not {expected:?}");
 }
 
 // The five reflected-module tests below share one batched harness
