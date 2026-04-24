@@ -120,8 +120,8 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [x] Schema extensions landed — `ExecuteCommand`, `ForAllTargets`,
       `LensOutputEquals`, `DifferentialEquals`, `AlgebraicLaw` variants
       added to `TestPredicate` (PR #678, merged 2026-04-24)
-- [ ] Runner foundation — schema predicates execute structurally
-      (PR #688 green, merge pending)
+- [x] Runner foundation — schema predicates execute structurally
+      (PR #688, merged 2026-04-24)
 - [ ] `testgen_structural_coverage` gate compiles + evaluates
 - [ ] `MockBackedInvariant` wiring
 - [ ] `testgen_mock_backed_integration_safe` gate compiles + evaluates
@@ -152,7 +152,7 @@ Decisions log (append as they happen):
 
 Open questions for director:
 
-- _(none yet)_
+- _(none today)_
 
 Cross-manager notifications queued:
 
@@ -162,6 +162,6 @@ Cross-manager notifications queued:
 - **Substrate Manager**: `LensOutputEquals` + `DifferentialEquals`
   predicates are on main (PR #678). T-LaneE consumers can reference
   them once the runner lands.
-- **Self-hosting Manager**: Runner foundation (PR #688) is merge-ready.
-  Signal will go out once it lands — T-PB-B can begin `.dag` TestClaim
-  conversion at that point.
+- **Self-hosting Manager**: Runner foundation landed (PR #688,
+  2026-04-24). T-PB-B is unblocked — begin `.dag` TestClaim
+  conversion of pipeline / contract tests. ⬅ **SEND NOW**
