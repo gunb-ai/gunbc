@@ -3,6 +3,7 @@
 
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::*;
+pub use crate::std_types::PositiveInt;
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -10,6 +11,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use DescentEvidence::*;
 use DescentSource::*;
+use DivisionDescentFactor::*;
 use RankingDimension::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -57,7 +59,7 @@ pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence 
 
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
     match evidence {
-        DescentEvidence::NonIncreasing => DescentEvidence::Strict,
+        DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
         DescentEvidence::Strict => DescentEvidence::Strict,
         _ => DescentEvidence::DescentUnknown,
     }
@@ -114,10 +116,26 @@ impl RankingDimension {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
+pub enum DivisionDescentFactor {
+    Two,
+    GreaterThanTwo { extra: i64 },
+}
+impl DivisionDescentFactor {
+    pub fn extra(&self) -> i64 {
+        match self {
+            DivisionDescentFactor::Two => panic!("no extra on unit variant"),
+            DivisionDescentFactor::GreaterThanTwo { extra: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum DescentSource {
     ChildAccessor { accessor: String },
     ListShrink { amount: i64 },
-    ArithmeticDecrease { op: String, by: i64 },
+    ArithmeticSubtract { by: i64 },
+    ArithmeticDivide { by: Rc<DivisionDescentFactor> },
     ParserAdvance { witness: String },
     SetRemoval { element: String },
     FoldIteration,
