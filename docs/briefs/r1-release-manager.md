@@ -117,8 +117,8 @@ while the other managers ship.
   impossible-bugs suite per `ROADMAP.md:55`.
 - **Up to director.** If at any point R1 scope expands to depend
   on either of the two story-surfaced gaps tracked at
-  `ROADMAP.md:364` (Duration/Money unit-mismatch enforcement
-  consumer) or `ROADMAP.md:365` (`Secret<T>` nominal-wrapper
+  `ROADMAP.md:362` (Duration/Money unit-mismatch enforcement
+  consumer) or `ROADMAP.md:363` (`Secret<T>` nominal-wrapper
   graduation), escalate so R1 can be re-scoped or the row can be
   dispatched out of post-R1 ordering.
 
@@ -126,8 +126,8 @@ while the other managers ship.
 
 Both story-surfaced gaps now have ledger rows; this manager
 monitors them as post-R1 follow-ups:
-- **Unit-mismatch enforcement for typed value wrappers with phantom Unit / Currency parameters** (Duration/Money) — `ROADMAP.md:364`.
-- **`Secret<T>` nominal-wrapper graduation** — `ROADMAP.md:365`.
+- **Unit-mismatch enforcement for typed value wrappers with phantom Unit / Currency parameters** (Duration/Money) — `ROADMAP.md:362`.
+- **`Secret<T>` nominal-wrapper graduation** — `ROADMAP.md:363`.
 
 Per the doc-authority single-ledger rule
 ([`doc-authority.md`](../thesis/doc-authority.md)), the ROADMAP
@@ -139,43 +139,72 @@ content.
 Lane-owner dispatch status (update as sub-deliverables close):
 
 **T-Demo:**
-- [ ] `fixture_compiler_nerd_canonical` — Compiles (Day-1) — in flight on
-      PR #686 (W2 / quiet-lynx-432); draft, revising per manager
-      feedback (real source, not placeholders; fixture 2 pending)
+- [x] `fixture_compiler_nerd_canonical` — Compiles (Day-1) **stage-(a)**
+      landed in #686 (fixture-declaration compiles).
+- [x] `fixture_compiler_nerd_canonical` — Compiles **stage-(b)** landed
+      in #705 via `TestRunner::run_suite` (runner foundation from #688).
+      Day-1 Compiles is now `[live]` end-to-end for this suite.
 - [ ] `fixture_compiler_nerd_canonical` — lens-output demos evaluate
-      (after T-LensAPI)
-- [ ] `fixture_integration_canonical` — Compiles (Day-1). Scope per
-      `ROADMAP.md:71`: effects / idempotency / testgen. Staffed under
-      PR #686 as the second canonical fixture (not drafter's-choice —
-      director clarified `ROADMAP.md:70-73` names both fixtures
-      explicitly).
+      (after T-LensAPI `lens_output_is_queryable_data`).
+- [x] `fixture_integration_canonical` — Compiles (Day-1) **stage-(a)**
+      landed in #686. Scope per `ROADMAP.md:71`: effects / idempotency /
+      testgen.
+- [x] `fixture_integration_canonical` — Compiles **stage-(b)** landed
+      in #705 via `TestRunner::run_suite`. Day-1 Compiles `[live]`
+      end-to-end.
 - [ ] `fixture_integration_canonical` — lens-output demos evaluate
-      (after T-LensAPI + live idempotency lens)
+      (after T-LensAPI; `idempotency.dag` itself is already COMPLETE per
+      `docs/v3-lens-capability-register.md:42`).
 - [ ] Impossible-bugs suite (`impossible_bug_class_suite_r1`,
-      `ROADMAP.md:72`) — **parked upstream-of-gates**. Re-dispatch when
-      the first `[live]` R1 bug-class proof row lands: Substrate
-      T-LaneE (`complexity_merge_sort_is_nlogn` /
-      `complexity_v3_matches_v2_oracle`), Testgen runner +
-      `MockBackedInvariant` wiring (`ROADMAP.md:51`, `:65`, `:235`) —
-      `idempotency.dag` is already COMPLETE per
-      `docs/v3-lens-capability-register.md:42`, so the gate is runner +
-      wiring, not the lens — or Surface T-Emit
-      (`emit_omni_demo_fixtures_green`). PR #689 closed as premature
-      (docs/thesis/ is director-owned per `doc-authority.md` — tracking
-      scaffolding is not the lane deliverable). Narrative holds until
-      at least one upstream row is honest.
+      `ROADMAP.md:72`) — **parked upstream-of-gates, one trigger now
+      half-met**. Re-dispatch when the first `[live]` R1 bug-class proof
+      row lands:
+  - Testgen runner + `MockBackedInvariant` wiring
+    (`ROADMAP.md:51`, `:65`, `:235`). **Runner half `[live]`** via #688
+    (foundation) + #705 (T-Demo consumer proof). `MockBackedInvariant`
+    wiring for idempotency-class proofs is the remaining piece.
+  - Substrate T-LaneE (`complexity_merge_sort_is_nlogn` /
+    `complexity_v3_matches_v2_oracle`) — pending.
+  - Surface T-Emit (`emit_omni_demo_fixtures_green`) — pending.
+  - PR #689 closed as premature (docs/thesis/ is director-owned per
+    `doc-authority.md`). Narrative holds until at least one upstream
+    row is fully `[live]` for a concrete bug class.
 
 **T-Receipts (continuous):**
-- [ ] Receipt PR cadence established (2–4 items per PR)
-- [ ] CI ratchet audit bundled
-- [ ] Stale-brief sweep in `docs/briefs/` bundled
-- [ ] INVARIANTS cross-ref cleanup bundled
-- [ ] Scheduled-deletion work bundled
+- [x] Receipt PR cadence established — bundle 1 (#685), bundle 2 (#701,
+      replaced closed #687 with `-ne` enforcement tightening).
+- [x] CI ratchet audit bundled — landed in #701; meta-ratchet freezes
+      exemption count at 43 (equality check: fails on growth OR
+      deletion-without-floor-drop). Follow-ups still open (fresh CI
+      timings, per-exempt budgets, exemption deletions).
+- [x] Stale-brief sweep in `docs/briefs/` — partial (#685).
+- [x] INVARIANTS cross-ref cleanup — partial (#685).
+- [ ] Scheduled-deletion work — bundled.
+- [ ] `src/v3/compiler/tests/integration/common/mod.rs:319`
+      narrow-scanner debt. Pre-existing: the scanner "deliberately does
+      not model Rust character literals," forcing downstream test
+      authors (e.g., the T-Demo integration tests at #686 / #705) into
+      byte-constant workarounds like `DAG_ESCAPE_BYTE` /
+      `DAG_QUOTE_BYTE`. Dissolution trigger: widen the scanner to model
+      Rust char literals, or replace the scan with a structural reader.
+      Tracked as a follow-up T-Receipts bundle row in `ROADMAP.md`
+      (added in this brief-refresh PR).
+
+**Dissolved in place (not ledger rows):**
+Captures debt that was queued as a T-Receipts ledger row but whose
+explicit dissolution trigger fired before the row was written. Not a
+placeholder; a pattern for preventing ledger bloat when the queued
+work dissolves within the same wave that surfaced it.
+
+- T-Demo `.dag` text-slicing bridge (`find_string_field` /
+  `read_dag_string_literal`) introduced in #686 dissolved in #705 when
+  `TestRunner::run_suite` became the structurally-correct evaluator.
+  Was queued as a T-Receipts row; never needed to be written down.
 
 **Post-R1 gap monitoring (ROADMAP rows):**
-- [ ] `ROADMAP.md:364` unit-mismatch enforcement — flag if R1 scope
+- [ ] `ROADMAP.md:362` unit-mismatch enforcement — flag if R1 scope
       expands to depend on it
-- [ ] `ROADMAP.md:365` `Secret<T>` nominal-wrapper — flag if R1
+- [ ] `ROADMAP.md:363` `Secret<T>` nominal-wrapper — flag if R1
       scope expands to depend on it
 
 Decisions log (append as they happen):
@@ -192,11 +221,26 @@ Decisions log (append as they happen):
 - **2026-04-24** — T-Receipts bundle 1 landed (#685); merge order per
   director for bundle 2 (#687, slow-test-exemption meta-ratchet):
   #685 → #687.
+- **2026-04-24** — #687 closed and re-authored as #701 (same branch +
+  `-ne` enforcement tightening). #701 landed. Process note logged on
+  #701: future tightening should force-push onto the open PR rather
+  than close-and-reopen.
+- **2026-04-24** — T-Demo Day-1 Compiles `[live]` end-to-end for both
+  canonical fixtures: stage-(a) in #686, stage-(b) in #705 via
+  `TestRunner::run_suite`. Text-slicing bridge introduced in #686
+  dissolved in place in #705 (runner evaluation fired its dissolution
+  trigger). One receipt row dissolved before it needed to be written.
+- **2026-04-24** — Impossible-bugs suite re-dispatch trigger "Testgen
+  runner + MockBackedInvariant wiring" is now **half-met**: runner
+  foundation from #688 + T-Demo consumer proof from #705.
+  `MockBackedInvariant` wiring for idempotency-class proofs is the
+  remaining piece. Notify Director when the other half lands so W3 can
+  re-dispatch against honest claims.
 
 Open questions for director:
 
 - _(none yet — the two story-surfaced gaps are tracked as post-R1
-  rows at `ROADMAP.md:364-365`; escalate only if R1 scope expands
+  rows at `ROADMAP.md:362-363`; escalate only if R1 scope expands
   to depend on either)_
 
 Cross-manager notifications queued:
