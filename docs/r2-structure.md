@@ -129,7 +129,7 @@ Parallel-capable work at any time ≥ N workers × fill-queue depth (5 fill queu
 
 ## Demo discipline — visibility as structural requirement
 
-Simple "look, it runs" or "before/after analysis" artifact ships with each lane closure PR. Director coordinates surfacing to user. No time-based cadence; gate-close natural rhythm at R1 velocity is enough.
+Simple "look, it runs" or "before/after analysis" artifact ships with each lane closure PR. Director coordinates surfacing to user. No time-based cadence; the gate-close natural rhythm carries the visibility load directly — a demo lands whenever a lane closes, not on a schedule.
 
 Forms that qualify:
 - Running artifact + 1-paragraph "what this demonstrates"
