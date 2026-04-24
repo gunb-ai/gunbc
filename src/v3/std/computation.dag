@@ -19,8 +19,9 @@ import std.algebra {
   kernel_algebra_profile
 }
 
-// 🟡 MIXED. Symbolic bounds name parameters via `param: String` (scaffold until
-// params are first-class); `ExplicitCount` / `Forever` are durable finite-bound atoms.
+// 🟡 MIXED coproduct — E-C `SizeBound` carrier (five-way flat sum). Dissolution: collapse
+// `param: String` symbolic slots to structural size-parameter refs; `ExplicitCount` /
+// `Forever` remain terminal finite-bound atoms (no String bridge).
 type SizeBound
   = CollectionSize { param: String }
   | TreeSize { param: String }
@@ -39,8 +40,9 @@ fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
   }
 }
 
-// 🟡 MIXED. `PositiveDescentAmount` / `ProportionalDivisor` payloads are terminal
-// witnesses; `String` slots (accessor, witness, element) are name bridges until refs are structural.
+// 🟡 MIXED coproduct — exhaustive call-shape classifier for `lower_call_pattern`. Dissolution:
+// replace `String` accessor / witness / element slots with structural refs; Peano shrink
+// payloads stay terminal (shared with `std.termination`).
 type CallPattern
   = ChildAccessorCall { accessor: String }
   | CollectionShrinkCall { amount: PositiveDescentAmount }
@@ -51,21 +53,22 @@ type CallPattern
   | FoldBodyCall
   | SameArgumentCall
 
-// 🟢 TERMINAL. Linear / proportional shrink uses `PositiveDescentAmount` /
-// `ProportionalDivisor` like `CallPattern`, so `LoweringTarget` evidence stays proof-grade.
+// 🟢 TERMINAL coproduct — shrink-rate witnesses aligned with `std.termination`. Dissolution: none
+// (structural `PositiveDescentAmount` / `ProportionalDivisor` already proof-grade).
 type ShrinkFactor
   = UnitShrink
   | ConstantShrink { steps: PositiveDescentAmount }
   | ProportionalShrink { divisor: ProportionalDivisor }
 
-// 🟢 TERMINAL. The three iteration primitives are the stable lowering coproduct for Lane E-C.
+// 🟢 TERMINAL coproduct — `Fold` | `Descend` | `Repeat` lowering enum (Lane E-C). Dissolution:
+// none (kept in lockstep with `std.iteration` primitives).
 type IterationPrimitive
   = Fold
   | Descend
   | Repeat
 
-// 🟡 MIXED. Record bundles terminal `IterationPrimitive` + `DescentEvidence` with
-// symbolic `SizeBound` / optional `ShrinkFactor` (see classifications on those types).
+// 🟡 MIXED record — product of the coproduct carriers above (not a coproduct itself).
+// Dissolution inherits from `SizeBound` / `CallPattern` / optional `ShrinkFactor` String bridges.
 type LoweringTarget {
   primitive: IterationPrimitive
   bound: SizeBound

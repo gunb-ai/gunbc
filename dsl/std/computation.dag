@@ -122,8 +122,9 @@ import std.algebra {
 // (for constants/Forever) or tracked symbolically (for parameters/collections).
 // =========================================================================
 //
-// 🟡 MIXED. Symbolic bounds name parameters via `param: String` (scaffold until
-// params are first-class); `ExplicitCount` / `Forever` are durable finite-bound atoms.
+// 🟡 MIXED coproduct — five-way size-bound source for lowering. Dissolution: `param: String`
+// name bridges on `CollectionSize` / `TreeSize` / `ArithmeticParam` → structural size-parameter
+// refs when reflected params exist; `ExplicitCount` / `Forever` stay terminal finite-bound atoms.
 
 type SizeBound
   = CollectionSize { param: String }   // |list|, |set|, |map.keys| — finite by Layer 3
@@ -185,8 +186,9 @@ fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
   }
 }
 
-// 🟡 MIXED. `PositiveDescentAmount` / `ProportionalDivisor` payloads are terminal
-// witnesses; `String` slots (accessor, witness, element) are name bridges until refs are structural.
+// 🟡 MIXED coproduct — exhaustive call-shape classifier feeding `lower_call_pattern`. Dissolution:
+// replace `String` accessor / witness / element slots with structural refs; Peano shrink payloads
+// stay terminal (shared with `std.termination`).
 type CallPattern
   = ChildAccessorCall { accessor: String }    // self(node.left) — structural child
   | CollectionShrinkCall { amount: PositiveDescentAmount }  // skip(n), n >= 1 structurally
@@ -223,16 +225,15 @@ type CallPattern
 // O(n) from O(log n). Moved here from induction.dag to avoid circular
 // dependency (induction imports computation; LoweringTarget needs ShrinkFactor).
 //
-// 🟢 TERMINAL. Linear / proportional rates use the same structural witnesses as
-// `CallPattern` (`PositiveDescentAmount`, `ProportionalDivisor`), so evidence paired
-// with `DescentEvidence::Strict` in `LoweringTarget` stays proof-grade. `UnitShrink` is tag-only.
+// 🟢 TERMINAL coproduct — shrink-rate witnesses aligned with `std.termination`. Dissolution: none
+// (`UnitShrink` tag-only; `ConstantShrink` / `ProportionalShrink` already structural).
 type ShrinkFactor
   = UnitShrink
   | ConstantShrink { steps: PositiveDescentAmount }
   | ProportionalShrink { divisor: ProportionalDivisor }
 
-// 🟡 MIXED. Record bundles terminal `IterationPrimitive` + `DescentEvidence` with
-// symbolic `SizeBound` / optional `ShrinkFactor` (see classifications on those types).
+// 🟡 MIXED record — product of the coproduct carriers above (not a coproduct itself).
+// Dissolution inherits from `SizeBound` / `CallPattern` / optional `ShrinkFactor` String bridges.
 type LoweringTarget {
   primitive: IterationPrimitive
   bound: SizeBound
@@ -240,7 +241,8 @@ type LoweringTarget {
   factor: ShrinkFactor?       // rate of decrease — preserved from SubValueRelation for tighter bounds
 }
 
-// 🟢 TERMINAL. The three iteration primitives are the stable lowering coproduct for Lane E-C.
+// 🟢 TERMINAL coproduct — `Fold` | `Descend` | `Repeat` lowering enum (Lane E-C). Dissolution:
+// none (kept in lockstep with `std.iteration` primitives).
 type IterationPrimitive
   = Fold
   | Descend
