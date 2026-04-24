@@ -841,7 +841,14 @@ pub(crate) mod lower_helpers {
     }
 }
 
-pub mod lens_idempotency;
+/// Back-compat module path for the Stage 2b idempotency lens.
+///
+/// The dedicated `lens_idempotency.rs` wrapper retired once the native-Dag
+/// bridge collapsed to a single re-export. Keep the module name as an API alias
+/// until callers move to the crate-root `analyze_workflow` export.
+pub mod lens_idempotency {
+    pub use crate::workflow_idempotency::analyze_workflow;
+}
 pub mod lens_parallelism;
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
 // `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs`,
@@ -896,6 +903,8 @@ pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan};
 pub use emit::{EmitDispatchError, EmitMode, EmitTarget, EmittedSource};
 pub use emit_rust::EmitError;
+/// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
+pub use lens_parallelism::analyze_parallelism;
 /// Lane 2 Stage 2b — supported public surface: [`analyze_workflow`] is the
 /// primary entry; [`report_unsupported_workflow_variant`] and
 /// [`lane2_workflow_idempotency_report`] are additionally exported so
@@ -904,9 +913,7 @@ pub use emit_rust::EmitError;
 /// `operation_to_breaker` are **not** re-exported: naming and algebra authority
 /// live in `src/v3/std/effects.dag`, and the Rust bridge must not become a
 /// parallel public implementation surface beyond these std.effects mirrors.
-pub use lens_idempotency::analyze_workflow;
-/// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
-pub use lens_parallelism::analyze_parallelism;
+pub use workflow_idempotency::analyze_workflow;
 pub use workflow_idempotency::{
     lane2_workflow_idempotency_report, report_unsupported_workflow_variant,
 };
