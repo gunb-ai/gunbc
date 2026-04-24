@@ -9,6 +9,8 @@ use v3_compiler::{compile_to_dag, CompileError};
 
 const MOCK_BACKED_INVARIANT_FIXTURE: &str =
     include_str!("../fixtures/r1_mock_backed_invariant_gate.dag");
+const R1_LENS_OUTPUT_EQUALS_FIXTURE: &str =
+    include_str!("../fixtures/r1_lens_output_equals_gate.dag");
 
 fn compile_clean(source: &str, file: &str) -> v3_compiler::dag::Dag {
     match compile_to_dag(source, file) {
@@ -370,6 +372,44 @@ data suite: TestSuite = {
             if reason.contains("mock simulation is not wired")
                 && reason.contains("subject_ref")
                 && reason.contains("invariant_ref")
+    ));
+}
+
+#[test]
+fn lens_output_equals_predicate_accepts_declaration_ref_literals_like_mock_invariant() {
+    let source = r#"
+data claim: TestClaim = {
+  name: "c",
+  source: "let _: Int = 0",
+  file_name: "f.v3",
+  predicate: LensOutputEquals(Int, Int, Int),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "s",
+  claims: [claim]
+}
+"#;
+    compile_clean(source, "lens_output_equals_int_harness.v3");
+}
+
+#[test]
+fn test_runner_dispatches_r1_gates_lens_output_equals_claim() {
+    let dag = compile_clean(
+        R1_LENS_OUTPUT_EQUALS_FIXTURE,
+        "src/v3/compiler/tests/fixtures/r1_lens_output_equals_gate.dag",
+    );
+    let results = TestRunner::new(&dag).run_suite("r1_lens_output_equals_suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(msg)
+            if msg.contains("LensOutputEquals")
+                && msg.contains("Int")
+                && msg.contains("lens_output_ref_input")
+                && msg.contains("lens_output_ref_expected")
     ));
 }
 

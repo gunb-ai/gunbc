@@ -10,6 +10,7 @@ use crate::{compile_to_dag, CompileError};
 pub enum ClaimResult {
     Pass,
     Fail(String),
+    /// Runner does not implement this path yet; message is surfaced to tests and logs.
     NotYetImplemented(String),
 }
 
@@ -151,6 +152,7 @@ impl<'a> TestRunner<'a> {
                     "OutputEquals" => self.eval_output_equals(claim, &payload),
                     "PortHasState" => self.eval_port_has_state(claim, &payload),
                     "CostBounded" => self.eval_cost_bounded(claim, &payload),
+                    "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
                     "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                     "MockBackedInvariant" => self.eval_mock_backed_invariant(claim, &payload),
                     other => ClaimResult::NotYetImplemented(format!(
@@ -261,6 +263,90 @@ impl<'a> TestRunner<'a> {
         }
     }
 
+    fn eval_lens_output_equals(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [lens_fv, input_fv, expected_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "LensOutputEquals payload should be exactly three DeclarationRef fields \
+                 (lens_ref, input_ref, expected_ref); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let lens_id = match self.resolve_declaration_ref_id(lens_fv, "lens_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let input_id = match self.resolve_declaration_ref_id(input_fv, "input_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let expected_id = match self.resolve_declaration_ref_id(expected_fv, "expected_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+
+        let lens_decl = self.dag.declaration(lens_id);
+        let input_decl = self.dag.declaration(input_id);
+        let expected_decl = self.dag.declaration(expected_id);
+
+        let lens_name = decl_display_name(lens_id, lens_decl);
+        let input_name = decl_display_name(input_id, input_decl);
+        let expected_name = decl_display_name(expected_id, expected_decl);
+
+        if input_decl.value_body.is_none() {
+            return ClaimResult::Fail(format!(
+                "LensOutputEquals: input_ref `{input_name}` has no value body"
+            ));
+        }
+        if expected_decl.value_body.is_none() {
+            return ClaimResult::Fail(format!(
+                "LensOutputEquals: expected_ref `{expected_name}` has no value body"
+            ));
+        }
+
+        // Bridge receipt: `claim.source` is not the predicate DAG; this compile is a
+        // witness check only — it can turn an otherwise NYI claim into `Fail` if the
+        // string does not lower. When the real lens-apply path exists, **delete** this
+        // whole block (do not leave it layered or “superseded” in place); compilation
+        // belongs on the evaluation path only (P5 tracked debt — PR #717 / claude-opus review).
+        //
+        // Schedule: ROADMAP.md subsection "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" item 1.
+        // Today’s gate fixture uses trivial `claim.source` (`let _: Int = 0`); the compile
+        // is a thin structural receipt until real lens evaluation consumes meaningful witness text.
+        if let Err(err) = compile_to_dag(&claim.source, &claim.file_name) {
+            return ClaimResult::Fail(format!(
+                "LensOutputEquals: claim `source` did not compile (needed for future lens application): {err:?}"
+            ));
+        }
+
+        ClaimResult::NotYetImplemented(format!(
+            "LensOutputEquals: runner does not apply lens functions or compare lens output yet \
+             (resolved lens={lens_name}, input={input_name}, expected={expected_name}; \
+             `source` compiles for future wiring)"
+        ))
+    }
+
+    fn resolve_declaration_ref_id(
+        &self,
+        value: &FieldValue,
+        field_label: &str,
+    ) -> Result<DeclarationId, String> {
+        match value {
+            FieldValue::Reference(id) => Ok(*id),
+            FieldValue::Record(fields) if fields.is_empty() => Err(format!(
+                "LensOutputEquals `{field_label}`: DeclarationRef is the empty record literal {{}} — use an identifier \
+                 so lowering emits FieldValue::Reference(DeclarationId), not an empty record",
+            )),
+            other => Err(format!(
+                "LensOutputEquals `{field_label}`: expected FieldValue::Reference(DeclarationId) \
+                 for a DeclarationRef edge, got {other:?}"
+            )),
+        }
+    }
+
     fn eval_algebraic_law(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
         // Only `Associativity` is wired. Other `AlgebraicLawKind` variants are
         // `NotYetImplemented` (runner cannot evaluate yet), not `Fail` (claim false).
@@ -357,11 +443,11 @@ impl<'a> TestRunner<'a> {
                     .to_string(),
             );
         };
-        let subject = match self.resolve_declaration_ref_edge(subject, "subject") {
+        let subject = match self.resolve_mock_declaration_ref_edge(subject, "subject") {
             Ok(name) => name,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        let invariant = match self.resolve_declaration_ref_edge(invariant, "invariant") {
+        let invariant = match self.resolve_mock_declaration_ref_edge(invariant, "invariant") {
             Ok(name) => name,
             Err(reason) => return ClaimResult::Fail(reason),
         };
@@ -370,7 +456,7 @@ impl<'a> TestRunner<'a> {
         ))
     }
 
-    fn resolve_declaration_ref_edge(
+    fn resolve_mock_declaration_ref_edge(
         &self,
         value: &FieldValue,
         label: &str,
@@ -535,6 +621,12 @@ fn record_fields(value: &FieldValue) -> Option<&[(String, FieldValue)]> {
         FieldValue::Record(fields) => Some(fields),
         _ => None,
     }
+}
+
+fn decl_display_name(id: DeclarationId, decl: &Declaration) -> String {
+    decl.name
+        .clone()
+        .unwrap_or_else(|| format!("Declaration#{}", id.raw()))
 }
 
 fn find_bind<'a>(
