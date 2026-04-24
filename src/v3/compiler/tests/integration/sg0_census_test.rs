@@ -93,6 +93,12 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // lowering remains hand-maintained Rust until `lower.dag` + reflected `Surface*`.
 // `regen_lower` + `lower_generated.rs` are prep-only (not `lib.rs` authority).
 //
+// Lane E-I Step 0 (PR #726): `e_i_lane_induction_preflight_test.rs` is a
+// bounded bootstrap receipt that `CostBound` still carries `SumBound` with
+// `List<CostBound>` and `sum_bound` after `regen_bootstrap`. Not a generated
+// snapshot. Dissolution trigger: the same structural fact is covered by a
+// `.dag`-native or testgen-only harness without needing this host-side probe.
+//
 // Phase 1 Dag builder surface — PR #570 adds one narrow host-side
 // helper file, `src/dag/builder.rs`, to keep the test-facing graph
 // constructors scoped away from the main `dag.rs` body while the
@@ -199,6 +205,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
     "src/v3/compiler/tests/integration/common/mod.rs",
     "src/v3/compiler/tests/integration/common/substrate_receipts.rs",
+    "src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs",
     "src/v3/compiler/tests/integration/four_fixture_regression_test.rs",
     "src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2a_effects_smoke.rs",
