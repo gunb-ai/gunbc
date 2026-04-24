@@ -87,9 +87,11 @@ Counts are approximate; overlapping classifications (a single line can combine P
 
 Under correct implementation of the full model (Read→Borrow + Last-use→Move + Copy→bit-copy):
 
-- **~70 clones become Borrow** (Pattern 1a, 3, 4, 5-init-as-last, 6-inspect, 7, 8a for Copy types)
+- **~70 clones become Borrow** (Pattern 1a, 3, 4, 6-inspect, 7, 8a for Copy types)
 - **~12–14 clones become Move** (Pattern 1b, 5, 6 consume-arms, 8b)
 - **~3–5 clones remain as Clone** (Pattern 1c, 2 retained inner, 8c, 9)
+
+Pattern bookkeeping: each pattern lands in exactly one outcome bucket. Pattern 2's "inner clone retained" is counted in the Clone bucket because the inner clone is what survives; the outer clone vanishes (not an outcome — just removed). Pattern 8a (Copy-type field) is listed under Borrow-as-bit-copy because Copy types don't generate a `.clone()` call; the bit-copy happens transparently. Patterns split by subletter (1a/1b/1c, 8a/8b/8c) reflect the three possible outcomes for that pattern depending on consumer disposition + last-use-ness + Copy-ness.
 
 **Predicted optimal floor: ~3–5 genuine clones.**
 
