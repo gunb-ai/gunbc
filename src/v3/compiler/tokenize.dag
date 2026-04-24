@@ -61,17 +61,22 @@
 // emits calls into `tokenize_char_class.rs`, a handwritten Rust mirror of the
 // `.dag` ASCII predicates (ratcheted by unit tests in `tokenize_char_class.rs`).
 //
-// **Framing.** This is not a substrate gap — the character-level modeling is
-// already done. It is a *consumption gap*: tokenize.dag and syntax.dag both
-// encode the same activity (slicing the ASCII/Unicode space) in two parallel
-// non-canonical forms (opaque strings, hidden Rust predicates) instead of
-// consuming the canonical `Char` / `std.unicode` authorities. Named
-// dissolution trigger (tracked in ROADMAP as a follow-up lane): (a) add
-// `CharClass` + predicates to `std.unicode`; (b) retype the opaque-string
-// fields in this file and `syntax.dag` to consume `Char` / `List<Char>`;
-// (c) rewire `regen_tokenize` to read the class-predicate list structurally
-// rather than hardcoding host-stdlib method names. Goal is faithful
-// consumption of an existing borrow, not re-implementing Unicode in `.dag`.
+// **Framing.** Phase 1 was a consumption gap: the character-level modeling was
+// already present, but tokenize.dag and syntax.dag encoded the same activity
+// (slicing the ASCII/Unicode space) in non-canonical forms (opaque strings,
+// hidden Rust predicates) instead of consuming the canonical `Char` /
+// `std.unicode` authorities. Phase 2 is now confirmed substrate/load-set work:
+// scanner rows such as `data ascii_scan_order: List<CharClass> = [...]` need
+// top-level structural `data` bodies for lists/sum constructors, and
+// `std.unicode` must enter the runtime bootstrap/load set before `CharClass`
+// resolves from this compiler authority. Named dissolution trigger (tracked in
+// ROADMAP as a follow-up lane): (a) add `CharClass` + predicates to
+// `std.unicode`; (b) grow top-level `ValueBody`/lowering support and retype the
+// opaque-string fields in this file and `syntax.dag` to consume `Char` /
+// `List<Char>`; (c) rewire `regen_tokenize` to read the class-predicate list
+// structurally rather than hardcoding host-stdlib method names. Goal is
+// faithful consumption of an existing borrow, not re-implementing Unicode in
+// `.dag`.
 //
 // **Scan phases (spec).** After skipping ASCII whitespace, the scanner applies
 // in order: line comment (`line_comment_prefix` to newline), punctuation

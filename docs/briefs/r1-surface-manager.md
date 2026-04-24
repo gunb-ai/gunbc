@@ -61,9 +61,11 @@ Today:
 - Type-alias `where` landed in PR #703. Alias-RHS predicates now parse
   and lower; receipts are the `test_db11_type_alias_where_*`
   integration tests in `m2_feature_parity_test.rs`.
-- `CharClass` in `std.unicode` is the character-level consumption
-  gap per `ROADMAP.md:353` — the types exist in `dsl/std/`; the
-  tokenizer and syntax authorities aren't using them yet.
+- `CharClass` in `std.unicode` phase-1 landed in PR #693. The
+  remaining structural scanner-row closeout is not a T-Sub-only
+  surface fix: quiet-gull-882 confirmed it is blocked on top-level
+  `ValueBody` list/sum support plus a `std.unicode` bootstrap/load-set
+  decision.
 - Cross-target emission green-ness is the external-toolchain
   receipt: generated Rust compiles under `rustc`; generated Python
   runs under CPython; generated Go builds under `go build`.
@@ -82,13 +84,11 @@ for a principal engineer to verify in one evening.
   blocker.
 - **Landed.** T-Sub `sub_type_alias_where_lowers` landed in PR #703.
   DB-11 alias-RHS parse/lower receipts are in `test_db11_type_alias_where_*`.
-- **Parallel.** T-Sub `sub_charclass_in_std_unicode` dispatches.
-  Add `CharClass = Whitespace | Digit | IdentStart | IdentContinue`
-  (or superset) to `std.unicode` per `ROADMAP.md:353`;
-  retype the opaque-string fields in `tokenize.dag` / `syntax.dag`
-  (`suffix: Char`, `output_codepoint: Char`, `pattern: List<Char>`,
-  etc.); rewire `regen_tokenize` to read class predicates
-  structurally.
+- **Handoff.** T-Sub `sub_charclass_in_std_unicode` phase-1 landed.
+  Phase-2 should be handed to substrate/self-hosting capability work with
+  the minimal fixture `data xs: List<Int> = [1, 2]` and target fixture
+  `data ascii_scan_order: List<CharClass> = [Whitespace, Digit,
+  IdentStart, IdentContinue]`.
 - **Parallel.** T-Emit Python/Go reconcile dispatches after Rust
   harden has a stable baseline. The goal is `emit_omni_demo_fixtures_green`
   across all three targets.
@@ -113,6 +113,10 @@ for a principal engineer to verify in one evening.
   character-level consumption gaps beyond what's cited at
   `ROADMAP.md:353`, flag to director so the cardinality-substrate
   ledger row can be amended rather than expanding the lane.
+- **Up to director / substrate manager.** `sub_charclass_in_std_unicode`
+  phase-2 is a substrate/load-set handoff: top-level structural
+  `ValueBody` support for list/sum bodies, plus a decision on including
+  `dsl/std/unicode.dag` in the runtime bootstrap/load set.
 
 ## Working state
 
@@ -127,7 +131,8 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [x] `sub_match_over_user_sum` gate compiles + passes (Day-1; PR #702)
 - [x] `sub_type_alias_where_lowers` gate compiles + passes (PR #703)
       (DB-11 alias-RHS path)
-- [ ] `sub_charclass_in_std_unicode` gate compiles + passes
+- [ ] `sub_charclass_in_std_unicode` phase-2 handed off with concrete
+      substrate/load-set blockers
 
 **T-Emit:**
 - [ ] Rust harden — `emit_rust_fixtures_rustc_green` passes
@@ -147,6 +152,10 @@ Decisions log (append as they happen):
   via PR #702, and `sub_type_alias_where_lowers` is landed via PR #703. The
   only open T-Sub dispatch is `sub_charclass_in_std_unicode` phase-2
   reproduction/triage.
+- `2026-04-24` — quiet-gull-882 confirmed `sub_charclass_in_std_unicode`
+  phase-2 is not blocked by parser list syntax. It is blocked by top-level
+  `ValueBody` list/sum support and by `std.unicode` not being in the default
+  bootstrap/load set.
 
 Open questions for director:
 
@@ -156,5 +165,8 @@ Cross-manager notifications queued:
 
 - Self-hosting can consume the landed T-Sub `match` and alias-`where` receipts
   from PR #702 / PR #703.
+- Substrate/self-hosting needs the CharClass phase-2 handoff: top-level
+  structural `data` list/sum bodies plus `std.unicode` bootstrap/load-set
+  inclusion.
 - Coordinate with Testgen when T-Emit `emit_omni_demo_fixtures_green`
   predicate shape needs defining.
