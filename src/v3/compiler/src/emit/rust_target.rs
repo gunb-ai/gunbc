@@ -4593,6 +4593,11 @@ impl<'a> Ctx<'a> {
         }
         match &declaration.connective {
             TypeConnective::Conj { children } => {
+                // `Rc<dyn Fn…>` fields are not `Debug`. `rust_type_defs.struct_def` still
+                // carries `#[derive(Clone, Debug)]` for ordinary records — when any field
+                // transitively holds first-class `fn` data, use `rust_record_derive_templates`
+                // instead (`struct_def_no_debug`: clone-only). See `decl_includes_first_class_arrow_data`
+                // and `emit_callable_field_types_use_rc_dyn_fn_storage` (INVARIANTS.md C-8).
                 let omit_debug = children.iter().any(|field| {
                     let mut visited = HashSet::new();
                     self.decl_includes_first_class_arrow_data(field.ty, &mut visited)
@@ -4617,6 +4622,7 @@ impl<'a> Ctx<'a> {
                 ))
             }
             TypeConnective::Disj { variants } => {
+                // Same `Debug` omission as records when variant payloads carry `Rc<dyn Fn…>`.
                 let omit_debug = variants.iter().any(|variant| {
                     let mut visited = HashSet::new();
                     self.decl_includes_first_class_arrow_data(variant.ty, &mut visited)
