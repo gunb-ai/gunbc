@@ -137,6 +137,14 @@ Lane-owner dispatch status (update as sub-deliverables close):
 
 Decisions log (append as they happen):
 
+- 2026-04-24: **T-PB-A reduction wave active.** Non-test hand-Rust shims
+  retired today: lens_idempotency wrapper (#699), lens_parallelism wrapper
+  (#715), lens_parallelism compatibility alias (#724), lower pass-through
+  scaffold + `regen_lower.rs` + non-authoritative `lower_generated.rs`
+  (#729), infer payload span shim (#730), plus T-PB-A-E (#731) and
+  T-PB-A-F (#732). SG-0 census + SG-6 ratchets shrunk accordingly. Live
+  floor read from `src/v3/compiler/tests/integration/sg0_census_test.rs`;
+  the ≤5 irreducible-shim target not yet reached.
 - 2026-04-24: **T-PB-B-1** — landed `src/v3/compiler/tests/dag/*.dag` (`data` `TestClaim` /
   `TestSuite` per `std.verification`) + `t_pb_b_1_tests_dag_smoke_test`; Rust tests not
   deleted; Testgen runner / `pb_*` coordination still open (`docs/briefs/t-pb-b-1.md`).
