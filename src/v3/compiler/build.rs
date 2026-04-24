@@ -294,6 +294,7 @@ fn main() {
         // invariant).
         "src/v3/compiler/src/dag_branch_generated.rs",
         "src/v3/compiler/src/dag_cluster_generated.rs",
+        "src/v3/compiler/src/dag_lookup_generated.rs",
         "src/v3/compiler/src/dag_cost_generated.rs",
         "src/v3/compiler/src/dag_scalar_generated.rs",
         "src/v3/compiler/src/diagnostics_generated.rs",

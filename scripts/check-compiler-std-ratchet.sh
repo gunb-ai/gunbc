@@ -19,7 +19,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-BASELINE_TRACKED_TOTAL=6
+BASELINE_TRACKED_TOTAL=5
 
 SURFACES=(
   src/v3/compiler/*.dag
@@ -52,8 +52,10 @@ EXEMPT_ROWS=(
   "src/v3/compiler/parse_tables.dag:PrimaryAtomRow"
 )
 
+# `complexity.dag` no longer declares `CostLookup` — it imports
+# `v3.std.lookup::Lookup` (authority in `src/v3/std/lookup.dag`, outside this
+# script's counted surfaces). Tracked 2-variant debt: `cost` + `infer_helpers` only.
 TRACKED_ROWS=(
-  "src/v3/lenses/complexity.dag:CostLookup"
   "src/v3/lenses/cost.dag:SymbolicCostLookup"
   "src/v3/lenses/infer_helpers.dag:TemplateArgumentLookup"
   "src/v3/lenses/infer_helpers.dag:TemplateArgumentsMatch"
