@@ -728,7 +728,7 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
     stacker::maybe_grow(
         512 * 1024,
         2 * 1024 * 1024,
-        || match bounded_int_pow_exponent(exp) {
+        || match bounded_int_pow_exponent(exp.clone()) {
             None => None,
             Some(e) => {
                 if (e.clone() == 0) {
@@ -750,7 +750,7 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
                                     }
                                 }
                             } else {
-                                match int_pow_bounded(base.clone(), (e.clone() - 1)) {
+                                match int_pow_bounded(base.clone(), (exp.clone() - 1)) {
                                     Some(prev) => match int_mul_checked(base.clone(), prev.clone())
                                     {
                                         Some(prod) => Some(prod.clone()),
