@@ -609,6 +609,11 @@ fn computation_size_bound_helpers_match_dag_authority() {
     assert!(is_constant_bound(&forever));
 
     assert_eq!(constant_bound_value(&explicit), Some(7));
+    // `Forever` projects to the constant-cost COEFFICIENT `1` for the
+    // size/cost algebra (SameArgumentCall → Repeat(Forever) collapses to a
+    // single-unit cost projection per v2's `dsl/std/computation.dag:269-275`).
+    // This is NOT a claim that `Forever` represents a finite iteration
+    // count of 1.
     assert_eq!(constant_bound_value(&forever), Some(1));
     assert_eq!(constant_bound_value(&tree), None);
     assert_eq!(constant_bound_value(&collection), None);

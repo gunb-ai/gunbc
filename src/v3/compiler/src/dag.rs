@@ -1042,12 +1042,23 @@ pub fn size_bound_param(bound: &SizeBound) -> Option<&str> {
     }
 }
 
+/// `Forever` is "constant" in the sense that it collapses to a fixed
+/// constant-cost COEFFICIENT in the size/cost algebra — *not* that it
+/// carries a finite runtime iteration count. See [`constant_bound_value`]
+/// for the coefficient projection.
 pub fn is_constant_bound(bound: &SizeBound) -> bool {
     matches!(bound, SizeBound::ExplicitCount { .. } | SizeBound::Forever)
 }
 
-/// Returns the constant value only for `SizeBound` variants that actually
-/// carry one; non-constant bounds yield `None` rather than fabricating 0.
+/// Returns the constant VALUE only for `SizeBound` variants that carry one
+/// directly, and the constant-cost COEFFICIENT for `Forever`. Non-constant
+/// bounds yield `None` rather than fabricating 0.
+///
+/// `Forever => Some(1)` is the O(1) constant-cost coefficient for the
+/// size/cost algebra (SameArgumentCall → Repeat(Forever) collapses to a
+/// single-unit cost projection per v2's `dsl/std/computation.dag:269-275`).
+/// It is NOT a claim that `Forever` represents a finite iteration count
+/// of 1.
 pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
     match bound {
         SizeBound::ExplicitCount { n } => Some(*n),
