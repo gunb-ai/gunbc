@@ -248,6 +248,12 @@ impl PythonIndexes {
                 let target = require_field_decl_ref(fields, "target", decl.id)?;
                 let op = require_field_decl_ref(fields, "op", decl.id)?;
                 let carrier = require_field_string(fields, "carrier", decl.id)?;
+                if !carrier.contains("{lhs}") || !carrier.contains("{rhs}") {
+                    return Err(EmitPythonError::MalformedSpec {
+                        declaration: decl.id,
+                        detail: "OperatorRealization carrier must be a full-expression template containing {lhs} and {rhs}",
+                    });
+                }
                 if operators.insert((target, op), carrier).is_some() {
                     return Err(EmitPythonError::DuplicateRealization {
                         declaration: decl.id,
