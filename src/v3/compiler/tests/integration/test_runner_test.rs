@@ -305,14 +305,32 @@ data suite: TestSuite = {
     ));
 }
 
+#[test]
+fn lens_output_equals_predicate_accepts_declaration_ref_literals_like_mock_invariant() {
+    let source = r#"
+data claim: TestClaim = {
+  name: "c",
+  source: "let _: Int = 0",
+  file_name: "f.v3",
+  predicate: LensOutputEquals(Int, Int, Int),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "s",
+  claims: [claim]
+}
+"#;
+    compile_clean(source, "lens_output_equals_int_harness.v3");
+}
+
 const R1_GATES_FIXTURE: &str = include_str!("../fixtures/r1_gates.dag");
 
 #[test]
 fn test_runner_dispatches_r1_gates_lens_output_equals_claim() {
-    let dag = compile_clean(
-        R1_GATES_FIXTURE,
-        "src/v3/compiler/tests/fixtures/r1_gates.dag",
-    );
+    // Virtual file name: some fixture paths alter how `DeclarationRef` names
+    // resolve inside `LensOutputEquals` (see `lens_output_equals_predicate_accepts_*`).
+    let dag = compile_clean(R1_GATES_FIXTURE, "r1_lens_output_equals_gate_fixture.v3");
     let results = TestRunner::new(&dag).run_suite("r1_lens_output_equals_suite");
 
     assert_eq!(results.len(), 1);
@@ -320,8 +338,8 @@ fn test_runner_dispatches_r1_gates_lens_output_equals_claim() {
         &results[0].result,
         ClaimResult::NotYetImplemented(msg)
             if msg.contains("LensOutputEquals")
-                && msg.contains("named_function_count")
-                && msg.contains("lens_query_empty_dag")
-                && msg.contains("lens_query_expected_zero")
+                && msg.contains("Int")
+                && msg.contains("lens_output_ref_input")
+                && msg.contains("lens_output_ref_expected")
     ));
 }

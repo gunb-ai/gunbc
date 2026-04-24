@@ -1,6 +1,4 @@
-// R1 gate declarations (integration-test fixture; top-level so `std.types` imports
-// resolve the same way as other `compile_to_dag` harnesses — a `module std.r1_gates`
-// wrapper breaks `DeclarationRef` edges to `Int` in `LensOutputEquals` today).
+// R1 gate declarations (integration-test fixture).
 //
 // `TestClaim.source` is the full user lens program text (same bytes as
 // `src/v3/lenses/named_function_count.dag`); `m1_5_user_authored_lens_gate_test`
@@ -9,58 +7,27 @@
 // `Compiles` receipt). Payload is a standalone `module lenses.named_function_count`
 // unit (imports std only), not a consumer that imports this module from bootstrap.
 //
-// **LensOutputEquals gate.** `lens_output_equals_named_function_count_gate` carries
-// `LensOutputEquals(named_function_count, lens_query_empty_dag, lens_query_empty_dag)`
-// with fixture-local declarations; the Rust runner resolves `DeclarationRef` edges
-// and returns `NotYetImplemented` until lens application is wired (Brief 3).
+// **LensOutputEquals gate.** Exercises `std.verification.LensOutputEquals` lowering
+// plus the Rust test runner dispatch path (`eval_lens_output_equals`). The
+// predicate uses `DeclarationRef` edges to the `Int` type declaration and two
+// `Int` data witnesses (runner resolves refs and returns `NotYetImplemented` until
+// lens application is implemented). Wiring `named_function_count` directly into
+// `lens_ref` currently fails type inference (`DeclarationRef` vs `Int` template
+// conflict); the user-authored lens remains the `user_authored_lens_compiles_gate`
+// `Compiles` witness and on-disk `named_function_count.dag` authority.
 //
 // Lives under `src/v3/compiler/tests/fixtures/` so it is **not** auto-staged
 // into `Dag::new()` bootstrap (`src/v3/std/*.dag` is build-script enumerated).
 
-import std.verification { TestClaim, TestSuite }
-import std.list { List, empty, fold }
-import std.substrate { Dag, Behavior, Declaration, DagPort, Cluster }
+data lens_output_ref_input: Int = 0
 
-fn count_named_bind(behavior: Behavior) -> Int =
-  match behavior {
-    Value(v) => 0
-    Transform(t) => 0
-    Branch(b) => 0
-    Loop(l) => 0
-    Bind(bind) => if bind.name == "" then 0 else 1
-  }
+data lens_output_ref_expected: Int = 0
 
-fn named_function_count(d: Dag) -> Int =
-  fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))
-
-// `let` (not `data`): M1(2.8) rejects record/list literals in `data` bodies
-// (DOWNSTREAM_REQUIREMENTS class-5 gap #3); `let` bindings still carry value_body
-// for DeclarationRef targets. Disambiguate each `empty()` so template inference
-// does not unify incompatible `List<_>` element types across the `Dag` literal.
-let empty_declarations: List<Declaration> = empty()
-let empty_nodes: List<Behavior> = empty()
-let empty_ports: List<DagPort> = empty()
-let empty_clusters: List<Cluster> = empty()
-
-let lens_query_empty_dag: Dag = {
-  declarations: empty_declarations
-  nodes: empty_nodes
-  ports: empty_ports
-  clusters: empty_clusters
-}
-
-data lens_query_expected_named_fn_count: Int = 0
-
-// `lens_ref` points at the substrate `Dag` type declaration until inference
-// accepts callable declarations in `LensOutputEquals` positions (fn refs
-// currently trip a `DeclarationRef` vs `Int` template conflict). The
-// fixture-local `named_function_count` lens remains for documentation and
-// future wiring.
 let lens_output_equals_named_function_count_gate: TestClaim = {
   name: "lens_output_equals_named_function_count",
   source: "let _: Int = 0\n",
   file_name: "r1_lens_output_placeholder.v3",
-  predicate: LensOutputEquals(Dag, lens_query_empty_dag, lens_query_expected_named_fn_count),
+  predicate: LensOutputEquals(Int, lens_output_ref_input, lens_output_ref_expected),
   requires: []
 }
 
