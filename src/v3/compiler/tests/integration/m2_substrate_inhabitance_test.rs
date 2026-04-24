@@ -354,7 +354,6 @@ fn termination_lattice_rust_mirror_matches_dag_authority() {
 }
 
 #[test]
-<<<<<<< HEAD
 fn computation_carriers_bootstrap_from_v3_std() {
     let dag = Dag::new();
     assert!(
@@ -650,8 +649,6 @@ fn computation_iteration_dimension_helpers_match_kernel_profile_authority() {
 }
 
 #[test]
-=======
->>>>>>> origin/main
 fn substrate_coproducts_match_runtime_carriers() {
     let dag = Dag::new();
 
