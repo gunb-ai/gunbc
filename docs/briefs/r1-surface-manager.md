@@ -191,6 +191,12 @@ Open questions for director:
 
 Cross-manager notifications queued:
 
-- _(none yet — coordinate with Self-hosting when T-Sub first gate
-  lands; coordinate with Testgen when T-Emit `emit_omni_demo_fixtures_green`
-  predicate shape needs defining)_
+- **Self-hosting Manager**: first T-Sub gate landed — `sub_match_over_user_sum`
+  Day-1 via #702 (merged 2026-04-24). `match` lowering is live for
+  consumer self-hosting surfaces; T-PB-A match-emit-dependent clusters
+  (`regen-emits-match`, variant-constructor templates) can now plan
+  consumption. ⬅ **SEND**
+- **Testgen Manager**: T-Emit `emit_omni_demo_fixtures_green` still
+  pending — predicate shape coordination not yet triggered. Cross-
+  target progress continues in #691 / #692 but does not change the
+  predicate shape ask.
