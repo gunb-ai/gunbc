@@ -43,7 +43,11 @@ lanes":
 - **`T-Ground-Tests`** (S) — routing-stability TestClaim class
   + L4 witness-based certification.
 - **`T-Ground-Dissolve`** (S) — Track 13 closure; single PR
-  deleting the scaffolding's routing-path usage.
+  deleting the coercion scaffolding entirely:
+  `dsl/std/coercion.dag` (schema), the per-target
+  `dsl/extdeps/languages/*/types.dag` instantiation files, the
+  `TypeRealization.carrier: String` field, and emit-pipeline
+  call sites reading the old surface.
 
 ## Framing question this manager answers
 
@@ -105,15 +109,26 @@ table-driven scaffolding in a single Track 13 PR.
   satisfaction half (Rust's actual `i64` runtime behavior
   obeys `OrderedRing` axioms).
 - **Final.** T-Ground-Dissolve fires Track 13 closure. Single
-  PR deleting:
-  - `TypeCheckpoint.target_type: String` (routing-path use)
-  - `InhabitantDecl.template: String` (routing-path use)
-  - `TypeRealization.carrier: String` field
-  - Per-target `dsl/extdeps/languages/*/types.dag`
-    `TypeCheckpoint`/`InhabitantDecl` data (routing-path
-    entries; surviving entries graduate to testgen-assertion
-    role per `verifiability-invariant.md`'s L0 framing)
-  - Call sites in emit pipeline that read the old surface
+  PR **deleting the coercion scaffolding entirely**:
+  - `dsl/std/coercion.dag` — the schema file declaring
+    `TypeCheckpoint`, `InhabitantDecl`, `CallableRepr`,
+    `CastSyntax`. Gone.
+  - `dsl/extdeps/languages/rust/types.dag` — per-target
+    instantiation tables. Gone.
+  - `dsl/extdeps/languages/python/types.dag` — same. Gone.
+  - `dsl/extdeps/languages/go/types.dag` — same. Gone.
+  - `dsl/extdeps/languages/dag/types.dag` — same. Gone.
+  - `TypeRealization.carrier: String` field in
+    `src/v3/std/emit_model.dag` — removed (the field's
+    structural replacement lands in the new target-primitive
+    declarations; the emit-pipeline call sites read from
+    those directly via the inhabitance-search engine).
+  - All emit-pipeline call sites reading the old surface.
+  - Routing-stability assertions that tests depend on are
+    authored as **direct `TestClaim` declarations** under
+    T-Ground-Tests, not as graduated `TypeCheckpoint` /
+    `InhabitantDecl` data. Tests own their own assertion
+    surface; the scaffolding has no surviving role.
 
 ## Hand-off points
 
@@ -216,7 +231,15 @@ Lane-owner dispatch status (update as sub-deliverables close):
 
 **T-Ground-Dissolve:**
 - [ ] Parity verification across layers 1–5
-- [ ] Track 13 closure PR (single-step deletion of routing-path scaffolding)
+- [ ] Delete `dsl/std/coercion.dag`
+- [ ] Delete `dsl/extdeps/languages/rust/types.dag`
+- [ ] Delete `dsl/extdeps/languages/python/types.dag`
+- [ ] Delete `dsl/extdeps/languages/go/types.dag`
+- [ ] Delete `dsl/extdeps/languages/dag/types.dag`
+- [ ] Remove `TypeRealization.carrier: String` field from `src/v3/std/emit_model.dag`
+- [ ] Remove emit-pipeline call sites reading the old surface
+- [ ] All test claims assert against the new structural authority (no residual reads of deleted scaffolding)
+- [ ] Track 13 closure PR lands — single step
 
 Decisions log (append as they happen):
 
