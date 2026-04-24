@@ -6,12 +6,9 @@
 //   - `STAGED_FILES`          for `src/v3/std/*.dag`
 //   - `V3_SPECS`              for `src/v3/spec/*.dag`
 //   - `COMPILER_FILES`        for `src/v3/compiler/*.dag` (except `tokenize.dag`; see below)
-//   - `LENS_BOOTSTRAP_FILES`  for `src/v3/lenses/bootstrap/*.dag` (bootstrap-only user lenses;
-//     regen lenses stay under `src/v3/lenses/*.dag` and are not auto-bundled)
 //
-// Adding a new staged std/spec/compiler file (or a `*.dag` under
-// `src/v3/lenses/bootstrap/`) becomes a pure file-system change — no Rust
-// edits to `bootstrap.rs`, no fixture-array maintenance, no skip-list drift.
+// Adding a new staged std/spec/compiler file becomes a pure file-system change
+// — no Rust edits to `bootstrap.rs`, no fixture-array maintenance, no skip-list drift.
 //
 // **Why a build script.** The pre-unwind shape used hardcoded
 // `const RUST_DAG: &str = include_str!("../../spec/rust.dag");`
@@ -183,9 +180,6 @@ fn main() {
     println!("cargo:rerun-if-changed={}", extdeps_dir.display());
     println!("cargo:rerun-if-changed={}", gunbc_dir.display());
 
-    let lens_bootstrap_dir = v3_dir.join("lenses").join("bootstrap");
-    println!("cargo:rerun-if-changed={}", lens_bootstrap_dir.display());
-
     // Structural-recursion termination analysis walks a recursing
     // argument back to its declared Disj connective (see
     // `structural_binding_info_for_variant` in `lower.rs`). The walk
@@ -201,32 +195,15 @@ fn main() {
     // `substrate_minimal` + `effects` before full `substrate` so `substrate.dag`
     // can import `WorkflowEffect` for reflected `lane2_workflow` without a
     // module cycle (`effects` still needs `PortId` / list primitives first).
-    let staged_entries = {
-        let staged_entries = collect_dag_entries(
-            &std_dir,
-            &[
-                "list.dag",
-                "substrate_minimal.dag",
-                "effects.dag",
-                "substrate.dag",
-            ],
-        );
-        // `r1_gates.dag` depends on `std.verification` (`TestClaim` / `TestPredicate`
-        // variants). Lexicographic staged order would load it before
-        // `verification.dag`. Move it to the tail of the staged bundle here so
-        // bootstrap load order stays a single `build.rs` authority (no parallel
-        // reorder in `bootstrap.rs`).
-        const R1_GATES_STAGED: &str = "r1_gates.dag";
-        let (mut staged_middle, r1_tail): (Vec<PathBuf>, Vec<PathBuf>) =
-            staged_entries.into_iter().partition(|p| {
-                p.file_name()
-                    .and_then(|s| s.to_str())
-                    .map(|n| n != R1_GATES_STAGED)
-                    .unwrap_or(true)
-            });
-        staged_middle.extend(r1_tail);
-        staged_middle
-    };
+    let staged_entries = collect_dag_entries(
+        &std_dir,
+        &[
+            "list.dag",
+            "substrate_minimal.dag",
+            "effects.dag",
+            "substrate.dag",
+        ],
+    );
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
     let mut compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
     // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`; it is
@@ -278,15 +255,6 @@ fn main() {
         &gunbc_dir,
         &gunbc_entries,
     );
-    let lens_bootstrap_entries = collect_dag_entries(&lens_bootstrap_dir, &[]);
-    let lens_bootstrap_generated = generate_static(
-        "LENS_BOOTSTRAP_FILES",
-        "src/v3/lenses/bootstrap",
-        "src/v3/lenses/bootstrap",
-        &lens_bootstrap_dir,
-        &lens_bootstrap_entries,
-    );
-
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR must be set by Cargo");
     let out_dir = Path::new(&out_dir);
     let staged_out = out_dir.join("v3_staged_files.rs");

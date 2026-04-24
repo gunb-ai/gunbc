@@ -1,0 +1,18 @@
+// std.r1_gates — Day-1 R1 gate declarations (integration-test fixture).
+//
+// Lives under `src/v3/compiler/tests/fixtures/` so it is **not** auto-staged
+// into `Dag::new()` bootstrap (`src/v3/std/*.dag` is build-script enumerated).
+// The gate module compiles via `compile_to_dag` in
+// `m1_5_user_authored_lens_gate_test`.
+
+module std.r1_gates
+
+import std.verification { TestClaim }
+
+data user_authored_lens_compiles_gate: TestClaim = {
+  name: "user_authored_lens_compiles",
+  source: "import lenses.named_function_count { named_function_count }\nimport std.substrate { Dag }\n\nfn count_fns(d: Dag) -> Int = named_function_count(d)\n",
+  file_name: "user_lens_fixture.v3",
+  predicate: Compiles,
+  requires: []
+}

@@ -47,7 +47,6 @@ data go_source_filtering: SourceFiltering = {
     "src/v3/std/",
     "src/v3/spec/",
     "src/v3/compiler/",
-    "src/v3/lenses/bootstrap/",
   ]
 }
 

@@ -148,7 +148,6 @@ data python_source_filtering: SourceFiltering = {
     "dsl/std/",
     "src/v3/std/",
     "src/v3/spec/",
-    "src/v3/lenses/bootstrap/",
   ]
 }
 
