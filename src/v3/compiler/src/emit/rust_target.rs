@@ -4949,9 +4949,9 @@ impl<'a> Ctx<'a> {
                 template,
                 arguments,
             } => {
-                let from_args = arguments.iter().any(|arg| {
-                    self.decl_includes_first_class_arrow_data(arg.value, visited, walk)
-                });
+                let from_args = arguments
+                    .iter()
+                    .any(|arg| self.decl_includes_first_class_arrow_data(arg.value, visited, walk));
                 match walk {
                     DeclFirstClassArrowWalk::AppliedTypeArguments => from_args,
                     DeclFirstClassArrowWalk::RecordDeriveOmitDebug => {
