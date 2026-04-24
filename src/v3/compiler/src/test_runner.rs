@@ -32,6 +32,12 @@ pub struct TestRunner<'a> {
     dag: &'a Dag,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DiagnosticDetailFilter {
+    Any,
+    Contains(String),
+}
+
 impl<'a> TestRunner<'a> {
     pub fn new(dag: &'a Dag) -> Self {
         Self { dag }
@@ -83,16 +89,24 @@ impl<'a> TestRunner<'a> {
     }
 
     pub fn run_claim(&self, claim: &TestClaimValue) -> ClaimEvaluation {
-        let result = match self.variant_value(&claim.predicate) {
-            Some((label, payload)) => match label.as_str() {
-                "Compiles" => self.eval_compiles(claim),
-                "FailsWithDiagnostic" => self.eval_fails_with_diagnostic(claim, &payload),
-                "OutputEquals" => self.eval_output_equals(claim, &payload),
-                "PortHasState" => self.eval_port_has_state(claim, &payload),
-                "CostBounded" => self.eval_cost_bounded(claim, &payload),
-                _ => ClaimResult::NotYetImplemented,
-            },
-            None => ClaimResult::Fail("predicate is not a structural variant".to_string()),
+        let result = if !claim.requires.is_empty() {
+            ClaimResult::Fail(format!(
+                "TestClaim `{}` declares {} resource requirement(s), but the Rust runner cannot materialize `requires` yet",
+                claim.claim_name,
+                claim.requires.len()
+            ))
+        } else {
+            match self.variant_value(&claim.predicate) {
+                Some((label, payload)) => match label.as_str() {
+                    "Compiles" => self.eval_compiles(claim),
+                    "FailsWithDiagnostic" => self.eval_fails_with_diagnostic(claim, &payload),
+                    "OutputEquals" => self.eval_output_equals(claim, &payload),
+                    "PortHasState" => self.eval_port_has_state(claim, &payload),
+                    "CostBounded" => self.eval_cost_bounded(claim, &payload),
+                    _ => ClaimResult::NotYetImplemented,
+                },
+                None => ClaimResult::Fail("predicate is not a structural variant".to_string()),
+            }
         };
         ClaimEvaluation {
             claim_name: claim.claim_name.clone(),
@@ -124,15 +138,17 @@ impl<'a> TestRunner<'a> {
         };
         match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(_) => ClaimResult::Fail("source compiled cleanly".to_string()),
-            Err(CompileError::Semantic(dag)) => {
-                if self.diagnostic_matches(&dag, reference) {
-                    ClaimResult::Pass
-                } else {
-                    ClaimResult::Fail("expected diagnostic was not found".to_string())
+            Err(CompileError::Semantic(dag)) => match self.diagnostic_matches(&dag, reference) {
+                Ok(true) => ClaimResult::Pass,
+                Ok(false) => ClaimResult::Fail("expected diagnostic was not found".to_string()),
+                Err(reason) => ClaimResult::Fail(reason),
+            },
+            Err(CompileError::Tokenize(diagnostic)) | Err(CompileError::Parse(diagnostic)) => {
+                match self.diagnostic_matches_single(&diagnostic, reference) {
+                    Ok(true) => ClaimResult::Pass,
+                    Ok(false) => ClaimResult::Fail("expected diagnostic was not found".to_string()),
+                    Err(reason) => ClaimResult::Fail(reason),
                 }
-            }
-            Err(err) => {
-                ClaimResult::Fail(format!("compile failed before semantic analysis: {err:?}"))
             }
         }
     }
@@ -221,41 +237,66 @@ impl<'a> TestRunner<'a> {
         }
     }
 
-    fn diagnostic_matches(&self, actual_dag: &Dag, reference: &FieldValue) -> bool {
-        let Some(fields) = record_fields(reference) else {
-            return false;
-        };
-        let Some(kind) = field(fields, "kind") else {
-            return false;
-        };
-        let Some(detail_contains) = field(fields, "detail_contains") else {
-            return false;
-        };
-        let Some((kind_label, kind_payload)) = self.variant_value(kind) else {
-            return false;
-        };
-        if !kind_payload.is_empty() {
-            return false;
-        }
-        let detail_filter = self.detail_filter(detail_contains);
-        actual_dag.diagnostics().iter().any(|(_, diagnostic)| {
-            diagnostic_kind(diagnostic) == kind_label
-                && match &detail_filter {
-                    Some(text) => diagnostic.message().contains(text),
-                    None => true,
-                }
-        })
+    fn diagnostic_matches(&self, actual_dag: &Dag, reference: &FieldValue) -> Result<bool, String> {
+        let reference = self.diagnostic_reference(reference)?;
+        Ok(actual_dag
+            .diagnostics()
+            .iter()
+            .any(|(_, diagnostic)| diagnostic_matches_reference(diagnostic, &reference)))
     }
 
-    fn detail_filter(&self, value: &FieldValue) -> Option<String> {
-        let (label, payload) = self.variant_value(value)?;
+    fn diagnostic_matches_single(
+        &self,
+        diagnostic: &Diagnostic,
+        reference: &FieldValue,
+    ) -> Result<bool, String> {
+        let reference = self.diagnostic_reference(reference)?;
+        Ok(diagnostic_matches_reference(diagnostic, &reference))
+    }
+
+    fn diagnostic_reference(
+        &self,
+        reference: &FieldValue,
+    ) -> Result<(String, DiagnosticDetailFilter), String> {
+        let Some(fields) = record_fields(reference) else {
+            return Err("DiagnosticReference payload should be a record".to_string());
+        };
+        let Some(kind) = field(fields, "kind") else {
+            return Err("DiagnosticReference is missing `kind`".to_string());
+        };
+        let Some(detail_contains) = field(fields, "detail_contains") else {
+            return Err("DiagnosticReference is missing `detail_contains`".to_string());
+        };
+        let Some((kind_label, kind_payload)) = self.variant_value(kind) else {
+            return Err("DiagnosticReference `kind` is not a variant".to_string());
+        };
+        if !kind_payload.is_empty() {
+            return Err("DiagnosticReference `kind` should not carry payload".to_string());
+        }
+        Ok((kind_label, self.detail_filter(detail_contains)?))
+    }
+
+    fn detail_filter(&self, value: &FieldValue) -> Result<DiagnosticDetailFilter, String> {
+        let Some((label, payload)) = self.variant_value(value) else {
+            return Err("DiagnosticDetailExpectation is not a variant".to_string());
+        };
         match label.as_str() {
-            "AnyDetail" => None,
+            "AnyDetail" => {
+                if payload.is_empty() {
+                    Ok(DiagnosticDetailFilter::Any)
+                } else {
+                    Err("AnyDetail should not carry payload".to_string())
+                }
+            }
             "Contains" => match payload.as_slice() {
-                [FieldValue::Literal(LiteralBits::String(text))] => Some(text.clone()),
-                _ => None,
+                [FieldValue::Literal(LiteralBits::String(text))] => {
+                    Ok(DiagnosticDetailFilter::Contains(text.clone()))
+                }
+                _ => Err("Contains should carry a single String payload".to_string()),
             },
-            _ => None,
+            other => Err(format!(
+                "unsupported DiagnosticDetailExpectation variant `{other}`"
+            )),
         }
     }
 
@@ -358,6 +399,17 @@ fn diagnostic_kind(diagnostic: &Diagnostic) -> &'static str {
         Diagnostic::ResolveError { .. } => "ResolveError",
         Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
     }
+}
+
+fn diagnostic_matches_reference(
+    diagnostic: &Diagnostic,
+    reference: &(String, DiagnosticDetailFilter),
+) -> bool {
+    diagnostic_kind(diagnostic) == reference.0
+        && match &reference.1 {
+            DiagnosticDetailFilter::Any => true,
+            DiagnosticDetailFilter::Contains(text) => diagnostic.message().contains(text),
+        }
 }
 
 fn render_value_body(dag: &Dag, value: &ValueBody) -> String {

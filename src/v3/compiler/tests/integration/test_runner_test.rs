@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use v3_compiler::dag::{FieldValue, LiteralBits};
+use v3_compiler::test_runner::TestClaimValue;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::{compile_to_dag, CompileError};
 
@@ -23,6 +25,14 @@ fn assert_all_pass(results: &[v3_compiler::test_runner::ClaimEvaluation]) {
             .all(|result| result.result == ClaimResult::Pass),
         "expected every claim to pass, got {results:?}"
     );
+}
+
+fn claim_value(dag: &v3_compiler::dag::Dag, name: &str) -> TestClaimValue {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("claim `{name}` not found"));
+    TestClaimValue::from_declaration(decl)
+        .unwrap_or_else(|reason| panic!("claim `{name}` should lower structurally: {reason}"))
 }
 
 #[test]
@@ -77,6 +87,94 @@ data suite: TestSuite = {
 
     assert_eq!(results.len(), 1);
     assert!(matches!(results[0].result, ClaimResult::Fail(_)));
+}
+
+#[test]
+fn test_runner_fails_closed_on_requires_edges() {
+    let source = r#"
+data claim_with_requires: TestClaim = {
+  name: "requires resource",
+  source: "let x: Int = 1",
+  file_name: "runner_requires.v3",
+  predicate: Compiles,
+  requires: [{ target: Int }]
+}
+
+data suite: TestSuite = {
+  name: "runner_requires",
+  claims: [claim_with_requires]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_requires.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::Fail(reason) if reason.contains("resource requirement")
+    ));
+}
+
+#[test]
+fn test_runner_matches_parse_diagnostics_before_dag_exists() {
+    let source = r#"
+data claim_parse_error: TestClaim = {
+  name: "parse diagnostic",
+  source: "let x =",
+  file_name: "runner_parse_error.v3",
+  predicate: FailsWithDiagnostic({ kind: ParseError, detail_contains: AnyDetail }),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "runner_parse_error",
+  claims: [claim_parse_error]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_parse_error.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].result, ClaimResult::Pass);
+}
+
+#[test]
+fn test_runner_fails_closed_on_malformed_diagnostic_detail_filter() {
+    let source = r#"
+data claim_parse_error: TestClaim = {
+  name: "parse diagnostic",
+  source: "let x =",
+  file_name: "runner_malformed_detail.v3",
+  predicate: FailsWithDiagnostic({ kind: ParseError, detail_contains: AnyDetail }),
+  requires: []
+}
+"#;
+    let dag = compile_clean(source, "test_runner_malformed_detail.dag");
+    let mut claim = claim_value(&dag, "claim_parse_error");
+
+    let FieldValue::Variant { payload, .. } = &mut claim.predicate else {
+        panic!("predicate should be a variant");
+    };
+    let [FieldValue::Record(fields)] = payload.as_mut_slice() else {
+        panic!("FailsWithDiagnostic should carry a DiagnosticReference record");
+    };
+    let detail_contains = fields
+        .iter_mut()
+        .find(|(label, _)| label == "detail_contains")
+        .map(|(_, value)| value)
+        .expect("DiagnosticReference has detail_contains");
+    let FieldValue::Variant { payload, .. } = detail_contains else {
+        panic!("detail_contains should be a variant");
+    };
+    *payload = vec![FieldValue::Literal(LiteralBits::String(
+        "not valid for AnyDetail".to_string(),
+    ))];
+
+    let result = TestRunner::new(&dag).run_claim(&claim).result;
+    assert!(matches!(
+        result,
+        ClaimResult::Fail(reason) if reason.contains("AnyDetail should not carry payload")
+    ));
 }
 
 #[test]
