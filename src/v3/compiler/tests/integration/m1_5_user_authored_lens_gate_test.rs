@@ -153,12 +153,21 @@ fn lens_composition_associative_testclaim_source_tracks_on_disk_witness() {
 
 #[test]
 fn lens_composition_associative_r1_gates_stub_locksteps_witness_operator_line() {
-    assert!(
-        ON_DISK_LENS_COMPOSITION_WITNESS.contains(LENS_COMPOSITION_OP_DEF),
-        "witness file must contain {LENS_COMPOSITION_OP_DEF:?}"
-    );
-    assert!(
-        R1_GATES_SOURCE.contains(LENS_COMPOSITION_OP_DEF),
-        "r1_gates.dag must contain the same `lens_composition_op` definition as the witness file"
-    );
+    // Byte-identical full line (not a substring match): keeps the parallel `fn lens_composition_op`
+    // in `r1_gates.dag` and `lens_composition_associative_witness.dag` from drifting apart.
+    for (label, source) in [
+        (
+            "src/v3/lenses/lens_composition_associative_witness.dag",
+            ON_DISK_LENS_COMPOSITION_WITNESS,
+        ),
+        (
+            "src/v3/compiler/tests/fixtures/r1_gates.dag",
+            R1_GATES_SOURCE,
+        ),
+    ] {
+        assert!(
+            source.lines().any(|line| line == LENS_COMPOSITION_OP_DEF),
+            "{label} must include a source line exactly equal to the shared stub:\n{LENS_COMPOSITION_OP_DEF:?}"
+        );
+    }
 }

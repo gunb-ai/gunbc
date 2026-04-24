@@ -266,22 +266,18 @@ impl<'a> TestRunner<'a> {
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => {
                 return ClaimResult::Fail(message);
             }
-            Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => {
-                return ClaimResult::Fail(format!(
-                    "internal: UnsupportedLaw({law_label}) from AlgebraicLaw payload parse"
-                ));
-            }
+            Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => unreachable!(
+                "algebraic_law_payload_fields only yields MalformedPayload (got UnsupportedLaw({law_label:?}))"
+            ),
         };
         let (law_label, law_payload) = match variant_fields(self.dag, law) {
             Ok(parts) => parts,
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => {
                 return ClaimResult::Fail(message);
             }
-            Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => {
-                return ClaimResult::Fail(format!(
-                    "internal: UnsupportedLaw({law_label}) from AlgebraicLawKind variant parse"
-                ));
-            }
+            Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => unreachable!(
+                "variant_fields only yields MalformedPayload (got UnsupportedLaw({law_label:?}))"
+            ),
         };
         if law_label != "Associativity" {
             return ClaimResult::NotYetImplemented;
@@ -311,11 +307,9 @@ impl<'a> TestRunner<'a> {
                     .to_string(),
             ),
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => ClaimResult::Fail(message),
-            Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => {
-                ClaimResult::Fail(format!(
-                    "internal: AlgebraicLaw helper returned UnsupportedLaw({law_label}) after Associativity gate"
-                ))
-            }
+            Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => unreachable!(
+                "eval_algebraic_law gated on Associativity; helper cannot return UnsupportedLaw({law_label:?})"
+            ),
         }
     }
 
