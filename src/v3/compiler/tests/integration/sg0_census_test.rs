@@ -211,6 +211,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/m1_3_lens_cost_test.rs",
     "src/v3/compiler/tests/integration/m1_3_lens_unused_parameters_test.rs",
     "src/v3/compiler/tests/integration/m1_5_testgen_test.rs",
+    "src/v3/compiler/tests/integration/m1_5_user_authored_lens_gate_test.rs",
     "src/v3/compiler/tests/integration/m1_5_verification_test.rs",
     "src/v3/compiler/tests/integration/m1_fn_external_body_reconciliation_test.rs",
     "src/v3/compiler/tests/integration/m1_lens_structural_resolution_test.rs",

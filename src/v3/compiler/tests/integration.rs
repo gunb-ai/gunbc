@@ -73,6 +73,8 @@ mod m1_4_emit_python_test;
 mod m1_5_emit_omni_demo_test;
 #[path = "integration/m1_5_testgen_test.rs"]
 mod m1_5_testgen_test;
+#[path = "integration/m1_5_user_authored_lens_gate_test.rs"]
+mod m1_5_user_authored_lens_gate_test;
 #[path = "integration/m1_5_verification_test.rs"]
 mod m1_5_verification_test;
 #[path = "integration/m1_fn_external_body_reconciliation_test.rs"]
@@ -139,6 +141,41 @@ mod test_runner_test;
 mod thesis_parallelism_test;
 #[path = "integration/thesis_validation_test.rs"]
 mod thesis_validation_test;
+
+mod t_demo_fixture_test {
+    //! **Layer:** integration
+
+    use std::fs;
+    use std::path::PathBuf;
+
+    use v3_compiler::compile_to_dag;
+    use v3_compiler::dag::Dag;
+
+    const FIXTURE: &str = "src/v3/compiler/tests/t_demo/t_demo_fixtures.dag";
+
+    fn fixture_source() -> String {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .join(FIXTURE);
+        fs::read_to_string(path).expect("read T-Demo fixture skeleton")
+    }
+
+    fn compile_fixture(source: &str) -> Dag {
+        compile_to_dag(source, FIXTURE).expect("T-Demo fixture skeleton compiles")
+    }
+
+    #[test]
+    fn t_demo_fixture_skeleton_compiles() {
+        let source = fixture_source();
+        let dag = compile_fixture(&source);
+
+        assert!(
+            dag.diagnostics().is_empty(),
+            "T-Demo fixture skeleton should compile without diagnostics: {:?}",
+            dag.diagnostics()
+        );
+    }
+}
 
 mod lane2_stage_2f_dimension_test {
     use v3_compiler::analyze_symbolic_cost_dimension;
