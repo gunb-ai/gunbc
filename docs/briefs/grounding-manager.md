@@ -32,17 +32,28 @@ lanes":
 - **`T-Ground-Pilot`** (S) — Rust integer family pilot. No
   substrate blockers. Demonstrates inhabitance-search routing
   parity against the current table-driven design.
-- **`T-Ground-Rust`** (XL) — systematic modeling of Rust
-  Reference §Types per
-  <https://doc.rust-lang.org/reference/types.html>. Blocks on
-  DB-11 (`ROADMAP.md` DB row catalog) + cardinality-substrate
-  (row "Fixed-width types aren't structurally fixed" under the
+- **`T-Ground-Rust`** (XL) — two-authority modeling: **(a)** Rust
+  Reference §Types (<https://doc.rust-lang.org/reference/types.html>)
+  — language-level structural types (boolean, numeric, textual,
+  never, tuple, array, slice, struct, enum, union, function item,
+  function pointer, closure, reference, raw pointer, trait object,
+  `impl Trait`); **(b)** std-library carriers (std documentation is
+  the authority) — `String`, `Vec<T>`, `Box<T>`, `Rc<T>`, `Arc<T>`,
+  `HashMap<K,V>`, `BTreeMap<K,V>`, `HashSet<T>`, `BTreeSet<T>`,
+  `Option<T>`, `Result<T, E>`. Authority must not mix — each
+  category cites its own source-of-record. Blocks on DB-11
+  (`ROADMAP.md` DB row catalog) + cardinality-substrate (row
+  "Fixed-width types aren't structurally fixed" under the
   tracked-debt ledger; current line `ROADMAP.md:338`, but line
   numbers drift — search the row title if drift-resistant).
-- **`T-Ground-Python`** (L) — Python data model equivalent.
+- **`T-Ground-Python`** (L) — two-authority modeling: (a) Python
+  language reference built-ins; (b) CPython stdlib (`typing`,
+  `collections`) when scope grows beyond built-ins.
   Blocks on same substrate dependencies.
-- **`T-Ground-Go`** (L) — Go specification equivalent. Blocks
-  on same substrate dependencies.
+- **`T-Ground-Go`** (L) — two-authority modeling: (a) Go language
+  specification (<https://go.dev/ref/spec>) primitives; (b) Go
+  standard library carriers beyond the spec. Blocks on same
+  substrate dependencies.
 - **`T-Ground-Engine`** (M) — inhabitance-search walker with
   minimum-satisfier selection and fail-closed tie-breaking.
 - **`T-Ground-Tests`** (S) — routing-stability TestClaim class
