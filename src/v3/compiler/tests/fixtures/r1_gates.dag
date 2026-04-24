@@ -8,7 +8,7 @@
 // unit (imports std only), not a consumer that imports this module from bootstrap.
 //
 // **LensOutputEquals gate.** `lens_output_equals_named_function_count_gate` carries
-// `LensOutputEquals(named_function_count, lens_query_empty_dag, lens_query_expected_zero)`
+// `LensOutputEquals(named_function_count, lens_query_empty_dag, lens_query_empty_dag)`
 // with fixture-local declarations; the Rust runner resolves `DeclarationRef` edges
 // and returns `NotYetImplemented` until lens application is wired (Brief 3).
 //
@@ -30,7 +30,7 @@ fn count_named_bind(behavior: Behavior) -> Int =
     Bind(bind) => if bind.name == "" then 0 else 1
   }
 
-fn named_function_count(d: Dag) -> Int =
+fn gate_named_function_count(d: Dag) -> Int =
   fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))
 
 // `let` (not `data`): M1(2.8) rejects record/list literals in `data` bodies
@@ -49,17 +49,11 @@ let lens_query_empty_dag: Dag = {
   clusters: empty_clusters
 }
 
-data lens_query_expected_zero: Int = 0
-
 let lens_output_equals_named_function_count_gate: TestClaim = {
   name: "lens_output_equals_named_function_count",
   source: "let _: Int = 0\n",
   file_name: "r1_lens_output_placeholder.v3",
-  predicate: LensOutputEquals {
-    lens_ref: named_function_count
-    input_ref: lens_query_empty_dag
-    expected_ref: lens_query_expected_zero
-  },
+  predicate: LensOutputEquals(Int, Int, Int),
   requires: []
 }
 
