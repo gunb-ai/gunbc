@@ -28,8 +28,7 @@ fn span_overlaps(a: &SourceSpan, b: &SourceSpan) -> bool {
 
 /// Locate the `|acc, x|` step closure lowered as a two-parameter `Bind` for this `fold` site.
 fn find_fold_step_bind<'a>(dag: &'a Dag, fold_span: &SourceSpan) -> Option<&'a BindNode> {
-    dag
-        .nodes()
+    dag.nodes()
         .iter()
         .filter_map(|n| {
             let Behavior::Bind(b) = n else {
@@ -423,7 +422,10 @@ impl<'a> EvalCtx<'a> {
     ) -> Result<FieldValue, LensApplyError> {
         let n = step_bind.params.len();
         if n < 2 {
-            return Err(LensApplyError::ArityMismatch { expected: 2, got: n });
+            return Err(LensApplyError::ArityMismatch {
+                expected: 2,
+                got: n,
+            });
         }
         // Monomorphized `fold` lowers the `|acc, x|` lambda with possible leading
         // synthesized parameters; the accumulator and element are always the last two
@@ -480,7 +482,11 @@ impl<'a> EvalCtx<'a> {
         Ok(acc)
     }
 
-    fn eval_branch(&mut self, b: &BranchNode, out_port: PortId) -> Result<FieldValue, LensApplyError> {
+    fn eval_branch(
+        &mut self,
+        b: &BranchNode,
+        out_port: PortId,
+    ) -> Result<FieldValue, LensApplyError> {
         let disc = self.eval_port(b.input)?;
         for path in &b.paths {
             let variant_id = match &path.pattern {
@@ -620,13 +626,15 @@ fn list_elements(dag: &Dag, list: &FieldValue) -> Result<Vec<FieldValue>, LensAp
 }
 
 fn variant_label(dag: &Dag, variant_id: DeclarationId) -> Option<String> {
-    dag.declarations().iter().find_map(|decl| match &decl.connective {
-        TypeConnective::Disj { variants } => variants
-            .iter()
-            .find(|variant| variant.ty == variant_id)
-            .map(|variant| variant.label.clone()),
-        _ => None,
-    })
+    dag.declarations()
+        .iter()
+        .find_map(|decl| match &decl.connective {
+            TypeConnective::Disj { variants } => variants
+                .iter()
+                .find(|variant| variant.ty == variant_id)
+                .map(|variant| variant.label.clone()),
+            _ => None,
+        })
 }
 
 fn v3_list_empty_cons_ids(dag: &Dag) -> Result<(DeclarationId, DeclarationId), LensApplyError> {
@@ -687,10 +695,7 @@ fn reflect_behavior(dag: &Dag, behavior: &Behavior) -> Result<FieldValue, LensAp
         Behavior::Value(v) => {
             let id = behavior_variant_id(dag, "Value")?;
             let payload = FieldValue::Record(vec![
-                (
-                    "payload".to_string(),
-                    FieldValue::Literal(v.data.clone()),
-                ),
+                ("payload".to_string(), FieldValue::Literal(v.data.clone())),
                 (
                     "result_port".to_string(),
                     FieldValue::Literal(LiteralBits::Int(i64::from(v.output.raw()))),

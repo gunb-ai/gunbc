@@ -34,11 +34,11 @@ pub mod generated_files {
 
 pub mod emit;
 pub mod emit_rust;
+pub mod lens_apply;
 pub mod lens_depth;
 pub mod lens_testgen;
 pub mod lens_unused_parameters;
 pub mod post_emit_verifier;
-pub mod lens_apply;
 pub mod test_runner;
 pub mod serialize {
     use crate::dag::{Behavior, Dag};

@@ -5,7 +5,7 @@ use crate::dag::{
 use crate::diagnostics::Diagnostic;
 use crate::lens_apply::{
     apply_lens_declaration, field_value_equal, field_value_from_value_body,
-    reflect_program_dag_nodes_in_file, int_associativity_holds,
+    int_associativity_holds, reflect_program_dag_nodes_in_file,
 };
 use crate::lens_cost::{cost_of, CostLookup};
 use crate::{compile_to_dag, CompileError};
@@ -59,9 +59,8 @@ pub fn eval_algebraic_law_for_claim_program(
     let Some(target) = program_dag.declaration_by_name(&lens_name) else {
         return Ok(false);
     };
-    int_associativity_holds(program_dag, target.id, 2, 3, 5).map_err(|e| {
-        AlgebraicLawProgramError::MalformedPayload(format!("lens apply error: {e:?}"))
-    })
+    int_associativity_holds(program_dag, target.id, 2, 3, 5)
+        .map_err(|e| AlgebraicLawProgramError::MalformedPayload(format!("lens apply error: {e:?}")))
 }
 
 #[derive(Debug, Clone)]
@@ -344,7 +343,10 @@ impl<'a> TestRunner<'a> {
             }
         };
 
-        let expected_field = match field_value_from_value_body(self.dag, expected_decl.value_body.as_ref().expect("checked")) {
+        let expected_field = match field_value_from_value_body(
+            self.dag,
+            expected_decl.value_body.as_ref().expect("checked"),
+        ) {
             Ok(v) => v,
             Err(err) => {
                 return ClaimResult::Fail(format!(
@@ -353,14 +355,15 @@ impl<'a> TestRunner<'a> {
             }
         };
 
-        let computed = match apply_lens_declaration(self.dag, lens_id, std::slice::from_ref(&input_field)) {
-            Ok(v) => v,
-            Err(err) => {
-                return ClaimResult::Fail(format!(
-                    "LensOutputEquals: applying lens `{lens_name}` failed: {err:?}"
-                ));
-            }
-        };
+        let computed =
+            match apply_lens_declaration(self.dag, lens_id, std::slice::from_ref(&input_field)) {
+                Ok(v) => v,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals: applying lens `{lens_name}` failed: {err:?}"
+                    ));
+                }
+            };
 
         if field_value_equal(&computed, &expected_field) {
             ClaimResult::Pass
@@ -851,4 +854,3 @@ fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, Algebra
         ))),
     }
 }
-
