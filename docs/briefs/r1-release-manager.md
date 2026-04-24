@@ -117,8 +117,8 @@ while the other managers ship.
   impossible-bugs suite per `ROADMAP.md:55`.
 - **Up to director.** If at any point R1 scope expands to depend
   on either of the two story-surfaced gaps tracked at
-  `ROADMAP.md:364` (Duration/Money unit-mismatch enforcement
-  consumer) or `ROADMAP.md:365` (`Secret<T>` nominal-wrapper
+  `ROADMAP.md:362` (Duration/Money unit-mismatch enforcement
+  consumer) or `ROADMAP.md:363` (`Secret<T>` nominal-wrapper
   graduation), escalate so R1 can be re-scoped or the row can be
   dispatched out of post-R1 ordering.
 
@@ -126,8 +126,8 @@ while the other managers ship.
 
 Both story-surfaced gaps now have ledger rows; this manager
 monitors them as post-R1 follow-ups:
-- **Unit-mismatch enforcement for typed value wrappers with phantom Unit / Currency parameters** (Duration/Money) — `ROADMAP.md:364`.
-- **`Secret<T>` nominal-wrapper graduation** — `ROADMAP.md:365`.
+- **Unit-mismatch enforcement for typed value wrappers with phantom Unit / Currency parameters** (Duration/Money) — `ROADMAP.md:362`.
+- **`Secret<T>` nominal-wrapper graduation** — `ROADMAP.md:363`.
 
 Per the doc-authority single-ledger rule
 ([`doc-authority.md`](../thesis/doc-authority.md)), the ROADMAP
@@ -202,9 +202,9 @@ work dissolves within the same wave that surfaced it.
   Was queued as a T-Receipts row; never needed to be written down.
 
 **Post-R1 gap monitoring (ROADMAP rows):**
-- [ ] `ROADMAP.md:364` unit-mismatch enforcement — flag if R1 scope
+- [ ] `ROADMAP.md:362` unit-mismatch enforcement — flag if R1 scope
       expands to depend on it
-- [ ] `ROADMAP.md:365` `Secret<T>` nominal-wrapper — flag if R1
+- [ ] `ROADMAP.md:363` `Secret<T>` nominal-wrapper — flag if R1
       scope expands to depend on it
 
 Decisions log (append as they happen):
@@ -240,7 +240,7 @@ Decisions log (append as they happen):
 Open questions for director:
 
 - _(none yet — the two story-surfaced gaps are tracked as post-R1
-  rows at `ROADMAP.md:364-365`; escalate only if R1 scope expands
+  rows at `ROADMAP.md:362-363`; escalate only if R1 scope expands
   to depend on either)_
 
 Cross-manager notifications queued:
