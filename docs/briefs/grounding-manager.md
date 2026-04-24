@@ -36,7 +36,9 @@ lanes":
   Reference §Types per
   <https://doc.rust-lang.org/reference/types.html>. Blocks on
   DB-11 (`ROADMAP.md` DB row catalog) + cardinality-substrate
-  (`ROADMAP.md:305`).
+  (row "Fixed-width types aren't structurally fixed" under the
+  tracked-debt ledger; current line `ROADMAP.md:338`, but line
+  numbers drift — search the row title if drift-resistant).
 - **`T-Ground-Python`** (L) — Python data model equivalent.
   Blocks on same substrate dependencies.
 - **`T-Ground-Go`** (L) — Go specification equivalent. Blocks
