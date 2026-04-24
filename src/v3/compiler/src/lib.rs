@@ -107,15 +107,17 @@ pub mod parse_tables {
 }
 
 /// Cost lens. The authority lives in `src/v3/lenses/complexity.dag`;
-/// the Rust projection is auto-emitted into
-/// `src/v3/compiler/src/lens_cost_generated.rs` and re-exported here
-/// so callers use `v3_compiler::lens_cost::{cost_of, CostLookup}`.
-/// Editing the lens means editing the `.dag` — there is no
+/// the Rust surface is `emit_rust_module` output in
+/// `lens_cost_generated.rs` (committed; same PR as the `.dag` when the lens
+/// changes). Generated `cost_of` / `CostEntry` use `crate::dag::Lookup<i64>`,
+/// the Rust projection of `v3.std.lookup::Lookup<Int>`. `CostLookup` below is
+/// **only** a public type alias (`Lookup<i64>`), not a second sum type — single
+/// carrier, facts-flow-forward from the lens authority.
+/// Editing the lens means editing the `.dag` and regenerating — there is no
 /// hand-written implementation on this crate side.
 ///
-/// L-8 compliance: `cost_of` returns the typed `CostLookup` carrier
-/// (`MissingCost | FoundCost(Int)`). Callers pattern-match on the
-/// variant rather than receiving a panicked-collapsed `usize`.
+/// L-8 compliance: callers pattern-match on `Hit` / `Miss` (via `CostLookup` or
+/// `Lookup<i64>`) rather than a panicked-collapsed `usize`.
 pub mod lens_cost {
     #[allow(
         dead_code,
@@ -124,16 +126,23 @@ pub mod lens_cost {
         unused_variables,
         clippy::clone_on_copy,
         clippy::collapsible_else_if,
+        clippy::double_parens,
         clippy::large_enum_variant
     )]
     mod generated {
+        // Regen can emit a redundant paren around some `Hit(...)` payload
+        // subexpressions (`Hit((1 + n))` vs `Hit(1 + n)`) — relax until emission
+        // drops one stable layer of grouping.
         use crate::dag::*;
         use crate::diagnostics::*;
 
         include!("lens_cost_generated.rs");
     }
 
-    pub use generated::{cost_of, CostLookup};
+    pub use generated::cost_of;
+    /// Rust projection of the shared `v3.std.lookup::Lookup` carrier
+    /// (`Miss | Hit`); stability alias for embedders.
+    pub type CostLookup = crate::dag::Lookup<i64>;
 
     #[cfg(test)]
     mod tests {
@@ -150,8 +159,8 @@ pub mod lens_cost {
 
         fn expect_found(lookup: CostLookup) -> i64 {
             match lookup {
-                CostLookup::FoundCost { _0: c } => c,
-                CostLookup::MissingCost => panic!("expected FoundCost, got MissingCost"),
+                CostLookup::Hit(c) => c,
+                CostLookup::Miss => panic!("expected Hit, got Miss"),
             }
         }
 
@@ -849,14 +858,6 @@ pub(crate) mod lower_helpers {
 /// until callers move to the crate-root `analyze_workflow` export.
 pub mod lens_idempotency {
     pub use crate::workflow_idempotency::analyze_workflow;
-}
-/// Back-compat module path for the Stage 2e parallelism lens.
-///
-/// The dedicated `lens_parallelism.rs` wrapper retired once the native-Dag
-/// bridge collapsed to a single re-export. Keep the module name as an API alias
-/// until callers move to the crate-root `analyze_parallelism` export.
-pub mod lens_parallelism {
-    pub use crate::workflow_parallelism::analyze_parallelism;
 }
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
 // `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs`,

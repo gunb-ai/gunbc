@@ -79,6 +79,7 @@ import v3.std.clean_emission {
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
 import std.algebra { BooleanAlgebra }
+import v3.std.lookup { Lookup }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
   VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMatchArm,
@@ -1021,6 +1022,13 @@ data rust_list_instantiation: TypeInstantiationRealization = {
   language: rust_language
   target: List
   carrier: "Vec<{element}>"
+  cost: 1
+}
+
+data rust_lookup_instantiation: TypeInstantiationRealization = {
+  language: rust_language
+  target: Lookup
+  carrier: "Lookup<{element}>"
   cost: 1
 }
 

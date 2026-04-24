@@ -558,10 +558,10 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                     };
                     rewrites.push(BindingRewrite {
                         port: binding.payload_port,
-                        span: payload_binding_span(path, &b.span),
+                        span: generated_payload_binding_span(path, b.span.clone()),
                         result: Err(Diagnostic::ResolveError {
                             name: "(upstream failure in match payload binding)".to_string(),
-                            span: payload_binding_span(path, &b.span),
+                            span: generated_payload_binding_span(path, b.span.clone()),
                             fixes: Vec::new(),
                         }),
                     });
@@ -590,7 +590,7 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                     let Some(binding) = &path.binding else {
                         continue;
                     };
-                    let span = payload_binding_span(path, &b.span);
+                    let span = generated_payload_binding_span(path, b.span.clone());
                     let result = match &variants {
                         None => Err(Diagnostic::ResolveError {
                             name: format!(
@@ -693,10 +693,6 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
     }
 
     changed
-}
-
-fn payload_binding_span(path: &crate::dag::Path, branch_span: &SourceSpan) -> SourceSpan {
-    generated_payload_binding_span(path, branch_span.clone())
 }
 
 enum Decision {
