@@ -94,15 +94,10 @@ pub const MODULE_FIXTURES: &[ModuleFixture] = &[
 /// On-disk four-fixture pressure suite (Lane 6 / dependency design).
 pub const FOUR_FIXTURE_FILES: &[&str] = &["id.v3", "drop.v3", "wrap.v3", "is_empty.v3"];
 
-/// `PROGRAM_FIXTURES` entries excluded from per-target 5× determinism until the
-/// target emitter supports the lowering shape (e.g. Go `Loop`).
-pub const GO_EMIT_EXCLUDE: &[&str] = &["recursive_function_call_six"];
+/// `PROGRAM_FIXTURES` entries excluded from per-target 5× determinism.
+/// Empty: Go `Behavior::Loop` emission landed in PR #692.
+pub const GO_EMIT_EXCLUDE: &[&str] = &[];
 
 /// Program fixtures excluded from Python 5× determinism.
-/// Only `recursive_function_call_six` remains blocked (requires
-/// `Behavior::Loop` support); `list_map_then_fold_twelve`,
-/// `list_filter_then_fold_seven`, and
-/// `nested_list_builtins_inside_lambda_six` are no longer excluded
-/// after `python.dag` gained `mul`, `div`, `ne`, `lt`, `le`, `gt`,
-/// and `ge` operator realizations.
-pub const PYTHON_EMIT_EXCLUDE: &[&str] = &["recursive_function_call_six"];
+/// Empty: Python `Behavior::Loop` emission landed in PR #692.
+pub const PYTHON_EMIT_EXCLUDE: &[&str] = &[];
