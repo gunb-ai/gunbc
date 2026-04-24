@@ -374,6 +374,39 @@ data suite: TestSuite = {
 }
 
 #[test]
+fn test_runner_algebraic_law_commutativity_returns_not_yet_implemented() {
+    let source = r#"
+module test.algebraic_law_commutativity_nyi
+
+import std.verification { AlgebraicLaw, TestClaim, TestSuite }
+
+fn lens_placeholder(a: Int, b: Int) -> Int = a + b
+
+data claim_comm: TestClaim = {
+  name: "algebraic law commutativity",
+  source: "let x: Int = 1",
+  file_name: "algebraic_law_comm.v3",
+  predicate: AlgebraicLaw(Commutativity, lens_placeholder),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "algebraic_law_commutativity_suite",
+  claims: [claim_comm]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_algebraic_law_comm.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(reason)
+            if reason.contains("AlgebraicLaw::Commutativity")
+    ));
+}
+
+#[test]
 fn test_runner_runs_sub_match_over_user_sum_gate() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let gate = manifest_dir.join("tests/fixtures/r1_gates.dag");
