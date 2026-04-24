@@ -58,6 +58,34 @@ pub struct Correction {
 """
 
 
+# Structural mirror of `src/v3/std/lookup.dag`: `Lookup` + `miss_int_lookup` /
+# `hit_int_lookup`. `lens_cost_generated` does **not** call these fns — emit
+# (`lookup_int_constructor_emit` in `rust_target.rs`) lowers std callables to
+# `Lookup::Miss` / `::Hit` — but the fns are still the correct `crate::dag`
+# surface for the `.dag` names and avoid any "helper missing in Rust" confusion.
+DAG_LOOKUP_TEMPLATE = """// Mirror of `v3.std.lookup` — see `DAG_LOOKUP_TEMPLATE` in
+// `regen_runtime_mirrors.py`.
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Lookup<T> {
+    Miss,
+    Hit(T),
+}
+
+/// `v3.std.lookup::miss_int_lookup` (`.dag` authority).
+#[inline]
+pub fn miss_int_lookup() -> Lookup<i64> {
+    Lookup::Miss
+}
+
+/// `v3.std.lookup::hit_int_lookup` (`.dag` authority).
+#[inline]
+pub fn hit_int_lookup(n: i64) -> Lookup<i64> {
+    Lookup::Hit(n)
+}
+"""
+
+
 DAG_COST_TEMPLATE = """#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DegreeAtLeastTwo {
     DegreeTwo,
@@ -829,6 +857,9 @@ def expected_outputs() -> dict[Path, str]:
         SRC_DIR / "dag_cluster_generated.rs": format_with_header(
             "src/v3/std/substrate.dag",
             render_dag_cluster_module(substrate_records, substrate_sums),
+        ),
+        SRC_DIR / "dag_lookup_generated.rs": format_with_header(
+            "src/v3/std/lookup.dag", DAG_LOOKUP_TEMPLATE
         ),
         SRC_DIR / "dag_cost_generated.rs": format_with_header(
             "src/v3/std/algebra.dag", DAG_COST_TEMPLATE

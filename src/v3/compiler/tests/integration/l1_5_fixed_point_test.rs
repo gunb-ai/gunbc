@@ -72,12 +72,28 @@ fn serialize_dag_is_deterministic() {
         .expect("snapshots compile");
     let snapshots_b = compile_stage_snapshots(default_fixed_point_source(), "fixed_point_input.v3")
         .expect("snapshots compile");
-    assert!(
-        snapshots_a
-            .iter()
-            .zip(snapshots_b.iter())
-            .all(|(left, right)| left.bytes == right.bytes),
-        "per-stage snapshots must be byte-stable across identical compiles"
+    compare_stage_snapshots(&snapshots_a, &snapshots_b)
+        .expect("per-stage snapshots must be byte-stable across identical compiles");
+}
+
+#[test]
+fn fixed_point_emit_stage_is_byte_stable() {
+    let snapshots_a = compile_stage_snapshots(default_fixed_point_source(), "fixed_point_input.v3")
+        .expect("pass1 compiles");
+    let snapshots_b = compile_stage_snapshots(default_fixed_point_source(), "fixed_point_input.v3")
+        .expect("pass2 compiles");
+
+    let emit_a = snapshots_a
+        .iter()
+        .find(|snapshot| snapshot.stage == "emit")
+        .expect("emit stage present in pass1");
+    let emit_b = snapshots_b
+        .iter()
+        .find(|snapshot| snapshot.stage == "emit")
+        .expect("emit stage present in pass2");
+    assert_eq!(
+        emit_a.bytes, emit_b.bytes,
+        "emit-stage fixed-point bytes should stay stable while bootstrap moves"
     );
 }
 
