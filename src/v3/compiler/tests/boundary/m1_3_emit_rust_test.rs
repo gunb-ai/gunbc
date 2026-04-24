@@ -24,6 +24,7 @@ use std::sync::OnceLock;
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit::{emit as shared_emit, emit_module as shared_emit_module, EmitTarget};
 use v3_compiler::emit_rust::{emit_rust, emit_rust_module};
+use v3_compiler::test_runner::TestClaimValue;
 
 use crate::common::determinism_fixtures::PROGRAM_FIXTURES;
 use crate::common::{HarnessLinkMode, RustcHarness};
@@ -41,6 +42,20 @@ fn emit(source: &str) -> String {
 fn emit_module(source: &str) -> String {
     let dag = compile_to_dag(source, "test.v3").expect("compiles");
     emit_rust_module(&dag).expect("emits module")
+}
+
+fn r1_gate_claim_source(claim_name: &str) -> String {
+    let gate_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/r1_gates.dag");
+    let gate_source = std::fs::read_to_string(&gate_path)
+        .unwrap_or_else(|err| panic!("read {gate_path:?}: {err}"));
+    let gate_dag = compile_to_dag(&gate_source, "src/v3/compiler/tests/fixtures/r1_gates.dag")
+        .expect("r1_gates.dag compiles");
+    let claim = gate_dag
+        .declaration_by_name(claim_name)
+        .unwrap_or_else(|| panic!("claim `{claim_name}` not found"));
+    TestClaimValue::from_declaration(claim)
+        .unwrap_or_else(|reason| panic!("claim `{claim_name}` should lower structurally: {reason}"))
+        .source
 }
 
 #[test]
@@ -425,6 +440,24 @@ let zero: Int = 0",
         "got: {out}"
     );
     assert!(out.contains("BoxedInt::Empty => 0,"), "got: {out}");
+}
+
+/// Day-1 T-Sub receipt gate for `sub_match_over_user_sum`.
+///
+/// Audit result: the first-class implementation path already exists on `main`.
+/// The parser accepts source-local `type Choice = ...` sums, lowering carries
+/// them as `Disj` + `Branch`, inference resolves arm patterns, and Rust emit
+/// renders the general enum-pattern `match` path. The surrounding tests already
+/// cover string-level Rust receipts for no-payload sums, payload sums, and
+/// imported sums.
+///
+/// This gate intentionally adds no implementation. Its narrower job is to keep
+/// the named R1/T-Sub surface live as an unignored, end-to-end pipeline receipt:
+/// parse -> lower -> infer -> Rust emit -> rustc link -> runtime execution.
+#[test]
+fn sub_match_over_user_sum_links_and_runs() {
+    let source = r1_gate_claim_source("sub_match_over_user_sum");
+    assert_eq!(roundtrip_stdout(&source), "true");
 }
 
 #[test]
