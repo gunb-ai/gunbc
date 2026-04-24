@@ -114,16 +114,19 @@ compose. When this closes, the R1 release gates themselves
   (4) **First Rust deletion batch — prep, not yet signed off.** Target
   shape: one thin `Compiles`-only duplicate whose claim is already
   covered by a landed `.dag` suite evaluated under
-  `t_pb_b_1_dag_runner_test`. Candidate inventory (both live under
-  `src/v3/compiler/tests/integration/`, both registered in
-  `integration.rs` and enumerated in `sg0_census_test.rs`):
-  - `pipe_desugar.rs` — two `Compiles`-shape asserts
-    (`pipe_desugars_unary_call_by_injecting_the_left_value`,
-    `pipe_desugars_multi_arg_call_with_first_arg_injection`). Closest
-    `.dag` analogue today is `t_pb_b_1_pipeline_smoke.dag`
-    (`Compiles` + source text). Pre-sign-off: confirm the `.dag` suite
-    exercises both unary and multi-arg pipe shapes, or extend the
-    suite so it does, before proposing deletion.
+  `t_pb_b_1_dag_runner_test`. Candidate inventory (under
+  `src/v3/compiler/tests/integration/`, registered in `integration.rs`
+  and enumerated in `sg0_census_test.rs`):
+  - **Excluded from first batch: `pipe_desugar.rs`.** Despite the
+    `expect("compiles")` surface, `pipe_desugars_unary_call_by_injecting_the_left_value`
+    and `pipe_desugars_multi_arg_call_with_first_arg_injection` assert
+    structural facts — `Transform` target name, `call.inputs.len()`,
+    injected `LiteralBits::Int` order, and the port's declared return
+    `TypeShape`. The `.dag` analogue (`t_pb_b_1_pipeline_smoke.dag`,
+    `Compiles` + source text only) does not cover those facts. Holding
+    this file until structural-query predicates (target/arity/argument
+    order/return shape) land in the T-TestGen schema and a `.dag`
+    suite exercises both unary and multi-arg shapes.
   - `thesis_validation_test.rs` — mixed shapes (`Compiles`,
     `PortHasState`, `CostBounded`, `FailsWithDiagnostic` via
     `rendered_rust_diagnostic`). The `Compiles` / `PortHasState` /
@@ -218,9 +221,13 @@ Lane-owner dispatch status (update as sub-deliverables close):
 Decisions log (append as they happen):
 
 - 2026-04-24: **Pre–Rust-deletion checklist item (4) prepped, not signed
-  off.** Candidate inventory (`pipe_desugar.rs`,
-  `thesis_validation_test.rs` `Compiles`/`PortHasState`/`CostBounded`
-  subset) + four-point sign-off guard recorded in *Hand-off points →
+  off.** Candidate inventory narrowed — `pipe_desugar.rs` **excluded**
+  from first batch (asserts `Transform` target / input arity / literal
+  order / return shape; `t_pb_b_1_pipeline_smoke.dag` only witnesses
+  `Compiles`, so deletion would drop structural coverage until
+  structural-query predicates land). First-batch candidate is the
+  `Compiles`/`PortHasState`/`CostBounded` subset of
+  `thesis_validation_test.rs`; four-point sign-off guard recorded in *Hand-off points →
   Sideways to Self-hosting Manager*. **No Rust deletion lands without a
   sign-off entry in this log naming the specific `#[test]` → `.dag`
   `TestClaim` mapping.** Self-hosting manager should continue to treat
