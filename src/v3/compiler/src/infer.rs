@@ -3692,7 +3692,8 @@ const WALK_DEPTH_LIMIT: usize = 32;
 ///
 /// **Crate-internal seam:** shares one `resolve_operator_arrow` + `Pending` check with infer,
 /// without exporting `resolve_operator_arrow` from this module. The former `test_runner`
-/// associativity shape recognizer called this; T-LensAPI D3 now uses `int_associativity_holds`
+/// associativity shape recognizer called this; T-LensAPI D3 now uses
+/// `int_associativity_holds_all_triples` over `ASSOCIATIVITY_WITNESS_TRIPLES`
 /// instead — keep this helper for the upcoming substrate law-read path on `AlgebraicLaw`.
 #[allow(dead_code)]
 pub(crate) fn operator_resolves_via_surfaced_algebra(

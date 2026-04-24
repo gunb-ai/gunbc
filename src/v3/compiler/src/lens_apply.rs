@@ -808,6 +808,23 @@ fn bindnode_record(b: &crate::dag::BindNode) -> FieldValue {
     )])
 }
 
+/// Fixed `(a, b, c)` triples for R1 `AlgebraicLaw(Associativity, …)` operational checks.
+///
+/// A **single** triple can pass for operations that are not associative (coincidence). The
+/// runner requires **every** triple here to satisfy [`int_associativity_holds`] — still not a
+/// quantified substrate law proof, but a materially stronger witness than one sample. Magnitudes
+/// stay modest so `Int` addition-style lenses do not overflow during witness application.
+pub const ASSOCIATIVITY_WITNESS_TRIPLES: &[(i64, i64, i64)] = &[
+    (2, 3, 5),
+    (0, 1, 99),
+    (-3, 7, 2),
+    (-1, 0, 1),
+    (1, 1, 2),
+    (5, 0, 3),
+    (10, -4, 7),
+    (100, 200, 300),
+];
+
 /// Evaluate `(a ⊕ b) ⊕ c` vs `a ⊕ (b ⊕ c)` for a binary `Int` lens using [`apply_lens_declaration`].
 pub fn int_associativity_holds(
     program_dag: &Dag,
@@ -822,6 +839,20 @@ pub fn int_associativity_holds(
     let right_bc = apply_lens_declaration(program_dag, lens_decl_id, &[int(b), int(c)])?;
     let right = apply_lens_declaration(program_dag, lens_decl_id, &[int(a), right_bc])?;
     Ok(field_value_equal(&left, &right))
+}
+
+/// True iff [`int_associativity_holds`] succeeds for every triple in `triples`.
+pub fn int_associativity_holds_all_triples(
+    program_dag: &Dag,
+    lens_decl_id: DeclarationId,
+    triples: &[(i64, i64, i64)],
+) -> Result<bool, LensApplyError> {
+    for &(a, b, c) in triples {
+        if !int_associativity_holds(program_dag, lens_decl_id, a, b, c)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -853,12 +884,11 @@ fn lens_composition_op(a: Int, b: Int) -> Int = a + b
 "#;
         let dag = compile_to_dag(src, "assoc.v3").expect("compiles");
         let id = dag.declaration_by_name("lens_composition_op").unwrap().id;
-        for (a, b, c) in [(2_i64, 3, 5), (0, 1, 99), (-3, 7, 2), (-1, 0, 1)] {
-            assert!(
-                int_associativity_holds(&dag, id, a, b, c).unwrap_or(false),
-                "assoc failed for ({a},{b},{c})"
-            );
-        }
+        assert!(
+            int_associativity_holds_all_triples(&dag, id, ASSOCIATIVITY_WITNESS_TRIPLES)
+                .expect("assoc witness"),
+            "Int `+` lens must pass every ASSOCIATIVITY_WITNESS_TRIPLES entry"
+        );
     }
 
     #[test]

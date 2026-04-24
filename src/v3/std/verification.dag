@@ -149,7 +149,8 @@ type TestPredicate
     }
   // **🟡 Scaffold — AlgebraicLaw.** Check a named algebraic law (see `AlgebraicLawKind`)
   // against a named lens (T-LensAPI composition). `Associativity` today: runner applies the
-  // compiled lens on a fixed Int sample triple (D1/D3 operational witness), not declared law
+  // compiled lens on every Int triple in `lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES` (D1/D3),
+  // not declared law
   // facts from `std.algebra` — see `eval_algebraic_law_for_claim_program` in `test_runner.rs`.
   // Dissolution trigger: consume substrate law / witness metadata on the carrier; then either
   // drop sample-only checks from this predicate or gate them behind explicit testgen claims.

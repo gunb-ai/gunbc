@@ -5,7 +5,8 @@ use crate::dag::{
 use crate::diagnostics::Diagnostic;
 use crate::lens_apply::{
     apply_lens_declaration, field_value_equal, field_value_from_value_body,
-    int_associativity_holds, reflect_program_dag_nodes_in_file,
+    int_associativity_holds_all_triples, reflect_program_dag_nodes_in_file,
+    ASSOCIATIVITY_WITNESS_TRIPLES,
 };
 use crate::lens_cost::{cost_of, CostLookup};
 use crate::{compile_to_dag, CompileError};
@@ -37,13 +38,14 @@ pub enum AlgebraicLawProgramError {
 /// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
 ///
 /// **`Associativity` — bounded operational witness (T-LensAPI D3), not substrate law proof:**
-/// uses [`int_associativity_holds`](crate::lens_apply::int_associativity_holds) on the fixed
-/// integer triple `(2, 3, 5)` by applying the compiled lens under both parenthesizations. This
-/// path does **not** consume quantified associativity facts declared on `OrderedRing` / semigroup
+/// uses [`int_associativity_holds_all_triples`](crate::lens_apply::int_associativity_holds_all_triples)
+/// over [`ASSOCIATIVITY_WITNESS_TRIPLES`](crate::lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES) so a
+/// single lucky `(a,b,c)` cannot certify a false law. This path does **not** consume quantified
+/// associativity facts declared on `OrderedRing` / semigroup
 /// carriers in `std.algebra` (those are not yet first-class runner inputs). Treating `Pass` here
 /// as full algebraic law evidence would be weaker than a substrate-backed law check — the R1
 /// gate is intentionally a **regression harness** that the witness lens behaves associatively on
-/// the sample, not a proof for all `Int`. **Dissolution:** wire `AlgebraicLaw` to declared law
+/// the full witness set, not a proof for all `Int`. **Dissolution:** wire `AlgebraicLaw` to declared law
 /// metadata / witnesses on disk and reserve sample-only checks to explicit testgen predicates, or
 /// return [`ClaimResult::NotYetImplemented`] until that substrate surface exists.
 ///
@@ -68,7 +70,7 @@ pub fn eval_algebraic_law_for_claim_program(
     let Some(target) = program_dag.declaration_by_name(&lens_name) else {
         return Ok(false);
     };
-    int_associativity_holds(program_dag, target.id, 2, 3, 5)
+    int_associativity_holds_all_triples(program_dag, target.id, ASSOCIATIVITY_WITNESS_TRIPLES)
         .map_err(|e| AlgebraicLawProgramError::MalformedPayload(format!("lens apply error: {e:?}")))
 }
 
@@ -451,11 +453,12 @@ impl<'a> TestRunner<'a> {
         };
         match eval_algebraic_law_for_claim_program(self.dag, &program_dag, payload) {
             Ok(true) => ClaimResult::Pass,
-            Ok(false) => ClaimResult::Fail(
-                "AlgebraicLaw Associativity: operational witness failed on fixed Int triple (2, 3, 5) \
-                 (D1 apply — not a substrate declared-law check; see eval_algebraic_law_for_claim_program)"
-                    .to_string(),
-            ),
+            Ok(false) => ClaimResult::Fail(format!(
+                "AlgebraicLaw Associativity: operational witness failed (must pass all {} fixed \
+                 Int triples in lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES; D1 apply — not a \
+                 substrate declared-law check; see eval_algebraic_law_for_claim_program)",
+                ASSOCIATIVITY_WITNESS_TRIPLES.len()
+            )),
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => ClaimResult::Fail(message),
             Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => unreachable!(
                 "eval_algebraic_law gated on Associativity; helper cannot return UnsupportedLaw({law_label:?})"
