@@ -3,8 +3,8 @@
 //
 // **requires: [] is intentional.** A real MockBackedInvariant claim puts its mock
 // transport on TestClaim.requires. The runner's requires gate (run_claim) currently
-// fails-closed on non-empty requires -- so this fixture uses requires: [] to reach
-// eval_mock_backed_invariant. When service simulation lands, both gates wire together.
+// fails-closed on non-empty requires, so this fixture covers the degenerate
+// no-resource simulation path in eval_mock_backed_invariant.
 
 module std.r1_mock_backed_invariant_gate
 

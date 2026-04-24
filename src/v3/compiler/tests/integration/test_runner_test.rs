@@ -284,12 +284,12 @@ data suite: TestSuite = {
 fn test_runner_marks_non_day_one_predicates_not_yet_implemented() {
     let source = r#"
 data claim_nyi: TestClaim = {
-  name: "mock backed invariant",
+  name: "behavioral observation",
   source: "let x: Int = 0",
   file_name: "runner_nyi.v3",
   // Struct-variant field names are schema metadata today; the surface parser
   // accepts positional payload syntax for authored values.
-  predicate: MockBackedInvariant(Int, Bool),
+  predicate: BehavioralObservation(Int, Int, Int),
   requires: []
 }
 
@@ -305,8 +305,7 @@ data suite: TestSuite = {
     assert!(matches!(
         &results[0].result,
         ClaimResult::NotYetImplemented(reason)
-            if reason.contains("MockBackedInvariant")
-                && reason.contains("service simulation is not wired")
+            if reason.contains("BehavioralObservation")
     ));
 }
 
@@ -333,12 +332,36 @@ fn test_runner_dispatches_mock_backed_invariant_claim() {
     let results = TestRunner::new(&dag).run_suite("mock_backed_invariant_suite");
 
     assert_eq!(results.len(), 1);
+    assert_all_pass(&results);
+}
+
+#[test]
+fn test_runner_mock_backed_invariant_fails_when_subject_source_fails() {
+    let source = r#"
+data subject_ref: Int = 0
+data invariant_ref: Int = 0
+
+data claim: TestClaim = {
+  name: "bad mock subject",
+  source: "let x: Bool = 1",
+  file_name: "bad_mock_subject.v3",
+  predicate: MockBackedInvariant(subject_ref, invariant_ref),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "bad_mock_subject_suite",
+  claims: [claim]
+}
+"#;
+    let dag = compile_clean(source, "bad_mock_subject_harness.v3");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
     assert!(matches!(
         &results[0].result,
-        ClaimResult::NotYetImplemented(reason)
-            if reason.contains("mock_subject_ref")
-                && reason.contains("mock_invariant_ref")
-                && reason.contains("service simulation is not wired")
+        ClaimResult::Fail(reason)
+            if reason.contains("subject_ref") && reason.contains("invariant_ref")
     ));
 }
 

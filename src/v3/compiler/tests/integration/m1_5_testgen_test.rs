@@ -363,7 +363,18 @@ fn predicate_holds(
         }
         "OutputEquals" => runner_deferred_panic("OutputEquals"),
         "BehavioralObservation" => runner_deferred_panic("BehavioralObservation"),
-        "MockBackedInvariant" => runner_deferred_panic("MockBackedInvariant"),
+        "MockBackedInvariant" => {
+            let [subject, invariant] = payload else {
+                panic!("MockBackedInvariant payload should be (DeclarationRef, DeclarationRef)");
+            };
+            let _subject = declaration_ref_name(expectation_dag, subject)
+                .unwrap_or_else(|| panic!("MockBackedInvariant subject must be a DeclarationRef"));
+            let _invariant =
+                declaration_ref_name(expectation_dag, invariant).unwrap_or_else(|| {
+                    panic!("MockBackedInvariant invariant must be a DeclarationRef")
+                });
+            cached_compile_outcome(source, file_name).is_clean()
+        }
         "LensOutputEquals" => runner_deferred_panic("LensOutputEquals"),
         "DifferentialEquals" => runner_deferred_panic("DifferentialEquals"),
         "AlgebraicLaw" => runner_deferred_panic("AlgebraicLaw"),
@@ -618,6 +629,18 @@ fn declaration_ref_field(dag: &Dag, name: &str) -> FieldValue {
         .unwrap_or_else(|| panic!("bootstrap should declare `{name}`"))
         .id;
     FieldValue::Reference(id)
+}
+
+fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Option<String> {
+    match value {
+        FieldValue::Reference(id) => Some(
+            dag.declaration(*id)
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("Declaration#{}", id.raw())),
+        ),
+        _ => None,
+    }
 }
 
 fn executable_today(claim: &CachedGeneratedClaim) -> bool {
@@ -918,7 +941,10 @@ fn extension_predicates_reach_interpreter_boundary() {
             declaration_ref_field(&dag, "Transform"),
         ],
     );
-    assert_runner_deferred_panics(&dag, positive_source, file, &mock, "MockBackedInvariant");
+    assert!(
+        predicate_holds(&dag, positive_source, file, &mock),
+        "MockBackedInvariant should hold for clean source with declaration-ref edges"
+    );
 
     let output_equals = sum_variant(
         &dag,

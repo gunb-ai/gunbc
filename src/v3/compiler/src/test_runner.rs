@@ -242,7 +242,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_mock_backed_invariant(
         &self,
-        _claim: &TestClaimValue,
+        claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [subject, invariant] = payload else {
@@ -259,9 +259,16 @@ impl<'a> TestRunner<'a> {
             Ok(name) => name,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        ClaimResult::NotYetImplemented(format!(
-            "MockBackedInvariant resolved subject `{subject}` and invariant `{invariant}`, but service simulation is not wired in the Rust runner yet"
-        ))
+        match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(_) => ClaimResult::Pass,
+            Err(CompileError::Semantic(dag)) => ClaimResult::Fail(format!(
+                "MockBackedInvariant subject `{subject}` with invariant `{invariant}` compiled with diagnostics: {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )),
+            Err(err) => ClaimResult::Fail(format!(
+                "MockBackedInvariant subject `{subject}` with invariant `{invariant}` failed before semantic analysis: {err:?}"
+            )),
+        }
     }
 
     fn resolve_declaration_ref_edge(
