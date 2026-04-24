@@ -6,6 +6,15 @@
 //! lens file, then compiles that payload via `compile_to_dag` on top of the
 //! standard bootstrap context (`Dag::new()`), without bundling the lens into the
 //! bootstrap.
+//!
+//! **Behavior receipt (TESTING.md):** `user_authored_lens_testclaim_payload_tracks_on_disk_lens_and_compiles`
+//! lowers the gate fixture, reads `source` off the lowered `TestClaim`, and runs
+//! `compile_to_dag` on that string — this is the executable `Compiles` path, not
+//! merely “the record literal typechecks.” The payload is the **entire**
+//! `lenses.named_function_count` module text (same bytes as the `.dag` file); it
+//! intentionally does **not** use `import lenses.named_function_count { ... }`
+//! from a second file, because that pattern would require the lens to live in
+//! `Dag::new()` bootstrap, which this demo deliberately avoids.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};

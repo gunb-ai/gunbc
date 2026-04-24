@@ -3,6 +3,9 @@
 // `TestClaim.source` is the full user lens program text (same bytes as
 // `src/v3/lenses/named_function_count.dag`); `m1_5_user_authored_lens_gate_test`
 // asserts lockstep so the claim stays single-authority for the compile receipt.
+// Integration test then `compile_to_dag`s that extracted `source` (runner-shaped
+// `Compiles` receipt). Payload is a standalone `module lenses.named_function_count`
+// unit (imports std only), not a consumer that imports this module from bootstrap.
 //
 // Lives under `src/v3/compiler/tests/fixtures/` so it is **not** auto-staged
 // into `Dag::new()` bootstrap (`src/v3/std/*.dag` is build-script enumerated).
