@@ -123,8 +123,9 @@ Lane-owner dispatch status (update as sub-deliverables close):
       residual (external-toolchain roundtrips). `sg3_surface_reflection_consumer_test.rs`
       also invokes an external binary (`Command::new`) — may warrant
       reclassification to `tests/boundary/`; escalated to director
-      (see open questions). All other 50 integration test files are
-      T-PB-B conversion candidates.
+      (see open questions). All other **51** non-boundary test files
+      (55 total − 4 boundary) are T-PB-B conversion candidates pending
+      director decision on `sg3_surface_reflection_consumer_test.rs`.
 - [ ] Draft `.dag` `TestClaim` declarations for pipeline tests
       (non-landing — wait on Testgen runner)
 - [ ] Draft `.dag` `TestClaim` declarations for contract tests
@@ -139,7 +140,8 @@ Decisions log (append as they happen):
 - **2026-04-23** — Census split landed (`EXPECTED_HAND_AUTHORED` →
   `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_TEST`
   with two structural guard tests). `ROADMAP.md:133` tracked follow-up
-  is now structurally closed. Non-test count = 36; test count = 55.
+  is now structurally closed. Non-test count = 36; test count = 55
+  (4 boundary + 51 non-boundary candidates).
 
 Open questions for director:
 
