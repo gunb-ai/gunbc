@@ -23,11 +23,7 @@ src/v3/spec/rust.dag	134	1119604	d6f7bf275e254cec
 src/v3/spec/v3_l1.dag	8	2238	1f55d782265c3bfe
 src/v3/std/algebra.dag	36	284938	29978b1b9f257877
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
-<<<<<<< HEAD
 src/v3/std/computation.dag	18	32231	03a3a315e633eeed
-=======
-src/v3/std/computation.dag	17	33655	5908bfb0401bf7a3
->>>>>>> origin/e-c-branch
 src/v3/std/computation_model.dag	12	17291	30cd3a0f7cc08eae
 src/v3/std/diagnostics.dag	6	7195	e14b2bb9b78adc76
 src/v3/std/dimensions.dag	8	15340	571b6224904e5e30
@@ -40,11 +36,7 @@ src/v3/std/parse_surface.dag	17	94961	9b9d42b7673f21d3
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/substrate.dag	47	106731	53da658223c5328a
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
-<<<<<<< HEAD
 src/v3/std/termination.dag	17	35740	aacd4c4dbd60e178
-=======
-src/v3/std/termination.dag	14	30204	c301d0a8dfe26bae
->>>>>>> origin/e-c-branch
 src/v3/std/tokenize.dag	8	38819	2e158a74f33c18cc
 src/v3/std/verification.dag	17	40484	5c5d32c90074c892
 src/v3/std/workflows.dag	4	3135	bb6f9b042a02e8d6
