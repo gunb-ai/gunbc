@@ -128,8 +128,8 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [ ] `testgen_manual_claim_is_first_class` gate compiles + evaluates
 
 **T-LensAPI:**
-- [ ] `user_authored_lens_compiles` gate (Day-1) passes
-      (PR #679 all checks green, merge pending)
+- [x] `user_authored_lens_compiles` gate (Day-1) passes
+      (PR #679, merged 2026-04-24)
 - [ ] `AlgebraicLaw` predicate (schema extension, shared with
       lens_composition_associative) — predicate declared in #678;
       runner evaluation not yet wired
