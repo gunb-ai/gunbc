@@ -191,6 +191,11 @@ Lane-owner dispatch status (update as sub-deliverables close):
       (added in this brief-refresh PR).
 
 **Dissolved in place (not ledger rows):**
+Captures debt that was queued as a T-Receipts ledger row but whose
+explicit dissolution trigger fired before the row was written. Not a
+placeholder; a pattern for preventing ledger bloat when the queued
+work dissolves within the same wave that surfaced it.
+
 - T-Demo `.dag` text-slicing bridge (`find_string_field` /
   `read_dag_string_literal`) introduced in #686 dissolved in #705 when
   `TestRunner::run_suite` became the structurally-correct evaluator.
