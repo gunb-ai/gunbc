@@ -1,13 +1,11 @@
-// R1 — hand-authored TestClaim / TestSuite gate declarations (T-TestGen lane).
+// R1 T-TestGen — hand-authored `TestClaim` / `TestSuite` (integration fixture).
 //
-// `testgen_manual_claim_is_first_class` (ROADMAP.md:51, [ext]): a developer-authored
-// `TestClaim` in `.dag` is evaluated by the same `TestRunner` dispatch as generated
-// claims — no special-case path.
-//
-// Dissolution trigger: fold into a consolidated `r1_release_gates.dag` once the
-// full R1 gate surface is stable; keep the receipt that manual claims stay first-class.
+// `testgen_manual_claim_is_first_class` (ROADMAP.md:51, [ext]): same runner dispatch
+// as generated claims. Lives under `tests/fixtures/` so it is **not** merged into
+// `Dag::new()` bootstrap (`regen_bootstrap` only ingests `src/v3/std/*.dag`); the
+// integration test `compile_to_dag`s this file once on top of the bootstrapped std.
 
-module v3.std.r1_gates
+module std.r1_manual_claim_gate
 
 import std.verification { TestClaim, TestSuite }
 
