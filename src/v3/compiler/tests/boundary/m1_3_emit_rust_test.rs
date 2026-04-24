@@ -398,8 +398,6 @@ let zero: Int = 0",
 }
 
 const SUB_MATCH_OVER_USER_SUM_SOURCE: &str = r#"
-module tests.sub_match_over_user_sum
-
 type Choice = Number(Int) | Missing
 
 fn score(choice: Choice) -> Int =
@@ -408,21 +406,8 @@ fn score(choice: Choice) -> Int =
     Missing => 0
   }
 
-fn present_choice(value: Int) -> Choice = Number(value)
-
-fn missing_choice(_value: Int) -> Choice = Missing
+let result: Bool = score(Number(7)) == 7 && score(Missing) == 0
 "#;
-
-fn sub_match_over_user_sum_module() -> String {
-    let dag = compile_to_dag(SUB_MATCH_OVER_USER_SUM_SOURCE, "sub_match_over_user_sum.v3")
-        .expect("compile sub_match_over_user_sum fixture");
-    assert!(
-        dag.diagnostics().is_empty(),
-        "sub_match_over_user_sum fixture should compile cleanly, got {:?}",
-        dag.diagnostics()
-    );
-    emit_rust_module(&dag).expect("emit Rust for sub_match_over_user_sum fixture")
-}
 
 /// Day-1 T-Sub receipt gate for `sub_match_over_user_sum`.
 ///
@@ -438,33 +423,7 @@ fn sub_match_over_user_sum_module() -> String {
 /// parse -> lower -> infer -> Rust emit -> rustc link -> runtime execution.
 #[test]
 fn sub_match_over_user_sum_links_and_runs() {
-    let module = sub_match_over_user_sum_module();
-    let wrapped = format!(
-        r#"
-#[allow(warnings, clippy::all)]
-mod emitted {{
-    {module}
-}}
-
-fn main() {{
-    assert_eq!(emitted::score(&emitted::present_choice(7)), 7);
-    assert_eq!(emitted::score(&emitted::missing_choice(&7)), 0);
-}}
-"#
-    );
-    let bin = harness().compile(
-        &wrapped,
-        "sub_match_over_user_sum",
-        HarnessLinkMode::Standalone,
-    );
-    let run = Command::new(&bin)
-        .output()
-        .expect("run sub_match_over_user_sum harness");
-    assert!(
-        run.status.success(),
-        "sub_match_over_user_sum harness failed: {}",
-        String::from_utf8_lossy(&run.stderr)
-    );
+    assert_eq!(roundtrip_stdout(SUB_MATCH_OVER_USER_SUM_SOURCE), "true");
 }
 
 #[test]
