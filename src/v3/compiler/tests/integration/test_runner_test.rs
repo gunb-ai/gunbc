@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use v3_compiler::dag::{FieldValue, LiteralBits};
+use v3_compiler::diagnostics::Diagnostic;
 use v3_compiler::test_runner::TestClaimValue;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::{compile_to_dag, CompileError};
@@ -122,14 +123,26 @@ data claim_empty_requires: TestClaim = {
 "#;
     match compile_to_dag(source, "test_runner_empty_requires.dag") {
         Err(CompileError::Semantic(dag)) => {
-            let diagnostics: Vec<String> = dag
-                .diagnostics()
-                .iter()
-                .map(|(_, diag)| diag.message().to_string())
-                .collect();
+            // Variant-level check: the class-5 gap surfaces as a `ResolveError`
+            // on the `requires` field of `claim_empty_requires`. Binding to the
+            // variant + `name` payload is sturdier than a raw message-substring
+            // check — the message may be rephrased, but the variant + the
+            // data-decl name are the stable facts. Message substring is retained
+            // as the secondary signal until a diagnostic-code vocabulary lands
+            // (cross-link: review observation on #736).
+            let found_resolve_error = dag.diagnostics().iter().any(|(_, diag)| {
+                matches!(
+                    diag,
+                    Diagnostic::ResolveError { name, .. }
+                        if name.contains("claim_empty_requires")
+                            && name.contains("requires")
+                            && name.contains("list literal")
+                )
+            });
             assert!(
-                diagnostics.iter().any(|msg| msg.contains("list literal")),
-                "expected a `list literal` diagnostic on `requires: empty()`, got {diagnostics:?}"
+                found_resolve_error,
+                "expected ResolveError naming `claim_empty_requires` / `requires` / `list literal`, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
             );
         }
         other => {
