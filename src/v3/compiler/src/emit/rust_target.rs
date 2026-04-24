@@ -4745,15 +4745,15 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    /// Read a port's Rust type name via the `types` realization
-    /// index. Walks the port's `TypeShape` through aliases /
-    /// instantiations to a primitive declaration id, then looks
-    /// up that id in the index. Zero name strings.
-    /// Rust type for a user `fn` item parameter. Callable-shaped parameters
-    /// use `impl Fn(...) -> T + Clone` (v2 / PR #650) **unless** the function's
-    /// declared return type carries first-class `fn` anywhere — then callable
-    /// parameters use `std::rc::Rc<dyn Fn…>` so pass-through / storage positions
-    /// compose with the return type (rustc `E0308` otherwise; Codex #676).
+    /// Rust type for a **user `fn` item parameter** only (`render_function_declaration`).
+    /// Record / enum payload field types never call this helper: they use
+    /// `render_struct_field` → `rust_type_name_for_decl_storage` (`Rc<dyn Fn…>`
+    /// for first-class `fn` data; INVARIANTS.md C-8 / PR #676 inline review).
+    ///
+    /// Callable-shaped parameters use `impl Fn(...) -> T + Clone` (v2 / PR #650)
+    /// **unless** the function's declared return type carries first-class `fn`
+    /// anywhere — then callable parameters use `std::rc::Rc<dyn Fn…>` so
+    /// pass-through composes with the return type (rustc `E0308` otherwise).
     /// Other parameters use `rust_type_name_for_port` /
     /// `rust_borrowed_type_name_for_port`.
     fn rust_type_name_for_user_function_parameter(
@@ -4812,6 +4812,10 @@ impl<'a> Ctx<'a> {
         Ok(format!("impl Fn({param_str}) -> {ret_str} + Clone"))
     }
 
+    /// Rust type spelling for a port in **storage-class** positions: resolves the
+    /// port's value type to a declaration id, then `rust_type_name_for_decl_storage`
+    /// (including the `types` realization index when populated). Not used for user
+    /// `fn` parameters — those use `rust_type_name_for_user_function_parameter` first.
     fn rust_type_name_for_port(&self, port: PortId) -> Result<String, EmitError> {
         let ty = self
             .dag
