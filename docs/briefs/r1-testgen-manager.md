@@ -246,9 +246,11 @@ Decisions log (append as they happen):
   `test_runner_data_bodies_reject_requires_empty_call_today`); PR #735
   merged on main (`cf59f2288` — `CostBounded` witness for the candidate
   claims is stable). **Deleted Rust tests** (file
-  `t_pb_b_1_tests_dag_smoke_test.rs` removed) and **replacement** (strictly
-  stronger — same `include_str!` `.dag` sources, plus `TestRunner::run_suite`
-  with `ClaimResult::Pass` for every claim in each suite):
+  `t_pb_b_1_tests_dag_smoke_test.rs` removed) and **replacement**:
+  `t_pb_b_1_dag_runner_test::lower` keeps the **empty module diagnostics**
+  compile-smoke receipt for each declaring `tests/dag/*.dag` harness, then
+  `TestRunner::run_suite` proves embedded `TestClaim` predicates (`ClaimResult::Pass`
+  for every claim — orthogonal to the outer harness diagnostic check):
   - `t_pb_b_1_pipeline_smoke_dag_lowers_cleanly` →
     `t_pb_b_1_dag_runner_test::t_pb_b_1_pipeline_smoke_suite_passes_through_runner`
     / suite `suite_pipeline_pipe_unary` / claim `claim_pipe_unary_compiles`

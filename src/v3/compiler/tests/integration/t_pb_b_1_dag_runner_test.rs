@@ -6,7 +6,10 @@
 //! line-item (1) of the pre–Rust-deletion checklist in
 //! `docs/briefs/r1-testgen-manager.md` (Hand-off → Self-hosting): runner path
 //! accepts the landed layout and `requires: []` lowers to a shape the runner
-//! consumes. Still **not** a `pb_*` gate and still not a Rust-deletion signal.
+//! consumes. `lower` also retains the **retired compile-smoke receipt** that the
+//! declaring `tests/dag/*.dag` module lowers with **empty module diagnostics**
+//! (runner evaluation of embedded `TestClaim.source` is orthogonal). Still
+//! **not** a `pb_*` gate and still not a Rust-deletion signal.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;
@@ -14,11 +17,18 @@ use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
 fn lower(source: &'static str, file: &'static str) -> Dag {
-    match compile_to_dag(source, file) {
+    let dag = match compile_to_dag(source, file) {
         Ok(dag) => dag,
         Err(CompileError::Semantic(dag)) => dag,
         Err(other) => panic!("unexpected compile error for {file}: {other:?}"),
-    }
+    };
+    assert!(
+        dag.diagnostics().is_empty(),
+        "{file} (declaring `tests/dag` harness) should lower without module diagnostics — \
+         same compile-smoke receipt as the retired `t_pb_b_1_tests_dag_smoke_test`. Got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    dag
 }
 
 fn run_suite_all_pass(dag: &Dag, suite_name: &str) {
