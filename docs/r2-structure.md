@@ -21,7 +21,7 @@ Two framing decisions drive scope + coordination:
 - **R2** = close-everything.
 - **R3** reserved as *escape hatch only*, for items that genuinely cannot close in R2 despite honest effort. Invocation should be rare and itself signal a problem worth examining — if dissolution is surfacing faster than closure, that's a leading indicator to address, not a scope-inflation signal.
 
-Post-R2 is external work (adoption, documentation, community) — not on the thesis-claim release ledger.
+Post-R2 is external work (adoption, documentation, community, ecosystem modeling) — not on the thesis-claim release ledger. The first named post-R2 stream is modeling what currently lives in `../ctrl/` (user-flagged 2026-04-24) as a practical pressure-test for whether the structural thesis R2 closes actually holds when applied to real-program shapes. That pressure-test is not itself a thesis claim; it's a validation exercise against one.
 
 ## Goals
 
@@ -146,23 +146,11 @@ Purpose: proof-of-work visibility at director cadence. Without it, program slips
 - **Manager count = 1 + Director.** One standing manager (Grounding) matches R2's single critical path. T-Modeling / T-Substrate / T-ImpossibleBugs are parallel-capable with no critical-path coordination pressure; Director dispatches directly. Adjustable upward if parallel fill-queue depth becomes unmanageable in practice.
 - **R2 includes substrate prereqs explicitly** per user's (i)-over-(ii) preference (honest scope over tight scope), with **scoped acceptance criteria** per Director refinement (each sub-lane closes on unblock of its paired Goal 2 item; full substrate-capability lanes are not R2-committed).
 - **Anti-deferral principle is the frame, not velocity numbers.** Per Director observation: 16-hour R1 execution was a peak-day sample, not a baseline. The principle "if dissolution direction is clear and named, deferral is problem-finding not problem-solving" is what survives cadence shifts.
+- **Post-R2 stance = STRONG.** R2 is thesis close. Post-R2 work is external (adoption, documentation, community, ecosystem buildout). R3 is reserved as escape hatch only, not as a structural release program. User-locked 2026-04-24 after pressure-test framing: *"real programs are probably required to confirm the thesis is real, but we can keep R2 theoretical to stay fair — future work would pressure test the claims."* The R2 doc's "close-everything" claim is thus scoped to the **structural thesis** (what the compiler proves by construction); practical validation via modeling real programs (e.g., the user's `../ctrl/` follow-up) is a separate post-R2 stream that *tests whether the thesis holds in practice*, without itself being a thesis claim.
 
 ## Open calls
 
-### 1. Post-R2 stance — strong vs weak endorsement (user decision)
-
-The proposal currently reads as *strong*: "R2 = thesis close; post-R2 is external (adoption/docs/community); R3 reserved as escape hatch only." That's consistent with anti-deferral + close-everything-knowable. But it commits us to: no future thesis-claim release after R2.
-
-Two readings for user to explicitly pick:
-
-- **Strong endorsement** — yes, R2 = thesis close. R3 reserved only for escape hatch. Post-R2 work is all external. Commit; this doc's framing is final.
-- **Weaker endorsement** — R2 is the current best scope; R3-as-structure remains available if R2 work surfaces genuinely new thesis-claim architecture that can't close in R2. Soften the "post-R2 = external" framing to preserve option value.
-
-Director leans strong if user trusts the anti-deferral principle; leans weaker if user wants option value in case post-R2 evidence surfaces something load-bearing.
-
-**Pending user decision.** Other R2 structure is locked; this is the one remaining endorsement before the doc promotes to ROADMAP.
-
-### 2. Pre-promotion thesis-claim coverage mapping (gate before ROADMAP promotion)
+### 1. Pre-promotion thesis-claim coverage mapping (gate before ROADMAP promotion)
 
 Surfaced by codex API review on `6fdd8341`: the "close-everything/post-R2-external-only" framing requires an explicit mapping from THESIS tiers to concrete R1/R2/post-R2 disposition, so no thesis claim is implicitly-positioned. Otherwise "close-everything" is an assertion without audit.
 
@@ -179,7 +167,7 @@ THESIS authority (`THESIS.md:155-182`) lists:
 
 **Timeline:** lands as part of the R1 closure → R2 promotion transition (step 4 in Transition mechanics above). Not a separate program.
 
-### 3. Pre-promotion `≤5 irreducible-shim` gate-name review (gate before ROADMAP promotion)
+### 2. Pre-promotion `≤5 irreducible-shim` gate-name review (gate before ROADMAP promotion)
 
 Surfaced by user question on 2026-04-24: the "≤5 irreducible-shim" floor in `docs/design-pure-bootstrap.md` is framed as a principled target but is actually a generous ceiling. The doc itself names the narrower case: *"If (4) and (5) can be generated, the shim is 3 files"* (§"Irreducible shim (target state)") — and v2 achieves the floor with 2 files (CLI + interpreter). The principled boundary floor is 2–3, not 5.
 
