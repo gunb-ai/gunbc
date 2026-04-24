@@ -135,14 +135,18 @@ fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
   }
 }
 
-// M9 / P4: refuse witness depths above 256 so literal-sized `Int` inputs cannot
+// M9 / P2 — **single numeric authority** for literal-sized Peano witness depth (mirror of `dsl/std/termination.dag`).
+// Dissolution: E-P shared refinement caps (see ROADMAP P4).
+fn peano_literal_materialization_cap() -> Int { 256 }
+
+// M9 / P4: refuse witness depths above `peano_literal_materialization_cap()` so literal-sized `Int` inputs cannot
 // force deep recursive materialization (infer + std share this cap; fail closed).
 // The .dag definition is stack-recursive O(k) in witness depth; the Rust mirror is
 // iterative with the same cap — future unbounded-Int producers should cap or bound k upstream.
 fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
   if k <= 0 { none }
   else {
-    if k > 256 { none }
+    if k > peano_literal_materialization_cap() { none }
     else {
       if k == 1 { Some { value: OneStep } }
       else {
@@ -158,7 +162,7 @@ fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
 fn proportional_divisor_from_int_at_least_two(k: Int) -> ProportionalDivisor? {
   if k < 2 { none }
   else {
-    if k > 256 { none }
+    if k > peano_literal_materialization_cap() { none }
     else {
       if k == 2 { Some { value: DivideByTwo } }
       else {

@@ -3872,8 +3872,12 @@ impl<'a> Ctx<'a> {
         let Some(name) = self.dag.declaration(template).name.as_deref() else {
             return Ok(None);
         };
-        let is_miss = name == "miss_int_lookup" || name == "miss_symbolic_cost_lookup";
-        let is_hit = name == "hit_int_lookup" || name == "hit_symbolic_cost_lookup";
+        let is_miss = name == "miss_int_lookup"
+            || name == "miss_symbolic_cost_lookup"
+            || name == "miss_declaration_id_lookup";
+        let is_hit = name == "hit_int_lookup"
+            || name == "hit_symbolic_cost_lookup"
+            || name == "hit_declaration_id_lookup";
         if is_miss {
             if !t.inputs.is_empty() {
                 return Err(EmitError::UnsupportedBehavior(format!(

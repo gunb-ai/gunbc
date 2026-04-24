@@ -796,8 +796,9 @@ pub fn proportional_divisor_to_int(d: &ProportionalDivisor) -> i64 {
 
 /// Maximum Peano links materialized from a single `i64` literal (M9 / P4).
 ///
-/// Must stay aligned with `dsl/std/termination.dag` literal bridges. Larger
-/// requests fail closed with [`None`] instead of deep recursive materialization.
+/// Must stay numerically aligned with `dsl/std/termination.dag`
+/// `peano_literal_materialization_cap()` (P2 single authority). Larger requests fail closed with
+/// [`None`] instead of deep recursive materialization.
 pub const MAX_PEANO_MATERIALIZATION: i64 = 256;
 
 /// Builds a Peano witness with **iterative** construction (no deep recursion).
@@ -949,7 +950,8 @@ pub enum SizeBound {
     CollectionSize { param: String },
     TreeSize { param: String },
     ArithmeticParam { param: String },
-    ExplicitCount { n: i64 },
+    ExplicitCountZero,
+    ExplicitCountPositive { steps: PositiveDescentAmount },
     Forever,
 }
 
@@ -1431,12 +1433,17 @@ pub fn size_bound_param(bound: &SizeBound) -> Option<&str> {
         SizeBound::TreeSize { param }
         | SizeBound::CollectionSize { param }
         | SizeBound::ArithmeticParam { param } => Some(param.as_str()),
-        SizeBound::ExplicitCount { .. } | SizeBound::Forever => None,
+        SizeBound::ExplicitCountZero
+        | SizeBound::ExplicitCountPositive { .. }
+        | SizeBound::Forever => None,
     }
 }
 
 pub fn is_constant_bound(bound: &SizeBound) -> bool {
-    matches!(bound, SizeBound::ExplicitCount { .. } | SizeBound::Forever)
+    matches!(
+        bound,
+        SizeBound::ExplicitCountZero | SizeBound::ExplicitCountPositive { .. } | SizeBound::Forever
+    )
 }
 
 /// Signed `Int` top iterate count (`i64::MAX`) for [`SizeBound::Forever`] / `repeat(max_int)`.
@@ -1444,10 +1451,11 @@ pub fn forever_iteration_bound() -> i64 {
     i64::MAX
 }
 
-/// `None` when `bound` is not constant (`ExplicitCount` / `Forever` only).
+/// `None` when `bound` is not constant (`ExplicitCount*` / `Forever` only).
 pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
     match bound {
-        SizeBound::ExplicitCount { n } => Some(*n),
+        SizeBound::ExplicitCountZero => Some(0),
+        SizeBound::ExplicitCountPositive { steps } => Some(positive_descent_count(steps)),
         SizeBound::Forever => Some(forever_iteration_bound()),
         _ => None,
     }

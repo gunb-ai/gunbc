@@ -4565,122 +4565,12 @@ Rc::new(SubValueRelation::StrictSubValue {
                                                 }
                                                 ExprData::ExprBinOp { op, .. } => {
                                                     match op.clone() {
-                                                        BinOp::Add => {
-                                                            let left = binop_left(arg_val.clone());
-                                                            let right =
-                                                                binop_right(arg_val.clone());
-                                                            let rhs_is_literal =
-                                                                match (*right.expr_data.clone())
-                                                                    .clone()
-                                                                {
-                                                                    ExprData::ExprLiteral {
-                                                                        ref value,
-                                                                        ..
-                                                                    } => {
-                                                                        let LiteralValue::LitInt {
-                                                                            ..
-                                                                        } = value.as_ref()
-                                                                        else {
-                                                                            unreachable!()
-                                                                        };
-                                                                        true
-                                                                    }
-                                                                    _ => false,
-                                                                };
-                                                            if rhs_is_literal {
-                                                                match (*left.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-                                            let lname = expr_var_name_at(left.clone(), ctx.type_env.clone().source_indices.clone());
-match v2_rt::map_get(&ctx.size_aliases.clone(), lname).as_deref().cloned() {
-    Some(SizeExpr::DividedSize { param: p, divisor: d, .. }) => if (p.clone().as_str() == param_name.clone().as_str()) {
-                                                match proportional_divisor_from_int_at_least_two(d.clone()) {
-    Some(div_w) => {
-                                                    let synth_field = Rc::new(InductiveField {
-    type_name: param_name.clone(),
-    variant_name: "".to_string(),
-    field_name: mname.clone(),
-    shape: RecursionShape::ListRecursion,
-    element_type: param_name.clone(),
-});
-Rc::new(SubValueRelation::StrictSubValue {
-    field: synth_field,
-    factor: Rc::new(ShrinkFactor::ProportionalShrink {
-    divisor: div_w.clone(),
-}),
-})
-},
-    None => Rc::new(SubValueRelation::SubValueUnknown),
-}
-                                            } else {
-                                                Rc::new(SubValueRelation::SubValueUnknown)
-                                            },
-    _ => Rc::new(SubValueRelation::SubValueUnknown),
-}
-},
-    _ => Rc::new(SubValueRelation::SubValueUnknown),
-}
-                                                            } else {
-                                                                Rc::new(SubValueRelation::SubValueUnknown)
-                                                            }
-                                                        }
-                                                        BinOp::Sub => {
-                                                            let left = binop_left(arg_val.clone());
-                                                            let right =
-                                                                binop_right(arg_val.clone());
-                                                            let rhs_is_literal =
-                                                                match (*right.expr_data.clone())
-                                                                    .clone()
-                                                                {
-                                                                    ExprData::ExprLiteral {
-                                                                        ref value,
-                                                                        ..
-                                                                    } => {
-                                                                        let LiteralValue::LitInt {
-                                                                            ..
-                                                                        } = value.as_ref()
-                                                                        else {
-                                                                            unreachable!()
-                                                                        };
-                                                                        true
-                                                                    }
-                                                                    _ => false,
-                                                                };
-                                                            if rhs_is_literal {
-                                                                match (*left.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-                                            let lname = expr_var_name_at(left.clone(), ctx.type_env.clone().source_indices.clone());
-match v2_rt::map_get(&ctx.size_aliases.clone(), lname).as_deref().cloned() {
-    Some(SizeExpr::DividedSize { param: p, divisor: d, .. }) => if (p.clone().as_str() == param_name.clone().as_str()) {
-                                                match proportional_divisor_from_int_at_least_two(d.clone()) {
-    Some(div_w) => {
-                                                    let synth_field = Rc::new(InductiveField {
-    type_name: param_name.clone(),
-    variant_name: "".to_string(),
-    field_name: mname.clone(),
-    shape: RecursionShape::ListRecursion,
-    element_type: param_name.clone(),
-});
-Rc::new(SubValueRelation::StrictSubValue {
-    field: synth_field,
-    factor: Rc::new(ShrinkFactor::ProportionalShrink {
-    divisor: div_w.clone(),
-}),
-})
-},
-    None => Rc::new(SubValueRelation::SubValueUnknown),
-}
-                                            } else {
-                                                Rc::new(SubValueRelation::SubValueUnknown)
-                                            },
-    _ => Rc::new(SubValueRelation::SubValueUnknown),
-}
-},
-    _ => Rc::new(SubValueRelation::SubValueUnknown),
-}
-                                                            } else {
-                                                                Rc::new(SubValueRelation::SubValueUnknown)
-                                                            }
-                                                        }
+                                                        BinOp::Add => Rc::new(
+                                                            SubValueRelation::SubValueUnknown,
+                                                        ),
+                                                        BinOp::Sub => Rc::new(
+                                                            SubValueRelation::SubValueUnknown,
+                                                        ),
                                                         _ => Rc::new(
                                                             SubValueRelation::SubValueUnknown,
                                                         ),

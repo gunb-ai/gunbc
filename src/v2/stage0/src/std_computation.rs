@@ -31,7 +31,8 @@ pub enum SizeBound {
     CollectionSize { param: String },
     TreeSize { param: String },
     ArithmeticParam { param: String },
-    ExplicitCount { n: i64 },
+    ExplicitCountZero,
+    ExplicitCountPositive { steps: Rc<PositiveDescentAmount> },
     Forever,
 }
 
@@ -177,14 +178,16 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
         SizeBound::TreeSize { param: p, .. } => Some(p.clone()),
         SizeBound::CollectionSize { param: p, .. } => Some(p.clone()),
         SizeBound::ArithmeticParam { param: p, .. } => Some(p.clone()),
-        SizeBound::ExplicitCount { .. } => None,
+        SizeBound::ExplicitCountZero => None,
+        SizeBound::ExplicitCountPositive { .. } => None,
         SizeBound::Forever => None,
     }
 }
 
 pub fn is_constant_bound(bound: Rc<SizeBound>) -> bool {
     match (*bound).clone() {
-        SizeBound::ExplicitCount { .. } => true,
+        SizeBound::ExplicitCountZero => true,
+        SizeBound::ExplicitCountPositive { .. } => true,
         SizeBound::Forever => true,
         _ => false,
     }
@@ -196,7 +199,10 @@ pub fn forever_iteration_bound() -> i64 {
 
 pub fn constant_bound_value(bound: Rc<SizeBound>) -> Option<i64> {
     match (*bound).clone() {
-        SizeBound::ExplicitCount { n: count, .. } => Some(count.clone()),
+        SizeBound::ExplicitCountZero => Some(0),
+        SizeBound::ExplicitCountPositive { steps: s, .. } => {
+            Some(positive_descent_count(s.clone()))
+        }
         SizeBound::Forever => Some(forever_iteration_bound()),
         _ => None,
     }

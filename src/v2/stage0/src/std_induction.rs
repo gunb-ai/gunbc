@@ -16,9 +16,9 @@ use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 use crate::std_termination::RankingDimension::TreeSize;
 pub use crate::std_termination::{
-    positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
-    proportional_divisor_to_int, DescentEvidence, PositiveDescentAmount, ProportionalDivisor,
-    RankingDimension,
+    peano_literal_materialization_cap, positive_descent_amount_from_positive_int,
+    proportional_divisor_from_int_at_least_two, proportional_divisor_to_int, DescentEvidence,
+    PositiveDescentAmount, ProportionalDivisor, RankingDimension,
 };
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
@@ -513,8 +513,13 @@ pub enum CostBound {
     ErrorBound,
 }
 
-pub fn sum_bound(terms: Rc<Vec<Rc<CostBound>>>) -> Rc<CostBound> {
-    Rc::new(CostBound::SumBound { terms: terms })
+pub fn sum_bound(terms: &Rc<Vec<Rc<CostBound>>>) -> Rc<CostBound> {
+    match terms.clone().first().cloned() {
+        None => Rc::new(CostBound::ErrorBound),
+        Some(_) => Rc::new(CostBound::SumBound {
+            terms: terms.clone(),
+        }),
+    }
 }
 
 pub fn cost_bound_is_sum_bound(b: Rc<CostBound>) -> bool {
@@ -711,7 +716,7 @@ pub fn bounded_int_pow_exponent(k: i64) -> Option<i64> {
     if (k.clone() < 0) {
         None
     } else {
-        if (k.clone() > 256) {
+        if (k.clone() > peano_literal_materialization_cap()) {
             None
         } else {
             Some(k.clone())
@@ -885,28 +890,35 @@ pub fn derive_bound(
     factor: Rc<ShrinkFactor>,
     work_exponent: i64,
 ) -> Rc<CostBound> {
-    match (*factor).clone() {
-        ShrinkFactor::UnitShrink => {
-            if (branches <= 1) {
-                cost_linear(param)
-            } else {
-                Rc::new(CostBound::ForeverBound)
-            }
-        }
-        ShrinkFactor::ConstantShrink { .. } => {
-            if (branches <= 1) {
-                cost_linear(param)
-            } else {
-                Rc::new(CostBound::ForeverBound)
-            }
-        }
-        ShrinkFactor::ProportionalShrink { divisor: d, .. } => {
-            master_theorem(&Rc::new(RecurrenceForm {
-                param: param,
-                branches: branches,
-                divisor: proportional_divisor_to_int(d.clone()),
-                work_exponent: work_exponent,
-            }))
+    if (branches.clone() < 1) {
+        Rc::new(CostBound::ErrorBound)
+    } else {
+        match bounded_int_pow_exponent(work_exponent.clone()) {
+            None => Rc::new(CostBound::ErrorBound),
+            Some(_) => match (*factor).clone() {
+                ShrinkFactor::UnitShrink => {
+                    if (branches.clone() <= 1) {
+                        cost_linear(param)
+                    } else {
+                        Rc::new(CostBound::ForeverBound)
+                    }
+                }
+                ShrinkFactor::ConstantShrink { .. } => {
+                    if (branches.clone() <= 1) {
+                        cost_linear(param)
+                    } else {
+                        Rc::new(CostBound::ForeverBound)
+                    }
+                }
+                ShrinkFactor::ProportionalShrink { divisor: d, .. } => {
+                    master_theorem(&Rc::new(RecurrenceForm {
+                        param: param,
+                        branches: branches.clone(),
+                        divisor: proportional_divisor_to_int(d.clone()),
+                        work_exponent: work_exponent.clone(),
+                    }))
+                }
+            },
         }
     }
 }

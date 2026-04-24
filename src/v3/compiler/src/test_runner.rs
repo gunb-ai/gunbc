@@ -1,11 +1,26 @@
 use crate::dag::{
-    ArithmeticOp, ArrowBody, Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    OperatorKind, PortId, PortState, TransformTarget, TypeConnective, ValueBody,
+    Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective,
+    ValueBody,
 };
 use crate::diagnostics::Diagnostic;
-use crate::infer;
+use crate::lens_apply::{
+    apply_lens_declaration, field_value_from_value_body, int_associativity_holds_all_triples,
+    reflect_program_dag_nodes_in_file, ASSOCIATIVITY_WITNESS_TRIPLES,
+};
 use crate::lens_cost::{cost_of, CostLookup};
 use crate::{compile_to_dag, CompileError};
+
+/// Same on-disk lens as `v3-compiler/build.rs` splices into `user_authored_lens_compiles_gate`
+/// (`emit_r1_gates_fixture`). `LensOutputEquals` applies this program for `named_function_count`
+/// so evaluation cannot drift from the fixture-local stub (`INVARIANTS.md` P2).
+///
+/// **Dissolution:** remove this `include_str!` bridge when `DeclarationRef` (or an equivalent
+/// substrate edge) resolves executable lens bodies from `program_dag` / `TestClaim.source` so the
+/// runner does not key a second `Dag` on fixture declaration spelling.
+pub const R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../lenses/named_function_count.dag"
+));
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimResult {
@@ -33,26 +48,20 @@ pub enum AlgebraicLawProgramError {
 
 /// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
 ///
-/// Today only `Associativity` is supported, and only for a binary `Int` arrow whose body is
-/// `+` **resolved through surfaced algebra** (`Int`'s `Declaration.inhabits` walk to
-/// `OrderedRing.add` using the same `resolve_operator_arrow` path as operator inference),
-/// matching the `lens_composition_associative` R1 gate witness. `lens_ref` is a
-/// [`FieldValue::Reference`] into `fixture_dag`; the runner resolves the **name** and looks up
-/// the same name in `program_dag`.
+/// **`Associativity` — bounded operational witness (T-LensAPI D3), not substrate law proof:**
+/// uses [`int_associativity_holds_all_triples`](crate::lens_apply::int_associativity_holds_all_triples)
+/// over [`ASSOCIATIVITY_WITNESS_TRIPLES`](crate::lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES) so a
+/// single lucky `(a,b,c)` cannot certify a false law. This path does **not** consume quantified
+/// associativity facts declared on `OrderedRing` / semigroup
+/// carriers in `std.algebra` (those are not yet first-class runner inputs). Treating `Pass` here
+/// as full algebraic law evidence would be weaker than a substrate-backed law check — the R1
+/// gate is intentionally a **regression harness** that the witness lens behaves associatively on
+/// the full witness set, not a proof for all `Int`. **Dissolution:** wire `AlgebraicLaw` to declared law
+/// metadata / witnesses on disk and reserve sample-only checks to explicit testgen predicates, or
+/// return [`ClaimResult::NotYetImplemented`] until that substrate surface exists.
 ///
-/// **Modeling debt (P1) — pre-D1 tightening, not D3 dissolution:** evaluation still uses a
-/// **structural recognizer** (`declaration_shape_matches_ordered_ring_add_associativity_recognizer`)
-/// (binary `Int` arrow → `Bind` → `Transform` → `Arithmetic(Add)` + multiset param wiring +
-/// non-`Pending` `resolve_operator_arrow`). That is **not** T-LensAPI D3 (apply the lens to
-/// sample inputs under both associations via the D1 lens-application primitive).
-///
-/// **Dissolution (tracked in two steps):**
-/// 1. **Substrate law read:** delete `declaration_shape_matches_ordered_ring_add_associativity_recognizer`
-///    once `AlgebraicLaw` consumes an explicit **Associativity** law witness surfaced on
-///    `OrderedRing.add` in the `.dag`, instead of inferring associativity from "`+` resolves to
-///    `OrderedRing.add`" plus shape matching.
-/// 2. **T-LensAPI D3:** then replace evaluation with `apply(lens, a, b, c)` comparing `(a*b)*c` vs
-///    `a*(b*c)` once the D1 lens-application primitive lands.
+/// `lens_ref` is a [`FieldValue::Reference`] into `fixture_dag`; the runner resolves the **name**
+/// and looks up the same name in `program_dag`.
 pub fn eval_algebraic_law_for_claim_program(
     fixture_dag: &Dag,
     program_dag: &Dag,
@@ -72,8 +81,14 @@ pub fn eval_algebraic_law_for_claim_program(
     let Some(target) = program_dag.declaration_by_name(&lens_name) else {
         return Ok(false);
     };
-    Ok(declaration_shape_matches_ordered_ring_add_associativity_recognizer(program_dag, target))
+    int_associativity_holds_all_triples(program_dag, target.id, ASSOCIATIVITY_WITNESS_TRIPLES)
+        .map_err(|e| AlgebraicLawProgramError::MalformedPayload(format!("lens apply error: {e:?}")))
 }
+
+/// Compile-time ratchet (PR #741 / codex P1): `Associativity` must not regress to checking one
+/// lucky `(a, b, c)` triple — the gate is a correctness signal only when the witness set has
+/// material breadth (see `lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES`).
+const _: () = assert!(ASSOCIATIVITY_WITNESS_TRIPLES.len() > 1);
 
 #[derive(Debug, Clone)]
 pub struct TestClaimValue {
@@ -314,26 +329,167 @@ impl<'a> TestRunner<'a> {
             ));
         }
 
-        // Bridge receipt: `claim.source` is not the predicate DAG; this compile is a
-        // witness check only — it can turn an otherwise NYI claim into `Fail` if the
-        // string does not lower. When the real lens-apply path exists, **delete** this
-        // whole block (do not leave it layered or “superseded” in place); compilation
-        // belongs on the evaluation path only (P5 tracked debt — PR #717 / claude-opus review).
-        //
-        // Schedule: ROADMAP.md subsection "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" item 1.
-        // Today’s gate fixture uses trivial `claim.source` (`let _: Int = 0`); the compile
-        // is a thin structural receipt until real lens evaluation consumes meaningful witness text.
-        if let Err(err) = compile_to_dag(&claim.source, &claim.file_name) {
-            return ClaimResult::Fail(format!(
-                "LensOutputEquals: claim `source` did not compile (needed for future lens application): {err:?}"
-            ));
-        }
+        // R1 gate sentinel: `Dag` inputs are not yet expressible as structural `data` bodies in the
+        // fixture DSL; `r1_lens_output_input_from_program` names a typed placeholder while the
+        // runner reflects `Dag.nodes` from `TestClaim.source` / `file_name`.
+        // **Dissolution trigger (ROADMAP / INVARIANTS P2):** replace string matching on this name
+        // with a structural `TestClaim` / `std.verification` coproduct arm (reflection input vs
+        // literal body) so runners do not key behavior on declaration spellings.
+        const PROGRAM_INPUT_SENTINEL: &str = "r1_lens_output_input_from_program";
 
-        ClaimResult::NotYetImplemented(format!(
-            "LensOutputEquals: runner does not apply lens functions or compare lens output yet \
-             (resolved lens={lens_name}, input={input_name}, expected={expected_name}; \
-             `source` compiles for future wiring)"
-        ))
+        // INVARIANTS P2 (executable single authority): `DeclarationRef` for `lens_ref` still
+        // resolves against the fixture `Dag` for lowering, but for `named_function_count` the
+        // runner compiles `R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS` (same file as `build.rs` splices
+        // for `user_authored_lens_compiles_gate`) for `apply_lens_declaration` — not the
+        // fixture-local stub body. Other lens names: if `TestClaim.source` exports the same
+        // declaration name, apply that program; else fall back to the fixture graph.
+        //
+        // **Dissolution trigger (name-keyed bridge):** delete the `lens_decl.name ==
+        // Some("named_function_count")` arm and this entire parallel authority when
+        // `DeclarationRef` resolves lens executable identity from `program_dag` (or structured
+        // `TestClaim` metadata) without fixture-local stub bodies — same upstream fix as retiring
+        // `PROGRAM_INPUT_SENTINEL` string dispatch above.
+        // INVARIANTS P3 / TESTING: `TestClaim.source` must lower cleanly — never ignore
+        // tokenize/parse failures and fall back to the fixture graph (that would let malformed
+        // programs `Pass` when inputs/lens resolve only from the fixture).
+        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(dag)) => {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals: claim `source` / `{}` failed inference: {:?}",
+                    claim.file_name,
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                ));
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals: claim `source` / `{}` did not compile: {err:?}",
+                    claim.file_name
+                ));
+            }
+        };
+
+        // INVARIANTS P2: reflected `FieldValue` List / `Behavior` variant ids must come from the
+        // same `Dag` as `apply_lens_declaration` (canonical `named_function_count` vs claim).
+        let canonical_named_function_count_dag: Option<Dag> = if lens_decl.name.as_deref()
+            == Some("named_function_count")
+        {
+            Some(
+                match compile_to_dag(
+                    R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS,
+                    "src/v3/lenses/named_function_count.dag",
+                ) {
+                    Ok(dag) => dag,
+                    Err(CompileError::Semantic(dag)) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals: canonical `named_function_count` lens failed inference: {:?}",
+                            dag.diagnostics().iter().collect::<Vec<_>>()
+                        ));
+                    }
+                    Err(err) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals: canonical `named_function_count` lens did not compile: {err:?}"
+                        ));
+                    }
+                },
+            )
+        } else {
+            None
+        };
+
+        let input_field = if input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL) {
+            // P2: `id_space` must be the same `Dag` `apply_lens_declaration` will use for the lens
+            // (canonical compile, claim `program_dag`, or merged fixture `self.dag`) so reflected
+            // `List` / `Behavior` variant `DeclarationId`s are not mixed across graphs.
+            let id_space: &Dag = if let Some(ref cld) = canonical_named_function_count_dag {
+                cld
+            } else if let Some(name) = lens_decl.name.as_deref() {
+                if program_dag.declaration_by_name(name).is_some() {
+                    &program_dag
+                } else {
+                    self.dag
+                }
+            } else {
+                self.dag
+            };
+            match reflect_program_dag_nodes_in_file(&program_dag, &claim.file_name, id_space) {
+                Ok(v) => v,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals: could not reflect `Dag` nodes from claim program: {err:?}"
+                    ));
+                }
+            }
+        } else {
+            match &input_decl.value_body {
+                Some(body) => match field_value_from_value_body(self.dag, body) {
+                    Ok(v) => v,
+                    Err(err) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals: could not lower input_ref `{input_name}` value: {err:?}"
+                        ));
+                    }
+                },
+                None => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals: input_ref `{input_name}` has no value body (use `{PROGRAM_INPUT_SENTINEL}` sentinel when the input `Dag` is only available via `TestClaim.source`)"
+                    ));
+                }
+            }
+        };
+
+        let expected_field = match field_value_from_value_body(
+            self.dag,
+            expected_decl.value_body.as_ref().expect("checked"),
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals: could not lower expected_ref `{expected_name}` value: {err:?}"
+                ));
+            }
+        };
+
+        let (lens_program, lens_apply_id) =
+            if let Some(ref cld) = canonical_named_function_count_dag {
+                let Some(d) = cld.declaration_by_name("named_function_count") else {
+                    return ClaimResult::Fail(
+                    "LensOutputEquals: canonical named_function_count lens missing root declaration"
+                        .to_string(),
+                );
+                };
+                (cld, d.id)
+            } else if let Some(name) = lens_decl.name.as_deref() {
+                match program_dag.declaration_by_name(name) {
+                    Some(d) => (&program_dag, d.id),
+                    None => (self.dag, lens_id),
+                }
+            } else {
+                (self.dag, lens_id)
+            };
+
+        let computed = match apply_lens_declaration(
+            lens_program,
+            lens_apply_id,
+            std::slice::from_ref(&input_field),
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals: applying lens `{lens_name}` failed: {err:?}"
+                ));
+            }
+        };
+
+        if computed == expected_field {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "LensOutputEquals: expected {} for `{expected_name}`, computed {} for lens `{lens_name}` (input `{input_name}`)",
+                render_field_value(self.dag, &expected_field),
+                render_field_value(self.dag, &computed),
+            ))
+        }
     }
 
     fn resolve_declaration_ref_id(
@@ -355,8 +511,10 @@ impl<'a> TestRunner<'a> {
     }
 
     fn eval_algebraic_law(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
-        // Only `Associativity` is wired. Other `AlgebraicLawKind` variants are
-        // `NotYetImplemented` (runner cannot evaluate yet), not `Fail` (claim false).
+        // Only `Associativity` is wired via D3 multi-triple operational witness (see
+        // `eval_algebraic_law_for_claim_program` — not substrate law-fact evaluation).
+        // Other `AlgebraicLawKind` variants are `NotYetImplemented` (runner cannot evaluate yet),
+        // not `Fail` (claim false).
         let (law, _) = match algebraic_law_payload_fields(payload) {
             Ok(parts) => parts,
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => {
@@ -400,10 +558,12 @@ impl<'a> TestRunner<'a> {
         };
         match eval_algebraic_law_for_claim_program(self.dag, &program_dag, payload) {
             Ok(true) => ClaimResult::Pass,
-            Ok(false) => ClaimResult::Fail(
-                "AlgebraicLaw associativity witness not satisfied (expected Int `+` via OrderedRing.add / surfaced algebra)"
-                    .to_string(),
-            ),
+            Ok(false) => ClaimResult::Fail(format!(
+                "AlgebraicLaw Associativity: operational witness failed (must pass all {} fixed \
+                 Int triples in lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES; D1 apply — not a \
+                 substrate declared-law check; see eval_algebraic_law_for_claim_program)",
+                ASSOCIATIVITY_WITNESS_TRIPLES.len()
+            )),
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => ClaimResult::Fail(message),
             Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => unreachable!(
                 "eval_algebraic_law gated on Associativity; helper cannot return UnsupportedLaw({law_label:?})"
@@ -812,107 +972,5 @@ fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, Algebra
         other => Err(AlgebraicLawProgramError::MalformedPayload(format!(
             "lens_ref should be a DeclarationRef (FieldValue::Reference), got {other:?}"
         ))),
-    }
-}
-
-/// **🟡 Scaffold (pre-D1)** — `AlgebraicLaw(Associativity, …)` **shape recognizer**, not a law
-/// reader: binary `Int` arrow → `Bind` → `Transform` → [`TransformTarget::Operator`] `+`, plus
-/// multiset equality of bind params vs transform operand ports, plus
-/// `infer::operator_resolves_via_surfaced_algebra` so `+` is not the `ArrowBody::Pending`
-/// operator fallback. The last conjunct is a **sanity check on operator resolution**, not D3
-/// associativity via sample evaluation.
-///
-/// **Dissolution:** same two-step receipt as `eval_algebraic_law_for_claim_program`: first read an
-/// Associativity witness off reflected `OrderedRing.add` (substrate), not operator inference; then
-/// D1/D3 lens application comparing `(a*b)*c` vs `a*(b*c)` — delete this recognizer when (1) and
-/// (2) land.
-fn declaration_shape_matches_ordered_ring_add_associativity_recognizer(
-    dag: &Dag,
-    decl: &Declaration,
-) -> bool {
-    let TypeConnective::Arrow {
-        inputs,
-        output,
-        body,
-    } = &decl.connective
-    else {
-        return false;
-    };
-    let Some(int_decl) = dag.declaration_by_name("Int") else {
-        return false;
-    };
-    let int_id = int_decl.id;
-    if inputs.len() != 2 || inputs[0] != int_id || inputs[1] != int_id || *output != int_id {
-        return false;
-    }
-    let ArrowBody::UserDefined(root) = body else {
-        return false;
-    };
-    let Behavior::Bind(bind) = dag.node(*root) else {
-        return false;
-    };
-    if bind.params.len() != 2 {
-        return false;
-    }
-    let Some(producer) = dag.resolve_producer_opt(&bind.value) else {
-        return false;
-    };
-    let Behavior::Transform(transform) = producer else {
-        return false;
-    };
-    let TransformTarget::Operator(op_kind) = &transform.target else {
-        return false;
-    };
-    if !matches!(op_kind, OperatorKind::Arithmetic(ArithmeticOp::Add)) {
-        return false;
-    }
-    if transform.inputs.len() != 2 {
-        return false;
-    }
-    if !infer::operator_resolves_via_surfaced_algebra(dag, *op_kind, int_id) {
-        return false;
-    }
-    same_port_id_multiset(&bind.params, &transform.inputs)
-}
-
-fn same_port_id_multiset(params: &[PortId], inputs: &[PortId]) -> bool {
-    if params.len() != inputs.len() {
-        return false;
-    }
-    let mut a: Vec<u32> = params.iter().map(|p| p.raw()).collect();
-    let mut b: Vec<u32> = inputs.iter().map(|p| p.raw()).collect();
-    a.sort_unstable();
-    b.sort_unstable();
-    a == b
-}
-
-#[cfg(test)]
-mod ordered_ring_add_associativity_recognizer_tests {
-    use super::*;
-    use crate::compile_to_dag;
-    use crate::CompileError;
-
-    #[test]
-    fn recognizer_rejects_duplicate_operand_a_plus_a() {
-        let source = "module t\nfn wrong(a: Int, b: Int) -> Int = a + a\n";
-        let dag = match compile_to_dag(source, "associativity_a_plus_a_receipt.dag") {
-            Ok(d) => d,
-            Err(CompileError::Semantic(d)) => panic!(
-                "unexpected semantic errors: {:?}",
-                d.diagnostics().iter().collect::<Vec<_>>()
-            ),
-            Err(e) => panic!("compile failed: {e:?}"),
-        };
-        assert!(
-            dag.diagnostics().is_empty(),
-            "fixture should compile cleanly"
-        );
-        let decl = dag
-            .declaration_by_name("wrong")
-            .expect("fixture should declare `wrong`");
-        assert!(
-            !declaration_shape_matches_ordered_ring_add_associativity_recognizer(&dag, decl),
-            "`a + a` must not satisfy the associativity gate witness (multiset of add operands vs bind params)"
-        );
     }
 }

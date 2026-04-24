@@ -16,6 +16,8 @@ mod bootstrap;
 #[cfg(test)]
 mod bug_sentinel_ratchet;
 #[cfg(test)]
+mod derive_bound_fail_closed_test;
+#[cfg(test)]
 mod diagnostics;
 #[cfg(test)]
 mod effects;

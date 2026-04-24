@@ -26,7 +26,7 @@ use std::collections::HashSet;
 
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, Field,
-    LiteralBits, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
+    LiteralBits, Lookup, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective,
 };
 use crate::diagnostics::{
@@ -39,7 +39,7 @@ use crate::infer_helpers::{
     push_template_argument_binding as generated_push_template_argument_binding,
     resolve_template_argument_value as generated_resolve_template_argument_value,
     template_argument_value as generated_template_argument_value, NormalizedInstantiationArgs,
-    TemplateArgumentBinding, TemplateArgumentLookup, TemplateArgumentsMatch,
+    TemplateArgumentBinding, TemplateArgumentsMatch,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
@@ -1487,8 +1487,8 @@ fn template_argument_value(
     parameter: DeclarationId,
 ) -> Option<DeclarationId> {
     match generated_template_argument_value(arguments, &parameter) {
-        TemplateArgumentLookup::FoundTemplateArgument { _0: value } => Some(value),
-        TemplateArgumentLookup::MissingTemplateArgument => None,
+        Lookup::Hit(value) => Some(value),
+        Lookup::Miss => None,
     }
 }
 
@@ -3685,26 +3685,6 @@ const WALK_DEPTH_LIMIT: usize = 32;
 /// with a `(T, T) -> T` / `(T, T) -> Bool` signature. The fallback
 /// is explicit about being a scaffold (see OperatorKind's
 /// dissolution receipt).
-///
-/// Returns `true` when `op_kind` on the refinement-stripped base type `lhs_base`
-/// resolves through a surfaced algebra `Conj` (e.g. `OrderedRing.add` for `Int`),
-/// i.e. `resolve_operator_arrow` returns a non-`ArrowBody::Pending` body.
-///
-/// **Crate-internal seam:** only `test_runner`'s `AlgebraicLaw` associativity recognizer calls
-/// this so that boundary shares one `resolve_operator_arrow` + `Pending` check with infer,
-/// without exporting `resolve_operator_arrow` from this module.
-pub(crate) fn operator_resolves_via_surfaced_algebra(
-    dag: &Dag,
-    op_kind: OperatorKind,
-    lhs_base: DeclarationId,
-) -> bool {
-    let lhs_type = TypeShape::new(lhs_base);
-    match resolve_operator_arrow(dag, op_kind, &lhs_type) {
-        Some(ra) => !matches!(ra.body, ArrowBody::Pending),
-        None => false,
-    }
-}
-
 fn resolve_operator_arrow(
     dag: &Dag,
     op_kind: OperatorKind,

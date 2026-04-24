@@ -155,12 +155,16 @@ pub fn proportional_divisor_to_int(d: Rc<ProportionalDivisor>) -> i64 {
     })
 }
 
+pub fn peano_literal_materialization_cap() -> i64 {
+    256
+}
+
 pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<Rc<PositiveDescentAmount>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (k.clone() <= 0) {
             None
         } else {
-            if (k.clone() > 256) {
+            if (k.clone() > peano_literal_materialization_cap()) {
                 None
             } else {
                 if (k.clone() == 1) {
@@ -183,7 +187,7 @@ pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<Rc<Proportio
         if (k.clone() < 2) {
             None
         } else {
-            if (k.clone() > 256) {
+            if (k.clone() > peano_literal_materialization_cap()) {
                 None
             } else {
                 if (k.clone() == 2) {

@@ -2527,55 +2527,14 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                           } else { SubValueUnknown }
                         _ => SubValueUnknown
                       }
-                    // mid + 1 or mid - 1: only Add/Sub with a literal integer RHS
+                    // Affine `mid ± literal` (e.g. `count(xs)/2 + 1`): a `ProportionalShrink` from
+                    // `mid`'s divisor alone cannot witness the additive term, its sign, or `take` vs
+                    // `skip` strictness — emitting `StrictSubValue` here was fail-open (Codex #726:
+                    // P3/P4). Fail closed until an affine / threshold shrink witness exists.
                     ExprBinOp { op: op, algebra_field: _ } =>
                       match op {
-                        Add =>
-                          let left = binop_left(texpr: arg_val)
-                          let right = binop_right(texpr: arg_val)
-                          let rhs_is_literal = match right.expr_data { ExprLiteral { value: LitInt { value: _ } } => true  _ => false }
-                          if rhs_is_literal {
-                            match left.expr_data {
-                              ExprVar { binding_kind: _ } =>
-                                let lname = expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices)
-                                match map_get(ctx.size_aliases, lname) {
-                                  Some { value: DividedSize { param: p, divisor: d } } =>
-                                    if p == param_name {
-                                      match proportional_divisor_from_int_at_least_two(k: d) {
-                                        Some { value: div_w } =>
-                                          let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
-                                          StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: div_w } }
-                                        None => SubValueUnknown
-                                      }
-                                    } else { SubValueUnknown }
-                                  _ => SubValueUnknown
-                                }
-                              _ => SubValueUnknown
-                            }
-                          } else { SubValueUnknown }
-                        Sub =>
-                          let left = binop_left(texpr: arg_val)
-                          let right = binop_right(texpr: arg_val)
-                          let rhs_is_literal = match right.expr_data { ExprLiteral { value: LitInt { value: _ } } => true  _ => false }
-                          if rhs_is_literal {
-                            match left.expr_data {
-                              ExprVar { binding_kind: _ } =>
-                                let lname = expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices)
-                                match map_get(ctx.size_aliases, lname) {
-                                  Some { value: DividedSize { param: p, divisor: d } } =>
-                                    if p == param_name {
-                                      match proportional_divisor_from_int_at_least_two(k: d) {
-                                        Some { value: div_w } =>
-                                          let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
-                                          StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: div_w } }
-                                        None => SubValueUnknown
-                                      }
-                                    } else { SubValueUnknown }
-                                  _ => SubValueUnknown
-                                }
-                              _ => SubValueUnknown
-                            }
-                          } else { SubValueUnknown }
+                        Add => SubValueUnknown
+                        Sub => SubValueUnknown
                         _ => SubValueUnknown
                       }
                     _ => SubValueUnknown
