@@ -199,16 +199,21 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [x] `user_authored_lens_compiles` gate (Day-1) passes
       (PR #679, merged 2026-04-24)
 - [x] `AlgebraicLaw` predicate runner evaluation wired
-      (PR #728, merged 2026-04-24 — `Associativity` resolves `lens_ref`,
-      compiles the claim program, and checks the canonical structural
-      witness)
+      (PR #728, merged 2026-04-24 — `Associativity` initial dispatch;
+      **dissolved by PR #741** — `declaration_is_binary_int_add_associativity_witness`
+      deleted, associativity now evaluates via D1 `int_associativity_holds_all_triples`
+      over the lens-application primitive)
 - [x] `lens_composition_associative` gate compiles + evaluates
-      (PR #728, merged 2026-04-24 — witness + `r1_gates.dag` suite)
-- [ ] `lens_output_is_queryable_data` gate compiles + evaluates
-      (PR #717 merged 2026-04-24 — dispatch + `DeclarationRef` resolution landed,
-      runner returns `NotYetImplemented(String)`; gate stays [ ] until T-LensAPI D1
-      lens-application primitive + D2 `eval_lens_output_equals` real apply/compare land.
-      D1 in flight as PR #741)
+      (PR #728, merged 2026-04-24 — witness + `r1_gates.dag` suite;
+      PR #741 swapped the Rust operator recognizer for D1 lens application)
+- [x] `lens_output_is_queryable_data` gate compiles + evaluates
+      (PR #741, merged 2026-04-24 — D1 `apply_lens_declaration` primitive
+      + D2 real `eval_lens_output_equals` apply/compare; bridge `compile_to_dag`
+      removed from the NYI path; `r1_lens_output_input_from_program` sentinel
+      reflects `Dag.nodes` until first-class `Dag` literals land.
+      Also closes ROADMAP "Scheduled cleanups: LensOutputEquals runner and
+      R1 gate fixtures" items 1–3: split fixture folded back into
+      `r1_gates.dag` via `r1_gates.template.dag` + `build.rs` splice)
 
 **Schema extensions owned here that other managers consume:**
 - [x] `ExecuteCommand` predicate (Surface T-Emit consumer) — landed PR #678
