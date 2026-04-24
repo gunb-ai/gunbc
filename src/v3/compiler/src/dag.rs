@@ -799,11 +799,7 @@ pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence 
 }
 
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
-    match evidence {
-        DescentEvidence::NonIncreasing => DescentEvidence::Strict,
-        DescentEvidence::Strict => DescentEvidence::Strict,
-        DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
-    }
+    evidence
 }
 
 pub fn optional_evidence_meet(

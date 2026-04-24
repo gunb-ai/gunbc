@@ -280,7 +280,7 @@ fn termination_lattice_rust_mirror_matches_dag_authority() {
     assert_eq!(join_evidence(NonIncreasing, NonIncreasing), NonIncreasing);
     assert_eq!(join_evidence(Strict, DescentUnknown), Strict);
 
-    assert_eq!(promote_to_strict(NonIncreasing), Strict);
+    assert_eq!(promote_to_strict(NonIncreasing), NonIncreasing);
     assert_eq!(promote_to_strict(Strict), Strict);
     assert_eq!(promote_to_strict(DescentUnknown), DescentUnknown);
 
