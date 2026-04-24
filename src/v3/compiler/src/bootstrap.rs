@@ -8,9 +8,10 @@
 // - `STAGED_FILES`   (`src/v3/std/*.dag`)
 // - `V3_SPECS`       (`src/v3/spec/*.dag`)
 // - `COMPILER_FILES` (`src/v3/compiler/*.dag`, minus `tokenize.dag`)
-// - `src/v3/lenses/named_function_count.dag` (user-authored lens; not in `regen.dag`)
-// - `src/v3/std/r1_gates.dag` (tail-appended after the staged batch so it loads
-//   after `verification.dag`; still listed in `STAGED_FILES` for `build.rs` discovery)
+// - `src/v3/lenses/named_function_count.dag` (user-authored lens; not in `regen.dag`;
+//   bundled via `include_str!` below — the only non-`STAGED_FILES` lens today)
+// - `src/v3/std/r1_gates.dag` load order (after `verification.dag`) is enforced in
+//   `build.rs` when generating `STAGED_FILES`, not here.
 //
 // `compile_parse_surface_std_authority_dag` uses the companion snapshot
 // that omits `src/v3/std/parse_surface.dag`, so a fresh parse+lower of
@@ -86,11 +87,6 @@ include!(concat!(env!("OUT_DIR"), "/v3_compiler_files.rs"));
 const NAMED_FUNCTION_COUNT_USER_LENS_DAG: &str =
     include_str!("../../lenses/named_function_count.dag");
 
-// `r1_gates.dag` must load **after** `verification.dag` (lexicographic
-// `src/v3/std/*.dag` order would load it too early). It is staged on disk for
-// reviewability but appended here after the rest of the bootstrap bundle.
-const R1_GATES_DAG: &str = include_str!("../../std/r1_gates.dag");
-
 const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
 
 fn declaration_name_preference_rank(file: &str) -> usize {
@@ -148,12 +144,10 @@ fn load_runtime_bootstrap_authorities(
     excluded_staged_paths: &[&str],
     excluded_compiler_paths: &[&str],
 ) {
-    const R1_GATES_STAGED_PATH: &str = "src/v3/std/r1_gates.dag";
     let staged_iter = STAGED_FILES
         .iter()
         .copied()
-        .filter(|(path, _)| !excluded_staged_paths.contains(path))
-        .filter(|(path, _)| *path != R1_GATES_STAGED_PATH);
+        .filter(|(path, _)| !excluded_staged_paths.contains(path));
     let compiler_iter = COMPILER_FILES
         .iter()
         .copied()
@@ -165,7 +159,6 @@ fn load_runtime_bootstrap_authorities(
             "src/v3/lenses/named_function_count.dag",
             NAMED_FUNCTION_COUNT_USER_LENS_DAG,
         )))
-        .chain(std::iter::once((R1_GATES_STAGED_PATH, R1_GATES_DAG)))
         .collect();
     load_fixtures(dag, &fixtures);
     materialize_pipeline_realizations(dag);

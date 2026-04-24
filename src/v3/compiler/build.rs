@@ -196,15 +196,32 @@ fn main() {
     // `substrate_minimal` + `effects` before full `substrate` so `substrate.dag`
     // can import `WorkflowEffect` for reflected `lane2_workflow` without a
     // module cycle (`effects` still needs `PortId` / list primitives first).
-    let staged_entries = collect_dag_entries(
-        &std_dir,
-        &[
-            "list.dag",
-            "substrate_minimal.dag",
-            "effects.dag",
-            "substrate.dag",
-        ],
-    );
+    let staged_entries = {
+        let staged_entries = collect_dag_entries(
+            &std_dir,
+            &[
+                "list.dag",
+                "substrate_minimal.dag",
+                "effects.dag",
+                "substrate.dag",
+            ],
+        );
+        // `r1_gates.dag` depends on `std.verification` (`TestClaim` / `TestPredicate`
+        // variants). Lexicographic staged order would load it before
+        // `verification.dag`. Move it to the tail of the staged bundle here so
+        // bootstrap load order stays a single `build.rs` authority (no parallel
+        // reorder in `bootstrap.rs`).
+        const R1_GATES_STAGED: &str = "r1_gates.dag";
+        let (mut staged_middle, r1_tail): (Vec<PathBuf>, Vec<PathBuf>) =
+            staged_entries.into_iter().partition(|p| {
+                p.file_name()
+                    .and_then(|s| s.to_str())
+                    .map(|n| n != R1_GATES_STAGED)
+                    .unwrap_or(true)
+            });
+        staged_middle.extend(r1_tail);
+        staged_middle
+    };
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
     let mut compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
     // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`; it is

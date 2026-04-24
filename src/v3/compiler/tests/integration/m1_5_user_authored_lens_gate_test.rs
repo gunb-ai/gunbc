@@ -10,6 +10,8 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;
 use v3_compiler::CompileError;
 
+/// Two tests share one `Dag::new()` clone — bootstrap is large enough that
+/// repeating a cold clone per `#[test]` is noticeable on integration binaries.
 fn bootstrapped_dag() -> &'static Dag {
     static DAG: OnceLock<Dag> = OnceLock::new();
     DAG.get_or_init(Dag::new)
@@ -60,7 +62,7 @@ fn r1_gates_dag_stages_against_bootstrap_snapshot() {
     let dag = bootstrapped_dag();
     assert!(
         dag.diagnostics().is_empty(),
-        "bootstrap should load `src/v3/std/r1_gates.dag` (tail-appended) with no diagnostics, got {:?}",
+        "bootstrap should load `src/v3/std/r1_gates.dag` (staged after `verification.dag` via `build.rs`) with no diagnostics, got {:?}",
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
     let gate = dag
