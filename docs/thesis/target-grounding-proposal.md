@@ -1,62 +1,118 @@
-# Target Grounding Proposal — Structural Coercion at the Realization Boundary
+# Target Grounding Proposal — Worked Examples and Implementation Scope for Structural Coercion
 
 > **Mode:** `PROPOSAL`
 
 ## Status of this proposal
 
-**Parallel to R1. Non-blocking.** This doc proposes an architecture
-change to the *realization-grounding* side of the two-groundings
-framework per `docs/thesis/two-groundings-static-validation-vs-efficient-realization.md`.
-R1 ships on the current (table-driven) realization design; this
-proposal describes the successor. Promotion to committed work
-requires a follow-up PR amending `THESIS.md` §"Correctness
-dimensions" / §"What falls out" to name the structural-coercion
-design as the target end-state.
+**Parallel to R1. Non-blocking. Concrete elaboration of prior design.**
 
-**Why surfacing now.** The current realization design is
-operationally correct and bootstrap-friendly, but the `carrier:
-String` field on `TypeRealization` is a mapping/lookup table —
-"checkpointing `.dag` models to known-good values." That's fair,
-but not in the spirit of the thesis, which says information
-becomes structure rather than declaration at every layer. Setting
-the standard up front — even as a proposal committed in-tree —
-makes the compiler's realization boundary match the rest of the
-epistemic stack.
+The architectural claim at the heart of this doc — that coercion at
+the realization boundary should dissolve from table-driven lookup
+(`TypeCheckpoint` / `InhabitantDecl` / `carrier: String`) into
+structural algebra-homomorphism matching — is **not new here**. It
+is committed design, authored in
+[`docs/single-emitter-design.md`](../single-emitter-design.md) (481
+lines). That doc is the **parent authority** for the dissolution
+track; its §"The Insight: Algebra Homomorphism, Not Lookup Tables"
+and §"What dissolves" are the source of record for the end state.
 
-## Current state referenced
+This proposal is the **concrete elaboration** layered on top of
+`single-emitter-design.md`:
 
-`[live]` — the current design is table-driven:
+- Five worked examples walking both sides of the coercion (Int64,
+  Bool, String, List<T>, Option<T>).
+- Six-layer scope partition of the implementation work.
+- Work estimate (~2–3 months; ~120–150 primitive declarations).
+- R1-era non-preclusion discipline.
+- Fail-closed tie-breaking semantics.
+- L4 verification split (consistency-by-construction vs. residual
+  routing-correctness differential).
+- Open design questions (tie-breaking, escape hatches, cross-type
+  coercion paths, failure diagnostics, interaction with DB-18 +
+  cardinality-substrate).
 
-- `TypeRealization` declared at `src/v3/std/emit_model.dag:15` —
-  carries `carrier: String` field.
-- Per-target spec files declare data:
-  `data rust_int: TypeRealization = { target: Int, carrier: "i64", ... }`
-  (`src/v3/spec/rust.dag:103`); same shape in `python.dag`,
-  `go.dag`.
-- Rust emitter at `src/v3/compiler/src/emit/rust_target.rs` reads
-  the table and pastes the `carrier` string.
-- The two-groundings doc explicitly scopes realization grounding as
-  "shallow — one hop to target primitive" and differentiates it
-  from the deep static grounding.
-- L4 verification — the consistency-check between the two
-  groundings — is listed as partial in
-  `docs/thesis/what-falls-out.md:33`.
+Promotion to committed work requires a follow-up PR amending
+`THESIS.md` §"Correctness dimensions" / §"What falls out" to
+reference this doc as the concrete path for `single-emitter-design.md`'s
+end state. The work-estimate table below is directional; a
+promotion PR pins the Rust/Python/Go primitive enumeration to
+actual declarations.
 
-## The proposal
+## Referenced authorities
+
+- **[`docs/single-emitter-design.md`](../single-emitter-design.md)**
+  — parent authority. "Coercion IS emission. Target types declare
+  algebraic identity; compiler finds homomorphism. `TypeCheckpoint`
+  and `InhabitantDecl` dissolve." Scheduled for dissolution under
+  ROADMAP Track 13 ("single-emitter"). Everything this proposal
+  describes is a concrete path toward the end state that doc
+  names.
+- **[`two-groundings-static-validation-vs-efficient-realization.md`](two-groundings-static-validation-vs-efficient-realization.md)**
+  — frames the deep-static vs shallow-realization asymmetry. This
+  proposal's L4-split section engages directly with that framing.
+- **[`correctness-dimensions.md`](correctness-dimensions.md)** +
+  **[`concept-unification.md`](concept-unification.md)** — source
+  of "coercion = emission; coercion cost = complexity." Relevant
+  to the "no separate coercion phase" discipline this proposal
+  preserves.
+- **[`coercion-design.md`](../coercion-design.md)** — bootstrap
+  design describing the manual scaffolding
+  (`TypeCheckpoint`/`InhabitantDecl`/`CallableRepr`/`CastSyntax`).
+  Accurate for the transitional state; its header-level status
+  note currently reads "Design sketch (no compiler changes)"
+  which is stale — the schema landed in `dsl/std/coercion.dag`.
+  That doc's content is the status-quo authority this proposal's
+  worked examples walk against.
+- **[`target-realization-efficiency.md`](target-realization-efficiency.md)**
+  and **[`what-falls-out.md`](what-falls-out.md)** — adjacent on
+  per-primitive realization cost and the L4-verification
+  completeness gap.
+- **[`../invariants/scaffold-boundaries.md`](../invariants/scaffold-boundaries.md)**
+  — governance authority on substrate scaffolds (must carry
+  dissolution trigger + unreachability gate). `TypeCheckpoint`/
+  `InhabitantDecl` are scaffolds under this rule; `single-emitter-design.md`
+  provides their dissolution path.
+- **[`../invariants/verifiability-invariant.md`](../invariants/verifiability-invariant.md)**
+  — adjacent on L4 verification; notes the weather.dag PoC and
+  the witness-generation gap.
+
+## What this proposal does NOT restate
+
+These are already authoritatively covered in `single-emitter-design.md`
+and are not re-argued here:
+
+- Why table-driven coercion is bootstrap scaffolding, not the end
+  state.
+- The "coercion IS emission" framing.
+- That `TypeCheckpoint`/`InhabitantDecl` dissolve in the end state.
+- That coercion cost should be complexity (no separate lattice).
+- The general thesis that target mapping falls out of algebraic
+  identity on both sides.
+
+Reading this proposal without reading `single-emitter-design.md`
+first will make the worked examples feel ungrounded. The worked
+examples are only meaningful in the context of the architectural
+claim that doc already establishes.
+
+## Scope of this proposal
 
 `[proposed]` — model target primitives structurally in `.dag`, the
 same way user types are modeled structurally, and let coercion at
 the realization boundary be a **structural inhabitance-search**
-rather than a table lookup.
+rather than a table lookup. This is the same architectural move
+`single-emitter-design.md` calls "Algebra Homomorphism, Not Lookup
+Tables" — here with concrete examples, layer partition, and work
+estimate.
 
-**Shape of the change:**
+**Shape of the change (concrete form of `single-emitter-design.md`'s §"What dissolves"):**
 
 - Target primitives get their own `.dag` models. For Rust, `i8`,
   `i16`, `i32`, `i64`, `i128`, `u*`, `f32`, `f64`, `bool`, `char`,
   `String`, `str`, `Vec<T>`, `[T; N]`, `&[T]`, `Option<T>`,
   `Result<T, E>` each get declared with their algebra + carrier +
   target-specific qualifiers (signedness, overflow behavior,
-  ownership, memory layout, ...).
+  ownership, memory layout, ...). Each declaration has the same
+  shape user types have.
 - The emitter no longer reads `carrier: "i64"` from a declaration.
   Given a user type, it searches the target's primitives for the
   **minimum-satisfying** primitive — the narrowest declared
@@ -68,6 +124,29 @@ rather than a table lookup.
 - Tests verify the routing is stable ("user's `Int64` resolves to
   Rust's `i64`, never `i128` or `Vec<Bit>`") rather than
   verifying behavior after the fact.
+
+## Current state referenced
+
+`[live]` — the bootstrap-scaffolding state this proposal's worked
+examples walk against (per `single-emitter-design.md`'s "current
+state" framing):
+
+- `TypeRealization` declared at `src/v3/std/emit_model.dag:15` —
+  carries `carrier: String` field.
+- `TypeCheckpoint`/`InhabitantDecl`/`CallableRepr`/`CastSyntax`
+  at `dsl/std/coercion.dag:38,59,77,98`.
+- Per-target spec files declare data:
+  `data rust_int: TypeRealization = { target: Int, carrier: "i64", ... }`
+  (`src/v3/spec/rust.dag:103`); same shape in `python.dag`,
+  `go.dag`.
+- Per-target coercion data in `dsl/extdeps/languages/{rust,python,go,dag}/types.dag`
+  instantiates the `TypeCheckpoint` / `InhabitantDecl` tables.
+- Rust emitter at `src/v3/compiler/src/emit/rust_target.rs` reads
+  the table and paste-renders via `render_named_template` at
+  `:1461` (15+ call sites).
+- L4 verification — the consistency-check between the two
+  groundings — listed as partial in
+  `docs/thesis/what-falls-out.md:33`.
 
 ## Six-layer scope
 
@@ -352,7 +431,14 @@ promotes to committed work:
   the cardinality-substrate landing, or can it ship first for
   non-cardinality-bearing types?
 
-## Relationship to the current design
+## L4 verification under structural coercion
+
+This section refines `single-emitter-design.md`'s claim that
+"coercion cost = complexity" and `what-falls-out.md:33`'s
+"coercion completeness = fail-closed inhabitant lookup" into what
+L4 verification specifically looks like once the dissolution lands.
+Parent authorities leave this deliberately underspecified; the
+refinement below is additive detail for the promotion PR.
 
 `[proposed]` — L4 verification (differential test of two
 groundings) in the current design conflates two concerns:
