@@ -777,8 +777,10 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
   let b = form.divisor
   let d = form.work_exponent
   let n = form.param
-  // Fail-closed: invalid inputs produce ErrorBound, not fabricated O(1)
-  if a < 1 || b < 2 || d < 0 { ErrorBound }
+  // Fail-closed: invalid inputs produce ErrorBound, not fabricated O(1).
+  // P4: reject `work_exponent` above the M9 literal-bridge ceiling (256) before any `b^d`
+  // work — aligns with `int_pow_bounded`'s exp cap / Peano materialization in `std.termination`.
+  if a < 1 || b < 2 || d < 0 || d > 256 { ErrorBound }
   else {
     match int_pow_bounded(base: b, exp: d) {
       None => ErrorBound

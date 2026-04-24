@@ -933,6 +933,17 @@ pub fn map_evidence_merge_at(
     base
 }
 
+// Continuation: Rust execution mirror for `src/v3/std/computation.dag` (Lane E-C).
+// Same staging contract as the termination mirror above (`ArrowBody::Unparsed` std bodies).
+// `m2_substrate_inhabitance_test::{computation_*}` pins carrier shape + lowering helpers.
+
+/// 🟡 SCAFFOLD — `SizeBound` coproduct (`docs/modeling-discipline.md` §4).
+///
+/// Authority: `src/v3/std/computation.dag`. Variant taxonomy is durable; `param: String` and
+/// other bootstrap bridges dissolve when size parameters become first-class substrate refs.
+/// **Named trigger:** evaluated `std.computation` std block bodies (same dissolution wave as
+/// the termination lattice mirror). **Ledger:** parity ratchet
+/// `m2_substrate_inhabitance_test::computation_size_bound_helpers_match_dag_authority`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SizeBound {
     CollectionSize { param: String },
@@ -946,6 +957,13 @@ pub fn tree_size_bound(param: String) -> SizeBound {
     SizeBound::TreeSize { param }
 }
 
+/// 🟡 SCAFFOLD — `CallPattern` coproduct (`docs/modeling-discipline.md` §4).
+///
+/// Authority: `src/v3/std/computation.dag`. Peano shrink payloads are proof-grade (terminal
+/// at witness shape); `String` slots + synthetic `lower_call_pattern` size labels dissolve
+/// with per-call provenance (E-P) and structural parameter refs. **Named trigger:** same as
+/// [`SizeBound`]. **Ledger:**
+/// `m2_substrate_inhabitance_test::computation_lowering_rust_mirror_matches_dag_authority`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallPattern {
     ChildAccessorCall { accessor: String },
@@ -958,6 +976,11 @@ pub enum CallPattern {
     SameArgumentCall,
 }
 
+/// 🟢 TERMINAL — `ShrinkFactor` coproduct (`docs/modeling-discipline.md` §4).
+///
+/// Authority: `src/v3/std/computation.dag`. Only unit / Peano constant / Peano proportional
+/// shrink — illegal rates stay unrepresentable at the carrier. **Ledger:** exercised through
+/// the same `m2_substrate_inhabitance_test` computation rows as [`CallPattern`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ShrinkFactor {
     UnitShrink,
@@ -965,6 +988,10 @@ pub enum ShrinkFactor {
     ProportionalShrink { divisor: ProportionalDivisor },
 }
 
+/// 🟢 TERMINAL — `IterationPrimitive` coproduct (`docs/modeling-discipline.md` §4).
+///
+/// Closed `{Fold, Descend, Repeat}` behavioral alphabet (MODELING.md M9). Authority:
+/// `src/v3/std/computation.dag`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IterationPrimitive {
     Fold,
@@ -1072,6 +1099,10 @@ pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
     }
 }
 
+/// 🟢 TERMINAL — `IterationDimension` coproduct (`docs/modeling-discipline.md` §4).
+///
+/// Three-way projection from kernel algebra profiles onto iteration regimes. Authority:
+/// `src/v3/std/computation.dag`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IterationDimension {
     TreeDescent,
@@ -1079,6 +1110,12 @@ pub enum IterationDimension {
     ArithmeticRepeat,
 }
 
+/// 🟡 SCAFFOLD — `AlgebraProfile` coproduct (`docs/modeling-discipline.md` §4).
+///
+/// Closed seven-variant mirror of `dsl/std/algebra.dag` `kernel_algebra_profile` while the
+/// table is still `ArrowBody::Unparsed`. **Named trigger:** evaluated std bodies / read the
+/// table from `.dag` (see [`kernel_algebra_profile`] below). **Ledger:** P2 ratchet
+/// `m2_substrate_inhabitance_test::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AlgebraProfile {
     OrderedRingProfile,
