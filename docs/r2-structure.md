@@ -51,7 +51,7 @@ Under that discipline, R2's goals are the Tier-1 thesis claims that are *not* ga
 
 ## Manager structure
 
-**2 standing managers + Director.** Count = concurrent critical paths (one per manager).
+**1 standing manager + Director.** Count = concurrent critical paths. R2 has one: Grounding's `Pilot → Rust → Engine → Tests → Dissolve`. All other R2 work (Goals 2–4) is parallel modeling-faithfulness / substrate / impossible-bug closure with no critical-path coordination pressure — Director dispatches workers directly against the shared fill queue.
 
 ### Grounding Manager
 
@@ -60,70 +60,61 @@ Continues `docs/briefs/grounding-manager.md` (refreshed for R2 scope on promotio
 - **Critical path:** T-Ground-Pilot → T-Ground-Rust → T-Ground-Engine → T-Ground-Tests → T-Ground-Dissolve (per `ROADMAP.md §"Post-R1 Grounding lanes"` — Rust is on the critical path because Engine blocks on layers 1–3 populated and Rust is the first layer-populating target).
 - **Fill queue:** T-Ground-Python, T-Ground-Go (2-way parallel after Pilot validates; run alongside Rust but are not gated by Engine-blocking).
 
-### Structural Close Manager
-
-New brief at `docs/briefs/r2-structural-close-manager.md` (to author on promotion). Consolidates former R1 Self-hosting + Substrate + Testgen-tail authorities. Naming rationale: scope covers E-family carrier port + substrate prereqs + modeling-faithfulness + shim floor + lens migration + testgen predicate wiring + impossible-bug class closure — "self-hosting" is accurate for only a subset, so "Structural Close" names the actual scope honestly.
-
-- **Critical path:** T-EFamilyClose (E-I finish → E-P → E-M) + §6a metadata pick.
-- **Fill queues** (all file-level or item-level parallel; any available worker picks top-priority unblocked):
-  - T-LensMigration (per-file parallel)
-  - T-ShimFloor (per-file parallel)
-  - T-Modeling (int-lit / Secret<T> / Dimensions — 3-way parallel; each blocks on its scoped-subset prereq in T-Substrate)
-  - T-Substrate (3 scoped-subset sub-lanes per Goal 5: cardinality-subset-for-int-lit; nominal-opaque-for-Secret; parametric-algebra-attachment-for-Dimensions — 3-way parallel; each sub-lane's close criterion is its paired T-Modeling unblock)
-  - T-ImpossibleBugs (3 remaining classes — sparse; fills when other fill queues are saturated)
-
 ### Director (ad-hoc)
 
-- R1 residual closure surveillance (none expected per all-gates-green closure criterion).
+- R1 residual closure surveillance (none expected per all-R1-gates-green closure criterion).
+- **R2 non-Grounding lane dispatch:** T-Modeling (Goal 2), T-Substrate (Goal 3), T-ImpossibleBugs (Goal 4). These are all parallel-capable — no critical path among them and no critical-path relationship to Grounding — so no standing manager is justified. Director picks top-priority unblocked work for any idle worker.
 - R2 demo coordination: surfaces "it runs" artifacts at each lane close to user.
-- Cross-manager dependency surfacing when critical paths block.
-- Weekly dependency health check: which lanes are within 1 step of unblocking? Which workers are on fill vs. ready? Are bottlenecks compounding?
+- Weekly dependency health check: which lanes are within 1 step of unblocking? Which workers are on fill vs. ready?
 
 ## Lane structure
 
 | Lane | Size | Manager | Covers |
 |---|---|---|---|
 | T-Ground | XL | Grounding | Full T-Ground-* sub-program (Goal 1) |
-| T-LensMigration | L | Structural Close | Every lens producer `.rs` → `.dag` (Goal 2) |
-| T-EFamilyClose | M | Structural Close | E-I finish + E-P + E-M + §6a (Goal 7) |
-| T-ShimFloor | M | Structural Close | T-PB-A non-lens reductions; T-PB-B outside-residual-zero (Goal 3) |
-| T-Modeling | M | Structural Close | int-lit / Secret<T> / Dimensions (Goal 4) |
-| T-Substrate | M | Structural Close | Three scoped-subset sub-lanes (Goal 5): cardinality-for-int-lit; nominal-opaque-for-Secret; parametric-algebra-attachment-for-Dimensions — each scoped to its paired T-Modeling unblock, not full substrate-capability |
-| T-ImpossibleBugs | S | Structural Close | nested-optional flatten / unhandled-diagnostic-paths / unenumerated-effects (Goal 6) |
+| T-Modeling | M | Director (ad-hoc) | int-lit / Secret<T> / Dimensions (Goal 2) |
+| T-Substrate | M | Director (ad-hoc) | Three scoped-subset sub-lanes (Goal 3): cardinality-for-int-lit; nominal-opaque-for-Secret; parametric-algebra-attachment-for-Dimensions — each scoped to its paired T-Modeling unblock, not full substrate-capability |
+| T-ImpossibleBugs | S | Director (ad-hoc) | nested-optional flatten / unhandled-diagnostic-paths / unenumerated-effects (Goal 4) |
 
-**Goal 8 (R2 closure demo) is not a lane.** It is a cross-lane closure discipline (see "Demo discipline" below): each lane's closure PR ships its own simple "it runs" artifact; Director coordinates surfacing. No separate T-Demo lane owner, no separate demo-authoring critical path.
+**Goal 5 (R2 closure demo) is not a lane.** It is a cross-lane closure discipline (see "Demo discipline" below): each lane's closure PR ships its own simple "it runs" artifact; Director coordinates surfacing. No separate T-Demo lane owner, no separate demo-authoring critical path.
+
+**Lanes deliberately absent (R1 gates, closed by R1 lane acceptance):**
+- T-LensMigration / `lens_producer_files_remaining` — R1 T-PB-A gate per PR #752.
+- T-ShimFloor / `pb_hand_rust_at_shim_floor` / `pb_compiler_std_ratchet_zero` / `pb_rust_tests_outside_residual_zero` — R1 T-PB-A + T-PB-B gates.
+- T-EFamilyClose — R1 T-LaneE's critical-path carrier work, enabling the R1 `complexity_merge_sort_is_nlogn` + `complexity_v3_matches_v2_oracle` gates.
+
+R2 does not re-own any of the above; under all-R1-gates-green R1 closure, those gates ARE the close conditions and R2 inherits nothing there.
 
 ## Dependency DAG
 
 ```
 T-Ground:         Pilot → Rust → Engine → Tests → Dissolve   (critical path)
                   Python, Go run parallel after Pilot (fill queue; not Engine-blocking)
-T-EFamilyClose:   E-I (in flight) → E-P → E-M → §6a pick
 T-Substrate:      cardinality-for-int-lit (subset) ──→ unblocks T-Modeling int-lit
                   nominal-opaque-for-Secret (subset) ─→ unblocks T-Modeling Secret<T>
                   parametric-algebra-for-Dimensions (subset) ─→ unblocks T-Modeling Dimensions
 T-Modeling:       int-lit      ← T-Substrate cardinality-for-int-lit
                   Secret<T>    ← T-Substrate nominal-opaque-for-Secret
                   Dimensions   ← T-Substrate parametric-algebra-for-Dimensions
-T-LensMigration:  per-file independent (any worker)
-T-ShimFloor:      per-file independent (any worker)
 T-ImpossibleBugs: 3 independent classes (any worker)
-(Goal 8 demo artifacts ship with each lane's closure PR — not a
+(Goal 5 demo artifacts ship with each lane's closure PR — not a
  separate dependency-DAG node; see Demo discipline section.)
 ```
 
-Parallel-capable work at any time ≥ N workers × fill-queue depth (5 fill queues on Structural Close Manager + 2 on Grounding).
+Parallel-capable work at any time: Grounding has 2 fill slots (Python, Go) alongside its critical path; Director dispatch has 3 T-Substrate sub-lanes + 3 T-Modeling items (each pair-blocked) + 3 T-ImpossibleBugs classes, for roughly 6–9 slots depending on T-Substrate unblock timing.
 
 ## R1 closure criteria
 
-**All R1 gates green.** R1 closes when all 9 lane gates named in `ROADMAP.md §"Lane acceptance — .dag gates"` evaluate green, including omni-emit (`emit_omni_demo_fixtures_green`). No director-defined subset-close. Rationale: consistent with anti-deferral stance — tail-shaped work closes before R1 declares done; R2 doesn't inherit R1 residuals.
+**All R1 gates green.** R1 closes when all 9 lane gates named in `ROADMAP.md §"Lane acceptance — .dag gates"` evaluate green, including omni-emit (`emit_omni_demo_fixtures_green`), the T-PB-A self-hosting gates (including `lens_producer_files_remaining` added via PR #752), the T-PB-B tests-as-data gates, and the T-LaneE complexity-lens gates (which ride on the E-family carrier-port chain). No director-defined subset-close.
+
+Rationale: consistent with anti-deferral stance — tail-shaped work closes before R1 declares done; R2 doesn't inherit R1 residuals. Consequence: R2 scope does NOT include Lens Purity by Construction, self-hosting shim-floor close, or E-family carrier closure — those are all R1 gate concerns, closed by R1's own acceptance criterion. R2 is free to focus on the thesis claims R1's gates don't cover.
 
 ## Transition mechanics
 
 1. **R1 gates green** → Director declares R1 closed.
 2. **R1 residual sweep** — every open R1 ledger row gets an R1-or-R2 assignment. No orphaning. Done in the R1 closure PR. Expected to be short under all-gates-green criterion.
-3. **Manager dissolution** — R1 Surface Manager archives (closure banner); R1 Testgen Manager archives (scope folds into Structural Close); R1 Substrate Manager archives (E-family folds into Structural Close); R1 Self-hosting Manager expands and renames to Structural Close Manager.
-4. **R2 open** — this doc promotes to `ROADMAP.md` as `## Release R2 Program` section. `docs/briefs/r2-structural-close-manager.md` authored. `docs/briefs/grounding-manager.md` refreshed for R2 scope.
+3. **Manager dissolution** — all R1 standing managers (Surface, Substrate, Testgen, Self-hosting) archive with closure banners. Their scopes are fully absorbed by R1's gate acceptance; no inheritance into R2 managers. Grounding Manager remains, refreshed for R2 scope.
+4. **R2 open** — this doc promotes to `ROADMAP.md` as `## Release R2 Program` section. `docs/briefs/grounding-manager.md` refreshed for R2 scope. No new manager briefs authored (Director dispatches T-Modeling / T-Substrate / T-ImpossibleBugs directly; no Structural Close Manager).
 
 ## Demo discipline — visibility as structural requirement
 
@@ -139,11 +130,12 @@ Purpose: proof-of-work visibility at director cadence. Without it, program slips
 
 ## Decisions locked
 
-- **Goal 4 in R2** (not R3+). Anti-deferral principle: dissolution directions are named and clear for all three items (int-lit via concept-layer magnitude decoupling; `Secret<T>` via nominal-opaque; Dimensions via phantom-parameter algebra attachment), so deferral would be scope-theater. Director's initial "defer to R3+" counter reviewed and conceded post-reframe.
-- **R1 closure criteria = all-gates-green**. Same anti-deferral principle applied to omni-emit.
+- **Modeling-faithfulness (Goal 2) in R2** (not R3+). Anti-deferral principle: dissolution directions are named and clear for all three items (int-lit via concept-layer magnitude decoupling; `Secret<T>` via nominal-opaque; Dimensions via phantom-parameter algebra attachment), so deferral would be scope-theater. Director's initial "defer to R3+" counter reviewed and conceded post-reframe.
+- **R1 closure criteria = all-gates-green**. Same anti-deferral principle applied to omni-emit. **This decision is load-bearing for R2 scope**: by closing all R1 gates in R1 (including T-PB-A / T-PB-B self-hosting gates + T-LaneE complexity-lens gates), R2 is released from owning those concerns. R2 is what's left after R1's full close.
+- **Gate-ownership single authority = ROADMAP `§"Lane acceptance — .dag gates"`**. R2 does not re-own gates assigned to R1 lanes. If a concern is R1-gated, it closes in R1. (Release-authority blocking review on sha `6fdd8341` / `24bc0027e` surfaced this; the rewrite landed on sha `[TBD]` removed goals that duplicated R1 gate ownership.)
 - **Demo cadence = gate-close natural rhythm**. Simple artifact per close; no time-based schedule.
-- **Manager count = 2 + Director**. Adjustable to 3 mid-R2 if Structural Close fill-queue depth becomes unmanageable (naming for a hypothetical third: "Modeling Manager" — would take T-Modeling + T-Substrate + T-ImpossibleBugs).
-- **R2 includes substrate prereqs explicitly** per user's (i)-over-(ii) preference (honest scope over tight scope), with **scoped acceptance criteria** per Director refinement (each sub-lane closes on unblock of its paired Goal 4 item; full substrate-capability lanes are not R2-committed).
+- **Manager count = 1 + Director.** One standing manager (Grounding) matches R2's single critical path. T-Modeling / T-Substrate / T-ImpossibleBugs are parallel-capable with no critical-path coordination pressure; Director dispatches directly. Adjustable upward if parallel fill-queue depth becomes unmanageable in practice.
+- **R2 includes substrate prereqs explicitly** per user's (i)-over-(ii) preference (honest scope over tight scope), with **scoped acceptance criteria** per Director refinement (each sub-lane closes on unblock of its paired Goal 2 item; full substrate-capability lanes are not R2-committed).
 - **Anti-deferral principle is the frame, not velocity numbers.** Per Director observation: 16-hour R1 execution was a peak-day sample, not a baseline. The principle "if dissolution direction is clear and named, deferral is problem-finding not problem-solving" is what survives cadence shifts.
 
 ## Open calls
@@ -174,6 +166,20 @@ THESIS authority (`THESIS.md:155-182`) lists:
 
 **Not done in this PR** because the PR is scope-setting and the coverage audit is a sibling deliverable; both land as prerequisites to the `## Release R2 Program` ROADMAP section.
 
+### 3. Pre-promotion `≤5 irreducible-shim` gate-name review (gate before ROADMAP promotion)
+
+Surfaced by user question on 2026-04-24: the "≤5 irreducible-shim" floor in `docs/design-pure-bootstrap.md` is framed as a principled target but is actually a generous ceiling. The doc itself names the narrower case: *"If (4) and (5) can be generated, the shim is 3 files"* (§"Irreducible shim (target state)") — and v2 achieves the floor with 2 files (CLI + interpreter). The principled boundary floor is 2–3, not 5.
+
+"≤5" reads as a principled absolute in gate names (e.g., `pb_hand_rust_at_shim_floor`) when it's really an upper bound carried for continuity with the 2024 design doc. Leaving the number unchallenged risks the "close-everything" claim of R2 resting on a shim-floor number that's looser than the principled floor.
+
+**Required before promotion:** one of —
+- **Option A (sharpen-and-keep)** — edit `design-pure-bootstrap.md` to explicitly name the trajectory (`baseline → ~20 → 5 → 3 → 2`); keep `≤5` as the gate name but document that the principled boundary-determined floor is 2–3; promote R2 structure as-is.
+- **Option B (rename)** — rename the gate to `pb_hand_rust_at_boundary_floor` (threshold = boundary-determined, not a fixed number); land the doc edit + gate rename together; promote R2 structure after rename lands.
+
+Authority: `docs/design-pure-bootstrap.md` §"Irreducible shim (target state)"; v2 empirical evidence (CLI + interpreter = 2 files per the same doc's "Inspiration: v2's model" section).
+
+Non-blocking for this PR. Not done in this PR because the gate rename is a cross-doc edit with R1-lane-acceptance implications (T-PB-A's gate name would change); both land as prerequisites to the ROADMAP promotion.
+
 ## Cross-refs
 
 - Parent: `ROADMAP.md` (sections: `## Release R1 Program`; `## Post-R1 Program — Grounding Completeness`; `## Tracked debts — 2026-04 analyses`).
@@ -182,4 +188,4 @@ THESIS authority (`THESIS.md:155-182`) lists:
 - Thesis: `THESIS.md §"Enumerable impossible-bug classes"` (R2+ tags authority); `THESIS.md §"Thesis claims — complete list"` (Tier-1 claim lineage).
 - Lens capability: `docs/v3-lens-capability-register.md` (per-lens capability tracking).
 - DB history: `docs/db-history/db-18.md` (DB-18 Part-2 shipped: workflow-effect carrier + Rust reflection; Part-3 queued: Go accessor). Note: `ROADMAP.md §"Post-R1 Program — Grounding Completeness"` tags "DB-18 parametric algebra attachment" as a post-R1 blocker; that label is not obviously aligned with db-history's DB-18 scope — a pre-promotion rename or new DB number may be warranted for the R2 parametric-algebra prereq.
-- Related PRs: #745 (P4 int-literal row — substrate motivation for T-Modeling), #752 (T-PB-A lens-producer priority slice — substrate motivation for T-LensMigration gate).
+- Related PRs: #745 (P4 int-literal row — substrate motivation for T-Modeling), #752 (T-PB-A lens-producer priority slice — R1 gate, not R2).
