@@ -154,7 +154,7 @@ landed predicates) plus the Post-R2 Rust residuals.
   ("Identify and scope the two TESTING.md residual categories
   per-test") — the G list is the **complement** of that residual
   plus the D bucket.
-- Testgen manager decides sequencing of the seven shapes against
+- Testgen manager decides sequencing of the six live shapes against
   `MockBackedInvariant` (in-review) and `AlgebraicLaw` runner
   evaluation already on their working list.
 - No Rust deletion, no `.dag` drafting against these shapes until
