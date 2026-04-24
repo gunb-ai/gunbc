@@ -10,11 +10,16 @@ becomes the live dispatch authority for the lane.
 ## Orient before reading
 
 - **R2 structure authority:** [`docs/r2-structure.md`](../r2-structure.md)
-  (in PROPOSAL mode at PR #754). Names this manager as one of
-  two R2 standing managers (alongside R2 Structural Close
-  Manager) and locates the T-Ground lane within the R2 program.
-  On promotion, the authoritative section becomes
-  `ROADMAP.md §"Release R2 Program"`.
+  (currently committed to main via PR #754 + amendments via
+  PR #758, still in PROPOSAL mode until R1 closes and it
+  promotes to ROADMAP). Names this manager as **R2's single
+  standing manager alongside Director**. Director dispatches
+  T-Modeling / T-Substrate / T-ImpossibleBugs /
+  T-PerMethodMetadata ad-hoc; no second standing manager.
+  T-LensMigration / T-ShimFloor / T-EFamilyClose are **R1 gates,
+  not R2 lanes** per the r2-structure.md "Lanes deliberately
+  absent" section. On promotion, the authoritative section
+  becomes `ROADMAP.md §"Release R2 Program"`.
 - **Program scope authority:** [`ROADMAP.md`](../../ROADMAP.md)
   §"Post-R1 Program — Grounding Completeness" (`:149`+) — lane
   list, acceptance gates, dependencies. Promotes into R2 lane
@@ -168,37 +173,43 @@ table-driven scaffolding in a single Track 13 PR.
 
 ## Hand-off points
 
-R2 manager structure is **2 standing managers + Director** per
+R2 manager structure is **1 standing manager + Director** per
 [`docs/r2-structure.md`](../r2-structure.md). R1's Surface /
 Testgen / Substrate / Self-hosting / Release managers archive on
-R1 close; their emit-pipeline, testgen-runner, and substrate-
-capability responsibilities fold into R2 Structural Close
-Manager or Director ad-hoc dispatch.
+R1 close; T-LensMigration / T-ShimFloor / T-EFamilyClose carrier
+work closes in R1, not R2. Director dispatches R2's remaining
+work (T-Modeling, T-Substrate, T-ImpossibleBugs, §6a
+per-method-metadata residual) ad-hoc rather than through a second
+standing manager. Grounding's cross-manager handoffs therefore
+route exclusively to Director.
 
-- **Sideways to R2 Structural Close Manager.** Owns T-EFamilyClose,
-  T-ShimFloor, T-Modeling, T-Substrate (substrate prereq sub-lanes),
-  T-LensMigration, T-ImpossibleBugs. The emit-pipeline boundary
-  Grounding's engine touches is Structural Close territory post-R1
-  (formerly Surface Manager T-Emit). Coordinate on:
-  - Emit-pipeline changes that Grounding's engine requires
-    (replacing the declared-carrier read path).
-  - Substrate-capability sub-lanes Grounding blocks on — each is
-    scoped in R2 T-Substrate to unblock a paired T-Modeling item,
-    not full substrate-capability close (see R2 proposal Goal 5).
-    Grounding's T-Ground-Rust / -Python / -Go block similarly on
-    cardinality-substrate + DB-11 closure; schedule-shift flags
-    route through Structural Close Manager.
-- **Sideways to Director.** The `TestClaim` runner Grounding's
-  T-Ground-Tests lane depends on is no longer a standing-manager
-  authority in R2 (R1 Testgen Manager archives on R1 close). New
-  `TestClaim` variants (routing-stability, L4 witness-based
-  certification) that require predicate schema extensions route
-  to Director for ad-hoc dispatch; Director picks worker capacity
-  per R2 transition mechanics.
-- **Up to director.** Substrate-capability claims this program
-  relies on (DB-11 closure, cardinality-substrate, optionally the
-  parametric-algebra-attachment in R2 T-Substrate). Schedule-
-  shift or scope-change flags route via director.
+- **Sideways / up to Director — emit-pipeline boundary.**
+  Grounding's engine work (T-Ground-Engine) replaces the
+  declared-carrier read path through the emit pipeline. The
+  emit-pipeline surface itself is closed by R1 T-Emit; any
+  engine-driven change that requires emit-pipeline amendment
+  after R1 close routes via Director for ad-hoc dispatch. Flag
+  early rather than absorbing emit-pipeline work into
+  T-Ground-Engine.
+- **Sideways / up to Director — substrate-capability overlap.**
+  Grounding's T-Ground-Rust / -Python / -Go lanes depend on
+  cardinality-substrate + DB-11 closure for full-reference
+  coverage. R2's T-Substrate sub-lanes (dispatched by Director
+  ad-hoc) are **scoped to T-Modeling unblocks only**, not full
+  substrate-capability completion. If Grounding needs broader
+  substrate work than T-Substrate's scoped acceptance covers,
+  surface that as a substrate scope-creep flag to Director
+  rather than silently expanding T-Substrate scope.
+- **Sideways / up to Director — testgen predicate extensions.**
+  The `TestClaim` runner Grounding's T-Ground-Tests lane depends
+  on is no longer a standing-manager authority in R2 (R1 Testgen
+  Manager archives on R1 close). New `TestClaim` variants
+  (routing-stability, L4 witness-based certification) that
+  require predicate schema extensions beyond R1's shipped set
+  route to Director for ad-hoc dispatch.
+- **Up to director.** Substrate-capability schedule-shift flags
+  (DB-11, cardinality-substrate, parametric-algebra-attachment
+  subset). Grounding's timeline is partly determined by theirs.
 - **Up to director.** If pilot surfaces a class of problems
   suggesting the proposal's architecture needs amendment (e.g.,
   minimum-satisfier discipline produces ambiguous choices faster

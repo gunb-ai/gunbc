@@ -184,10 +184,14 @@ Program` section in `ROADMAP.md`, this Staffing set section
 refactors into an R2 Director brief. The five R1 manager briefs
 archive with closure banners; their files remain in-tree as
 historical references but are no longer read as staffing
-authority. The R2 staffing targets become the Structural Close
-Manager brief (to be authored on promotion) and the refreshed
-Grounding Manager brief at
-[`docs/briefs/grounding-manager.md`](grounding-manager.md).
+authority. Per `docs/r2-structure.md`, R2 has **one** standing
+manager (Grounding) plus Director; no Structural Close Manager
+is authored. The R2 staffing target is the refreshed Grounding
+Manager brief at
+[`docs/briefs/grounding-manager.md`](grounding-manager.md);
+T-Modeling / T-Substrate / T-ImpossibleBugs /
+T-PerMethodMetadata dispatch directly from Director per
+r2-structure.md transition mechanics.
 
 ## Notes and open items
 
