@@ -26,7 +26,7 @@ let val_name =
 
 Same false authority in two places: production `.dag` and test scaffolding.
 
-Also per INVARIANTS.md: "No fabrication sentinels (`__BUG_*`, `__EMIT_BUG_*`). Missing facts are compile-time errors, not runtime strings."
+Also per `INVARIANTS.md#c-8`: no fabrication sentinels (`__BUG_*`, `__EMIT_BUG_*`). Missing facts are compile-time errors, not runtime strings.
 
 ## Read first
 
@@ -34,7 +34,7 @@ Also per INVARIANTS.md: "No fabrication sentinels (`__BUG_*`, `__EMIT_BUG_*`). M
 - `dsl/std/types.dag:115-119` — the sentinel site
 - `src/v2/tests/src/compiler-tests.rs:2320-2400` — the test-side duplicate
 - Any other call site of `container_param_name_required` (`grep -rn "container_param_name_required"`)
-- INVARIANTS.md §C-8 (fail-closed) and §"No fabrication sentinels"
+- `INVARIANTS.md#c-8` (fail-closed) and `INVARIANTS.md#p3-fail-closed` (no fabricated plausible output)
 
 ## Work
 
@@ -46,7 +46,7 @@ Also per INVARIANTS.md: "No fabrication sentinels (`__BUG_*`, `__EMIT_BUG_*`). M
    - `compiler-tests.rs:2350-2354` uses `unwrap_or("__BUG_NO_PROFILE_Map")`. If the test is testing that `container_param_name("Map", 0)` returns a non-None value, then `unwrap_or` is the wrong primitive — use `expect("...")` with a real error message, or `unwrap()` if the test is asserting presence.
    - Grep the whole repo for `__BUG_NO_PROFILE_` and `__BUG_` — list every occurrence, confirm none survives post-cleanup.
 3. **Add a ratchet** that greps source for the sentinel prefix and fails if any survives. Prevents reintroduction. Small, one-line test or a CI check.
-4. **Grep for related sentinel classes** — per INVARIANTS.md: `__BUG_*`, `__EMIT_BUG_*`, anything string-namespaced with an underscore-underscore prefix. List + triage. If any other sentinels are found, flag as a followup lane; this PR focuses on `__BUG_NO_PROFILE_`.
+4. **Grep for related sentinel classes** — per `INVARIANTS.md#p3-fail-closed`: `__BUG_*`, `__EMIT_BUG_*`, anything string-namespaced with an underscore-underscore prefix. List + triage. If any other sentinels are found, flag as a followup lane; this PR focuses on `__BUG_NO_PROFILE_`.
 
 ## Acceptance
 
