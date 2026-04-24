@@ -3685,6 +3685,25 @@ const WALK_DEPTH_LIMIT: usize = 32;
 /// with a `(T, T) -> T` / `(T, T) -> Bool` signature. The fallback
 /// is explicit about being a scaffold (see OperatorKind's
 /// dissolution receipt).
+///
+/// Returns `true` when `op_kind` on the refinement-stripped base type `lhs_base`
+/// resolves through a surfaced algebra `Conj` (e.g. `OrderedRing.add` for `Int`),
+/// i.e. `resolve_operator_arrow` returns a non-`ArrowBody::Pending` body.
+/// Used by `test_runner` for `AlgebraicLaw::Associativity` so the witness is
+/// grounded in the same algebra walk as inference/emit, not a parallel operator
+/// recognizer.
+pub(crate) fn operator_resolves_via_surfaced_algebra(
+    dag: &Dag,
+    op_kind: OperatorKind,
+    lhs_base: DeclarationId,
+) -> bool {
+    let lhs_type = TypeShape::new(lhs_base);
+    match resolve_operator_arrow(dag, op_kind, &lhs_type) {
+        Some(ra) => !matches!(ra.body, ArrowBody::Pending),
+        None => false,
+    }
+}
+
 fn resolve_operator_arrow(
     dag: &Dag,
     op_kind: OperatorKind,

@@ -3,6 +3,7 @@ use crate::dag::{
     OperatorKind, PortId, PortState, TransformTarget, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
+use crate::infer;
 use crate::lens_cost::{cost_of, CostLookup};
 use crate::{compile_to_dag, CompileError};
 
@@ -32,17 +33,13 @@ pub enum AlgebraicLawProgramError {
 
 /// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
 ///
-/// Today only `Associativity` is supported, and only for the canonical
-/// `fn <name>(a: Int, b: Int) -> Int = a + b` witness shape used by the
-/// `lens_composition_associative` R1 gate. `lens_ref` is a [`FieldValue::Reference`]
-/// into `fixture_dag`; the runner resolves the **name** and looks up the same
-/// name in `program_dag`.
-///
-/// **Modeling debt (P1):** associativity is recognized by structural pattern match on
-/// `TransformTarget::Operator(Arithmetic(Add))`, not by reading an `OrderedRing` witness
-/// from the substrate. **Dissolution:** delete `declaration_is_binary_int_add_associativity_witness`
-/// once `AlgebraicLaw` evaluation consumes algebra / law facts from surfaced `.dag`
-/// (e.g. reflected `OrderedRing` evidence) instead of this bounded Rust recognizer.
+/// Today only `Associativity` is supported, and only for a binary `Int` arrow whose
+/// body is `+` **resolved through surfaced algebra** (`Int`'s `Declaration.inhabits` walk
+/// to `OrderedRing.add` using the same `resolve_operator_arrow` path as operator inference),
+/// matching the
+/// `lens_composition_associative` R1 gate witness. `lens_ref` is a [`FieldValue::Reference`]
+/// into `fixture_dag`; the runner resolves the **name** and looks up the same name in
+/// `program_dag`.
 pub fn eval_algebraic_law_for_claim_program(
     fixture_dag: &Dag,
     program_dag: &Dag,
@@ -62,7 +59,7 @@ pub fn eval_algebraic_law_for_claim_program(
     let Some(target) = program_dag.declaration_by_name(&lens_name) else {
         return Ok(false);
     };
-    Ok(declaration_is_binary_int_add_associativity_witness(
+    Ok(declaration_is_ordered_ring_add_associativity_witness(
         program_dag,
         target,
     ))
@@ -393,7 +390,7 @@ impl<'a> TestRunner<'a> {
         match eval_algebraic_law_for_claim_program(self.dag, &program_dag, payload) {
             Ok(true) => ClaimResult::Pass,
             Ok(false) => ClaimResult::Fail(
-                "AlgebraicLaw associativity witness not satisfied (expected binary Int `+`)"
+                "AlgebraicLaw associativity witness not satisfied (expected Int `+` via OrderedRing.add / surfaced algebra)"
                     .to_string(),
             ),
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => ClaimResult::Fail(message),
@@ -762,11 +759,11 @@ fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, Algebra
     }
 }
 
-/// Bounded scaffold: proves the named declaration is binary `Int` addition at the L1
-/// operator edge. **Dissolution:** remove this helper when `AlgebraicLaw` reads law
-/// witnesses from the substrate (same trigger as the modeling note on
-/// `eval_algebraic_law_for_claim_program`); do not grow new ad-hoc operator recognizers here.
-fn declaration_is_binary_int_add_associativity_witness(dag: &Dag, decl: &Declaration) -> bool {
+/// `AlgebraicLaw(Associativity, …)` witness: binary `Int` arrow whose value applies `+`
+/// lowered as [`TransformTarget::Operator`], with `+` dispatched through the same
+/// algebra `Conj` walk as inference ([`infer::operator_resolves_via_surfaced_algebra`]) —
+/// not a freestanding `OperatorKind` shape check alone.
+fn declaration_is_ordered_ring_add_associativity_witness(dag: &Dag, decl: &Declaration) -> bool {
     let TypeConnective::Arrow {
         inputs,
         output,
@@ -797,19 +794,22 @@ fn declaration_is_binary_int_add_associativity_witness(dag: &Dag, decl: &Declara
     let Behavior::Transform(transform) = producer else {
         return false;
     };
-    if !matches!(
-        transform.target,
-        TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add))
-    ) {
+    let TransformTarget::Operator(op_kind) = &transform.target else {
+        return false;
+    };
+    if !matches!(op_kind, OperatorKind::Arithmetic(ArithmeticOp::Add)) {
         return false;
     }
     if transform.inputs.len() != 2 {
         return false;
     }
-    same_port_id_set(&bind.params, &transform.inputs)
+    if !infer::operator_resolves_via_surfaced_algebra(dag, *op_kind, int_id) {
+        return false;
+    }
+    same_port_id_multiset(&bind.params, &transform.inputs)
 }
 
-fn same_port_id_set(params: &[PortId], inputs: &[PortId]) -> bool {
+fn same_port_id_multiset(params: &[PortId], inputs: &[PortId]) -> bool {
     if params.len() != inputs.len() {
         return false;
     }
