@@ -55,6 +55,10 @@ import std.types { Int }
 //   - `src/v3/lenses/complexity.dag` — `cost_of` and helpers return `Lookup<Int>`;
 //   - `src/v3/lenses/cost.dag` — `symbolic_cost_of` and helpers return
 //     `Lookup<SymbolicCost>`;
+//   - `src/v3/lenses/infer_helpers.dag` — `template_argument_value` →
+//     `Lookup<DeclarationId>` (monomorphized constructors live in
+//     `std.substrate` — same split as `SymbolicCost` in `std.algebra`, keeps
+//     this module free of declaration-identity imports);
 //   - `src/v3/compiler/src/lens_cost_generated.rs` and
 //     `src/v3/compiler/src/lens_cost_symbolic_generated.rs` — `regen_lens` /
 //     `emit_rust_module` output; the compiler includes these modules and

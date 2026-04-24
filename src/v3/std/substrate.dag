@@ -5,6 +5,7 @@ import v3.std.substrate_minimal {
   NodeId, PortId, DeclarationId, ClusterId, NonEmptyList, NonSingletonList
 }
 import std.effects { WorkflowEffect }
+import v3.std.lookup { Lookup }
 
 type TypeShape {
   declaration: DeclarationId
@@ -382,4 +383,16 @@ fn declaration_by_id(d: Dag, id: DeclarationId) -> Declaration? {
 // side). Target emitters map this accessor via `SubstrateAccessorBinding`.
 fn lane2_workflow_at(d: Dag, id: NodeId) -> WorkflowEffect? {
   host lane2_workflow_effect_at
+}
+
+// `Lookup<DeclarationId>` monomorphized constructors (same shim story as
+// `miss_int_lookup` in `v3.std.lookup` and `miss_symbolic_cost_lookup` in
+// `std.algebra`). Lives here so `infer_helpers.dag` can call them via
+// `std.substrate` without `std.lookup` importing declaration identity types.
+fn miss_declaration_id_lookup() -> Lookup<DeclarationId> {
+  Miss
+}
+
+fn hit_declaration_id_lookup(id: DeclarationId) -> Lookup<DeclarationId> {
+  Hit(id)
 }
