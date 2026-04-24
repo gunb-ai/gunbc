@@ -965,6 +965,12 @@ pub enum ShrinkFactor {
     ProportionalShrink { divisor: ProportionalDivisor },
 }
 
+/// 🟢 TERMINAL at E-I inductive-shape scope.
+///
+/// Runtime mirror of `std.induction::RecursionShape`: the closed partition of
+/// recursive field wrappers in the .dag language. This mirrors the `.dag`
+/// classification directly; adding a new recursive container type requires a
+/// new authoritative `.dag` variant and matching mirror/test update.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RecursionShape {
     DirectRecursion,
