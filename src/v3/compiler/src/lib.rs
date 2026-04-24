@@ -114,9 +114,9 @@ pub mod parse_tables {
 /// hand-written implementation on this crate side.
 ///
 /// L-8 compliance: `cost_of` returns the typed `v3.std.lookup::Lookup<Int>`
-/// carrier, projected in Rust as [`CostLookup`](crate::dag::Lookup) =
-/// `Lookup<i64>` (`Miss | Hit(Int)`). Callers pattern-match on the
-/// variant rather than receiving a panicked-collapsed `usize`.
+/// carrier, projected in Rust as `CostLookup` (`Lookup<i64>`, i.e. `Miss` |
+/// `Hit(Int)`). Callers pattern-match on the variant rather than receiving a
+/// panicked-collapsed `usize`.
 pub mod lens_cost {
     #[allow(
         dead_code,
@@ -125,9 +125,13 @@ pub mod lens_cost {
         unused_variables,
         clippy::clone_on_copy,
         clippy::collapsible_else_if,
+        clippy::double_parens,
         clippy::large_enum_variant
     )]
     mod generated {
+        // Regen can emit a redundant paren around some `Hit(...)` payload
+        // subexpressions (`Hit((1 + n))` vs `Hit(1 + n)`) — relax until emission
+        // drops one stable layer of grouping.
         use crate::dag::*;
         use crate::diagnostics::*;
 

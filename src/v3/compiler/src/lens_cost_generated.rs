@@ -46,7 +46,7 @@ pub fn param_entries(p0: &[PortId]) -> Vec<CostEntry> {
                 0,
                 CostEntry {
                     port: (*(__list_head)),
-                    cost: Lookup::Hit(&(0)),
+                    cost: Lookup::Hit(0),
                 },
             );
             __list
@@ -57,7 +57,7 @@ pub fn entry_for(p0: &[CostEntry], p1: &Behavior) -> CostEntry {
     match p1 {
         Behavior::Value(v) => CostEntry {
             port: (v).result_port(),
-            cost: Lookup::Hit(&(0)),
+            cost: Lookup::Hit(0),
         },
         Behavior::Transform(t) => CostEntry {
             port: (t).result_port(),
@@ -88,19 +88,17 @@ pub fn entry_for(p0: &[CostEntry], p1: &Behavior) -> CostEntry {
     }
 }
 pub fn sum_costs(p0: &[CostEntry], p1: &[PortId]) -> Lookup<i64> {
-    (p1).iter()
-        .fold(Lookup::Hit(&(0)), |__fold_acc, __fold_item| {
-            add_cost(&__fold_acc, &(lookup_cost(p0, __fold_item)))
-        })
+    (p1).iter().fold(Lookup::Hit(0), |__fold_acc, __fold_item| {
+        add_cost(&__fold_acc, &(lookup_cost(p0, __fold_item)))
+    })
 }
 pub fn max_path_cost(p0: &[CostEntry], p1: &[Path]) -> Lookup<i64> {
-    (p1).iter()
-        .fold(Lookup::Hit(&(0)), |__fold_acc, __fold_item| {
-            max_cost(
-                &__fold_acc,
-                &(lookup_cost(p0, &((__fold_item).result_port()))),
-            )
-        })
+    (p1).iter().fold(Lookup::Hit(0), |__fold_acc, __fold_item| {
+        max_cost(
+            &__fold_acc,
+            &(lookup_cost(p0, &((__fold_item).result_port()))),
+        )
+    })
 }
 pub fn lookup_cost(p0: &[CostEntry], p1: &PortId) -> Lookup<i64> {
     match p0 {
@@ -117,26 +115,24 @@ pub fn lookup_cost(p0: &[CostEntry], p1: &PortId) -> Lookup<i64> {
 pub fn add_one(p0: &Lookup<i64>) -> Lookup<i64> {
     match p0 {
         Lookup::Miss => Lookup::Miss,
-        Lookup::Hit { _0: n } => Lookup::Hit(&(1 + (*(n)))),
+        Lookup::Hit(n) => Lookup::Hit((1 + (*(n)))),
     }
 }
 pub fn add_cost(p0: &Lookup<i64>, p1: &Lookup<i64>) -> Lookup<i64> {
     match p0 {
         Lookup::Miss => Lookup::Miss,
-        Lookup::Hit { _0: x } => match p1 {
+        Lookup::Hit(x) => match p1 {
             Lookup::Miss => Lookup::Miss,
-            Lookup::Hit { _0: y } => Lookup::Hit(&((*(x)) + (*(y)))),
+            Lookup::Hit(y) => Lookup::Hit(((*(x)) + (*(y)))),
         },
     }
 }
 pub fn max_cost(p0: &Lookup<i64>, p1: &Lookup<i64>) -> Lookup<i64> {
     match p0 {
         Lookup::Miss => Lookup::Miss,
-        Lookup::Hit { _0: x } => match p1 {
+        Lookup::Hit(x) => match p1 {
             Lookup::Miss => Lookup::Miss,
-            Lookup::Hit { _0: y } => {
-                Lookup::Hit(&(if ((*(x)) > (*(y))) { (*(x)) } else { (*(y)) }))
-            }
+            Lookup::Hit(y) => Lookup::Hit(if ((*(x)) > (*(y))) { (*(x)) } else { (*(y)) }),
         },
     }
 }
