@@ -122,7 +122,8 @@ Lane-owner dispatch status (update as sub-deliverables close):
       added to `TestPredicate` (PR #678, merged 2026-04-24)
 - [x] Runner foundation — schema predicates execute structurally
       (PR #688, merged 2026-04-24)
-- [ ] `testgen_structural_coverage` gate compiles + evaluates
+- [x] `testgen_structural_coverage` gate compiles + evaluates
+      (PR #720, merged 2026-04-24)
 - [ ] `MockBackedInvariant` wiring
 - [ ] `testgen_mock_backed_integration_safe` gate compiles + evaluates
 - [x] `testgen_manual_claim_is_first_class` gate compiles + evaluates
@@ -136,6 +137,8 @@ Lane-owner dispatch status (update as sub-deliverables close):
       runner evaluation not yet wired
 - [ ] `lens_composition_associative` gate compiles + evaluates
 - [ ] `lens_output_is_queryable_data` gate compiles + evaluates
+      (PR #717 in review — adds runner seam dispatch for `LensOutputEquals` → NYI(String);
+      gate stays [ ] until runner executes lens functions)
 
 **Schema extensions owned here that other managers consume:**
 - [x] `ExecuteCommand` predicate (Surface T-Emit consumer) — landed PR #678
