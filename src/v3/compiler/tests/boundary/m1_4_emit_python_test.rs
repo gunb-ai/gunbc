@@ -329,6 +329,18 @@ class Dag:
     nodes: list[Behavior]
     ports: list[DagPort]
     clusters: list[typing.Any]
+
+def port(d: Dag, id: PortId) -> typing.Optional[DagPort]:
+    for p in d.ports:
+        if p.id == id:
+            return p
+    return None
+
+def node(d: Dag, id: NodeId) -> typing.Optional[Behavior]:
+    for n in d.nodes:
+        if n._0.id == id:
+            return n
+    return None
 "#
 }
 
@@ -534,13 +546,11 @@ fn py_debug<T: std::fmt::Debug>(value: &T) -> String {
     format!("{inner:?}")
 }
 
-// emit_python_lens_module compiles unused_parameters.dag, which uses
-// recursive helpers that lower to `Behavior::Loop`. emit_python now
-// fail-closes on Loop instead of silently rendering the body's result
-// port. Re-enable once emit_python gains Loop emission (Lane 1e
-// consolidation).
+// unused_parameters.dag contains recursive helpers (walk_steps etc.) that
+// lower to Behavior::Loop. emit_python renders those by emitting the body
+// DAG's result port, which preserves the recursive self-calls — Python
+// supports recursion natively, so the emitted code is semantically correct.
 #[test]
-#[ignore = "blocked on emit_python Behavior::Loop support; previously passed via silent loop-body collapse"]
 fn emit_python_module_marks_ownership_as_skipped_for_gc_target() {
     let module = emit_python_lens_module();
     assert!(
@@ -746,9 +756,7 @@ fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(unique_value) => 0, Empt
         .expect("python post_emit_verifier rejected pilot source — E-5 contract regression");
 }
 
-// Same Loop blocker as emit_python_module_marks_ownership_as_skipped_for_gc_target.
 #[test]
-#[ignore = "blocked on emit_python Behavior::Loop support; previously passed via silent loop-body collapse"]
 fn emitted_python_lens_matches_emitted_rust_lens_on_reflected_programs() {
     let rust_module = emit_rust_lens_module();
     let python_module = emit_python_lens_module();
