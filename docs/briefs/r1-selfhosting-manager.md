@@ -120,7 +120,7 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [x] T-PB-B-1 — Landed `src/v3/compiler/tests/dag/*.dag` + brief
       `docs/briefs/t-pb-b-1.md` (former compile-only smoke
       `t_pb_b_1_tests_dag_smoke_test` retired as redundant with
-      `t_pb_b_1_dag_runner_test` — 2026-04-25).
+      `t_pb_b_1_dag_runner_test` — 2026-04-24).
       **Not** Rust test deletion and **not** `pb_*` — those stay unchecked below
       until Testgen signs off.
 - [x] T-PB-B-1 — Runner-backed integration test landed (PR #736,
@@ -141,7 +141,7 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [ ] Land **Rust deletions** for the remaining T-PB-B-1 / thesis inventory
       (checklist item (4) follow-on) once Testgen records sign-off in
       `docs/briefs/r1-testgen-manager.md` (first slice: redundant compile-smoke
-      file **landed** 2026-04-25; see *Decisions log*).
+      file **landed** 2026-04-24; see *Decisions log*).
 - [ ] `pb_test_file_generated_from_dag` + `pb_rust_tests_outside_residual_zero`
       predicates evaluate true
 

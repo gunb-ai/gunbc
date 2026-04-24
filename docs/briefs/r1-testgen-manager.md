@@ -95,7 +95,7 @@ compose. When this closes, the R1 release gates themselves
   `docs/briefs/t-pb-b-1.md` + `src/v3/compiler/tests/dag/` —
   `t_pb_b_1_dag_runner_test` evaluates the landed suites (PR #736); the
   former compile-smoke-only `t_pb_b_1_tests_dag_smoke_test` is **retired**
-  (redundant with the runner test — *Decisions log* 2026-04-25).
+  (redundant with the runner test — *Decisions log* 2026-04-24).
   **Pre–Rust-deletion checklist (single source — edit here only; do
   not fork a competing numbered list in other briefs):** (1) **[done,
   PR #736]** Runner accepts v3 `.dag` modules under
@@ -112,7 +112,7 @@ compose. When this closes, the R1 release gates themselves
   `t_pb_b_1_contract_port_cost.dag`; standalone
   `data _: TestPredicate = …` bodies remain NYI under the same
   class-5 restriction. Receipt paragraph in `docs/briefs/t-pb-b-1.md`.
-  (4) **First Rust deletion batch — partial sign-off (2026-04-25).** The
+  (4) **First Rust deletion batch — partial sign-off (2026-04-24).** The
   three `#[test]` functions in the former `t_pb_b_1_tests_dag_smoke_test.rs`
   (redundant compile-only coverage for the landed `tests/dag/*.dag` modules)
   are **deleted**; replacement coverage and the `#[test]` → `TestClaim`
@@ -240,7 +240,7 @@ Lane-owner dispatch status (update as sub-deliverables close):
 
 Decisions log (append as they happen):
 
-- 2026-04-25: **Pre–Rust-deletion checklist item (4) — first slice signed
+- 2026-04-24 (Lane B / #763): **Pre–Rust-deletion checklist item (4) — first slice signed
   off (redundant T-PB-B-1 compile-smoke).** Receipts (1)–(3) re-verified
   green (`cargo test -p v3-compiler t_pb_b_1_dag_runner_test`,
   `test_runner_data_bodies_reject_requires_empty_call_today`); PR #735
@@ -264,7 +264,7 @@ Decisions log (append as they happen):
     (`thesis_validation_test.rs` subset; `pipe_desugar.rs` still excluded)
   remains under the 2026-04-24 inventory + four-point guard until a
   separate log entry names each `#[test]` → `TestClaim` pair.
-- 2026-04-24: **Pre–Rust-deletion checklist item (4) prepped, not signed
+- 2026-04-24 (PR #751): **Pre–Rust-deletion checklist item (4) prepped, not signed
   off.** Candidate inventory narrowed — `pipe_desugar.rs` **excluded**
   from first batch (asserts `Transform` target / input arity / literal
   order / return shape; `t_pb_b_1_pipeline_smoke.dag` only witnesses
