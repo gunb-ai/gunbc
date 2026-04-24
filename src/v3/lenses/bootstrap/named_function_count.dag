@@ -3,9 +3,9 @@
 // Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A.
 // See docs/v3-lens-capability-register.md.
 //
-// Demo only: counts `Bind` behaviors whose `name` is non-empty. Not wired
-// into `regen.dag`; exists to prove a user `.dag` can sit beside shipped
-// lenses and resolve like any other module.
+// Lives under `lenses/bootstrap/` so `build.rs` enumerates it into
+// `LENS_BOOTSTRAP_FILES` (no `include_str!` in `bootstrap.rs`). Demo only:
+// counts `Bind` behaviors whose `name` is non-empty. Not in `regen.dag`.
 
 module lenses.named_function_count
 

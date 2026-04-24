@@ -1,13 +1,13 @@
 //! **Layer:** integration
 //!
 //! Day-1 R1 gate `user_authored_lens_compiles`: a user `.dag` lens under
-//! `src/v3/lenses/` resolves in the bootstrap `Dag`, and a minimal `.v3`
-//! fixture that calls it compiles cleanly.
+//! `src/v3/lenses/bootstrap/` resolves in the bootstrap `Dag`, and the staged
+//! `TestClaim` compiles the same `source` / `file_name` the gate declares.
 
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::Dag;
+use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::CompileError;
 
 /// Two tests share one `Dag::new()` clone — bootstrap is large enough that
@@ -17,12 +17,22 @@ fn bootstrapped_dag() -> &'static Dag {
     DAG.get_or_init(Dag::new)
 }
 
-const USER_LENS_FIXTURE_V3: &str = "\
-import lenses.named_function_count { named_function_count }
-import std.substrate { Dag }
-
-fn count_fns(d: Dag) -> Int = named_function_count(d)
-";
+fn testclaim_string_field(dag: &Dag, gate_name: &str, label: &str) -> String {
+    let decl = dag
+        .declaration_by_name(gate_name)
+        .unwrap_or_else(|| panic!("missing declaration `{gate_name}`"));
+    let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!("`{gate_name}` should carry a structural value body");
+    };
+    fields
+        .iter()
+        .find(|(l, _)| l == label)
+        .and_then(|(_, v)| match v {
+            FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("`{gate_name}` missing String field `{label}`"))
+}
 
 #[test]
 fn user_authored_lens_compiles_fixture() {
@@ -43,7 +53,10 @@ fn user_authored_lens_compiles_fixture() {
         "bootstrap Dag should load `user_authored_lens_compiles_gate` from std.r1_gates"
     );
 
-    match compile_to_dag(USER_LENS_FIXTURE_V3, "user_lens_fixture.v3") {
+    let source = testclaim_string_field(dag, "user_authored_lens_compiles_gate", "source");
+    let file_name = testclaim_string_field(dag, "user_authored_lens_compiles_gate", "file_name");
+
+    match compile_to_dag(&source, &file_name) {
         Ok(compiled) => assert!(
             compiled.diagnostics().is_empty(),
             "user lens fixture should compile with no diagnostics, got {:?}",

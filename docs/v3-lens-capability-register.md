@@ -47,7 +47,7 @@ A lens is only "done" when **both** axes are at their strongest grade for the sc
 | `structural_resolution.dag` | TERMINAL | COMPLETE | None (v3-native) | `List<UnresolvedArrowBody>` (regression pin) | N/A |
 | `infer_helpers.dag` | PARTIAL | N/A | None | Bounded Cat-1/Cat-2 infer helpers only | N/A (see file header for scope — `predicate_info`, `walk_to_optional_cardinality_decl`, `callable_template_arguments`, `is_retryable_generic_decl_walk`, `declaration_is_callable`, `template_arguments_match` stay in Rust pending substrate work) |
 | `lower_helpers.dag` | PARTIAL | N/A | None | `expr_span(expr) -> SourceSpan` only | N/A (see file header — `SurfaceLiteral -> LiteralBits` and tuple-variant helper rejected on emit gaps; wire-in parked on parse/parse_surface convergence) |
-| `named_function_count.dag` | TERMINAL | **N/A** | None (demo / Day-1 gate fixture) | `Int` (count of `Bind` nodes with non-empty `name`) | N/A (not a shipped analysis; proves user `.dag` lens loads in bootstrap without `regen.dag`) |
+| `bootstrap/named_function_count.dag` | TERMINAL | **N/A** | None (demo / Day-1 gate fixture) | `Int` (count of `Bind` nodes with non-empty `name`) | N/A (not a shipped analysis; `lenses/bootstrap/` is enumerated into `LENS_BOOTSTRAP_FILES` — not `regen.dag`) |
 
 ## Common root causes
 

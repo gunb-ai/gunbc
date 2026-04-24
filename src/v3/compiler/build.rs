@@ -2,14 +2,16 @@
 // directories and generate Rust arrays of `(path, content)` pairs
 // the bootstrap loader consumes.
 //
-// Three generated arrays exist:
-//   - `STAGED_FILES`   for `src/v3/std/*.dag`
-//   - `V3_SPECS`       for `src/v3/spec/*.dag`
-//   - `COMPILER_FILES` for `src/v3/compiler/*.dag` (except `tokenize.dag`; see below)
+// Generated arrays:
+//   - `STAGED_FILES`          for `src/v3/std/*.dag`
+//   - `V3_SPECS`              for `src/v3/spec/*.dag`
+//   - `COMPILER_FILES`        for `src/v3/compiler/*.dag` (except `tokenize.dag`; see below)
+//   - `LENS_BOOTSTRAP_FILES`  for `src/v3/lenses/bootstrap/*.dag` (bootstrap-only user lenses;
+//     regen lenses stay under `src/v3/lenses/*.dag` and are not auto-bundled)
 //
-// Adding a new staged std/spec/compiler file becomes a pure file-system
-// change — no Rust edits to `bootstrap.rs`, no fixture-array
-// maintenance, no skip-list drift.
+// Adding a new staged std/spec/compiler file (or a `*.dag` under
+// `src/v3/lenses/bootstrap/`) becomes a pure file-system change — no Rust
+// edits to `bootstrap.rs`, no fixture-array maintenance, no skip-list drift.
 //
 // **Why a build script.** The pre-unwind shape used hardcoded
 // `const RUST_DAG: &str = include_str!("../../spec/rust.dag");`
@@ -181,6 +183,9 @@ fn main() {
     println!("cargo:rerun-if-changed={}", extdeps_dir.display());
     println!("cargo:rerun-if-changed={}", gunbc_dir.display());
 
+    let lens_bootstrap_dir = v3_dir.join("lenses").join("bootstrap");
+    println!("cargo:rerun-if-changed={}", lens_bootstrap_dir.display());
+
     // Structural-recursion termination analysis walks a recursing
     // argument back to its declared Disj connective (see
     // `structural_binding_info_for_variant` in `lower.rs`). The walk
@@ -273,6 +278,14 @@ fn main() {
         &gunbc_dir,
         &gunbc_entries,
     );
+    let lens_bootstrap_entries = collect_dag_entries(&lens_bootstrap_dir, &[]);
+    let lens_bootstrap_generated = generate_static(
+        "LENS_BOOTSTRAP_FILES",
+        "src/v3/lenses/bootstrap",
+        "src/v3/lenses/bootstrap",
+        &lens_bootstrap_dir,
+        &lens_bootstrap_entries,
+    );
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR must be set by Cargo");
     let out_dir = Path::new(&out_dir);
@@ -353,4 +366,7 @@ fn main() {
     let gunbc_out = out_dir.join("v3_gunbc_files.rs");
     fs::write(&gunbc_out, gunbc_generated)
         .unwrap_or_else(|e| panic!("failed to write {}: {}", gunbc_out.display(), e));
+    let lens_bootstrap_out = out_dir.join("v3_lens_bootstrap_files.rs");
+    fs::write(&lens_bootstrap_out, lens_bootstrap_generated)
+        .unwrap_or_else(|e| panic!("failed to write {}: {}", lens_bootstrap_out.display(), e));
 }

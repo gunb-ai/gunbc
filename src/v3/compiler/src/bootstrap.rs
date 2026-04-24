@@ -8,8 +8,8 @@
 // - `STAGED_FILES`   (`src/v3/std/*.dag`)
 // - `V3_SPECS`       (`src/v3/spec/*.dag`)
 // - `COMPILER_FILES` (`src/v3/compiler/*.dag`, minus `tokenize.dag`)
-// - `src/v3/lenses/named_function_count.dag` (user-authored lens; not in `regen.dag`;
-//   bundled via `include_str!` below — the only non-`STAGED_FILES` lens today)
+// - `LENS_BOOTSTRAP_FILES` (`src/v3/lenses/bootstrap/*.dag` — user lenses bundled for
+//   bootstrap only; enumerated by `build.rs`, same as other staged sets)
 // - `src/v3/std/r1_gates.dag` load order (after `verification.dag`) is enforced in
 //   `build.rs` when generating `STAGED_FILES`, not here.
 //
@@ -56,6 +56,7 @@ const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
 //   - `STAGED_FILES` for `src/v3/std/*.dag`
 //   - `V3_SPECS` for `src/v3/spec/*.dag`
 //   - `COMPILER_FILES` for `src/v3/compiler/*.dag`
+//   - `LENS_BOOTSTRAP_FILES` for `src/v3/lenses/bootstrap/*.dag`
 //
 // Adding a new staged std/spec/compiler file is a pure file-system change:
 // drop the `.dag` file in the staged directory, the build script
@@ -79,13 +80,7 @@ const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
 include!(concat!(env!("OUT_DIR"), "/v3_staged_files.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_specs.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_compiler_files.rs"));
-
-// User-authored lens loaded for Day-1 `user_authored_lens_compiles` proof
-// (`src/v3/std/r1_gates.dag`). Intentionally **not** listed in `regen.dag`
-// — not a compiler-internal regen lens — but must resolve in `Dag::new()`
-// like any staged module.
-const NAMED_FUNCTION_COUNT_USER_LENS_DAG: &str =
-    include_str!("../../lenses/named_function_count.dag");
+include!(concat!(env!("OUT_DIR"), "/v3_lens_bootstrap_files.rs"));
 
 const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
 
@@ -155,10 +150,7 @@ fn load_runtime_bootstrap_authorities(
     let fixtures: Vec<(&str, &str)> = staged_iter
         .chain(V3_SPECS.iter().copied())
         .chain(compiler_iter)
-        .chain(std::iter::once((
-            "src/v3/lenses/named_function_count.dag",
-            NAMED_FUNCTION_COUNT_USER_LENS_DAG,
-        )))
+        .chain(LENS_BOOTSTRAP_FILES.iter().copied())
         .collect();
     load_fixtures(dag, &fixtures);
     materialize_pipeline_realizations(dag);
