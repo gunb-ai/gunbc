@@ -115,14 +115,11 @@ fn emit_go_bool_logical_ops_use_spec_carriers() {
     );
 }
 
-// The unused_parameters lens uses recursive helpers (e.g. walk_steps,
-// expand_frontier_list, behavior_result_port) which v3 lowers to
-// `Behavior::Loop`. emit_go does not yet emit Loop — it now
-// fail-closes instead of silently rendering the loop body's result
-// port. Re-enable when emit_go gains Loop emission (Lane 1e
-// consolidation handles this via spec-driven walker dispatch).
+// unused_parameters.dag contains recursive helpers (walk_steps etc.) that
+// lower to Behavior::Loop. emit_go renders those by emitting the body DAG's
+// result port, which preserves the recursive self-calls — Go supports
+// recursion natively, so the emitted code is semantically correct.
 #[test]
-#[ignore = "blocked on emit_go Behavior::Loop support; previously passed via silent loop-body collapse"]
 fn emit_go_lens_unused_parameters_module() {
     let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())
         .expect("compiled lens source");
@@ -310,6 +307,37 @@ let result: Int = ignore_payload(Empty)
         .expect("write go source");
     run_post_emit_verifier(&binding, &src_path)
         .expect("go post_emit_verifier rejected pilot source — E-5 contract regression");
+}
+
+/// Direct receipt that a plain recursive user function lowers through
+/// `Behavior::Loop` and emits correct Go. The source uses descent-provable
+/// recursion (first arg decrements by 1), so it lowers to a Cardinality-bound
+/// Loop. Comparing against the Rust baseline proves the body-port rendering
+/// preserves the recursive self-call and produces the right result.
+///
+/// Gated `#[ignore]` — CI sandboxes may not carry `go`.
+/// Run locally:
+///     cargo test -p v3-compiler --test integration \
+///         emit_go_recursive_fn_matches_rust_result -- --ignored --nocapture
+#[test]
+#[ignore]
+fn emit_go_recursive_fn_matches_rust_result() {
+    let source = "\
+fn count(n: Int) -> Int = if n == 0 then 0 else 1 + count(n - 1)
+let result: Int = count(6)
+";
+    // Structural: Loop node must be present in the lowered DAG.
+    let dag = cached_compile_to_dag(source, "recursive_loop_receipt.v3");
+    let has_loop = dag
+        .nodes()
+        .iter()
+        .any(|b| matches!(b, v3_compiler::dag::Behavior::Loop(_)));
+    assert!(has_loop, "recursive fn must lower to Behavior::Loop");
+
+    let rust = rust_stdout(source);
+    let Some(go) = go_stdout(source) else { return };
+    assert_eq!(rust, go, "Rust and Go diverged on recursive fn output");
+    assert_eq!(rust, "6", "count(6) must output 6");
 }
 
 #[test]

@@ -1,6 +1,6 @@
 # Complexity lens v2/v3 comparison + cementing test `(M)`
 
-**Supersedes** `docs/briefs/lens-wire-in-audit-v2-comparison.md` (which was broader-audit-shaped). This is the focused thesis-receipt lane.
+**Supersedes** `docs/history/lens-wire-in-audit-v2-comparison.md` (which was broader-audit-shaped). This is the focused thesis-receipt lane.
 
 ## Problem
 
