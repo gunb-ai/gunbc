@@ -94,6 +94,15 @@ pub fn field_value_equal(lhs: &FieldValue, rhs: &FieldValue) -> bool {
 /// Build a substrate-shaped `Dag` record (only `nodes` is populated faithfully) from a
 /// compiled program [`Dag`], for lenses like `named_function_count` that read `d.nodes`.
 ///
+/// **Scaffold:** reflection is **lossy** relative to `std.substrate.Behavior` — e.g.
+/// `Transform` records expose only `result_port` (no `target` / `inputs`); `Branch` /
+/// `Loop` omit `paths`, bounds, and bodies. Lenses that only need `Bind.name` or a
+/// shallow node list are supported; do not rely on full structural fidelity.
+///
+/// **Dissolution trigger:** dissolve this Rust-side mirror once `.dag` values on disk
+/// (or an equivalent canonical carrier) are consumed directly by the interpreter
+/// without a hand-rolled `Behavior` → [`FieldValue`] reflection pass.
+///
 /// `source_file` limits nodes to those authored in that compilation unit (the merged
 /// bootstrap graph also lives in the same [`Dag`]).
 pub fn reflect_program_dag_nodes_in_file(
@@ -108,6 +117,15 @@ pub fn reflect_program_dag_nodes_in_file(
         .collect();
     let nodes = reflect_behavior_list(program, &nodes)?;
     Ok(FieldValue::Record(vec![("nodes".to_string(), nodes)]))
+}
+
+/// Empty `std.list` spine (`Empty` variant) in the substrate shape expected by `fold`.
+pub fn empty_substrate_list_value(dag: &Dag) -> Result<FieldValue, LensApplyError> {
+    let (empty_id, _) = v3_list_empty_cons_ids(dag)?;
+    Ok(FieldValue::Variant {
+        constructor: empty_id,
+        payload: vec![],
+    })
 }
 
 fn behavior_source_file(behavior: &Behavior) -> &str {
@@ -190,6 +208,11 @@ fn clone_field_value(value: &FieldValue) -> Result<FieldValue, LensApplyError> {
     }
 }
 
+/// Frame-based evaluation context for D1 lens interpretation.
+///
+/// **Complexity / cloning:** port lookups use [`FieldValue::clone`] and list walks
+/// clone elements deliberately — bounded R1 gate scope; revisit if lenses iterate
+/// over large program DAGs (e.g. T-LaneE).
 struct EvalCtx<'a> {
     dag: &'a Dag,
     frames: Vec<HashMap<u32, FieldValue>>,
@@ -249,6 +272,9 @@ impl<'a> EvalCtx<'a> {
             Behavior::Branch(b) => self.eval_branch(b, port)?,
             Behavior::Loop(l) => self.eval_loop(l)?,
             Behavior::Bind(b) => {
+                // Only top-level lens roots (`apply_lens_declaration`) and fold step
+                // binds (`eval_fold_step` / `eval_std_fold`) supply parameters; inner
+                // parameterized `Bind` producers are not interpreted yet.
                 if b.params.is_empty() {
                     self.eval_port(b.value)?
                 } else {
@@ -516,6 +542,12 @@ impl<'a> EvalCtx<'a> {
         Err(LensApplyError::BranchMiss)
     }
 
+    /// Loop bodies are intentionally uninterpreted in D1.
+    ///
+    /// **Fail-closed receipt:** both `LoopBound::Cardinality` (single-fn recursion)
+    /// and `LoopBound::Descent` (mutual-recursion clusters) return
+    /// [`LensApplyError::UnimplementedLoopBound`] until iteration semantics land in
+    /// this interpreter.
     fn eval_loop(&mut self, _l: &crate::dag::LoopNode) -> Result<FieldValue, LensApplyError> {
         Err(LensApplyError::UnimplementedLoopBound)
     }
@@ -603,6 +635,7 @@ fn variant_payload_for_binding(
     Ok(FieldValue::Record(fields))
 }
 
+/// Uncons a substrate `List` spine into owned elements (clones each head).
 fn list_elements(dag: &Dag, list: &FieldValue) -> Result<Vec<FieldValue>, LensApplyError> {
     let mut out = Vec::new();
     let mut cur = list;
@@ -630,6 +663,8 @@ fn list_elements(dag: &Dag, list: &FieldValue) -> Result<Vec<FieldValue>, LensAp
     Ok(out)
 }
 
+// perf: linear scan over all declarations per variant id — fine for R1 gate DAGs;
+// revisit if lenses iterate over large programs (prefer declaration-indexed lookup).
 fn variant_label(dag: &Dag, variant_id: DeclarationId) -> Option<String> {
     dag.declarations()
         .iter()
@@ -642,6 +677,7 @@ fn variant_label(dag: &Dag, variant_id: DeclarationId) -> Option<String> {
         })
 }
 
+// perf: linear scan for `List` disj — same bounded-gate rationale as `variant_label`.
 fn v3_list_empty_cons_ids(dag: &Dag) -> Result<(DeclarationId, DeclarationId), LensApplyError> {
     let list_decl = dag.declarations().iter().find(|d| {
         d.name.as_deref() == Some("List") && matches!(d.connective, TypeConnective::Disj { .. })
@@ -679,6 +715,7 @@ fn behavior_variant_id(dag: &Dag, label: &str) -> Result<DeclarationId, LensAppl
         .ok_or(LensApplyError::MissingType("Behavior variant"))
 }
 
+/// See [`reflect_program_dag_nodes_in_file`] scaffold note — lossy `Behavior` spine.
 fn reflect_behavior_list(dag: &Dag, nodes: &[Behavior]) -> Result<FieldValue, LensApplyError> {
     let (empty_id, cons_id) = v3_list_empty_cons_ids(dag)?;
     let mut tail = FieldValue::Variant {
@@ -695,6 +732,7 @@ fn reflect_behavior_list(dag: &Dag, nodes: &[Behavior]) -> Result<FieldValue, Le
     Ok(tail)
 }
 
+/// Lossy mirror of one [`Behavior`] (see [`reflect_program_dag_nodes_in_file`]).
 fn reflect_behavior(dag: &Dag, behavior: &Behavior) -> Result<FieldValue, LensApplyError> {
     match behavior {
         Behavior::Value(v) => {

@@ -34,6 +34,8 @@ pub mod generated_files {
 
 pub mod emit;
 pub mod emit_rust;
+/// T-LensAPI D1: bounded lens interpreter over substrate-shaped [`FieldValue`]
+/// (see module docs in `lens_apply.rs`).
 pub mod lens_apply;
 pub mod lens_depth;
 pub mod lens_testgen;
