@@ -218,9 +218,11 @@ type TypeDefinitionSyntax {
 }
 
 // Rust-only: outer `struct` / `enum` templates when `Debug` cannot be derived
-// (`Rc<dyn Fn…>` fields). Consumed by `emit_rust` through
-// `LanguageSpec.record_derive_templates` on `rust_language` (see
-// `data rust_record_derive_templates` in `src/v3/spec/rust.dag`).
+// (`Rc<dyn Fn…>` fields). **Typed authority** for the existing
+// `LanguageSpec.record_derive_templates` field (P2: Go/Python carry empty stub
+// `data` for inhabitance only; see TODO below — not an undeclared extension).
+// `emit_rust` reads `rust_language` → `data rust_record_derive_templates` in
+// `src/v3/spec/rust.dag` (not a side channel).
 type RustRecordDeriveTemplates {
   struct_def_no_debug: String
   enum_def_no_debug: String

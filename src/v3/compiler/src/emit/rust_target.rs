@@ -2831,6 +2831,13 @@ struct RenderLocals {
 /// from a template id's stdlib substrate. Record / enum `Debug` omission needs
 /// the **template** head for user generics like `G<T>` (C-8 / #676 inline
 /// review); use [`DeclFirstClassArrowWalk::RecordDeriveOmitDebug`].
+///
+/// Api-review (Codex, `edd421b0`-era): a single walk cannot both recurse every
+/// `Instantiation::template` for return composition **and** stay sound for
+/// `-> Int` — substrate templates pick up `fn` noise unrelated to the user's
+/// applied type. A declared “callable-in-return” substrate fact (THESIS target
+/// realization) would be the long-term unifier; see [`ArrowRustEmitPolicy`]
+/// dissolution note and `src/v3/spec/rust.dag` (first-class callable).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DeclFirstClassArrowWalk {
     AppliedTypeArguments,

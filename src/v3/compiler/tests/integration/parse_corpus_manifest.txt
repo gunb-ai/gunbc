@@ -28,7 +28,7 @@ src/v3/std/computation_model.dag	12	17291	30cd3a0f7cc08eae
 src/v3/std/diagnostics.dag	6	7195	e14b2bb9b78adc76
 src/v3/std/dimensions.dag	8	15340	571b6224904e5e30
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
-src/v3/std/emit_model.dag	32	62058	63cc8539040bde62
+src/v3/std/emit_model.dag	32	62061	5ff6850f8c519498
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
 src/v3/std/lookup.dag	5	4734	360a4ff05518ddcb
 src/v3/std/parse_surface.dag	17	94961	9b9d42b7673f21d3
