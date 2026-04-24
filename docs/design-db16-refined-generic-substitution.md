@@ -294,8 +294,8 @@ In particular, DB-16 does not let a refined-generic `f<T>(x: T where pred_a(x))`
 
 **Invariants preserved:**
 
-- Strict Forward Progress (`INVARIANTS.md:425`) — all walks depth-bounded by `WALK_DEPTH_LIMIT` and `DEPTH_LIMIT`, as in DB-11.
-- Decidability (`INVARIANTS.md:482`) — discharge remains pure structural equality over finite predicate bodies. No unbounded inference.
+- Bounded forward execution (`INVARIANTS.md#p4-decidability`) — all walks depth-bounded by `WALK_DEPTH_LIMIT` and `DEPTH_LIMIT`, as in DB-11.
+- Decidability (`INVARIANTS.md#p4-decidability`) — discharge remains pure structural equality over finite predicate bodies. No unbounded inference.
 - Bounded kernel — no new substrate variant, no new node shape, no new declaration shape. DB-16 is pure consumer wiring + reorder inside `signature_type_shape`.
 - DB-11's five-Behavior substrate-integrity lock-in (`test_3a3_substrate_integrity_behavior_still_five_variants`) — unchanged by construction.
 
@@ -410,7 +410,7 @@ Pre-flatten every generic function into per-argument-type clones at lowering tim
 - **`src/v3/compiler/src/lower.rs`** — `clone_predicate_body` (gains a `subst: &SubstStack` parameter; called from the new `concretize_decl_with_subst` refinement branch) and `outer_predicate_slots` (reused for slot extraction); both become `pub(crate)`. `lower_parameter_refinement`, `narrow_scope_for_predicate`, `build_narrowed_refinement`, `refinement_predicate_out_of_fragment` (DB-11 authorities, unchanged — `build_narrowed_refinement`'s existing call to `clone_predicate_body` passes an empty `SubstStack`).
 - **`src/v3/compiler/src/dag.rs`** — `Declaration` shape (unchanged; `refinement: Option<DeclarationId>` edge consumed, not extended).
 - **ROADMAP anchor** (`ROADMAP.md:477`, `:496`) — DB-16 closing is the sole gate on 3a.3's 🟡 → ✅ promotion. Part 2 PR flips the status row.
-- **`INVARIANTS.md`** — strict forward progress (§425) and decidability (§482) preserved verbatim; DB-16 adds no unbounded walk and no new proof-theoretic reasoning.
+- **`INVARIANTS.md`** — bounded forward execution / decidability (`INVARIANTS.md#p4-decidability`) preserved verbatim; DB-16 adds no unbounded walk and no new proof-theoretic reasoning.
 
 ---
 

@@ -69,6 +69,8 @@ mod m1_3_lens_cost_test;
 mod m1_3_lens_unused_parameters_test;
 #[path = "boundary/m1_4_emit_python_test.rs"]
 mod m1_4_emit_python_test;
+#[path = "boundary/m1_5_emit_omni_demo_test.rs"]
+mod m1_5_emit_omni_demo_test;
 #[path = "integration/m1_5_testgen_test.rs"]
 mod m1_5_testgen_test;
 #[path = "integration/m1_5_verification_test.rs"]
