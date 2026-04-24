@@ -436,9 +436,9 @@ impl<'a> TestgenLens<'a> {
     /// panic, because they indicate a structural invariant violation
     /// the test harness must surface, not a silent "skip this claim":
     ///
-    ///   - `CostLookup::MissingCost` — the lens computed no cost for
+    ///   - `CostLookup::Miss` — the lens computed no cost for
     ///     a bind that testgen explicitly constructed. A well-formed
-    ///     fixture always has a cost for the named bind; MissingCost
+    ///     fixture always has a cost for the named bind; `Miss`
     ///     here means the fixture is malformed or the lens regressed.
     ///
     ///   - `i64 → usize` conversion failure — the lens emitted a
@@ -455,10 +455,10 @@ impl<'a> TestgenLens<'a> {
             _ => None,
         })?;
         let cost = match cost_of(&dag, &bind.value) {
-            CostLookup::FoundCost { _0: cost } => cost,
-            CostLookup::MissingCost => {
+            CostLookup::Hit(cost) => cost,
+            CostLookup::Miss => {
                 panic!(
-                    "testgen: cost lens returned MissingCost for bind `{bind_name}` \
+                    "testgen: cost lens returned Miss for bind `{bind_name}` \
                      in fixture `{file_name}` — the named bind was found in the \
                      Dag but has no cost entry. Indicates a malformed fixture or \
                      a regression in the complexity lens."
