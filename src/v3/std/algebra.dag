@@ -75,6 +75,7 @@ module v3.std.algebra
 
 import std.list { List, empty, fold, cons, singleton, filter }
 import std.substrate { NonSingletonList, PortId }
+import v3.std.lookup { Lookup }
 
 // 🟢 TERMINAL. `SizeVariable` names the runtime size of a DAG
 // port's value. Two cost expressions correlate structurally via
@@ -117,6 +118,23 @@ type SymbolicCost
   | SumCost(NonSingletonList<SymbolicCost>)
   | LogCost(SizeVariable)
   | UnknownCost(String)
+
+// SymbolicCost-monomorphized `Lookup` constructors. Same shim story
+// as `miss_int_lookup` / `hit_int_lookup` in `v3.std.lookup`: v3 infer
+// cannot yet prove bare `Miss` / `Hit(v)` bodies against a generic
+// `Lookup<value>` return type, so each concrete element gets a named
+// constructor. Rust emit lowers both calls to `Lookup::Miss` /
+// `Lookup::Hit(..)` (see `lookup_constructor_emit` in `rust_target.rs`).
+// Lives here (not in `v3.std.lookup`) because `SymbolicCost` is the
+// lens-side algebra element and `std.lookup` must stay free of algebra
+// imports.
+fn miss_symbolic_cost_lookup() -> Lookup<SymbolicCost> {
+  Miss
+}
+
+fn hit_symbolic_cost_lookup(cost: SymbolicCost) -> Lookup<SymbolicCost> {
+  Hit(cost)
+}
 
 fn two_terms(a: SymbolicCost, b: SymbolicCost) -> NonSingletonList<SymbolicCost> =
   {
