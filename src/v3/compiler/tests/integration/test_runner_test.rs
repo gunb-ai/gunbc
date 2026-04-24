@@ -90,6 +90,50 @@ data suite: TestSuite = {
 }
 
 #[test]
+fn test_runner_data_bodies_reject_requires_empty_call_today() {
+    // Checklist item (2) in `docs/briefs/r1-testgen-manager.md` — `requires: []`
+    // vs `requires: empty()`: in a `data` body, only the `[]` list literal lowers
+    // today. `empty()` trips the M1(2.8) class-5 gap ("data bodies cannot yet use
+    // record / list / map literals inside data bodies"), so the runner path on
+    // `src/v3/compiler/tests/dag/*.dag` **must** stay with `[]`. `empty()` remains
+    // valid in `let` bindings (Brief D `.v3` fixtures under
+    // `tests/fixtures/t_pb_b_brief_d/` use it), but those bindings are not
+    // `Declaration`s and so are not directly `run_suite`-consumable.
+    //
+    // This is the standing receipt: if the M1(2.8) class-5 restriction lifts and
+    // `data` bodies start accepting `empty()`, this test flips to a green
+    // "equivalence" test — at which point the `.dag` files can optionally migrate
+    // off the `[]` literal.
+    let source = r#"
+import std.list { empty }
+
+data claim_empty_requires: TestClaim = {
+  name: "empty() requires compiles",
+  source: "let x: Int = 1",
+  file_name: "runner_empty_requires.v3",
+  predicate: Compiles,
+  requires: empty()
+}
+"#;
+    match compile_to_dag(source, "test_runner_empty_requires.dag") {
+        Err(CompileError::Semantic(dag)) => {
+            let diagnostics: Vec<String> = dag
+                .diagnostics()
+                .iter()
+                .map(|(_, diag)| diag.message().to_string())
+                .collect();
+            assert!(
+                diagnostics.iter().any(|msg| msg.contains("list literal")),
+                "expected a `list literal` diagnostic on `requires: empty()`, got {diagnostics:?}"
+            );
+        }
+        other => {
+            panic!("expected `requires: empty()` to be rejected by M1(2.8) today, got {other:?}")
+        }
+    }
+}
+
+#[test]
 fn test_runner_fails_closed_on_requires_edges() {
     let source = r#"
 data claim_with_requires: TestClaim = {
