@@ -96,12 +96,6 @@ the two acknowledged residuals.
   needs a broader refactor than expected, flag for director before
   proceeding — the ratchet is load-bearing.
 
-## Unscheduled gaps relevant to this slice
-
-None as of R1 launch. The two TESTING.md residuals are acknowledged
-live-state categories, not debt. `generated-escape-hatch OK` per
-`ROADMAP.md:50` is explicit live-state permission.
-
 ## Working state
 
 Lane-owner dispatch status (update as sub-deliverables close):

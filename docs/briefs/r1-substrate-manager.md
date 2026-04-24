@@ -107,15 +107,14 @@ order go through the director.
 - **No downward dependency.** Substrate is a producer; other
   managers consume lens authority that this work unlocks.
 
-## Unscheduled gaps relevant to this slice
+## Out-of-scope items adjacent to this slice
 
-None as of R1 launch. The four-carrier port is scoped; the
-`Dimension<SymbolicCost>` grammar / data-body wiring and named
-`SizeVariable` value semantics are **out of scope** for this
-slice (tracked separately per `ROADMAP.md:333` v3 lens capability
-honesty pass). If an E-lane deliverable needs one of those to
-close, flag the block up to the director rather than expanding
-scope.
+The four-carrier port is the slice. `Dimension<SymbolicCost>`
+grammar / data-body wiring and named `SizeVariable` value
+semantics are **out of scope** for this manager — they're tracked
+at `ROADMAP.md:333` (v3 lens capability honesty pass). If an
+E-lane deliverable turns out to need one of those to close, flag
+the block up to the director rather than expanding scope.
 
 ## Working state
 

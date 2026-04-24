@@ -112,13 +112,6 @@ compose. When this closes, the R1 release gates themselves
   kind, new `TestClaim` shape) is a scope question. Flag for
   director before landing.
 
-## Unscheduled gaps relevant to this slice
-
-None as of R1 launch. `MockBackedInvariant` wiring is explicitly
-named in `ROADMAP.md:65`; `AlgebraicLaw` is explicitly named;
-`ExecuteCommand` + `ForAllTargets` are explicitly named in the
-Surface gate predicates. Each extension is in scope.
-
 ## Working state
 
 Lane-owner dispatch status (update as sub-deliverables close):

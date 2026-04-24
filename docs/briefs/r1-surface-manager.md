@@ -121,12 +121,6 @@ for a principal engineer to verify in one evening.
   `ROADMAP.md:305+`, flag to director so the cardinality-substrate
   ledger row can be amended rather than expanding the lane.
 
-## Unscheduled gaps relevant to this slice
-
-None as of R1 launch. All three T-Sub deliverables cite DB-11 or
-`ROADMAP.md:305+`. T-Emit deliverables cite standing emit-honesty
-predicates. T-P0 items each have their own brief.
-
 ## Working state
 
 Lane-owner dispatch status (update as sub-deliverables close):
