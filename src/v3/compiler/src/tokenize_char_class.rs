@@ -20,9 +20,13 @@
 //!
 //! **Lane framing:** tokenizer-side interim only — not structural consumption of
 //! `CharClass` from lowered `tokenize.dag` (see M1(2.8) class-5 gap #3). Remove
-//! this module when `regen_tokenize` can read class predicates from `.dag`.
+//! this module **and** [`TokenizerCharClass`] when `regen_tokenize` reads class
+//! predicates from lowered `.dag` — do not leave a duplicate Rust sum of variant
+//! names beside the `.dag` authority.
 
-/// Mirrors `std.unicode::CharClass` variant names for generated call sites.
+/// Mirrors `std.unicode::CharClass` variant names for `tokenize_generated.rs` call
+/// sites only. **Dissolution:** delete this enum with this module when structural
+/// scanner rows land — not just the `byte_matches` body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TokenizerCharClass {
     Whitespace,
@@ -67,7 +71,10 @@ mod sub_charclass_in_std_unicode_gate {
     //! `unicode.dag` predicates edited together until an interpreter-backed check exists.
     //! Substring anchors below only catch gross drift (missing sum, restored host
     //! `is_ascii_*`, accidental reintroduction of `char_in_class` self-call on the
-    //! same `c` in `IdentContinue`); they do not prove arithmetic matches `.dag`.
+    //! same `c` in `IdentContinue`); they do not prove arithmetic matches `.dag` and
+    //! are fragile to harmless `unicode.dag` reformatting. The `0..=127`
+    //! `byte_matches` vs `is_ascii_*` loop is the primary behavioral guard until
+    //! interpreter-backed parity (ROADMAP) replaces these anchors.
 
     use super::{byte_matches, TokenizerCharClass};
 
