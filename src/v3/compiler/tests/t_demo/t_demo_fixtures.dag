@@ -1,17 +1,19 @@
 // T-Demo R1 fixture skeletons.
 //
 // This file lands only the Day-1 predicates that compile against the
-// current DB-15 verification schema. Lens-output demo predicates stay
-// stubbed until T-LensAPI makes `lens_output_is_queryable_data` available
-// as queryable verification data.
+// current DB-15 verification schema. Stage (a) is fixture-declaration
+// compilation; stage (b) is predicate evaluation, blocked on the
+// T-TestGen runner. Lens-output demo predicates stay stubbed until
+// T-LensAPI makes `lens_output_is_queryable_data` available as queryable
+// verification data.
 
-module v3.demo.t_demo_fixtures
+module v3.compiler.tests.t_demo.t_demo_fixtures
 
 import std.list { empty }
 
 let compiler_nerd_complexity_compiles: TestClaim = {
   name: "fixture_compiler_nerd_canonical.complexity_compiles",
-  source: "fn normalize_score(score: Int) -> Int = if score > 0 then score else 0",
+  source: "fn pair_score(xs: List<Int>) -> Int = fold(xs, 0, |outer, x| outer + fold(xs, 0, |inner, y| inner + x + y))",
   file_name: "fixture_compiler_nerd_canonical_complexity.v3",
   predicate: Compiles,
   requires: empty()
@@ -19,7 +21,7 @@ let compiler_nerd_complexity_compiles: TestClaim = {
 
 let compiler_nerd_ownership_compiles: TestClaim = {
   name: "fixture_compiler_nerd_canonical.ownership_compiles",
-  source: "fn keep_primary(primary: Int, fallback: Int) -> Int = primary",
+  source: "type OwnedPayload { left: Int right: Int } fn combine_payload(payload: OwnedPayload) -> Int = payload.left + payload.right",
   file_name: "fixture_compiler_nerd_canonical_ownership.v3",
   predicate: Compiles,
   requires: empty()
@@ -27,7 +29,7 @@ let compiler_nerd_ownership_compiles: TestClaim = {
 
 let compiler_nerd_parallelism_compiles: TestClaim = {
   name: "fixture_compiler_nerd_canonical.parallelism_compiles",
-  source: "fn combine_independent(left: Int, right: Int) -> Int = left + right",
+  source: "let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)",
   file_name: "fixture_compiler_nerd_canonical_parallelism.v3",
   predicate: Compiles,
   requires: empty()
