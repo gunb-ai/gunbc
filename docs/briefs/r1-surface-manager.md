@@ -134,20 +134,51 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [x] `no_profile_sentinel` audit completed (brief: `p0-bug-no-profile-sentinel.md`)
 
 **T-Sub:**
-- [ ] `sub_match_over_user_sum` gate compiles + passes (Day-1)
+- [x] `sub_match_over_user_sum` gate compiles + passes (Day-1)
+      (PR #702, merged 2026-04-24 — `TestClaim` + suite in
+      `src/v3/compiler/tests/fixtures/r1_gates.dag` run through
+      `TestRunner`; #690 prior receipt confirmed structural match)
 - [ ] `sub_type_alias_where_lowers` gate compiles + passes
-      (DB-11 alias-RHS path)
+      (DB-11 parse + lower substrate landed in PR #703, 2026-04-24 —
+      `SurfaceItem::TypeAlias` carries `refinement`; `.dag` gate still
+      to be authored once [ext] predicate path is named)
 - [ ] `sub_charclass_in_std_unicode` gate compiles + passes
+      (phase-1 tokenizer half landed in PR #693 + ROADMAP row #706,
+      2026-04-24 — `CharClass` + `char_in_class` in `std.unicode`,
+      tokenizer calls `tokenize_char_class::byte_matches`; follow-ups
+      open: `syntax.dag` / `std.syntax` consumer wiring and structural
+      `CharClass` consumption from lowered `tokenize.dag` — blocked by
+      M1(2.8) class-5 gap #3)
 
 **T-Emit:**
-- [ ] Rust harden — `emit_rust_fixtures_rustc_green` passes
+- [x] Rust harden — `emit_rust_fixtures_rustc_green` gate test landed
+      (PR #694, merged 2026-04-24 — `#[ignore]`d named gate sweeps
+      9 program fixtures + 5 reflected-module fixtures through the
+      batched rustc roundtrip; baseline `rustc_roundtrip_*` tests all
+      green)
 - [ ] PR #650 generic-bound fidelity — `emit_generic_bounds_survive`
-      passes
+      passes (PR #676 in review — session `vivid-cat-794`)
 - [ ] Python/Go reconcile — `emit_omni_demo_fixtures_green` passes
-      across all three targets
+      across all three targets (cross-target progress 2026-04-24:
+      `Behavior::Loop` emission for Python + Go in #692; Python
+      operator-realization parity for `*` / `!=` / int comparisons
+      in #691; omni gate still pending)
 
 Decisions log (append as they happen):
 
+- `2026-04-24` — T-Sub wave landed. `sub_match_over_user_sum` Day-1 gate
+  closed via #702 (with #690 prior receipt). DB-11 parse+lower substrate
+  landed via #703 (type-alias RHS `where`); the `.dag` gate itself awaits
+  the [ext] predicate path. `sub_charclass_in_std_unicode` phase-1 closure
+  via #693 + ROADMAP row #706 — tokenizer authority + mirror; syntax
+  consumer wiring and structural `.dag` read remain (blocked on M1(2.8)
+  class-5 gap #3).
+- `2026-04-24` — T-Emit partial progress. `emit_rust_fixtures_rustc_green`
+  named gate test landed in #694 (ignored baseline sweep; non-ignored
+  roundtrips green). Python/Go cross-target progress via #691 (Python
+  operator-realization parity) and #692 (`Behavior::Loop` emission for
+  Python + Go). `emit_generic_bounds_survive` (#676) still in review;
+  `emit_omni_demo_fixtures_green` pending.
 - `2026-04-23` — T-P0 reclassified from dispatchable R1 work to already-landed
   closure on current ancestry after direct source audit (`dsl/std/render.dag`,
   `src/v2/tests/src/effects.rs`,
