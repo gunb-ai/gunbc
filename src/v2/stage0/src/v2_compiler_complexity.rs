@@ -33,10 +33,10 @@ pub use crate::std_induction::{
     SubValueRelation,
 };
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
-use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::DescentSource::{
     ArithmeticDecrease, ChildAccessor, FoldIteration, ListShrink, ParserAdvance, SetRemoval,
 };
+use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::RankingDimension::{
     ArithmeticValue, ListLength, SetCardinality, TokenPosition, TreeSize,
 };
@@ -4982,11 +4982,9 @@ pub fn proof_to_call_pattern(proof: Rc<TerminationProof>) -> Rc<CallPattern> {
                     accessor: p.clone(),
                 })
             }
-            RankingDimension::ListLength { .. } => {
-                Rc::new(CallPattern::CollectionShrinkCall {
-                    amount: Rc::new(PositiveDescentAmount::OneStep),
-                })
-            }
+            RankingDimension::ListLength { .. } => Rc::new(CallPattern::CollectionShrinkCall {
+                amount: Rc::new(PositiveDescentAmount::OneStep),
+            }),
             RankingDimension::ArithmeticValue { .. } => {
                 Rc::new(CallPattern::ArithmeticSubtractCall {
                     steps: Rc::new(PositiveDescentAmount::OneStep),

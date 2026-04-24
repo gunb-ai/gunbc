@@ -88,15 +88,9 @@ pub fn proportional_divisor_from_i64(k: i64) -> Option<Rc<ProportionalDivisor>> 
 #[serde(tag = "_variant")]
 pub enum CallPattern {
     ChildAccessorCall { accessor: String },
-    CollectionShrinkCall {
-        amount: Rc<PositiveDescentAmount>,
-    },
-    ArithmeticSubtractCall {
-        steps: Rc<PositiveDescentAmount>,
-    },
-    ArithmeticDivideCall {
-        divisor: Rc<ProportionalDivisor>,
-    },
+    CollectionShrinkCall { amount: Rc<PositiveDescentAmount> },
+    ArithmeticSubtractCall { steps: Rc<PositiveDescentAmount> },
+    ArithmeticDivideCall { divisor: Rc<ProportionalDivisor> },
     ParserAdvanceCall { witness: String },
     WorklistDrainCall { element: String },
     FoldBodyCall,

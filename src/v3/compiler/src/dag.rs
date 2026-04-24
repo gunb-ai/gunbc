@@ -773,9 +773,7 @@ pub enum PositiveDescentAmount {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProportionalDivisor {
     DivideByTwo,
-    StrictlyLarger {
-        inner: Box<ProportionalDivisor>,
-    },
+    StrictlyLarger { inner: Box<ProportionalDivisor> },
 }
 
 pub fn positive_descent_count(steps: &PositiveDescentAmount) -> i64 {
@@ -944,15 +942,9 @@ pub fn tree_size_bound(param: String) -> SizeBound {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallPattern {
     ChildAccessorCall { accessor: String },
-    CollectionShrinkCall {
-        amount: PositiveDescentAmount,
-    },
-    ArithmeticSubtractCall {
-        steps: PositiveDescentAmount,
-    },
-    ArithmeticDivideCall {
-        divisor: ProportionalDivisor,
-    },
+    CollectionShrinkCall { amount: PositiveDescentAmount },
+    ArithmeticSubtractCall { steps: PositiveDescentAmount },
+    ArithmeticDivideCall { divisor: ProportionalDivisor },
     ParserAdvanceCall { witness: String },
     WorklistDrainCall { element: String },
     FoldBodyCall,

@@ -11,8 +11,8 @@ pub use crate::std_computation::{
     positive_amount_from_i64, proportional_divisor_from_i64, tree_size_bound, CallPattern,
     IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
 };
-use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
+use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::RankingDimension::TreeSize;
 pub use crate::std_termination::{DescentEvidence, RankingDimension};
 use crate::v2_rt;
@@ -265,14 +265,10 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
             }))
         }
         SubValueRelation::ArithmeticDescent { factor: f, .. } => match (*f.clone()).clone() {
-            ShrinkFactor::ConstantShrink { amount: k, .. } => positive_amount_from_i64(k).map(|steps| {
-                Rc::new(CallPattern::ArithmeticSubtractCall { steps })
-            }),
-            ShrinkFactor::ProportionalShrink { divisor: k, .. } => {
-                proportional_divisor_from_i64(k).map(|divisor| {
-                    Rc::new(CallPattern::ArithmeticDivideCall { divisor })
-                })
-            }
+            ShrinkFactor::ConstantShrink { amount: k, .. } => positive_amount_from_i64(k)
+                .map(|steps| Rc::new(CallPattern::ArithmeticSubtractCall { steps })),
+            ShrinkFactor::ProportionalShrink { divisor: k, .. } => proportional_divisor_from_i64(k)
+                .map(|divisor| Rc::new(CallPattern::ArithmeticDivideCall { divisor })),
             ShrinkFactor::UnitShrink => Some(Rc::new(CallPattern::ArithmeticSubtractCall {
                 steps: Rc::new(PositiveDescentAmount::OneStep),
             })),

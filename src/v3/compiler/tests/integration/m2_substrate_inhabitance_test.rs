@@ -366,10 +366,7 @@ fn computation_carriers_bootstrap_from_v3_std() {
         sum_variants(&dag, "ProportionalDivisor"),
         vec![
             (String::from("DivideByTwo"), Vec::new()),
-            (
-                String::from("StrictlyLarger"),
-                vec![String::from("inner")],
-            ),
+            (String::from("StrictlyLarger"), vec![String::from("inner")],),
         ]
     );
     assert_eq!(
