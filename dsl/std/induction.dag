@@ -499,13 +499,16 @@ type AtomicCost
 
 
 // =========================================================================
-// CostBound — non-recursive asymptotic bound (Big-O)
+// CostBound — asymptotic bound algebra (Big-O)
 // =========================================================================
 
 // The output of structural descent analysis.  Most slots use `AtomicCost` only;
 // `SumBound` is the v3 E-I pre-flight case that carries `List<CostBound>`
 // (same structural pattern as `FieldValue` in substrate — indirection through
 // `List`, not an extra anonymous recursive .dag connective).
+//
+// Kernel invariant: `SumBound` is the only `CostBound`→`CostBound` recursion — a named
+// alternative-max stack (E-I), not open-ended anonymous substrate recursion like `Node` trees.
 //
 // CostBound is the authority for structurally-proven bounds derived from
 // the induction model. complexity.dag's CostExpr/SizeExpr is a transitional
