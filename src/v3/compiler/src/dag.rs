@@ -723,7 +723,10 @@ pub enum OperatorKind {
     Logical(LogicalOp),
 }
 
-/// Descent evidence lattice mirrored from `src/v3/std/termination.dag`.
+/// 🟢 TERMINAL at termination-proof scope.
+///
+/// Rust mirror of the durable evidence lattice declared in
+/// `src/v3/std/termination.dag`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DescentEvidence {
     Strict,
@@ -731,6 +734,10 @@ pub enum DescentEvidence {
     DescentUnknown,
 }
 
+/// 🟡 SCAFFOLD.
+///
+/// Ranking dimensions are durable, but the `String` parameter bridge dissolves
+/// once function parameters can be referenced structurally.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RankingDimension {
     TreeSize { param: String },
@@ -740,6 +747,10 @@ pub enum RankingDimension {
     SetCardinality { param: String },
 }
 
+/// 🟢 TERMINAL at descent-witness scope.
+///
+/// Structural positive amount used so zero/negative shrink witnesses are not
+/// representable in proof carriers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PositiveDescentAmount {
     OneStep,
@@ -748,6 +759,11 @@ pub enum PositiveDescentAmount {
     },
 }
 
+/// 🟡 SCAFFOLD.
+///
+/// The witness taxonomy is durable for E-T; String payloads dissolve when
+/// accessor, operation, witness, and element references become first-class
+/// substrate values.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescentSource {
     ChildAccessor {
