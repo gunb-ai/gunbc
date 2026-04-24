@@ -1,17 +1,12 @@
 use std::collections::HashMap;
 
 use v3_compiler::dag::{
-<<<<<<< HEAD
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
     join_evidence, lower_call_pattern, map_evidence_merge_at, merge_evidence,
     optional_evidence_meet, promote_to_strict, size_bound_param, tree_size_bound,
     type_iteration_dimension, AlgebraProfile, ArrowBody, CallPattern, DescentEvidence, FieldValue,
     IterationDimension, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
     TypeConnective, ValueBody,
-=======
-    evidence_rank, join_evidence, map_evidence_merge_at, merge_evidence, optional_evidence_meet,
-    promote_to_strict, ArrowBody, DescentEvidence, FieldValue, TypeConnective, ValueBody,
->>>>>>> origin/main
 };
 use v3_compiler::parse_surface;
 use v3_compiler::Dag;
@@ -71,8 +66,6 @@ fn sum_variants(dag: &Dag, name: &str) -> Vec<(String, Vec<String>)> {
     }
 }
 
-<<<<<<< HEAD
-=======
 fn variant_payload_field_type_name(
     dag: &Dag,
     sum_name: &str,
@@ -102,7 +95,7 @@ fn variant_payload_field_type_name(
         .unwrap_or_else(|| format!("<anonymous:{}>", field.ty.raw()))
 }
 
->>>>>>> origin/main
+
 fn arrow_body(dag: &Dag, name: &str) -> ArrowBody {
     let id = find_named(dag, name);
     match &dag.declaration(id).connective {
@@ -251,9 +244,6 @@ fn termination_carriers_bootstrap_from_v3_std() {
             (String::from("SetCardinality"), vec![String::from("param")]),
         ]
     );
-<<<<<<< HEAD
-    let _division_factor = find_named(&dag, "DivisionDescentFactor");
-=======
     assert_eq!(
         sum_variants(&dag, "DivisionDescentFactor"),
         vec![
@@ -261,7 +251,6 @@ fn termination_carriers_bootstrap_from_v3_std() {
             (String::from("GreaterThanTwo"), vec![String::from("extra")]),
         ]
     );
->>>>>>> origin/main
     assert_eq!(
         sum_variants(&dag, "DescentSource"),
         vec![
@@ -277,8 +266,6 @@ fn termination_carriers_bootstrap_from_v3_std() {
             (String::from("FoldIteration"), Vec::new()),
         ]
     );
-<<<<<<< HEAD
-=======
     assert_eq!(
         variant_payload_field_type_name(&dag, "DivisionDescentFactor", "GreaterThanTwo", "extra"),
         "PositiveInt"
@@ -295,7 +282,6 @@ fn termination_carriers_bootstrap_from_v3_std() {
         variant_payload_field_type_name(&dag, "DescentSource", "ArithmeticDivide", "by"),
         "DivisionDescentFactor"
     );
->>>>>>> origin/main
     assert_eq!(record_fields(&dag, "TerminationProof"), vec!["dimensions"]);
     assert_eq!(
         record_fields(&dag, "ProofEdge"),

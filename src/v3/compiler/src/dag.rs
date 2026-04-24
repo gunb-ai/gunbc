@@ -1113,8 +1113,6 @@ fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
     }
 }
 
-=======
->>>>>>> origin/main
 #[derive(Debug, Clone)]
 pub struct ValueNode {
     pub id: NodeId,
