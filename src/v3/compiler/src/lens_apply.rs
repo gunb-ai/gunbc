@@ -465,17 +465,7 @@ impl<'a> EvalCtx<'a> {
                 }
                 let a = int_from_value(&self.eval_port(t.inputs[0])?)?;
                 let b = int_from_value(&self.eval_port(t.inputs[1])?)?;
-                let n = match op {
-                    crate::dag::ArithmeticOp::Add => a + b,
-                    crate::dag::ArithmeticOp::Sub => a - b,
-                    crate::dag::ArithmeticOp::Mul => a * b,
-                    crate::dag::ArithmeticOp::Div => {
-                        if b == 0 {
-                            return Err(LensApplyError::TypeMismatch("division by zero"));
-                        }
-                        a / b
-                    }
-                };
+                let n = apply_arithmetic_int(*op, a, b)?;
                 Ok(FieldValue::Literal(LiteralBits::Int(n)))
             }
             TransformTarget::Operator(OperatorKind::Comparison(op)) => {
@@ -708,6 +698,27 @@ fn int_from_value(v: &FieldValue) -> Result<i64, LensApplyError> {
     match v {
         FieldValue::Literal(LiteralBits::Int(n)) => Ok(*n),
         _ => Err(LensApplyError::TypeMismatch("expected Int literal")),
+    }
+}
+
+/// Checked `Int` arithmetic for the D1 lens interpreter (INVARIANTS P3: no wrapping `+`/`-`/`*`/`/`
+/// that could fabricate results or panic in debug under `LensOutputEquals` / gate paths).
+fn apply_arithmetic_int(
+    op: crate::dag::ArithmeticOp,
+    a: i64,
+    b: i64,
+) -> Result<i64, LensApplyError> {
+    const OVERFLOW: LensApplyError = LensApplyError::UnsupportedConstruct("integer overflow");
+    match op {
+        crate::dag::ArithmeticOp::Add => a.checked_add(b).ok_or(OVERFLOW),
+        crate::dag::ArithmeticOp::Sub => a.checked_sub(b).ok_or(OVERFLOW),
+        crate::dag::ArithmeticOp::Mul => a.checked_mul(b).ok_or(OVERFLOW),
+        crate::dag::ArithmeticOp::Div => {
+            if b == 0 {
+                return Err(LensApplyError::TypeMismatch("division by zero"));
+            }
+            a.checked_div(b).ok_or(OVERFLOW)
+        }
     }
 }
 
@@ -1031,6 +1042,31 @@ fn lens_composition_op(a: Int, b: Int) -> Int = a + b
             int_associativity_holds_all_triples(&dag, id, ASSOCIATIVITY_WITNESS_TRIPLES)
                 .expect("assoc witness"),
             "Int `+` lens must pass every ASSOCIATIVITY_WITNESS_TRIPLES entry"
+        );
+    }
+
+    #[test]
+    fn int_add_overflow_returns_lens_apply_error_not_wrapped_value() {
+        let src = r#"module m
+fn f(a: Int, b: Int) -> Int = a + b
+"#;
+        let dag = compile_to_dag(src, "int_ovf.v3").expect("compiles");
+        let id = dag.declaration_by_name("f").unwrap().id;
+        let err = apply_lens_declaration(
+            &dag,
+            id,
+            &[
+                FieldValue::Literal(LiteralBits::Int(i64::MAX)),
+                FieldValue::Literal(LiteralBits::Int(1)),
+            ],
+        )
+        .expect_err("overflow must not yield a wrapped Int");
+        assert!(
+            matches!(
+                err,
+                super::LensApplyError::UnsupportedConstruct("integer overflow")
+            ),
+            "{err:?}"
         );
     }
 
