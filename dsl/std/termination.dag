@@ -33,6 +33,7 @@
 module std.termination
 
 import std.algebra { Ordering }
+import std.types { PositiveInt }
 // NOTE: is_valid_proof lives in std.graph (graph algorithm needs SCC
 // primitives). Cannot re-export here (circular: termination → graph →
 // termination). Consumers import from std.graph directly.
@@ -129,11 +130,11 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 // parameters for data constants (BoundedLattice<DescentEvidence>).
 
 
-// Promote NonIncreasing to Strict (e.g., when a callee is known to always advance).
-// DescentUnknown stays unknown — can't promote what we don't know.
+// Fail closed: strict descent cannot be fabricated from non-increase without
+// a separate structural witness.
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   match evidence {
-    NonIncreasing => Strict
+    NonIncreasing => NonIncreasing
     Strict => Strict
     _ => DescentUnknown
   }
@@ -190,6 +191,14 @@ type RankingDimension
   | TokenPosition { param: String }      // parser state.position
   | SetCardinality { param: String }     // |set| via remove
 
+// 🟢 TERMINAL at descent-witness scope. Division only witnesses arithmetic
+// descent for factors >= 2. The v3 bootstrap currently erases alias `where`
+// refinements, so encode the boundary as a structural carrier and compose
+// values above two from the shared PositiveInt authority.
+type DivisionDescentFactor
+  = Two
+  | GreaterThanTwo { extra: PositiveInt }
+
 // =========================================================================
 // Descent sources: HOW descent is witnessed at a call site
 // =========================================================================
@@ -204,7 +213,8 @@ type RankingDimension
 //     an accessor result is provably smaller (subtree < tree).
 //   - ListShrink: skip(n) for n >= 1 produces a shorter list.
 //     Grounded in List algebra (|skip(n, l)| = max(0, |l| - n)).
-//   - ArithmeticDecrease: n-k for k >= 1, or n/k for k >= 2.
+//   - ArithmeticSubtract: n-k for k >= 1.
+//   - ArithmeticDivide: n/k for k >= 2.
 //     Grounded in OrderedRing (subtract decreases, division too).
 //   - ParserAdvance: advance/expect/eat move position forward.
 //     Grounded in ParserState contract (position is monotonic).
@@ -216,8 +226,9 @@ type RankingDimension
 // identity. When .dag supports function references, these should become structural.
 type DescentSource
   = ChildAccessor { accessor: String }         // e.g., "binop_left"
-  | ListShrink { amount: Int }                 // skip(amount), amount >= 1
-  | ArithmeticDecrease { op: String, by: Int } // "subtract" by 1, "divide" by 2
+  | ListShrink { amount: PositiveInt }         // skip(amount), amount >= 1
+  | ArithmeticSubtract { by: PositiveInt }     // n - by, by >= 1
+  | ArithmeticDivide { by: DivisionDescentFactor } // n / by, by >= 2
   | ParserAdvance { witness: String }          // "advance", "expect", "eat"
   | SetRemoval { element: String }             // set remove in work-list drain
   | FoldIteration                              // body of fold — bounded by |collection|
