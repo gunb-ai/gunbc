@@ -330,7 +330,6 @@ struct StatementSyntaxBinding {
 
 #[derive(Debug, Clone)]
 struct ExpressionSyntaxBinding {
-    binary_op: String,
     field_access: String,
     function_call: String,
 }
@@ -571,6 +570,12 @@ impl RealizationIndexes {
                 }
                 RealizationCategory::Operator => {
                     let carrier = require_field_string(fields, "carrier", decl.id)?;
+                    if !carrier.contains("{lhs}") || !carrier.contains("{rhs}") {
+                        return Err(EmitError::MalformedRealization {
+                            declaration: decl.id,
+                            detail: "OperatorRealization carrier must be a full-expression template containing {lhs} and {rhs}",
+                        });
+                    }
                     let op = require_field_decl_ref(fields, "op", decl.id)?;
                     if operators.insert((target, op), carrier).is_some() {
                         return Err(EmitError::DuplicateRealization {
@@ -1349,8 +1354,8 @@ impl<'a> Ctx<'a> {
         let lhs = self.render_port(t.inputs[0], locals)?;
         let rhs = self.render_port(t.inputs[1], locals)?;
         Ok(render_named_template(
-            &self.indexes.syntax.expressions.binary_op,
-            &[("lhs", &lhs), ("op", carrier), ("rhs", &rhs)],
+            carrier,
+            &[("lhs", &lhs), ("rhs", &rhs)],
         ))
     }
 
@@ -2247,7 +2252,6 @@ fn parse_expression_syntax(
 ) -> Result<ExpressionSyntaxBinding, EmitError> {
     let fields = structural_fields_for_decl(dag, declaration)?;
     Ok(ExpressionSyntaxBinding {
-        binary_op: syntax_field_string(fields, "binary_op", declaration)?,
         field_access: syntax_field_string(fields, "field_access", declaration)?,
         function_call: syntax_field_string(fields, "function_call", declaration)?,
     })

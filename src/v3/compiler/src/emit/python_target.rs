@@ -65,7 +65,6 @@ enum CallableStrategyBinding {
 
 #[derive(Debug, Clone)]
 struct PythonSyntax {
-    binary_op: String,
     field_access: String,
     function_call: String,
     closure: String,
@@ -249,6 +248,12 @@ impl PythonIndexes {
                 let target = require_field_decl_ref(fields, "target", decl.id)?;
                 let op = require_field_decl_ref(fields, "op", decl.id)?;
                 let carrier = require_field_string(fields, "carrier", decl.id)?;
+                if !carrier.contains("{lhs}") || !carrier.contains("{rhs}") {
+                    return Err(EmitPythonError::MalformedSpec {
+                        declaration: decl.id,
+                        detail: "OperatorRealization carrier must be a full-expression template containing {lhs} and {rhs}",
+                    });
+                }
                 if operators.insert((target, op), carrier).is_some() {
                     return Err(EmitPythonError::DuplicateRealization {
                         declaration: decl.id,
@@ -307,11 +312,6 @@ impl PythonIndexes {
         })?;
 
         let syntax = PythonSyntax {
-            binary_op: require_field_string(
-                structural_fields_for_decl(dag, expressions)?,
-                "binary_op",
-                expressions,
-            )?,
             field_access: require_field_string(
                 structural_fields_for_decl(dag, expressions)?,
                 "field_access",
@@ -674,6 +674,10 @@ pub(crate) fn emit_python_with_mode(
         "__T = typing.TypeVar(\"__T\")".to_string(),
         "__U = typing.TypeVar(\"__U\")".to_string(),
         "def __v3_fold(items: list[typing.Any], init: typing.Any, fn: typing.Callable[[typing.Any, typing.Any], typing.Any]) -> typing.Any:\n    acc = init\n    for item in items:\n        acc = fn(acc, item)\n    return acc".to_string(),
+        // Python `//` is floor division; `OrderedRing.div` requires truncation toward zero.
+        // `divmod` adjusts the floor quotient by +1 when the remainder is non-zero and
+        // operand signs differ — restoring C-style truncation without floating-point.
+        "def __v3_idiv(a: int, b: int) -> int:\n    q, r = divmod(a, b)\n    return q + (1 if r != 0 and (a < 0) != (b < 0) else 0)".to_string(),
         "def __v3_unreachable(label: str) -> typing.NoReturn:\n    raise ValueError(label)".to_string(),
     ];
 
@@ -797,8 +801,8 @@ impl<'a> Ctx<'a> {
         let lhs = self.render_port(t.inputs[0], locals)?;
         let rhs = self.render_port(t.inputs[1], locals)?;
         Ok(render_named_template(
-            &self.indexes.syntax.binary_op,
-            &[("lhs", &lhs), ("op", carrier), ("rhs", &rhs)],
+            carrier,
+            &[("lhs", &lhs), ("rhs", &rhs)],
         ))
     }
 
