@@ -871,6 +871,7 @@ mod regen_parse_tables_emit;
 )]
 #[path = "tokenize_generated.rs"]
 mod tokenize;
+mod tokenize_char_class;
 
 pub use regen_parse_emit::{render_parse_generated_rs, RenderParseGeneratedError};
 pub use regen_parse_tables_emit::{
