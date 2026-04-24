@@ -25,8 +25,13 @@ This proposal is the **concrete elaboration** layered on top of
 - Work estimate (~2–3 months; ~120–150 primitive declarations).
 - R1-era non-preclusion discipline.
 - Fail-closed tie-breaking semantics.
-- L4 verification split (consistency-by-construction vs. residual
-  routing-correctness differential).
+- L4 verification three-way split: (A) routing correctness via
+  routing-stability tests + narrower choice-differential,
+  (B) structural-shape consistency by construction, and
+  (C) algebra-satisfaction certification preserved as L4
+  witness-based against target-runtime behavior (target-side
+  algebra-inhabitance claims remain theorem claims, not
+  self-certifying).
 - Open design questions (tie-breaking, escape hatches, cross-type
   coercion paths, failure diagnostics, interaction with DB-18 +
   cardinality-substrate).
@@ -440,38 +445,61 @@ L4 verification specifically looks like once the dissolution lands.
 Parent authorities leave this deliberately underspecified; the
 refinement below is additive detail for the promotion PR.
 
-`[proposed]` — L4 verification (differential test of two
-groundings) in the current design conflates two concerns:
-**routing correctness** ("did we pick the right target
-primitive?") and **algebra-satisfaction consistency** ("does the
-chosen target primitive actually obey the declared algebra?").
-Structural coercion splits them cleanly.
+`[proposed]` — L4 verification in the current framing does three
+jobs at once, which structural coercion can separate cleanly:
+(A) **routing correctness** ("did we pick the right target
+primitive?"), (B) **structural-shape consistency** ("does the
+chosen target primitive's declared algebra line up with the
+user-side algebra the search matched on?"), and
+(C) **algebra-satisfaction certification** ("does the chosen
+target primitive's *actual runtime behavior* obey the declared
+algebra's axioms?"). Structural coercion changes the shape of
+each:
 
-- **Algebra-satisfaction consistency** — structural coercion
-  obviates this half of L4. If the target primitive's algebra is
-  structurally declared and the search matched on that algebra,
-  consistency is by construction; no differential test of "does
-  Rust's `i64` satisfy `OrderedRing`?" needed.
-- **Routing correctness** — structural coercion *replaces*
-  differential L4 here with a stronger **routing-stability**
-  property ("user's `Int64` always resolves to Rust's `i64`,
-  never silently to `i128` or `Vec<Bit>`"). This is what the
-  layer-5 coercion-routing tests cover. But there's a residual
-  L4-shaped class: **a legal search finding a target primitive
-  the engineer didn't intend** (e.g., a new Rust primitive
-  declared post-hoc whose algebra legally satisfies user's
-  constraint but whose semantics the engineer didn't mean to
-  adopt). The residual check: generate witness values, execute
-  on the chosen target primitive, compare to the interpreter's
-  result on the same inputs. Narrower than the current whole-
-  algebra differential — it's a sanity-check-on-choice, not a
-  re-verification-of-the-whole-chain.
+- **(A) Routing correctness** — structural coercion replaces
+  declarative routing with search-based routing and is asserted
+  by a new **routing-stability** property ("user's `Int64`
+  always resolves to Rust's `i64`, never silently to `i128` or
+  `Vec<Bit>`"). This is what the layer-5 coercion-routing tests
+  cover. Distinct residual: a **legal search finding a target
+  primitive the engineer didn't intend** (e.g., a post-hoc
+  target declaration whose algebra legally satisfies the
+  user-side constraint but whose semantics aren't what the
+  engineer meant). The residual check is an end-to-end
+  differential narrower than the current whole-algebra one — a
+  sanity-check-on-choice, not a re-verification of the whole
+  chain.
+- **(B) Structural-shape consistency** — structural coercion
+  discharges this half by construction. If the user-side and
+  target-side both declare they inhabit `OrderedRing` and the
+  search matched on that algebra, the shape-alignment doesn't
+  need a separate runtime check; it's a structural fact of the
+  search's success. This is the piece that genuinely becomes
+  construction-certified.
+- **(C) Algebra-satisfaction certification does NOT go away.**
+  Target-side algebra assignment ("Rust's `i64` inhabits
+  `OrderedRing`") is still **authored realization data**, not a
+  tautology. Whether Rust's actual `i64` *behavior* at runtime
+  really obeys `OrderedRing`'s axioms (associativity of `+`,
+  existence of a two's-complement-wrapping `negate` that forms
+  an additive inverse, etc.) is a theorem claim about the target
+  runtime, and it still needs **L4 witness-based certification**
+  per `docs/invariants/verifiability-invariant.md` and the
+  "consistent by construction *+ verified by L4*" framing in
+  [`two-groundings-static-validation-vs-efficient-realization.md`](two-groundings-static-validation-vs-efficient-realization.md)
+  §"The two groundings must be consistent by construction +
+  verified by L4." Structural coercion doesn't remove this
+  obligation; it narrows its scope to the authored algebra
+  declarations themselves (which targets genuinely satisfy the
+  axioms they claim to), rather than the whole mapping chain.
 
-Net effect: consistency shifts from check to construction;
-routing stability becomes a first-class test class; and the
-residual end-to-end differential survives specifically for cases
-where the *choice* might be semantically wrong even though the
-*search* was mechanically correct.
+Net effect: structural coercion discharges (B) by construction,
+replaces (A) with routing-stability tests + a narrower
+choice-correctness differential, and **preserves (C) as L4
+witness-based certification of target-side algebra-inhabitance
+claims**. Target-side algebra declarations remain **theorem claims
+that need runtime-behavior evidence**, not self-certifying by
+virtue of being structurally declared.
 
 ## When to promote
 
