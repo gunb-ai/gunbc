@@ -208,12 +208,20 @@ Lane-owner dispatch status (update as sub-deliverables close):
       PR #741 swapped the Rust operator recognizer for D1 lens application)
 - [x] `lens_output_is_queryable_data` gate compiles + evaluates
       (PR #741, merged 2026-04-24 — D1 `apply_lens_declaration` primitive
-      + D2 real `eval_lens_output_equals` apply/compare; bridge `compile_to_dag`
-      removed from the NYI path; `r1_lens_output_input_from_program` sentinel
-      reflects `Dag.nodes` until first-class `Dag` literals land.
-      Also closes ROADMAP "Scheduled cleanups: LensOutputEquals runner and
-      R1 gate fixtures" items 1–3: split fixture folded back into
-      `r1_gates.dag` via `r1_gates.template.dag` + `build.rs` splice)
+      + D2 real `eval_lens_output_equals` apply/compare. The prior `NotYetImplemented`
+      thin-receipt shape is gone; `compile_to_dag(&claim.source, …)` is **still called**
+      on the evaluation path (intentional — reflects the program `Dag` for lens input
+      and pairs the canonical lens `Dag` for P2 `id_space` alignment), fail-closed
+      on tokenize/parse/inference per P3. `r1_lens_output_input_from_program` sentinel
+      reflects `Dag.nodes` until first-class `Dag` literals land. Closes ROADMAP
+      "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" items 1–3
+      (split fixture folded back into `r1_gates.dag` via `r1_gates.template.dag`
+      + `build.rs` splice). **Follow-on open (ROADMAP §77 item 1):** retire the
+      two parallel `compile_to_dag` call sites when `DeclarationRef` resolves
+      executable lens + inputs structurally from one authority. **Follow-on open
+      (ROADMAP §77 item 3):** dissolve fixture-local `named_function_count` /
+      `count_named_bind` stubs once `DeclarationRef` can resolve the lens from
+      `program_dag` alone)
 
 **Schema extensions owned here that other managers consume:**
 - [x] `ExecuteCommand` predicate (Surface T-Emit consumer) — landed PR #678
@@ -243,9 +251,14 @@ Decisions log (append as they happen):
   `eval_lens_output_equals` and `eval_algebraic_law_for_claim_program` now
   consume D1 directly (D2, D3). D4 folds the split
   `r1_lens_output_equals_gate.dag` back into `r1_gates.dag` via a new
-  `r1_gates.template.dag` + `build.rs` splice-at-build-time. Two Rust
-  structural recognizers deleted (`declaration_is_binary_int_add_associativity_witness`
-  + the `compile_to_dag` bridge receipt inside `eval_lens_output_equals`).
+  `r1_gates.template.dag` + `build.rs` splice-at-build-time. One Rust
+  structural recognizer deleted (`declaration_is_binary_int_add_associativity_witness`);
+  the `eval_lens_output_equals` NYI-path thin receipt is replaced by real
+  evaluation — `compile_to_dag` call sites remain on the evaluation path,
+  intentional and load-bearing (program `Dag` for reflection, canonical lens
+  pairing for P2 `id_space` alignment); ROADMAP §77 item 1 keeps an open
+  follow-on to retire the parallel compile paths when `DeclarationRef`
+  resolves lens + inputs from one authority.
   **Supersedes #740** (wise-koi-316 AlgebraicLaw direction, archived without
   merging). ROADMAP "Scheduled cleanups: LensOutputEquals runner and R1
   gate fixtures" items 1–3 all dissolved in the same PR. Lane non-goals
