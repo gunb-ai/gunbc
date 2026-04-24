@@ -750,14 +750,22 @@ pub enum PositiveDescentAmount {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescentSource {
-    ChildAccessor { accessor: String },
-    ListShrink { amount: PositiveDescentAmount },
+    ChildAccessor {
+        accessor: String,
+    },
+    ListShrink {
+        amount: PositiveDescentAmount,
+    },
     ArithmeticDecrease {
         op: String,
         by: PositiveDescentAmount,
     },
-    ParserAdvance { witness: String },
-    SetRemoval { element: String },
+    ParserAdvance {
+        witness: String,
+    },
+    SetRemoval {
+        element: String,
+    },
     FoldIteration,
 }
 
