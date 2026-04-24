@@ -355,6 +355,30 @@ fn countdown(n: Int) -> Int =
 }
 
 #[test]
+fn e_p_per_call_descent_evidence_fails_closed_for_non_self_call() {
+    let dag = compile_to_dag(
+        "\
+fn helper(n: Int) -> Int = n - 1
+fn caller(n: Int) -> Int = helper(n)
+",
+        "e_p_non_self_call.v3",
+    )
+    .expect("non-self call fixture compiles");
+
+    let entries = per_call_descent_evidence(&dag);
+    let non_self = entries
+        .iter()
+        .find(|entry| entry.caller == "caller" && entry.callee == "helper")
+        .unwrap_or_else(|| panic!("expected non-self callable edge evidence, got {entries:?}"));
+
+    assert_eq!(
+        non_self.evidence,
+        vec![SubValueRelation::SubValueUnknown],
+        "resolved non-self callable edges must fail closed instead of disappearing"
+    );
+}
+
+#[test]
 fn e_p_runtime_mirror_matches_induction_carrier_shape() {
     let dag = Dag::new();
 

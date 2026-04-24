@@ -1140,9 +1140,10 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
 ///
 /// This is option P-c from `docs/design-substrate-carrier-port-program.md`: keep
 /// `TransformNode` minimal and derive a named side table from lowered call
-/// structure. It currently records self-call evidence only, because those are
-/// the call edges v2 consumes for termination/cost descent. Non-proved argument
-/// positions fail closed to [`SubValueRelation::SubValueUnknown`].
+/// structure. It currently proves arithmetic evidence only for direct self-call
+/// arguments. Other callable edges are still represented, but their argument
+/// positions fail closed to [`SubValueRelation::SubValueUnknown`] until the
+/// producer can prove stronger mutual-recursive or cross-call facts.
 pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
     let mut entries = Vec::new();
 
@@ -1171,7 +1172,9 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
                     .enumerate()
                     .map(|(idx, arg)| classify_call_argument(dag, caller, idx, *arg))
                     .collect(),
-                (CallableProvenance::Resolved(_), CallableProvenance::Resolved(_)) => continue,
+                (CallableProvenance::Resolved(_), CallableProvenance::Resolved(_)) => {
+                    vec![SubValueRelation::SubValueUnknown; transform.inputs.len()]
+                }
                 (CallableProvenance::Resolved(_), CallableProvenance::Unresolved)
                 | (CallableProvenance::Unresolved, _) => {
                     vec![SubValueRelation::SubValueUnknown; transform.inputs.len()]
