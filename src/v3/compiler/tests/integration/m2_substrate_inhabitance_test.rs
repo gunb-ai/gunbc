@@ -214,6 +214,16 @@ fn termination_carriers_bootstrap_from_v3_std() {
         ]
     );
     assert_eq!(
+        sum_variants(&dag, "PositiveDescentAmount"),
+        vec![
+            (String::from("OneStep"), Vec::new()),
+            (
+                String::from("AdditionalStep"),
+                vec![String::from("previous")]
+            ),
+        ]
+    );
+    assert_eq!(
         sum_variants(&dag, "DescentSource"),
         vec![
             (
