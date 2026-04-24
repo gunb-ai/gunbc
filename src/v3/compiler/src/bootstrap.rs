@@ -77,6 +77,7 @@ include!(concat!(env!("OUT_DIR"), "/v3_specs.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_compiler_files.rs"));
 
 const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
+const RELEASE_GATE_DECLARATIONS_FILE: &str = "src/v3/std/r1_gates.dag";
 
 fn declaration_name_preference_rank(file: &str) -> usize {
     if file.starts_with("src/v3/") {
@@ -136,7 +137,9 @@ fn load_runtime_bootstrap_authorities(
     let staged_iter = STAGED_FILES
         .iter()
         .copied()
-        .filter(|(path, _)| !excluded_staged_paths.contains(path));
+        .filter(|(path, _)| {
+            *path != RELEASE_GATE_DECLARATIONS_FILE && !excluded_staged_paths.contains(path)
+        });
     let compiler_iter = COMPILER_FILES
         .iter()
         .copied()
