@@ -8,14 +8,15 @@ use crate::std_computation::IterationPrimitive::{Descend, Fold, Repeat};
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_computation::SizeBound::{ArithmeticParam, CollectionSize, Forever};
 pub use crate::std_computation::{
-    positive_amount_from_i64, tree_size_bound, CallPattern, IterationPrimitive, LoweringTarget,
-    ShrinkFactor, SizeBound,
+    tree_size_bound, CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
 };
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
-use crate::std_termination::PositiveDescentAmount;
+use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
+use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 use crate::std_termination::RankingDimension::TreeSize;
 pub use crate::std_termination::{
-    proportional_divisor_from_i64, DescentEvidence, ProportionalDivisor, RankingDimension,
+    proportional_divisor_to_int, DescentEvidence, PositiveDescentAmount, ProportionalDivisor,
+    RankingDimension,
 };
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
@@ -47,12 +48,37 @@ pub struct InductiveField {
     pub element_type: String,
 }
 
-fn inductive_field_eq(fa: &InductiveField, fb: &InductiveField) -> bool {
-    fa.type_name == fb.type_name
-        && fa.variant_name == fb.variant_name
-        && fa.field_name == fb.field_name
-        && fa.shape == fb.shape
-        && fa.element_type == fb.element_type
+pub fn recursion_shape_eq(a: RecursionShape, b: RecursionShape) -> bool {
+    match a {
+        RecursionShape::DirectRecursion => match b {
+            RecursionShape::DirectRecursion => true,
+            _ => false,
+        },
+        RecursionShape::ListRecursion => match b {
+            RecursionShape::ListRecursion => true,
+            _ => false,
+        },
+        RecursionShape::OptionalRecursion => match b {
+            RecursionShape::OptionalRecursion => true,
+            _ => false,
+        },
+        RecursionShape::SetRecursion => match b {
+            RecursionShape::SetRecursion => true,
+            _ => false,
+        },
+        RecursionShape::MapValueRecursion => match b {
+            RecursionShape::MapValueRecursion => true,
+            _ => false,
+        },
+    }
+}
+
+pub fn inductive_field_eq(a: &Rc<InductiveField>, b: &Rc<InductiveField>) -> bool {
+    (((((a.type_name.clone().as_str() == b.type_name.clone().as_str())
+        && (a.variant_name.clone().as_str() == b.variant_name.clone().as_str()))
+        && (a.field_name.clone().as_str() == b.field_name.clone().as_str()))
+        && recursion_shape_eq(a.shape.clone(), b.shape.clone()))
+        && (a.element_type.clone().as_str() == b.element_type.clone().as_str()))
 }
 
 pub fn inductive_field_to_dimension(
@@ -101,7 +127,7 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
             SubValueRelation::StrictSubValue { field: fb, .. } => {
-                if inductive_field_eq(fa.as_ref(), fb.as_ref()) {
+                if inductive_field_eq(&fa, &fb) {
                     a.clone()
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
@@ -113,7 +139,7 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
             SubValueRelation::IteratedSubValue { field: fb, .. } => {
-                if inductive_field_eq(fa.as_ref(), fb.as_ref()) {
+                if inductive_field_eq(&fa, &fb) {
                     a.clone()
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
@@ -147,7 +173,7 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             SubValueRelation::SubValueUnknown => a.clone(),
             SubValueRelation::PreservedValue => a.clone(),
             SubValueRelation::StrictSubValue { field: fb, .. } => {
-                if inductive_field_eq(fa.as_ref(), fb.as_ref()) {
+                if inductive_field_eq(&fa, &fb) {
                     a.clone()
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
@@ -159,7 +185,7 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             SubValueRelation::SubValueUnknown => a.clone(),
             SubValueRelation::PreservedValue => a.clone(),
             SubValueRelation::IteratedSubValue { field: fb, .. } => {
-                if inductive_field_eq(fa.as_ref(), fb.as_ref()) {
+                if inductive_field_eq(&fa, &fb) {
                     a.clone()
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
@@ -267,10 +293,16 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
             }))
         }
         SubValueRelation::ArithmeticDescent { factor: f, .. } => match (*f.clone()).clone() {
-            ShrinkFactor::ConstantShrink { amount: k, .. } => positive_amount_from_i64(k)
-                .map(|steps| Rc::new(CallPattern::ArithmeticSubtractCall { steps })),
-            ShrinkFactor::ProportionalShrink { divisor: k, .. } => proportional_divisor_from_i64(k)
-                .map(|divisor| Rc::new(CallPattern::ArithmeticDivideCall { divisor })),
+            ShrinkFactor::ConstantShrink { steps: p, .. } => {
+                Some(Rc::new(CallPattern::ArithmeticSubtractCall {
+                    steps: p.clone(),
+                }))
+            }
+            ShrinkFactor::ProportionalShrink { divisor: d, .. } => {
+                Some(Rc::new(CallPattern::ArithmeticDivideCall {
+                    divisor: d.clone(),
+                }))
+            }
             ShrinkFactor::UnitShrink => Some(Rc::new(CallPattern::ArithmeticSubtractCall {
                 steps: Rc::new(PositiveDescentAmount::OneStep),
             })),
@@ -575,7 +607,7 @@ pub fn derive_bound(
             master_theorem(&Rc::new(RecurrenceForm {
                 param: param,
                 branches: branches,
-                divisor: d.clone(),
+                divisor: proportional_divisor_to_int(d.clone()),
                 work_exponent: work_exponent,
             }))
         }
@@ -598,7 +630,9 @@ pub fn binary_search_bound() -> Rc<CostBound> {
     derive_bound(
         "xs".to_string(),
         1,
-        Rc::new(ShrinkFactor::ProportionalShrink { divisor: 2 }),
+        Rc::new(ShrinkFactor::ProportionalShrink {
+            divisor: Rc::new(ProportionalDivisor::DivideByTwo),
+        }),
         0,
     )
 }
@@ -607,7 +641,9 @@ pub fn mergesort_bound() -> Rc<CostBound> {
     derive_bound(
         "xs".to_string(),
         2,
-        Rc::new(ShrinkFactor::ProportionalShrink { divisor: 2 }),
+        Rc::new(ShrinkFactor::ProportionalShrink {
+            divisor: Rc::new(ProportionalDivisor::DivideByTwo),
+        }),
         1,
     )
 }
@@ -616,7 +652,9 @@ pub fn karatsuba_bound() -> Rc<CostBound> {
     derive_bound(
         "digits".to_string(),
         3,
-        Rc::new(ShrinkFactor::ProportionalShrink { divisor: 2 }),
+        Rc::new(ShrinkFactor::ProportionalShrink {
+            divisor: Rc::new(ProportionalDivisor::DivideByTwo),
+        }),
         1,
     )
 }
@@ -625,7 +663,9 @@ pub fn strassen_bound() -> Rc<CostBound> {
     derive_bound(
         "n".to_string(),
         7,
-        Rc::new(ShrinkFactor::ProportionalShrink { divisor: 2 }),
+        Rc::new(ShrinkFactor::ProportionalShrink {
+            divisor: Rc::new(ProportionalDivisor::DivideByTwo),
+        }),
         2,
     )
 }

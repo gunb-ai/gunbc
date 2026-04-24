@@ -11,6 +11,7 @@ use std::rc::Rc;
 use DescentEvidence::*;
 use DescentSource::*;
 use PositiveDescentAmount::*;
+use ProportionalDivisor::*;
 use RankingDimension::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -136,26 +137,60 @@ pub enum ProportionalDivisor {
     DivideByTwo,
     StrictlyLarger { inner: Rc<ProportionalDivisor> },
 }
-
-pub fn proportional_divisor_to_int(d: &ProportionalDivisor) -> i64 {
-    match d {
-        ProportionalDivisor::DivideByTwo => 2,
-        ProportionalDivisor::StrictlyLarger { inner } => {
-            1 + proportional_divisor_to_int(inner.as_ref())
+impl ProportionalDivisor {
+    pub fn inner(&self) -> Rc<ProportionalDivisor> {
+        match self {
+            ProportionalDivisor::DivideByTwo => panic!("no inner on unit variant"),
+            ProportionalDivisor::StrictlyLarger { inner: __val, .. } => __val.clone(),
         }
     }
 }
 
-pub fn proportional_divisor_from_i64(k: i64) -> Option<Rc<ProportionalDivisor>> {
-    if k < 2 {
-        None
-    } else if k == 2 {
-        Some(Rc::new(ProportionalDivisor::DivideByTwo))
-    } else {
-        Some(Rc::new(ProportionalDivisor::StrictlyLarger {
-            inner: proportional_divisor_from_i64(k - 1)?,
-        }))
-    }
+pub fn proportional_divisor_to_int(d: Rc<ProportionalDivisor>) -> i64 {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*d).clone() {
+        ProportionalDivisor::DivideByTwo => 2,
+        ProportionalDivisor::StrictlyLarger { inner: p, .. } => {
+            (1 + proportional_divisor_to_int(p.clone()))
+        }
+    })
+}
+
+pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<Rc<PositiveDescentAmount>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (k.clone() <= 0) {
+            None
+        } else {
+            if (k.clone() == 1) {
+                Some(Rc::new(PositiveDescentAmount::OneStep))
+            } else {
+                match positive_descent_amount_from_positive_int((k.clone() - 1)) {
+                    Some(prev) => Some(Rc::new(PositiveDescentAmount::AdditionalStep {
+                        previous: prev.clone(),
+                    })),
+                    None => None,
+                }
+            }
+        }
+    })
+}
+
+pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<Rc<ProportionalDivisor>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (k.clone() < 2) {
+            None
+        } else {
+            if (k.clone() == 2) {
+                Some(Rc::new(ProportionalDivisor::DivideByTwo))
+            } else {
+                match proportional_divisor_from_int_at_least_two((k.clone() - 1)) {
+                    Some(prev) => Some(Rc::new(ProportionalDivisor::StrictlyLarger {
+                        inner: prev.clone(),
+                    })),
+                    None => None,
+                }
+            }
+        }
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

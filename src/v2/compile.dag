@@ -45,6 +45,10 @@ import v2.compiler.emit_python { emit_python }
 import v2.compiler.emit_go { emit_go }
 import v2.compiler.complexity { ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report }
 import std.induction { SubValueRelation, StrictSubValue, IteratedSubValue, PreservedValue, SubValueUnknown, InductiveField, ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion }
+import std.termination {
+  PositiveDescentAmount, OneStep, AdditionalStep,
+  ProportionalDivisor, DivideByTwo, StrictlyLarger
+}
 import v2.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
 import v2.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
 
@@ -447,11 +451,29 @@ fn serialize_inductive_field(field: InductiveField) -> String {
     "}")
 }
 
+fn serialize_positive_descent_amount(steps: PositiveDescentAmount) -> String {
+  match steps {
+    OneStep => "{\"_variant\": \"OneStep\"}"
+    AdditionalStep { previous: p } =>
+      concat("{\"_variant\": \"AdditionalStep\", \"previous\": ", serialize_positive_descent_amount(steps: p), "}")
+  }
+}
+
+fn serialize_proportional_divisor(d: ProportionalDivisor) -> String {
+  match d {
+    DivideByTwo => "{\"_variant\": \"DivideByTwo\"}"
+    StrictlyLarger { inner: i } =>
+      concat("{\"_variant\": \"StrictlyLarger\", \"inner\": ", serialize_proportional_divisor(d: i), "}")
+  }
+}
+
 fn serialize_shrink_factor(factor: ShrinkFactor) -> String {
   match factor {
     UnitShrink => "{\"_variant\": \"UnitShrink\"}"
-    ConstantShrink { amount: a } => concat("{\"_variant\": \"ConstantShrink\", \"amount\": ", to_string(i: a), "}")
-    ProportionalShrink { divisor: d } => concat("{\"_variant\": \"ProportionalShrink\", \"divisor\": ", to_string(i: d), "}")
+    ConstantShrink { steps: s } =>
+      concat("{\"_variant\": \"ConstantShrink\", \"steps\": ", serialize_positive_descent_amount(steps: s), "}")
+    ProportionalShrink { divisor: d } =>
+      concat("{\"_variant\": \"ProportionalShrink\", \"divisor\": ", serialize_proportional_divisor(d: d), "}")
   }
 }
 

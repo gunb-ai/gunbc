@@ -211,6 +211,35 @@ fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
   }
 }
 
+// Validated bridges for analyzer literal sites (e.g. `skip(k)`, `n / d`).
+// `none` when `k` is not a positive witness — callers must fail closed.
+fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
+  if k <= 0 { none }
+  else {
+    if k == 1 { Some { value: OneStep } }
+    else {
+      match positive_descent_amount_from_positive_int(k: k - 1) {
+        Some { value: prev } => Some { value: AdditionalStep { previous: prev } }
+        None => none
+      }
+    }
+  }
+}
+
+// `none` when k < 2 — proportional division needs divisor ≥ 2 structurally.
+fn proportional_divisor_from_int_at_least_two(k: Int) -> ProportionalDivisor? {
+  if k < 2 { none }
+  else {
+    if k == 2 { Some { value: DivideByTwo } }
+    else {
+      match proportional_divisor_from_int_at_least_two(k: k - 1) {
+        Some { value: prev } => Some { value: StrictlyLarger { inner: prev } }
+        None => none
+      }
+    }
+  }
+}
+
 // =========================================================================
 // Descent sources: HOW descent is witnessed at a call site
 // =========================================================================

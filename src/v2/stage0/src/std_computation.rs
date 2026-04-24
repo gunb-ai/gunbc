@@ -7,11 +7,12 @@ use crate::std_algebra::AlgebraProfile::{
     PartialFunctionProfile,
 };
 pub use crate::std_algebra::{kernel_algebra_profile, AlgebraProfile};
-use crate::std_termination::DescentEvidence::*;
+use crate::std_termination::DescentEvidence::DescentUnknown;
+use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
+use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 use crate::std_termination::RankingDimension::*;
 pub use crate::std_termination::{
-    proportional_divisor_from_i64, proportional_divisor_to_int, DescentEvidence,
-    PositiveDescentAmount, ProportionalDivisor, RankingDimension,
+    DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
 };
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
@@ -38,25 +39,13 @@ pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
     Rc::new(SizeBound::TreeSize { param: param })
 }
 
-pub fn positive_descent_count(steps: &PositiveDescentAmount) -> i64 {
-    match steps {
+pub fn positive_descent_count(steps: Rc<PositiveDescentAmount>) -> i64 {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*steps).clone() {
         PositiveDescentAmount::OneStep => 1,
-        PositiveDescentAmount::AdditionalStep { previous } => {
-            1 + positive_descent_count(previous.as_ref())
+        PositiveDescentAmount::AdditionalStep { previous: p, .. } => {
+            (1 + positive_descent_count(p.clone()))
         }
-    }
-}
-
-pub fn positive_amount_from_i64(k: i64) -> Option<Rc<PositiveDescentAmount>> {
-    if k <= 0 {
-        None
-    } else if k == 1 {
-        Some(Rc::new(PositiveDescentAmount::OneStep))
-    } else {
-        Some(Rc::new(PositiveDescentAmount::AdditionalStep {
-            previous: positive_amount_from_i64(k - 1)?,
-        }))
-    }
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -76,8 +65,8 @@ pub enum CallPattern {
 #[serde(tag = "_variant")]
 pub enum ShrinkFactor {
     UnitShrink,
-    ConstantShrink { amount: i64 },
-    ProportionalShrink { divisor: i64 },
+    ConstantShrink { steps: Rc<PositiveDescentAmount> },
+    ProportionalShrink { divisor: Rc<ProportionalDivisor> },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -104,34 +93,30 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
-        CallPattern::CollectionShrinkCall { amount } => Rc::new(LoweringTarget {
+        CallPattern::CollectionShrinkCall { amount: p, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
             bound: Rc::new(SizeBound::CollectionSize {
                 param: "collection".to_string(),
             }),
             evidence: DescentEvidence::Strict,
-            factor: Some(Rc::new(ShrinkFactor::ConstantShrink {
-                amount: positive_descent_count(amount.as_ref()),
-            })),
+            factor: Some(Rc::new(ShrinkFactor::ConstantShrink { steps: p.clone() })),
         }),
-        CallPattern::ArithmeticSubtractCall { steps } => Rc::new(LoweringTarget {
+        CallPattern::ArithmeticSubtractCall { steps: p, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
             bound: Rc::new(SizeBound::ArithmeticParam {
                 param: "n".to_string(),
             }),
             evidence: DescentEvidence::Strict,
-            factor: Some(Rc::new(ShrinkFactor::ConstantShrink {
-                amount: positive_descent_count(steps.as_ref()),
-            })),
+            factor: Some(Rc::new(ShrinkFactor::ConstantShrink { steps: p.clone() })),
         }),
-        CallPattern::ArithmeticDivideCall { divisor } => Rc::new(LoweringTarget {
+        CallPattern::ArithmeticDivideCall { divisor: d, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
             bound: Rc::new(SizeBound::ArithmeticParam {
                 param: "n".to_string(),
             }),
             evidence: DescentEvidence::Strict,
             factor: Some(Rc::new(ShrinkFactor::ProportionalShrink {
-                divisor: proportional_divisor_to_int(divisor.as_ref()),
+                divisor: d.clone(),
             })),
         }),
         CallPattern::ParserAdvanceCall { .. } => Rc::new(LoweringTarget {
@@ -186,7 +171,7 @@ pub fn is_constant_bound(bound: Rc<SizeBound>) -> bool {
 }
 
 pub fn forever_iteration_bound() -> i64 {
-    i64::MAX
+    9223372036854775807
 }
 
 pub fn constant_bound_value(bound: Rc<SizeBound>) -> Option<i64> {

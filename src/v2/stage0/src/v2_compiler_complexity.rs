@@ -37,14 +37,14 @@ use crate::std_termination::DescentSource::{
     ArithmeticDivideDescent, ArithmeticSubtractDescent, ChildAccessor, FoldIteration, ListShrink,
     ParserAdvance, SetRemoval,
 };
-use crate::std_termination::PositiveDescentAmount;
+use crate::std_termination::PositiveDescentAmount::OneStep;
 use crate::std_termination::RankingDimension::{
     ArithmeticValue, ListLength, SetCardinality, TokenPosition, TreeSize,
 };
 pub use crate::std_termination::{
     evidence_rank, join_evidence, map_evidence_merge_at, merge_evidence, optional_evidence_meet,
-    promote_to_strict, DescentEvidence, DescentSource, ProofEdge, RankingDimension,
-    TerminationProof,
+    promote_to_strict, DescentEvidence, DescentSource, PositiveDescentAmount, ProofEdge,
+    RankingDimension, TerminationProof,
 };
 pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_emit::to_string;
@@ -424,11 +424,6 @@ pub fn parser_state_base_var(
     }
 }
 
-/// Maps a parser result to progress evidence.
-///
-/// Still threads inputs through `promote_to_strict`, which is fail-closed: it
-/// preserves `DescentEvidence::NonIncreasing` and never fabricates
-/// `DescentEvidence::Strict` from it (see `std_termination::promote_to_strict`).
 pub fn parser_result_state_progress(
     source: Rc<ParserResultSource>,
     parser_always_advancing: Rc<HashMap<String, bool>>,
@@ -814,8 +809,6 @@ pub fn parser_env_with_binding(
     }
 }
 
-/// Parser call edges may call `promote_to_strict` on callee-known-advancing paths;
-/// same fail-closed contract as `parser_result_state_progress`.
 pub fn parser_call_edge_progress(
     call_node: &Rc<Node>,
     state_param: &Rc<ParserStateParam>,

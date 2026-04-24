@@ -5330,7 +5330,7 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>, si: Map<String, Newl
                       // (UnitShrink with branches > 1 → ForeverBound in derive_bound)
                       derive_bound(param: param_name, branches: branches, factor: factor, work_exponent: 0)
                     }
-                  ConstantShrink { amount: _ } =>
+                  ConstantShrink { steps: _ } =>
                     let distinct_fields = distinct_descended_fields(all_calls: all_calls, param_index: param_index)
                     if branches <= distinct_fields {
                       catamorphism_bound(param: param_name, nesting_depth: 1)

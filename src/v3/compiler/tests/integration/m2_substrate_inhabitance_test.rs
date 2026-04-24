@@ -378,7 +378,7 @@ fn computation_carriers_bootstrap_from_v3_std() {
         sum_variants(&dag, "ShrinkFactor"),
         vec![
             (String::from("UnitShrink"), Vec::new()),
-            (String::from("ConstantShrink"), vec![String::from("amount")]),
+            (String::from("ConstantShrink"), vec![String::from("steps")]),
             (
                 String::from("ProportionalShrink"),
                 vec![String::from("divisor")],
@@ -421,8 +421,6 @@ fn computation_lowering_functions_preserve_std_body_spans() {
         "constant_bound_value",
         "algebra_profile_to_dimension",
         "type_iteration_dimension",
-        "int_to_positive_descent",
-        "int_to_proportional_divisor",
     ] {
         assert!(
             matches!(arrow_body(&dag, name), ArrowBody::Unparsed(_)),
@@ -466,7 +464,9 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                     param: String::from("collection"),
                 },
                 evidence: Strict,
-                factor: Some(ConstantShrink { amount: 1 }),
+                factor: Some(ConstantShrink {
+                    steps: PositiveDescentAmount::OneStep,
+                }),
             },
         ),
         (
@@ -481,7 +481,11 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                     param: String::from("collection"),
                 },
                 evidence: Strict,
-                factor: Some(ConstantShrink { amount: 2 }),
+                factor: Some(ConstantShrink {
+                    steps: PositiveDescentAmount::AdditionalStep {
+                        previous: Box::new(PositiveDescentAmount::OneStep),
+                    },
+                }),
             },
         ),
         (
@@ -494,7 +498,9 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                     param: String::from("n"),
                 },
                 evidence: Strict,
-                factor: Some(ConstantShrink { amount: 1 }),
+                factor: Some(ConstantShrink {
+                    steps: PositiveDescentAmount::OneStep,
+                }),
             },
         ),
         (
@@ -507,7 +513,9 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                     param: String::from("n"),
                 },
                 evidence: Strict,
-                factor: Some(ProportionalShrink { divisor: 2 }),
+                factor: Some(ProportionalShrink {
+                    divisor: ProportionalDivisor::DivideByTwo,
+                }),
             },
         ),
         (
@@ -522,7 +530,11 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                     param: String::from("n"),
                 },
                 evidence: Strict,
-                factor: Some(ProportionalShrink { divisor: 3 }),
+                factor: Some(ProportionalShrink {
+                    divisor: ProportionalDivisor::StrictlyLarger {
+                        inner: Box::new(ProportionalDivisor::DivideByTwo),
+                    },
+                }),
             },
         ),
         (

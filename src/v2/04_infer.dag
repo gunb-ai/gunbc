@@ -109,6 +109,11 @@ import std.induction {
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   sub_value_to_evidence, meet_sub_value, join_sub_value, compose_sub_value, compose_sub_value_relations
 }
+import std.termination {
+  positive_descent_amount_from_positive_int,
+  proportional_divisor_from_int_at_least_two,
+  OneStep
+}
 import std.algebra { CollectionSizeEffect, ShrinkEffect }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
@@ -2500,8 +2505,12 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                     // take(k) is NOT strict — take(k) on a list ≤ k is unchanged.
                     ExprLiteral { value: LitInt { value: k } } =>
                       if k > 0 && mname == "skip" {
-                        let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
-                        StrictSubValue { field: synth_field, factor: ConstantShrink { amount: k } }
+                        match positive_descent_amount_from_positive_int(k: k) {
+                          Some { value: steps } =>
+                            let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
+                            StrictSubValue { field: synth_field, factor: ConstantShrink { steps: steps } }
+                          None => SubValueUnknown
+                        }
                       } else { SubValueUnknown }
                     // skip(mid), take(mid): variable that is a known size alias
                     ExprVar { binding_kind: _ } =>
@@ -2509,8 +2518,12 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                       match map_get(ctx.size_aliases, aname) {
                         Some { value: DividedSize { param: p, divisor: d } } =>
                           if p == param_name {
-                            let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
-                            StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: d } }
+                            match proportional_divisor_from_int_at_least_two(k: d) {
+                              Some { value: div_w } =>
+                                let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
+                                StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: div_w } }
+                              None => SubValueUnknown
+                            }
                           } else { SubValueUnknown }
                         _ => SubValueUnknown
                       }
@@ -2528,8 +2541,12 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                                 match map_get(ctx.size_aliases, lname) {
                                   Some { value: DividedSize { param: p, divisor: d } } =>
                                     if p == param_name {
-                                      let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
-                                      StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: d } }
+                                      match proportional_divisor_from_int_at_least_two(k: d) {
+                                        Some { value: div_w } =>
+                                          let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
+                                          StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: div_w } }
+                                        None => SubValueUnknown
+                                      }
                                     } else { SubValueUnknown }
                                   _ => SubValueUnknown
                                 }
@@ -2547,8 +2564,12 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                                 match map_get(ctx.size_aliases, lname) {
                                   Some { value: DividedSize { param: p, divisor: d } } =>
                                     if p == param_name {
-                                      let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
-                                      StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: d } }
+                                      match proportional_divisor_from_int_at_least_two(k: d) {
+                                        Some { value: div_w } =>
+                                          let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: mname, shape: ListRecursion, element_type: param_name }
+                                          StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: div_w } }
+                                        None => SubValueUnknown
+                                      }
                                     } else { SubValueUnknown }
                                   _ => SubValueUnknown
                                 }
@@ -2908,9 +2929,11 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
               if map_get(ctx.param_names, lname) != none || map_get(ctx.sub_value_vars, lname) != none {
                 match right.expr_data {
                   ExprLiteral { value: LitInt { value: k } } =>
-                    if k > 0 {
-                      Some { value: ArithmeticDescent { param: lname, factor: ConstantShrink { amount: k } } }
-                    } else { none }
+                    match positive_descent_amount_from_positive_int(k: k) {
+                      Some { value: steps } =>
+                        Some { value: ArithmeticDescent { param: lname, factor: ConstantShrink { steps: steps } } }
+                      None => none
+                    }
                   _ => none
                 }
               } else { none }
@@ -2934,9 +2957,11 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
           if left_name != "" {
             match right.expr_data {
               ExprLiteral { value: LitInt { value: k } } =>
-                if k > 1 {
-                  Some { value: ArithmeticDescent { param: left_name, factor: ProportionalShrink { divisor: k } } }
-                } else { none }
+                match proportional_divisor_from_int_at_least_two(k: k) {
+                  Some { value: div_w } =>
+                    Some { value: ArithmeticDescent { param: left_name, factor: ProportionalShrink { divisor: div_w } } }
+                  None => none
+                }
               _ => none
             }
           } else { none }
@@ -2977,8 +3002,12 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
                   ExprVar { binding_kind: _ } =>
                     let rname = expr_var_name_at(texpr: receiver, source_indices: ctx.type_env.source_indices)
                     if map_get(ctx.param_names, rname) != none || map_get(ctx.sub_value_vars, rname) != none {
-                      let synth_field = InductiveField { type_name: rname, variant_name: "", field_name: mname, shape: ListRecursion, element_type: rname }
-                      Some { value: StrictSubValue { field: synth_field, factor: ConstantShrink { amount: skip_amount } } }
+                      match positive_descent_amount_from_positive_int(k: skip_amount) {
+                        Some { value: steps } =>
+                          let synth_field = InductiveField { type_name: rname, variant_name: "", field_name: mname, shape: ListRecursion, element_type: rname }
+                          Some { value: StrictSubValue { field: synth_field, factor: ConstantShrink { steps: steps } } }
+                        None => none
+                      }
                     } else { none }
                   _ => none
                 }
@@ -3138,7 +3167,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
                       None => PreservedValue
                     }
                   } else if is_property_contraction(func_name: callee) {
-                    ArithmeticDescent { param: param_name, factor: ConstantShrink { amount: 1 } }
+                    ArithmeticDescent { param: param_name, factor: ConstantShrink { steps: OneStep } }
                   } else { PreservedValue }
               }
             SubValueUnknown => SubValueUnknown
@@ -3161,8 +3190,11 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           if left_is_param {
             match right.expr_data {
               ExprLiteral { value: LitInt { value: k } } =>
-                if k > 0 { ArithmeticDescent { param: param_name, factor: ConstantShrink { amount: k } } }
-                else { SubValueUnknown }
+                match positive_descent_amount_from_positive_int(k: k) {
+                  Some { value: steps } =>
+                    ArithmeticDescent { param: param_name, factor: ConstantShrink { steps: steps } }
+                  None => SubValueUnknown
+                }
               _ => SubValueUnknown
             }
           } else {
@@ -3184,8 +3216,11 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           if left_is_param {
             match right.expr_data {
               ExprLiteral { value: LitInt { value: k } } =>
-                if k > 1 { ArithmeticDescent { param: param_name, factor: ProportionalShrink { divisor: k } } }
-                else { SubValueUnknown }
+                match proportional_divisor_from_int_at_least_two(k: k) {
+                  Some { value: div_w } =>
+                    ArithmeticDescent { param: param_name, factor: ProportionalShrink { divisor: div_w } }
+                  None => SubValueUnknown
+                }
               _ => SubValueUnknown
             }
           } else { SubValueUnknown }

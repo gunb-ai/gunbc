@@ -761,7 +761,7 @@ pub enum RankingDimension {
 ///
 /// Structural positive amount used so zero/negative shrink witnesses are not
 /// representable in proof carriers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PositiveDescentAmount {
     OneStep,
     AdditionalStep {
@@ -770,7 +770,7 @@ pub enum PositiveDescentAmount {
 }
 
 /// Integer ≥ 2 — proportional-divisor witnesses for divide-and-conquer descent.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ProportionalDivisor {
     DivideByTwo,
     StrictlyLarger { inner: Box<ProportionalDivisor> },
@@ -941,11 +941,11 @@ pub enum CallPattern {
     SameArgumentCall,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ShrinkFactor {
     UnitShrink,
-    ConstantShrink { amount: i64 },
-    ProportionalShrink { divisor: i64 },
+    ConstantShrink { steps: PositiveDescentAmount },
+    ProportionalShrink { divisor: ProportionalDivisor },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -977,9 +977,7 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
                 param: "collection".to_string(),
             },
             evidence: DescentEvidence::Strict,
-            factor: Some(ShrinkFactor::ConstantShrink {
-                amount: positive_descent_count(&amount),
-            }),
+            factor: Some(ShrinkFactor::ConstantShrink { steps: amount }),
         },
         CallPattern::ArithmeticSubtractCall { steps } => LoweringTarget {
             primitive: IterationPrimitive::Repeat,
@@ -987,9 +985,7 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
                 param: "n".to_string(),
             },
             evidence: DescentEvidence::Strict,
-            factor: Some(ShrinkFactor::ConstantShrink {
-                amount: positive_descent_count(&steps),
-            }),
+            factor: Some(ShrinkFactor::ConstantShrink { steps }),
         },
         CallPattern::ArithmeticDivideCall { divisor } => LoweringTarget {
             primitive: IterationPrimitive::Repeat,
@@ -997,9 +993,7 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
                 param: "n".to_string(),
             },
             evidence: DescentEvidence::Strict,
-            factor: Some(ShrinkFactor::ProportionalShrink {
-                divisor: proportional_divisor_to_int(&divisor),
-            }),
+            factor: Some(ShrinkFactor::ProportionalShrink { divisor }),
         },
         CallPattern::ParserAdvanceCall { .. } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
