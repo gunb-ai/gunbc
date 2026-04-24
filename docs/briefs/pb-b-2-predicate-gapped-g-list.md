@@ -97,18 +97,26 @@ exact names/fields are Testgen's call.
    `m1_5_verification_test.rs` and the structural-resolution
    migration modules.
 
-7. **`CompileErrorAtPhase { program, phase, diagnostic_code }`** —
-   today `FailsWithDiagnostic` is phase-agnostic; the G test
-   `invalid_pipe_target_fails_closed_at_parse_time` specifically
-   pins the *phase* (parse), which is not expressible. Also
-   needed by the SG-0/SG-1/SG-2 authority tests.
+7. *(retracted after review, 2026-04-24)* A prior draft proposed
+   `CompileErrorAtPhase` to pin the compile phase of a failing
+   diagnostic. That would create a second authority for phase:
+   `DiagnosticReference.kind` already discriminates
+   `ParseError` / later-phase variants (see
+   `src/v3/compiler/src/test_runner.rs:402`), and
+   `FailsWithDiagnostic` already matches on that kind. G tests
+   that pin "fails at parse" (e.g.
+   `invalid_pipe_target_fails_closed_at_parse_time`) are in the
+   **D bucket**, not here. If a real residual appears — span
+   coverage or diagnostic-code identity beyond the kind tag —
+   it should be filed as a distinct shape naming that specific
+   gap, not as a phase-pinning predicate.
 
 ## G-modules this list unlocks (non-exhaustive)
 
 Integration modules whose predicate needs are fully or partially
 covered by the seven shapes above:
 
-- `pipe_desugar.rs` (5) — #1 #2 #3 #5 #7
+- `pipe_desugar.rs` (5) — #1 #2 #3 #5
 - `m1_substrate_test.rs` (~91) — #4 #6
 - `m1_lens_structural_resolution_test.rs` + its `m2_*_migration`
   pair — #1 #2 #6
@@ -117,21 +125,21 @@ covered by the seven shapes above:
   `m2_lens_unused_parameters_migration_test.rs` /
   `m2_lens_variant_payload_migration_test.rs` — #1 #2 #6
 - `m1_fn_external_body_reconciliation_test.rs` — #2 #5
-- `m1_5_verification_test.rs` — #6 #7
+- `m1_5_verification_test.rs` — #6
 - `sg1_tokenize_authority_test.rs`, `sg2_parse_authority_test.rs`,
   `sg2c1_parse_tables_authority_test.rs`, `sg3_surface_reflection_
-  consumer_test.rs` — #4 #7 (and phase-pinning variants)
+  consumer_test.rs` — #4
 
-Rough order-of-magnitude: the seven shapes above, if landed,
+Rough order-of-magnitude: the six shapes above, if landed,
 unblock >60% of the current integration-test file count for
 `.dag` port. The remainder is the D bucket (already covered by
 landed predicates) plus the Post-R2 Rust residuals.
 
 ## Non-asks
 
-- No new `TestClaim` *variant* beyond the current kind; all seven
-  shapes are new `TestPredicate` variants carrying a substrate
-  query against the compiled Dag.
+- No new `TestClaim` *variant* beyond the current kind; the six
+  live shapes are new `TestPredicate` variants carrying a
+  substrate query against the compiled Dag.
 - No new carrier type in user-facing surface — `TypeShape`,
   `OpKind`, `Behavior` kind names already exist in v3.
 - No parallel "test DSL" for Dag traversal: predicates should
