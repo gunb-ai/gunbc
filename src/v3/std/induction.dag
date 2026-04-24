@@ -684,7 +684,7 @@ fn int_add_checked(a: Int, b: Int) -> Int? {
     else { Some { value: a + b } }
   } else {
     if b < 0 {
-      if a < -9223372036854775808 - b { none }
+      if a < (0 - 9223372036854775807 - 1) - b { none }
       else { Some { value: a + b } }
     } else { Some { value: a } }
   }
@@ -696,7 +696,7 @@ fn int_mul_checked(a: Int, b: Int) -> Int? {
     if a == 0 { Some { value: 0 } }
     else {
       if b == -1 {
-        if a == -9223372036854775808 { none }
+        if a == (0 - 9223372036854775807 - 1) { none }
         else { Some { value: 0 - a } }
       } else {
         if b > 0 {
@@ -704,12 +704,12 @@ fn int_mul_checked(a: Int, b: Int) -> Int? {
             if a > 9223372036854775807 / b { none }
             else { Some { value: a * b } }
           } else {
-            if a < -9223372036854775808 / b { none }
+            if a < (0 - 9223372036854775807 - 1) / b { none }
             else { Some { value: a * b } }
           }
         } else {
           if a > 0 {
-            if b < -9223372036854775808 / a { none }
+            if b < (0 - 9223372036854775807 - 1) / a { none }
             else { Some { value: a * b } }
           } else {
             if b < 9223372036854775807 / a { none }
