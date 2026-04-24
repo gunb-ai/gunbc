@@ -87,9 +87,9 @@ Counts are approximate; overlapping classifications (a single line can combine P
 
 Under correct implementation of the full model (Read→Borrow + Last-use→Move + Copy→bit-copy):
 
-- **~65 clones become Borrow** (Pattern 1a-Read, 3-project, 4-`&self`-method, 6-inspect, 7-project) — these consumers only read; `&T` in emitted code.
+- **~70 clones become Borrow** (Pattern 1a-Read, 3-project, 4-`&self`-method, 6-inspect, 7-project) — these consumers only read; `&T` in emitted code. Copy-ness of the value is irrelevant for Reads in Rust; the `&T` is always the cheapest.
 - **~12–14 clones become Move** (Pattern 1b-last-use-consume, 5-fold-acc-init, 6-consume-arms, 8b-last-use-field-non-Copy) — these consumers transfer ownership at last use; move semantics in emitted code.
-- **~5 become Bit-copy** (Pattern 8a-Copy-typed struct field; subset of 1a / 3 that operate on Copy types) — these are Construct+Copy or Read+Copy cases where no `.clone()` emits because the Copy trait handles the duplication at the bit level. Distinct outcome from Borrow: bit-copy produces an owned value (for construction) without a borrow in emitted code.
+- **~3–5 become Bit-copy** (Pattern 8a-Copy-typed struct field — `NodeId`, `PortId`, `i64` etc. at the `UnusedParameter { ... }` construction site) — Construct+Copy cases where no `.clone()` emits because the Copy trait handles duplication at the bit level. Distinct outcome from Borrow: Bit-copy produces an *owned* value at a construction site without a borrow in emitted code.
 - **~1–3 clones remain as Clone** (Pattern 1c-not-last-use-consume, 8c-not-last-use-field-non-Copy, 9-genuine-multi-use) — these are genuine non-Copy consumes where a later consumer still needs the value; `.clone()` in emitted code.
 
 Pattern bookkeeping — four-axis taxonomy:
@@ -101,8 +101,9 @@ The outcome buckets above are **emitted-code shapes** (what the emitter renders)
 | Read, any last-use-ness, any Copy-ness | **Borrow** |
 | Construct + Last-use + non-Copy | **Move** |
 | Construct + not-Last-use + non-Copy | **Clone** |
-| Construct + any-last-use-ness + Copy | **Bit-copy** (no explicit emission) |
-| Read + Copy | **Bit-copy in reads** (folded into Borrow when source is referenced; or bit-copy when pattern-matched by value) |
+| Construct + Copy (any last-use-ness) | **Bit-copy** (no explicit `.clone()` emits) |
+
+Per the design authority (`docs/ownership-rendering-design.md §2.5`), **Copy is a Construct-only refinement**. Reads always render as Borrow (`&T`) in Rust regardless of Copy-ness; the target's `ReadStrategy = Borrow` line settles it.
 
 Additional bookkeeping:
 
