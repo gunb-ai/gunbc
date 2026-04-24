@@ -68,6 +68,16 @@ type PortStateExpectation
 // predicates are modeled as ordinary surfaced substrate facts instead
 // of a bootstrap-local predicate envelope.
 
+// **🟡 Scaffold — AlgebraicLawKind.** Enumeration of algebraic-law tags for
+// T-LensAPI composition gates (`AlgebraicLaw`); not yet backed by a dedicated
+// substrate law algebra.
+// Dissolution trigger: replace with reflected law witnesses once lens-algebra
+// facts are first-class declarations consumable from `std.verification`.
+type AlgebraicLawKind
+  = Associativity
+  | Commutativity
+  | Identity
+
 type TestPredicate
   = Compiles
   | FailsWithDiagnostic(DiagnosticReference)
@@ -93,11 +103,67 @@ type TestPredicate
       subject: DeclarationRef
       invariant: DeclarationRef
     }
+  // **🟡 Scaffold — ExecuteCommand.** Target-shaped bootstrap hook: names a host
+  // process + argv + expected exit code. This encodes *how* evidence is observed
+  // (process exit), not a pure declarative property — tolerated until the runner
+  // binds audited tools/capabilities from the target spec layer instead of raw
+  // `String` (illegal states / injection are unconstrained here by design).
+  // Dissolution trigger: lift to typed tool/capability references outside this sum
+  // once the substrate can express sandboxed execution without opaque command lines.
+  // Collapse with ForAllTargets: one capability-typed execution fact plus scope
+  // (once vs per emission target), not two parallel String/List/Int record shapes.
+  | ExecuteCommand {
+      command: String
+      args: List<String>
+      expect_exit_code: Int
+    }
+  // **🟡 Scaffold — ForAllTargets.** Per-emission-target gate: compile the claim's
+  // program (`TestClaim.source` / `TestClaim.file_name` — single authority; not
+  // duplicated here) for each known target, then run the shell check below on each
+  // target's emitted output (T-Emit omni-demo gate).
+  // Dissolution trigger: target-specific emission + verification facts live in the
+  // target spec / runner tables; this sum variant narrows to declarative edges only.
+  // Collapse with ExecuteCommand: same runner capability as singleton execution,
+  // scoped per target — do not preserve a second copy of the raw command triple.
+  | ForAllTargets {
+      command: String
+      args: List<String>
+      expect_exit_code: Int
+    }
+  // **🟡 Scaffold — LensOutputEquals.** Apply named lens to named input declaration;
+  // compare output structurally to named expected declaration (T-LaneE).
+  // Dissolution trigger: lens application + equality are ordinary reflected facts
+  // instead of a bespoke predicate envelope.
+  | LensOutputEquals {
+      lens_ref: DeclarationRef
+      input_ref: DeclarationRef
+      expected_ref: DeclarationRef
+    }
+  // **🟡 Scaffold — DifferentialEquals.** Evaluate subject and oracle on the same
+  // input declaration; assert structural equality of outputs (T-LaneE oracle diff).
+  // Dissolution trigger: differential checks become surfaced substrate comparisons.
+  | DifferentialEquals {
+      subject_ref: DeclarationRef
+      oracle_ref: DeclarationRef
+      input_ref: DeclarationRef
+    }
+  // **🟡 Scaffold — AlgebraicLaw.** Check a named algebraic law (see `AlgebraicLawKind`)
+  // against a named lens (T-LensAPI composition).
+  // Dissolution trigger: law checks attach to ordinary lens metadata, not this sum.
+  | AlgebraicLaw {
+      law: AlgebraicLawKind
+      lens_ref: DeclarationRef
+    }
 
 // `requires` is the **only** place `ResourceReference` edges attach for a claim
 // (including mock backends when `predicate` is `MockBackedInvariant`). No parallel
 // resource slots on predicate variants — `obligation_for_claim` / materialization
 // read this list alone, so facts cannot diverge.
+//
+// **Program under test (single authority).** `source` / `file_name` name the
+// compilation unit the runner loads for this claim — including when the predicate
+// is `ForAllTargets` (that variant does not repeat them; consumers must not fork
+// a second copy of the same text in the predicate record).
 type TestClaim {
   name: String
   source: String
