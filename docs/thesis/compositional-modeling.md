@@ -15,15 +15,24 @@ summarizes before the body so readers can place each section.
 | Part 1 — primitives | `Int64 = OrderedRing<Word64>` | `[live]` | `dsl/std/bit.dag`, `dsl/std/integer.dag`, `dsl/std/algebra.dag` |
 | Part 1 — primitives | Operations fall out of algebra attachment | `[live]` | same |
 | Part 2 — refinements | `Nat = Int where x >= 0` | `[live]` | DB-3 lowered; `test_3a3_*` acceptance tests |
-| Part 2 — refinements | Refinement preserves through arithmetic | `[live]` partially, `[target]` for full composition law | DB-3 supports parameter/generic `where`; alias-RHS `where` still skipped per ROADMAP:107 |
-| Part 3 — arity | `List<T>`, `Option<T>`, `NonEmpty<T>` as cardinality tags | `[live]` for List/Option | GAP for NonEmpty as first-class type |
-| Part 3 — arity | Nested-optional flatten by composition law | `[target]` | gated on cardinality refinement substrate |
-| Part 3 — arity | Testgen generating boundary tests from cardinality | `[target]` | DB-15 schema landed; runner + mock-backed wiring pending |
-| Part 4 — custom types | `Duration<Unit>`, `Money<Currency>` via dimensions | `[live]` for framework | `src/v3/std/dimensions.dag` terminal; unit-mismatch consumer GAP |
-| Part 4 — custom types | `Secret<T>` as opaque nominal type | `[target]` | currently `Secret = String` alias per `dsl/std/types.dag:237` |
-| Part 5 — reconciliation | Cross-team AuthUser reconciliation | `[target]` | requires Secret + NonEmpty + enforced boundaries |
-| Part 6 — testgen | Generated integration tests for under-modeled boundaries | `[target]` | DB-15 runner + `MockBackedInvariant` wiring pending |
-| Part 7 — scale | Multi-service workflow with typed boundaries | `[target]` | composes targets from Parts 3-6 |
+| Part 2 — refinements | Refinement preserves through arithmetic | `[live]` partially, `[target]` for full composition law | DB-3 supports parameter/generic `where` (`ROADMAP.md:231`); alias-RHS `where` still skipped in `src/v3/compiler/src/parse.rs` `skip_where_clause` — tracked under DB-11 (`ROADMAP.md:231`) |
+| Part 3 — arity | `List<T>`, `Option<T>`, `NonEmpty<T>` as cardinality tags | `[live]` for List/Option; `[target]` for NonEmpty | NonEmpty as a first-class type composes on cardinality-substrate work tracked at `ROADMAP.md:305` ("Fixed-width types aren't structurally fixed" — cardinality not substrate-enforced until alias `where` parses/lowers per DB-11 gap) |
+| Part 3 — arity | Nested-optional flatten by composition law | `[target]` | gated on cardinality-substrate row (`ROADMAP.md:305`) + DB-11 alias-RHS closure (`ROADMAP.md:231`) |
+| Part 3 — arity | Testgen generating boundary tests from cardinality | `[target]` | DB-15 schema landed (`ROADMAP.md:235`); runner + `MockBackedInvariant` wiring remain under T-TestGen lane (`ROADMAP.md:51`, `:65`) |
+| Part 4 — custom types | `Duration<Unit>`, `Money<Currency>` via dimensions | `[live]` for framework; `[target]` for unit-mismatch enforcement consumer | `src/v3/std/dimensions.dag` TERMINAL; Dimension wiring for lens consumers is deferred under the v3 lens honesty pass (`ROADMAP.md:333`) + DB-7 (`ROADMAP.md:235`). A Duration/Money unit-mismatch enforcement lens is not yet its own ledger row — see "Unscheduled gaps" below |
+| Part 4 — custom types | `Secret<T>` as opaque nominal type | `[target]` | currently `Secret = String` alias per `dsl/std/types.dag:237`; no ROADMAP row schedules the nominal-wrapper graduation today — see "Unscheduled gaps" below |
+| Part 5 — reconciliation | Cross-team AuthUser reconciliation | `[target]` | composes NonEmpty (cardinality substrate, `ROADMAP.md:305`) + Secret nominal wrapper (unscheduled, below) + enforced refinement preservation (DB-11, `ROADMAP.md:231`) |
+| Part 6 — testgen | Generated integration tests for under-modeled boundaries | `[target]` | DB-15 runner + `MockBackedInvariant` wiring under T-TestGen (`ROADMAP.md:51`, `:65`, `:235`) |
+| Part 7 — scale | Multi-service workflow with typed boundaries | `[target]` | composes Parts 3–6 targets; each specific gap cites its ROADMAP row above |
+
+**Unscheduled gaps surfaced by this doc.** Two `[target]` items
+above do not yet have their own tracked-debt row in `ROADMAP.md`
+and are filed as follow-ups to add:
+(a) Duration/Money unit-mismatch enforcement consumer (adjacent to
+`ROADMAP.md:333`), and (b) `Secret<T>` nominal-wrapper graduation
+(adjacent to `dsl/std/types.dag:237`). Per the doc-authority
+single-ledger rule, these warrant ledger rows before the doc's
+claims on them should be treated as scheduled.
 
 **Reading guide.** Sections 1 and 2 describe the current tree.
 Section 3 is half-and-half (cardinality exists; some compositional
