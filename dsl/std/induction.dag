@@ -65,13 +65,16 @@ module std.induction
 
 import std.termination {
   DescentEvidence, Strict, NonIncreasing, DescentUnknown,
-  RankingDimension, TreeSize
+  RankingDimension, TreeSize,
+  PositiveDescentAmount, OneStep, AdditionalStep
 }
 import std.computation {
   CallPattern, ChildAccessorCall, FoldBodyCall, SameArgumentCall,
+  ArithmeticSubtractCall, ArithmeticDivideCall,
   LoweringTarget, IterationPrimitive, Descend, Fold, Repeat,
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CollectionSize, ArithmeticParam, Forever,
+  ProportionalDivisor, DivideByTwo, StrictlyLarger,
   tree_size_bound
 }
 
@@ -375,15 +378,49 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
 // be retired when computation.dag accepts SubValueRelation natively.
 // SubValueUnknown → none (fail-closed through the bridge).
 
+fn int_to_positive_descent(k: Int) -> PositiveDescentAmount? {
+  if k <= 0 { none }
+  else {
+    if k == 1 { Some { value: OneStep } }
+    else {
+      match int_to_positive_descent(k: k - 1) {
+        Some { value: prev } => Some { value: AdditionalStep { previous: prev } }
+        None => none
+      }
+    }
+  }
+}
+
+fn int_to_proportional_divisor(k: Int) -> ProportionalDivisor? {
+  if k < 2 { none }
+  else {
+    if k == 2 { Some { value: DivideByTwo } }
+    else {
+      match int_to_proportional_divisor(k: k - 1) {
+        Some { value: prev } => Some { value: StrictlyLarger { inner: prev } }
+        None => none
+      }
+    }
+  }
+}
+
 fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
   match relation {
     StrictSubValue { field: f, factor: _ }    => Some { value: ChildAccessorCall { accessor: f.field_name } }
     IteratedSubValue { field: f }             => Some { value: ChildAccessorCall { accessor: f.field_name } }
     ArithmeticDescent { param: _, factor: f } =>
       match f {
-        ConstantShrink { amount: k }      => Some { value: ArithmeticDescentCall { op: "subtract", by: k } }
-        ProportionalShrink { divisor: k } => Some { value: ArithmeticDescentCall { op: "divide", by: k } }
-        UnitShrink                        => Some { value: ArithmeticDescentCall { op: "subtract", by: 1 } }
+        ConstantShrink { amount: k } =>
+          match int_to_positive_descent(k: k) {
+            Some { value: p } => Some { value: ArithmeticSubtractCall { steps: p } }
+            None => none
+          }
+        ProportionalShrink { divisor: k } =>
+          match int_to_proportional_divisor(k: k) {
+            Some { value: d } => Some { value: ArithmeticDivideCall { divisor: d } }
+            None => none
+          }
+        UnitShrink => Some { value: ArithmeticSubtractCall { steps: OneStep } }
       }
     PreservedValue                            => Some { value: SameArgumentCall }
     SubValueUnknown                           => none

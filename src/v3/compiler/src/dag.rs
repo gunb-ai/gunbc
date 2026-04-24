@@ -769,6 +769,57 @@ pub enum PositiveDescentAmount {
     },
 }
 
+/// Integer ≥ 2 — proportional-divisor witnesses for divide-and-conquer descent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProportionalDivisor {
+    DivideByTwo,
+    StrictlyLarger {
+        inner: Box<ProportionalDivisor>,
+    },
+}
+
+pub fn positive_descent_count(steps: &PositiveDescentAmount) -> i64 {
+    match steps {
+        PositiveDescentAmount::OneStep => 1,
+        PositiveDescentAmount::AdditionalStep { previous } => {
+            1 + positive_descent_count(previous.as_ref())
+        }
+    }
+}
+
+pub fn proportional_divisor_to_int(d: &ProportionalDivisor) -> i64 {
+    match d {
+        ProportionalDivisor::DivideByTwo => 2,
+        ProportionalDivisor::StrictlyLarger { inner } => {
+            1 + proportional_divisor_to_int(inner.as_ref())
+        }
+    }
+}
+
+pub fn positive_amount_from_i64(k: i64) -> Option<PositiveDescentAmount> {
+    if k <= 0 {
+        None
+    } else if k == 1 {
+        Some(PositiveDescentAmount::OneStep)
+    } else {
+        Some(PositiveDescentAmount::AdditionalStep {
+            previous: Box::new(positive_amount_from_i64(k - 1)?),
+        })
+    }
+}
+
+pub fn proportional_divisor_from_i64(k: i64) -> Option<ProportionalDivisor> {
+    if k < 2 {
+        None
+    } else if k == 2 {
+        Some(ProportionalDivisor::DivideByTwo)
+    } else {
+        Some(ProportionalDivisor::StrictlyLarger {
+            inner: Box::new(proportional_divisor_from_i64(k - 1)?),
+        })
+    }
+}
+
 /// 🟡 SCAFFOLD.
 ///
 /// The witness taxonomy is durable for E-T; String payloads dissolve when
@@ -893,8 +944,15 @@ pub fn tree_size_bound(param: String) -> SizeBound {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallPattern {
     ChildAccessorCall { accessor: String },
-    CollectionShrinkCall { amount: i64 },
-    ArithmeticDescentCall { op: String, by: i64 },
+    CollectionShrinkCall {
+        amount: PositiveDescentAmount,
+    },
+    ArithmeticSubtractCall {
+        steps: PositiveDescentAmount,
+    },
+    ArithmeticDivideCall {
+        divisor: ProportionalDivisor,
+    },
     ParserAdvanceCall { witness: String },
     WorklistDrainCall { element: String },
     FoldBodyCall,
@@ -931,57 +989,36 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::CollectionShrinkCall { amount } => {
-            if amount >= 1 {
-                LoweringTarget {
-                    primitive: IterationPrimitive::Fold,
-                    bound: SizeBound::CollectionSize {
-                        param: "collection".to_string(),
-                    },
-                    evidence: DescentEvidence::Strict,
-                    factor: Some(ShrinkFactor::ConstantShrink { amount }),
-                }
-            } else {
-                LoweringTarget {
-                    primitive: IterationPrimitive::Fold,
-                    bound: SizeBound::CollectionSize {
-                        param: "collection".to_string(),
-                    },
-                    evidence: DescentEvidence::DescentUnknown,
-                    factor: None,
-                }
-            }
-        }
-        CallPattern::ArithmeticDescentCall { op, by } => {
-            if (op == "subtract" || op == "sub") && by >= 1 {
-                LoweringTarget {
-                    primitive: IterationPrimitive::Repeat,
-                    bound: SizeBound::ArithmeticParam {
-                        param: "n".to_string(),
-                    },
-                    evidence: DescentEvidence::Strict,
-                    factor: Some(ShrinkFactor::ConstantShrink { amount: by }),
-                }
-            } else if op == "divide" && by >= 2 {
-                LoweringTarget {
-                    primitive: IterationPrimitive::Repeat,
-                    bound: SizeBound::ArithmeticParam {
-                        param: "n".to_string(),
-                    },
-                    evidence: DescentEvidence::Strict,
-                    factor: Some(ShrinkFactor::ProportionalShrink { divisor: by }),
-                }
-            } else {
-                LoweringTarget {
-                    primitive: IterationPrimitive::Repeat,
-                    bound: SizeBound::ArithmeticParam {
-                        param: "n".to_string(),
-                    },
-                    evidence: DescentEvidence::DescentUnknown,
-                    factor: None,
-                }
-            }
-        }
+        CallPattern::CollectionShrinkCall { amount } => LoweringTarget {
+            primitive: IterationPrimitive::Fold,
+            bound: SizeBound::CollectionSize {
+                param: "collection".to_string(),
+            },
+            evidence: DescentEvidence::Strict,
+            factor: Some(ShrinkFactor::ConstantShrink {
+                amount: positive_descent_count(&amount),
+            }),
+        },
+        CallPattern::ArithmeticSubtractCall { steps } => LoweringTarget {
+            primitive: IterationPrimitive::Repeat,
+            bound: SizeBound::ArithmeticParam {
+                param: "n".to_string(),
+            },
+            evidence: DescentEvidence::Strict,
+            factor: Some(ShrinkFactor::ConstantShrink {
+                amount: positive_descent_count(&steps),
+            }),
+        },
+        CallPattern::ArithmeticDivideCall { divisor } => LoweringTarget {
+            primitive: IterationPrimitive::Repeat,
+            bound: SizeBound::ArithmeticParam {
+                param: "n".to_string(),
+            },
+            evidence: DescentEvidence::Strict,
+            factor: Some(ShrinkFactor::ProportionalShrink {
+                divisor: proportional_divisor_to_int(&divisor),
+            }),
+        },
         CallPattern::ParserAdvanceCall { .. } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
             bound: SizeBound::CollectionSize {

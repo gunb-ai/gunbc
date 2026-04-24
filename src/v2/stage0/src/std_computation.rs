@@ -9,7 +9,7 @@ use crate::std_algebra::AlgebraProfile::{
 pub use crate::std_algebra::{kernel_algebra_profile, AlgebraProfile};
 use crate::std_termination::DescentEvidence::*;
 use crate::std_termination::RankingDimension::*;
-pub use crate::std_termination::{DescentEvidence, RankingDimension};
+pub use crate::std_termination::{DescentEvidence, PositiveDescentAmount, RankingDimension};
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -37,10 +37,66 @@ pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
+pub enum ProportionalDivisor {
+    DivideByTwo,
+    StrictlyLarger { inner: Rc<ProportionalDivisor> },
+}
+
+pub fn positive_descent_count(steps: &PositiveDescentAmount) -> i64 {
+    match steps {
+        PositiveDescentAmount::OneStep => 1,
+        PositiveDescentAmount::AdditionalStep { previous } => {
+            1 + positive_descent_count(previous.as_ref())
+        }
+    }
+}
+
+pub fn proportional_divisor_to_int(d: &ProportionalDivisor) -> i64 {
+    match d {
+        ProportionalDivisor::DivideByTwo => 2,
+        ProportionalDivisor::StrictlyLarger { inner } => {
+            1 + proportional_divisor_to_int(inner.as_ref())
+        }
+    }
+}
+
+pub fn positive_amount_from_i64(k: i64) -> Option<Rc<PositiveDescentAmount>> {
+    if k <= 0 {
+        None
+    } else if k == 1 {
+        Some(Rc::new(PositiveDescentAmount::OneStep))
+    } else {
+        Some(Rc::new(PositiveDescentAmount::AdditionalStep {
+            previous: positive_amount_from_i64(k - 1)?,
+        }))
+    }
+}
+
+pub fn proportional_divisor_from_i64(k: i64) -> Option<Rc<ProportionalDivisor>> {
+    if k < 2 {
+        None
+    } else if k == 2 {
+        Some(Rc::new(ProportionalDivisor::DivideByTwo))
+    } else {
+        Some(Rc::new(ProportionalDivisor::StrictlyLarger {
+            inner: proportional_divisor_from_i64(k - 1)?,
+        }))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum CallPattern {
     ChildAccessorCall { accessor: String },
-    CollectionShrinkCall { amount: i64 },
-    ArithmeticDescentCall { op: String, by: i64 },
+    CollectionShrinkCall {
+        amount: Rc<PositiveDescentAmount>,
+    },
+    ArithmeticSubtractCall {
+        steps: Rc<PositiveDescentAmount>,
+    },
+    ArithmeticDivideCall {
+        divisor: Rc<ProportionalDivisor>,
+    },
     ParserAdvanceCall { witness: String },
     WorklistDrainCall { element: String },
     FoldBodyCall,
@@ -79,58 +135,36 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
-        CallPattern::CollectionShrinkCall { amount } => {
-            if amount >= 1 {
-                Rc::new(LoweringTarget {
-                    primitive: IterationPrimitive::Fold,
-                    bound: Rc::new(SizeBound::CollectionSize {
-                        param: "collection".to_string(),
-                    }),
-                    evidence: DescentEvidence::Strict,
-                    factor: Some(Rc::new(ShrinkFactor::ConstantShrink { amount })),
-                })
-            } else {
-                Rc::new(LoweringTarget {
-                    primitive: IterationPrimitive::Fold,
-                    bound: Rc::new(SizeBound::CollectionSize {
-                        param: "collection".to_string(),
-                    }),
-                    evidence: DescentEvidence::DescentUnknown,
-                    factor: None,
-                })
-            }
-        }
-        CallPattern::ArithmeticDescentCall { op, by } => {
-            let op = op.as_str();
-            if (op == "subtract" || op == "sub") && by >= 1 {
-                Rc::new(LoweringTarget {
-                    primitive: IterationPrimitive::Repeat,
-                    bound: Rc::new(SizeBound::ArithmeticParam {
-                        param: "n".to_string(),
-                    }),
-                    evidence: DescentEvidence::Strict,
-                    factor: Some(Rc::new(ShrinkFactor::ConstantShrink { amount: by })),
-                })
-            } else if op == "divide" && by >= 2 {
-                Rc::new(LoweringTarget {
-                    primitive: IterationPrimitive::Repeat,
-                    bound: Rc::new(SizeBound::ArithmeticParam {
-                        param: "n".to_string(),
-                    }),
-                    evidence: DescentEvidence::Strict,
-                    factor: Some(Rc::new(ShrinkFactor::ProportionalShrink { divisor: by })),
-                })
-            } else {
-                Rc::new(LoweringTarget {
-                    primitive: IterationPrimitive::Repeat,
-                    bound: Rc::new(SizeBound::ArithmeticParam {
-                        param: "n".to_string(),
-                    }),
-                    evidence: DescentEvidence::DescentUnknown,
-                    factor: None,
-                })
-            }
-        }
+        CallPattern::CollectionShrinkCall { amount } => Rc::new(LoweringTarget {
+            primitive: IterationPrimitive::Fold,
+            bound: Rc::new(SizeBound::CollectionSize {
+                param: "collection".to_string(),
+            }),
+            evidence: DescentEvidence::Strict,
+            factor: Some(Rc::new(ShrinkFactor::ConstantShrink {
+                amount: positive_descent_count(amount.as_ref()),
+            })),
+        }),
+        CallPattern::ArithmeticSubtractCall { steps } => Rc::new(LoweringTarget {
+            primitive: IterationPrimitive::Repeat,
+            bound: Rc::new(SizeBound::ArithmeticParam {
+                param: "n".to_string(),
+            }),
+            evidence: DescentEvidence::Strict,
+            factor: Some(Rc::new(ShrinkFactor::ConstantShrink {
+                amount: positive_descent_count(steps.as_ref()),
+            })),
+        }),
+        CallPattern::ArithmeticDivideCall { divisor } => Rc::new(LoweringTarget {
+            primitive: IterationPrimitive::Repeat,
+            bound: Rc::new(SizeBound::ArithmeticParam {
+                param: "n".to_string(),
+            }),
+            evidence: DescentEvidence::Strict,
+            factor: Some(Rc::new(ShrinkFactor::ProportionalShrink {
+                divisor: proportional_divisor_to_int(divisor.as_ref()),
+            })),
+        }),
         CallPattern::ParserAdvanceCall { .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
             bound: Rc::new(SizeBound::CollectionSize {

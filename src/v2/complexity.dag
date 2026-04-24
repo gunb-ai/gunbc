@@ -28,11 +28,12 @@ import std.termination {
   DescentSource, ChildAccessor, ListShrink, ArithmeticDecrease, ParserAdvance, SetRemoval, FoldIteration,
   TerminationProof, ProofEdge,
   merge_evidence, join_evidence, evidence_rank, promote_to_strict,
-  optional_evidence_meet, map_evidence_merge_at
+  optional_evidence_meet, map_evidence_merge_at,
+  OneStep
 }
 import std.computation {
   CallPattern,
-  ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall,
+  ChildAccessorCall, CollectionShrinkCall, ArithmeticSubtractCall,
   ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall,
   LoweringTarget, lower_call_pattern, size_bound_param,
   IterationDimension, TreeDescent, CollectionFold, ArithmeticRepeat,
@@ -2962,8 +2963,8 @@ fn proof_to_call_pattern(proof: TerminationProof) -> CallPattern {
   match proof.dimensions |> first {
     Some { value: dim } => match dim {
       TreeSize { param: p }        => ChildAccessorCall { accessor: p }
-      ListLength { param: _ }      => CollectionShrinkCall { amount: 1 }
-      ArithmeticValue { param: _ } => ArithmeticDescentCall { op: "subtract", by: 1 }
+      ListLength { param: _ }      => CollectionShrinkCall { amount: OneStep }
+      ArithmeticValue { param: _ } => ArithmeticSubtractCall { steps: OneStep }
       TokenPosition { param: p }   => ParserAdvanceCall { witness: p }
       SetCardinality { param: p }  => WorklistDrainCall { element: p }
     }
@@ -3901,7 +3902,7 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
             }
           )
           if all_arithmetic {
-            lower_call_pattern(pattern: ArithmeticDescentCall { op: "subtract", by: 1 })
+            lower_call_pattern(pattern: ArithmeticSubtractCall { steps: OneStep })
           } else {
             lower_call_pattern(pattern: SameArgumentCall)
           }

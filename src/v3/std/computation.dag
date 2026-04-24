@@ -6,7 +6,10 @@
 
 module std.computation
 
-import std.termination { DescentEvidence, DescentUnknown }
+import std.termination {
+  DescentEvidence, DescentUnknown,
+  PositiveDescentAmount, OneStep, AdditionalStep
+}
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
@@ -26,10 +29,30 @@ fn tree_size_bound(param: String) -> SizeBound {
   TreeSize { param: param }
 }
 
+// Shrink amounts use structural witnesses so non-positive skips are unrepresentable.
+type ProportionalDivisor
+  = DivideByTwo
+  | StrictlyLarger { inner: ProportionalDivisor }
+
+fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
+  match steps {
+    OneStep => 1
+    AdditionalStep { previous: p } => 1 + positive_descent_count(steps: p)
+  }
+}
+
+fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
+  match d {
+    DivideByTwo => 2
+    StrictlyLarger { inner: p } => 1 + proportional_divisor_to_int(d: p)
+  }
+}
+
 type CallPattern
   = ChildAccessorCall { accessor: String }
-  | CollectionShrinkCall { amount: Int }
-  | ArithmeticDescentCall { op: String, by: Int }
+  | CollectionShrinkCall { amount: PositiveDescentAmount }
+  | ArithmeticSubtractCall { steps: PositiveDescentAmount }
+  | ArithmeticDivideCall { divisor: ProportionalDivisor }
   | ParserAdvanceCall { witness: String }
   | WorklistDrainCall { element: String }
   | FoldBodyCall
@@ -59,33 +82,23 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
         bound: TreeSize { param: a },
         evidence: Strict, factor: none }
 
-    CollectionShrinkCall { amount: k } =>
-      if k >= 1 {
-        LoweringTarget { primitive: Fold,
-          bound: CollectionSize { param: "collection" },
-          evidence: Strict,
-          factor: Some { value: ConstantShrink { amount: k } } } }
-      else {
-        LoweringTarget { primitive: Fold,
-          bound: CollectionSize { param: "collection" },
-          evidence: DescentUnknown, factor: none } }
+    CollectionShrinkCall { amount: p } =>
+      LoweringTarget { primitive: Fold,
+        bound: CollectionSize { param: "collection" },
+        evidence: Strict,
+        factor: Some { value: ConstantShrink { amount: positive_descent_count(steps: p) } } } }
 
-    ArithmeticDescentCall { op: o, by: k } =>
-      if (o == "subtract" || o == "sub") && k >= 1 {
-        LoweringTarget { primitive: Repeat,
-          bound: ArithmeticParam { param: "n" },
-          evidence: Strict,
-          factor: Some { value: ConstantShrink { amount: k } } } }
-      else {
-        if o == "divide" && k >= 2 {
-          LoweringTarget { primitive: Repeat,
-            bound: ArithmeticParam { param: "n" },
-            evidence: Strict,
-            factor: Some { value: ProportionalShrink { divisor: k } } } }
-        else {
-          LoweringTarget { primitive: Repeat,
-            bound: ArithmeticParam { param: "n" },
-            evidence: DescentUnknown, factor: none } } }
+    ArithmeticSubtractCall { steps: p } =>
+      LoweringTarget { primitive: Repeat,
+        bound: ArithmeticParam { param: "n" },
+        evidence: Strict,
+        factor: Some { value: ConstantShrink { amount: positive_descent_count(steps: p) } } } }
+
+    ArithmeticDivideCall { divisor: d } =>
+      LoweringTarget { primitive: Repeat,
+        bound: ArithmeticParam { param: "n" },
+        evidence: Strict,
+        factor: Some { value: ProportionalShrink { divisor: proportional_divisor_to_int(d: d) } } } }
 
     ParserAdvanceCall { witness: _ } =>
       LoweringTarget { primitive: Fold,

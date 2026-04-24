@@ -5,7 +5,8 @@ use v3_compiler::dag::{
     join_evidence, lower_call_pattern, map_evidence_merge_at, merge_evidence,
     optional_evidence_meet, promote_to_strict, size_bound_param, tree_size_bound,
     type_iteration_dimension, AlgebraProfile, ArrowBody, CallPattern, DescentEvidence, FieldValue,
-    IterationDimension, IterationPrimitive, LoweringTarget, SizeBound, TypeConnective, ValueBody,
+    IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
+    ProportionalDivisor, SizeBound, TypeConnective, ValueBody,
 };
 use v3_compiler::parse_surface;
 use v3_compiler::Dag;
@@ -342,8 +343,12 @@ fn computation_carriers_bootstrap_from_v3_std() {
                 vec![String::from("amount")],
             ),
             (
-                String::from("ArithmeticDescentCall"),
-                vec![String::from("op"), String::from("by")],
+                String::from("ArithmeticSubtractCall"),
+                vec![String::from("steps")],
+            ),
+            (
+                String::from("ArithmeticDivideCall"),
+                vec![String::from("divisor")],
             ),
             (
                 String::from("ParserAdvanceCall"),
@@ -355,6 +360,16 @@ fn computation_carriers_bootstrap_from_v3_std() {
             ),
             (String::from("FoldBodyCall"), Vec::new()),
             (String::from("SameArgumentCall"), Vec::new()),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "ProportionalDivisor"),
+        vec![
+            (String::from("DivideByTwo"), Vec::new()),
+            (
+                String::from("StrictlyLarger"),
+                vec![String::from("inner")],
+            ),
         ]
     );
     assert_eq!(
@@ -397,12 +412,16 @@ fn computation_lowering_functions_preserve_std_body_spans() {
     for name in [
         "tree_size_bound",
         "lower_call_pattern",
+        "positive_descent_count",
+        "proportional_divisor_to_int",
         "size_bound_param",
         "is_constant_bound",
         "forever_iteration_bound",
         "constant_bound_value",
         "algebra_profile_to_dimension",
         "type_iteration_dimension",
+        "int_to_positive_descent",
+        "int_to_proportional_divisor",
     ] {
         assert!(
             matches!(arrow_body(&dag, name), ArrowBody::Unparsed(_)),
@@ -415,10 +434,10 @@ fn computation_lowering_functions_preserve_std_body_spans() {
 fn computation_lowering_rust_mirror_matches_dag_authority() {
     use v3_compiler::dag::ShrinkFactor::{ConstantShrink, ProportionalShrink};
     use CallPattern::{
-        ArithmeticDescentCall, ChildAccessorCall, CollectionShrinkCall, FoldBodyCall,
-        ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
+        ArithmeticDivideCall, ArithmeticSubtractCall, ChildAccessorCall, CollectionShrinkCall,
+        FoldBodyCall, ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
     };
-    use DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
+    use DescentEvidence::{NonIncreasing, Strict};
     use IterationPrimitive::{Descend, Fold, Repeat};
     use SizeBound::{ArithmeticParam, CollectionSize, Forever, TreeSize};
 
@@ -437,7 +456,9 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
             },
         ),
         (
-            CollectionShrinkCall { amount: 1 },
+            CollectionShrinkCall {
+                amount: PositiveDescentAmount::OneStep,
+            },
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
@@ -448,20 +469,23 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
             },
         ),
         (
-            CollectionShrinkCall { amount: 0 },
+            CollectionShrinkCall {
+                amount: PositiveDescentAmount::AdditionalStep {
+                    previous: Box::new(PositiveDescentAmount::OneStep),
+                },
+            },
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
                     param: String::from("collection"),
                 },
-                evidence: DescentUnknown,
-                factor: None,
+                evidence: Strict,
+                factor: Some(ConstantShrink { amount: 2 }),
             },
         ),
         (
-            ArithmeticDescentCall {
-                op: String::from("sub"),
-                by: 1,
+            ArithmeticSubtractCall {
+                steps: PositiveDescentAmount::OneStep,
             },
             LoweringTarget {
                 primitive: Repeat,
@@ -473,9 +497,8 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
             },
         ),
         (
-            ArithmeticDescentCall {
-                op: String::from("divide"),
-                by: 2,
+            ArithmeticDivideCall {
+                divisor: ProportionalDivisor::DivideByTwo,
             },
             LoweringTarget {
                 primitive: Repeat,
@@ -487,17 +510,18 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
             },
         ),
         (
-            ArithmeticDescentCall {
-                op: String::from("divide"),
-                by: 1,
+            ArithmeticDivideCall {
+                divisor: ProportionalDivisor::StrictlyLarger {
+                    inner: Box::new(ProportionalDivisor::DivideByTwo),
+                },
             },
             LoweringTarget {
                 primitive: Repeat,
                 bound: ArithmeticParam {
                     param: String::from("n"),
                 },
-                evidence: DescentUnknown,
-                factor: None,
+                evidence: Strict,
+                factor: Some(ProportionalShrink { divisor: 3 }),
             },
         ),
         (

@@ -7,7 +7,7 @@ use crate::std_algebra::CostShape::{
 };
 pub use crate::std_algebra::{CollectionSizeEffect, CostShape};
 use crate::std_computation::CallPattern::{
-    ArithmeticDescentCall, ChildAccessorCall, CollectionShrinkCall, FoldBodyCall,
+    ArithmeticSubtractCall, ChildAccessorCall, CollectionShrinkCall, FoldBodyCall,
     ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
 };
 use crate::std_computation::IterationDimension::{ArithmeticRepeat, CollectionFold, TreeDescent};
@@ -33,6 +33,7 @@ pub use crate::std_induction::{
     SubValueRelation,
 };
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
+use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::DescentSource::{
     ArithmeticDecrease, ChildAccessor, FoldIteration, ListShrink, ParserAdvance, SetRemoval,
 };
@@ -4982,12 +4983,13 @@ pub fn proof_to_call_pattern(proof: Rc<TerminationProof>) -> Rc<CallPattern> {
                 })
             }
             RankingDimension::ListLength { .. } => {
-                Rc::new(CallPattern::CollectionShrinkCall { amount: 1 })
+                Rc::new(CallPattern::CollectionShrinkCall {
+                    amount: Rc::new(PositiveDescentAmount::OneStep),
+                })
             }
             RankingDimension::ArithmeticValue { .. } => {
-                Rc::new(CallPattern::ArithmeticDescentCall {
-                    op: "subtract".to_string(),
-                    by: 1,
+                Rc::new(CallPattern::ArithmeticSubtractCall {
+                    steps: Rc::new(PositiveDescentAmount::OneStep),
                 })
             }
             RankingDimension::TokenPosition { param: p, .. } => {
@@ -6919,9 +6921,8 @@ pub fn classify_scc_recursion_pattern(
                             __all
                         };
                         if all_arithmetic {
-                            lower_call_pattern(Rc::new(CallPattern::ArithmeticDescentCall {
-                                op: "subtract".to_string(),
-                                by: 1,
+                            lower_call_pattern(Rc::new(CallPattern::ArithmeticSubtractCall {
+                                steps: Rc::new(PositiveDescentAmount::OneStep),
                             }))
                         } else {
                             lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
