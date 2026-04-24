@@ -33,13 +33,21 @@ pub enum AlgebraicLawProgramError {
 
 /// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
 ///
-/// Today only `Associativity` is supported, and only for a binary `Int` arrow whose
-/// body is `+` **resolved through surfaced algebra** (`Int`'s `Declaration.inhabits` walk
-/// to `OrderedRing.add` using the same `resolve_operator_arrow` path as operator inference),
-/// matching the
-/// `lens_composition_associative` R1 gate witness. `lens_ref` is a [`FieldValue::Reference`]
-/// into `fixture_dag`; the runner resolves the **name** and looks up the same name in
-/// `program_dag`.
+/// Today only `Associativity` is supported, and only for a binary `Int` arrow whose body is
+/// `+` **resolved through surfaced algebra** (`Int`'s `Declaration.inhabits` walk to
+/// `OrderedRing.add` using the same `resolve_operator_arrow` path as operator inference),
+/// matching the `lens_composition_associative` R1 gate witness. `lens_ref` is a
+/// [`FieldValue::Reference`] into `fixture_dag`; the runner resolves the **name** and looks up
+/// the same name in `program_dag`.
+///
+/// **Modeling debt (P1) — pre-D1 tightening, not D3 dissolution:** evaluation still uses a
+/// **structural recognizer** (`declaration_shape_matches_ordered_ring_add_associativity_recognizer`)
+/// (binary `Int` arrow → `Bind` → `Transform` → `Arithmetic(Add)` + multiset param wiring +
+/// non-`Pending` `resolve_operator_arrow`). That is **not** T-LensAPI D3 (apply the lens to
+/// sample inputs under both associations via the D1 lens-application primitive).
+///
+/// **Dissolution:** replace this path with `apply(lens, a, b, c)` comparing `(a*b)*c` vs
+/// `a*(b*c)` once the T-LensAPI D1 lens-application primitive lands.
 pub fn eval_algebraic_law_for_claim_program(
     fixture_dag: &Dag,
     program_dag: &Dag,
@@ -59,7 +67,7 @@ pub fn eval_algebraic_law_for_claim_program(
     let Some(target) = program_dag.declaration_by_name(&lens_name) else {
         return Ok(false);
     };
-    Ok(declaration_is_ordered_ring_add_associativity_witness(
+    Ok(declaration_shape_matches_ordered_ring_add_associativity_recognizer(
         program_dag,
         target,
     ))
@@ -805,11 +813,19 @@ fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, Algebra
     }
 }
 
-/// `AlgebraicLaw(Associativity, …)` witness: binary `Int` arrow whose value applies `+`
-/// lowered as [`TransformTarget::Operator`], with `+` dispatched through the same
-/// algebra `Conj` walk as inference ([`infer::operator_resolves_via_surfaced_algebra`]) —
-/// not a freestanding `OperatorKind` shape check alone.
-fn declaration_is_ordered_ring_add_associativity_witness(dag: &Dag, decl: &Declaration) -> bool {
+/// **🟡 Scaffold (pre-D1)** — `AlgebraicLaw(Associativity, …)` **shape recognizer**, not a law
+/// reader: binary `Int` arrow → `Bind` → `Transform` → [`TransformTarget::Operator`] `+`, plus
+/// multiset equality of bind params vs transform operand ports, plus
+/// `infer::operator_resolves_via_surfaced_algebra` so `+` is not the `ArrowBody::Pending`
+/// operator fallback. The last conjunct is a **sanity check on operator resolution**, not D3
+/// associativity via sample evaluation.
+///
+/// **Dissolution:** same as `eval_algebraic_law_for_claim_program` — D1 lens application, then D3
+/// compare `(a*b)*c` vs `a*(b*c)`; delete this recognizer when that lands.
+fn declaration_shape_matches_ordered_ring_add_associativity_recognizer(
+    dag: &Dag,
+    decl: &Declaration,
+) -> bool {
     let TypeConnective::Arrow {
         inputs,
         output,
@@ -864,4 +880,35 @@ fn same_port_id_multiset(params: &[PortId], inputs: &[PortId]) -> bool {
     a.sort_unstable();
     b.sort_unstable();
     a == b
+}
+
+#[cfg(test)]
+mod ordered_ring_add_associativity_recognizer_tests {
+    use super::*;
+    use crate::compile_to_dag;
+    use crate::CompileError;
+
+    #[test]
+    fn recognizer_rejects_duplicate_operand_a_plus_a() {
+        let source = "module t\nfn wrong(a: Int, b: Int) -> Int = a + a\n";
+        let dag = match compile_to_dag(source, "associativity_a_plus_a_receipt.dag") {
+            Ok(d) => d,
+            Err(CompileError::Semantic(d)) => panic!(
+                "unexpected semantic errors: {:?}",
+                d.diagnostics().iter().collect::<Vec<_>>()
+            ),
+            Err(e) => panic!("compile failed: {e:?}"),
+        };
+        assert!(
+            dag.diagnostics().is_empty(),
+            "fixture should compile cleanly"
+        );
+        let decl = dag
+            .declaration_by_name("wrong")
+            .expect("fixture should declare `wrong`");
+        assert!(
+            !declaration_shape_matches_ordered_ring_add_associativity_recognizer(&dag, decl),
+            "`a + a` must not satisfy the associativity gate witness (multiset of add operands vs bind params)"
+        );
+    }
 }

@@ -5,6 +5,10 @@
 // `Declaration.inhabits` walk to `OrderedRing.add` in surfaced `std/algebra.dag`
 // (same algebra Conj path as operator inference), not a Rust-side operator-shape heuristic.
 //
+// Scaffold tightened to require surfaced-algebra resolution of `+` via `resolve_operator_arrow`;
+// still a structural recognizer. **Dissolution:** replace with `apply(lens, a, b, c)` comparing
+// `(a*b)*c` vs `a*(b*c)` once the T-LensAPI D1 lens-application primitive lands.
+//
 // Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A beyond the witness shape.
 // Not bundled into `Dag::new()` bootstrap; see `m1_5_user_authored_lens_gate_test`
 // lockstep pattern for `r1_gates.dag`.

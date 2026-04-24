@@ -3689,9 +3689,10 @@ const WALK_DEPTH_LIMIT: usize = 32;
 /// Returns `true` when `op_kind` on the refinement-stripped base type `lhs_base`
 /// resolves through a surfaced algebra `Conj` (e.g. `OrderedRing.add` for `Int`),
 /// i.e. `resolve_operator_arrow` returns a non-`ArrowBody::Pending` body.
-/// Used by `test_runner` for `AlgebraicLaw::Associativity` so the witness is
-/// grounded in the same algebra walk as inference/emit, not a parallel operator
-/// recognizer.
+///
+/// **Crate-internal seam:** only `test_runner`'s `AlgebraicLaw` associativity recognizer calls
+/// this so that boundary shares one `resolve_operator_arrow` + `Pending` check with infer,
+/// without exporting `resolve_operator_arrow` from this module.
 pub(crate) fn operator_resolves_via_surfaced_algebra(
     dag: &Dag,
     op_kind: OperatorKind,

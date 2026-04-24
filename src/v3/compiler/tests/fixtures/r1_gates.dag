@@ -54,6 +54,10 @@ data sub_match_over_user_sum_gate: TestSuite = {
 // silently drift (merge hazard / reader confusion).
 // Dissolution trigger: once the runner resolves lens refs directly from `program_dag` without a
 // fixture-side stub, delete this declaration.
+//
+// AlgebraicLaw associativity (R1): scaffold is tightened to surfaced-algebra `+` resolution via
+// `resolve_operator_arrow`; still a structural recognizer. **Dissolution:** D1 lens application
+// then D3 `(a*b)*c` vs `a*(b*c)` — same as `lens_composition_associative_witness.dag` header.
 fn lens_composition_op(a: Int, b: Int) -> Int = a + b
 
 data user_authored_lens_compiles_gate: TestClaim = {
@@ -85,7 +89,7 @@ data manual_claim_suite: TestSuite = {
 
 data lens_composition_associative_gate: TestClaim = {
   name: "lens_composition_associative",
-  source: "// lenses.lens_composition_associative_witness - minimal `[ext]` gate witness for\n// `lens_composition_associative` (T-LensAPI / AlgebraicLaw::Associativity).\n//\n// Witness: binary `Int` addition lowered as `+`, resolved via `Int`'s\n// `Declaration.inhabits` walk to `OrderedRing.add` in surfaced `std/algebra.dag`\n// (same algebra Conj path as operator inference), not a Rust-side operator-shape heuristic.\n//\n// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A beyond the witness shape.\n// Not bundled into `Dag::new()` bootstrap; see `m1_5_user_authored_lens_gate_test`\n// lockstep pattern for `r1_gates.dag`.\n\nmodule lenses.lens_composition_associative_witness\n\nfn lens_composition_op(a: Int, b: Int) -> Int = a + b\n",
+  source: "// lenses.lens_composition_associative_witness - minimal `[ext]` gate witness for\n// `lens_composition_associative` (T-LensAPI / AlgebraicLaw::Associativity).\n//\n// Witness: binary `Int` addition lowered as `+`, resolved via `Int`'s\n// `Declaration.inhabits` walk to `OrderedRing.add` in surfaced `std/algebra.dag`\n// (same algebra Conj path as operator inference), not a Rust-side operator-shape heuristic.\n//\n// Scaffold tightened to require surfaced-algebra resolution of `+` via `resolve_operator_arrow`;\n// still a structural recognizer. **Dissolution:** replace with `apply(lens, a, b, c)` comparing\n// `(a*b)*c` vs `a*(b*c)` once the T-LensAPI D1 lens-application primitive lands.\n//\n// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A beyond the witness shape.\n// Not bundled into `Dag::new()` bootstrap; see `m1_5_user_authored_lens_gate_test`\n// lockstep pattern for `r1_gates.dag`.\n\nmodule lenses.lens_composition_associative_witness\n\nfn lens_composition_op(a: Int, b: Int) -> Int = a + b\n",
   file_name: "src/v3/lenses/lens_composition_associative_witness.dag",
   predicate: AlgebraicLaw(Associativity, lens_composition_op),
   requires: []
