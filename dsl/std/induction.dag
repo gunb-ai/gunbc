@@ -783,6 +783,8 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
   // work — aligns with `int_pow_bounded`'s exp cap / Peano materialization in `std.termination`.
   if a < 1 || b < 2 || d < 0 || d > 256 { ErrorBound }
   else {
+    // P4/P3: `d` is in [0,256] here (guard above). `int_pow_bounded` still caps `exp` and
+    // multiplies only via `int_mul_checked` — no raw `Int` power on unbounded `work_exponent`.
     match int_pow_bounded(base: b, exp: d) {
       None => ErrorBound
       Some { value: b_to_d } =>
