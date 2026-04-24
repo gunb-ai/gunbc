@@ -151,8 +151,9 @@ impl<'a> TestRunner<'a> {
                     "CostBounded" => self.eval_cost_bounded(claim, &payload),
                     "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
                     "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
-                    _ => ClaimResult::NotYetImplemented(format!(
-                        "TestPredicate `{label}` is not implemented in the Rust test runner"
+                    "MockBackedInvariant" => self.eval_mock_backed_invariant(claim, &payload),
+                    other => ClaimResult::NotYetImplemented(format!(
+                        "TestPredicate::{other} is not wired in the Rust runner yet"
                     )),
                 },
                 None => ClaimResult::Fail("predicate is not a structural variant".to_string()),
@@ -271,15 +272,15 @@ impl<'a> TestRunner<'a> {
                 payload.len()
             ));
         };
-        let lens_id = match self.resolve_declaration_ref_edge(lens_fv, "lens_ref") {
+        let lens_id = match self.resolve_declaration_ref_id(lens_fv, "lens_ref") {
             Ok(id) => id,
             Err(msg) => return ClaimResult::Fail(msg),
         };
-        let input_id = match self.resolve_declaration_ref_edge(input_fv, "input_ref") {
+        let input_id = match self.resolve_declaration_ref_id(input_fv, "input_ref") {
             Ok(id) => id,
             Err(msg) => return ClaimResult::Fail(msg),
         };
-        let expected_id = match self.resolve_declaration_ref_edge(expected_fv, "expected_ref") {
+        let expected_id = match self.resolve_declaration_ref_id(expected_fv, "expected_ref") {
             Ok(id) => id,
             Err(msg) => return ClaimResult::Fail(msg),
         };
@@ -325,7 +326,7 @@ impl<'a> TestRunner<'a> {
         ))
     }
 
-    fn resolve_declaration_ref_edge(
+    fn resolve_declaration_ref_id(
         &self,
         value: &FieldValue,
         field_label: &str,
@@ -366,7 +367,7 @@ impl<'a> TestRunner<'a> {
         };
         if law_label != "Associativity" {
             return ClaimResult::NotYetImplemented(format!(
-                "AlgebraicLaw: law `{law_label}` is not implemented in the Rust test runner yet"
+                "AlgebraicLaw::{law_label} is not wired in the Rust runner yet"
             ));
         }
         if !law_payload.is_empty() {
@@ -425,6 +426,51 @@ impl<'a> TestRunner<'a> {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!("cost {actual} did not satisfy bound {bound}"))
+        }
+    }
+
+    fn eval_mock_backed_invariant(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [subject, invariant] = payload else {
+            return ClaimResult::Fail(
+                "MockBackedInvariant payload should be (subject: DeclarationRef, invariant: DeclarationRef)"
+                    .to_string(),
+            );
+        };
+        let subject = match self.resolve_mock_declaration_ref_edge(subject, "subject") {
+            Ok(name) => name,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        let invariant = match self.resolve_mock_declaration_ref_edge(invariant, "invariant") {
+            Ok(name) => name,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        ClaimResult::NotYetImplemented(format!(
+            "MockBackedInvariant mock simulation is not wired in the Rust runner yet for subject `{subject}` and invariant `{invariant}`"
+        ))
+    }
+
+    fn resolve_mock_declaration_ref_edge(
+        &self,
+        value: &FieldValue,
+        label: &str,
+    ) -> Result<String, String> {
+        match value {
+            FieldValue::Reference(id) => Ok(self
+                .dag
+                .declaration(*id)
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("Declaration#{}", id.raw()))),
+            FieldValue::Record(fields) if fields.is_empty() => Err(format!(
+                "MockBackedInvariant `{label}` must be a DeclarationRef edge, got empty record literal"
+            )),
+            other => Err(format!(
+                "MockBackedInvariant `{label}` must be a DeclarationRef edge, got {other:?}"
+            )),
         }
     }
 
