@@ -334,7 +334,4 @@ fn main() {
     let gunbc_out = out_dir.join("v3_gunbc_files.rs");
     fs::write(&gunbc_out, gunbc_generated)
         .unwrap_or_else(|e| panic!("failed to write {}: {}", gunbc_out.display(), e));
-    let lens_bootstrap_out = out_dir.join("v3_lens_bootstrap_files.rs");
-    fs::write(&lens_bootstrap_out, lens_bootstrap_generated)
-        .unwrap_or_else(|e| panic!("failed to write {}: {}", lens_bootstrap_out.display(), e));
 }
