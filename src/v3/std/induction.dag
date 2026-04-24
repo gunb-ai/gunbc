@@ -724,18 +724,26 @@ fn int_mul_checked(a: Int, b: Int) -> Int? {
 // b^exp for exp ≥ 0 (exp = 0 → Some { value: 1 }). exp < 0 → none — no silent plausible
 // wrong output (P3; same posture as `ceil_log` / `cost_poly`). `master_theorem` still
 // rejects d < 0 → ErrorBound before calling; callers that omit that guard get `none`.
+//
+// P4 (decidability): cap exp at 256 — same ceiling as `positive_descent_amount_from_positive_int`
+// / `proportional_divisor_from_int_at_least_two` in `std.termination` (M9 literal bridges).
+// Without this, a huge `work_exponent` forces O(exp) stack recursion before overflow can
+// return `none`. Oversized exp → `none` → `master_theorem` → `ErrorBound` (fail-closed).
 fn int_pow_bounded(base: Int, exp: Int) -> Int? {
   if exp < 0 { none }
   else {
-    if exp == 0 { Some { value: 1 } }
+    if exp > 256 { none }
     else {
-      match int_pow_bounded(base: base, exp: exp - 1) {
-        Some { value: prev } =>
-          match int_mul_checked(a: base, b: prev) {
-            Some { value: prod } => Some { value: prod }
-            None => none
-          }
-        None => none
+      if exp == 0 { Some { value: 1 } }
+      else {
+        match int_pow_bounded(base: base, exp: exp - 1) {
+          Some { value: prev } =>
+            match int_mul_checked(a: base, b: prev) {
+              Some { value: prod } => Some { value: prod }
+              None => none
+            }
+          None => none
+        }
       }
     }
   }

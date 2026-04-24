@@ -693,15 +693,19 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
         if (exp.clone() < 0) {
             None
         } else {
-            if (exp.clone() == 0) {
-                Some(1)
+            if (exp.clone() > 256) {
+                None
             } else {
-                match int_pow_bounded(base.clone(), (exp.clone() - 1)) {
-                    Some(prev) => match int_mul_checked(base.clone(), prev.clone()) {
-                        Some(prod) => Some(prod.clone()),
+                if (exp.clone() == 0) {
+                    Some(1)
+                } else {
+                    match int_pow_bounded(base.clone(), (exp.clone() - 1)) {
+                        Some(prev) => match int_mul_checked(base.clone(), prev.clone()) {
+                            Some(prod) => Some(prod.clone()),
+                            None => None,
+                        },
                         None => None,
-                    },
-                    None => None,
+                    }
                 }
             }
         }

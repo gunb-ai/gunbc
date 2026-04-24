@@ -23,6 +23,13 @@ fn int_pow_bounded_overflow_is_none() {
 }
 
 #[test]
+fn int_pow_bounded_exponent_above_peano_materialization_cap_is_none() {
+    // P4: `int_pow_bounded` rejects exp > 256 (M9 / `std.termination` literal-bridge ceiling)
+    // so huge `work_exponent` cannot force O(exp) stack recursion before fail-closed `none`.
+    assert_eq!(int_pow_bounded(2, 257), None);
+}
+
+#[test]
 fn ceil_log_overflow_or_invalid_is_none() {
     assert_eq!(ceil_log(1, 10), None);
     assert_eq!(ceil_log(2, 0), None);

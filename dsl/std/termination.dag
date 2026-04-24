@@ -201,6 +201,10 @@ type RankingDimension
 // evidence because zero and negative values are not descent witnesses.
 // This structural positive number makes invalid proof amounts unrepresentable.
 //
+// Ratchet (P4 / modeling): self-recursive Peano-style sums here extend the substrate
+// recursive-type set beyond `Node`; dissolution is deferred until E-P routes literal
+// bridges through shared numeric refinements (see `ROADMAP.md` P4 — Peano witness ratchet).
+//
 // Design note (api-review / E-P): `std.types` already declares `PositiveInt`
 // (`Int where range(min: 1)`) and similar refinements. A future dissolution is
 // to route literal bridges through that **shared numeric refinement authority**
