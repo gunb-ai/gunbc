@@ -182,21 +182,27 @@ fn emit_python_uses_only_shared_schema_surface() {
     }
 }
 
-#[test]
-fn emitted_python_admitted_list_fixtures_execute_under_cpython() {
-    let fixtures = [
-        ("list_map_then_fold_twelve", "12"),
-        ("list_filter_then_fold_seven", "7"),
-        ("nested_list_builtins_inside_lambda_six", "6"),
-    ];
+fn assert_python_program_fixture_stdout(name: &str, expected: &str) {
+    let actual = python_stdout(program_fixture_source(name), "python_admitted_fixture.v3");
+    assert_eq!(
+        actual, expected,
+        "emitted Python fixture `{name}` diverged from Rust-canonical expected stdout"
+    );
+}
 
-    for (name, expected) in fixtures {
-        let actual = python_stdout(program_fixture_source(name), "python_admitted_fixture.v3");
-        assert_eq!(
-            actual, expected,
-            "emitted Python fixture `{name}` diverged from Rust-canonical expected stdout"
-        );
-    }
+#[test]
+fn emitted_python_list_map_then_fold_twelve_executes_under_cpython() {
+    assert_python_program_fixture_stdout("list_map_then_fold_twelve", "12");
+}
+
+#[test]
+fn emitted_python_list_filter_then_fold_seven_executes_under_cpython() {
+    assert_python_program_fixture_stdout("list_filter_then_fold_seven", "7");
+}
+
+#[test]
+fn emitted_python_nested_list_builtins_inside_lambda_six_executes_under_cpython() {
+    assert_python_program_fixture_stdout("nested_list_builtins_inside_lambda_six", "6");
 }
 
 fn next_roundtrip_dir() -> PathBuf {
