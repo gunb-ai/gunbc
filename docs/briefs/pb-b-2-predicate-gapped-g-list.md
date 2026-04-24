@@ -15,27 +15,39 @@ inventory — i.e. tests *outside* the TESTING.md §Post-R2 residuals
 (compiler-internal `#[cfg(test)]` helpers; rustc/go/python boundary
 tests) that still cannot port on the currently-landed runner.
 
-The "D" (Directly portable) bucket — predicates that reduce to
-`Compiles` / `FailsWithDiagnostic` / `LensOutputEquals` /
-`DifferentialEquals` / `ExecuteCommand` / `ForAllTargets` /
-`AlgebraicLaw` — is being handled under T-PB-B-1 and is not the
-subject of this doc.
+The "D" (Directly portable) bucket — tests whose claim reduces to
+a predicate the **runner dispatches today** (`Compiles`,
+`FailsWithDiagnostic`, `OutputEquals`, `PortHasState`,
+`CostBounded` — see `src/v3/compiler/src/test_runner.rs:101`) —
+is being handled under T-PB-B-1 and is not the subject of this
+doc. Tests whose semantics reduce to a schema-declared but
+runner-NYI predicate (`ExecuteCommand`, `ForAllTargets`,
+`LensOutputEquals`, `DifferentialEquals`, `AlgebraicLaw`,
+`MockBackedInvariant`) are *runner-gapped*, not predicate-gapped,
+and belong to Testgen's runner-wiring backlog rather than this
+brief.
 
 ## What ships today
 
 Authority split (to avoid this brief becoming a second schema
 authority):
 
-- **Schema on `main`** — `TestPredicate` variants already declared
-  in `src/v3/std/verification.dag` (all currently carry the 🟡
-  Scaffold marker): `Compiles`, `FailsWithDiagnostic`,
+- **Schema-declared** — `TestPredicate` variants present in
+  `src/v3/std/verification.dag` (all 🟡 Scaffold):
+  `Compiles`, `FailsWithDiagnostic`, `OutputEquals`,
+  `PortHasState`, `CostBounded`, `MockBackedInvariant`,
   `ExecuteCommand`, `ForAllTargets`, `LensOutputEquals`,
-  `DifferentialEquals`, `AlgebraicLaw`, `MockBackedInvariant`.
-- **Runner-wired today** (per r1-testgen-manager working state):
-  `Compiles`, `FailsWithDiagnostic`, `ExecuteCommand`,
-  `ForAllTargets`, `LensOutputEquals`, `DifferentialEquals`.
-- **Runner-WIP** — `AlgebraicLaw` evaluation; `MockBackedInvariant`
-  (PR #722 in review).
+  `DifferentialEquals`, `AlgebraicLaw`.
+- **Runner-dispatched today** — verified against the dispatch
+  table at `src/v3/compiler/src/test_runner.rs:101`:
+  `Compiles`, `FailsWithDiagnostic`, `OutputEquals`,
+  `PortHasState`, `CostBounded`. All other schema variants
+  currently fall through to `ClaimResult::NotYetImplemented`.
+- **Schema-declared but runner-NYI** — `MockBackedInvariant`
+  (PR #722 in review), `ExecuteCommand`, `ForAllTargets`,
+  `LensOutputEquals`, `DifferentialEquals`, `AlgebraicLaw`.
+  These are Testgen's runner-wiring backlog, *distinct* from the
+  six predicate-gapped shapes below.
 
 Authority for the predicate list is `verification.dag`; this brief
 only describes consumer need.
