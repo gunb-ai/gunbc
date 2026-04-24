@@ -506,8 +506,12 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> i64 {
     })
 }
 
-pub fn ceil_log(base: i64, argument: i64) -> i64 {
-    ceil_log_iter(base, argument, 0, 1)
+pub fn ceil_log(base: i64, argument: i64) -> Option<i64> {
+    if ((base.clone() < 2) || (argument.clone() < 1)) {
+        None
+    } else {
+        Some(ceil_log_iter(base.clone(), argument.clone(), 0, 1))
+    }
 }
 
 pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i64) -> i64 {
@@ -532,7 +536,7 @@ pub fn master_theorem(form: &Rc<RecurrenceForm>) -> Rc<CostBound> {
         let b = form.divisor.clone();
         let d = form.work_exponent.clone();
         let n = form.param.clone();
-        if ((a.clone() < 1) || (b.clone() < 2)) {
+        if (((a.clone() < 1) || (b.clone() < 2)) || (d.clone() < 0)) {
             Rc::new(CostBound::ErrorBound)
         } else {
             {

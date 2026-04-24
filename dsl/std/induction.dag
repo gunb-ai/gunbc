@@ -470,7 +470,8 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
 //
 // FractionExp uses `root` (not denominator): the k-th root of n.
 // Constructors (cost_root, kth_root_bound) reject root ≤ 0 → ErrorBound.
-// LogBasedExp base > 1 and argument > 0 are validated at master_theorem entry.
+// LogBasedExp base > 1 and argument > 0 are validated at `master_theorem` entry;
+// `ceil_log` rejects base < 2 or argument < 1 (returns none).
 // Represents the exponent structurally — no precision loss.
 //
 // 🟢 TERMINAL at E-I exponent scope. `Int` payloads encode validated polynomial / root /
@@ -568,7 +569,7 @@ fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
 // T(n) = a·T(n/b) + O(n^d)
 //   a: branching factor (self-calls per execution path)
 //   b: division factor (each sub-problem is n/b of the original)
-//   d: exponent of per-level non-recursive work
+//   d: exponent of per-level non-recursive work (≥ 0; `master_theorem` rejects d < 0 → ErrorBound)
 //
 // 🟡 SCAFFOLD. Master-theorem input bundles a symbolic `param: String` with `Int` recurrence
 // coefficients; structural parameter refs dissolve with reflected function params.
@@ -585,8 +586,7 @@ type RecurrenceForm {
 // Master theorem — recurrence → CostBound
 // =========================================================================
 
-// Compute ⌈log_b(a)⌉: smallest integer k such that b^k >= a.
-// Bounded: iterates at most a times (a >= 1, b >= 2, so b^a >> a).
+// Compute b^exp for exp ≥ 0; for exp ≤ 0 returns 1 (only used with non-negative work exponents).
 fn int_pow_bounded(base: Int, exp: Int) -> Int {
   if exp <= 0 { 1 }
   else {
@@ -595,11 +595,14 @@ fn int_pow_bounded(base: Int, exp: Int) -> Int {
   }
 }
 
-fn ceil_log(base: Int, argument: Int) -> Int {
-  // Find smallest k where base^k >= argument
-  ceil_log_iter(base: base, argument: argument, k: 0, power: 1)
+// Smallest k with base^k >= argument. Requires base ≥ 2 and argument ≥ 1 so each
+// iteration strictly increases `power` (P4 decidability); invalid inputs → none.
+fn ceil_log(base: Int, argument: Int) -> Int? {
+  if base < 2 || argument < 1 { none }
+  else { Some { value: ceil_log_iter(base: base, argument: argument, k: 0, power: 1) } }
 }
 
+// Pre: base ≥ 2, argument ≥ 1.
 fn ceil_log_iter(base: Int, argument: Int, k: Int, power: Int) -> Int {
   if power >= argument { k }
   else { ceil_log_iter(base: base, argument: argument, k: k + 1, power: power * base) }
@@ -611,7 +614,7 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
   let d = form.work_exponent
   let n = form.param
   // Fail-closed: invalid inputs produce ErrorBound, not fabricated O(1)
-  if a < 1 || b < 2 { ErrorBound }
+  if a < 1 || b < 2 || d < 0 { ErrorBound }
   else {
     let b_to_d = int_pow_bounded(base: b, exp: d)
     if a < b_to_d {
