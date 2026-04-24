@@ -668,12 +668,19 @@ type RecurrenceForm {
 // Master theorem — recurrence → CostBound
 // =========================================================================
 
-// Compute b^exp for exp ≥ 0; for exp ≤ 0 returns 1 (only used with non-negative work exponents).
-fn int_pow_bounded(base: Int, exp: Int) -> Int {
-  if exp <= 0 { 1 }
+// b^exp for exp ≥ 0 (exp = 0 → Some { value: 1 }). exp < 0 → none — no silent plausible
+// wrong output (P3; same posture as `ceil_log` / `cost_poly`). `master_theorem` still
+// rejects d < 0 → ErrorBound before calling; callers that omit that guard get `none`.
+fn int_pow_bounded(base: Int, exp: Int) -> Int? {
+  if exp < 0 { none }
   else {
-    let prev = int_pow_bounded(base: base, exp: exp - 1)
-    base * prev
+    if exp == 0 { Some { value: 1 } }
+    else {
+      match int_pow_bounded(base: base, exp: exp - 1) {
+        Some { value: prev } => Some { value: base * prev }
+        None => none
+      }
+    }
   }
 }
 
@@ -698,38 +705,41 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
   // Fail-closed: invalid inputs produce ErrorBound, not fabricated O(1)
   if a < 1 || b < 2 || d < 0 { ErrorBound }
   else {
-    let b_to_d = int_pow_bounded(base: b, exp: d)
-    if a < b_to_d {
-      // Case 3: per-level work dominates → O(n^d)
-      match d {
-        0 => ConstantBound
-        _ => cost_poly(param: n, degree: d)
-      }
-    } else {
-      if a == b_to_d {
-        // Case 2: balanced → O(n^d · log n)
-        match d {
-          0 => cost_log(param: n)
-          _ =>
-            match positive_descent_amount_from_positive_int(k: d) {
-              Some { value: deg } =>
-                ProductBound { factors: [PolyCost { param: n, exponent: IntegerExpPos { degree: deg } }, LogCost { param: n }] }
+    match int_pow_bounded(base: b, exp: d) {
+      None => ErrorBound
+      Some { value: b_to_d } =>
+        if a < b_to_d {
+          // Case 3: per-level work dominates → O(n^d)
+          match d {
+            0 => ConstantBound
+            _ => cost_poly(param: n, degree: d)
+          }
+        } else {
+          if a == b_to_d {
+            // Case 2: balanced → O(n^d · log n)
+            match d {
+              0 => cost_log(param: n)
+              _ =>
+                match positive_descent_amount_from_positive_int(k: d) {
+                  Some { value: deg } =>
+                    ProductBound { factors: [PolyCost { param: n, exponent: IntegerExpPos { degree: deg } }, LogCost { param: n }] }
+                  None => ErrorBound
+                }
+            }
+          } else {
+            // Case 1: sub-problem work dominates → O(n^(log_b(a)))
+            // Exact representation via LogBasedExp — no approximation
+            match proportional_divisor_from_int_at_least_two(k: b) {
+              Some { value: baseW } =>
+                match positive_descent_amount_from_positive_int(k: a) {
+                  Some { value: argW } =>
+                    AtomicBound { cost: PolyCost { param: n, exponent: LogBasedExp { base: baseW, argument: argW } } }
+                  None => ErrorBound
+                }
               None => ErrorBound
             }
+          }
         }
-      } else {
-        // Case 1: sub-problem work dominates → O(n^(log_b(a)))
-        // Exact representation via LogBasedExp — no approximation
-        match proportional_divisor_from_int_at_least_two(k: b) {
-          Some { value: baseW } =>
-            match positive_descent_amount_from_positive_int(k: a) {
-              Some { value: argW } =>
-                AtomicBound { cost: PolyCost { param: n, exponent: LogBasedExp { base: baseW, argument: argW } } }
-              None => ErrorBound
-            }
-          None => ErrorBound
-        }
-      }
     }
   }
 }
