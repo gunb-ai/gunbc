@@ -83,6 +83,11 @@ include!(concat!(env!("OUT_DIR"), "/v3_compiler_files.rs"));
 const NAMED_FUNCTION_COUNT_USER_LENS_DAG: &str =
     include_str!("../../lenses/named_function_count.dag");
 
+// `r1_gates.dag` must load **after** `verification.dag` (lexicographic
+// `src/v3/std/*.dag` order would load it too early). It is staged on disk for
+// reviewability but appended here after the rest of the bootstrap bundle.
+const R1_GATES_DAG: &str = include_str!("../../std/r1_gates.dag");
+
 const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
 
 fn declaration_name_preference_rank(file: &str) -> usize {
@@ -140,10 +145,12 @@ fn load_runtime_bootstrap_authorities(
     excluded_staged_paths: &[&str],
     excluded_compiler_paths: &[&str],
 ) {
+    const R1_GATES_STAGED_PATH: &str = "src/v3/std/r1_gates.dag";
     let staged_iter = STAGED_FILES
         .iter()
         .copied()
-        .filter(|(path, _)| !excluded_staged_paths.contains(path));
+        .filter(|(path, _)| !excluded_staged_paths.contains(path))
+        .filter(|(path, _)| *path != R1_GATES_STAGED_PATH);
     let compiler_iter = COMPILER_FILES
         .iter()
         .copied()
@@ -155,6 +162,7 @@ fn load_runtime_bootstrap_authorities(
             "src/v3/lenses/named_function_count.dag",
             NAMED_FUNCTION_COUNT_USER_LENS_DAG,
         )))
+        .chain(std::iter::once((R1_GATES_STAGED_PATH, R1_GATES_DAG)))
         .collect();
     load_fixtures(dag, &fixtures);
     materialize_pipeline_realizations(dag);

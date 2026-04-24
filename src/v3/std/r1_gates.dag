@@ -5,15 +5,12 @@
 
 module std.r1_gates
 
-import std.list { empty }
-import std.verification { Compiles, TestClaim, TestPredicate }
+import std.verification { TestClaim }
 
-let user_authored_lens_compiles_predicate: TestPredicate = Compiles
-
-let user_authored_lens_compiles_gate: TestClaim = {
+data user_authored_lens_compiles_gate: TestClaim = {
   name: "user_authored_lens_compiles",
   source: "import lenses.named_function_count { named_function_count }\nimport std.substrate { Dag }\n\nfn count_fns(d: Dag) -> Int = named_function_count(d)\n",
   file_name: "user_lens_fixture.v3",
-  predicate: user_authored_lens_compiles_predicate,
-  requires: empty()
+  predicate: Compiles,
+  requires: []
 }
