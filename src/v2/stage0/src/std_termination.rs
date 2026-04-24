@@ -161,24 +161,12 @@ pub fn proportional_divisor_from_i64(k: i64) -> Option<Rc<ProportionalDivisor>> 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DescentSource {
-    ChildAccessor {
-        accessor: String,
-    },
-    ListShrink {
-        amount: Rc<PositiveDescentAmount>,
-    },
-    ArithmeticSubtractDescent {
-        steps: Rc<PositiveDescentAmount>,
-    },
-    ArithmeticDivideDescent {
-        divisor: Rc<ProportionalDivisor>,
-    },
-    ParserAdvance {
-        witness: String,
-    },
-    SetRemoval {
-        element: String,
-    },
+    ChildAccessor { accessor: String },
+    ListShrink { amount: Rc<PositiveDescentAmount> },
+    ArithmeticSubtractDescent { steps: Rc<PositiveDescentAmount> },
+    ArithmeticDivideDescent { divisor: Rc<ProportionalDivisor> },
+    ParserAdvance { witness: String },
+    SetRemoval { element: String },
     FoldIteration,
 }
 

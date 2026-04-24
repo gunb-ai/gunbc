@@ -825,24 +825,12 @@ pub fn proportional_divisor_from_i64(k: i64) -> Option<ProportionalDivisor> {
 /// substrate values.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescentSource {
-    ChildAccessor {
-        accessor: String,
-    },
-    ListShrink {
-        amount: PositiveDescentAmount,
-    },
-    ArithmeticSubtractDescent {
-        steps: PositiveDescentAmount,
-    },
-    ArithmeticDivideDescent {
-        divisor: ProportionalDivisor,
-    },
-    ParserAdvance {
-        witness: String,
-    },
-    SetRemoval {
-        element: String,
-    },
+    ChildAccessor { accessor: String },
+    ListShrink { amount: PositiveDescentAmount },
+    ArithmeticSubtractDescent { steps: PositiveDescentAmount },
+    ArithmeticDivideDescent { divisor: ProportionalDivisor },
+    ParserAdvance { witness: String },
+    SetRemoval { element: String },
     FoldIteration,
 }
 
