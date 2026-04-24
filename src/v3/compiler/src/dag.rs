@@ -1127,9 +1127,10 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
         else {
             continue;
         };
+        let owned_transforms = bind_body_transform_ids(dag, caller);
 
         for transform in dag.nodes().iter().filter_map(Behavior::as_transform) {
-            if !span_contains(&caller.span, &transform.span) {
+            if !owned_transforms.contains(&transform.id) {
                 continue;
             }
             let TransformTarget::Callable(target_decl) = transform.target else {
@@ -1178,6 +1179,101 @@ fn declaration_body_bind<'a>(dag: &'a Dag, decl: &Declaration) -> Option<&'a Bin
     dag.node_opt(bind_id)?.as_bind()
 }
 
+fn bind_body_transform_ids(dag: &Dag, bind: &BindNode) -> HashSet<NodeId> {
+    let mut transforms = HashSet::new();
+    let mut visited_ports = HashSet::new();
+    let mut visited_nodes = HashSet::new();
+    collect_body_port(
+        dag,
+        bind.value,
+        &mut visited_ports,
+        &mut visited_nodes,
+        &mut transforms,
+    );
+    transforms
+}
+
+fn collect_body_port(
+    dag: &Dag,
+    port: PortId,
+    visited_ports: &mut HashSet<PortId>,
+    visited_nodes: &mut HashSet<NodeId>,
+    transforms: &mut HashSet<NodeId>,
+) {
+    if !visited_ports.insert(port) {
+        return;
+    }
+    let Some(producer) = dag.port_opt(&port).and_then(|p| p.produced_by) else {
+        return;
+    };
+    collect_body_node(dag, producer, visited_ports, visited_nodes, transforms);
+}
+
+fn collect_body_node(
+    dag: &Dag,
+    node: NodeId,
+    visited_ports: &mut HashSet<PortId>,
+    visited_nodes: &mut HashSet<NodeId>,
+    transforms: &mut HashSet<NodeId>,
+) {
+    if !visited_nodes.insert(node) {
+        return;
+    }
+    let Some(behavior) = dag.node_opt(&node) else {
+        return;
+    };
+    match behavior {
+        Behavior::Value(_) => {}
+        Behavior::Transform(transform) => {
+            transforms.insert(transform.id);
+            for input in &transform.inputs {
+                collect_body_port(dag, *input, visited_ports, visited_nodes, transforms);
+            }
+        }
+        Behavior::Branch(branch) => {
+            collect_body_port(dag, branch.input, visited_ports, visited_nodes, transforms);
+            for path in &branch.paths {
+                collect_body_node(dag, path.body, visited_ports, visited_nodes, transforms);
+                collect_body_port(dag, path.output, visited_ports, visited_nodes, transforms);
+            }
+        }
+        Behavior::Loop(loop_node) => {
+            collect_body_port(
+                dag,
+                loop_node.source,
+                visited_ports,
+                visited_nodes,
+                transforms,
+            );
+            collect_body_port(
+                dag,
+                loop_node.init,
+                visited_ports,
+                visited_nodes,
+                transforms,
+            );
+            if let Some(count) = loop_node.bound.count_port() {
+                collect_body_port(dag, count, visited_ports, visited_nodes, transforms);
+            }
+            collect_body_node(
+                dag,
+                loop_node.body,
+                visited_ports,
+                visited_nodes,
+                transforms,
+            );
+        }
+        Behavior::Bind(inner) => {
+            // Local value binds are part of the current body graph. Function binds
+            // own a separate `ArrowBody::UserDefined` body and are scanned through
+            // their declaration, not through an enclosing span/body walk.
+            if inner.params.is_empty() {
+                collect_body_port(dag, inner.value, visited_ports, visited_nodes, transforms);
+            }
+        }
+    }
+}
+
 fn callable_target_template_for_provenance(
     dag: &Dag,
     mut decl: DeclarationId,
@@ -1189,12 +1285,6 @@ fn callable_target_template_for_provenance(
         }
     }
     None
-}
-
-fn span_contains(outer: &SourceSpan, inner: &SourceSpan) -> bool {
-    outer.file == inner.file
-        && outer.byte_start <= inner.byte_start
-        && inner.byte_end <= outer.byte_end
 }
 
 fn classify_call_argument(
