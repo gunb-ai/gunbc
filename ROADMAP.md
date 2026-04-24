@@ -78,7 +78,7 @@ This section lists gate names + schema-compilability tags; full `TestClaim` decl
 
 Day-1 PR #717 landed explicit `LensOutputEquals` dispatch and fixtures with **no inline `TODO` in code**: the items below are the authoritative schedule (T-LensAPI / compiler lowering / schema), not drive-by debt comments.
 
-1. **`eval_lens_output_equals` witness compile** (`src/v3/compiler/src/test_runner.rs`): remove the side `compile_to_dag(&claim.source, …)` once the runner performs real `LensOutputEquals` evaluation so compilation lives only on the apply/compare path. Until then the receipt is intentionally thin (trivial fixture `source`); a lowering failure can surface as `Fail` while the predicate is still runner-deferred.
+1. **`eval_lens_output_equals` witness compile** — **Done (PR #741):** the runner performs real `LensOutputEquals` apply/compare; `compile_to_dag(&claim.source, …)` is intentional (program `Dag` for reflection / `program_dag` lens lookup), fail-closed on tokenize/parse/inference (P3), and P2-aligned `id_space` for reflected `FieldValue` vs the lens `Dag` in use. **Follow-on:** retire parallel compile paths when `DeclarationRef` resolves executable lens + inputs structurally from one authority.
 
 2. **Split fixture** — **Done:** `r1_lens_output_equals_gate.dag` removed; `LensOutputEquals` gate lives in `src/v3/compiler/tests/fixtures/r1_gates.dag` (same-TU lowering unblocked by T-LensAPI runner work).
 
