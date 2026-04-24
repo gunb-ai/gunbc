@@ -124,7 +124,8 @@ fn generate(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> String {
     let escapes = collect_string_escape_rows(dag);
 
     let mut out = String::new();
-    out.push_str("use crate::diagnostics::{Diagnostic, SourceSpan};\n\n");
+    out.push_str("use crate::diagnostics::{Diagnostic, SourceSpan};\n");
+    out.push_str("use crate::tokenize_char_class::{byte_matches, TokenizerCharClass};\n\n");
     out.push_str(&emit_token_kind_enum(dag));
     out.push_str(
         r#"#[derive(Debug, Clone)]
@@ -704,7 +705,7 @@ fn emit_tokenize_fn(
     ));
     s.push_str("    while pos < bytes.len() {\n");
     s.push_str("        let byte = bytes[pos];\n\n");
-    s.push_str("        if byte.is_ascii_whitespace() {\n");
+    s.push_str("        if byte_matches(byte, TokenizerCharClass::Whitespace) {\n");
     s.push_str("            pos += 1;\n");
     s.push_str("            continue;\n");
     s.push_str("        }\n\n");
@@ -731,9 +732,11 @@ fn emit_tokenize_fn(
     s.push_str("            pos += width;\n");
     s.push_str("            continue;\n");
     s.push_str("        }\n\n");
-    s.push_str("        if byte.is_ascii_digit() {\n");
+    s.push_str("        if byte_matches(byte, TokenizerCharClass::Digit) {\n");
     s.push_str("            let mut end = pos;\n");
-    s.push_str("            while end < bytes.len() && bytes[end].is_ascii_digit() {\n");
+    s.push_str(
+        "            while end < bytes.len() && byte_matches(bytes[end], TokenizerCharClass::Digit) {\n",
+    );
     s.push_str("                end += 1;\n");
     s.push_str("            }\n");
     s.push_str("            let literal = &source[start..end];\n");
@@ -754,9 +757,11 @@ fn emit_tokenize_fn(
     s.push_str("            pos = end;\n");
     s.push_str("            continue;\n");
     s.push_str("        }\n\n");
-    s.push_str("        if byte.is_ascii_alphabetic() || byte == b'_' {\n");
+    s.push_str("        if byte_matches(byte, TokenizerCharClass::IdentStart) {\n");
     s.push_str("            let mut end = pos;\n");
-    s.push_str("            while end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {\n");
+    s.push_str(
+        "            while end < bytes.len() && byte_matches(bytes[end], TokenizerCharClass::IdentContinue) {\n",
+    );
     s.push_str("                end += 1;\n");
     s.push_str("            }\n");
     s.push_str("            let text = &source[start..end];\n");
