@@ -59,10 +59,10 @@ fn compute_costs(d: Dag) -> List<CostEntry> =
     cons(entry_for(acc, behavior), acc)
   )
 
-// Pre-seed the accumulator with a `FoundCost(0)` entry for every
+// Pre-seed the accumulator with `Hit(0)` for every
 // `bind.params` port. Parameters have `produced_by = None` and are not
 // Behaviors in `d.nodes`, so without this seed their lookups would
-// return `MissingCost` and a malformed reference would be
+// return `Miss` and a malformed reference would be
 // indistinguishable from a legitimate parameter.
 fn seed_bind_params(nodes: List<Behavior>) -> List<CostEntry> =
   match nodes {

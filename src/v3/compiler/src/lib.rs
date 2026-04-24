@@ -107,16 +107,17 @@ pub mod parse_tables {
 }
 
 /// Cost lens. The authority lives in `src/v3/lenses/complexity.dag`;
-/// the Rust projection is auto-emitted into
-/// `src/v3/compiler/src/lens_cost_generated.rs` and re-exported here
-/// so callers use `v3_compiler::lens_cost::{cost_of, CostLookup}`.
-/// Editing the lens means editing the `.dag` — there is no
+/// the Rust surface is `emit_rust_module` output in
+/// `lens_cost_generated.rs` (committed; same PR as the `.dag` when the lens
+/// changes). Generated `cost_of` / `CostEntry` use `crate::dag::Lookup<i64>`,
+/// the Rust projection of `v3.std.lookup::Lookup<Int>`. `CostLookup` below is
+/// **only** a public type alias (`Lookup<i64>`), not a second sum type — single
+/// carrier, facts-flow-forward from the lens authority.
+/// Editing the lens means editing the `.dag` and regenerating — there is no
 /// hand-written implementation on this crate side.
 ///
-/// L-8 compliance: `cost_of` returns the typed `v3.std.lookup::Lookup<Int>`
-/// carrier, projected in Rust as `CostLookup` (`Lookup<i64>`, i.e. `Miss` |
-/// `Hit(Int)`). Callers pattern-match on the variant rather than receiving a
-/// panicked-collapsed `usize`.
+/// L-8 compliance: callers pattern-match on `Hit` / `Miss` (via `CostLookup` or
+/// `Lookup<i64>`) rather than a panicked-collapsed `usize`.
 pub mod lens_cost {
     #[allow(
         dead_code,
