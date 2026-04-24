@@ -224,6 +224,37 @@ data suite: TestSuite = {
 }
 
 #[test]
+fn test_runner_scopes_bind_lookup_to_claim_source_file() {
+    let source = r#"
+data claim_state: TestClaim = {
+  name: "port state for shadowing bind",
+  source: "let sequential: Int = 0",
+  file_name: "runner_shadow_bind.v3",
+  predicate: PortHasState("sequential", Resolved),
+  requires: []
+}
+
+data claim_cost: TestClaim = {
+  name: "cost for shadowing bind",
+  source: "let sequential: Int = 0",
+  file_name: "runner_shadow_bind.v3",
+  predicate: CostBounded("sequential", Eq, 0),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "runner_shadow_bind",
+  claims: [claim_state, claim_cost]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_shadow_bind.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 2);
+    assert_all_pass(&results);
+}
+
+#[test]
 fn test_runner_evaluates_output_equals_claim() {
     let source = r#"
 data claim_output: TestClaim = {

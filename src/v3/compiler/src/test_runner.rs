@@ -188,7 +188,7 @@ impl<'a> TestRunner<'a> {
             Err(CompileError::Semantic(dag)) => dag,
             Err(err) => return ClaimResult::Fail(format!("source did not lower: {err:?}")),
         };
-        let Some(bind) = find_bind(&dag, bind_name) else {
+        let Some(bind) = find_bind(&dag, bind_name, &claim.file_name) else {
             return ClaimResult::Fail(format!("bind `{bind_name}` not found"));
         };
         let Some((label, payload)) = self.variant_value(expected_state) else {
@@ -221,7 +221,7 @@ impl<'a> TestRunner<'a> {
             Ok(dag) => dag,
             Err(err) => return ClaimResult::Fail(format!("source did not compile: {err:?}")),
         };
-        let Some(bind) = find_bind(&dag, bind_name) else {
+        let Some(bind) = find_bind(&dag, bind_name, &claim.file_name) else {
             return ClaimResult::Fail(format!("bind `{bind_name}` not found"));
         };
         let actual = match cost_of(&dag, &bind.value) {
@@ -383,9 +383,15 @@ fn record_fields(value: &FieldValue) -> Option<&[(String, FieldValue)]> {
     }
 }
 
-fn find_bind<'a>(dag: &'a Dag, bind_name: &str) -> Option<&'a crate::dag::BindNode> {
+fn find_bind<'a>(
+    dag: &'a Dag,
+    bind_name: &str,
+    claim_file_name: &str,
+) -> Option<&'a crate::dag::BindNode> {
     dag.nodes().iter().find_map(|node| match node {
-        Behavior::Bind(bind) if bind.name == bind_name => Some(bind),
+        Behavior::Bind(bind) if bind.name == bind_name && bind.span.file == claim_file_name => {
+            Some(bind)
+        }
         _ => None,
     })
 }
