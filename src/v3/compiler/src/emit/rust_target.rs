@@ -4892,6 +4892,13 @@ impl<'a> Ctx<'a> {
     /// (rings, algebras) contains `TypeConnective::Arrow` for operations, not
     /// first-class `fn` data — we must not confuse that with a user `fn` when
     /// classifying a **return** type; see `decl_includes_first_class_arrow_data`.
+    ///
+    /// **Extension / dissolve:** a new std primitive with the same
+    /// algebra-`Arrow` pattern (e.g. `Float`, `Bytes`) must be added to this
+    /// predicate **in the same PR** that lands the new root, or the check must
+    /// be replaced with a `Dag`-driven "numeric / algebra" classification so the
+    /// set cannot drift silently (#676, non-blocking follow-up; optional test:
+    /// fail when a new `*_shape` appears without a matching allowlist match).
     fn declaration_is_bootstrap_int_bool_string(&self, declaration: DeclarationId) -> bool {
         self.dag
             .int_shape()
