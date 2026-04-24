@@ -452,22 +452,23 @@ fn sg0_expected_fragment_lists_are_sorted_and_unique() {
 
 // Structural guard: ensures the T-PB-A / T-PB-B partition stays
 // correct as entries are added or removed. Non-test paths must not
-// contain `/tests/`; test paths must contain `/tests/`. A mis-filed
-// path in either list would silently let the wrong lane claim credit
-// for a retirement.
+// start with the test tree prefix; test paths must. Using a prefix
+// anchor (not a substring) avoids false matches on hypothetical
+// paths like `src/.../tests_utils/`.
 #[test]
 fn sg0_partition_paths_are_structurally_correct() {
+    const TEST_PREFIX: &str = "src/v3/compiler/tests/";
     for p in EXPECTED_HAND_AUTHORED_NON_TEST {
         assert!(
-            !p.contains("/tests/"),
-            "EXPECTED_HAND_AUTHORED_NON_TEST contains a test path (belongs in \
+            !p.starts_with(TEST_PREFIX),
+            "EXPECTED_HAND_AUTHORED_NON_TEST contains a test-tree path (belongs in \
              EXPECTED_HAND_AUTHORED_TEST): {p}"
         );
     }
     for p in EXPECTED_HAND_AUTHORED_TEST {
         assert!(
-            p.contains("/tests/"),
-            "EXPECTED_HAND_AUTHORED_TEST contains a non-test path (belongs in \
+            p.starts_with(TEST_PREFIX),
+            "EXPECTED_HAND_AUTHORED_TEST contains a non-test-tree path (belongs in \
              EXPECTED_HAND_AUTHORED_NON_TEST): {p}"
         );
     }
