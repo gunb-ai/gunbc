@@ -9,8 +9,15 @@
 
 use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{AtomPayload, Dag, TypeConnective};
+use v3_compiler::dag::{
+    ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, LogicalOp, OperatorKind, TransformTarget,
+    TypeConnective,
+};
+use v3_compiler::parse_for_test;
+use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem};
+use v3_compiler::tokenize_for_test;
 use v3_compiler::CompileError;
+use v3_compiler::Diagnostic;
 
 fn compile_any(src: &str, file: &str) -> Dag {
     match compile_to_dag(src, file) {
@@ -346,6 +353,224 @@ fn test_3a3_refined_parameter_compiles() {
     assert!(
         d_decl.refinement.is_some(),
         "d's parameter declaration must carry a `refinement` edge; got None"
+    );
+}
+
+/// DB-11 alias-RHS refinement **binding rule** (documented for reviewers):
+///
+/// The predicate scope exposes exactly one name: the **alias identifier**
+/// (`PositiveInt` here), bound to a port typed as the RHS base (`Int`). The
+/// author must use that name in the `where` clause to refer to the refined
+/// subject — there is no separate synthetic parameter (contrast `fn` params,
+/// where the `where` uses the parameter name). Lowering passes `bind_name =
+/// name` into `build_refinement_predicate_declaration` in `lower.rs`.
+#[test]
+fn test_db11_type_alias_where_survives_parse_and_lower() {
+    // DB-11 alias-RHS closure: `where` must parse into `SurfaceItem::TypeAlias`
+    // and lower to `Declaration.refinement` (not be skipped at parse time).
+    let src = "type PositiveInt = Int where PositiveInt > 0";
+    let dag = cached_compile_to_dag(src, "alias_where.v3");
+    let decl = dag
+        .declaration_by_name("PositiveInt")
+        .expect("`PositiveInt` type alias");
+    assert!(
+        matches!(
+            &decl.connective,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(_))
+        ),
+        "refined alias should lower to Atom(ResolvedByStructure(base)); got {:?}",
+        decl.connective
+    );
+    assert!(
+        decl.refinement.is_some(),
+        "alias declaration must carry refinement: {:?}",
+        decl.refinement
+    );
+}
+
+/// Exploratory review receipt: `PositiveInt` in the `where` lowers through the
+/// predicate `Bind` (parameter port for the refinement), not a second edge to
+/// the alias `Declaration` itself.
+#[test]
+fn test_db11_type_alias_refinement_predicate_bind_tags_alias_subject() {
+    let file = "alias_refinement_bind.v3";
+    let dag = cached_compile_to_dag("type PositiveInt = Int where PositiveInt > 0", file);
+    let alias = dag
+        .declaration_by_name("PositiveInt")
+        .expect("type alias `PositiveInt`");
+    let pred_id = alias.refinement.expect("predicate decl");
+    let pred = dag.declaration(pred_id);
+    let TypeConnective::Arrow { body, .. } = &pred.connective else {
+        panic!("predicate decl must be an Arrow, got {:?}", pred.connective);
+    };
+    let bind_id = match body {
+        ArrowBody::UserDefined(n) => *n,
+        _ => panic!("expected UserDefined pred body, got {body:?}"),
+    };
+    let Behavior::Bind(b) = dag.node(bind_id) else {
+        panic!("expected predicate Bind, got {:?}", dag.node(bind_id));
+    };
+    assert!(
+        b.name.contains("PositiveInt") && b.name.contains("refinement:"),
+        "expected `<refinement:PositiveInt>`-style bind tag, got {:?}",
+        b.name
+    );
+}
+
+#[test]
+fn test_db11_type_alias_where_comma_conjoins() {
+    // Comma-separated alias constraints fold to left-associated `&&`
+    // (same surface shape as `type X = T where a, b` in std).
+    // Each conjunct uses the alias identifier `Bounded` as the subject name
+    // (same binding rule as `test_db11_type_alias_where_survives_parse_and_lower`).
+    let file = "alias_where_multi.v3";
+    let src = "type Bounded = Int where Bounded > 0, Bounded < 100";
+    let dag = cached_compile_to_dag(src, file);
+    let decl = dag.declaration_by_name("Bounded").expect("`Bounded`");
+    let pred_id = decl
+        .refinement
+        .expect("expected lowered refinement predicate");
+    let pred = dag.declaration(pred_id);
+    assert_eq!(
+        pred.span.file, file,
+        "refinement predicate must live in the test file"
+    );
+
+    // Must lower to a single `&&` (two `Comparison` conjuncts). A regression
+    // that kept only the first `where` part or forgot to conjoin would miss
+    // the `Logical(And)` and/or one comparison at this file scope.
+    let logical_ands = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_transform)
+        .filter(|t| t.span.file == file)
+        .filter(|t| {
+            matches!(
+                t.target,
+                TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And))
+            )
+        })
+        .count();
+    assert_eq!(
+        logical_ands, 1,
+        "expected one comma-folded `&&` in the predicate"
+    );
+
+    // Both conjuncts must be present: `> 0` and `< 100` (Gt + Lt), not a folded copy
+    // of the first comparison only.
+    let gt = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_transform)
+        .filter(|t| t.span.file == file)
+        .filter(|t| {
+            matches!(
+                t.target,
+                TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt))
+            )
+        })
+        .count();
+    let lt = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_transform)
+        .filter(|t| t.span.file == file)
+        .filter(|t| {
+            matches!(
+                t.target,
+                TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt))
+            )
+        })
+        .count();
+    assert_eq!(gt, 1, "expected one `>` conjunct (Bounded > 0)");
+    assert_eq!(lt, 1, "expected one `<` conjunct (Bounded < 100)");
+}
+
+/// `dsl/std/types.dag` line shapes for alias refinements (R1 / DB-11 manager receipt):
+/// `range(min: …)` uses call sugar (`parse_call_args` + `label:`), and
+/// `non_empty, pattern("…")` splits only on top-level commas. Exercised under the
+/// real std filename so `lower_type_alias_refinements_phase` skips predicate
+/// lowering and PB-1 stays diagnostic-clean while parse coverage is locked.
+#[test]
+fn test_db11_type_alias_where_accepts_types_dag_constraint_spellings() {
+    let f = "dsl/std/types.dag";
+    for src in [
+        "type R = Int where range(min: 1)",
+        "type S = String where non_empty, pattern(\"x\")",
+    ] {
+        let _ = cached_compile_to_dag(src, f);
+    }
+}
+
+/// `dsl/std/types.dag` keeps a placeholder `refinement` id (PB-1 defers `Bool` pred bodies)
+/// so the parsed `where` is not a silent `None` — `lower.rs` P3 path.
+#[test]
+fn test_types_dag_alias_refinement_is_deferred_placeholder_not_dropped() {
+    let f = "dsl/std/types.dag";
+    let dag = cached_compile_to_dag("type P = Int where P > 0", f);
+    let decl = dag
+        .declaration_by_name("P")
+        .expect("type alias `P` should exist");
+    let pred_id = decl
+        .refinement
+        .expect("`types.dag` `where` must not disappear from the declaration; use placeholder");
+    let pred = dag.declaration(pred_id);
+    let label = pred
+        .name
+        .as_deref()
+        .expect("placeholder should carry a diagnostic name");
+    assert!(
+        label.contains("predicate not lowered"),
+        "expected deferred-refinement placeholder label, got {label:?}"
+    );
+}
+
+/// `call_args_open_with_named_field` is **global** call sugar (not only
+/// `where` refinements): `f(a: x, b: y)` becomes one `Call` with a `Record`
+/// argument. This test locks that shape so it cannot drift while DB-11
+/// `range(min: …)` / std alias refinements rely on the same path.
+#[test]
+fn test_parse_call_named_args_desugar_to_one_record_argument() {
+    let file = "named_call_arg_sugar.v3";
+    let src = "fn f() -> Int = g(x: 1, y: 2)";
+    let tokens = tokenize_for_test(src, file).expect("tokenize");
+    let module = parse_for_test(&tokens, file).expect("parse");
+    let SurfaceItem::Fn { body, .. } = &module.items[0] else {
+        panic!("expected top-level `fn`");
+    };
+    let SurfaceExpr::Call { target, args, .. } = body else {
+        panic!("expected call expression as fn body, got {body:?}");
+    };
+    assert_eq!(target, "g");
+    assert_eq!(
+        args.len(),
+        1,
+        "named-arg sugar should be a single `Record` arg"
+    );
+    let SurfaceExpr::Record { fields, .. } = &args[0] else {
+        panic!("expected `Record` arg, got {:?}", args[0]);
+    };
+    assert_eq!(
+        fields.len(),
+        2,
+        "Record should carry every `label: expr` field"
+    );
+    assert_eq!(fields[0].name, "x");
+    assert_eq!(fields[1].name, "y");
+}
+
+/// After the first `ident: expr`, the named-field call path requires every
+/// subsequent argument to be `label: expr` — there is no mixed positional
+/// tail (review: `f(a: 1, 2)` must not silently parse).
+#[test]
+fn test_parse_call_named_arg_then_positional_fails() {
+    let file = "named_call_mixed_positional.v3";
+    let src = "fn f() -> Int = g(x: 1, 2)";
+    let tokens = tokenize_for_test(src, file).expect("tokenize");
+    let err = parse_for_test(&tokens, file).expect_err("expected parse failure for mixed form");
+    assert!(
+        matches!(err, Diagnostic::ParseError { .. }),
+        "expected ParseError, got {err:?}"
     );
 }
 

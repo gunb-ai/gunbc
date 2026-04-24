@@ -22,6 +22,12 @@ use v3_compiler::CompileError;
 
 const R1_GATES_SOURCE: &str = include_str!("../fixtures/r1_gates.dag");
 const ON_DISK_LENS: &str = include_str!("../../../lenses/named_function_count.dag");
+const ON_DISK_LENS_COMPOSITION_WITNESS: &str =
+    include_str!("../../../lenses/lens_composition_associative_witness.dag");
+
+// `r1_gates.dag` carries a parallel `fn lens_composition_op` for `DeclarationRef` lowering;
+// the runner checks the witness by name in `program_dag` only, but the bodies must not drift.
+const LENS_COMPOSITION_OP_DEF: &str = "fn lens_composition_op(a: Int, b: Int) -> Int = a + b";
 
 fn testclaim_string_field(dag: &Dag, gate_name: &str, label: &str) -> String {
     let decl = dag
@@ -102,4 +108,66 @@ fn user_authored_lens_testclaim_payload_tracks_on_disk_lens_and_compiles() {
         &file_name,
         "TestClaim `source` payload (read from gate fixture)",
     );
+}
+
+#[test]
+fn lens_composition_associative_testclaim_source_tracks_on_disk_witness() {
+    let gate_dag = match compile_to_dag(
+        R1_GATES_SOURCE,
+        "src/v3/compiler/tests/fixtures/r1_gates.dag",
+    ) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(d)) => panic!(
+            "gate fixture compile failed: {:?}",
+            d.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(other) => panic!("gate fixture: unexpected compile error: {other:?}"),
+    };
+    assert!(
+        gate_dag.diagnostics().is_empty(),
+        "gate fixture should load cleanly, got {:?}",
+        gate_dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+
+    let source = testclaim_string_field(&gate_dag, "lens_composition_associative_gate", "source");
+    let file_name =
+        testclaim_string_field(&gate_dag, "lens_composition_associative_gate", "file_name");
+
+    assert_eq!(
+        source, ON_DISK_LENS_COMPOSITION_WITNESS,
+        "`TestClaim.source` must stay byte-identical to \
+         `src/v3/lenses/lens_composition_associative_witness.dag` \
+         (single authority for the witness program; update both together)"
+    );
+    assert_eq!(
+        file_name, "src/v3/lenses/lens_composition_associative_witness.dag",
+        "`TestClaim.file_name` should name the on-disk witness path"
+    );
+
+    assert_compile_clean(
+        &source,
+        &file_name,
+        "TestClaim `source` payload (lens_composition_associative witness)",
+    );
+}
+
+#[test]
+fn lens_composition_associative_r1_gates_stub_locksteps_witness_operator_line() {
+    // Byte-identical full line (not a substring match): keeps the parallel `fn lens_composition_op`
+    // in `r1_gates.dag` and `lens_composition_associative_witness.dag` from drifting apart.
+    for (label, source) in [
+        (
+            "src/v3/lenses/lens_composition_associative_witness.dag",
+            ON_DISK_LENS_COMPOSITION_WITNESS,
+        ),
+        (
+            "src/v3/compiler/tests/fixtures/r1_gates.dag",
+            R1_GATES_SOURCE,
+        ),
+    ] {
+        assert!(
+            source.lines().any(|line| line == LENS_COMPOSITION_OP_DEF),
+            "{label} must include a source line exactly equal to the shared stub:\n{LENS_COMPOSITION_OP_DEF:?}"
+        );
+    }
 }
