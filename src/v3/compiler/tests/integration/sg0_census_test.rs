@@ -94,8 +94,9 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // `regen_lower` + `lower_generated.rs` are prep-only (not `lib.rs` authority).
 //
 // Lane E-I Step 0 (PR #726): `e_i_lane_induction_preflight_test.rs` is a
-// bounded bootstrap receipt that `CostBound` still carries `SumBound` with
-// `List<CostBound>` and `sum_bound` after `regen_bootstrap`. Not a generated
+// bounded bootstrap receipt that `SumBound`'s `terms` field instantiates
+// `List<CostBound>` (not label-only) and that `sum_bound` exists after
+// `regen_bootstrap`. Not a generated
 // snapshot. Dissolution trigger: the same structural fact is covered by a
 // `.dag`-native or testgen-only harness without needing this host-side probe.
 //
