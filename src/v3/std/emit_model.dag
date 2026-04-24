@@ -225,6 +225,11 @@ type RustRecordDeriveTemplates {
   struct_def_no_debug: String
   enum_def_no_debug: String
 }
+// TODO(dissolve, #676 / P2): when `TypeDefinitionSyntax` (or a per-target
+// substrate field) authors declared derive lists — e.g. `derives: List<…>` —
+// map `DeclFirstClassArrowWalk` / record `#[derive(…)]` from that list and
+// delete this Rust-only type plus the empty-string `record_derive_templates`
+// stub `data` rows in Go/Python `*_language` (no parallel placeholder).
 
 type PatternMatchSyntax {
   match_expr: String
@@ -293,6 +298,8 @@ type LanguageSpec {
   functions: DeclarationRef
   type_applications: DeclarationRef
   type_definitions: DeclarationRef
+  // P2: see `RustRecordDeriveTemplates` TODO(dissolve) — not every target
+  // has Rust derive text; empty stubs exist until per-target derives land.
   record_derive_templates: DeclarationRef
   patterns: DeclarationRef
   collection_ops: DeclarationRef
