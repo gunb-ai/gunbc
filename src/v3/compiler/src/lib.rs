@@ -357,7 +357,12 @@ pub mod lens_cost_symbolic {
         include!("lens_cost_symbolic_generated.rs");
     }
 
-    pub use generated::{symbolic_cost_of, SymbolicCostEntry, SymbolicCostLookup};
+    pub use generated::{symbolic_cost_of, SymbolicCostEntry};
+    /// Rust projection of the shared `v3.std.lookup::Lookup` carrier
+    /// at `SymbolicCost`. Alias (not a second sum type) — the lens now
+    /// returns `Lookup<SymbolicCost>` directly; this name stays for
+    /// embedder stability, mirroring `lens_cost::CostLookup`.
+    pub type SymbolicCostLookup = crate::dag::Lookup<crate::dag::SymbolicCost>;
 }
 
 /// Provenance lens. The authority lives in
