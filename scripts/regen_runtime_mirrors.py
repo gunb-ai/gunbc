@@ -58,7 +58,14 @@ pub struct Correction {
 """
 
 
-DAG_LOOKUP_TEMPLATE = """#[derive(Debug, Clone, PartialEq, Eq)]
+# `lookup.dag` also defines `miss_int_lookup` / `hit_int_lookup` for DAG typing.
+# They are *not* mirrored as Rust fns: `emit_rust_module` lowers those callables
+# to `Lookup::Miss` / `Lookup::Hit(...)` in generated lens code (`rust_target` lookup
+# dispatch). `crate::dag` only needs the `Lookup` sum for the L-8 typed carrier.
+DAG_LOOKUP_TEMPLATE = """// `lookup.dag` fn items are not mirrored here — see script comment
+// on `DAG_LOOKUP_TEMPLATE` in `regen_runtime_mirrors.py`.
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Lookup<T> {
     Miss,
     Hit(T),
