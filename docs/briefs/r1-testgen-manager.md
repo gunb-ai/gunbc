@@ -199,16 +199,29 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [x] `user_authored_lens_compiles` gate (Day-1) passes
       (PR #679, merged 2026-04-24)
 - [x] `AlgebraicLaw` predicate runner evaluation wired
-      (PR #728, merged 2026-04-24 — `Associativity` resolves `lens_ref`,
-      compiles the claim program, and checks the canonical structural
-      witness)
+      (PR #728, merged 2026-04-24 — `Associativity` initial dispatch;
+      **dissolved by PR #741** — `declaration_is_binary_int_add_associativity_witness`
+      deleted, associativity now evaluates via D1 `int_associativity_holds_all_triples`
+      over the lens-application primitive)
 - [x] `lens_composition_associative` gate compiles + evaluates
-      (PR #728, merged 2026-04-24 — witness + `r1_gates.dag` suite)
-- [ ] `lens_output_is_queryable_data` gate compiles + evaluates
-      (PR #717 merged 2026-04-24 — dispatch + `DeclarationRef` resolution landed,
-      runner returns `NotYetImplemented(String)`; gate stays [ ] until T-LensAPI D1
-      lens-application primitive + D2 `eval_lens_output_equals` real apply/compare land.
-      D1 in flight as PR #741)
+      (PR #728, merged 2026-04-24 — witness + `r1_gates.dag` suite;
+      PR #741 swapped the Rust operator recognizer for D1 lens application)
+- [x] `lens_output_is_queryable_data` gate compiles + evaluates
+      (PR #741, merged 2026-04-24 — D1 `apply_lens_declaration` primitive
+      + D2 real `eval_lens_output_equals` apply/compare. The prior `NotYetImplemented`
+      thin-receipt shape is gone; `compile_to_dag(&claim.source, …)` is **still called**
+      on the evaluation path (intentional — reflects the program `Dag` for lens input
+      and pairs the canonical lens `Dag` for P2 `id_space` alignment), fail-closed
+      on tokenize/parse/inference per P3. `r1_lens_output_input_from_program` sentinel
+      reflects `Dag.nodes` until first-class `Dag` literals land. Closes ROADMAP
+      "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" items 1–3
+      (split fixture folded back into `r1_gates.dag` via `r1_gates.template.dag`
+      + `build.rs` splice). **Follow-on open (ROADMAP §77 item 1):** retire the
+      two parallel `compile_to_dag` call sites when `DeclarationRef` resolves
+      executable lens + inputs structurally from one authority. **Follow-on open
+      (ROADMAP §77 item 3):** dissolve fixture-local `named_function_count` /
+      `count_named_bind` stubs once `DeclarationRef` can resolve the lens from
+      `program_dag` alone)
 
 **Schema extensions owned here that other managers consume:**
 - [x] `ExecuteCommand` predicate (Surface T-Emit consumer) — landed PR #678
@@ -232,11 +245,28 @@ Decisions log (append as they happen):
   sign-off entry in this log naming the specific `#[test]` → `.dag`
   `TestClaim` mapping.** Self-hosting manager should continue to treat
   item (4) as parked until that entry appears.
-- 2026-04-24: **T-LensAPI `lens_composition_associative` closed** via
-  PR #728. Runner dispatch of `AlgebraicLaw { law: Associativity }`,
-  witness DAG, and `r1_gates.dag` suite landed together. Remaining
-  T-LensAPI work: `lens_output_is_queryable_data` (PR #717 dispatch merged
-  2026-04-24; gate awaits D1 primitive — PR #741 draft).
+- 2026-04-24: **T-LensAPI lane effectively closed** via PR #741 (D1+D2+D3+D4
+  bundle). `apply_lens_declaration` lens-application primitive + frame-based
+  `EvalCtx` + authoritative `std.list.fold` dispatch land as D1;
+  `eval_lens_output_equals` and `eval_algebraic_law_for_claim_program` now
+  consume D1 directly (D2, D3). D4 folds the split
+  `r1_lens_output_equals_gate.dag` back into `r1_gates.dag` via a new
+  `r1_gates.template.dag` + `build.rs` splice-at-build-time. One Rust
+  structural recognizer deleted (`declaration_is_binary_int_add_associativity_witness`);
+  the `eval_lens_output_equals` NYI-path thin receipt is replaced by real
+  evaluation — `compile_to_dag` call sites remain on the evaluation path,
+  intentional and load-bearing (program `Dag` for reflection, canonical lens
+  pairing for P2 `id_space` alignment); ROADMAP §77 item 1 keeps an open
+  follow-on to retire the parallel compile paths when `DeclarationRef`
+  resolves lens + inputs from one authority.
+  **Supersedes #740** (wise-koi-316 AlgebraicLaw direction, archived without
+  merging). ROADMAP "Scheduled cleanups: LensOutputEquals runner and R1
+  gate fixtures" items 1–3 all dissolved in the same PR. Lane non-goals
+  called out in PR body: `reflect_behavior` still lossy for
+  Transform/Branch/Loop variants; only `AlgebraicLawKind::Associativity`
+  is evaluated (other kinds stay `NotYetImplemented`).
+- 2026-04-24: **T-LensAPI `lens_composition_associative` initial dispatch**
+  via PR #728 (Rust operator-shape recognizer), later dissolved by PR #741.
 - 2026-04-24: T-PB-B / Testgen **pre–Rust-deletion** coordination
   checklist consolidated in this brief (Hand-off → Self-hosting);
   `docs/briefs/t-pb-b-1.md` now points here instead of duplicating
