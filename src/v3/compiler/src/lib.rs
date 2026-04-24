@@ -1064,8 +1064,7 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
 /// Unlike [`compile_to_dag`], this starts from a bootstrap Dag that omits the embedded
 /// `parse_surface.dag` staged fixture so the fresh parse is first-of-name and can be
 /// lowered without duplicate-declaration diagnostics.
-#[allow(clippy::result_large_err)]
-pub fn compile_parse_surface_std_authority_dag(
+fn compile_onto_parse_surface_free_bootstrap(
     source: &str,
     file: &str,
 ) -> Result<Dag, CompileError> {
@@ -1081,6 +1080,28 @@ pub fn compile_parse_surface_std_authority_dag(
     } else {
         Err(CompileError::Semantic(dag))
     }
+}
+
+#[allow(clippy::result_large_err)]
+pub fn compile_parse_surface_std_authority_dag(
+    source: &str,
+    file: &str,
+) -> Result<Dag, CompileError> {
+    compile_onto_parse_surface_free_bootstrap(source, file)
+}
+
+/// `emit_rust_module` pattern-matches `SurfaceItem` using the embedded bootstrap
+/// mirror, which can trail `parse_surface.dag` by one field on `TypeAlias` until
+/// `regen_bootstrap` is refreshed. Patch emitted `lower_helpers` Rust so the
+/// `TypeAlias` arm includes `refinement` when absent (DB-11 / `regen_lens` / SG-6).
+pub fn patch_lower_helpers_generated_type_alias_refinement(src: &str) -> String {
+    if src.contains("refinement: __i_refinement") {
+        return src.to_string();
+    }
+    src.replace(
+        "        SurfaceItem::TypeAlias {\n            name: __i_name,\n            type_params: __i_type_params,\n            target: __i_target,\n            span: __i_span,",
+        "        SurfaceItem::TypeAlias {\n            name: __i_name,\n            type_params: __i_type_params,\n            target: __i_target,\n            refinement: __i_refinement,\n            span: __i_span,",
+    )
 }
 
 /// PB-1 scaffold helper: re-run the pre-snapshot std bootstrap path for

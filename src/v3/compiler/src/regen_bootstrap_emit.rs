@@ -627,7 +627,7 @@ fn render_corrections(corrections: &[crate::diagnostics::Correction]) -> String 
         .iter()
         .map(|correction| {
             format!(
-                "Correction {{ description: {:?}.to_string(), span: {}, new_source: {:?}.to_string() }}",
+                "crate::diagnostics::Correction {{ description: {:?}.to_string(), span: {}, new_source: {:?}.to_string() }}",
                 correction.description,
                 render_source_span(&correction.span),
                 correction.new_source,

@@ -350,6 +350,40 @@ fn test_3a3_refined_parameter_compiles() {
 }
 
 #[test]
+fn test_db11_type_alias_where_survives_parse_and_lower() {
+    // DB-11 alias-RHS closure: `where` must parse into `SurfaceItem::TypeAlias`
+    // and lower to `Declaration.refinement` (not be skipped at parse time).
+    let src = "type PositiveInt = Int where PositiveInt > 0";
+    let dag = cached_compile_to_dag(src, "alias_where.v3");
+    let decl = dag
+        .declaration_by_name("PositiveInt")
+        .expect("`PositiveInt` type alias");
+    assert!(
+        matches!(
+            &decl.connective,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(_))
+        ),
+        "refined alias should lower to Atom(ResolvedByStructure(base)); got {:?}",
+        decl.connective
+    );
+    assert!(
+        decl.refinement.is_some(),
+        "alias declaration must carry refinement: {:?}",
+        decl.refinement
+    );
+}
+
+#[test]
+fn test_db11_type_alias_where_comma_conjoins() {
+    // Comma-separated alias constraints fold to left-associated `&&`
+    // (same surface shape as `type X = T where a, b` in std).
+    let src = "type Bounded = Int where Bounded > 0, Bounded < 100";
+    let dag = cached_compile_to_dag(src, "alias_where_multi.v3");
+    let decl = dag.declaration_by_name("Bounded").expect("`Bounded`");
+    assert!(decl.refinement.is_some(), "expected lowered refinement");
+}
+
+#[test]
 fn test_3a3_call_with_violating_literal_is_rejected() {
     // Acceptance (DB-11): `div(1, 0)` is rejected at compile time
     // because the literal `0` has no refinement, but div's second

@@ -2,6 +2,7 @@
 // via `regen_parse` + `parse_parser_body.txt`. Regenerate instead of hand-editing.
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
+use crate::operators::{LogicalOp, OperatorKind};
 pub use crate::parse_surface::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceMatchArm, SurfaceModule,
     SurfaceParam, SurfacePattern, SurfacePatternField, SurfaceRecordField, SurfaceType,
@@ -618,9 +619,8 @@ impl<'a> Parser<'a> {
     /// with `Ident<...>` (parameterized), `fn(...)` (arrow), or a bare
     /// `Ident` that happens not to be followed by `|`.
     ///
-    /// Handles optional `where constraint(...) [, constraint(...)]` clauses
-    /// on alias forms by consuming tokens until the next item boundary —
-    /// refinement semantics are M2+ work.
+    /// Optional alias-RHS `where` (DB-11): `where <expr> [, <expr>]*` parses
+    /// to `SurfaceExpr` (comma-separated parts fold as left-associated `&&`).
     fn parse_type_rhs_after_eq(
         &mut self,
         name: String,
@@ -642,14 +642,16 @@ impl<'a> Parser<'a> {
                 });
             }
             let target = self.parse_type_expr()?;
-            let mut end = target.span().byte_end;
-            if matches!(self.peek().kind, TokenKind::KwWhere) {
-                end = self.skip_where_clause()?;
-            }
+            let (refinement, end) = if matches!(self.peek().kind, TokenKind::KwWhere) {
+                self.parse_type_alias_where_tail()?
+            } else {
+                (None, target.span().byte_end)
+            };
             return Ok(SurfaceItem::TypeAlias {
                 name,
                 type_params,
                 target,
+                refinement,
                 span: SourceSpan::new(self.file, type_kw_span.byte_start, end),
             });
         }
@@ -668,36 +670,38 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Consume a `where constraint1(args), constraint2(args)` clause
-    /// and return the final byte offset. The clause ends at the next
-    /// top-level item keyword from `parse_tables.dag` or EOF — not at
-    /// [`TokenKind::Ident`] spelling `inhabits`, which can appear as a
-    /// variant/field label inside the skipped span.
-    /// Refinement predicates land in M2+; at M1(2.6) we drop them after
-    /// consuming their tokens.
-    fn skip_where_clause(&mut self) -> Result<u32, Diagnostic> {
-        let where_kw = self.expect_kind(TokenKind::KwWhere)?;
-        let mut end = where_kw.span.byte_end;
-        let mut depth: i32 = 0;
-        while !self.at_eof() {
-            if let Some(role) = bracket_role(&self.peek().kind) {
-                match role {
-                    BracketRole::Opener => depth += 1,
-                    BracketRole::Closer => {
-                        if depth == 0 {
-                            break;
-                        }
-                        depth -= 1;
-                    }
-                }
-            }
-            if depth == 0 && is_type_rhs_boundary_keyword(&self.peek().kind) {
-                break;
-            }
-            end = self.peek().span.byte_end;
-            self.bump();
+    fn fold_type_alias_where_parts(&self, mut parts: Vec<SurfaceExpr>) -> SurfaceExpr {
+        debug_assert!(!parts.is_empty());
+        if parts.len() == 1 {
+            return parts.pop().expect("len checked");
         }
-        Ok(end)
+        let mut lhs = parts.remove(0);
+        for rhs in parts {
+            let start = crate::lower_helpers::expr_span(&lhs).byte_start;
+            let end = crate::lower_helpers::expr_span(&rhs).byte_end;
+            lhs = SurfaceExpr::Operator {
+                op: OperatorKind::Logical(LogicalOp::And),
+                args: vec![lhs, rhs],
+                span: SourceSpan::new(self.file, start, end),
+            };
+        }
+        lhs
+    }
+
+    /// After `where`, parse one or more comma-separated expressions until the
+    /// next top-level item boundary (commas inside calls/parens stay inside
+    /// [`Self::parse_expr`]).
+    fn parse_type_alias_where_tail(&mut self) -> Result<(Option<SurfaceExpr>, u32), Diagnostic> {
+        self.expect_kind(TokenKind::KwWhere)?;
+        let mut parts = vec![self.parse_expr()?];
+        while matches!(self.peek().kind, TokenKind::Comma) {
+            self.bump();
+            parts.push(self.parse_expr()?);
+        }
+        let end = crate::lower_helpers::expr_span(parts.last().expect("at least one where-part"))
+            .byte_end;
+        let combined = self.fold_type_alias_where_parts(parts);
+        Ok((Some(combined), end))
     }
 
     /// Lookahead: after `=`, is the RHS a sum (contains `|` at top level before
@@ -1275,9 +1279,53 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// True when the next argument is `label:` — enables `f(a: 1, b: 2)` call sugar
+    /// that desugars to `f(Record { a: 1, b: 2 })` so `types.dag` refinements like
+    /// `range(min: 1, max: 5)` parse without changing the `SurfaceExpr::Call` shape.
+    fn call_args_open_with_named_field(&self) -> bool {
+        matches!(
+            self.tokens.get(self.pos).map(|t| &t.kind),
+            Some(TokenKind::Ident(_))
+        ) && matches!(
+            self.tokens.get(self.pos + 1).map(|t| &t.kind),
+            Some(TokenKind::Colon)
+        )
+    }
+
+    /// Parse `label: expr` groups separated by commas until `)` (not consumed).
+    fn parse_paren_named_field_call_args(&mut self) -> Result<SurfaceExpr, Diagnostic> {
+        let start = self.peek().span.byte_start;
+        let mut fields: Vec<SurfaceRecordField> = Vec::new();
+        loop {
+            let (field_name, name_span) = self.parse_field_label()?;
+            self.expect_kind(TokenKind::Colon)?;
+            let value = self.parse_expr()?;
+            let field_end = expr_span(&value).byte_end;
+            fields.push(SurfaceRecordField {
+                name: field_name,
+                value,
+                span: SourceSpan::new(self.file, name_span.byte_start, field_end),
+            });
+            if matches!(self.peek().kind, TokenKind::Comma) {
+                self.bump();
+                continue;
+            }
+            break;
+        }
+        let end = fields.last().map(|f| f.span.byte_end).unwrap_or(start);
+        Ok(SurfaceExpr::Record {
+            fields,
+            span: SourceSpan::new(self.file, start, end),
+        })
+    }
+
     fn parse_call_args(&mut self) -> Result<Vec<SurfaceExpr>, Diagnostic> {
         let mut args = Vec::new();
         if matches!(self.peek().kind, TokenKind::RParen) {
+            return Ok(args);
+        }
+        if self.call_args_open_with_named_field() {
+            args.push(self.parse_paren_named_field_call_args()?);
             return Ok(args);
         }
         loop {
