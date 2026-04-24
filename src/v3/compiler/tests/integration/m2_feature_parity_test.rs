@@ -349,6 +349,14 @@ fn test_3a3_refined_parameter_compiles() {
     );
 }
 
+/// DB-11 alias-RHS refinement **binding rule** (documented for reviewers):
+///
+/// The predicate scope exposes exactly one name: the **alias identifier**
+/// (`PositiveInt` here), bound to a port typed as the RHS base (`Int`). The
+/// author must use that name in the `where` clause to refer to the refined
+/// subject — there is no separate synthetic parameter (contrast `fn` params,
+/// where the `where` uses the parameter name). Lowering passes `bind_name =
+/// name` into `build_refinement_predicate_declaration` in `lower.rs`.
 #[test]
 fn test_db11_type_alias_where_survives_parse_and_lower() {
     // DB-11 alias-RHS closure: `where` must parse into `SurfaceItem::TypeAlias`
@@ -377,6 +385,8 @@ fn test_db11_type_alias_where_survives_parse_and_lower() {
 fn test_db11_type_alias_where_comma_conjoins() {
     // Comma-separated alias constraints fold to left-associated `&&`
     // (same surface shape as `type X = T where a, b` in std).
+    // Each conjunct uses the alias identifier `Bounded` as the subject name
+    // (same binding rule as `test_db11_type_alias_where_survives_parse_and_lower`).
     let src = "type Bounded = Int where Bounded > 0, Bounded < 100";
     let dag = cached_compile_to_dag(src, "alias_where_multi.v3");
     let decl = dag.declaration_by_name("Bounded").expect("`Bounded`");

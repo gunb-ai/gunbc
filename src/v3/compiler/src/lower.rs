@@ -466,9 +466,18 @@ fn seed_function_signatures_phase(
 
 /// DB-11 (3a.3): allocate the predicate `Declaration` for a `where`
 /// refinement (parameter or type-alias RHS). `bind_name` is the sole
-/// `SurfaceExpr::Var` binding installed in the predicate scope (the
-/// parameter name for fn params; the type alias's declared name for
-/// alias-RHS refinements).
+/// `SurfaceExpr::Var` binding installed in the predicate scope:
+///
+/// - **Function parameters:** `bind_name` is the parameter identifier (e.g.
+///   `d` in `d: Int where d != 0`).
+/// - **Type-alias RHS:** `bind_name` is the **alias's declared name**, not a
+///   fresh synthetic parameter. Surface rule: the refined value is referred to
+///   by the same identifier as the alias itself, e.g.
+///   `type PositiveInt = Int where PositiveInt > 0` — `PositiveInt` in the
+///   predicate names the subject of type `Int` (the alias's RHS base). This is
+///   deliberate user-facing semantics, not an implementation accident; see
+///   `test_db11_type_alias_where_survives_parse_and_lower` in
+///   `m2_feature_parity_test.rs`.
 fn build_refinement_predicate_declaration(
     base_decl_id: DeclarationId,
     predicate: &SurfaceExpr,
@@ -714,6 +723,11 @@ fn lower_parameter_refinements_phase(
 /// DB-11: lower `type Name = T where …` after the data pre-pass so
 /// predicates can reference top-level `data` (same phase ordering as
 /// [`lower_parameter_refinements_phase`]).
+///
+/// Predicate lowering uses [`build_refinement_predicate_declaration`] with
+/// `bind_name = Name`: the `where` expression resolves `Var`s spelling the alias
+/// identifier to the refined base type `T`. Authors write the subject as the
+/// alias name; there is no separate hidden parameter symbol.
 fn lower_type_alias_refinements_phase(
     dag: &mut Dag,
     module: &SurfaceModule,
