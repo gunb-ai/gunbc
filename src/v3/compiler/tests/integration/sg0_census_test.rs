@@ -137,6 +137,14 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // hand-authored substrate, not new handwritten logic. Dissolution path:
 // the same `include!` / producer-owned route that eventually replaces
 // `dag.rs` itself replaces these submodules simultaneously.
+//
+// T-Emit lane closure (director sign-off, sharp-heron-47, 2026-04-23):
+// `tests/boundary/m1_5_emit_omni_demo_test.rs` is the T-Emit lane
+// closure test (`emit_omni_demo_fixtures_green`). It drives Rust, Go,
+// and Python toolchains directly and cannot be expressed as a generated
+// snapshot; the test *is* the three-way parity proof. Dissolution
+// trigger: when a `.dag`-native multi-toolchain roundtrip harness exists,
+// retire this hand-authored boundary file.
 const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
@@ -177,6 +185,7 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
     "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
+    "src/v3/compiler/tests/boundary/m1_5_emit_omni_demo_test.rs",
     "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",

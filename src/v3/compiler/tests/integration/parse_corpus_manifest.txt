@@ -18,7 +18,7 @@ src/v3/compiler/tests/four_fixture_pressure/is_empty.v3	3	6755	00117f14eb43dd20
 src/v3/compiler/tests/four_fixture_pressure/wrap.v3	4	5189	ac633b042c944480
 src/v3/compiler/tokenize.dag	27	56809	37569b3f9fb2e6fa
 src/v3/spec/go.dag	118	1053574	0d05b52ac05e8de4
-src/v3/spec/python.dag	79	511829	88a91685f9dc1ad2
+src/v3/spec/python.dag	86	551114	381ef4a58a392217
 src/v3/spec/rust.dag	132	1115682	8bbe36a9732ea9d8
 src/v3/spec/v3_l1.dag	8	2238	1f55d782265c3bfe
 src/v3/std/algebra.dag	33	281947	fd777e369473acfb
