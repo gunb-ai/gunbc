@@ -62,7 +62,7 @@ managers as a coordination overlay; the lane list and acceptance
 gates remain authored there, not here. The framing question column
 below names the manager-level *why* — used to keep scope honest.
 
-| Manager | R1 lanes owned (`ROADMAP.md:47-55`) | Framing question the manager answers |
+| Manager | Lanes cited from `ROADMAP.md:47-55` | Framing question the manager answers |
 |---|---|---|
 | **Substrate** | `T-LaneE` — complexity lens v2 parity via substrate-carrier-port (five ordered sub-lanes T → C → I → P → M — parent row `ROADMAP.md:334`, sub-lanes `:335-339`) | Does v3's substrate carry the same descent/call/value/method information v2 carried, well enough that complexity / cost / idempotency / parallelism lenses can run on v3 authority without Rust oracles? |
 | **Self-hosting** | `T-PB-A` (pure bootstrap, non-test surface) + `T-PB-B` (tests-as-data, pipeline + contract tests port to `.dag`) | Does gunbc compile itself from a named minimal Rust shim, with the residual Rust floor structurally bounded and mechanically checkable, including tests-as-data? |
