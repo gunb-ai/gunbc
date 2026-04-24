@@ -1786,20 +1786,6 @@ pub fn emit_node_type(
     )
 }
 
-pub fn alias_body_node(item: Rc<Node>) -> Rc<Node> {
-    {
-        let rt = resolved_type(item);
-        if ((rt.type_annotation.clone() != None) && (rt.ident_span.clone() != None)) {
-            match rt.children.clone().first().cloned() {
-                Some(base) => base.clone(),
-                None => rt.clone(),
-            }
-        } else {
-            rt.clone()
-        }
-    }
-}
-
 pub fn render_node_type(
     n: &Rc<Node>,
     target: &RenderTarget,
@@ -1933,17 +1919,6 @@ pub fn render_node_type(
             {
                 if (n.type_annotation.clone() != None) {
                     {
-                        if (n.ident_span.clone() != None) {
-                            {
-                                let named_base = coerce_primitive_type(target.clone(), tn.clone());
-                                let named_str = if shared.clone() {
-                                    wrap_shared_type(target.clone(), named_base)
-                                } else {
-                                    named_base
-                                };
-                                return named_str;
-                            }
-                        }
                         let refined_str = match n.children.clone().first().cloned() {
                             Some(base) => {
                                 render_node_type(&base, &target, &shared_types, &source_indices)

@@ -1659,7 +1659,7 @@ pub fn emit_typed_item(
                             " = ".to_string(),
                         ),
                         render_rust_type(
-                            alias_body_node(item.clone()),
+                            resolved_type(item.clone()),
                             shared_types,
                             env.source_indices.clone(),
                         ),

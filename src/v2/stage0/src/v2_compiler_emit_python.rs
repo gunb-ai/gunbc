@@ -571,7 +571,7 @@ pub fn emit_py_typed_item(
                 v2_rt::concat(
                     v2_rt::concat(item_text, " = ".to_string()),
                     emit_node_type(
-                        alias_body_node(item.clone()),
+                        resolved_type(item.clone()),
                         RenderTarget::Python,
                         env.source_indices.clone(),
                     ),

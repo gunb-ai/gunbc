@@ -115,7 +115,7 @@ import std.induction { SubValueUnknown }
 import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
   rust_literal_for_pattern,
-  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, alias_body_node, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return,
+  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared,
   emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body,
   module_emit_scope,
@@ -863,7 +863,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   if is_type_def_item(item: item) {
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
-    concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: alias_body_node(item: item), shared_types: shared_types, source_indices: env.source_indices), ";")
+    concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     ""
   } else if is_function_item(item: item) {

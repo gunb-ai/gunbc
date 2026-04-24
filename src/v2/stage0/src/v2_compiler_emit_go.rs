@@ -640,7 +640,7 @@ pub fn emit_go_typed_item(
             if is_type_alias_item(&item, env.source_indices.clone()) {
                 emit_go_type_alias(
                     item_text,
-                    alias_body_node(item.clone()),
+                    resolved_type(item.clone()),
                     env.source_indices.clone(),
                 )
             } else {
