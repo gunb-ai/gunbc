@@ -369,8 +369,39 @@ impl<'a> TestRunner<'a> {
             }
         };
 
+        // INVARIANTS P2: reflected `FieldValue` List / `Behavior` variant ids must come from the
+        // same `Dag` as `apply_lens_declaration` (canonical `named_function_count` vs claim).
+        let canonical_named_function_count_dag: Option<Dag> = if lens_decl.name.as_deref()
+            == Some("named_function_count")
+        {
+            Some(
+                match compile_to_dag(
+                    R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS,
+                    "src/v3/lenses/named_function_count.dag",
+                ) {
+                    Ok(dag) => dag,
+                    Err(CompileError::Semantic(dag)) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals: canonical `named_function_count` lens failed inference: {:?}",
+                            dag.diagnostics().iter().collect::<Vec<_>>()
+                        ));
+                    }
+                    Err(err) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals: canonical `named_function_count` lens did not compile: {err:?}"
+                        ));
+                    }
+                },
+            )
+        } else {
+            None
+        };
+
         let input_field = if input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL) {
-            match reflect_program_dag_nodes_in_file(&program_dag, &claim.file_name) {
+            let id_space = canonical_named_function_count_dag
+                .as_ref()
+                .unwrap_or(&program_dag);
+            match reflect_program_dag_nodes_in_file(&program_dag, &claim.file_name, id_space) {
                 Ok(v) => v,
                 Err(err) => {
                     return ClaimResult::Fail(format!(
@@ -406,32 +437,6 @@ impl<'a> TestRunner<'a> {
                     "LensOutputEquals: could not lower expected_ref `{expected_name}` value: {err:?}"
                 ));
             }
-        };
-
-        let canonical_named_function_count_dag: Option<Dag> = if lens_decl.name.as_deref()
-            == Some("named_function_count")
-        {
-            Some(
-                match compile_to_dag(
-                    R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS,
-                    "src/v3/lenses/named_function_count.dag",
-                ) {
-                    Ok(dag) => dag,
-                    Err(CompileError::Semantic(dag)) => {
-                        return ClaimResult::Fail(format!(
-                            "LensOutputEquals: canonical `named_function_count` lens failed inference: {:?}",
-                            dag.diagnostics().iter().collect::<Vec<_>>()
-                        ));
-                    }
-                    Err(err) => {
-                        return ClaimResult::Fail(format!(
-                            "LensOutputEquals: canonical `named_function_count` lens did not compile: {err:?}"
-                        ));
-                    }
-                },
-            )
-        } else {
-            None
         };
 
         let (lens_program, lens_apply_id) =

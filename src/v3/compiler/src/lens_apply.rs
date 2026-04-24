@@ -210,9 +210,18 @@ pub fn apply_lens_declaration(
 ///
 /// `source_file` limits nodes to those authored in that compilation unit (the merged
 /// bootstrap graph also lives in the same [`Dag`]).
+///
+/// **`id_space` (INVARIANTS P2):** `List` / `Behavior` variant [`DeclarationId`]s in the
+/// returned [`FieldValue`] are taken from `id_space` — the same [`Dag`] you pass to
+/// [`apply_lens_declaration`] for the lens under test. Shapes still come from `program`'s
+/// lowered [`Behavior`] nodes (filtered by `source_file`). Pass `program` for both when the
+/// lens and claim program share one compile; pass the canonical lens `Dag` as `id_space`
+/// when applying `named_function_count` from the same bytes as `build.rs` splices while
+/// reflecting nodes from the claim program.
 pub fn reflect_program_dag_nodes_in_file(
     program: &Dag,
     source_file: &str,
+    id_space: &Dag,
 ) -> Result<FieldValue, LensApplyError> {
     let nodes: Vec<Behavior> = program
         .nodes()
@@ -220,7 +229,7 @@ pub fn reflect_program_dag_nodes_in_file(
         .filter(|b| behavior_source_file(b) == source_file)
         .cloned()
         .collect();
-    let nodes = reflect_behavior_list(program, &nodes)?;
+    let nodes = reflect_behavior_list(id_space, &nodes)?;
     Ok(FieldValue::Record(vec![("nodes".to_string(), nodes)]))
 }
 
@@ -952,8 +961,8 @@ mod tests {
             .declaration_by_name("named_function_count")
             .expect("named_function_count")
             .id;
-        let input =
-            reflect_program_dag_nodes_in_file(&prog, "lens_apply_prog.v3").expect("reflect");
+        let input = reflect_program_dag_nodes_in_file(&prog, "lens_apply_prog.v3", &lens_dag)
+            .expect("reflect");
         let out = apply_lens_declaration(&lens_dag, lens_id, &[input]).expect("apply");
         assert_eq!(out, FieldValue::Literal(LiteralBits::Int(1)));
     }
