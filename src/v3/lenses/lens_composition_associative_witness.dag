@@ -1,9 +1,13 @@
 // lenses.lens_composition_associative_witness - minimal `[ext]` gate witness for
 // `lens_composition_associative` (T-LensAPI / AlgebraicLaw::Associativity).
 //
-// The Rust test runner recognizes `lens_composition_op` as a structurally
-// canonical associative binary operation on `Int` (`a + b`) until lens
-// composition is reflected end-to-end in the substrate.
+// Witness: binary `Int` addition lowered as `+`, resolved via `Int`'s
+// `Declaration.inhabits` walk to `OrderedRing.add` in surfaced `std/algebra.dag`
+// (same algebra Conj path as operator inference), not a Rust-side operator-shape heuristic.
+//
+// Scaffold tightened to require surfaced-algebra resolution of `+` via `resolve_operator_arrow`;
+// still a structural recognizer. **Dissolution:** replace with `apply(lens, a, b, c)` comparing
+// `(a*b)*c` vs `a*(b*c)` once the T-LensAPI D1 lens-application primitive lands.
 //
 // Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A beyond the witness shape.
 // Not bundled into `Dag::new()` bootstrap; see `m1_5_user_authored_lens_gate_test`
