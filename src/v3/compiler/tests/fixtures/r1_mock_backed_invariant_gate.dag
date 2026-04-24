@@ -1,0 +1,29 @@
+// Minimal MockBackedInvariant gate fixture.
+// Lives under tests/fixtures/ -- NOT src/v3/std/ -- not auto-staged into bootstrap.
+//
+// **requires: [] is intentional.** A real MockBackedInvariant claim puts its mock
+// transport on TestClaim.requires. The runner's requires gate (run_claim) currently
+// fails-closed on non-empty requires, so this fixture reaches the typed
+// MockBackedInvariant NYI path until T-TestGen wires real mock simulation.
+
+module std.r1_mock_backed_invariant_gate
+
+import std.verification { TestClaim, TestSuite }
+
+data mock_subject_ref: Int = 0
+data mock_invariant_ref: Int = 0
+
+data mock_backed_invariant_gate: TestClaim = {
+  name: "testgen_mock_backed_integration_safe",
+  source: "let _: Int = 0\n",
+  file_name: "mock_backed_placeholder.v3",
+  // Struct-variant field names are schema metadata today; the surface parser
+  // accepts positional payload syntax for authored values.
+  predicate: MockBackedInvariant(mock_subject_ref, mock_invariant_ref),
+  requires: []
+}
+
+data mock_backed_invariant_suite: TestSuite = {
+  name: "mock_backed_invariant_suite",
+  claims: [mock_backed_invariant_gate]
+}
