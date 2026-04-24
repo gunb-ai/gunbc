@@ -88,6 +88,11 @@ the two acknowledged residuals.
 - **Sideways from Testgen Manager.** T-TestGen's runner closure is
   the gate for T-PB-B. Testgen manager signals readiness; this
   manager dispatches the Rust→.dag test conversion at that signal.
+  The numbered **pre–Rust-deletion** coordination items (runner
+  entrypoint, `requires`, M1(2.8), first deletion batch) are maintained
+  only in **`docs/briefs/r1-testgen-manager.md`** (*Hand-off points* →
+  **Sideways to Self-hosting Manager**) — keep that list single-source
+  until Testgen replies.
 - **Up to director.** Any proposal to adjust the two TESTING.md
   residual categories (what counts as compiler-internal unit test,
   what counts as external-toolchain boundary test). These are
@@ -112,20 +117,32 @@ Lane-owner dispatch status (update as sub-deliverables close):
       T-TestGen extensions land
 
 **T-PB-B:**
-- [ ] Draft `.dag` `TestClaim` declarations for pipeline tests
-      (non-landing — wait on Testgen runner)
-- [ ] Draft `.dag` `TestClaim` declarations for contract tests
-      (non-landing — wait on Testgen runner)
-- [ ] Identify and scope the two TESTING.md residual categories
-      per-test
-- [ ] Land `.dag` test conversion once Testgen signals runner
-      readiness
+- [x] T-PB-B-1 — Landed `src/v3/compiler/tests/dag/*.dag` + compile-only smoke
+      (`t_pb_b_1_tests_dag_smoke_test`); brief `docs/briefs/t-pb-b-1.md`.
+      **Not** Rust test deletion and **not** `pb_*` — those stay unchecked below
+      until Testgen signs off.
+- [x] Brief D — Draft `.v3` `TestClaim` / `TestSuite` for pipeline smoke
+      (compile-smoke + inventory only; Rust integration tests remain canonical;
+      see `docs/briefs/t-pb-b-brief-d.md` +
+      `src/v3/compiler/tests/fixtures/t_pb_b_brief_d/pipeline_smoke.v3`)
+- [x] Brief D — Draft `.v3` declarations for contract tests (same meaning as
+      previous row; `contract_diagnostic_smoke.v3` + `contract_port_cost_smoke.v3`)
+- [x] Identify and scope the two TESTING.md residual categories
+      per-test (extended D/G/A/B matrix in Brief D)
+- [ ] Land **runner-backed** `.dag` test conversion + Rust deletions once Testgen
+      signals runner readiness (T-PB-B-1 already landed **declarative data +
+      compile smoke** only — see `docs/briefs/t-pb-b-1.md`)
 - [ ] `pb_test_file_generated_from_dag` + `pb_rust_tests_outside_residual_zero`
       predicates evaluate true
 
 Decisions log (append as they happen):
 
-- _(none yet)_
+- 2026-04-24: **T-PB-B-1** — landed `src/v3/compiler/tests/dag/*.dag` (`data` `TestClaim` /
+  `TestSuite` per `std.verification`) + `t_pb_b_1_tests_dag_smoke_test`; Rust tests not
+  deleted; Testgen runner / `pb_*` coordination still open (`docs/briefs/t-pb-b-1.md`).
+- 2026-04-23: **Brief D** (`docs/briefs/t-pb-b-brief-d.md`) — extended T-PB-B inventory +
+  D/G/A/B matrix + draft `TestClaim` fixtures (`tests/fixtures/t_pb_b_brief_d/*.v3`);
+  compile smoke via `t_pb_b_brief_d_fixture_smoke_test` (no `pb_*`, Rust tests unchanged).
 - 2026-04-23: SG-0 file-level census split landed as non-test/test
   sub-ratchets; `tokenize.rs` shim retired from the non-test subset.
 

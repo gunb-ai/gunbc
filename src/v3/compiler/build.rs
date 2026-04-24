@@ -294,6 +294,7 @@ fn main() {
         // invariant).
         "src/v3/compiler/src/dag_branch_generated.rs",
         "src/v3/compiler/src/dag_cluster_generated.rs",
+        "src/v3/compiler/src/dag_lookup_generated.rs",
         "src/v3/compiler/src/dag_cost_generated.rs",
         "src/v3/compiler/src/dag_scalar_generated.rs",
         "src/v3/compiler/src/diagnostics_generated.rs",
@@ -303,7 +304,6 @@ fn main() {
         "src/v3/compiler/src/lens_provenance_generated.rs",
         "src/v3/compiler/src/lens_structural_resolution_generated.rs",
         "src/v3/compiler/src/lens_unused_parameters_generated.rs",
-        "src/v3/compiler/src/lower_generated.rs",
         "src/v3/compiler/src/lower_helpers_generated.rs",
         "src/v3/compiler/src/operators_generated.rs",
         "src/v3/compiler/src/parse_generated.rs",

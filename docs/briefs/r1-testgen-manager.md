@@ -91,7 +91,20 @@ compose. When this closes, the R1 release gates themselves
   is the hand-off signal for T-PB-B landing. Self-hosting drafts
   `.dag` `TestClaim` declarations during Day-1, waits on this
   signal, then converts pipeline / contract tests. Notify
-  Self-hosting when the runner lands.
+  Self-hosting when the runner lands. **Landable compile-only batch:**
+  `docs/briefs/t-pb-b-1.md` + `src/v3/compiler/tests/dag/`.
+  **Pre–Rust-deletion checklist (single source — edit here only; do
+  not fork a competing numbered list in other briefs):** (1) Runner
+  accepts v3 `.dag` modules under `src/v3/compiler/tests/dag/` with
+  the same `compile_to_dag` entrypoint as today’s integration harness,
+  or documents a different path/layout — align before moving claims
+  off Rust. (2) Confirm `requires: []` vs `empty()` for
+  `List<ResourceReference>` matches the runner’s parser/lowering.
+  (3) Confirm M1(2.8) predicate-inlining constraints for
+  `PortHasState` / `CostBounded` (`docs/briefs/t-pb-b-1.md`). (4)
+  **First Rust deletion batch:** one thin `Compiles`-only duplicate
+  (e.g. `thesis_validation_test` or `pipe_desugar`) only after (1)–(3)
+  are green for that claim shape.
 - **Sideways to Surface Manager.** `emit_omni_demo_fixtures_green`
   and the three `emit_*` gates under T-Emit require `ExecuteCommand`
   + `ForAllTargets` predicates — these are T-TestGen `[ext]`
@@ -150,6 +163,10 @@ Lane-owner dispatch status (update as sub-deliverables close):
 
 Decisions log (append as they happen):
 
+- 2026-04-24: T-PB-B / Testgen **pre–Rust-deletion** coordination
+  checklist consolidated in this brief (Hand-off → Self-hosting);
+  `docs/briefs/t-pb-b-1.md` now points here instead of duplicating
+  numbered items.
 - 2026-04-24: `ForAllTargets` self-referential variant dissolved to
   `{ command, args, expect_exit_code }` to preserve bounded-kernel
   invariant (Node is the only recursive type).

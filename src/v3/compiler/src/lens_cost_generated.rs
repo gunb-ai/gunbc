@@ -4,14 +4,9 @@
 #[derive(Clone, Debug)]
 pub struct CostEntry {
     pub port: PortId,
-    pub cost: CostLookup,
+    pub cost: Lookup<i64>,
 }
-#[derive(Clone, Debug)]
-pub enum CostLookup {
-    MissingCost,
-    FoundCost { _0: i64 },
-}
-pub fn cost_of(p0: &Dag, p1: &PortId) -> CostLookup {
+pub fn cost_of(p0: &Dag, p1: &PortId) -> Lookup<i64> {
     lookup_cost(&(compute_costs(p0)), p1)
 }
 pub fn compute_costs(p0: &Dag) -> Vec<CostEntry> {
@@ -51,7 +46,7 @@ pub fn param_entries(p0: &[PortId]) -> Vec<CostEntry> {
                 0,
                 CostEntry {
                     port: (*(__list_head)),
-                    cost: CostLookup::FoundCost { _0: 0 },
+                    cost: Lookup::Hit(0),
                 },
             );
             __list
@@ -62,7 +57,7 @@ pub fn entry_for(p0: &[CostEntry], p1: &Behavior) -> CostEntry {
     match p1 {
         Behavior::Value(v) => CostEntry {
             port: (v).result_port(),
-            cost: CostLookup::FoundCost { _0: 0 },
+            cost: Lookup::Hit(0),
         },
         Behavior::Transform(t) => CostEntry {
             port: (t).result_port(),
@@ -92,26 +87,22 @@ pub fn entry_for(p0: &[CostEntry], p1: &Behavior) -> CostEntry {
         },
     }
 }
-pub fn sum_costs(p0: &[CostEntry], p1: &[PortId]) -> CostLookup {
-    (p1).iter().fold(
-        CostLookup::FoundCost { _0: 0 },
-        |__fold_acc, __fold_item| add_cost(&__fold_acc, &(lookup_cost(p0, __fold_item))),
-    )
+pub fn sum_costs(p0: &[CostEntry], p1: &[PortId]) -> Lookup<i64> {
+    (p1).iter().fold(Lookup::Hit(0), |__fold_acc, __fold_item| {
+        add_cost(&__fold_acc, &(lookup_cost(p0, __fold_item)))
+    })
 }
-pub fn max_path_cost(p0: &[CostEntry], p1: &[Path]) -> CostLookup {
-    (p1).iter().fold(
-        CostLookup::FoundCost { _0: 0 },
-        |__fold_acc, __fold_item| {
-            max_cost(
-                &__fold_acc,
-                &(lookup_cost(p0, &((__fold_item).result_port()))),
-            )
-        },
-    )
+pub fn max_path_cost(p0: &[CostEntry], p1: &[Path]) -> Lookup<i64> {
+    (p1).iter().fold(Lookup::Hit(0), |__fold_acc, __fold_item| {
+        max_cost(
+            &__fold_acc,
+            &(lookup_cost(p0, &((__fold_item).result_port()))),
+        )
+    })
 }
-pub fn lookup_cost(p0: &[CostEntry], p1: &PortId) -> CostLookup {
+pub fn lookup_cost(p0: &[CostEntry], p1: &PortId) -> Lookup<i64> {
     match p0 {
-        [] => CostLookup::MissingCost,
+        [] => Lookup::Miss,
         [__list_head, __list_tail @ ..] => {
             if ((__list_head).port == (*(p1))) {
                 ((__list_head).cost).clone()
@@ -121,31 +112,27 @@ pub fn lookup_cost(p0: &[CostEntry], p1: &PortId) -> CostLookup {
         }
     }
 }
-pub fn add_one(p0: &CostLookup) -> CostLookup {
+pub fn add_one(p0: &Lookup<i64>) -> Lookup<i64> {
     match p0 {
-        CostLookup::MissingCost => CostLookup::MissingCost,
-        CostLookup::FoundCost { _0: n } => CostLookup::FoundCost { _0: (1 + (*(n))) },
+        Lookup::Miss => Lookup::Miss,
+        Lookup::Hit(n) => Lookup::Hit((1 + (*(n)))),
     }
 }
-pub fn add_cost(p0: &CostLookup, p1: &CostLookup) -> CostLookup {
+pub fn add_cost(p0: &Lookup<i64>, p1: &Lookup<i64>) -> Lookup<i64> {
     match p0 {
-        CostLookup::MissingCost => CostLookup::MissingCost,
-        CostLookup::FoundCost { _0: x } => match p1 {
-            CostLookup::MissingCost => CostLookup::MissingCost,
-            CostLookup::FoundCost { _0: y } => CostLookup::FoundCost {
-                _0: ((*(x)) + (*(y))),
-            },
+        Lookup::Miss => Lookup::Miss,
+        Lookup::Hit(x) => match p1 {
+            Lookup::Miss => Lookup::Miss,
+            Lookup::Hit(y) => Lookup::Hit(((*(x)) + (*(y)))),
         },
     }
 }
-pub fn max_cost(p0: &CostLookup, p1: &CostLookup) -> CostLookup {
+pub fn max_cost(p0: &Lookup<i64>, p1: &Lookup<i64>) -> Lookup<i64> {
     match p0 {
-        CostLookup::MissingCost => CostLookup::MissingCost,
-        CostLookup::FoundCost { _0: x } => match p1 {
-            CostLookup::MissingCost => CostLookup::MissingCost,
-            CostLookup::FoundCost { _0: y } => CostLookup::FoundCost {
-                _0: if ((*(x)) > (*(y))) { (*(x)) } else { (*(y)) },
-            },
+        Lookup::Miss => Lookup::Miss,
+        Lookup::Hit(x) => match p1 {
+            Lookup::Miss => Lookup::Miss,
+            Lookup::Hit(y) => Lookup::Hit(if ((*(x)) > (*(y))) { (*(x)) } else { (*(y)) }),
         },
     }
 }
