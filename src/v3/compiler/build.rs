@@ -2,14 +2,13 @@
 // directories and generate Rust arrays of `(path, content)` pairs
 // the bootstrap loader consumes.
 //
-// Three generated arrays exist:
-//   - `STAGED_FILES`   for `src/v3/std/*.dag`
-//   - `V3_SPECS`       for `src/v3/spec/*.dag`
-//   - `COMPILER_FILES` for `src/v3/compiler/*.dag` (except `tokenize.dag`; see below)
+// Generated arrays:
+//   - `STAGED_FILES`          for `src/v3/std/*.dag`
+//   - `V3_SPECS`              for `src/v3/spec/*.dag`
+//   - `COMPILER_FILES`        for `src/v3/compiler/*.dag` (except `tokenize.dag`; see below)
 //
-// Adding a new staged std/spec/compiler file becomes a pure file-system
-// change — no Rust edits to `bootstrap.rs`, no fixture-array
-// maintenance, no skip-list drift.
+// Adding a new staged std/spec/compiler file becomes a pure file-system change
+// — no Rust edits to `bootstrap.rs`, no fixture-array maintenance, no skip-list drift.
 //
 // **Why a build script.** The pre-unwind shape used hardcoded
 // `const RUST_DAG: &str = include_str!("../../spec/rust.dag");`
@@ -256,7 +255,6 @@ fn main() {
         &gunbc_dir,
         &gunbc_entries,
     );
-
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR must be set by Cargo");
     let out_dir = Path::new(&out_dir);
     let staged_out = out_dir.join("v3_staged_files.rs");
