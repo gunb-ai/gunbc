@@ -1,4 +1,4 @@
-// lenses.named_function_count — minimal user-authored lens (Day-1 gate demo).
+// lenses.named_function_count - minimal user-authored lens (Day-1 gate demo).
 //
 // Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A.
 // See docs/v3-lens-capability-register.md.
