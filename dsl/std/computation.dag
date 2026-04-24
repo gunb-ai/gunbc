@@ -122,14 +122,17 @@ import std.algebra {
 // (for constants/Forever) or tracked symbolically (for parameters/collections).
 // =========================================================================
 //
-// 🟡 MIXED coproduct — size-bound source for lowering. Dissolution: `param: String`
-// name bridges on `CollectionSize` / `TreeSize` / `ArithmeticParam` → structural size-parameter
-// refs when reflected params exist; `Forever` stays a terminal finite-bound atom.
-// `ExplicitCount*` uses Peano for strictly positive repeat counts and a zero tag so negative
-// literals are not representable (P2 / P4; PR #726 openai-pro review).
+// 🟡 MIXED coproduct — size-bound source for lowering. Dissolution: `param` / `witness` /
+// `element` string bridges on collection-like bounds → structural size-parameter refs when
+// reflected params exist; `Forever` stays a terminal finite-bound atom.
+// `ParserStreamSize` / `WorklistDrainSize` keep parser-advance vs worklist-drain distinct from
+// generic `CollectionSize` (P2 facts-flow-forward). `ExplicitCount*` uses Peano for strictly
+// positive repeat counts and a zero tag so negative literals are not representable (P2 / P4).
 
 type SizeBound
   = CollectionSize { param: String }   // |list|, |set|, |map.keys| — finite by Layer 3
+  | ParserStreamSize { witness: String } // parser advance: token-stream / state param name
+  | WorklistDrainSize { element: String }  // worklist drain: set / element param name
   | TreeSize { param: String }         // |node.descendants| — finite by DAG acyclicity
   | ArithmeticParam { param: String }  // function parameter n — finite by Word64
   | ExplicitCountZero                  // repeat / bound literal 0 (no negative inhabitant)
@@ -215,8 +218,8 @@ type CallPattern
 //   | CollectionShrinkCall     | fold           | CollectionSize       |
 //   | ArithmeticSubtractCall   | repeat         | ArithmeticParam      |
 //   | ArithmeticDivideCall     | repeat         | ArithmeticParam      |
-//   | ParserAdvanceCall        | fold           | CollectionSize(tokens)|
-//   | WorklistDrainCall        | fold           | CollectionSize(set)  |
+//   | ParserAdvanceCall        | fold           | ParserStreamSize(witness)|
+//   | WorklistDrainCall        | fold           | WorklistDrainSize(element)|
 //   | FoldBodyCall             | (already fold) | (inherited)          |
 //   | SameArgumentCall         | repeat         | Forever               |
 //
