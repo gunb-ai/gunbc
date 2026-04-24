@@ -7,6 +7,8 @@
 
 **Fixtures on disk:** `src/v3/compiler/tests/fixtures/t_pb_b_brief_d/*.v3` — each file is a self-contained v3 module declaring `TestSuite` / `TestClaim` values. **Compile smoke:** `t_pb_b_brief_d_fixture_smoke_test` in `tests/integration/` (lowers cleanly; not a pure-bootstrap gate).
 
+**Duplicate authority (bounded, P2/P5):** The same three claims exist here (`.v3`, suite names `t-pb-b/…`) and under T-PB-B-1 (`.dag`, suite names `t-pb-b-1/…`). Neither path is runner-evaluated yet. **Dissolution trigger (named):** remove or shrink the `.v3` copies once Testgen accepts `src/v3/compiler/tests/dag/t_pb_b_1_*.dag` as the single maintained source for those claims—until then, any edit to claim text must keep both paths aligned (each `.v3` file header points at its `.dag` sibling).
+
 **T-PB-B-1 (landed `.dag` home):** `src/v3/compiler/tests/dag/*.dag` + `docs/briefs/t-pb-b-1.md` + `t_pb_b_1_tests_dag_smoke_test` — first batch as **`data` declarations** in real `.dag` modules (same claims as Brief D fixtures; runner + Rust deletion still gated on Testgen).
 
 ---

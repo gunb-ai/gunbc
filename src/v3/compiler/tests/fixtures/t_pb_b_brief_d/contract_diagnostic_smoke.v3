@@ -1,5 +1,9 @@
 // T-PB-B Brief D — draft contract negatives (`FailsWithDiagnostic`).
 // Schema authority: `src/v3/std/verification.dag`.
+//
+// Dissolution: same claim as `src/v3/compiler/tests/dag/t_pb_b_1_contract_diagnostic_smoke.dag`.
+// Retire this `.v3` once Testgen accepts that `.dag` module as the maintained copy (Brief D
+// named trigger); until then, keep source/predicate text aligned with the `.dag` sibling.
 
 import std.list { empty }
 import std.verification { TestClaim, TestSuite, TestPredicate }

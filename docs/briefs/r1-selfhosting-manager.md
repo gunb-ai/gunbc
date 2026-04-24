@@ -112,20 +112,21 @@ Lane-owner dispatch status (update as sub-deliverables close):
       T-TestGen extensions land
 
 **T-PB-B:**
-- [x] T-PB-B-1 — Landed `src/v3/compiler/tests/dag/*.dag` + compile smoke
-      (`t_pb_b_1_tests_dag_smoke_test`); brief `docs/briefs/t-pb-b-1.md`
-- [x] Draft `.dag` / `.v3` `TestClaim` declarations for pipeline tests
-      (non-landing — see `docs/briefs/t-pb-b-brief-d.md` +
+- [x] T-PB-B-1 — Landed `src/v3/compiler/tests/dag/*.dag` + compile-only smoke
+      (`t_pb_b_1_tests_dag_smoke_test`); brief `docs/briefs/t-pb-b-1.md`.
+      **Not** Rust test deletion and **not** `pb_*` — those stay unchecked below
+      until Testgen signs off.
+- [x] Brief D — Draft `.v3` `TestClaim` / `TestSuite` for pipeline smoke
+      (compile-smoke + inventory only; Rust integration tests remain canonical;
+      see `docs/briefs/t-pb-b-brief-d.md` +
       `src/v3/compiler/tests/fixtures/t_pb_b_brief_d/pipeline_smoke.v3`)
-- [x] Draft `.dag` / `.v3` `TestClaim` declarations for contract tests
-      (non-landing — same brief +
-      `contract_diagnostic_smoke.v3` + `contract_port_cost_smoke.v3`)
+- [x] Brief D — Draft `.v3` declarations for contract tests (same meaning as
+      previous row; `contract_diagnostic_smoke.v3` + `contract_port_cost_smoke.v3`)
 - [x] Identify and scope the two TESTING.md residual categories
       per-test (extended D/G/A/B matrix in Brief D)
-- [ ] Land `.dag` test conversion once Testgen signals runner
-      readiness (T-PB-B-1 **data + compile smoke** landed under
-      `src/v3/compiler/tests/dag/` — see `docs/briefs/t-pb-b-1.md`;
-      Rust deletion + `pb_*` still gated)
+- [ ] Land **runner-backed** `.dag` test conversion + Rust deletions once Testgen
+      signals runner readiness (T-PB-B-1 already landed **declarative data +
+      compile smoke** only — see `docs/briefs/t-pb-b-1.md`)
 - [ ] `pb_test_file_generated_from_dag` + `pb_rust_tests_outside_residual_zero`
       predicates evaluate true
 

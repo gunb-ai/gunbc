@@ -1,6 +1,10 @@
 // T-PB-B Brief D — draft pipeline-oriented `TestSuite` / `TestClaim` values.
 // Schema authority: `src/v3/std/verification.dag`. Non-landing; Rust tests remain canonical.
 // Predicate: `Compiles` on embedded v3 program text (pipe unary smoke).
+//
+// Dissolution: same claim as `src/v3/compiler/tests/dag/t_pb_b_1_pipeline_smoke.dag`.
+// Retire this `.v3` once Testgen accepts that `.dag` module as the maintained copy (Brief D
+// named trigger); until then, keep source/predicate text aligned with the `.dag` sibling.
 
 import std.list { empty }
 import std.verification { TestClaim, TestSuite, TestPredicate }
