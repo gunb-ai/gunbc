@@ -139,14 +139,28 @@ content.
 Lane-owner dispatch status (update as sub-deliverables close):
 
 **T-Demo:**
-- [ ] `fixture_compiler_nerd_canonical` — Compiles (Day-1)
+- [ ] `fixture_compiler_nerd_canonical` — Compiles (Day-1) — in flight on
+      PR #686 (W2 / quiet-lynx-432); draft, revising per manager
+      feedback (real source, not placeholders; fixture 2 pending)
 - [ ] `fixture_compiler_nerd_canonical` — lens-output demos evaluate
       (after T-LensAPI)
-- [ ] Additional fixture per `ROADMAP.md:55+` (lane-owner defines
-      scope)
-- [ ] Impossible-bugs suite narrative + fixtures drafted
-- [ ] Impossible-bugs suite claims honest against Parts 1–6 `[live]`
-      rows (no aspirational language)
+- [ ] `fixture_integration_canonical` — Compiles (Day-1). Scope per
+      `ROADMAP.md:71`: effects / idempotency / testgen. Staffed under
+      PR #686 as the second canonical fixture (not drafter's-choice —
+      director clarified `ROADMAP.md:70-73` names both fixtures
+      explicitly).
+- [ ] `fixture_integration_canonical` — lens-output demos evaluate
+      (after T-LensAPI + live idempotency lens)
+- [ ] Impossible-bugs suite (`impossible_bug_class_suite_r1`,
+      `ROADMAP.md:72`) — **parked upstream-of-gates**. Re-dispatch when
+      the first `[live]` R1 bug-class proof row lands: Substrate
+      T-LaneE (`complexity_merge_sort_is_nlogn` /
+      `complexity_v3_matches_v2_oracle`), Testgen + live idempotency
+      lens (currently STUB per `ROADMAP.md:333`), or Surface T-Emit
+      (`emit_omni_demo_fixtures_green`). PR #689 closed as premature
+      (docs/thesis/ is director-owned per `doc-authority.md` — tracking
+      scaffolding is not the lane deliverable). Narrative holds until
+      at least one upstream row is honest.
 
 **T-Receipts (continuous):**
 - [ ] Receipt PR cadence established (2–4 items per PR)
@@ -163,7 +177,17 @@ Lane-owner dispatch status (update as sub-deliverables close):
 
 Decisions log (append as they happen):
 
-- _(none yet)_
+- **2026-04-24** — Director: W2 demo fixtures stay at
+  `src/v3/compiler/tests/t_demo/`; demos are `TestClaim` evaluations per
+  `ROADMAP.md:21-26`, not a new authority surface.
+- **2026-04-24** — Director: second fixture is
+  `fixture_integration_canonical` per `ROADMAP.md:71`, not
+  drafter's-choice.
+- **2026-04-24** — Director: `docs/thesis/` edits (impossible-bugs
+  narrative) are director-owned per `doc-authority.md` (PR #672). W3
+  parked upstream-of-gates; re-dispatch on first R1 `[live]` proof row.
+- **2026-04-24** — T-Receipts bundle 1 landed (#685); bundle 2 (#687,
+  slow-test-exemption meta-ratchet) green-lit pending rebase on #685.
 
 Open questions for director:
 
