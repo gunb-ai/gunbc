@@ -20,9 +20,9 @@ fn is_fold_instantiation(dag: &Dag, decl: &Declaration) -> bool {
 }
 
 fn span_same_file(a: &SourceSpan, b: &SourceSpan) -> bool {
-    // Strict equality only: suffix-based "same file" checks false-positive when two unrelated
-    // paths share a tail (`…/pkg/x.dag` vs `…/other/x.dag`). Fold span overlap is D1-only;
-    // lowering should attach consistent logical paths to both spans.
+    // Strict equality only (no `ends_with` / substring): e.g. `foo.dag` must not match
+    // `barfoo.dag`. Fold span overlap is D1-only; lowering should attach the same logical path
+    // to both spans.
     a.file == b.file
 }
 
