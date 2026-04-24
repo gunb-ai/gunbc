@@ -11,13 +11,15 @@ module v3.std.r1_gates
 
 import std.verification { TestClaim, TestSuite }
 
-// Fixture: `broken` is declared `String` but returns `Int` (`x`) → TypeMismatch.
+// Fixture: return type says `String` but body is `Int` (`x`). The substrate surfaces
+// this as `ResolveError` ("parameter … does not satisfy its declared signature"), not
+// `TypeMismatch` — the gate matches the live diagnostic kind.
 data manual_negative_claim_gate: TestClaim = {
   name: "testgen_manual_claim_is_first_class",
   source: "fn broken(x: Int) -> String = x",
   file_name: "manual_claim_fixture.v3",
   predicate: FailsWithDiagnostic({
-    kind: TypeMismatch,
+    kind: ResolveError,
     detail_contains: AnyDetail
   }),
   requires: []

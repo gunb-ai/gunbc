@@ -125,7 +125,8 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [ ] `testgen_structural_coverage` gate compiles + evaluates
 - [ ] `MockBackedInvariant` wiring
 - [ ] `testgen_mock_backed_integration_safe` gate compiles + evaluates
-- [ ] `testgen_manual_claim_is_first_class` gate compiles + evaluates
+- [x] `testgen_manual_claim_is_first_class` gate compiles + evaluates
+      (`src/v3/std/r1_gates.dag` + `r1_manual_claim_gate_test.rs`)
 
 **T-LensAPI:**
 - [ ] `user_authored_lens_compiles` gate (Day-1) passes

@@ -9,29 +9,6 @@ use std::path::PathBuf;
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
-use v3_compiler::Diagnostic;
-
-#[test]
-#[ignore = "local probe: cargo test -p v3-compiler probe_manual_claim_fixture_diags -- --ignored --nocapture"]
-fn probe_manual_claim_fixture_diags() {
-    match compile_to_dag("fn broken(x: Int) -> String = x", "manual_claim_fixture.v3") {
-        Ok(_) => eprintln!("unexpected: program compiled cleanly"),
-        Err(CompileError::Semantic(dag)) => {
-            for (id, d) in dag.diagnostics() {
-                let kind = match d {
-                    Diagnostic::TokenizerError { .. } => "TokenizerError",
-                    Diagnostic::ParseError { .. } => "ParseError",
-                    Diagnostic::TypeMismatch { .. } => "TypeMismatch",
-                    Diagnostic::ArityMismatch { .. } => "ArityMismatch",
-                    Diagnostic::ResolveError { .. } => "ResolveError",
-                    Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
-                };
-                eprintln!("{id:?} {kind}: {}", d.message());
-            }
-        }
-        Err(e) => eprintln!("non-semantic: {e:?}"),
-    }
-}
 
 fn compile_clean(source: &str, file: &str) -> v3_compiler::dag::Dag {
     match compile_to_dag(source, file) {
@@ -59,11 +36,5 @@ fn testgen_manual_claim_is_first_class_gate_passes() {
 
     assert_eq!(results.len(), 1, "expected one claim in manual_claim_suite");
     assert_eq!(results[0].claim_name, "testgen_manual_claim_is_first_class");
-    assert_eq!(
-        results[0].result,
-        ClaimResult::Pass,
-        "manual claim should pass once fixture emits TypeMismatch; got {:?}. \
-         If this fails, inspect compile diagnostics for `fn broken(x: Int) -> String = x`",
-        results[0].result
-    );
+    assert_eq!(results[0].result, ClaimResult::Pass);
 }
