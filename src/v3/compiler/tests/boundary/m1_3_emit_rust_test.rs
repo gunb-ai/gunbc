@@ -314,6 +314,14 @@ fn run_reflected(name: &str) -> String {
     RustcHarness::run(reflected_harness_bin(), &[name])
 }
 
+fn reflected_expected(name: &str) -> &'static ReflectedExpected {
+    &REFLECTED_FIXTURES
+        .iter()
+        .find(|f| f.name == name)
+        .unwrap_or_else(|| panic!("no REFLECTED_FIXTURES entry for {name:?}"))
+        .expected_stdout
+}
+
 #[test]
 fn emit_rust_single_int_binding() {
     let out = emit("let x: Int = 42");
@@ -864,45 +872,65 @@ fn rustc_roundtrip_user_sum_match_prints_zero() {
 
 #[test]
 fn rustc_roundtrip_emitted_module_invokes_reflected_dag_function() {
-    let stdout = run_reflected("node_count");
-    assert!(
-        stdout.parse::<i64>().is_ok_and(|count| count > 0),
-        "compiled reflected Dag function should return a positive node count, got {stdout:?}"
-    );
+    let name = "node_count";
+    let stdout = run_reflected(name);
+    match reflected_expected(name) {
+        ReflectedExpected::PositiveInt => assert!(
+            stdout.parse::<i64>().is_ok_and(|n| n > 0),
+            "compiled reflected Dag function should return a positive node count, got {stdout:?}"
+        ),
+        ReflectedExpected::Exact(expected) => assert_eq!(stdout, *expected),
+    }
 }
 
 #[test]
 fn rustc_roundtrip_emitted_module_matches_reflected_behavior_payloads() {
-    let stdout = run_reflected("bind_count");
+    let name = "bind_count";
+    let stdout = run_reflected(name);
+    let ReflectedExpected::Exact(expected) = reflected_expected(name) else {
+        panic!("bind_count expected Exact")
+    };
     assert_eq!(
-        stdout, "2",
+        stdout, *expected,
         "compiled reflected Behavior match should count the two top-level binds, got {stdout:?}"
     );
 }
 
 #[test]
 fn rustc_roundtrip_emitted_module_returns_reflected_source_span_list() {
-    let stdout = run_reflected("singleton_span");
+    let name = "singleton_span";
+    let stdout = run_reflected(name);
+    let ReflectedExpected::Exact(expected) = reflected_expected(name) else {
+        panic!("singleton_span expected Exact")
+    };
     assert_eq!(
-        stdout, "1",
+        stdout, *expected,
         "compiled reflected function returning List<SourceSpan> should yield a singleton list, got {stdout:?}"
     );
 }
 
 #[test]
 fn rustc_roundtrip_emitted_module_compares_reflected_port_ids_in_list_contains() {
-    let stdout = run_reflected("result_port_is_param");
+    let name = "result_port_is_param";
+    let stdout = run_reflected(name);
+    let ReflectedExpected::Exact(expected) = reflected_expected(name) else {
+        panic!("result_port_is_param expected Exact")
+    };
     assert_eq!(
-        stdout, "1",
+        stdout, *expected,
         "compiled reflected function should compare PortId handles through list contains, got {stdout:?}"
     );
 }
 
 #[test]
 fn rustc_roundtrip_emitted_module_returns_user_record_list_from_reflected_binds() {
-    let stdout = run_reflected("bind_names");
+    let name = "bind_names";
+    let stdout = run_reflected(name);
+    let ReflectedExpected::Exact(expected) = reflected_expected(name) else {
+        panic!("bind_names expected Exact")
+    };
     assert_eq!(
-        stdout, "2",
+        stdout, *expected,
         "compiled reflected function should return a user record per top-level bind, got {stdout:?}"
     );
 }
@@ -931,8 +959,10 @@ fn rustc_roundtrip_int_addition_prints_three() {
 /// output under a real `rustc`. Passes when every individual
 /// `rustc_roundtrip_*` test would pass.
 ///
-/// Gated behind `#[ignore]` for the same reason as the individual
-/// roundtrip tests — CI may not have `rustc`. Run locally:
+/// Gated behind `#[ignore]` because CI runners may not have `rustc`.
+/// The individual `rustc_roundtrip_*` tests above are unignored (they
+/// run unconditionally); this gate sweeps them in one shot for a fast
+/// go/no-go signal. Run locally:
 ///
 ///     cargo test -p v3-compiler --test integration \
 ///         emit_rust_fixtures_rustc_green -- --ignored --nocapture
