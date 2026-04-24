@@ -673,6 +673,54 @@ type RecurrenceForm {
 // Master theorem — recurrence → CostBound
 // =========================================================================
 
+// P3: `Int` is realized as i64 in v2 — raw `*` / `+` can wrap or debug-panic.
+// These helpers return `none` on overflow so `master_theorem` / `ceil_log` stay
+// fail-closed (same posture as `cost_poly` / `positive_descent_amount_from_positive_int`).
+// Bounds are i64::MIN / i64::MAX; `/` matches signed truncating division (Rust `Int`).
+
+fn int_add_checked(a: Int, b: Int) -> Int? {
+  if b > 0 {
+    if a > 9223372036854775807 - b { none }
+    else { Some { value: a + b } }
+  } else {
+    if b < 0 {
+      if a < -9223372036854775808 - b { none }
+      else { Some { value: a + b } }
+    } else { Some { value: a } }
+  }
+}
+
+fn int_mul_checked(a: Int, b: Int) -> Int? {
+  if b == 0 { Some { value: 0 } }
+  else {
+    if a == 0 { Some { value: 0 } }
+    else {
+      if b == -1 {
+        if a == -9223372036854775808 { none }
+        else { Some { value: 0 - a } }
+      } else {
+        if b > 0 {
+          if a > 0 {
+            if a > 9223372036854775807 / b { none }
+            else { Some { value: a * b } }
+          } else {
+            if a < -9223372036854775808 / b { none }
+            else { Some { value: a * b } }
+          }
+        } else {
+          if a > 0 {
+            if b < -9223372036854775808 / a { none }
+            else { Some { value: a * b } }
+          } else {
+            if b < 9223372036854775807 / a { none }
+            else { Some { value: a * b } }
+          }
+        }
+      }
+    }
+  }
+}
+
 // b^exp for exp ≥ 0 (exp = 0 → Some { value: 1 }). exp < 0 → none — no silent plausible
 // wrong output (P3; same posture as `ceil_log` / `cost_poly`). `master_theorem` still
 // rejects d < 0 → ErrorBound before calling; callers that omit that guard get `none`.
@@ -682,7 +730,11 @@ fn int_pow_bounded(base: Int, exp: Int) -> Int? {
     if exp == 0 { Some { value: 1 } }
     else {
       match int_pow_bounded(base: base, exp: exp - 1) {
-        Some { value: prev } => Some { value: base * prev }
+        Some { value: prev } =>
+          match int_mul_checked(a: base, b: prev) {
+            Some { value: prod } => Some { value: prod }
+            None => none
+          }
         None => none
       }
     }
@@ -693,13 +745,23 @@ fn int_pow_bounded(base: Int, exp: Int) -> Int? {
 // iteration strictly increases `power` (P4 decidability); invalid inputs → none.
 fn ceil_log(base: Int, argument: Int) -> Int? {
   if base < 2 || argument < 1 { none }
-  else { Some { value: ceil_log_iter(base: base, argument: argument, k: 0, power: 1) } }
+  else { ceil_log_iter(base: base, argument: argument, k: 0, power: 1) }
 }
 
-// Pre: base ≥ 2, argument ≥ 1.
-fn ceil_log_iter(base: Int, argument: Int, k: Int, power: Int) -> Int {
-  if power >= argument { k }
-  else { ceil_log_iter(base: base, argument: argument, k: k + 1, power: power * base) }
+// Pre: base ≥ 2, argument ≥ 1. Overflow in `power * base` or `k + 1` → none.
+fn ceil_log_iter(base: Int, argument: Int, k: Int, power: Int) -> Int? {
+  if power >= argument { Some { value: k } }
+  else {
+    match int_mul_checked(a: power, b: base) {
+      None => none
+      Some { value: next_power } =>
+        match int_add_checked(a: k, b: 1) {
+          None => none
+          Some { value: k1 } =>
+            ceil_log_iter(base: base, argument: argument, k: k1, power: next_power)
+        }
+    }
+  }
 }
 
 fn master_theorem(form: RecurrenceForm) -> CostBound {
