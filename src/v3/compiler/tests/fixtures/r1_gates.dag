@@ -28,6 +28,10 @@
 // into `Dag::new()` bootstrap (`src/v3/std/*.dag` is build-script enumerated).
 // `sub_match_over_user_sum_links_and_runs` also extracts this claim source for
 // the rustc boundary receipt, so the named T-Sub gate has one program witness.
+//
+// merge-conflicts: union with `origin/main` — keep every `data` gate from main
+// (`sub_match_*`, `manual_*`, `testgen_structural_coverage*`) plus this file's
+// `user_authored_lens_compiles_gate`; do not resolve conflicts by keeping only the lens gate.
 
 module std.r1_gates
 
