@@ -30,7 +30,6 @@ src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
 src/v3/std/emit_model.dag	31	60480	7897681bff251cf8
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
 src/v3/std/parse_surface.dag	17	94010	7be32a91b41d60ae
-src/v3/std/r1_gates.dag	4	11439	70674196da7fd686
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/substrate.dag	47	106731	53da658223c5328a
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
