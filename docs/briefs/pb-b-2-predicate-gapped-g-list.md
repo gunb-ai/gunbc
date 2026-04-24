@@ -157,27 +157,58 @@ existing variants like `PortHasState` / `CostBounded`).
 
 ## G-modules this list unlocks (non-exhaustive)
 
-Integration modules whose predicate needs are fully or partially
-covered by the six shapes above:
+Integration modules whose predicate needs are **fully or
+partially** covered by the six shapes above — meaning the
+Bind-rooted Transform/port walks they assert on are expressible
+with shapes #1–#6:
 
-- `pipe_desugar.rs` (5) — #1 #2 #3 #5
+- `pipe_desugar.rs` (5) — #1 #2 #3 #5 (producer_path on #2/#3
+  handles the nested-chain cases)
 - `m1_substrate_test.rs` (~91) — #4 #6
 - `m1_lens_structural_resolution_test.rs` + its `m2_*_migration`
   pair — #1 #2 #6
-- `m2_field_access_binding_test.rs` — #1 #2 #3
 - `m2_lens_cost_migration_test.rs` / `m2_lens_idempotency_*` /
   `m2_lens_unused_parameters_migration_test.rs` /
   `m2_lens_variant_payload_migration_test.rs` — #1 #2 #6
-- `m1_fn_external_body_reconciliation_test.rs` — #2 #5
 - `m1_5_verification_test.rs` — #6
-- `sg1_tokenize_authority_test.rs`, `sg2_parse_authority_test.rs`,
-  `sg2c1_parse_tables_authority_test.rs`, `sg3_surface_reflection_
-  consumer_test.rs` — #4
 
-Rough order-of-magnitude: the six shapes above, if landed,
-unblock >60% of the current integration-test file count for
-`.dag` port. The remainder is the D bucket (already covered by
-landed predicates) plus the Post-R2 Rust residuals.
+## G-modules needing *additional* predicates (beyond the six)
+
+These modules were previously listed as unlocked but assert on
+facts the six shapes do **not** express. They belong to the
+Testgen backlog as separate shape proposals, not under the six
+above:
+
+- `m2_field_access_binding_test.rs` — asserts on
+  `TypeRealization[_].FieldBinding[_].dag_name` / `.access`
+  records, which are declaration-level structural facts, not
+  Bind/Transform walks. Needs a `FieldBindingEquals` (or
+  equivalent) predicate naming the realization + field. Shapes
+  #1/#2/#3 alone do not cover this module.
+- `m1_fn_external_body_reconciliation_test.rs` — discriminates
+  `ArrowBody::ExternalRealization` vs `ArrowBody::Unparsed` on
+  function declarations (see `v3_compiler::dag::ArrowBody`).
+  Needs an `ArrowBodyKindIs` (or equivalent) declaration-level
+  predicate. Shape #5 only resolves identity, not body kind.
+- `sg1_tokenize_authority_test.rs`,
+  `sg2_parse_authority_test.rs`,
+  `sg2c1_parse_tables_authority_test.rs`,
+  `sg3_surface_reflection_consumer_test.rs` — regen drift /
+  snapshot-equality and rustc-harness execution tests, not
+  post-compile substrate queries. These align with the
+  schema-declared-but-runner-NYI `ExecuteCommand` /
+  `ForAllTargets` path rather than new `TestPredicate` shapes.
+  Not in this brief's scope; belong to Testgen's runner-wiring
+  backlog.
+
+Rough order-of-magnitude: the six shapes above, if landed, unblock
+the Bind-rooted subset of the G backlog. The module-count figure
+previously quoted here ("~>60%") overclaimed — it counted modules
+that actually need the additional predicates just listed. The
+honest split is: six shapes close the Bind/Transform/port-walk
+assertions; at least two further shapes (FieldBinding,
+ArrowBodyKind) are needed for declaration-level structure; and the
+SG snapshot/harness tests are runner-NYI, not predicate-gapped.
 
 ## Non-asks
 
