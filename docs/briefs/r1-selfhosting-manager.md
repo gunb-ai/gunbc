@@ -40,9 +40,11 @@ checkable, including tests-as-data?**
 
 Today:
 - Residual Rust count is tracked by the SG-0 census; the census is
-  one unsplit list — the R1 split (T-PB-A owns non-test; T-PB-B
-  owns test) is partially structural and partially conceptual
-  (`ROADMAP.md:133`).
+  now split into two mechanically enforced sub-ratchets
+  (`EXPECTED_HAND_AUTHORED_NON_TEST` / `EXPECTED_HAND_AUTHORED_TEST`)
+  with structural guard tests — the `ROADMAP.md:133` tracked follow-up
+  is closed. Non-test: **36 files**. Test: **55 files** (4 boundary =
+  TESTING.md residual; 51 candidates for `.dag` conversion).
 - `pb_hand_rust_at_shim_floor` and `pb_rust_tests_outside_residual_zero`
   predicates need to name the partition once T-TestGen extensions
   support it.
@@ -101,8 +103,12 @@ the two acknowledged residuals.
 Lane-owner dispatch status (update as sub-deliverables close):
 
 **T-PB-A:**
-- [ ] Non-test SG-0 census partition (`EXPECTED_HAND_AUTHORED`
-      split in `sg0_census_test.rs`)
+- [x] Non-test SG-0 census partition — `EXPECTED_HAND_AUTHORED` split
+      into `EXPECTED_HAND_AUTHORED_NON_TEST` (36) +
+      `EXPECTED_HAND_AUTHORED_TEST` (55); two new structural guard tests
+      (`sg0_partition_paths_are_structurally_correct`,
+      `sg0_partition_sub_lists_are_disjoint`); all 10 census tests pass.
+      `ROADMAP.md:133` tracked follow-up closed.
 - [ ] Hand-Rust non-test reduction toward ≤5 irreducible-shim floor
 - [ ] `pb_hand_rust_at_shim_floor` predicate compiles once T-TestGen
       extensions land
@@ -112,12 +118,17 @@ Lane-owner dispatch status (update as sub-deliverables close):
       T-TestGen extensions land
 
 **T-PB-B:**
+- [x] Identify and scope the two TESTING.md residual categories
+      per-test — 4 files in `tests/boundary/` are formal TESTING.md
+      residual (external-toolchain roundtrips). `sg3_surface_reflection_consumer_test.rs`
+      also invokes an external binary (`Command::new`) — may warrant
+      reclassification to `tests/boundary/`; escalated to director
+      (see open questions). All other 50 integration test files are
+      T-PB-B conversion candidates.
 - [ ] Draft `.dag` `TestClaim` declarations for pipeline tests
       (non-landing — wait on Testgen runner)
 - [ ] Draft `.dag` `TestClaim` declarations for contract tests
       (non-landing — wait on Testgen runner)
-- [ ] Identify and scope the two TESTING.md residual categories
-      per-test
 - [ ] Land `.dag` test conversion once Testgen signals runner
       readiness
 - [ ] `pb_test_file_generated_from_dag` + `pb_rust_tests_outside_residual_zero`
@@ -125,11 +136,22 @@ Lane-owner dispatch status (update as sub-deliverables close):
 
 Decisions log (append as they happen):
 
-- _(none yet)_
+- **2026-04-23** — Census split landed (`EXPECTED_HAND_AUTHORED` →
+  `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_TEST`
+  with two structural guard tests). `ROADMAP.md:133` tracked follow-up
+  is now structurally closed. Non-test count = 36; test count = 55.
 
 Open questions for director:
 
-- _(none yet)_
+- **`sg3_surface_reflection_consumer_test.rs` residual classification.**
+  This test (under `tests/integration/`) invokes an external binary via
+  `Command::new` (a rustc-linked output) — matching the "external-
+  toolchain boundary test" TESTING.md residual definition. Its own
+  census comment says "behavioral end-to-end rustc harness." Should it
+  be moved to `tests/boundary/` (making it formal TESTING.md residual,
+  off T-PB-B's conversion target list) or does it stay as a T-PB-B
+  `.dag` conversion candidate? Director call required before T-PB-B
+  conversion begins in earnest.
 
 Cross-manager notifications queued:
 
