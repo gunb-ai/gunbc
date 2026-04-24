@@ -44,7 +44,7 @@ module lenses.complexity
 import std.list { List, empty, fold, cons, concat }
 import std.substrate { Dag, DagPort, Behavior, BranchPath, NodeId, PortId }
 import std.types { Int }
-import v3.std.lookup { Lookup, hit_lookup, miss_lookup }
+import v3.std.lookup { Lookup, hit_int_lookup, miss_int_lookup }
 
 type CostEntry {
   port: PortId
@@ -85,14 +85,14 @@ fn param_entries(params: List<PortId>) -> List<CostEntry> =
     Empty => empty()
     Cons(payload) =>
       cons(
-        { port: payload.head, cost: hit_lookup(0) },
+        { port: payload.head, cost: hit_int_lookup(0) },
         param_entries(payload.tail)
       )
   }
 
 fn entry_for(acc: List<CostEntry>, behavior: Behavior) -> CostEntry =
   match behavior {
-    Value(v) => { port: v.result_port, cost: hit_lookup(0) }
+    Value(v) => { port: v.result_port, cost: hit_int_lookup(0) }
     Transform(t) =>
       {
         port: t.result_port
@@ -128,18 +128,18 @@ fn entry_for(acc: List<CostEntry>, behavior: Behavior) -> CostEntry =
   }
 
 fn sum_costs(acc: List<CostEntry>, ports: List<PortId>) -> Lookup<Int> =
-  fold(ports, hit_lookup(0), |sum, port_id|
+  fold(ports, hit_int_lookup(0), |sum, port_id|
     add_cost(sum, lookup_cost(acc, port_id))
   )
 
 fn max_path_cost(acc: List<CostEntry>, paths: List<BranchPath>) -> Lookup<Int> =
-  fold(paths, hit_lookup(0), |best, path|
+  fold(paths, hit_int_lookup(0), |best, path|
     max_cost(best, lookup_cost(acc, path.result_port))
   )
 
 fn lookup_cost(acc: List<CostEntry>, port_id: PortId) -> Lookup<Int> =
   match acc {
-    Empty => miss_lookup()
+    Empty => miss_int_lookup()
     Cons(payload) =>
       if payload.head.port == port_id then
         payload.head.cost
@@ -152,26 +152,26 @@ fn lookup_cost(acc: List<CostEntry>, port_id: PortId) -> Lookup<Int> =
 // as a valid computation with cost 0.
 fn add_one(c: Lookup<Int>) -> Lookup<Int> =
   match c {
-    Miss => miss_lookup()
-    Hit(n) => hit_lookup(1 + n)
+    Miss => miss_int_lookup()
+    Hit(n) => hit_int_lookup(1 + n)
   }
 
 fn add_cost(a: Lookup<Int>, b: Lookup<Int>) -> Lookup<Int> =
   match a {
-    Miss => miss_lookup()
+    Miss => miss_int_lookup()
     Hit(x) =>
       match b {
-        Miss => miss_lookup()
-        Hit(y) => hit_lookup(x + y)
+        Miss => miss_int_lookup()
+        Hit(y) => hit_int_lookup(x + y)
       }
   }
 
 fn max_cost(a: Lookup<Int>, b: Lookup<Int>) -> Lookup<Int> =
   match a {
-    Miss => miss_lookup()
+    Miss => miss_int_lookup()
     Hit(x) =>
       match b {
-        Miss => miss_lookup()
-        Hit(y) => hit_lookup(if x > y then x else y)
+        Miss => miss_int_lookup()
+        Hit(y) => hit_int_lookup(if x > y then x else y)
       }
   }

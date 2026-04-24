@@ -12,19 +12,23 @@
 
 module v3.std.lookup
 
+import std.types { Int }
+
 // Generic sum: one authority for “absent vs present” at a typed value.
 // Variant labels `Miss` / `Hit` mirror the thesis `Missing | Found(T)` naming.
 //
-// v3 inference note: a bare `Miss` pattern under `Lookup<value>` does not
-// always unify to `Lookup<Int>` at return positions; consumers that need a
-// concrete `Lookup<Int>` should use `miss_lookup` / `hit_lookup` below until
-// the polymorphic empty-arm story hardens.
+// v3 inference note: polymorphic `miss_lookup<value>` / `hit_lookup<value>`
+// with body `Miss` / `Hit(v)` does not yet prove against `Lookup<value>` in
+// the bind pass (generic sum + type-param return). Int-typed helpers are the
+// supported surface for `Lookup<Int>` today (e.g. lenses/complexity.dag).
 type Lookup<value>
   = Miss
   | Hit(value)
 
-fn miss_lookup<value>() -> Lookup<value> =
+fn miss_int_lookup() -> Lookup<Int> {
   Miss
+}
 
-fn hit_lookup<value>(v: value) -> Lookup<value> =
-  Hit(v)
+fn hit_int_lookup(n: Int) -> Lookup<Int> {
+  Hit(n)
+}
