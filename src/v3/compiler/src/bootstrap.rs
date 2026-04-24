@@ -76,6 +76,13 @@ include!(concat!(env!("OUT_DIR"), "/v3_staged_files.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_specs.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_compiler_files.rs"));
 
+// User-authored lens loaded for Day-1 `user_authored_lens_compiles` proof
+// (`src/v3/std/r1_gates.dag`). Intentionally **not** listed in `regen.dag`
+// — not a compiler-internal regen lens — but must resolve in `Dag::new()`
+// like any staged module.
+const NAMED_FUNCTION_COUNT_USER_LENS_DAG: &str =
+    include_str!("../../lenses/named_function_count.dag");
+
 const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
 
 fn declaration_name_preference_rank(file: &str) -> usize {
@@ -144,6 +151,10 @@ fn load_runtime_bootstrap_authorities(
     let fixtures: Vec<(&str, &str)> = staged_iter
         .chain(V3_SPECS.iter().copied())
         .chain(compiler_iter)
+        .chain(std::iter::once((
+            "src/v3/lenses/named_function_count.dag",
+            NAMED_FUNCTION_COUNT_USER_LENS_DAG,
+        )))
         .collect();
     load_fixtures(dag, &fixtures);
     materialize_pipeline_realizations(dag);
