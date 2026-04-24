@@ -107,6 +107,7 @@ fn bootstrap_inventory_stays_typed_and_cached() {
             "functions",
             "type_applications",
             "type_definitions",
+            "record_derive_templates",
             "patterns",
             "collection_ops",
             "values",
