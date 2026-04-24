@@ -1010,11 +1010,13 @@ pub fn is_constant_bound(bound: &SizeBound) -> bool {
     matches!(bound, SizeBound::ExplicitCount { .. } | SizeBound::Forever)
 }
 
-pub fn constant_bound_value(bound: &SizeBound) -> i64 {
+/// Returns the constant value only for `SizeBound` variants that actually
+/// carry one; non-constant bounds yield `None` rather than fabricating 0.
+pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
     match bound {
-        SizeBound::ExplicitCount { n } => *n,
-        SizeBound::Forever => 1,
-        _ => 0,
+        SizeBound::ExplicitCount { n } => Some(*n),
+        SizeBound::Forever => Some(1),
+        _ => None,
     }
 }
 
@@ -1030,6 +1032,13 @@ pub enum IterationDimension {
     ArithmeticRepeat,
 }
 
+/// 🟡 SCAFFOLD.
+///
+/// Rust mirror of `std.algebra::AlgebraProfile`. The variant set is closed
+/// (the seven kernel algebra profiles), but the Rust enum and the
+/// `kernel_algebra_profile` table below are transitional bridges. Dissolves
+/// when std block bodies evaluate from `.dag` and the algebra-profile
+/// authority can be queried directly instead of mirrored in Rust.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AlgebraProfile {
     OrderedRingProfile,

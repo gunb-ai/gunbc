@@ -525,9 +525,11 @@ fn computation_size_bound_helpers_match_dag_authority() {
     assert!(is_constant_bound(&explicit));
     assert!(is_constant_bound(&forever));
 
-    assert_eq!(constant_bound_value(&explicit), 7);
-    assert_eq!(constant_bound_value(&forever), 1);
-    assert_eq!(constant_bound_value(&tree), 0);
+    assert_eq!(constant_bound_value(&explicit), Some(7));
+    assert_eq!(constant_bound_value(&forever), Some(1));
+    assert_eq!(constant_bound_value(&tree), None);
+    assert_eq!(constant_bound_value(&collection), None);
+    assert_eq!(constant_bound_value(&arithmetic), None);
 }
 
 #[test]

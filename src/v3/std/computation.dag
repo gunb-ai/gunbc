@@ -129,11 +129,14 @@ fn is_constant_bound(bound: SizeBound) -> Bool {
   }
 }
 
-fn constant_bound_value(bound: SizeBound) -> Int {
+// Returns the constant value only for `SizeBound` variants that actually
+// carry one; non-constant bounds map to `none` rather than fabricating 0.
+// Pair with `is_constant_bound` at the call site if a Bool guard is needed.
+fn constant_bound_value(bound: SizeBound) -> Int? {
   match bound {
-    ExplicitCount { n: count } => count
-    Forever                    => 1
-    _                          => 0
+    ExplicitCount { n: count } => Some { value: count }
+    Forever                    => Some { value: 1 }
+    _                          => none
   }
 }
 
