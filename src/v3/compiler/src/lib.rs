@@ -850,14 +850,6 @@ pub(crate) mod lower_helpers {
 pub mod lens_idempotency {
     pub use crate::workflow_idempotency::analyze_workflow;
 }
-/// Back-compat module path for the Stage 2e parallelism lens.
-///
-/// The dedicated `lens_parallelism.rs` wrapper retired once the native-Dag
-/// bridge collapsed to a single re-export. Keep the module name as an API alias
-/// until callers move to the crate-root `analyze_parallelism` export.
-pub mod lens_parallelism {
-    pub use crate::workflow_parallelism::analyze_parallelism;
-}
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
 // `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs`,
 // `parse_parser_body.txt` → `regen_parse` → `parse_generated.rs` (`parse` module),
