@@ -170,6 +170,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 - CX gate: every recursive function terminates with a proven bound.
 - Coercion = emission: the compiler reads a target spec and translates. No separate coercion engine.
 - Ownership: the compiler proves no aliased mutation in emitted code.
+- **Grounding completeness**: target-side primitive types are structurally modeled from the target language reference (Rust Reference §Types, Python data model, Go specification), with algebra inhabitance declared structurally — not string-typed shortcuts in a lookup table. Mapping from a `.dag` type to a target primitive is a structural algebra-homomorphism search over declared inhabitance, not a name-keyed table lookup. If a `.dag` type cannot be structurally grounded to a target primitive, the compiler refuses to emit (fail-closed). See `docs/single-emitter-design.md` for architecture; the target-grounding proposal ([PR #695](https://github.com/gunb-ai/gunbc/pull/695), landing at `docs/thesis/target-grounding-proposal.md` on merge) for the concrete work breakdown; ROADMAP §"Post-R1 Program — Grounding Completeness" for the lane structure.
 
 **Tier 2 — Runtime safety (proven safe or total):**
 - Division by zero, integer overflow, out-of-bounds, force-unwrap, partial functions — either proven safe at compile time or made total. No partial functions in the runtime.
