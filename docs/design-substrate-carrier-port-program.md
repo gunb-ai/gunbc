@@ -102,7 +102,7 @@ Each lane closes with a receipt per `docs/v3-lens-capability-register.md § Disc
 
 | Lane | Register rows that move | Behavioral axis | Cementing test |
 |---|---|---|---|
-| T | — (no direct lens depends on T alone) | `complexity.dag` / `cost.dag` partial progress | Landed 2026-04-24: `src/v3/std/termination.dag` bootstraps `DescentEvidence`, `RankingDimension`, `DescentSource`, `TerminationProof`, `ProofEdge`, and lattice helpers; `lane_e_t_termination_test` covers bootstrap shape + lattice mirror behavior. |
+| T | — (no direct lens depends on T alone) | `complexity.dag` / `cost.dag` partial progress | Landed 2026-04-24: `src/v3/std/termination.dag` bootstraps `DescentEvidence`, `RankingDimension`, `DescentSource`, `TerminationProof`, `ProofEdge`, and lattice helpers; `m2_substrate_inhabitance_test` covers bootstrap shape + lattice mirror behavior. |
 | C | `cost.dag` begins PROXY → partial | PROXY still, but "What v2 has that v3 drops" column shrinks | golden for `CallPattern` dispatch |
 | I | types ported; no lens row moves yet — producer still missing | PROXY still (pending E-P) | carrier round-trip tests only |
 | P | `complexity.dag` / `cost.dag` advance on the non-method-dispatch slice; "What v2 has that v3 drops" column shrinks to `MethodSemantics` + grammar/emit items | PROXY still (pending E-M for method-dispatch) | v2-oracle-vs-v3 per-call descent-evidence golden for non-method-dispatch inputs |
