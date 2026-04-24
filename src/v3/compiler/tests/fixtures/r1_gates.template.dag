@@ -73,7 +73,7 @@ fn named_function_count(d: Dag) -> Int =
 
 data user_authored_lens_compiles_gate: TestClaim = {
   name: "user_authored_lens_compiles",
-  source: "// lenses.named_function_count - minimal user-authored lens (Day-1 gate demo).\n//\n// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A.\n// See docs/v3-lens-capability-register.md.\n//\n// **Not** bundled into `Dag::new()` bootstrap: it compiles externally via\n// `compile_to_dag` (see `m1_5_user_authored_lens_gate_test`). Demo only:\n// counts `Bind` behaviors whose `name` is non-empty. Not in `regen.dag`.\n\nmodule lenses.named_function_count\n\nimport std.list { fold }\nimport std.substrate { Dag, Behavior }\n\nfn count_named_bind(behavior: Behavior) -> Int =\n  match behavior {\n    Value(v) => 0\n    Transform(t) => 0\n    Branch(b) => 0\n    Loop(l) => 0\n    Bind(bind) => if bind.name == \"\" then 0 else 1\n  }\n\nfn named_function_count(d: Dag) -> Int =\n  fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))\n",
+  source: "R1_NAMED_FUNCTION_COUNT_LENS_SPLICE_V1",
   file_name: "src/v3/lenses/named_function_count.dag",
   predicate: Compiles,
   requires: []
