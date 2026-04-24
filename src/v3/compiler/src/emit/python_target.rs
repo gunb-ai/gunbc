@@ -804,7 +804,10 @@ impl<'a> Ctx<'a> {
         // (e.g. `__v3_idiv({lhs}, {rhs})`); render them directly instead
         // of inserting into the infix `binary_op` template.
         if carrier.contains("{lhs}") {
-            Ok(render_named_template(carrier, &[("lhs", &lhs), ("rhs", &rhs)]))
+            Ok(render_named_template(
+                carrier,
+                &[("lhs", &lhs), ("rhs", &rhs)],
+            ))
         } else {
             Ok(render_named_template(
                 &self.indexes.syntax.binary_op,
