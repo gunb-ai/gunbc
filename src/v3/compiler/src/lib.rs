@@ -845,7 +845,7 @@ pub(crate) mod lower_helpers {
 pub mod lens_idempotency;
 pub mod lens_parallelism;
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
-// `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs` (see `tokenize.rs`),
+// `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs`,
 // `parse_parser_body.txt` → `regen_parse` → `parse_generated.rs` (`parse` module),
 // then hand-authored `lower.rs` consumes `parse::SurfaceItem` (including `inhabits`).
 mod lower;
@@ -854,6 +854,15 @@ mod parse;
 mod pipeline_authority;
 mod regen_parse_emit;
 mod regen_parse_tables_emit;
+#[allow(
+    dead_code,
+    unused_imports,
+    unused_parens,
+    unused_variables,
+    clippy::clone_on_copy,
+    clippy::collapsible_else_if
+)]
+#[path = "tokenize_generated.rs"]
 mod tokenize;
 
 pub use regen_parse_emit::{render_parse_generated_rs, RenderParseGeneratedError};

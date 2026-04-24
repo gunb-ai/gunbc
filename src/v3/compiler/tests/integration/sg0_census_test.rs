@@ -4,16 +4,19 @@
 //! it into **generated** (listed in the producer-owned manifest at
 //! [`v3_compiler::generated_files::GENERATED_FILES`]) versus
 //! **hand-authored** (everything else). The hand-authored set is
-//! compared against [`EXPECTED_HAND_AUTHORED`] below — the ratchet.
+//! compared against [`EXPECTED_HAND_AUTHORED_NON_TEST`] plus
+//! [`EXPECTED_HAND_AUTHORED_TEST`] below — the ratchet. The split is
+//! load-bearing: T-PB-A owns the non-test subset, while T-PB-B owns
+//! the test subset.
 //! Drift in either direction fails:
 //!
 //! - **new hand-authored file**: a contributor added a `.rs` without
 //!   porting the logic to `.dag`. The PR should port the logic and
 //!   remove the file, reduce it to a narrow host shim (see `compiler.dag`
-//!   for the shim rule), or (last resort) extend `EXPECTED_HAND_AUTHORED`
-//!   with director sign-off.
+//!   for the shim rule), or (last resort) extend the matching
+//!   `EXPECTED_HAND_AUTHORED_*` sub-ratchet with director sign-off.
 //! - **missing expected file**: an SG lane retired the file. Remove
-//!   the entry from `EXPECTED_HAND_AUTHORED` — this is the normal
+//!   the entry from its expected sub-ratchet — this is the normal
 //!   shrinkage path and the primary success condition for SG-1..SG-7.
 //!
 //! **Producer-owned partition.** A `.rs` file counts as generated iff
@@ -37,7 +40,7 @@ use v3_compiler::generated_files::GENERATED_FILES;
 // informally named in `dsl/gunbc/compiler.dag`.
 const CENSUS_ROOT: &str = "src/v3/compiler";
 
-// All .rs files under `src/v3/compiler` that are currently
+// All non-test .rs files under `src/v3/compiler` that are currently
 // hand-authored. Sorted; one path per line, relative to the
 // workspace root. **Every SG-1..SG-7 PR shortens this list.**
 // Removing an entry means the owning lane has retired the file;
@@ -137,7 +140,7 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // hand-authored substrate, not new handwritten logic. Dissolution path:
 // the same `include!` / producer-owned route that eventually replaces
 // `dag.rs` itself replaces these submodules simultaneously.
-const EXPECTED_HAND_AUTHORED: &[&str] = &[
+const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
@@ -172,9 +175,16 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
     "src/v3/compiler/src/test_runner.rs",
-    "src/v3/compiler/src/tokenize.rs",
     "src/v3/compiler/src/workflow_idempotency.rs",
     "src/v3/compiler/src/workflow_parallelism.rs",
+];
+
+// All test .rs files under `src/v3/compiler` that are currently
+// hand-authored. Sorted; one path per line, relative to the
+// workspace root. T-PB-B owns shrinking this subset toward the
+// TESTING.md §"Post-R2 shape" residual. T-PB-A reductions must not
+// rely on this list moving.
+const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
     "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
@@ -252,6 +262,18 @@ const EXPECTED_GENERATED_FRAGMENTS: &[&str] = &[
     // Produced by `cargo test refresh_handwritten_parse_snapshot_manifest -- --ignored`.
     "src/v3/compiler/tests/integration/parse_corpus_manifest.txt",
 ];
+
+fn is_test_path(path: &str) -> bool {
+    path.starts_with("src/v3/compiler/tests/")
+}
+
+fn expected_hand_authored_rs() -> BTreeSet<String> {
+    EXPECTED_HAND_AUTHORED_NON_TEST
+        .iter()
+        .chain(EXPECTED_HAND_AUTHORED_TEST.iter())
+        .map(|p| (*p).to_string())
+        .collect()
+}
 
 fn workspace_root() -> PathBuf {
     // CARGO_MANIFEST_DIR points at src/v3/compiler/. ancestors():
@@ -333,10 +355,7 @@ fn sg0_v3_hand_authored_census() {
     let generated: BTreeSet<String> = GENERATED_FILES.iter().map(|p| (*p).to_string()).collect();
     let hand_authored: BTreeSet<String> = all_rs.difference(&generated).cloned().collect();
 
-    let expected: BTreeSet<String> = EXPECTED_HAND_AUTHORED
-        .iter()
-        .map(|p| (*p).to_string())
-        .collect();
+    let expected = expected_hand_authored_rs();
 
     if hand_authored == expected {
         return;
@@ -352,7 +371,8 @@ fn sg0_v3_hand_authored_census() {
         .collect();
 
     let mut msg = String::from(
-        "SG-0 census drift: observed hand-authored set does not match EXPECTED_HAND_AUTHORED.\n\n",
+        "SG-0 census drift: observed hand-authored set does not match \
+         EXPECTED_HAND_AUTHORED_NON_TEST ∪ EXPECTED_HAND_AUTHORED_TEST.\n\n",
     );
     if !added.is_empty() {
         msg.push_str("New hand-authored .rs files (the SG program forbids adding these):\n");
@@ -366,7 +386,8 @@ fn sg0_v3_hand_authored_census() {
              to a narrow host shim and add its path to REGEN_OUTPUTS in\n\
              src/v3/compiler/build.rs (the shim must be written by a producer —\n\
              a hand-authored `// AUTO-GENERATED` header does not count).\n\
-             Last resort: add the path to EXPECTED_HAND_AUTHORED with a\n\
+             Last resort: add the path to the matching EXPECTED_HAND_AUTHORED_* \
+             sub-ratchet with a\n\
              director-approved receipt.\n\n",
         );
     }
@@ -378,7 +399,8 @@ fn sg0_v3_hand_authored_census() {
             msg.push('\n');
         }
         msg.push_str(
-            "\nFix: remove these entries from EXPECTED_HAND_AUTHORED in\n\
+            "\nFix: remove these entries from the matching EXPECTED_HAND_AUTHORED_* \
+             sub-ratchet in\n\
              src/v3/compiler/tests/integration/sg0_census_test.rs.\n",
         );
     }
@@ -387,17 +409,152 @@ fn sg0_v3_hand_authored_census() {
 
 #[test]
 fn sg0_expected_list_is_sorted_and_unique() {
-    let mut prev: Option<&str> = None;
-    for p in EXPECTED_HAND_AUTHORED {
-        if let Some(pv) = prev {
-            assert!(
-                pv < *p,
-                "EXPECTED_HAND_AUTHORED must be sorted ASCII-ascending and unique; \
-                 `{pv}` is not strictly less than `{p}`"
-            );
+    for (label, list) in [
+        (
+            "EXPECTED_HAND_AUTHORED_NON_TEST",
+            EXPECTED_HAND_AUTHORED_NON_TEST,
+        ),
+        ("EXPECTED_HAND_AUTHORED_TEST", EXPECTED_HAND_AUTHORED_TEST),
+    ] {
+        let mut prev: Option<&str> = None;
+        for p in list {
+            if let Some(pv) = prev {
+                assert!(
+                    pv < *p,
+                    "{label} must be sorted ASCII-ascending and unique; \
+                     `{pv}` is not strictly less than `{p}`"
+                );
+            }
+            prev = Some(p);
         }
-        prev = Some(p);
     }
+    let non_test: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_NON_TEST.iter().copied().collect();
+    let test: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_TEST.iter().copied().collect();
+    let overlap: Vec<&&str> = non_test.intersection(&test).collect();
+    assert!(
+        overlap.is_empty(),
+        "EXPECTED_HAND_AUTHORED_NON_TEST and EXPECTED_HAND_AUTHORED_TEST must be disjoint; \
+         overlap: {overlap:?}"
+    );
+}
+
+#[test]
+fn sg0_expected_rs_entries_match_test_partition() {
+    let misplaced_non_test: Vec<&str> = EXPECTED_HAND_AUTHORED_NON_TEST
+        .iter()
+        .copied()
+        .filter(|p| is_test_path(p))
+        .collect();
+    assert!(
+        misplaced_non_test.is_empty(),
+        "T-PB-A non-test ratchet must not include test paths; move these to \
+         EXPECTED_HAND_AUTHORED_TEST: {misplaced_non_test:?}"
+    );
+
+    let misplaced_test: Vec<&str> = EXPECTED_HAND_AUTHORED_TEST
+        .iter()
+        .copied()
+        .filter(|p| !is_test_path(p))
+        .collect();
+    assert!(
+        misplaced_test.is_empty(),
+        "T-PB-B test ratchet must only include paths under src/v3/compiler/tests/; \
+         move these to EXPECTED_HAND_AUTHORED_NON_TEST: {misplaced_test:?}"
+    );
+}
+
+#[test]
+fn sg0_v3_non_test_hand_authored_subratchet() {
+    let ws = workspace_root();
+    let census_root = ws.join(CENSUS_ROOT);
+
+    let mut all_rs: BTreeSet<String> = BTreeSet::new();
+    walk_rs(&census_root, &ws, &mut all_rs);
+
+    let generated: BTreeSet<String> = GENERATED_FILES.iter().map(|p| (*p).to_string()).collect();
+    let hand_authored: BTreeSet<String> = all_rs.difference(&generated).cloned().collect();
+    let observed: BTreeSet<String> = hand_authored
+        .iter()
+        .filter(|p| !is_test_path(p))
+        .cloned()
+        .collect();
+    let expected: BTreeSet<String> = EXPECTED_HAND_AUTHORED_NON_TEST
+        .iter()
+        .map(|p| (*p).to_string())
+        .collect();
+
+    assert_eq!(
+        observed, expected,
+        "T-PB-A non-test SG-0 sub-ratchet drifted. Retirements should be removed \
+         from EXPECTED_HAND_AUTHORED_NON_TEST; new non-test hand-Rust needs director \
+         sign-off."
+    );
+}
+
+#[test]
+fn sg0_v3_test_hand_authored_subratchet() {
+    let ws = workspace_root();
+    let census_root = ws.join(CENSUS_ROOT);
+
+    let mut all_rs: BTreeSet<String> = BTreeSet::new();
+    walk_rs(&census_root, &ws, &mut all_rs);
+
+    let generated: BTreeSet<String> = GENERATED_FILES.iter().map(|p| (*p).to_string()).collect();
+    let hand_authored: BTreeSet<String> = all_rs.difference(&generated).cloned().collect();
+    let observed: BTreeSet<String> = hand_authored
+        .iter()
+        .filter(|p| is_test_path(p))
+        .cloned()
+        .collect();
+    let expected: BTreeSet<String> = EXPECTED_HAND_AUTHORED_TEST
+        .iter()
+        .map(|p| (*p).to_string())
+        .collect();
+
+    assert_eq!(
+        observed, expected,
+        "T-PB-B test SG-0 sub-ratchet drifted. Retirements should be removed from \
+         EXPECTED_HAND_AUTHORED_TEST; new Rust-authored tests must match the TESTING.md \
+         residual or wait for the testgen path."
+    );
+}
+
+#[test]
+fn sg0_v3_non_test_fragment_subratchet() {
+    let misplaced_fragments: Vec<&str> = EXPECTED_HAND_AUTHORED_FRAGMENTS
+        .iter()
+        .copied()
+        .filter(|p| is_test_path(p))
+        .collect();
+    assert!(
+        misplaced_fragments.is_empty(),
+        "EXPECTED_HAND_AUTHORED_FRAGMENTS is part of T-PB-A's non-test ratchet; \
+         test fragments need a separate T-PB-B fragment authority before being added: \
+         {misplaced_fragments:?}"
+    );
+
+    let ws = workspace_root();
+    let census_root = ws.join(CENSUS_ROOT);
+
+    let mut all_txt: BTreeSet<String> = BTreeSet::new();
+    walk_txt(&census_root, &ws, &mut all_txt);
+
+    let observed: BTreeSet<String> = all_txt
+        .iter()
+        .filter(|p| !is_test_path(p) && !EXPECTED_GENERATED_FRAGMENTS.contains(&p.as_str()))
+        .cloned()
+        .collect();
+    let expected: BTreeSet<String> = EXPECTED_HAND_AUTHORED_FRAGMENTS
+        .iter()
+        .map(|p| (*p).to_string())
+        .collect();
+
+    assert_eq!(
+        observed, expected,
+        "T-PB-A non-test SG-0 fragment sub-ratchet drifted. Retirements should be \
+         removed from EXPECTED_HAND_AUTHORED_FRAGMENTS; new scaffold fragments must \
+         name a dissolution trigger."
+    );
 }
 
 #[test]
