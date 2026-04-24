@@ -23,7 +23,7 @@ fn t_demo_fixture_skeleton_compiles() {
 }
 
 #[test]
-fn t_demo_compiler_nerd_claim_sources_compile() {
+fn t_demo_claim_sources_compile() {
     let claims = [
         (
             "fn pair_score(xs: List<Int>) -> Int = fold(xs, 0, |outer, x| outer + fold(xs, 0, |inner, y| inner + x + y))",
@@ -36,6 +36,18 @@ fn t_demo_compiler_nerd_claim_sources_compile() {
         (
             "let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)",
             "fixture_compiler_nerd_canonical_parallelism.v3",
+        ),
+        (
+            "let upsert_effect = derive_op_effect(\"upsert_project\", \"PUT\", \"/projects/{project_id}\")",
+            "fixture_integration_canonical_effects.v3",
+        ),
+        (
+            "let retry_verdict = compose_effects([{ operation_name: \"upsert_project\", shape: IsIdempotent(UpsertEffect { key_source: PathParam { param: \"project_id\" } }) }, { operation_name: \"append_audit_log\", shape: IsBreaking(AppendEffect) }])",
+            "fixture_integration_canonical_idempotency.v3",
+        ),
+        (
+            "import std.list { empty } let generated_claim: TestClaim = { name: \"upsert_project_compiles\", source: \"let upsert_effect = derive_op_effect(\\\"upsert_project\\\", \\\"PUT\\\", \\\"/projects/{project_id}\\\")\", file_name: \"upsert_project_claim.v3\", predicate: Compiles, requires: empty() }",
+            "fixture_integration_canonical_testgen.v3",
         ),
     ];
 
