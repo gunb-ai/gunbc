@@ -36,7 +36,8 @@ fn user_authored_lens_compiles_fixture() {
         "bootstrap Dag should expose `named_function_count` from lenses.named_function_count"
     );
     assert!(
-        dag.declaration_by_name("user_authored_lens_compiles_gate").is_some(),
+        dag.declaration_by_name("user_authored_lens_compiles_gate")
+            .is_some(),
         "bootstrap Dag should load `user_authored_lens_compiles_gate` from std.r1_gates"
     );
 
