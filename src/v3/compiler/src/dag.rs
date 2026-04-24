@@ -757,6 +757,13 @@ pub enum RankingDimension {
     SetCardinality { param: String },
 }
 
+/// 🟢 TERMINAL at positivity scope.
+///
+/// Rust mirror of `std.types::PositiveInt = Int where range(min: 1)`. The
+/// executable mirror uses `i64` until refined values carry generated runtime
+/// wrappers; consumers construct via authored paths that enforce `>= 1`.
+pub type PositiveInt = i64;
+
 /// 🟢 TERMINAL at descent-witness scope.
 ///
 /// Rust mirror of `DivisionDescentFactor = PositiveInt where range(min: 2)`.
@@ -897,8 +904,8 @@ pub fn tree_size_bound(param: String) -> SizeBound {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallPattern {
     ChildAccessorCall { accessor: String },
-    CollectionShrinkCall { amount: i64 },
-    ArithmeticDescentCall { op: String, by: i64 },
+    CollectionShrinkCall { amount: PositiveInt },
+    ArithmeticDescentCall { op: String, by: PositiveInt },
     ParserAdvanceCall { witness: String },
     WorklistDrainCall { element: String },
     FoldBodyCall,
@@ -908,12 +915,14 @@ pub enum CallPattern {
 /// 🟢 TERMINAL at shrink-factor scope.
 ///
 /// Closed algebra of how a ranking measure shrinks per call edge: by one,
-/// by a constant, or by a divisor. No further refinement at carrier layer.
+/// by a constant, or by a divisor. Amounts and divisors reuse the shared
+/// `PositiveInt` / `DivisionDescentFactor` authorities so zero / negative /
+/// divide-by-one witnesses are unrepresentable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShrinkFactor {
     UnitShrink,
-    ConstantShrink { amount: i64 },
-    ProportionalShrink { divisor: i64 },
+    ConstantShrink { amount: PositiveInt },
+    ProportionalShrink { divisor: DivisionDescentFactor },
 }
 
 /// 🟢 TERMINAL.

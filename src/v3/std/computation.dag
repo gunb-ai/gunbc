@@ -6,7 +6,8 @@
 
 module std.computation
 
-import std.termination { DescentEvidence }
+import std.termination { DescentEvidence, DivisionDescentFactor }
+import std.types { PositiveInt }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
@@ -37,8 +38,8 @@ fn tree_size_bound(param: String) -> SizeBound {
 // of `SubValueRelation` evidence rather than an authored shape.
 type CallPattern
   = ChildAccessorCall { accessor: String }
-  | CollectionShrinkCall { amount: Int }
-  | ArithmeticDescentCall { op: String, by: Int }
+  | CollectionShrinkCall { amount: PositiveInt }
+  | ArithmeticDescentCall { op: String, by: PositiveInt }
   | ParserAdvanceCall { witness: String }
   | WorklistDrainCall { element: String }
   | FoldBodyCall
@@ -46,11 +47,13 @@ type CallPattern
 
 // 🟢 TERMINAL at shrink-factor scope. Closed algebra of how a ranking
 // measure decreases per call edge: by one, by a constant, or by a divisor.
-// No further refinement is owed at the carrier layer.
+// No further refinement is owed at the carrier layer. Amounts and divisors
+// reuse the shared `PositiveInt` / `DivisionDescentFactor` authorities so
+// zero / negative / divide-by-one witnesses are unrepresentable.
 type ShrinkFactor
   = UnitShrink
-  | ConstantShrink { amount: Int }
-  | ProportionalShrink { divisor: Int }
+  | ConstantShrink { amount: PositiveInt }
+  | ProportionalShrink { divisor: DivisionDescentFactor }
 
 // 🟢 TERMINAL. The three iteration primitives are the closed alphabet of
 // the behavioral concept DAG (fold / descend / repeat); see MODELING.md M9.
