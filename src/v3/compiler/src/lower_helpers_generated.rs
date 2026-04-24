@@ -118,6 +118,7 @@ pub fn item_span(p0: &parse_surface::SurfaceItem) -> SourceSpan {
             name: __i_name,
             type_params: __i_type_params,
             target: __i_target,
+            refinement: __i_refinement,
             span: __i_span,
         } => (__i_span).clone(),
     }
