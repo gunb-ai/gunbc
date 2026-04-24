@@ -129,6 +129,8 @@ mod sg3_surface_reflection_consumer_test;
 mod sg6_hand_authored_census_test;
 #[path = "integration/sg7_prep_variant_payload_freshness_test.rs"]
 mod sg7_prep_variant_payload_freshness_test;
+#[path = "integration/t_demo_fixture_test.rs"]
+mod t_demo_fixture_test;
 #[path = "integration/thesis_parallelism_test.rs"]
 mod thesis_parallelism_test;
 #[path = "integration/thesis_validation_test.rs"]

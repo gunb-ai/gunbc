@@ -1,0 +1,54 @@
+// T-Demo R1 fixture skeletons.
+//
+// This file lands only the Day-1 predicates that compile against the
+// current DB-15 verification schema. Lens-output demo predicates stay
+// stubbed until T-LensAPI makes `lens_output_is_queryable_data` available
+// as queryable verification data.
+
+module v3.demo.t_demo_fixtures
+
+import std.list { empty }
+
+let compiler_nerd_complexity_compiles: TestClaim = {
+  name: "fixture_compiler_nerd_canonical.complexity_compiles",
+  source: "fn normalize_score(score: Int) -> Int = if score > 0 then score else 0",
+  file_name: "fixture_compiler_nerd_canonical_complexity.v3",
+  predicate: Compiles,
+  requires: empty()
+}
+
+let compiler_nerd_ownership_compiles: TestClaim = {
+  name: "fixture_compiler_nerd_canonical.ownership_compiles",
+  source: "fn keep_primary(primary: Int, fallback: Int) -> Int = primary",
+  file_name: "fixture_compiler_nerd_canonical_ownership.v3",
+  predicate: Compiles,
+  requires: empty()
+}
+
+let compiler_nerd_parallelism_compiles: TestClaim = {
+  name: "fixture_compiler_nerd_canonical.parallelism_compiles",
+  source: "fn combine_independent(left: Int, right: Int) -> Int = left + right",
+  file_name: "fixture_compiler_nerd_canonical_parallelism.v3",
+  predicate: Compiles,
+  requires: empty()
+}
+
+let fixture_compiler_nerd_canonical: TestSuite = {
+  name: "fixture_compiler_nerd_canonical",
+  claims: [
+    compiler_nerd_complexity_compiles,
+    compiler_nerd_ownership_compiles,
+    compiler_nerd_parallelism_compiles
+  ]
+}
+
+// [ext] fixture_compiler_nerd_canonical.complexity_lens_output
+//   Blocked on T-LensAPI `lens_output_is_queryable_data`.
+// [ext] fixture_compiler_nerd_canonical.ownership_lens_output
+//   Blocked on T-LensAPI `lens_output_is_queryable_data`.
+// [ext] fixture_compiler_nerd_canonical.parallelism_lens_output
+//   Blocked on T-LensAPI `lens_output_is_queryable_data`.
+//
+// Do not draft `fixture_integration_canonical` here yet. Per W2, its
+// scope must be proposed from ROADMAP.md lane authority before committing
+// the second fixture skeleton.
