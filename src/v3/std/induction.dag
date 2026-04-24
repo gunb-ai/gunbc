@@ -101,6 +101,9 @@ import std.computation {
 //
 // These enumerate the container types in the .dag language. Adding a new
 // container type to the language adds one variant here.
+//
+// 🟢 TERMINAL at E-I inductive-shape scope. Pure functor-shape partition for
+// recursive field wrappers; no name-like payloads.
 
 type RecursionShape
   = DirectRecursion       // field_type == parent_type
@@ -128,6 +131,9 @@ type RecursionShape
 //
 // For type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }:
 //   InductiveField { type_name: "MyList", variant_name: "Cons", field_name: "tail", shape: DirectRecursion }
+//
+// 🟡 SCAFFOLD. Type/variant/field identities are `String` bridges until reflected
+// declarations supply structural references; `RecursionShape` is terminal.
 
 type InductiveField {
   type_name: String         // type that owns this field ("Node", "InferredNode")
@@ -186,6 +192,9 @@ fn inductive_field_to_dimension(field: InductiveField, param: String) -> Ranking
 // SubValueUnknown is categorically different from PreservedValue:
 //   PreservedValue = the argument IS the parameter (no descent, bounded by Forever)
 //   SubValueUnknown = the analyzer cannot determine the relationship (hard error)
+//
+// 🟡 MIXED. Structural descent via `InductiveField` / `ShrinkFactor`; `ArithmeticDescent`
+// names a parameter; `SubValueUnknown` is the intentional fail-closed sink.
 
 type SubValueRelation
   = StrictSubValue { field: InductiveField, factor: ShrinkFactor }
@@ -492,6 +501,9 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
 // Constructors (cost_root, kth_root_bound) reject root ≤ 0 → ErrorBound.
 // LogBasedExp base > 1 and argument > 0 are validated at master_theorem entry.
 // Represents the exponent structurally — no precision loss.
+//
+// 🟢 TERMINAL at E-I exponent scope. `Int` payloads encode validated polynomial / root /
+// log-based exponents; invalid combinations route to `ErrorBound` at constructors / master theorem.
 
 type PolynomialExponent
   = IntegerExp { value: Int }
@@ -505,6 +517,9 @@ type PolynomialExponent
 
 // A cost factor tied to a single size parameter. These are the atoms
 // from which composite bounds are built.
+//
+// 🟡 MIXED. Exponents are terminal (`PolynomialExponent`); `param: String` is the current
+// symbolic size-parameter bridge (mirrors `RankingDimension` string slots).
 
 type AtomicCost
   = PolyCost { param: String, exponent: PolynomialExponent }  // O(n^e)
@@ -529,6 +544,9 @@ type AtomicCost
 //   O((V+E) · log V) = SumOfProductsBound { [[Poly(V,1), Log(V)], [Poly(E,1), Log(V)]] }
 //
 // This can represent any polynomial-logarithmic cost without recursion.
+//
+// 🟡 MIXED. SOP / product shapes are structural lists of `AtomicCost`; `SumBound` stacks
+// alternatives; string-named atoms inherit scaffold from `AtomicCost`; `ErrorBound` is fail-closed.
 
 type CostBound
   = ConstantBound                                // O(1)
@@ -580,6 +598,9 @@ fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
 //   a: branching factor (self-calls per execution path)
 //   b: division factor (each sub-problem is n/b of the original)
 //   d: exponent of per-level non-recursive work
+//
+// 🟡 SCAFFOLD. Master-theorem input bundles a symbolic `param: String` with `Int` recurrence
+// coefficients; structural parameter refs dissolve with reflected function params.
 
 type RecurrenceForm {
   param: String
