@@ -144,7 +144,11 @@ data python_target: TargetExecutionModel = {
 }
 
 data python_source_filtering: SourceFiltering = {
-  excluded_prefixes: ["dsl/std/", "src/v3/std/", "src/v3/spec/"]
+  excluded_prefixes: [
+    "dsl/std/",
+    "src/v3/std/",
+    "src/v3/spec/",
+  ]
 }
 
 data python_execution_requirement: ExecutionModelRequirement = GarbageCollected

@@ -179,6 +179,22 @@ fn run_program(name: &str) -> String {
     RustcHarness::run(program_harness_bin(), &[name])
 }
 
+fn program_expected(name: &str) -> &'static str {
+    PROGRAM_FIXTURES
+        .iter()
+        .find(|f| f.name == name)
+        .unwrap_or_else(|| panic!("no PROGRAM_FIXTURES entry for {name:?}"))
+        .expected_stdout
+}
+
+/// Expected output shape for a reflected-module roundtrip fixture.
+enum ReflectedExpected {
+    /// Exact stdout string (trimmed).
+    Exact(&'static str),
+    /// Any positive integer (used for `node_count`, whose exact value is not pinned).
+    PositiveInt,
+}
+
 /// Descriptor for one reflected-module rustc roundtrip fixture. Each
 /// descriptor becomes a submodule in the batched harness; tests
 /// dispatch by `name` at runtime.
@@ -190,6 +206,7 @@ struct ReflectedFixture {
     name: &'static str,
     module_source: &'static str,
     wrapper_body: &'static str,
+    expected_stdout: ReflectedExpected,
 }
 
 const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
@@ -197,6 +214,7 @@ const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
         name: "node_count",
         module_source: "fn node_count(d: Dag) -> Int = fold(d.nodes, 0, |n, node| n + 1)",
         wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); node_count(&dag)",
+        expected_stdout: ReflectedExpected::PositiveInt,
     },
     ReflectedFixture {
         name: "bind_count",
@@ -206,11 +224,13 @@ const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
         // `src/v3/std/algebra.dag` + `dimensions.dag`, whose lowered
         // bodies contribute their own Bind nodes to `d.nodes`.
         wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let baseline = v3_compiler::dag::Dag::new(); bind_count(&dag) - bind_count(&baseline)",
+        expected_stdout: ReflectedExpected::Exact("2"),
     },
     ReflectedFixture {
         name: "singleton_span",
         module_source: "fn singleton_span(bind: BindNode) -> List<SourceSpan> = [bind.span]",
         wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) => Some(bind.clone()), _ => None }).expect(\"bind\"); singleton_span(&bind).len() as i64",
+        expected_stdout: ReflectedExpected::Exact("1"),
     },
     ReflectedFixture {
         name: "result_port_is_param",
@@ -220,6 +240,7 @@ const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
         // non-empty params, the raw `params.is_empty()` filter was
         // no longer specific enough to isolate user code.
         wrapper_body: "let dag = v3_compiler::compile_to_dag(\"fn id(x: Int) -> Int = x\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) if !bind.params.is_empty() && bind.span.file == \"runtime_reflection.v3\" => Some(bind.clone()), _ => None }).expect(\"function bind\"); if result_port_is_param(&bind) { 1 } else { 0 }",
+        expected_stdout: ReflectedExpected::Exact("1"),
     },
     ReflectedFixture {
         name: "bind_names",
@@ -238,6 +259,7 @@ const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
         // though `bind_names` also materializes a record per std-
         // module bind in `d.nodes`.
         wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let baseline = v3_compiler::dag::Dag::new(); (bind_names(&dag).len() as i64) - (bind_names(&baseline).len() as i64)",
+        expected_stdout: ReflectedExpected::Exact("2"),
     },
 ];
 
@@ -290,6 +312,14 @@ fn reflected_harness_bin() -> &'static Path {
 
 fn run_reflected(name: &str) -> String {
     RustcHarness::run(reflected_harness_bin(), &[name])
+}
+
+fn reflected_expected(name: &str) -> &'static ReflectedExpected {
+    &REFLECTED_FIXTURES
+        .iter()
+        .find(|f| f.name == name)
+        .unwrap_or_else(|| panic!("no REFLECTED_FIXTURES entry for {name:?}"))
+        .expected_stdout
 }
 
 #[test]
@@ -397,6 +427,35 @@ let zero: Int = 0",
     assert!(out.contains("BoxedInt::Empty => 0,"), "got: {out}");
 }
 
+const SUB_MATCH_OVER_USER_SUM_SOURCE: &str = r#"
+type Choice = Number(Int) | Missing
+
+fn score(choice: Choice) -> Int =
+  match choice {
+    Number(value) => value
+    Missing => 0
+  }
+
+let result: Bool = score(Number(7)) == 7 && score(Missing) == 0
+"#;
+
+/// Day-1 T-Sub receipt gate for `sub_match_over_user_sum`.
+///
+/// Audit result: the first-class implementation path already exists on `main`.
+/// The parser accepts source-local `type Choice = ...` sums, lowering carries
+/// them as `Disj` + `Branch`, inference resolves arm patterns, and Rust emit
+/// renders the general enum-pattern `match` path. The surrounding tests already
+/// cover string-level Rust receipts for no-payload sums, payload sums, and
+/// imported sums.
+///
+/// This gate intentionally adds no implementation. Its narrower job is to keep
+/// the named R1/T-Sub surface live as an unignored, end-to-end pipeline receipt:
+/// parse -> lower -> infer -> Rust emit -> rustc link -> runtime execution.
+#[test]
+fn sub_match_over_user_sum_links_and_runs() {
+    assert_eq!(roundtrip_stdout(SUB_MATCH_OVER_USER_SUM_SOURCE), "true");
+}
+
 #[test]
 fn emit_rust_named_single_field_payload_routes_field_access_through_binding() {
     let out = emit(
@@ -469,7 +528,7 @@ let zero: Int = 0",
 /// `rustc_roundtrip_*` tests — CI sandboxes don't always carry a
 /// toolchain. Run locally:
 ///
-///     cargo test -p v3-compiler --test m1_3_emit_rust_test \
+///     cargo test -p v3-compiler --test integration \
 ///         emit_rust_unused_payload_binding_passes_deny_unused \
 ///         -- --ignored --nocapture
 /// E-5 / Lane 1 Stage 1c PR 4 — the pilot Rust source passes
@@ -483,7 +542,7 @@ let zero: Int = 0",
 /// Gated behind `#[ignore]` like `emit_rust_unused_payload_binding_passes_deny_unused`
 /// above — CI sandboxes don't always carry rustc. Run locally:
 ///
-///     cargo test -p v3-compiler --test m1_3_emit_rust_test \
+///     cargo test -p v3-compiler --test integration \
 ///         rust_pilot_source_passes_post_emit_verifier_harness \
 ///         -- --ignored --nocapture
 #[test]
@@ -730,59 +789,109 @@ fn roundtrip_temp_dirs_are_unique() {
 // The nine tests below dispatch into one batched rustc-roundtrip
 // program harness. Fixture sources live in `PROGRAM_FIXTURES`; the
 // harness compiles on first access and is reused across tests.
+//
+// These run unconditionally (no `#[ignore]`), giving per-fixture test
+// names in cargo output. `emit_rust_fixtures_rustc_green` (below) is the
+// `#[ignore]`d full-matrix gate that sweeps the same fixtures in one shot;
+// both coexist because the per-fixture names are useful for triage.
 
 #[test]
 fn rustc_roundtrip_list_fold_prints_six() {
-    let stdout = run_program("list_fold_six");
-    assert_eq!(stdout, "6", "compiled binary printed {stdout:?}, not `6`");
+    let name = "list_fold_six";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(
+        stdout, expected,
+        "compiled binary printed {stdout:?}, not {expected:?}"
+    );
 }
 
 #[test]
 fn rustc_roundtrip_generic_list_fold_prints_one() {
-    let stdout = run_program("generic_list_fold_one");
-    assert_eq!(stdout, "1", "compiled binary printed {stdout:?}, not `1`");
+    let name = "generic_list_fold_one";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(
+        stdout, expected,
+        "compiled binary printed {stdout:?}, not {expected:?}"
+    );
 }
 
 #[test]
 fn rustc_roundtrip_list_map_then_fold_prints_twelve() {
-    let stdout = run_program("list_map_then_fold_twelve");
-    assert_eq!(stdout, "12", "compiled binary printed {stdout:?}, not `12`");
+    let name = "list_map_then_fold_twelve";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(
+        stdout, expected,
+        "compiled binary printed {stdout:?}, not {expected:?}"
+    );
 }
 
 #[test]
 fn rustc_roundtrip_list_filter_then_fold_prints_seven() {
-    let stdout = run_program("list_filter_then_fold_seven");
-    assert_eq!(stdout, "7", "compiled binary printed {stdout:?}, not `7`");
+    let name = "list_filter_then_fold_seven";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(
+        stdout, expected,
+        "compiled binary printed {stdout:?}, not {expected:?}"
+    );
 }
 
 #[test]
 fn rustc_roundtrip_nested_list_builtins_inside_lambda_prints_six() {
-    let stdout = run_program("nested_list_builtins_inside_lambda_six");
-    assert_eq!(stdout, "6", "compiled binary printed {stdout:?}, not `6`");
+    let name = "nested_list_builtins_inside_lambda_six";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(
+        stdout, expected,
+        "compiled binary printed {stdout:?}, not {expected:?}"
+    );
 }
 
 #[test]
 fn rustc_roundtrip_user_function_call_prints_three() {
-    let stdout = run_program("user_function_call_three");
-    assert_eq!(stdout, "3", "compiled binary printed {stdout:?}, not `3`");
+    let name = "user_function_call_three";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(
+        stdout, expected,
+        "compiled binary printed {stdout:?}, not {expected:?}"
+    );
 }
 
 #[test]
 fn rustc_roundtrip_recursive_function_call_prints_six() {
-    let stdout = run_program("recursive_function_call_six");
-    assert_eq!(stdout, "6", "compiled binary printed {stdout:?}, not `6`");
+    let name = "recursive_function_call_six";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(
+        stdout, expected,
+        "compiled binary printed {stdout:?}, not {expected:?}"
+    );
 }
 
 #[test]
 fn rustc_roundtrip_record_literal_through_function_prints_one() {
-    let stdout = run_program("record_literal_through_function_one");
-    assert_eq!(stdout, "1", "compiled binary printed {stdout:?}, not `1`");
+    let name = "record_literal_through_function_one";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(
+        stdout, expected,
+        "compiled binary printed {stdout:?}, not {expected:?}"
+    );
 }
 
 #[test]
 fn rustc_roundtrip_user_sum_match_prints_zero() {
-    let stdout = run_program("user_sum_match_zero");
-    assert_eq!(stdout, "0", "compiled binary printed {stdout:?}, not `0`");
+    let name = "user_sum_match_zero";
+    let stdout = run_program(name);
+    let expected = program_expected(name);
+    assert_eq!(
+        stdout, expected,
+        "compiled binary printed {stdout:?}, not {expected:?}"
+    );
 }
 
 // The five reflected-module tests below share one batched harness
@@ -792,45 +901,65 @@ fn rustc_roundtrip_user_sum_match_prints_zero() {
 
 #[test]
 fn rustc_roundtrip_emitted_module_invokes_reflected_dag_function() {
-    let stdout = run_reflected("node_count");
-    assert!(
-        stdout.parse::<i64>().is_ok_and(|count| count > 0),
-        "compiled reflected Dag function should return a positive node count, got {stdout:?}"
-    );
+    let name = "node_count";
+    let stdout = run_reflected(name);
+    match reflected_expected(name) {
+        ReflectedExpected::PositiveInt => assert!(
+            stdout.parse::<i64>().is_ok_and(|n| n > 0),
+            "compiled reflected Dag function should return a positive node count, got {stdout:?}"
+        ),
+        ReflectedExpected::Exact(expected) => assert_eq!(stdout, *expected),
+    }
 }
 
 #[test]
 fn rustc_roundtrip_emitted_module_matches_reflected_behavior_payloads() {
-    let stdout = run_reflected("bind_count");
+    let name = "bind_count";
+    let stdout = run_reflected(name);
+    let ReflectedExpected::Exact(expected) = reflected_expected(name) else {
+        panic!("bind_count expected Exact")
+    };
     assert_eq!(
-        stdout, "2",
+        stdout, *expected,
         "compiled reflected Behavior match should count the two top-level binds, got {stdout:?}"
     );
 }
 
 #[test]
 fn rustc_roundtrip_emitted_module_returns_reflected_source_span_list() {
-    let stdout = run_reflected("singleton_span");
+    let name = "singleton_span";
+    let stdout = run_reflected(name);
+    let ReflectedExpected::Exact(expected) = reflected_expected(name) else {
+        panic!("singleton_span expected Exact")
+    };
     assert_eq!(
-        stdout, "1",
+        stdout, *expected,
         "compiled reflected function returning List<SourceSpan> should yield a singleton list, got {stdout:?}"
     );
 }
 
 #[test]
 fn rustc_roundtrip_emitted_module_compares_reflected_port_ids_in_list_contains() {
-    let stdout = run_reflected("result_port_is_param");
+    let name = "result_port_is_param";
+    let stdout = run_reflected(name);
+    let ReflectedExpected::Exact(expected) = reflected_expected(name) else {
+        panic!("result_port_is_param expected Exact")
+    };
     assert_eq!(
-        stdout, "1",
+        stdout, *expected,
         "compiled reflected function should compare PortId handles through list contains, got {stdout:?}"
     );
 }
 
 #[test]
 fn rustc_roundtrip_emitted_module_returns_user_record_list_from_reflected_binds() {
-    let stdout = run_reflected("bind_names");
+    let name = "bind_names";
+    let stdout = run_reflected(name);
+    let ReflectedExpected::Exact(expected) = reflected_expected(name) else {
+        panic!("bind_names expected Exact")
+    };
     assert_eq!(
-        stdout, "2",
+        stdout, *expected,
         "compiled reflected function should return a user record per top-level bind, got {stdout:?}"
     );
 }
@@ -840,7 +969,7 @@ fn rustc_roundtrip_emitted_module_returns_user_record_list_from_reflected_binds(
 /// Gated behind `#[ignore]` because CI runners often don't have a
 /// Rust toolchain available inside the test sandbox. Run locally:
 ///
-///     cargo test -p v3-compiler --test m1_3_emit_rust_test \
+///     cargo test -p v3-compiler --test integration \
 ///                  -- --ignored --nocapture
 ///
 /// This is the PR-B success criterion made literal: the v3 compiler
@@ -852,4 +981,56 @@ fn rustc_roundtrip_emitted_module_returns_user_record_list_from_reflected_binds(
 fn rustc_roundtrip_int_addition_prints_three() {
     let stdout = roundtrip_stdout("let x: Int = 1 + 2");
     assert_eq!(stdout, "3", "compiled binary printed {stdout:?}, not `3`");
+}
+
+/// Gate test: the full Rust fixture matrix (all 9 program fixtures and
+/// all 5 reflected-module fixtures) compiles and produces the expected
+/// output under a real `rustc`. Passes when every individual
+/// `rustc_roundtrip_*` test would pass.
+///
+/// Gated behind `#[ignore]` because CI runners may not have `rustc`.
+/// The individual `rustc_roundtrip_*` tests above are unignored (they
+/// run unconditionally); this gate sweeps them in one shot for a fast
+/// go/no-go signal. Run locally:
+///
+///     cargo test -p v3-compiler --test integration \
+///         emit_rust_fixtures_rustc_green -- --ignored --nocapture
+#[test]
+#[ignore]
+fn emit_rust_fixtures_rustc_green() {
+    let mut failures: Vec<String> = Vec::new();
+
+    for fixture in PROGRAM_FIXTURES {
+        let stdout = run_program(fixture.name);
+        if stdout != fixture.expected_stdout {
+            failures.push(format!(
+                "program {:?}: expected {:?}, got {stdout:?}",
+                fixture.name, fixture.expected_stdout,
+            ));
+        }
+    }
+
+    for fixture in REFLECTED_FIXTURES {
+        let stdout = run_reflected(fixture.name);
+        let (ok, label) = match &fixture.expected_stdout {
+            ReflectedExpected::Exact(expected) => (stdout == *expected, format!("{expected:?}")),
+            ReflectedExpected::PositiveInt => (
+                stdout.parse::<i64>().is_ok_and(|n| n > 0),
+                "positive integer".to_owned(),
+            ),
+        };
+        if !ok {
+            failures.push(format!(
+                "reflected {:?}: expected {label}, got {stdout:?}",
+                fixture.name,
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "emit_rust_fixtures_rustc_green: {} fixture(s) failed:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
