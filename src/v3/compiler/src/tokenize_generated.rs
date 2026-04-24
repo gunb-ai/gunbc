@@ -2,6 +2,7 @@
 // `regen_tokenize`. Regenerate instead of hand-editing.
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
+use crate::tokenize_char_class::{byte_matches, TokenizerCharClass};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
@@ -66,7 +67,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
     while pos < bytes.len() {
         let byte = bytes[pos];
 
-        if byte.is_ascii_whitespace() {
+        if byte_matches(byte, TokenizerCharClass::Whitespace) {
             pos += 1;
             continue;
         }
@@ -93,9 +94,9 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             continue;
         }
 
-        if byte.is_ascii_digit() {
+        if byte_matches(byte, TokenizerCharClass::Digit) {
             let mut end = pos;
-            while end < bytes.len() && bytes[end].is_ascii_digit() {
+            while end < bytes.len() && byte_matches(bytes[end], TokenizerCharClass::Digit) {
                 end += 1;
             }
             let literal = &source[start..end];
@@ -112,9 +113,9 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             continue;
         }
 
-        if byte.is_ascii_alphabetic() || byte == b'_' {
+        if byte_matches(byte, TokenizerCharClass::IdentStart) {
             let mut end = pos;
-            while end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {
+            while end < bytes.len() && byte_matches(bytes[end], TokenizerCharClass::IdentContinue) {
                 end += 1;
             }
             let text = &source[start..end];
