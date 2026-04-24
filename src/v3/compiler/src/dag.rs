@@ -1123,10 +1123,7 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
         let Some(caller) = declaration_body_bind(dag, caller_decl) else {
             continue;
         };
-        let Some(caller_template) = callable_target_template_for_provenance(dag, caller_decl.id)
-        else {
-            continue;
-        };
+        let caller_template = callable_target_template_for_provenance(dag, caller_decl.id);
         let owned_transforms = bind_body_transform_ids(dag, caller);
 
         for transform in dag.nodes().iter().filter_map(Behavior::as_transform) {
@@ -1136,28 +1133,28 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
             let TransformTarget::Callable(target_decl) = transform.target else {
                 continue;
             };
-            let Some(callee_template) = callable_target_template_for_provenance(dag, target_decl)
-            else {
-                continue;
+            let callee_template = callable_target_template_for_provenance(dag, target_decl);
+            let evidence = match (caller_template, callee_template) {
+                (CallableProvenance::Resolved(caller), CallableProvenance::Resolved(callee))
+                    if caller == callee =>
+                {
+                    transform
+                        .inputs
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, arg)| classify_call_argument(dag, caller, idx, *arg))
+                        .collect()
+                }
+                (CallableProvenance::Resolved(_), CallableProvenance::Resolved(_)) => continue,
+                (CallableProvenance::Resolved(_), CallableProvenance::Unresolved)
+                | (CallableProvenance::Unresolved, _) => {
+                    vec![SubValueRelation::SubValueUnknown; transform.inputs.len()]
+                }
             };
-            if callee_template != caller_template {
-                continue;
-            }
-
-            let evidence = transform
-                .inputs
-                .iter()
-                .enumerate()
-                .map(|(idx, arg)| classify_call_argument(dag, caller, idx, *arg))
-                .collect();
             entries.push(CallDescentEvidence {
                 call: transform.id,
                 caller: caller.name.clone(),
-                callee: dag
-                    .declaration(callee_template)
-                    .name
-                    .clone()
-                    .unwrap_or_else(|| format!("decl#{}", callee_template.raw())),
+                callee: callee_name_for_provenance(dag, target_decl, callee_template),
                 evidence,
             });
         }
@@ -1274,17 +1271,40 @@ fn collect_body_node(
     }
 }
 
-fn callable_target_template_for_provenance(
-    dag: &Dag,
-    mut decl: DeclarationId,
-) -> Option<DeclarationId> {
-    for _ in 0..16 {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CallableProvenance {
+    Resolved(DeclarationId),
+    Unresolved,
+}
+
+const CALLABLE_PROVENANCE_TEMPLATE_DEPTH_LIMIT: usize = 16;
+
+fn callable_target_template_for_provenance(dag: &Dag, mut decl: DeclarationId) -> CallableProvenance {
+    // Bounded peel over materialized instantiations. Hitting the cap means the
+    // producer cannot prove self-vs-non-self provenance, so callers emit
+    // `SubValueUnknown` rather than silently dropping the call edge.
+    for _ in 0..CALLABLE_PROVENANCE_TEMPLATE_DEPTH_LIMIT {
         match &dag.declaration(decl).connective {
             TypeConnective::Instantiation { template, .. } => decl = *template,
-            _ => return Some(decl),
+            _ => return CallableProvenance::Resolved(decl),
         }
     }
-    None
+    CallableProvenance::Unresolved
+}
+
+fn callee_name_for_provenance(
+    dag: &Dag,
+    target: DeclarationId,
+    provenance: CallableProvenance,
+) -> String {
+    let label = match provenance {
+        CallableProvenance::Resolved(template) => template,
+        CallableProvenance::Unresolved => target,
+    };
+    dag.declaration(label)
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("decl#{}", label.raw()))
 }
 
 fn classify_call_argument(
