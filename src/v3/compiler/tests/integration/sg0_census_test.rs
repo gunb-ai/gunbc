@@ -412,7 +412,10 @@ fn check_sorted_unique(label: &str, list: &[&str]) {
 
 #[test]
 fn sg0_expected_list_is_sorted_and_unique() {
-    check_sorted_unique("EXPECTED_HAND_AUTHORED_NON_TEST", EXPECTED_HAND_AUTHORED_NON_TEST);
+    check_sorted_unique(
+        "EXPECTED_HAND_AUTHORED_NON_TEST",
+        EXPECTED_HAND_AUTHORED_NON_TEST,
+    );
     check_sorted_unique("EXPECTED_HAND_AUTHORED_TEST", EXPECTED_HAND_AUTHORED_TEST);
 }
 
