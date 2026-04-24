@@ -4,6 +4,14 @@
 
 **Authority:** OpenAI-pro loop summary (SHIP_WITH_DEBT); in-tree facts from the landed diff (Peano carriers, fail-closed numeric helpers, `CallPattern` lowering, substrate tests).
 
+## Ingested dashboard relays (audit log)
+
+Scheduled / relayed GitHub **api-review** context is copied here so the queue does not need re-parsing; **verdicts bind to the SHA named in the relay**, not necessarily current `HEAD`.
+
+| Ingested (UTC) | Relay | SHA reviewed | Verdict | Summary |
+|----------------|-------|--------------|---------|---------|
+| 2026-04-24 19:33 | `[api-review]` codex / codex-default (briansrls on #726) | `8f8ab27c` | **APPROVE** | No invariant / modeling-discipline / coding / testing violations asserted; scaffolds documented with bounded triggers; Peano / int bridges fail-closed. Verified tests cited in relay: `v2-compiler-tests` (int pow, Peano cap, sub-value lattice), `v3-compiler` E-I bootstrap CostBound test. Dashboard indicated **+12 more queued** after this comment — not expanded here; triage under **§ Pending dashboard** on `HEAD` if still open. |
+
 ## What already landed (not debt)
 
 - Raw shrink/divisor slots moved toward **structural Peano carriers** (`PositiveDescentAmount`, `ProportionalDivisor`) with M9-style caps and tests.
