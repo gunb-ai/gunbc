@@ -160,7 +160,7 @@ pub fn field_value_from_value_body(
     }
 }
 
-fn clone_field_value(_fixture_dag: &Dag, value: &FieldValue) -> Result<FieldValue, LensApplyError> {
+fn clone_field_value(fixture_dag: &Dag, value: &FieldValue) -> Result<FieldValue, LensApplyError> {
     match value {
         FieldValue::Literal(bits) => Ok(FieldValue::Literal(bits.clone())),
         FieldValue::Reference(id) => Ok(FieldValue::Reference(*id)),
@@ -371,6 +371,13 @@ impl<'a> EvalCtx<'a> {
         let decl = self.dag.declaration(callee);
         if self.dag.std_list_fold_decl() == Some(callee) {
             return self.eval_std_fold(arg_ports);
+        }
+        if let TypeConnective::Instantiation { template, .. } = &decl.connective {
+            // Monomorphized user functions (`count_named_bind`, …) lower as `Instantiation`
+            // carriers; interpretation follows the generic template `Arrow`.
+            if self.dag.std_list_fold_decl() != Some(*template) {
+                return self.eval_callable(*template, arg_ports);
+            }
         }
         let name = decl.name.clone().unwrap_or_default();
         let TypeConnective::Arrow {

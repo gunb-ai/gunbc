@@ -1,6 +1,6 @@
 use crate::dag::{
-    Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, PortId, PortState,
-    TypeConnective, ValueBody,
+    Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective,
+    ValueBody,
 };
 use crate::diagnostics::Diagnostic;
 use crate::lens_apply::{
