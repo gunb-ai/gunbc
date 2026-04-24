@@ -29,6 +29,8 @@ use SizeBound::*;
 #[serde(tag = "_variant")]
 pub enum SizeBound {
     CollectionSize { param: String },
+    ParserStreamSize { witness: String },
+    WorklistDrainSize { element: String },
     TreeSize { param: String },
     ArithmeticParam { param: String },
     ExplicitCountZero,
@@ -145,13 +147,13 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
         }),
         CallPattern::ParserAdvanceCall { witness: w, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize { param: w.clone() }),
+            bound: Rc::new(SizeBound::ParserStreamSize { witness: w.clone() }),
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
         CallPattern::WorklistDrainCall { element: e, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize { param: e.clone() }),
+            bound: Rc::new(SizeBound::WorklistDrainSize { element: e.clone() }),
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
@@ -177,6 +179,8 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
     match (*bound).clone() {
         SizeBound::TreeSize { param: p, .. } => Some(p.clone()),
         SizeBound::CollectionSize { param: p, .. } => Some(p.clone()),
+        SizeBound::ParserStreamSize { witness: w, .. } => Some(w.clone()),
+        SizeBound::WorklistDrainSize { element: e, .. } => Some(e.clone()),
         SizeBound::ArithmeticParam { param: p, .. } => Some(p.clone()),
         SizeBound::ExplicitCountZero => None,
         SizeBound::ExplicitCountPositive { .. } => None,
