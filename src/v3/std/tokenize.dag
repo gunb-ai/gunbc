@@ -7,6 +7,9 @@
 
 module v3.std.tokenize
 
+import std.list { List }
+import std.types { Char }
+
 import v3.std.substrate { SourceSpan }
 
 // 🟢 TERMINAL at the shared token-taxonomy scope. The token-kind split is the
@@ -126,7 +129,7 @@ type PunctTokenKind
 // authored; moving them to `std/` dissolves the old compiler-only duplicate
 // authority rather than creating a new scaffold.
 type LocalPunctSpec {
-  pattern: String
+  pattern: List<Char>
   kind: PunctTokenKind
 }
 
@@ -137,6 +140,6 @@ type LocalPunctSpec {
 // 🟢 TERMINAL. Escape rows are lexical facts of the shared `.dag` token surface,
 // not a temporary compiler bridge.
 type StringEscapeSpec {
-  suffix: String
-  output_codepoint: Int
+  suffix: Char
+  output_codepoint: Char
 }

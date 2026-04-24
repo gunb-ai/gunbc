@@ -77,6 +77,9 @@
 
 module v3.compiler.tokenize
 
+import std.types { Char }
+import std.unicode { CharClass }
+
 import v3.std.tokenize {
   KeywordTokenKind,
   LocalPunctSpec,
@@ -95,29 +98,37 @@ data diagnostic_unterminated_string_literal: String = "unterminated string liter
 data diagnostic_invalid_integer_literal_prefix: String = "invalid integer literal `"
 data diagnostic_invalid_integer_literal_suffix: String = "`"
 
-// Line comment begins with this two-byte prefix; scanner runs to `\n` or EOF.
-data line_comment_prefix: String = "//"
+// Line comment begins with this two-codepoint prefix; scanner runs to `\n` or EOF.
+data line_comment_prefix: List<Char> = [47, 47]
 
-// Opening delimiter for string literals (one ASCII character).
-data string_literal_delimiter: String = "\""
+// Opening delimiter for string literals (one ASCII scalar).
+data string_literal_delimiter: Char = 34
 
-data string_escape_dquote: StringEscapeSpec = { suffix: "\"", output_codepoint: 34 }
-data string_escape_backslash: StringEscapeSpec = { suffix: "\\", output_codepoint: 92 }
-data string_escape_n: StringEscapeSpec = { suffix: "n", output_codepoint: 10 }
-data string_escape_r: StringEscapeSpec = { suffix: "r", output_codepoint: 13 }
-data string_escape_t: StringEscapeSpec = { suffix: "t", output_codepoint: 9 }
+// Structural binding from `std.unicode::CharClass` to each scanner phase that
+// historically inlined Rust `is_ascii_*` predicates. `regen_tokenize` reads
+// these declarations and emits `crate::tokenize_char_class::byte_matches`.
+data tokenizer_scan_whitespace_class: CharClass = Whitespace
+data tokenizer_scan_digit_class: CharClass = Digit
+data tokenizer_scan_ident_start_class: CharClass = IdentStart
+data tokenizer_scan_ident_continue_class: CharClass = IdentContinue
 
-data local_punct_eq: LocalPunctSpec = { pattern: "=", kind: Eq }
-data local_punct_colon: LocalPunctSpec = { pattern: ":", kind: Colon }
-data local_punct_arrow: LocalPunctSpec = { pattern: "->", kind: Arrow }
-data local_punct_fat_arrow: LocalPunctSpec = { pattern: "=>", kind: FatArrow }
-data local_punct_lparen: LocalPunctSpec = { pattern: "(", kind: LParen }
-data local_punct_rparen: LocalPunctSpec = { pattern: ")", kind: RParen }
-data local_punct_lbrace: LocalPunctSpec = { pattern: "{", kind: LBrace }
-data local_punct_rbrace: LocalPunctSpec = { pattern: "}", kind: RBrace }
-data local_punct_lbracket: LocalPunctSpec = { pattern: "[", kind: LBracket }
-data local_punct_rbracket: LocalPunctSpec = { pattern: "]", kind: RBracket }
-data local_punct_comma: LocalPunctSpec = { pattern: ",", kind: Comma }
-data local_punct_semicolon: LocalPunctSpec = { pattern: ";", kind: Semicolon }
-data local_punct_pipe: LocalPunctSpec = { pattern: "|", kind: Pipe }
-data local_punct_question: LocalPunctSpec = { pattern: "?", kind: Question }
+data string_escape_dquote: StringEscapeSpec = { suffix: 34, output_codepoint: 34 }
+data string_escape_backslash: StringEscapeSpec = { suffix: 92, output_codepoint: 92 }
+data string_escape_n: StringEscapeSpec = { suffix: 110, output_codepoint: 10 }
+data string_escape_r: StringEscapeSpec = { suffix: 114, output_codepoint: 13 }
+data string_escape_t: StringEscapeSpec = { suffix: 116, output_codepoint: 9 }
+
+data local_punct_eq: LocalPunctSpec = { pattern: [61], kind: Eq }
+data local_punct_colon: LocalPunctSpec = { pattern: [58], kind: Colon }
+data local_punct_arrow: LocalPunctSpec = { pattern: [45, 62], kind: Arrow }
+data local_punct_fat_arrow: LocalPunctSpec = { pattern: [61, 62], kind: FatArrow }
+data local_punct_lparen: LocalPunctSpec = { pattern: [40], kind: LParen }
+data local_punct_rparen: LocalPunctSpec = { pattern: [41], kind: RParen }
+data local_punct_lbrace: LocalPunctSpec = { pattern: [123], kind: LBrace }
+data local_punct_rbrace: LocalPunctSpec = { pattern: [125], kind: RBrace }
+data local_punct_lbracket: LocalPunctSpec = { pattern: [91], kind: LBracket }
+data local_punct_rbracket: LocalPunctSpec = { pattern: [93], kind: RBracket }
+data local_punct_comma: LocalPunctSpec = { pattern: [44], kind: Comma }
+data local_punct_semicolon: LocalPunctSpec = { pattern: [59], kind: Semicolon }
+data local_punct_pipe: LocalPunctSpec = { pattern: [124], kind: Pipe }
+data local_punct_question: LocalPunctSpec = { pattern: [63], kind: Question }

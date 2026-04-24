@@ -10,6 +10,28 @@ module std.unicode
 
 import std.types { Char }
 
+// --- Lexical character classes (ASCII-oriented tokenizer vocabulary) ---
+//
+// These intentionally align with the historical Rust `u8` scanner helpers
+// (`is_ascii_whitespace`, `is_ascii_digit`, `is_ascii_alphabetic`,
+// `is_ascii_alphanumeric`) on the ASCII sub-range: they classify Unicode
+// scalar values (`Char` / `Int` code points) by the same ASCII byte rules
+// the v3 `.dag` tokenizer uses today. Full Unicode identifier classes are a
+// separate follow-up.
+
+type CharClass = Whitespace | Digit | IdentStart | IdentContinue
+
+fn char_in_class(c: Char, class: CharClass) -> Bool {
+  let cp = code_point(c: c)
+  match class {
+    Whitespace => (cp >= 9 && cp <= 13) || cp == 32
+    Digit => cp >= 48 && cp <= 57
+    IdentStart => (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || cp == 95
+    IdentContinue => char_in_class(c: c, class: Digit)
+      || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || cp == 95
+  }
+}
+
 // --- Display width classification ---
 //
 //      DisplayWidth
