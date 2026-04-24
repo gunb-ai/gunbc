@@ -208,17 +208,28 @@ type SubValueRelation
 // SubValueRelation → DescentEvidence
 // =========================================================================
 
-// `ArithmeticDescent` → `Strict` does not re-check numeric rates here: `ShrinkFactor`
-// carries only `PositiveDescentAmount` / `ProportionalDivisor` (`std.computation`), so
-// non-positive linear steps and divisors < 2 are not representable as proof payloads.
-// Literal sites that still see `Int` validate at the producer (e.g. v2 infer bridges
-// on `std.termination`) and fail closed to `SubValueUnknown` instead of minting this variant.
+// `ShrinkFactor` has no raw `Int` rate fields — only `UnitShrink` and carriers into
+// `PositiveDescentAmount` / `ProportionalDivisor` (`std.computation` / `std.termination`).
+// Non-positive steps and divisors < 2 are therefore not representable here; producers
+// that still see `Int` validate upstream and fail closed to `SubValueUnknown` instead of
+// minting `ArithmeticDescent` / `StrictSubValue`. Evidence mapping matches on `factor`
+// so `Strict` is issued only alongside an exhaustively-known proof-grade shrink shape.
 
 fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
   match relation {
-    StrictSubValue { field: _, factor: _ }   => Strict
+    StrictSubValue { field: _, factor: f } =>
+      match f {
+        UnitShrink => Strict
+        ConstantShrink { steps: _ } => Strict
+        ProportionalShrink { divisor: _ } => Strict
+      }
     IteratedSubValue { field: _ }            => Strict
-    ArithmeticDescent { param: _, factor: _ } => Strict
+    ArithmeticDescent { param: _, factor: f } =>
+      match f {
+        UnitShrink => Strict
+        ConstantShrink { steps: _ } => Strict
+        ProportionalShrink { divisor: _ } => Strict
+      }
     PreservedValue                           => NonIncreasing
     SubValueUnknown                          => DescentUnknown
   }

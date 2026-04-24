@@ -108,9 +108,17 @@ pub enum SubValueRelation {
 
 pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence {
     match (*relation).clone() {
-        SubValueRelation::StrictSubValue { .. } => DescentEvidence::Strict,
+        SubValueRelation::StrictSubValue { factor: f, .. } => match (*f.clone()).clone() {
+            ShrinkFactor::UnitShrink => DescentEvidence::Strict,
+            ShrinkFactor::ConstantShrink { .. } => DescentEvidence::Strict,
+            ShrinkFactor::ProportionalShrink { .. } => DescentEvidence::Strict,
+        },
         SubValueRelation::IteratedSubValue { .. } => DescentEvidence::Strict,
-        SubValueRelation::ArithmeticDescent { .. } => DescentEvidence::Strict,
+        SubValueRelation::ArithmeticDescent { factor: f, .. } => match (*f.clone()).clone() {
+            ShrinkFactor::UnitShrink => DescentEvidence::Strict,
+            ShrinkFactor::ConstantShrink { .. } => DescentEvidence::Strict,
+            ShrinkFactor::ProportionalShrink { .. } => DescentEvidence::Strict,
+        },
         SubValueRelation::PreservedValue => DescentEvidence::NonIncreasing,
         SubValueRelation::SubValueUnknown => DescentEvidence::DescentUnknown,
     }
