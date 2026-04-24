@@ -10,6 +10,8 @@
 | #589 (parser staging / SG-2, session `quiet-owl-783`) | https://github.com/gunb-ai/gunbc/pull/589 |
 | #593 (SG-3f-prep / lower lane, session `nimble-bee-243`) | https://github.com/gunb-ai/gunbc/pull/593 |
 | #664 (compiler→std tranche 2 / `v3.std.parse_surface`, session `zesty-lark-436`) | https://github.com/gunb-ai/gunbc/pull/664 |
+| #707 (T-TestGen schema extensions, session `eager-wren-78`) | https://github.com/gunb-ai/gunbc/pull/707 |
+| #708 (T-TestGen / stacked `pr-707` head; same session relay bucket) | https://github.com/gunb-ai/gunbc/pull/708 |
 
 #### #664 relay index (dashboard ingest — pointers only)
 
@@ -37,6 +39,14 @@ Full text stays on **GitHub**; this index is a stable handle for agents. **Codex
 | **`api-review`** (claude-opus-4-7) — **`bb152000…`** @ **2026-04-22T23:23:36Z** — **`<!-- [api-review] provider:claude model:claude-opus-4-7 sha:bb152000 trigger:schedule -->`** (head after `3ee4d1c4` third **codex** **PR** **review** ingest) — **cosmetic:** `pb1_bootstrap_full_snapshot_test.rs:25` assert **no-runtime-mirrors**… vs `without_parse_surface` sweep; **awareness** (not an ask): `m2` :**1001** `runtime_mirror_snapshots_are_fresh` + `regen_runtime_mirrors.py` (script **OOS** per PR) — **P2** (single authority) + **P5** (atomic dissolution) + **ratchet** 19→5 (5 **lens**-side rows) + **first-of-name** renames end-to-end (`bootstrap_generated_without_parse_surface*`, `regen_parse` path to `std/parse_surface.dag`) **verified** in **body** — **Verdict:** **APPROVE_WITH_COMMENTS** — fix **pb1** assert string in **follow-up** — [issue comment (authoritative)](https://github.com/gunb-ai/gunbc/pull/664#issuecomment-4300581460) |
 | **`api-review`** (codex / gpt-5.4) — **`bb152000…`** @ **2026-04-22T23:27:15Z** — **`<!-- [api-review] provider:codex model:gpt-5.4 sha:bb152000 trigger:schedule -->`** (same **tip** `bb152000` as claude 23:23) — **Verdict:** **APPROVE** — `runtime_mirrors.dag` → `src/v3/std/parse_surface.dag` **tightens** single-authority; **staged** **exclusion** for bootstrap; consumers + SG-2 / PB-1 **ratchets** consistent; **no** parallel / **fail-open** compile; no concrete **INVARIANTS** / **modeling** / **CODING** / **TESTING** violation in **+** **diff** — verdict from **diff** + **spot-checks**; **no** full **`cargo test`** (workspace **compiling** — not a product red) — [issue comment (authoritative)](https://github.com/gunb-ai/gunbc/pull/664#issuecomment-4300593335) |
 | **`api-review`** (openai-pro / gpt-5-4-pro) — **`3ee4d1c4…`** @ **2026-04-22T23:39:21Z** — **`<!-- [api-review] provider:openai-pro model:gpt-5-4-pro sha:3ee4d1c4 trigger:manual -->`** (parent **same** receipt **`3ee4d1c4`**, **manual**; **separate** from `bb152000` — **Narrative + invariant rubric** in full **body** on **GitHub**) — **LAYER** / **INVARIANTS+MODELING** (single authority, first-of-name, `parse_surface` coproducts) + **CODING** (split bootstrap exclusions) + **TESTING** (sg2/pb1/sg3 integration hooks) + **ROADMAP**/thesis/ratchet alignment — **Compliant** across sections **per** issue text — **Verdict:** **APPROVE** — [issue comment (authoritative on GitHub)](https://github.com/gunb-ai/gunbc/pull/664#issuecomment-4300640780) — [external ChatGPT **conversation** (same run)](https://chatgpt.com/g/g-p-69e3c70def688191bf8fa7c2cb3292ba-gunbc-review/c/69e95614-6674-83ea-ae32-2cbcee3a5426) |
+
+#### #707 relay index (dashboard ingest — pointers only)
+
+Full text stays on **GitHub**; this index is a stable handle for agents.
+
+| Source | Link |
+|:---|:---|
+| **`api-review`** (relay — **Human** dashboard ingest) — **`94fe21be…`** @ **2026-04-24T05:02:58Z** — **`<!-- [api-review] provider:claude model:claude-opus-4-7 sha:94fe21be trigger:schedule -->`** — **Verdict:** **APPROVE** — test-only diff: hand-authored `TestClaim`/`TestSuite`, integration `TestRunner::run_suite`, sg0 census, `#[ignore]` path rewired; fixture kept out of `src/v3/std/*.dag` bootstrap regen — **ingest note:** relay body shorthand **`tests/fixtures/`** / **`r1_manual_claim_gate.dag:1-6`** — at **`94fe21be`** canonical file is **`src/v3/compiler/tests/fixtures/r1_gates.dag`** (header **~L10–16** document non-bootstrap placement); **same intent** as review — [issue comment (authoritative)](https://github.com/gunb-ai/gunbc/pull/707#issuecomment-4310769771) — **+7** in relay payload = other queued dashboard items |
 
 #### #589 relay index (dashboard ingest — pointers only)
 
