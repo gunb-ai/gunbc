@@ -5103,6 +5103,18 @@ impl<'a> Ctx<'a> {
                     &[("element", &inner)],
                 ))
             }
+            // Named user `Conj` / `Disj`: a field may hold first-class `fn` data, so
+            // `decl_includes_first_class_arrow_data` can block the **alias** fast
+            // path above — this connective is still a real `pub struct` / `enum` we
+            // emit, and the bare name is a valid forward reference in other
+            // parameter / return positions (PR #676 follow-up, claude review).
+            TypeConnective::Conj { .. } | TypeConnective::Disj { .. } => {
+                if let Some(n) = &decl.name {
+                    Ok(n.clone())
+                } else {
+                    Err(EmitError::MissingTypeRealization { target: declaration })
+                }
+            }
             // First-class anonymous `fn` (`ArrowBody::NoBody` only): `impl Fn + Clone` is **not**
             // produced here — only `StorageRcDynFn` → `Rc<dyn Fn…>` or
             // `RejectFirstClassFn` → `UnsupportedBehavior` (INVARIANTS.md C-8).

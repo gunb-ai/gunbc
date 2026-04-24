@@ -467,6 +467,22 @@ fn emit_callable_field_types_expand_chained_fn_type_alias() {
     );
 }
 
+/// #676: a user `struct` that **contains** a first-class `fn` (via a type alias)
+/// must still lower the **name** in non-field positions (`fn` params), not
+/// `MissingTypeRealization` (claude review, follow-up to `decl_includes` in
+/// `rust_type_name_for_decl_with_policy`).
+#[test]
+fn emit_callable_struct_with_fn_field_names_ok_in_param_slot() {
+    let src = "type F = fn(Int) -> Int\n\
+type Holder { h: F }\n\
+fn use_holder(x: Holder) -> Int = 0\n";
+    let out = emit_module(src);
+    assert!(
+        out.contains("use_holder(") && out.contains("Holder"),
+        "param slot should use `Holder` when the struct is emitted; got:\n{out}"
+    );
+}
+
 /// #676: a named **alias to** `List<fn…>` does not peel to a top-level
 /// `Arrow`, but the emit path must still expand to `Vec<Rc<dyn Fn…>>`, not an
 /// undefined local alias name (C-8).
