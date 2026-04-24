@@ -42,8 +42,7 @@ use crate::std_termination::RankingDimension::{
 };
 pub use crate::std_termination::{
     evidence_rank, join_evidence, map_evidence_merge_at, merge_evidence, optional_evidence_meet,
-    promote_to_strict, DescentEvidence, DescentSource, ProofEdge, RankingDimension,
-    TerminationProof,
+    DescentEvidence, DescentSource, ProofEdge, RankingDimension, TerminationProof,
 };
 pub use crate::std_types::SourceSpan;
 pub use crate::v2_compiler_emit::to_string;
@@ -364,6 +363,14 @@ pub fn set_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     (v2_rt::map_get(&m, key) != None)
 }
 
+pub fn strict_given_advance_witness(input: DescentEvidence) -> DescentEvidence {
+    match input {
+        DescentEvidence::NonIncreasing => DescentEvidence::Strict,
+        DescentEvidence::Strict => DescentEvidence::Strict,
+        _ => DescentEvidence::DescentUnknown,
+    }
+}
+
 pub fn empty_parser_progress_env() -> Rc<ParserProgressEnv> {
     Rc::new(ParserProgressEnv {
         state_aliases: v2_rt::rc_empty_map::<String, DescentEvidence>(),
@@ -430,11 +437,15 @@ pub fn parser_result_state_progress(
     result_name: String,
 ) -> DescentEvidence {
     match (*source).clone() {
-        ParserResultSource::ParserResultAdvance { input, .. } => promote_to_strict(input.clone()),
-        ParserResultSource::ParserResultExpect { input, .. } => promote_to_strict(input.clone()),
+        ParserResultSource::ParserResultAdvance { input, .. } => {
+            strict_given_advance_witness(input.clone())
+        }
+        ParserResultSource::ParserResultExpect { input, .. } => {
+            strict_given_advance_witness(input.clone())
+        }
         ParserResultSource::ParserResultEat { input, .. } => {
             if set_has(consumed_true_set, result_name) {
-                promote_to_strict(input.clone())
+                strict_given_advance_witness(input.clone())
             } else {
                 input.clone()
             }
@@ -443,7 +454,7 @@ pub fn parser_result_state_progress(
             if (set_has(consumed_true_set, result_name)
                 || set_has(parser_always_advancing, callee.clone()))
             {
-                promote_to_strict(input.clone())
+                strict_given_advance_witness(input.clone())
             } else {
                 input.clone()
             }
@@ -830,7 +841,7 @@ pub fn parser_call_edge_progress(
                 parser_always_advancing.clone(),
                 expr_call_func_at(call_node.clone(), si.clone()),
             ) {
-                promote_to_strict(input_progress)
+                strict_given_advance_witness(input_progress)
             } else {
                 input_progress
             }
