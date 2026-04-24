@@ -1,0 +1,40 @@
+// Minimal `LensOutputEquals` gate fixture for `test_runner` integration.
+//
+// **Bootstrap merge (no top-level `module`).** This file is passed to
+// `compile_to_dag` with the same merged bootstrap context as other integration
+// harnesses (`Dag::new()` + fixture text). `TestClaim` / `TestSuite` / `Int` /
+// `LensOutputEquals` resolve from that merged std graph; the explicit import below
+// documents the verification surface without implying a standalone module file.
+//
+// Predicate shape: `LensOutputEquals(Int, lens_output_ref_input, lens_output_ref_expected)`
+// reuses the first slot as a **type** (`Int`) — a DeclarationRef-shaped stand-in for the
+// future “lens function” edge, same convention as `lens_output_equals_predicate_accepts_*`
+// (mock-invariant harness). Do not read `lens_ref = Int` as a real lens declaration; when
+// T-LensAPI lands, replace with an actual lens `DeclarationRef` and real apply/compare.
+//
+// Kept separate from `r1_gates.dag`: compiling `LensOutputEquals(Int, …)` in the
+// same translation unit as the large embedded `user_authored_lens_compiles_gate`
+// `source` string currently breaks `DeclarationRef` resolution for `Int` in this
+// compiler snapshot (isolated harness: `lens_output_equals_predicate_accepts_*`).
+//
+// Schedule: ROADMAP.md subsection "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" item 2
+// (fold into `r1_gates.dag` after same-TU lowering; lanes T-LensAPI, T-LaneE acceptance).
+
+import std.verification { TestClaim, TestSuite }
+
+data lens_output_ref_input: Int = 0
+
+data lens_output_ref_expected: Int = 0
+
+data lens_output_equals_gate: TestClaim = {
+  name: "lens_output_equals_gate",
+  source: "let _: Int = 0\n",
+  file_name: "r1_lens_output_placeholder.v3",
+  predicate: LensOutputEquals(Int, lens_output_ref_input, lens_output_ref_expected),
+  requires: []
+}
+
+data r1_lens_output_equals_suite: TestSuite = {
+  name: "r1_lens_output_equals_suite",
+  claims: [lens_output_equals_gate]
+}
