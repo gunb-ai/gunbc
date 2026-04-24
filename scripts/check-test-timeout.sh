@@ -44,6 +44,10 @@
 #                         (default v3-compiler).
 #   TEST_TIMEOUT_EXEMPT   Path to exemption file
 #                         (default scripts/slow-test-exemptions.txt).
+#   TEST_TIMEOUT_MAX_EXEMPTIONS
+#                         Ratchet floor for active exemption entries
+#                         (default 43, captured 2026-04-24). Lower this
+#                         value in the same PR that removes exemptions.
 
 set -euo pipefail
 
@@ -51,6 +55,7 @@ log_file_arg=${1:-}
 budget_ms=${2:-${TEST_TIMEOUT_MS:-2000}}
 pkg=${TEST_TIMEOUT_PACKAGE:-v3-compiler}
 exempt_file=${TEST_TIMEOUT_EXEMPT:-scripts/slow-test-exemptions.txt}
+max_exemptions=${TEST_TIMEOUT_MAX_EXEMPTIONS:-43}
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root=$(cd "$script_dir/.." && pwd)
@@ -155,6 +160,28 @@ exempt_set=""
 if [ -f "$exempt_file" ]; then
   exempt_set=$(sed -e 's/^[[:space:]]*//' -e 's/#.*$//' -e 's/[[:space:]]*$//' "$exempt_file" | grep -v '^[[:space:]]*$' || true)
 fi
+
+exempt_count=0
+if [ -n "$exempt_set" ]; then
+  exempt_count=$(printf '%s\n' "$exempt_set" | wc -l | tr -d '[:space:]')
+fi
+
+if ! printf '%s\n' "$max_exemptions" | grep -Eq '^[0-9]+$'; then
+  echo "::error::TEST_TIMEOUT_MAX_EXEMPTIONS must be a non-negative integer, got: $max_exemptions"
+  exit 2
+fi
+
+if [ "$exempt_count" -ne "$max_exemptions" ]; then
+  if [ "$exempt_count" -gt "$max_exemptions" ]; then
+    echo "::error::slow-test exemption count grew to ${exempt_count}; ratchet floor is ${max_exemptions}."
+    echo "Remove at least $((exempt_count - max_exemptions)) exemption(s)."
+  else
+    echo "::error::slow-test exemption count shrank to ${exempt_count}; ratchet floor is still ${max_exemptions}."
+    echo "Lower TEST_TIMEOUT_MAX_EXEMPTIONS in the same PR that deletes exemptions."
+  fi
+  exit 1
+fi
+echo "Slow-test exemption count: ${exempt_count}/${max_exemptions}."
 
 unexpected=""
 warned=""
