@@ -65,7 +65,7 @@ Today:
   refinements are advertised in the story doc as `[target]`;
   closing this lane moves them toward `[live]`.
 - `CharClass` in `std.unicode` is the character-level consumption
-  gap per `ROADMAP.md:358` — the types exist in `dsl/std/`; the
+  gap per `ROADMAP.md:353` — the types exist in `dsl/std/`; the
   tokenizer and syntax authorities aren't using them yet.
 - Cross-target emission green-ness is the external-toolchain
   receipt: generated Rust compiles under `rustc`; generated Python
@@ -91,7 +91,7 @@ for a principal engineer to verify in one evening.
   visible integration win (PR-level, not scope-amendment-level).
 - **Parallel.** T-Sub `sub_charclass_in_std_unicode` dispatches.
   Add `CharClass = Whitespace | Digit | IdentStart | IdentContinue`
-  (or superset) to `std.unicode` per `ROADMAP.md:358`;
+  (or superset) to `std.unicode` per `ROADMAP.md:353`;
   retype the opaque-string fields in `tokenize.dag` / `syntax.dag`
   (`suffix: Char`, `output_codepoint: Char`, `pattern: List<Char>`,
   etc.); rewire `regen_tokenize` to read class predicates
@@ -121,7 +121,7 @@ for a principal engineer to verify in one evening.
   — that's an R1 scope question, not a lane-owner call.
 - **Up to director.** If the `CharClass` lane reveals more
   character-level consumption gaps beyond what's cited at
-  `ROADMAP.md:358`, flag to director so the cardinality-substrate
+  `ROADMAP.md:353`, flag to director so the cardinality-substrate
   ledger row can be amended rather than expanding the lane.
 
 ## Working state
