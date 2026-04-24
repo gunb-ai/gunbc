@@ -8,6 +8,9 @@ module std.termination
 // At each recursive call edge, a ranking dimension either strictly decreases,
 // does not increase, or is unknown. The lattice ordering is:
 // DescentUnknown < NonIncreasing < Strict.
+// 🟢 TERMINAL at termination-proof scope. These are the durable evidence
+// states downstream lenses consume; later work may add producers, but the
+// proof lattice itself is not a bootstrap shim.
 type DescentEvidence
   = Strict
   | NonIncreasing
@@ -83,6 +86,8 @@ fn map_evidence_merge_at(base: Map<String, DescentEvidence>, key: String, new_va
 
 // Bootstrap constraint: `param` is a function parameter name (String).
 // When .dag supports function references, this should become structural.
+// 🟡 SCAFFOLD. Ranking dimensions are durable, but the `param: String`
+// bridge dissolves when function parameters can be referenced structurally.
 type RankingDimension
   = TreeSize { param: String }
   | ListLength { param: String }
@@ -93,6 +98,9 @@ type RankingDimension
 // Concrete code pattern that witnesses descent for a ranking dimension.
 // Bootstrap constraint: name-like payloads are Strings until function and
 // field references are first-class in .dag.
+// 🟡 SCAFFOLD. The witness taxonomy is durable for E-T; the String payload
+// bridge dissolves once accessor, operation, witness, and element references
+// are first-class substrate values instead of names.
 type DescentSource
   = ChildAccessor { accessor: String }
   | ListShrink { amount: Int }
