@@ -36,7 +36,7 @@ pub enum AlgebraicLawProgramError {
 
 /// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
 ///
-/// `Associativity` is evaluated by [`int_associativity_holds`]: the lens is applied twice
+/// `Associativity` is evaluated by [`int_associativity_holds`](crate::lens_apply::int_associativity_holds): the lens is applied twice
 /// under both parenthesizations on fixed sample integers `(2, 3, 5)` (T-LensAPI D3 — no
 /// structural operator recognizers). `lens_ref` is a [`FieldValue::Reference`] into
 /// `fixture_dag`; the runner resolves the **name** and looks up the same name in `program_dag`.
