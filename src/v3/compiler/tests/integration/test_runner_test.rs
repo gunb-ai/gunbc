@@ -303,18 +303,13 @@ data suite: TestSuite = {
 }
 
 #[test]
-#[ignore = "Brief 1 dependency: std/r1_gates.dag/user_authored_lens_compiles_gate is not present in this worktree yet"]
-fn test_runner_runs_user_authored_lens_compiles_gate() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("repo root")
-        .to_path_buf();
-    let gate = repo_root.join("src/v3/std/r1_gates.dag");
+fn test_runner_runs_sub_match_over_user_sum_gate() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let gate = manifest_dir.join("tests/fixtures/r1_gates.dag");
     let source =
         std::fs::read_to_string(&gate).unwrap_or_else(|err| panic!("read {gate:?}: {err}"));
-    let dag = compile_clean(&source, "src/v3/std/r1_gates.dag");
-    let results = TestRunner::new(&dag).run_suite("user_authored_lens_compiles_gate");
+    let dag = compile_clean(&source, "src/v3/compiler/tests/fixtures/r1_gates.dag");
+    let results = TestRunner::new(&dag).run_suite("sub_match_over_user_sum_gate");
 
     assert_all_pass(&results);
 }
