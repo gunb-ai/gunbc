@@ -25,6 +25,22 @@ summarizes before the body so readers can place each section.
 | Part 6 — testgen | Generated integration tests for under-modeled boundaries | `[target]` | DB-15 runner + `MockBackedInvariant` wiring under T-TestGen (`ROADMAP.md:51`, `:65`, `:235`) |
 | Part 7 — scale | Multi-service workflow with typed boundaries | `[target]` | composes Parts 3–6 targets; each specific gap cites its ROADMAP row above |
 
+## Impossible-bugs inventory (draft-only)
+
+**Landing status:** DRAFT-ONLY. Do not convert this into narrative
+until the sibling managers confirm their `[live]` sets. A bug class
+is `[live]` in this doc only when a Parts 1–6 row above already
+proves it; otherwise it stays `PENDING <manager>`.
+
+| Bug class claimed | Demo scope | Parts 1–6 `[live]` row that proves it | Inventory status |
+|---|---|---|---|
+| Suboptimal-complexity contract violation | R1 (`THESIS.md` "Enumerable impossible-bug classes"; `ROADMAP.md` T-Demo `impossible_bug_class_suite_r1`) | None yet. The Part 1 algebra rows prove operation attachment, not complexity-bound rejection. | PENDING Substrate (`T-LaneE`: `complexity_merge_sort_is_nlogn`, `complexity_v3_matches_v2_oracle`) |
+| Idempotency-contract violation | R1 (`THESIS.md` "Enumerable impossible-bug classes"; `ROADMAP.md` T-Demo `impossible_bug_class_suite_r1`) | None yet in this doc's Parts 1–6 summary. The live lens register says `idempotency.dag` is behaviorally complete, but the story doc still needs the confirmed Part row before narrative. | PENDING Substrate confirmation + Release inventory update |
+| Transport/type drift | R1 (`THESIS.md` "Enumerable impossible-bug classes"; `ROADMAP.md` T-Demo `impossible_bug_class_suite_r1`) | None yet. Part 7 is `[target]`; Parts 1–6 do not yet carry a live multi-target boundary-coherence row. | PENDING Surface (`T-Emit`: `emit_omni_demo_fixtures_green`) + Release fixture |
+| Nested-optional flatten | R2+ (`THESIS.md` "Enumerable impossible-bug classes") | None yet. Part 3 explicitly marks nested-optional flatten `[target]`. | PENDING Surface (`T-Sub`: type-alias `where`) + later cardinality substrate owner |
+| Unenumerated effects | R2+ (`THESIS.md` "Enumerable impossible-bug classes") | None yet. The story doc only cites service-level retry / effect enforcement as target-state adjacent work. | PENDING Substrate / future effect-system owner |
+| Unhandled diagnostic paths | R2+ (`THESIS.md` "Enumerable impossible-bug classes") | None yet. No Parts 1–6 `[live]` row proves Tier 2 totality for division-by-zero, out-of-bounds, or force-unwrap. | PENDING future Tier 2 owner |
+
 **Ledger rows for the two story-surfaced gaps.** Both `[target]`
 items in Parts 4–5 that reference unit-mismatch enforcement and
 `Secret<T>` nominal-wrapper graduation cite the ledger rows added
