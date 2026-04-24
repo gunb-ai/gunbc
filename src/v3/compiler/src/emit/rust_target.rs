@@ -4479,6 +4479,9 @@ impl<'a> Ctx<'a> {
             .expect("UserDefined arrow body must point at a Bind");
         let param_dispositions = self.callable_param_dispositions(declaration.id, inputs.len());
         let mut locals = RenderLocals::default();
+        let mut output_callable_walk = HashSet::new();
+        let return_includes_first_class_arrow =
+            self.decl_includes_first_class_arrow_data(*output, &mut output_callable_walk);
         let params = bind
             .params
             .iter()
@@ -4493,7 +4496,11 @@ impl<'a> Ctx<'a> {
                     .ok_or(EmitError::UntypedPort(*port))?
                     .declaration;
                 let callable_param_ty = self.type_declaration_peels_to_arrow(ty_decl);
-                let ty = self.rust_type_name_for_user_function_parameter(*port, *disposition)?;
+                let ty = self.rust_type_name_for_user_function_parameter(
+                    *port,
+                    *disposition,
+                    return_includes_first_class_arrow,
+                )?;
                 match disposition {
                     ParameterDispositionBinding::Borrowed
                         if self.read_strategy() == ReadStrategyBinding::Borrow
@@ -4713,12 +4720,17 @@ impl<'a> Ctx<'a> {
     /// instantiations to a primitive declaration id, then looks
     /// up that id in the index. Zero name strings.
     /// Rust type for a user `fn` item parameter. Callable-shaped parameters
-    /// use `impl Fn(...) -> T + Clone` (v2 / PR #650); other parameters use
-    /// ordinary `rust_type_name_for_port` / `rust_borrowed_type_name_for_port`.
+    /// use `impl Fn(...) -> T + Clone` (v2 / PR #650) **unless** the function's
+    /// declared return type carries first-class `fn` anywhere — then callable
+    /// parameters use `std::rc::Rc<dyn Fn…>` so pass-through / storage positions
+    /// compose with the return type (rustc `E0308` otherwise; Codex #676).
+    /// Other parameters use `rust_type_name_for_port` /
+    /// `rust_borrowed_type_name_for_port`.
     fn rust_type_name_for_user_function_parameter(
         &self,
         port: PortId,
         disposition: ParameterDispositionBinding,
+        return_includes_first_class_arrow: bool,
     ) -> Result<String, EmitError> {
         let ty_decl = self
             .dag
@@ -4727,6 +4739,9 @@ impl<'a> Ctx<'a> {
             .ok_or(EmitError::UntypedPort(port))?
             .declaration;
         if self.type_declaration_peels_to_arrow(ty_decl) {
+            if return_includes_first_class_arrow {
+                return self.rust_type_name_for_decl_storage(ty_decl);
+            }
             return self.rust_arrow_as_parameter_impl_fn_clone(ty_decl);
         }
         match disposition {
@@ -4960,9 +4975,10 @@ impl<'a> Ctx<'a> {
                     "emit_rust: first-class function type (`fn(...) -> _` / TypeConnective::Arrow) \
                      in an unsupported Rust type-name context; supported carriers are: user `fn` \
                      parameters via `rust_type_name_for_user_function_parameter` (`impl Fn + \
-                     Clone`), and struct fields / collection instantiations / top-level `let` / \
-                     inferred return slots via `rust_type_name_for_decl_storage` (`std::rc::Rc<dyn \
-                     Fn…>`). See `src/v3/spec/rust.dag` header on first-class callable surfaces."
+                     Clone`, or `std::rc::Rc<dyn Fn…>` when the return type carries a first-class \
+                     `fn` so param/ret compose), and struct fields / collection instantiations / \
+                     top-level `let` / inferred return slots via `rust_type_name_for_decl_storage` \
+                     (`std::rc::Rc<dyn Fn…>`). See `src/v3/spec/rust.dag` header on first-class callable surfaces."
                         .to_string(),
                 )),
                 ArrowRustEmitPolicy::StorageRcDynFn => {

@@ -367,6 +367,25 @@ fn emit_generic_bounds_survive() {
     );
 }
 
+/// Codex #676 / INVARIANTS P3: callable param `impl Fn + Clone` does not compose
+/// with `Rc<dyn Fn…>` return — when the return carries first-class `fn`, the
+/// parameter must use the same `Rc` carrier so `return f` is rustc-valid.
+#[test]
+fn emit_callable_fn_identity_unifies_param_and_return_carriers() {
+    let src = "fn id_fn(f: fn(Int) -> Int) -> fn(Int) -> Int = f\n";
+    let out = emit_module(src);
+    let ty = "std::rc::Rc<dyn Fn(i64) -> i64>";
+    let sig = format!("fn id_fn(p0: {ty}) -> {ty}");
+    assert!(
+        out.contains(&sig),
+        "param and return must both use Rc carrier for pass-through; got:\n{out}"
+    );
+    assert!(
+        !out.contains("impl Fn(i64) -> i64 + Clone"),
+        "impl Fn+Clone param must not pair with Rc return; got:\n{out}"
+    );
+}
+
 /// Review #676: `impl Trait` is not valid in struct fields — storage carrier required.
 #[test]
 fn emit_callable_field_types_use_rc_dyn_fn_storage() {
