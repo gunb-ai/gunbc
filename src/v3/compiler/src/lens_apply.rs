@@ -439,7 +439,7 @@ impl<'a> EvalCtx<'a> {
                         ));
                     }
                 };
-                Ok(bool_value(self.dag, out)?)
+                Ok(FieldValue::Literal(LiteralBits::Bool(out)))
             }
             TransformTarget::Operator(OperatorKind::Logical(_)) => Err(
                 LensApplyError::UnsupportedConstruct("logical operator in lens apply"),
@@ -654,25 +654,6 @@ fn apply_arithmetic_int(
     }
 }
 
-fn bool_value(dag: &Dag, b: bool) -> Result<FieldValue, LensApplyError> {
-    let bool_decl = dag
-        .declaration_by_name("Bool")
-        .ok_or(LensApplyError::MissingType("Bool"))?;
-    let TypeConnective::Disj { variants } = &bool_decl.connective else {
-        return Err(LensApplyError::MissingType("Bool shape"));
-    };
-    let label = if b { "True" } else { "False" };
-    let id = variants
-        .iter()
-        .find(|v| v.label == label)
-        .ok_or(LensApplyError::MissingType("Bool variant"))?
-        .ty;
-    Ok(FieldValue::Variant {
-        constructor: id,
-        payload: vec![],
-    })
-}
-
 fn project_field(base: &FieldValue, label: &str) -> Result<FieldValue, LensApplyError> {
     let FieldValue::Record(fields) = base else {
         return Err(LensApplyError::BadFieldProject);
@@ -685,14 +666,31 @@ fn project_field(base: &FieldValue, label: &str) -> Result<FieldValue, LensApply
 }
 
 fn variant_matches(
-    _dag: &Dag,
+    dag: &Dag,
     value: &FieldValue,
     variant_ty: DeclarationId,
 ) -> Result<bool, LensApplyError> {
-    let FieldValue::Variant { constructor, .. } = value else {
-        return Ok(false);
-    };
-    Ok(*constructor == variant_ty)
+    match value {
+        FieldValue::Variant { constructor, .. } => Ok(*constructor == variant_ty),
+        FieldValue::Literal(LiteralBits::Bool(b)) => {
+            // P2: Bool must stay `Literal` in D1 (same as `Behavior::Value`); match arms still
+            // use resolved variant `DeclarationId` keys from the Bool disj.
+            let bool_decl = dag
+                .declaration_by_name("Bool")
+                .ok_or(LensApplyError::MissingType("Bool"))?;
+            let TypeConnective::Disj { variants } = &bool_decl.connective else {
+                return Err(LensApplyError::MissingType("Bool shape"));
+            };
+            let label = if *b { "True" } else { "False" };
+            let expected_ty = variants
+                .iter()
+                .find(|v| v.label == label)
+                .ok_or(LensApplyError::MissingType("Bool variant"))?
+                .ty;
+            Ok(expected_ty == variant_ty)
+        }
+        _ => Ok(false),
+    }
 }
 
 fn variant_payload_for_binding(
@@ -700,6 +698,21 @@ fn variant_payload_for_binding(
     value: &FieldValue,
     variant_ty: DeclarationId,
 ) -> Result<FieldValue, LensApplyError> {
+    if let FieldValue::Literal(LiteralBits::Bool(_)) = value {
+        if !variant_matches(dag, value, variant_ty)? {
+            return Err(LensApplyError::BadFieldProject);
+        }
+        let conj = dag.declaration(variant_ty);
+        return match &conj.connective {
+            TypeConnective::Conj { children } if children.is_empty() => {
+                Ok(FieldValue::Record(vec![]))
+            }
+            TypeConnective::Conj { .. } => Err(LensApplyError::UnsupportedConstruct(
+                "Bool match arm with payload fields is not supported for Bool literal scrutinee",
+            )),
+            _ => Ok(FieldValue::Record(vec![])),
+        };
+    }
     let FieldValue::Variant {
         constructor,
         payload,
@@ -1043,6 +1056,29 @@ fn sum(xs: List<Int>) -> Int =
             unreachable!();
         };
         super::find_fold_step_bind_via_instantiation(&dag, *callee).expect("fold step bind");
+    }
+
+    #[test]
+    fn comparison_operator_returns_bool_literal_not_sum_variant() {
+        let src = r#"module m
+fn truth() -> Bool = 1 == 1
+"#;
+        let dag = compile_to_dag(src, "truth.v3").expect("compiles");
+        let id = dag.declaration_by_name("truth").unwrap().id;
+        let out = apply_lens_declaration(&dag, id, &[]).expect("apply");
+        assert_eq!(out, FieldValue::Literal(LiteralBits::Bool(true)));
+    }
+
+    #[test]
+    fn bool_literal_scrutinee_selects_disj_match_arm() {
+        let src = r#"module m
+fn p(b: Bool) -> Int = match b { True => 1, False => 0 }
+"#;
+        let dag = compile_to_dag(src, "bool_lit_match.v3").expect("compiles");
+        let id = dag.declaration_by_name("p").unwrap().id;
+        let out = apply_lens_declaration(&dag, id, &[FieldValue::Literal(LiteralBits::Bool(true))])
+            .expect("apply");
+        assert_eq!(out, FieldValue::Literal(LiteralBits::Int(1)));
     }
 
     #[test]
