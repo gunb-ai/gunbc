@@ -1,6 +1,9 @@
 // T-PB-B Brief D — draft `PortHasState` + `CostBounded` claims (contract / lens vocabulary).
 // Schema authority: `src/v3/std/verification.dag`.
-// Cost witness matches `m1_5_verification_test` smoke (`let answer: Int = 1 + 1 + 1 + 1`).
+// Cost witness is the runner-evaluated value for `let answer: Int = 1 + 1 + 1 + 1`
+// (three `+` additions = 3), matching the landed `.dag` sibling. The `m1_5_verification_test`
+// smoke still ships an unevaluated `Eq 8` placeholder; that is compile-only and not a claim
+// of runner-evaluated cost.
 //
 // Dissolution: same claims as `src/v3/compiler/tests/dag/t_pb_b_1_contract_port_cost.dag`.
 // Retire this `.v3` once Testgen accepts that `.dag` module as the maintained copy (Brief D
@@ -10,7 +13,7 @@ import std.list { empty }
 import std.verification { TestClaim, TestSuite, TestPredicate }
 
 let pred_answer_resolved: TestPredicate = PortHasState("answer", Resolved)
-let pred_answer_cost_eq_8: TestPredicate = CostBounded("answer", Eq, 8)
+let pred_answer_cost_eq_3: TestPredicate = CostBounded("answer", Eq, 3)
 
 let claim_answer_resolved: TestClaim = {
   name: "answer bind resolves",
@@ -21,10 +24,10 @@ let claim_answer_resolved: TestClaim = {
 }
 
 let claim_answer_cost_bounded: TestClaim = {
-  name: "answer bind has bounded cost witness (Eq 8)",
+  name: "answer bind has bounded cost witness (Eq 3)",
   source: "let answer: Int = 1 + 1 + 1 + 1",
   file_name: "t_pb_b_cost_answer.v3",
-  predicate: pred_answer_cost_eq_8,
+  predicate: pred_answer_cost_eq_3,
   requires: empty()
 }
 

@@ -94,17 +94,24 @@ compose. When this closes, the R1 release gates themselves
   Self-hosting when the runner lands. **Landable compile-only batch:**
   `docs/briefs/t-pb-b-1.md` + `src/v3/compiler/tests/dag/`.
   **Pre–Rust-deletion checklist (single source — edit here only; do
-  not fork a competing numbered list in other briefs):** (1) Runner
-  accepts v3 `.dag` modules under `src/v3/compiler/tests/dag/` with
-  the same `compile_to_dag` entrypoint as today’s integration harness,
-  or documents a different path/layout — align before moving claims
-  off Rust. (2) Confirm `requires: []` vs `empty()` for
-  `List<ResourceReference>` matches the runner’s parser/lowering.
-  (3) Confirm M1(2.8) predicate-inlining constraints for
-  `PortHasState` / `CostBounded` (`docs/briefs/t-pb-b-1.md`). (4)
-  **First Rust deletion batch:** one thin `Compiles`-only duplicate
+  not fork a competing numbered list in other briefs):** (1) **[done,
+  PR #736]** Runner accepts v3 `.dag` modules under
+  `src/v3/compiler/tests/dag/` with the same `compile_to_dag`
+  entrypoint as today’s integration harness — proven by
+  `t_pb_b_1_dag_runner_test`. (2) **[done, PR #736, scoped-NO]**
+  `requires: []` vs `empty()` for `List<ResourceReference>`: **not
+  equivalent in `data` bodies today.** Runner path must stay on `[]`;
+  `empty()` is rejected by M1(2.8) class-5. Receipt pinned by
+  `test_runner_data_bodies_reject_requires_empty_call_today`. Receipt
+  paragraph in `docs/briefs/t-pb-b-1.md`. (3) **[done for Day-1 predicate
+  shapes, PR #736]** M1(2.8) predicate-inlining constraints for
+  `PortHasState` / `CostBounded`: inlined on each `TestClaim` record in
+  `t_pb_b_1_contract_port_cost.dag`; standalone
+  `data _: TestPredicate = …` bodies remain NYI under the same
+  class-5 restriction. Receipt paragraph in `docs/briefs/t-pb-b-1.md`.
+  (4) **First Rust deletion batch:** one thin `Compiles`-only duplicate
   (e.g. `thesis_validation_test` or `pipe_desugar`) only after (1)–(3)
-  are green for that claim shape.
+  are green for that claim shape — Testgen manager call.
 - **Sideways to Surface Manager.** `emit_omni_demo_fixtures_green`
   and the three `emit_*` gates under T-Emit require `ExecuteCommand`
   + `ForAllTargets` predicates — these are T-TestGen `[ext]`

@@ -3,6 +3,7 @@ use crate::dag::{
     OperatorKind, PortId, PortState, TransformTarget, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
+use crate::infer;
 use crate::lens_cost::{cost_of, CostLookup};
 use crate::{compile_to_dag, CompileError};
 
@@ -32,17 +33,26 @@ pub enum AlgebraicLawProgramError {
 
 /// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
 ///
-/// Today only `Associativity` is supported, and only for the canonical
-/// `fn <name>(a: Int, b: Int) -> Int = a + b` witness shape used by the
-/// `lens_composition_associative` R1 gate. `lens_ref` is a [`FieldValue::Reference`]
-/// into `fixture_dag`; the runner resolves the **name** and looks up the same
-/// name in `program_dag`.
+/// Today only `Associativity` is supported, and only for a binary `Int` arrow whose body is
+/// `+` **resolved through surfaced algebra** (`Int`'s `Declaration.inhabits` walk to
+/// `OrderedRing.add` using the same `resolve_operator_arrow` path as operator inference),
+/// matching the `lens_composition_associative` R1 gate witness. `lens_ref` is a
+/// [`FieldValue::Reference`] into `fixture_dag`; the runner resolves the **name** and looks up
+/// the same name in `program_dag`.
 ///
-/// **Modeling debt (P1):** associativity is recognized by structural pattern match on
-/// `TransformTarget::Operator(Arithmetic(Add))`, not by reading an `OrderedRing` witness
-/// from the substrate. **Dissolution:** delete `declaration_is_binary_int_add_associativity_witness`
-/// once `AlgebraicLaw` evaluation consumes algebra / law facts from surfaced `.dag`
-/// (e.g. reflected `OrderedRing` evidence) instead of this bounded Rust recognizer.
+/// **Modeling debt (P1) — pre-D1 tightening, not D3 dissolution:** evaluation still uses a
+/// **structural recognizer** (`declaration_shape_matches_ordered_ring_add_associativity_recognizer`)
+/// (binary `Int` arrow → `Bind` → `Transform` → `Arithmetic(Add)` + multiset param wiring +
+/// non-`Pending` `resolve_operator_arrow`). That is **not** T-LensAPI D3 (apply the lens to
+/// sample inputs under both associations via the D1 lens-application primitive).
+///
+/// **Dissolution (tracked in two steps):**
+/// 1. **Substrate law read:** delete `declaration_shape_matches_ordered_ring_add_associativity_recognizer`
+///    once `AlgebraicLaw` consumes an explicit **Associativity** law witness surfaced on
+///    `OrderedRing.add` in the `.dag`, instead of inferring associativity from "`+` resolves to
+///    `OrderedRing.add`" plus shape matching.
+/// 2. **T-LensAPI D3:** then replace evaluation with `apply(lens, a, b, c)` comparing `(a*b)*c` vs
+///    `a*(b*c)` once the D1 lens-application primitive lands.
 pub fn eval_algebraic_law_for_claim_program(
     fixture_dag: &Dag,
     program_dag: &Dag,
@@ -62,10 +72,7 @@ pub fn eval_algebraic_law_for_claim_program(
     let Some(target) = program_dag.declaration_by_name(&lens_name) else {
         return Ok(false);
     };
-    Ok(declaration_is_binary_int_add_associativity_witness(
-        program_dag,
-        target,
-    ))
+    Ok(declaration_shape_matches_ordered_ring_add_associativity_recognizer(program_dag, target))
 }
 
 #[derive(Debug, Clone)]
@@ -394,7 +401,7 @@ impl<'a> TestRunner<'a> {
         match eval_algebraic_law_for_claim_program(self.dag, &program_dag, payload) {
             Ok(true) => ClaimResult::Pass,
             Ok(false) => ClaimResult::Fail(
-                "AlgebraicLaw associativity witness not satisfied (expected binary Int `+`)"
+                "AlgebraicLaw associativity witness not satisfied (expected Int `+` via OrderedRing.add / surfaced algebra)"
                     .to_string(),
             ),
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => ClaimResult::Fail(message),
@@ -808,11 +815,21 @@ fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, Algebra
     }
 }
 
-/// Bounded scaffold: proves the named declaration is binary `Int` addition at the L1
-/// operator edge. **Dissolution:** remove this helper when `AlgebraicLaw` reads law
-/// witnesses from the substrate (same trigger as the modeling note on
-/// `eval_algebraic_law_for_claim_program`); do not grow new ad-hoc operator recognizers here.
-fn declaration_is_binary_int_add_associativity_witness(dag: &Dag, decl: &Declaration) -> bool {
+/// **🟡 Scaffold (pre-D1)** — `AlgebraicLaw(Associativity, …)` **shape recognizer**, not a law
+/// reader: binary `Int` arrow → `Bind` → `Transform` → [`TransformTarget::Operator`] `+`, plus
+/// multiset equality of bind params vs transform operand ports, plus
+/// `infer::operator_resolves_via_surfaced_algebra` so `+` is not the `ArrowBody::Pending`
+/// operator fallback. The last conjunct is a **sanity check on operator resolution**, not D3
+/// associativity via sample evaluation.
+///
+/// **Dissolution:** same two-step receipt as `eval_algebraic_law_for_claim_program`: first read an
+/// Associativity witness off reflected `OrderedRing.add` (substrate), not operator inference; then
+/// D1/D3 lens application comparing `(a*b)*c` vs `a*(b*c)` — delete this recognizer when (1) and
+/// (2) land.
+fn declaration_shape_matches_ordered_ring_add_associativity_recognizer(
+    dag: &Dag,
+    decl: &Declaration,
+) -> bool {
     let TypeConnective::Arrow {
         inputs,
         output,
@@ -843,19 +860,22 @@ fn declaration_is_binary_int_add_associativity_witness(dag: &Dag, decl: &Declara
     let Behavior::Transform(transform) = producer else {
         return false;
     };
-    if !matches!(
-        transform.target,
-        TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add))
-    ) {
+    let TransformTarget::Operator(op_kind) = &transform.target else {
+        return false;
+    };
+    if !matches!(op_kind, OperatorKind::Arithmetic(ArithmeticOp::Add)) {
         return false;
     }
     if transform.inputs.len() != 2 {
         return false;
     }
-    same_port_id_set(&bind.params, &transform.inputs)
+    if !infer::operator_resolves_via_surfaced_algebra(dag, *op_kind, int_id) {
+        return false;
+    }
+    same_port_id_multiset(&bind.params, &transform.inputs)
 }
 
-fn same_port_id_set(params: &[PortId], inputs: &[PortId]) -> bool {
+fn same_port_id_multiset(params: &[PortId], inputs: &[PortId]) -> bool {
     if params.len() != inputs.len() {
         return false;
     }
@@ -864,4 +884,35 @@ fn same_port_id_set(params: &[PortId], inputs: &[PortId]) -> bool {
     a.sort_unstable();
     b.sort_unstable();
     a == b
+}
+
+#[cfg(test)]
+mod ordered_ring_add_associativity_recognizer_tests {
+    use super::*;
+    use crate::compile_to_dag;
+    use crate::CompileError;
+
+    #[test]
+    fn recognizer_rejects_duplicate_operand_a_plus_a() {
+        let source = "module t\nfn wrong(a: Int, b: Int) -> Int = a + a\n";
+        let dag = match compile_to_dag(source, "associativity_a_plus_a_receipt.dag") {
+            Ok(d) => d,
+            Err(CompileError::Semantic(d)) => panic!(
+                "unexpected semantic errors: {:?}",
+                d.diagnostics().iter().collect::<Vec<_>>()
+            ),
+            Err(e) => panic!("compile failed: {e:?}"),
+        };
+        assert!(
+            dag.diagnostics().is_empty(),
+            "fixture should compile cleanly"
+        );
+        let decl = dag
+            .declaration_by_name("wrong")
+            .expect("fixture should declare `wrong`");
+        assert!(
+            !declaration_shape_matches_ordered_ring_add_associativity_recognizer(&dag, decl),
+            "`a + a` must not satisfy the associativity gate witness (multiset of add operands vs bind params)"
+        );
+    }
 }
