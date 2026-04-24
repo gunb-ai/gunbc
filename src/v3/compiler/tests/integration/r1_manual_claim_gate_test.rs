@@ -14,10 +14,7 @@ use v3_compiler::Diagnostic;
 #[test]
 #[ignore = "local probe: cargo test -p v3-compiler probe_manual_claim_fixture_diags -- --ignored --nocapture"]
 fn probe_manual_claim_fixture_diags() {
-    match compile_to_dag(
-        "fn broken(x: Int) -> String = x",
-        "manual_claim_fixture.v3",
-    ) {
+    match compile_to_dag("fn broken(x: Int) -> String = x", "manual_claim_fixture.v3") {
         Ok(_) => eprintln!("unexpected: program compiled cleanly"),
         Err(CompileError::Semantic(dag)) => {
             for (id, d) in dag.diagnostics() {
