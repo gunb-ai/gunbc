@@ -98,7 +98,11 @@
 module std.computation
 
 import std.iteration { }
-import std.termination { DescentEvidence, RankingDimension }
+import std.termination {
+  DescentEvidence, DescentUnknown, RankingDimension,
+  PositiveDescentAmount, OneStep, AdditionalStep,
+  ProportionalDivisor, DivideByTwo, StrictlyLarger
+}
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
@@ -117,12 +121,19 @@ import std.algebra {
 // of the bound. The actual numeric value is determined at compile time
 // (for constants/Forever) or tracked symbolically (for parameters/collections).
 // =========================================================================
+//
+// 🟡 MIXED coproduct — size-bound source for lowering. Dissolution: `param: String`
+// name bridges on `CollectionSize` / `TreeSize` / `ArithmeticParam` → structural size-parameter
+// refs when reflected params exist; `Forever` stays a terminal finite-bound atom.
+// `ExplicitCount*` uses Peano for strictly positive repeat counts and a zero tag so negative
+// literals are not representable (P2 / P4; PR #726 openai-pro review).
 
 type SizeBound
   = CollectionSize { param: String }   // |list|, |set|, |map.keys| — finite by Layer 3
   | TreeSize { param: String }         // |node.descendants| — finite by DAG acyclicity
   | ArithmeticParam { param: String }  // function parameter n — finite by Word64
-  | ExplicitCount { n: Int }           // developer-specified literal
+  | ExplicitCountZero                  // repeat / bound literal 0 (no negative inhabitant)
+  | ExplicitCountPositive { steps: PositiveDescentAmount }  // repeat k, k ≥ 1 structurally
   | Forever                            // the largest representable bound
 
 // Constructor for TreeSize bound — avoids name collision when importing
@@ -165,15 +176,30 @@ fn tree_size_bound(param: String) -> SizeBound {
 // This classification is EXHAUSTIVE — every possible call pattern maps
 // to exactly one iteration primitive. There is no "unknown" or "rejected"
 // category.
+//
+// Shrink / arithmetic descent amounts use structural witnesses from
+// std.termination (`PositiveDescentAmount`, `ProportionalDivisor`) so
+// non-positive skip amounts and invalid divide steps are not representable.
 // =========================================================================
 
+fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
+  match steps {
+    OneStep => 1
+    AdditionalStep { previous: p } => 1 + positive_descent_count(steps: p)
+  }
+}
+
+// 🟡 MIXED coproduct — exhaustive call-shape classifier feeding `lower_call_pattern`. Dissolution:
+// replace `String` accessor / witness / element slots with structural refs; Peano shrink payloads
+// stay terminal (shared with `std.termination`).
 type CallPattern
   = ChildAccessorCall { accessor: String }    // self(node.left) — structural child
-  | CollectionShrinkCall { amount: Int }      // self(list |> skip(1)) — shorter collection
-  | ArithmeticDescentCall { op: String, by: Int }  // self(n - 1) — smaller number
-  | ParserAdvanceCall { witness: String }     // self(state after advance) — later position
-  | WorklistDrainCall { element: String }     // self(set |> remove(x)) — smaller set
-  | FoldBodyCall                              // self inside fold body — bounded by fold
+  | CollectionShrinkCall { amount: PositiveDescentAmount, collection: String }  // skip + sized collection param
+  | ArithmeticSubtractCall { steps: PositiveDescentAmount, ring_param: String }  // ring measure name (from proof / evidence)
+  | ArithmeticDivideCall { divisor: ProportionalDivisor, ring_param: String }    // divide step + ring measure name
+  | ParserAdvanceCall { witness: String }     // self(state after advance); witness is the token-stream / state param name
+  | WorklistDrainCall { element: String }     // self(set |> remove(x)); element is the set / cardinality param name
+  | FoldBodyCall { outer_collection: String } // fold-body bound; IR supplies the outer iterable param (see complexity.dag)
   | SameArgumentCall                          // self(same_arg) — "forever" bound
 
 // =========================================================================
@@ -187,7 +213,8 @@ type CallPattern
 //   |--------------------------|----------------|----------------------|
 //   | ChildAccessorCall        | descend        | TreeSize             |
 //   | CollectionShrinkCall     | fold           | CollectionSize       |
-//   | ArithmeticDescentCall    | repeat         | ArithmeticParam      |
+//   | ArithmeticSubtractCall   | repeat         | ArithmeticParam      |
+//   | ArithmeticDivideCall     | repeat         | ArithmeticParam      |
 //   | ParserAdvanceCall        | fold           | CollectionSize(tokens)|
 //   | WorklistDrainCall        | fold           | CollectionSize(set)  |
 //   | FoldBodyCall             | (already fold) | (inherited)          |
@@ -200,11 +227,16 @@ type CallPattern
 // ShrinkFactor — rate of decrease per recursive step. Distinguishes
 // O(n) from O(log n). Moved here from induction.dag to avoid circular
 // dependency (induction imports computation; LoweringTarget needs ShrinkFactor).
+//
+// 🟢 TERMINAL coproduct — shrink-rate witnesses aligned with `std.termination`. Dissolution: none
+// (`UnitShrink` tag-only; `ConstantShrink` / `ProportionalShrink` already structural).
 type ShrinkFactor
   = UnitShrink
-  | ConstantShrink { amount: Int }
-  | ProportionalShrink { divisor: Int }
+  | ConstantShrink { steps: PositiveDescentAmount }
+  | ProportionalShrink { divisor: ProportionalDivisor }
 
+// 🟡 MIXED record — product of the coproduct carriers above (not a coproduct itself).
+// Dissolution inherits from `SizeBound` / `CallPattern` / optional `ShrinkFactor` String bridges.
 type LoweringTarget {
   primitive: IterationPrimitive
   bound: SizeBound
@@ -212,11 +244,16 @@ type LoweringTarget {
   factor: ShrinkFactor?       // rate of decrease — preserved from SubValueRelation for tighter bounds
 }
 
+// 🟢 TERMINAL coproduct — `Fold` | `Descend` | `Repeat` lowering enum (Lane E-C). Dissolution:
+// none (kept in lockstep with `std.iteration` primitives).
 type IterationPrimitive
   = Fold
   | Descend
   | Repeat
 
+// `lower_call_pattern` copies **CallPattern-carried** `String` slots into `SizeBound.param`
+// (no fabricated `"n"` / `"collection"` placeholders). Dissolution: replace those `String`
+// bridges with structural size-parameter refs when reflected params land (E-P / modeling).
 fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
   match pattern {
     ChildAccessorCall { accessor: a } =>
@@ -224,29 +261,37 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
         bound: TreeSize { param: a },
         evidence: Strict, factor: none }
 
-    CollectionShrinkCall { amount: _ } =>
+    CollectionShrinkCall { amount: p, collection: c } =>
       LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: "collection" },
-        evidence: Strict, factor: none }
+        bound: CollectionSize { param: c },
+        evidence: Strict,
+        factor: Some { value: ConstantShrink { steps: p } } }
 
-    ArithmeticDescentCall { op: _, by: _ } =>
+    ArithmeticSubtractCall { steps: p, ring_param: r } =>
       LoweringTarget { primitive: Repeat,
-        bound: ArithmeticParam { param: "n" },
+        bound: ArithmeticParam { param: r },
+        evidence: Strict,
+        factor: Some { value: ConstantShrink { steps: p } } }
+
+    ArithmeticDivideCall { divisor: d, ring_param: r } =>
+      LoweringTarget { primitive: Repeat,
+        bound: ArithmeticParam { param: r },
+        evidence: Strict,
+        factor: Some { value: ProportionalShrink { divisor: d } } }
+
+    ParserAdvanceCall { witness: w } =>
+      LoweringTarget { primitive: Fold,
+        bound: CollectionSize { param: w },
         evidence: Strict, factor: none }
 
-    ParserAdvanceCall { witness: _ } =>
+    WorklistDrainCall { element: e } =>
       LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: "tokens" },
+        bound: CollectionSize { param: e },
         evidence: Strict, factor: none }
 
-    WorklistDrainCall { element: _ } =>
+    FoldBodyCall { outer_collection: oc } =>
       LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: "worklist" },
-        evidence: Strict, factor: none }
-
-    FoldBodyCall =>
-      LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: "outer_collection" },
+        bound: CollectionSize { param: oc },
         evidence: NonIncreasing, factor: none }
 
     SameArgumentCall =>
@@ -266,7 +311,8 @@ fn size_bound_param(bound: SizeBound) -> String? {
     TreeSize { param: p }       => Some { value: p }
     CollectionSize { param: p } => Some { value: p }
     ArithmeticParam { param: p } => Some { value: p }
-    ExplicitCount { n: _ }      => none
+    ExplicitCountZero           => none
+    ExplicitCountPositive { steps: _ } => none
     Forever                     => none
   }
 }
@@ -276,23 +322,26 @@ fn size_bound_param(bound: SizeBound) -> String? {
 // a fixed number of times regardless of input size.
 fn is_constant_bound(bound: SizeBound) -> Bool {
   match bound {
-    ExplicitCount { n: _ } => true
+    ExplicitCountZero => true
+    ExplicitCountPositive { steps: _ } => true
     Forever                => true
     _                      => false
   }
 }
 
 // Get the constant value for a constant bound.
-// ExplicitCount returns the developer-specified literal.
-// Forever returns 1 (machine max — asymptotically constant).
-// Precondition: is_constant_bound(bound) must be true.
-// Non-constant bounds return 0 (identity for SizeConst in CostSum)
-// to fail visibly rather than fabricating a plausible value.
-fn constant_bound_value(bound: SizeBound) -> Int {
+// `ExplicitCountZero` / `ExplicitCountPositive` project through `positive_descent_count` for k≥1.
+// Forever returns the signed-64 iteration cap (same as repeat(max_int); see std.iteration).
+// Non-constant bounds return `none` so callers cannot confuse “not constant” with a literal 0.
+// Signed `Int` top iterate count (`i64::MAX`); matches `repeat(max_int)` cap.
+fn forever_iteration_bound() -> Int { 9223372036854775807 }
+
+fn constant_bound_value(bound: SizeBound) -> Int? {
   match bound {
-    ExplicitCount { n: count } => count
-    Forever                    => 1
-    _                          => 0
+    ExplicitCountZero => Some { value: 0 }
+    ExplicitCountPositive { steps: s } => Some { value: positive_descent_count(steps: s) }
+    Forever                    => Some { value: forever_iteration_bound() }
+    _                          => none
   }
 }
 
@@ -323,7 +372,7 @@ fn constant_bound_value(bound: SizeBound) -> Int {
 //   Fold with CollectionSize(c)       → O(|c| * per_element_cost)
 //   Descend with TreeSize(t)          → O(|t| * per_node_cost)
 //   Repeat with ArithmeticParam(n)    → O(n * per_step_cost)
-//   Repeat with ExplicitCount(k)      → O(k * per_step_cost)
+//   Repeat with ExplicitCountPositive(k) / ExplicitCountZero → O(k * per_step_cost)
 //   Repeat with Forever                → O(2^63 * per_step_cost)
 //
 // Nested computations multiply bounds:
@@ -352,6 +401,9 @@ fn constant_bound_value(bound: SizeBound) -> Int {
 // dimensions for every parameter.
 // =========================================================================
 
+// 🟢 TERMINAL coproduct — E-C dissolution receipt: tags which iteration dimension
+// applies for a kernel `AlgebraProfile` (same routing as `algebra_profile_to_dimension`);
+// complements `IterationPrimitive` (what lowers) with which bound kind analyses use.
 type IterationDimension
   = TreeDescent       // child accessor descent → check_child: true
   | CollectionFold    // collection shrink     → check_list: true

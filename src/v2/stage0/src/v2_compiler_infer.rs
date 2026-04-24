@@ -16,6 +16,11 @@ pub use crate::std_induction::{
     sub_value_to_evidence, InductiveField, RecursionShape, ShrinkFactor, SubValueRelation,
 };
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
+use crate::std_termination::PositiveDescentAmount::OneStep;
+pub use crate::std_termination::{
+    positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
+    PositiveDescentAmount,
+};
 pub use crate::std_types::{container_param_name, SourceSpan};
 pub use crate::v2_compiler_infer_access::{
     check_index_access_node, check_slice_access_node, AccessCheckResultNode,
@@ -4450,6 +4455,69 @@ pub fn classify_size_expr(val: &Rc<Node>, ctx: &Rc<DescentContext>) -> Option<Rc
     }
 }
 
+pub fn proportional_skip_alias_plus_literal(
+    alias_expr: &Rc<Node>,
+    lit_expr: Rc<Node>,
+    param_name: &String,
+    ctx: &Rc<DescentContext>,
+) -> Option<Rc<SubValueRelation>> {
+    match (*alias_expr.expr_data.clone()).clone() {
+        ExprData::ExprVar { .. } => {
+            let aname = expr_var_name_at(
+                alias_expr.clone(),
+                ctx.type_env.clone().source_indices.clone(),
+            );
+            match v2_rt::map_get(&ctx.size_aliases.clone(), aname)
+                .as_deref()
+                .cloned()
+            {
+                Some(SizeExpr::DividedSize {
+                    param: p,
+                    divisor: d,
+                    ..
+                }) => {
+                    if (p.clone().as_str() == param_name.clone().as_str()) {
+                        match (*lit_expr.expr_data.clone()).clone() {
+                            ExprData::ExprLiteral { ref value, .. } => {
+                                let LiteralValue::LitInt { value: k, .. } = value.as_ref() else {
+                                    unreachable!()
+                                };
+                                if (k.clone() > 0) {
+                                    match proportional_divisor_from_int_at_least_two(d.clone()) {
+                                        Some(div_w) => {
+                                            let synth_field = Rc::new(InductiveField {
+                                                type_name: param_name.clone(),
+                                                variant_name: "".to_string(),
+                                                field_name: "skip".to_string(),
+                                                shape: RecursionShape::ListRecursion,
+                                                element_type: param_name.clone(),
+                                            });
+                                            Some(Rc::new(SubValueRelation::StrictSubValue {
+                                                field: synth_field,
+                                                factor: Rc::new(ShrinkFactor::ProportionalShrink {
+                                                    divisor: div_w.clone(),
+                                                }),
+                                            }))
+                                        }
+                                        None => None,
+                                    }
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 pub fn classify_collection_shrink(
     arg_expr: &Rc<Node>,
     param_name: &String,
@@ -4489,21 +4557,24 @@ pub fn classify_collection_shrink(
                                                         && (mname.clone().as_str()
                                                             == "skip".to_string().as_str()))
                                                     {
-                                                        {
-                                                            let synth_field = Rc::new(InductiveField {
+                                                        match positive_descent_amount_from_positive_int(k.clone()) {
+    Some(steps) => {
+                                        let synth_field = Rc::new(InductiveField {
     type_name: param_name.clone(),
     variant_name: "".to_string(),
     field_name: mname.clone(),
     shape: RecursionShape::ListRecursion,
     element_type: param_name.clone(),
 });
-                                                            Rc::new(SubValueRelation::StrictSubValue {
+Rc::new(SubValueRelation::StrictSubValue {
     field: synth_field,
     factor: Rc::new(ShrinkFactor::ConstantShrink {
-    amount: k.clone(),
+    steps: steps.clone(),
 }),
 })
-                                                        }
+},
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+}
                                                     } else {
                                                         Rc::new(SubValueRelation::SubValueUnknown)
                                                     }
@@ -4528,21 +4599,24 @@ pub fn classify_collection_shrink(
                                                             if (p.clone().as_str()
                                                                 == param_name.clone().as_str())
                                                             {
-                                                                {
-                                                                    let synth_field = Rc::new(InductiveField {
+                                                                match proportional_divisor_from_int_at_least_two(d.clone()) {
+    Some(div_w) => {
+                                            let synth_field = Rc::new(InductiveField {
     type_name: param_name.clone(),
     variant_name: "".to_string(),
     field_name: mname.clone(),
     shape: RecursionShape::ListRecursion,
     element_type: param_name.clone(),
 });
-                                                                    Rc::new(SubValueRelation::StrictSubValue {
+Rc::new(SubValueRelation::StrictSubValue {
     field: synth_field,
     factor: Rc::new(ShrinkFactor::ProportionalShrink {
-    divisor: d.clone(),
+    divisor: div_w.clone(),
 }),
 })
-                                                                }
+},
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+}
                                                             } else {
                                                                 Rc::new(SubValueRelation::SubValueUnknown)
                                                             }
@@ -4555,115 +4629,30 @@ pub fn classify_collection_shrink(
                                                 ExprData::ExprBinOp { op, .. } => {
                                                     match op.clone() {
                                                         BinOp::Add => {
-                                                            let left = binop_left(arg_val.clone());
-                                                            let right =
-                                                                binop_right(arg_val.clone());
-                                                            let rhs_is_literal =
-                                                                match (*right.expr_data.clone())
-                                                                    .clone()
+                                                            if (mname.clone().as_str()
+                                                                == "skip".to_string().as_str())
+                                                            {
                                                                 {
-                                                                    ExprData::ExprLiteral {
-                                                                        ref value,
-                                                                        ..
-                                                                    } => {
-                                                                        let LiteralValue::LitInt {
-                                                                            ..
-                                                                        } = value.as_ref()
-                                                                        else {
-                                                                            unreachable!()
-                                                                        };
-                                                                        true
-                                                                    }
-                                                                    _ => false,
-                                                                };
-                                                            if rhs_is_literal {
-                                                                match (*left.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-                                            let lname = expr_var_name_at(left.clone(), ctx.type_env.clone().source_indices.clone());
-match v2_rt::map_get(&ctx.size_aliases.clone(), lname).as_deref().cloned() {
-    Some(SizeExpr::DividedSize { param: p, divisor: d, .. }) => if (p.clone().as_str() == param_name.clone().as_str()) {
-                                                {
-                                                    let synth_field = Rc::new(InductiveField {
-    type_name: param_name.clone(),
-    variant_name: "".to_string(),
-    field_name: mname.clone(),
-    shape: RecursionShape::ListRecursion,
-    element_type: param_name.clone(),
-});
-Rc::new(SubValueRelation::StrictSubValue {
-    field: synth_field,
-    factor: Rc::new(ShrinkFactor::ProportionalShrink {
-    divisor: d.clone(),
-}),
-})
-}
-                                            } else {
-                                                Rc::new(SubValueRelation::SubValueUnknown)
-                                            },
-    _ => Rc::new(SubValueRelation::SubValueUnknown),
-}
+                                                                    let left =
+                                                                        binop_left(arg_val.clone());
+                                                                    let right = binop_right(
+                                                                        arg_val.clone(),
+                                                                    );
+                                                                    match proportional_skip_alias_plus_literal(&left, right.clone(), &param_name, &ctx) {
+    Some(rel) => rel.clone(),
+    None => match proportional_skip_alias_plus_literal(&right, left.clone(), &param_name, &ctx) {
+    Some(rel) => rel.clone(),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
 },
-    _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
+                                                                }
                                                             } else {
                                                                 Rc::new(SubValueRelation::SubValueUnknown)
                                                             }
                                                         }
-                                                        BinOp::Sub => {
-                                                            let left = binop_left(arg_val.clone());
-                                                            let right =
-                                                                binop_right(arg_val.clone());
-                                                            let rhs_is_literal =
-                                                                match (*right.expr_data.clone())
-                                                                    .clone()
-                                                                {
-                                                                    ExprData::ExprLiteral {
-                                                                        ref value,
-                                                                        ..
-                                                                    } => {
-                                                                        let LiteralValue::LitInt {
-                                                                            ..
-                                                                        } = value.as_ref()
-                                                                        else {
-                                                                            unreachable!()
-                                                                        };
-                                                                        true
-                                                                    }
-                                                                    _ => false,
-                                                                };
-                                                            if rhs_is_literal {
-                                                                match (*left.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-                                            let lname = expr_var_name_at(left.clone(), ctx.type_env.clone().source_indices.clone());
-match v2_rt::map_get(&ctx.size_aliases.clone(), lname).as_deref().cloned() {
-    Some(SizeExpr::DividedSize { param: p, divisor: d, .. }) => if (p.clone().as_str() == param_name.clone().as_str()) {
-                                                {
-                                                    let synth_field = Rc::new(InductiveField {
-    type_name: param_name.clone(),
-    variant_name: "".to_string(),
-    field_name: mname.clone(),
-    shape: RecursionShape::ListRecursion,
-    element_type: param_name.clone(),
-});
-Rc::new(SubValueRelation::StrictSubValue {
-    field: synth_field,
-    factor: Rc::new(ShrinkFactor::ProportionalShrink {
-    divisor: d.clone(),
-}),
-})
-}
-                                            } else {
-                                                Rc::new(SubValueRelation::SubValueUnknown)
-                                            },
-    _ => Rc::new(SubValueRelation::SubValueUnknown),
-}
-},
-    _ => Rc::new(SubValueRelation::SubValueUnknown),
-}
-                                                            } else {
-                                                                Rc::new(SubValueRelation::SubValueUnknown)
-                                                            }
-                                                        }
+                                                        BinOp::Sub => Rc::new(
+                                                            SubValueRelation::SubValueUnknown,
+                                                        ),
                                                         _ => Rc::new(
                                                             SubValueRelation::SubValueUnknown,
                                                         ),
@@ -5383,19 +5372,20 @@ pub fn classify_let_value(
                                                 else {
                                                     unreachable!()
                                                 };
-                                                if (k.clone() > 0) {
-                                                    Some(Rc::new(
+                                                match positive_descent_amount_from_positive_int(
+                                                    k.clone(),
+                                                ) {
+                                                    Some(steps) => Some(Rc::new(
                                                         SubValueRelation::ArithmeticDescent {
                                                             param: lname.clone(),
                                                             factor: Rc::new(
                                                                 ShrinkFactor::ConstantShrink {
-                                                                    amount: k.clone(),
+                                                                    steps: steps.clone(),
                                                                 },
                                                             ),
                                                         },
-                                                    ))
-                                                } else {
-                                                    None
+                                                    )),
+                                                    None => None,
                                                 }
                                             }
                                             _ => None,
@@ -5462,17 +5452,20 @@ pub fn classify_let_value(
                                             else {
                                                 unreachable!()
                                             };
-                                            if (k.clone() > 1) {
-                                                Some(Rc::new(SubValueRelation::ArithmeticDescent {
-                                                    param: left_name.clone(),
-                                                    factor: Rc::new(
-                                                        ShrinkFactor::ProportionalShrink {
-                                                            divisor: k.clone(),
-                                                        },
-                                                    ),
-                                                }))
-                                            } else {
-                                                None
+                                            match proportional_divisor_from_int_at_least_two(
+                                                k.clone(),
+                                            ) {
+                                                Some(div_w) => Some(Rc::new(
+                                                    SubValueRelation::ArithmeticDescent {
+                                                        param: left_name.clone(),
+                                                        factor: Rc::new(
+                                                            ShrinkFactor::ProportionalShrink {
+                                                                divisor: div_w.clone(),
+                                                            },
+                                                        ),
+                                                    },
+                                                )),
+                                                None => None,
                                             }
                                         }
                                         _ => None,
@@ -5557,21 +5550,24 @@ pub fn classify_let_value(
                                                                     rname.clone(),
                                                                 ) != None))
                                                             {
-                                                                {
-                                                                    let synth_field = Rc::new(InductiveField {
+                                                                match positive_descent_amount_from_positive_int(skip_amount.clone()) {
+    Some(steps) => {
+                                            let synth_field = Rc::new(InductiveField {
     type_name: rname.clone(),
     variant_name: "".to_string(),
     field_name: mname.clone(),
     shape: RecursionShape::ListRecursion,
     element_type: rname.clone(),
 });
-                                                                    Some(Rc::new(SubValueRelation::StrictSubValue {
+Some(Rc::new(SubValueRelation::StrictSubValue {
     field: synth_field,
     factor: Rc::new(ShrinkFactor::ConstantShrink {
-    amount: skip_amount.clone(),
+    steps: steps.clone(),
 }),
 }))
-                                                                }
+},
+    None => None,
+}
                                                             } else {
                                                                 None
                                                             }
@@ -5841,7 +5837,9 @@ pub fn classify_argument(
                                                 Rc::new(SubValueRelation::ArithmeticDescent {
                                                     param: param_name.clone(),
                                                     factor: Rc::new(ShrinkFactor::ConstantShrink {
-                                                        amount: 1,
+                                                        steps: Rc::new(
+                                                            PositiveDescentAmount::OneStep,
+                                                        ),
                                                     }),
                                                 })
                                             } else {
@@ -5892,15 +5890,16 @@ pub fn classify_argument(
                                     else {
                                         unreachable!()
                                     };
-                                    if (k.clone() > 0) {
-                                        Rc::new(SubValueRelation::ArithmeticDescent {
-                                            param: param_name.clone(),
-                                            factor: Rc::new(ShrinkFactor::ConstantShrink {
-                                                amount: k.clone(),
-                                            }),
-                                        })
-                                    } else {
-                                        Rc::new(SubValueRelation::SubValueUnknown)
+                                    match positive_descent_amount_from_positive_int(k.clone()) {
+                                        Some(steps) => {
+                                            Rc::new(SubValueRelation::ArithmeticDescent {
+                                                param: param_name.clone(),
+                                                factor: Rc::new(ShrinkFactor::ConstantShrink {
+                                                    steps: steps.clone(),
+                                                }),
+                                            })
+                                        }
+                                        None => Rc::new(SubValueRelation::SubValueUnknown),
                                     }
                                 }
                                 _ => Rc::new(SubValueRelation::SubValueUnknown),
@@ -5956,15 +5955,16 @@ pub fn classify_argument(
                                     else {
                                         unreachable!()
                                     };
-                                    if (k.clone() > 1) {
-                                        Rc::new(SubValueRelation::ArithmeticDescent {
-                                            param: param_name.clone(),
-                                            factor: Rc::new(ShrinkFactor::ProportionalShrink {
-                                                divisor: k.clone(),
-                                            }),
-                                        })
-                                    } else {
-                                        Rc::new(SubValueRelation::SubValueUnknown)
+                                    match proportional_divisor_from_int_at_least_two(k.clone()) {
+                                        Some(div_w) => {
+                                            Rc::new(SubValueRelation::ArithmeticDescent {
+                                                param: param_name.clone(),
+                                                factor: Rc::new(ShrinkFactor::ProportionalShrink {
+                                                    divisor: div_w.clone(),
+                                                }),
+                                            })
+                                        }
+                                        None => Rc::new(SubValueRelation::SubValueUnknown),
                                     }
                                 }
                                 _ => Rc::new(SubValueRelation::SubValueUnknown),

@@ -7,9 +7,13 @@ use crate::std_algebra::AlgebraProfile::{
     PartialFunctionProfile,
 };
 pub use crate::std_algebra::{kernel_algebra_profile, AlgebraProfile};
-use crate::std_termination::DescentEvidence::*;
+use crate::std_termination::DescentEvidence::DescentUnknown;
+use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
+use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 use crate::std_termination::RankingDimension::*;
-pub use crate::std_termination::{DescentEvidence, RankingDimension};
+pub use crate::std_termination::{
+    DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
+};
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -27,7 +31,8 @@ pub enum SizeBound {
     CollectionSize { param: String },
     TreeSize { param: String },
     ArithmeticParam { param: String },
-    ExplicitCount { n: i64 },
+    ExplicitCountZero,
+    ExplicitCountPositive { steps: Rc<PositiveDescentAmount> },
     Forever,
 }
 
@@ -35,15 +40,42 @@ pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
     Rc::new(SizeBound::TreeSize { param: param })
 }
 
+pub fn positive_descent_count(steps: Rc<PositiveDescentAmount>) -> i64 {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*steps).clone() {
+        PositiveDescentAmount::OneStep => 1,
+        PositiveDescentAmount::AdditionalStep { previous: p, .. } => {
+            (1 + positive_descent_count(p.clone()))
+        }
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CallPattern {
-    ChildAccessorCall { accessor: String },
-    CollectionShrinkCall { amount: i64 },
-    ArithmeticDescentCall { op: String, by: i64 },
-    ParserAdvanceCall { witness: String },
-    WorklistDrainCall { element: String },
-    FoldBodyCall,
+    ChildAccessorCall {
+        accessor: String,
+    },
+    CollectionShrinkCall {
+        amount: Rc<PositiveDescentAmount>,
+        collection: String,
+    },
+    ArithmeticSubtractCall {
+        steps: Rc<PositiveDescentAmount>,
+        ring_param: String,
+    },
+    ArithmeticDivideCall {
+        divisor: Rc<ProportionalDivisor>,
+        ring_param: String,
+    },
+    ParserAdvanceCall {
+        witness: String,
+    },
+    WorklistDrainCall {
+        element: String,
+    },
+    FoldBodyCall {
+        outer_collection: String,
+    },
     SameArgumentCall,
 }
 
@@ -51,8 +83,8 @@ pub enum CallPattern {
 #[serde(tag = "_variant")]
 pub enum ShrinkFactor {
     UnitShrink,
-    ConstantShrink { amount: i64 },
-    ProportionalShrink { divisor: i64 },
+    ConstantShrink { steps: Rc<PositiveDescentAmount> },
+    ProportionalShrink { divisor: Rc<ProportionalDivisor> },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -79,43 +111,56 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
-        CallPattern::CollectionShrinkCall { .. } => Rc::new(LoweringTarget {
+        CallPattern::CollectionShrinkCall {
+            amount: p,
+            collection: c,
+            ..
+        } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize {
-                param: "collection".to_string(),
-            }),
+            bound: Rc::new(SizeBound::CollectionSize { param: c.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: None,
+            factor: Some(Rc::new(ShrinkFactor::ConstantShrink { steps: p.clone() })),
         }),
-        CallPattern::ArithmeticDescentCall { .. } => Rc::new(LoweringTarget {
+        CallPattern::ArithmeticSubtractCall {
+            steps: p,
+            ring_param: r,
+            ..
+        } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: Rc::new(SizeBound::ArithmeticParam {
-                param: "n".to_string(),
-            }),
+            bound: Rc::new(SizeBound::ArithmeticParam { param: r.clone() }),
+            evidence: DescentEvidence::Strict,
+            factor: Some(Rc::new(ShrinkFactor::ConstantShrink { steps: p.clone() })),
+        }),
+        CallPattern::ArithmeticDivideCall {
+            divisor: d,
+            ring_param: r,
+            ..
+        } => Rc::new(LoweringTarget {
+            primitive: IterationPrimitive::Repeat,
+            bound: Rc::new(SizeBound::ArithmeticParam { param: r.clone() }),
+            evidence: DescentEvidence::Strict,
+            factor: Some(Rc::new(ShrinkFactor::ProportionalShrink {
+                divisor: d.clone(),
+            })),
+        }),
+        CallPattern::ParserAdvanceCall { witness: w, .. } => Rc::new(LoweringTarget {
+            primitive: IterationPrimitive::Fold,
+            bound: Rc::new(SizeBound::CollectionSize { param: w.clone() }),
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
-        CallPattern::ParserAdvanceCall { .. } => Rc::new(LoweringTarget {
+        CallPattern::WorklistDrainCall { element: e, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize {
-                param: "tokens".to_string(),
-            }),
+            bound: Rc::new(SizeBound::CollectionSize { param: e.clone() }),
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
-        CallPattern::WorklistDrainCall { .. } => Rc::new(LoweringTarget {
+        CallPattern::FoldBodyCall {
+            outer_collection: oc,
+            ..
+        } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize {
-                param: "worklist".to_string(),
-            }),
-            evidence: DescentEvidence::Strict,
-            factor: None,
-        }),
-        CallPattern::FoldBodyCall => Rc::new(LoweringTarget {
-            primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize {
-                param: "outer_collection".to_string(),
-            }),
+            bound: Rc::new(SizeBound::CollectionSize { param: oc.clone() }),
             evidence: DescentEvidence::NonIncreasing,
             factor: None,
         }),
@@ -133,24 +178,33 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
         SizeBound::TreeSize { param: p, .. } => Some(p.clone()),
         SizeBound::CollectionSize { param: p, .. } => Some(p.clone()),
         SizeBound::ArithmeticParam { param: p, .. } => Some(p.clone()),
-        SizeBound::ExplicitCount { .. } => None,
+        SizeBound::ExplicitCountZero => None,
+        SizeBound::ExplicitCountPositive { .. } => None,
         SizeBound::Forever => None,
     }
 }
 
 pub fn is_constant_bound(bound: Rc<SizeBound>) -> bool {
     match (*bound).clone() {
-        SizeBound::ExplicitCount { .. } => true,
+        SizeBound::ExplicitCountZero => true,
+        SizeBound::ExplicitCountPositive { .. } => true,
         SizeBound::Forever => true,
         _ => false,
     }
 }
 
-pub fn constant_bound_value(bound: Rc<SizeBound>) -> i64 {
+pub fn forever_iteration_bound() -> i64 {
+    9223372036854775807
+}
+
+pub fn constant_bound_value(bound: Rc<SizeBound>) -> Option<i64> {
     match (*bound).clone() {
-        SizeBound::ExplicitCount { n: count, .. } => count.clone(),
-        SizeBound::Forever => 1,
-        _ => 0,
+        SizeBound::ExplicitCountZero => Some(0),
+        SizeBound::ExplicitCountPositive { steps: s, .. } => {
+            Some(positive_descent_count(s.clone()))
+        }
+        SizeBound::Forever => Some(forever_iteration_bound()),
+        _ => None,
     }
 }
 

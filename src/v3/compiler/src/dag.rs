@@ -759,29 +759,88 @@ pub enum RankingDimension {
 
 /// 🟢 TERMINAL at descent-witness scope.
 ///
-/// Rust mirror of the structural `DivisionDescentFactor` carrier. `Two` is the
-/// minimum valid divisor; `GreaterThanTwo.extra` is a PositiveInt-shaped offset
-/// above two, represented as `i64` until refined values carry generated runtime
-/// wrappers.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DivisionDescentFactor {
-    Two,
-    GreaterThanTwo { extra: i64 },
+/// Structural positive amount used so zero/negative shrink witnesses are not
+/// representable in proof carriers.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PositiveDescentAmount {
+    OneStep,
+    AdditionalStep {
+        previous: Box<PositiveDescentAmount>,
+    },
+}
+
+/// Integer ≥ 2 — proportional-divisor witnesses for divide-and-conquer descent.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ProportionalDivisor {
+    DivideByTwo,
+    StrictlyLarger { inner: Box<ProportionalDivisor> },
+}
+
+pub fn positive_descent_count(steps: &PositiveDescentAmount) -> i64 {
+    match steps {
+        PositiveDescentAmount::OneStep => 1,
+        PositiveDescentAmount::AdditionalStep { previous } => {
+            1 + positive_descent_count(previous.as_ref())
+        }
+    }
+}
+
+pub fn proportional_divisor_to_int(d: &ProportionalDivisor) -> i64 {
+    match d {
+        ProportionalDivisor::DivideByTwo => 2,
+        ProportionalDivisor::StrictlyLarger { inner } => {
+            1 + proportional_divisor_to_int(inner.as_ref())
+        }
+    }
+}
+
+/// Maximum Peano links materialized from a single `i64` literal (M9 / P4).
+///
+/// Must stay numerically aligned with `dsl/std/termination.dag`
+/// `peano_literal_materialization_cap()` (P2 single authority). Larger requests fail closed with
+/// [`None`] instead of deep recursive materialization.
+pub const MAX_PEANO_MATERIALIZATION: i64 = 256;
+
+/// Builds a Peano witness with **iterative** construction (no deep recursion).
+/// Returns [`None`] when `k` is out of range or exceeds [`MAX_PEANO_MATERIALIZATION`].
+pub fn positive_amount_from_i64(k: i64) -> Option<PositiveDescentAmount> {
+    if !(1..=MAX_PEANO_MATERIALIZATION).contains(&k) {
+        return None;
+    }
+    let mut cur = PositiveDescentAmount::OneStep;
+    for _ in 1..k {
+        cur = PositiveDescentAmount::AdditionalStep {
+            previous: Box::new(cur),
+        };
+    }
+    Some(cur)
+}
+
+/// Iterative construction; `k` must be ≥ 2 and ≤ [`MAX_PEANO_MATERIALIZATION`].
+pub fn proportional_divisor_from_i64(k: i64) -> Option<ProportionalDivisor> {
+    if !(2..=MAX_PEANO_MATERIALIZATION).contains(&k) {
+        return None;
+    }
+    let mut cur = ProportionalDivisor::DivideByTwo;
+    for _ in 2..k {
+        cur = ProportionalDivisor::StrictlyLarger {
+            inner: Box::new(cur),
+        };
+    }
+    Some(cur)
 }
 
 /// 🟡 SCAFFOLD.
 ///
 /// The witness taxonomy is durable for E-T; String payloads dissolve when
 /// accessor, operation, witness, and element references become first-class
-/// substrate values. PositiveInt-shaped payloads are represented as raw `i64`
-/// until refined values carry generated runtime wrappers; the `.dag` authority
-/// remains the source of the positivity contract.
+/// substrate values.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescentSource {
     ChildAccessor { accessor: String },
-    ListShrink { amount: i64 },
-    ArithmeticSubtract { by: i64 },
-    ArithmeticDivide { by: DivisionDescentFactor },
+    ListShrink { amount: PositiveDescentAmount },
+    ArithmeticSubtractDescent { steps: PositiveDescentAmount },
+    ArithmeticDivideDescent { divisor: ProportionalDivisor },
     ParserAdvance { witness: String },
     SetRemoval { element: String },
     FoldIteration,
@@ -839,6 +898,12 @@ pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence 
 ///
 /// Fail-closed behavior means no unary helper may fabricate `Strict` from
 /// weaker evidence; strict promotion requires a separate structural witness.
+///
+/// P5 bridge: identifier suggests promotion; this mirror is identity on the
+/// three `DescentEvidence` variants today (same fail-closed contract as
+/// `std.termination`). Dissolution: rename to e.g. `evidence_passthrough_preserving_strict`
+/// and/or remove `v2.compiler.complexity` call sites when parser progress threads
+/// `Strict` at the witness site.
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
     evidence
 }
@@ -869,34 +934,24 @@ pub fn map_evidence_merge_at(
     base
 }
 
-// 🟡 SCAFFOLD — Rust execution mirror for `src/v3/std/computation.dag`.
-//
-// The `.dag` declarations are the carrier authority; these Rust enums and
-// helpers are the temporary executable bridge until std block bodies lower
-// out of `ArrowBody::Unparsed`. Per-coproduct dissolution receipts below
-// match the `.dag` source; `m2_substrate_inhabitance_test` pins the carrier
-// shape and current Rust mirror behavior.
-//
-// 🟡 Refined-numeric bridge: `PositiveInt`-typed fields on the `.dag` side
-// (`CollectionShrinkCall.amount`, `ArithmeticSubtractCall.by`,
-// `ConstantShrink.amount`) surface here as plain `i64` until runtime refined-
-// value wrappers land. "Illegal states unrepresentable" holds at the carrier
-// authority, not at the Rust mirror field type; construct via authored paths.
-// Structural refinements that are already encoded as coproducts on the `.dag`
-// side (`DivisionDescentFactor = Two | GreaterThanTwo { extra }`) *do* flow
-// through as enums and stay enforced here.
+// Continuation: Rust execution mirror for `src/v3/std/computation.dag` (Lane E-C).
+// Same staging contract as the termination mirror above (`ArrowBody::Unparsed` std bodies).
+// `m2_substrate_inhabitance_test::{computation_*}` pins carrier shape + lowering helpers.
 
-/// 🟡 SCAFFOLD.
+/// 🟡 SCAFFOLD — `SizeBound` coproduct (`docs/modeling-discipline.md` §4).
 ///
-/// The five size regimes are durable, but `param: String` payloads dissolve
-/// when function parameters and field accessors become first-class
-/// substrate references rather than names (same bridge as `RankingDimension`).
+/// Authority: `src/v3/std/computation.dag`. Variant taxonomy is durable; `param: String` and
+/// other bootstrap bridges dissolve when size parameters become first-class substrate refs.
+/// **Named trigger:** evaluated `std.computation` std block bodies (same dissolution wave as
+/// the termination lattice mirror). **Ledger:** parity ratchet
+/// `m2_substrate_inhabitance_test::computation_size_bound_helpers_match_dag_authority`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SizeBound {
     CollectionSize { param: String },
     TreeSize { param: String },
     ArithmeticParam { param: String },
-    ExplicitCount { n: i64 },
+    ExplicitCountZero,
+    ExplicitCountPositive { steps: PositiveDescentAmount },
     Forever,
 }
 
@@ -904,35 +959,34 @@ pub fn tree_size_bound(param: String) -> SizeBound {
     SizeBound::TreeSize { param }
 }
 
-/// 🟡 SCAFFOLD.
+/// 🟡 SCAFFOLD — `CallPattern` coproduct (`docs/modeling-discipline.md` §4).
 ///
-/// Call-site classifier mirroring `DescentSource`. Variant taxonomy is
-/// durable for E-C; String payloads and the carrier itself dissolve once
-/// E-I/E-P land per-call provenance and `CallPattern` becomes a projection
-/// of `SubValueRelation` evidence rather than an authored shape.
+/// Authority: `src/v3/std/computation.dag`. Peano shrink payloads are proof-grade (terminal
+/// at witness shape); `String` slots on `CallPattern` forward into `SizeBound.param` via
+/// `lower_call_pattern` (no fabricated size labels). Dissolves with structural parameter refs
+/// (E-P). **Named trigger:** same as [`SizeBound`]. **Ledger:**
+/// `m2_substrate_inhabitance_test::computation_lowering_rust_mirror_matches_dag_authority`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallPattern {
     ChildAccessorCall {
         accessor: String,
     },
     CollectionShrinkCall {
+        amount: PositiveDescentAmount,
         collection: String,
-        amount: i64,
     },
     ArithmeticSubtractCall {
-        param: String,
-        by: i64,
+        steps: PositiveDescentAmount,
+        ring_param: String,
     },
     ArithmeticDivideCall {
-        param: String,
-        by: DivisionDescentFactor,
+        divisor: ProportionalDivisor,
+        ring_param: String,
     },
     ParserAdvanceCall {
-        stream: String,
         witness: String,
     },
     WorklistDrainCall {
-        worklist: String,
         element: String,
     },
     FoldBodyCall {
@@ -941,23 +995,86 @@ pub enum CallPattern {
     SameArgumentCall,
 }
 
-/// 🟢 TERMINAL at shrink-factor scope.
+/// 🟢 TERMINAL — `ShrinkFactor` coproduct (`docs/modeling-discipline.md` §4).
 ///
-/// Closed algebra of how a ranking measure shrinks per call edge: by one,
-/// by a constant, or by a divisor. Amounts and divisors reuse the shared
-/// `PositiveInt` / `DivisionDescentFactor` authorities so zero / negative /
-/// divide-by-one witnesses are unrepresentable.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Authority: `src/v3/std/computation.dag`. Only unit / Peano constant / Peano proportional
+/// shrink — illegal rates stay unrepresentable at the carrier. **Ledger:** exercised through
+/// the same `m2_substrate_inhabitance_test` computation rows as [`CallPattern`].
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ShrinkFactor {
     UnitShrink,
-    ConstantShrink { amount: i64 },
-    ProportionalShrink { divisor: DivisionDescentFactor },
+    ConstantShrink { steps: PositiveDescentAmount },
+    ProportionalShrink { divisor: ProportionalDivisor },
 }
 
-/// 🟢 TERMINAL.
+/// 🟢 TERMINAL at E-I inductive-shape scope.
 ///
-/// Closed alphabet of the behavioral concept DAG (fold / descend / repeat);
-/// see `MODELING.md` M9. All higher-level computation desugars onto these.
+/// Runtime mirror of `std.induction::RecursionShape`: the closed partition of
+/// recursive field wrappers in the .dag language. This mirrors the `.dag`
+/// classification directly; adding a new recursive container type requires a
+/// new authoritative `.dag` variant and matching mirror/test update.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RecursionShape {
+    DirectRecursion,
+    ListRecursion,
+    OptionalRecursion,
+    SetRecursion,
+    MapValueRecursion,
+}
+
+/// Runtime mirror of `std.induction::InductiveField` for E-P provenance.
+///
+/// Keep this aligned with `src/v3/std/induction.dag`:
+/// - `type RecursionShape`
+/// - `type InductiveField`
+/// - `type SubValueRelation`
+///
+/// 🟡 SCAFFOLD. String identity matches the current `.dag` carrier and dissolves
+/// when reflected declaration/field references replace the string bridge.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InductiveField {
+    pub type_name: String,
+    pub variant_name: String,
+    pub field_name: String,
+    pub shape: RecursionShape,
+    pub element_type: String,
+}
+
+/// Runtime mirror of `std.induction::SubValueRelation` for E-P provenance.
+///
+/// 🟡 SCAFFOLD. The `.dag` type remains the authority; this mirror exists so the
+/// native DAG lens can expose per-call evidence while std block bodies still
+/// lower as `ArrowBody::Unparsed`. Dissolution trigger: generated/reflected
+/// lens execution can construct `std.induction::SubValueRelation` directly.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SubValueRelation {
+    StrictSubValue {
+        field: InductiveField,
+        factor: ShrinkFactor,
+    },
+    IteratedSubValue {
+        field: InductiveField,
+    },
+    ArithmeticDescent {
+        param: String,
+        factor: ShrinkFactor,
+    },
+    PreservedValue,
+    SubValueUnknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallDescentEvidence {
+    pub call: NodeId,
+    pub caller: String,
+    pub callee: String,
+    pub evidence: Vec<SubValueRelation>,
+}
+
+/// 🟢 TERMINAL — `IterationPrimitive` coproduct (`docs/modeling-discipline.md` §4).
+///
+/// Closed `{Fold, Descend, Repeat}` behavioral alphabet (MODELING.md M9). Authority:
+/// `src/v3/std/computation.dag`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IterationPrimitive {
     Fold,
@@ -965,11 +1082,6 @@ pub enum IterationPrimitive {
     Repeat,
 }
 
-/// 🟡 SCAFFOLD aggregate.
-///
-/// Per-call staging record bundling the carriers above. Dissolves into the
-/// E-I/E-P lens query once per-call provenance producers exist; field set
-/// is then recovered structurally rather than authored.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoweringTarget {
     pub primitive: IterationPrimitive,
@@ -986,33 +1098,36 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::CollectionShrinkCall { collection, amount } => LoweringTarget {
+        CallPattern::CollectionShrinkCall { amount, collection } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
             bound: SizeBound::CollectionSize { param: collection },
             evidence: DescentEvidence::Strict,
-            factor: Some(ShrinkFactor::ConstantShrink { amount }),
+            factor: Some(ShrinkFactor::ConstantShrink { steps: amount }),
         },
-        CallPattern::ArithmeticSubtractCall { param, by } => LoweringTarget {
+        CallPattern::ArithmeticSubtractCall { steps, ring_param } => LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: SizeBound::ArithmeticParam { param },
+            bound: SizeBound::ArithmeticParam { param: ring_param },
             evidence: DescentEvidence::Strict,
-            factor: Some(ShrinkFactor::ConstantShrink { amount: by }),
+            factor: Some(ShrinkFactor::ConstantShrink { steps }),
         },
-        CallPattern::ArithmeticDivideCall { param, by } => LoweringTarget {
+        CallPattern::ArithmeticDivideCall {
+            divisor,
+            ring_param,
+        } => LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: SizeBound::ArithmeticParam { param },
+            bound: SizeBound::ArithmeticParam { param: ring_param },
             evidence: DescentEvidence::Strict,
-            factor: Some(ShrinkFactor::ProportionalShrink { divisor: by }),
+            factor: Some(ShrinkFactor::ProportionalShrink { divisor }),
         },
-        CallPattern::ParserAdvanceCall { stream, .. } => LoweringTarget {
+        CallPattern::ParserAdvanceCall { witness } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize { param: stream },
+            bound: SizeBound::CollectionSize { param: witness },
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::WorklistDrainCall { worklist, .. } => LoweringTarget {
+        CallPattern::WorklistDrainCall { element } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize { param: worklist },
+            bound: SizeBound::CollectionSize { param: element },
             evidence: DescentEvidence::Strict,
             factor: None,
         },
@@ -1033,45 +1148,323 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
     }
 }
 
+/// E-P per-call descent evidence side table.
+///
+/// This is option P-c from `docs/design-substrate-carrier-port-program.md`: keep
+/// `TransformNode` minimal and derive a named side table from lowered call
+/// structure. It currently proves arithmetic evidence only for direct self-call
+/// arguments. Other callable edges are still represented, but their argument
+/// positions fail closed to [`SubValueRelation::SubValueUnknown`] until the
+/// producer can prove stronger mutual-recursive or cross-call facts.
+pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
+    let mut entries = Vec::new();
+
+    for caller_decl in dag.declarations() {
+        let Some(caller) = declaration_body_bind(dag, caller_decl) else {
+            continue;
+        };
+        let caller_template = callable_target_template_for_provenance(dag, caller_decl.id);
+        let owned_transforms = bind_body_transform_ids(dag, caller);
+
+        for transform in dag.nodes().iter().filter_map(Behavior::as_transform) {
+            if !owned_transforms.contains(&transform.id) {
+                continue;
+            }
+            let TransformTarget::Callable(target_decl) = transform.target else {
+                continue;
+            };
+            let callee_template = callable_target_template_for_provenance(dag, target_decl);
+            let evidence = match (caller_template, callee_template) {
+                (
+                    CallableProvenance::Resolved(caller_template),
+                    CallableProvenance::Resolved(callee_template),
+                ) if caller_template == callee_template => transform
+                    .inputs
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, arg)| classify_call_argument(dag, caller, idx, *arg))
+                    .collect(),
+                (CallableProvenance::Resolved(_), CallableProvenance::Resolved(_)) => {
+                    vec![SubValueRelation::SubValueUnknown; transform.inputs.len()]
+                }
+                (CallableProvenance::Resolved(_), CallableProvenance::Unresolved)
+                | (CallableProvenance::Unresolved, _) => {
+                    vec![SubValueRelation::SubValueUnknown; transform.inputs.len()]
+                }
+            };
+            entries.push(CallDescentEvidence {
+                call: transform.id,
+                caller: caller.name.clone(),
+                callee: callee_name_for_provenance(dag, target_decl, callee_template),
+                evidence,
+            });
+        }
+    }
+
+    entries
+}
+
+fn declaration_body_bind<'a>(dag: &'a Dag, decl: &Declaration) -> Option<&'a BindNode> {
+    // Use the lowered structural authority: function declarations point at
+    // their owning body bind through `ArrowBody::UserDefined`.
+    let TypeConnective::Arrow {
+        body: ArrowBody::UserDefined(bind_id),
+        ..
+    } = &decl.connective
+    else {
+        return None;
+    };
+    dag.node_opt(bind_id)?.as_bind()
+}
+
+fn bind_body_transform_ids(dag: &Dag, bind: &BindNode) -> HashSet<NodeId> {
+    let mut transforms = HashSet::new();
+    let mut visited_ports = HashSet::new();
+    let mut visited_nodes = HashSet::new();
+    collect_body_port(
+        dag,
+        bind.value,
+        &mut visited_ports,
+        &mut visited_nodes,
+        &mut transforms,
+    );
+    transforms
+}
+
+fn collect_body_port(
+    dag: &Dag,
+    port: PortId,
+    visited_ports: &mut HashSet<PortId>,
+    visited_nodes: &mut HashSet<NodeId>,
+    transforms: &mut HashSet<NodeId>,
+) {
+    if !visited_ports.insert(port) {
+        return;
+    }
+    let Some(producer) = dag.port_opt(&port).and_then(|p| p.produced_by) else {
+        return;
+    };
+    collect_body_node(dag, producer, visited_ports, visited_nodes, transforms);
+}
+
+fn collect_body_node(
+    dag: &Dag,
+    node: NodeId,
+    visited_ports: &mut HashSet<PortId>,
+    visited_nodes: &mut HashSet<NodeId>,
+    transforms: &mut HashSet<NodeId>,
+) {
+    if !visited_nodes.insert(node) {
+        return;
+    }
+    let Some(behavior) = dag.node_opt(&node) else {
+        return;
+    };
+    match behavior {
+        Behavior::Value(_) => {}
+        Behavior::Transform(transform) => {
+            transforms.insert(transform.id);
+            for input in &transform.inputs {
+                collect_body_port(dag, *input, visited_ports, visited_nodes, transforms);
+            }
+        }
+        Behavior::Branch(branch) => {
+            collect_body_port(dag, branch.input, visited_ports, visited_nodes, transforms);
+            for path in &branch.paths {
+                collect_body_node(dag, path.body, visited_ports, visited_nodes, transforms);
+                collect_body_port(dag, path.output, visited_ports, visited_nodes, transforms);
+            }
+        }
+        Behavior::Loop(loop_node) => {
+            collect_body_port(
+                dag,
+                loop_node.source,
+                visited_ports,
+                visited_nodes,
+                transforms,
+            );
+            collect_body_port(
+                dag,
+                loop_node.init,
+                visited_ports,
+                visited_nodes,
+                transforms,
+            );
+            if let Some(count) = loop_node.bound.count_port() {
+                collect_body_port(dag, count, visited_ports, visited_nodes, transforms);
+            }
+            collect_body_node(
+                dag,
+                loop_node.body,
+                visited_ports,
+                visited_nodes,
+                transforms,
+            );
+        }
+        Behavior::Bind(inner) => {
+            // Local value binds are part of the current body graph. Function binds
+            // own a separate `ArrowBody::UserDefined` body and are scanned through
+            // their declaration, not through an enclosing span/body walk.
+            if inner.params.is_empty() {
+                collect_body_port(dag, inner.value, visited_ports, visited_nodes, transforms);
+            }
+        }
+    }
+}
+
+/// 🟢 TERMINAL private proof-state.
+///
+/// Local E-P producer state: either callable template provenance was resolved
+/// to a declaration, or it was not. This is not a substrate carrier; it keeps
+/// the bounded instantiation peel fail-closed before emitting side-table facts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CallableProvenance {
+    Resolved(DeclarationId),
+    Unresolved,
+}
+
+const CALLABLE_PROVENANCE_TEMPLATE_DEPTH_LIMIT: usize = 16;
+
+fn callable_target_template_for_provenance(
+    dag: &Dag,
+    mut decl: DeclarationId,
+) -> CallableProvenance {
+    // Bounded peel over materialized instantiations. Hitting the cap means the
+    // producer cannot prove self-vs-non-self provenance, so callers emit
+    // `SubValueUnknown` rather than silently dropping the call edge.
+    for _ in 0..CALLABLE_PROVENANCE_TEMPLATE_DEPTH_LIMIT {
+        match &dag.declaration(decl).connective {
+            TypeConnective::Instantiation { template, .. } => decl = *template,
+            _ => return CallableProvenance::Resolved(decl),
+        }
+    }
+    CallableProvenance::Unresolved
+}
+
+fn callee_name_for_provenance(
+    dag: &Dag,
+    target: DeclarationId,
+    provenance: CallableProvenance,
+) -> String {
+    let label = match provenance {
+        CallableProvenance::Resolved(template) => template,
+        CallableProvenance::Unresolved => target,
+    };
+    dag.declaration(label)
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("decl#{}", label.raw()))
+}
+
+fn classify_call_argument(
+    dag: &Dag,
+    caller: &BindNode,
+    idx: usize,
+    arg: PortId,
+) -> SubValueRelation {
+    let Some(param) = caller.params.get(idx).copied() else {
+        return SubValueRelation::SubValueUnknown;
+    };
+
+    if arg == param {
+        return SubValueRelation::PreservedValue;
+    }
+
+    if let Some(relation) = arithmetic_descent_relation(dag, idx, param, arg) {
+        return relation;
+    }
+
+    SubValueRelation::SubValueUnknown
+}
+
+fn arithmetic_descent_relation(
+    dag: &Dag,
+    idx: usize,
+    param: PortId,
+    arg: PortId,
+) -> Option<SubValueRelation> {
+    let Behavior::Transform(transform) = dag.resolve_producer_opt(&arg)? else {
+        return None;
+    };
+    let TransformTarget::Operator(OperatorKind::Arithmetic(op)) = transform.target else {
+        return None;
+    };
+    // First E-P slice recognizes the same left-operand convention as the v3
+    // recursive termination gate: `param - k` and `param / k`, not `k - param`.
+    if transform.inputs.len() != 2 || transform.inputs[0] != param {
+        return None;
+    }
+    let literal = literal_int_at(dag, transform.inputs[1])?;
+    let factor = match op {
+        ArithmeticOp::Sub => ShrinkFactor::ConstantShrink {
+            steps: positive_amount_from_i64(literal)?,
+        },
+        ArithmeticOp::Div => ShrinkFactor::ProportionalShrink {
+            divisor: proportional_divisor_from_i64(literal)?,
+        },
+        ArithmeticOp::Add | ArithmeticOp::Mul => return None,
+    };
+    Some(SubValueRelation::ArithmeticDescent {
+        param: ordinal_param_label(idx),
+        factor,
+    })
+}
+
+fn literal_int_at(dag: &Dag, port: PortId) -> Option<i64> {
+    match dag.resolve_producer_opt(&port)? {
+        Behavior::Value(value) => match &value.data {
+            LiteralBits::Int(n) => Some(*n),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// 🟡 SCAFFOLD. `BindNode` currently carries parameter ports but not parameter
+/// names, so the side table uses stable ordinal labels. Dissolves when E-P can
+/// read reflected parameter names or when `SubValueRelation::ArithmeticDescent`
+/// carries a structural `ParamRef`.
+fn ordinal_param_label(idx: usize) -> String {
+    format!("param_{idx}")
+}
+
 pub fn size_bound_param(bound: &SizeBound) -> Option<&str> {
     match bound {
         SizeBound::TreeSize { param }
         | SizeBound::CollectionSize { param }
         | SizeBound::ArithmeticParam { param } => Some(param.as_str()),
-        SizeBound::ExplicitCount { .. } | SizeBound::Forever => None,
+        SizeBound::ExplicitCountZero
+        | SizeBound::ExplicitCountPositive { .. }
+        | SizeBound::Forever => None,
     }
 }
 
-/// `Forever` is "constant" in the sense that it collapses to a fixed
-/// constant-cost COEFFICIENT in the size/cost algebra — *not* that it
-/// carries a finite runtime iteration count. See [`constant_bound_value`]
-/// for the coefficient projection.
 pub fn is_constant_bound(bound: &SizeBound) -> bool {
-    matches!(bound, SizeBound::ExplicitCount { .. } | SizeBound::Forever)
+    matches!(
+        bound,
+        SizeBound::ExplicitCountZero | SizeBound::ExplicitCountPositive { .. } | SizeBound::Forever
+    )
 }
 
-/// Returns the constant VALUE only for `SizeBound` variants that carry one
-/// directly, and the constant-cost COEFFICIENT for `Forever`. Non-constant
-/// bounds yield `None` rather than fabricating 0.
-///
-/// `Forever => Some(1)` is the O(1) constant-cost coefficient for the
-/// size/cost algebra (SameArgumentCall → Repeat(Forever) collapses to a
-/// single-unit cost projection per v2's `dsl/std/computation.dag:269-275`).
-/// It is NOT a claim that `Forever` represents a finite iteration count
-/// of 1.
+/// Signed `Int` top iterate count (`i64::MAX`) for [`SizeBound::Forever`] / `repeat(max_int)`.
+pub fn forever_iteration_bound() -> i64 {
+    i64::MAX
+}
+
+/// `None` when `bound` is not constant (`ExplicitCount*` / `Forever` only).
 pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
     match bound {
-        SizeBound::ExplicitCount { n } => Some(*n),
-        SizeBound::Forever => Some(1),
+        SizeBound::ExplicitCountZero => Some(0),
+        SizeBound::ExplicitCountPositive { steps } => Some(positive_descent_count(steps)),
+        SizeBound::Forever => Some(forever_iteration_bound()),
         _ => None,
     }
 }
 
-/// 🟢 TERMINAL.
+/// 🟢 TERMINAL — `IterationDimension` coproduct (`docs/modeling-discipline.md` §4).
 ///
-/// Projection of the algebra-profile table into the three iteration regimes.
-/// Closed alongside `IterationPrimitive`; new dimensions land via a new
-/// algebra profile, not a new variant here.
+/// Three-way projection from kernel algebra profiles onto iteration regimes. Authority:
+/// `src/v3/std/computation.dag`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IterationDimension {
     TreeDescent,
@@ -1079,13 +1472,12 @@ pub enum IterationDimension {
     ArithmeticRepeat,
 }
 
-/// 🟡 SCAFFOLD.
+/// 🟡 SCAFFOLD — `AlgebraProfile` coproduct (`docs/modeling-discipline.md` §4).
 ///
-/// Rust mirror of `std.algebra::AlgebraProfile`. The variant set is closed
-/// (the seven kernel algebra profiles), but the Rust enum and the
-/// `kernel_algebra_profile` table below are transitional bridges. Dissolves
-/// when std block bodies evaluate from `.dag` and the algebra-profile
-/// authority can be queried directly instead of mirrored in Rust.
+/// Closed seven-variant mirror of `dsl/std/algebra.dag` `kernel_algebra_profile` while the
+/// table is still `ArrowBody::Unparsed`. **Named trigger:** evaluated std bodies / read the
+/// table from `.dag` (see [`kernel_algebra_profile`] below). **Ledger:** P2 ratchet
+/// `m2_substrate_inhabitance_test::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AlgebraProfile {
     OrderedRingProfile,
@@ -1118,9 +1510,20 @@ pub fn type_iteration_dimension(type_name: &str) -> Option<IterationDimension> {
     kernel_algebra_profile(type_name).and_then(algebra_profile_to_dimension)
 }
 
-// Transitional mirror of `std.algebra::kernel_algebra_profile` for the E-C
-// Rust-side parity tests; the `.dag` table remains the semantic source.
-fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
+/// Kernel type name → iteration algebra profile (`Int`, `List`, …).
+///
+/// Semantic authority is `dsl/std/algebra.dag` (`data kernel_algebra_profile`).
+/// `v2_compiler::std_algebra::kernel_algebra_profile` is regenerated from that
+/// block; this match is a transitional Rust mirror while bootstrap still carries
+/// the table as [`ArrowBody::Unparsed`].
+///
+/// **P2 drift ratchet:** `m2_substrate_inhabitance_test::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority`
+/// compares this map entry-for-entry to the stage0 table.
+///
+/// **Dissolution:** when `kernel_algebra_profile` lowers to evaluated `.dag` (same
+/// std-body staging trigger as the termination-lattice scaffold above), delete
+/// this mirror and read the evaluated map instead.
+pub fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
     match type_name {
         "Int" => Some(AlgebraProfile::OrderedRingProfile),
         "Float" => Some(AlgebraProfile::ApproximateFieldProfile),
@@ -1132,7 +1535,6 @@ fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
         _ => None,
     }
 }
-
 #[derive(Debug, Clone)]
 pub struct ValueNode {
     pub id: NodeId,
