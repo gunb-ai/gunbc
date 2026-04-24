@@ -29,7 +29,7 @@ src/v3/std/diagnostics.dag	6	7195	e14b2bb9b78adc76
 src/v3/std/dimensions.dag	8	15340	571b6224904e5e30
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
 src/v3/std/emit_model.dag	31	60480	7897681bff251cf8
-src/v3/std/induction.dag	54	86117	3fd1dfff748b0d35
+src/v3/std/induction.dag	54	86117	c55f7a74f1e6402d
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
 src/v3/std/lookup.dag	5	4734	360a4ff05518ddcb
 src/v3/std/parse_surface.dag	17	94961	9b9d42b7673f21d3
