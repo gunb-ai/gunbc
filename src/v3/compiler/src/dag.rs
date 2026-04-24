@@ -898,10 +898,11 @@ pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence 
 /// Fail-closed behavior means no unary helper may fabricate `Strict` from
 /// weaker evidence; strict promotion requires a separate structural witness.
 ///
-/// P5 bridge: identifier suggests promotion; this mirror pass-through matches
-/// the fail-closed `std.termination` contract for `Strict` / `NonIncreasing` /
-/// `DescentUnknown`. Dissolution: rename or remove `v2.compiler.complexity` call
-/// sites when parser progress threads `Strict` at the witness site.
+/// P5 bridge: identifier suggests promotion; this mirror is identity on the
+/// three `DescentEvidence` variants today (same fail-closed contract as
+/// `std.termination`). Dissolution: rename to e.g. `evidence_passthrough_preserving_strict`
+/// and/or remove `v2.compiler.complexity` call sites when parser progress threads
+/// `Strict` at the witness site.
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
     evidence
 }

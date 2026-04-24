@@ -135,9 +135,9 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 // 🟡 P5 BRIDGE. The name reads like unary promotion; the body only preserves
 // `Strict` / `NonIncreasing` and maps other positions to `DescentUnknown` — no
 // `Strict` from weaker evidence. `v2.compiler.complexity` parser-progress paths
-// still call this symbol for historical wiring; dissolution: rename to an
-// evidence-neutral helper or delete those calls once variants thread `Strict`
-// at the witness site without this hop (tracked follow-up, not a merge blocker).
+// still call this symbol for historical wiring; dissolution: rename to something
+// like `evidence_passthrough_preserving_strict` (or delete call sites) once parser
+// progress threads `Strict` at the witness site without this hop.
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   match evidence {
     NonIncreasing => NonIncreasing

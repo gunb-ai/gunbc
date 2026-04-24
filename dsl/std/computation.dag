@@ -248,6 +248,11 @@ type IterationPrimitive
   | Descend
   | Repeat
 
+// `lower_call_pattern` fills `SizeBound.param` with **synthetic** labels
+// (`"collection"`, `"n"`, `"tokens"`, `"worklist"`, `"outer_collection"`) — not
+// reflective IR parameter names. They exist only so `LoweringTarget` has a
+// well-shaped `SizeBound` shell until `CallPattern` / lowering carries structural
+// size-parameter refs; dissolution replaces these literals with real param refs.
 fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
   match pattern {
     ChildAccessorCall { accessor: a } =>
