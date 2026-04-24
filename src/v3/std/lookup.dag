@@ -40,6 +40,12 @@ import std.types { Int }
 //   4. Dimensional — Fails: absence vs. presence of `value` is a single binary
 //      sum, not a product of independent dimensions to factor into fields.
 //
+// **Dissolution / migration receipt (compiler–std consolidation).** The first
+// migrated lens that *consumes* this file (not a parallel `Missing/Found` lens
+// carrier) is `src/v3/lenses/complexity.dag` — `import v3.std.lookup { Lookup, … }`
+// and `cost_of` → `Lookup<Int>`. `src/v3/compiler/src/lens_cost_generated.rs` is
+// the **generated** consumer at the Rust lens boundary (regen_lens; committed).
+//
 // **Structural consumer (P2 / INVARIANTS.md P2: declaration + realization +
 // generated proof).** `Lookup` is not declaration-only:
 //   - `src/v3/lenses/complexity.dag` — `cost_of` and helpers return `Lookup<Int>`;
