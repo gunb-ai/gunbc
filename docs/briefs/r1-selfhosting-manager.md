@@ -68,7 +68,7 @@ the two acknowledged residuals.
   runner needs to exist to evaluate them.
 - **Gated on Testgen Manager.** T-PB-B's landing gate
   (`pb_test_file_generated_from_dag` + `pb_rust_tests_outside_residual_zero`,
-  both `[ext]` on testgen extensions per `ROADMAP.md:65`) unblocks
+  both `[ext]` on testgen extensions per `ROADMAP.md:68`) unblocks
   when Testgen's runner lands. Until then: draft `.dag` test
   declarations, don't convert Rust tests yet.
 - **Cementing.** Maintain cementing tests that compare v3 compiler
