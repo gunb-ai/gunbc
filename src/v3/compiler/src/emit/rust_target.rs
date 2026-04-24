@@ -494,8 +494,9 @@ struct RustLanguageSyntax {
     functions: FunctionSyntaxBinding,
     type_applications: TypeApplicationSyntaxBinding,
     type_definitions: TypeDefinitionSyntaxBinding,
-    /// `data rust_record_derive_templates` in `rust.dag` — Rust-only; not part
-    /// of shared `TypeDefinitionSyntax` (Codex #676 / P2).
+    /// From `rust_language.record_derive_templates` (`LanguageSpec` in
+    /// `emit_model.dag`); Rust data is `rust_record_derive_templates` in
+    /// `rust.dag` — not part of shared `TypeDefinitionSyntax` (Codex #676 / P2).
     record_derive_no_debug: RustRecordDeriveTemplatesBinding,
     patterns: PatternMatchSyntaxBinding,
     collection_ops: CollectionOpsBinding,
@@ -1282,7 +1283,10 @@ impl RustLanguageSyntax {
                 dag,
                 require_field_decl_ref(fields, "type_definitions", language_decl)?,
             )?,
-            record_derive_no_debug: parse_rust_record_derive_templates(dag)?,
+            record_derive_no_debug: parse_rust_record_derive_templates(
+                dag,
+                require_field_decl_ref(fields, "record_derive_templates", language_decl)?,
+            )?,
             patterns: parse_pattern_match_syntax(
                 dag,
                 require_field_decl_ref(fields, "patterns", language_decl)?,
@@ -1413,16 +1417,12 @@ fn parse_type_definition_syntax(
 
 fn parse_rust_record_derive_templates(
     dag: &Dag,
+    declaration: DeclarationId,
 ) -> Result<RustRecordDeriveTemplatesBinding, EmitError> {
-    let declaration = dag
-        .declaration_by_name("rust_record_derive_templates")
-        .ok_or(EmitError::MissingTargetSyntax(
-            "rust_record_derive_templates",
-        ))?;
-    let fields = structural_fields_for_decl(dag, declaration.id)?;
+    let fields = structural_fields_for_decl(dag, declaration)?;
     Ok(RustRecordDeriveTemplatesBinding {
-        struct_def_no_debug: syntax_field_string(fields, "struct_def_no_debug", declaration.id)?,
-        enum_def_no_debug: syntax_field_string(fields, "enum_def_no_debug", declaration.id)?,
+        struct_def_no_debug: syntax_field_string(fields, "struct_def_no_debug", declaration)?,
+        enum_def_no_debug: syntax_field_string(fields, "enum_def_no_debug", declaration)?,
     })
 }
 

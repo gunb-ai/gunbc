@@ -21,8 +21,8 @@ import v3.std.emit_model {
   Borrowed, Consumed,
   StatementSyntax, ExpressionSyntax, ControlFlowSyntax, ForEachSyntax,
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
-  TypeDefinitionSyntax, PatternMatchSyntax, CollectionOps,
-  ValueConstructionSyntax, LanguageSpec
+  TypeDefinitionSyntax, RustRecordDeriveTemplates, PatternMatchSyntax,
+  CollectionOps, ValueConstructionSyntax, LanguageSpec
 }
 import v3.std.clean_emission {
   CleanEmissionContract,
@@ -124,6 +124,13 @@ data python_value_construction: ValueConstructionSyntax = {
   variant_named_construction: "{name}({fields})"
 }
 
+// Stub: `emit_python` does not consume `RustRecordDeriveTemplates`; field
+// exists so `LanguageSpec` matches `emit_model.dag` (P2 single boundary).
+data python_record_derive_templates: RustRecordDeriveTemplates = {
+  struct_def_no_debug: ""
+  enum_def_no_debug: ""
+}
+
 data python_language: LanguageSpec = {
   statements: python_statements
   expressions: python_expressions
@@ -133,6 +140,7 @@ data python_language: LanguageSpec = {
   functions: python_functions
   type_applications: python_type_applications
   type_definitions: python_type_definitions
+  record_derive_templates: python_record_derive_templates
   patterns: python_patterns
   collection_ops: python_collections
   values: python_value_construction

@@ -980,8 +980,9 @@ data rust_main_wrap: BehaviorRealization = {
 //
 // **Derive split (blocking #676 api-review):** `dyn Fn` does not implement
 // `Debug`, so user `struct` / `enum` definitions that (transitively) carry
-// first-class `fn` storage use `rust_record_derive_templates` (`#[derive(Clone)]`
-// only); see `emit/rust_target.rs`.
+// first-class `fn` storage use `rust_language.record_derive_templates`
+// (`data rust_record_derive_templates`, `#[derive(Clone)]` only); see
+// `emit/rust_target.rs`.
 
 data rust_empty_callable: CallableRealization = {
   language: rust_language
@@ -1224,6 +1225,7 @@ data rust_language: LanguageSpec = {
   functions: rust_functions
   type_applications: rust_type_applications
   type_definitions: rust_type_defs
+  record_derive_templates: rust_record_derive_templates
   patterns: rust_patterns
   collection_ops: rust_collection_ops
   values: rust_value_construction
