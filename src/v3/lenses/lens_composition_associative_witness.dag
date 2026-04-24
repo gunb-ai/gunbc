@@ -1,4 +1,4 @@
-// lenses.lens_composition_associative_witness — minimal `[ext]` gate witness for
+// lenses.lens_composition_associative_witness - minimal `[ext]` gate witness for
 // `lens_composition_associative` (T-LensAPI / AlgebraicLaw::Associativity).
 //
 // The Rust test runner recognizes `lens_composition_op` as a structurally

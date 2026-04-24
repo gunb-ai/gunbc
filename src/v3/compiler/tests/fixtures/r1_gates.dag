@@ -54,7 +54,7 @@ data manual_claim_suite: TestSuite = {
 
 data lens_composition_associative_gate: TestClaim = {
   name: "lens_composition_associative",
-  source: "// lenses.lens_composition_associative_witness — minimal `[ext]` gate witness for\n// `lens_composition_associative` (T-LensAPI / AlgebraicLaw::Associativity).\n//\n// The Rust test runner recognizes `lens_composition_op` as a structurally\n// canonical associative binary operation on `Int` (`a + b`) until lens\n// composition is reflected end-to-end in the substrate.\n//\n// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A beyond the witness shape.\n// Not bundled into `Dag::new()` bootstrap; see `m1_5_user_authored_lens_gate_test`\n// lockstep pattern for `r1_gates.dag`.\n\nmodule lenses.lens_composition_associative_witness\n\nfn lens_composition_op(a: Int, b: Int) -> Int = a + b\n\n",
+  source: "// lenses.lens_composition_associative_witness - minimal `[ext]` gate witness for\n// `lens_composition_associative` (T-LensAPI / AlgebraicLaw::Associativity).\n//\n// The Rust test runner recognizes `lens_composition_op` as a structurally\n// canonical associative binary operation on `Int` (`a + b`) until lens\n// composition is reflected end-to-end in the substrate.\n//\n// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A beyond the witness shape.\n// Not bundled into `Dag::new()` bootstrap; see `m1_5_user_authored_lens_gate_test`\n// lockstep pattern for `r1_gates.dag`.\n\nmodule lenses.lens_composition_associative_witness\n\nfn lens_composition_op(a: Int, b: Int) -> Int = a + b\n",
   file_name: "src/v3/lenses/lens_composition_associative_witness.dag",
   predicate: AlgebraicLaw(Associativity, lens_composition_op),
   requires: []

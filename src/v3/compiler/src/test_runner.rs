@@ -45,7 +45,10 @@ pub fn eval_algebraic_law_for_claim_program(
     let Some(target) = program_dag.declaration_by_name(&lens_name) else {
         return Ok(false);
     };
-    Ok(declaration_is_binary_int_add_associativity_witness(program_dag, target))
+    Ok(declaration_is_binary_int_add_associativity_witness(
+        program_dag,
+        target,
+    ))
 }
 
 #[derive(Debug, Clone)]
@@ -562,9 +565,8 @@ fn algebraic_law_payload_fields(
     match payload {
         [law, lens_ref] => Ok((law, lens_ref)),
         [FieldValue::Record(fields)] => {
-            let law = field(fields, "law").ok_or_else(|| {
-                "AlgebraicLaw payload record is missing `law` field".to_string()
-            })?;
+            let law = field(fields, "law")
+                .ok_or_else(|| "AlgebraicLaw payload record is missing `law` field".to_string())?;
             let lens_ref = field(fields, "lens_ref").ok_or_else(|| {
                 "AlgebraicLaw payload record is missing `lens_ref` field".to_string()
             })?;
@@ -657,8 +659,8 @@ fn same_port_id_set(params: &[PortId], inputs: &[PortId]) -> bool {
     if params.len() != inputs.len() {
         return false;
     }
-    let mut a: Vec<u32> = params.iter().map(PortId::raw).collect();
-    let mut b: Vec<u32> = inputs.iter().map(PortId::raw).collect();
+    let mut a: Vec<u32> = params.iter().map(|p| p.raw()).collect();
+    let mut b: Vec<u32> = inputs.iter().map(|p| p.raw()).collect();
     a.sort_unstable();
     b.sort_unstable();
     a == b
