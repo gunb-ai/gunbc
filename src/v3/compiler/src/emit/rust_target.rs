@@ -3816,7 +3816,7 @@ impl<'a> Ctx<'a> {
     /// / `Lookup::Hit(...)` so generated lens code does not call
     /// out-of-scope shims. Runs before [`Self::render_realized_callable`]
     /// so a registered callable strategy does not pre-empt enum lowering.
-    fn lookup_int_constructor_emit(
+    fn lookup_monomorphized_constructor_emit(
         &self,
         t: &TransformNode,
         template: DeclarationId,
@@ -3864,7 +3864,7 @@ impl<'a> Ctx<'a> {
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
         let (template, arguments) = callable_template(target, self.dag);
-        if let Some(rendered) = self.lookup_int_constructor_emit(t, template, locals)? {
+        if let Some(rendered) = self.lookup_monomorphized_constructor_emit(t, template, locals)? {
             return Ok(rendered);
         }
         if let Some(rendered) = self.render_substrate_accessor(t, template, locals)? {

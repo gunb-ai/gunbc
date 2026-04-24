@@ -32,7 +32,7 @@ import std.algebra {
   iterate,
   max_path,
   miss_symbolic_cost_lookup,
-  hit_symbolic_cost_lookup,
+  hit_symbolic_cost_lookup
 }
 import v3.std.lookup { Lookup }
 
