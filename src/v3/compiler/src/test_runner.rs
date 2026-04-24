@@ -282,22 +282,9 @@ impl<'a> TestRunner<'a> {
             FieldValue::Variant {
                 constructor,
                 payload,
-            } => Some((self.variant_label(*constructor)?, payload.clone())),
+            } => Some((variant_label(self.dag, *constructor)?, payload.clone())),
             _ => None,
         }
-    }
-
-    fn variant_label(&self, variant_id: DeclarationId) -> Option<String> {
-        self.dag
-            .declarations()
-            .iter()
-            .find_map(|decl| match &decl.connective {
-                TypeConnective::Disj { variants } => variants
-                    .iter()
-                    .find(|variant| variant.ty == variant_id)
-                    .map(|variant| variant.label.clone()),
-                _ => None,
-            })
     }
 }
 
