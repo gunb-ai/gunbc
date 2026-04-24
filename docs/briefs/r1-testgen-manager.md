@@ -91,8 +91,10 @@ compose. When this closes, the R1 release gates themselves
   is the hand-off signal for T-PB-B landing. Self-hosting drafts
   `.dag` `TestClaim` declarations during Day-1, waits on this
   signal, then converts pipeline / contract tests. Notify
-  Self-hosting when the runner lands. **Landable compile-only batch:**
-  `docs/briefs/t-pb-b-1.md` + `src/v3/compiler/tests/dag/`.
+  Self-hosting when the runner lands. **Landed batch (runner-backed):**
+  `docs/briefs/t-pb-b-1.md` + `src/v3/compiler/tests/dag/` —
+  `t_pb_b_1_dag_runner_test` evaluates the landed suites (PR #736);
+  compile-smoke counterpart is `t_pb_b_1_tests_dag_smoke_test`.
   **Pre–Rust-deletion checklist (single source — edit here only; do
   not fork a competing numbered list in other briefs):** (1) **[done,
   PR #736]** Runner accepts v3 `.dag` modules under
@@ -109,9 +111,50 @@ compose. When this closes, the R1 release gates themselves
   `t_pb_b_1_contract_port_cost.dag`; standalone
   `data _: TestPredicate = …` bodies remain NYI under the same
   class-5 restriction. Receipt paragraph in `docs/briefs/t-pb-b-1.md`.
-  (4) **First Rust deletion batch:** one thin `Compiles`-only duplicate
-  (e.g. `thesis_validation_test` or `pipe_desugar`) only after (1)–(3)
-  are green for that claim shape — Testgen manager call.
+  (4) **First Rust deletion batch — prep, not yet signed off.** Target
+  shape: one thin `Compiles`-only duplicate whose claim is already
+  covered by a landed `.dag` suite evaluated under
+  `t_pb_b_1_dag_runner_test`. Candidate inventory (under
+  `src/v3/compiler/tests/integration/`, registered in `integration.rs`
+  and enumerated in `sg0_census_test.rs`):
+  - **Excluded from first batch: `pipe_desugar.rs`.** Despite the
+    `expect("compiles")` surface, `pipe_desugars_unary_call_by_injecting_the_left_value`
+    and `pipe_desugars_multi_arg_call_with_first_arg_injection` assert
+    structural facts — `Transform` target name, `call.inputs.len()`,
+    injected `LiteralBits::Int` order, and the port's declared return
+    `TypeShape`. The `.dag` analogue (`t_pb_b_1_pipeline_smoke.dag`,
+    `Compiles` + source text only) does not cover those facts. Holding
+    this file until structural-query predicates (target/arity/argument
+    order/return shape) land in the T-TestGen schema and a `.dag`
+    suite exercises both unary and multi-arg shapes.
+  - `thesis_validation_test.rs` — mixed shapes (`Compiles`,
+    `PortHasState`, `CostBounded`, `FailsWithDiagnostic` via
+    `rendered_rust_diagnostic`). The `Compiles` / `PortHasState` /
+    `CostBounded` subset maps onto the landed runner predicates; the
+    rendered-diagnostic subset does **not** yet have a runner-backed
+    counterpart and must be excluded from the first batch. Any split
+    of this file needs a receipt listing which `#[test]` functions
+    move and which stay.
+  **Explicit Testgen sign-off — guard before any deletion PR opens:**
+  1. Receipts (1)–(3) reviewed on main and still green (`cargo test
+     -p v3-compiler t_pb_b_1_dag_runner_test` passes; the class-5 pin
+     `test_runner_data_bodies_reject_requires_empty_call_today` still
+     passes). 2. For each Rust `#[test]` proposed for deletion,
+     name the `.dag` `TestClaim` (suite + claim name) that covers it
+     and confirm `TestRunner::run_suite` returns `ClaimResult::Pass`
+     on today's runner — no inference by filename. 3. PR #735
+     (symbolic cost / `Lookup`) either merged or explicitly determined
+     not to shift `CostBounded` witnesses for the candidate claims
+     (per the cost-witness note in `docs/briefs/t-pb-b-1.md`). 4.
+     Testgen manager records the sign-off in this brief's *Decisions
+     log* **before** the self-hosting manager opens the deletion PR;
+     without that entry, the self-hosting lane stays parked on
+     `ROADMAP.md` T-PB-B lane work (`pb_rust_tests_outside_residual_zero`)
+     and does not delete Rust tests.
+     Out of scope today: deleting tests whose shape is rendered-diagnostic
+     only, shared-predicate (`let pred_*: TestPredicate`) factored, or
+     `let`+`empty()` backed — those depend on runner seams / M1(2.8)
+     class-5 lift that have not landed.
 - **Sideways to Surface Manager.** `emit_omni_demo_fixtures_green`
   and the three `emit_*` gates under T-Emit require `ExecuteCommand`
   + `ForAllTargets` predicates — these are T-TestGen `[ext]`
@@ -177,6 +220,18 @@ Lane-owner dispatch status (update as sub-deliverables close):
 
 Decisions log (append as they happen):
 
+- 2026-04-24: **Pre–Rust-deletion checklist item (4) prepped, not signed
+  off.** Candidate inventory narrowed — `pipe_desugar.rs` **excluded**
+  from first batch (asserts `Transform` target / input arity / literal
+  order / return shape; `t_pb_b_1_pipeline_smoke.dag` only witnesses
+  `Compiles`, so deletion would drop structural coverage until
+  structural-query predicates land). First-batch candidate is the
+  `Compiles`/`PortHasState`/`CostBounded` subset of
+  `thesis_validation_test.rs`; four-point sign-off guard recorded in *Hand-off points →
+  Sideways to Self-hosting Manager*. **No Rust deletion lands without a
+  sign-off entry in this log naming the specific `#[test]` → `.dag`
+  `TestClaim` mapping.** Self-hosting manager should continue to treat
+  item (4) as parked until that entry appears.
 - 2026-04-24: **T-LensAPI `lens_composition_associative` closed** via
   PR #728. Runner dispatch of `AlgebraicLaw { law: Associativity }`,
   witness DAG, and `r1_gates.dag` suite landed together. Remaining
