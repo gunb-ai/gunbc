@@ -39,6 +39,8 @@ mod common;
 
 #[path = "integration/cementing/cementing_lens_registry_dispatch_test.rs"]
 mod cementing_lens_registry_dispatch_test;
+#[path = "integration/e_i_lane_induction_preflight_test.rs"]
+mod e_i_lane_induction_preflight_test;
 #[path = "integration/four_fixture_regression_test.rs"]
 mod four_fixture_regression_test;
 #[path = "integration/l1_5_fixed_point_test.rs"]
@@ -107,8 +109,6 @@ mod m2_lens_variant_payload_migration_test;
 mod m2_substrate_inhabitance_test;
 #[path = "integration/p0_std_render_repeat_string_test.rs"]
 mod p0_std_render_repeat_string_test;
-#[path = "integration/e_i_lane_induction_preflight_test.rs"]
-mod e_i_lane_induction_preflight_test;
 #[path = "integration/pb1_bootstrap_full_snapshot_test.rs"]
 mod pb1_bootstrap_full_snapshot_test;
 #[path = "integration/pb1_bootstrap_std_snapshot_test.rs"]
