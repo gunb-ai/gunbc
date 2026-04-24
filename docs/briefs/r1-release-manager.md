@@ -163,7 +163,9 @@ Lane-owner dispatch status (update as sub-deliverables close):
     via #688 + #705. `MockBackedInvariant` **dispatch + schema
     wiring** landed in #722, but the runner still returns
     `ClaimResult::NotYetImplemented` for mock simulation
-    (`src/v3/compiler/src/test_runner.rs:461`). Trigger remains
+    (`eval_mock_backed_invariant` in
+    `src/v3/compiler/src/test_runner.rs`, currently `:621`).
+    Trigger remains
     **half-met** until the runner actually evaluates a mock-backed
     invariant claim, not just routes it.
   - Substrate T-LaneE (`complexity_merge_sort_is_nlogn` /
@@ -241,7 +243,8 @@ Decisions log (append as they happen):
   re-dispatch against honest claims.
 - **2026-04-24** — `MockBackedInvariant` dispatch + schema wiring
   landed in #722, but runner mock simulation is still
-  `NotYetImplemented` (`test_runner.rs:461`). Initial brief refresh
+  `NotYetImplemented` (`eval_mock_backed_invariant` in
+  `test_runner.rs`). Initial brief refresh
   in #743 overstated this as "both halves live"; corrected after
   Codex review on #743 flagged P1 (Documentation Describes Live
   State). Trigger remains half-met until evaluation lands, not just
