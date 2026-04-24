@@ -1,4 +1,11 @@
 // Minimal `LensOutputEquals` gate fixture for `test_runner` integration.
+//
+// **Bootstrap merge (no top-level `module`).** This file is passed to
+// `compile_to_dag` with the same merged bootstrap context as other integration
+// harnesses (`Dag::new()` + fixture text). `TestClaim` / `TestSuite` / `Int` /
+// `LensOutputEquals` resolve from that merged std graph; the explicit import below
+// documents the verification surface without implying a standalone module file.
+//
 // Kept separate from `r1_gates.dag`: compiling `LensOutputEquals(Int, …)` in the
 // same translation unit as the large embedded `user_authored_lens_compiles_gate`
 // `source` string currently breaks `DeclarationRef` resolution for `Int` in this
@@ -6,6 +13,8 @@
 //
 // TODO(dissolve): fold back into `r1_gates.dag` once same-TU lowering is fixed
 // (tracked bridge — PR #717 review / T-LensAPI; do not treat this split as permanent).
+
+import std.verification { TestClaim, TestSuite }
 
 data lens_output_ref_input: Int = 0
 
