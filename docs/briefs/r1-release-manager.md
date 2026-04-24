@@ -155,8 +155,11 @@ Lane-owner dispatch status (update as sub-deliverables close):
       `ROADMAP.md:72`) — **parked upstream-of-gates**. Re-dispatch when
       the first `[live]` R1 bug-class proof row lands: Substrate
       T-LaneE (`complexity_merge_sort_is_nlogn` /
-      `complexity_v3_matches_v2_oracle`), Testgen + live idempotency
-      lens (currently STUB per `ROADMAP.md:333`), or Surface T-Emit
+      `complexity_v3_matches_v2_oracle`), Testgen runner +
+      `MockBackedInvariant` wiring (`ROADMAP.md:51`, `:65`, `:235`) —
+      `idempotency.dag` is already COMPLETE per
+      `docs/v3-lens-capability-register.md:42`, so the gate is runner +
+      wiring, not the lens — or Surface T-Emit
       (`emit_omni_demo_fixtures_green`). PR #689 closed as premature
       (docs/thesis/ is director-owned per `doc-authority.md` — tracking
       scaffolding is not the lane deliverable). Narrative holds until
