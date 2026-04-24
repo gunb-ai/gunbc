@@ -882,23 +882,32 @@ fn catamorphism_bound(param: String, nesting_depth: Int) -> CostBound {
 // Combined derivation: descent facts → CostBound
 // =========================================================================
 
+// P3: align with `master_theorem` — invalid `branches` / `work_exponent` must not yield a
+// plausible `cost_linear` / `ForeverBound` (OpenAI-pro #726 manual review on `derive_bound`).
 fn derive_bound(param: String, branches: Int, factor: ShrinkFactor, work_exponent: Int) -> CostBound {
-  match factor {
-    // Structural recursion: each step removes one constructor
-    UnitShrink =>
-      if branches <= 1 { cost_linear(param: param) }
-      else {
-        // Multi-branch with unit shrink: T(n) = k·T(n-1) + O(1) = O(k^n).
-        // In .dag, bounded by repeat(Forever).
-        ForeverBound
-      }
-    // Constant shrink: similar to unit but with larger steps
-    ConstantShrink { steps: _ } =>
-      if branches <= 1 { cost_linear(param: param) }
-      else { ForeverBound }
-    // Proportional shrink: divide-and-conquer → Master theorem
-    ProportionalShrink { divisor: d } =>
-      master_theorem(form: RecurrenceForm { param: param, branches: branches, divisor: proportional_divisor_to_int(d: d), work_exponent: work_exponent })
+  if branches < 1 { ErrorBound }
+  else {
+    match bounded_int_pow_exponent(k: work_exponent) {
+      None => ErrorBound
+      Some { value: _ } =>
+        match factor {
+          // Structural recursion: each step removes one constructor
+          UnitShrink =>
+            if branches <= 1 { cost_linear(param: param) }
+            else {
+              // Multi-branch with unit shrink: T(n) = k·T(n-1) + O(1) = O(k^n).
+              // In .dag, bounded by repeat(Forever).
+              ForeverBound
+            }
+          // Constant shrink: similar to unit but with larger steps
+          ConstantShrink { steps: _ } =>
+            if branches <= 1 { cost_linear(param: param) }
+            else { ForeverBound }
+          // Proportional shrink: divide-and-conquer → Master theorem
+          ProportionalShrink { divisor: d } =>
+            master_theorem(form: RecurrenceForm { param: param, branches: branches, divisor: proportional_divisor_to_int(d: d), work_exponent: work_exponent })
+        }
+    }
   }
 }
 
