@@ -3177,7 +3177,10 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
     // param |> take(mid) or param |> skip(mid) → collection shrink
     ExprMethodCall { method_semantics: _ } =>
       classify_collection_shrink(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
-    // Arithmetic descent: param - k, param / k, param + k (position advance on bounded domain)
+    // Arithmetic descent: param - k, param / k, param + k (position advance on bounded domain).
+    // P4: literal `k` is bridged only through `std.termination` Peano materializers, which
+    // fail closed for k outside (0, 256] (subtract) / [2, 256] (divide) — no unbounded recursion
+    // on user-sized integers (see `positive_descent_amount_from_positive_int` caps).
     ExprBinOp { op: op } =>
       let left = binop_left(texpr: arg_expr)
       let right = binop_right(texpr: arg_expr)

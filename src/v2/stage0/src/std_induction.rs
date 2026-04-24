@@ -8,7 +8,8 @@ use crate::std_computation::IterationPrimitive::{Descend, Fold, Repeat};
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_computation::SizeBound::{ArithmeticParam, CollectionSize, Forever};
 pub use crate::std_computation::{
-    tree_size_bound, CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
+    positive_descent_count, tree_size_bound, CallPattern, IterationPrimitive, LoweringTarget,
+    ShrinkFactor, SizeBound,
 };
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
@@ -125,6 +126,27 @@ pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence 
     }
 }
 
+pub fn shrink_factor_eq(a: Rc<ShrinkFactor>, b: Rc<ShrinkFactor>) -> bool {
+    match (*a).clone() {
+        ShrinkFactor::UnitShrink => match (*b).clone() {
+            ShrinkFactor::UnitShrink => true,
+            _ => false,
+        },
+        ShrinkFactor::ConstantShrink { steps: sa, .. } => match (*b).clone() {
+            ShrinkFactor::ConstantShrink { steps: sb, .. } => {
+                (positive_descent_count(sa.clone()) == positive_descent_count(sb.clone()))
+            }
+            _ => false,
+        },
+        ShrinkFactor::ProportionalShrink { divisor: da, .. } => match (*b).clone() {
+            ShrinkFactor::ProportionalShrink { divisor: db, .. } => {
+                (proportional_divisor_to_int(da.clone()) == proportional_divisor_to_int(db.clone()))
+            }
+            _ => false,
+        },
+    }
+}
+
 pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
     match (*a.clone()).clone() {
         SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
@@ -132,12 +154,27 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             _ => Rc::new(SubValueRelation::PreservedValue),
         },
-        SubValueRelation::StrictSubValue { field: fa, .. } => match (*b).clone() {
+        SubValueRelation::StrictSubValue {
+            field: fa,
+            factor: fac_a,
+            ..
+        } => match (*b).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
-            SubValueRelation::StrictSubValue { field: fb, .. } => {
+            SubValueRelation::StrictSubValue {
+                field: fb,
+                factor: fac_b,
+                ..
+            } => {
                 if inductive_field_eq(&fa, &fb) {
-                    a.clone()
+                    if shrink_factor_eq(fac_a.clone(), fac_b.clone()) {
+                        Rc::new(SubValueRelation::StrictSubValue {
+                            field: fa.clone(),
+                            factor: fac_a.clone(),
+                        })
+                    } else {
+                        Rc::new(SubValueRelation::SubValueUnknown)
+                    }
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
                 }
@@ -156,12 +193,27 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             }
             _ => Rc::new(SubValueRelation::SubValueUnknown),
         },
-        SubValueRelation::ArithmeticDescent { param: pa, .. } => match (*b).clone() {
+        SubValueRelation::ArithmeticDescent {
+            param: pa,
+            factor: fac_a,
+            ..
+        } => match (*b).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
-            SubValueRelation::ArithmeticDescent { param: pb, .. } => {
+            SubValueRelation::ArithmeticDescent {
+                param: pb,
+                factor: fac_b,
+                ..
+            } => {
                 if (pa.clone().as_str() == pb.clone().as_str()) {
-                    a.clone()
+                    if shrink_factor_eq(fac_a.clone(), fac_b.clone()) {
+                        Rc::new(SubValueRelation::ArithmeticDescent {
+                            param: pa.clone(),
+                            factor: fac_a.clone(),
+                        })
+                    } else {
+                        Rc::new(SubValueRelation::SubValueUnknown)
+                    }
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
                 }
@@ -178,12 +230,27 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::PreservedValue),
             _ => b.clone(),
         },
-        SubValueRelation::StrictSubValue { field: fa, .. } => match (*b.clone()).clone() {
+        SubValueRelation::StrictSubValue {
+            field: fa,
+            factor: fac_a,
+            ..
+        } => match (*b.clone()).clone() {
             SubValueRelation::SubValueUnknown => a.clone(),
             SubValueRelation::PreservedValue => a.clone(),
-            SubValueRelation::StrictSubValue { field: fb, .. } => {
+            SubValueRelation::StrictSubValue {
+                field: fb,
+                factor: fac_b,
+                ..
+            } => {
                 if inductive_field_eq(&fa, &fb) {
-                    a.clone()
+                    if shrink_factor_eq(fac_a.clone(), fac_b.clone()) {
+                        Rc::new(SubValueRelation::StrictSubValue {
+                            field: fa.clone(),
+                            factor: fac_a.clone(),
+                        })
+                    } else {
+                        Rc::new(SubValueRelation::SubValueUnknown)
+                    }
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
                 }
@@ -202,12 +269,27 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             }
             _ => Rc::new(SubValueRelation::SubValueUnknown),
         },
-        SubValueRelation::ArithmeticDescent { param: pa, .. } => match (*b.clone()).clone() {
+        SubValueRelation::ArithmeticDescent {
+            param: pa,
+            factor: fac_a,
+            ..
+        } => match (*b.clone()).clone() {
             SubValueRelation::SubValueUnknown => a.clone(),
             SubValueRelation::PreservedValue => a.clone(),
-            SubValueRelation::ArithmeticDescent { param: pb, .. } => {
+            SubValueRelation::ArithmeticDescent {
+                param: pb,
+                factor: fac_b,
+                ..
+            } => {
                 if (pa.clone().as_str() == pb.clone().as_str()) {
-                    a.clone()
+                    if shrink_factor_eq(fac_a.clone(), fac_b.clone()) {
+                        Rc::new(SubValueRelation::ArithmeticDescent {
+                            param: pa.clone(),
+                            factor: fac_a.clone(),
+                        })
+                    } else {
+                        Rc::new(SubValueRelation::SubValueUnknown)
+                    }
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
                 }
@@ -538,14 +620,18 @@ pub struct RecurrenceForm {
     pub work_exponent: i64,
 }
 
-pub fn int_pow_bounded(base: i64, exp: i64) -> i64 {
+pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (exp.clone() <= 0) {
-            1
+        if (exp.clone() < 0) {
+            None
         } else {
-            {
-                let prev = int_pow_bounded(base.clone(), (exp.clone() - 1));
-                (base.clone() * prev)
+            if (exp.clone() == 0) {
+                Some(1)
+            } else {
+                match int_pow_bounded(base.clone(), (exp.clone() - 1)) {
+                    Some(prev) => Some((base.clone() * prev.clone())),
+                    None => None,
+                }
             }
         }
     })
@@ -584,49 +670,55 @@ pub fn master_theorem(form: &Rc<RecurrenceForm>) -> Rc<CostBound> {
         if (((a.clone() < 1) || (b.clone() < 2)) || (d.clone() < 0)) {
             Rc::new(CostBound::ErrorBound)
         } else {
-            {
-                let b_to_d = int_pow_bounded(b.clone(), d.clone());
-                if (a.clone() < b_to_d.clone()) {
-                    match d.clone() {
-                        0 => Rc::new(CostBound::ConstantBound),
-                        _ => cost_poly(n.clone(), d.clone()),
-                    }
-                } else {
-                    if (a.clone() == b_to_d.clone()) {
+            match int_pow_bounded(b.clone(), d.clone()) {
+                None => Rc::new(CostBound::ErrorBound),
+                Some(b_to_d) => {
+                    if (a.clone() < b_to_d.clone()) {
                         match d.clone() {
-                            0 => cost_log(n.clone()),
-                            _ => match positive_descent_amount_from_positive_int(d.clone()) {
-                                Some(deg) => Rc::new(CostBound::ProductBound {
-                                    factors: Rc::new(vec![
-                                        Rc::new(AtomicCost::PolyCost {
-                                            param: n.clone(),
-                                            exponent: Rc::new(PolynomialExponent::IntegerExpPos {
-                                                degree: deg.clone(),
-                                            }),
-                                        }),
-                                        Rc::new(AtomicCost::LogCost { param: n.clone() }),
-                                    ]),
-                                }),
-                                None => Rc::new(CostBound::ErrorBound),
-                            },
+                            0 => Rc::new(CostBound::ConstantBound),
+                            _ => cost_poly(n.clone(), d.clone()),
                         }
                     } else {
-                        match proportional_divisor_from_int_at_least_two(b.clone()) {
-                            Some(base_w) => {
-                                match positive_descent_amount_from_positive_int(a.clone()) {
-                                    Some(arg_w) => Rc::new(CostBound::AtomicBound {
-                                        cost: Rc::new(AtomicCost::PolyCost {
-                                            param: n.clone(),
-                                            exponent: Rc::new(PolynomialExponent::LogBasedExp {
-                                                base: base_w.clone(),
-                                                argument: arg_w.clone(),
+                        if (a.clone() == b_to_d.clone()) {
+                            match d.clone() {
+                                0 => cost_log(n.clone()),
+                                _ => match positive_descent_amount_from_positive_int(d.clone()) {
+                                    Some(deg) => Rc::new(CostBound::ProductBound {
+                                        factors: Rc::new(vec![
+                                            Rc::new(AtomicCost::PolyCost {
+                                                param: n.clone(),
+                                                exponent: Rc::new(
+                                                    PolynomialExponent::IntegerExpPos {
+                                                        degree: deg.clone(),
+                                                    },
+                                                ),
                                             }),
-                                        }),
+                                            Rc::new(AtomicCost::LogCost { param: n.clone() }),
+                                        ]),
                                     }),
                                     None => Rc::new(CostBound::ErrorBound),
-                                }
+                                },
                             }
-                            None => Rc::new(CostBound::ErrorBound),
+                        } else {
+                            match proportional_divisor_from_int_at_least_two(b.clone()) {
+                                Some(base_w) => {
+                                    match positive_descent_amount_from_positive_int(a.clone()) {
+                                        Some(arg_w) => Rc::new(CostBound::AtomicBound {
+                                            cost: Rc::new(AtomicCost::PolyCost {
+                                                param: n.clone(),
+                                                exponent: Rc::new(
+                                                    PolynomialExponent::LogBasedExp {
+                                                        base: base_w.clone(),
+                                                        argument: arg_w.clone(),
+                                                    },
+                                                ),
+                                            }),
+                                        }),
+                                        None => Rc::new(CostBound::ErrorBound),
+                                    }
+                                }
+                                None => Rc::new(CostBound::ErrorBound),
+                            }
                         }
                     }
                 }

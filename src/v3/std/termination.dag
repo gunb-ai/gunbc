@@ -57,9 +57,10 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 // Fail closed: strict descent cannot be fabricated from non-increase without
 // a separate structural witness.
 //
-// 🟡 P5 BRIDGE. Name reads like promotion; body is fail-closed (see `dsl` mirror).
+// 🟡 P5 BRIDGE. Name reads like unary promotion; body is fail-closed (see `dsl` mirror).
 // Parser-progress in `v2.compiler.complexity` still references this symbol;
-// dissolution: rename or delete call sites when witness threading no longer needs it.
+// dissolution: rename (e.g. `evidence_passthrough_preserving_strict`) or delete
+// call sites when witness threading no longer needs this hop.
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   match evidence {
     NonIncreasing => NonIncreasing
@@ -131,12 +132,14 @@ fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
   }
 }
 
-// M9 / decidability: refuse witness depths above 4096 so literal-sized `Int` inputs
-// cannot force value-sized compiler work (fail closed with `none`).
+// M9 / P4: refuse witness depths above 256 so literal-sized `Int` inputs cannot
+// force deep recursive materialization (infer + std share this cap; fail closed).
+// The .dag definition is stack-recursive O(k) in witness depth; the Rust mirror is
+// iterative with the same cap — future unbounded-Int producers should cap or bound k upstream.
 fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
   if k <= 0 { none }
   else {
-    if k > 4096 { none }
+    if k > 256 { none }
     else {
       if k == 1 { Some { value: OneStep } }
       else {
@@ -152,7 +155,7 @@ fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
 fn proportional_divisor_from_int_at_least_two(k: Int) -> ProportionalDivisor? {
   if k < 2 { none }
   else {
-    if k > 4096 { none }
+    if k > 256 { none }
     else {
       if k == 2 { Some { value: DivideByTwo } }
       else {

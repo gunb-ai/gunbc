@@ -794,10 +794,11 @@ pub fn proportional_divisor_to_int(d: &ProportionalDivisor) -> i64 {
     }
 }
 
-/// Maximum Peano links materialized from a single `i64` literal (M9 / decidability).
+/// Maximum Peano links materialized from a single `i64` literal (M9 / P4).
 ///
-/// Larger requests fail closed with [`None`] instead of value-sized compiler work.
-pub const MAX_PEANO_MATERIALIZATION: i64 = 4096;
+/// Must stay aligned with `dsl/std/termination.dag` literal bridges. Larger
+/// requests fail closed with [`None`] instead of deep recursive materialization.
+pub const MAX_PEANO_MATERIALIZATION: i64 = 256;
 
 /// Builds a Peano witness with **iterative** construction (no deep recursion).
 /// Returns [`None`] when `k` is out of range or exceeds [`MAX_PEANO_MATERIALIZATION`].
@@ -897,10 +898,11 @@ pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence 
 /// Fail-closed behavior means no unary helper may fabricate `Strict` from
 /// weaker evidence; strict promotion requires a separate structural witness.
 ///
-/// P5 bridge: identifier suggests promotion; this mirror pass-through matches
-/// the fail-closed `std.termination` contract for `Strict` / `NonIncreasing` /
-/// `DescentUnknown`. Dissolution: rename or remove `v2.compiler.complexity` call
-/// sites when parser progress threads `Strict` at the witness site.
+/// P5 bridge: identifier suggests promotion; this mirror is identity on the
+/// three `DescentEvidence` variants today (same fail-closed contract as
+/// `std.termination`). Dissolution: rename to e.g. `evidence_passthrough_preserving_strict`
+/// and/or remove `v2.compiler.complexity` call sites when parser progress threads
+/// `Strict` at the witness site.
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
     evidence
 }

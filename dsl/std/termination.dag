@@ -135,9 +135,9 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 // 🟡 P5 BRIDGE. The name reads like unary promotion; the body only preserves
 // `Strict` / `NonIncreasing` and maps other positions to `DescentUnknown` — no
 // `Strict` from weaker evidence. `v2.compiler.complexity` parser-progress paths
-// still call this symbol for historical wiring; dissolution: rename to an
-// evidence-neutral helper or delete those calls once variants thread `Strict`
-// at the witness site without this hop (tracked follow-up, not a merge blocker).
+// still call this symbol for historical wiring; dissolution: rename to something
+// like `evidence_passthrough_preserving_strict` (or delete call sites) once parser
+// progress threads `Strict` at the witness site without this hop.
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   match evidence {
     NonIncreasing => NonIncreasing
@@ -233,12 +233,14 @@ fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
 
 // Validated bridges for analyzer literal sites (e.g. `skip(k)`, `n / d`).
 // `none` when `k` is not a positive witness — callers must fail closed.
-// M9 / decidability: refuse witness depths above 4096 so literal-sized `Int` inputs
-// cannot force value-sized compiler work (fail closed with `none`).
+// M9 / P4: refuse witness depths above 256 so literal-sized `Int` inputs cannot
+// force deep recursive materialization (infer + std share this cap; fail closed).
+// The .dag definition is stack-recursive O(k) in witness depth; the Rust mirror is
+// iterative with the same cap — future unbounded-Int producers should cap or bound k upstream.
 fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
   if k <= 0 { none }
   else {
-    if k > 4096 { none }
+    if k > 256 { none }
     else {
       if k == 1 { Some { value: OneStep } }
       else {
@@ -255,7 +257,7 @@ fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
 fn proportional_divisor_from_int_at_least_two(k: Int) -> ProportionalDivisor? {
   if k < 2 { none }
   else {
-    if k > 4096 { none }
+    if k > 256 { none }
     else {
       if k == 2 { Some { value: DivideByTwo } }
       else {

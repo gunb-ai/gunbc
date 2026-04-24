@@ -22,6 +22,8 @@ mod effects;
 #[cfg(test)]
 mod infer_semantics;
 #[cfg(test)]
+mod int_pow_bounded_test;
+#[cfg(test)]
 mod parse;
 #[cfg(test)]
 mod pipeline;
@@ -29,3 +31,5 @@ mod pipeline;
 mod render_repeat_test;
 #[cfg(test)]
 mod source_audit;
+#[cfg(test)]
+mod sub_value_lattice_factor_test;
