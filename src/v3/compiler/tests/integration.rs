@@ -183,18 +183,18 @@ mod t_demo_fixture_test {
     }
 
     fn read_dag_string_literal(input: &str) -> String {
-        let mut out = String::new();
+        let mut out = Vec::new();
         let mut escaped = false;
-        for ch in input.chars() {
+        for byte in input.bytes() {
             if escaped {
-                out.push(ch);
+                out.push(byte);
                 escaped = false;
                 continue;
             }
-            match ch {
-                '\\' => escaped = true,
-                '"' => return out,
-                _ => out.push(ch),
+            match byte {
+                92 => escaped = true,
+                34 => return String::from_utf8(out).expect("T-Demo fixture literals are UTF-8"),
+                _ => out.push(byte),
             }
         }
         panic!("unterminated T-Demo string literal")
