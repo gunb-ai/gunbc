@@ -2808,9 +2808,11 @@ struct RenderLocals {
 /// to Rust text. `impl Trait` spellings and `Rc<dyn Fn…>` are only legal in
 /// explicit, position-specific emit paths (blocking api-review on #676).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // `RejectFirstClassFn`: explicit fail-closed default for unknown emit contexts.
 enum ArrowRustEmitPolicy {
-    /// Fail closed unless the caller routes through a vetted carrier.
+    /// Reserved for fail-closed paths in future context-free seams. Not
+    /// selected by any current public entry point — all wired call sites pass
+    /// `StorageRcDynFn` (or route to `impl Fn + Clone` for user-fn params).
+    #[allow(dead_code)] // Variant never constructed yet; match arm is live for exhaustiveness.
     RejectFirstClassFn,
     /// `std::rc::Rc<dyn Fn…>` — struct fields, collection instantiations,
     /// top-level `let` annotations, inferred return slots, and nested
@@ -4484,10 +4486,18 @@ impl<'a> Ctx<'a> {
             .enumerate()
             .map(|(idx, (port, disposition))| {
                 let param_name = format!("p{idx}");
+                let ty_decl = self
+                    .dag
+                    .port(*port)
+                    .value_type()
+                    .ok_or(EmitError::UntypedPort(*port))?
+                    .declaration;
+                let callable_param_ty = self.type_declaration_peels_to_arrow(ty_decl);
                 let ty = self.rust_type_name_for_user_function_parameter(*port, *disposition)?;
                 match disposition {
                     ParameterDispositionBinding::Borrowed
-                        if self.read_strategy() == ReadStrategyBinding::Borrow =>
+                        if self.read_strategy() == ReadStrategyBinding::Borrow
+                            && !callable_param_ty =>
                     {
                         locals
                             .names
@@ -5357,12 +5367,6 @@ mod tests {
     use super::*;
     use crate::compile_to_dag;
     use crate::diagnostics::SourceSpan;
-
-    #[test]
-    fn arrow_rust_emit_policy_reject_variant_is_constructible() {
-        let _ = ArrowRustEmitPolicy::RejectFirstClassFn;
-        let _ = ArrowRustEmitPolicy::StorageRcDynFn;
-    }
 
     #[test]
     fn render_field_project_reads_borrowed_nodes_without_cloning() {
