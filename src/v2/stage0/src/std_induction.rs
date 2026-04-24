@@ -418,12 +418,18 @@ pub fn cost_linear(param: String) -> Rc<CostBound> {
 }
 
 pub fn cost_poly(param: String, degree: i64) -> Rc<CostBound> {
-    Rc::new(CostBound::AtomicBound {
-        cost: Rc::new(AtomicCost::PolyCost {
-            param: param,
-            exponent: Rc::new(PolynomialExponent::IntegerExp { value: degree }),
-        }),
-    })
+    if (degree.clone() < 0) {
+        Rc::new(CostBound::ErrorBound)
+    } else {
+        Rc::new(CostBound::AtomicBound {
+            cost: Rc::new(AtomicCost::PolyCost {
+                param: param,
+                exponent: Rc::new(PolynomialExponent::IntegerExp {
+                    value: degree.clone(),
+                }),
+            }),
+        })
+    }
 }
 
 pub fn cost_root(param: String, k: i64) -> Rc<CostBound> {
@@ -580,9 +586,14 @@ pub fn master_theorem(form: &Rc<RecurrenceForm>) -> Rc<CostBound> {
 }
 
 pub fn catamorphism_bound(param: String, nesting_depth: i64) -> Rc<CostBound> {
-    match nesting_depth.clone() {
-        0 => Rc::new(CostBound::ConstantBound),
-        _ => cost_poly(param, nesting_depth.clone()),
+    if (nesting_depth.clone() < 0) {
+        Rc::new(CostBound::ErrorBound)
+    } else {
+        if (nesting_depth.clone() == 0) {
+            Rc::new(CostBound::ConstantBound)
+        } else {
+            cost_poly(param, nesting_depth.clone())
+        }
     }
 }
 

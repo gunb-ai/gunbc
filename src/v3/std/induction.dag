@@ -468,7 +468,8 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
 // =========================================================================
 
 // Polynomial exponents in complexity bounds. Three forms:
-//   IntegerExp: n^k for integer k (O(n), O(n²), O(n³))
+//   IntegerExp: n^k for integer k ≥ 0 (O(1) at k=0, O(n), O(n²), …). **`cost_poly` rejects k < 0
+//   → `ErrorBound`** — negative polynomial degrees are not valid Big-O poly costs (P3 fail-closed).
 //   FractionExp: n^(1/k) for positive root k (O(√n), O(∛n))
 //   LogBasedExp: n^(log_b(a)) for exact divide-and-conquer bounds
 //     (Karatsuba: n^(log_2(3)), Strassen: n^(log_2(7)))
@@ -479,8 +480,8 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
 // `ceil_log` rejects base < 2 or argument < 1 (returns none).
 // Represents the exponent structurally — no precision loss.
 //
-// 🟢 TERMINAL at E-I exponent scope. `Int` payloads encode validated polynomial / root /
-// log-based exponents; invalid combinations route to `ErrorBound` at constructors / master theorem.
+// 🟡 MIXED at E-I exponent scope. Carriers still use `Int` fields; **API-level** gates above
+// keep illegal exponent states fail-closed (full structural witnesses are a follow-on).
 
 type PolynomialExponent
   = IntegerExp { value: Int }
@@ -551,7 +552,10 @@ fn sum_bound(terms: List<CostBound>) -> CostBound {
 
 fn cost_constant() -> CostBound { ConstantBound }
 fn cost_linear(param: String) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: IntegerExp { value: 1 } } } }
-fn cost_poly(param: String, degree: Int) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: IntegerExp { value: degree } } } }
+fn cost_poly(param: String, degree: Int) -> CostBound {
+  if degree < 0 { ErrorBound }
+  else { AtomicBound { cost: PolyCost { param: param, exponent: IntegerExp { value: degree } } } }
+}
 fn cost_root(param: String, k: Int) -> CostBound {
   if k <= 0 { ErrorBound }
   else { AtomicBound { cost: PolyCost { param: param, exponent: FractionExp { numerator: 1, root: k } } } }
@@ -657,9 +661,10 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
 // Visits every sub-term exactly once. O(n^k) for k-nested traversals.
 
 fn catamorphism_bound(param: String, nesting_depth: Int) -> CostBound {
-  match nesting_depth {
-    0 => ConstantBound
-    _ => cost_poly(param: param, degree: nesting_depth)
+  if nesting_depth < 0 { ErrorBound }
+  else {
+    if nesting_depth == 0 { ConstantBound }
+    else { cost_poly(param: param, degree: nesting_depth) }
   }
 }
 
