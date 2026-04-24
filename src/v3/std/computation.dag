@@ -153,11 +153,12 @@ fn is_constant_bound(bound: SizeBound) -> Bool {
 // Word64 top iterate count for `Forever` / `repeat(max_int)` (see std.iteration).
 fn forever_iteration_bound() -> Int { 9223372036854775807 }
 
-fn constant_bound_value(bound: SizeBound) -> Int {
+// `none` when the bound is not constant (avoids conflating with `ExplicitCount { n: 0 }`).
+fn constant_bound_value(bound: SizeBound) -> Int? {
   match bound {
-    ExplicitCount { n: count } => count
-    Forever                    => forever_iteration_bound()
-    _                          => 0
+    ExplicitCount { n: count } => Some { value: count }
+    Forever                    => Some { value: forever_iteration_bound() }
+    _                          => none
   }
 }
 

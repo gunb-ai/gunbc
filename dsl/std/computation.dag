@@ -333,18 +333,16 @@ fn is_constant_bound(bound: SizeBound) -> Bool {
 }
 
 // Get the constant value for a constant bound.
-// ExplicitCount returns the developer-specified literal.
-// Forever returns the Word64 iteration cap (same as repeat(max_int); see std.iteration).
-// Precondition: is_constant_bound(bound) must be true.
-// Non-constant bounds return 0 (identity for SizeConst in CostSum)
-// to fail visibly rather than fabricating a plausible value.
+// ExplicitCount returns the developer-specified literal (including 0).
+// Forever returns the signed-64 iteration cap (same as repeat(max_int); see std.iteration).
+// Non-constant bounds return `none` so callers cannot confuse “not constant” with a literal 0.
 fn forever_iteration_bound() -> Int { 9223372036854775807 }
 
-fn constant_bound_value(bound: SizeBound) -> Int {
+fn constant_bound_value(bound: SizeBound) -> Int? {
   match bound {
-    ExplicitCount { n: count } => count
-    Forever                    => forever_iteration_bound()
-    _                          => 0
+    ExplicitCount { n: count } => Some { value: count }
+    Forever                    => Some { value: forever_iteration_bound() }
+    _                          => none
   }
 }
 

@@ -1062,11 +1062,12 @@ pub fn forever_iteration_bound() -> i64 {
     i64::MAX
 }
 
-pub fn constant_bound_value(bound: &SizeBound) -> i64 {
+/// `None` when `bound` is not constant (`ExplicitCount` / `Forever` only).
+pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
     match bound {
-        SizeBound::ExplicitCount { n } => *n,
-        SizeBound::Forever => forever_iteration_bound(),
-        _ => 0,
+        SizeBound::ExplicitCount { n } => Some(*n),
+        SizeBound::Forever => Some(forever_iteration_bound()),
+        _ => None,
     }
 }
 

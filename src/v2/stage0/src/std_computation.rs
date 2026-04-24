@@ -214,11 +214,11 @@ pub fn forever_iteration_bound() -> i64 {
     i64::MAX
 }
 
-pub fn constant_bound_value(bound: Rc<SizeBound>) -> i64 {
+pub fn constant_bound_value(bound: Rc<SizeBound>) -> Option<i64> {
     match (*bound).clone() {
-        SizeBound::ExplicitCount { n: count, .. } => count.clone(),
-        SizeBound::Forever => forever_iteration_bound(),
-        _ => 0,
+        SizeBound::ExplicitCount { n: count, .. } => Some(count.clone()),
+        SizeBound::Forever => Some(forever_iteration_bound()),
+        _ => None,
     }
 }
 
