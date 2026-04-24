@@ -18,7 +18,7 @@
 module std.r1_gates
 
 import std.verification { TestClaim, TestSuite }
-import std.list { empty, fold }
+import std.list { List, empty, fold }
 import std.substrate { Dag, Behavior, Declaration, DagPort, Cluster }
 
 fn count_named_bind(behavior: Behavior) -> Int =
@@ -33,24 +33,37 @@ fn count_named_bind(behavior: Behavior) -> Int =
 fn named_function_count(d: Dag) -> Int =
   fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))
 
-data lens_query_empty_dag: Dag = {
-  declarations: empty<Declaration>()
-  nodes: empty<Behavior>()
-  ports: empty<DagPort>()
-  clusters: empty<Cluster>()
+// `let` (not `data`): M1(2.8) rejects record/list literals in `data` bodies
+// (DOWNSTREAM_REQUIREMENTS class-5 gap #3); `let` bindings still carry value_body
+// for DeclarationRef targets. Disambiguate each `empty()` so template inference
+// does not unify incompatible `List<_>` element types across the `Dag` literal.
+let empty_declarations: List<Declaration> = empty()
+let empty_nodes: List<Behavior> = empty()
+let empty_ports: List<DagPort> = empty()
+let empty_clusters: List<Cluster> = empty()
+
+let lens_query_empty_dag: Dag = {
+  declarations: empty_declarations
+  nodes: empty_nodes
+  ports: empty_ports
+  clusters: empty_clusters
 }
 
 data lens_query_expected_zero: Int = 0
 
-data lens_output_equals_named_function_count_gate: TestClaim = {
+let lens_output_equals_named_function_count_gate: TestClaim = {
   name: "lens_output_equals_named_function_count",
   source: "let _: Int = 0\n",
   file_name: "r1_lens_output_placeholder.v3",
-  predicate: LensOutputEquals(named_function_count, lens_query_empty_dag, lens_query_expected_zero),
+  predicate: LensOutputEquals {
+    lens_ref: named_function_count
+    input_ref: lens_query_empty_dag
+    expected_ref: lens_query_expected_zero
+  },
   requires: []
 }
 
-data r1_lens_output_equals_suite: TestSuite = {
+let r1_lens_output_equals_suite: TestSuite = {
   name: "r1_lens_output_equals_suite",
   claims: [lens_output_equals_named_function_count_gate]
 }

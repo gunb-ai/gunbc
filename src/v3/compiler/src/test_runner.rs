@@ -242,9 +242,9 @@ impl<'a> TestRunner<'a> {
         let input_decl = self.dag.declaration(input_id);
         let expected_decl = self.dag.declaration(expected_id);
 
-        let lens_name = decl_display_name(self.dag, lens_id, lens_decl);
-        let input_name = decl_display_name(self.dag, input_id, input_decl);
-        let expected_name = decl_display_name(self.dag, expected_id, expected_decl);
+        let lens_name = decl_display_name(lens_id, lens_decl);
+        let input_name = decl_display_name(input_id, input_decl);
+        let expected_name = decl_display_name(expected_id, expected_decl);
 
         if input_decl.value_body.is_none() {
             return ClaimResult::Fail(format!(
@@ -462,7 +462,7 @@ fn record_fields(value: &FieldValue) -> Option<&[(String, FieldValue)]> {
     }
 }
 
-fn decl_display_name(dag: &Dag, id: DeclarationId, decl: &Declaration) -> String {
+fn decl_display_name(id: DeclarationId, decl: &Declaration) -> String {
     decl.name
         .clone()
         .unwrap_or_else(|| format!("Declaration#{}", id.raw()))
