@@ -664,8 +664,7 @@ doesn't know about the grammar rules.
 
 ### §2.4 Mutual recursion lowering — prereq for complexity and general execution
 
-The thesis's lowering table (INVARIANTS.md §"Recursive syntax is
-sugar") commits to handling EVERY call pattern, including n-way
+The thesis's lowering table (`INVARIANTS.md#p4-decidability`, recursive syntax as bounded lowering) commits to handling EVERY call pattern, including n-way
 mutual recursion. The lowering for mutual recursion is:
 
 > Mutual recursion (SCC) on children → `descend` over SCC-ordered
@@ -1806,8 +1805,7 @@ reintroduction.
 
 | Invariant | Can't detect | Structural proxy |
 |---|---|---|
-| No short-term solutions | Intent (is this adapter temp?) | Two-representation detection: `fn(A) -> B` where A ≅ B |
-| No bridges | Bridge vs legitimate transform | Same as above, plus: function exists in only one call site |
+| Progress Is Dissolution (`INVARIANTS.md#p5-progress-is-dissolution`) | Intent (is this adapter temp?) | Two-representation detection: `fn(A) -> B` where A ≅ B; bridge vs legitimate transform |
 | Modeling faithfulness | External grounding | No proxy — requires domain knowledge |
 
 **The self-analysis loop.** Once L3 pipeline stages are in `.dag`,
