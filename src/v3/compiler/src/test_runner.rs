@@ -398,9 +398,20 @@ impl<'a> TestRunner<'a> {
         };
 
         let input_field = if input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL) {
-            let id_space = canonical_named_function_count_dag
-                .as_ref()
-                .unwrap_or(&program_dag);
+            // P2: `id_space` must be the same `Dag` `apply_lens_declaration` will use for the lens
+            // (canonical compile, claim `program_dag`, or merged fixture `self.dag`) so reflected
+            // `List` / `Behavior` variant `DeclarationId`s are not mixed across graphs.
+            let id_space: &Dag = if let Some(ref cld) = canonical_named_function_count_dag {
+                cld
+            } else if let Some(name) = lens_decl.name.as_deref() {
+                if program_dag.declaration_by_name(name).is_some() {
+                    &program_dag
+                } else {
+                    self.dag
+                }
+            } else {
+                self.dag
+            };
             match reflect_program_dag_nodes_in_file(&program_dag, &claim.file_name, id_space) {
                 Ok(v) => v,
                 Err(err) => {

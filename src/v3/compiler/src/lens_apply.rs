@@ -265,9 +265,13 @@ pub enum LensApplyError {
 }
 
 /// Lower a declaration [`ValueBody`] into the structural [`FieldValue`] carrier used by the
-/// lens interpreter (references keep their [`DeclarationId`] edges from the fixture DAG).
+/// lens interpreter.
+///
+/// `fixture_dag` is the graph that will own [`DeclarationId`] edges once structural bodies carry
+/// resolvable `Reference` payloads through this helper; today only scalar + shallow structural
+/// clone paths are implemented (no `fixture_dag` lookup yet).
 pub fn field_value_from_value_body(
-    _fixture_dag: &Dag,
+    #[allow(unused_variables)] fixture_dag: &Dag,
     body: &ValueBody,
 ) -> Result<FieldValue, LensApplyError> {
     match body {
