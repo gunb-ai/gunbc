@@ -397,6 +397,79 @@ let zero: Int = 0",
     assert!(out.contains("BoxedInt::Empty => 0,"), "got: {out}");
 }
 
+const SUB_MATCH_OVER_USER_SUM_SOURCE: &str = r#"
+module tests.sub_match_over_user_sum
+
+type Choice = Number(Int) | Missing
+
+fn score(choice: Choice) -> Int =
+  match choice {
+    Number(value) => value
+    Missing => 0
+  }
+"#;
+
+fn sub_match_over_user_sum_module() -> String {
+    let dag = compile_to_dag(SUB_MATCH_OVER_USER_SUM_SOURCE, "sub_match_over_user_sum.v3")
+        .expect("compile sub_match_over_user_sum fixture");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "sub_match_over_user_sum fixture should compile cleanly, got {:?}",
+        dag.diagnostics()
+    );
+    emit_rust_module(&dag).expect("emit Rust for sub_match_over_user_sum fixture")
+}
+
+/// Day-1 T-Sub receipt gate for `sub_match_over_user_sum`.
+///
+/// Audit result: the first-class implementation path already exists on `main`.
+/// The parser accepts source-local `type Choice = ...` sums, lowering carries
+/// them as `Disj` + `Branch`, inference resolves arm patterns, and Rust emit
+/// renders the general enum-pattern `match` path. The surrounding tests already
+/// cover string-level Rust receipts for no-payload sums, payload sums, and
+/// imported sums.
+///
+/// This gate intentionally adds no implementation. Its narrower job is to keep
+/// the named R1/T-Sub surface live as an unignored, end-to-end pipeline receipt:
+/// parse -> lower -> infer -> Rust emit -> rustc link -> runtime execution.
+#[test]
+fn sub_match_over_user_sum_links_and_runs() {
+    let module = sub_match_over_user_sum_module();
+    assert!(
+        module.contains("pub enum Choice") && module.contains("match"),
+        "emitted module should define the user sum and lower the source match directly:\n{module}"
+    );
+
+    let wrapped = format!(
+        r#"
+#[allow(warnings, clippy::all)]
+mod emitted {{
+    {module}
+}}
+
+fn main() {{
+    let present = emitted::Choice::Number {{ _0: 7 }};
+    let missing = emitted::Choice::Missing;
+    assert_eq!(emitted::score(&present), 7);
+    assert_eq!(emitted::score(&missing), 0);
+}}
+"#
+    );
+    let bin = harness().compile(
+        &wrapped,
+        "sub_match_over_user_sum",
+        HarnessLinkMode::Standalone,
+    );
+    let run = Command::new(&bin)
+        .output()
+        .expect("run sub_match_over_user_sum harness");
+    assert!(
+        run.status.success(),
+        "sub_match_over_user_sum harness failed: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+}
+
 #[test]
 fn emit_rust_named_single_field_payload_routes_field_access_through_binding() {
     let out = emit(
