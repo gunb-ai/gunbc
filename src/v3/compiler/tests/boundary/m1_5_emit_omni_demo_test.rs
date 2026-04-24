@@ -192,5 +192,3 @@ fn emit_omni_demo_fixtures_green() {
         }
     }
 }
-
-
