@@ -339,6 +339,18 @@ promotes to committed work:
   declare which user-declared algebras they inhabit. Timing
   question: does this proposal depend on DB-18, or can it ship
   independently for built-in algebras?
+- **Interaction with the cardinality-substrate work
+  (`ROADMAP.md:305` + DB-11).** The `Option<T>` example in
+  worked-examples §5 is `[proposed]` specifically because
+  `type Option<T> = Cardinality<T, AtMost(1)>` is not a live
+  alias; cardinality-of-one lives in the substrate / connective
+  layer today. When the cardinality-substrate work lands,
+  `Option<T>` (and `NonEmpty<T>`, `BoundedList<T, N..M>`) become
+  user-facing aliases, at which point this proposal's coercion
+  search needs to walk the cardinality dimension symmetrically
+  on both sides. Timing question: does this proposal depend on
+  the cardinality-substrate landing, or can it ship first for
+  non-cardinality-bearing types?
 
 ## Relationship to the current design
 
