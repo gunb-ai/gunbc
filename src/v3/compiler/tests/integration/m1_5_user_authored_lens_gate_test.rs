@@ -23,9 +23,14 @@ use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::CompileError;
 
 const R1_GATES_SOURCE: &str = include_str!("../fixtures/r1_gates.dag");
+const R1_GATES_TEMPLATE: &str = include_str!("../fixtures/r1_gates.template.dag");
 const R1_MOCK_BACKED_INVARIANT_GATE_SOURCE: &str =
     include_str!("../fixtures/r1_mock_backed_invariant_gate.dag");
 const ON_DISK_LENS: &str = include_str!("../../../lenses/named_function_count.dag");
+
+/// Parallel-copy ratchet: must match `src/v3/lenses/named_function_count.dag` lines 15–25 and
+/// the stub `fn` block in `r1_gates.template.dag` (LensOutputEquals evaluates these fixture decls).
+const NAMED_FUNCTION_COUNT_FIXTURE_FN_BLOCK: &str = "fn count_named_bind(behavior: Behavior) -> Int =\n  match behavior {\n    Value(v) => 0\n    Transform(t) => 0\n    Branch(b) => 0\n    Loop(l) => 0\n    Bind(bind) => if bind.name == \"\" then 0 else 1\n  }\n\nfn named_function_count(d: Dag) -> Int =\n  fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))";
 const ON_DISK_LENS_COMPOSITION_WITNESS: &str =
     include_str!("../../../lenses/lens_composition_associative_witness.dag");
 
@@ -161,6 +166,19 @@ fn lens_composition_associative_testclaim_source_tracks_on_disk_witness() {
         &source,
         &file_name,
         "TestClaim `source` payload (lens_composition_associative witness)",
+    );
+}
+
+#[test]
+fn r1_gates_template_named_function_count_stubs_lockstep_on_disk_lens() {
+    assert!(
+        ON_DISK_LENS.contains(NAMED_FUNCTION_COUNT_FIXTURE_FN_BLOCK),
+        "on-disk `named_function_count.dag` should still carry the stub `fn` block this test pins"
+    );
+    assert!(
+        R1_GATES_TEMPLATE.contains(NAMED_FUNCTION_COUNT_FIXTURE_FN_BLOCK),
+        "`r1_gates.template.dag` fixture stubs must stay byte-identical to the canonical lens \
+         (LensOutputEquals applies the fixture DAG, not `program_dag`, until DeclarationRef cleanup)"
     );
 }
 

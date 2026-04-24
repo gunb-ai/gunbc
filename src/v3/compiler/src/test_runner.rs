@@ -315,8 +315,10 @@ impl<'a> TestRunner<'a> {
 
         // R1 gate sentinel: `Dag` inputs are not yet expressible as structural `data` bodies in the
         // fixture DSL; `r1_lens_output_input_from_program` names a typed placeholder while the
-        // runner reflects `Dag.nodes` from `TestClaim.source` / `file_name` (dissolve when Dag
-        // literals land — ROADMAP LensOutputEquals cleanup).
+        // runner reflects `Dag.nodes` from `TestClaim.source` / `file_name`.
+        // **Dissolution trigger (ROADMAP / INVARIANTS P2):** replace string matching on this name
+        // with a structural `TestClaim` / `std.verification` coproduct arm (reflection input vs
+        // literal body) so runners do not key behavior on declaration spellings.
         const PROGRAM_INPUT_SENTINEL: &str = "r1_lens_output_input_from_program";
         let input_field = if input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL) {
             match compile_to_dag(&claim.source, &claim.file_name) {

@@ -20,7 +20,28 @@ fn is_fold_instantiation(dag: &Dag, decl: &Declaration) -> bool {
 }
 
 fn span_same_file(a: &SourceSpan, b: &SourceSpan) -> bool {
-    a.file == b.file || a.file.ends_with(&b.file) || b.file.ends_with(&a.file)
+    // Strict equality only: suffix-based "same file" checks false-positive when two unrelated
+    // paths share a tail (`…/pkg/x.dag` vs `…/other/x.dag`). Fold span overlap is D1-only;
+    // lowering should attach consistent logical paths to both spans.
+    a.file == b.file
+}
+
+/// Skip the monomorphized `std.list.fold` → [`eval_fold_step`] fast path for transforms whose
+/// source site lives in `v3.std.algebra` (staged mirror: `dsl/std/algebra.dag`).
+///
+/// That module lowers `fold` over `List<SymbolicCost>` — including list-shaped accumulators —
+/// with step bodies threading dominance / `normalize`. The bounded R1 interpreter only certifies
+/// the small `named_function_count` fragment (e.g. `Int` acc, `Behavior` elements). Using the
+/// fast path on algebra folds risks silent divergence from substrate semantics; skipping routes
+/// through [`LensInterpreter::eval_callable`], which rejects monomorphized `Instantiation {{
+/// template: fold }}` until a fuller interpreter lands (fail-closed vs wrong answers).
+///
+/// **Dissolution trigger:** replace this filter with a structural predicate on lowering facts
+/// (R1-certified step shape, or third `Transform` operand for the step so arity matches
+/// [`eval_std_fold`]) and delete this helper.
+fn fold_site_skips_d1_monomorph_list_fold_path(span: &SourceSpan) -> bool {
+    let f = span.file.as_str();
+    f.ends_with("std/algebra.dag") || f.ends_with(r"std\algebra.dag")
 }
 
 fn span_overlaps(a: &SourceSpan, b: &SourceSpan) -> bool {
@@ -420,8 +441,10 @@ impl<'a> EvalCtx<'a> {
         match &t.target {
             TransformTarget::Callable(callee) => {
                 let decl = self.dag.declaration(*callee);
-                let fold_noise = t.span.file.contains("algebra.dag");
-                if is_fold_instantiation(self.dag, decl) && t.inputs.len() == 2 && !fold_noise {
+                if is_fold_instantiation(self.dag, decl)
+                    && t.inputs.len() == 2
+                    && !fold_site_skips_d1_monomorph_list_fold_path(&t.span)
+                {
                     let list = self.eval_port(t.inputs[0])?;
                     let init = self.eval_port(t.inputs[1])?;
                     let step_bind = find_fold_step_bind(self.dag, *callee, &t.span).ok_or(
