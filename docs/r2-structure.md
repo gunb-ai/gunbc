@@ -10,13 +10,16 @@
 
 R2 is the **close-everything** release. Every remaining Tier-1 thesis claim not closed by R1 lands here. The two co-anchor claims — **Grounding Completeness** and **Lens Purity by Construction** — are joined by modeling-faithfulness dissolution, substrate prereqs, remaining impossible-bug classes, self-hosting shim-floor close, and tests-as-data closure.
 
-The program's velocity signal (R1 closing in ~16 hours) drives two framing decisions: (1) scope is aggressive rather than deferred; (2) coordination is light-touch, throughput-oriented.
+Two framing decisions drive scope + coordination:
+
+1. **Anti-deferral principle.** If dissolution direction is clear and named, deferral is problem-finding, not problem-solving. R2 absorbs what has named dissolution directions, regardless of current execution velocity. (Velocity is a trailing observation; it can accelerate or slow between waves. The principle is what's load-bearing.)
+2. **Light-touch throughput-oriented coordination.** Manager count = concurrent critical paths, not total scope.
 
 ## Program count — 2 active releases total
 
 - **R1** closing.
 - **R2** = close-everything.
-- **R3** reserved as *escape hatch only*, for items that genuinely cannot close in R2 despite honest effort. At R1's velocity, invocation should be rare and itself signal a problem worth examining.
+- **R3** reserved as *escape hatch only*, for items that genuinely cannot close in R2 despite honest effort. Invocation should be rare and itself signal a problem worth examining — if dissolution is surfacing faster than closure, that's a leading indicator to address, not a scope-inflation signal.
 
 Post-R2 is external work (adoption, documentation, community) — not on the thesis-claim release ledger.
 
@@ -33,9 +36,11 @@ Post-R2 is external work (adoption, documentation, community) — not on the the
    - `Secret<T>` nominal-opaque graduation (`ROADMAP.md` post-merge-debt section, 2026-04-23 thesis-doc surface)
    - `Dimension<Carrier>` typed value wrapper with phantom-parameter unit-mismatch enforcement (ibid.)
 
-5. **Substrate prereqs** — named as explicit R2 lanes unblocking Goal 4:
-   - DB-18 parametric algebra attachment (unblocks `Secret<T>` nominal construction restriction + `Dimension` phantom-parameter arithmetic; see `docs/db-history/db-18.md` for Part-2 scope; Part-3+ is the R2 work)
-   - Cardinality-substrate (unblocks `Cardinality(element, Exact(n))` carrier for fixed-width types, per P4 row + the Grounding blocker column at `ROADMAP.md:162-164`)
+5. **Substrate prereqs** — named as explicit R2 sub-lanes with **scoped acceptance criteria** (sufficient-to-unblock, not full-capability). Each prereq is pinned to a specific Goal 4 item; full substrate-capability lanes retain open design calls that may predate or postdate R2, and this structure does not commit R2 to close them all:
+
+   - **Cardinality-substrate subset sufficient to close int-literal magnitude refinement** — enough cardinality modeling to let `IntLit` carry a magnitude that narrows to target int algebra at reconciliation. Does NOT commit to the full cardinality-substrate capability (fixed-width-types by-construction, container cardinality bounds in Grounding, etc. — those remain open design calls outside R2 scope unless additional R2 items demand them).
+   - **Nominal-opaque substrate sufficient to graduate `Secret<T>`** — enough nominal-type modeling to carry construction-restriction (`where only X may construct`) semantics. Adjacent to DB-11 alias-RHS `where` (landed in R1 via PR #703); may or may not overlap DB-18 territory. Acceptance is `Secret<T>` graduation, not a general nominal-type program.
+   - **Parametric algebra attachment subset sufficient to inhabit `Dimension<Carrier>` in an abelian group algebra** — enough of DB-18 Part-3+ to let `Dimension<Unit>` carry phantom-parameter arithmetic (propagate through operations, compile error on unit-mismatch). DB-18 Part-2 carrier already shipped (`docs/db-history/db-18.md`); R2 scopes Part-3+ surface to just this attachment, not the full parametric-algebra program.
 
 6. **Remaining R2+ impossible-bug classes** — three classes currently tagged `[R2+]` at `ROADMAP.md:72` (THESIS §"Enumerable impossible-bug classes" is the authority on scheduling tags):
    - Nested-optional flatten
@@ -65,8 +70,8 @@ New brief at `docs/briefs/r2-structural-close-manager.md` (to author on promotio
 - **Fill queues** (all file-level or item-level parallel; any available worker picks top-priority unblocked):
   - T-LensMigration (per-file parallel)
   - T-ShimFloor (per-file parallel)
-  - T-Modeling (int-lit / Secret<T> / Dimensions — 3-way parallel; Secret<T> + Dimensions block on T-Substrate DB-18 sub-lane; int-lit blocks on T-Substrate cardinality-substrate sub-lane)
-  - T-Substrate (DB-18 parametric algebra; cardinality-substrate — 2-way parallel; unblockers for T-Modeling)
+  - T-Modeling (int-lit / Secret<T> / Dimensions — 3-way parallel; each blocks on its scoped-subset prereq in T-Substrate)
+  - T-Substrate (3 scoped-subset sub-lanes per Goal 5: cardinality-subset-for-int-lit; nominal-opaque-for-Secret; parametric-algebra-attachment-for-Dimensions — 3-way parallel; each sub-lane's close criterion is its paired T-Modeling unblock)
   - T-ImpossibleBugs (3 remaining classes — sparse; fills when other fill queues are saturated)
 
 ### Director (ad-hoc)
@@ -85,7 +90,7 @@ New brief at `docs/briefs/r2-structural-close-manager.md` (to author on promotio
 | T-EFamilyClose | M | Structural Close | E-I finish + E-P + E-M + §6a (Goal 7) |
 | T-ShimFloor | M | Structural Close | T-PB-A non-lens reductions; T-PB-B outside-residual-zero (Goal 3) |
 | T-Modeling | M | Structural Close | int-lit / Secret<T> / Dimensions (Goal 4) |
-| T-Substrate | M | Structural Close | DB-18 parametric algebra; cardinality-substrate (Goal 5) |
+| T-Substrate | M | Structural Close | Three scoped-subset sub-lanes (Goal 5): cardinality-for-int-lit; nominal-opaque-for-Secret; parametric-algebra-attachment-for-Dimensions — each scoped to its paired T-Modeling unblock, not full substrate-capability |
 | T-ImpossibleBugs | S | Structural Close | nested-optional flatten / unhandled-diagnostic-paths / unenumerated-effects (Goal 6) |
 | T-Demo | S | Director (ad-hoc) | R2 closure demo artifacts per lane close (Goal 8) |
 
@@ -94,12 +99,12 @@ New brief at `docs/briefs/r2-structural-close-manager.md` (to author on promotio
 ```
 T-Ground:         Pilot → {Rust, Python, Go} → Engine → Tests → Dissolve
 T-EFamilyClose:   E-I (in flight) → E-P → E-M → §6a pick
-T-Substrate:      DB-18 parametric algebra  ─┐
-                                              ├─→ unblock T-Modeling Secret<T>, Dimensions
-                  cardinality-substrate  ─────┘   (cardinality for int-lit narrowing)
-T-Modeling:       int-lit ← cardinality-substrate
-                  Secret<T> ← DB-18
-                  Dimensions ← DB-18
+T-Substrate:      cardinality-for-int-lit (subset) ──→ unblocks T-Modeling int-lit
+                  nominal-opaque-for-Secret (subset) ─→ unblocks T-Modeling Secret<T>
+                  parametric-algebra-for-Dimensions (subset) ─→ unblocks T-Modeling Dimensions
+T-Modeling:       int-lit      ← T-Substrate cardinality-for-int-lit
+                  Secret<T>    ← T-Substrate nominal-opaque-for-Secret
+                  Dimensions   ← T-Substrate parametric-algebra-for-Dimensions
 T-LensMigration:  per-file independent (any worker)
 T-ShimFloor:      per-file independent (any worker)
 T-ImpossibleBugs: 3 independent classes (any worker)
@@ -133,15 +138,25 @@ Purpose: proof-of-work visibility at director cadence. Without it, program slips
 
 ## Decisions locked
 
-- **Goal 4 in R2** (not R3+). User anti-deferral stance; Director's "defer to R3+" counter reviewed and overridden.
-- **R1 closure criteria = all-gates-green**. User anti-deferral stance.
+- **Goal 4 in R2** (not R3+). Anti-deferral principle: dissolution directions are named and clear for all three items (int-lit via concept-layer magnitude decoupling; `Secret<T>` via nominal-opaque; Dimensions via phantom-parameter algebra attachment), so deferral would be scope-theater. Director's initial "defer to R3+" counter reviewed and conceded post-reframe.
+- **R1 closure criteria = all-gates-green**. Same anti-deferral principle applied to omni-emit.
 - **Demo cadence = gate-close natural rhythm**. Simple artifact per close; no time-based schedule.
 - **Manager count = 2 + Director**. Adjustable to 3 mid-R2 if Structural Close fill-queue depth becomes unmanageable (naming for a hypothetical third: "Modeling Manager" — would take T-Modeling + T-Substrate + T-ImpossibleBugs).
-- **R2 includes substrate prereqs explicitly** (DB-18, cardinality-substrate) per user's (i)-over-(ii) preference: honest scope over tight scope.
+- **R2 includes substrate prereqs explicitly** per user's (i)-over-(ii) preference (honest scope over tight scope), with **scoped acceptance criteria** per Director refinement (each sub-lane closes on unblock of its paired Goal 4 item; full substrate-capability lanes are not R2-committed).
+- **Anti-deferral principle is the frame, not velocity numbers.** Per Director observation: 16-hour R1 execution was a peak-day sample, not a baseline. The principle "if dissolution direction is clear and named, deferral is problem-finding not problem-solving" is what survives cadence shifts.
 
-## Open calls — none
+## Open calls — one remaining
 
-All prior open calls resolved.
+**Post-R2 stance — strong vs weak endorsement.** The proposal currently reads as *strong*: "R2 = thesis close; post-R2 is external (adoption/docs/community); R3 reserved as escape hatch only." That's consistent with anti-deferral + close-everything-knowable. But it commits us to: no future thesis-claim release after R2.
+
+Two readings for user to explicitly pick:
+
+- **Strong endorsement** — yes, R2 = thesis close. R3 reserved only for escape hatch. Post-R2 work is all external. Commit; this doc's framing is final.
+- **Weaker endorsement** — R2 is the current best scope; R3-as-structure remains available if R2 work surfaces genuinely new thesis-claim architecture that can't close in R2. Soften the "post-R2 = external" framing to preserve option value.
+
+Director leans strong if user trusts the anti-deferral principle; leans weaker if user wants option value in case post-R2 evidence surfaces something load-bearing.
+
+**Pending user decision.** Other R2 structure is locked; this is the one remaining endorsement before the doc promotes to ROADMAP.
 
 ## Cross-refs
 
