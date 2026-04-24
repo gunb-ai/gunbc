@@ -662,7 +662,20 @@ impl<'a> Parser<'a> {
 
     /// After `where`, parse one or more comma-separated expressions until the
     /// next top-level item boundary (commas inside calls/parens stay inside
-    /// [`Self::parse_expr`]).
+    /// `parse_expr`).
+    ///
+    /// **Legacy `dsl/std/types.dag` constraint spellings** (`pattern("…")`,
+    /// `range(min: 1, max: 5)`, `brand("…")`, bare `non_empty`, …) share this
+    /// same expression surface — there is no parallel implicit-subject
+    /// micro-grammar: they must tokenize as `SurfaceExpr` so SG-2 can parse
+    /// the std corpus. `parse_call_args` recognizes `f(a: x, b: y)`-shaped
+    /// opens so inner commas in `range(min: …, max: …)` are not mistaken for
+    /// top-level `where` segment separators (they desugar to a single
+    /// `Record` argument). **Lowering** defers those refinements for
+    /// `dsl/std/types.dag` until std defines the helpers (see
+    /// `lower_type_alias_refinements_phase` in `lower.rs`), which keeps PB-1
+    /// bootstrap snapshots diagnostic-clean — the “broken bootstrap artifact”
+    /// hazard from an earlier snapshot pass is closed on current `main`.
     fn parse_type_alias_where_tail(&mut self) -> Result<(Option<SurfaceExpr>, u32), Diagnostic> {
         self.expect_kind(TokenKind::KwWhere)?;
         let mut parts = vec![self.parse_expr()?];
