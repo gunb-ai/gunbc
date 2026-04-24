@@ -46,8 +46,13 @@ pub enum AlgebraicLawProgramError {
 /// non-`Pending` `resolve_operator_arrow`). That is **not** T-LensAPI D3 (apply the lens to
 /// sample inputs under both associations via the D1 lens-application primitive).
 ///
-/// **Dissolution:** replace this path with `apply(lens, a, b, c)` comparing `(a*b)*c` vs
-/// `a*(b*c)` once the T-LensAPI D1 lens-application primitive lands.
+/// **Dissolution (tracked in two steps):**
+/// 1. **Substrate law read:** delete `declaration_shape_matches_ordered_ring_add_associativity_recognizer`
+///    once `AlgebraicLaw` consumes an explicit **Associativity** law witness surfaced on
+///    `OrderedRing.add` in the `.dag`, instead of inferring associativity from "`+` resolves to
+///    `OrderedRing.add`" plus shape matching.
+/// 2. **T-LensAPI D3:** then replace evaluation with `apply(lens, a, b, c)` comparing `(a*b)*c` vs
+///    `a*(b*c)` once the D1 lens-application primitive lands.
 pub fn eval_algebraic_law_for_claim_program(
     fixture_dag: &Dag,
     program_dag: &Dag,
@@ -817,8 +822,10 @@ fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, Algebra
 /// operator fallback. The last conjunct is a **sanity check on operator resolution**, not D3
 /// associativity via sample evaluation.
 ///
-/// **Dissolution:** same as `eval_algebraic_law_for_claim_program` — D1 lens application, then D3
-/// compare `(a*b)*c` vs `a*(b*c)`; delete this recognizer when that lands.
+/// **Dissolution:** same two-step receipt as `eval_algebraic_law_for_claim_program`: first read an
+/// Associativity witness off reflected `OrderedRing.add` (substrate), not operator inference; then
+/// D1/D3 lens application comparing `(a*b)*c` vs `a*(b*c)` — delete this recognizer when (1) and
+/// (2) land.
 fn declaration_shape_matches_ordered_ring_add_associativity_recognizer(
     dag: &Dag,
     decl: &Declaration,
