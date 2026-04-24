@@ -190,9 +190,9 @@ type RankingDimension
   | TokenPosition { param: String }      // parser state.position
   | SetCardinality { param: String }     // |set| via remove
 
-// Raw Int cannot be descent evidence: zero and negative shrink amounts are
-// not valid witnesses. This structural positive number makes invalid proof
-// amounts unrepresentable.
+// 🟢 TERMINAL at descent-witness scope. Raw `Int` cannot carry shrink
+// evidence because zero and negative values are not descent witnesses.
+// This structural positive number makes invalid proof amounts unrepresentable.
 type PositiveDescentAmount
   = OneStep
   | AdditionalStep { previous: PositiveDescentAmount }
