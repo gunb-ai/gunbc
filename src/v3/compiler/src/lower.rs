@@ -544,6 +544,37 @@ fn build_refinement_predicate_declaration(
     pred_decl_id
 }
 
+/// P3 / “facts flow forward” for `dsl/std/types.dag` where predicate lowering
+/// is deferred: allocate a **non-Arrow** declaration id used only as
+/// `Declaration::refinement` for those aliases. Refinement discharge in infer
+/// requires a `Arrow` + `UserDefined` `Bind` predicate; this placeholder uses a
+/// `Conj` so it is never mistaken for a lowered `Bool` predicate, except for
+/// identity on the same `DeclarationId` (the alias matches itself at call sites).
+/// The name encodes the heuristic; see `lower_type_alias_refinements_phase`
+/// **Heuristic (PB-1)** / **Dissolution**.
+fn alloc_deferred_types_dag_refinement_placeholder(
+    dag: &mut Dag,
+    alias_name: &str,
+    span: SourceSpan,
+) -> DeclarationId {
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id,
+        name: Some(format!(
+            "<std/types.dag: `where` parsed, predicate not lowered: {alias_name}>"
+        )),
+        connective: TypeConnective::Conj { children: vec![] },
+        type_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span: span.clone(),
+    });
+    id
+}
+
 /// DB-11 (3a.3): lower a parameter's `where` refinement into a
 /// predicate `Declaration` and a refined type `Declaration`.
 ///
@@ -733,6 +764,22 @@ fn lower_parameter_refinements_phase(
 /// `bind_name = Name`: the `where` expression resolves `Var`s spelling the alias
 /// identifier to the refined base type `T`. Authors write the subject as the
 /// alias name; there is no separate hidden parameter symbol.
+///
+/// **Heuristic (PB-1):** for `span.file == "dsl/std/types.dag"`, we do **not**
+/// call [`build_refinement_predicate_declaration`] (unresolved `pattern` /
+/// `range` / … would emit diagnostics in the std seed and break snapshot
+/// identity), but we **do** set [`Declaration::refinement`] to a
+/// **placeholder** (see [`alloc_deferred_types_dag_refinement_placeholder`]) so
+/// the parsed `where` is not dropped silently: downstream sees a named carrier,
+/// not `None` as if no refinement were authored.
+///
+/// **Dissolution (delete the file gate / placeholders when one of these is
+/// true):** (1) the bootstrap supplies resolved Bool-level helpers (or
+/// realizations) for `types.dag` refinement calls so predicate lowering is
+/// diagnostic-clean; (2) a `meta_tag` (or other substrate flag) marks
+/// documentation-only refinements, replacing the string-compare; or (3) PB-1
+/// defers to a different authority file list so `types.dag` is not
+/// `compile`d in the snapshot path that must stay diagnostic-empty.
 fn lower_type_alias_refinements_phase(
     dag: &mut Dag,
     module: &SurfaceModule,
@@ -756,15 +803,9 @@ fn lower_type_alias_refinements_phase(
         let Some(predicate) = refinement.as_ref() else {
             continue;
         };
-        let decl_id = symbols[name];
-        // `dsl/std/types.dag` documents refinements (`pattern`, `range`, `brand`, …)
-        // ahead of the std declarations that realize them. Parse and retain them on
-        // `SurfaceItem` for DB-11 / SG-2, but do not allocate predicate declarations
-        // during std bootstrap — lowering would surface unresolved-call diagnostics
-        // and break PB-1 snapshot identity.
-        if span.file == "dsl/std/types.dag" {
-            continue;
-        }
+        let decl_id = *symbols
+            .get(name)
+            .expect("type alias name missing from symbol table (first pass must register it)");
         if let Some((shape_label, frag_span)) = refinement_predicate_out_of_fragment(predicate) {
             report_declaration_error(
                 dag,
@@ -788,6 +829,12 @@ fn lower_type_alias_refinements_phase(
         let base_decl_id = type_to_declaration_id(target, symbols, &local, dag);
         dag.declaration_mut(decl_id).connective =
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(base_decl_id));
+
+        if span.file == "dsl/std/types.dag" {
+            let ph = alloc_deferred_types_dag_refinement_placeholder(dag, name, span.clone());
+            dag.declaration_mut(decl_id).refinement = Some(ph);
+            continue;
+        }
         let pred_decl_id = build_refinement_predicate_declaration(
             base_decl_id,
             predicate,

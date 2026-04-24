@@ -676,11 +676,12 @@ impl<'a> Parser<'a> {
     /// `handwritten_parser_accepts_types_dag` tokenizes and parses the full
     /// `dsl/std/types.dag` corpus; PB-1’s committed `bootstrap_std_generated.rs`
     /// snapshot carries **no** parse-phase `Diagnostic` rows for that file.
-    /// **Lowering** defers those refinements for
-    /// `dsl/std/types.dag` until std defines the helpers (see
-    /// `lower_type_alias_refinements_phase` in `lower.rs`), which keeps PB-1
-    /// bootstrap snapshots diagnostic-clean — the “broken bootstrap artifact”
-    /// hazard from an earlier snapshot pass is closed on current `main`.
+    /// **Lowering** does not emit `Bool` predicate bodies for
+    /// `dsl/std/types.dag` until helpers resolve (see
+    /// `lower_type_alias_refinements_phase` / `alloc_deferred_types_dag_refinement_placeholder`
+    /// in `lower.rs`): a **placeholder** `Declaration::refinement` carries the
+    /// fact that a `where` was authored (P3 — not a silent `None`), while PB-1
+    /// stays diagnostic-clean.
     fn parse_type_alias_where_tail(&mut self) -> Result<(Option<SurfaceExpr>, u32), Diagnostic> {
         self.expect_kind(TokenKind::KwWhere)?;
         let mut parts = vec![self.parse_expr()?];
