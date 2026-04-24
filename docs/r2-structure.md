@@ -92,7 +92,8 @@ New brief at `docs/briefs/r2-structural-close-manager.md` (to author on promotio
 | T-Modeling | M | Structural Close | int-lit / Secret<T> / Dimensions (Goal 4) |
 | T-Substrate | M | Structural Close | Three scoped-subset sub-lanes (Goal 5): cardinality-for-int-lit; nominal-opaque-for-Secret; parametric-algebra-attachment-for-Dimensions — each scoped to its paired T-Modeling unblock, not full substrate-capability |
 | T-ImpossibleBugs | S | Structural Close | nested-optional flatten / unhandled-diagnostic-paths / unenumerated-effects (Goal 6) |
-| T-Demo | S | Director (ad-hoc) | R2 closure demo artifacts per lane close (Goal 8) |
+
+**Goal 8 (R2 closure demo) is not a lane.** It is a cross-lane closure discipline (see "Demo discipline" below): each lane's closure PR ships its own simple "it runs" artifact; Director coordinates surfacing. No separate T-Demo lane owner, no separate demo-authoring critical path.
 
 ## Dependency DAG
 
@@ -109,7 +110,8 @@ T-Modeling:       int-lit      ← T-Substrate cardinality-for-int-lit
 T-LensMigration:  per-file independent (any worker)
 T-ShimFloor:      per-file independent (any worker)
 T-ImpossibleBugs: 3 independent classes (any worker)
-T-Demo:           per-lane artifact (trails each lane close)
+(Goal 8 demo artifacts ship with each lane's closure PR — not a
+ separate dependency-DAG node; see Demo discipline section.)
 ```
 
 Parallel-capable work at any time ≥ N workers × fill-queue depth (5 fill queues on Structural Close Manager + 2 on Grounding).
