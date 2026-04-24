@@ -407,6 +407,10 @@ fn score(choice: Choice) -> Int =
     Number(value) => value
     Missing => 0
   }
+
+fn present_choice(value: Int) -> Choice = Number(value)
+
+fn missing_choice(_value: Int) -> Choice = Missing
 "#;
 
 fn sub_match_over_user_sum_module() -> String {
@@ -443,10 +447,8 @@ mod emitted {{
 }}
 
 fn main() {{
-    let present = emitted::Choice::Number {{ _0: 7 }};
-    let missing = emitted::Choice::Missing;
-    assert_eq!(emitted::score(&present), 7);
-    assert_eq!(emitted::score(&missing), 0);
+    assert_eq!(emitted::score(&emitted::present_choice(7)), 7);
+    assert_eq!(emitted::score(&emitted::missing_choice(&7)), 0);
 }}
 "#
     );
