@@ -1,4 +1,9 @@
-use v3_compiler::dag::{FieldValue, TypeConnective, ValueBody};
+use std::collections::HashMap;
+
+use v3_compiler::dag::{
+    evidence_rank, join_evidence, map_evidence_merge_at, merge_evidence, optional_evidence_meet,
+    promote_to_strict, ArrowBody, DescentEvidence, FieldValue, TypeConnective, ValueBody,
+};
 use v3_compiler::parse_surface;
 use v3_compiler::Dag;
 use v3_compiler::Diagnostic;
@@ -54,6 +59,43 @@ fn sum_variants(dag: &Dag, name: &str) -> Vec<(String, Vec<String>)> {
             })
             .collect(),
         other => panic!("expected `{name}` to lower to a Disj, got {other:?}"),
+    }
+}
+
+fn variant_payload_field_type_name(
+    dag: &Dag,
+    sum_name: &str,
+    variant_name: &str,
+    field_name: &str,
+) -> String {
+    let id = find_named(dag, sum_name);
+    let TypeConnective::Disj { variants } = &dag.declaration(id).connective else {
+        panic!("expected `{sum_name}` to lower to a Disj");
+    };
+    let variant = variants
+        .iter()
+        .find(|variant| variant.label == variant_name)
+        .unwrap_or_else(|| panic!("variant `{variant_name}` not found under `{sum_name}`"));
+    let TypeConnective::Conj { children } = &dag.declaration(variant.ty).connective else {
+        panic!("expected variant `{variant_name}` under `{sum_name}` to lower to a Conj payload");
+    };
+    let field = children
+        .iter()
+        .find(|field| field.label == field_name)
+        .unwrap_or_else(|| {
+            panic!("field `{field_name}` not found on variant `{variant_name}` under `{sum_name}`")
+        });
+    dag.declaration(field.ty)
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("<anonymous:{}>", field.ty.raw()))
+}
+
+fn arrow_body(dag: &Dag, name: &str) -> ArrowBody {
+    let id = find_named(dag, name);
+    match &dag.declaration(id).connective {
+        TypeConnective::Arrow { body, .. } => body.clone(),
+        other => panic!("expected `{name}` to lower to an Arrow, got {other:?}"),
     }
 }
 
@@ -168,6 +210,142 @@ fn substrate_declares_expected_reflection_surface() {
         record_fields(&dag, "SurfacePatternField"),
         vec!["name", "binding", "span"]
     );
+}
+
+#[test]
+fn termination_carriers_bootstrap_from_v3_std() {
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap should load termination carriers cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    assert_eq!(
+        sum_variants(&dag, "DescentEvidence"),
+        vec![
+            (String::from("Strict"), Vec::new()),
+            (String::from("NonIncreasing"), Vec::new()),
+            (String::from("DescentUnknown"), Vec::new()),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "RankingDimension"),
+        vec![
+            (String::from("TreeSize"), vec![String::from("param")]),
+            (String::from("ListLength"), vec![String::from("param")]),
+            (String::from("ArithmeticValue"), vec![String::from("param")]),
+            (String::from("TokenPosition"), vec![String::from("param")]),
+            (String::from("SetCardinality"), vec![String::from("param")]),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "DivisionDescentFactor"),
+        vec![
+            (String::from("Two"), Vec::new()),
+            (String::from("GreaterThanTwo"), vec![String::from("extra")]),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "DescentSource"),
+        vec![
+            (
+                String::from("ChildAccessor"),
+                vec![String::from("accessor")]
+            ),
+            (String::from("ListShrink"), vec![String::from("amount")]),
+            (String::from("ArithmeticSubtract"), vec![String::from("by")],),
+            (String::from("ArithmeticDivide"), vec![String::from("by")],),
+            (String::from("ParserAdvance"), vec![String::from("witness")]),
+            (String::from("SetRemoval"), vec![String::from("element")]),
+            (String::from("FoldIteration"), Vec::new()),
+        ]
+    );
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DivisionDescentFactor", "GreaterThanTwo", "extra"),
+        "PositiveInt"
+    );
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DescentSource", "ListShrink", "amount"),
+        "PositiveInt"
+    );
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DescentSource", "ArithmeticSubtract", "by"),
+        "PositiveInt"
+    );
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DescentSource", "ArithmeticDivide", "by"),
+        "DivisionDescentFactor"
+    );
+    assert_eq!(record_fields(&dag, "TerminationProof"), vec!["dimensions"]);
+    assert_eq!(
+        record_fields(&dag, "ProofEdge"),
+        vec!["caller", "callee", "evidence"]
+    );
+}
+
+#[test]
+fn termination_lattice_functions_preserve_std_body_spans() {
+    let dag = Dag::new();
+
+    for name in [
+        "evidence_rank",
+        "merge_evidence",
+        "join_evidence",
+        "promote_to_strict",
+        "optional_evidence_meet",
+        "map_evidence_merge_at",
+    ] {
+        assert!(
+            matches!(arrow_body(&dag, name), ArrowBody::Unparsed(_)),
+            "`{name}` should preserve its v3 std body span until std block bodies lower"
+        );
+    }
+}
+
+#[test]
+fn termination_lattice_rust_mirror_matches_dag_authority() {
+    use DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
+
+    assert_eq!(evidence_rank(Strict), 2);
+    assert_eq!(evidence_rank(NonIncreasing), 1);
+    assert_eq!(evidence_rank(DescentUnknown), 0);
+
+    for evidence in [Strict, NonIncreasing, DescentUnknown] {
+        assert_eq!(merge_evidence(Strict, evidence), evidence);
+        assert_eq!(merge_evidence(evidence, Strict), evidence);
+        assert_eq!(join_evidence(DescentUnknown, evidence), evidence);
+        assert_eq!(join_evidence(evidence, DescentUnknown), evidence);
+    }
+
+    assert_eq!(merge_evidence(Strict, Strict), Strict);
+    assert_eq!(merge_evidence(Strict, NonIncreasing), NonIncreasing);
+    assert_eq!(merge_evidence(NonIncreasing, NonIncreasing), NonIncreasing);
+    assert_eq!(
+        merge_evidence(NonIncreasing, DescentUnknown),
+        DescentUnknown
+    );
+
+    assert_eq!(join_evidence(NonIncreasing, Strict), Strict);
+    assert_eq!(join_evidence(NonIncreasing, NonIncreasing), NonIncreasing);
+    assert_eq!(join_evidence(Strict, DescentUnknown), Strict);
+
+    assert_eq!(promote_to_strict(NonIncreasing), NonIncreasing);
+    assert_eq!(promote_to_strict(Strict), Strict);
+    assert_eq!(promote_to_strict(DescentUnknown), DescentUnknown);
+
+    assert_eq!(optional_evidence_meet(None, Some(Strict)), Some(Strict));
+    assert_eq!(
+        optional_evidence_meet(Some(Strict), Some(NonIncreasing)),
+        Some(NonIncreasing)
+    );
+
+    let mut base = HashMap::new();
+    base.insert(String::from("n"), Strict);
+    let merged = map_evidence_merge_at(base, String::from("n"), NonIncreasing);
+    assert_eq!(merged.get("n"), Some(&NonIncreasing));
+    let inserted = map_evidence_merge_at(merged, String::from("m"), Strict);
+    assert_eq!(inserted.get("m"), Some(&Strict));
 }
 
 #[test]
@@ -582,6 +760,7 @@ fn substrate_coproducts_match_runtime_carriers() {
                     String::from("name"),
                     String::from("type_params"),
                     String::from("target"),
+                    String::from("refinement"),
                     String::from("span"),
                 ],
             ),

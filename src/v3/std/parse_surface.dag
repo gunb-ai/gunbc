@@ -233,5 +233,6 @@ type SurfaceItem
       name: String
       type_params: List<String>
       target: SurfaceType
+      refinement: SurfaceExpr?
       span: SourceSpan
     }

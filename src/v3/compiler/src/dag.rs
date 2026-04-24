@@ -724,6 +724,152 @@ pub enum OperatorKind {
     Logical(LogicalOp),
 }
 
+// 🟡 SCAFFOLD — Rust execution mirror for `src/v3/std/termination.dag`.
+//
+// The `.dag` declarations are the carrier authority, but std block bodies
+// still lower as `ArrowBody::Unparsed`, so the lattice helpers below are the
+// temporary executable bridge. Dissolution trigger: when std block bodies lower
+// and can be evaluated from `.dag`, replace these helper bodies with calls into
+// the evaluated `.dag` authority or remove them with the first real consumer.
+// `m2_substrate_inhabitance_test` pins the carrier shape, body-span staging
+// contract, and current Rust mirror behavior until that trigger fires.
+
+/// 🟢 TERMINAL at termination-proof scope.
+///
+/// Rust mirror of the durable evidence lattice declared in
+/// `src/v3/std/termination.dag`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DescentEvidence {
+    Strict,
+    NonIncreasing,
+    DescentUnknown,
+}
+
+/// 🟡 SCAFFOLD.
+///
+/// Ranking dimensions are durable, but the `String` parameter bridge dissolves
+/// once function parameters can be referenced structurally.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RankingDimension {
+    TreeSize { param: String },
+    ListLength { param: String },
+    ArithmeticValue { param: String },
+    TokenPosition { param: String },
+    SetCardinality { param: String },
+}
+
+/// 🟢 TERMINAL at descent-witness scope.
+///
+/// Rust mirror of the structural `DivisionDescentFactor` carrier. `Two` is the
+/// minimum valid divisor; `GreaterThanTwo.extra` is a PositiveInt-shaped offset
+/// above two, represented as `i64` until refined values carry generated runtime
+/// wrappers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DivisionDescentFactor {
+    Two,
+    GreaterThanTwo { extra: i64 },
+}
+
+/// 🟡 SCAFFOLD.
+///
+/// The witness taxonomy is durable for E-T; String payloads dissolve when
+/// accessor, operation, witness, and element references become first-class
+/// substrate values. PositiveInt-shaped payloads are represented as raw `i64`
+/// until refined values carry generated runtime wrappers; the `.dag` authority
+/// remains the source of the positivity contract.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DescentSource {
+    ChildAccessor { accessor: String },
+    ListShrink { amount: i64 },
+    ArithmeticSubtract { by: i64 },
+    ArithmeticDivide { by: DivisionDescentFactor },
+    ParserAdvance { witness: String },
+    SetRemoval { element: String },
+    FoldIteration,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminationProof {
+    pub dimensions: Vec<RankingDimension>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProofEdge {
+    pub caller: String,
+    pub callee: String,
+    pub evidence: Vec<DescentEvidence>,
+}
+
+pub fn evidence_rank(evidence: DescentEvidence) -> i64 {
+    match evidence {
+        DescentEvidence::Strict => 2,
+        DescentEvidence::NonIncreasing => 1,
+        DescentEvidence::DescentUnknown => 0,
+    }
+}
+
+pub fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+    match a {
+        DescentEvidence::Strict => match b {
+            DescentEvidence::Strict => DescentEvidence::Strict,
+            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
+            DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+        },
+        DescentEvidence::NonIncreasing => match b {
+            DescentEvidence::Strict => DescentEvidence::NonIncreasing,
+            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
+            DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+        },
+        DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+    }
+}
+
+pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+    match a {
+        DescentEvidence::DescentUnknown => b,
+        DescentEvidence::NonIncreasing => match b {
+            DescentEvidence::Strict => DescentEvidence::Strict,
+            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
+            DescentEvidence::DescentUnknown => DescentEvidence::NonIncreasing,
+        },
+        DescentEvidence::Strict => DescentEvidence::Strict,
+    }
+}
+
+/// Legacy E-T helper name retained for carrier API parity.
+///
+/// Fail-closed behavior means no unary helper may fabricate `Strict` from
+/// weaker evidence; strict promotion requires a separate structural witness.
+pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
+    evidence
+}
+
+pub fn optional_evidence_meet(
+    a: Option<DescentEvidence>,
+    b: Option<DescentEvidence>,
+) -> Option<DescentEvidence> {
+    match a {
+        None => b,
+        Some(va) => match b {
+            None => a,
+            Some(vb) => Some(merge_evidence(va, vb)),
+        },
+    }
+}
+
+pub fn map_evidence_merge_at(
+    mut base: HashMap<String, DescentEvidence>,
+    key: String,
+    new_val: DescentEvidence,
+) -> HashMap<String, DescentEvidence> {
+    let merged = match base.get(&key).copied() {
+        Some(existing) => merge_evidence(existing, new_val),
+        None => new_val,
+    };
+    base.insert(key, merged);
+    base
+}
+
 #[derive(Debug, Clone)]
 pub struct ValueNode {
     pub id: NodeId,

@@ -1070,7 +1070,7 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
 /// `parse_surface.dag` staged fixture so the fresh parse is first-of-name and can be
 /// lowered without duplicate-declaration diagnostics.
 #[allow(clippy::result_large_err)]
-pub fn compile_parse_surface_std_authority_dag(
+fn compile_onto_parse_surface_free_bootstrap(
     source: &str,
     file: &str,
 ) -> Result<Dag, CompileError> {
@@ -1086,6 +1086,67 @@ pub fn compile_parse_surface_std_authority_dag(
     } else {
         Err(CompileError::Semantic(dag))
     }
+}
+
+#[allow(clippy::result_large_err)]
+pub fn compile_parse_surface_std_authority_dag(
+    source: &str,
+    file: &str,
+) -> Result<Dag, CompileError> {
+    compile_onto_parse_surface_free_bootstrap(source, file)
+}
+
+/// `emit_rust_module` pattern-matches `SurfaceItem` using the embedded bootstrap
+/// mirror, which can trail `parse_surface.dag` by one field on `TypeAlias` until
+/// `regen_bootstrap` is refreshed. Patch emitted `lower_helpers` Rust so the
+/// `TypeAlias` arm includes `refinement` when absent (DB-11 / `regen_lens` / SG-6).
+///
+/// **Dissolution:** delete this helper and the call sites in `regen_lens` and
+/// SG-6 `emit_registry_module` when `regen_lens` + rustfmt output already contains
+/// `refinement: __i_refinement` on `TypeAlias` (i.e. `emit` matches `parse_surface`
+/// and `sg6_lower_helpers_generated_module_matches_checked_in_snapshot` is green
+/// with the `patch_` call removed from those paths).
+///
+/// **Fail-closed:** if the mirror still omits `refinement` on `TypeAlias`, the
+/// pre-patch substring must be present; otherwise this panics. A silent
+/// `replace` no-op (e.g. rustfmt rewrote line breaks) would otherwise match the
+/// idempotency check while shipping a broken `lower_helpers` arm.
+pub fn patch_lower_helpers_generated_type_alias_refinement(src: &str) -> String {
+    if src.contains("refinement: __i_refinement") {
+        return src.to_string();
+    }
+    // Exact rustfmt line breaks for `regen_lens` + `lower_helpers` (see SG-6 snapshot).
+    const LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT: &str = concat!(
+        "        SurfaceItem::TypeAlias {",
+        "\n            name: __i_name,",
+        "\n            type_params: __i_type_params,",
+        "\n            target: __i_target,",
+        "\n            span: __i_span,",
+    );
+    const LOWER_HELPERS_TYPE_ALIAS_WITH_REFINEMENT: &str = concat!(
+        "        SurfaceItem::TypeAlias {",
+        "\n            name: __i_name,",
+        "\n            type_params: __i_type_params,",
+        "\n            target: __i_target,",
+        "\n            refinement: __i_refinement,",
+        "\n            span: __i_span,",
+    );
+    if !src.contains(LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT) {
+        panic!(
+            "patch_lower_helpers_generated_type_alias_refinement: pre-DB-11 `TypeAlias` \
+             emit pattern not found; rustfmt/emit shape may have changed. Update this bridge, \
+             or run `regen_bootstrap` / regen the embedded mirror so `refinement` is native."
+        );
+    }
+    let out = src.replace(
+        LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT,
+        LOWER_HELPERS_TYPE_ALIAS_WITH_REFINEMENT,
+    );
+    assert_ne!(
+        out, src,
+        "patch should have inserted `refinement: __i_refinement` on `TypeAlias`"
+    );
+    out
 }
 
 /// PB-1 scaffold helper: re-run the pre-snapshot std bootstrap path for
@@ -1331,4 +1392,17 @@ fn first_differing_line(lhs: &[u8], rhs: &[u8]) -> String {
         lhs.len(),
         rhs.len()
     )
+}
+
+#[cfg(test)]
+mod lower_helpers_type_alias_refinement_patch_tests {
+    use super::patch_lower_helpers_generated_type_alias_refinement;
+
+    #[test]
+    fn is_noop_when_type_alias_arm_already_binds_refinement_placeholder() {
+        let s =
+            "match __i_item { SurfaceItem::TypeAlias { refinement: __i_refinement, .. } => {} }";
+        let out = patch_lower_helpers_generated_type_alias_refinement(s);
+        assert_eq!(out, s);
+    }
 }
