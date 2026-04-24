@@ -14,7 +14,7 @@ The fan-out framing was an initial modeling attempt that conflated cardinality (
 
 This doc pressure-tests the corrected model against the **87 clones in the original `lens_unused_parameters_generated.rs`** (snapshot at git sha `be75d9eec`, PR #466 initial commit). That file is the historical source of the "90 clones in 287 lines" in the design doc and is the densest concentration of the problem.
 
-If the model covers 100% of baseline cases and the residual 5 clones after optimization sit inside the model's predicted genuine-clone envelope, the model is validated as *complete* for R2 thesis-close purposes.
+If the model covers 100% of baseline cases and the residual 5 clones after optimization-in-progress reduce to the model's predicted optimal floor under sound last-use tracking, the model is validated as *complete* for R2 thesis-close purposes.
 
 ---
 
@@ -87,11 +87,31 @@ Counts are approximate; overlapping classifications (a single line can combine P
 
 Under correct implementation of the full model (Read→Borrow + Last-use→Move + Copy→bit-copy):
 
-- **~70 clones become Borrow** (Pattern 1a, 3, 4, 5-init-as-last, 6-inspect, 7, 8a for Copy types)
-- **~12–14 clones become Move** (Pattern 1b, 5, 6 consume-arms, 8b)
-- **~3–5 clones remain as Clone** (Pattern 1c, 2 retained inner, 8c, 9)
+- **~70 clones become Borrow** (Pattern 1a-Read, 3-project, 4-`&self`-method, 6-inspect, 7-project) — these consumers only read; `&T` in emitted code. Copy-ness of the value is irrelevant for Reads in Rust; the `&T` is always the cheapest.
+- **~12–14 clones become Move** (Pattern 1b-last-use-consume, 5-fold-acc-init, 6-consume-arms, 8b-last-use-field-non-Copy) — these consumers transfer ownership at last use; move semantics in emitted code.
+- **~3–5 become Bit-copy** (Pattern 8a-Copy-typed struct field — `NodeId`, `PortId`, `i64` etc. at the `UnusedParameter { ... }` construction site) — Construct+Copy cases where no `.clone()` emits because the Copy trait handles duplication at the bit level. Distinct outcome from Borrow: Bit-copy produces an *owned* value at a construction site without a borrow in emitted code.
+- **~1–3 clones remain as Clone** (Pattern 1c-not-last-use-consume, 8c-not-last-use-field-non-Copy, 9-genuine-multi-use) — these are genuine non-Copy consumes where a later consumer still needs the value; `.clone()` in emitted code.
 
-**Predicted optimal floor: ~3–5 genuine clones.**
+Pattern bookkeeping — four-axis taxonomy:
+
+The outcome buckets above are **emitted-code shapes** (what the emitter renders), not axis labels. The primary axes (Read vs Construct, Last-use, Copy) determine which outcome bucket each use-site lands in:
+
+| Primary axes | Emitted outcome |
+|---|---|
+| Read, any last-use-ness, any Copy-ness | **Borrow** |
+| Construct + Last-use + non-Copy | **Move** |
+| Construct + not-Last-use + non-Copy | **Clone** |
+| Construct + Copy (any last-use-ness) | **Bit-copy** (no explicit `.clone()` emits) |
+
+Per the design authority (`docs/ownership-rendering-design.md §2.5`), **Copy is a Construct-only refinement**. Reads always render as Borrow (`&T`) in Rust regardless of Copy-ness; the target's `ReadStrategy = Borrow` line settles it.
+
+Additional bookkeeping:
+
+- **Pattern 2** ("double-clone on passing") does not contribute any surviving Clone outcome. The inner clone inherits classification from the underlying Pattern 1 cell (1a/1b/1c); the outer clone vanishes as pure waste.
+- **Pattern 8a** (Copy-type struct field) is Construct+Copy → **Bit-copy**, not Borrow. Earlier bookkeeping that listed it under "Borrow-as-bit-copy" conflated two axes; the correct separation is that Bit-copy is its own emitted outcome, distinct from Borrow.
+- **Subletter patterns** (1a/1b/1c, 8a/8b/8c) reflect branching on disposition × last-use × Copy-ness. Each subletter lands in exactly one outcome bucket.
+
+**Predicted optimal floor: ~1–3 genuine clones.** (Same number referenced in §4.3 and §5 below.)
 
 ### §4.2 Current floor
 
@@ -101,9 +121,9 @@ Under correct implementation of the full model (Read→Borrow + Last-use→Move 
 
 ### §4.3 Gap analysis
 
-Current is at the **upper end** of the model's predicted genuine envelope, but with an important caveat: the current 5 clones include cases that **should be moves under the model** (Patterns 1b, 5, 8b) but are conservatively cloned because sound last-use-in-template-order tracking is not yet implemented (the failed `OwnedConstructLastUse` optimization of PR #475 was reverted as unsound in rendered Rust evaluation order).
+Current (5) is **above** the model's predicted optimal floor (~1–3) because the current 5 clones include cases that **should be moves under the model** (Patterns 1b, 5, 8b) but are conservatively cloned — sound last-use-in-template-order tracking is not yet implemented (the failed `OwnedConstructLastUse` optimization of PR #475 was reverted as unsound in rendered Rust evaluation order).
 
-Under sound last-use tracking, the floor drops to **~1–3 genuine clones** (Patterns 1c + 9 + any residual 8c).
+Under sound last-use tracking, the floor drops from 5 to the ~1–3 optimal (Patterns 1c + 9 + any residual 8c).
 
 The gap between 5 (current) and 1–3 (optimal) is **implementation debt, not modeling debt**. The model is correct; the emitter is currently pessimistic in the Consumed→Clone path.
 
@@ -113,7 +133,7 @@ The gap between 5 (current) and 1–3 (optimal) is **implementation debt, not mo
 
 **Model is validated against the 87 baseline cases.** Every case fits exactly one model category. No phenomenon surfaces that requires a modeling primitive beyond the three-dimensional framing.
 
-The current 5-clone floor is within the model's predicted genuine envelope, with a clear implementation-debt gap to the true optimal (~1–3). Shrinking that gap is an optimization (sound last-use tracking in template order) — not a modeling question.
+The current 5-clone floor sits above the model's predicted optimal (~1–3), with a clear implementation-debt gap explained by the conservative Consumed→Clone policy. Shrinking that gap is an optimization (sound last-use tracking in template order) — not a modeling question.
 
 **For R2 thesis-close purposes**, the ownership model is sound. The pressure-test against the 87 cases removes "fan-out was wrong" as a lingering concern and replaces it with "Read vs Construct × Last-Use × Copy, empirically complete over the densest-clone baseline in the codebase."
 
