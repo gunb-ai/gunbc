@@ -5,8 +5,6 @@
 
 module std.termination
 
-import std.types { PositiveInt }
-
 // At each recursive call edge, a ranking dimension either strictly decreases,
 // does not increase, or is unknown. The lattice ordering is:
 // DescentUnknown < NonIncreasing < Strict.
@@ -58,6 +56,10 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 
 // Fail closed: strict descent cannot be fabricated from non-increase without
 // a separate structural witness.
+//
+// 🟡 P5 BRIDGE. Name reads like unary promotion; body is fail-closed (see `dsl` mirror).
+// `v2.compiler.complexity` routes parser progress through `strict_after_parser_witness` and
+// no longer imports this symbol; dissolution: rename here when bootstrap / mirrors migrate.
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   match evidence {
     NonIncreasing => NonIncreasing
@@ -97,13 +99,81 @@ type RankingDimension
   | TokenPosition { param: String }
   | SetCardinality { param: String }
 
-// 🟢 TERMINAL at descent-witness scope. Division witnesses need a factor of at
-// least two. The current bootstrap does not preserve alias `where` refinements
-// in generated mirrors, so model the `>= 2` boundary structurally and compose
-// the "more than two" case from the shared PositiveInt authority.
-type DivisionDescentFactor
-  = Two
-  | GreaterThanTwo { extra: PositiveInt }
+// 🟢 TERMINAL at descent-witness scope. Raw `Int` cannot carry shrink
+// evidence because zero and negative values are not descent witnesses.
+//
+// Ratchet (P4 / modeling): self-recursive Peano-style sums here extend the substrate
+// recursive-type set beyond `Node`; dissolution is deferred until E-P routes literal
+// bridges through shared numeric refinements (see `ROADMAP.md` P4 — Peano witness ratchet).
+//
+// Design note (api-review / E-P): `std.types` already declares `PositiveInt`
+// (`Int where range(min: 1)`) and similar refinements. A future dissolution is
+// to route literal bridges through that **shared numeric refinement authority**
+// (plus an explicit M9 cap) once E-P lowers refinements uniformly for all
+// consumers. Today the Peano sum stays the single structural witness shared with
+// `std.computation` / `std.induction` and the v2 emitter; literal materialization
+// is fail-closed and capped in `positive_descent_amount_from_positive_int`.
+type PositiveDescentAmount
+  = OneStep
+  | AdditionalStep { previous: PositiveDescentAmount }
+
+// 🟢 TERMINAL at descent-witness scope. Structural divisor ≥ 2; lives here so
+// `DescentSource` can reference it without `std.computation` (which imports this module).
+//
+// Same E-P dissolution story as `PositiveDescentAmount`: bounded `Int where
+// range(min: 2, max: …)` (or a branded divisor refinement) is the target once
+// refinements are first-class end-to-end; `proportional_divisor_from_int_at_least_two`
+// is the capped `Int` bridge meanwhile.
+type ProportionalDivisor
+  = DivideByTwo
+  | StrictlyLarger { inner: ProportionalDivisor }
+
+fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
+  match d {
+    DivideByTwo => 2
+    StrictlyLarger { inner: p } => 1 + proportional_divisor_to_int(d: p)
+  }
+}
+
+// M9 / P2 — **single numeric authority** for literal-sized Peano witness depth (mirror of `dsl/std/termination.dag`).
+// Dissolution: E-P shared refinement caps (see ROADMAP P4).
+fn peano_literal_materialization_cap() -> Int { 256 }
+
+// M9 / P4: refuse witness depths above `peano_literal_materialization_cap()` so literal-sized `Int` inputs cannot
+// force deep recursive materialization (infer + std share this cap; fail closed).
+// The .dag definition is stack-recursive O(k) in witness depth; the Rust mirror is
+// iterative with the same cap — future unbounded-Int producers should cap or bound k upstream.
+fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
+  if k <= 0 { none }
+  else {
+    if k > peano_literal_materialization_cap() { none }
+    else {
+      if k == 1 { Some { value: OneStep } }
+      else {
+        match positive_descent_amount_from_positive_int(k: k - 1) {
+          Some { value: prev } => Some { value: AdditionalStep { previous: prev } }
+          None => none
+        }
+      }
+    }
+  }
+}
+
+fn proportional_divisor_from_int_at_least_two(k: Int) -> ProportionalDivisor? {
+  if k < 2 { none }
+  else {
+    if k > peano_literal_materialization_cap() { none }
+    else {
+      if k == 2 { Some { value: DivideByTwo } }
+      else {
+        match proportional_divisor_from_int_at_least_two(k: k - 1) {
+          Some { value: prev } => Some { value: StrictlyLarger { inner: prev } }
+          None => none
+        }
+      }
+    }
+  }
+}
 
 // Concrete code pattern that witnesses descent for a ranking dimension.
 // Bootstrap constraint: name-like payloads are Strings until function and
@@ -113,9 +183,9 @@ type DivisionDescentFactor
 // are first-class substrate values instead of names.
 type DescentSource
   = ChildAccessor { accessor: String }
-  | ListShrink { amount: PositiveInt }
-  | ArithmeticSubtract { by: PositiveInt }
-  | ArithmeticDivide { by: DivisionDescentFactor }
+  | ListShrink { amount: PositiveDescentAmount }
+  | ArithmeticSubtractDescent { steps: PositiveDescentAmount }
+  | ArithmeticDivideDescent { divisor: ProportionalDivisor }
   | ParserAdvance { witness: String }
   | SetRemoval { element: String }
   | FoldIteration

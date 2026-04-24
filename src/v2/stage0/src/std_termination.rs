@@ -3,7 +3,6 @@
 
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::*;
-pub use crate::std_types::PositiveInt;
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -11,7 +10,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use DescentEvidence::*;
 use DescentSource::*;
-use DivisionDescentFactor::*;
+use PositiveDescentAmount::*;
+use ProportionalDivisor::*;
 use RankingDimension::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -116,26 +116,102 @@ impl RankingDimension {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum DivisionDescentFactor {
-    Two,
-    GreaterThanTwo { extra: i64 },
+pub enum PositiveDescentAmount {
+    OneStep,
+    AdditionalStep { previous: Rc<PositiveDescentAmount> },
 }
-impl DivisionDescentFactor {
-    pub fn extra(&self) -> i64 {
+impl PositiveDescentAmount {
+    pub fn previous(&self) -> Rc<PositiveDescentAmount> {
         match self {
-            DivisionDescentFactor::Two => panic!("no extra on unit variant"),
-            DivisionDescentFactor::GreaterThanTwo { extra: __val, .. } => __val.clone(),
+            PositiveDescentAmount::OneStep => panic!("no previous on unit variant"),
+            PositiveDescentAmount::AdditionalStep {
+                previous: __val, ..
+            } => __val.clone(),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
+pub enum ProportionalDivisor {
+    DivideByTwo,
+    StrictlyLarger { inner: Rc<ProportionalDivisor> },
+}
+impl ProportionalDivisor {
+    pub fn inner(&self) -> Rc<ProportionalDivisor> {
+        match self {
+            ProportionalDivisor::DivideByTwo => panic!("no inner on unit variant"),
+            ProportionalDivisor::StrictlyLarger { inner: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn proportional_divisor_to_int(d: Rc<ProportionalDivisor>) -> i64 {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*d).clone() {
+        ProportionalDivisor::DivideByTwo => 2,
+        ProportionalDivisor::StrictlyLarger { inner: p, .. } => {
+            (1 + proportional_divisor_to_int(p.clone()))
+        }
+    })
+}
+
+pub fn peano_literal_materialization_cap() -> i64 {
+    256
+}
+
+pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<Rc<PositiveDescentAmount>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (k.clone() <= 0) {
+            None
+        } else {
+            if (k.clone() > peano_literal_materialization_cap()) {
+                None
+            } else {
+                if (k.clone() == 1) {
+                    Some(Rc::new(PositiveDescentAmount::OneStep))
+                } else {
+                    match positive_descent_amount_from_positive_int((k.clone() - 1)) {
+                        Some(prev) => Some(Rc::new(PositiveDescentAmount::AdditionalStep {
+                            previous: prev.clone(),
+                        })),
+                        None => None,
+                    }
+                }
+            }
+        }
+    })
+}
+
+pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<Rc<ProportionalDivisor>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (k.clone() < 2) {
+            None
+        } else {
+            if (k.clone() > peano_literal_materialization_cap()) {
+                None
+            } else {
+                if (k.clone() == 2) {
+                    Some(Rc::new(ProportionalDivisor::DivideByTwo))
+                } else {
+                    match proportional_divisor_from_int_at_least_two((k.clone() - 1)) {
+                        Some(prev) => Some(Rc::new(ProportionalDivisor::StrictlyLarger {
+                            inner: prev.clone(),
+                        })),
+                        None => None,
+                    }
+                }
+            }
+        }
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum DescentSource {
     ChildAccessor { accessor: String },
-    ListShrink { amount: i64 },
-    ArithmeticSubtract { by: i64 },
-    ArithmeticDivide { by: Rc<DivisionDescentFactor> },
+    ListShrink { amount: Rc<PositiveDescentAmount> },
+    ArithmeticSubtractDescent { steps: Rc<PositiveDescentAmount> },
+    ArithmeticDivideDescent { divisor: Rc<ProportionalDivisor> },
     ParserAdvance { witness: String },
     SetRemoval { element: String },
     FoldIteration,

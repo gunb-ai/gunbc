@@ -55,7 +55,7 @@
 module lenses.infer_helpers
 
 import std.list { List, empty, cons }
-import std.substrate {
+import v3.std.substrate {
   Behavior, BranchPath, BranchPattern, DeclarationId, SourceSpan,
   TemplateArgument, TypeConnective,
   hit_declaration_id_lookup,

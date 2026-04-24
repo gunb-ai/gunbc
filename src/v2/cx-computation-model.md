@@ -218,7 +218,7 @@ categories.
 | PropertyContraction on FunctionSizeEffect | Finite property domain (cardinality) bounds condition-guarded recursion | PR #370. with_required_cardinality: PropertyContraction { domain_size: 2 } |
 | resolve_collection_field for skip/take/filter/reverse | Collection-preserving methods preserve InductiveField through chains | PR #370. render_node_type dissolved (n.children |> skip(1) |> first) |
 | Prefer tree descent over arithmetic in evidence selection | Prevents false branching guard trigger when mixed evidence | PR #370. classify_recursion_pattern picks StrictSubValue before ArithmeticDescent |
-| promote_to_strict in std/termination.dag | Fail-closed legacy helper; it preserves evidence and does not fabricate Strict | PR #682. Parser progress now uses explicit parser-witness logic before constructing Strict |
+| promote_to_strict in std/termination.dag | Fail-closed helper: preserves `Strict` / `NonIncreasing`, maps other positions to `DescentUnknown` (no unary upgrade to `Strict`) | PR #370; `std.termination` authority. Parser progress in `complexity.dag` uses `strict_after_parser_witness` where a parser witness justifies `Strict` (PR #682+); other call sites may still route through `promote_to_strict` until witness threading dissolves that hop |
 
 ### Open (need design)
 
