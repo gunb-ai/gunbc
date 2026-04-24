@@ -700,7 +700,7 @@ data go_int_add: OperatorRealization = {
   language: go_language
   target: Int
   op: OrderedRing.add
-  carrier: "+"
+  carrier: "({lhs} + {rhs})"
   cost: 1
 }
 
@@ -708,7 +708,7 @@ data go_int_sub: OperatorRealization = {
   language: go_language
   target: Int
   op: OrderedRing.sub
-  carrier: "-"
+  carrier: "({lhs} - {rhs})"
   cost: 1
 }
 
@@ -716,7 +716,7 @@ data go_int_mul: OperatorRealization = {
   language: go_language
   target: Int
   op: OrderedRing.mul
-  carrier: "*"
+  carrier: "({lhs} * {rhs})"
   cost: 1
 }
 
@@ -724,7 +724,7 @@ data go_int_div: OperatorRealization = {
   language: go_language
   target: Int
   op: OrderedRing.div
-  carrier: "/"
+  carrier: "({lhs} / {rhs})"
   cost: 1
 }
 
@@ -732,7 +732,7 @@ data go_int_eq: OperatorRealization = {
   language: go_language
   target: Int
   op: OrderedRing.eq
-  carrier: "=="
+  carrier: "({lhs} == {rhs})"
   cost: 1
 }
 
@@ -740,7 +740,7 @@ data go_node_id_eq: OperatorRealization = {
   language: go_language
   target: NodeId
   op: OrderedRing.eq
-  carrier: "=="
+  carrier: "({lhs} == {rhs})"
   cost: 1
 }
 
@@ -748,7 +748,7 @@ data go_port_id_eq: OperatorRealization = {
   language: go_language
   target: PortId
   op: OrderedRing.eq
-  carrier: "=="
+  carrier: "({lhs} == {rhs})"
   cost: 1
 }
 
@@ -756,7 +756,7 @@ data go_declaration_id_eq: OperatorRealization = {
   language: go_language
   target: DeclarationId
   op: OrderedRing.eq
-  carrier: "=="
+  carrier: "({lhs} == {rhs})"
   cost: 1
 }
 
@@ -764,7 +764,7 @@ data go_int_ne: OperatorRealization = {
   language: go_language
   target: Int
   op: OrderedRing.ne
-  carrier: "!="
+  carrier: "({lhs} != {rhs})"
   cost: 1
 }
 
@@ -772,7 +772,7 @@ data go_node_id_ne: OperatorRealization = {
   language: go_language
   target: NodeId
   op: OrderedRing.ne
-  carrier: "!="
+  carrier: "({lhs} != {rhs})"
   cost: 1
 }
 
@@ -780,7 +780,7 @@ data go_port_id_ne: OperatorRealization = {
   language: go_language
   target: PortId
   op: OrderedRing.ne
-  carrier: "!="
+  carrier: "({lhs} != {rhs})"
   cost: 1
 }
 
@@ -788,7 +788,7 @@ data go_declaration_id_ne: OperatorRealization = {
   language: go_language
   target: DeclarationId
   op: OrderedRing.ne
-  carrier: "!="
+  carrier: "({lhs} != {rhs})"
   cost: 1
 }
 
@@ -796,7 +796,7 @@ data go_int_lt: OperatorRealization = {
   language: go_language
   target: Int
   op: OrderedRing.lt
-  carrier: "<"
+  carrier: "({lhs} < {rhs})"
   cost: 1
 }
 
@@ -804,7 +804,7 @@ data go_int_le: OperatorRealization = {
   language: go_language
   target: Int
   op: OrderedRing.le
-  carrier: "<="
+  carrier: "({lhs} <= {rhs})"
   cost: 1
 }
 
@@ -812,7 +812,7 @@ data go_int_gt: OperatorRealization = {
   language: go_language
   target: Int
   op: OrderedRing.gt
-  carrier: ">"
+  carrier: "({lhs} > {rhs})"
   cost: 1
 }
 
@@ -820,7 +820,7 @@ data go_int_ge: OperatorRealization = {
   language: go_language
   target: Int
   op: OrderedRing.ge
-  carrier: ">="
+  carrier: "({lhs} >= {rhs})"
   cost: 1
 }
 
@@ -828,7 +828,7 @@ data go_bool_meet: OperatorRealization = {
   language: go_language
   target: Bool
   op: BooleanAlgebra.meet
-  carrier: "&&"
+  carrier: "({lhs} && {rhs})"
   cost: 1
 }
 
@@ -836,7 +836,7 @@ data go_bool_join: OperatorRealization = {
   language: go_language
   target: Bool
   op: BooleanAlgebra.join
-  carrier: "||"
+  carrier: "({lhs} || {rhs})"
   cost: 1
 }
 
@@ -1001,7 +1001,6 @@ data go_statements: StatementSyntax = {
 }
 
 data go_expressions: ExpressionSyntax = {
-  binary_op: "({lhs} {op} {rhs})"
   field_access: "({object}).{field}"
   function_call: "{func}({args})"
   closure: "func({params}) { return {body} }"

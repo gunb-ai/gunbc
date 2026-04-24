@@ -168,7 +168,6 @@ type StatementSyntax {
 }
 
 type ExpressionSyntax {
-  binary_op: String
   field_access: String
   function_call: String
   closure: String

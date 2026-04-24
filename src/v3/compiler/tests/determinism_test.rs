@@ -157,8 +157,7 @@ fn emit_matrix_program_rust_is_deterministic() {
 
 #[test]
 fn emit_matrix_program_go_is_deterministic() {
-    // Pre-filter: `emit_go` does not support `Behavior::Loop` yet (e.g. recursive_function_call_six).
-    // Must not call `emit_go_program` for excluded rows — only supported Go matrix rows.
+    // Pre-filter via GO_EMIT_EXCLUDE (currently empty — Loop landed in PR #692).
     for fixture in PROGRAM_FIXTURES
         .iter()
         .filter(|f| !GO_EMIT_EXCLUDE.contains(&f.name))
@@ -170,8 +169,7 @@ fn emit_matrix_program_go_is_deterministic() {
 
 #[test]
 fn emit_matrix_program_python_is_deterministic() {
-    // Pre-filter: several program fixtures still fail Python emit (operator bridge, Loop, …).
-    // Must not call `emit_python_program` for excluded rows — same pattern as Go + GO_EMIT_EXCLUDE.
+    // Pre-filter via PYTHON_EMIT_EXCLUDE (currently empty — operators + Loop both landed).
     for fixture in PROGRAM_FIXTURES
         .iter()
         .filter(|f| !PYTHON_EMIT_EXCLUDE.contains(&f.name))
