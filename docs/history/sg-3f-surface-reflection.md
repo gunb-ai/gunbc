@@ -1,5 +1,11 @@
 # SG-3f — Surface reflection (substrate-authoritative surface types) `(XXL)`
 
+> **Status: SHIPPED.** `src/v3/std/parse_surface.dag` (`v3.std.parse_surface`) owns the
+> full Surface\* carrier schema; Rust/Go/Python realization rows exist; parser-output
+> mirror tests cover recursive sums/patterns/literals; SG-3f-d consumption proof
+> compiles/emits/links/runs. Dissolution trigger for `parse_parser_body.txt` is now
+> solely structural `parse.dag` ownership via SG-2b proper. Historical brief.
+
 ## Context
 
 Two census-gaming debts trace back to the same root cause:
