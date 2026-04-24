@@ -152,10 +152,12 @@ Lane-owner dispatch status (update as sub-deliverables close):
 **T-LensAPI:**
 - [x] `user_authored_lens_compiles` gate (Day-1) passes
       (PR #679, merged 2026-04-24)
-- [ ] `AlgebraicLaw` predicate (schema extension, shared with
-      lens_composition_associative) — predicate declared in #678;
-      runner evaluation not yet wired
-- [ ] `lens_composition_associative` gate compiles + evaluates
+- [x] `AlgebraicLaw` predicate runner evaluation wired
+      (PR #728, merged 2026-04-24 — `Associativity` resolves `lens_ref`,
+      compiles the claim program, and checks the canonical structural
+      witness)
+- [x] `lens_composition_associative` gate compiles + evaluates
+      (PR #728, merged 2026-04-24 — witness + `r1_gates.dag` suite)
 - [ ] `lens_output_is_queryable_data` gate compiles + evaluates
       (PR #717 in review — adds runner seam dispatch for `LensOutputEquals` → NYI(String);
       gate stays [ ] until runner executes lens functions)
@@ -170,6 +172,10 @@ Lane-owner dispatch status (update as sub-deliverables close):
 
 Decisions log (append as they happen):
 
+- 2026-04-24: **T-LensAPI `lens_composition_associative` closed** via
+  PR #728. Runner dispatch of `AlgebraicLaw { law: Associativity }`,
+  witness DAG, and `r1_gates.dag` suite landed together. Remaining
+  T-LensAPI work: `lens_output_is_queryable_data` (PR #717 in review).
 - 2026-04-24: T-PB-B / Testgen **pre–Rust-deletion** coordination
   checklist consolidated in this brief (Hand-off → Self-hosting);
   `docs/briefs/t-pb-b-1.md` now points here instead of duplicating
