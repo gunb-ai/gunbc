@@ -1,0 +1,18 @@
+// T-PB-B Brief D — draft contract negatives (`FailsWithDiagnostic`).
+// Schema authority: `src/v3/std/verification.dag`.
+
+import std.list { empty }
+import std.verification { TestClaim, TestSuite, TestPredicate }
+
+let claim_bool_int_rejected: TestClaim = {
+  name: "Bool annotation rejects Int literal",
+  source: "let x: Bool = 1",
+  file_name: "t1_4_type_mismatch.v3",
+  predicate: FailsWithDiagnostic({ kind: TypeMismatch, detail_contains: AnyDetail }),
+  requires: empty()
+}
+
+let suite_contract_diagnostic_negatives: TestSuite = {
+  name: "t-pb-b/contract/diagnostic_negatives",
+  claims: [claim_bool_int_rejected]
+}

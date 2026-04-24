@@ -1,0 +1,30 @@
+// T-PB-B Brief D — draft `PortHasState` + `CostBounded` claims (contract / lens vocabulary).
+// Schema authority: `src/v3/std/verification.dag`.
+// Cost witness matches `m1_5_verification_test` smoke (`let answer: Int = 1 + 1 + 1 + 1`).
+
+import std.list { empty }
+import std.verification { TestClaim, TestSuite, TestPredicate }
+
+let pred_answer_resolved: TestPredicate = PortHasState("answer", Resolved)
+let pred_answer_cost_eq_8: TestPredicate = CostBounded("answer", Eq, 8)
+
+let claim_answer_resolved: TestClaim = {
+  name: "answer bind resolves",
+  source: "let answer: Int = 1 + 1 + 1 + 1",
+  file_name: "t_pb_b_port_answer.v3",
+  predicate: pred_answer_resolved,
+  requires: empty()
+}
+
+let claim_answer_cost_bounded: TestClaim = {
+  name: "answer bind has bounded cost witness (Eq 8)",
+  source: "let answer: Int = 1 + 1 + 1 + 1",
+  file_name: "t_pb_b_cost_answer.v3",
+  predicate: pred_answer_cost_eq_8,
+  requires: empty()
+}
+
+let suite_contract_port_and_cost: TestSuite = {
+  name: "t-pb-b/contract/port_and_cost",
+  claims: [claim_answer_resolved, claim_answer_cost_bounded]
+}

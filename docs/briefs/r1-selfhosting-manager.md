@@ -111,20 +111,31 @@ Lane-owner dispatch status (update as sub-deliverables close):
       T-TestGen extensions land
 
 **T-PB-B:**
-- [ ] Draft `.dag` `TestClaim` declarations for pipeline tests
-      (non-landing — wait on Testgen runner)
-- [ ] Draft `.dag` `TestClaim` declarations for contract tests
-      (non-landing — wait on Testgen runner)
-- [ ] Identify and scope the two TESTING.md residual categories
-      per-test
+- [x] T-PB-B-1 — Landed `src/v3/compiler/tests/dag/*.dag` + compile smoke
+      (`t_pb_b_1_tests_dag_smoke_test`); brief `docs/briefs/t-pb-b-1.md`
+- [x] Draft `.dag` / `.v3` `TestClaim` declarations for pipeline tests
+      (non-landing — see `docs/briefs/t-pb-b-brief-d.md` +
+      `src/v3/compiler/tests/fixtures/t_pb_b_brief_d/pipeline_smoke.v3`)
+- [x] Draft `.dag` / `.v3` `TestClaim` declarations for contract tests
+      (non-landing — same brief +
+      `contract_diagnostic_smoke.v3` + `contract_port_cost_smoke.v3`)
+- [x] Identify and scope the two TESTING.md residual categories
+      per-test (extended D/G/A/B matrix in Brief D)
 - [ ] Land `.dag` test conversion once Testgen signals runner
-      readiness
+      readiness (T-PB-B-1 **data + compile smoke** landed under
+      `src/v3/compiler/tests/dag/` — see `docs/briefs/t-pb-b-1.md`;
+      Rust deletion + `pb_*` still gated)
 - [ ] `pb_test_file_generated_from_dag` + `pb_rust_tests_outside_residual_zero`
       predicates evaluate true
 
 Decisions log (append as they happen):
 
-- _(none yet)_
+- 2026-04-24: **T-PB-B-1** — landed `src/v3/compiler/tests/dag/*.dag` (`data` `TestClaim` /
+  `TestSuite` per `std.verification`) + `t_pb_b_1_tests_dag_smoke_test`; Rust tests not
+  deleted; Testgen runner / `pb_*` coordination still open (`docs/briefs/t-pb-b-1.md`).
+- 2026-04-23: **Brief D** (`docs/briefs/t-pb-b-brief-d.md`) — extended T-PB-B inventory +
+  D/G/A/B matrix + draft `TestClaim` fixtures (`tests/fixtures/t_pb_b_brief_d/*.v3`);
+  compile smoke via `t_pb_b_brief_d_fixture_smoke_test` (no `pb_*`, Rust tests unchanged).
 - 2026-04-23: SG-0 file-level census split landed as non-test/test
   sub-ratchets; `tokenize.rs` shim retired from the non-test subset.
 

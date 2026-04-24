@@ -91,7 +91,10 @@ compose. When this closes, the R1 release gates themselves
   is the hand-off signal for T-PB-B landing. Self-hosting drafts
   `.dag` `TestClaim` declarations during Day-1, waits on this
   signal, then converts pipeline / contract tests. Notify
-  Self-hosting when the runner lands.
+  Self-hosting when the runner lands. **Landable compile-only batch:**
+  `docs/briefs/t-pb-b-1.md` + `src/v3/compiler/tests/dag/` — confirm
+  runner entrypoint / `requires: []` / M1(2.8) predicate-inlining
+  constraints before deleting overlapping Rust tests.
 - **Sideways to Surface Manager.** `emit_omni_demo_fixtures_green`
   and the three `emit_*` gates under T-Emit require `ExecuteCommand`
   + `ForAllTargets` predicates — these are T-TestGen `[ext]`
