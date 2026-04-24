@@ -57,6 +57,9 @@ import std.types { Int }
 
 // Generic sum: one authority for “absent vs present” at a typed value.
 // Variant labels `Miss` / `Hit` mirror the thesis `Missing | Found(T)` naming.
+// §4 + P2: **🟢 TERMINAL** ledger, four-pattern check, and structural consumers
+// (`complexity.dag`, `lens_cost_generated.rs`, `rust.dag`) are in the block
+// *above* — this `type` line is not a naked declaration.
 type Lookup<value>
   = Miss
   | Hit(value)
