@@ -292,6 +292,10 @@ The operational rule is unchanged: every live scaffold needs an explicit dissolu
 
 Findings from two reflective analyses (integration loop health, `main@b014746` and `main@11e66b4`) plus two exploratory analyses (scope: `dsl/std/*.dag`, `src/v2/tests/src/*.rs`, `dsl/extdeps/`, `THESIS.md`, `INVARIANTS.md`, `MODELING.md`, same commits). Items below are grouped by urgency. Each line: 1-sentence fact · dissolution trigger · owner-or-next-step.
 
+### PR #726 (quiet-eagle-364) — E-I / E-C lane ship-with-debt receipt (2026-04-24)
+
+OpenAI-pro meta-review: **SHIP_WITH_DEBT** — substrate staging and receipt-level tests are merge-ready; marginal review value is low without the next structural slice. Remaining work is **E-P / E-M behavioral wiring**, scaffold dissolution (`promote_to_strict` rename/delete), and a **unified numeric-refinement authority** across Peano literal bridges (see existing Peano ratchet row in P4 below). Canonical checklist (owners, triggers, what already landed): [docs/debt/pr-726-ei-carrier-debt.md](docs/debt/pr-726-ei-carrier-debt.md).
+
 ### Debt classification — framing
 
 Items in this ledger fall into three categories. The count alone is a poor health signal; the **flow** (items arriving vs. items dissolved) is the real signal.
