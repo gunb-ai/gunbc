@@ -114,9 +114,10 @@ All four target-emission suites moved from `tests/integration/` into
 
 Mirrored in:
 - `tests/integration.rs` — `#[path]` entries updated.
-- `tests/integration/sg0_census_test.rs::EXPECTED_HAND_AUTHORED` —
-  path rename (net-zero; no new hand-authored files). Added an inline
-  comment explaining the Phase 0 reorg.
+- `tests/integration/sg0_census_test.rs` — census entries updated for the
+  Phase 0 path rename (net-zero; no new hand-authored files). Today the
+  hand-authored test paths live under `EXPECTED_HAND_AUTHORED_TEST`; an
+  inline comment in the census file explains the Phase 0 reorg.
 
 **Single-binary preservation.** The consolidated `tests/integration.rs`
 binary still includes every file (from `integration/`, `boundary/`,

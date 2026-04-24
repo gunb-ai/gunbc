@@ -850,7 +850,14 @@ pub(crate) mod lower_helpers {
 pub mod lens_idempotency {
     pub use crate::workflow_idempotency::analyze_workflow;
 }
-pub mod lens_parallelism;
+/// Back-compat module path for the Stage 2e parallelism lens.
+///
+/// The dedicated `lens_parallelism.rs` wrapper retired once the native-Dag
+/// bridge collapsed to a single re-export. Keep the module name as an API alias
+/// until callers move to the crate-root `analyze_parallelism` export.
+pub mod lens_parallelism {
+    pub use crate::workflow_parallelism::analyze_parallelism;
+}
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
 // `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs`,
 // `parse_parser_body.txt` → `regen_parse` → `parse_generated.rs` (`parse` module),
@@ -905,8 +912,6 @@ pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan};
 pub use emit::{EmitDispatchError, EmitMode, EmitTarget, EmittedSource};
 pub use emit_rust::EmitError;
-/// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
-pub use lens_parallelism::analyze_parallelism;
 /// Lane 2 Stage 2b — supported public surface: [`analyze_workflow`] is the
 /// primary entry; [`report_unsupported_workflow_variant`] and
 /// [`lane2_workflow_idempotency_report`] are additionally exported so
@@ -919,6 +924,8 @@ pub use workflow_idempotency::analyze_workflow;
 pub use workflow_idempotency::{
     lane2_workflow_idempotency_report, report_unsupported_workflow_variant,
 };
+/// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
+pub use workflow_parallelism::analyze_parallelism;
 
 /// Lane 2 Stage 2f — DB-3 dimension abstraction (`std/dimensions.dag` types;
 /// `analyze_symbolic_cost_dimension` is the first migrated lens path).
