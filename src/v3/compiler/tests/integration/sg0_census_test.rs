@@ -163,7 +163,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit_rust.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/lens_depth.rs",
-    "src/v3/compiler/src/lens_idempotency.rs",
     "src/v3/compiler/src/lens_parallelism.rs",
     "src/v3/compiler/src/lens_testgen.rs",
     "src/v3/compiler/src/lens_unused_parameters.rs",
