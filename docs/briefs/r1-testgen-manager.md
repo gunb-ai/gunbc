@@ -124,7 +124,7 @@ Lane-owner dispatch status (update as sub-deliverables close):
       (PR #688, merged 2026-04-24)
 - [x] `testgen_structural_coverage` gate compiles + evaluates
       (PR #720, merged 2026-04-24)
-- [ ] `MockBackedInvariant` wiring
+- [ ] `MockBackedInvariant` wiring (PR #722 in review — DRAFT, needs CI + coordination with #717)
 - [ ] `testgen_mock_backed_integration_safe` gate compiles + evaluates
 - [x] `testgen_manual_claim_is_first_class` gate compiles + evaluates
       (PR #707, merged 2026-04-24)
