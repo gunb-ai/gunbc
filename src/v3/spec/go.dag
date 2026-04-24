@@ -9,8 +9,8 @@ import v3.std.emit_model {
   PatternRealization, PatternStrategy,
   StatementSyntax, ExpressionSyntax, ControlFlowSyntax,
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
-  TypeDefinitionSyntax, PatternMatchSyntax, CollectionOps,
-  ValueConstructionSyntax, LanguageSpec
+  TypeDefinitionSyntax, RecordDeriveTemplateBundle, PatternMatchSyntax,
+  CollectionOps, ValueConstructionSyntax, LanguageSpec
 }
 import v3.std.computation_model {
   TargetExecutionModel, GarbageCollected, LexicalScoping,
@@ -1089,6 +1089,14 @@ data go_value_construction: ValueConstructionSyntax = {
 // vs value struct), re-declare it AND wire the emitter consumer
 // in the same PR.
 
+// P2 / E-6: `emit_go` does not read this yet — empty
+// `RecordDeriveTemplateBundle` inhabits `LanguageSpec.record_derive_templates`
+// (shared Conj with Rust); not cross-target Rust authority.
+data go_record_derive_templates: RecordDeriveTemplateBundle = {
+  struct_def_no_debug: ""
+  enum_def_no_debug: ""
+}
+
 data go_language: LanguageSpec = {
   statements: go_statements
   expressions: go_expressions
@@ -1098,6 +1106,7 @@ data go_language: LanguageSpec = {
   functions: go_functions
   type_applications: go_type_applications
   type_definitions: go_type_defs
+  record_derive_templates: go_record_derive_templates
   patterns: go_patterns
   collection_ops: go_collection_ops
   values: go_value_construction

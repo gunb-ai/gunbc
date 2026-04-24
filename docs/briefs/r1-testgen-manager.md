@@ -91,8 +91,10 @@ compose. When this closes, the R1 release gates themselves
   is the hand-off signal for T-PB-B landing. Self-hosting drafts
   `.dag` `TestClaim` declarations during Day-1, waits on this
   signal, then converts pipeline / contract tests. Notify
-  Self-hosting when the runner lands. **Landable compile-only batch:**
-  `docs/briefs/t-pb-b-1.md` + `src/v3/compiler/tests/dag/`.
+  Self-hosting when the runner lands. **Landed batch (runner-backed):**
+  `docs/briefs/t-pb-b-1.md` + `src/v3/compiler/tests/dag/` —
+  `t_pb_b_1_dag_runner_test` evaluates the landed suites (PR #736);
+  compile-smoke counterpart is `t_pb_b_1_tests_dag_smoke_test`.
   **Pre–Rust-deletion checklist (single source — edit here only; do
   not fork a competing numbered list in other briefs):** (1) **[done,
   PR #736]** Runner accepts v3 `.dag` modules under

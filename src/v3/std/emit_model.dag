@@ -206,6 +206,9 @@ type TypeApplicationSyntax {
   optional: String
 }
 
+// Shared `LanguageSpec.type_definitions` shape — every target instantiates this
+// conj. `LanguageSpec.record_derive_templates` points at
+// `RecordDeriveTemplateBundle` (per-target `data` in `*_spec/*.dag`).
 type TypeDefinitionSyntax {
   struct_def: String
   struct_field: String
@@ -213,6 +216,30 @@ type TypeDefinitionSyntax {
   enum_unit_variant: String
   enum_data_variant: String
 }
+
+// Target-neutral string templates for emitting a user `struct` / `enum` when a
+// full `Debug` (or other) derive set cannot be used — e.g. first-class
+// `fn` storage fields (Rust: `Rc<dyn Fn…>`). **Only `emit_rust` consumes
+// this today**; Go/Python `*_record_derive_templates` are empty
+// `RecordDeriveTemplateBundle` `data` rows that **inhabit** the shared
+// `LanguageSpec` Conj (same P2 single-shape rule as `type_definitions`: every
+// target’s `*_language` must be structurally complete) — those emitters
+// do not read the strings until they implement the policy.
+// See TODO(dissolve) and `INVARIANTS.md#e-6` (boundary / unconsumed data).
+type RecordDeriveTemplateBundle {
+  struct_def_no_debug: String
+  enum_def_no_debug: String
+}
+// TODO(dissolve, #676 / P2) — **named + bounded**:
+// - **Retire** in the PR that does either: (A) a substrate `derive` / repr
+//   authority exists and the Rust record emitter reads only that (delete these
+//   ad hoc strings and this conj field as redundant), or (B) `emit_go` or
+//   `emit_python` is wired to read `LanguageSpec.record_derive_templates` with
+//   real templates so the empty P2 `data` rows for that field are not the
+//   long-term story. **Done** when the bridge has a single read authority for
+//   Rust and no target relies on inert cross-target `data` placeholders.
+// - **Until then:** empty Go/Python `data` only inhabit the shared `LanguageSpec`
+//   Conj; see E-6 above.
 
 type PatternMatchSyntax {
   match_expr: String
@@ -281,6 +308,9 @@ type LanguageSpec {
   functions: DeclarationRef
   type_applications: DeclarationRef
   type_definitions: DeclarationRef
+  // P2: see `RecordDeriveTemplateBundle` TODO(dissolve) in this file; empty
+  // `data` in non-Rust specs inhabit the Conj only (E-6).
+  record_derive_templates: DeclarationRef
   patterns: DeclarationRef
   collection_ops: DeclarationRef
   values: DeclarationRef

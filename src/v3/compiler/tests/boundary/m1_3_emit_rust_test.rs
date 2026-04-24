@@ -16,6 +16,7 @@
 // right substring for each kind of program without depending on
 // exact formatting.
 
+use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -25,6 +26,7 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::emit::{emit as shared_emit, emit_module as shared_emit_module, EmitTarget};
 use v3_compiler::emit_rust::{emit_rust, emit_rust_module};
 use v3_compiler::test_runner::TestClaimValue;
+use v3_compiler::types::TypeShape;
 
 use crate::common::determinism_fixtures::PROGRAM_FIXTURES;
 use crate::common::{HarnessLinkMode, RustcHarness};
@@ -42,6 +44,29 @@ fn emit(source: &str) -> String {
 fn emit_module(source: &str) -> String {
     let dag = compile_to_dag(source, "test.v3").expect("compiles");
     emit_rust_module(&dag).expect("emits module")
+}
+
+/// Ratchet for `Dag::first_class_fn_walk_bootstrap_prune_type_shapes` (emit
+/// `decl_includes_first_class_arrow_data` algebra short-circuit): the ordered
+/// triple must match `int_shape` / `bool_shape` / `string_shape`, and the three
+/// roots are distinct. Adding `float_shape()` without extending the helper
+/// `-> [TypeShape; 3]` becomes a compile break first; extending the array
+/// re-triggers a review of this test (PR #676, Opus).
+#[test]
+fn bootstrap_first_class_fn_prune_ratchets_dag_scalar_shape_getters() {
+    let dag = compile_to_dag("let _x: Int = 0\n", "t.v3").expect("compiles");
+    let via_helper: [TypeShape; 3] = dag.first_class_fn_walk_bootstrap_prune_type_shapes();
+    assert_eq!(via_helper[0], dag.int_shape().expect("Int"));
+    assert_eq!(via_helper[1], dag.bool_shape().expect("Bool"));
+    assert_eq!(via_helper[2], dag.string_shape().expect("String"));
+    let distinct: HashSet<_> = via_helper.iter().map(|s| s.declaration).collect();
+    assert_eq!(
+        distinct.len(),
+        3,
+        "Int/Bool/String bootstrap roots for first-class-`fn` walk prune must be \
+         three distinct `DeclarationId`s; if this fails after adding a new primitive, \
+         extend `first_class_fn_walk_bootstrap_prune_type_shapes` in the same PR"
+    );
 }
 
 fn r1_gate_claim_source(claim_name: &str) -> String {
@@ -343,6 +368,176 @@ fn emit_rust_single_int_binding() {
     assert!(out.contains("let x: i64 = 42;"), "got: {out}");
     assert!(out.contains("fn main()"), "got: {out}");
     assert!(out.contains("println!(\"{}\", x)"), "got: {out}");
+}
+
+/// T-Emit / PR #650 receipt: first-class `fn(A) -> B` in **user function
+/// parameter** position must lower to `impl Fn(A) -> B + Clone`, not
+/// `&impl Fn…` (review #676). Other positions use `std::rc::Rc<dyn Fn…>`;
+/// see `emit_callable_field_types_use_rc_dyn_fn_storage`. Post-mortem:
+/// `docs/postmortems/pr-650-emitter-callable-clone-bound.md`.
+#[test]
+fn emit_generic_bounds_survive() {
+    // Body avoids higher-order `f(...)` calls — those are a separate emit
+    // seam; this receipt only pins the **Rust type line** for callable params.
+    let src = "fn twice(f: fn(Int) -> Int) -> Int = 0\n";
+    let out = emit_module(src);
+    let sig = "fn twice(p0: impl Fn(i64) -> i64 + Clone) -> i64";
+    assert!(
+        out.contains(sig),
+        "callable param should carry synthesized + Clone (downstream rustc / stage0 contract); got:\n{out}"
+    );
+    assert!(
+        !out.contains("&impl Fn"),
+        "borrowed callable param type must not be spelled as &impl Fn; got:\n{out}"
+    );
+}
+
+/// Codex #676 / INVARIANTS P3: callable param `impl Fn + Clone` does not compose
+/// with `Rc<dyn Fn…>` return — when the return carries first-class `fn`, the
+/// parameter must use the same `Rc` carrier so `return f` is rustc-valid.
+#[test]
+fn emit_callable_fn_identity_unifies_param_and_return_carriers() {
+    let src = "fn id_fn(f: fn(Int) -> Int) -> fn(Int) -> Int = f\n";
+    let out = emit_module(src);
+    let ty = "std::rc::Rc<dyn Fn(i64) -> i64>";
+    let sig = format!("fn id_fn(p0: {ty}) -> {ty}");
+    assert!(
+        out.contains(&sig),
+        "param and return must both use Rc carrier for pass-through; got:\n{out}"
+    );
+    assert!(
+        !out.contains("impl Fn(i64) -> i64 + Clone"),
+        "impl Fn+Clone param must not pair with Rc return; got:\n{out}"
+    );
+}
+
+/// Review #676: `impl Trait` is not valid in struct fields — storage carrier required.
+#[test]
+fn emit_callable_field_types_use_rc_dyn_fn_storage() {
+    let src = "type Callback { handler: fn(Int) -> Int }\n";
+    let out = emit_module(src);
+    assert!(
+        out.contains("#[derive(Clone)]\npub struct Callback"),
+        "Rc<dyn Fn…> is not Debug — struct must use clone-only derive; got:\n{out}"
+    );
+    assert!(
+        !out.contains("#[derive(Clone, Debug)]\npub struct Callback"),
+        "Debug derive is invalid with dyn Fn field; got:\n{out}"
+    );
+    assert!(
+        out.contains("handler: std::rc::Rc<dyn Fn(i64) -> i64>"),
+        "expected `std::rc::Rc<dyn Fn…>` in struct field, not `impl Fn`; got:\n{out}"
+    );
+    assert!(
+        !out.contains("impl Fn(i64) -> i64 + Clone"),
+        "struct field must not use parameter-only impl Fn+Clone surface; got:\n{out}"
+    );
+}
+
+/// #676 / api-review: a named `type F = fn(...) -> _` used as a struct field type
+/// must not render as a bare `F` — the emitter does not emit a Rust `type F = …`
+/// for that alias, so the storage carrier must expand to `Rc<dyn Fn…>`.
+#[test]
+fn emit_callable_field_types_expand_named_fn_type_alias() {
+    let src = "type F = fn(Int) -> Int\ntype Holder { handler: F }\n";
+    let out = emit_module(src);
+    assert!(
+        out.contains("handler: std::rc::Rc<dyn Fn(i64) -> i64>"),
+        "field through named first-class `fn` alias should use Rc<dyn Fn…>, not a bare id; got:\n{out}"
+    );
+    assert!(
+        !out.contains("handler: F"),
+        "struct field must not reference undefined Rust type for fn alias; got:\n{out}"
+    );
+}
+
+/// #676: chained alias `G = F`, `F = fn...` must peel to the same `Rc<dyn Fn…>`
+/// carrier, not a bare `G` (P3 fail-closed).
+#[test]
+fn emit_callable_field_types_expand_chained_fn_type_alias() {
+    let src = "type F = fn(Int) -> Int\ntype G = F\ntype Holder { handler: G }\n";
+    let out = emit_module(src);
+    assert!(
+        out.contains("handler: std::rc::Rc<dyn Fn(i64) -> i64>"),
+        "chained field through G→F→fn should use Rc<dyn Fn…>, not a bare id; got:\n{out}"
+    );
+    assert!(
+        !out.contains("handler: G"),
+        "struct field must not use undefined type G when G chains to first-class fn; got:\n{out}"
+    );
+}
+
+/// #676 (codex): a named record that only *contains* callable storage (`Callback`)
+/// must still be spellable as `Callback` when nested in another struct field
+/// (`Wrapper { cb: Callback }`) — P2 name authority, not re-expanded as a fn alias.
+#[test]
+fn emit_callable_nested_named_record_field_uses_type_name() {
+    let src = "type Callback { handler: fn(Int) -> Int }\n\
+type Wrapper { cb: Callback }\n";
+    let out = emit_module(src);
+    assert!(
+        out.contains("pub struct Callback")
+            && out.contains("pub struct Wrapper")
+            && out.contains("cb: Callback"),
+        "Wrapper must reference `Callback` by name; got:\n{out}"
+    );
+}
+
+/// #676: a user `struct` that **contains** a first-class `fn` (via a type alias)
+/// must still lower the **name** in non-field positions (`fn` params), not
+/// `MissingTypeRealization` (claude review, follow-up to `decl_includes` in
+/// `rust_type_name_for_decl_with_policy`).
+#[test]
+fn emit_callable_struct_with_fn_field_names_ok_in_param_slot() {
+    let src = "type F = fn(Int) -> Int\n\
+type Holder { h: F }\n\
+fn use_holder(x: Holder) -> Int = 0\n";
+    let out = emit_module(src);
+    assert!(
+        out.contains("use_holder(") && out.contains("Holder"),
+        "param slot should use `Holder` when the struct is emitted; got:\n{out}"
+    );
+}
+
+/// #676: a named **alias to** `List<fn…>` does not peel to a top-level
+/// `Arrow`, but the emit path must still expand to `Vec<Rc<dyn Fn…>>`, not an
+/// undefined local alias name (C-8).
+#[test]
+fn emit_callable_field_types_expand_list_fn_named_alias() {
+    let src = "type L = List<fn(Int) -> Int>\n\
+type Holders { callbacks: L }\n";
+    let out = emit_module(src);
+    assert!(
+        out.contains("callbacks: Vec<std::rc::Rc<dyn Fn(i64) -> i64>>"),
+        "L = List<fn…> on a struct field should expand; got:\n{out}"
+    );
+    assert!(
+        !out.contains("callbacks: L") && !out.contains("callbacks: Vec<L>"),
+        "must not print bare L / Vec<L> when L aliases List<fn…>; got:\n{out}"
+    );
+}
+
+/// Review #676: nested / generic positions (`Vec<…>`) cannot use `impl Fn`.
+#[test]
+fn emit_callable_list_element_types_use_rc_dyn_fn_in_vec() {
+    let src = "type Holders { callbacks: List<fn(Int) -> Int> }\n";
+    let out = emit_module(src);
+    assert!(
+        out.contains("#[derive(Clone)]\npub struct Holders"),
+        "Vec<Rc<dyn Fn…>> is not Debug — struct must use clone-only derive; got:\n{out}"
+    );
+    assert!(
+        !out.contains("#[derive(Clone, Debug)]\npub struct Holders"),
+        "Debug derive is invalid with Vec<Rc<dyn Fn…>> field; got:\n{out}"
+    );
+    assert!(
+        out.contains("callbacks: Vec<std::rc::Rc<dyn Fn(i64) -> i64>>"),
+        "expected Vec<Rc<dyn Fn…>> for List<fn…>; got:\n{out}"
+    );
+    assert!(
+        !out.contains("Vec<impl Fn"),
+        "Vec type argument must not use impl Fn; got:\n{out}"
+    );
 }
 
 #[test]
