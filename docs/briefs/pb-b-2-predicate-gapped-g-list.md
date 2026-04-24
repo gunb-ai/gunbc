@@ -109,8 +109,10 @@ existing variants like `PortHasState` / `CostBounded`).
    pipe-left-injection, comparison-feeding, and the field-access
    binding tests.
 
-4. **`NodeCountByBehavior { behavior_kind, count_rel }`**
-   where `count_rel ∈ { Equals | AtLeast | AtMost }`. Closes the
+4. **`NodeCountByBehavior { behavior_kind, count_rel, count }`**
+   where `count_rel ∈ { Equals | AtLeast | AtMost }` and `count`
+   is the non-negative integer operand the relation compares
+   against (without it the runner has nothing to check). Closes the
    substrate-walk assertions in `m1_substrate_test.rs` (91 tests)
    and `lane2_stage_2b_db18_test.rs`. Without this, those 91
    imperative walks block port.
