@@ -58,17 +58,29 @@ pub struct Correction {
 """
 
 
-# `lookup.dag` also defines `miss_int_lookup` / `hit_int_lookup` for DAG typing.
-# They are *not* mirrored as Rust fns: `emit_rust_module` lowers those callables
-# to `Lookup::Miss` / `Lookup::Hit(...)` in generated lens code (`rust_target` lookup
-# dispatch). `crate::dag` only needs the `Lookup` sum for the L-8 typed carrier.
-DAG_LOOKUP_TEMPLATE = """// `lookup.dag` fn items are not mirrored here — see script comment
-// on `DAG_LOOKUP_TEMPLATE` in `regen_runtime_mirrors.py`.
+# Structural mirror of `src/v3/std/lookup.dag`: `Lookup` + Int helpers. (Lens
+# `emit_rust_module` may still lower call sites to `Lookup::Miss` / `::Hit` in
+# generated code; that is a lowering choice, not a second authority — these fns
+# are the `crate::dag` counterpart to the std `.dag` fns for API completeness.)
+DAG_LOOKUP_TEMPLATE = """// Mirror of `v3.std.lookup` — see `DAG_LOOKUP_TEMPLATE` in
+// `regen_runtime_mirrors.py`.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Lookup<T> {
     Miss,
     Hit(T),
+}
+
+/// `v3.std.lookup::miss_int_lookup` (`.dag` authority).
+#[inline]
+pub fn miss_int_lookup() -> Lookup<i64> {
+    Lookup::Miss
+}
+
+/// `v3.std.lookup::hit_int_lookup` (`.dag` authority).
+#[inline]
+pub fn hit_int_lookup(n: i64) -> Lookup<i64> {
+    Lookup::Hit(n)
 }
 """
 
