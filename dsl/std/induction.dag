@@ -589,6 +589,7 @@ type CostBound
   | ProductBound { factors: List<AtomicCost> }   // O(f1 · f2 · ...)
   | SumOfProductsBound { terms: List<List<AtomicCost>> }  // O(Σ(Π fi))
   // SumBound: structural alternative stack only here; per-term terminal receipts/ledgers land with E-I consumers (lane 1+).
+  // O(max terms) requires ≥1 alternative — empty `terms` is ill-formed; `sum_bound` maps that to `ErrorBound` (P3 fail-closed).
   | SumBound { terms: List<CostBound> }         // O(max terms) / structural alternative stack (E-I: List<CostBound>)
   | ForeverBound                                 // O(2^63-1) — repeat(max_int)
   | ErrorBound                                   // fail-closed: invalid/unresolvable
@@ -598,8 +599,12 @@ type CostBound
 // Named bound constructors
 // =========================================================================
 
+// P3: empty alternative stack has no max/merge semantics — fail closed (Codex #726 schedule review).
 fn sum_bound(terms: List<CostBound>) -> CostBound {
-  SumBound { terms: terms }
+  match terms |> first {
+    None => ErrorBound
+    Some { value: _ } => SumBound { terms: terms }
+  }
 }
 
 // E-6: minimal destructor for `SumBound` — first match arm that *observes* the self-edge
