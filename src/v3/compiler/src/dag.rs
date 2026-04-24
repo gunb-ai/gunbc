@@ -741,10 +741,21 @@ pub enum RankingDimension {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PositiveDescentAmount {
+    OneStep,
+    AdditionalStep {
+        previous: Box<PositiveDescentAmount>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescentSource {
     ChildAccessor { accessor: String },
-    ListShrink { amount: i64 },
-    ArithmeticDecrease { op: String, by: i64 },
+    ListShrink { amount: PositiveDescentAmount },
+    ArithmeticDecrease {
+        op: String,
+        by: PositiveDescentAmount,
+    },
     ParserAdvance { witness: String },
     SetRemoval { element: String },
     FoldIteration,

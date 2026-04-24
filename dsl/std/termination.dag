@@ -190,6 +190,13 @@ type RankingDimension
   | TokenPosition { param: String }      // parser state.position
   | SetCardinality { param: String }     // |set| via remove
 
+// Raw Int cannot be descent evidence: zero and negative shrink amounts are
+// not valid witnesses. This structural positive number makes invalid proof
+// amounts unrepresentable.
+type PositiveDescentAmount
+  = OneStep
+  | AdditionalStep { previous: PositiveDescentAmount }
+
 // =========================================================================
 // Descent sources: HOW descent is witnessed at a call site
 // =========================================================================
@@ -216,8 +223,8 @@ type RankingDimension
 // identity. When .dag supports function references, these should become structural.
 type DescentSource
   = ChildAccessor { accessor: String }         // e.g., "binop_left"
-  | ListShrink { amount: Int }                 // skip(amount), amount >= 1
-  | ArithmeticDecrease { op: String, by: Int } // "subtract" by 1, "divide" by 2
+  | ListShrink { amount: PositiveDescentAmount } // skip(amount), amount >= 1
+  | ArithmeticDecrease { op: String, by: PositiveDescentAmount } // "subtract" by 1, "divide" by 2
   | ParserAdvance { witness: String }          // "advance", "expect", "eat"
   | SetRemoval { element: String }             // set remove in work-list drain
   | FoldIteration                              // body of fold — bounded by |collection|

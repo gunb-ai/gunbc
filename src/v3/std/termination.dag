@@ -95,6 +95,12 @@ type RankingDimension
   | TokenPosition { param: String }
   | SetCardinality { param: String }
 
+// 🟢 TERMINAL at descent-witness scope. Raw `Int` cannot carry shrink
+// evidence because zero and negative values are not descent witnesses.
+type PositiveDescentAmount
+  = OneStep
+  | AdditionalStep { previous: PositiveDescentAmount }
+
 // Concrete code pattern that witnesses descent for a ranking dimension.
 // Bootstrap constraint: name-like payloads are Strings until function and
 // field references are first-class in .dag.
@@ -103,8 +109,8 @@ type RankingDimension
 // are first-class substrate values instead of names.
 type DescentSource
   = ChildAccessor { accessor: String }
-  | ListShrink { amount: Int }
-  | ArithmeticDecrease { op: String, by: Int }
+  | ListShrink { amount: PositiveDescentAmount }
+  | ArithmeticDecrease { op: String, by: PositiveDescentAmount }
   | ParserAdvance { witness: String }
   | SetRemoval { element: String }
   | FoldIteration
