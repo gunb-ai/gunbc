@@ -51,8 +51,9 @@ authority**. Only the system boundary does.
 
 ## Current v3 state
 
-**Hand-maintained**: live SG-0 ratchet — `EXPECTED_HAND_AUTHORED` +
-`EXPECTED_HAND_AUTHORED_FRAGMENTS` in
+**Hand-maintained**: live SG-0 ratchet — `EXPECTED_HAND_AUTHORED_NON_TEST`
+plus `EXPECTED_HAND_AUTHORED_FRAGMENTS` for the T-PB-A subset, and
+`EXPECTED_HAND_AUTHORED_TEST` for the T-PB-B subset, in
 `src/v3/compiler/tests/integration/sg0_census_test.rs`, partitioned
 against `GENERATED_FILES` sourced from the producer-owned
 `REGEN_OUTPUTS` manifest in `src/v3/compiler/build.rs`. This doc does
@@ -65,7 +66,7 @@ ratchet source. PB metrics below track the SG-0 ratchet.
 **Generated files on main** (partial dissolution already landed):
 - `lens_*_generated.rs` (5 files: cost, cost_symbolic, provenance,
   structural_resolution, unused_parameters)
-- `tokenize_generated.rs` (SG-1 authority via `src/v3/compiler/tokenize.dag` + `regen_tokenize`; `tokenize.rs` is now a 23-line shim but still on census)
+- `tokenize_generated.rs` (SG-1 authority via `src/v3/compiler/tokenize.dag` + `regen_tokenize`; the former `tokenize.rs` shim is retired)
 - `operators_generated.rs` (SG-3; `operators.rs` retired)
 - `dag_{branch,cluster,cost,scalar}_generated.rs`
 - `infer_helpers_generated.rs`, `serialize_generated.rs`,
@@ -98,16 +99,17 @@ retire projection — not one.
 
 ### PB-0 — ratchet (unblocks everything)
 
-- SG-0's live ratchet (`EXPECTED_HAND_AUTHORED` ∖ `GENERATED_FILES`
-  partition in `sg0_census_test.rs`) already enforces the
-  hand-authored count. Add **PB count** as a named column with a
-  trend arrow. Ratchet only down.
+- SG-0's live ratchet (`EXPECTED_HAND_AUTHORED_NON_TEST` +
+  `EXPECTED_HAND_AUTHORED_TEST` ∖ `GENERATED_FILES`, plus
+  fragment authorities, in `sg0_census_test.rs`) already enforces
+  the hand-authored count. The sub-ratchets make the T-PB-A/T-PB-B
+  scope split mechanical. Ratchet only down.
 - **Target trajectory**: live baseline → ~50 → ~20 → ≤5 (intermediate checkpoints illustrative; trigger milestones below are authoritative, not the counts).
 - **Dependencies**: none. Dispatchable now.
 - **Not the same as `compiler.dag`'s `hand_maintained_src`** —
   that's the regeneration-survival list (which files don't get
-  overwritten by the emitter); SG-0's `EXPECTED_HAND_AUTHORED`
-  is the ratchet (which files are still hand-authored). Both
+  overwritten by the emitter); SG-0's `EXPECTED_HAND_AUTHORED_*`
+  sub-ratchets are the ratchet (which files are still hand-authored). Both
   should shrink in sync; when they diverge, the SG-0 ratchet is
   authoritative for PB count.
 
@@ -133,13 +135,12 @@ retire projection — not one.
 
 - **SG-1 authority already landed**: `src/v3/compiler/tokenize.dag` +
   `regen_tokenize` + `tokenize_generated.rs` all exist on main.
-- `tokenize.rs` is already a 23-line shim routing to generated.
-- **PB-2 work**: delete `tokenize.rs` entirely, route call sites
-  directly through `tokenize_generated.rs` (or a `pub use` in
-  `lib.rs`); remove from `EXPECTED_HAND_AUTHORED` (SG-0 ratchet)
-  and from `compiler.dag`'s `hand_maintained_src` (regen-survival list).
+- **Landed.** The former `tokenize.rs` shim was deleted; `lib.rs`
+  routes the private `tokenize` module directly to `tokenize_generated.rs`.
+  The entry is removed from the SG-0 non-test ratchet and from
+  `compiler.dag`'s `hand_maintained_src` (regen-survival list).
 - **Dependencies**: none (authority landed).
-- **Counter delta**: -1 file. Dispatchable now.
+- **Counter delta**: -1 file.
 
 ### PB-3 — parse retire
 
@@ -204,12 +205,11 @@ retire projection — not one.
 
 ### PB-8 — graduation
 
-- **Non-test entries** in the full SG-0 census (`EXPECTED_HAND_AUTHORED`
+- **Non-test entries** in the full SG-0 census (`EXPECTED_HAND_AUTHORED_NON_TEST`
   file-level + `EXPECTED_HAND_AUTHORED_FRAGMENTS` crate-root scaffolds)
   reach ≤5 irreducible-shim (CLI entry + runtime bridge + build shim +
-  possibly lib.rs + bootstrap entry). Test entries (identified by
-  inspection until the sub-ratchet split lands — see §Graduation
-  trigger) remain at the `TESTING.md §"Post-R2 shape"` residual;
+  possibly lib.rs + bootstrap entry). Test entries (`EXPECTED_HAND_AUTHORED_TEST`)
+  remain at the `TESTING.md §"Post-R2 shape"` residual;
   TESTING.md is single authority on which tests persist. `compiler.dag`'s
   `hand_maintained_src` converges to the non-test set.
 - Delete scaffolding: `include_str!` constants, runtime-parse paths,
@@ -221,8 +221,9 @@ retire projection — not one.
 1. Every `.rs` file under `src/v3/compiler/` (both `src/` and `tests/`
    trees — the full scope of the SG-0 census) is **either**:
    - Generated (ends in `_generated.rs` and has the generated header), **or**
-   - Listed in the full SG-0 census (`EXPECTED_HAND_AUTHORED` +
-     `EXPECTED_HAND_AUTHORED_FRAGMENTS`) and falls in one of two
+   - Listed in the full SG-0 census (`EXPECTED_HAND_AUTHORED_NON_TEST`
+     / `EXPECTED_HAND_AUTHORED_TEST` + `EXPECTED_HAND_AUTHORED_FRAGMENTS`)
+     and falls in one of two
      buckets: (a) **non-test** entries (under `src/v3/compiler/src/`
      plus any crate-root scaffolds) scope to ≤5 irreducible-shim per
      §"Irreducible shim (target state)" below; `compiler.dag`'s
@@ -231,9 +232,8 @@ retire projection — not one.
      the `TESTING.md §"Post-R2 shape"` residual (compiler-internal
      unit tests + external-toolchain boundary tests invoking
      rustc/go/python) — TESTING.md is single authority on the
-     residual. Non-test/test partition is currently applied by
-     inspection; mechanical sub-ratchet split in `sg0_census_test.rs`
-     is tracked follow-up.
+     residual. `sg0_census_test.rs` mechanically checks this partition
+     through separate non-test and test sub-ratchets.
 2. `cargo run -p v3-compiler --release --bin regen_v3` produces
    bit-identical Rust (cycle converges in 1 iteration).
 3. CI gate: census partition matches directory contents (no
@@ -254,7 +254,7 @@ If (4) and (5) can be generated, the shim is 3 files.
 
 ## Measurement
 
-Live count comes from SG-0 census (`EXPECTED_HAND_AUTHORED` + `EXPECTED_HAND_AUTHORED_FRAGMENTS` in `sg0_census_test.rs`). Trigger milestones below are authoritative for what PB-N retires; the absolute counts are illustrative against the original 78-file baseline at authoring time and will not match the live census once it drifts.
+Live count comes from SG-0 census (`EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_TEST` + `EXPECTED_HAND_AUTHORED_FRAGMENTS` in `sg0_census_test.rs`). Trigger milestones below are authoritative for what PB-N retires; the absolute counts are illustrative against the original 78-file baseline at authoring time and will not match the live census once it drifts.
 
 | Milestone | SG-0 PB count (illustrative, baseline-78) | Trigger |
 |---|---|---|
@@ -326,7 +326,7 @@ Lane 1e complete ──→ PB-6 (emit) ──────────┐
 ## Graduation trigger
 
 PB graduates when:
-1. Hand-Rust surface at the shim floor: non-test entries in the full SG-0 census (`EXPECTED_HAND_AUTHORED` file-level + `EXPECTED_HAND_AUTHORED_FRAGMENTS` crate-root scaffolds) ≤ 5 irreducible-shim (SG-0 ratchet authority), plus the `TESTING.md §"Post-R2 shape"` residual (compiler-internal unit tests + external-toolchain boundary tests) remaining Rust-authored by TESTING.md's design. Sub-ratchet split (non-test vs test in `sg0_census_test.rs`) is **tracked follow-up** — until it lands, the non-test scope is applied by inspection against the full census (both ratchets). `compiler.dag`'s `hand_maintained_src` converges to the non-test set.
+1. Hand-Rust surface at the shim floor: non-test entries in the full SG-0 census (`EXPECTED_HAND_AUTHORED_NON_TEST` file-level + `EXPECTED_HAND_AUTHORED_FRAGMENTS` crate-root scaffolds) ≤ 5 irreducible-shim (SG-0 ratchet authority), plus the `TESTING.md §"Post-R2 shape"` residual (`EXPECTED_HAND_AUTHORED_TEST`: compiler-internal unit tests + external-toolchain boundary tests) remaining Rust-authored by TESTING.md's design. `compiler.dag`'s `hand_maintained_src` converges to the non-test set.
 2. DB-8 self-host fixed-point runs on full `compiler.dag` (not fixture) and passes bit-identically
 3. CI census gate blocks unmarked hand-authored files
 
