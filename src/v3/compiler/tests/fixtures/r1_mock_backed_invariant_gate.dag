@@ -17,10 +17,9 @@ data mock_backed_invariant_gate: TestClaim = {
   name: "testgen_mock_backed_integration_safe",
   source: "let _: Int = 0\n",
   file_name: "mock_backed_placeholder.v3",
-  predicate: MockBackedInvariant({
-    subject: mock_subject_ref,
-    invariant: mock_invariant_ref
-  }),
+  // Struct-variant field names are schema metadata today; the surface parser
+  // accepts positional payload syntax for authored values.
+  predicate: MockBackedInvariant(mock_subject_ref, mock_invariant_ref),
   requires: []
 }
 

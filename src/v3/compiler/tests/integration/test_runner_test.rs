@@ -317,7 +317,7 @@ data claim: TestClaim = {
   name: "c",
   source: "let _: Int = 0",
   file_name: "f.v3",
-  predicate: MockBackedInvariant({ subject: Int, invariant: Int }),
+  predicate: MockBackedInvariant(Int, Int),
   requires: []
 }
 "#;
