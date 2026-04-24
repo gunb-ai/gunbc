@@ -426,6 +426,22 @@ fn emit_callable_field_types_expand_named_fn_type_alias() {
     );
 }
 
+/// #676: chained alias `G = F`, `F = fn...` must peel to the same `Rc<dyn Fn…>`
+/// carrier, not a bare `G` (P3 fail-closed).
+#[test]
+fn emit_callable_field_types_expand_chained_fn_type_alias() {
+    let src = "type F = fn(Int) -> Int\ntype G = F\ntype Holder { handler: G }\n";
+    let out = emit_module(src);
+    assert!(
+        out.contains("handler: std::rc::Rc<dyn Fn(i64) -> i64>"),
+        "chained field through G→F→fn should use Rc<dyn Fn…>, not a bare id; got:\n{out}"
+    );
+    assert!(
+        !out.contains("handler: G"),
+        "struct field must not use undefined type G when G chains to first-class fn; got:\n{out}"
+    );
+}
+
 /// Review #676: nested / generic positions (`Vec<…>`) cannot use `impl Fn`.
 #[test]
 fn emit_callable_list_element_types_use_rc_dyn_fn_in_vec() {

@@ -2838,7 +2838,8 @@ enum ArrowRustEmitPolicy {
     /// Reserved for fail-closed paths in future context-free seams. Not
     /// selected by any current public entry point — all wired call sites pass
     /// `StorageRcDynFn` (or route to `impl Fn + Clone` for user-fn params).
-    #[allow(dead_code)] // Variant never constructed yet; match arm is live for exhaustiveness.
+    // This variant is never *constructed*; the `NoBody` + `match` arm is live if it were.
+    #[allow(dead_code)]
     RejectFirstClassFn,
     /// `std::rc::Rc<dyn Fn…>` — struct fields, collection instantiations,
     /// top-level `let` annotations, inferred return slots, and nested
@@ -4847,8 +4848,10 @@ impl<'a> Ctx<'a> {
         self.rust_borrowed_type_name_for_decl(ty.declaration)
     }
 
-    /// Peel `ResolvedBy{Structure,Name}` atoms until a first-class
-    /// `TypeConnective::Arrow` with `ArrowBody::NoBody` is found.
+    /// Peel `ResolvedBy{Structure,Name}` atoms, and **zero-arity
+    /// `Instantiation` aliases** (`type G = F` lower as `Instantiate(F, []);`
+    /// not `ResolvedByName`) until a first-class `TypeConnective::Arrow` with
+    /// `ArrowBody::NoBody` is found.
     /// `None` on cycle, on `ArrowBody::UserDefined` / other heads, or when no
     /// such arrow is reachable.
     fn peel_resolved_chain_to_first_class_arrow(
@@ -4874,13 +4877,19 @@ impl<'a> Ctx<'a> {
                 | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                     declaration = *next;
                 }
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } if arguments.is_empty() => {
+                    declaration = *template;
+                }
                 _ => return None,
             }
         }
     }
 
-    /// True when `declaration` (after peeling `ResolvedBy*` atoms)
-    /// is a first-class function type (`fn(...) -> _` in surface),
+    /// True when `declaration` (after peeling `ResolvedBy*` and zero-arity
+    /// `Instantiation` type aliases) is a first-class function type (`fn(...) -> _` in surface),
     /// i.e. a `TypeConnective::Arrow` with `ArrowBody::NoBody` (data `fn`, not a
     /// user `fn` item's `ArrowBody::UserDefined`).
     fn type_declaration_peels_to_arrow(&self, declaration: DeclarationId) -> bool {
@@ -5046,11 +5055,28 @@ impl<'a> Ctx<'a> {
                     ..
                 }
             );
-            if !is_named_first_class_fn_alias {
+            // A **chain** `type G = F` with `F = fn..` is lowered as
+            // `Instantiation(F, [])` (and sometimes `ResolvedByName`); a bare
+            // `G` is invalid in Rust like a bare `F` (#676, P3, Codex).
+            // When peeling finds first-class `fn` under the alias, skip this
+            // return and use the `Instantiation` / `Arrow` path below.
+            if !is_named_first_class_fn_alias
+                && self
+                    .peel_resolved_chain_to_first_class_arrow(declaration)
+                    .is_none()
+            {
                 return Ok(name.clone());
             }
         }
         match &decl.connective {
+            // `type G = F` → `Instantiate(F, [])` (see `type_to_connective`); alias is
+            // not a `List`/`Map` template realization.
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if arguments.is_empty() => {
+                self.rust_type_name_for_decl_with_policy(*template, depth + 1, arrow_policy)
+            }
             TypeConnective::Instantiation {
                 template,
                 arguments,
