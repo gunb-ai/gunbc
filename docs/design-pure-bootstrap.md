@@ -243,14 +243,38 @@ retire projection — not one.
 
 ## Irreducible shim (target state)
 
-Candidates for the ≤5 hand-maintained files:
+### What "irreducible" means here
+
+A shim counts as *irreducible* only if it sits at a **host-system boundary** that `.dag` cannot currently model. Each candidate below exists because of a specific host-system constraint:
+
+- argv ingress (CLI entry) — `.dag` does not model OS argv surface.
+- syscalls (runtime shell bridge) — `.dag` has no syscall primitives.
+- Cargo build lifecycle (`build.rs`, `lib.rs`) — Cargo requires specific Rust files at well-known paths.
+- Bootstrap entry (`Dag::new()` hook) — only hand-written if generated bootstrap cannot reach it.
+
+"Irreducible" is boundary-determined, not a fixed number. The actual target is: *zero hand-Rust inside the language, with just enough host-boundary surface to cross into the OS and Cargo*.
+
+### Trajectory — the number is not principled; the boundaries are
+
+The `≤5` ceiling in this doc is **not an absolute floor**. It is a generous upper bound covering all boundary candidates; the principled floor shrinks as each candidate proves generable:
+
+| Number | Condition | Principled? |
+|---|---|---|
+| ≤5 | All boundary candidates above still hand-authored | Ceiling (conservative) |
+| 3 | `lib.rs` and `Dag::new()` entry land as generated | Named in this doc (§"If (4) and (5) can be generated…") |
+| 2 | `build.rs` also folded (e.g., via cargo-external codegen or substrate-level Cargo modeling) | Empirical floor matched by v2 (CLI + interpreter) |
+| 0 | `.dag` substrate absorbs OS argv, syscalls, and Cargo lifecycle as structural primitives | Aspirational; requires substrate extension beyond R2 scope |
+
+The candidates:
 1. **CLI entry** — clap argv parsing, stderr routing (analogous to v2's `cli_run.rs`).
 2. **Runtime shell bridge** — filesystem ops, process spawn for `dag run` interpreter service (analogous to v2's `v2_interpreter.rs`).
 3. **Build shim** — `build.rs` for build-script codegen glue.
 4. **lib.rs** — module declarations; ideally generated, but depends on cargo's constraints.
 5. **Possibly**: a minimal entry to `Dag::new()` that the generated bootstrap calls.
 
-If (4) and (5) can be generated, the shim is 3 files.
+v2's empirical floor is **2** (`cli_run.rs` + `v2_interpreter.rs`, per §"Inspiration: v2's model" above). That is the evidence base for the boundary-floor claim — v3 can match it or go lower once the substrate extends to cover the remaining host surfaces.
+
+**Gate-name note.** The current predicate `pb_hand_rust_at_shim_floor` is named around the `≤5` ceiling for continuity with this doc's 2024 authoring. Once (4) and (5) land as generated, the principled gate is `pb_hand_rust_at_boundary_floor` with a threshold at 2–3 rather than the nominal 5. A rename is a pre-promotion cleanup candidate, not a mid-lane scope change.
 
 ## Measurement
 
