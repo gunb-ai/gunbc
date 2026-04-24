@@ -976,6 +976,25 @@ fn emit_node_type(n: Node, target: RenderTarget, source_indices: Map<String, New
   render_node_type(n: n, target: target, shared_types: empty_map(), source_indices: source_indices)
 }
 
+// Alias-declaration RHS node: for `type Foo = RHS`, the RHS is what we want
+// to render. When the alias declares a refined type (e.g.
+// `type PositiveInt = Int where range(min: 1)`), `resolved_type(item)`
+// yields the refined conj itself; render_node_type would then short-circuit
+// to the alias name, producing `type PositiveInt = PositiveInt`. Strip one
+// level of refinement wrapping here so the alias body renders as the
+// underlying type.
+fn alias_body_node(item: Node) -> Node {
+  let rt = resolved_type(n: item)
+  if rt.type_annotation != none && rt.ident_span != none {
+    match rt.children |> first {
+      Some { value: base } => base
+      None => rt
+    }
+  } else {
+    rt
+  }
+}
+
 // =========================================================================
 // render_node_type -- fused Node -> String type rendering
 //
@@ -1050,8 +1069,17 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   }
 
   if is_conj {
-    // Refined: unwrap to base type
+    // Refined type. At a reference site (named refined type), preserve the
+    // DSL name so refined descent facts flow forward through the Rust/Go/
+    // Python surfaces. Anonymous inline refinements still unwrap to the
+    // base type. The alias-declaration RHS path uses `alias_body_node` to
+    // bypass this short-circuit and render the underlying.
     if n.type_annotation != none {
+      if n.ident_span != none {
+        let named_base = coerce_primitive_type(target: target, dag_name: tn)
+        let named_str = if shared { wrap_shared_type(target: target, inner: named_base) } else { named_base }
+        return named_str
+      }
       let refined_str = match n.children |> first {
         Some { value: base } => render_node_type(n: base, target: target, shared_types: shared_types, source_indices: source_indices)
         None => coerce_primitive_type(target: target, dag_name: "Refined")

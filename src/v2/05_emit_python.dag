@@ -83,7 +83,7 @@ import std.induction { SubValueUnknown }
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart, TestProjection,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type,
-  emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
+  emit_node_type, alias_body_node, emit_ident, emit_let_binding, emit_simple_expr,
   emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op,
   emit_string_literal, escape_python_interp_text, escape_string_literal_body,
   empty_emit_scope, module_emit_scope,
@@ -318,7 +318,7 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   if is_type_def_item(item: item) {
     emit_py_type_def_from_connective(item: item, env: env)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
-    concat(item_text, " = ", emit_node_type(n: resolved_type(n: item), target: Python, source_indices: env.source_indices))
+    concat(item_text, " = ", emit_node_type(n: alias_body_node(item: item), target: Python, source_indices: env.source_indices))
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     ""
   } else if is_function_item(item: item) {
