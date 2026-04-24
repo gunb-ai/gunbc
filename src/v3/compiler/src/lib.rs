@@ -729,6 +729,10 @@ mod infer;
 /// and relocating extracted helper modules out of `lenses/` once the
 /// consolidated regen target lands.
 pub(crate) mod infer_helpers {
+    /// Rust projection of `v3.std.lookup::Lookup<DeclarationId>` for
+    /// `template_argument_value` — type alias only, not a second sum type.
+    pub(crate) type TemplateArgumentLookup = crate::dag::Lookup<crate::dag::DeclarationId>;
+
     #[allow(
         dead_code,
         unused_imports,
@@ -748,8 +752,7 @@ pub(crate) mod infer_helpers {
         behavior_output_port, behavior_span, normalize_instantiation_arguments,
         payload_binding_span, push_template_argument_binding, resolve_template_argument_value,
         template_argument_value, template_arguments_match as generated_template_arguments_match,
-        NormalizedInstantiationArgs, TemplateArgumentBinding, TemplateArgumentLookup,
-        TemplateArgumentsMatch,
+        NormalizedInstantiationArgs, TemplateArgumentBinding, TemplateArgumentsMatch,
     };
 
     #[cfg(test)]

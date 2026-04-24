@@ -21,3 +21,15 @@ pub fn miss_int_lookup() -> Lookup<i64> {
 pub fn hit_int_lookup(n: i64) -> Lookup<i64> {
     Lookup::Hit(n)
 }
+
+/// `v3.std.lookup::miss_declaration_id_lookup` (`.dag` authority).
+#[inline]
+pub fn miss_declaration_id_lookup() -> Lookup<DeclarationId> {
+    Lookup::Miss
+}
+
+/// `v3.std.lookup::hit_declaration_id_lookup` (`.dag` authority).
+#[inline]
+pub fn hit_declaration_id_lookup(id: DeclarationId) -> Lookup<DeclarationId> {
+    Lookup::Hit(id)
+}

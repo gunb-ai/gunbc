@@ -58,8 +58,8 @@ pub struct Correction {
 """
 
 
-# Structural mirror of `src/v3/std/lookup.dag`: `Lookup` + `miss_int_lookup` /
-# `hit_int_lookup`. `lens_cost_generated` does **not** call these fns — emit
+# Structural mirror of `src/v3/std/lookup.dag`: `Lookup` + monomorphized
+# `miss_*_lookup` / `hit_*_lookup` shims. `lens_cost_generated` does **not** call these fns — emit
 # (`lookup_monomorphized_constructor_emit` in `rust_target.rs`) lowers std callables to
 # `Lookup::Miss` / `::Hit` — but the fns are still the correct `crate::dag`
 # surface for the `.dag` names and avoid any "helper missing in Rust" confusion.
@@ -82,6 +82,18 @@ pub fn miss_int_lookup() -> Lookup<i64> {
 #[inline]
 pub fn hit_int_lookup(n: i64) -> Lookup<i64> {
     Lookup::Hit(n)
+}
+
+/// `v3.std.lookup::miss_declaration_id_lookup` (`.dag` authority).
+#[inline]
+pub fn miss_declaration_id_lookup() -> Lookup<DeclarationId> {
+    Lookup::Miss
+}
+
+/// `v3.std.lookup::hit_declaration_id_lookup` (`.dag` authority).
+#[inline]
+pub fn hit_declaration_id_lookup(id: DeclarationId) -> Lookup<DeclarationId> {
+    Lookup::Hit(id)
 }
 """
 

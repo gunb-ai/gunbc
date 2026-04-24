@@ -59,10 +59,11 @@ import std.substrate {
   Behavior, BranchPath, BranchPattern, DeclarationId, SourceSpan,
   TemplateArgument, TypeConnective
 }
-
-type TemplateArgumentLookup
-  = MissingTemplateArgument
-  | FoundTemplateArgument(DeclarationId)
+import v3.std.lookup {
+  Lookup,
+  hit_declaration_id_lookup,
+  miss_declaration_id_lookup
+}
 
 // SG-4b-3 template-argument reconciliation tranche — still pure
 // Cat-2 list mechanics, but now covering the real equality/update
@@ -75,7 +76,7 @@ type TemplateArgumentBinding
 
 // SG-4b-4 template-argument match result. Pure pairwise equality over
 // two `List<TemplateArgument>`s; mirrors the existing decision-enum
-// pattern (`TemplateArgumentLookup`, `TemplateArgumentBinding`) so the
+// pattern (`Lookup<DeclarationId>`, `TemplateArgumentBinding`) so the
 // helper avoids a `Bool` return while the lens->Rust emitter's Bool
 // mapping is still untested.
 //
@@ -86,7 +87,7 @@ type TemplateArgumentBinding
 // mapping for helper returns.
 //
 // Dissolution trigger: the lens->Rust emitter lands a verified `Bool`
-// mapping (paired with updated `TemplateArgumentLookup` /
+// mapping (paired with updated `Lookup<DeclarationId>` /
 // `TemplateArgumentBinding` decision helpers so all four dissolve
 // together). At that point every call site collapses to a direct
 // `Bool` return and this type deletes.
@@ -148,12 +149,12 @@ fn payload_binding_span(
 fn template_argument_value(
   arguments: List<TemplateArgument>,
   parameter: DeclarationId
-) -> TemplateArgumentLookup =
+) -> Lookup<DeclarationId> =
   match arguments {
-    Empty => MissingTemplateArgument
+    Empty => miss_declaration_id_lookup()
     Cons(payload) =>
       if payload.head.parameter == parameter then
-        FoundTemplateArgument(payload.head.value)
+        hit_declaration_id_lookup(payload.head.value)
       else
         template_argument_value(payload.tail, parameter)
   }
@@ -167,8 +168,8 @@ fn resolve_template_argument_value(
     current
   else
     match template_argument_value(arguments, current) {
-      MissingTemplateArgument => current
-      FoundTemplateArgument(next) =>
+      Miss => current
+      Hit(next) =>
         if next == current then
           current
         else

@@ -1487,8 +1487,8 @@ fn template_argument_value(
     parameter: DeclarationId,
 ) -> Option<DeclarationId> {
     match generated_template_argument_value(arguments, &parameter) {
-        TemplateArgumentLookup::FoundTemplateArgument { _0: value } => Some(value),
-        TemplateArgumentLookup::MissingTemplateArgument => None,
+        TemplateArgumentLookup::Hit(value) => Some(value),
+        TemplateArgumentLookup::Miss => None,
     }
 }
 
