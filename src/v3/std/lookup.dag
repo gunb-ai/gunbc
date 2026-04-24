@@ -40,20 +40,27 @@ import std.types { Int }
 //   4. Dimensional — Fails: absence vs. presence of `value` is a single binary
 //      sum, not a product of independent dimensions to factor into fields.
 //
-// **Dissolution / migration receipt (compiler–std consolidation).** The first
-// migrated lens that *consumes* this file (not a parallel `Missing/Found` lens
-// carrier) is `src/v3/lenses/complexity.dag` — `import v3.std.lookup { Lookup, … }`
-// and `cost_of` → `Lookup<Int>`. `src/v3/compiler/src/lens_cost_generated.rs` is
-// the **generated** consumer at the Rust lens boundary (regen_lens; committed).
+// **Dissolution / migration receipt (compiler–std consolidation).** Migrated
+// lenses that *consume* this carrier (rather than declaring a parallel
+// `Missing/Found` sum):
+//   - `src/v3/lenses/complexity.dag` — `cost_of` → `Lookup<Int>`
+//     (`miss_int_lookup` / `hit_int_lookup` monomorphized constructors here);
+//   - `src/v3/lenses/cost.dag` — `symbolic_cost_of` → `Lookup<SymbolicCost>`
+//     (monomorphized constructors `miss_symbolic_cost_lookup` /
+//     `hit_symbolic_cost_lookup` live next to `SymbolicCost` in `std.algebra`
+//     so `std.lookup` stays free of algebra imports).
 //
 // **Structural consumer (P2 / INVARIANTS.md P2: declaration + realization +
 // generated proof).** `Lookup` is not declaration-only:
 //   - `src/v3/lenses/complexity.dag` — `cost_of` and helpers return `Lookup<Int>`;
-//   - `src/v3/compiler/src/lens_cost_generated.rs` — `regen_lens` / `emit_rust_module`
-//     output; the compiler includes this module and pattern-matches `Lookup` at
-//     the lens boundary;
+//   - `src/v3/lenses/cost.dag` — `symbolic_cost_of` and helpers return
+//     `Lookup<SymbolicCost>`;
+//   - `src/v3/compiler/src/lens_cost_generated.rs` and
+//     `src/v3/compiler/src/lens_cost_symbolic_generated.rs` — `regen_lens` /
+//     `emit_rust_module` output; the compiler includes these modules and
+//     pattern-matches `Lookup` at the lens boundary;
 //   - `src/v3/spec/rust.dag` — `rust_lookup_instantiation` projects the carrier
-//     to Rust `Lookup<i64>` for emit (Miss/Hit).
+//     to Rust `Lookup<T>` for emit (Miss/Hit).
 
 // Generic sum: one authority for “absent vs present” at a typed value.
 // Variant labels `Miss` / `Hit` mirror the thesis `Missing | Found(T)` naming.
