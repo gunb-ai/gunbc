@@ -155,8 +155,10 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [x] `lens_composition_associative` gate compiles + evaluates
       (PR #728, merged 2026-04-24 — witness + `r1_gates.dag` suite)
 - [ ] `lens_output_is_queryable_data` gate compiles + evaluates
-      (PR #717 in review — adds runner seam dispatch for `LensOutputEquals` → NYI(String);
-      gate stays [ ] until runner executes lens functions)
+      (PR #717 merged 2026-04-24 — dispatch + `DeclarationRef` resolution landed,
+      runner returns `NotYetImplemented(String)`; gate stays [ ] until T-LensAPI D1
+      lens-application primitive + D2 `eval_lens_output_equals` real apply/compare land.
+      D1 in flight as PR #741)
 
 **Schema extensions owned here that other managers consume:**
 - [x] `ExecuteCommand` predicate (Surface T-Emit consumer) — landed PR #678
@@ -171,7 +173,8 @@ Decisions log (append as they happen):
 - 2026-04-24: **T-LensAPI `lens_composition_associative` closed** via
   PR #728. Runner dispatch of `AlgebraicLaw { law: Associativity }`,
   witness DAG, and `r1_gates.dag` suite landed together. Remaining
-  T-LensAPI work: `lens_output_is_queryable_data` (PR #717 in review).
+  T-LensAPI work: `lens_output_is_queryable_data` (PR #717 dispatch merged
+  2026-04-24; gate awaits D1 primitive — PR #741 draft).
 - 2026-04-24: T-PB-B / Testgen **pre–Rust-deletion** coordination
   checklist consolidated in this brief (Hand-off → Self-hosting);
   `docs/briefs/t-pb-b-1.md` now points here instead of duplicating
