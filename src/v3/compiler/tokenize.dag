@@ -50,11 +50,16 @@
 //     ASCII→Unicode→… causal chain).
 //   - `std.bit::Byte`.
 //
-// **Missing piece** (the only actual substrate delta needed): a `CharClass`
-// taxonomy relevant to tokenization (`Whitespace | Digit | IdentStart |
-// IdentContinue` or a superset), with a natural home as a sibling to
-// `DisplayWidth` in `std.unicode`, plus classification predicates declared as
-// data or functions.
+// **CharClass — tokenizer half (bounded interim, not full lane closure).**
+// `std.unicode` declares `CharClass` + `char_in_class` (canonical `.dag`
+// authority). The ROADMAP lane also names `syntax.dag` retagging and
+// structural class rows in *this* file — those are **not** claimed here:
+// `dsl/std/syntax.dag` / `dag_keyword_set` / `OperatorSpec.symbol` are unchanged
+// in this tranche, and M1(2.8) still rejects list / sum-variant literals in
+// `data` bodies for this module (`class-5 gap #3`), so scanner classes cannot
+// yet be read structurally from lowered `tokenize.dag`. Instead `regen_tokenize`
+// emits calls into `tokenize_char_class.rs`, a handwritten Rust mirror of the
+// `.dag` ASCII predicates (ratcheted by unit tests in `tokenize_char_class.rs`).
 //
 // **Framing.** This is not a substrate gap — the character-level modeling is
 // already done. It is a *consumption gap*: tokenize.dag and syntax.dag both
