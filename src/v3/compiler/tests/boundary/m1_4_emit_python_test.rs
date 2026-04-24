@@ -329,6 +329,19 @@ class Dag:
     nodes: list[Behavior]
     ports: list[DagPort]
     clusters: list[typing.Any]
+
+def port(d: Dag, id: PortId) -> typing.Optional[DagPort]:
+    for p in d.ports:
+        if p.id == id:
+            return p
+    return None
+
+def node(d: Dag, id: NodeId) -> typing.Optional[Behavior]:
+    for n in d.nodes:
+        inner = n._0
+        if inner.id == id:
+            return n
+    return None
 "#
 }
 
