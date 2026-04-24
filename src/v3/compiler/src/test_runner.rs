@@ -74,6 +74,11 @@ pub fn eval_algebraic_law_for_claim_program(
         .map_err(|e| AlgebraicLawProgramError::MalformedPayload(format!("lens apply error: {e:?}")))
 }
 
+/// Compile-time ratchet (PR #741 / codex P1): `Associativity` must not regress to checking one
+/// lucky `(a, b, c)` triple — the gate is a correctness signal only when the witness set has
+/// material breadth (see `lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES`).
+const _: () = assert!(ASSOCIATIVITY_WITNESS_TRIPLES.len() > 1);
+
 #[derive(Debug, Clone)]
 pub struct TestClaimValue {
     pub claim_name: String,
@@ -408,7 +413,7 @@ impl<'a> TestRunner<'a> {
     }
 
     fn eval_algebraic_law(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
-        // Only `Associativity` is wired via D3 sample witness (see
+        // Only `Associativity` is wired via D3 multi-triple operational witness (see
         // `eval_algebraic_law_for_claim_program` — not substrate law-fact evaluation).
         // Other `AlgebraicLawKind` variants are `NotYetImplemented` (runner cannot evaluate yet),
         // not `Fail` (claim false).
