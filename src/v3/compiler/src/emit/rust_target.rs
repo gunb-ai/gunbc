@@ -322,7 +322,6 @@ struct StatementSyntaxBinding {
 
 #[derive(Debug, Clone)]
 struct ExpressionSyntaxBinding {
-    binary_op: String,
     field_access: String,
     function_call: String,
     closure: String,
@@ -1321,7 +1320,6 @@ fn parse_expression_syntax(
 ) -> Result<ExpressionSyntaxBinding, EmitError> {
     let fields = structural_fields_for_decl(dag, declaration)?;
     Ok(ExpressionSyntaxBinding {
-        binary_op: syntax_field_string(fields, "binary_op", declaration)?,
         field_access: syntax_field_string(fields, "field_access", declaration)?,
         function_call: syntax_field_string(fields, "function_call", declaration)?,
         closure: syntax_field_string(fields, "closure", declaration)?,
@@ -3343,8 +3341,8 @@ impl<'a> Ctx<'a> {
             locals,
         )?;
         Ok(render_named_template(
-            &self.indexes.syntax.expressions.binary_op,
-            &[("lhs", &lhs), ("op", &carrier), ("rhs", &rhs)],
+            &carrier,
+            &[("lhs", &lhs), ("rhs", &rhs)],
         ))
     }
 

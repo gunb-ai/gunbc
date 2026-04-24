@@ -65,7 +65,6 @@ enum CallableStrategyBinding {
 
 #[derive(Debug, Clone)]
 struct PythonSyntax {
-    binary_op: String,
     field_access: String,
     function_call: String,
     closure: String,
@@ -307,11 +306,6 @@ impl PythonIndexes {
         })?;
 
         let syntax = PythonSyntax {
-            binary_op: require_field_string(
-                structural_fields_for_decl(dag, expressions)?,
-                "binary_op",
-                expressions,
-            )?,
             field_access: require_field_string(
                 structural_fields_for_decl(dag, expressions)?,
                 "field_access",
@@ -800,20 +794,10 @@ impl<'a> Ctx<'a> {
         })?;
         let lhs = self.render_port(t.inputs[0], locals)?;
         let rhs = self.render_port(t.inputs[1], locals)?;
-        // Carriers that contain `{lhs}` are full-expression templates
-        // (e.g. `__v3_idiv({lhs}, {rhs})`); render them directly instead
-        // of inserting into the infix `binary_op` template.
-        if carrier.contains("{lhs}") {
-            Ok(render_named_template(
-                carrier,
-                &[("lhs", &lhs), ("rhs", &rhs)],
-            ))
-        } else {
-            Ok(render_named_template(
-                &self.indexes.syntax.binary_op,
-                &[("lhs", &lhs), ("op", carrier), ("rhs", &rhs)],
-            ))
-        }
+        Ok(render_named_template(
+            carrier,
+            &[("lhs", &lhs), ("rhs", &rhs)],
+        ))
     }
 
     fn render_branch(
