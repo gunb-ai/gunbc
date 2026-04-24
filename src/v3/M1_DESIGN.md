@@ -791,7 +791,8 @@ ExternalRealization). `Pending` and `Unparsed` are transient
 variants tracked separately by dissolution trigger:
 
 - **`Pending`** — primitive realization lag. Sanctioned by
-  INVARIANTS.md §"No short-term solutions" exception 2.
+  `INVARIANTS.md#p5-progress-is-dissolution` as a named scaffold with a
+  dissolution trigger.
   Dissolution trigger: §8.11 monotonic-decrease ratchet;
   reaches zero when every primitive Arrow has an
   `ExternalRealization(decl_id)` pointing at a realization
@@ -1399,8 +1400,8 @@ user source:
    couldn't handle the realization record-literal shape. That
    helper is **deleted in M1(2.7)** and the fallback path is
    no longer sanctioned — the thesis's "spec IS the
-   implementation" claim and `INVARIANTS.md` §"No bridges" /
-   §"No short-term solutions" forbid Rust-side declaration
+   implementation" claim and `INVARIANTS.md#p5-progress-is-dissolution`
+   forbid Rust-side declaration
    manufacturing on production paths. The test-only realization
    smoke in `bootstrap.rs`'s `#[cfg(test)] mod tests` is the
    only remaining in-Rust realization construction and stays
