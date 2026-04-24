@@ -264,8 +264,8 @@ mod lane2_stage_2f_dimension_test {
         let root = find_bind_root(&dag, "x");
         let report = analyze_symbolic_cost_dimension(&dag, root);
         let lens = match symbolic_cost_of(&dag, &find_bind_port(&dag, "x")) {
-            SymbolicCostLookup::FoundCost { _0: cost } => cost,
-            SymbolicCostLookup::MissingCost => panic!("expected FoundCost"),
+            SymbolicCostLookup::Hit(cost) => cost,
+            SymbolicCostLookup::Miss => panic!("expected Hit"),
         };
         assert_eq!(report.composed, lens);
         assert_eq!(report.dimension_name, "symbolic_cost");

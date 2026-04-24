@@ -32,9 +32,9 @@ fn find_bind_value(dag: &Dag, name: &str) -> PortId {
 
 fn expect_cost(dag: &Dag, port: PortId) -> SymbolicCost {
     match symbolic_cost_of(dag, &port) {
-        SymbolicCostLookup::FoundCost { _0: cost } => cost,
-        SymbolicCostLookup::MissingCost => {
-            panic!("symbolic_cost_of returned MissingCost for {port:?}")
+        SymbolicCostLookup::Hit(cost) => cost,
+        SymbolicCostLookup::Miss => {
+            panic!("symbolic_cost_of returned Miss for {port:?}")
         }
     }
 }
