@@ -9,7 +9,7 @@
 //!
 //! `byte_matches` is **hand-synced** with `char_in_class` in `dsl/std/unicode.dag`
 //! on code points U+0000–U+007F (same Int-range semantics). There is no runtime
-//! bridge from lowered `.dag` yet: `sub_charclass_in_std_unicode_gate` locks the
+//! bridge from lowered `.dag` yet: `#[cfg(test)]` checks in this file lock the
 //! mirror against Rust’s historical `u8::is_ascii_*` scanner contract, not an
 //! automated proof against evaluated `char_in_class`. Follow-up once
 //! `char_in_class` is executable from the compiler test harness: assert parity
@@ -21,7 +21,7 @@
 
 /// Mirrors `std.unicode::CharClass` variant names for generated call sites.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TokenizerCharClass {
+pub(crate) enum TokenizerCharClass {
     Whitespace,
     Digit,
     IdentStart,
@@ -29,7 +29,7 @@ pub enum TokenizerCharClass {
 }
 
 #[inline]
-pub fn byte_matches(byte: u8, class: TokenizerCharClass) -> bool {
+pub(crate) fn byte_matches(byte: u8, class: TokenizerCharClass) -> bool {
     let cp = byte as i64;
     match class {
         // Match Rust `u8::is_ascii_whitespace` (excludes vertical tab U+000B).
@@ -45,6 +45,80 @@ pub fn byte_matches(byte: u8, class: TokenizerCharClass) -> bool {
                 || (65..=90).contains(&cp)
                 || (97..=122).contains(&cp)
                 || cp == 95
+        }
+    }
+}
+
+#[cfg(test)]
+mod sub_charclass_in_std_unicode_gate {
+    //! **Layer:** unit (TESTING.md) — T-Sub `sub_charclass_in_std_unicode` tokenizer
+    //! half / bounded interim (ROADMAP.md:358). Ratchets `std.unicode` + generated
+    //! tokenizer wiring + `byte_matches` vs `u8::is_ascii_*` on 0..=127.
+    //!
+    //! **Sync boundary:** parity here is `byte_matches` vs `u8::is_ascii_*`, not
+    //! evaluated `char_in_class` from `.dag`; keep `tokenize_char_class.rs` and
+    //! `unicode.dag` predicates edited together until an interpreter-backed check exists.
+
+    use super::{byte_matches, TokenizerCharClass};
+
+    const UNICODE_DAG: &str = include_str!("../../../../dsl/std/unicode.dag");
+    const TOKENIZE_GENERATED: &str = include_str!("tokenize_generated.rs");
+
+    #[test]
+    fn unicode_dag_defines_char_class() {
+        assert!(
+            UNICODE_DAG.contains("type CharClass")
+                && UNICODE_DAG.contains("fn char_in_class")
+                && UNICODE_DAG.contains("Whitespace")
+                && UNICODE_DAG.contains("IdentContinue"),
+            "expected `CharClass` sum + `char_in_class` predicate in `dsl/std/unicode.dag` authority"
+        );
+    }
+
+    #[test]
+    fn generated_tokenizer_avoids_ascii_host_predicates() {
+        assert!(
+            !TOKENIZE_GENERATED.contains("is_ascii_whitespace")
+                && !TOKENIZE_GENERATED.contains("is_ascii_digit")
+                && !TOKENIZE_GENERATED.contains("is_ascii_alphabetic")
+                && !TOKENIZE_GENERATED.contains("is_ascii_alphanumeric"),
+            "tokenize_generated.rs should route ASCII classes through `byte_matches` / `TokenizerCharClass`, \
+             not std-lib `is_ascii_*` helpers"
+        );
+        assert!(
+            TOKENIZE_GENERATED.contains("byte_matches")
+                && TOKENIZE_GENERATED.contains("TokenizerCharClass::Whitespace")
+                && TOKENIZE_GENERATED.contains("TokenizerCharClass::Digit")
+                && TOKENIZE_GENERATED.contains("TokenizerCharClass::IdentStart")
+                && TOKENIZE_GENERATED.contains("TokenizerCharClass::IdentContinue"),
+            "expected structural CharClass projection wired into generated tokenizer"
+        );
+    }
+
+    #[test]
+    fn byte_matches_locks_ascii_scanner_semantics() {
+        for byte in 0u8..=127 {
+            let b = byte;
+            assert_eq!(
+                byte_matches(b, TokenizerCharClass::Whitespace),
+                b.is_ascii_whitespace(),
+                "Whitespace mismatch at {byte}"
+            );
+            assert_eq!(
+                byte_matches(b, TokenizerCharClass::Digit),
+                b.is_ascii_digit(),
+                "Digit mismatch at {byte}"
+            );
+            assert_eq!(
+                byte_matches(b, TokenizerCharClass::IdentStart),
+                b.is_ascii_alphabetic() || b == b'_',
+                "IdentStart mismatch at {byte}"
+            );
+            assert_eq!(
+                byte_matches(b, TokenizerCharClass::IdentContinue),
+                b.is_ascii_alphanumeric() || b == b'_',
+                "IdentContinue mismatch at {byte}"
+            );
         }
     }
 }

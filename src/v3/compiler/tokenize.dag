@@ -59,7 +59,7 @@
 // `data` bodies for this module (`class-5 gap #3`), so scanner classes cannot
 // yet be read structurally from lowered `tokenize.dag`. Instead `regen_tokenize`
 // emits calls into `tokenize_char_class.rs`, a handwritten Rust mirror of the
-// `.dag` ASCII predicates (ratcheted by `sub_charclass_in_std_unicode_gate`).
+// `.dag` ASCII predicates (ratcheted by unit tests in `tokenize_char_class.rs`).
 //
 // **Framing.** This is not a substrate gap — the character-level modeling is
 // already done. It is a *consumption gap*: tokenize.dag and syntax.dag both
