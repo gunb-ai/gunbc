@@ -3810,12 +3810,13 @@ impl<'a> Ctx<'a> {
         Ok(scrutinee_disj == bool_disj)
     }
 
-    /// v3.std.lookup: `miss_int_lookup` / `hit_int_lookup` are thin
-    /// `Lookup<Int>` constructors. Emit as `Lookup::Miss` /
-    /// `Lookup::Hit(...)` so generated lens code does not call
+    /// v3.std.lookup / v3.std.algebra: `miss_*_lookup` / `hit_*_lookup`
+    /// are thin monomorphized `Lookup<T>` constructors (one pair per
+    /// element type — `Int`, `SymbolicCost`, …). Emit as `Lookup::Miss`
+    /// / `Lookup::Hit(...)` so generated lens code does not call
     /// out-of-scope shims. Runs before [`Self::render_realized_callable`]
     /// so a registered callable strategy does not pre-empt enum lowering.
-    fn lookup_int_constructor_emit(
+    fn lookup_monomorphized_constructor_emit(
         &self,
         t: &TransformNode,
         template: DeclarationId,
@@ -3824,18 +3825,20 @@ impl<'a> Ctx<'a> {
         let Some(name) = self.dag.declaration(template).name.as_deref() else {
             return Ok(None);
         };
-        if name == "miss_int_lookup" {
+        let is_miss = name == "miss_int_lookup" || name == "miss_symbolic_cost_lookup";
+        let is_hit = name == "hit_int_lookup" || name == "hit_symbolic_cost_lookup";
+        if is_miss {
             if !t.inputs.is_empty() {
-                return Err(EmitError::UnsupportedBehavior(
-                    "miss_int_lookup() expects zero arguments".to_string(),
-                ));
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "{name}() expects zero arguments"
+                )));
             }
             return Ok(Some("Lookup::Miss".to_string()));
         }
-        if name == "hit_int_lookup" {
+        if is_hit {
             if t.inputs.len() != 1 {
                 return Err(EmitError::UnsupportedBehavior(format!(
-                    "hit_int_lookup(n) expected one argument, got {}",
+                    "{name}(v) expected one argument, got {}",
                     t.inputs.len()
                 )));
             }
@@ -3861,7 +3864,7 @@ impl<'a> Ctx<'a> {
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
         let (template, arguments) = callable_template(target, self.dag);
-        if let Some(rendered) = self.lookup_int_constructor_emit(t, template, locals)? {
+        if let Some(rendered) = self.lookup_monomorphized_constructor_emit(t, template, locals)? {
             return Ok(rendered);
         }
         if let Some(rendered) = self.render_substrate_accessor(t, template, locals)? {
