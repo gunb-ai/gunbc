@@ -4,17 +4,32 @@
 //! it into **generated** (listed in the producer-owned manifest at
 //! [`v3_compiler::generated_files::GENERATED_FILES`]) versus
 //! **hand-authored** (everything else). The hand-authored set is
-//! compared against [`EXPECTED_HAND_AUTHORED`] below — the ratchet.
+//! compared against the union of [`EXPECTED_HAND_AUTHORED_NON_TEST`] +
+//! [`EXPECTED_HAND_AUTHORED_TEST`] below — the ratchet.
 //! Drift in either direction fails:
 //!
 //! - **new hand-authored file**: a contributor added a `.rs` without
 //!   porting the logic to `.dag`. The PR should port the logic and
 //!   remove the file, reduce it to a narrow host shim (see `compiler.dag`
-//!   for the shim rule), or (last resort) extend `EXPECTED_HAND_AUTHORED`
+//!   for the shim rule), or (last resort) extend the appropriate sub-list
 //!   with director sign-off.
 //! - **missing expected file**: an SG lane retired the file. Remove
-//!   the entry from `EXPECTED_HAND_AUTHORED` — this is the normal
+//!   the entry from the appropriate sub-list — this is the normal
 //!   shrinkage path and the primary success condition for SG-1..SG-7.
+//!
+//! **R1 partition.** The ratchet is split into two sub-lists:
+//! - [`EXPECTED_HAND_AUTHORED_NON_TEST`] — files under `src/v3/compiler/src/`
+//!   and `src/v3/compiler/build.rs`. T-PB-A owns this surface; the gate is
+//!   ≤5 irreducible-shim per `docs/design-pure-bootstrap.md`.
+//! - [`EXPECTED_HAND_AUTHORED_TEST`] — files under `src/v3/compiler/tests/`.
+//!   T-PB-B owns this surface; the gate is zero Rust-authored tests outside
+//!   the `TESTING.md §"Post-R2 shape"` residual (compiler-internal unit tests
+//!   + external-toolchain boundary tests invoking rustc/go/python).
+//!
+//! Both sub-lists are sorted, unique, structurally validated by directory
+//! (see `sg0_partition_paths_are_structurally_correct`), and disjoint.
+//! The census driver (`sg0_v3_hand_authored_census`) checks against their
+//! union.
 //!
 //! **Producer-owned partition.** A `.rs` file counts as generated iff
 //! its workspace-relative path is a member of `GENERATED_FILES`, which
@@ -37,54 +52,22 @@ use v3_compiler::generated_files::GENERATED_FILES;
 // informally named in `dsl/gunbc/compiler.dag`.
 const CENSUS_ROOT: &str = "src/v3/compiler";
 
-// All .rs files under `src/v3/compiler` that are currently
-// hand-authored. Sorted; one path per line, relative to the
-// workspace root. **Every SG-1..SG-7 PR shortens this list.**
+// Non-test hand-authored `.rs` files: `src/v3/compiler/src/` and
+// `src/v3/compiler/build.rs`. T-PB-A owns this surface; the gate
+// is ≤5 irreducible-shim per `docs/design-pure-bootstrap.md`.
+// Sorted; one path per line, relative to the workspace root.
+// **Every SG-1..SG-7 PR shortens this list.**
 // Removing an entry means the owning lane has retired the file;
 // adding an entry is forbidden outside SG-0 without director
 // sign-off.
+//
 // SG-6 landing (PR #560): the four per-lens regen bins
 // (`regen_lens_cost.rs`, `regen_lens_cost_symbolic.rs`,
 // `regen_lens_structural_resolution.rs`, `regen_lens_unused_parameters.rs`)
 // and SG-4 prep's `regen_infer_helpers.rs` all folded into a single
 // `regen_lens.rs` shim driven by `src/v3/compiler/regen.dag`'s
 // `LensRegistryEntry` records. Five retirements; one net-new entry
-// (`regen_lens.rs`). The new `sg6_hand_authored_census_test.rs`
-// pins the reduced bin census + full `(name, lens_file,
-// generated_file)` registry tuples + `--lens` singleton resolve +
-// end-to-end CLI smoke; it is hand-authored test infrastructure and
-// belongs on this list.
-//
-// SG-6 follow-up landing (director sign-off from the
-// `clever-swift-141` brief, 2026-04-19): the former standalone
-// `sg4_prep_infer_helpers_freshness_test.rs` was absorbed into
-// `sg6_hand_authored_census_test.rs`, so the infer-helpers snapshot
-// gate now resolves through the same `LensRegistryEntry` authority as
-// the unified `regen_lens` driver. One more hand-authored test file
-// retired; no standalone per-helper freshness harness remains.
-//
-// Phase 0 test-taxonomy reorg — four target-emission tests moved from
-// `tests/integration/` to `tests/boundary/` (TESTING.md § test layers,
-// class-5 rustc/go/python roundtrips). Path rename only: net count
-// unchanged, no new hand-authored files. The consolidated
-// `tests/integration.rs` binary still includes them via `#[path =
-// "boundary/..."]` so the one-bootstrap compile amortization holds.
-//
-// P0-A (PR #595): bounded `repeat_string_loop` receipt — one integration
-// file `tests/integration/p0_std_render_repeat_string_test.rs` asserts
-// `dsl/std/render.dag` structure; not generated. Dissolution: fold into a
-// broader std-render harness or `.dag`-native structural test when one exists.
-//
-// Stage 3b DB-1 parse/apply ratchet bump — PR #564 adds one
-// hand-authored integration file,
-// `tests/integration/lane3_stage_3b_db1_test.rs`, because the
-// ratchet is intentionally end-to-end over real compiler fixtures
-// (diagnose -> apply correction -> reparse -> recompile), not a
-// generated lens snapshot or unit-only helper. Dissolution trigger:
-// when this slice is absorbed into a generic correction harness or a
-// `.dag`-native correction-validation path, drop the entry. This is
-// a bounded SG-0 exception for the merge-blocking Stage 3b receipt,
-// not a precedent for adding ad hoc integration files.
+// (`regen_lens.rs`).
 //
 // SG-3f-prep (director Option B): `lower.rs` stays on this list — canonical
 // lowering remains hand-maintained Rust until `lower.dag` + reflected `Surface*`.
@@ -96,8 +79,7 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // direct-Dag migration replaces `compile_to_dag(source)` fixtures.
 // Dissolution trigger: once the migration wave settles, fold the
 // builder back into `dag.rs` or move the surface behind a
-// producer-owned path. This is a bounded migration exception, not a
-// precedent for free-standing handwritten helpers.
+// producer-owned path.
 //
 // Post-2026-04-20 merge wave (`cleanup-post-merge-slop` brief): PR #589
 // retired `parse.rs` from this `.rs` census, but the 1350-line
@@ -106,38 +88,16 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // `include_str!`'d into the `regen_parse` output. Ratchet extension
 // below (`EXPECTED_HAND_AUTHORED_FRAGMENTS` + `sg0_v3_hand_authored_txt_fragments`)
 // counts non-`.rs` scaffolds so the net measurement matches reality.
-// Dissolution trigger: same as the header on `parse_parser_body.txt`
-// (SG-2b proper / SG-3f surface reflection follow-on).
-//
-// Note on census authority scope: the file is NOT added to
-// `compiler.dag::stage0.hand_maintained_src` — that list models
-// basenames inside `source_dir` (`src/v3/compiler/src/`) whose
-// consumers are the freshness-diff and stage0-copy commands. The
-// parser body fragment lives at the crate root, so the existing
-// consumers never see it; adding it would be a dead entry. The
-// SG-0 fragment ratchet below is the sole census authority for
-// crate-root scaffolds.
-//
-// SG-3f-d consumption proof (director review on PR #605, 2026-04-20):
-// `sg3_surface_reflection_consumer_test.rs` is a bounded host-side
-// rustc harness proving reflected `Surface*` carriers are consumable
-// from `.dag`, emitted against `parse_surface`, and executable against
-// real parser output. It is intentionally not modeled as a generated
-// snapshot because the receipt is behavioral end-to-end linkage.
-// Dissolution trigger: when the same proof lands through a
-// producer-owned/generated path, retire this hand-authored harness and
-// drop its census entry.
 //
 // L4b split — `dag.rs` was a 2800-line god-file mixing ports, nodes,
 // declarations, clusters, and the std.effects mirror. The split carves
 // two leaf clusters into sibling submodules (`dag/ports.rs`,
 // `dag/effects.rs`) that the module root re-exports
 // verbatim. No behavior change; file count goes up but per-file
-// coupling goes down. These are pure re-organization of already
-// hand-authored substrate, not new handwritten logic. Dissolution path:
-// the same `include!` / producer-owned route that eventually replaces
-// `dag.rs` itself replaces these submodules simultaneously.
-const EXPECTED_HAND_AUTHORED: &[&str] = &[
+// coupling goes down. Dissolution path: the same `include!` /
+// producer-owned route that eventually replaces `dag.rs` itself
+// replaces these submodules simultaneously.
+const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
@@ -174,6 +134,54 @@ const EXPECTED_HAND_AUTHORED: &[&str] = &[
     "src/v3/compiler/src/tokenize.rs",
     "src/v3/compiler/src/workflow_idempotency.rs",
     "src/v3/compiler/src/workflow_parallelism.rs",
+];
+
+// Test hand-authored `.rs` files: `src/v3/compiler/tests/`. T-PB-B owns
+// this surface; the gate is zero Rust-authored tests outside the
+// `TESTING.md §"Post-R2 shape"` residual. The residual (stays Rust
+// permanently, per TESTING.md as single authority) is the four files
+// under `tests/boundary/` (external-toolchain roundtrips invoking
+// rustc/go/python) plus compiler-internal `#[cfg(test)] mod tests`
+// blocks inside `src/` (inline, not separate files — not in this list).
+// Everything else in this list is a T-PB-B candidate: port to `.dag`
+// once T-TestGen's runner lands.
+// Sorted; one path per line, relative to the workspace root.
+//
+// SG-6 landing (PR #560): the former standalone
+// `sg4_prep_infer_helpers_freshness_test.rs` was absorbed into
+// `sg6_hand_authored_census_test.rs`, so the infer-helpers snapshot
+// gate now resolves through the same `LensRegistryEntry` authority as
+// the unified `regen_lens` driver.
+//
+// Phase 0 test-taxonomy reorg — four target-emission tests moved from
+// `tests/integration/` to `tests/boundary/` (TESTING.md § test layers,
+// class-5 rustc/go/python roundtrips). Path rename only: net count
+// unchanged, no new hand-authored files. The consolidated
+// `tests/integration.rs` binary still includes them via `#[path =
+// "boundary/..."]` so the one-bootstrap compile amortization holds.
+//
+// P0-A (PR #595): bounded `repeat_string_loop` receipt — one integration
+// file `tests/integration/p0_std_render_repeat_string_test.rs` asserts
+// `dsl/std/render.dag` structure; not generated. Dissolution: fold into a
+// broader std-render harness or `.dag`-native structural test when one exists.
+//
+// Stage 3b DB-1 parse/apply ratchet bump — PR #564 adds one
+// hand-authored integration file,
+// `tests/integration/lane3_stage_3b_db1_test.rs`, because the
+// ratchet is intentionally end-to-end over real compiler fixtures
+// (diagnose -> apply correction -> reparse -> recompile), not a
+// generated lens snapshot or unit-only helper. Dissolution trigger:
+// when this slice is absorbed into a generic correction harness or a
+// `.dag`-native correction-validation path, drop the entry.
+//
+// SG-3f-d consumption proof (director review on PR #605, 2026-04-20):
+// `sg3_surface_reflection_consumer_test.rs` is a bounded host-side
+// rustc harness proving reflected `Surface*` carriers are consumable
+// from `.dag`, emitted against `parse_surface`, and executable against
+// real parser output. Dissolution trigger: when the same proof lands
+// through a producer-owned/generated path, retire this hand-authored
+// harness and drop its census entry.
+const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
     "src/v3/compiler/tests/boundary/m1_4_emit_python_test.rs",
@@ -315,6 +323,7 @@ fn compiler_dag_source() -> String {
     let path = workspace_root().join("dsl/gunbc/compiler.dag");
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
+
 #[test]
 fn sg0_v3_hand_authored_census() {
     let ws = workspace_root();
@@ -331,8 +340,9 @@ fn sg0_v3_hand_authored_census() {
     let generated: BTreeSet<String> = GENERATED_FILES.iter().map(|p| (*p).to_string()).collect();
     let hand_authored: BTreeSet<String> = all_rs.difference(&generated).cloned().collect();
 
-    let expected: BTreeSet<String> = EXPECTED_HAND_AUTHORED
+    let expected: BTreeSet<String> = EXPECTED_HAND_AUTHORED_NON_TEST
         .iter()
+        .chain(EXPECTED_HAND_AUTHORED_TEST.iter())
         .map(|p| (*p).to_string())
         .collect();
 
@@ -350,7 +360,8 @@ fn sg0_v3_hand_authored_census() {
         .collect();
 
     let mut msg = String::from(
-        "SG-0 census drift: observed hand-authored set does not match EXPECTED_HAND_AUTHORED.\n\n",
+        "SG-0 census drift: observed hand-authored set does not match \
+         EXPECTED_HAND_AUTHORED_NON_TEST ∪ EXPECTED_HAND_AUTHORED_TEST.\n\n",
     );
     if !added.is_empty() {
         msg.push_str("New hand-authored .rs files (the SG program forbids adding these):\n");
@@ -364,7 +375,8 @@ fn sg0_v3_hand_authored_census() {
              to a narrow host shim and add its path to REGEN_OUTPUTS in\n\
              src/v3/compiler/build.rs (the shim must be written by a producer —\n\
              a hand-authored `// AUTO-GENERATED` header does not count).\n\
-             Last resort: add the path to EXPECTED_HAND_AUTHORED with a\n\
+             Last resort: add the path to EXPECTED_HAND_AUTHORED_NON_TEST or\n\
+             EXPECTED_HAND_AUTHORED_TEST (by directory) with a\n\
              director-approved receipt.\n\n",
         );
     }
@@ -376,26 +388,32 @@ fn sg0_v3_hand_authored_census() {
             msg.push('\n');
         }
         msg.push_str(
-            "\nFix: remove these entries from EXPECTED_HAND_AUTHORED in\n\
+            "\nFix: remove these entries from EXPECTED_HAND_AUTHORED_NON_TEST or\n\
+             EXPECTED_HAND_AUTHORED_TEST in\n\
              src/v3/compiler/tests/integration/sg0_census_test.rs.\n",
         );
     }
     panic!("{msg}");
 }
 
-#[test]
-fn sg0_expected_list_is_sorted_and_unique() {
+fn check_sorted_unique(label: &str, list: &[&str]) {
     let mut prev: Option<&str> = None;
-    for p in EXPECTED_HAND_AUTHORED {
+    for p in list {
         if let Some(pv) = prev {
             assert!(
                 pv < *p,
-                "EXPECTED_HAND_AUTHORED must be sorted ASCII-ascending and unique; \
+                "{label} must be sorted ASCII-ascending and unique; \
                  `{pv}` is not strictly less than `{p}`"
             );
         }
         prev = Some(p);
     }
+}
+
+#[test]
+fn sg0_expected_list_is_sorted_and_unique() {
+    check_sorted_unique("EXPECTED_HAND_AUTHORED_NON_TEST", EXPECTED_HAND_AUTHORED_NON_TEST);
+    check_sorted_unique("EXPECTED_HAND_AUTHORED_TEST", EXPECTED_HAND_AUTHORED_TEST);
 }
 
 #[test]
@@ -425,6 +443,44 @@ fn sg0_expected_fragment_lists_are_sorted_and_unique() {
     assert!(
         overlap.is_empty(),
         "EXPECTED_HAND_AUTHORED_FRAGMENTS and EXPECTED_GENERATED_FRAGMENTS must be disjoint; \
+         overlap: {overlap:?}"
+    );
+}
+
+// Structural guard: ensures the T-PB-A / T-PB-B partition stays
+// correct as entries are added or removed. Non-test paths must not
+// contain `/tests/`; test paths must contain `/tests/`. A mis-filed
+// path in either list would silently let the wrong lane claim credit
+// for a retirement.
+#[test]
+fn sg0_partition_paths_are_structurally_correct() {
+    for p in EXPECTED_HAND_AUTHORED_NON_TEST {
+        assert!(
+            !p.contains("/tests/"),
+            "EXPECTED_HAND_AUTHORED_NON_TEST contains a test path (belongs in \
+             EXPECTED_HAND_AUTHORED_TEST): {p}"
+        );
+    }
+    for p in EXPECTED_HAND_AUTHORED_TEST {
+        assert!(
+            p.contains("/tests/"),
+            "EXPECTED_HAND_AUTHORED_TEST contains a non-test path (belongs in \
+             EXPECTED_HAND_AUTHORED_NON_TEST): {p}"
+        );
+    }
+}
+
+// Disjointness guard: the two sub-lists must not overlap. The census
+// driver takes their union; an entry appearing in both would hide a
+// real census drift.
+#[test]
+fn sg0_partition_sub_lists_are_disjoint() {
+    let non_test: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_NON_TEST.iter().copied().collect();
+    let test: BTreeSet<&str> = EXPECTED_HAND_AUTHORED_TEST.iter().copied().collect();
+    let overlap: Vec<&&str> = non_test.intersection(&test).collect();
+    assert!(
+        overlap.is_empty(),
+        "EXPECTED_HAND_AUTHORED_NON_TEST and EXPECTED_HAND_AUTHORED_TEST must be disjoint; \
          overlap: {overlap:?}"
     );
 }
