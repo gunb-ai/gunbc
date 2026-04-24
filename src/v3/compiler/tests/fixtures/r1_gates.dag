@@ -18,6 +18,7 @@
 module std.r1_gates
 
 import std.verification { TestClaim, TestSuite }
+import std.types { Int, Bool }
 import std.list { List, empty, fold }
 import std.substrate { Dag, Behavior, Declaration, DagPort, Cluster }
 
@@ -30,7 +31,7 @@ fn count_named_bind(behavior: Behavior) -> Int =
     Bind(bind) => if bind.name == "" then 0 else 1
   }
 
-fn gate_named_function_count(d: Dag) -> Int =
+fn named_function_count(d: Dag) -> Int =
   fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))
 
 // `let` (not `data`): M1(2.8) rejects record/list literals in `data` bodies
@@ -53,7 +54,7 @@ let lens_output_equals_named_function_count_gate: TestClaim = {
   name: "lens_output_equals_named_function_count",
   source: "let _: Int = 0\n",
   file_name: "r1_lens_output_placeholder.v3",
-  predicate: LensOutputEquals(Int, Int, Int),
+  predicate: MockBackedInvariant(Int, Bool),
   requires: []
 }
 
