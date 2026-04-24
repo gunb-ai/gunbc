@@ -14,6 +14,10 @@ use crate::{compile_to_dag, CompileError};
 /// Same on-disk lens as `v3-compiler/build.rs` splices into `user_authored_lens_compiles_gate`
 /// (`emit_r1_gates_fixture`). `LensOutputEquals` applies this program for `named_function_count`
 /// so evaluation cannot drift from the fixture-local stub (`INVARIANTS.md` P2).
+///
+/// **Dissolution:** remove this `include_str!` bridge when `DeclarationRef` (or an equivalent
+/// substrate edge) resolves executable lens bodies from `program_dag` / `TestClaim.source` so the
+/// runner does not key a second `Dag` on fixture declaration spelling.
 pub const R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../lenses/named_function_count.dag"
@@ -340,6 +344,12 @@ impl<'a> TestRunner<'a> {
         // for `user_authored_lens_compiles_gate`) for `apply_lens_declaration` — not the
         // fixture-local stub body. Other lens names: prefer `TestClaim.source` when it compiles and
         // exports the same declaration name, else fall back to the fixture graph.
+        //
+        // **Dissolution trigger (name-keyed bridge):** delete the `lens_decl.name ==
+        // Some("named_function_count")` arm and this entire parallel authority when
+        // `DeclarationRef` resolves lens executable identity from `program_dag` (or structured
+        // `TestClaim` metadata) without fixture-local stub bodies — same upstream fix as retiring
+        // `PROGRAM_INPUT_SENTINEL` string dispatch above.
         let program_dag_opt: Option<Dag> = match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(dag) => Some(dag),
             Err(CompileError::Semantic(dag)) => {
