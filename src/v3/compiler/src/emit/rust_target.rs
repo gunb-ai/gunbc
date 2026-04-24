@@ -4466,22 +4466,21 @@ impl<'a> Ctx<'a> {
             .enumerate()
             .map(|(idx, (port, disposition))| {
                 let param_name = format!("p{idx}");
-                let ty = match disposition {
+                let ty = self.rust_type_name_for_user_function_parameter(*port, *disposition)?;
+                match disposition {
                     ParameterDispositionBinding::Borrowed
                         if self.read_strategy() == ReadStrategyBinding::Borrow =>
                     {
                         locals
                             .names
                             .insert(*port, LocalBinding::Borrowed(param_name.clone()));
-                        self.rust_borrowed_type_name_for_port(*port)?
                     }
                     _ => {
                         locals
                             .names
                             .insert(*port, LocalBinding::Owned(param_name.clone()));
-                        self.rust_type_name_for_port(*port)?
                     }
-                };
+                }
                 Ok(render_named_template(
                     &self.indexes.syntax.functions.param_with_type,
                     &[("name", &param_name), ("type", &ty)],
@@ -4663,6 +4662,73 @@ impl<'a> Ctx<'a> {
     /// index. Walks the port's `TypeShape` through aliases /
     /// instantiations to a primitive declaration id, then looks
     /// up that id in the index. Zero name strings.
+    /// Rust type for a user `fn` item parameter. Callable-shaped parameters
+    /// use `impl Fn(...) -> T + Clone` (v2 / PR #650); other parameters use
+    /// ordinary `rust_type_name_for_port` / `rust_borrowed_type_name_for_port`.
+    fn rust_type_name_for_user_function_parameter(
+        &self,
+        port: PortId,
+        disposition: ParameterDispositionBinding,
+    ) -> Result<String, EmitError> {
+        let ty_decl = self
+            .dag
+            .port(port)
+            .value_type()
+            .ok_or(EmitError::UntypedPort(port))?
+            .declaration;
+        if self.type_declaration_peels_to_arrow(ty_decl) {
+            return self.rust_arrow_as_parameter_impl_fn_clone(ty_decl);
+        }
+        match disposition {
+            ParameterDispositionBinding::Borrowed
+                if self.read_strategy() == ReadStrategyBinding::Borrow =>
+            {
+                self.rust_borrowed_type_name_for_port(port)
+            }
+            _ => self.rust_type_name_for_port(port),
+        }
+    }
+
+    /// `impl Fn(...) -> R + Clone` for a first-class `fn` type used **only**
+    /// in direct user-function parameter position. See
+    /// `rust_type_name_for_decl_at_depth` for storage-shaped `Rc<dyn Fn…>`
+    /// used in struct fields and generic arguments.
+    fn rust_arrow_as_parameter_impl_fn_clone(
+        &self,
+        mut declaration: DeclarationId,
+    ) -> Result<String, EmitError> {
+        let mut visited = HashSet::new();
+        loop {
+            if !visited.insert(declaration) {
+                return Err(EmitError::UnsupportedBehavior(
+                    "rust_arrow_as_parameter_impl_fn_clone: ResolvedBy peel cycle".to_string(),
+                ));
+            }
+            let decl = self.dag.declaration(declaration);
+            match &decl.connective {
+                TypeConnective::Arrow { inputs, output, .. } => {
+                    let param_types = inputs
+                        .iter()
+                        .map(|i| self.rust_type_name_for_decl(*i))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let param_str = param_types.join(", ");
+                    let ret_str = self.rust_type_name_for_decl(*output)?;
+                    return Ok(format!("impl Fn({param_str}) -> {ret_str} + Clone"));
+                }
+                TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                    declaration = *next;
+                }
+                _ => {
+                    return Err(EmitError::UnsupportedBehavior(
+                        "rust_arrow_as_parameter_impl_fn_clone: peeled declaration is not Arrow"
+                            .to_string(),
+                    ));
+                }
+            }
+        }
+    }
+
     fn rust_type_name_for_port(&self, port: PortId) -> Result<String, EmitError> {
         let ty = self
             .dag
@@ -4685,9 +4751,15 @@ impl<'a> Ctx<'a> {
     /// is a first-class function type (`fn(...) -> _` in surface),
     /// i.e. a `TypeConnective::Arrow` used as data rather than as a
     /// named function item.
+    ///
+    /// Uses a `HashSet` cycle guard (same idea as `decl_is_copy_rec`) instead
+    /// of a depth cap on the peel walk.
     fn type_declaration_peels_to_arrow(&self, mut declaration: DeclarationId) -> bool {
-        const MAX_DEPTH: usize = 32;
-        for _ in 0..MAX_DEPTH {
+        let mut visited = HashSet::new();
+        loop {
+            if !visited.insert(declaration) {
+                return false;
+            }
             let decl = self.dag.declaration(declaration);
             match &decl.connective {
                 TypeConnective::Arrow { .. } => return true,
@@ -4698,7 +4770,6 @@ impl<'a> Ctx<'a> {
                 _ => return false,
             }
         }
-        false
     }
 
     fn rust_borrowed_type_name_for_decl(
@@ -4706,10 +4777,10 @@ impl<'a> Ctx<'a> {
         declaration: DeclarationId,
     ) -> Result<String, EmitError> {
         if self.type_declaration_peels_to_arrow(declaration) {
-            // `&impl Fn(...) -> T + Clone` is ill-formed in Rust; keep the
-            // same by-value `impl Fn` contract as `rust_type_name_for_decl`.
-            // See v2 `emit_rust_param_type` / PR #650 post-mortem.
-            return self.rust_type_name_for_decl(declaration);
+            // `&impl Fn(...) -> T + Clone` is ill-formed in Rust; parameter
+            // slots use `impl Fn + Clone` (PR #650), not `&…` or the storage
+            // `Rc<dyn Fn>` form used in struct fields / generic arguments.
+            return self.rust_arrow_as_parameter_impl_fn_clone(declaration);
         }
         let decl = self.dag.declaration(declaration);
         match &decl.connective {
@@ -4770,13 +4841,17 @@ impl<'a> Ctx<'a> {
                 ))
             }
             TypeConnective::Arrow { inputs, output, .. } => {
+                // `impl Trait` is not valid in struct fields, `Vec<…>` type
+                // arguments, etc. Use an explicit `Rc<dyn Fn…>` storage carrier
+                // outside direct fn-parameter slots (matched by
+                // `rust_type_name_for_user_function_parameter`).
                 let param_types = inputs
                     .iter()
                     .map(|i| self.rust_type_name_for_decl_at_depth(*i, depth + 1))
                     .collect::<Result<Vec<_>, _>>()?;
                 let param_str = param_types.join(", ");
                 let ret_str = self.rust_type_name_for_decl_at_depth(*output, depth + 1)?;
-                Ok(format!("impl Fn({param_str}) -> {ret_str} + Clone"))
+                Ok(format!("std::rc::Rc<dyn Fn({param_str}) -> {ret_str}>"))
             }
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {

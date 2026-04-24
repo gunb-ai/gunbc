@@ -345,9 +345,11 @@ fn emit_rust_single_int_binding() {
     assert!(out.contains("println!(\"{}\", x)"), "got: {out}");
 }
 
-/// T-Emit / PR #650 receipt: first-class `fn(A) -> B` parameters must
-/// lower to Rust `impl Fn(A) -> B + Clone`, not miss realizations or
-/// emit `&impl Fn...`. See `docs/postmortems/pr-650-emitter-callable-clone-bound.md`.
+/// T-Emit / PR #650 receipt: first-class `fn(A) -> B` in **user function
+/// parameter** position must lower to `impl Fn(A) -> B + Clone`, not
+/// `&impl Fn…` (review #676). Other positions use `std::rc::Rc<dyn Fn…>`;
+/// see `emit_callable_field_types_use_rc_dyn_fn_storage`. Post-mortem:
+/// `docs/postmortems/pr-650-emitter-callable-clone-bound.md`.
 #[test]
 fn emit_generic_bounds_survive() {
     // Body avoids higher-order `f(...)` calls — those are a separate emit
@@ -362,6 +364,36 @@ fn emit_generic_bounds_survive() {
     assert!(
         !out.contains("&impl Fn"),
         "borrowed callable param type must not be spelled as &impl Fn; got:\n{out}"
+    );
+}
+
+/// Review #676: `impl Trait` is not valid in struct fields — storage carrier required.
+#[test]
+fn emit_callable_field_types_use_rc_dyn_fn_storage() {
+    let src = "type Callback { handler: fn(Int) -> Int }\n";
+    let out = emit_module(src);
+    assert!(
+        out.contains("handler: std::rc::Rc<dyn Fn(i64) -> i64>"),
+        "expected `std::rc::Rc<dyn Fn…>` in struct field, not `impl Fn`; got:\n{out}"
+    );
+    assert!(
+        !out.contains("impl Fn(i64) -> i64 + Clone"),
+        "struct field must not use parameter-only impl Fn+Clone surface; got:\n{out}"
+    );
+}
+
+/// Review #676: nested / generic positions (`Vec<…>`) cannot use `impl Fn`.
+#[test]
+fn emit_callable_list_element_types_use_rc_dyn_fn_in_vec() {
+    let src = "type Holders { callbacks: List<fn(Int) -> Int> }\n";
+    let out = emit_module(src);
+    assert!(
+        out.contains("callbacks: Vec<std::rc::Rc<dyn Fn(i64) -> i64>>"),
+        "expected Vec<Rc<dyn Fn…>> for List<fn…>; got:\n{out}"
+    );
+    assert!(
+        !out.contains("Vec<impl Fn"),
+        "Vec type argument must not use impl Fn; got:\n{out}"
     );
 }
 
