@@ -197,11 +197,11 @@ impl<'a> TestRunner<'a> {
         if !payload.is_empty() {
             return ClaimResult::Fail("state expectation should not carry payload".to_string());
         }
-        let matches = match (label.as_str(), dag.port(bind.value).state()) {
-            ("Resolved", PortState::Resolved(_)) => true,
-            ("Unresolved", PortState::Uninferred | PortState::Unresolved) => true,
-            _ => false,
-        };
+        let matches = matches!(
+            (label.as_str(), dag.port(bind.value).state()),
+            ("Resolved", PortState::Resolved(_))
+                | ("Unresolved", PortState::Uninferred | PortState::Unresolved)
+        );
         if matches {
             ClaimResult::Pass
         } else {
