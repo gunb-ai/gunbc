@@ -120,37 +120,55 @@ compose. When this closes, the R1 release gates themselves
 Lane-owner dispatch status (update as sub-deliverables close):
 
 **T-TestGen:**
-- [ ] Runner foundation — schema predicates execute structurally
-- [ ] `testgen_structural_coverage` gate compiles + evaluates
-- [ ] `MockBackedInvariant` wiring
+- [x] Schema extensions landed — `ExecuteCommand`, `ForAllTargets`,
+      `LensOutputEquals`, `DifferentialEquals`, `AlgebraicLaw` variants
+      added to `TestPredicate` (PR #678, merged 2026-04-24)
+- [x] Runner foundation — schema predicates execute structurally
+      (PR #688, merged 2026-04-24)
+- [x] `testgen_structural_coverage` gate compiles + evaluates
+      (PR #720, merged 2026-04-24)
+- [ ] `MockBackedInvariant` wiring (PR #722 in review — DRAFT, needs CI + coordination with #717)
 - [ ] `testgen_mock_backed_integration_safe` gate compiles + evaluates
-- [ ] `testgen_manual_claim_is_first_class` gate compiles + evaluates
+- [x] `testgen_manual_claim_is_first_class` gate compiles + evaluates
+      (PR #707, merged 2026-04-24)
 
 **T-LensAPI:**
-- [ ] `user_authored_lens_compiles` gate (Day-1) passes
+- [x] `user_authored_lens_compiles` gate (Day-1) passes
+      (PR #679, merged 2026-04-24)
 - [ ] `AlgebraicLaw` predicate (schema extension, shared with
-      lens_composition_associative)
+      lens_composition_associative) — predicate declared in #678;
+      runner evaluation not yet wired
 - [ ] `lens_composition_associative` gate compiles + evaluates
 - [ ] `lens_output_is_queryable_data` gate compiles + evaluates
+      (PR #717 in review — adds runner seam dispatch for `LensOutputEquals` → NYI(String);
+      gate stays [ ] until runner executes lens functions)
 
 **Schema extensions owned here that other managers consume:**
-- [ ] `ExecuteCommand` predicate (Surface T-Emit consumer)
-- [ ] `ForAllTargets` predicate (Surface T-Emit consumer)
-- [ ] `LensOutputEquals` predicate (Substrate T-LaneE consumer
-      — `complexity_merge_sort_is_nlogn`)
-- [ ] `DifferentialEquals` predicate (Substrate T-LaneE consumer
-      — `complexity_v3_matches_v2_oracle`)
+- [x] `ExecuteCommand` predicate (Surface T-Emit consumer) — landed PR #678
+- [x] `ForAllTargets` predicate (Surface T-Emit consumer) — landed PR #678
+- [x] `LensOutputEquals` predicate (Substrate T-LaneE consumer
+      — `complexity_merge_sort_is_nlogn`) — landed PR #678
+- [x] `DifferentialEquals` predicate (Substrate T-LaneE consumer
+      — `complexity_v3_matches_v2_oracle`) — landed PR #678
 
 Decisions log (append as they happen):
 
-- _(none yet)_
+- 2026-04-24: `ForAllTargets` self-referential variant dissolved to
+  `{ command, args, expect_exit_code }` to preserve bounded-kernel
+  invariant (Node is the only recursive type).
 
 Open questions for director:
 
-- _(none yet)_
+- _(none today)_
 
 Cross-manager notifications queued:
 
-- _(none yet — signal Self-hosting when runner lands; signal
-  Surface when ExecuteCommand + ForAllTargets are defined; signal
-  Release when LensAPI output is queryable)_
+- **Surface Manager**: `ExecuteCommand` + `ForAllTargets` predicates
+  are on main (PR #678). T-Emit lane-owners can now author gates
+  against those predicate shapes.
+- **Substrate Manager**: `LensOutputEquals` + `DifferentialEquals`
+  predicates are on main (PR #678). T-LaneE consumers can reference
+  them once the runner lands.
+- **Self-hosting Manager**: Runner foundation landed (PR #688,
+  2026-04-24). T-PB-B is unblocked — begin `.dag` TestClaim
+  conversion of pipeline / contract tests. ⬅ **SEND NOW**

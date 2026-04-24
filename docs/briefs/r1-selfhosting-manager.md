@@ -39,14 +39,15 @@ the residual Rust floor structurally bounded and mechanically
 checkable, including tests-as-data?**
 
 Today:
-- Residual Rust count is tracked by the SG-0 census; the census is
-  one unsplit list — the R1 split (T-PB-A owns non-test; T-PB-B
-  owns test) is partially structural and partially conceptual
-  (`ROADMAP.md:133`).
+- Residual Rust count is tracked by the SG-0 census with a **mechanical**
+  non-test vs test split: `EXPECTED_HAND_AUTHORED_NON_TEST` +
+  `EXPECTED_HAND_AUTHORED_FRAGMENTS` (T-PB-A) and `EXPECTED_HAND_AUTHORED_TEST`
+  (T-PB-B) in `sg0_census_test.rs` (landed on `main` via PR #683).
 - `pb_hand_rust_at_shim_floor` and `pb_rust_tests_outside_residual_zero`
-  predicates need to name the partition once T-TestGen extensions
-  support it.
-- Pipeline / contract tests largely remain Rust-authored.
+  still need to **compile and evaluate** against that partition once
+  T-TestGen extensions support them (`[ext]` predicates).
+- Pipeline / contract tests largely remain Rust-authored until the
+  testgen runner lands; T-PB-B owns draft `.dag` claims in the interim.
 
 The ask: close both halves. Non-test ≤5 irreducible-shim floor.
 Tests live as `.dag` data evaluated by the testgen runner, except
@@ -54,11 +55,11 @@ the two acknowledged residuals.
 
 ## Sequence + dispatch
 
-- **Day 1 — T-PB-A half.** Dispatch T-PB-A lane-owner work. No
-  cross-manager blocker on the non-test half. Partition the SG-0
-  census into non-test vs test sub-ratchets (`EXPECTED_HAND_AUTHORED_NON_TEST`
-  and `EXPECTED_HAND_AUTHORED_TEST` in `sg0_census_test.rs`) so the
-  partition is mechanically checked rather than applied by inspection.
+- **T-PB-A — SG-0 partition (done).** Non-test vs test sub-ratchets
+  (`EXPECTED_HAND_AUTHORED_NON_TEST` and `EXPECTED_HAND_AUTHORED_TEST` in
+  `sg0_census_test.rs`) are mechanically checked on `main` (PR #683).
+- **T-PB-A — ongoing.** Dispatch non-test hand-Rust reduction (PB program),
+  compiler–`std/` consolidation, and cementing per sections below.
 - **Day 1 — T-PB-B pipeline porting, Rust-side.** Identify which
   pipeline / contract tests are candidates for `.dag` conversion
   (vs. the two TESTING.md residuals). Draft `TestClaim`
@@ -67,7 +68,7 @@ the two acknowledged residuals.
   runner needs to exist to evaluate them.
 - **Gated on Testgen Manager.** T-PB-B's landing gate
   (`pb_test_file_generated_from_dag` + `pb_rust_tests_outside_residual_zero`,
-  both `[ext]` on testgen extensions per `ROADMAP.md:65`) unblocks
+  both `[ext]` on testgen extensions per `ROADMAP.md:68`) unblocks
   when Testgen's runner lands. Until then: draft `.dag` test
   declarations, don't convert Rust tests yet.
 - **Cementing.** Maintain cementing tests that compare v3 compiler

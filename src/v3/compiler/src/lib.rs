@@ -38,6 +38,7 @@ pub mod lens_depth;
 pub mod lens_testgen;
 pub mod lens_unused_parameters;
 pub mod post_emit_verifier;
+pub mod test_runner;
 pub mod serialize {
     use crate::dag::{Behavior, Dag};
     use crate::diagnostics::Diagnostic;
@@ -841,8 +842,22 @@ pub(crate) mod lower_helpers {
     }
 }
 
-pub mod lens_idempotency;
-pub mod lens_parallelism;
+/// Back-compat module path for the Stage 2b idempotency lens.
+///
+/// The dedicated `lens_idempotency.rs` wrapper retired once the native-Dag
+/// bridge collapsed to a single re-export. Keep the module name as an API alias
+/// until callers move to the crate-root `analyze_workflow` export.
+pub mod lens_idempotency {
+    pub use crate::workflow_idempotency::analyze_workflow;
+}
+/// Back-compat module path for the Stage 2e parallelism lens.
+///
+/// The dedicated `lens_parallelism.rs` wrapper retired once the native-Dag
+/// bridge collapsed to a single re-export. Keep the module name as an API alias
+/// until callers move to the crate-root `analyze_parallelism` export.
+pub mod lens_parallelism {
+    pub use crate::workflow_parallelism::analyze_parallelism;
+}
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
 // `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs`,
 // `parse_parser_body.txt` → `regen_parse` → `parse_generated.rs` (`parse` module),
@@ -863,6 +878,7 @@ mod regen_parse_tables_emit;
 )]
 #[path = "tokenize_generated.rs"]
 mod tokenize;
+mod tokenize_char_class;
 
 pub use regen_parse_emit::{render_parse_generated_rs, RenderParseGeneratedError};
 pub use regen_parse_tables_emit::{
@@ -904,12 +920,12 @@ pub use emit_rust::EmitError;
 /// `operation_to_breaker` are **not** re-exported: naming and algebra authority
 /// live in `src/v3/std/effects.dag`, and the Rust bridge must not become a
 /// parallel public implementation surface beyond these std.effects mirrors.
-pub use lens_idempotency::analyze_workflow;
-/// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
-pub use lens_parallelism::analyze_parallelism;
+pub use workflow_idempotency::analyze_workflow;
 pub use workflow_idempotency::{
     lane2_workflow_idempotency_report, report_unsupported_workflow_variant,
 };
+/// Lane 2 Stage 2e — parallel composition safety (`ParallelEffect`); see DB-20.
+pub use workflow_parallelism::analyze_parallelism;
 
 /// Lane 2 Stage 2f — DB-3 dimension abstraction (`std/dimensions.dag` types;
 /// `analyze_symbolic_cost_dimension` is the first migrated lens path).

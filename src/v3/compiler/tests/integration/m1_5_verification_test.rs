@@ -106,6 +106,14 @@ fn bootstrap_loads_verification_authority_types() {
         ]
     );
     assert_eq!(
+        sum_variants(&dag, "AlgebraicLawKind"),
+        vec![
+            (String::from("Associativity"), Vec::new()),
+            (String::from("Commutativity"), Vec::new()),
+            (String::from("Identity"), Vec::new()),
+        ]
+    );
+    assert_eq!(
         sum_variants(&dag, "TestPredicate"),
         vec![
             (String::from("Compiles"), Vec::new()),
@@ -138,6 +146,42 @@ fn bootstrap_loads_verification_authority_types() {
                 String::from("MockBackedInvariant"),
                 vec![String::from("subject"), String::from("invariant")],
             ),
+            (
+                String::from("ExecuteCommand"),
+                vec![
+                    String::from("command"),
+                    String::from("args"),
+                    String::from("expect_exit_code"),
+                ],
+            ),
+            (
+                String::from("ForAllTargets"),
+                vec![
+                    String::from("command"),
+                    String::from("args"),
+                    String::from("expect_exit_code"),
+                ],
+            ),
+            (
+                String::from("LensOutputEquals"),
+                vec![
+                    String::from("lens_ref"),
+                    String::from("input_ref"),
+                    String::from("expected_ref"),
+                ],
+            ),
+            (
+                String::from("DifferentialEquals"),
+                vec![
+                    String::from("subject_ref"),
+                    String::from("oracle_ref"),
+                    String::from("input_ref"),
+                ],
+            ),
+            (
+                String::from("AlgebraicLaw"),
+                vec![String::from("law"), String::from("lens_ref")],
+            ),
         ]
     );
 }
@@ -155,6 +199,8 @@ let pred_port_resolved: TestPredicate = PortHasState("answer", Resolved)
 let pred_port_unresolved: TestPredicate = PortHasState("missing", Unresolved)
 let pred_cost_eq: TestPredicate = CostBounded("answer", Eq, 8)
 let pred_cost_above: TestPredicate = CostBounded("answer", Gt, 3)
+let pred_exec: TestPredicate = ExecuteCommand("true", empty(), 0)
+let pred_all_targets: TestPredicate = ForAllTargets("true", empty(), 0)
 
 let claim_compiles: TestClaim = {
   name: "compiles",
@@ -195,6 +241,8 @@ let suite: TestSuite = {
         "pred_port_unresolved",
         "pred_cost_eq",
         "pred_cost_above",
+        "pred_exec",
+        "pred_all_targets",
     ] {
         assert_eq!(bind_value_type_decl(&dag, bind), test_predicate);
     }

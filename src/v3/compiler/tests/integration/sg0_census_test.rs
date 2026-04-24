@@ -163,8 +163,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit_rust.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/lens_depth.rs",
-    "src/v3/compiler/src/lens_idempotency.rs",
-    "src/v3/compiler/src/lens_parallelism.rs",
     "src/v3/compiler/src/lens_testgen.rs",
     "src/v3/compiler/src/lens_unused_parameters.rs",
     "src/v3/compiler/src/lib.rs",
@@ -174,6 +172,10 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
+    "src/v3/compiler/src/test_runner.rs",
+    // R1 T-Sub `sub_charclass_in_std_unicode`: Rust mirror of `std.unicode::CharClass`
+    // until M1(2.8) allows `CharClass` / `List<Char>` in `tokenize.dag` `data` bodies.
+    "src/v3/compiler/src/tokenize_char_class.rs",
     "src/v3/compiler/src/workflow_idempotency.rs",
     "src/v3/compiler/src/workflow_parallelism.rs",
 ];
@@ -210,6 +212,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/m1_3_lens_cost_test.rs",
     "src/v3/compiler/tests/integration/m1_3_lens_unused_parameters_test.rs",
     "src/v3/compiler/tests/integration/m1_5_testgen_test.rs",
+    "src/v3/compiler/tests/integration/m1_5_user_authored_lens_gate_test.rs",
     "src/v3/compiler/tests/integration/m1_5_verification_test.rs",
     "src/v3/compiler/tests/integration/m1_fn_external_body_reconciliation_test.rs",
     "src/v3/compiler/tests/integration/m1_lens_structural_resolution_test.rs",
@@ -228,6 +231,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_std_snapshot_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
+    "src/v3/compiler/tests/integration/r1_manual_claim_gate_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
     "src/v3/compiler/tests/integration/sg2_parse_authority_test.rs",
@@ -240,6 +244,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/t_pb_b_1_tests_dag_smoke_test.rs",
     "src/v3/compiler/tests/integration/t_pb_b_brief_d_fixture_smoke_test.rs",
+    "src/v3/compiler/tests/integration/test_runner_test.rs",
+    "src/v3/compiler/tests/integration/testgen_structural_coverage_gate_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
 ];

@@ -49,7 +49,12 @@ runs under external toolchains and no "it works around the gap"
 scaffolding survives?**
 
 Today:
-- P0 bugs are real (each has a brief under `docs/briefs/p0-*.md`).
+- T-P0 is already closed on current ancestry: `repeat_string` is fixed in
+  `dsl/std/render.dag`, `REST_OPS` now derives from extdep authority in
+  `src/v2/tests/src/effects.rs`, and the `__BUG_NO_PROFILE_` fabrication
+  sentinel is removed with a ratchet in
+  `src/v2/tests/src/bug_sentinel_ratchet.rs`. Keep the lane listed as an
+  R1 enabler receipt, not active dispatch.
 - `match` over user sums is a live surface capability gap that
   blocks self-hosting surface (Self-hosting manager's T-PB-A half
   will consume it as soon as it lands).
@@ -60,7 +65,7 @@ Today:
   refinements are advertised in the story doc as `[target]`;
   closing this lane moves them toward `[live]`.
 - `CharClass` in `std.unicode` is the character-level consumption
-  gap per `ROADMAP.md:358` — the types exist in `dsl/std/`; the
+  gap per `ROADMAP.md:353` — the types exist in `dsl/std/`; the
   tokenizer and syntax authorities aren't using them yet.
 - Cross-target emission green-ness is the external-toolchain
   receipt: generated Rust compiles under `rustc`; generated Python
@@ -72,8 +77,6 @@ for a principal engineer to verify in one evening.
 
 ## Sequence + dispatch
 
-- **Day 1.** T-P0 sweep dispatches fully — all three P0 items have
-  per-bug briefs; lane-owners can go. Size S.
 - **Day 1.** T-Sub `sub_match_over_user_sum` dispatches. `[Day 1]`
   gate — compiles against today's DB-15 schema.
 - **Day 1.** T-Emit Rust-harden dispatches. Rust is the primary
@@ -88,7 +91,7 @@ for a principal engineer to verify in one evening.
   visible integration win (PR-level, not scope-amendment-level).
 - **Parallel.** T-Sub `sub_charclass_in_std_unicode` dispatches.
   Add `CharClass = Whitespace | Digit | IdentStart | IdentContinue`
-  (or superset) to `std.unicode` per `ROADMAP.md:358`;
+  (or superset) to `std.unicode` per `ROADMAP.md:353`;
   retype the opaque-string fields in `tokenize.dag` / `syntax.dag`
   (`suffix: Char`, `output_codepoint: Char`, `pattern: List<Char>`,
   etc.); rewire `regen_tokenize` to read class predicates
@@ -118,17 +121,17 @@ for a principal engineer to verify in one evening.
   — that's an R1 scope question, not a lane-owner call.
 - **Up to director.** If the `CharClass` lane reveals more
   character-level consumption gaps beyond what's cited at
-  `ROADMAP.md:358`, flag to director so the cardinality-substrate
+  `ROADMAP.md:353`, flag to director so the cardinality-substrate
   ledger row can be amended rather than expanding the lane.
 
 ## Working state
 
 Lane-owner dispatch status (update as sub-deliverables close):
 
-**T-P0:**
-- [ ] `repeat_string` fix landed (brief: `p0-render-repeat-string.md`)
-- [ ] `REST_OPS` drift resolved (brief: `p0-rest-ops-drift.md`)
-- [ ] `no_profile_sentinel` audit completed (brief: `p0-bug-no-profile-sentinel.md`)
+**T-P0 (closed on current ancestry):**
+- [x] `repeat_string` fix landed (brief: `p0-render-repeat-string.md`)
+- [x] `REST_OPS` drift resolved (brief: `p0-rest-ops-drift.md`)
+- [x] `no_profile_sentinel` audit completed (brief: `p0-bug-no-profile-sentinel.md`)
 
 **T-Sub:**
 - [ ] `sub_match_over_user_sum` gate compiles + passes (Day-1)
@@ -145,7 +148,11 @@ Lane-owner dispatch status (update as sub-deliverables close):
 
 Decisions log (append as they happen):
 
-- _(none yet)_
+- `2026-04-23` — T-P0 reclassified from dispatchable R1 work to already-landed
+  closure on current ancestry after direct source audit (`dsl/std/render.dag`,
+  `src/v2/tests/src/effects.rs`,
+  `src/v2/tests/src/bug_sentinel_ratchet.rs`). Keep the lane in the brief only
+  as an enabling receipt for downstream R1 work.
 
 Open questions for director:
 
