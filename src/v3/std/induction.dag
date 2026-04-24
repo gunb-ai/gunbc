@@ -753,19 +753,33 @@ fn bounded_int_pow_exponent(k: Int) -> Int? {
 
 // b^exp for exp ≥ 0 (exp = 0 → Some { value: 1 }). Out-of-range exp → none via
 // `bounded_int_pow_exponent` — no silent plausible wrong output (P3; same posture as `ceil_log` / `cost_poly`).
+//
+// P4 (degenerate bases): for `base ∈ {0, 1, -1}`, short-circuit before recursion (Codex #726).
 fn int_pow_bounded(base: Int, exp: Int) -> Int? {
   match bounded_int_pow_exponent(k: exp) {
     None => none
     Some { value: e } =>
       if e == 0 { Some { value: 1 } }
       else {
-        match int_pow_bounded(base: base, exp: e - 1) {
-          Some { value: prev } =>
-            match int_mul_checked(a: base, b: prev) {
-              Some { value: prod } => Some { value: prod }
-              None => none
+        if base == 0 { Some { value: 0 } }
+        else {
+          if base == 1 { Some { value: 1 } }
+          else {
+            if base == (0 - 1) {
+              let half = e / 2
+              if half + half == e { Some { value: 1 } } else { Some { value: 0 - 1 } }
             }
-          None => none
+            else {
+              match int_pow_bounded(base: base, exp: e - 1) {
+                Some { value: prev } =>
+                  match int_mul_checked(a: base, b: prev) {
+                    Some { value: prod } => Some { value: prod }
+                    None => none
+                  }
+                None => none
+              }
+            }
+          }
         }
       }
   }

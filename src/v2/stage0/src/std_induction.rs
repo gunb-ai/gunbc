@@ -729,12 +729,32 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
                 if (e.clone() == 0) {
                     Some(1)
                 } else {
-                    match int_pow_bounded(base.clone(), (e.clone() - 1)) {
-                        Some(prev) => match int_mul_checked(base.clone(), prev.clone()) {
-                            Some(prod) => Some(prod.clone()),
-                            None => None,
-                        },
-                        None => None,
+                    if (base.clone() == 0) {
+                        Some(0)
+                    } else {
+                        if (base.clone() == 1) {
+                            Some(1)
+                        } else {
+                            if (base.clone() == (0 - 1)) {
+                                {
+                                    let half = (e.clone() / 2);
+                                    if ((half.clone() + half.clone()) == e.clone()) {
+                                        Some(1)
+                                    } else {
+                                        Some((0 - 1))
+                                    }
+                                }
+                            } else {
+                                match int_pow_bounded(base.clone(), (e.clone() - 1)) {
+                                    Some(prev) => match int_mul_checked(base.clone(), prev.clone())
+                                    {
+                                        Some(prod) => Some(prod.clone()),
+                                        None => None,
+                                    },
+                                    None => None,
+                                }
+                            }
+                        }
                     }
                 }
             }
