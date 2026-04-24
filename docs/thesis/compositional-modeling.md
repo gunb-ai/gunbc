@@ -110,7 +110,9 @@ algebra. `[live]` — `dsl/std/integer.dag:31-44`.
 The algebra is where the behavior comes from:
 
 ```dag
-// dsl/std/algebra.dag (abbreviated)
+// dsl/std/algebra.dag (abbreviated; `.dag` realization is flat
+// records, not `extends` — `extends` here is illustrative shorthand
+// for the hierarchy comment block at `algebra.dag:13-45`)
 
 // Unary (one operation):
 
