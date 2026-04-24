@@ -257,6 +257,10 @@ impl<'a> TestRunner<'a> {
             ));
         }
 
+        // Bridge receipt: `claim.source` is not the predicate DAG; this compile
+        // proves the witness program lowers today. When lens application lands,
+        // fold this check into the real evaluation path or drop it — do not layer
+        // redundant compiler calls indefinitely (PR #717 review).
         if let Err(err) = compile_to_dag(&claim.source, &claim.file_name) {
             return ClaimResult::Fail(format!(
                 "LensOutputEquals: claim `source` did not compile (needed for future lens application): {err:?}"

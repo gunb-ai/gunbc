@@ -3,6 +3,9 @@
 // same translation unit as the large embedded `user_authored_lens_compiles_gate`
 // `source` string currently breaks `DeclarationRef` resolution for `Int` in this
 // compiler snapshot (isolated harness: `lens_output_equals_predicate_accepts_*`).
+//
+// TODO(dissolve): fold back into `r1_gates.dag` once same-TU lowering is fixed
+// (tracked bridge — PR #717 review / T-LensAPI; do not treat this split as permanent).
 
 data lens_output_ref_input: Int = 0
 
