@@ -3662,6 +3662,12 @@ impl<'a> Ctx<'a> {
         let field_name = single_field_label.unwrap_or("_0");
         // `v3.std.lookup::Lookup::Hit` is a Rust tuple variant (`Hit(T)` in
         // `dag_lookup_generated`); other single-`_0` sum arms stay struct-style.
+        // Dissolution trigger: today `Conj` children for a sum arm do not record
+        // "tuple vs struct payload" for Rust; emit would otherwise use struct
+        // patterns for every `_0` field. When positionality is a fact on the
+        // `Declaration` / `Disj` surface (or spec-driven), drop this name-match
+        // and read it structurally. Paired with `render_variant_constructor`'s
+        // `Lookup`/`Hit` constructor branch.
         let is_lookup_hit = field_name == "_0"
             && matches!(
                 qualified_name.split("::").collect::<Vec<_>>().as_slice(),
@@ -4279,6 +4285,9 @@ impl<'a> Ctx<'a> {
         if children.is_empty() {
             return Ok(Some(qualified_name));
         }
+        // Dissolution: same "tuple `Hit` for `v3.std.lookup` only" bridge as
+        // `render_single_field_variant_pattern` (pattern side); see long comment
+        // there. Until variant payload positionality is DAG-carried, keep narrow.
         if children.len() == 1
             && children[0].label == "_0"
             && enum_name == "Lookup"
