@@ -1,0 +1,133 @@
+// std.termination -- v3-staged well-founded descent and termination proofs.
+//
+// Bootstrap-staged mirror of `dsl/std/termination.dag` for v3. Keep these
+// carrier shapes and lattice functions aligned while v2 still scans `dsl/`.
+
+module std.termination
+
+import std.types { PositiveInt }
+
+// At each recursive call edge, a ranking dimension either strictly decreases,
+// does not increase, or is unknown. The lattice ordering is:
+// DescentUnknown < NonIncreasing < Strict.
+// 🟢 TERMINAL at termination-proof scope. These are the durable evidence
+// states downstream lenses consume; later work may add producers, but the
+// proof lattice itself is not a bootstrap shim.
+type DescentEvidence
+  = Strict
+  | NonIncreasing
+  | DescentUnknown
+
+fn evidence_rank(e: DescentEvidence) -> Int {
+  match e {
+    Strict => 2
+    NonIncreasing => 1
+    DescentUnknown => 0
+  }
+}
+
+// Conservative meet: keep only evidence proven on every branch.
+fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+  match a {
+    Strict => match b {
+      Strict => Strict
+      NonIncreasing => NonIncreasing
+      DescentUnknown => DescentUnknown
+    }
+    NonIncreasing => match b {
+      Strict => NonIncreasing
+      NonIncreasing => NonIncreasing
+      DescentUnknown => DescentUnknown
+    }
+    DescentUnknown => DescentUnknown
+  }
+}
+
+// Optimistic join: keep the strongest evidence seen on any branch.
+fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+  match a {
+    DescentUnknown => b
+    NonIncreasing => match b {
+      Strict => Strict
+      NonIncreasing => NonIncreasing
+      DescentUnknown => NonIncreasing
+    }
+    Strict => Strict
+  }
+}
+
+// Fail closed: strict descent cannot be fabricated from non-increase without
+// a separate structural witness.
+fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
+  match evidence {
+    NonIncreasing => NonIncreasing
+    Strict => Strict
+    DescentUnknown => DescentUnknown
+  }
+}
+
+// Optional meet for DescentEvidence: None is identity (top).
+fn optional_evidence_meet(a: DescentEvidence?, b: DescentEvidence?) -> DescentEvidence? {
+  match a {
+    None => b
+    Some { value: va } =>
+      match b {
+        None => a
+        Some { value: vb } => Some { value: merge_evidence(a: va, b: vb) }
+      }
+  }
+}
+
+// Pointwise meet keyed by String.
+fn map_evidence_merge_at(base: Map<String, DescentEvidence>, key: String, new_val: DescentEvidence) -> Map<String, DescentEvidence> {
+  match map_get(base, key) {
+    Some { value: existing } => map_insert(base, key, merge_evidence(a: existing, b: new_val))
+    None => map_insert(base, key, new_val)
+  }
+}
+
+// Bootstrap constraint: `param` is a function parameter name (String).
+// When .dag supports function references, this should become structural.
+// 🟡 SCAFFOLD. Ranking dimensions are durable, but the `param: String`
+// bridge dissolves when function parameters can be referenced structurally.
+type RankingDimension
+  = TreeSize { param: String }
+  | ListLength { param: String }
+  | ArithmeticValue { param: String }
+  | TokenPosition { param: String }
+  | SetCardinality { param: String }
+
+// 🟢 TERMINAL at descent-witness scope. Division witnesses need a factor of at
+// least two. The current bootstrap does not preserve alias `where` refinements
+// in generated mirrors, so model the `>= 2` boundary structurally and compose
+// the "more than two" case from the shared PositiveInt authority.
+type DivisionDescentFactor
+  = Two
+  | GreaterThanTwo { extra: PositiveInt }
+
+// Concrete code pattern that witnesses descent for a ranking dimension.
+// Bootstrap constraint: name-like payloads are Strings until function and
+// field references are first-class in .dag.
+// 🟡 SCAFFOLD. The witness taxonomy is durable for E-T; the String payload
+// bridge dissolves once accessor, operation, witness, and element references
+// are first-class substrate values instead of names.
+type DescentSource
+  = ChildAccessor { accessor: String }
+  | ListShrink { amount: PositiveInt }
+  | ArithmeticSubtract { by: PositiveInt }
+  | ArithmeticDivide { by: DivisionDescentFactor }
+  | ParserAdvance { witness: String }
+  | SetRemoval { element: String }
+  | FoldIteration
+
+type TerminationProof {
+  dimensions: List<RankingDimension>
+}
+
+// Bootstrap constraint: caller/callee are function names (String).
+// When .dag supports function references, these should become structural.
+type ProofEdge {
+  caller: String
+  callee: String
+  evidence: List<DescentEvidence>
+}
