@@ -136,6 +136,39 @@ Both land inside T-PB-A because dissolving the compiler-local surface forces bot
 
 R1 absorbs what was "Post-A/B Lane Plan" and L1.5 forward work, framed by release deliverable rather than architectural stage. The status table below stays accurate for backward-looking context; R1 is the forward-looking companion.
 
+## Post-R1 Program — Grounding Completeness
+
+Named post-R1 program promoted from `docs/thesis/target-grounding-proposal.md` (PROPOSAL mode on the proposal doc; this section is the committed ROADMAP counterpart). Architectural authority remains [`docs/single-emitter-design.md`](docs/single-emitter-design.md) (ROADMAP Track 13 / single-emitter dissolution). This section names concrete lanes; the proposal doc carries worked examples and work-estimate detail.
+
+**The claim.** Target-side primitive types in Rust, Python, and Go are structurally modeled from their language references (Rust Reference §Types at <https://doc.rust-lang.org/reference/types.html>; Python data model; Go specification). Algebra inhabitance is declared structurally on target primitives, parallel to how user-side `.dag` types declare inhabitance (`Int64 = OrderedRing<Word64>`). Coercion is a structural algebra-homomorphism search, not a name-keyed table lookup. The current `TypeCheckpoint` / `InhabitantDecl` / `carrier: String` surface is bootstrap scaffolding that dissolves via Track 13 closure at the end of this program.
+
+**Why post-R1.** This is a substantial program (sized ~T-LaneE equivalent), cleanly separable from R1's release gates, and blocked in full on post-R1 substrate capabilities (DB-11 alias-RHS `where` parsing; cardinality-substrate; optionally DB-18 parametric algebra attachment). A Day-1-dispatchable pilot lane exists that uses only live substrate.
+
+### Post-R1 Grounding lanes
+
+| Lane | Size | Covers | Blockers |
+|------|------|--------|----------|
+| T-Ground-Pilot | S | Rust integer family (i8–i64, u8–u64, bool, Unit) + toy inhabitance-search engine + routing-stability tests demonstrating parity with current table lookup | None — uses only live substrate; dispatchable post-R1 Day-1 |
+| T-Ground-Rust | XL | Systematic structural modeling of Rust Reference §Types — numeric types, textual types (char, str, String), sequence types (array, slice, Vec, tuple), struct/enum/union, pointer types (references, raw pointers, Box, Rc, Arc), function types, closure types, trait-object types, never type | DB-11 (refinement-carrying qualifiers on primitives), cardinality-substrate (container cardinality bounds) |
+| T-Ground-Python | L | Python data model — numeric types, sequences (list, tuple, range), text (str), mappings (dict), sets, callables, modules, None | DB-11; cardinality-substrate |
+| T-Ground-Go | L | Go specification — numeric types, bool, string, array, slice, map, struct, pointer, function, interface, channel | DB-11; cardinality-substrate |
+| T-Ground-Engine | M | Inhabitance-search walker; minimum-satisfier selection; fail-closed tie-breaking with structured diagnostic (per `target-grounding-proposal.md`'s tie-breaking discipline) | Layers 1–3 populated to a useful coverage threshold |
+| T-Ground-Tests | S | Routing-stability TestClaim class; L4 witness-based certification for target-side algebra-inhabitance claims per `verifiability-invariant.md` ("consistent by construction + verified by L4") | T-TestGen runner green (R1 deliverable); layers 1–4 |
+| T-Ground-Dissolve | S | Track 13 closure — single PR deleting `TypeCheckpoint` / `InhabitantDecl` / `carrier: String` routing-path usage. `TypeCheckpoint` / `InhabitantDecl` declarations survive as testgen-assertion inputs per `verifiability-invariant.md` L0 role | All other lanes reaching parity with current table |
+
+**Critical path:** `T-Ground-Pilot → T-Ground-Rust → T-Ground-Engine → T-Ground-Tests → T-Ground-Dissolve`. Python and Go lanes run parallel after Pilot validates the pattern.
+
+**Grounding Manager** coordinates per [`docs/briefs/grounding-manager.md`](docs/briefs/grounding-manager.md). R1 Director Brief's escalation discipline continues to apply: scope changes to this program route to director; amendments to THESIS.md §"Grounding completeness" / this ROADMAP section require director-authored PRs.
+
+**Acceptance gates** (to be authored as `TestClaim` declarations once T-TestGen runner is green):
+- `ground_rust_int_family_structurally_declared` [Day 1 after Pilot]
+- `ground_rust_reference_complete` [ext: after DB-11 + cardinality-substrate]
+- `ground_routing_stability` [ext: after engine]
+- `ground_l4_certified_rust_i64_inhabits_orderedring` [ext: after tests]
+- `ground_track13_dissolution_complete` [ext: single Dissolve PR]
+
+**Thesis claim tracked by this program:** "Grounding completeness" per THESIS.md §"Thesis claims — complete list" (Tier 1 — Structural correctness).
+
 ## Status at a glance
 
 | Milestone | State | Notes |
