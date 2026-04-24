@@ -467,6 +467,24 @@ fn emit_callable_field_types_expand_chained_fn_type_alias() {
     );
 }
 
+/// #676: a named **alias to** `List<fn…>` does not peel to a top-level
+/// `Arrow`, but the emit path must still expand to `Vec<Rc<dyn Fn…>>`, not an
+/// undefined local alias name (C-8).
+#[test]
+fn emit_callable_field_types_expand_list_fn_named_alias() {
+    let src = "type L = List<fn(Int) -> Int>\n\
+type Holders { callbacks: L }\n";
+    let out = emit_module(src);
+    assert!(
+        out.contains("callbacks: Vec<std::rc::Rc<dyn Fn(i64) -> i64>>"),
+        "L = List<fn…> on a struct field should expand; got:\n{out}"
+    );
+    assert!(
+        !out.contains("callbacks: L") && !out.contains("callbacks: Vec<L>"),
+        "must not print bare L / Vec<L> when L aliases List<fn…>; got:\n{out}"
+    );
+}
+
 /// Review #676: nested / generic positions (`Vec<…>`) cannot use `impl Fn`.
 #[test]
 fn emit_callable_list_element_types_use_rc_dyn_fn_in_vec() {

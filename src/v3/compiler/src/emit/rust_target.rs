@@ -5061,12 +5061,22 @@ impl<'a> Ctx<'a> {
             // `G` is invalid in Rust like a bare `F` (#676, P3, Codex).
             // When peeling finds first-class `fn` under the alias, skip this
             // return and use the `Instantiation` / `Arrow` path below.
+            //
+            // `type L = List<fn..>` (or `Map<.., fn..>`, etc.) does **not** peel
+            // to a top-level `Arrow` — but `list` / `value` args still carry
+            // first-class `fn` data. Emitting the bare `L` would be an undefined
+            // Rust name (C-8; #676) — `decl_includes_first_class_arrow_data` matches
+            // the same carrier rules as `decl_includes` on struct fields.
             if !is_named_first_class_fn_alias
                 && self
                     .peel_resolved_chain_to_first_class_arrow(declaration)
                     .is_none()
             {
-                return Ok(name.clone());
+                let mut first_class_fn_walk = std::collections::HashSet::new();
+                if !self.decl_includes_first_class_arrow_data(declaration, &mut first_class_fn_walk)
+                {
+                    return Ok(name.clone());
+                }
             }
         }
         match &decl.connective {
