@@ -172,9 +172,6 @@ fn emit_omni_demo_fixtures_green() {
         "omni fixture set must not be empty — check exclude lists"
     );
 
-    let mut go_checked = 0usize;
-    let mut py_checked = 0usize;
-
     for fixture in &omni_fixtures {
         let rust = rust_stdout(fixture.source);
 
@@ -184,7 +181,6 @@ fn emit_omni_demo_fixtures_green() {
                 "Go output diverged from Rust baseline for fixture `{}`",
                 fixture.name
             );
-            go_checked += 1;
         }
 
         if let Some(py) = python_stdout(fixture.name, fixture.source) {
@@ -193,17 +189,8 @@ fn emit_omni_demo_fixtures_green() {
                 "Python output diverged from Rust baseline for fixture `{}`",
                 fixture.name
             );
-            py_checked += 1;
         }
     }
-
-    eprintln!(
-        "emit_omni_demo_fixtures_green: {} fixtures; \
-         Go {}/{} checked; Python {}/{} checked",
-        omni_fixtures.len(),
-        go_checked,
-        omni_fixtures.len(),
-        py_checked,
-        omni_fixtures.len(),
-    );
 }
+
+

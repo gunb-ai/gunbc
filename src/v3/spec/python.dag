@@ -462,6 +462,22 @@ data python_int_sub: OperatorRealization = {
   cost: 1
 }
 
+data python_int_mul: OperatorRealization = {
+  language: python_language
+  target: Int
+  op: OrderedRing.mul
+  carrier: "*"
+  cost: 1
+}
+
+data python_int_div: OperatorRealization = {
+  language: python_language
+  target: Int
+  op: OrderedRing.div
+  carrier: "//"
+  cost: 1
+}
+
 data python_int_eq: OperatorRealization = {
   language: python_language
   target: Int
@@ -491,6 +507,46 @@ data python_declaration_id_eq: OperatorRealization = {
   target: DeclarationId
   op: OrderedRing.eq
   carrier: "=="
+  cost: 1
+}
+
+data python_int_ne: OperatorRealization = {
+  language: python_language
+  target: Int
+  op: OrderedRing.ne
+  carrier: "!="
+  cost: 1
+}
+
+data python_int_lt: OperatorRealization = {
+  language: python_language
+  target: Int
+  op: OrderedRing.lt
+  carrier: "<"
+  cost: 1
+}
+
+data python_int_le: OperatorRealization = {
+  language: python_language
+  target: Int
+  op: OrderedRing.le
+  carrier: "<="
+  cost: 1
+}
+
+data python_int_gt: OperatorRealization = {
+  language: python_language
+  target: Int
+  op: OrderedRing.gt
+  carrier: ">"
+  cost: 1
+}
+
+data python_int_ge: OperatorRealization = {
+  language: python_language
+  target: Int
+  op: OrderedRing.ge
+  carrier: ">="
   cost: 1
 }
 
