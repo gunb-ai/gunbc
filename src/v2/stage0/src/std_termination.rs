@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use DescentEvidence::*;
 use DescentSource::*;
+use DivisionDescentFactor::*;
 use RankingDimension::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -113,7 +114,20 @@ impl RankingDimension {
     }
 }
 
-pub type DivisionDescentFactor = i64;
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum DivisionDescentFactor {
+    Two,
+    GreaterThanTwo { extra: i64 },
+}
+impl DivisionDescentFactor {
+    pub fn extra(&self) -> i64 {
+        match self {
+            DivisionDescentFactor::Two => panic!("no extra on unit variant"),
+            DivisionDescentFactor::GreaterThanTwo { extra: __val, .. } => __val.clone(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -121,7 +135,7 @@ pub enum DescentSource {
     ChildAccessor { accessor: String },
     ListShrink { amount: i64 },
     ArithmeticSubtract { by: i64 },
-    ArithmeticDivide { by: PositiveInt },
+    ArithmeticDivide { by: Rc<DivisionDescentFactor> },
     ParserAdvance { witness: String },
     SetRemoval { element: String },
     FoldIteration,

@@ -97,10 +97,13 @@ type RankingDimension
   | TokenPosition { param: String }
   | SetCardinality { param: String }
 
-// 🟢 TERMINAL at descent-witness scope. Division witnesses need a stronger
-// refinement than generic positivity; derive it from the shared PositiveInt
-// authority instead of introducing a parallel positive number carrier.
-type DivisionDescentFactor = PositiveInt where range(min: 2)
+// 🟢 TERMINAL at descent-witness scope. Division witnesses need a factor of at
+// least two. The current bootstrap does not preserve alias `where` refinements
+// in generated mirrors, so model the `>= 2` boundary structurally and compose
+// the "more than two" case from the shared PositiveInt authority.
+type DivisionDescentFactor
+  = Two
+  | GreaterThanTwo { extra: PositiveInt }
 
 // Concrete code pattern that witnesses descent for a ranking dimension.
 // Bootstrap constraint: name-like payloads are Strings until function and

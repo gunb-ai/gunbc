@@ -89,6 +89,7 @@ pub use effects::{
 pub use ports::{
     BoolPortRef, ElementRef, NonEmptyList, NonSingletonList, ParamRef, Port, TransformRef,
 };
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeId(u32);
 
@@ -759,16 +760,23 @@ pub enum RankingDimension {
 
 /// 🟢 TERMINAL at descent-witness scope.
 ///
-/// Rust mirror of `DivisionDescentFactor = PositiveInt where range(min: 2)`.
-/// The executable mirror uses `i64` until refined values carry generated
-/// runtime wrappers.
-pub type DivisionDescentFactor = i64;
+/// Rust mirror of the structural `DivisionDescentFactor` carrier. `Two` is the
+/// minimum valid divisor; `GreaterThanTwo.extra` is a PositiveInt-shaped offset
+/// above two, represented as `i64` until refined values carry generated runtime
+/// wrappers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DivisionDescentFactor {
+    Two,
+    GreaterThanTwo { extra: i64 },
+}
 
 /// 🟡 SCAFFOLD.
 ///
 /// The witness taxonomy is durable for E-T; String payloads dissolve when
 /// accessor, operation, witness, and element references become first-class
-/// substrate values.
+/// substrate values. PositiveInt-shaped payloads are represented as raw `i64`
+/// until refined values carry generated runtime wrappers; the `.dag` authority
+/// remains the source of the positivity contract.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescentSource {
     ChildAccessor { accessor: String },

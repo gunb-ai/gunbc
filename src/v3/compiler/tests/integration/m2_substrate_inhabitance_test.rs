@@ -210,7 +210,13 @@ fn termination_carriers_bootstrap_from_v3_std() {
             (String::from("SetCardinality"), vec![String::from("param")]),
         ]
     );
-    let _division_factor = find_named(&dag, "DivisionDescentFactor");
+    assert_eq!(
+        sum_variants(&dag, "DivisionDescentFactor"),
+        vec![
+            (String::from("Two"), Vec::new()),
+            (String::from("GreaterThanTwo"), vec![String::from("extra")]),
+        ]
+    );
     assert_eq!(
         sum_variants(&dag, "DescentSource"),
         vec![
