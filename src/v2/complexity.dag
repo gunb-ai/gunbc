@@ -27,7 +27,7 @@ import std.termination {
   RankingDimension, TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality,
   DescentSource, ChildAccessor, ListShrink, ArithmeticSubtractDescent, ArithmeticDivideDescent, ParserAdvance, SetRemoval, FoldIteration,
   TerminationProof, ProofEdge,
-  merge_evidence, join_evidence, evidence_rank, promote_to_strict,
+  merge_evidence, join_evidence, evidence_rank,
   optional_evidence_meet, map_evidence_merge_at,
   OneStep
 }
@@ -374,17 +374,13 @@ fn set_has(m: Map<String, Bool>, key: String) -> Bool {
   map_get(m, key) != none
 }
 
-// promote_to_strict and merge_evidence are now in std.termination
-// (the single authority for the DescentEvidence lattice).
+// `merge_evidence` / `join_evidence` / … live in `std.termination` (single authority for the
+// `DescentEvidence` lattice). Parser-progress paths in this module use
+// `strict_after_parser_witness` (below) — they do not import `promote_to_strict` anymore.
 //
-// Parser-progress paths below still call promote_to_strict on accumulated
-// evidence, but that helper is fail-closed: it does not upgrade
-// NonIncreasing to Strict without a separate structural witness. Callers
-// that already hold Strict keep it; unknown stays unknown.
-//
-// P5 note: the helper name is historical (see `std.termination` receipt); follow-up
-// is rename or inline at these call sites once parser variants carry `Strict`
-// without this hop — tracked debt, not a gate on unrelated substrate PRs.
+// P5: `promote_to_strict` remains in `std.termination` for bootstrap / mirror parity and
+// lattice receipts; rename to `evidence_passthrough_preserving_strict` is still queued there
+// (see `std.termination` header), not on `complexity.dag` import surface.
 
 // Concrete parser witnesses advance a state that is already known not to be
 // ahead of the original parser state. They do not rescue unknown provenance.
