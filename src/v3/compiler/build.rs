@@ -303,7 +303,6 @@ fn main() {
         "src/v3/compiler/src/lens_provenance_generated.rs",
         "src/v3/compiler/src/lens_structural_resolution_generated.rs",
         "src/v3/compiler/src/lens_unused_parameters_generated.rs",
-        "src/v3/compiler/src/lower_generated.rs",
         "src/v3/compiler/src/lower_helpers_generated.rs",
         "src/v3/compiler/src/operators_generated.rs",
         "src/v3/compiler/src/parse_generated.rs",
