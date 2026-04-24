@@ -101,6 +101,4 @@ pub const GO_EMIT_EXCLUDE: &[&str] = &["recursive_function_call_six"];
 /// Program fixtures excluded from Python 5× determinism — `MissingOperatorRealization`,
 /// unsupported `Behavior::Loop`, etc., until Python spec/emitter parity matches the
 /// Rust matrix (`m1_3_emit_rust_test` is Rust-canonical).
-pub const PYTHON_EMIT_EXCLUDE: &[&str] = &[
-    "recursive_function_call_six",
-];
+pub const PYTHON_EMIT_EXCLUDE: &[&str] = &["recursive_function_call_six"];
