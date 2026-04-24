@@ -1273,11 +1273,10 @@ fn field_descent_relation(dag: &Dag, param: PortId, arg: PortId) -> Option<SubVa
         return None;
     }
 
-    let type_name = port_type_name(dag, param);
+    let type_name = port_type_name(dag, param)?;
     let element_type = field_child
         .and_then(|decl| dag.declaration_opt(&decl))
-        .and_then(|decl| decl.name.clone())
-        .unwrap_or_else(|| type_name.clone());
+        .and_then(|decl| decl.name.clone())?;
 
     Some(SubValueRelation::StrictSubValue {
         field: InductiveField {
@@ -1301,14 +1300,10 @@ fn literal_int_at(dag: &Dag, port: PortId) -> Option<i64> {
     }
 }
 
-fn port_type_name(dag: &Dag, port: PortId) -> String {
+fn port_type_name(dag: &Dag, port: PortId) -> Option<String> {
     match dag.port(port).state() {
-        PortState::Resolved(ty) => dag
-            .declaration(ty.declaration)
-            .name
-            .clone()
-            .unwrap_or_else(|| format!("decl#{}", ty.declaration.raw())),
-        PortState::Uninferred | PortState::Unresolved => "unknown".to_string(),
+        PortState::Resolved(ty) => dag.declaration(ty.declaration).name.clone(),
+        PortState::Uninferred | PortState::Unresolved => None,
     }
 }
 
