@@ -67,10 +67,7 @@ pub fn eval_algebraic_law_for_claim_program(
     let Some(target) = program_dag.declaration_by_name(&lens_name) else {
         return Ok(false);
     };
-    Ok(declaration_shape_matches_ordered_ring_add_associativity_recognizer(
-        program_dag,
-        target,
-    ))
+    Ok(declaration_shape_matches_ordered_ring_add_associativity_recognizer(program_dag, target))
 }
 
 #[derive(Debug, Clone)]
