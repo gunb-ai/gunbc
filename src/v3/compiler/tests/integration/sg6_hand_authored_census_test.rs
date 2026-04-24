@@ -59,9 +59,9 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use crate::common::integration_rs_cementing_path_attr_binds_mod_stem;
-use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::emit_rust::emit_rust_module;
+use v3_compiler::{compile_to_dag, patch_lower_helpers_generated_type_alias_refinement};
 
 fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -264,10 +264,13 @@ fn emit_registry_module(row: &RegistryRow) -> String {
     );
     let raw = emit_rust_module(&dag)
         .unwrap_or_else(|err| panic!("emit compiled module for {}: {err:?}", row.name));
-    rustfmt_stdout(
-        &format!("{}{raw}", generated_header(&row.lens_file)),
-        &format!("generated module `{}`", row.name),
-    )
+    let mut combined = format!("{}{raw}", generated_header(&row.lens_file));
+    combined = rustfmt_stdout(&combined, &format!("generated module `{}`", row.name));
+    if row.generated_file == "src/v3/compiler/src/lower_helpers_generated.rs" {
+        combined = patch_lower_helpers_generated_type_alias_refinement(&combined);
+        combined = rustfmt_stdout(&combined, &format!("generated module `{}`", row.name));
+    }
+    combined
 }
 
 fn checked_in_generated_module(row: &RegistryRow) -> String {
