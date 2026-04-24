@@ -811,7 +811,10 @@ let result: Int = count(6)
     let dag = compile_to_dag(source, "recursive_loop_receipt.v3").expect("compiles");
 
     // Verify Loop node is present — this is the structural claim.
-    let has_loop = dag.nodes().iter().any(|b| matches!(b, v3_compiler::dag::Behavior::Loop(_)));
+    let has_loop = dag
+        .nodes()
+        .iter()
+        .any(|b| matches!(b, v3_compiler::dag::Behavior::Loop(_)));
     assert!(has_loop, "recursive fn must lower to Behavior::Loop");
 
     let rendered = emit_python_text(&dag).expect("emits python");
