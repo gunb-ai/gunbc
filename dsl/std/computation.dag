@@ -120,6 +120,9 @@ import std.algebra {
 // of the bound. The actual numeric value is determined at compile time
 // (for constants/Forever) or tracked symbolically (for parameters/collections).
 // =========================================================================
+//
+// 🟡 MIXED. Symbolic bounds name parameters via `param: String` (scaffold until
+// params are first-class); `ExplicitCount` / `Forever` are durable finite-bound atoms.
 
 type SizeBound
   = CollectionSize { param: String }   // |list|, |set|, |map.keys| — finite by Layer 3
@@ -173,6 +176,9 @@ fn tree_size_bound(param: String) -> SizeBound {
 // std.termination (PositiveDescentAmount) and ProportionalDivisor (>= 2)
 // so non-positive skip amounts and invalid divide steps are not representable.
 // =========================================================================
+//
+// 🟢 TERMINAL at E-C lowering scope. Structural divisor ≥ 2 (Peano from `DivideByTwo`);
+// no name-like payloads.
 
 // Integer >= 2 — proportional descent divisors (halving-style well-founded steps).
 type ProportionalDivisor
@@ -193,6 +199,8 @@ fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
   }
 }
 
+// 🟡 MIXED. `PositiveDescentAmount` / `ProportionalDivisor` payloads are terminal
+// witnesses; `String` slots (accessor, witness, element) are name bridges until refs are structural.
 type CallPattern
   = ChildAccessorCall { accessor: String }    // self(node.left) — structural child
   | CollectionShrinkCall { amount: PositiveDescentAmount }  // skip(n), n >= 1 structurally
@@ -228,11 +236,16 @@ type CallPattern
 // ShrinkFactor — rate of decrease per recursive step. Distinguishes
 // O(n) from O(log n). Moved here from induction.dag to avoid circular
 // dependency (induction imports computation; LoweringTarget needs ShrinkFactor).
+//
+// 🟡 SCAFFOLD. `ConstantShrink` / `ProportionalShrink` still carry raw `Int` rates here;
+// structural migration tracks `CallPattern` + `std.termination`. `UnitShrink` is tag-only.
 type ShrinkFactor
   = UnitShrink
   | ConstantShrink { amount: Int }
   | ProportionalShrink { divisor: Int }
 
+// 🟡 MIXED. Record bundles terminal `IterationPrimitive` + `DescentEvidence` with
+// symbolic `SizeBound` / optional `ShrinkFactor` (see classifications on those types).
 type LoweringTarget {
   primitive: IterationPrimitive
   bound: SizeBound
@@ -240,6 +253,7 @@ type LoweringTarget {
   factor: ShrinkFactor?       // rate of decrease — preserved from SubValueRelation for tighter bounds
 }
 
+// 🟢 TERMINAL. The three iteration primitives are the stable lowering coproduct for Lane E-C.
 type IterationPrimitive
   = Fold
   | Descend

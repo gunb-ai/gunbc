@@ -18,6 +18,8 @@ import std.algebra {
   kernel_algebra_profile
 }
 
+// 🟡 MIXED. Symbolic bounds name parameters via `param: String` (scaffold until
+// params are first-class); `ExplicitCount` / `Forever` are durable finite-bound atoms.
 type SizeBound
   = CollectionSize { param: String }
   | TreeSize { param: String }
@@ -29,7 +31,8 @@ fn tree_size_bound(param: String) -> SizeBound {
   TreeSize { param: param }
 }
 
-// Shrink amounts use structural witnesses so non-positive skips are unrepresentable.
+// 🟢 TERMINAL at E-C lowering scope. Structural divisor ≥ 2 (Peano from `DivideByTwo`);
+// shrink amounts stay positive by construction (no `Int` payload here).
 type ProportionalDivisor
   = DivideByTwo
   | StrictlyLarger { inner: ProportionalDivisor }
@@ -48,6 +51,8 @@ fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
   }
 }
 
+// 🟡 MIXED. `PositiveDescentAmount` / `ProportionalDivisor` payloads are terminal
+// witnesses; `String` slots (accessor, witness, element) are name bridges until refs are structural.
 type CallPattern
   = ChildAccessorCall { accessor: String }
   | CollectionShrinkCall { amount: PositiveDescentAmount }
@@ -58,16 +63,21 @@ type CallPattern
   | FoldBodyCall
   | SameArgumentCall
 
+// 🟡 SCAFFOLD. `ConstantShrink` / `ProportionalShrink` still carry raw `Int` rates here;
+// structural migration tracks `CallPattern` + `std.termination`. `UnitShrink` is tag-only.
 type ShrinkFactor
   = UnitShrink
   | ConstantShrink { amount: Int }
   | ProportionalShrink { divisor: Int }
 
+// 🟢 TERMINAL. The three iteration primitives are the stable lowering coproduct for Lane E-C.
 type IterationPrimitive
   = Fold
   | Descend
   | Repeat
 
+// 🟡 MIXED. Record bundles terminal `IterationPrimitive` + `DescentEvidence` with
+// symbolic `SizeBound` / optional `ShrinkFactor` (see classifications on those types).
 type LoweringTarget {
   primitive: IterationPrimitive
   bound: SizeBound
