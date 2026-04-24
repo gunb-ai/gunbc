@@ -2825,27 +2825,6 @@ struct RenderLocals {
     payload_bindings: HashMap<PortId, VariantPayloadBinding<LocalBinding>>,
 }
 
-/// Controls `Instantiation` recursion in `decl_includes_first_class_arrow_data`.
-/// User-fn **return** carrier must follow only **type arguments** so primitive
-/// return types (`Int`, …) do not transitively pick up unrelated callable shapes
-/// from a template id's stdlib substrate. Record / enum `Debug` omission needs
-/// the **template** head for user generics like `G<T>` (C-8 / #676 inline
-/// review); use [`DeclFirstClassArrowWalk::RecordDeriveOmitDebug`].
-///
-/// Api-review (Codex, `edd421b0`-era): a single walk cannot both recurse every
-/// `Instantiation::template` for return composition **and** stay sound for
-/// `-> Int` — substrate templates pick up `fn` noise unrelated to the user's
-/// applied type. A declared “callable-in-return” substrate fact (THESIS target
-/// realization) would be the long-term unifier; see [`ArrowRustEmitPolicy`]
-/// dissolution note and `src/v3/spec/rust.dag` (first-class callable).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum DeclFirstClassArrowWalk {
-    AppliedTypeArguments,
-    /// Walk `Instantiation::template` unless the head is `List` (avoids
-    /// `List`-template noise; `G<T>` still uncovers callable fields in `G`'s `Conj`).
-    RecordDeriveOmitDebug,
-}
-
 /// Policy for lowering anonymous `TypeConnective::Arrow` (`fn(..)->_` types)
 /// to Rust text. `impl Trait` spellings and `Rc<dyn Fn…>` are only legal in
 /// explicit, position-specific emit paths (blocking api-review on #676).
@@ -4527,11 +4506,8 @@ impl<'a> Ctx<'a> {
         let param_dispositions = self.callable_param_dispositions(declaration.id, inputs.len());
         let mut locals = RenderLocals::default();
         let mut output_callable_walk = HashSet::new();
-        let return_includes_first_class_arrow = self.decl_includes_first_class_arrow_data(
-            *output,
-            &mut output_callable_walk,
-            DeclFirstClassArrowWalk::AppliedTypeArguments,
-        );
+        let return_includes_first_class_arrow =
+            self.decl_includes_first_class_arrow_data(*output, &mut output_callable_walk);
         let params = bind
             .params
             .iter()
@@ -4624,11 +4600,7 @@ impl<'a> Ctx<'a> {
                 // and `emit_callable_field_types_use_rc_dyn_fn_storage` (INVARIANTS.md C-8).
                 let omit_debug = children.iter().any(|field| {
                     let mut visited = HashSet::new();
-                    self.decl_includes_first_class_arrow_data(
-                        field.ty,
-                        &mut visited,
-                        DeclFirstClassArrowWalk::RecordDeriveOmitDebug,
-                    )
+                    self.decl_includes_first_class_arrow_data(field.ty, &mut visited)
                 });
                 let fields = children
                     .iter()
@@ -4653,11 +4625,7 @@ impl<'a> Ctx<'a> {
                 // Same `Debug` omission as records when variant payloads carry `Rc<dyn Fn…>`.
                 let omit_debug = variants.iter().any(|variant| {
                     let mut visited = HashSet::new();
-                    self.decl_includes_first_class_arrow_data(
-                        variant.ty,
-                        &mut visited,
-                        DeclFirstClassArrowWalk::RecordDeriveOmitDebug,
-                    )
+                    self.decl_includes_first_class_arrow_data(variant.ty, &mut visited)
                 });
                 let rendered_variants = variants
                     .iter()
@@ -4920,25 +4888,46 @@ impl<'a> Ctx<'a> {
             .is_some()
     }
 
-    /// True when `declaration` (including nested record / sum / generic args)
-    /// carries anonymous first-class `fn` (`ArrowBody::NoBody`) anywhere, so
-    /// emitted Rust uses `Rc<dyn Fn…>` which is not `Debug` — user `struct` /
-    /// `enum` derives must omit `Debug` (see `rust_record_derive_templates`).
+    /// Bootstrap `Int` / `Bool` / `String` type roots. Their expanded substrate
+    /// (rings, algebras) contains `TypeConnective::Arrow` for operations, not
+    /// first-class `fn` data — we must not confuse that with a user `fn` when
+    /// classifying a **return** type; see `decl_includes_first_class_arrow_data`.
+    fn declaration_is_bootstrap_int_bool_string(&self, declaration: DeclarationId) -> bool {
+        self.dag
+            .int_shape()
+            .is_some_and(|s| s.declaration == declaration)
+            || self
+                .dag
+                .bool_shape()
+                .is_some_and(|s| s.declaration == declaration)
+            || self
+                .dag
+                .string_shape()
+                .is_some_and(|s| s.declaration == declaration)
+    }
+
+    /// True when `declaration` (including nested record / sum / instantiations)
+    /// carries first-class `fn` (`TypeConnective::Arrow` + `ArrowBody::NoBody`)
+    /// anywhere, so (a) storage positions use `Rc<dyn Fn…>` and (b) `Debug`
+    /// is omitted for user `struct` / `enum` derives. Used for return-vs-param
+    /// callable **carrier** selection (user `fn` params) and for derive
+    /// templates.
     ///
-    /// For `TypeConnective::Instantiation`, `RecordDeriveOmitDebug` follows
-    /// type **arguments** and, when the head is not the `List` template, the
-    /// **template** so a user `G<T>` (callable fields on `G`, not on `T`) is
-    /// not missed for `#[derive(Debug)]` policy (C-8; #676). User-fn **return**
-    /// carrier selection uses `AppliedTypeArguments` (arguments only) so
-    /// `Int` / other primitives do not spuriously force `Rc` on callable
-    /// parameters.
+    /// For `Instantiation`, we walk type **arguments** and, when the head is
+    /// not the `List` template, the **template** (so a user `G<T>` can carry
+    /// callable data on `G` without it appearing in `T`). The `List` head is
+    /// skipped: callables in `List<T>` always appear in `T`. The primitive
+    /// check above **short-circuits** `-> Int` (etc.) so we do not follow those
+    /// type roots into ring/algebra noise (C-8; #676).
     fn decl_includes_first_class_arrow_data(
         &self,
         declaration: DeclarationId,
         visited: &mut HashSet<DeclarationId>,
-        walk: DeclFirstClassArrowWalk,
     ) -> bool {
         if !visited.insert(declaration) {
+            return false;
+        }
+        if self.declaration_is_bootstrap_int_bool_string(declaration) {
             return false;
         }
         if self.type_declaration_peels_to_arrow(declaration) {
@@ -4948,33 +4937,27 @@ impl<'a> Ctx<'a> {
         match &decl.connective {
             TypeConnective::Conj { children } => children
                 .iter()
-                .any(|field| self.decl_includes_first_class_arrow_data(field.ty, visited, walk)),
-            TypeConnective::Disj { variants } => variants.iter().any(|variant| {
-                self.decl_includes_first_class_arrow_data(variant.ty, visited, walk)
-            }),
+                .any(|field| self.decl_includes_first_class_arrow_data(field.ty, visited)),
+            TypeConnective::Disj { variants } => variants
+                .iter()
+                .any(|variant| self.decl_includes_first_class_arrow_data(variant.ty, visited)),
             TypeConnective::Instantiation {
                 template,
                 arguments,
             } => {
                 let from_args = arguments
                     .iter()
-                    .any(|arg| self.decl_includes_first_class_arrow_data(arg.value, visited, walk));
-                match walk {
-                    DeclFirstClassArrowWalk::AppliedTypeArguments => from_args,
-                    DeclFirstClassArrowWalk::RecordDeriveOmitDebug => {
-                        from_args
-                            || (!self.is_list_template(*template)
-                                && self
-                                    .decl_includes_first_class_arrow_data(*template, visited, walk))
-                    }
-                }
+                    .any(|arg| self.decl_includes_first_class_arrow_data(arg.value, visited));
+                from_args
+                    || (!self.is_list_template(*template)
+                        && self.decl_includes_first_class_arrow_data(*template, visited))
             }
             TypeConnective::Cardinality { element, .. } => {
-                self.decl_includes_first_class_arrow_data(*element, visited, walk)
+                self.decl_includes_first_class_arrow_data(*element, visited)
             }
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
-                self.decl_includes_first_class_arrow_data(*next, visited, walk)
+                self.decl_includes_first_class_arrow_data(*next, visited)
             }
             _ => false,
         }
