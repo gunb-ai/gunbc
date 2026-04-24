@@ -16,6 +16,7 @@
 // right substring for each kind of program without depending on
 // exact formatting.
 
+use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -25,6 +26,7 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::emit::{emit as shared_emit, emit_module as shared_emit_module, EmitTarget};
 use v3_compiler::emit_rust::{emit_rust, emit_rust_module};
 use v3_compiler::test_runner::TestClaimValue;
+use v3_compiler::types::TypeShape;
 
 use crate::common::determinism_fixtures::PROGRAM_FIXTURES;
 use crate::common::{HarnessLinkMode, RustcHarness};
@@ -42,6 +44,29 @@ fn emit(source: &str) -> String {
 fn emit_module(source: &str) -> String {
     let dag = compile_to_dag(source, "test.v3").expect("compiles");
     emit_rust_module(&dag).expect("emits module")
+}
+
+/// Ratchet for `Dag::first_class_fn_walk_bootstrap_prune_type_shapes` (emit
+/// `decl_includes_first_class_arrow_data` algebra short-circuit): the ordered
+/// triple must match `int_shape` / `bool_shape` / `string_shape`, and the three
+/// roots are distinct. Adding `float_shape()` without extending the helper
+/// `-> [TypeShape; 3]` becomes a compile break first; extending the array
+/// re-triggers a review of this test (PR #676, Opus).
+#[test]
+fn bootstrap_first_class_fn_prune_ratchets_dag_scalar_shape_getters() {
+    let dag = compile_to_dag("let _x: Int = 0\n", "t.v3").expect("compiles");
+    let via_helper: [TypeShape; 3] = dag.first_class_fn_walk_bootstrap_prune_type_shapes();
+    assert_eq!(via_helper[0], dag.int_shape().expect("Int"));
+    assert_eq!(via_helper[1], dag.bool_shape().expect("Bool"));
+    assert_eq!(via_helper[2], dag.string_shape().expect("String"));
+    let distinct: HashSet<_> = via_helper.iter().map(|s| s.declaration).collect();
+    assert_eq!(
+        distinct.len(),
+        3,
+        "Int/Bool/String bootstrap roots for first-class-`fn` walk prune must be \
+         three distinct `DeclarationId`s; if this fails after adding a new primitive, \
+         extend `first_class_fn_walk_bootstrap_prune_type_shapes` in the same PR"
+    );
 }
 
 fn r1_gate_claim_source(claim_name: &str) -> String {

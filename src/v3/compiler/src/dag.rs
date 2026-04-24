@@ -1922,6 +1922,24 @@ impl Dag {
         self.primitives.string
     }
 
+    /// The std **scalar** `TypeShape` roots used to prune algebra / ring
+    /// `TypeConnective::Arrow` from the first-class-`fn` *data* walk in
+    /// `emit::rust_target` (`decl_includes_first_class_arrow_data` and related).
+    /// **Tied to** `Dag`’s `int` / `bool` / `string` fields in `primitives` — when a
+    /// new bootstrap primitive (e.g. `Float`) gains a `float_shape` accessor, extend
+    /// this to `[TypeShape; 4]` (or equivalent) in the same change as the emit
+    /// predicate so the allowlist cannot drift silently (PR #676, Opus review).
+    pub fn first_class_fn_walk_bootstrap_prune_type_shapes(&self) -> [TypeShape; 3] {
+        [
+            self.int_shape()
+                .expect("bootstrap `Int` (dsl/std) required for this helper"),
+            self.bool_shape()
+                .expect("bootstrap `Bool` (dsl/std) required for this helper"),
+            self.string_shape()
+                .expect("bootstrap `String` (dsl/std) required for this helper"),
+        ]
+    }
+
     /// Typed accessor for the v3_l1 `Bind` marker. `None` only when
     /// bootstrap failed to load `dsl/std/v3_l1.dag`. Used by emit
     /// passes to look up the per-target Bind realization without a

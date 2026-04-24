@@ -4903,23 +4903,14 @@ impl<'a> Ctx<'a> {
     /// classifying a **return** type; see `decl_includes_first_class_arrow_data`.
     ///
     /// **Extension / dissolve:** a new std primitive with the same
-    /// algebra-`Arrow` pattern (e.g. `Float`, `Bytes`) must be added to this
-    /// predicate **in the same PR** that lands the new root, or the check must
-    /// be replaced with a `Dag`-driven "numeric / algebra" classification so the
-    /// set cannot drift silently (#676, non-blocking follow-up; optional test:
-    /// fail when a new `*_shape` appears without a matching allowlist match).
+    /// algebra-`Arrow` pattern (e.g. `Float`, `Bytes`) must extend
+    /// `Dag::first_class_fn_walk_bootstrap_prune_type_shapes` in the same PR, or
+    /// replace with a `Dag`-driven "numeric / algebra" classification.
     fn declaration_is_bootstrap_int_bool_string(&self, declaration: DeclarationId) -> bool {
         self.dag
-            .int_shape()
-            .is_some_and(|s| s.declaration == declaration)
-            || self
-                .dag
-                .bool_shape()
-                .is_some_and(|s| s.declaration == declaration)
-            || self
-                .dag
-                .string_shape()
-                .is_some_and(|s| s.declaration == declaration)
+            .first_class_fn_walk_bootstrap_prune_type_shapes()
+            .iter()
+            .any(|s| s.declaration == declaration)
     }
 
     /// True when `declaration` (including nested record / sum / instantiations)
