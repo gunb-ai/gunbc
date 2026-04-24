@@ -9,8 +9,8 @@ use v3_compiler::Dag;
 fn conj_field_ty(payload: &Declaration, want_label: &str) -> v3_compiler::dag::DeclarationId {
     let TypeConnective::Conj { children } = &payload.connective else {
         panic!(
-            "expected `{}` payload to be a record (Conj), got {:?}",
-            want_label, payload.connective
+            "expected SumBound variant payload to be a record (Conj), got {:?}",
+            payload.connective
         );
     };
     children
