@@ -92,7 +92,8 @@ fn emit_parse_module(parser_body: &str) -> String {
          top_level_item_dispatch, \
          BinaryOpLevel, BracketRole, ItemDispatchKind, PrimaryAtomClass, PrimaryPrefixDispatch};\n",
     );
-    out.push_str("use crate::tokenize::{Token, TokenKind};\n\n");
+    out.push_str("use crate::tokenize::{Token, TokenKind};\n");
+    out.push_str("use crate::operators::{LogicalOp, OperatorKind};\n\n");
     out.push_str(
         r#"impl SurfaceType {
     pub fn span(&self) -> &SourceSpan {
