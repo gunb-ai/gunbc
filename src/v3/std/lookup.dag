@@ -19,6 +19,7 @@
 module v3.std.lookup
 
 import std.types { Int }
+import v3.std.substrate_minimal { DeclarationId }
 
 // Coproduct dissolution (docs/modeling-discipline.md §4). `Lookup<value>` is
 // the **1 + V** optional-presence sum for a single key read (see file header:
@@ -56,9 +57,9 @@ import std.types { Int }
 //   - `src/v3/lenses/cost.dag` — `symbolic_cost_of` and helpers return
 //     `Lookup<SymbolicCost>`;
 //   - `src/v3/lenses/infer_helpers.dag` — `template_argument_value` →
-//     `Lookup<DeclarationId>` (monomorphized constructors live in
-//     `std.substrate` — same split as `SymbolicCost` in `std.algebra`, keeps
-//     this module free of declaration-identity imports);
+//     `Lookup<DeclarationId>` via `miss_declaration_id_lookup` /
+//     `hit_declaration_id_lookup` below (`DeclarationId` from
+//     `substrate_minimal` only — same split as `SymbolicCost` in `std.algebra`);
 //   - `src/v3/compiler/src/lens_cost_generated.rs` and
 //     `src/v3/compiler/src/lens_cost_symbolic_generated.rs` — `regen_lens` /
 //     `emit_rust_module` output; the compiler includes these modules and
@@ -81,4 +82,12 @@ fn miss_int_lookup() -> Lookup<Int> {
 
 fn hit_int_lookup(n: Int) -> Lookup<Int> {
   Hit(n)
+}
+
+fn miss_declaration_id_lookup() -> Lookup<DeclarationId> {
+  Miss
+}
+
+fn hit_declaration_id_lookup(id: DeclarationId) -> Lookup<DeclarationId> {
+  Hit(id)
 }
