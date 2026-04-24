@@ -21,7 +21,7 @@ src/v3/spec/go.dag	118	1052999	a606d7ea68a22076
 src/v3/spec/python.dag	86	550494	b896e4c15bd6addc
 src/v3/spec/rust.dag	134	1119604	d6f7bf275e254cec
 src/v3/spec/v3_l1.dag	8	2238	1f55d782265c3bfe
-src/v3/std/algebra.dag	33	281947	fd777e369473acfb
+src/v3/std/algebra.dag	36	284938	29978b1b9f257877
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	17	33655	7833f3658624c6e0
 src/v3/std/computation_model.dag	12	17291	30cd3a0f7cc08eae
@@ -30,7 +30,7 @@ src/v3/std/dimensions.dag	8	15340	571b6224904e5e30
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
 src/v3/std/emit_model.dag	31	60480	7897681bff251cf8
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
-src/v3/std/lookup.dag	5	4734	476bb0f7397463e3
+src/v3/std/lookup.dag	5	4734	360a4ff05518ddcb
 src/v3/std/parse_surface.dag	17	94961	9b9d42b7673f21d3
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/substrate.dag	47	106731	53da658223c5328a
