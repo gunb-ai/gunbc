@@ -2828,6 +2828,11 @@ struct RenderLocals {
 /// Policy for lowering anonymous `TypeConnective::Arrow` (`fn(..)->_` types)
 /// to Rust text. `impl Trait` spellings and `Rc<dyn Fn…>` are only legal in
 /// explicit, position-specific emit paths (blocking api-review on #676).
+///
+/// **Dissolution trigger:** when position-specific Arrow carrier spellings are
+/// modeled as `rust.dag` realization rows (or equivalent single-authority data),
+/// delete this enum and route both `impl Fn + Clone` and `Rc<dyn Fn…>` through
+/// those rows instead of emitter-local policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ArrowRustEmitPolicy {
     /// Reserved for fail-closed paths in future context-free seams. Not
@@ -4992,10 +4997,16 @@ impl<'a> Ctx<'a> {
                     &[("element", &inner)],
                 ))
             }
-            // Anonymous `Arrow` (`fn(..)->_` as data): `impl Fn + Clone` is **not**
+            // First-class anonymous `fn` (`ArrowBody::NoBody` only): `impl Fn + Clone` is **not**
             // produced here — only `StorageRcDynFn` → `Rc<dyn Fn…>` or
             // `RejectFirstClassFn` → `UnsupportedBehavior` (INVARIANTS.md C-8).
-            TypeConnective::Arrow { inputs, output, .. } => match arrow_policy {
+            // `Arrow` with `UserDefined` / other bodies is a user `fn` item shape, not
+            // first-class `fn` data — fail closed if it reaches storage rendering (P3).
+            TypeConnective::Arrow {
+                inputs,
+                output,
+                body: ArrowBody::NoBody,
+            } => match arrow_policy {
                 ArrowRustEmitPolicy::RejectFirstClassFn => Err(EmitError::UnsupportedBehavior(
                     "emit_rust: first-class function type (`fn(...) -> _` / TypeConnective::Arrow) \
                      in an unsupported Rust type-name context; supported carriers are: user `fn` \
@@ -5026,6 +5037,13 @@ impl<'a> Ctx<'a> {
                     Ok(format!("std::rc::Rc<dyn Fn({param_str}) -> {ret_str}>"))
                 }
             },
+            TypeConnective::Arrow { .. } => Err(EmitError::UnsupportedBehavior(
+                "emit_rust: TypeConnective::Arrow reached storage type-name rendering with a \
+                 body other than `ArrowBody::NoBody`; only first-class anonymous `fn` data may \
+                 use the `std::rc::Rc<dyn Fn…>` carrier here. User-defined function arrows must \
+                 not be lowered through `rust_type_name_for_decl_storage`."
+                    .to_string(),
+            )),
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 self.rust_type_name_for_decl_with_policy(*next, depth + 1, arrow_policy)
