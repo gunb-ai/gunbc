@@ -129,11 +129,11 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 // parameters for data constants (BoundedLattice<DescentEvidence>).
 
 
-// Promote NonIncreasing to Strict (e.g., when a callee is known to always advance).
-// DescentUnknown stays unknown — can't promote what we don't know.
+// Fail closed: strict descent cannot be fabricated from non-increase without
+// a separate structural witness.
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   match evidence {
-    NonIncreasing => Strict
+    NonIncreasing => NonIncreasing
     Strict => Strict
     _ => DescentUnknown
   }
