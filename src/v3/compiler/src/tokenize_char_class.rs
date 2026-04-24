@@ -7,7 +7,13 @@
 //! (`DOWNSTREAM_REQUIREMENTS.md` class-5 gap #3), so the scanner cannot yet
 //! read `CharClass` rows structurally from that authority file.
 //!
-//! Keep `byte_matches` aligned with `char_in_class` on code points U+0000–U+007F.
+//! `byte_matches` is **hand-synced** with `char_in_class` in `dsl/std/unicode.dag`
+//! on code points U+0000–U+007F (same Int-range semantics). There is no runtime
+//! bridge from lowered `.dag` yet: `sub_charclass_in_std_unicode_gate` locks the
+//! mirror against Rust’s historical `u8::is_ascii_*` scanner contract, not an
+//! automated proof against evaluated `char_in_class`. Follow-up once
+//! `char_in_class` is executable from the compiler test harness: assert parity
+//! on 0..=127 directly against the `.dag` definition and delete redundant prose.
 //!
 //! **Lane framing:** tokenizer-side interim only — not structural consumption of
 //! `CharClass` from lowered `tokenize.dag` (see M1(2.8) class-5 gap #3). Remove

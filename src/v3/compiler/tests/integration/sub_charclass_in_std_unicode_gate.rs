@@ -11,6 +11,10 @@
 //! (blocked on M1(2.8) class-5 gap #3 — list / sum-variant literals in `data`
 //! bodies). Full lane closure = those follow-ups + deleting the Rust mirror once
 //! the compiler can lower class rows from `.dag`.
+//!
+//! **Sync boundary (API review):** parity here is `byte_matches` vs `u8::is_ascii_*`,
+//! not evaluated `char_in_class` from `.dag`; keep `tokenize_char_class.rs` and
+//! `unicode.dag` predicates edited together until an interpreter-backed check exists.
 
 use v3_compiler::tokenize_char_class::{byte_matches, TokenizerCharClass};
 
