@@ -58,6 +58,14 @@ pub struct Correction {
 """
 
 
+DAG_LOOKUP_TEMPLATE = """#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Lookup<T> {
+    Missing,
+    Found(T),
+}
+"""
+
+
 DAG_COST_TEMPLATE = """#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DegreeAtLeastTwo {
     DegreeTwo,
@@ -829,6 +837,9 @@ def expected_outputs() -> dict[Path, str]:
         SRC_DIR / "dag_cluster_generated.rs": format_with_header(
             "src/v3/std/substrate.dag",
             render_dag_cluster_module(substrate_records, substrate_sums),
+        ),
+        SRC_DIR / "dag_lookup_generated.rs": format_with_header(
+            "src/v3/std/lookup.dag", DAG_LOOKUP_TEMPLATE
         ),
         SRC_DIR / "dag_cost_generated.rs": format_with_header(
             "src/v3/std/algebra.dag", DAG_COST_TEMPLATE

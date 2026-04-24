@@ -1,0 +1,18 @@
+// std.lookup — partial-map application at a single key (1 + V).
+//
+// Ontological grounding: `dsl/std/algebra.dag` models `Map<K,V>` as
+// `K -> (1 + V)`; applying the map at one key yields either absence
+// (`Missing`) or a found value (`Found`). This is the shared carrier
+// for every lens-local `MissingX | FoundX(T)` pair that only differed
+// in label noise — see docs/thesis/compiler-std-consolidation.md
+// (primary ratchet: strict two-variant Lookup pattern).
+//
+// Bootstrap staging: `src/v3/std/` until the v2 firewall dissolves and
+// `dsl/std/` subsumes v3 std (same gate as `std.list` / `std.algebra`).
+
+module std.lookup
+
+// Generic sum: one authority for “absent vs present” at a typed value.
+type Lookup<value>
+  = Missing
+  | Found(value)
