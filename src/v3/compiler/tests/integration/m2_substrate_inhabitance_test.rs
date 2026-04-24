@@ -1,8 +1,12 @@
 use std::collections::HashMap;
 
 use v3_compiler::dag::{
-    evidence_rank, join_evidence, map_evidence_merge_at, merge_evidence, optional_evidence_meet,
-    promote_to_strict, ArrowBody, DescentEvidence, FieldValue, TypeConnective, ValueBody,
+    algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
+    join_evidence, lower_call_pattern, map_evidence_merge_at, merge_evidence,
+    optional_evidence_meet, promote_to_strict, size_bound_param, tree_size_bound,
+    type_iteration_dimension, AlgebraProfile, ArrowBody, CallPattern, DescentEvidence,
+    DivisionDescentFactor, FieldValue, IterationDimension, IterationPrimitive, LoweringTarget,
+    ShrinkFactor, SizeBound, TypeConnective, ValueBody,
 };
 use v3_compiler::parse_surface;
 use v3_compiler::Dag;
@@ -346,6 +350,308 @@ fn termination_lattice_rust_mirror_matches_dag_authority() {
     assert_eq!(merged.get("n"), Some(&NonIncreasing));
     let inserted = map_evidence_merge_at(merged, String::from("m"), Strict);
     assert_eq!(inserted.get("m"), Some(&Strict));
+}
+
+#[test]
+fn computation_carriers_bootstrap_from_v3_std() {
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap should load computation carriers cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    assert_eq!(
+        sum_variants(&dag, "SizeBound"),
+        vec![
+            (String::from("CollectionSize"), vec![String::from("param")]),
+            (String::from("TreeSize"), vec![String::from("param")]),
+            (String::from("ArithmeticParam"), vec![String::from("param")]),
+            (String::from("ExplicitCount"), vec![String::from("n")]),
+            (String::from("Forever"), Vec::new()),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "CallPattern"),
+        vec![
+            (
+                String::from("ChildAccessorCall"),
+                vec![String::from("accessor")],
+            ),
+            (
+                String::from("CollectionShrinkCall"),
+                vec![String::from("collection"), String::from("amount")],
+            ),
+            (
+                String::from("ArithmeticSubtractCall"),
+                vec![String::from("param"), String::from("by")],
+            ),
+            (
+                String::from("ArithmeticDivideCall"),
+                vec![String::from("param"), String::from("by")],
+            ),
+            (
+                String::from("ParserAdvanceCall"),
+                vec![String::from("stream"), String::from("witness")],
+            ),
+            (
+                String::from("WorklistDrainCall"),
+                vec![String::from("worklist"), String::from("element")],
+            ),
+            (
+                String::from("FoldBodyCall"),
+                vec![String::from("outer_collection")],
+            ),
+            (String::from("SameArgumentCall"), Vec::new()),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "ShrinkFactor"),
+        vec![
+            (String::from("UnitShrink"), Vec::new()),
+            (String::from("ConstantShrink"), vec![String::from("amount")]),
+            (
+                String::from("ProportionalShrink"),
+                vec![String::from("divisor")],
+            ),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "IterationPrimitive"),
+        vec![
+            (String::from("Fold"), Vec::new()),
+            (String::from("Descend"), Vec::new()),
+            (String::from("Repeat"), Vec::new()),
+        ]
+    );
+    assert_eq!(
+        record_fields(&dag, "LoweringTarget"),
+        vec!["primitive", "bound", "evidence", "factor"]
+    );
+    assert_eq!(
+        sum_variants(&dag, "IterationDimension"),
+        vec![
+            (String::from("TreeDescent"), Vec::new()),
+            (String::from("CollectionFold"), Vec::new()),
+            (String::from("ArithmeticRepeat"), Vec::new()),
+        ]
+    );
+}
+
+#[test]
+fn computation_lowering_functions_preserve_std_body_spans() {
+    let dag = Dag::new();
+
+    for name in [
+        "tree_size_bound",
+        "lower_call_pattern",
+        "size_bound_param",
+        "is_constant_bound",
+        "constant_bound_value",
+        "algebra_profile_to_dimension",
+        "type_iteration_dimension",
+    ] {
+        assert!(
+            matches!(arrow_body(&dag, name), ArrowBody::Unparsed(_)),
+            "`{name}` should preserve its v3 std body span until std block bodies lower"
+        );
+    }
+}
+
+#[test]
+fn computation_lowering_rust_mirror_matches_dag_authority() {
+    use CallPattern::{
+        ArithmeticDivideCall, ArithmeticSubtractCall, ChildAccessorCall, CollectionShrinkCall,
+        FoldBodyCall, ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
+    };
+    use DescentEvidence::{NonIncreasing, Strict};
+    use IterationPrimitive::{Descend, Fold, Repeat};
+    use ShrinkFactor::{ConstantShrink, ProportionalShrink};
+    use SizeBound::{ArithmeticParam, CollectionSize, Forever, TreeSize};
+
+    let cases = vec![
+        (
+            ChildAccessorCall {
+                accessor: String::from("left"),
+            },
+            LoweringTarget {
+                primitive: Descend,
+                bound: TreeSize {
+                    param: String::from("left"),
+                },
+                evidence: Strict,
+                factor: None,
+            },
+        ),
+        (
+            CollectionShrinkCall {
+                collection: String::from("items"),
+                amount: 1,
+            },
+            LoweringTarget {
+                primitive: Fold,
+                bound: CollectionSize {
+                    param: String::from("items"),
+                },
+                evidence: Strict,
+                factor: Some(ConstantShrink { amount: 1 }),
+            },
+        ),
+        (
+            ArithmeticSubtractCall {
+                param: String::from("n"),
+                by: 1,
+            },
+            LoweringTarget {
+                primitive: Repeat,
+                bound: ArithmeticParam {
+                    param: String::from("n"),
+                },
+                evidence: Strict,
+                factor: Some(ConstantShrink { amount: 1 }),
+            },
+        ),
+        (
+            ArithmeticDivideCall {
+                param: String::from("k"),
+                by: DivisionDescentFactor::Two,
+            },
+            LoweringTarget {
+                primitive: Repeat,
+                bound: ArithmeticParam {
+                    param: String::from("k"),
+                },
+                evidence: Strict,
+                factor: Some(ProportionalShrink {
+                    divisor: DivisionDescentFactor::Two,
+                }),
+            },
+        ),
+        (
+            ParserAdvanceCall {
+                stream: String::from("tokens"),
+                witness: String::from("advance"),
+            },
+            LoweringTarget {
+                primitive: Fold,
+                bound: CollectionSize {
+                    param: String::from("tokens"),
+                },
+                evidence: Strict,
+                factor: None,
+            },
+        ),
+        (
+            WorklistDrainCall {
+                worklist: String::from("frontier"),
+                element: String::from("item"),
+            },
+            LoweringTarget {
+                primitive: Fold,
+                bound: CollectionSize {
+                    param: String::from("frontier"),
+                },
+                evidence: Strict,
+                factor: None,
+            },
+        ),
+        (
+            FoldBodyCall {
+                outer_collection: String::from("outer"),
+            },
+            LoweringTarget {
+                primitive: Fold,
+                bound: CollectionSize {
+                    param: String::from("outer"),
+                },
+                evidence: NonIncreasing,
+                factor: None,
+            },
+        ),
+        (
+            SameArgumentCall,
+            LoweringTarget {
+                primitive: Repeat,
+                bound: Forever,
+                evidence: NonIncreasing,
+                factor: None,
+            },
+        ),
+    ];
+
+    for (pattern, expected) in cases {
+        assert_eq!(lower_call_pattern(pattern), expected);
+    }
+}
+
+#[test]
+fn computation_size_bound_helpers_match_dag_authority() {
+    let tree = tree_size_bound(String::from("node"));
+    let collection = SizeBound::CollectionSize {
+        param: String::from("items"),
+    };
+    let arithmetic = SizeBound::ArithmeticParam {
+        param: String::from("n"),
+    };
+    let explicit = SizeBound::ExplicitCount { n: 7 };
+    let forever = SizeBound::Forever;
+
+    assert_eq!(size_bound_param(&tree), Some("node"));
+    assert_eq!(size_bound_param(&collection), Some("items"));
+    assert_eq!(size_bound_param(&arithmetic), Some("n"));
+    assert_eq!(size_bound_param(&explicit), None);
+    assert_eq!(size_bound_param(&forever), None);
+
+    assert!(!is_constant_bound(&tree));
+    assert!(!is_constant_bound(&collection));
+    assert!(!is_constant_bound(&arithmetic));
+    assert!(is_constant_bound(&explicit));
+    assert!(is_constant_bound(&forever));
+
+    assert_eq!(constant_bound_value(&explicit), Some(7));
+    // `Forever` projects to the constant-cost COEFFICIENT `1` for the
+    // size/cost algebra (SameArgumentCall → Repeat(Forever) collapses to a
+    // single-unit cost projection per v2's `dsl/std/computation.dag:269-275`).
+    // This is NOT a claim that `Forever` represents a finite iteration
+    // count of 1.
+    assert_eq!(constant_bound_value(&forever), Some(1));
+    assert_eq!(constant_bound_value(&tree), None);
+    assert_eq!(constant_bound_value(&collection), None);
+    assert_eq!(constant_bound_value(&arithmetic), None);
+}
+
+#[test]
+fn computation_iteration_dimension_helpers_match_kernel_profile_authority() {
+    use AlgebraProfile::{
+        ApproximateFieldProfile, BooleanAlgebraCollectionProfile, BooleanAlgebraProfile,
+        FreeMonoidCollectionProfile, FreeMonoidScalarProfile, OrderedRingProfile,
+        PartialFunctionProfile,
+    };
+    use IterationDimension::{ArithmeticRepeat, CollectionFold, TreeDescent};
+
+    for profile in [
+        FreeMonoidCollectionProfile,
+        FreeMonoidScalarProfile,
+        BooleanAlgebraCollectionProfile,
+        PartialFunctionProfile,
+    ] {
+        assert_eq!(algebra_profile_to_dimension(profile), Some(CollectionFold));
+    }
+    for profile in [OrderedRingProfile, ApproximateFieldProfile] {
+        assert_eq!(
+            algebra_profile_to_dimension(profile),
+            Some(ArithmeticRepeat)
+        );
+    }
+    assert_eq!(algebra_profile_to_dimension(BooleanAlgebraProfile), None);
+
+    assert_eq!(type_iteration_dimension("Node"), Some(TreeDescent));
+    assert_eq!(type_iteration_dimension("List"), Some(CollectionFold));
+    assert_eq!(type_iteration_dimension("Map"), Some(CollectionFold));
+    assert_eq!(type_iteration_dimension("Int"), Some(ArithmeticRepeat));
+    assert_eq!(type_iteration_dimension("Float"), Some(ArithmeticRepeat));
+    assert_eq!(type_iteration_dimension("Bool"), None);
+    assert_eq!(type_iteration_dimension("UserType"), None);
 }
 
 #[test]
