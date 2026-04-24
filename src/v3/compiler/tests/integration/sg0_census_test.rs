@@ -232,6 +232,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_std_snapshot_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
+    "src/v3/compiler/tests/integration/r1_manual_claim_gate_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
     "src/v3/compiler/tests/integration/sg2_parse_authority_test.rs",
