@@ -877,6 +877,19 @@ pub fn map_evidence_merge_at(
     base
 }
 
+// 🟡 SCAFFOLD — Rust execution mirror for `src/v3/std/computation.dag`.
+//
+// The `.dag` declarations are the carrier authority; these Rust enums and
+// helpers are the temporary executable bridge until std block bodies lower
+// out of `ArrowBody::Unparsed`. Per-coproduct dissolution receipts below
+// match the `.dag` source; `m2_substrate_inhabitance_test` pins the carrier
+// shape and current Rust mirror behavior.
+
+/// 🟡 SCAFFOLD.
+///
+/// The five size regimes are durable, but `param: String` payloads dissolve
+/// when function parameters and field accessors become first-class
+/// substrate references rather than names (same bridge as `RankingDimension`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SizeBound {
     CollectionSize { param: String },
@@ -890,6 +903,12 @@ pub fn tree_size_bound(param: String) -> SizeBound {
     SizeBound::TreeSize { param }
 }
 
+/// 🟡 SCAFFOLD.
+///
+/// Call-site classifier mirroring `DescentSource`. Variant taxonomy is
+/// durable for E-C; String payloads and the carrier itself dissolve once
+/// E-I/E-P land per-call provenance and `CallPattern` becomes a projection
+/// of `SubValueRelation` evidence rather than an authored shape.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallPattern {
     ChildAccessorCall { accessor: String },
@@ -901,6 +920,10 @@ pub enum CallPattern {
     SameArgumentCall,
 }
 
+/// 🟢 TERMINAL at shrink-factor scope.
+///
+/// Closed algebra of how a ranking measure shrinks per call edge: by one,
+/// by a constant, or by a divisor. No further refinement at carrier layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShrinkFactor {
     UnitShrink,
@@ -908,6 +931,10 @@ pub enum ShrinkFactor {
     ProportionalShrink { divisor: i64 },
 }
 
+/// 🟢 TERMINAL.
+///
+/// Closed alphabet of the behavioral concept DAG (fold / descend / repeat);
+/// see `MODELING.md` M9. All higher-level computation desugars onto these.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IterationPrimitive {
     Fold,
@@ -915,6 +942,11 @@ pub enum IterationPrimitive {
     Repeat,
 }
 
+/// 🟡 SCAFFOLD aggregate.
+///
+/// Per-call staging record bundling the carriers above. Dissolves into the
+/// E-I/E-P lens query once per-call provenance producers exist; field set
+/// is then recovered structurally rather than authored.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoweringTarget {
     pub primitive: IterationPrimitive,
@@ -1001,6 +1033,11 @@ pub fn constant_bound_value(bound: &SizeBound) -> i64 {
     }
 }
 
+/// 🟢 TERMINAL.
+///
+/// Projection of the algebra-profile table into the three iteration regimes.
+/// Closed alongside `IterationPrimitive`; new dimensions land via a new
+/// algebra profile, not a new variant here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IterationDimension {
     TreeDescent,

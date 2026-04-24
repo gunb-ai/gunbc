@@ -15,6 +15,10 @@ import std.algebra {
   kernel_algebra_profile
 }
 
+// 🟡 SCAFFOLD. The five size regimes are durable, but the `param: String`
+// payload mirrors the same first-class-reference bridge as
+// `std.termination::RankingDimension` and dissolves when function parameters
+// and field accessors are substrate references rather than names.
 type SizeBound
   = CollectionSize { param: String }
   | TreeSize { param: String }
@@ -26,6 +30,11 @@ fn tree_size_bound(param: String) -> SizeBound {
   TreeSize { param: param }
 }
 
+// 🟡 SCAFFOLD. Call-site classifier mirroring `DescentSource`. The variant
+// taxonomy is durable for E-C, but String payloads (`accessor`, `op`,
+// `witness`, `element`) and the carrier itself dissolve once E-I/E-P land
+// per-call provenance — at which point `CallPattern` becomes a projection
+// of `SubValueRelation` evidence rather than an authored shape.
 type CallPattern
   = ChildAccessorCall { accessor: String }
   | CollectionShrinkCall { amount: Int }
@@ -35,16 +44,27 @@ type CallPattern
   | FoldBodyCall
   | SameArgumentCall
 
+// 🟢 TERMINAL at shrink-factor scope. Closed algebra of how a ranking
+// measure decreases per call edge: by one, by a constant, or by a divisor.
+// No further refinement is owed at the carrier layer.
 type ShrinkFactor
   = UnitShrink
   | ConstantShrink { amount: Int }
   | ProportionalShrink { divisor: Int }
 
+// 🟢 TERMINAL. The three iteration primitives are the closed alphabet of
+// the behavioral concept DAG (fold / descend / repeat); see MODELING.md M9.
+// All higher-level computation desugars onto these three.
 type IterationPrimitive
   = Fold
   | Descend
   | Repeat
 
+// 🟡 SCAFFOLD aggregate. `LoweringTarget` bundles the carriers above into a
+// per-call staging record consumed by the E-C Rust mirror until E-I/E-P
+// produce the same record from per-call provenance lenses; at that point
+// this struct dissolves into the lens query and the field set is recovered
+// structurally, not authored.
 type LoweringTarget {
   primitive: IterationPrimitive
   bound: SizeBound
@@ -117,6 +137,9 @@ fn constant_bound_value(bound: SizeBound) -> Int {
   }
 }
 
+// 🟢 TERMINAL. Projection of the algebra-profile table into the three
+// iteration regimes. Closed alongside `IterationPrimitive`; new dimensions
+// would have to land via a new algebra profile, not a new variant here.
 type IterationDimension
   = TreeDescent
   | CollectionFold
