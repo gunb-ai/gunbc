@@ -904,12 +904,12 @@ pub fn tree_size_bound(param: String) -> SizeBound {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallPattern {
     ChildAccessorCall { accessor: String },
-    CollectionShrinkCall { amount: PositiveInt },
-    ArithmeticSubtractCall { by: PositiveInt },
-    ArithmeticDivideCall { by: DivisionDescentFactor },
-    ParserAdvanceCall { witness: String },
-    WorklistDrainCall { element: String },
-    FoldBodyCall,
+    CollectionShrinkCall { collection: String, amount: PositiveInt },
+    ArithmeticSubtractCall { param: String, by: PositiveInt },
+    ArithmeticDivideCall { param: String, by: DivisionDescentFactor },
+    ParserAdvanceCall { stream: String, witness: String },
+    WorklistDrainCall { worklist: String, element: String },
+    FoldBodyCall { outer_collection: String },
     SameArgumentCall,
 }
 
@@ -958,50 +958,40 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::CollectionShrinkCall { .. } => LoweringTarget {
+        CallPattern::CollectionShrinkCall { collection, .. } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize {
-                param: "collection".to_string(),
-            },
+            bound: SizeBound::CollectionSize { param: collection },
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::ArithmeticSubtractCall { .. } => LoweringTarget {
+        CallPattern::ArithmeticSubtractCall { param, .. } => LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: SizeBound::ArithmeticParam {
-                param: "n".to_string(),
-            },
+            bound: SizeBound::ArithmeticParam { param },
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::ArithmeticDivideCall { .. } => LoweringTarget {
+        CallPattern::ArithmeticDivideCall { param, .. } => LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: SizeBound::ArithmeticParam {
-                param: "n".to_string(),
-            },
+            bound: SizeBound::ArithmeticParam { param },
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::ParserAdvanceCall { .. } => LoweringTarget {
+        CallPattern::ParserAdvanceCall { stream, .. } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize {
-                param: "tokens".to_string(),
-            },
+            bound: SizeBound::CollectionSize { param: stream },
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::WorklistDrainCall { .. } => LoweringTarget {
+        CallPattern::WorklistDrainCall { worklist, .. } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize {
-                param: "worklist".to_string(),
-            },
+            bound: SizeBound::CollectionSize { param: worklist },
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::FoldBodyCall => LoweringTarget {
+        CallPattern::FoldBodyCall { outer_collection } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
             bound: SizeBound::CollectionSize {
-                param: "outer_collection".to_string(),
+                param: outer_collection,
             },
             evidence: DescentEvidence::NonIncreasing,
             factor: None,

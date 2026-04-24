@@ -328,25 +328,28 @@ fn computation_carriers_bootstrap_from_v3_std() {
             ),
             (
                 String::from("CollectionShrinkCall"),
-                vec![String::from("amount")],
+                vec![String::from("collection"), String::from("amount")],
             ),
             (
                 String::from("ArithmeticSubtractCall"),
-                vec![String::from("by")],
+                vec![String::from("param"), String::from("by")],
             ),
             (
                 String::from("ArithmeticDivideCall"),
-                vec![String::from("by")],
+                vec![String::from("param"), String::from("by")],
             ),
             (
                 String::from("ParserAdvanceCall"),
-                vec![String::from("witness")],
+                vec![String::from("stream"), String::from("witness")],
             ),
             (
                 String::from("WorklistDrainCall"),
-                vec![String::from("element")],
+                vec![String::from("worklist"), String::from("element")],
             ),
-            (String::from("FoldBodyCall"), Vec::new()),
+            (
+                String::from("FoldBodyCall"),
+                vec![String::from("outer_collection")],
+            ),
             (String::from("SameArgumentCall"), Vec::new()),
         ]
     );
@@ -428,18 +431,24 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
             },
         ),
         (
-            CollectionShrinkCall { amount: 1 },
+            CollectionShrinkCall {
+                collection: String::from("items"),
+                amount: 1,
+            },
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
-                    param: String::from("collection"),
+                    param: String::from("items"),
                 },
                 evidence: Strict,
                 factor: None,
             },
         ),
         (
-            ArithmeticSubtractCall { by: 1 },
+            ArithmeticSubtractCall {
+                param: String::from("n"),
+                by: 1,
+            },
             LoweringTarget {
                 primitive: Repeat,
                 bound: ArithmeticParam {
@@ -450,11 +459,14 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
             },
         ),
         (
-            ArithmeticDivideCall { by: 2 },
+            ArithmeticDivideCall {
+                param: String::from("k"),
+                by: 2,
+            },
             LoweringTarget {
                 primitive: Repeat,
                 bound: ArithmeticParam {
-                    param: String::from("n"),
+                    param: String::from("k"),
                 },
                 evidence: Strict,
                 factor: None,
@@ -462,6 +474,7 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
         ),
         (
             ParserAdvanceCall {
+                stream: String::from("tokens"),
                 witness: String::from("advance"),
             },
             LoweringTarget {
@@ -475,23 +488,26 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
         ),
         (
             WorklistDrainCall {
+                worklist: String::from("frontier"),
                 element: String::from("item"),
             },
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
-                    param: String::from("worklist"),
+                    param: String::from("frontier"),
                 },
                 evidence: Strict,
                 factor: None,
             },
         ),
         (
-            FoldBodyCall,
+            FoldBodyCall {
+                outer_collection: String::from("outer"),
+            },
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
-                    param: String::from("outer_collection"),
+                    param: String::from("outer"),
                 },
                 evidence: NonIncreasing,
                 factor: None,
