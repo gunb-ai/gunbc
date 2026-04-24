@@ -1,11 +1,12 @@
 //! Lane 2 Stage 2b — workflow idempotency analysis (`std.effects` mirror).
 //!
 //! Authority for the algebra lives in `src/v3/std/effects.dag`; the core
-//! projection is shared with [`crate::lens_idempotency`] and with
+//! projection is surfaced as [`analyze_workflow`] and with
 //! [`report_unsupported_workflow_variant`] / [`lane2_workflow_idempotency_report`],
-//! which `emit_rust_module` consumers import for rustc round-trips. Workflow structure
-//! for analysis is read from **native** `Value` / `Bind` fields on the [`Dag`]
-//! (`lane2_workflow`), mirrored on the reflected substrate (`substrate.dag`).
+//! which `emit_rust_module` consumers import for rustc round-trips. Workflow
+//! structure for analysis is read from **native** `Value` / `Bind` fields on the
+//! [`Dag`] (`lane2_workflow`), mirrored on the reflected substrate
+//! (`substrate.dag`).
 
 use crate::dag::{
     CompositionVerdict, Dag, EffectShape, ElementRef, IdempotencyUnsupportedDetail, NodeId,
@@ -83,7 +84,13 @@ pub(crate) fn project_workflow_idempotency_report(
     }
 }
 
-pub(crate) fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempotencyReport {
+/// Native-Dag convenience entry for the declared `lenses.idempotency` surface.
+///
+/// The `.dag` entry reads the reflected substrate with `lane2_workflow_at`; this
+/// Rust entry reads the same projection from the native `Dag` fields used before
+/// emission. Keep this as the narrow host boundary until the crate API can call
+/// emitted lens modules directly.
+pub fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempotencyReport {
     let Some(workflow) = d.lane2_workflow_effect_at(&workflow_root) else {
         return WorkflowIdempotencyReport::IdempotencyUnsupported(
             IdempotencyUnsupportedDetail {
