@@ -118,10 +118,12 @@ existing variants like `PortHasState` / `CostBounded`).
    `pipe_chains_left_to_right`, or `negate`'s input[0] = 5 inside
    the `+` producer in `pipe_result_can_feed_later_addition`).
 
-4. **`NodeCountByBehavior { behavior_kind, count_rel, count }`**
-   where `count_rel ∈ { Equals | AtLeast | AtMost }` and `count`
-   is the non-negative integer operand the relation compares
-   against (without it the runner has nothing to check). Closes the
+4. **`NodeCountByBehavior { behavior_kind, comparator, count }`**
+   where `comparator: ComparisonOp` reuses the enum already
+   declared at `src/v3/std/substrate.dag:141` (same authority
+   `CostBounded` consumes at verification.dag:91 — no parallel
+   relation axis) and `count` is the non-negative integer operand
+   the comparator compares against. Closes the
    substrate-walk assertions in `m1_substrate_test.rs` (91 tests)
    and `lane2_stage_2b_db18_test.rs`. Without this, those 91
    imperative walks block port.
