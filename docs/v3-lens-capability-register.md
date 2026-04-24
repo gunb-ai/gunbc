@@ -37,13 +37,8 @@ A lens is only "done" when **both** axes are at their strongest grade for the sc
 
 | Lens | Structural | Behavioral | v2 counterpart | v3 output | What v2 has that v3 drops |
 |---|---|---|---|---|---|
-<<<<<<< HEAD
-| `complexity.dag` | TERMINAL | **PROXY** | `src/v2/complexity.dag` (5488L) | `CostLookup = FoundCost(Int) \| MissingCost` per port (`src/v3/std/{termination,computation,induction}.dag` now stage E-T/E-C/E-I vocabulary; lens output unchanged until E-P/E-M wire per-call and method facts) | `CostExpr` (Sum/Mul/Log/Const), `SizeExpr`, work/span split, `Certainty`, asymptotic classification, recurrence bounds |
-| `cost.dag` | TERMINAL | **PROXY** | v2 `CostExpr` (embedded in `complexity.dag`) | `SymbolicCostLookup = FoundCost(SymbolicCost) \| MissingCost` per port; E-C stages `std.computation::CallPattern` / `LoweringTarget` vocabulary; E-I stages `std.induction::SubValueRelation` / `CostBound` carriers | Named `SizeVar` with value semantics (v3's `SizeVariable` carries only `source_port: PortId`). `Dimension<SymbolicCost>` wiring deferred on grammar gaps. **E-I carriers are present;** no per-call `SubValueRelation` **producer** yet (**E-P**). No cementing test. |
-=======
-| `complexity.dag` | TERMINAL | **PROXY** | `src/v2/complexity.dag` (5488L) | `v3.std.lookup::Lookup<Int> = Miss \| Hit(Int)` per port (generated consumer: `src/v3/compiler/src/lens_cost_generated.rs` via `regen_lens` / `emit_rust_module`) | `CostExpr` (Sum/Mul/Log/Const), `SizeExpr`, work/span split, `Certainty`, asymptotic classification, recurrence bounds |
-| `cost.dag` | TERMINAL | **PROXY** | v2 `CostExpr` (embedded in `complexity.dag`) | `v3.std.lookup::Lookup<SymbolicCost> = Miss \| Hit(SymbolicCost)` per port (generated consumer: `src/v3/compiler/src/lens_cost_symbolic_generated.rs` via `regen_lens` / `emit_rust_module`; Rust surface re-exports `SymbolicCostLookup` as a type alias for `Lookup<SymbolicCost>`); E-C stages `std.computation::CallPattern` / `LoweringTarget` vocabulary for future consumption | Named `SizeVar` with value semantics (v3's `SizeVariable` carries only `source_port: PortId`). `Dimension<SymbolicCost>` wiring deferred on grammar gaps. No per-call `SubValueRelation` producer yet (E-I/E-P). No cementing test. |
->>>>>>> origin/e-c-branch
+| `complexity.dag` | TERMINAL | **PROXY** | `src/v2/complexity.dag` (5488L) | `v3.std.lookup::Lookup<Int> = Miss \| Hit(Int)` per port (generated consumer: `src/v3/compiler/src/lens_cost_generated.rs` via `regen_lens` / `emit_rust_module`); `src/v3/std/{termination,computation,induction}.dag` stage E-T/E-C/E-I vocabulary — lens output unchanged until E-P/E-M wire per-call and method facts | `CostExpr` (Sum/Mul/Log/Const), `SizeExpr`, work/span split, `Certainty`, asymptotic classification, recurrence bounds |
+| `cost.dag` | TERMINAL | **PROXY** | v2 `CostExpr` (embedded in `complexity.dag`) | `v3.std.lookup::Lookup<SymbolicCost> = Miss \| Hit(SymbolicCost)` per port (generated consumer: `src/v3/compiler/src/lens_cost_symbolic_generated.rs` via `regen_lens` / `emit_rust_module`; Rust surface re-exports `SymbolicCostLookup` as a type alias for `Lookup<SymbolicCost>`); E-C stages `std.computation::CallPattern` / `LoweringTarget`; E-I stages `std.induction::SubValueRelation` / `CostBound` | Named `SizeVar` with value semantics (v3's `SizeVariable` carries only `source_port: PortId`). `Dimension<SymbolicCost>` wiring deferred on grammar gaps. **E-I carriers are present;** no per-call `SubValueRelation` **producer** yet (**E-P**). No cementing test. |
 | `idempotency.dag` | TERMINAL | **COMPLETE** | None (v3-native) | `WorkflowIdempotencyReport` via `lane2_workflow_at` + `std.effects::lane2_workflow_idempotency_report` | — (behavioral authority for the `WorkflowEffect` walk is `lane2_workflow_idempotency_report` in `src/v3/std/effects.dag`. `workflow_idempotency.rs` is still **parallel staging** for native `Dag` entry — same projection, hand mirror until an explicit dissolution removes it or routes through generated-only code; INVARIANTS P2 cleanup, not “two competing semantics.”) |
 | `parallelism.dag` | PARTIAL | **STUB** | None (v3-native) | Unconditional `report_parallelism_unsupported(LensSurfacePending, …)` | — (real analysis in `src/v3/compiler/src/workflow_parallelism.rs`. **STUB reason:** Stage 2e parallelism walk not yet ported to `.dag` / `lane2_workflow_at` / `std.effects` — the `.dag` stub’s pending reason matches that gap, not the old “cannot emit `match` on imported user sums” era. `emit_rust_module` already lowers that match path; parallelism stays pending until the lens is rewired like `idempotency.dag`.) |
 | `provenance.dag` | TERMINAL | COMPLETE | None (v3-native) | `Origin = NoProducer \| MissingPort \| MissingBehavior \| Source(NodeId) \| Computed(NodeId) \| Selected(NodeId) \| Accumulated(NodeId)` | N/A |
@@ -60,7 +55,6 @@ The remaining “not done” rows (**complexity**, **cost**) still share **produ
 
 ### Substrate carriers vs per-call producers (complexity, cost)
 
-<<<<<<< HEAD
 v2's complexity analysis imports carriers from `dsl/std/`. **E-T, E-C, and E-I have staged the mirrored families in `src/v3/std/`** — the **types** below are present for bootstrap and tests; **what still blocks genuine equivalence** is wiring those facts onto **live call sites** (lane **E-P**) and method dispatch (**E-M**), plus the non-carrier items in the table rows above.
 
 - `std.termination::DescentEvidence` (+ `RankingDimension`, `TerminationProof`, `ProofEdge`) — staged by E-T (`src/v3/std/termination.dag`)
@@ -70,18 +64,6 @@ v2's complexity analysis imports carriers from `dsl/std/`. **E-T, E-C, and E-I h
 - **Still missing:** per-call evidence attachment / producer — lane **E-P**
 
 Until **E-P** provides per-call evidence (and **E-M** clears method dispatch), v3 lenses over cost or complexity cannot derive symbolic bounds from termination + induction proofs **at call sites** the way v2 does, even though the **E-I vocabulary** is now load-bearing in std. This is recorded in `ROADMAP.md` P2 as "four hand-rolled `BoundedLattice<T>` instances" but that entry flags the algebra-declaration gap, not the lens-consumer gap. Both are real; both are on the path to `BEHAVIORALLY COMPLETE` for complexity and cost.
-=======
-v2's complexity analysis imports, from `dsl/std/`. E-T and E-C have staged
-the first two carrier families in `src/v3/std/`; the remaining producer-side
-gap still keeps complexity/cost at `PROXY`:
-
-- `std.termination::DescentEvidence` (+ `RankingDimension`, `TerminationProof`, `ProofEdge`) — staged by E-T
-- `std.computation::CallPattern` (+ `SizeBound`, `ShrinkFactor`, `IterationDimension`, `LoweringTarget`) — staged by E-C
-- `std.induction::SubValueRelation` (+ `CostBound`, `PolynomialExponent`)
-- `MethodSemantics` / `AlgebraMethodSemantics` (on `ExprMethodCall`)
-
-Until E-I/E-P provide `SubValueRelation` plus per-call evidence, v3 lenses over cost or complexity cannot derive symbolic bounds from termination + induction proofs the way v2 does; they can only walk bare DAG topology. This is recorded in `ROADMAP.md` P2 as "four hand-rolled `BoundedLattice<T>` instances" but that entry flags the algebra-declaration gap, not the lens-consumer gap. Both are real; both are on the path to `BEHAVIORALLY COMPLETE` for complexity and cost.
->>>>>>> origin/e-c-branch
 
 ### ~~Missing emit capability~~ (resolved for imported user-defined sums)
 
