@@ -22,7 +22,7 @@ This manager owns two lanes:
   point); **non-test** hand-Rust surface reaches the ≤5 irreducible-
   shim floor per [`docs/design-pure-bootstrap.md`](../design-pure-bootstrap.md).
   Generated escape hatch OK. Live baseline is the non-test subset
-  of the SG-0 census (`EXPECTED_HAND_AUTHORED` file-level +
+  of the SG-0 census (`EXPECTED_HAND_AUTHORED_NON_TEST` file-level +
   `EXPECTED_HAND_AUTHORED_FRAGMENTS` crate-root scaffolds) in
   `src/v3/compiler/tests/integration/sg0_census_test.rs`. This
   brief does not freeze the count.
@@ -56,10 +56,9 @@ the two acknowledged residuals.
 
 - **Day 1 — T-PB-A half.** Dispatch T-PB-A lane-owner work. No
   cross-manager blocker on the non-test half. Partition the SG-0
-  census into non-test vs test sub-ratchets (`EXPECTED_HAND_AUTHORED`
-  in `sg0_census_test.rs`) so the partition is mechanically checked
-  rather than applied by inspection (`ROADMAP.md:133` tracked
-  follow-up).
+  census into non-test vs test sub-ratchets (`EXPECTED_HAND_AUTHORED_NON_TEST`
+  and `EXPECTED_HAND_AUTHORED_TEST` in `sg0_census_test.rs`) so the
+  partition is mechanically checked rather than applied by inspection.
 - **Day 1 — T-PB-B pipeline porting, Rust-side.** Identify which
   pipeline / contract tests are candidates for `.dag` conversion
   (vs. the two TESTING.md residuals). Draft `TestClaim`
@@ -101,8 +100,8 @@ the two acknowledged residuals.
 Lane-owner dispatch status (update as sub-deliverables close):
 
 **T-PB-A:**
-- [ ] Non-test SG-0 census partition (`EXPECTED_HAND_AUTHORED`
-      split in `sg0_census_test.rs`)
+- [x] Non-test SG-0 census partition (`EXPECTED_HAND_AUTHORED_NON_TEST`
+      / `EXPECTED_HAND_AUTHORED_TEST` split in `sg0_census_test.rs`)
 - [ ] Hand-Rust non-test reduction toward ≤5 irreducible-shim floor
 - [ ] `pb_hand_rust_at_shim_floor` predicate compiles once T-TestGen
       extensions land
@@ -126,6 +125,8 @@ Lane-owner dispatch status (update as sub-deliverables close):
 Decisions log (append as they happen):
 
 - _(none yet)_
+- 2026-04-23: SG-0 file-level census split landed as non-test/test
+  sub-ratchets; `tokenize.rs` shim retired from the non-test subset.
 
 Open questions for director:
 
