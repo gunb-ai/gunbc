@@ -19,11 +19,15 @@ import std.algebra {
   kernel_algebra_profile
 }
 
-// 🟡 MIXED coproduct — E-C `SizeBound` carrier. Dissolution: collapse `param: String` symbolic
-// slots to structural size-parameter refs; `Forever` remains a terminal atom. Explicit repeat
-// counts split zero vs Peano-positive (PR #726 — no negative `Int` inhabitant).
+// 🟡 MIXED coproduct — E-C `SizeBound` carrier. Dissolution: collapse `param` / `witness` /
+// `element` string bridges to structural size-parameter refs; `Forever` remains a terminal atom.
+// `ParserStreamSize` / `WorklistDrainSize` keep parser advance vs worklist drain distinct from
+// generic `CollectionSize` (P2 facts-flow / PR #726 review). Explicit repeat counts split zero vs
+// Peano-positive (no negative `Int` inhabitant).
 type SizeBound
   = CollectionSize { param: String }
+  | ParserStreamSize { witness: String }
+  | WorklistDrainSize { element: String }
   | TreeSize { param: String }
   | ArithmeticParam { param: String }
   | ExplicitCountZero
@@ -77,8 +81,9 @@ type LoweringTarget {
   factor: ShrinkFactor?
 }
 
-// `lower_call_pattern` copies CallPattern-carried `String` slots into `SizeBound.param`
-// (no fabricated size labels). String bridges dissolve with structural refs (E-P).
+// `lower_call_pattern` forwards CallPattern `String` slots into the matching `SizeBound`
+// (`ParserStreamSize` / `WorklistDrainSize` keep parser vs worklist identity). No fabricated
+// labels. String bridges dissolve with structural refs (E-P).
 fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
   match pattern {
     ChildAccessorCall { accessor: a } =>
@@ -106,12 +111,12 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
 
     ParserAdvanceCall { witness: w } =>
       LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: w },
+        bound: ParserStreamSize { witness: w },
         evidence: Strict, factor: none }
 
     WorklistDrainCall { element: e } =>
       LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: e },
+        bound: WorklistDrainSize { element: e },
         evidence: Strict, factor: none }
 
     FoldBodyCall { outer_collection: oc } =>
@@ -130,6 +135,8 @@ fn size_bound_param(bound: SizeBound) -> String? {
   match bound {
     TreeSize { param: p }       => Some { value: p }
     CollectionSize { param: p } => Some { value: p }
+    ParserStreamSize { witness: w } => Some { value: w }
+    WorklistDrainSize { element: e } => Some { value: e }
     ArithmeticParam { param: p } => Some { value: p }
     ExplicitCountZero           => none
     ExplicitCountPositive { steps: _ } => none

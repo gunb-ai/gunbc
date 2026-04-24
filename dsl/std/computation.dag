@@ -130,6 +130,10 @@ import std.algebra {
 
 type SizeBound
   = CollectionSize { param: String }   // |list|, |set|, |map.keys| — finite by Layer 3
+  // P2 / PR #726: parser advance vs worklist drain must not collapse into one `CollectionSize`
+  // identity — distinct carriers preserve stream vs set-removal source roles through lowering.
+  | ParserStreamSize { witness: String }   // token stream / parser-state measure (see `ParserAdvanceCall`)
+  | WorklistDrainSize { element: String }  // set / worklist element measure (see `WorklistDrainCall`)
   | TreeSize { param: String }         // |node.descendants| — finite by DAG acyclicity
   | ArithmeticParam { param: String }  // function parameter n — finite by Word64
   | ExplicitCountZero                  // repeat / bound literal 0 (no negative inhabitant)
@@ -215,8 +219,8 @@ type CallPattern
 //   | CollectionShrinkCall     | fold           | CollectionSize       |
 //   | ArithmeticSubtractCall   | repeat         | ArithmeticParam      |
 //   | ArithmeticDivideCall     | repeat         | ArithmeticParam      |
-//   | ParserAdvanceCall        | fold           | CollectionSize(tokens)|
-//   | WorklistDrainCall        | fold           | CollectionSize(set)  |
+//   | ParserAdvanceCall        | fold           | ParserStreamSize(witness)|
+//   | WorklistDrainCall        | fold           | WorklistDrainSize(element)|
 //   | FoldBodyCall             | (already fold) | (inherited)          |
 //   | SameArgumentCall         | repeat         | Forever               |
 //
@@ -251,9 +255,10 @@ type IterationPrimitive
   | Descend
   | Repeat
 
-// `lower_call_pattern` copies **CallPattern-carried** `String` slots into `SizeBound.param`
-// (no fabricated `"n"` / `"collection"` placeholders). Dissolution: replace those `String`
-// bridges with structural size-parameter refs when reflected params land (E-P / modeling).
+// `lower_call_pattern` forwards **CallPattern-carried** `String` slots into the matching
+// `SizeBound` variant (`ParserStreamSize` / `WorklistDrainSize` preserve parser vs worklist
+// identity; generic collections use `CollectionSize`). No fabricated placeholders. Dissolution:
+// structural size-parameter refs when reflected params land (E-P / modeling).
 fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
   match pattern {
     ChildAccessorCall { accessor: a } =>
@@ -281,12 +286,12 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
 
     ParserAdvanceCall { witness: w } =>
       LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: w },
+        bound: ParserStreamSize { witness: w },
         evidence: Strict, factor: none }
 
     WorklistDrainCall { element: e } =>
       LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: e },
+        bound: WorklistDrainSize { element: e },
         evidence: Strict, factor: none }
 
     FoldBodyCall { outer_collection: oc } =>
@@ -310,6 +315,8 @@ fn size_bound_param(bound: SizeBound) -> String? {
   match bound {
     TreeSize { param: p }       => Some { value: p }
     CollectionSize { param: p } => Some { value: p }
+    ParserStreamSize { witness: w } => Some { value: w }
+    WorklistDrainSize { element: e } => Some { value: e }
     ArithmeticParam { param: p } => Some { value: p }
     ExplicitCountZero           => none
     ExplicitCountPositive { steps: _ } => none

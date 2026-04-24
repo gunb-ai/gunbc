@@ -769,7 +769,14 @@ pub enum PositiveDescentAmount {
     },
 }
 
-/// Integer ≥ 2 — proportional-divisor witnesses for divide-and-conquer descent.
+/// 🟢 TERMINAL at proportional-divisor witness scope (`docs/modeling-discipline.md` §4).
+///
+/// Rust mirror of `ProportionalDivisor` in `src/v3/std/termination.dag`. Unary Peano coding
+/// from `DivideByTwo` (numeric divisor 2): each `StrictlyLarger` wrapper adds one, so divisors
+/// `< 2` are unrepresentable (same proof-grade role as `PositiveDescentAmount` for subtract
+/// steps). Dissolution: none. **Ledger:** `proportional_divisor_from_i64` /
+/// `MAX_PEANO_MATERIALIZATION` stay aligned with `dsl/std/termination.dag`
+/// `peano_literal_materialization_cap()` (P2 single authority).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ProportionalDivisor {
     DivideByTwo,
@@ -940,14 +947,18 @@ pub fn map_evidence_merge_at(
 
 /// 🟡 SCAFFOLD — `SizeBound` coproduct (`docs/modeling-discipline.md` §4).
 ///
-/// Authority: `src/v3/std/computation.dag`. Variant taxonomy is durable; `param: String` and
-/// other bootstrap bridges dissolve when size parameters become first-class substrate refs.
+/// Authority: `src/v3/std/computation.dag`. Variant taxonomy is durable; `ParserStreamSize` /
+/// `WorklistDrainSize` preserve parser vs worklist source roles separately from generic
+/// `CollectionSize`; `param` / `witness` / `element` string bridges dissolve when size parameters
+/// become first-class substrate refs.
 /// **Named trigger:** evaluated `std.computation` std block bodies (same dissolution wave as
 /// the termination lattice mirror). **Ledger:** parity ratchet
 /// `m2_substrate_inhabitance_test::computation_size_bound_helpers_match_dag_authority`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SizeBound {
     CollectionSize { param: String },
+    ParserStreamSize { witness: String },
+    WorklistDrainSize { element: String },
     TreeSize { param: String },
     ArithmeticParam { param: String },
     ExplicitCountZero,
@@ -962,7 +973,8 @@ pub fn tree_size_bound(param: String) -> SizeBound {
 /// 🟡 SCAFFOLD — `CallPattern` coproduct (`docs/modeling-discipline.md` §4).
 ///
 /// Authority: `src/v3/std/computation.dag`. Peano shrink payloads are proof-grade (terminal
-/// at witness shape); `String` slots on `CallPattern` forward into `SizeBound.param` via
+/// at witness shape); `String` slots on `CallPattern` forward into the matching `SizeBound`
+/// variant (`ParserStreamSize` / `WorklistDrainSize` / `CollectionSize` / …) via
 /// `lower_call_pattern` (no fabricated size labels). Dissolves with structural parameter refs
 /// (E-P). **Named trigger:** same as [`SizeBound`]. **Ledger:**
 /// `m2_substrate_inhabitance_test::computation_lowering_rust_mirror_matches_dag_authority`.
@@ -1057,13 +1069,13 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
         },
         CallPattern::ParserAdvanceCall { witness } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize { param: witness },
+            bound: SizeBound::ParserStreamSize { witness },
             evidence: DescentEvidence::Strict,
             factor: None,
         },
         CallPattern::WorklistDrainCall { element } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize { param: element },
+            bound: SizeBound::WorklistDrainSize { element },
             evidence: DescentEvidence::Strict,
             factor: None,
         },
@@ -1089,6 +1101,8 @@ pub fn size_bound_param(bound: &SizeBound) -> Option<&str> {
         SizeBound::TreeSize { param }
         | SizeBound::CollectionSize { param }
         | SizeBound::ArithmeticParam { param } => Some(param.as_str()),
+        SizeBound::ParserStreamSize { witness } => Some(witness.as_str()),
+        SizeBound::WorklistDrainSize { element } => Some(element.as_str()),
         SizeBound::ExplicitCountZero
         | SizeBound::ExplicitCountPositive { .. }
         | SizeBound::Forever => None,
