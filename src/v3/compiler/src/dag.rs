@@ -908,11 +908,11 @@ pub enum CallPattern {
     },
     CollectionShrinkCall {
         collection: String,
-        amount: PositiveInt,
+        amount: i64,
     },
     ArithmeticSubtractCall {
         param: String,
-        by: PositiveInt,
+        by: i64,
     },
     ArithmeticDivideCall {
         param: String,
@@ -938,10 +938,10 @@ pub enum CallPattern {
 /// by a constant, or by a divisor. Amounts and divisors reuse the shared
 /// `PositiveInt` / `DivisionDescentFactor` authorities so zero / negative /
 /// divide-by-one witnesses are unrepresentable.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShrinkFactor {
     UnitShrink,
-    ConstantShrink { amount: PositiveInt },
+    ConstantShrink { amount: i64 },
     ProportionalShrink { divisor: DivisionDescentFactor },
 }
 
