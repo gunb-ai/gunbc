@@ -1,3 +1,4 @@
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::OnceLock;
 
 use v3_compiler::dag::{
@@ -229,6 +230,68 @@ fn claim_name(claim: &CachedGeneratedClaim) -> String {
     string_field(claim.fields(), "name")
 }
 
+/// Extract `(command, argv, expect_exit_code)` from `ExecuteCommand` lowered payloads
+/// (positional `Conj` fields or a single `Record`). `ForAllTargets` shares this shape
+/// in the schema, but the M1.5 harness does not evaluate it — defer to the release runner.
+fn parse_shell_predicate_payload(payload: &[FieldValue]) -> Option<(String, Vec<String>, i64)> {
+    match payload {
+        [FieldValue::Record(fields)] => {
+            let command = string_field(fields, "command");
+            let expect_exit_code = fields
+                .iter()
+                .find(|(label, _)| label == "expect_exit_code")
+                .and_then(|(_, value)| match value {
+                    FieldValue::Literal(LiteralBits::Int(n)) => Some(*n),
+                    _ => None,
+                })?;
+            let args = fields
+                .iter()
+                .find(|(label, _)| label == "args")
+                .and_then(|(_, value)| list_string_literals(value))?;
+            Some((command, args, expect_exit_code))
+        }
+        [cmd, args, code] => {
+            let FieldValue::Literal(LiteralBits::String(command)) = cmd else {
+                return None;
+            };
+            let argv = list_string_literals(args)?;
+            let FieldValue::Literal(LiteralBits::Int(expect_exit_code)) = code else {
+                return None;
+            };
+            Some((command.clone(), argv, *expect_exit_code))
+        }
+        _ => None,
+    }
+}
+
+fn list_string_literals(value: &FieldValue) -> Option<Vec<String>> {
+    let FieldValue::List(items) = value else {
+        return None;
+    };
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        let FieldValue::Literal(LiteralBits::String(s)) = item else {
+            return None;
+        };
+        out.push(s.clone());
+    }
+    Some(out)
+}
+
+fn runner_deferred_panic(label: &str) -> ! {
+    panic!(
+        "m1_5 testgen harness: TestPredicate::{label} is runner-deferred (not evaluable in this interpreter — do not treat as ordinary false)"
+    )
+}
+
+/// Test harness boundary for shell-shaped predicates: only the tautological
+/// `true` + empty argv + exit `0` shape is accepted; everything else is unsupported
+/// here (runner-owned). Hermetic: we do not spawn a host process — the allowlist
+/// encodes the only exit semantics this interpreter models.
+fn shell_exit_matches_allowlisted(command: &str, args: &[String], expect_exit: i64) -> bool {
+    command == "true" && args.is_empty() && expect_exit == 0
+}
+
 fn claim_holds(claim: &CachedGeneratedClaim) -> bool {
     let source = string_field(claim.fields(), "source");
     let file_name = string_field(claim.fields(), "file_name");
@@ -298,8 +361,66 @@ fn predicate_holds(
             );
             compare_cost(expectation_dag, comparator, actual, *bound)
         }
+        "OutputEquals" => runner_deferred_panic("OutputEquals"),
+        "BehavioralObservation" => runner_deferred_panic("BehavioralObservation"),
+        "MockBackedInvariant" => runner_deferred_panic("MockBackedInvariant"),
+        "LensOutputEquals" => runner_deferred_panic("LensOutputEquals"),
+        "DifferentialEquals" => runner_deferred_panic("DifferentialEquals"),
+        "AlgebraicLaw" => runner_deferred_panic("AlgebraicLaw"),
+        "ExecuteCommand" => {
+            let Some((command, args, expect_exit)) = parse_shell_predicate_payload(payload) else {
+                panic!(
+                    "m1_5 testgen harness: ExecuteCommand payload malformed (cannot parse command/args/expect_exit_code) — do not treat as ordinary false"
+                );
+            };
+            if !cached_compile_outcome(source, file_name).is_clean() {
+                return false;
+            }
+            if !shell_exit_matches_allowlisted(&command, &args, expect_exit) {
+                panic!(
+                    "m1_5 testgen harness: ExecuteCommand shell shape is not supported here (runner-owned — do not treat as ordinary false): command={command:?} args={args:?} expect_exit_code={expect_exit}"
+                );
+            }
+            true
+        }
+        "ForAllTargets" => runner_deferred_panic("ForAllTargets"),
         other => panic!("unsupported TestPredicate variant {other}"),
     }
+}
+
+fn catch_predicate_holds_panic_message(
+    dag: &Dag,
+    source: &str,
+    file: &str,
+    predicate: &FieldValue,
+) -> String {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        predicate_holds(dag, source, file, predicate)
+    }));
+    assert!(
+        result.is_err(),
+        "expected predicate_holds to panic (harness fail-closed / runner-deferred path)"
+    );
+    let payload = result.unwrap_err();
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+        .unwrap_or_else(|| "non-string panic payload".to_string())
+}
+
+fn assert_runner_deferred_panics(
+    dag: &Dag,
+    source: &str,
+    file: &str,
+    predicate: &FieldValue,
+    expected_label: &str,
+) {
+    let message = catch_predicate_holds_panic_message(dag, source, file, predicate);
+    assert!(
+        message.contains("runner-deferred") && message.contains(expected_label),
+        "unexpected panic for {expected_label}: {message}"
+    );
 }
 
 fn diagnostic_matches(expectation_dag: &Dag, actual_dag: &Dag, reference: &FieldValue) -> bool {
@@ -463,6 +584,40 @@ fn cost_bounded_predicate(dag: &Dag, bind_name: &str, comparator: &str, bound: i
             FieldValue::Literal(LiteralBits::Int(bound)),
         ],
     )
+}
+
+fn execute_command_predicate(dag: &Dag) -> FieldValue {
+    sum_variant(
+        dag,
+        "TestPredicate",
+        "ExecuteCommand",
+        vec![
+            FieldValue::Literal(LiteralBits::String(String::from("true"))),
+            FieldValue::List(Vec::new()),
+            FieldValue::Literal(LiteralBits::Int(0)),
+        ],
+    )
+}
+
+fn for_all_targets_predicate(dag: &Dag) -> FieldValue {
+    sum_variant(
+        dag,
+        "TestPredicate",
+        "ForAllTargets",
+        vec![
+            FieldValue::Literal(LiteralBits::String(String::from("true"))),
+            FieldValue::List(Vec::new()),
+            FieldValue::Literal(LiteralBits::Int(0)),
+        ],
+    )
+}
+
+fn declaration_ref_field(dag: &Dag, name: &str) -> FieldValue {
+    let id = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("bootstrap should declare `{name}`"))
+        .id;
+    FieldValue::Reference(id)
 }
 
 fn executable_today(claim: &CachedGeneratedClaim) -> bool {
@@ -659,4 +814,119 @@ fn generic_predicate_interpreter_handles_representative_structural_predicates() 
             "expected representative negative predicate to hold: {label}"
         );
     }
+}
+
+#[test]
+fn extension_predicates_reach_interpreter_boundary() {
+    let dag = Dag::new();
+    let positive_source = "type Box<T> { value: T }\nfn wrap(x: Int) -> Box<Int> = { value: x }\n";
+    let file = "extension_predicates_fixture.v3";
+
+    assert!(
+        predicate_holds(
+            &dag,
+            positive_source,
+            file,
+            &execute_command_predicate(&dag),
+        ),
+        "allowlisted ExecuteCommand should hold when the claim program compiles"
+    );
+    let disallowed_execute = sum_variant(
+        &dag,
+        "TestPredicate",
+        "ExecuteCommand",
+        vec![
+            FieldValue::Literal(LiteralBits::String(String::from("false"))),
+            FieldValue::List(Vec::new()),
+            FieldValue::Literal(LiteralBits::Int(0)),
+        ],
+    );
+    let unsupported_msg =
+        catch_predicate_holds_panic_message(&dag, positive_source, file, &disallowed_execute);
+    assert!(
+        unsupported_msg.contains("ExecuteCommand")
+            && unsupported_msg.contains("not supported here"),
+        "disallowed shell should panic fail-closed, not return false: {unsupported_msg}"
+    );
+    assert_runner_deferred_panics(
+        &dag,
+        positive_source,
+        file,
+        &for_all_targets_predicate(&dag),
+        "ForAllTargets",
+    );
+
+    let lens = sum_variant(
+        &dag,
+        "TestPredicate",
+        "LensOutputEquals",
+        vec![
+            declaration_ref_field(&dag, "Value"),
+            declaration_ref_field(&dag, "Transform"),
+            declaration_ref_field(&dag, "Bind"),
+        ],
+    );
+    assert_runner_deferred_panics(&dag, positive_source, file, &lens, "LensOutputEquals");
+
+    let diff = sum_variant(
+        &dag,
+        "TestPredicate",
+        "DifferentialEquals",
+        vec![
+            declaration_ref_field(&dag, "Value"),
+            declaration_ref_field(&dag, "Transform"),
+            declaration_ref_field(&dag, "Bind"),
+        ],
+    );
+    assert_runner_deferred_panics(&dag, positive_source, file, &diff, "DifferentialEquals");
+
+    let law = sum_variant(
+        &dag,
+        "TestPredicate",
+        "AlgebraicLaw",
+        vec![
+            sum_variant(&dag, "AlgebraicLawKind", "Associativity", Vec::new()),
+            declaration_ref_field(&dag, "Value"),
+        ],
+    );
+    assert_runner_deferred_panics(&dag, positive_source, file, &law, "AlgebraicLaw");
+
+    let behavioral = sum_variant(
+        &dag,
+        "TestPredicate",
+        "BehavioralObservation",
+        vec![
+            declaration_ref_field(&dag, "Value"),
+            declaration_ref_field(&dag, "Transform"),
+            declaration_ref_field(&dag, "Bind"),
+        ],
+    );
+    assert_runner_deferred_panics(
+        &dag,
+        positive_source,
+        file,
+        &behavioral,
+        "BehavioralObservation",
+    );
+
+    let mock = sum_variant(
+        &dag,
+        "TestPredicate",
+        "MockBackedInvariant",
+        vec![
+            declaration_ref_field(&dag, "Value"),
+            declaration_ref_field(&dag, "Transform"),
+        ],
+    );
+    assert_runner_deferred_panics(&dag, positive_source, file, &mock, "MockBackedInvariant");
+
+    let output_equals = sum_variant(
+        &dag,
+        "TestPredicate",
+        "OutputEquals",
+        vec![FieldValue::Literal(LiteralBits::String(String::from(
+            "let x: Int = 1",
+        )))],
+    );
+    assert_runner_deferred_panics(&dag, positive_source, file, &output_equals, "OutputEquals");
 }
