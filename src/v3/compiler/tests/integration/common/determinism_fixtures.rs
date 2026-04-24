@@ -11,44 +11,55 @@
 pub struct ProgramFixture {
     pub name: &'static str,
     pub source: &'static str,
+    /// Expected stdout from the compiled binary (exact string equality).
+    pub expected_stdout: &'static str,
 }
 
 pub const PROGRAM_FIXTURES: &[ProgramFixture] = &[
     ProgramFixture {
         name: "list_fold_six",
         source: "let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)",
+        expected_stdout: "6",
     },
     ProgramFixture {
         name: "generic_list_fold_one",
         source: "let total: Int = fold(singleton(1), 0, |acc, x| acc + x)",
+        expected_stdout: "1",
     },
     ProgramFixture {
         name: "list_map_then_fold_twelve",
         source: "let total: Int = fold(map(cons(1, cons(2, singleton(3))), |x| x * 2), 0, |acc, x| acc + x)",
+        expected_stdout: "12",
     },
     ProgramFixture {
         name: "list_filter_then_fold_seven",
         source: "let total: Int = fold(filter(cons(1, cons(2, cons(3, singleton(4)))), |x| x > 2), 0, |acc, x| acc + x)",
+        expected_stdout: "7",
     },
     ProgramFixture {
         name: "nested_list_builtins_inside_lambda_six",
         source: "let total: Int = fold(cons(1, singleton(2)), 0, |acc, x| acc + fold(map(singleton(x), |y| y * 2), 0, |n, y| n + y))",
+        expected_stdout: "6",
     },
     ProgramFixture {
         name: "user_function_call_three",
         source: "fn add(a: Int, b: Int) -> Int = a + b\nlet total: Int = add(1, 2)",
+        expected_stdout: "3",
     },
     ProgramFixture {
         name: "recursive_function_call_six",
         source: "fn count_down(n: Int) -> Int = if n == 0 then 0 else n + count_down(n - 1)\nlet total: Int = count_down(3)",
+        expected_stdout: "6",
     },
     ProgramFixture {
         name: "record_literal_through_function_one",
         source: "type Point { x: Int y: Int }\nfn x_of(p: Point) -> Int = p.x\nlet total: Int = x_of({ x: 1, y: 2 })",
+        expected_stdout: "1",
     },
     ProgramFixture {
         name: "user_sum_match_zero",
         source: "type Sign = Plus | Minus\nfn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }\nlet total: Int = classify(Plus)",
+        expected_stdout: "0",
     },
 ];
 
