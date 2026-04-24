@@ -159,7 +159,7 @@ state" framing):
 | 3. Platform-contract model | Target-runtime specifics: pointer width, endianness, wasm constraints, `usize` variability | Smallest layer; per-(target, platform) pair |
 | 4. Coercion engine | Inhabitance-search over target primitives + minimum-satisfier selection + tie-breaking + diagnostics | Substrate work in the compiler |
 | 5. Coercion-routing tests | For every user type, assert the resolved target primitive. For every target primitive, assert it's reachable via some user type (no orphans) | One-time test-suite build |
-| 6. Migration | Current `TypeRealization` declarations become derived projections; `carrier: String` deprecates. Parallel run until outputs match | Incremental; no flag day |
+| 6. Dissolution (not migration) | `TypeRealization.carrier: String` dissolves when Track 13 (single-emitter) lands per `single-emitter-design.md`'s "What dissolves" table. No deprecation period; no parallel authority. Explicit dissolution trigger: the Track 13 closure deletes both `TypeCheckpoint` and the `carrier: String` field. Interim verification (during the layers 1–5 build-up before dissolution fires): derived structural outputs match the declared-table outputs on existing entries. When parity holds, Track 13 fires and the table is deleted | Dissolution-triggered, not migration-paced |
 
 ## Worked examples
 
@@ -338,7 +338,7 @@ alignment, no search required.
 | 3. Platform-contract | ~10 decls | ~5 decls | ~10 decls | ~25 decls, maintenance per release |
 | 4. Coercion engine | Substrate work — inhabitance-search + minimum-satisfier + tie-breaking + diagnostics | | | **1–2 weeks** first-cut |
 | 5. Coercion-routing tests | One-time test-suite build | | | **~1 week** |
-| 6. Migration | Shadow-run until parity with current table; deprecate `carrier: String` | | | **~2 weeks** |
+| 6. Dissolution | Verify derived-structural parity with declared-table outputs as a precondition; Track 13 closure then deletes the table + `carrier: String` field in one step. No deprecation period; no shadow-running authority | | | **~2 weeks** for parity verification; dissolution itself is a single Track 13 PR |
 
 **Aggregate:** roughly 2–3 months if one person owns it
 end-to-end; cleanly parallelizable across targets at layers 1–3.
@@ -350,19 +350,19 @@ table has taught us which carriers are hardest to replace (likely
 
 ## Non-preclusion: what to preserve during R1
 
-`[proposed]` — three discipline items during R1 work so this
-migration stays possible:
+`[proposed]` — three discipline items during R1 work so the
+Track 13 dissolution stays reachable:
 
 1. **Keep `TypeRealization.carrier` as a settable field, but treat
    it as cache, not authority, in any new code.** Schema unchanged;
-   semantics shift when layer 6 lands.
+   semantics shift when layer 6 (Track 13 dissolution) fires.
 2. **Don't widen `carrier`'s placeholder grammar.** The current
    emitter already renders carriers as named-placeholder templates
    via `render_named_template` at
    `src/v3/compiler/src/emit/rust_target.rs:1461` (15+ call sites
    on HEAD) — e.g., `Vec<{element}>`, `HashMap<{key}, {value}>`.
    That existing contract is fine and compatible with the
-   structural-coercion migration: a computed carrier can render
+   structural-coercion dissolution: a computed carrier can render
    the same template string the declared carrier did today. The
    discipline item is narrower: do not add *new* placeholder
    semantics (new placeholder names, new rendering rules) that
