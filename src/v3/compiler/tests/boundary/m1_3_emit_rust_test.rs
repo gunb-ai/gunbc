@@ -499,7 +499,7 @@ let zero: Int = 0",
 /// `rustc_roundtrip_*` tests — CI sandboxes don't always carry a
 /// toolchain. Run locally:
 ///
-///     cargo test -p v3-compiler --test m1_3_emit_rust_test \
+///     cargo test -p v3-compiler --test integration \
 ///         emit_rust_unused_payload_binding_passes_deny_unused \
 ///         -- --ignored --nocapture
 /// E-5 / Lane 1 Stage 1c PR 4 — the pilot Rust source passes
@@ -513,7 +513,7 @@ let zero: Int = 0",
 /// Gated behind `#[ignore]` like `emit_rust_unused_payload_binding_passes_deny_unused`
 /// above — CI sandboxes don't always carry rustc. Run locally:
 ///
-///     cargo test -p v3-compiler --test m1_3_emit_rust_test \
+///     cargo test -p v3-compiler --test integration \
 ///         rust_pilot_source_passes_post_emit_verifier_harness \
 ///         -- --ignored --nocapture
 #[test]
