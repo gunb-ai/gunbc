@@ -854,7 +854,6 @@ mod parse;
 mod pipeline_authority;
 mod regen_parse_emit;
 mod regen_parse_tables_emit;
-mod tokenize_char_class;
 #[allow(
     dead_code,
     unused_imports,
@@ -865,6 +864,7 @@ mod tokenize_char_class;
 )]
 #[path = "tokenize_generated.rs"]
 mod tokenize;
+mod tokenize_char_class;
 
 pub use regen_parse_emit::{render_parse_generated_rs, RenderParseGeneratedError};
 pub use regen_parse_tables_emit::{
