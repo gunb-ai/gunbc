@@ -49,7 +49,12 @@ runs under external toolchains and no "it works around the gap"
 scaffolding survives?**
 
 Today:
-- P0 bugs are real (each has a brief under `docs/briefs/p0-*.md`).
+- T-P0 is already closed on current ancestry: `repeat_string` is fixed in
+  `dsl/std/render.dag`, `REST_OPS` now derives from extdep authority in
+  `src/v2/tests/src/effects.rs`, and the `__BUG_NO_PROFILE_` fabrication
+  sentinel is removed with a ratchet in
+  `src/v2/tests/src/bug_sentinel_ratchet.rs`. Keep the lane listed as an
+  R1 enabler receipt, not active dispatch.
 - `match` over user sums is a live surface capability gap that
   blocks self-hosting surface (Self-hosting manager's T-PB-A half
   will consume it as soon as it lands).
@@ -72,8 +77,6 @@ for a principal engineer to verify in one evening.
 
 ## Sequence + dispatch
 
-- **Day 1.** T-P0 sweep dispatches fully — all three P0 items have
-  per-bug briefs; lane-owners can go. Size S.
 - **Day 1.** T-Sub `sub_match_over_user_sum` dispatches. `[Day 1]`
   gate — compiles against today's DB-15 schema.
 - **Day 1.** T-Emit Rust-harden dispatches. Rust is the primary
@@ -125,10 +128,10 @@ for a principal engineer to verify in one evening.
 
 Lane-owner dispatch status (update as sub-deliverables close):
 
-**T-P0:**
-- [ ] `repeat_string` fix landed (brief: `p0-render-repeat-string.md`)
-- [ ] `REST_OPS` drift resolved (brief: `p0-rest-ops-drift.md`)
-- [ ] `no_profile_sentinel` audit completed (brief: `p0-bug-no-profile-sentinel.md`)
+**T-P0 (closed on current ancestry):**
+- [x] `repeat_string` fix landed (brief: `p0-render-repeat-string.md`)
+- [x] `REST_OPS` drift resolved (brief: `p0-rest-ops-drift.md`)
+- [x] `no_profile_sentinel` audit completed (brief: `p0-bug-no-profile-sentinel.md`)
 
 **T-Sub:**
 - [ ] `sub_match_over_user_sum` gate compiles + passes (Day-1)
@@ -145,7 +148,11 @@ Lane-owner dispatch status (update as sub-deliverables close):
 
 Decisions log (append as they happen):
 
-- _(none yet)_
+- `2026-04-23` — T-P0 reclassified from dispatchable R1 work to already-landed
+  closure on current ancestry after direct source audit (`dsl/std/render.dag`,
+  `src/v2/tests/src/effects.rs`,
+  `src/v2/tests/src/bug_sentinel_ratchet.rs`). Keep the lane in the brief only
+  as an enabling receipt for downstream R1 work.
 
 Open questions for director:
 
