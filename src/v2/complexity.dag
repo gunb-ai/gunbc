@@ -381,6 +381,10 @@ fn set_has(m: Map<String, Bool>, key: String) -> Bool {
 // evidence, but that helper is fail-closed: it does not upgrade
 // NonIncreasing to Strict without a separate structural witness. Callers
 // that already hold Strict keep it; unknown stays unknown.
+//
+// P5 note: the helper name is historical (see `std.termination` receipt); follow-up
+// is rename or inline at these call sites once parser variants carry `Strict`
+// without this hop — tracked debt, not a gate on unrelated substrate PRs.
 
 fn empty_parser_progress_env() -> ParserProgressEnv {
   ParserProgressEnv {

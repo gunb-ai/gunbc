@@ -56,6 +56,10 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 
 // Fail closed: strict descent cannot be fabricated from non-increase without
 // a separate structural witness.
+//
+// 🟡 P5 BRIDGE. Name reads like promotion; body is fail-closed (see `dsl` mirror).
+// Parser-progress in `v2.compiler.complexity` still references this symbol;
+// dissolution: rename or delete call sites when witness threading no longer needs it.
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   match evidence {
     NonIncreasing => NonIncreasing

@@ -131,6 +131,13 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 
 // Fail closed: strict descent cannot be fabricated from non-increase without
 // a separate structural witness.
+//
+// 🟡 P5 BRIDGE. The name reads like unary promotion; the body only preserves
+// `Strict` / `NonIncreasing` and maps other positions to `DescentUnknown` — no
+// `Strict` from weaker evidence. `v2.compiler.complexity` parser-progress paths
+// still call this symbol for historical wiring; dissolution: rename to an
+// evidence-neutral helper or delete those calls once variants thread `Strict`
+// at the witness site without this hop (tracked follow-up, not a merge blocker).
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   match evidence {
     NonIncreasing => NonIncreasing
