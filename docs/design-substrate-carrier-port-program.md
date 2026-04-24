@@ -16,10 +16,10 @@ The audit also flagged P4 Decidability as "mostly unchanged" by the 2026-04-21 w
 
 Full inventories (names only — read source files for shapes):
 
-**`dsl/std/termination.dag` (344L)** — proof-theory for well-founded descent.
+**`dsl/std/termination.dag` (355L)** — proof-theory for well-founded descent.
 - `DescentEvidence = Strict | NonIncreasing | DescentUnknown` (+ lattice fns `merge_evidence`, `join_evidence`, `promote_to_strict`, `evidence_rank`, `optional_evidence_meet`, `map_evidence_merge_at`).
 - `RankingDimension = TreeSize | ListLength | ArithmeticValue | TokenPosition | SetCardinality` (each wraps `param: String`).
-- `DescentSource = ChildAccessor | ListShrink | ArithmeticDecrease | ParserAdvance | SetRemoval | FoldIteration`.
+- `DescentSource = ChildAccessor | ListShrink | ArithmeticSubtract | ArithmeticDivide | ParserAdvance | SetRemoval | FoldIteration`.
 - `TerminationProof { dimensions: List<RankingDimension> }`, `ProofEdge { caller, callee, evidence: List<DescentEvidence> }`.
 
 **`dsl/std/computation.dag` (384L)** — syntax-to-primitive lowering table.
@@ -48,7 +48,7 @@ For each family: **Shape** (sum/product/record/constraint) · **Consumers** (v2 
 
 ### 3.1 Family T — `DescentEvidence` + proof structure
 
-- **Shape.** `DescentEvidence` is a flat 3-variant coproduct. `RankingDimension` is a 5-variant coproduct each carrying `param: String`. `TerminationProof` and `ProofEdge` are records. `DescentSource` is a 6-variant coproduct. All forms are decidable, bounded, already phrased as pure algebra with a named lattice structure (`BoundedLattice<DescentEvidence>` — meet/join pair).
+- **Shape.** `DescentEvidence` is a flat 3-variant coproduct. `RankingDimension` is a 5-variant coproduct each carrying `param: String`. `TerminationProof` and `ProofEdge` are records. `DescentSource` is a 7-variant coproduct. All forms are decidable, bounded, already phrased as pure algebra with a named lattice structure (`BoundedLattice<DescentEvidence>` — meet/join pair).
 - **Consumers.** v2: complexity.dag proof construction, cost composition, the termination checker (`std.graph.is_valid_proof`). v3 promotions unlocked: `complexity.dag` PROXY → COMPLETE (partial — also needs family I/C), `cost.dag` PROXY → COMPLETE (partial — needs family I for `SubValueRelation`).
 - **Dependencies.** Internal-only: `DescentEvidence` requires `Ordering` from `std.algebra` (already v3-reachable as `dsl/std/algebra.dag`). `RankingDimension.param: String` is a bootstrap-constraint bridge — file header explicitly says "When .dag supports function references, these should become structural." Port with `String` for now; do not widen scope to "teach substrate function refs" in this lane.
 - **Blockers.** None structural. This family is the cleanest port — it's pure data + pure lattice fns. Port target is either `src/v3/std/termination.dag` (mirroring v3 std layout) or direct consumption of `dsl/std/termination.dag` from v3 lenses once the v3 grammar subset covers it. The file-preference-rank scaffold (ROADMAP) means `src/v3/std/*` vs `dsl/std/*` is currently a routing call, not a shape decision.
