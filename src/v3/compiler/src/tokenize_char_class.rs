@@ -9,11 +9,14 @@
 //!
 //! `byte_matches` is **hand-synced** with `char_in_class` in `dsl/std/unicode.dag`
 //! on code points U+0000–U+007F (same Int-range semantics). There is no runtime
-//! bridge from lowered `.dag` yet: `#[cfg(test)]` checks in this file lock the
-//! mirror against Rust’s historical `u8::is_ascii_*` scanner contract, not an
-//! automated proof against evaluated `char_in_class`. Follow-up once
-//! `char_in_class` is executable from the compiler test harness: assert parity
-//! on 0..=127 directly against the `.dag` definition and delete redundant prose.
+//! bridge from lowered `.dag` yet: `#[cfg(test)]` checks lock the mirror against
+//! Rust’s `u8::is_ascii_*` and use substring anchors on `unicode.dag` source — not
+//! evaluated `char_in_class`. That is intentional **bounded debt** under
+//! modeling-discipline P2 (single authority / drift risk): the executable truth
+//! for predicates is only in `.dag` today. **ROADMAP** row *`char_in_class`
+//! interpreter parity (tokenizer bridge finish, PR #693)* tracks replacing the
+//! host-predicate ratchet with `0..=127` parity vs evaluated `char_in_class` once
+//! the v3 test harness can run it (same gate as deleting this mirror).
 //!
 //! **Lane framing:** tokenizer-side interim only — not structural consumption of
 //! `CharClass` from lowered `tokenize.dag` (see M1(2.8) class-5 gap #3). Remove
@@ -55,8 +58,9 @@ pub(crate) fn byte_matches(byte: u8, class: TokenizerCharClass) -> bool {
 #[cfg(test)]
 mod sub_charclass_in_std_unicode_gate {
     //! **Layer:** unit (TESTING.md) — T-Sub `sub_charclass_in_std_unicode` tokenizer
-    //! half / bounded interim (ROADMAP.md:358). Ratchets `std.unicode` + generated
-    //! tokenizer wiring + `byte_matches` vs `u8::is_ascii_*` on 0..=127.
+    //! half / bounded interim (see ROADMAP.md: T-Sub lane + `char_in_class` interpreter
+    //! parity row). Ratchets `std.unicode` + generated tokenizer wiring + `byte_matches`
+    //! vs `u8::is_ascii_*` on 0..=127 (behavioral until interpreter parity lands).
     //!
     //! **Sync boundary:** parity here is `byte_matches` vs `u8::is_ascii_*`, not
     //! evaluated `char_in_class` from `.dag`; keep `tokenize_char_class.rs` and
