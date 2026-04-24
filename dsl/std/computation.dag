@@ -101,8 +101,7 @@ import std.iteration { }
 import std.termination {
   DescentEvidence, DescentUnknown, RankingDimension,
   PositiveDescentAmount, OneStep, AdditionalStep,
-  ProportionalDivisor, DivideByTwo, StrictlyLarger,
-  proportional_divisor_to_int
+  ProportionalDivisor, DivideByTwo, StrictlyLarger
 }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
@@ -224,12 +223,13 @@ type CallPattern
 // O(n) from O(log n). Moved here from induction.dag to avoid circular
 // dependency (induction imports computation; LoweringTarget needs ShrinkFactor).
 //
-// 🟡 SCAFFOLD. `ConstantShrink` / `ProportionalShrink` still carry raw `Int` rates here;
-// structural migration tracks `CallPattern` + `std.termination`. `UnitShrink` is tag-only.
+// 🟢 TERMINAL. Linear / proportional rates use the same structural witnesses as
+// `CallPattern` (`PositiveDescentAmount`, `ProportionalDivisor`), so evidence paired
+// with `DescentEvidence::Strict` in `LoweringTarget` stays proof-grade. `UnitShrink` is tag-only.
 type ShrinkFactor
   = UnitShrink
-  | ConstantShrink { amount: Int }
-  | ProportionalShrink { divisor: Int }
+  | ConstantShrink { steps: PositiveDescentAmount }
+  | ProportionalShrink { divisor: ProportionalDivisor }
 
 // 🟡 MIXED. Record bundles terminal `IterationPrimitive` + `DescentEvidence` with
 // symbolic `SizeBound` / optional `ShrinkFactor` (see classifications on those types).
@@ -257,19 +257,19 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
       LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: "collection" },
         evidence: Strict,
-        factor: Some { value: ConstantShrink { amount: positive_descent_count(steps: p) } } }
+        factor: Some { value: ConstantShrink { steps: p } } }
 
     ArithmeticSubtractCall { steps: p } =>
       LoweringTarget { primitive: Repeat,
         bound: ArithmeticParam { param: "n" },
         evidence: Strict,
-        factor: Some { value: ConstantShrink { amount: positive_descent_count(steps: p) } } }
+        factor: Some { value: ConstantShrink { steps: p } } }
 
     ArithmeticDivideCall { divisor: d } =>
       LoweringTarget { primitive: Repeat,
         bound: ArithmeticParam { param: "n" },
         evidence: Strict,
-        factor: Some { value: ProportionalShrink { divisor: proportional_divisor_to_int(d: d) } } }
+        factor: Some { value: ProportionalShrink { divisor: d } } }
 
     ParserAdvanceCall { witness: _ } =>
       LoweringTarget { primitive: Fold,
@@ -390,6 +390,9 @@ fn constant_bound_value(bound: SizeBound) -> Int? {
 // dimensions for every parameter.
 // =========================================================================
 
+// 🟢 TERMINAL. Tags which iteration dimension applies for a kernel `AlgebraProfile`
+// (same routing as `algebra_profile_to_dimension`); complements `IterationPrimitive`
+// (what lowers) with “which bound kind” the profile summary uses in analyses.
 type IterationDimension
   = TreeDescent       // child accessor descent → check_child: true
   | CollectionFold    // collection shrink     → check_list: true

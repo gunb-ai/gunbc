@@ -7,10 +7,9 @@
 module std.computation
 
 import std.termination {
-  DescentEvidence, DescentUnknown,
+  DescentEvidence, DescentUnknown, Strict, NonIncreasing,
   PositiveDescentAmount, OneStep, AdditionalStep,
-  ProportionalDivisor, DivideByTwo, StrictlyLarger,
-  proportional_divisor_to_int
+  ProportionalDivisor, DivideByTwo, StrictlyLarger
 }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
@@ -52,12 +51,12 @@ type CallPattern
   | FoldBodyCall
   | SameArgumentCall
 
-// 🟡 SCAFFOLD. `ConstantShrink` / `ProportionalShrink` still carry raw `Int` rates here;
-// structural migration tracks `CallPattern` + `std.termination`. `UnitShrink` is tag-only.
+// 🟢 TERMINAL. Linear / proportional shrink uses `PositiveDescentAmount` /
+// `ProportionalDivisor` like `CallPattern`, so `LoweringTarget` evidence stays proof-grade.
 type ShrinkFactor
   = UnitShrink
-  | ConstantShrink { amount: Int }
-  | ProportionalShrink { divisor: Int }
+  | ConstantShrink { steps: PositiveDescentAmount }
+  | ProportionalShrink { divisor: ProportionalDivisor }
 
 // 🟢 TERMINAL. The three iteration primitives are the stable lowering coproduct for Lane E-C.
 type IterationPrimitive
@@ -85,19 +84,19 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
       LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: "collection" },
         evidence: Strict,
-        factor: Some { value: ConstantShrink { amount: positive_descent_count(steps: p) } } }
+        factor: Some { value: ConstantShrink { steps: p } } }
 
     ArithmeticSubtractCall { steps: p } =>
       LoweringTarget { primitive: Repeat,
         bound: ArithmeticParam { param: "n" },
         evidence: Strict,
-        factor: Some { value: ConstantShrink { amount: positive_descent_count(steps: p) } } }
+        factor: Some { value: ConstantShrink { steps: p } } }
 
     ArithmeticDivideCall { divisor: d } =>
       LoweringTarget { primitive: Repeat,
         bound: ArithmeticParam { param: "n" },
         evidence: Strict,
-        factor: Some { value: ProportionalShrink { divisor: proportional_divisor_to_int(d: d) } } }
+        factor: Some { value: ProportionalShrink { divisor: d } } }
 
     ParserAdvanceCall { witness: _ } =>
       LoweringTarget { primitive: Fold,
@@ -151,6 +150,8 @@ fn constant_bound_value(bound: SizeBound) -> Int? {
   }
 }
 
+// 🟢 TERMINAL. Dimension tags routing kernel `AlgebraProfile` → iteration bound kind
+// (parallel summary to `IterationPrimitive` lowering).
 type IterationDimension
   = TreeDescent
   | CollectionFold
