@@ -1017,11 +1017,18 @@ impl<'a> Ctx<'a> {
 
     fn render_loop(
         &self,
-        loop_node: &crate::dag::LoopNode,
-        locals: &RenderLocals,
+        _loop_node: &crate::dag::LoopNode,
+        _locals: &RenderLocals,
     ) -> Result<String, EmitPythonError> {
-        let body_port = super::behavior_result_port(self.dag.node(loop_node.body));
-        self.render_port(body_port, locals)
+        // emit_python does not yet model `Behavior::Loop`. Earlier
+        // code rendered just the loop body's result port, silently
+        // dropping iteration semantics — a Loop became its first
+        // iteration's expression. Fail-closed instead so callers see
+        // the unsupported case directly.
+        Err(EmitPythonError::Unsupported(
+            "emit_python does not yet support Behavior::Loop; iteration construct must be expressed via fold/map/filter callables for now"
+                .to_string(),
+        ))
     }
 
     fn render_callable_transform(

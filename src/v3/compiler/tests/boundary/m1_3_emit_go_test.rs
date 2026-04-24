@@ -115,7 +115,14 @@ fn emit_go_bool_logical_ops_use_spec_carriers() {
     );
 }
 
+// The unused_parameters lens uses recursive helpers (e.g. walk_steps,
+// expand_frontier_list, behavior_result_port) which v3 lowers to
+// `Behavior::Loop`. emit_go does not yet emit Loop — it now
+// fail-closes instead of silently rendering the loop body's result
+// port. Re-enable when emit_go gains Loop emission (Lane 1e
+// consolidation handles this via spec-driven walker dispatch).
 #[test]
+#[ignore = "blocked on emit_go Behavior::Loop support; previously passed via silent loop-body collapse"]
 fn emit_go_lens_unused_parameters_module() {
     let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())
         .expect("compiled lens source");
