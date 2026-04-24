@@ -5,6 +5,9 @@ use v3_compiler::test_runner::TestClaimValue;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::{compile_to_dag, CompileError};
 
+const MOCK_BACKED_INVARIANT_FIXTURE: &str =
+    include_str!("../fixtures/r1_mock_backed_invariant_gate.dag");
+
 fn compile_clean(source: &str, file: &str) -> v3_compiler::dag::Dag {
     match compile_to_dag(source, file) {
         Ok(dag) => dag,
@@ -297,5 +300,42 @@ data suite: TestSuite = {
     let results = TestRunner::new(&dag).run_suite("suite");
 
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].result, ClaimResult::NotYetImplemented);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(reason)
+            if reason.contains("MockBackedInvariant")
+                && reason.contains("service simulation is not wired")
+    ));
+}
+
+#[test]
+fn mock_backed_invariant_predicate_accepts_declaration_ref_like_lens_output_equals() {
+    let source = r#"
+data claim: TestClaim = {
+  name: "c",
+  source: "let _: Int = 0",
+  file_name: "f.v3",
+  predicate: MockBackedInvariant({ subject: Int, invariant: Int }),
+  requires: []
+}
+"#;
+    compile_clean(source, "mock_backed_invariant_harness.v3");
+}
+
+#[test]
+fn test_runner_dispatches_mock_backed_invariant_claim() {
+    let dag = compile_clean(
+        MOCK_BACKED_INVARIANT_FIXTURE,
+        "src/v3/compiler/tests/fixtures/r1_mock_backed_invariant_gate.dag",
+    );
+    let results = TestRunner::new(&dag).run_suite("mock_backed_invariant_suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(reason)
+            if reason.contains("mock_subject_ref")
+                && reason.contains("mock_invariant_ref")
+                && reason.contains("service simulation is not wired")
+    ));
 }

@@ -10,7 +10,7 @@ use crate::{compile_to_dag, CompileError};
 pub enum ClaimResult {
     Pass,
     Fail(String),
-    NotYetImplemented,
+    NotYetImplemented(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,7 +103,10 @@ impl<'a> TestRunner<'a> {
                     "OutputEquals" => self.eval_output_equals(claim, &payload),
                     "PortHasState" => self.eval_port_has_state(claim, &payload),
                     "CostBounded" => self.eval_cost_bounded(claim, &payload),
-                    _ => ClaimResult::NotYetImplemented,
+                    "MockBackedInvariant" => self.eval_mock_backed_invariant(claim, &payload),
+                    other => ClaimResult::NotYetImplemented(format!(
+                        "TestPredicate::{other} is not wired in the Rust runner yet"
+                    )),
                 },
                 None => ClaimResult::Fail("predicate is not a structural variant".to_string()),
             }
@@ -234,6 +237,51 @@ impl<'a> TestRunner<'a> {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!("cost {actual} did not satisfy bound {bound}"))
+        }
+    }
+
+    fn eval_mock_backed_invariant(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [subject, invariant] = payload else {
+            return ClaimResult::Fail(
+                "MockBackedInvariant payload should be (subject: DeclarationRef, invariant: DeclarationRef)"
+                    .to_string(),
+            );
+        };
+        let subject = match self.resolve_declaration_ref_edge(subject, "subject") {
+            Ok(name) => name,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        let invariant = match self.resolve_declaration_ref_edge(invariant, "invariant") {
+            Ok(name) => name,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        ClaimResult::NotYetImplemented(format!(
+            "MockBackedInvariant resolved subject `{subject}` and invariant `{invariant}`, but service simulation is not wired in the Rust runner yet"
+        ))
+    }
+
+    fn resolve_declaration_ref_edge(
+        &self,
+        value: &FieldValue,
+        label: &str,
+    ) -> Result<String, String> {
+        match value {
+            FieldValue::Reference(id) => Ok(self
+                .dag
+                .declaration(*id)
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("Declaration#{}", id.raw()))),
+            FieldValue::Record(fields) if fields.is_empty() => Err(format!(
+                "MockBackedInvariant `{label}` must be a DeclarationRef edge, got empty record literal"
+            )),
+            other => Err(format!(
+                "MockBackedInvariant `{label}` must be a DeclarationRef edge, got {other:?}"
+            )),
         }
     }
 
