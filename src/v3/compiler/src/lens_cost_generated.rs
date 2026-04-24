@@ -1,7 +1,7 @@
 // AUTO-GENERATED from `src/v3/lenses/complexity.dag` via
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct CostEntry {
     pub port: PortId,
     pub cost: Lookup<i64>,

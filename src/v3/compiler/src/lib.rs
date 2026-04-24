@@ -634,7 +634,8 @@ pub mod lens_structural_resolution {
             assert_eq!(
                 found.len(),
                 1,
-                "expected exactly one violation, got: {found:?}"
+                "expected exactly one violation, got count {}",
+                found.len()
             );
             assert_eq!(found[0].declaration, decl_id);
             assert_eq!(found[0].name, "leaked_fn");
@@ -646,7 +647,8 @@ pub mod lens_structural_resolution {
             let found = violations(&dag);
             assert!(
                 found.is_empty(),
-                "bootstrap Dag must produce zero violations (algebra arrows are anonymous), got: {found:?}"
+                "bootstrap Dag must produce zero violations (algebra arrows are anonymous), got count {}",
+                found.len()
             );
         }
 
@@ -660,7 +662,8 @@ pub mod lens_structural_resolution {
             assert_eq!(
                 found.len(),
                 1,
-                "expected exactly one anonymous violation, got: {found:?}"
+                "expected exactly one anonymous violation, got count {}",
+                found.len()
             );
             assert_eq!(found[0].declaration, decl_id);
             assert_eq!(found[0].name, "<anonymous>");
@@ -676,7 +679,8 @@ pub mod lens_structural_resolution {
             assert_eq!(
                 found.len(),
                 1,
-                "expected exactly one violation amid real declarations, got: {found:?}"
+                "expected exactly one violation amid real declarations, got count {}",
+                found.len()
             );
             assert_eq!(found[0].declaration, leak_id);
             assert_eq!(found[0].name, "leaked");
@@ -693,7 +697,10 @@ pub mod lens_structural_resolution {
                 .iter()
                 .find(|entry| entry.declaration == site_id)
                 .unwrap_or_else(|| {
-                    panic!("expected injected site in name-keyed references, got: {found:?}")
+                    panic!(
+                        "expected injected site in name-keyed references, got count {}",
+                        found.len()
+                    )
                 });
             assert_eq!(injected.resolved_to, int_id);
         }

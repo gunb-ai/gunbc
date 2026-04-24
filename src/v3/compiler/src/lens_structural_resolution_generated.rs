@@ -1,13 +1,13 @@
 // AUTO-GENERATED from `src/v3/lenses/structural_resolution.dag` via
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct UnresolvedArrowBody {
     pub declaration: DeclarationId,
     pub name: String,
     pub span: SourceSpan,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct NameKeyedReference {
     pub declaration: DeclarationId,
     pub resolved_to: DeclarationId,

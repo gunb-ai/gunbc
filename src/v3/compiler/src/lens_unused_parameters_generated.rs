@@ -1,7 +1,7 @@
 // AUTO-GENERATED from `src/v3/lenses/unused_parameters.dag` via
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct UnusedParameter {
     pub function: NodeId,
     pub parameter: PortId,

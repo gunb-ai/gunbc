@@ -5029,7 +5029,21 @@ impl<'a> Ctx<'a> {
         }
         let decl = self.dag.declaration(declaration);
         if let Some(name) = &decl.name {
-            return Ok(name.clone());
+            // `type F = fn(...) -> _` is a **named** declaration whose connective is
+            // `Arrow` + `NoBody`. The Rust layer does not emit a `type F = …` typedef
+            // for first-class `fn` data, so returning `F` would be plausible but
+            // invalid (P3 fail-closed; #676). Fall through to the `Arrow` arm for
+            // `Rc<dyn Fn…>` or `UnsupportedBehavior` per `arrow_policy`.
+            let is_named_first_class_fn_alias = matches!(
+                &decl.connective,
+                TypeConnective::Arrow {
+                    body: ArrowBody::NoBody,
+                    ..
+                }
+            );
+            if !is_named_first_class_fn_alias {
+                return Ok(name.clone());
+            }
         }
         match &decl.connective {
             TypeConnective::Instantiation {
