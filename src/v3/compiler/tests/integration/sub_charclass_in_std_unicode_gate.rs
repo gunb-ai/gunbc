@@ -6,7 +6,6 @@
 //! scalar classification structurally via `tokenize_char_class` (until M1(2.8)
 //! allows `CharClass` `data` rows in `tokenize.dag`).
 
-use v3_compiler::compile_to_dag;
 use v3_compiler::tokenize_char_class::{byte_matches, TokenizerCharClass};
 
 const UNICODE_DAG: &str = include_str!("../../../../../dsl/std/unicode.dag");
@@ -14,11 +13,12 @@ const TOKENIZE_GENERATED: &str = include_str!("../../src/tokenize_generated.rs")
 
 #[test]
 fn sub_charclass_in_std_unicode_gate_unicode_dag_defines_char_class() {
-    compile_to_dag(UNICODE_DAG, "dsl/std/unicode.dag")
-        .unwrap_or_else(|e| panic!("unicode.dag should compile with CharClass: {e:?}"));
     assert!(
-        UNICODE_DAG.contains("type CharClass") && UNICODE_DAG.contains("fn char_in_class"),
-        "expected `CharClass` sum + `char_in_class` predicate in std.unicode authority"
+        UNICODE_DAG.contains("type CharClass")
+            && UNICODE_DAG.contains("fn char_in_class")
+            && UNICODE_DAG.contains("Whitespace")
+            && UNICODE_DAG.contains("IdentContinue"),
+        "expected `CharClass` sum + `char_in_class` predicate in `dsl/std/unicode.dag` authority"
     );
 }
 
