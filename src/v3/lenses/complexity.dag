@@ -16,9 +16,12 @@
 // per port — the structural depth of the producing behavior in the
 // DAG. The reduction in LOC versus v2 is achieved by computing a
 // weaker function of the program, not by dissolving v2's algebra.
-// Genuine equivalence blocks on porting `DescentEvidence`,
-// `CallPattern`, `SubValueRelation`, and `MethodSemantics` carriers
-// into the v3 substrate. See the register for the full delta.
+// Genuine equivalence blocks on consuming the staged `DescentEvidence`,
+// `CallPattern`, and `SubValueRelation` carriers at live call sites.
+// E-M closed `MethodSemantics` by structural subsumption: v3 method-like
+// dispatch facts live in `TransformTarget` plus typed declaration/effect
+// metadata, not in an expression-side carrier. See the register for the
+// full delta.
 //
 // **Equivalent to the prior Rust lens** at
 // `src/v3/compiler/src/lens_cost.rs` on commit 1247f4b1d, which

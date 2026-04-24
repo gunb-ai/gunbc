@@ -16,6 +16,7 @@
 // and the `CostBound` algebra in `std.induction`. This lens still does not
 // thread per-call descent into `SymbolicCost`: the remaining gap is **E-P**
 // (producer wiring, richer size variables, behavioral tests) — not missing
+<<<<<<< ours
 // E-I vocabulary. No behavioral cementing test exercises this lens yet.
 //
 // Shared carrier: `v3.std.lookup.Lookup` (compiler-std consolidation;
@@ -24,6 +25,12 @@
 // was a parallel `Missing|Found(T)` sum that dissolved into `Lookup<T>`
 // per the strict two-variant ratchet; the Rust surface keeps a
 // `SymbolicCostLookup` *type alias* for embedders.
+=======
+// E-I vocabulary or a ported `MethodSemantics` carrier. E-M closed method
+// carrier parity by structural subsumption through `TransformTarget` and
+// typed declaration/effect metadata. No behavioral cementing test exercises
+// this lens yet.
+>>>>>>> theirs
 
 module lenses.cost
 
