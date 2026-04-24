@@ -840,7 +840,7 @@ fn rustc_roundtrip_emitted_module_returns_user_record_list_from_reflected_binds(
 /// Gated behind `#[ignore]` because CI runners often don't have a
 /// Rust toolchain available inside the test sandbox. Run locally:
 ///
-///     cargo test -p v3-compiler --test m1_3_emit_rust_test \
+///     cargo test -p v3-compiler --test integration \
 ///                  -- --ignored --nocapture
 ///
 /// This is the PR-B success criterion made literal: the v3 compiler
@@ -862,7 +862,7 @@ fn rustc_roundtrip_int_addition_prints_three() {
 /// Gated behind `#[ignore]` for the same reason as the individual
 /// roundtrip tests — CI may not have `rustc`. Run locally:
 ///
-///     cargo test -p v3-compiler --test m1_3_emit_rust_test \
+///     cargo test -p v3-compiler --test integration \
 ///         emit_rust_fixtures_rustc_green -- --ignored --nocapture
 #[test]
 #[ignore]
