@@ -794,6 +794,10 @@ pub fn proportional_divisor_to_int(d: &ProportionalDivisor) -> i64 {
     }
 }
 
+/// Builds a Peano witness in O(k) stack depth and allocations. Current producers
+/// supply small literal `k` from authored sources; if a future surface feeds
+/// unbounded user `Int` here, add an explicit upper bound returning `none` rather
+/// than relying on this recursion alone.
 pub fn positive_amount_from_i64(k: i64) -> Option<PositiveDescentAmount> {
     if k <= 0 {
         None
@@ -806,6 +810,7 @@ pub fn positive_amount_from_i64(k: i64) -> Option<PositiveDescentAmount> {
     }
 }
 
+/// Same complexity notes as [`positive_amount_from_i64`] (`k` must be ≥ 2).
 pub fn proportional_divisor_from_i64(k: i64) -> Option<ProportionalDivisor> {
     if k < 2 {
         None
@@ -1099,9 +1104,20 @@ pub fn type_iteration_dimension(type_name: &str) -> Option<IterationDimension> {
     kernel_algebra_profile(type_name).and_then(algebra_profile_to_dimension)
 }
 
-// Transitional mirror of `std.algebra::kernel_algebra_profile` for the E-C
-// Rust-side parity tests; the `.dag` table remains the semantic source.
-fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
+/// Kernel type name → iteration algebra profile (`Int`, `List`, …).
+///
+/// Semantic authority is `dsl/std/algebra.dag` (`data kernel_algebra_profile`).
+/// `v2_compiler::std_algebra::kernel_algebra_profile` is regenerated from that
+/// block; this match is a transitional Rust mirror while bootstrap still carries
+/// the table as [`ArrowBody::Unparsed`].
+///
+/// **P2 drift ratchet:** `m2_substrate_inhabitance_test::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority`
+/// compares this map entry-for-entry to the stage0 table.
+///
+/// **Dissolution:** when `kernel_algebra_profile` lowers to evaluated `.dag` (same
+/// std-body staging trigger as the termination-lattice scaffold above), delete
+/// this mirror and read the evaluated map instead.
+pub fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
     match type_name {
         "Int" => Some(AlgebraProfile::OrderedRingProfile),
         "Float" => Some(AlgebraProfile::ApproximateFieldProfile),
