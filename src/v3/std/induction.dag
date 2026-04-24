@@ -658,6 +658,12 @@ fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
 //   b: division factor (each sub-problem is n/b of the original)
 //   d: exponent of per-level non-recursive work (≥ 0; `master_theorem` rejects d < 0 → ErrorBound)
 //
+// P4 / P3 (cost-algebra boundary): `work_exponent` stays typed as `Int` while recurrence inputs
+// are a bootstrap scaffold, but **`master_theorem` rejects `d` outside `[0, 256]` before any
+// `b^d` materialization**, and `int_pow_bounded` caps `exp` at the same M9 ceiling as
+// `std.termination` Peano literal bridges — fail-closed to `ErrorBound` / `none` (no raw `*`
+// on the power path; see `int_mul_checked`).
+//
 // 🟡 SCAFFOLD. Master-theorem input bundles a symbolic `param: String` with `Int` recurrence
 // coefficients; structural parameter refs dissolve with reflected function params.
 
