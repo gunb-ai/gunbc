@@ -13,7 +13,8 @@
 
 ## Explicitly not landed (needs Testgen manager)
 
-- Wiring these files to the **Testgen runner** and CI evaluation order.
+Runner wiring for `src/v3/compiler/tests/dag/*.dag` **is** landed (PR #736 — see the receipts section below for (1)/(2)/(3) coverage); CI evaluation order is the existing `cargo test -p v3-compiler` path. Still open here:
+
 - **Deleting** redundant Rust integration tests (deferred until runner + schema assumptions are approved — avoids large revert).
 - **`pb_test_file_generated_from_dag`** / **`pb_rust_tests_outside_residual_zero`**.
 
