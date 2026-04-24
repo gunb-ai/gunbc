@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use crate::common::determinism_fixtures::PROGRAM_FIXTURES;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     Behavior, BindNode, BranchNode, LoopBound, LoopNode, Path as DagPath, Port, TransformNode,
@@ -46,6 +47,37 @@ fn emit_python_lens_module() -> String {
 fn emit_python_module_from_source(source: &str, file_name: &str) -> String {
     let dag = compile_to_dag(source, file_name).expect("compiled python module source");
     emit_python_module(&dag).expect("emit python module")
+}
+
+fn python_stdout(source: &str, file_name: &str) -> String {
+    let dag = compile_to_dag(source, file_name).expect("compiled python program source");
+    let rendered = emit_python_text(&dag).expect("emit python program");
+    let tmp_dir = next_roundtrip_dir();
+    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
+    let src_path = tmp_dir.join("main.py");
+    std::fs::File::create(&src_path)
+        .and_then(|mut f| f.write_all(rendered.as_bytes()))
+        .expect("write emitted python source");
+
+    let run = Command::new("python3")
+        .arg(&src_path)
+        .output()
+        .expect("run python3");
+    assert!(
+        run.status.success(),
+        "python3 failed on emitted source:\n{}\nstderr:\n{}",
+        rendered,
+        String::from_utf8_lossy(&run.stderr)
+    );
+    String::from_utf8_lossy(&run.stdout).trim().to_string()
+}
+
+fn program_fixture_source(name: &str) -> &'static str {
+    PROGRAM_FIXTURES
+        .iter()
+        .find(|fixture| fixture.name == name)
+        .unwrap_or_else(|| panic!("missing program fixture `{name}`"))
+        .source
 }
 
 #[test]
@@ -148,6 +180,29 @@ fn emit_python_uses_only_shared_schema_surface() {
             "emit/python_target.rs still contains private Python scaffold `{needle}`"
         );
     }
+}
+
+fn assert_python_program_fixture_stdout(name: &str, expected: &str) {
+    let actual = python_stdout(program_fixture_source(name), "python_admitted_fixture.v3");
+    assert_eq!(
+        actual, expected,
+        "emitted Python fixture `{name}` diverged from Rust-canonical expected stdout"
+    );
+}
+
+#[test]
+fn emitted_python_list_map_then_fold_twelve_executes_under_cpython() {
+    assert_python_program_fixture_stdout("list_map_then_fold_twelve", "12");
+}
+
+#[test]
+fn emitted_python_list_filter_then_fold_seven_executes_under_cpython() {
+    assert_python_program_fixture_stdout("list_filter_then_fold_seven", "7");
+}
+
+#[test]
+fn emitted_python_nested_list_builtins_inside_lambda_six_executes_under_cpython() {
+    assert_python_program_fixture_stdout("nested_list_builtins_inside_lambda_six", "6");
 }
 
 fn next_roundtrip_dir() -> PathBuf {
