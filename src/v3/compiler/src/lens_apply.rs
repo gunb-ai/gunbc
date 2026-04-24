@@ -27,6 +27,14 @@ fn span_overlaps(a: &SourceSpan, b: &SourceSpan) -> bool {
 }
 
 /// Locate the `|acc, x|` step closure lowered as a two-parameter `Bind` for this `fold` site.
+///
+/// **Scaffold (D1):** monomorphized `std.list.fold` lowering does not attach a first-class graph
+/// edge from the `Transform` to its step `Bind`; the interpreter recovers the step bind by
+/// **span overlap** with the `fold` site (narrowest overlapping `Bind` with ≥2 params). Wrong
+/// binds in the same span could theoretically collide — bounded gate scope only.
+///
+/// **Dissolution:** preserve the step closure as an explicit operand / `Behavior` edge from the
+/// `fold` transform so `lens_apply` does not depend on span heuristics.
 fn find_fold_step_bind<'a>(dag: &'a Dag, fold_span: &SourceSpan) -> Option<&'a BindNode> {
     dag.nodes()
         .iter()

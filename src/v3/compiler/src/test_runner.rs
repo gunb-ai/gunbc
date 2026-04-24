@@ -36,10 +36,19 @@ pub enum AlgebraicLawProgramError {
 
 /// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
 ///
-/// `Associativity` is evaluated by [`int_associativity_holds`](crate::lens_apply::int_associativity_holds): the lens is applied twice
-/// under both parenthesizations on fixed sample integers `(2, 3, 5)` (T-LensAPI D3 — no
-/// structural operator recognizers). `lens_ref` is a [`FieldValue::Reference`] into
-/// `fixture_dag`; the runner resolves the **name** and looks up the same name in `program_dag`.
+/// **`Associativity` — bounded operational witness (T-LensAPI D3), not substrate law proof:**
+/// uses [`int_associativity_holds`](crate::lens_apply::int_associativity_holds) on the fixed
+/// integer triple `(2, 3, 5)` by applying the compiled lens under both parenthesizations. This
+/// path does **not** consume quantified associativity facts declared on `OrderedRing` / semigroup
+/// carriers in `std.algebra` (those are not yet first-class runner inputs). Treating `Pass` here
+/// as full algebraic law evidence would be weaker than a substrate-backed law check — the R1
+/// gate is intentionally a **regression harness** that the witness lens behaves associatively on
+/// the sample, not a proof for all `Int`. **Dissolution:** wire `AlgebraicLaw` to declared law
+/// metadata / witnesses on disk and reserve sample-only checks to explicit testgen predicates, or
+/// return [`ClaimResult::NotYetImplemented`] until that substrate surface exists.
+///
+/// `lens_ref` is a [`FieldValue::Reference`] into `fixture_dag`; the runner resolves the **name**
+/// and looks up the same name in `program_dag`.
 pub fn eval_algebraic_law_for_claim_program(
     fixture_dag: &Dag,
     program_dag: &Dag,
@@ -395,8 +404,10 @@ impl<'a> TestRunner<'a> {
     }
 
     fn eval_algebraic_law(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
-        // Only `Associativity` is wired. Other `AlgebraicLawKind` variants are
-        // `NotYetImplemented` (runner cannot evaluate yet), not `Fail` (claim false).
+        // Only `Associativity` is wired via D3 sample witness (see
+        // `eval_algebraic_law_for_claim_program` — not substrate law-fact evaluation).
+        // Other `AlgebraicLawKind` variants are `NotYetImplemented` (runner cannot evaluate yet),
+        // not `Fail` (claim false).
         let (law, _) = match algebraic_law_payload_fields(payload) {
             Ok(parts) => parts,
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => {
@@ -441,7 +452,8 @@ impl<'a> TestRunner<'a> {
         match eval_algebraic_law_for_claim_program(self.dag, &program_dag, payload) {
             Ok(true) => ClaimResult::Pass,
             Ok(false) => ClaimResult::Fail(
-                "AlgebraicLaw associativity not satisfied for fixed sample inputs (2, 3, 5)"
+                "AlgebraicLaw Associativity: operational witness failed on fixed Int triple (2, 3, 5) \
+                 (D1 apply — not a substrate declared-law check; see eval_algebraic_law_for_claim_program)"
                     .to_string(),
             ),
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => ClaimResult::Fail(message),
