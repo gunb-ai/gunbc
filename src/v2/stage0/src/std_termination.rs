@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use DescentEvidence::*;
 use DescentSource::*;
+use PositiveDescentAmount::*;
 use RankingDimension::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -114,12 +115,40 @@ impl RankingDimension {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
+pub enum PositiveDescentAmount {
+    OneStep,
+    AdditionalStep { previous: Rc<PositiveDescentAmount> },
+}
+impl PositiveDescentAmount {
+    pub fn previous(&self) -> Rc<PositiveDescentAmount> {
+        match self {
+            PositiveDescentAmount::OneStep => panic!("no previous on unit variant"),
+            PositiveDescentAmount::AdditionalStep {
+                previous: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum DescentSource {
-    ChildAccessor { accessor: String },
-    ListShrink { amount: i64 },
-    ArithmeticDecrease { op: String, by: i64 },
-    ParserAdvance { witness: String },
-    SetRemoval { element: String },
+    ChildAccessor {
+        accessor: String,
+    },
+    ListShrink {
+        amount: Rc<PositiveDescentAmount>,
+    },
+    ArithmeticDecrease {
+        op: String,
+        by: Rc<PositiveDescentAmount>,
+    },
+    ParserAdvance {
+        witness: String,
+    },
+    SetRemoval {
+        element: String,
+    },
     FoldIteration,
 }
 
