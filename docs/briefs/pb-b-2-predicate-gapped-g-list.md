@@ -124,7 +124,7 @@ review — see the stub below.
 ## G-modules this list unlocks (non-exhaustive)
 
 Integration modules whose predicate needs are fully or partially
-covered by the seven shapes above:
+covered by the six shapes above:
 
 - `pipe_desugar.rs` (5) — #1 #2 #3 #5
 - `m1_substrate_test.rs` (~91) — #4 #6
