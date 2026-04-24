@@ -126,8 +126,7 @@ while the other managers ship.
 
 Both story-surfaced gaps now have ledger rows; this manager
 monitors them as post-R1 follow-ups:
-- **Unit-mismatch enforcement for `Dimension<T, Unit>` consumers** —
-  `ROADMAP.md:364`.
+- **Unit-mismatch enforcement for typed value wrappers with phantom Unit / Currency parameters** (Duration/Money) — `ROADMAP.md:364`.
 - **`Secret<T>` nominal-wrapper graduation** — `ROADMAP.md:365`.
 
 Per the doc-authority single-ledger rule

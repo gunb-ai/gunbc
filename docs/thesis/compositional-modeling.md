@@ -217,9 +217,11 @@ type Positive  = Int where x > 0
 
 `[live]` for parameter/generic refinement (DB-3 landed;
 `test_3a3_*` acceptance tests). `[target]` for alias-RHS `where`
-fully — per ROADMAP:107, `parse_type_rhs_after_eq` still drops the
-alias-form `where` clause. The examples below are how it composes
-once the alias gap closes; the parameter case works today.
+fully — per DB-11 at `ROADMAP.md:231`, `parse_type_rhs_after_eq`
+still drops the alias-form `where` clause at
+`src/v3/compiler/parse_parser_body.txt:651` (`skip_where_clause`).
+The examples below are how it composes once the alias gap closes;
+the parameter case works today.
 
 ### Refinements compose through the algebra
 
