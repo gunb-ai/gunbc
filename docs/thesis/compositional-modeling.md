@@ -245,12 +245,58 @@ type BoundedString<N> = String where length(x) <= N
 ```
 
 `[target]` for all of these — examples of what refinement-lowering
-will enable once the alias-RHS parsing closes per ROADMAP DB-11.
+will enable once the alias-RHS parsing closes per ROADMAP DB-11
+(generic-parameter `where` already lowers; alias-RHS is the gap —
+`src/v3/compiler/src/parse.rs` `skip_where_clause`).
 
-The pattern: **every convention in your head is a candidate type.**
-The question becomes: which conventions are so important that they
-warrant compiler-level enforcement? In practice, many of them are —
-and encoding them once at declaration time is cheaper than enforcing
+### Compile time vs runtime
+
+A traditional-language engineer will object: "I can already do this
+with a smart constructor."
+
+```rust
+struct Port(u16);
+impl Port {
+    pub fn new(n: u16) -> Result<Port, PortError> {
+        if n < 1024 || n > 65535 { return Err(PortError::OutOfRange); }
+        Ok(Port(n))
+    }
+}
+```
+
+True — and this works. But the guarantee is **runtime**.
+`Port::new(80)` compiles cleanly; the error only surfaces when the
+constructor executes. Every caller either `.unwrap()`s (deferring
+the failure to production) or threads a `Result` — so the
+constraint becomes control flow replicated at every callsite. The
+type system itself has no opinion on whether `n` is in range; it
+trusts the constructor to do the runtime work and to keep doing it
+as the code evolves.
+
+In gunbc, `type Port = Int where 1024 <= x && x <= 65535` puts the
+constraint on the type itself, not on an ephemeral constructor. The
+compiler rejects `let p: Port = 80` as a type error. Crossing a
+boundary from an unrefined `Int` into a `Port` requires an explicit
+narrowing that the compiler *sees* happen — not a `try/catch` that
+the type system can't reason about. Runtime validation doesn't
+disappear: it still lives at the actual boundary with the outside
+world — a config parse, a socket read, a user form. But it lives
+**only** there. Internal code uses `Port` with compile-time
+confidence. `[target]` for literal-level and flow-level alias-form
+enforcement once DB-11 lands; generic-parameter `where` is live
+today.
+
+The move: a discipline traditional languages enforce at runtime is
+promoted to a compile-time property of the type. It's not a new
+feature on top of the language — it's a relocation of where the
+same guarantee lives.
+
+### The pattern
+
+**Every convention in your head is a candidate type.** The question
+becomes: which conventions are so important that they warrant
+compiler-level enforcement? In practice, many of them are — and
+encoding them once at declaration time is cheaper than enforcing
 them at every call site in review.
 
 ---
