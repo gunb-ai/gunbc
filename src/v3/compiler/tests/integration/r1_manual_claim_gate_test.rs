@@ -39,3 +39,22 @@ fn testgen_manual_claim_is_first_class_gate_passes() {
     assert_eq!(results[0].claim_name, "testgen_manual_claim_is_first_class");
     assert_eq!(results[0].result, ClaimResult::Pass);
 }
+
+#[test]
+fn lens_composition_associative_gate_passes() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest_dir.ancestors().nth(3).expect("repo root");
+    let gate = repo_root.join("src/v3/compiler/tests/fixtures/r1_gates.dag");
+    let source =
+        std::fs::read_to_string(&gate).unwrap_or_else(|err| panic!("read {gate:?}: {err}"));
+    let dag = compile_clean(&source, "src/v3/compiler/tests/fixtures/r1_gates.dag");
+    let results = TestRunner::new(&dag).run_suite("lens_composition_associative_suite");
+
+    assert_eq!(
+        results.len(),
+        1,
+        "expected one claim in lens_composition_associative_suite"
+    );
+    assert_eq!(results[0].claim_name, "lens_composition_associative");
+    assert_eq!(results[0].result, ClaimResult::Pass);
+}
