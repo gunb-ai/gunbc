@@ -8,6 +8,7 @@ This directory holds **landed** v3 `.dag` modules that declare `TestClaim` / `Te
 
 - **Landed:** `.dag` sources + `t_pb_b_1_tests_dag_smoke_test` compile smoke (`compile_to_dag`, empty diagnostics). No `pb_*` predicates.
 - **Not done here:** Predicate **evaluation** (runner), Rust test deletion, or `pb_test_file_generated_from_dag` — those require **Testgen manager** sign-off on runner/schema assumptions (coordinate before wiring CI to execute these claims or shrinking `EXPECTED_HAND_AUTHORED_TEST`).
+- **Smoke vs predicates:** Empty diagnostics on the declaring module are **not** proof of `Compiles` / `FailsWithDiagnostic` on embedded `TestClaim.source` strings — especially `t_pb_b_1_contract_diagnostic_smoke.dag`. See `docs/briefs/t-pb-b-1.md` (*Compile-smoke caveat*).
 
 ## Post-R2 residuals (unchanged)
 

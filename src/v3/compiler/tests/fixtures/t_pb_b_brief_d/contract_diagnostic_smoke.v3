@@ -4,6 +4,9 @@
 // Dissolution: same claim as `src/v3/compiler/tests/dag/t_pb_b_1_contract_diagnostic_smoke.dag`.
 // Retire this `.v3` once Testgen accepts that `.dag` module as the maintained copy (Brief D
 // named trigger); until then, keep source/predicate text aligned with the `.dag` sibling.
+//
+// Fixture smoke lowers this module cleanly only — it does not evaluate `FailsWithDiagnostic`
+// on embedded `source` (see `docs/briefs/t-pb-b-1.md`, *Compile-smoke caveat*).
 
 import std.list { empty }
 import std.verification { TestClaim, TestSuite, TestPredicate }

@@ -3,6 +3,11 @@
 //! T-PB-B-1 — `src/v3/compiler/tests/dag/*.dag` compile smoke. Landed `.dag` `TestClaim`
 //! modules for the eventual Testgen runner; **does not** evaluate predicates or assert `pb_*`.
 //! Coordinate with Testgen manager before deleting overlapping Rust tests.
+//!
+//! `assert_dag_module_lowers_cleanly` accepts `Ok(dag)` and `Err(CompileError::Semantic(dag))`
+//! then requires empty module diagnostics — lowering shape only, not `TestPredicate` proof
+//! (see `docs/briefs/t-pb-b-1.md` *Compile-smoke caveat*; revisit when the runner evaluates
+//! `FailsWithDiagnostic` for real).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::CompileError;

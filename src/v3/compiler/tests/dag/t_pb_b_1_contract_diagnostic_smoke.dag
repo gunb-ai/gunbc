@@ -1,4 +1,7 @@
 // T-PB-B-1 — contract negative (`FailsWithDiagnostic`) as landed `.dag` data.
+//
+// Compile-smoke only checks that this *module* lowers with empty diagnostics; it does not
+// typecheck the embedded `source` string or evaluate the predicate. Runner replaces that proxy.
 
 module v3.compiler.tests.t_pb_b_1.contract_diagnostic_smoke
 
