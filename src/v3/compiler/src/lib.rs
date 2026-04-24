@@ -1064,6 +1064,7 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
 /// Unlike [`compile_to_dag`], this starts from a bootstrap Dag that omits the embedded
 /// `parse_surface.dag` staged fixture so the fresh parse is first-of-name and can be
 /// lowered without duplicate-declaration diagnostics.
+#[allow(clippy::result_large_err)]
 fn compile_onto_parse_surface_free_bootstrap(
     source: &str,
     file: &str,
