@@ -186,13 +186,19 @@ fn run_program(name: &str) -> String {
 /// Previously each fixture compiled its own rustc binary, paying a
 /// fresh linker + codegen cost per test (~3-5s on CI cold cache).
 /// Batching all fixtures into one compilation amortizes that cost.
+/// Expected output shape for a reflected-module roundtrip fixture.
+enum ReflectedExpected {
+    /// Exact stdout string (trimmed).
+    Exact(&'static str),
+    /// Any positive integer (used for `node_count`, whose exact value is not pinned).
+    PositiveInt,
+}
+
 struct ReflectedFixture {
     name: &'static str,
     module_source: &'static str,
     wrapper_body: &'static str,
-    /// Expected stdout from the compiled binary. `"+"` means any positive
-    /// integer (used for `node_count` whose exact value is not pinned).
-    expected_stdout: &'static str,
+    expected_stdout: ReflectedExpected,
 }
 
 const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
@@ -200,7 +206,7 @@ const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
         name: "node_count",
         module_source: "fn node_count(d: Dag) -> Int = fold(d.nodes, 0, |n, node| n + 1)",
         wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); node_count(&dag)",
-        expected_stdout: "+",
+        expected_stdout: ReflectedExpected::PositiveInt,
     },
     ReflectedFixture {
         name: "bind_count",
@@ -210,13 +216,13 @@ const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
         // `src/v3/std/algebra.dag` + `dimensions.dag`, whose lowered
         // bodies contribute their own Bind nodes to `d.nodes`.
         wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let baseline = v3_compiler::dag::Dag::new(); bind_count(&dag) - bind_count(&baseline)",
-        expected_stdout: "2",
+        expected_stdout: ReflectedExpected::Exact("2"),
     },
     ReflectedFixture {
         name: "singleton_span",
         module_source: "fn singleton_span(bind: BindNode) -> List<SourceSpan> = [bind.span]",
         wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) => Some(bind.clone()), _ => None }).expect(\"bind\"); singleton_span(&bind).len() as i64",
-        expected_stdout: "1",
+        expected_stdout: ReflectedExpected::Exact("1"),
     },
     ReflectedFixture {
         name: "result_port_is_param",
@@ -226,7 +232,7 @@ const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
         // non-empty params, the raw `params.is_empty()` filter was
         // no longer specific enough to isolate user code.
         wrapper_body: "let dag = v3_compiler::compile_to_dag(\"fn id(x: Int) -> Int = x\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) if !bind.params.is_empty() && bind.span.file == \"runtime_reflection.v3\" => Some(bind.clone()), _ => None }).expect(\"function bind\"); if result_port_is_param(&bind) { 1 } else { 0 }",
-        expected_stdout: "1",
+        expected_stdout: ReflectedExpected::Exact("1"),
     },
     ReflectedFixture {
         name: "bind_names",
@@ -245,7 +251,7 @@ const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
         // though `bind_names` also materializes a record per std-
         // module bind in `d.nodes`.
         wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let baseline = v3_compiler::dag::Dag::new(); (bind_names(&dag).len() as i64) - (bind_names(&baseline).len() as i64)",
-        expected_stdout: "2",
+        expected_stdout: ReflectedExpected::Exact("2"),
     },
 ];
 
@@ -889,18 +895,16 @@ fn emit_rust_fixtures_rustc_green() {
 
     for fixture in REFLECTED_FIXTURES {
         let stdout = run_reflected(fixture.name);
-        let ok = if fixture.expected_stdout == "+" {
-            // "+" means any positive integer (node_count is not pinned to an exact value).
-            stdout.parse::<i64>().is_ok_and(|n| n > 0)
-        } else {
-            stdout == fixture.expected_stdout
+        let (ok, label) = match &fixture.expected_stdout {
+            ReflectedExpected::Exact(expected) => {
+                (stdout == *expected, format!("{expected:?}"))
+            }
+            ReflectedExpected::PositiveInt => (
+                stdout.parse::<i64>().is_ok_and(|n| n > 0),
+                "positive integer".to_owned(),
+            ),
         };
         if !ok {
-            let label = if fixture.expected_stdout == "+" {
-                "positive integer".to_owned()
-            } else {
-                format!("{:?}", fixture.expected_stdout)
-            };
             failures.push(format!(
                 "reflected {:?}: expected {label}, got {stdout:?}",
                 fixture.name,
