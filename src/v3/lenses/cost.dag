@@ -12,10 +12,11 @@
 // asymptotic classification from v2 are also not carried. Dimension
 // wiring is deferred on grammar gaps (see the `Dimension<SymbolicCost>`
 // discussion lower in this file). Lane E-C stages `CallPattern` /
-// `LoweringTarget` carrier vocabulary in `std.computation`, but this
-// lens still does not consume per-call descent evidence until E-I/E-P
-// supply `SubValueRelation` and a producer. No behavioral cementing
-// test exercises this lens yet.
+// `LoweringTarget` in `std.computation`; lane E-I stages `SubValueRelation`
+// and the `CostBound` algebra in `std.induction`. This lens still does not
+// thread per-call descent into `SymbolicCost`: the remaining gap is **E-P**
+// (producer wiring, richer size variables, behavioral tests) — not missing
+// E-I vocabulary. No behavioral cementing test exercises this lens yet.
 
 module lenses.cost
 

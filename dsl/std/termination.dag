@@ -200,6 +200,14 @@ type RankingDimension
 // 🟢 TERMINAL at descent-witness scope. Raw `Int` cannot carry shrink
 // evidence because zero and negative values are not descent witnesses.
 // This structural positive number makes invalid proof amounts unrepresentable.
+//
+// Design note (api-review / E-P): `std.types` already declares `PositiveInt`
+// (`Int where range(min: 1)`) and similar refinements. A future dissolution is
+// to route literal bridges through that **shared numeric refinement authority**
+// (plus an explicit M9 cap) once E-P lowers refinements uniformly for all
+// consumers. Today the Peano sum stays the single structural witness shared with
+// `std.computation` / `std.induction` and the v2 emitter; literal materialization
+// is fail-closed and capped in `positive_descent_amount_from_positive_int`.
 type PositiveDescentAmount
   = OneStep
   | AdditionalStep { previous: PositiveDescentAmount }
@@ -207,6 +215,11 @@ type PositiveDescentAmount
 // 🟢 TERMINAL at descent-witness scope. Structural divisor ≥ 2 (Peano from
 // `DivideByTwo`); mirrors `std.computation` divide-call patterns without
 // importing `std.computation` (that module depends on this file).
+//
+// Same E-P dissolution story as `PositiveDescentAmount`: bounded `Int where
+// range(min: 2, max: …)` (or a branded divisor refinement) is the target once
+// refinements are first-class end-to-end; `proportional_divisor_from_int_at_least_two`
+// is the capped `Int` bridge meanwhile.
 type ProportionalDivisor
   = DivideByTwo
   | StrictlyLarger { inner: ProportionalDivisor }
