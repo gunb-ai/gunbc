@@ -1,0 +1,92 @@
+// T-Demo R1 fixture skeletons.
+//
+// This file lands only the Day-1 predicates that compile against the
+// current DB-15 verification schema. Stage (a) is fixture-declaration
+// compilation; stage (b) is predicate evaluation, blocked on the
+// T-TestGen runner. Lens-output demo predicates stay stubbed until
+// T-LensAPI makes `lens_output_is_queryable_data` available as queryable
+// verification data.
+
+module v3.compiler.tests.t_demo.t_demo_fixtures
+
+import std.list { empty }
+
+let compiler_nerd_complexity_compiles: TestClaim = {
+  name: "fixture_compiler_nerd_canonical.complexity_compiles",
+  source: "fn pair_score(xs: List<Int>) -> Int = fold(xs, 0, |outer, x| outer + fold(xs, 0, |inner, y| inner + x + y))",
+  file_name: "fixture_compiler_nerd_canonical_complexity.v3",
+  predicate: Compiles,
+  requires: empty()
+}
+
+let compiler_nerd_ownership_compiles: TestClaim = {
+  name: "fixture_compiler_nerd_canonical.ownership_compiles",
+  source: "type OwnedPayload { left: Int right: Int } fn combine_payload(payload: OwnedPayload) -> Int = payload.left + payload.right",
+  file_name: "fixture_compiler_nerd_canonical_ownership.v3",
+  predicate: Compiles,
+  requires: empty()
+}
+
+let compiler_nerd_parallelism_compiles: TestClaim = {
+  name: "fixture_compiler_nerd_canonical.parallelism_compiles",
+  source: "let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)",
+  file_name: "fixture_compiler_nerd_canonical_parallelism.v3",
+  predicate: Compiles,
+  requires: empty()
+}
+
+let fixture_compiler_nerd_canonical: TestSuite = {
+  name: "fixture_compiler_nerd_canonical",
+  claims: [
+    compiler_nerd_complexity_compiles,
+    compiler_nerd_ownership_compiles,
+    compiler_nerd_parallelism_compiles
+  ]
+}
+
+let integration_effects_compiles: TestClaim = {
+  name: "fixture_integration_canonical.effects_compiles",
+  source: "let upsert_effect = derive_op_effect(\"upsert_project\", \"PUT\", \"/projects/{project_id}\")",
+  file_name: "fixture_integration_canonical_effects.v3",
+  predicate: Compiles,
+  requires: empty()
+}
+
+let integration_idempotency_compiles: TestClaim = {
+  name: "fixture_integration_canonical.idempotency_compiles",
+  source: "let retry_verdict = compose_effects([{ operation_name: \"upsert_project\", shape: IsIdempotent(UpsertEffect { key_source: PathParam { param: \"project_id\" } }) }, { operation_name: \"append_audit_log\", shape: IsBreaking(AppendEffect) }])",
+  file_name: "fixture_integration_canonical_idempotency.v3",
+  predicate: Compiles,
+  requires: empty()
+}
+
+let integration_testgen_compiles: TestClaim = {
+  name: "fixture_integration_canonical.testgen_compiles",
+  source: "import std.list { empty } let generated_claim: TestClaim = { name: \"upsert_project_compiles\", source: \"let upsert_effect = derive_op_effect(\\\"upsert_project\\\", \\\"PUT\\\", \\\"/projects/{project_id}\\\")\", file_name: \"upsert_project_claim.v3\", predicate: Compiles, requires: empty() }",
+  file_name: "fixture_integration_canonical_testgen.v3",
+  predicate: Compiles,
+  requires: empty()
+}
+
+let fixture_integration_canonical: TestSuite = {
+  name: "fixture_integration_canonical",
+  claims: [
+    integration_effects_compiles,
+    integration_idempotency_compiles,
+    integration_testgen_compiles
+  ]
+}
+
+// [ext] fixture_compiler_nerd_canonical.complexity_lens_output
+//   Blocked on T-LensAPI `lens_output_is_queryable_data`.
+// [ext] fixture_compiler_nerd_canonical.ownership_lens_output
+//   Blocked on T-LensAPI `lens_output_is_queryable_data`.
+// [ext] fixture_compiler_nerd_canonical.parallelism_lens_output
+//   Blocked on T-LensAPI `lens_output_is_queryable_data`.
+//
+// [ext] fixture_integration_canonical.effects_lens_output
+//   Blocked on T-LensAPI `lens_output_is_queryable_data`.
+// [ext] fixture_integration_canonical.idempotency_lens_output
+//   Blocked on T-LensAPI `lens_output_is_queryable_data`.
+// [ext] fixture_integration_canonical.testgen_runner_output
+//   Blocked on T-TestGen runner evaluation.
