@@ -57,6 +57,8 @@ fn lens_composition_op(a: Int, b: Int) -> Int = a + b
 
 // Fixture-local stubs (names + shapes for `DeclarationRef` in this merged DAG). Bodies mirror
 // `src/v3/lenses/named_function_count.dag`; keep in sync when editing the lens file.
+// `LensOutputEquals` does **not** execute these stubs: `test_runner` compiles
+// `R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS` (same bytes as `build.rs` splices for Compiles).
 fn count_named_bind(behavior: Behavior) -> Int =
   match behavior {
     Value(v) => 0

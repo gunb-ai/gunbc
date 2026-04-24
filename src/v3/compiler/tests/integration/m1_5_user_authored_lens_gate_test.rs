@@ -20,6 +20,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::test_runner::R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS;
 use v3_compiler::CompileError;
 
 const R1_GATES_SOURCE: &str = include_str!("../fixtures/r1_gates.dag");
@@ -68,6 +69,15 @@ fn assert_compile_clean(source: &str, file_name: &str, label: &str) {
         ),
         Err(other) => panic!("{label}: unexpected compile error: {other:?}"),
     }
+}
+
+#[test]
+fn lens_output_equals_canonical_lens_bytes_match_build_splice_authority() {
+    assert_eq!(
+        ON_DISK_LENS, R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS,
+        "`test_runner::R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS` must match the on-disk lens (same \
+         authority as `build.rs` splice for `LensOutputEquals` / Compiles gates)"
+    );
 }
 
 #[test]

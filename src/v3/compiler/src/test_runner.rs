@@ -11,6 +11,14 @@ use crate::lens_apply::{
 use crate::lens_cost::{cost_of, CostLookup};
 use crate::{compile_to_dag, CompileError};
 
+/// Same on-disk lens as `v3-compiler/build.rs` splices into `user_authored_lens_compiles_gate`
+/// (`emit_r1_gates_fixture`). `LensOutputEquals` applies this program for `named_function_count`
+/// so evaluation cannot drift from the fixture-local stub (`INVARIANTS.md` P2).
+pub const R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../lenses/named_function_count.dag"
+));
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimResult {
     Pass,
@@ -325,21 +333,43 @@ impl<'a> TestRunner<'a> {
         // with a structural `TestClaim` / `std.verification` coproduct arm (reflection input vs
         // literal body) so runners do not key behavior on declaration spellings.
         const PROGRAM_INPUT_SENTINEL: &str = "r1_lens_output_input_from_program";
-        let input_field = if input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL) {
-            match compile_to_dag(&claim.source, &claim.file_name) {
-                Ok(program_dag) => {
-                    match reflect_program_dag_nodes_in_file(&program_dag, &claim.file_name) {
-                        Ok(v) => v,
-                        Err(err) => {
-                            return ClaimResult::Fail(format!(
-                                "LensOutputEquals: could not reflect `Dag` nodes from claim program: {err:?}"
-                            ));
-                        }
-                    }
-                }
-                Err(err) => {
+
+        // INVARIANTS P2 (executable single authority): `DeclarationRef` for `lens_ref` still
+        // resolves against the fixture `Dag` for lowering, but for `named_function_count` the
+        // runner compiles `R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS` (same file as `build.rs` splices
+        // for `user_authored_lens_compiles_gate`) for `apply_lens_declaration` — not the
+        // fixture-local stub body. Other lens names: prefer `TestClaim.source` when it compiles and
+        // exports the same declaration name, else fall back to the fixture graph.
+        let program_dag_opt: Option<Dag> = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => Some(dag),
+            Err(CompileError::Semantic(dag)) => {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals: claim `source` / `{}` failed inference: {:?}",
+                    claim.file_name,
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                ));
+            }
+            Err(err) => {
+                if input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL) {
                     return ClaimResult::Fail(format!(
                         "LensOutputEquals: claim `source` did not compile (needed for `{PROGRAM_INPUT_SENTINEL}` input sentinel): {err:?}"
+                    ));
+                }
+                None
+            }
+        };
+
+        let input_field = if input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL) {
+            let Some(program_dag) = program_dag_opt.as_ref() else {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals: claim `source` did not compile (needed for `{PROGRAM_INPUT_SENTINEL}` input sentinel)"
+                ));
+            };
+            match reflect_program_dag_nodes_in_file(program_dag, &claim.file_name) {
+                Ok(v) => v,
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals: could not reflect `Dag` nodes from claim program: {err:?}"
                     ));
                 }
             }
@@ -373,15 +403,64 @@ impl<'a> TestRunner<'a> {
             }
         };
 
-        let computed =
-            match apply_lens_declaration(self.dag, lens_id, std::slice::from_ref(&input_field)) {
-                Ok(v) => v,
-                Err(err) => {
-                    return ClaimResult::Fail(format!(
-                        "LensOutputEquals: applying lens `{lens_name}` failed: {err:?}"
-                    ));
-                }
+        let canonical_named_function_count_dag: Option<Dag> = if lens_decl.name.as_deref()
+            == Some("named_function_count")
+        {
+            Some(
+                match compile_to_dag(
+                    R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS,
+                    "src/v3/lenses/named_function_count.dag",
+                ) {
+                    Ok(dag) => dag,
+                    Err(CompileError::Semantic(dag)) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals: canonical `named_function_count` lens failed inference: {:?}",
+                            dag.diagnostics().iter().collect::<Vec<_>>()
+                        ));
+                    }
+                    Err(err) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals: canonical `named_function_count` lens did not compile: {err:?}"
+                        ));
+                    }
+                },
+            )
+        } else {
+            None
+        };
+
+        let (lens_program, lens_apply_id) = if let Some(ref cld) =
+            canonical_named_function_count_dag
+        {
+            let Some(d) = cld.declaration_by_name("named_function_count") else {
+                return ClaimResult::Fail(
+                    "LensOutputEquals: canonical named_function_count lens missing root declaration"
+                        .to_string(),
+                );
             };
+            (cld, d.id)
+        } else if let (Some(pd), Some(name)) = (program_dag_opt.as_ref(), lens_decl.name.as_deref())
+        {
+            match pd.declaration_by_name(name) {
+                Some(d) => (pd, d.id),
+                None => (self.dag, lens_id),
+            }
+        } else {
+            (self.dag, lens_id)
+        };
+
+        let computed = match apply_lens_declaration(
+            lens_program,
+            lens_apply_id,
+            std::slice::from_ref(&input_field),
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals: applying lens `{lens_name}` failed: {err:?}"
+                ));
+            }
+        };
 
         if field_value_equal(&computed, &expected_field) {
             ClaimResult::Pass
