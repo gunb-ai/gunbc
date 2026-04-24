@@ -470,14 +470,6 @@ data python_int_mul: OperatorRealization = {
   cost: 1
 }
 
-data python_int_div: OperatorRealization = {
-  language: python_language
-  target: Int
-  op: OrderedRing.div
-  carrier: "//"
-  cost: 1
-}
-
 data python_int_eq: OperatorRealization = {
   language: python_language
   target: Int
