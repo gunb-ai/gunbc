@@ -9,6 +9,9 @@ use crate::std_induction::SubValueRelation::{
     IteratedSubValue, PreservedValue, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, ShrinkFactor, SubValueRelation};
+use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
+use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
+pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
 use crate::v2_compiler_artifact::RenderTarget::Dag;
 pub use crate::v2_compiler_artifact::{
     default_artifact_plan, Artifact, ArtifactPlan, RenderTarget,
@@ -828,20 +831,46 @@ pub fn serialize_inductive_field(field: &Rc<InductiveField>) -> String {
     )
 }
 
+pub fn serialize_positive_descent_amount(steps: Rc<PositiveDescentAmount>) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*steps).clone() {
+        PositiveDescentAmount::OneStep => "{\"_variant\": \"OneStep\"}".to_string(),
+        PositiveDescentAmount::AdditionalStep { previous: p, .. } => v2_rt::concat(
+            v2_rt::concat(
+                "{\"_variant\": \"AdditionalStep\", \"previous\": ".to_string(),
+                serialize_positive_descent_amount(p.clone()),
+            ),
+            "}".to_string(),
+        ),
+    })
+}
+
+pub fn serialize_proportional_divisor(d: Rc<ProportionalDivisor>) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*d).clone() {
+        ProportionalDivisor::DivideByTwo => "{\"_variant\": \"DivideByTwo\"}".to_string(),
+        ProportionalDivisor::StrictlyLarger { inner: i, .. } => v2_rt::concat(
+            v2_rt::concat(
+                "{\"_variant\": \"StrictlyLarger\", \"inner\": ".to_string(),
+                serialize_proportional_divisor(i.clone()),
+            ),
+            "}".to_string(),
+        ),
+    })
+}
+
 pub fn serialize_shrink_factor(factor: Rc<ShrinkFactor>) -> String {
     match (*factor).clone() {
         ShrinkFactor::UnitShrink => "{\"_variant\": \"UnitShrink\"}".to_string(),
-        ShrinkFactor::ConstantShrink { amount: a, .. } => v2_rt::concat(
+        ShrinkFactor::ConstantShrink { steps: s, .. } => v2_rt::concat(
             v2_rt::concat(
-                "{\"_variant\": \"ConstantShrink\", \"amount\": ".to_string(),
-                (a.clone()).to_string(),
+                "{\"_variant\": \"ConstantShrink\", \"steps\": ".to_string(),
+                serialize_positive_descent_amount(s.clone()),
             ),
             "}".to_string(),
         ),
         ShrinkFactor::ProportionalShrink { divisor: d, .. } => v2_rt::concat(
             v2_rt::concat(
                 "{\"_variant\": \"ProportionalShrink\", \"divisor\": ".to_string(),
-                (d.clone()).to_string(),
+                serialize_proportional_divisor(d.clone()),
             ),
             "}".to_string(),
         ),

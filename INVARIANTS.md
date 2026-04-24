@@ -247,6 +247,7 @@ A scaffold (hand-maintained generated file, interim API surface, staged declarat
 - **No Bridges** — bridges normalize half-migrations and hide cleanup cost
 - **No Deprecations** — deprecation markers are a production-code tool, not a legitimate steady state
 - **Scaffold Boundaries** — scaffolds require explicit dissolution triggers
+- **E-I numeric input boundary (cost lane)** — raw `Int` coefficients may appear at recurrence / cost **input** surfaces, but before recursive multiplication, Peano materialization, `int_pow_bounded`, logarithmic iteration, or similar bounded-forward helpers consume them, they must pass the shared M9 ceiling gate in `std.induction` (`bounded_int_pow_exponent`, aligned with `std.termination`’s 256 literal-bridge caps). Skipping that gate duplicates authority and can force depth proportional to a raw exponent before fail-closed rejection (PR #726 meta-review).
 - **Escape Hatches** — recurring violations come from API surfaces that make the wrong thing easier than the right thing
 - **E-5: Clean-Emission Contract Is Satisfied By Construction** — clean-emission obligations belong in declared contracts, not hand-maintained target-side conventions (replacing-convention-by-construction is a progress move, not a boundary clarification)
 - **E-7: No Target-Private Realization Schema Without A Dissolution Ratchet** — explicitly names the dissolution discipline in the rule title

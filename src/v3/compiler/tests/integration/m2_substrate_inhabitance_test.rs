@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 
+use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
-    join_evidence, lower_call_pattern, map_evidence_merge_at, merge_evidence,
-    optional_evidence_meet, promote_to_strict, size_bound_param, tree_size_bound,
-    type_iteration_dimension, AlgebraProfile, ArrowBody, CallPattern, DescentEvidence,
-    DivisionDescentFactor, FieldValue, IterationDimension, IterationPrimitive, LoweringTarget,
-    ShrinkFactor, SizeBound, TypeConnective, ValueBody,
+    join_evidence, kernel_algebra_profile, lower_call_pattern, map_evidence_merge_at,
+    merge_evidence, optional_evidence_meet, per_call_descent_evidence, positive_amount_from_i64,
+    promote_to_strict, size_bound_param, tree_size_bound, type_iteration_dimension, AlgebraProfile,
+    ArrowBody, CallPattern, DescentEvidence, FieldValue, IterationDimension, IterationPrimitive,
+    LoweringTarget, PositiveDescentAmount, ProportionalDivisor, ShrinkFactor, SizeBound,
+    SubValueRelation, TypeConnective, ValueBody,
 };
 use v3_compiler::parse_surface;
 use v3_compiler::Dag;
@@ -66,33 +68,12 @@ fn sum_variants(dag: &Dag, name: &str) -> Vec<(String, Vec<String>)> {
     }
 }
 
-fn variant_payload_field_type_name(
-    dag: &Dag,
-    sum_name: &str,
-    variant_name: &str,
-    field_name: &str,
-) -> String {
-    let id = find_named(dag, sum_name);
-    let TypeConnective::Disj { variants } = &dag.declaration(id).connective else {
-        panic!("expected `{sum_name}` to lower to a Disj");
-    };
-    let variant = variants
-        .iter()
-        .find(|variant| variant.label == variant_name)
-        .unwrap_or_else(|| panic!("variant `{variant_name}` not found under `{sum_name}`"));
-    let TypeConnective::Conj { children } = &dag.declaration(variant.ty).connective else {
-        panic!("expected variant `{variant_name}` under `{sum_name}` to lower to a Conj payload");
-    };
-    let field = children
-        .iter()
-        .find(|field| field.label == field_name)
-        .unwrap_or_else(|| {
-            panic!("field `{field_name}` not found on variant `{variant_name}` under `{sum_name}`")
-        });
-    dag.declaration(field.ty)
-        .name
-        .clone()
-        .unwrap_or_else(|| format!("<anonymous:{}>", field.ty.raw()))
+fn workspace_root() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("expected src/v3/compiler -> workspace root")
+        .to_path_buf()
 }
 
 fn arrow_body(dag: &Dag, name: &str) -> ArrowBody {
@@ -101,6 +82,87 @@ fn arrow_body(dag: &Dag, name: &str) -> ArrowBody {
         TypeConnective::Arrow { body, .. } => body.clone(),
         other => panic!("expected `{name}` to lower to an Arrow, got {other:?}"),
     }
+}
+
+#[test]
+fn e_m_method_semantics_subsumption_receipt_is_verifiable() {
+    let dag = Dag::new();
+    assert!(
+        dag.declaration_by_name("MethodSemantics").is_none(),
+        "E-M chose M-b: v3 must not add a parallel MethodSemantics carrier"
+    );
+    assert_eq!(
+        sum_variants(&dag, "TransformTarget"),
+        vec![
+            (String::from("Callable"), vec![String::from("_0")]),
+            (
+                String::from("FieldProject"),
+                vec![String::from("field_label"), String::from("field_child")],
+            ),
+            (String::from("Operator"), vec![String::from("_0")]),
+        ],
+        "E-M receipt depends on callable, field-project, and operator dispatch facts"
+    );
+    assert_eq!(
+        sum_variants(&dag, "OperatorKind"),
+        vec![
+            (String::from("Arithmetic"), vec![String::from("_0")]),
+            (String::from("Comparison"), vec![String::from("_0")]),
+            (String::from("Logical"), vec![String::from("_0")]),
+        ],
+        "AlgebraMethodSemantics.method_def maps through operator kind plus algebra resolution"
+    );
+    assert!(
+        sum_variants(&dag, "TypeConnective").contains(&(
+            String::from("Arrow"),
+            vec![
+                String::from("inputs"),
+                String::from("output"),
+                String::from("body"),
+            ],
+        )),
+        "fold_accumulator_type maps to resolved callable/lambda Arrow signatures"
+    );
+    assert!(
+        record_fields(&dag, "BindNode").contains(&String::from("params")),
+        "fold_accumulator_type maps through callable/lambda BindNode params and port states"
+    );
+
+    let root = workspace_root();
+    let register = std::fs::read_to_string(root.join("docs/v3-lens-capability-register.md"))
+        .expect("read docs/v3-lens-capability-register.md");
+    assert!(
+        register.contains("PlainMethodSemantics` maps to ordinary `TransformTarget::Callable(DeclarationId)` dispatch or `TransformTarget::FieldProject"),
+        "register must name the PlainMethodSemantics structural replacement"
+    );
+    assert!(
+        register.contains("AlgebraMethodSemantics.method_def` maps to the callable declaration id or, for operators still in the surface scaffold, `TransformTarget::Operator(OperatorKind)`"),
+        "register must name the AlgebraMethodSemantics structural replacement"
+    );
+    assert!(
+        register.contains("fold_accumulator_type` maps to callable/lambda signature facts: v3 resolves the callable's `Arrow { inputs, output, body }`, binds callback arguments through `BindNode.params` and port states"),
+        "register must name the fold_accumulator_type structural replacement"
+    );
+    assert!(
+        register.contains("ServiceMethodSemantics` maps to typed service/effect declarations and operation metadata"),
+        "register must name the ServiceMethodSemantics structural replacement"
+    );
+
+    let program =
+        std::fs::read_to_string(root.join("docs/design-substrate-carrier-port-program.md"))
+            .expect("read docs/design-substrate-carrier-port-program.md");
+    assert!(
+        program.contains("**E-M is closed via M-b structural subsumption**"),
+        "carrier program must record E-M as closed via M-b"
+    );
+    assert!(
+        program.contains("`AlgebraMethodSemantics.fold_accumulator_type` maps to resolved callable/lambda `Arrow { inputs, output, body }` signatures plus `BindNode.params`"),
+        "carrier program must name the fold_accumulator_type structural replacement"
+    );
+    assert!(
+        program.contains("**Sanity predicate passed:** v3 structural resolution carries all v2 `MethodSemantics` facts needed for carrier parity"),
+        "closed E-M lane must retain its verifiable sanity predicate"
+    );
 }
 
 #[test]
@@ -244,10 +306,13 @@ fn termination_carriers_bootstrap_from_v3_std() {
         ]
     );
     assert_eq!(
-        sum_variants(&dag, "DivisionDescentFactor"),
+        sum_variants(&dag, "PositiveDescentAmount"),
         vec![
-            (String::from("Two"), Vec::new()),
-            (String::from("GreaterThanTwo"), vec![String::from("extra")]),
+            (String::from("OneStep"), Vec::new()),
+            (
+                String::from("AdditionalStep"),
+                vec![String::from("previous")]
+            ),
         ]
     );
     assert_eq!(
@@ -258,28 +323,18 @@ fn termination_carriers_bootstrap_from_v3_std() {
                 vec![String::from("accessor")]
             ),
             (String::from("ListShrink"), vec![String::from("amount")]),
-            (String::from("ArithmeticSubtract"), vec![String::from("by")],),
-            (String::from("ArithmeticDivide"), vec![String::from("by")],),
+            (
+                String::from("ArithmeticSubtractDescent"),
+                vec![String::from("steps")],
+            ),
+            (
+                String::from("ArithmeticDivideDescent"),
+                vec![String::from("divisor")],
+            ),
             (String::from("ParserAdvance"), vec![String::from("witness")]),
             (String::from("SetRemoval"), vec![String::from("element")]),
             (String::from("FoldIteration"), Vec::new()),
         ]
-    );
-    assert_eq!(
-        variant_payload_field_type_name(&dag, "DivisionDescentFactor", "GreaterThanTwo", "extra"),
-        "PositiveInt"
-    );
-    assert_eq!(
-        variant_payload_field_type_name(&dag, "DescentSource", "ListShrink", "amount"),
-        "PositiveInt"
-    );
-    assert_eq!(
-        variant_payload_field_type_name(&dag, "DescentSource", "ArithmeticSubtract", "by"),
-        "PositiveInt"
-    );
-    assert_eq!(
-        variant_payload_field_type_name(&dag, "DescentSource", "ArithmeticDivide", "by"),
-        "DivisionDescentFactor"
     );
     assert_eq!(record_fields(&dag, "TerminationProof"), vec!["dimensions"]);
     assert_eq!(
@@ -297,6 +352,7 @@ fn termination_lattice_functions_preserve_std_body_spans() {
         "merge_evidence",
         "join_evidence",
         "promote_to_strict",
+        "proportional_divisor_to_int",
         "optional_evidence_meet",
         "map_evidence_merge_at",
     ] {
@@ -353,6 +409,113 @@ fn termination_lattice_rust_mirror_matches_dag_authority() {
 }
 
 #[test]
+fn e_p_per_call_descent_evidence_side_table_reads_recursive_call() {
+    let dag = compile_to_dag(
+        "\
+fn countdown(n: Int) -> Int =
+  if n == 0 then 0 else countdown(n - 1)
+",
+        "e_p_countdown.v3",
+    )
+    .expect("recursive countdown fixture compiles");
+
+    let entries = per_call_descent_evidence(&dag);
+    let countdown = entries
+        .iter()
+        .find(|entry| entry.caller == "countdown" && entry.callee == "countdown")
+        .unwrap_or_else(|| panic!("expected countdown self-call evidence, got {entries:?}"));
+
+    assert_eq!(countdown.evidence.len(), 1);
+    match &countdown.evidence[0] {
+        SubValueRelation::ArithmeticDescent { param, factor } => {
+            assert_eq!(
+                param, "param_0",
+                "E-P side table uses the stable ordinal scaffold until BindNode exposes parameter names"
+            );
+            assert_eq!(
+                factor,
+                &ShrinkFactor::ConstantShrink {
+                    steps: PositiveDescentAmount::OneStep
+                }
+            );
+        }
+        other => panic!("expected arithmetic descent for countdown(n - 1), got {other:?}"),
+    }
+}
+
+#[test]
+fn e_p_per_call_descent_evidence_fails_closed_for_non_self_call() {
+    let dag = compile_to_dag(
+        "\
+fn helper(n: Int) -> Int = n - 1
+fn caller(n: Int) -> Int = helper(n)
+",
+        "e_p_non_self_call.v3",
+    )
+    .expect("non-self call fixture compiles");
+
+    let entries = per_call_descent_evidence(&dag);
+    let non_self = entries
+        .iter()
+        .find(|entry| entry.caller == "caller" && entry.callee == "helper")
+        .unwrap_or_else(|| panic!("expected non-self callable edge evidence, got {entries:?}"));
+
+    assert_eq!(
+        non_self.evidence,
+        vec![SubValueRelation::SubValueUnknown],
+        "resolved non-self callable edges must fail closed instead of disappearing"
+    );
+}
+
+#[test]
+fn e_p_runtime_mirror_matches_induction_carrier_shape() {
+    let dag = Dag::new();
+
+    assert_eq!(
+        sum_variants(&dag, "RecursionShape"),
+        vec![
+            (String::from("DirectRecursion"), vec![]),
+            (String::from("ListRecursion"), vec![]),
+            (String::from("OptionalRecursion"), vec![]),
+            (String::from("SetRecursion"), vec![]),
+            (String::from("MapValueRecursion"), vec![]),
+        ],
+        "Rust RecursionShape mirror in dag.rs must stay aligned with src/v3/std/induction.dag"
+    );
+    assert_eq!(
+        record_fields(&dag, "InductiveField"),
+        vec![
+            "type_name",
+            "variant_name",
+            "field_name",
+            "shape",
+            "element_type"
+        ],
+        "Rust InductiveField mirror in dag.rs must stay aligned with src/v3/std/induction.dag"
+    );
+    assert_eq!(
+        sum_variants(&dag, "SubValueRelation"),
+        vec![
+            (
+                String::from("StrictSubValue"),
+                vec![String::from("field"), String::from("factor")]
+            ),
+            (
+                String::from("IteratedSubValue"),
+                vec![String::from("field")]
+            ),
+            (
+                String::from("ArithmeticDescent"),
+                vec![String::from("param"), String::from("factor")]
+            ),
+            (String::from("PreservedValue"), vec![]),
+            (String::from("SubValueUnknown"), vec![]),
+        ],
+        "Rust SubValueRelation mirror in dag.rs must stay aligned with src/v3/std/induction.dag"
+    );
+}
+
+#[test]
 fn computation_carriers_bootstrap_from_v3_std() {
     let dag = Dag::new();
     assert!(
@@ -367,7 +530,11 @@ fn computation_carriers_bootstrap_from_v3_std() {
             (String::from("CollectionSize"), vec![String::from("param")]),
             (String::from("TreeSize"), vec![String::from("param")]),
             (String::from("ArithmeticParam"), vec![String::from("param")]),
-            (String::from("ExplicitCount"), vec![String::from("n")]),
+            (String::from("ExplicitCountZero"), Vec::new()),
+            (
+                String::from("ExplicitCountPositive"),
+                vec![String::from("steps")],
+            ),
             (String::from("Forever"), Vec::new()),
         ]
     );
@@ -380,23 +547,23 @@ fn computation_carriers_bootstrap_from_v3_std() {
             ),
             (
                 String::from("CollectionShrinkCall"),
-                vec![String::from("collection"), String::from("amount")],
+                vec![String::from("amount"), String::from("collection")],
             ),
             (
                 String::from("ArithmeticSubtractCall"),
-                vec![String::from("param"), String::from("by")],
+                vec![String::from("steps"), String::from("ring_param")],
             ),
             (
                 String::from("ArithmeticDivideCall"),
-                vec![String::from("param"), String::from("by")],
+                vec![String::from("divisor"), String::from("ring_param")],
             ),
             (
                 String::from("ParserAdvanceCall"),
-                vec![String::from("stream"), String::from("witness")],
+                vec![String::from("witness")],
             ),
             (
                 String::from("WorklistDrainCall"),
-                vec![String::from("worklist"), String::from("element")],
+                vec![String::from("element")],
             ),
             (
                 String::from("FoldBodyCall"),
@@ -406,10 +573,17 @@ fn computation_carriers_bootstrap_from_v3_std() {
         ]
     );
     assert_eq!(
+        sum_variants(&dag, "ProportionalDivisor"),
+        vec![
+            (String::from("DivideByTwo"), Vec::new()),
+            (String::from("StrictlyLarger"), vec![String::from("inner")],),
+        ]
+    );
+    assert_eq!(
         sum_variants(&dag, "ShrinkFactor"),
         vec![
             (String::from("UnitShrink"), Vec::new()),
-            (String::from("ConstantShrink"), vec![String::from("amount")]),
+            (String::from("ConstantShrink"), vec![String::from("steps")]),
             (
                 String::from("ProportionalShrink"),
                 vec![String::from("divisor")],
@@ -445,8 +619,10 @@ fn computation_lowering_functions_preserve_std_body_spans() {
     for name in [
         "tree_size_bound",
         "lower_call_pattern",
+        "positive_descent_count",
         "size_bound_param",
         "is_constant_bound",
+        "forever_iteration_bound",
         "constant_bound_value",
         "algebra_profile_to_dimension",
         "type_iteration_dimension",
@@ -460,13 +636,13 @@ fn computation_lowering_functions_preserve_std_body_spans() {
 
 #[test]
 fn computation_lowering_rust_mirror_matches_dag_authority() {
+    use v3_compiler::dag::ShrinkFactor::{ConstantShrink, ProportionalShrink};
     use CallPattern::{
         ArithmeticDivideCall, ArithmeticSubtractCall, ChildAccessorCall, CollectionShrinkCall,
         FoldBodyCall, ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
     };
     use DescentEvidence::{NonIncreasing, Strict};
     use IterationPrimitive::{Descend, Fold, Repeat};
-    use ShrinkFactor::{ConstantShrink, ProportionalShrink};
     use SizeBound::{ArithmeticParam, CollectionSize, Forever, TreeSize};
 
     let cases = vec![
@@ -485,22 +661,44 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
         ),
         (
             CollectionShrinkCall {
-                collection: String::from("items"),
-                amount: 1,
+                amount: PositiveDescentAmount::OneStep,
+                collection: String::from("xs"),
             },
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
-                    param: String::from("items"),
+                    param: String::from("xs"),
                 },
                 evidence: Strict,
-                factor: Some(ConstantShrink { amount: 1 }),
+                factor: Some(ConstantShrink {
+                    steps: PositiveDescentAmount::OneStep,
+                }),
+            },
+        ),
+        (
+            CollectionShrinkCall {
+                amount: PositiveDescentAmount::AdditionalStep {
+                    previous: Box::new(PositiveDescentAmount::OneStep),
+                },
+                collection: String::from("xs"),
+            },
+            LoweringTarget {
+                primitive: Fold,
+                bound: CollectionSize {
+                    param: String::from("xs"),
+                },
+                evidence: Strict,
+                factor: Some(ConstantShrink {
+                    steps: PositiveDescentAmount::AdditionalStep {
+                        previous: Box::new(PositiveDescentAmount::OneStep),
+                    },
+                }),
             },
         ),
         (
             ArithmeticSubtractCall {
-                param: String::from("n"),
-                by: 1,
+                steps: PositiveDescentAmount::OneStep,
+                ring_param: String::from("n"),
             },
             LoweringTarget {
                 primitive: Repeat,
@@ -508,34 +706,55 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                     param: String::from("n"),
                 },
                 evidence: Strict,
-                factor: Some(ConstantShrink { amount: 1 }),
+                factor: Some(ConstantShrink {
+                    steps: PositiveDescentAmount::OneStep,
+                }),
             },
         ),
         (
             ArithmeticDivideCall {
-                param: String::from("k"),
-                by: DivisionDescentFactor::Two,
+                divisor: ProportionalDivisor::DivideByTwo,
+                ring_param: String::from("n"),
             },
             LoweringTarget {
                 primitive: Repeat,
                 bound: ArithmeticParam {
-                    param: String::from("k"),
+                    param: String::from("n"),
                 },
                 evidence: Strict,
                 factor: Some(ProportionalShrink {
-                    divisor: DivisionDescentFactor::Two,
+                    divisor: ProportionalDivisor::DivideByTwo,
+                }),
+            },
+        ),
+        (
+            ArithmeticDivideCall {
+                divisor: ProportionalDivisor::StrictlyLarger {
+                    inner: Box::new(ProportionalDivisor::DivideByTwo),
+                },
+                ring_param: String::from("n"),
+            },
+            LoweringTarget {
+                primitive: Repeat,
+                bound: ArithmeticParam {
+                    param: String::from("n"),
+                },
+                evidence: Strict,
+                factor: Some(ProportionalShrink {
+                    divisor: ProportionalDivisor::StrictlyLarger {
+                        inner: Box::new(ProportionalDivisor::DivideByTwo),
+                    },
                 }),
             },
         ),
         (
             ParserAdvanceCall {
-                stream: String::from("tokens"),
                 witness: String::from("advance"),
             },
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
-                    param: String::from("tokens"),
+                    param: String::from("advance"),
                 },
                 evidence: Strict,
                 factor: None,
@@ -543,13 +762,12 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
         ),
         (
             WorklistDrainCall {
-                worklist: String::from("frontier"),
                 element: String::from("item"),
             },
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
-                    param: String::from("frontier"),
+                    param: String::from("item"),
                 },
                 evidence: Strict,
                 factor: None,
@@ -557,12 +775,12 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
         ),
         (
             FoldBodyCall {
-                outer_collection: String::from("outer"),
+                outer_collection: String::from("items"),
             },
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
-                    param: String::from("outer"),
+                    param: String::from("items"),
                 },
                 evidence: NonIncreasing,
                 factor: None,
@@ -593,31 +811,30 @@ fn computation_size_bound_helpers_match_dag_authority() {
     let arithmetic = SizeBound::ArithmeticParam {
         param: String::from("n"),
     };
-    let explicit = SizeBound::ExplicitCount { n: 7 };
+    let explicit = SizeBound::ExplicitCountPositive {
+        steps: positive_amount_from_i64(7).expect("literal 7 is in Peano materialization range"),
+    };
+    let explicit_zero = SizeBound::ExplicitCountZero;
     let forever = SizeBound::Forever;
 
     assert_eq!(size_bound_param(&tree), Some("node"));
     assert_eq!(size_bound_param(&collection), Some("items"));
     assert_eq!(size_bound_param(&arithmetic), Some("n"));
     assert_eq!(size_bound_param(&explicit), None);
+    assert_eq!(size_bound_param(&explicit_zero), None);
     assert_eq!(size_bound_param(&forever), None);
 
     assert!(!is_constant_bound(&tree));
     assert!(!is_constant_bound(&collection));
     assert!(!is_constant_bound(&arithmetic));
     assert!(is_constant_bound(&explicit));
+    assert!(is_constant_bound(&explicit_zero));
     assert!(is_constant_bound(&forever));
 
+    assert_eq!(constant_bound_value(&explicit_zero), Some(0));
     assert_eq!(constant_bound_value(&explicit), Some(7));
-    // `Forever` projects to the constant-cost COEFFICIENT `1` for the
-    // size/cost algebra (SameArgumentCall → Repeat(Forever) collapses to a
-    // single-unit cost projection per v2's `dsl/std/computation.dag:269-275`).
-    // This is NOT a claim that `Forever` represents a finite iteration
-    // count of 1.
-    assert_eq!(constant_bound_value(&forever), Some(1));
+    assert_eq!(constant_bound_value(&forever), Some(i64::MAX));
     assert_eq!(constant_bound_value(&tree), None);
-    assert_eq!(constant_bound_value(&collection), None);
-    assert_eq!(constant_bound_value(&arithmetic), None);
 }
 
 #[test]
@@ -652,6 +869,36 @@ fn computation_iteration_dimension_helpers_match_kernel_profile_authority() {
     assert_eq!(type_iteration_dimension("Float"), Some(ArithmeticRepeat));
     assert_eq!(type_iteration_dimension("Bool"), None);
     assert_eq!(type_iteration_dimension("UserType"), None);
+}
+
+#[test]
+fn v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority() {
+    fn v2_profile_to_v3(p: v2_compiler::std_algebra::AlgebraProfile) -> AlgebraProfile {
+        use v2_compiler::std_algebra::AlgebraProfile as V2;
+        match p {
+            V2::OrderedRingProfile => AlgebraProfile::OrderedRingProfile,
+            V2::ApproximateFieldProfile => AlgebraProfile::ApproximateFieldProfile,
+            V2::BooleanAlgebraProfile => AlgebraProfile::BooleanAlgebraProfile,
+            V2::BooleanAlgebraCollectionProfile => AlgebraProfile::BooleanAlgebraCollectionProfile,
+            V2::FreeMonoidScalarProfile => AlgebraProfile::FreeMonoidScalarProfile,
+            V2::FreeMonoidCollectionProfile => AlgebraProfile::FreeMonoidCollectionProfile,
+            V2::PartialFunctionProfile => AlgebraProfile::PartialFunctionProfile,
+        }
+    }
+
+    let v2_map = v2_compiler::std_algebra::kernel_algebra_profile();
+    assert!(
+        !v2_map.is_empty(),
+        "v2 stage0 kernel_algebra_profile table must be non-empty (dsl/std/algebra.dag authority)"
+    );
+    for (type_name, v2_profile) in v2_map.iter() {
+        assert_eq!(
+            kernel_algebra_profile(type_name),
+            Some(v2_profile_to_v3(*v2_profile)),
+            "v3 `dag::kernel_algebra_profile` must match v2 stage0 row for `{type_name}` \
+             (stage0 is regenerated from dsl/std/algebra.dag `data kernel_algebra_profile`)"
+        );
+    }
 }
 
 #[test]

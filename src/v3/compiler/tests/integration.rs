@@ -39,6 +39,8 @@ mod common;
 
 #[path = "integration/cementing/cementing_lens_registry_dispatch_test.rs"]
 mod cementing_lens_registry_dispatch_test;
+#[path = "integration/e_i_lane_induction_preflight_test.rs"]
+mod e_i_lane_induction_preflight_test;
 #[path = "integration/four_fixture_regression_test.rs"]
 mod four_fixture_regression_test;
 #[path = "integration/l1_5_fixed_point_test.rs"]
