@@ -427,6 +427,35 @@ let zero: Int = 0",
     assert!(out.contains("BoxedInt::Empty => 0,"), "got: {out}");
 }
 
+const SUB_MATCH_OVER_USER_SUM_SOURCE: &str = r#"
+type Choice = Number(Int) | Missing
+
+fn score(choice: Choice) -> Int =
+  match choice {
+    Number(value) => value
+    Missing => 0
+  }
+
+let result: Bool = score(Number(7)) == 7 && score(Missing) == 0
+"#;
+
+/// Day-1 T-Sub receipt gate for `sub_match_over_user_sum`.
+///
+/// Audit result: the first-class implementation path already exists on `main`.
+/// The parser accepts source-local `type Choice = ...` sums, lowering carries
+/// them as `Disj` + `Branch`, inference resolves arm patterns, and Rust emit
+/// renders the general enum-pattern `match` path. The surrounding tests already
+/// cover string-level Rust receipts for no-payload sums, payload sums, and
+/// imported sums.
+///
+/// This gate intentionally adds no implementation. Its narrower job is to keep
+/// the named R1/T-Sub surface live as an unignored, end-to-end pipeline receipt:
+/// parse -> lower -> infer -> Rust emit -> rustc link -> runtime execution.
+#[test]
+fn sub_match_over_user_sum_links_and_runs() {
+    assert_eq!(roundtrip_stdout(SUB_MATCH_OVER_USER_SUM_SOURCE), "true");
+}
+
 #[test]
 fn emit_rust_named_single_field_payload_routes_field_access_through_binding() {
     let out = emit(
