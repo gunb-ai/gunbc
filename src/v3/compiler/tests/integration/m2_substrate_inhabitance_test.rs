@@ -62,6 +62,35 @@ fn sum_variants(dag: &Dag, name: &str) -> Vec<(String, Vec<String>)> {
     }
 }
 
+fn variant_payload_field_type_name(
+    dag: &Dag,
+    sum_name: &str,
+    variant_name: &str,
+    field_name: &str,
+) -> String {
+    let id = find_named(dag, sum_name);
+    let TypeConnective::Disj { variants } = &dag.declaration(id).connective else {
+        panic!("expected `{sum_name}` to lower to a Disj");
+    };
+    let variant = variants
+        .iter()
+        .find(|variant| variant.label == variant_name)
+        .unwrap_or_else(|| panic!("variant `{variant_name}` not found under `{sum_name}`"));
+    let TypeConnective::Conj { children } = &dag.declaration(variant.ty).connective else {
+        panic!("expected variant `{variant_name}` under `{sum_name}` to lower to a Conj payload");
+    };
+    let field = children
+        .iter()
+        .find(|field| field.label == field_name)
+        .unwrap_or_else(|| {
+            panic!("field `{field_name}` not found on variant `{variant_name}` under `{sum_name}`")
+        });
+    dag.declaration(field.ty)
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("<anonymous:{}>", field.ty.raw()))
+}
+
 fn arrow_body(dag: &Dag, name: &str) -> ArrowBody {
     let id = find_named(dag, name);
     match &dag.declaration(id).connective {
@@ -231,6 +260,22 @@ fn termination_carriers_bootstrap_from_v3_std() {
             (String::from("SetRemoval"), vec![String::from("element")]),
             (String::from("FoldIteration"), Vec::new()),
         ]
+    );
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DivisionDescentFactor", "GreaterThanTwo", "extra"),
+        "PositiveInt"
+    );
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DescentSource", "ListShrink", "amount"),
+        "PositiveInt"
+    );
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DescentSource", "ArithmeticSubtract", "by"),
+        "PositiveInt"
+    );
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DescentSource", "ArithmeticDivide", "by"),
+        "DivisionDescentFactor"
     );
     assert_eq!(record_fields(&dag, "TerminationProof"), vec!["dimensions"]);
     assert_eq!(
