@@ -528,6 +528,14 @@ fn computation_carriers_bootstrap_from_v3_std() {
         sum_variants(&dag, "SizeBound"),
         vec![
             (String::from("CollectionSize"), vec![String::from("param")]),
+            (
+                String::from("ParserStreamSize"),
+                vec![String::from("witness")],
+            ),
+            (
+                String::from("WorklistDrainSize"),
+                vec![String::from("element")],
+            ),
             (String::from("TreeSize"), vec![String::from("param")]),
             (String::from("ArithmeticParam"), vec![String::from("param")]),
             (String::from("ExplicitCountZero"), Vec::new()),
@@ -643,7 +651,9 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
     };
     use DescentEvidence::{NonIncreasing, Strict};
     use IterationPrimitive::{Descend, Fold, Repeat};
-    use SizeBound::{ArithmeticParam, CollectionSize, Forever, TreeSize};
+    use SizeBound::{
+        ArithmeticParam, CollectionSize, Forever, ParserStreamSize, TreeSize, WorklistDrainSize,
+    };
 
     let cases = vec![
         (
@@ -753,8 +763,8 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
             },
             LoweringTarget {
                 primitive: Fold,
-                bound: CollectionSize {
-                    param: String::from("advance"),
+                bound: ParserStreamSize {
+                    witness: String::from("advance"),
                 },
                 evidence: Strict,
                 factor: None,
@@ -766,8 +776,8 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
             },
             LoweringTarget {
                 primitive: Fold,
-                bound: CollectionSize {
-                    param: String::from("item"),
+                bound: WorklistDrainSize {
+                    element: String::from("item"),
                 },
                 evidence: Strict,
                 factor: None,
@@ -808,6 +818,12 @@ fn computation_size_bound_helpers_match_dag_authority() {
     let collection = SizeBound::CollectionSize {
         param: String::from("items"),
     };
+    let parser_stream = SizeBound::ParserStreamSize {
+        witness: String::from("tok"),
+    };
+    let worklist_drain = SizeBound::WorklistDrainSize {
+        element: String::from("wl"),
+    };
     let arithmetic = SizeBound::ArithmeticParam {
         param: String::from("n"),
     };
@@ -819,6 +835,8 @@ fn computation_size_bound_helpers_match_dag_authority() {
 
     assert_eq!(size_bound_param(&tree), Some("node"));
     assert_eq!(size_bound_param(&collection), Some("items"));
+    assert_eq!(size_bound_param(&parser_stream), Some("tok"));
+    assert_eq!(size_bound_param(&worklist_drain), Some("wl"));
     assert_eq!(size_bound_param(&arithmetic), Some("n"));
     assert_eq!(size_bound_param(&explicit), None);
     assert_eq!(size_bound_param(&explicit_zero), None);
