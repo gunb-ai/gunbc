@@ -10,11 +10,11 @@
 // Bootstrap staging: `src/v3/std/` until the v2 firewall dissolves and
 // `dsl/std/` subsumes v3 std (same gate as `std.list` / `std.algebra`).
 //
-// `miss_int_lookup` / `hit_int_lookup` are Int-monomorphized helpers
-// (v3 infer does not yet close generic `miss_lookup<value>` /
-// `hit_lookup<value>` with body `Miss` / `Hit(v)`). Rust lens emission
-// treats these two callables as `Lookup::Miss` / `Lookup::Hit` (see
-// `emit_rust_target::render_general_callable`).
+// This module does **not** define generic `fn miss_lookup` / `fn hit_lookup`:
+// v3 infer cannot yet prove bodies `Miss` and `Hit(v)` against `Lookup<value>`
+// (semantic failure: "body does not satisfy return type"). Lenses use the
+// Int-monomorphized `miss_int_lookup` / `hit_int_lookup` only; Rust emit lowers
+// those to `Lookup::Miss` / `Lookup::Hit` (see `emit_rust_target` lookup callables).
 
 module v3.std.lookup
 
