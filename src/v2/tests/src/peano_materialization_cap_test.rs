@@ -32,7 +32,7 @@ fn proportional_divisor_rejects_above_256() {
 #[test]
 fn sum_bound_has_cost_bound_introspection_consumer() {
     let terms = Rc::new(vec![cost_constant()]);
-    let b = sum_bound(terms);
+    let b = sum_bound(&terms);
     assert!(cost_bound_is_sum_bound(b));
     assert!(!cost_bound_is_sum_bound(cost_constant()));
 }
@@ -41,7 +41,7 @@ fn sum_bound_has_cost_bound_introspection_consumer() {
 fn sum_bound_rejects_empty_alternative_stack() {
     let terms = Rc::new(vec![]);
     assert!(matches!(
-        sum_bound(terms).as_ref(),
+        sum_bound(&terms).as_ref(),
         CostBound::ErrorBound
     ));
 }
