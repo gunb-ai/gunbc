@@ -170,6 +170,12 @@ mod t_demo_fixture_test {
         );
     }
 
+    // Temporary bridge until T-TestGen owns runner evaluation for authored
+    // `TestClaim` values. These top-level `let ...: TestClaim` fixtures lower
+    // as Bind nodes; there is not yet a stable test helper that evaluates the
+    // bind's structural fields back into `FieldValue` data. Keep the `.dag`
+    // fixture as the only claim-source authority, and dissolve this text read
+    // when the T-TestGen runner can execute the compiled claim declarations.
     fn find_string_field(source: &str, claim_name: &str, field_name: &str) -> String {
         let claim_start = source
             .find(&format!("let {claim_name}: TestClaim"))
@@ -182,6 +188,12 @@ mod t_demo_fixture_test {
         read_dag_string_literal(&source[value_start..])
     }
 
+    // Use numeric byte constants instead of quote/backslash character literals:
+    // `tests/integration/common/mod.rs` has a deliberately narrow scanner for
+    // this file and does not model Rust character literals.
+    const DAG_ESCAPE_BYTE: u8 = 92; // ASCII backslash, normally written b'\\'.
+    const DAG_QUOTE_BYTE: u8 = 34; // ASCII double quote, normally written b'"'.
+
     fn read_dag_string_literal(input: &str) -> String {
         let mut out = Vec::new();
         let mut escaped = false;
@@ -192,8 +204,10 @@ mod t_demo_fixture_test {
                 continue;
             }
             match byte {
-                92 => escaped = true,
-                34 => return String::from_utf8(out).expect("T-Demo fixture literals are UTF-8"),
+                DAG_ESCAPE_BYTE => escaped = true,
+                DAG_QUOTE_BYTE => {
+                    return String::from_utf8(out).expect("T-Demo fixture literals are UTF-8");
+                }
                 _ => out.push(byte),
             }
         }
