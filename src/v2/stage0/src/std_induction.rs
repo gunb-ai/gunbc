@@ -8,13 +8,15 @@ use crate::std_computation::IterationPrimitive::{Descend, Fold, Repeat};
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_computation::SizeBound::{ArithmeticParam, CollectionSize, Forever};
 pub use crate::std_computation::{
-    positive_amount_from_i64, proportional_divisor_from_i64, tree_size_bound, CallPattern,
-    IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
+    positive_amount_from_i64, tree_size_bound, CallPattern, IterationPrimitive, LoweringTarget,
+    ShrinkFactor, SizeBound,
 };
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::RankingDimension::TreeSize;
-pub use crate::std_termination::{DescentEvidence, RankingDimension};
+pub use crate::std_termination::{
+    proportional_divisor_from_i64, DescentEvidence, ProportionalDivisor, RankingDimension,
+};
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

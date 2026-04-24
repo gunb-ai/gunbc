@@ -197,6 +197,20 @@ type PositiveDescentAmount
   = OneStep
   | AdditionalStep { previous: PositiveDescentAmount }
 
+// 🟢 TERMINAL at descent-witness scope. Structural divisor ≥ 2 (Peano from
+// `DivideByTwo`); mirrors `std.computation` divide-call patterns without
+// importing `std.computation` (that module depends on this file).
+type ProportionalDivisor
+  = DivideByTwo
+  | StrictlyLarger { inner: ProportionalDivisor }
+
+fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
+  match d {
+    DivideByTwo => 2
+    StrictlyLarger { inner: p } => 1 + proportional_divisor_to_int(d: p)
+  }
+}
+
 // =========================================================================
 // Descent sources: HOW descent is witnessed at a call site
 // =========================================================================
@@ -211,8 +225,9 @@ type PositiveDescentAmount
 //     an accessor result is provably smaller (subtree < tree).
 //   - ListShrink: skip(n) for n >= 1 produces a shorter list.
 //     Grounded in List algebra (|skip(n, l)| = max(0, |l| - n)).
-//   - ArithmeticDecrease: n-k for k >= 1, or n/k for k >= 2.
-//     Grounded in OrderedRing (subtract decreases, division too).
+//   - ArithmeticSubtractDescent: subtract k for k >= 1 (structural witness).
+//   - ArithmeticDivideDescent: divide by d for d >= 2 (structural divisor).
+//     Grounded in OrderedRing (subtract decreases; proportional division too).
 //   - ParserAdvance: advance/expect/eat move position forward.
 //     Grounded in ParserState contract (position is monotonic).
 //   - SetRemoval: removing an element from a finite set.
@@ -224,7 +239,8 @@ type PositiveDescentAmount
 type DescentSource
   = ChildAccessor { accessor: String }         // e.g., "binop_left"
   | ListShrink { amount: PositiveDescentAmount } // skip(amount), amount >= 1
-  | ArithmeticDecrease { op: String, by: PositiveDescentAmount } // "subtract" by 1, "divide" by 2
+  | ArithmeticSubtractDescent { steps: PositiveDescentAmount }
+  | ArithmeticDivideDescent { divisor: ProportionalDivisor }
   | ParserAdvance { witness: String }          // "advance", "expect", "eat"
   | SetRemoval { element: String }             // set remove in work-list drain
   | FoldIteration                              // body of fold — bounded by |collection|

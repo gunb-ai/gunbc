@@ -233,8 +233,12 @@ fn termination_carriers_bootstrap_from_v3_std() {
             ),
             (String::from("ListShrink"), vec![String::from("amount")]),
             (
-                String::from("ArithmeticDecrease"),
-                vec![String::from("op"), String::from("by")],
+                String::from("ArithmeticSubtractDescent"),
+                vec![String::from("steps")],
+            ),
+            (
+                String::from("ArithmeticDivideDescent"),
+                vec![String::from("divisor")],
             ),
             (String::from("ParserAdvance"), vec![String::from("witness")]),
             (String::from("SetRemoval"), vec![String::from("element")]),
@@ -257,6 +261,7 @@ fn termination_lattice_functions_preserve_std_body_spans() {
         "merge_evidence",
         "join_evidence",
         "promote_to_strict",
+        "proportional_divisor_to_int",
         "optional_evidence_meet",
         "map_evidence_merge_at",
     ] {
@@ -410,7 +415,6 @@ fn computation_lowering_functions_preserve_std_body_spans() {
         "tree_size_bound",
         "lower_call_pattern",
         "positive_descent_count",
-        "proportional_divisor_to_int",
         "size_bound_param",
         "is_constant_bound",
         "forever_iteration_bound",

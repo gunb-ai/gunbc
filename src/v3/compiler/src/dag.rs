@@ -831,9 +831,11 @@ pub enum DescentSource {
     ListShrink {
         amount: PositiveDescentAmount,
     },
-    ArithmeticDecrease {
-        op: String,
-        by: PositiveDescentAmount,
+    ArithmeticSubtractDescent {
+        steps: PositiveDescentAmount,
+    },
+    ArithmeticDivideDescent {
+        divisor: ProportionalDivisor,
     },
     ParserAdvance {
         witness: String,
@@ -1057,7 +1059,7 @@ pub fn is_constant_bound(bound: &SizeBound) -> bool {
     matches!(bound, SizeBound::ExplicitCount { .. } | SizeBound::Forever)
 }
 
-/// Word64 top iterate count for [`SizeBound::Forever`] / `repeat(max_int)`.
+/// Signed `Int` top iterate count (`i64::MAX`) for [`SizeBound::Forever`] / `repeat(max_int)`.
 pub fn forever_iteration_bound() -> i64 {
     i64::MAX
 }

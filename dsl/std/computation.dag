@@ -100,7 +100,9 @@ module std.computation
 import std.iteration { }
 import std.termination {
   DescentEvidence, DescentUnknown, RankingDimension,
-  PositiveDescentAmount, OneStep, AdditionalStep
+  PositiveDescentAmount, OneStep, AdditionalStep,
+  ProportionalDivisor, DivideByTwo, StrictlyLarger,
+  proportional_divisor_to_int
 }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
@@ -173,29 +175,14 @@ fn tree_size_bound(param: String) -> SizeBound {
 // category.
 //
 // Shrink / arithmetic descent amounts use structural witnesses from
-// std.termination (PositiveDescentAmount) and ProportionalDivisor (>= 2)
-// so non-positive skip amounts and invalid divide steps are not representable.
+// std.termination (`PositiveDescentAmount`, `ProportionalDivisor`) so
+// non-positive skip amounts and invalid divide steps are not representable.
 // =========================================================================
-//
-// 🟢 TERMINAL at E-C lowering scope. Structural divisor ≥ 2 (Peano from `DivideByTwo`);
-// no name-like payloads.
-
-// Integer >= 2 — proportional descent divisors (halving-style well-founded steps).
-type ProportionalDivisor
-  = DivideByTwo
-  | StrictlyLarger { inner: ProportionalDivisor }
 
 fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
   match steps {
     OneStep => 1
     AdditionalStep { previous: p } => 1 + positive_descent_count(steps: p)
-  }
-}
-
-fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
-  match d {
-    DivideByTwo => 2
-    StrictlyLarger { inner: p } => 1 + proportional_divisor_to_int(d: p)
   }
 }
 
@@ -336,6 +323,7 @@ fn is_constant_bound(bound: SizeBound) -> Bool {
 // ExplicitCount returns the developer-specified literal (including 0).
 // Forever returns the signed-64 iteration cap (same as repeat(max_int); see std.iteration).
 // Non-constant bounds return `none` so callers cannot confuse “not constant” with a literal 0.
+// Signed `Int` top iterate count (`i64::MAX`); matches `repeat(max_int)` cap.
 fn forever_iteration_bound() -> Int { 9223372036854775807 }
 
 fn constant_bound_value(bound: SizeBound) -> Int? {

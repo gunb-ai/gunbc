@@ -132,6 +132,34 @@ impl PositiveDescentAmount {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
+pub enum ProportionalDivisor {
+    DivideByTwo,
+    StrictlyLarger { inner: Rc<ProportionalDivisor> },
+}
+
+pub fn proportional_divisor_to_int(d: &ProportionalDivisor) -> i64 {
+    match d {
+        ProportionalDivisor::DivideByTwo => 2,
+        ProportionalDivisor::StrictlyLarger { inner } => {
+            1 + proportional_divisor_to_int(inner.as_ref())
+        }
+    }
+}
+
+pub fn proportional_divisor_from_i64(k: i64) -> Option<Rc<ProportionalDivisor>> {
+    if k < 2 {
+        None
+    } else if k == 2 {
+        Some(Rc::new(ProportionalDivisor::DivideByTwo))
+    } else {
+        Some(Rc::new(ProportionalDivisor::StrictlyLarger {
+            inner: proportional_divisor_from_i64(k - 1)?,
+        }))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum DescentSource {
     ChildAccessor {
         accessor: String,
@@ -139,9 +167,11 @@ pub enum DescentSource {
     ListShrink {
         amount: Rc<PositiveDescentAmount>,
     },
-    ArithmeticDecrease {
-        op: String,
-        by: Rc<PositiveDescentAmount>,
+    ArithmeticSubtractDescent {
+        steps: Rc<PositiveDescentAmount>,
+    },
+    ArithmeticDivideDescent {
+        divisor: Rc<ProportionalDivisor>,
     },
     ParserAdvance {
         witness: String,

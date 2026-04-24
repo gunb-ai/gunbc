@@ -8,7 +8,9 @@ module std.computation
 
 import std.termination {
   DescentEvidence, DescentUnknown,
-  PositiveDescentAmount, OneStep, AdditionalStep
+  PositiveDescentAmount, OneStep, AdditionalStep,
+  ProportionalDivisor, DivideByTwo, StrictlyLarger,
+  proportional_divisor_to_int
 }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
@@ -31,23 +33,10 @@ fn tree_size_bound(param: String) -> SizeBound {
   TreeSize { param: param }
 }
 
-// 🟢 TERMINAL at E-C lowering scope. Structural divisor ≥ 2 (Peano from `DivideByTwo`);
-// shrink amounts stay positive by construction (no `Int` payload here).
-type ProportionalDivisor
-  = DivideByTwo
-  | StrictlyLarger { inner: ProportionalDivisor }
-
 fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
   match steps {
     OneStep => 1
     AdditionalStep { previous: p } => 1 + positive_descent_count(steps: p)
-  }
-}
-
-fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
-  match d {
-    DivideByTwo => 2
-    StrictlyLarger { inner: p } => 1 + proportional_divisor_to_int(d: p)
   }
 }
 
@@ -150,7 +139,7 @@ fn is_constant_bound(bound: SizeBound) -> Bool {
   }
 }
 
-// Word64 top iterate count for `Forever` / `repeat(max_int)` (see std.iteration).
+// Signed `Int` top iterate count (`i64::MAX`); matches `repeat(max_int)` cap.
 fn forever_iteration_bound() -> Int { 9223372036854775807 }
 
 // `none` when the bound is not constant (avoids conflating with `ExplicitCount { n: 0 }`).

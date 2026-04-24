@@ -19,7 +19,7 @@ Full inventories (names only — read source files for shapes):
 **`dsl/std/termination.dag` (344L)** — proof-theory for well-founded descent.
 - `DescentEvidence = Strict | NonIncreasing | DescentUnknown` (+ lattice fns `merge_evidence`, `join_evidence`, `promote_to_strict`, `evidence_rank`, `optional_evidence_meet`, `map_evidence_merge_at`).
 - `RankingDimension = TreeSize | ListLength | ArithmeticValue | TokenPosition | SetCardinality` (each wraps `param: String`).
-- `DescentSource = ChildAccessor | ListShrink | ArithmeticDecrease | ParserAdvance | SetRemoval | FoldIteration`.
+- `DescentSource = ChildAccessor | ListShrink | ArithmeticSubtractDescent | ArithmeticDivideDescent | ParserAdvance | SetRemoval | FoldIteration`.
 - `TerminationProof { dimensions: List<RankingDimension> }`, `ProofEdge { caller, callee, evidence: List<DescentEvidence> }`.
 
 **`dsl/std/computation.dag` (384L)** — syntax-to-primitive lowering table.

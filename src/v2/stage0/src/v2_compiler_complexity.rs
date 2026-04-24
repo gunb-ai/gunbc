@@ -34,7 +34,8 @@ pub use crate::std_induction::{
 };
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::DescentSource::{
-    ArithmeticDecrease, ChildAccessor, FoldIteration, ListShrink, ParserAdvance, SetRemoval,
+    ArithmeticDivideDescent, ArithmeticSubtractDescent, ChildAccessor, FoldIteration, ListShrink,
+    ParserAdvance, SetRemoval,
 };
 use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::RankingDimension::{

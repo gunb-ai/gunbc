@@ -101,6 +101,19 @@ type PositiveDescentAmount
   = OneStep
   | AdditionalStep { previous: PositiveDescentAmount }
 
+// 🟢 TERMINAL at descent-witness scope. Structural divisor ≥ 2; lives here so
+// `DescentSource` can reference it without `std.computation` (which imports this module).
+type ProportionalDivisor
+  = DivideByTwo
+  | StrictlyLarger { inner: ProportionalDivisor }
+
+fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
+  match d {
+    DivideByTwo => 2
+    StrictlyLarger { inner: p } => 1 + proportional_divisor_to_int(d: p)
+  }
+}
+
 // Concrete code pattern that witnesses descent for a ranking dimension.
 // Bootstrap constraint: name-like payloads are Strings until function and
 // field references are first-class in .dag.
@@ -110,7 +123,8 @@ type PositiveDescentAmount
 type DescentSource
   = ChildAccessor { accessor: String }
   | ListShrink { amount: PositiveDescentAmount }
-  | ArithmeticDecrease { op: String, by: PositiveDescentAmount }
+  | ArithmeticSubtractDescent { steps: PositiveDescentAmount }
+  | ArithmeticDivideDescent { divisor: ProportionalDivisor }
   | ParserAdvance { witness: String }
   | SetRemoval { element: String }
   | FoldIteration

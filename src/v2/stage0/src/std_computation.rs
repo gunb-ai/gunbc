@@ -9,7 +9,10 @@ use crate::std_algebra::AlgebraProfile::{
 pub use crate::std_algebra::{kernel_algebra_profile, AlgebraProfile};
 use crate::std_termination::DescentEvidence::*;
 use crate::std_termination::RankingDimension::*;
-pub use crate::std_termination::{DescentEvidence, PositiveDescentAmount, RankingDimension};
+pub use crate::std_termination::{
+    proportional_divisor_from_i64, proportional_divisor_to_int, DescentEvidence,
+    PositiveDescentAmount, ProportionalDivisor, RankingDimension,
+};
 use crate::v2_rt;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -35,27 +38,11 @@ pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
     Rc::new(SizeBound::TreeSize { param: param })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum ProportionalDivisor {
-    DivideByTwo,
-    StrictlyLarger { inner: Rc<ProportionalDivisor> },
-}
-
 pub fn positive_descent_count(steps: &PositiveDescentAmount) -> i64 {
     match steps {
         PositiveDescentAmount::OneStep => 1,
         PositiveDescentAmount::AdditionalStep { previous } => {
             1 + positive_descent_count(previous.as_ref())
-        }
-    }
-}
-
-pub fn proportional_divisor_to_int(d: &ProportionalDivisor) -> i64 {
-    match d {
-        ProportionalDivisor::DivideByTwo => 2,
-        ProportionalDivisor::StrictlyLarger { inner } => {
-            1 + proportional_divisor_to_int(inner.as_ref())
         }
     }
 }
@@ -68,18 +55,6 @@ pub fn positive_amount_from_i64(k: i64) -> Option<Rc<PositiveDescentAmount>> {
     } else {
         Some(Rc::new(PositiveDescentAmount::AdditionalStep {
             previous: positive_amount_from_i64(k - 1)?,
-        }))
-    }
-}
-
-pub fn proportional_divisor_from_i64(k: i64) -> Option<Rc<ProportionalDivisor>> {
-    if k < 2 {
-        None
-    } else if k == 2 {
-        Some(Rc::new(ProportionalDivisor::DivideByTwo))
-    } else {
-        Some(Rc::new(ProportionalDivisor::StrictlyLarger {
-            inner: proportional_divisor_from_i64(k - 1)?,
         }))
     }
 }

@@ -71,7 +71,8 @@ module std.induction
 import std.termination {
   DescentEvidence, Strict, NonIncreasing, DescentUnknown,
   RankingDimension, TreeSize,
-  PositiveDescentAmount, OneStep, AdditionalStep
+  PositiveDescentAmount, OneStep, AdditionalStep,
+  ProportionalDivisor, DivideByTwo, StrictlyLarger
 }
 import std.computation {
   CallPattern, ChildAccessorCall, FoldBodyCall, SameArgumentCall,
@@ -79,7 +80,6 @@ import std.computation {
   LoweringTarget, IterationPrimitive, Descend, Fold, Repeat,
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CollectionSize, ArithmeticParam, Forever,
-  ProportionalDivisor, DivideByTwo, StrictlyLarger,
   tree_size_bound
 }
 
