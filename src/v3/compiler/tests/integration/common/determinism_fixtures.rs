@@ -102,8 +102,5 @@ pub const GO_EMIT_EXCLUDE: &[&str] = &["recursive_function_call_six"];
 /// unsupported `Behavior::Loop`, etc., until Python spec/emitter parity matches the
 /// Rust matrix (`m1_3_emit_rust_test` is Rust-canonical).
 pub const PYTHON_EMIT_EXCLUDE: &[&str] = &[
-    "list_map_then_fold_twelve",
-    "list_filter_then_fold_seven",
-    "nested_list_builtins_inside_lambda_six",
     "recursive_function_call_six",
 ];
