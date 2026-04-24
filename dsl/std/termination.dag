@@ -191,12 +191,6 @@ type RankingDimension
   | TokenPosition { param: String }      // parser state.position
   | SetCardinality { param: String }     // |set| via remove
 
-<<<<<<< HEAD
-// Division only witnesses arithmetic descent for factors >= 2. This refines
-// the shared PositiveInt authority instead of introducing a parallel positive
-// number model.
-type DivisionDescentFactor = PositiveInt where range(min: 2)
-=======
 // 🟢 TERMINAL at descent-witness scope. Division only witnesses arithmetic
 // descent for factors >= 2. The v3 bootstrap currently erases alias `where`
 // refinements, so encode the boundary as a structural carrier and compose
@@ -204,7 +198,6 @@ type DivisionDescentFactor = PositiveInt where range(min: 2)
 type DivisionDescentFactor
   = Two
   | GreaterThanTwo { extra: PositiveInt }
->>>>>>> origin/main
 
 // =========================================================================
 // Descent sources: HOW descent is witnessed at a call site

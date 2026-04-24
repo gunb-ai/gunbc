@@ -876,6 +876,15 @@ pub fn map_evidence_merge_at(
 // out of `ArrowBody::Unparsed`. Per-coproduct dissolution receipts below
 // match the `.dag` source; `m2_substrate_inhabitance_test` pins the carrier
 // shape and current Rust mirror behavior.
+//
+// 🟡 Refined-numeric bridge: `PositiveInt`-typed fields on the `.dag` side
+// (`CollectionShrinkCall.amount`, `ArithmeticSubtractCall.by`,
+// `ConstantShrink.amount`) surface here as plain `i64` until runtime refined-
+// value wrappers land. "Illegal states unrepresentable" holds at the carrier
+// authority, not at the Rust mirror field type; construct via authored paths.
+// Structural refinements that are already encoded as coproducts on the `.dag`
+// side (`DivisionDescentFactor = Two | GreaterThanTwo { extra }`) *do* flow
+// through as enums and stay enforced here.
 
 /// 🟡 SCAFFOLD.
 ///
