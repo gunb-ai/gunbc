@@ -127,8 +127,6 @@ mod sg2_parse_authority_test;
 mod sg2c1_parse_tables_authority_test;
 #[path = "integration/sg2c5_soft_keyword_ident_test.rs"]
 mod sg2c5_soft_keyword_ident_test;
-#[path = "integration/sg3_lower_authority_test.rs"]
-mod sg3_lower_authority_test;
 #[path = "integration/sg3_lower_parse_surface_stack_test.rs"]
 mod sg3_lower_parse_surface_stack_test;
 #[path = "integration/sg3_surface_reflection_consumer_test.rs"]
@@ -137,6 +135,12 @@ mod sg3_surface_reflection_consumer_test;
 mod sg6_hand_authored_census_test;
 #[path = "integration/sg7_prep_variant_payload_freshness_test.rs"]
 mod sg7_prep_variant_payload_freshness_test;
+#[path = "integration/t_pb_b_1_dag_runner_test.rs"]
+mod t_pb_b_1_dag_runner_test;
+#[path = "integration/t_pb_b_1_tests_dag_smoke_test.rs"]
+mod t_pb_b_1_tests_dag_smoke_test;
+#[path = "integration/t_pb_b_brief_d_fixture_smoke_test.rs"]
+mod t_pb_b_brief_d_fixture_smoke_test;
 #[path = "integration/test_runner_test.rs"]
 mod test_runner_test;
 #[path = "integration/testgen_structural_coverage_gate_test.rs"]
@@ -264,8 +268,8 @@ mod lane2_stage_2f_dimension_test {
         let root = find_bind_root(&dag, "x");
         let report = analyze_symbolic_cost_dimension(&dag, root);
         let lens = match symbolic_cost_of(&dag, &find_bind_port(&dag, "x")) {
-            SymbolicCostLookup::FoundCost { _0: cost } => cost,
-            SymbolicCostLookup::MissingCost => panic!("expected FoundCost"),
+            SymbolicCostLookup::Hit(cost) => cost,
+            SymbolicCostLookup::Miss => panic!("expected Hit"),
         };
         assert_eq!(report.composed, lens);
         assert_eq!(report.dimension_name, "symbolic_cost");

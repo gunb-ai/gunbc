@@ -558,10 +558,10 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                     };
                     rewrites.push(BindingRewrite {
                         port: binding.payload_port,
-                        span: payload_binding_span(path, &b.span),
+                        span: generated_payload_binding_span(path, b.span.clone()),
                         result: Err(Diagnostic::ResolveError {
                             name: "(upstream failure in match payload binding)".to_string(),
-                            span: payload_binding_span(path, &b.span),
+                            span: generated_payload_binding_span(path, b.span.clone()),
                             fixes: Vec::new(),
                         }),
                     });
@@ -590,7 +590,7 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                     let Some(binding) = &path.binding else {
                         continue;
                     };
-                    let span = payload_binding_span(path, &b.span);
+                    let span = generated_payload_binding_span(path, b.span.clone());
                     let result = match &variants {
                         None => Err(Diagnostic::ResolveError {
                             name: format!(
@@ -693,10 +693,6 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
     }
 
     changed
-}
-
-fn payload_binding_span(path: &crate::dag::Path, branch_span: &SourceSpan) -> SourceSpan {
-    generated_payload_binding_span(path, branch_span.clone())
 }
 
 enum Decision {
@@ -3689,6 +3685,26 @@ const WALK_DEPTH_LIMIT: usize = 32;
 /// with a `(T, T) -> T` / `(T, T) -> Bool` signature. The fallback
 /// is explicit about being a scaffold (see OperatorKind's
 /// dissolution receipt).
+///
+/// Returns `true` when `op_kind` on the refinement-stripped base type `lhs_base`
+/// resolves through a surfaced algebra `Conj` (e.g. `OrderedRing.add` for `Int`),
+/// i.e. `resolve_operator_arrow` returns a non-`ArrowBody::Pending` body.
+///
+/// **Crate-internal seam:** only `test_runner`'s `AlgebraicLaw` associativity recognizer calls
+/// this so that boundary shares one `resolve_operator_arrow` + `Pending` check with infer,
+/// without exporting `resolve_operator_arrow` from this module.
+pub(crate) fn operator_resolves_via_surfaced_algebra(
+    dag: &Dag,
+    op_kind: OperatorKind,
+    lhs_base: DeclarationId,
+) -> bool {
+    let lhs_type = TypeShape::new(lhs_base);
+    match resolve_operator_arrow(dag, op_kind, &lhs_type) {
+        Some(ra) => !matches!(ra.body, ArrowBody::Pending),
+        None => false,
+    }
+}
+
 fn resolve_operator_arrow(
     dag: &Dag,
     op_kind: OperatorKind,

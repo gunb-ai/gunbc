@@ -367,6 +367,12 @@ struct TypeDefinitionSyntaxBinding {
 }
 
 #[derive(Debug, Clone)]
+struct RecordDeriveTemplateBundleBinding {
+    struct_def_no_debug: String,
+    enum_def_no_debug: String,
+}
+
+#[derive(Debug, Clone)]
 struct PatternMatchSyntaxBinding {
     match_expr: String,
     match_arm: String,
@@ -488,6 +494,10 @@ struct RustLanguageSyntax {
     functions: FunctionSyntaxBinding,
     type_applications: TypeApplicationSyntaxBinding,
     type_definitions: TypeDefinitionSyntaxBinding,
+    /// From `rust_language.record_derive_templates` (`LanguageSpec` in
+    /// `emit_model.dag`); Rust data is `rust_record_derive_templates` in
+    /// `rust.dag` — `RecordDeriveTemplateBundle` (target-neutral; Rust consumes).
+    record_derive_no_debug: RecordDeriveTemplateBundleBinding,
     patterns: PatternMatchSyntaxBinding,
     collection_ops: CollectionOpsBinding,
     values: ValueConstructionSyntaxBinding,
@@ -1273,6 +1283,10 @@ impl RustLanguageSyntax {
                 dag,
                 require_field_decl_ref(fields, "type_definitions", language_decl)?,
             )?,
+            record_derive_no_debug: parse_record_derive_template_bundle(
+                dag,
+                require_field_decl_ref(fields, "record_derive_templates", language_decl)?,
+            )?,
             patterns: parse_pattern_match_syntax(
                 dag,
                 require_field_decl_ref(fields, "patterns", language_decl)?,
@@ -1398,6 +1412,17 @@ fn parse_type_definition_syntax(
         enum_def: syntax_field_string(fields, "enum_def", declaration)?,
         enum_unit_variant: syntax_field_string(fields, "enum_unit_variant", declaration)?,
         enum_data_variant: syntax_field_string(fields, "enum_data_variant", declaration)?,
+    })
+}
+
+fn parse_record_derive_template_bundle(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<RecordDeriveTemplateBundleBinding, EmitError> {
+    let fields = structural_fields_for_decl(dag, declaration)?;
+    Ok(RecordDeriveTemplateBundleBinding {
+        struct_def_no_debug: syntax_field_string(fields, "struct_def_no_debug", declaration)?,
+        enum_def_no_debug: syntax_field_string(fields, "enum_def_no_debug", declaration)?,
     })
 }
 
@@ -2800,6 +2825,28 @@ struct RenderLocals {
     payload_bindings: HashMap<PortId, VariantPayloadBinding<LocalBinding>>,
 }
 
+/// Policy for lowering anonymous `TypeConnective::Arrow` (`fn(..)->_` types)
+/// to Rust text. `impl Trait` spellings and `Rc<dyn Fn…>` are only legal in
+/// explicit, position-specific emit paths (blocking api-review on #676).
+///
+/// **Dissolution trigger:** when position-specific Arrow carrier spellings are
+/// modeled as `rust.dag` realization rows (or equivalent single-authority data),
+/// delete this enum and route both `impl Fn + Clone` and `Rc<dyn Fn…>` through
+/// those rows instead of emitter-local policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArrowRustEmitPolicy {
+    /// Reserved for fail-closed paths in future context-free seams. Not
+    /// selected by any current public entry point — all wired call sites pass
+    /// `StorageRcDynFn` (or route to `impl Fn + Clone` for user-fn params).
+    // This variant is never *constructed*; the `NoBody` + `match` arm is live if it were.
+    #[allow(dead_code)]
+    RejectFirstClassFn,
+    /// `std::rc::Rc<dyn Fn…>` — struct fields, collection instantiations,
+    /// top-level `let` annotations, inferred return slots, and nested
+    /// callable types inside `impl Fn` parameter lists.
+    StorageRcDynFn,
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 enum InputConsumer<'a> {
@@ -3660,6 +3707,25 @@ impl<'a> Ctx<'a> {
             ));
         }
         let field_name = single_field_label.unwrap_or("_0");
+        // `v3.std.lookup::Lookup::Hit` is a Rust tuple variant (`Hit(T)` in
+        // `dag_lookup_generated`); other single-`_0` sum arms stay struct-style.
+        // Dissolution trigger: today `Conj` children for a sum arm do not record
+        // "tuple vs struct payload" for Rust; emit would otherwise use struct
+        // patterns for every `_0` field. When positionality is a fact on the
+        // `Declaration` / `Disj` surface (or spec-driven), drop this name-match
+        // and read it structurally. Paired with `render_variant_constructor`'s
+        // `Lookup`/`Hit` constructor branch.
+        let is_lookup_hit = field_name == "_0"
+            && matches!(
+                qualified_name.split("::").collect::<Vec<_>>().as_slice(),
+                [a, b] if *a == "Lookup" && *b == "Hit"
+            );
+        if is_lookup_hit {
+            return Some(render_named_template(
+                &self.indexes.syntax.patterns.variant_pattern_positional,
+                &[("name", qualified_name), ("binding", rendered_binding)],
+            ));
+        }
         let bindings = render_named_template(
             &self.indexes.syntax.patterns.field_binding,
             &[("field", field_name), ("binding", rendered_binding)],
@@ -3791,6 +3857,53 @@ impl<'a> Ctx<'a> {
         Ok(scrutinee_disj == bool_disj)
     }
 
+    /// v3.std.lookup / v3.std.algebra: `miss_*_lookup` / `hit_*_lookup`
+    /// are thin monomorphized `Lookup<T>` constructors (one pair per
+    /// element type — `Int`, `SymbolicCost`, …). Emit as `Lookup::Miss`
+    /// / `Lookup::Hit(...)` so generated lens code does not call
+    /// out-of-scope shims. Runs before [`Self::render_realized_callable`]
+    /// so a registered callable strategy does not pre-empt enum lowering.
+    fn lookup_monomorphized_constructor_emit(
+        &self,
+        t: &TransformNode,
+        template: DeclarationId,
+        locals: &RenderLocals,
+    ) -> Result<Option<String>, EmitError> {
+        let Some(name) = self.dag.declaration(template).name.as_deref() else {
+            return Ok(None);
+        };
+        let is_miss = name == "miss_int_lookup" || name == "miss_symbolic_cost_lookup";
+        let is_hit = name == "hit_int_lookup" || name == "hit_symbolic_cost_lookup";
+        if is_miss {
+            if !t.inputs.is_empty() {
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "{name}() expects zero arguments"
+                )));
+            }
+            return Ok(Some("Lookup::Miss".to_string()));
+        }
+        if is_hit {
+            if t.inputs.len() != 1 {
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "{name}(v) expected one argument, got {}",
+                    t.inputs.len()
+                )));
+            }
+            let arg = self.elide_explicit_borrow(&self.render_input_use(
+                InputConsumer::Transform(t),
+                InputSlot::Positional(0),
+                locals,
+            )?);
+            let out = if arg.starts_with('(') {
+                format!("Lookup::Hit{arg}")
+            } else {
+                format!("Lookup::Hit({arg})")
+            };
+            return Ok(Some(out));
+        }
+        Ok(None)
+    }
+
     fn render_callable_transform(
         &self,
         t: &TransformNode,
@@ -3798,6 +3911,9 @@ impl<'a> Ctx<'a> {
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
         let (template, arguments) = callable_template(target, self.dag);
+        if let Some(rendered) = self.lookup_monomorphized_constructor_emit(t, template, locals)? {
+            return Ok(rendered);
+        }
         if let Some(rendered) = self.render_substrate_accessor(t, template, locals)? {
             return Ok(rendered);
         }
@@ -4219,6 +4335,28 @@ impl<'a> Ctx<'a> {
         if children.is_empty() {
             return Ok(Some(qualified_name));
         }
+        // Dissolution: same "tuple `Hit` for `v3.std.lookup` only" bridge as
+        // `render_single_field_variant_pattern` (pattern side); see long comment
+        // there. Until variant payload positionality is DAG-carried, keep narrow.
+        if children.len() == 1
+            && children[0].label == "_0"
+            && enum_name == "Lookup"
+            && variant_name == "Hit"
+        {
+            let value = self.elide_explicit_borrow(&self.render_input_use(
+                InputConsumer::Transform(consumer),
+                InputSlot::Positional(0),
+                locals,
+            )?);
+            // `elide` may leave a parenthesized value (`(0)`) for literals; do not
+            // add a second paren layer (`((0))`).
+            let out = if value.starts_with('(') {
+                format!("{qualified_name}{value}")
+            } else {
+                format!("{qualified_name}({value})")
+            };
+            return Ok(Some(out));
+        }
         let fields = children
             .iter()
             .enumerate()
@@ -4368,6 +4506,15 @@ impl<'a> Ctx<'a> {
             .expect("UserDefined arrow body must point at a Bind");
         let param_dispositions = self.callable_param_dispositions(declaration.id, inputs.len());
         let mut locals = RenderLocals::default();
+        let mut output_callable_walk = HashSet::new();
+        // C-8 / #676: there is no separate "return-only" / `AppliedTypeArguments` walk. The
+        // return slot uses the same `decl_includes_first_class_arrow_data` as struct derives /
+        // storage — including `Instantiation` (args **and** non-`List` **template**), so
+        // first-class `fn` living only "under" a template head still sets this flag. That
+        // unifies with `rust_type_name_for_user_function_parameter` (compose `Rc` when the
+        // return carries callable data anywhere).
+        let return_includes_first_class_arrow =
+            self.decl_includes_first_class_arrow_data(*output, &mut output_callable_walk);
         let params = bind
             .params
             .iter()
@@ -4375,22 +4522,33 @@ impl<'a> Ctx<'a> {
             .enumerate()
             .map(|(idx, (port, disposition))| {
                 let param_name = format!("p{idx}");
-                let ty = match disposition {
+                let ty_decl = self
+                    .dag
+                    .port(*port)
+                    .value_type()
+                    .ok_or(EmitError::UntypedPort(*port))?
+                    .declaration;
+                let callable_param_ty = self.type_declaration_peels_to_arrow(ty_decl);
+                let ty = self.rust_type_name_for_user_function_parameter(
+                    *port,
+                    *disposition,
+                    return_includes_first_class_arrow,
+                )?;
+                match disposition {
                     ParameterDispositionBinding::Borrowed
-                        if self.read_strategy() == ReadStrategyBinding::Borrow =>
+                        if self.read_strategy() == ReadStrategyBinding::Borrow
+                            && !callable_param_ty =>
                     {
                         locals
                             .names
                             .insert(*port, LocalBinding::Borrowed(param_name.clone()));
-                        self.rust_borrowed_type_name_for_port(*port)?
                     }
                     _ => {
                         locals
                             .names
                             .insert(*port, LocalBinding::Owned(param_name.clone()));
-                        self.rust_type_name_for_port(*port)?
                     }
-                };
+                }
                 Ok(render_named_template(
                     &self.indexes.syntax.functions.param_with_type,
                     &[("name", &param_name), ("type", &ty)],
@@ -4442,24 +4600,52 @@ impl<'a> Ctx<'a> {
         }
         match &declaration.connective {
             TypeConnective::Conj { children } => {
+                // `Rc<dyn Fn…>` fields are not `Debug`. `rust_type_defs.struct_def` still
+                // carries `#[derive(Clone, Debug)]` for ordinary records — when any field
+                // transitively holds first-class `fn` data, use `rust_record_derive_templates`
+                // instead (`struct_def_no_debug`: clone-only). See `decl_includes_first_class_arrow_data`
+                // and `emit_callable_field_types_use_rc_dyn_fn_storage` (INVARIANTS.md C-8).
+                let omit_debug = children.iter().any(|field| {
+                    let mut visited = HashSet::new();
+                    self.decl_includes_first_class_arrow_data(field.ty, &mut visited)
+                });
                 let fields = children
                     .iter()
                     .map(|field| self.render_struct_field(field))
                     .collect::<Result<Vec<_>, _>>()?;
                 let fields_joined = join_rendered(&fields, " ");
+                let template = if omit_debug {
+                    &self
+                        .indexes
+                        .syntax
+                        .record_derive_no_debug
+                        .struct_def_no_debug
+                } else {
+                    &self.indexes.syntax.type_definitions.struct_def
+                };
                 Ok(render_named_template(
-                    &self.indexes.syntax.type_definitions.struct_def,
+                    template,
                     &[("name", name), ("fields", &fields_joined)],
                 ))
             }
             TypeConnective::Disj { variants } => {
+                // Same `Debug` omission as records when variant payloads carry `Rc<dyn Fn…>`.
+                let omit_debug = variants.iter().any(|variant| {
+                    let mut visited = HashSet::new();
+                    self.decl_includes_first_class_arrow_data(variant.ty, &mut visited)
+                });
                 let rendered_variants = variants
                     .iter()
                     .map(|variant| self.render_enum_variant(variant))
                     .collect::<Result<Vec<_>, _>>()?;
                 let variants_joined = join_rendered(&rendered_variants, " ");
+                let template = if omit_debug {
+                    &self.indexes.syntax.record_derive_no_debug.enum_def_no_debug
+                } else {
+                    &self.indexes.syntax.type_definitions.enum_def
+                };
                 Ok(render_named_template(
-                    &self.indexes.syntax.type_definitions.enum_def,
+                    template,
                     &[("name", name), ("variants", &variants_joined)],
                 ))
             }
@@ -4470,7 +4656,11 @@ impl<'a> Ctx<'a> {
     }
 
     fn render_struct_field(&self, field: &Field) -> Result<String, EmitError> {
-        let ty = self.rust_type_name_for_decl(field.ty)?;
+        // Record fields are **not** `impl Trait` positions. First-class `fn`
+        // types use the storage carrier (`Rc<dyn Fn…>`) under
+        // `ArrowRustEmitPolicy::StorageRcDynFn` — never `rust_arrow_as_parameter_impl_fn_clone`
+        // (PR #676 inline review / INVARIANTS.md C-8 fail-closed vs plausible Rust).
+        let ty = self.rust_type_name_for_decl_storage(field.ty)?;
         Ok(render_named_template(
             &self.indexes.syntax.type_definitions.struct_field,
             &[("name", &field.label), ("type", &ty)],
@@ -4568,19 +4758,93 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    /// Read a port's Rust type name via the `types` realization
-    /// index. Walks the port's `TypeShape` through aliases /
-    /// instantiations to a primitive declaration id, then looks
-    /// up that id in the index. Zero name strings.
+    /// Rust type for a **user `fn` item parameter** only (`render_function_declaration`).
+    /// Record / enum payload field types never call this helper: they use
+    /// `render_struct_field` → `rust_type_name_for_decl_storage` (`Rc<dyn Fn…>`
+    /// for first-class `fn` data; INVARIANTS.md C-8 / PR #676 inline review).
+    ///
+    /// Callable-shaped parameters use `impl Fn(...) -> T + Clone` (v2 / PR #650)
+    /// **unless** the function's declared return type carries first-class `fn`
+    /// anywhere — then callable parameters use `std::rc::Rc<dyn Fn…>` so
+    /// pass-through composes with the return type (rustc `E0308` otherwise).
+    /// Other parameters use `rust_type_name_for_port` /
+    /// `rust_borrowed_type_name_for_port`.
+    fn rust_type_name_for_user_function_parameter(
+        &self,
+        port: PortId,
+        disposition: ParameterDispositionBinding,
+        return_includes_first_class_arrow: bool,
+    ) -> Result<String, EmitError> {
+        let ty_decl = self
+            .dag
+            .port(port)
+            .value_type()
+            .ok_or(EmitError::UntypedPort(port))?
+            .declaration;
+        if self.type_declaration_peels_to_arrow(ty_decl) {
+            if return_includes_first_class_arrow {
+                return self.rust_type_name_for_decl_storage(ty_decl);
+            }
+            return self.rust_arrow_as_parameter_impl_fn_clone(ty_decl);
+        }
+        match disposition {
+            ParameterDispositionBinding::Borrowed
+                if self.read_strategy() == ReadStrategyBinding::Borrow =>
+            {
+                self.rust_borrowed_type_name_for_port(port)
+            }
+            _ => self.rust_type_name_for_port(port),
+        }
+    }
+
+    /// `impl Fn(...) -> R + Clone` for a first-class `fn` type used **only**
+    /// in direct user-function parameter position (this is **not** the
+    /// context-free `rust_type_name_for_decl_with_policy` renderer — record
+    /// fields / `Vec<…>` / etc. never call here). Nested parameter/return types
+    /// use `rust_type_name_for_decl_storage` (`Rc<dyn Fn…>`). See
+    /// `ArrowRustEmitPolicy` and `src/v3/spec/rust.dag` (first-class callable note).
+    /// Future: lift the two spellings into `rust.dag` `TypeRealization`-style rows
+    /// for full THESIS “declared target realization” parity (today: policy + spec comment).
+    fn rust_arrow_as_parameter_impl_fn_clone(
+        &self,
+        declaration: DeclarationId,
+    ) -> Result<String, EmitError> {
+        let Some((inputs, output)) = self.peel_resolved_chain_to_first_class_arrow(declaration)
+        else {
+            return Err(EmitError::UnsupportedBehavior(
+                "rust_arrow_as_parameter_impl_fn_clone: declaration does not peel to Arrow"
+                    .to_string(),
+            ));
+        };
+        let param_types = inputs
+            .iter()
+            .map(|i| self.rust_type_name_for_decl_storage(*i))
+            .collect::<Result<Vec<_>, _>>()?;
+        let param_str = param_types.join(", ");
+        let ret_str = self.rust_type_name_for_decl_storage(output)?;
+        Ok(format!("impl Fn({param_str}) -> {ret_str} + Clone"))
+    }
+
+    /// Rust type spelling for a port in **storage-class** positions: resolves the
+    /// port's value type to a declaration id, then `rust_type_name_for_decl_storage`
+    /// (including the `types` realization index when populated). Not used for user
+    /// `fn` parameters — those use `rust_type_name_for_user_function_parameter` first.
     fn rust_type_name_for_port(&self, port: PortId) -> Result<String, EmitError> {
         let ty = self
             .dag
             .port(port)
             .value_type()
             .ok_or(EmitError::UntypedPort(port))?;
-        self.rust_type_name_for_decl(ty.declaration)
+        self.rust_type_name_for_decl_storage(ty.declaration)
     }
 
+    /// Rust type spelling for a port consumed under **borrow** read strategy
+    /// when the port is **not** a first-class callable (`fn` data) type.
+    /// Callable-shaped user `fn` parameters are routed in
+    /// `rust_type_name_for_user_function_parameter` **before** this helper is
+    /// consulted (`impl Fn + Clone` or `Rc<dyn Fn…>` per return composition).
+    /// Non-callable ports delegate to `rust_borrowed_type_name_for_decl` (`&T` /
+    /// `&[U]` only).
     fn rust_borrowed_type_name_for_port(&self, port: PortId) -> Result<String, EmitError> {
         let ty = self
             .dag
@@ -4590,6 +4854,136 @@ impl<'a> Ctx<'a> {
         self.rust_borrowed_type_name_for_decl(ty.declaration)
     }
 
+    /// Peel `ResolvedBy{Structure,Name}` atoms, and **zero-arity
+    /// `Instantiation` aliases** (`type G = F` lower as `Instantiate(F, []);`
+    /// not `ResolvedByName`) until a first-class `TypeConnective::Arrow` with
+    /// `ArrowBody::NoBody` is found.
+    /// `None` on cycle, on `ArrowBody::UserDefined` / other heads, or when no
+    /// such arrow is reachable.
+    fn peel_resolved_chain_to_first_class_arrow(
+        &self,
+        mut declaration: DeclarationId,
+    ) -> Option<(Vec<DeclarationId>, DeclarationId)> {
+        let mut visited = HashSet::new();
+        loop {
+            if !visited.insert(declaration) {
+                return None;
+            }
+            let decl = self.dag.declaration(declaration);
+            match &decl.connective {
+                TypeConnective::Arrow {
+                    inputs,
+                    output,
+                    body: ArrowBody::NoBody,
+                } => {
+                    return Some((inputs.clone(), *output));
+                }
+                TypeConnective::Arrow { .. } => return None,
+                TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                    declaration = *next;
+                }
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } if arguments.is_empty() => {
+                    declaration = *template;
+                }
+                _ => return None,
+            }
+        }
+    }
+
+    /// True when `declaration` (after peeling `ResolvedBy*` and zero-arity
+    /// `Instantiation` type aliases) is a first-class function type (`fn(...) -> _` in surface),
+    /// i.e. a `TypeConnective::Arrow` with `ArrowBody::NoBody` (data `fn`, not a
+    /// user `fn` item's `ArrowBody::UserDefined`).
+    fn type_declaration_peels_to_arrow(&self, declaration: DeclarationId) -> bool {
+        self.peel_resolved_chain_to_first_class_arrow(declaration)
+            .is_some()
+    }
+
+    /// Bootstrap `Int` / `Bool` / `String` type roots. Their expanded substrate
+    /// (rings, algebras) contains `TypeConnective::Arrow` for operations, not
+    /// first-class `fn` data — we must not confuse that with a user `fn` when
+    /// classifying a **return** type; see `decl_includes_first_class_arrow_data`.
+    ///
+    /// **Extension / dissolve:** a new std primitive with the same
+    /// algebra-`Arrow` pattern (e.g. `Float`, `Bytes`) must extend
+    /// `Dag::first_class_fn_walk_bootstrap_prune_type_shapes` in the same PR, or
+    /// replace with a `Dag`-driven "numeric / algebra" classification.
+    fn declaration_is_bootstrap_int_bool_string(&self, declaration: DeclarationId) -> bool {
+        self.dag
+            .first_class_fn_walk_bootstrap_prune_type_shapes()
+            .iter()
+            .any(|s| s.declaration == declaration)
+    }
+
+    /// True when `declaration` (including nested record / sum / instantiations)
+    /// carries first-class `fn` (`TypeConnective::Arrow` + `ArrowBody::NoBody`)
+    /// anywhere, so (a) storage positions use `Rc<dyn Fn…>` and (b) `Debug`
+    /// is omitted for user `struct` / `enum` derives. Used for return-vs-param
+    /// callable **carrier** selection (user `fn` params) and for derive
+    /// templates.
+    ///
+    /// For `Instantiation`, we walk type **arguments** and, when the head is
+    /// not the `List` template, the **template** (so a user `G<T>` can carry
+    /// callable data on `G` without it appearing in `T`). The `List` head and
+    /// the `PartialFunction` head (surface `Map<K, V>`) are skipped: the first
+    /// is always element-shaped in `T`; the second is a `Conj` of algebra
+    /// `Arrow`+`NoBody` *operations* (lookup, insert, …) that must not be
+    /// taken for user first-class `fn` *values* (C-8; #676).
+    /// The primitive check above **short-circuits** `-> Int` (etc.) so we do
+    /// not follow those type roots into ring/algebra noise.
+    fn decl_includes_first_class_arrow_data(
+        &self,
+        declaration: DeclarationId,
+        visited: &mut HashSet<DeclarationId>,
+    ) -> bool {
+        if !visited.insert(declaration) {
+            return false;
+        }
+        if self.declaration_is_bootstrap_int_bool_string(declaration) {
+            return false;
+        }
+        if self.type_declaration_peels_to_arrow(declaration) {
+            return true;
+        }
+        let decl = self.dag.declaration(declaration);
+        match &decl.connective {
+            TypeConnective::Conj { children } => children
+                .iter()
+                .any(|field| self.decl_includes_first_class_arrow_data(field.ty, visited)),
+            TypeConnective::Disj { variants } => variants
+                .iter()
+                .any(|variant| self.decl_includes_first_class_arrow_data(variant.ty, visited)),
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                let from_args = arguments
+                    .iter()
+                    .any(|arg| self.decl_includes_first_class_arrow_data(arg.value, visited));
+                from_args
+                    || (!self.is_list_template(*template)
+                        && !self.is_partial_function_template(*template)
+                        && self.decl_includes_first_class_arrow_data(*template, visited))
+            }
+            TypeConnective::Cardinality { element, .. } => {
+                self.decl_includes_first_class_arrow_data(*element, visited)
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                self.decl_includes_first_class_arrow_data(*next, visited)
+            }
+            _ => false,
+        }
+    }
+
+    /// `&T` / `&[U]` spellings for borrowed emission. **Does not** handle peeled
+    /// callable `Arrow` types — callers must use
+    /// `rust_type_name_for_user_function_parameter` for user `fn` parameters
+    /// (which selects `impl Fn + Clone` vs `Rc<dyn Fn…>` before borrow paths).
     fn rust_borrowed_type_name_for_decl(
         &self,
         declaration: DeclarationId,
@@ -4606,24 +5000,39 @@ impl<'a> Ctx<'a> {
                             "borrowed List carrier expects exactly one type argument".to_string(),
                         ));
                     };
-                    let element_name = self.rust_type_name_for_decl(element.value)?;
+                    let element_name = self.rust_type_name_for_decl_storage(element.value)?;
                     Ok(format!("&[{element_name}]"))
                 } else {
-                    Ok(format!("&{}", self.rust_type_name_for_decl(declaration)?))
+                    Ok(format!(
+                        "&{}",
+                        self.rust_type_name_for_decl_storage(declaration)?
+                    ))
                 }
             }
-            _ => Ok(format!("&{}", self.rust_type_name_for_decl(declaration)?)),
+            _ => Ok(format!(
+                "&{}",
+                self.rust_type_name_for_decl_storage(declaration)?
+            )),
         }
     }
 
-    fn rust_type_name_for_decl(&self, declaration: DeclarationId) -> Result<String, EmitError> {
-        self.rust_type_name_for_decl_at_depth(declaration, 0)
+    /// Vetted storage positions (`Rc<dyn Fn…>`) for anonymous `fn` types.
+    fn rust_type_name_for_decl_storage(
+        &self,
+        declaration: DeclarationId,
+    ) -> Result<String, EmitError> {
+        self.rust_type_name_for_decl_with_policy(
+            declaration,
+            0,
+            ArrowRustEmitPolicy::StorageRcDynFn,
+        )
     }
 
-    fn rust_type_name_for_decl_at_depth(
+    fn rust_type_name_for_decl_with_policy(
         &self,
         declaration: DeclarationId,
         depth: usize,
+        arrow_policy: ArrowRustEmitPolicy,
     ) -> Result<String, EmitError> {
         if depth >= 32 {
             return Err(EmitError::UnsupportedBehavior(
@@ -4635,26 +5044,138 @@ impl<'a> Ctx<'a> {
         }
         let decl = self.dag.declaration(declaration);
         if let Some(name) = &decl.name {
-            return Ok(name.clone());
+            // Named user `struct` / `sum` (record or enum) are the Rust name authority
+            // for a field like `cb: Callback` when `Callback` is its own `type` item,
+            // even if that record transitively contains first-class `fn` storage — do
+            // not run the alias-only `decl_includes_first_class_arrow_data` fast-path
+            // below (codex #676: `Wrapper { cb: Callback }` with `Callback { f: fn… }`).
+            if matches!(
+                &decl.connective,
+                TypeConnective::Conj { .. } | TypeConnective::Disj { .. }
+            ) {
+                return Ok(name.clone());
+            }
+            // `type F = fn(...) -> _` is a **named** declaration whose connective is
+            // `Arrow` + `NoBody`. The Rust layer does not emit a `type F = …` typedef
+            // for first-class `fn` data, so returning `F` would be plausible but
+            // invalid (P3 fail-closed; #676). Fall through to the `Arrow` arm for
+            // `Rc<dyn Fn…>` or `UnsupportedBehavior` per `arrow_policy`.
+            let is_named_first_class_fn_alias = matches!(
+                &decl.connective,
+                TypeConnective::Arrow {
+                    body: ArrowBody::NoBody,
+                    ..
+                }
+            );
+            // A **chain** `type G = F` with `F = fn..` is lowered as
+            // `Instantiation(F, [])` (and sometimes `ResolvedByName`); a bare
+            // `G` is invalid in Rust like a bare `F` (#676, P3, Codex).
+            // When peeling finds first-class `fn` under the alias, skip this
+            // return and use the `Instantiation` / `Arrow` path below.
+            //
+            // `type L = List<fn..>` (or `Map<.., fn..>`, etc.) does **not** peel
+            // to a top-level `Arrow` — but `list` / `value` args still carry
+            // first-class `fn` data. Emitting the bare `L` would be an undefined
+            // Rust name (C-8; #676) — `decl_includes_first_class_arrow_data` matches
+            // the same carrier rules as `decl_includes` on struct fields.
+            if !is_named_first_class_fn_alias
+                && self
+                    .peel_resolved_chain_to_first_class_arrow(declaration)
+                    .is_none()
+            {
+                let mut first_class_fn_walk = std::collections::HashSet::new();
+                if !self.decl_includes_first_class_arrow_data(declaration, &mut first_class_fn_walk)
+                {
+                    return Ok(name.clone());
+                }
+            }
         }
         match &decl.connective {
+            // `type G = F` → `Instantiate(F, [])` (see `type_to_connective`); alias is
+            // not a `List`/`Map` template realization.
             TypeConnective::Instantiation {
                 template,
                 arguments,
-            } => self.render_instantiated_type(*template, arguments, depth + 1),
+            } if arguments.is_empty() => {
+                self.rust_type_name_for_decl_with_policy(*template, depth + 1, arrow_policy)
+            }
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => self.render_instantiated_type(*template, arguments, depth + 1, arrow_policy),
             TypeConnective::Cardinality {
                 element,
                 bound: crate::dag::CardinalityBound::AtMostOne,
             } => {
-                let inner = self.rust_type_name_for_decl_at_depth(*element, depth + 1)?;
+                let inner =
+                    self.rust_type_name_for_decl_with_policy(*element, depth + 1, arrow_policy)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.type_applications.optional,
                     &[("element", &inner)],
                 ))
             }
+            // Named user `Conj` / `Disj`: a field may hold first-class `fn` data, so
+            // `decl_includes_first_class_arrow_data` can block the **alias** fast
+            // path above — this connective is still a real `pub struct` / `enum` we
+            // emit, and the bare name is a valid forward reference in other
+            // parameter / return positions (PR #676 follow-up, claude review).
+            TypeConnective::Conj { .. } | TypeConnective::Disj { .. } => {
+                if let Some(n) = &decl.name {
+                    Ok(n.clone())
+                } else {
+                    Err(EmitError::MissingTypeRealization { target: declaration })
+                }
+            }
+            // First-class anonymous `fn` (`ArrowBody::NoBody` only): `impl Fn + Clone` is **not**
+            // produced here — only `StorageRcDynFn` → `Rc<dyn Fn…>` or
+            // `RejectFirstClassFn` → `UnsupportedBehavior` (INVARIANTS.md C-8).
+            // `Arrow` with `UserDefined` / other bodies is a user `fn` item shape, not
+            // first-class `fn` data — fail closed if it reaches storage rendering (P3).
+            TypeConnective::Arrow {
+                inputs,
+                output,
+                body: ArrowBody::NoBody,
+            } => match arrow_policy {
+                ArrowRustEmitPolicy::RejectFirstClassFn => Err(EmitError::UnsupportedBehavior(
+                    "emit_rust: first-class function type (`fn(...) -> _` / TypeConnective::Arrow) \
+                     in an unsupported Rust type-name context; supported carriers are: user `fn` \
+                     parameters via `rust_type_name_for_user_function_parameter` (`impl Fn + \
+                     Clone`, or `std::rc::Rc<dyn Fn…>` when the return type carries a first-class \
+                     `fn` so param/ret compose), and struct fields / collection instantiations / \
+                     top-level `let` / inferred return slots via `rust_type_name_for_decl_storage` \
+                     (`std::rc::Rc<dyn Fn…>`). See `src/v3/spec/rust.dag` header on first-class callable surfaces."
+                        .to_string(),
+                )),
+                ArrowRustEmitPolicy::StorageRcDynFn => {
+                    let param_types = inputs
+                        .iter()
+                        .map(|i| {
+                            self.rust_type_name_for_decl_with_policy(
+                                *i,
+                                depth + 1,
+                                ArrowRustEmitPolicy::StorageRcDynFn,
+                            )
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let param_str = param_types.join(", ");
+                    let ret_str = self.rust_type_name_for_decl_with_policy(
+                        *output,
+                        depth + 1,
+                        ArrowRustEmitPolicy::StorageRcDynFn,
+                    )?;
+                    Ok(format!("std::rc::Rc<dyn Fn({param_str}) -> {ret_str}>"))
+                }
+            },
+            TypeConnective::Arrow { .. } => Err(EmitError::UnsupportedBehavior(
+                "emit_rust: TypeConnective::Arrow reached storage type-name rendering with a \
+                 body other than `ArrowBody::NoBody`; only first-class anonymous `fn` data may \
+                 use the `std::rc::Rc<dyn Fn…>` carrier here. User-defined function arrows must \
+                 not be lowered through `rust_type_name_for_decl_storage`."
+                    .to_string(),
+            )),
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
-                self.rust_type_name_for_decl_at_depth(*next, depth + 1)
+                self.rust_type_name_for_decl_with_policy(*next, depth + 1, arrow_policy)
             }
             _ => Err(EmitError::MissingTypeRealization {
                 target: declaration,
@@ -4667,23 +5188,31 @@ impl<'a> Ctx<'a> {
         template: DeclarationId,
         arguments: &[TemplateArgument],
         depth: usize,
+        arrow_policy: ArrowRustEmitPolicy,
     ) -> Result<String, EmitError> {
         let Some(binding) = self.indexes.instantiations.get(&template) else {
             return Err(EmitError::MissingTypeRealization { target: template });
         };
         match arguments {
             [element] => {
-                let element_name =
-                    self.rust_type_name_for_decl_at_depth(element.value, depth + 1)?;
+                let element_name = self.rust_type_name_for_decl_with_policy(
+                    element.value,
+                    depth + 1,
+                    arrow_policy,
+                )?;
                 Ok(render_named_template(
                     &binding.carrier,
                     &[("element", &element_name)],
                 ))
             }
             [key, value] => {
-                let key_name = self.rust_type_name_for_decl_at_depth(key.value, depth + 1)?;
-                let value_name =
-                    self.rust_type_name_for_decl_at_depth(value.value, depth + 1)?;
+                let key_name =
+                    self.rust_type_name_for_decl_with_policy(key.value, depth + 1, arrow_policy)?;
+                let value_name = self.rust_type_name_for_decl_with_policy(
+                    value.value,
+                    depth + 1,
+                    arrow_policy,
+                )?;
                 Ok(render_named_template(
                     &binding.carrier,
                     &[("key", &key_name), ("value", &value_name)],
@@ -4742,7 +5271,8 @@ impl<'a> Ctx<'a> {
             TypeConnective::Conj { .. }
             | TypeConnective::Disj { .. }
             | TypeConnective::Instantiation { .. }
-            | TypeConnective::Cardinality { .. } => Ok(false),
+            | TypeConnective::Cardinality { .. }
+            | TypeConnective::Arrow { .. } => Ok(false),
             _ => Ok(false),
         }
     }
@@ -4770,6 +5300,14 @@ impl<'a> Ctx<'a> {
         self.dag
             .list_template()
             .is_some_and(|list| list == declaration)
+    }
+
+    /// `Map<K, V>` instantiates the std `PartialFunction` record; its fields are
+    /// not user first-class `fn` as in `peel_resolved_chain_to_first_class_arrow`.
+    fn is_partial_function_template(&self, declaration: DeclarationId) -> bool {
+        self.dag
+            .partial_function_template()
+            .is_some_and(|pfun| pfun == declaration)
     }
 
     fn render_list_item_construct_expr(
@@ -5022,9 +5560,36 @@ fn algebra_field_for_operator(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
     use crate::compile_to_dag;
     use crate::diagnostics::SourceSpan;
+
+    #[test]
+    fn first_class_fn_walk_does_not_confuse_map_partial_function_with_user_fn() {
+        let dag = compile_to_dag("let _x: Int = 0\n", "t.v3").expect("compiles");
+        let map = dag
+            .declaration_by_name("Map")
+            .expect("Map from std should load in bootstrap")
+            .id;
+        let indexes = RealizationIndexes::build(&dag).expect("indexes build");
+        let input_use_facts = InputUseFacts::build(&dag, &indexes);
+        let bound_names: HashMap<PortId, LocalBinding> = HashMap::new();
+        let ctx = Ctx {
+            dag: &dag,
+            indexes: &indexes,
+            bound_names: &bound_names,
+            input_use_facts: &input_use_facts,
+            mode: EmitRustMode::Module,
+        };
+        let mut visited = HashSet::new();
+        assert!(
+            !ctx.decl_includes_first_class_arrow_data(map, &mut visited),
+            "`Map<K,V>`'s `PartialFunction` head carries `Arrow`+`NoBody` for algebra operations, \
+not user `fn` data; must not set return-carrier / Rc on callable params (PR #676)"
+        );
+    }
 
     #[test]
     fn render_field_project_reads_borrowed_nodes_without_cloning() {

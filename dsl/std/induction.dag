@@ -602,6 +602,21 @@ fn sum_bound(terms: List<CostBound>) -> CostBound {
   SumBound { terms: terms }
 }
 
+// E-6: minimal destructor for `SumBound` — first match arm that *observes* the self-edge
+// variant so the coproduct is not constructor-only. Full dominance / cost comparison on
+// `List<CostBound>` remains deferred to lane consumers; this predicate is the intake hook.
+fn cost_bound_is_sum_bound(b: CostBound) -> Bool {
+  match b {
+    SumBound { terms: _ } => true
+    ConstantBound => false
+    AtomicBound { cost: _ } => false
+    ProductBound { factors: _ } => false
+    SumOfProductsBound { terms: _ } => false
+    ForeverBound => false
+    ErrorBound => false
+  }
+}
+
 fn cost_constant() -> CostBound { ConstantBound }
 fn cost_linear(param: String) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: poly_exp_degree_one() } } }
 fn cost_poly(param: String, degree: Int) -> CostBound {
@@ -653,6 +668,12 @@ fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
 //   b: division factor (each sub-problem is n/b of the original)
 //   d: exponent of per-level non-recursive work (≥ 0; `master_theorem` rejects d < 0 → ErrorBound)
 //
+// P4 / P3 (cost-algebra boundary): `work_exponent` stays typed as `Int` while recurrence inputs
+// are a bootstrap scaffold, but **`master_theorem` rejects `d` outside `[0, 256]` before any
+// `b^d` materialization**, and `int_pow_bounded` caps `exp` at the same M9 ceiling as
+// `std.termination` Peano literal bridges — fail-closed to `ErrorBound` / `none` (no raw `*`
+// on the power path; see `int_mul_checked`).
+//
 // 🟡 SCAFFOLD. Master-theorem input bundles a symbolic `param: String` with `Int` recurrence
 // coefficients; structural parameter refs dissolve with reflected function params.
 
@@ -668,17 +689,77 @@ type RecurrenceForm {
 // Master theorem — recurrence → CostBound
 // =========================================================================
 
+// P3: `Int` is realized as i64 in v2 — raw `*` / `+` can wrap or debug-panic.
+// These helpers return `none` on overflow so `master_theorem` / `ceil_log` stay
+// fail-closed (same posture as `cost_poly` / `positive_descent_amount_from_positive_int`).
+// Bounds are i64::MIN / i64::MAX; `/` matches signed truncating division (Rust `Int`).
+
+fn int_add_checked(a: Int, b: Int) -> Int? {
+  if b > 0 {
+    if a > 9223372036854775807 - b { none }
+    else { Some { value: a + b } }
+  } else {
+    if b < 0 {
+      if a < (0 - 9223372036854775807 - 1) - b { none }
+      else { Some { value: a + b } }
+    } else { Some { value: a } }
+  }
+}
+
+fn int_mul_checked(a: Int, b: Int) -> Int? {
+  if b == 0 { Some { value: 0 } }
+  else {
+    if a == 0 { Some { value: 0 } }
+    else {
+      if b == -1 {
+        if a == (0 - 9223372036854775807 - 1) { none }
+        else { Some { value: 0 - a } }
+      } else {
+        if b > 0 {
+          if a > 0 {
+            if a > 9223372036854775807 / b { none }
+            else { Some { value: a * b } }
+          } else {
+            if a < (0 - 9223372036854775807 - 1) / b { none }
+            else { Some { value: a * b } }
+          }
+        } else {
+          if a > 0 {
+            if b < (0 - 9223372036854775807 - 1) / a { none }
+            else { Some { value: a * b } }
+          } else {
+            if b < 9223372036854775807 / a { none }
+            else { Some { value: a * b } }
+          }
+        }
+      }
+    }
+  }
+}
+
 // b^exp for exp ≥ 0 (exp = 0 → Some { value: 1 }). exp < 0 → none — no silent plausible
 // wrong output (P3; same posture as `ceil_log` / `cost_poly`). `master_theorem` still
 // rejects d < 0 → ErrorBound before calling; callers that omit that guard get `none`.
+//
+// P4 (decidability): cap exp at 256 — same ceiling as `positive_descent_amount_from_positive_int`
+// / `proportional_divisor_from_int_at_least_two` in `std.termination` (M9 literal bridges).
+// Without this, a huge `work_exponent` forces O(exp) stack recursion before overflow can
+// return `none`. Oversized exp → `none` → `master_theorem` → `ErrorBound` (fail-closed).
 fn int_pow_bounded(base: Int, exp: Int) -> Int? {
   if exp < 0 { none }
   else {
-    if exp == 0 { Some { value: 1 } }
+    if exp > 256 { none }
     else {
-      match int_pow_bounded(base: base, exp: exp - 1) {
-        Some { value: prev } => Some { value: base * prev }
-        None => none
+      if exp == 0 { Some { value: 1 } }
+      else {
+        match int_pow_bounded(base: base, exp: exp - 1) {
+          Some { value: prev } =>
+            match int_mul_checked(a: base, b: prev) {
+              Some { value: prod } => Some { value: prod }
+              None => none
+            }
+          None => none
+        }
       }
     }
   }
@@ -688,13 +769,23 @@ fn int_pow_bounded(base: Int, exp: Int) -> Int? {
 // iteration strictly increases `power` (P4 decidability); invalid inputs → none.
 fn ceil_log(base: Int, argument: Int) -> Int? {
   if base < 2 || argument < 1 { none }
-  else { Some { value: ceil_log_iter(base: base, argument: argument, k: 0, power: 1) } }
+  else { ceil_log_iter(base: base, argument: argument, k: 0, power: 1) }
 }
 
-// Pre: base ≥ 2, argument ≥ 1.
-fn ceil_log_iter(base: Int, argument: Int, k: Int, power: Int) -> Int {
-  if power >= argument { k }
-  else { ceil_log_iter(base: base, argument: argument, k: k + 1, power: power * base) }
+// Pre: base ≥ 2, argument ≥ 1. Overflow in `power * base` or `k + 1` → none.
+fn ceil_log_iter(base: Int, argument: Int, k: Int, power: Int) -> Int? {
+  if power >= argument { Some { value: k } }
+  else {
+    match int_mul_checked(a: power, b: base) {
+      None => none
+      Some { value: next_power } =>
+        match int_add_checked(a: k, b: 1) {
+          None => none
+          Some { value: k1 } =>
+            ceil_log_iter(base: base, argument: argument, k: k1, power: next_power)
+        }
+    }
+  }
 }
 
 fn master_theorem(form: RecurrenceForm) -> CostBound {
@@ -702,9 +793,13 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
   let b = form.divisor
   let d = form.work_exponent
   let n = form.param
-  // Fail-closed: invalid inputs produce ErrorBound, not fabricated O(1)
-  if a < 1 || b < 2 || d < 0 { ErrorBound }
+  // Fail-closed: invalid inputs produce ErrorBound, not fabricated O(1).
+  // P4: reject `work_exponent` above the M9 literal-bridge ceiling (256) before any `b^d`
+  // work — aligns with `int_pow_bounded`'s exp cap / Peano materialization in `std.termination`.
+  if a < 1 || b < 2 || d < 0 || d > 256 { ErrorBound }
   else {
+    // P4/P3: `d` is in [0,256] here (guard above). `int_pow_bounded` still caps `exp` and
+    // multiplies only via `int_mul_checked` — no raw `Int` power on unbounded `work_exponent`.
     match int_pow_bounded(base: b, exp: d) {
       None => ErrorBound
       Some { value: b_to_d } =>

@@ -510,6 +510,18 @@ pub fn sum_bound(terms: Rc<Vec<Rc<CostBound>>>) -> Rc<CostBound> {
     Rc::new(CostBound::SumBound { terms: terms })
 }
 
+pub fn cost_bound_is_sum_bound(b: Rc<CostBound>) -> bool {
+    match (*b).clone() {
+        CostBound::SumBound { .. } => true,
+        CostBound::ConstantBound => false,
+        CostBound::AtomicBound { .. } => false,
+        CostBound::ProductBound { .. } => false,
+        CostBound::SumOfProductsBound { .. } => false,
+        CostBound::ForeverBound => false,
+        CostBound::ErrorBound => false,
+    }
+}
+
 pub fn cost_constant() -> Rc<CostBound> {
     Rc::new(CostBound::ConstantBound)
 }
@@ -620,17 +632,92 @@ pub struct RecurrenceForm {
     pub work_exponent: i64,
 }
 
+pub fn int_add_checked(a: i64, b: i64) -> Option<i64> {
+    if (b.clone() > 0) {
+        if (a.clone() > (9223372036854775807 - b.clone())) {
+            None
+        } else {
+            Some((a.clone() + b.clone()))
+        }
+    } else {
+        if (b.clone() < 0) {
+            if (a.clone() < (((0 - 9223372036854775807) - 1) - b.clone())) {
+                None
+            } else {
+                Some((a.clone() + b.clone()))
+            }
+        } else {
+            Some(a.clone())
+        }
+    }
+}
+
+pub fn int_mul_checked(a: i64, b: i64) -> Option<i64> {
+    if (b.clone() == 0) {
+        Some(0)
+    } else {
+        if (a.clone() == 0) {
+            Some(0)
+        } else {
+            if (b.clone() == -1) {
+                if (a.clone() == ((0 - 9223372036854775807) - 1)) {
+                    None
+                } else {
+                    Some((0 - a.clone()))
+                }
+            } else {
+                if (b.clone() > 0) {
+                    if (a.clone() > 0) {
+                        if (a.clone() > (9223372036854775807 / b.clone())) {
+                            None
+                        } else {
+                            Some((a.clone() * b.clone()))
+                        }
+                    } else {
+                        if (a.clone() < (((0 - 9223372036854775807) - 1) / b.clone())) {
+                            None
+                        } else {
+                            Some((a.clone() * b.clone()))
+                        }
+                    }
+                } else {
+                    if (a.clone() > 0) {
+                        if (b.clone() < (((0 - 9223372036854775807) - 1) / a.clone())) {
+                            None
+                        } else {
+                            Some((a.clone() * b.clone()))
+                        }
+                    } else {
+                        if (b.clone() < (9223372036854775807 / a.clone())) {
+                            None
+                        } else {
+                            Some((a.clone() * b.clone()))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (exp.clone() < 0) {
             None
         } else {
-            if (exp.clone() == 0) {
-                Some(1)
+            if (exp.clone() > 256) {
+                None
             } else {
-                match int_pow_bounded(base.clone(), (exp.clone() - 1)) {
-                    Some(prev) => Some((base.clone() * prev.clone())),
-                    None => None,
+                if (exp.clone() == 0) {
+                    Some(1)
+                } else {
+                    match int_pow_bounded(base.clone(), (exp.clone() - 1)) {
+                        Some(prev) => match int_mul_checked(base.clone(), prev.clone()) {
+                            Some(prod) => Some(prod.clone()),
+                            None => None,
+                        },
+                        None => None,
+                    }
                 }
             }
         }
@@ -641,21 +728,31 @@ pub fn ceil_log(base: i64, argument: i64) -> Option<i64> {
     if ((base.clone() < 2) || (argument.clone() < 1)) {
         None
     } else {
-        Some(ceil_log_iter(base.clone(), argument.clone(), 0, 1))
+        ceil_log_iter(base.clone(), argument.clone(), 0, 1)
     }
 }
 
-pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i64) -> i64 {
+pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i64) -> Option<i64> {
     loop {
         if (power.clone() >= argument.clone()) {
-            break k;
+            break Some(k);
         } else {
-            {
-                let __tco_0 = (k + 1);
-                let __tco_1 = (power * base.clone());
-                k = __tco_0;
-                power = __tco_1;
-                continue;
+            match int_mul_checked(power.clone(), base.clone()) {
+                None => {
+                    break None;
+                }
+                Some(next_power) => match int_add_checked(k, 1) {
+                    None => {
+                        break None;
+                    }
+                    Some(k1) => {
+                        let __tco_0 = k1.clone();
+                        let __tco_1 = next_power.clone();
+                        k = __tco_0;
+                        power = __tco_1;
+                        continue;
+                    }
+                },
             }
         }
     }
@@ -667,7 +764,7 @@ pub fn master_theorem(form: &Rc<RecurrenceForm>) -> Rc<CostBound> {
         let b = form.divisor.clone();
         let d = form.work_exponent.clone();
         let n = form.param.clone();
-        if (((a.clone() < 1) || (b.clone() < 2)) || (d.clone() < 0)) {
+        if ((((a.clone() < 1) || (b.clone() < 2)) || (d.clone() < 0)) || (d.clone() > 256)) {
             Rc::new(CostBound::ErrorBound)
         } else {
             match int_pow_bounded(b.clone(), d.clone()) {

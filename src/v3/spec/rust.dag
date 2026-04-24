@@ -59,8 +59,8 @@ import v3.std.emit_model {
   PatternRealization, PatternStrategy,
   StatementSyntax, ExpressionSyntax, ControlFlowSyntax,
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
-  TypeDefinitionSyntax, PatternMatchSyntax, CollectionOps,
-  ValueConstructionSyntax, RenderingModel, LanguageSpec
+  TypeDefinitionSyntax, RecordDeriveTemplateBundle, PatternMatchSyntax,
+  CollectionOps, ValueConstructionSyntax, RenderingModel, LanguageSpec
 }
 import v3.std.substrate {
   SubstrateAccessorRealization, SubstrateAccessorBinding,
@@ -79,6 +79,7 @@ import v3.std.clean_emission {
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
 import std.algebra { BooleanAlgebra }
+import v3.std.lookup { Lookup }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
   VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMatchArm,
@@ -966,6 +967,22 @@ data rust_main_wrap: BehaviorRealization = {
 // ─────────────────────────────────────────────────────────────────
 // Callable realizations — staged std.list helpers.
 // ─────────────────────────────────────────────────────────────────
+//
+// First-class surface function types (`fn(A) -> B`, lowered as
+// `TypeConnective::Arrow` with `ArrowBody::NoBody`) are **not** a single
+// `TypeRealization` row: the Rust emitter chooses the carrier by **position**
+// (`ArrowRustEmitPolicy` in `emit/rust_target.rs`):
+//   - user `fn` parameters → `impl Fn(A) -> B + Clone` (PR #650);
+//   - struct fields / `List` / `Map` / `Optional` / top-level `let` / inferred
+//     return → `std::rc::Rc<dyn Fn(A) -> B>`;
+//   - any other type-name context → fail closed (`UnsupportedBehavior`) until a
+//     realization-backed path exists here.
+//
+// **Derive split (blocking #676 api-review):** `dyn Fn` does not implement
+// `Debug`, so user `struct` / `enum` definitions that (transitively) carry
+// first-class `fn` storage use `rust_language.record_derive_templates`
+// (`data rust_record_derive_templates`, `#[derive(Clone)]` only); see
+// `emit/rust_target.rs`.
 
 data rust_empty_callable: CallableRealization = {
   language: rust_language
@@ -1021,6 +1038,13 @@ data rust_list_instantiation: TypeInstantiationRealization = {
   language: rust_language
   target: List
   carrier: "Vec<{element}>"
+  cost: 1
+}
+
+data rust_lookup_instantiation: TypeInstantiationRealization = {
+  language: rust_language
+  target: Lookup
+  carrier: "Lookup<{element}>"
   cost: 1
 }
 
@@ -1150,6 +1174,11 @@ data rust_type_defs: TypeDefinitionSyntax = {
   enum_data_variant: "{name} { {fields} },"
 }
 
+data rust_record_derive_templates: RecordDeriveTemplateBundle = {
+  struct_def_no_debug: "#[derive(Clone)]\npub struct {name} { {fields} }"
+  enum_def_no_debug: "#[derive(Clone)]\npub enum {name} { {variants} }"
+}
+
 data rust_patterns: PatternMatchSyntax = {
   match_expr: "match {expr} { {arms} }"
   match_arm: "{pattern} => {body},"
@@ -1196,6 +1225,7 @@ data rust_language: LanguageSpec = {
   functions: rust_functions
   type_applications: rust_type_applications
   type_definitions: rust_type_defs
+  record_derive_templates: rust_record_derive_templates
   patterns: rust_patterns
   collection_ops: rust_collection_ops
   values: rust_value_construction

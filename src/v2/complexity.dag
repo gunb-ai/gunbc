@@ -27,7 +27,7 @@ import std.termination {
   RankingDimension, TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality,
   DescentSource, ChildAccessor, ListShrink, ArithmeticSubtractDescent, ArithmeticDivideDescent, ParserAdvance, SetRemoval, FoldIteration,
   TerminationProof, ProofEdge,
-  merge_evidence, join_evidence, evidence_rank, promote_to_strict,
+  merge_evidence, join_evidence, evidence_rank,
   optional_evidence_meet, map_evidence_merge_at,
   OneStep
 }
@@ -374,17 +374,22 @@ fn set_has(m: Map<String, Bool>, key: String) -> Bool {
   map_get(m, key) != none
 }
 
-// promote_to_strict and merge_evidence are now in std.termination
-// (the single authority for the DescentEvidence lattice).
+// `merge_evidence` / `join_evidence` / … live in `std.termination` (single authority for the
+// `DescentEvidence` lattice). Parser-progress paths in this module use
+// `strict_after_parser_witness` (below) — they do not import `promote_to_strict` anymore.
 //
-// Parser-progress paths below still call promote_to_strict on accumulated
-// evidence, but that helper is fail-closed: it does not upgrade
-// NonIncreasing to Strict without a separate structural witness. Callers
-// that already hold Strict keep it; unknown stays unknown.
-//
-// P5 note: the helper name is historical (see `std.termination` receipt); follow-up
-// is rename or inline at these call sites once parser variants carry `Strict`
-// without this hop — tracked debt, not a gate on unrelated substrate PRs.
+// P5: `promote_to_strict` remains in `std.termination` for bootstrap / mirror parity and
+// lattice receipts; rename to `evidence_passthrough_preserving_strict` is still queued there
+// (see `std.termination` header), not on `complexity.dag` import surface.
+
+// Concrete parser witnesses advance a state that is already known not to be
+// ahead of the original parser state. They do not rescue unknown provenance.
+fn strict_after_parser_witness(input: DescentEvidence) -> DescentEvidence {
+  match input {
+    DescentUnknown => DescentUnknown
+    _ => Strict
+  }
+}
 
 fn empty_parser_progress_env() -> ParserProgressEnv {
   ParserProgressEnv {
@@ -426,17 +431,17 @@ fn parser_state_base_var(expr: Node, si: Map<String, NewlineIndex>) -> String? {
 
 fn parser_result_state_progress(source: ParserResultSource, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, result_name: String) -> DescentEvidence {
   match source {
-    ParserResultAdvance { input: input } => promote_to_strict(progress: input)
-    ParserResultExpect { input: input } => promote_to_strict(progress: input)
+    ParserResultAdvance { input: input } => strict_after_parser_witness(input: input)
+    ParserResultExpect { input: input } => strict_after_parser_witness(input: input)
     ParserResultEat { input: input } =>
       if set_has(m: consumed_true_set, key: result_name) {
-        promote_to_strict(progress: input)
+        strict_after_parser_witness(input: input)
       } else {
         input
       }
     ParserResultCall { input: input, callee: callee } =>
       if set_has(m: consumed_true_set, key: result_name) || set_has(m: parser_always_advancing, key: callee) {
-        promote_to_strict(progress: input)
+        strict_after_parser_witness(input: input)
       } else {
         input
       }
@@ -702,7 +707,7 @@ fn parser_call_edge_progress(call_node: Node, state_param: ParserStateParam, env
         consumed_true_set: consumed_true_set,
       si: si)
       if set_has(m: parser_always_advancing, key: expr_call_func_at(texpr: call_node, source_indices: si)) {
-        promote_to_strict(progress: input_progress)
+        strict_after_parser_witness(input: input_progress)
       } else {
         input_progress
       }

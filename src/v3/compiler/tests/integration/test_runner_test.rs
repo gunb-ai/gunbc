@@ -3,9 +3,15 @@
 use std::path::PathBuf;
 
 use v3_compiler::dag::{FieldValue, LiteralBits};
+use v3_compiler::diagnostics::Diagnostic;
 use v3_compiler::test_runner::TestClaimValue;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::{compile_to_dag, CompileError};
+
+const MOCK_BACKED_INVARIANT_FIXTURE: &str =
+    include_str!("../fixtures/r1_mock_backed_invariant_gate.dag");
+const R1_LENS_OUTPUT_EQUALS_FIXTURE: &str =
+    include_str!("../fixtures/r1_lens_output_equals_gate.dag");
 
 fn compile_clean(source: &str, file: &str) -> v3_compiler::dag::Dag {
     match compile_to_dag(source, file) {
@@ -87,6 +93,62 @@ data suite: TestSuite = {
 
     assert_eq!(results.len(), 1);
     assert!(matches!(results[0].result, ClaimResult::Fail(_)));
+}
+
+#[test]
+fn test_runner_data_bodies_reject_requires_empty_call_today() {
+    // Checklist item (2) in `docs/briefs/r1-testgen-manager.md` — `requires: []`
+    // vs `requires: empty()`: in a `data` body, only the `[]` list literal lowers
+    // today. `empty()` trips the M1(2.8) class-5 gap ("data bodies cannot yet use
+    // record / list / map literals inside data bodies"), so the runner path on
+    // `src/v3/compiler/tests/dag/*.dag` **must** stay with `[]`. `empty()` remains
+    // valid in `let` bindings (Brief D `.v3` fixtures under
+    // `tests/fixtures/t_pb_b_brief_d/` use it), but those bindings are not
+    // `Declaration`s and so are not directly `run_suite`-consumable.
+    //
+    // This is the standing receipt: if the M1(2.8) class-5 restriction lifts and
+    // `data` bodies start accepting `empty()`, this test flips to a green
+    // "equivalence" test — at which point the `.dag` files can optionally migrate
+    // off the `[]` literal.
+    let source = r#"
+import std.list { empty }
+
+data claim_empty_requires: TestClaim = {
+  name: "empty() requires compiles",
+  source: "let x: Int = 1",
+  file_name: "runner_empty_requires.v3",
+  predicate: Compiles,
+  requires: empty()
+}
+"#;
+    match compile_to_dag(source, "test_runner_empty_requires.dag") {
+        Err(CompileError::Semantic(dag)) => {
+            // Variant-level check: the class-5 gap surfaces as a `ResolveError`
+            // on the `requires` field of `claim_empty_requires`. Binding to the
+            // variant + `name` payload is sturdier than a raw message-substring
+            // check — the message may be rephrased, but the variant + the
+            // data-decl name are the stable facts. Message substring is retained
+            // as the secondary signal until a diagnostic-code vocabulary lands
+            // (cross-link: review observation on #736).
+            let found_resolve_error = dag.diagnostics().iter().any(|(_, diag)| {
+                matches!(
+                    diag,
+                    Diagnostic::ResolveError { name, .. }
+                        if name.contains("claim_empty_requires")
+                            && name.contains("requires")
+                            && name.contains("list literal")
+                )
+            });
+            assert!(
+                found_resolve_error,
+                "expected ResolveError naming `claim_empty_requires` / `requires` / `list literal`, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            );
+        }
+        other => {
+            panic!("expected `requires: empty()` to be rejected by M1(2.8) today, got {other:?}")
+        }
+    }
 }
 
 #[test]
@@ -281,12 +343,12 @@ data suite: TestSuite = {
 fn test_runner_marks_non_day_one_predicates_not_yet_implemented() {
     let source = r#"
 data claim_nyi: TestClaim = {
-  name: "mock backed invariant",
+  name: "behavioral observation",
   source: "let x: Int = 0",
   file_name: "runner_nyi.v3",
   // Struct-variant field names are schema metadata today; the surface parser
   // accepts positional payload syntax for authored values.
-  predicate: MockBackedInvariant(Int, Bool),
+  predicate: BehavioralObservation(Int, Int, Int),
   requires: []
 }
 
@@ -299,7 +361,146 @@ data suite: TestSuite = {
     let results = TestRunner::new(&dag).run_suite("suite");
 
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].result, ClaimResult::NotYetImplemented);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(reason)
+            if reason.contains("BehavioralObservation")
+    ));
+}
+
+#[test]
+fn mock_backed_invariant_predicate_accepts_declaration_ref_like_lens_output_equals() {
+    let source = r#"
+data claim: TestClaim = {
+  name: "c",
+  source: "let _: Int = 0",
+  file_name: "f.v3",
+  predicate: MockBackedInvariant(Int, Int),
+  requires: []
+}
+"#;
+    compile_clean(source, "mock_backed_invariant_harness.v3");
+}
+
+#[test]
+fn test_runner_dispatches_mock_backed_invariant_claim() {
+    let dag = compile_clean(
+        MOCK_BACKED_INVARIANT_FIXTURE,
+        "src/v3/compiler/tests/fixtures/r1_mock_backed_invariant_gate.dag",
+    );
+    let results = TestRunner::new(&dag).run_suite("mock_backed_invariant_suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(reason)
+            if reason.contains("mock simulation is not wired")
+                && reason.contains("mock_subject_ref")
+                && reason.contains("mock_invariant_ref")
+    ));
+}
+
+#[test]
+fn test_runner_mock_backed_invariant_does_not_fabricate_pass_for_clean_source() {
+    let source = r#"
+data subject_ref: Int = 0
+data invariant_ref: Int = 0
+
+data claim: TestClaim = {
+  name: "mock backed clean source",
+  source: "let x: Int = 1",
+  file_name: "clean_mock_subject.v3",
+  predicate: MockBackedInvariant(subject_ref, invariant_ref),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "clean_mock_subject_suite",
+  claims: [claim]
+}
+"#;
+    let dag = compile_clean(source, "clean_mock_subject_harness.v3");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(reason)
+            if reason.contains("mock simulation is not wired")
+                && reason.contains("subject_ref")
+                && reason.contains("invariant_ref")
+    ));
+}
+
+#[test]
+fn lens_output_equals_predicate_accepts_declaration_ref_literals_like_mock_invariant() {
+    let source = r#"
+data claim: TestClaim = {
+  name: "c",
+  source: "let _: Int = 0",
+  file_name: "f.v3",
+  predicate: LensOutputEquals(Int, Int, Int),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "s",
+  claims: [claim]
+}
+"#;
+    compile_clean(source, "lens_output_equals_int_harness.v3");
+}
+
+#[test]
+fn test_runner_dispatches_r1_gates_lens_output_equals_claim() {
+    let dag = compile_clean(
+        R1_LENS_OUTPUT_EQUALS_FIXTURE,
+        "src/v3/compiler/tests/fixtures/r1_lens_output_equals_gate.dag",
+    );
+    let results = TestRunner::new(&dag).run_suite("r1_lens_output_equals_suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(msg)
+            if msg.contains("LensOutputEquals")
+                && msg.contains("Int")
+                && msg.contains("lens_output_ref_input")
+                && msg.contains("lens_output_ref_expected")
+    ));
+}
+
+#[test]
+fn test_runner_algebraic_law_commutativity_returns_not_yet_implemented() {
+    let source = r#"
+module test.algebraic_law_commutativity_nyi
+
+import std.verification { AlgebraicLaw, TestClaim, TestSuite }
+
+fn lens_placeholder(a: Int, b: Int) -> Int = a + b
+
+data claim_comm: TestClaim = {
+  name: "algebraic law commutativity",
+  source: "let x: Int = 1",
+  file_name: "algebraic_law_comm.v3",
+  predicate: AlgebraicLaw(Commutativity, lens_placeholder),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "algebraic_law_commutativity_suite",
+  claims: [claim_comm]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_algebraic_law_comm.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(reason)
+            if reason.contains("AlgebraicLaw::Commutativity")
+    ));
 }
 
 #[test]

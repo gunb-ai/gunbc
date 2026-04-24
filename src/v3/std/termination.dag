@@ -58,9 +58,8 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 // a separate structural witness.
 //
 // 🟡 P5 BRIDGE. Name reads like unary promotion; body is fail-closed (see `dsl` mirror).
-// Parser-progress in `v2.compiler.complexity` still references this symbol;
-// dissolution: rename (e.g. `evidence_passthrough_preserving_strict`) or delete
-// call sites when witness threading no longer needs this hop.
+// `v2.compiler.complexity` routes parser progress through `strict_after_parser_witness` and
+// no longer imports this symbol; dissolution: rename here when bootstrap / mirrors migrate.
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   match evidence {
     NonIncreasing => NonIncreasing
@@ -102,6 +101,10 @@ type RankingDimension
 
 // 🟢 TERMINAL at descent-witness scope. Raw `Int` cannot carry shrink
 // evidence because zero and negative values are not descent witnesses.
+//
+// Ratchet (P4 / modeling): self-recursive Peano-style sums here extend the substrate
+// recursive-type set beyond `Node`; dissolution is deferred until E-P routes literal
+// bridges through shared numeric refinements (see `ROADMAP.md` P4 — Peano witness ratchet).
 //
 // Design note (api-review / E-P): `std.types` already declares `PositiveInt`
 // (`Int where range(min: 1)`) and similar refinements. A future dissolution is

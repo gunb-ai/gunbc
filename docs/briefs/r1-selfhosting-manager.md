@@ -88,6 +88,11 @@ the two acknowledged residuals.
 - **Sideways from Testgen Manager.** T-TestGen's runner closure is
   the gate for T-PB-B. Testgen manager signals readiness; this
   manager dispatches the Rust→.dag test conversion at that signal.
+  The numbered **pre–Rust-deletion** coordination items (runner
+  entrypoint, `requires`, M1(2.8), first deletion batch) are maintained
+  only in **`docs/briefs/r1-testgen-manager.md`** (*Hand-off points* →
+  **Sideways to Self-hosting Manager**) — keep that list single-source
+  until Testgen replies.
 - **Up to director.** Any proposal to adjust the two TESTING.md
   residual categories (what counts as compiler-internal unit test,
   what counts as external-toolchain boundary test). These are
@@ -112,20 +117,55 @@ Lane-owner dispatch status (update as sub-deliverables close):
       T-TestGen extensions land
 
 **T-PB-B:**
-- [ ] Draft `.dag` `TestClaim` declarations for pipeline tests
-      (non-landing — wait on Testgen runner)
-- [ ] Draft `.dag` `TestClaim` declarations for contract tests
-      (non-landing — wait on Testgen runner)
-- [ ] Identify and scope the two TESTING.md residual categories
-      per-test
-- [ ] Land `.dag` test conversion once Testgen signals runner
-      readiness
+- [x] T-PB-B-1 — Landed `src/v3/compiler/tests/dag/*.dag` + compile-only smoke
+      (`t_pb_b_1_tests_dag_smoke_test`); brief `docs/briefs/t-pb-b-1.md`.
+      **Not** Rust test deletion and **not** `pb_*` — those stay unchecked below
+      until Testgen signs off.
+- [x] T-PB-B-1 — Runner-backed integration test landed (PR #736,
+      `t_pb_b_1_dag_runner_test`): closes pre–Rust-deletion checklist items (1)
+      runner accepts `tests/dag/` layout via `compile_to_dag`, (2) `requires: []`
+      lowers to a runner-consumable shape; (3) M1(2.8) inlining is structurally
+      enforced in `t_pb_b_1_contract_port_cost.dag`. Item (4) first-deletion batch
+      still owned by Testgen per single-source checklist in
+      `docs/briefs/r1-testgen-manager.md`.
+- [x] Brief D — Draft `.v3` `TestClaim` / `TestSuite` for pipeline smoke
+      (compile-smoke + inventory only; Rust integration tests remain canonical;
+      see `docs/briefs/t-pb-b-brief-d.md` +
+      `src/v3/compiler/tests/fixtures/t_pb_b_brief_d/pipeline_smoke.v3`)
+- [x] Brief D — Draft `.v3` declarations for contract tests (same meaning as
+      previous row; `contract_diagnostic_smoke.v3` + `contract_port_cost_smoke.v3`)
+- [x] Identify and scope the two TESTING.md residual categories
+      per-test (extended D/G/A/B matrix in Brief D)
+- [ ] Land **Rust deletions** for the three T-PB-B-1 claim shapes once Testgen
+      signals on checklist item (4) first-deletion batch (declarative data +
+      compile smoke + runner-backed evaluation for these three suites already
+      landed via PR #736 — see `docs/briefs/t-pb-b-1.md`)
 - [ ] `pb_test_file_generated_from_dag` + `pb_rust_tests_outside_residual_zero`
       predicates evaluate true
 
 Decisions log (append as they happen):
 
-- _(none yet)_
+- 2026-04-24: **T-PB-B-1 runner wiring (PR #736)** — `t_pb_b_1_dag_runner_test`
+  evaluates all three landed `tests/dag/*.dag` suites through `TestRunner::run_suite`
+  (all claims pass); mechanically closes pre–Rust-deletion checklist items (1) runner
+  entrypoint / layout and (2) `requires: []` lowering. Also aligns the `contract_port_cost`
+  cost witness to the runner-evaluated `Eq 3` value (was a placeholder `Eq 8` copied from
+  the unevaluated `m1_5_verification` smoke) across the landed `.dag` and Brief D `.v3`
+  siblings. Rust deletion and `pb_*` still gated on Testgen checklist item (4).
+- 2026-04-24: **T-PB-A reduction wave active.** Non-test hand-Rust shims
+  retired today: lens_idempotency wrapper (#699), lens_parallelism wrapper
+  (#715), lens_parallelism compatibility alias (#724), lower pass-through
+  scaffold + `regen_lower.rs` + non-authoritative `lower_generated.rs`
+  (#729), infer payload span shim (#730), plus T-PB-A-E (#731) and
+  T-PB-A-F (#732). SG-0 census + SG-6 ratchets shrunk accordingly. Live
+  floor read from `src/v3/compiler/tests/integration/sg0_census_test.rs`;
+  the ≤5 irreducible-shim target not yet reached.
+- 2026-04-24: **T-PB-B-1** — landed `src/v3/compiler/tests/dag/*.dag` (`data` `TestClaim` /
+  `TestSuite` per `std.verification`) + `t_pb_b_1_tests_dag_smoke_test`; Rust tests not
+  deleted; Testgen runner / `pb_*` coordination still open (`docs/briefs/t-pb-b-1.md`).
+- 2026-04-23: **Brief D** (`docs/briefs/t-pb-b-brief-d.md`) — extended T-PB-B inventory +
+  D/G/A/B matrix + draft `TestClaim` fixtures (`tests/fixtures/t_pb_b_brief_d/*.v3`);
+  compile smoke via `t_pb_b_brief_d_fixture_smoke_test` (no `pb_*`, Rust tests unchanged).
 - 2026-04-23: SG-0 file-level census split landed as non-test/test
   sub-ratchets; `tokenize.rs` shim retired from the non-test subset.
 

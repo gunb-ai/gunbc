@@ -91,7 +91,70 @@ compose. When this closes, the R1 release gates themselves
   is the hand-off signal for T-PB-B landing. Self-hosting drafts
   `.dag` `TestClaim` declarations during Day-1, waits on this
   signal, then converts pipeline / contract tests. Notify
-  Self-hosting when the runner lands.
+  Self-hosting when the runner lands. **Landed batch (runner-backed):**
+  `docs/briefs/t-pb-b-1.md` + `src/v3/compiler/tests/dag/` —
+  `t_pb_b_1_dag_runner_test` evaluates the landed suites (PR #736);
+  compile-smoke counterpart is `t_pb_b_1_tests_dag_smoke_test`.
+  **Pre–Rust-deletion checklist (single source — edit here only; do
+  not fork a competing numbered list in other briefs):** (1) **[done,
+  PR #736]** Runner accepts v3 `.dag` modules under
+  `src/v3/compiler/tests/dag/` with the same `compile_to_dag`
+  entrypoint as today’s integration harness — proven by
+  `t_pb_b_1_dag_runner_test`. (2) **[done, PR #736, scoped-NO]**
+  `requires: []` vs `empty()` for `List<ResourceReference>`: **not
+  equivalent in `data` bodies today.** Runner path must stay on `[]`;
+  `empty()` is rejected by M1(2.8) class-5. Receipt pinned by
+  `test_runner_data_bodies_reject_requires_empty_call_today`. Receipt
+  paragraph in `docs/briefs/t-pb-b-1.md`. (3) **[done for Day-1 predicate
+  shapes, PR #736]** M1(2.8) predicate-inlining constraints for
+  `PortHasState` / `CostBounded`: inlined on each `TestClaim` record in
+  `t_pb_b_1_contract_port_cost.dag`; standalone
+  `data _: TestPredicate = …` bodies remain NYI under the same
+  class-5 restriction. Receipt paragraph in `docs/briefs/t-pb-b-1.md`.
+  (4) **First Rust deletion batch — prep, not yet signed off.** Target
+  shape: one thin `Compiles`-only duplicate whose claim is already
+  covered by a landed `.dag` suite evaluated under
+  `t_pb_b_1_dag_runner_test`. Candidate inventory (under
+  `src/v3/compiler/tests/integration/`, registered in `integration.rs`
+  and enumerated in `sg0_census_test.rs`):
+  - **Excluded from first batch: `pipe_desugar.rs`.** Despite the
+    `expect("compiles")` surface, `pipe_desugars_unary_call_by_injecting_the_left_value`
+    and `pipe_desugars_multi_arg_call_with_first_arg_injection` assert
+    structural facts — `Transform` target name, `call.inputs.len()`,
+    injected `LiteralBits::Int` order, and the port's declared return
+    `TypeShape`. The `.dag` analogue (`t_pb_b_1_pipeline_smoke.dag`,
+    `Compiles` + source text only) does not cover those facts. Holding
+    this file until structural-query predicates (target/arity/argument
+    order/return shape) land in the T-TestGen schema and a `.dag`
+    suite exercises both unary and multi-arg shapes.
+  - `thesis_validation_test.rs` — mixed shapes (`Compiles`,
+    `PortHasState`, `CostBounded`, `FailsWithDiagnostic` via
+    `rendered_rust_diagnostic`). The `Compiles` / `PortHasState` /
+    `CostBounded` subset maps onto the landed runner predicates; the
+    rendered-diagnostic subset does **not** yet have a runner-backed
+    counterpart and must be excluded from the first batch. Any split
+    of this file needs a receipt listing which `#[test]` functions
+    move and which stay.
+  **Explicit Testgen sign-off — guard before any deletion PR opens:**
+  1. Receipts (1)–(3) reviewed on main and still green (`cargo test
+     -p v3-compiler t_pb_b_1_dag_runner_test` passes; the class-5 pin
+     `test_runner_data_bodies_reject_requires_empty_call_today` still
+     passes). 2. For each Rust `#[test]` proposed for deletion,
+     name the `.dag` `TestClaim` (suite + claim name) that covers it
+     and confirm `TestRunner::run_suite` returns `ClaimResult::Pass`
+     on today's runner — no inference by filename. 3. PR #735
+     (symbolic cost / `Lookup`) either merged or explicitly determined
+     not to shift `CostBounded` witnesses for the candidate claims
+     (per the cost-witness note in `docs/briefs/t-pb-b-1.md`). 4.
+     Testgen manager records the sign-off in this brief's *Decisions
+     log* **before** the self-hosting manager opens the deletion PR;
+     without that entry, the self-hosting lane stays parked on
+     `ROADMAP.md` T-PB-B lane work (`pb_rust_tests_outside_residual_zero`)
+     and does not delete Rust tests.
+     Out of scope today: deleting tests whose shape is rendered-diagnostic
+     only, shared-predicate (`let pred_*: TestPredicate`) factored, or
+     `let`+`empty()` backed — those depend on runner seams / M1(2.8)
+     class-5 lift that have not landed.
 - **Sideways to Surface Manager.** `emit_omni_demo_fixtures_green`
   and the three `emit_*` gates under T-Emit require `ExecuteCommand`
   + `ForAllTargets` predicates — these are T-TestGen `[ext]`
@@ -124,7 +187,10 @@ Lane-owner dispatch status (update as sub-deliverables close):
       (PR #688, merged 2026-04-24)
 - [x] `testgen_structural_coverage` gate compiles + evaluates
       (PR #720, merged 2026-04-24)
-- [ ] `MockBackedInvariant` wiring (PR #722 in review — DRAFT, needs CI + coordination with #717)
+- [x] `MockBackedInvariant` wiring
+      (PR #722, merged 2026-04-24 — runner dispatches on `MockBackedInvariant`,
+      resolves both `DeclarationRef` edges, returns `NotYetImplemented(String)`
+      naming the unresolved mock-simulation step)
 - [ ] `testgen_mock_backed_integration_safe` gate compiles + evaluates
 - [x] `testgen_manual_claim_is_first_class` gate compiles + evaluates
       (PR #707, merged 2026-04-24)
@@ -132,13 +198,17 @@ Lane-owner dispatch status (update as sub-deliverables close):
 **T-LensAPI:**
 - [x] `user_authored_lens_compiles` gate (Day-1) passes
       (PR #679, merged 2026-04-24)
-- [ ] `AlgebraicLaw` predicate (schema extension, shared with
-      lens_composition_associative) — predicate declared in #678;
-      runner evaluation not yet wired
-- [ ] `lens_composition_associative` gate compiles + evaluates
+- [x] `AlgebraicLaw` predicate runner evaluation wired
+      (PR #728, merged 2026-04-24 — `Associativity` resolves `lens_ref`,
+      compiles the claim program, and checks the canonical structural
+      witness)
+- [x] `lens_composition_associative` gate compiles + evaluates
+      (PR #728, merged 2026-04-24 — witness + `r1_gates.dag` suite)
 - [ ] `lens_output_is_queryable_data` gate compiles + evaluates
-      (PR #717 in review — adds runner seam dispatch for `LensOutputEquals` → NYI(String);
-      gate stays [ ] until runner executes lens functions)
+      (PR #717 merged 2026-04-24 — dispatch + `DeclarationRef` resolution landed,
+      runner returns `NotYetImplemented(String)`; gate stays [ ] until T-LensAPI D1
+      lens-application primitive + D2 `eval_lens_output_equals` real apply/compare land.
+      D1 in flight as PR #741)
 
 **Schema extensions owned here that other managers consume:**
 - [x] `ExecuteCommand` predicate (Surface T-Emit consumer) — landed PR #678
@@ -150,6 +220,27 @@ Lane-owner dispatch status (update as sub-deliverables close):
 
 Decisions log (append as they happen):
 
+- 2026-04-24: **Pre–Rust-deletion checklist item (4) prepped, not signed
+  off.** Candidate inventory narrowed — `pipe_desugar.rs` **excluded**
+  from first batch (asserts `Transform` target / input arity / literal
+  order / return shape; `t_pb_b_1_pipeline_smoke.dag` only witnesses
+  `Compiles`, so deletion would drop structural coverage until
+  structural-query predicates land). First-batch candidate is the
+  `Compiles`/`PortHasState`/`CostBounded` subset of
+  `thesis_validation_test.rs`; four-point sign-off guard recorded in *Hand-off points →
+  Sideways to Self-hosting Manager*. **No Rust deletion lands without a
+  sign-off entry in this log naming the specific `#[test]` → `.dag`
+  `TestClaim` mapping.** Self-hosting manager should continue to treat
+  item (4) as parked until that entry appears.
+- 2026-04-24: **T-LensAPI `lens_composition_associative` closed** via
+  PR #728. Runner dispatch of `AlgebraicLaw { law: Associativity }`,
+  witness DAG, and `r1_gates.dag` suite landed together. Remaining
+  T-LensAPI work: `lens_output_is_queryable_data` (PR #717 dispatch merged
+  2026-04-24; gate awaits D1 primitive — PR #741 draft).
+- 2026-04-24: T-PB-B / Testgen **pre–Rust-deletion** coordination
+  checklist consolidated in this brief (Hand-off → Self-hosting);
+  `docs/briefs/t-pb-b-1.md` now points here instead of duplicating
+  numbered items.
 - 2026-04-24: `ForAllTargets` self-referential variant dissolved to
   `{ command, args, expect_exit_code }` to preserve bounded-kernel
   invariant (Node is the only recursive type).

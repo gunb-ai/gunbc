@@ -26,6 +26,8 @@ mod int_pow_bounded_test;
 #[cfg(test)]
 mod parse;
 #[cfg(test)]
+mod peano_materialization_cap_test;
+#[cfg(test)]
 mod pipeline;
 #[cfg(test)]
 mod render_repeat_test;

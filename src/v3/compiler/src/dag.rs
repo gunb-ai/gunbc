@@ -933,6 +933,17 @@ pub fn map_evidence_merge_at(
     base
 }
 
+// Continuation: Rust execution mirror for `src/v3/std/computation.dag` (Lane E-C).
+// Same staging contract as the termination mirror above (`ArrowBody::Unparsed` std bodies).
+// `m2_substrate_inhabitance_test::{computation_*}` pins carrier shape + lowering helpers.
+
+/// 🟡 SCAFFOLD — `SizeBound` coproduct (`docs/modeling-discipline.md` §4).
+///
+/// Authority: `src/v3/std/computation.dag`. Variant taxonomy is durable; `param: String` and
+/// other bootstrap bridges dissolve when size parameters become first-class substrate refs.
+/// **Named trigger:** evaluated `std.computation` std block bodies (same dissolution wave as
+/// the termination lattice mirror). **Ledger:** parity ratchet
+/// `m2_substrate_inhabitance_test::computation_size_bound_helpers_match_dag_authority`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SizeBound {
     CollectionSize { param: String },
@@ -946,6 +957,13 @@ pub fn tree_size_bound(param: String) -> SizeBound {
     SizeBound::TreeSize { param }
 }
 
+/// 🟡 SCAFFOLD — `CallPattern` coproduct (`docs/modeling-discipline.md` §4).
+///
+/// Authority: `src/v3/std/computation.dag`. Peano shrink payloads are proof-grade (terminal
+/// at witness shape); `String` slots + synthetic `lower_call_pattern` size labels dissolve
+/// with per-call provenance (E-P) and structural parameter refs. **Named trigger:** same as
+/// [`SizeBound`]. **Ledger:**
+/// `m2_substrate_inhabitance_test::computation_lowering_rust_mirror_matches_dag_authority`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallPattern {
     ChildAccessorCall { accessor: String },
@@ -958,6 +976,11 @@ pub enum CallPattern {
     SameArgumentCall,
 }
 
+/// 🟢 TERMINAL — `ShrinkFactor` coproduct (`docs/modeling-discipline.md` §4).
+///
+/// Authority: `src/v3/std/computation.dag`. Only unit / Peano constant / Peano proportional
+/// shrink — illegal rates stay unrepresentable at the carrier. **Ledger:** exercised through
+/// the same `m2_substrate_inhabitance_test` computation rows as [`CallPattern`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ShrinkFactor {
     UnitShrink,
@@ -1029,6 +1052,10 @@ pub struct CallDescentEvidence {
     pub evidence: Vec<SubValueRelation>,
 }
 
+/// 🟢 TERMINAL — `IterationPrimitive` coproduct (`docs/modeling-discipline.md` §4).
+///
+/// Closed `{Fold, Descend, Repeat}` behavioral alphabet (MODELING.md M9). Authority:
+/// `src/v3/std/computation.dag`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IterationPrimitive {
     Fold,
@@ -1408,6 +1435,10 @@ pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
     }
 }
 
+/// 🟢 TERMINAL — `IterationDimension` coproduct (`docs/modeling-discipline.md` §4).
+///
+/// Three-way projection from kernel algebra profiles onto iteration regimes. Authority:
+/// `src/v3/std/computation.dag`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IterationDimension {
     TreeDescent,
@@ -1415,6 +1446,12 @@ pub enum IterationDimension {
     ArithmeticRepeat,
 }
 
+/// 🟡 SCAFFOLD — `AlgebraProfile` coproduct (`docs/modeling-discipline.md` §4).
+///
+/// Closed seven-variant mirror of `dsl/std/algebra.dag` `kernel_algebra_profile` while the
+/// table is still `ArrowBody::Unparsed`. **Named trigger:** evaluated std bodies / read the
+/// table from `.dag` (see [`kernel_algebra_profile`] below). **Ledger:** P2 ratchet
+/// `m2_substrate_inhabitance_test::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AlgebraProfile {
     OrderedRingProfile,
@@ -1472,7 +1509,6 @@ pub fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
         _ => None,
     }
 }
-
 #[derive(Debug, Clone)]
 pub struct ValueNode {
     pub id: NodeId,
@@ -1640,6 +1676,8 @@ impl LoopBound {
         }
     }
 }
+
+include!("dag_lookup_generated.rs");
 
 include!("dag_cost_generated.rs");
 
@@ -1951,6 +1989,12 @@ pub(crate) struct StdlibTypeCache {
     /// declaration ids instead of reconstructing stdlib identity
     /// through `declaration_by_name("List")`.
     pub list: Option<DeclarationId>,
+    /// The `Map<K, V> = PartialFunction<…>` template head (`PartialFunction` in
+    /// `dsl/std`). The underlying record carries algebra `Arrow`+`NoBody` fields
+    /// for operations, not first-class `fn` **values** — emit must not recurse
+    /// the template in `decl_includes_first_class_arrow_data` the way it does
+    /// for a user `G<T>` (PR #676).
+    pub partial_function: Option<DeclarationId>,
 }
 
 /// Substrate declarations emitters used to resolve via
@@ -2260,6 +2304,24 @@ impl Dag {
         self.primitives.string
     }
 
+    /// The std **scalar** `TypeShape` roots used to prune algebra / ring
+    /// `TypeConnective::Arrow` from the first-class-`fn` *data* walk in
+    /// `emit::rust_target` (`decl_includes_first_class_arrow_data` and related).
+    /// **Tied to** `Dag`’s `int` / `bool` / `string` fields in `primitives` — when a
+    /// new bootstrap primitive (e.g. `Float`) gains a `float_shape` accessor, extend
+    /// this to `[TypeShape; 4]` (or equivalent) in the same change as the emit
+    /// predicate so the allowlist cannot drift silently (PR #676, Opus review).
+    pub fn first_class_fn_walk_bootstrap_prune_type_shapes(&self) -> [TypeShape; 3] {
+        [
+            self.int_shape()
+                .expect("bootstrap `Int` (dsl/std) required for this helper"),
+            self.bool_shape()
+                .expect("bootstrap `Bool` (dsl/std) required for this helper"),
+            self.string_shape()
+                .expect("bootstrap `String` (dsl/std) required for this helper"),
+        ]
+    }
+
     /// Typed accessor for the v3_l1 `Bind` marker. `None` only when
     /// bootstrap failed to load `dsl/std/v3_l1.dag`. Used by emit
     /// passes to look up the per-target Bind realization without a
@@ -2525,6 +2587,13 @@ impl Dag {
     /// Typed accessor for the cached `std.list.List` template.
     pub fn list_template(&self) -> Option<DeclarationId> {
         self.stdlib_types.list
+    }
+
+    /// The `Map` type constructor’s underlying `PartialFunction` record template
+    /// (`Map<K, V> = Inst(PartialFunction, [K, V])` in `dsl/std`). See
+    /// [`Dag::list_template`].
+    pub fn partial_function_template(&self) -> Option<DeclarationId> {
+        self.stdlib_types.partial_function
     }
 
     /// Typed accessor for the canonical `OrderedRing` algebra declaration.
@@ -3055,6 +3124,8 @@ impl Dag {
             .map(|d| d.id);
         self.populate_target_clean_emission_bindings();
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
+        self.stdlib_types.partial_function =
+            self.declaration_by_name("PartialFunction").map(|d| d.id);
 
         self.emit_anchors.ordered_ring = self.declaration_by_name("OrderedRing").map(|d| d.id);
         self.emit_anchors.substrate_accessor_binding = self

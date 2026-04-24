@@ -89,9 +89,11 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // a bounded SG-0 exception for the merge-blocking Stage 3b receipt,
 // not a precedent for adding ad hoc integration files.
 //
-// SG-3f-prep (director Option B): `lower.rs` stays on this list — canonical
-// lowering remains hand-maintained Rust until `lower.dag` + reflected `Surface*`.
-// `regen_lower` + `lower_generated.rs` are prep-only (not `lib.rs` authority).
+// T-PB-A-B: `lower.rs` stays on this list — canonical lowering remains
+// hand-maintained Rust until `lower.dag` + reflected `Surface*`. The former
+// `regen_lower` pass-through scaffold and non-authoritative
+// `lower_generated.rs` snapshot were retired so the census no longer preserves
+// a generated-looking lower projection that `lib.rs` did not consume.
 //
 // Lane E-I Step 0 (PR #726): `e_i_lane_induction_preflight_test.rs` is a
 // bounded bootstrap receipt that `SumBound`'s `terms` field instantiates
@@ -151,7 +153,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
-    "src/v3/compiler/src/bin/regen_lower.rs",
     "src/v3/compiler/src/bin/regen_parse.rs",
     "src/v3/compiler/src/bin/regen_parse_tables.rs",
     "src/v3/compiler/src/bin/regen_tokenize.rs",
@@ -245,11 +246,13 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/sg2_parse_authority_test.rs",
     "src/v3/compiler/tests/integration/sg2c1_parse_tables_authority_test.rs",
     "src/v3/compiler/tests/integration/sg2c5_soft_keyword_ident_test.rs",
-    "src/v3/compiler/tests/integration/sg3_lower_authority_test.rs",
     "src/v3/compiler/tests/integration/sg3_lower_parse_surface_stack_test.rs",
     "src/v3/compiler/tests/integration/sg3_surface_reflection_consumer_test.rs",
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
+    "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs",
+    "src/v3/compiler/tests/integration/t_pb_b_1_tests_dag_smoke_test.rs",
+    "src/v3/compiler/tests/integration/t_pb_b_brief_d_fixture_smoke_test.rs",
     "src/v3/compiler/tests/integration/test_runner_test.rs",
     "src/v3/compiler/tests/integration/testgen_structural_coverage_gate_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
