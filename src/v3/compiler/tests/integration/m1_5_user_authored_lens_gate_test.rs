@@ -22,6 +22,8 @@ use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::CompileError;
 
 const R1_GATES_SOURCE: &str = include_str!("../fixtures/r1_gates.dag");
+const R1_MOCK_BACKED_INVARIANT_GATE_SOURCE: &str =
+    include_str!("../fixtures/r1_mock_backed_invariant_gate.dag");
 const R1_LENS_OUTPUT_EQUALS_GATE_SOURCE: &str =
     include_str!("../fixtures/r1_lens_output_equals_gate.dag");
 const ON_DISK_LENS: &str = include_str!("../../../lenses/named_function_count.dag");
@@ -70,6 +72,15 @@ fn r1_gates_fixture_compiles_against_bootstrap_context() {
         R1_GATES_SOURCE,
         "src/v3/compiler/tests/fixtures/r1_gates.dag",
         "gate fixture `r1_gates.dag`",
+    );
+}
+
+#[test]
+fn r1_mock_backed_invariant_gate_fixture_compiles_against_bootstrap_context() {
+    assert_compile_clean(
+        R1_MOCK_BACKED_INVARIANT_GATE_SOURCE,
+        "src/v3/compiler/tests/fixtures/r1_mock_backed_invariant_gate.dag",
+        "gate fixture `r1_mock_backed_invariant_gate.dag`",
     );
 }
 
