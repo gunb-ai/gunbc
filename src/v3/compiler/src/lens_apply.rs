@@ -102,9 +102,15 @@ fn monomorph_callable_bind_root(dag: &Dag, mut decl_id: DeclarationId) -> Option
     None
 }
 
-/// Primary path: walk `Instantiation.arguments` on the monomorphized fold callee — substrate
-/// `DeclarationId` keyed to the template's callable formal — then resolve the step `Arrow` root
-/// `Bind`. Matches builder/runtime arity: the step is not a `Transform` input port.
+/// Locate the `|acc, x|` step closure lowered as a two-parameter `Bind` for this `fold` site.
+///
+/// Walk `Instantiation.arguments` on the monomorphized fold callee — substrate `DeclarationId`
+/// keyed to the template's callable formal — then resolve the step `Arrow` root `Bind`. Matches
+/// builder/runtime arity: the step is not a `Transform` input port. No span-overlap recovery —
+/// that would not be a declared substrate dependency (Facts Flow Forward).
+///
+/// **Dissolution:** attach the step as an explicit `Transform` input / behavior edge and delete
+/// this `Instantiation`-walk indirection when lowering guarantees a direct edge.
 fn find_fold_step_bind_via_instantiation(
     dag: &Dag,
     fold_callable_id: DeclarationId,
@@ -140,19 +146,6 @@ fn find_fold_step_bind_via_instantiation(
         }
     }
     (ambiguous_fallback.len() == 1).then(|| ambiguous_fallback[0])
-}
-
-/// Locate the `|acc, x|` step closure lowered as a two-parameter `Bind` for this `fold` site.
-///
-/// Uses only [`find_fold_step_bind_via_instantiation`]: template-argument substrate edges from
-/// the monomorphized `std.list.fold` `Instantiation` (the step is not a runtime `Transform` input
-/// port when arity collapses to list + init). No span-overlap recovery — that would not be a
-/// declared substrate dependency (Facts Flow Forward).
-///
-/// **Dissolution:** attach the step as an explicit `Transform` input / behavior edge and delete
-/// the `Instantiation`-walk indirection when lowering guarantees a direct edge.
-fn find_fold_step_bind(dag: &Dag, fold_callable_id: DeclarationId) -> Option<&BindNode> {
-    find_fold_step_bind_via_instantiation(dag, fold_callable_id)
 }
 
 /// Apply a named lens (`Arrow` + `UserDefined` body) from `lens_program` to positional
@@ -382,12 +375,11 @@ impl<'a> EvalCtx<'a> {
                 {
                     let list = self.eval_port(t.inputs[0])?;
                     let init = self.eval_port(t.inputs[1])?;
-                    let step_bind = find_fold_step_bind(self.dag, *callee).ok_or(
-                        LensApplyError::UnsupportedConstruct(
+                    let step_bind = find_fold_step_bind_via_instantiation(self.dag, *callee)
+                        .ok_or(LensApplyError::UnsupportedConstruct(
                             "monomorphized fold: could not locate step closure Bind via \
                              Instantiation arguments (no span overlap fallback)",
-                        ),
-                    )?;
+                        ))?;
                     return self.eval_fold_step(list, init, step_bind);
                 }
                 self.eval_callable(*callee, &t.inputs)
@@ -1046,10 +1038,7 @@ fn sum(xs: List<Int>) -> Int =
         let TransformTarget::Callable(callee) = &fold_transform.target else {
             unreachable!();
         };
-        let via_inst =
-            super::find_fold_step_bind_via_instantiation(&dag, *callee).expect("inst path");
-        let combined = super::find_fold_step_bind(&dag, *callee).expect("find_fold_step_bind");
-        assert_eq!(combined.id, via_inst.id);
+        super::find_fold_step_bind_via_instantiation(&dag, *callee).expect("fold step bind");
     }
 
     #[test]
