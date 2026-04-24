@@ -21,7 +21,7 @@ summarizes before the body so readers can place each section.
 | Part 3 — arity | Testgen generating boundary tests from cardinality | `[target]` | DB-15 schema landed (`ROADMAP.md:235`); runner + `MockBackedInvariant` wiring remain under T-TestGen lane (`ROADMAP.md:51`, `:65`) |
 | Part 4 — custom types | `Duration<Unit>`, `Money<Currency>` via dimensions | `[live]` for framework; `[target]` for unit-mismatch enforcement consumer | `src/v3/std/dimensions.dag` TERMINAL; Dimension wiring for lens consumers is deferred under the v3 lens honesty pass (`ROADMAP.md:333`) + DB-7 (`ROADMAP.md:235`); unit-mismatch enforcement consumer tracked at `ROADMAP.md:364` |
 | Part 4 — custom types | `Secret<T>` as opaque nominal type | `[target]` | currently `Secret = String` alias per `dsl/std/types.dag:237`; nominal-wrapper graduation tracked at `ROADMAP.md:365` |
-| Part 5 — reconciliation | Cross-team AuthUser reconciliation | `[target]` | composes NonEmpty (cardinality substrate, `ROADMAP.md:305`) + Secret nominal wrapper (unscheduled, below) + enforced refinement preservation (DB-11, `ROADMAP.md:231`) |
+| Part 5 — reconciliation | Cross-team AuthUser reconciliation | `[target]` | composes NonEmpty (cardinality substrate, `ROADMAP.md:305`) + Secret nominal wrapper (`ROADMAP.md:365`) + enforced refinement preservation (DB-11, `ROADMAP.md:231`) |
 | Part 6 — testgen | Generated integration tests for under-modeled boundaries | `[target]` | DB-15 runner + `MockBackedInvariant` wiring under T-TestGen (`ROADMAP.md:51`, `:65`, `:235`) |
 | Part 7 — scale | Multi-service workflow with typed boundaries | `[target]` | composes Parts 3–6 targets; each specific gap cites its ROADMAP row above |
 
@@ -838,9 +838,10 @@ issue-classifier hitting GitHub, Anthropic, Postgres, GCS, Slack —
 every mechanism described above applies in the same way. `[target]`
 — the five-service workflow example composes targets already
 cited above: typed service boundaries (extdeps surface live at
-`dsl/extdeps/`; retry/effect enforcement across composed services
-is `[target]` and not yet a dedicated ledger row — filed as a
-further unscheduled gap), full cardinality composition
+`dsl/extdeps/`; service-level retry / effect enforcement sits
+under the broader lens-honesty work at `ROADMAP.md:333` and the
+extdeps-transport row at `ROADMAP.md:300` as adjacent concerns,
+not a new row), full cardinality composition
 (`ROADMAP.md:305` + DB-11 at `:231`), the cross-team reconciliation
 story (composes the targets in Part 5 above), and T-TestGen's
 mock-backed runner (`ROADMAP.md:51`, `:65`, `:235`).
@@ -894,9 +895,10 @@ dropped conventions stop existing."** `[target]` — the "stop
 existing" formulation is the composite mature-system guarantee
 that depends on the Part 3–6 `[target]` rows above (cardinality
 substrate at `ROADMAP.md:305`, DB-11 at `:231`, T-TestGen at
-`:51`/`:65`/`:235`, plus unscheduled Secret and unit-mismatch
-rows). For the live-today subset, see the `[live]` rows in the
-claim-status table.
+`:51`/`:65`/`:235`, `Secret<T>` nominal-wrapper at
+`ROADMAP.md:365`, and unit-mismatch enforcement at
+`ROADMAP.md:364`). For the live-today subset, see the `[live]`
+rows in the claim-status table.
 
 The sustainability argument: types are cheap to extend and compose
 because the mechanism is uniform — Bit all the way up to AuthUser

@@ -115,29 +115,25 @@ while the other managers ship.
   fixture, five-service integration, etc.) routes to director.
   R1's T-Demo is explicitly scoped to two canonical fixtures +
   impossible-bugs suite per `ROADMAP.md:52`.
-- **Up to director.** The story doc's **two unscheduled gaps**
-  from PR #672 need triage:
-  - Duration/Money unit-mismatch enforcement consumer.
-  - `Secret<T>` nominal-wrapper graduation.
-  - This manager reads R1 scope against those and reports: are
-    either R1-blocking, or are they post-R1 follow-ups the
-    director should add to the tracked-debt ledger?
+- **Up to director.** If at any point R1 scope expands to depend
+  on either of the two story-surfaced gaps tracked at
+  `ROADMAP.md:364` (Duration/Money unit-mismatch enforcement
+  consumer) or `ROADMAP.md:365` (`Secret<T>` nominal-wrapper
+  graduation), escalate so R1 can be re-scoped or the row can be
+  dispatched out of post-R1 ordering.
 
-## Unscheduled gaps relevant to this slice
+## Gap rows relevant to this slice
 
-Two, both surfaced in PR #672's story doc:
-- **Duration/Money unit-mismatch enforcement** — adjacent to
-  `ROADMAP.md:333` (v3 lens honesty pass / Dimension wiring
-  deferred). Not yet its own ledger row. This manager reports:
-  if not R1-blocking, recommend post-R1 ledger-row addition.
-- **`Secret<T>` nominal-wrapper graduation** — adjacent to
-  `dsl/std/types.dag:237` (`Secret = String` alias today). Not yet
-  its own ledger row. This manager reports: if not R1-blocking,
-  recommend post-R1 ledger-row addition.
+Both story-surfaced gaps now have ledger rows; this manager
+monitors them as post-R1 follow-ups:
+- **Unit-mismatch enforcement for `Dimension<T, Unit>` consumers** —
+  `ROADMAP.md:364`.
+- **`Secret<T>` nominal-wrapper graduation** — `ROADMAP.md:365`.
 
 Per the doc-authority single-ledger rule
-([`doc-authority.md`](../thesis/doc-authority.md)), these should
-not be treated as scheduled until the director adds the rows.
+([`doc-authority.md`](../thesis/doc-authority.md)), the ROADMAP
+rows are the authority; this brief does not duplicate their
+content.
 
 ## Working state
 
@@ -160,9 +156,11 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [ ] INVARIANTS cross-ref cleanup bundled
 - [ ] Scheduled-deletion work bundled
 
-**Unscheduled-gap triage:**
-- [ ] Duration/Money unit-mismatch — R1-blocking? report to director
-- [ ] `Secret<T>` nominal-wrapper — R1-blocking? report to director
+**Post-R1 gap monitoring (ROADMAP rows):**
+- [ ] `ROADMAP.md:364` unit-mismatch enforcement — flag if R1 scope
+      expands to depend on it
+- [ ] `ROADMAP.md:365` `Secret<T>` nominal-wrapper — flag if R1
+      scope expands to depend on it
 
 Decisions log (append as they happen):
 
@@ -170,9 +168,9 @@ Decisions log (append as they happen):
 
 Open questions for director:
 
-- _(queue item)_ Triage of the two unscheduled gaps once the R1
-  demo scope is concretely drafted and we know whether either is
-  on the critical path.
+- _(none yet — the two story-surfaced gaps are tracked as post-R1
+  rows at `ROADMAP.md:364-365`; escalate only if R1 scope expands
+  to depend on either)_
 
 Cross-manager notifications queued:
 

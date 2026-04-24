@@ -154,13 +154,12 @@ already names.
 
 ## Notes and open items
 
-- **Unscheduled gaps surfaced in PR #672's story doc** are two:
-  Duration/Money unit-mismatch enforcement consumer, and `Secret<T>`
-  nominal-wrapper graduation. Neither has a tracked-debt row in
-  `ROADMAP.md` today. Release Manager should verify whether R1
-  depends on either (likely not — they're story-level `[target]`
-  items beyond R1's demo scope) and, if not, flag them as
-  post-R1 tracked-debt follow-ups for the director to add.
+- **Two story-surfaced gaps now have ledger rows** at
+  `ROADMAP.md:364` (Duration/Money unit-mismatch enforcement
+  consumer) and `ROADMAP.md:365` (`Secret<T>` nominal-wrapper
+  graduation). Both are post-R1 follow-ups; R1 does not depend on
+  either. Release Manager monitors; no action unless R1 scope
+  changes.
 - **`T-Receipts` is not a gate but is also not unbounded.** The
   manager owns the standing preference of 2–4 items per receipt PR
   and the invariant-reveal discipline per PR #669. Receipt volume
