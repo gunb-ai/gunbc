@@ -820,6 +820,7 @@ pub fn int_associativity_holds(
 mod tests {
     use super::*;
     use crate::compile_to_dag;
+    use crate::dag::{Behavior, LoopBound};
 
     #[test]
     fn named_function_count_on_trivial_program() {
@@ -844,6 +845,84 @@ fn lens_composition_op(a: Int, b: Int) -> Int = a + b
 "#;
         let dag = compile_to_dag(src, "assoc.v3").expect("compiles");
         let id = dag.declaration_by_name("lens_composition_op").unwrap().id;
-        assert!(int_associativity_holds(&dag, id, 2, 3, 5).expect("assoc"));
+        for (a, b, c) in [(2_i64, 3, 5), (0, 1, 99), (-3, 7, 2), (-1, 0, 1)] {
+            assert!(
+                int_associativity_holds(&dag, id, a, b, c).unwrap_or(false),
+                "assoc failed for ({a},{b},{c})"
+            );
+        }
+    }
+
+    #[test]
+    fn empty_fold_returns_init() {
+        let src = r#"module m
+import std.list { List, fold }
+
+fn sum(xs: List<Int>) -> Int =
+  fold(xs, 99, |acc, x| acc + x)
+"#;
+        let dag = compile_to_dag(src, "empty_fold.v3").expect("compiles");
+        let sum_id = dag.declaration_by_name("sum").expect("sum").id;
+        let empty = empty_substrate_list_value(&dag).expect("empty list");
+        let out = apply_lens_declaration(&dag, sum_id, &[empty]).expect("fold empty");
+        assert_eq!(out, FieldValue::Literal(LiteralBits::Int(99)));
+    }
+
+    #[test]
+    fn mutual_recursion_lens_hits_unimplemented_loop_for_descent_cluster() {
+        let src = r#"module m
+fn even(n: Int) -> Bool = if n == 0 then true else odd(n - 1)
+fn odd(n: Int) -> Bool = if n == 0 then false else even(n - 1)
+fn run_even(n: Int) -> Bool = even(n)
+"#;
+        let dag = compile_to_dag(src, "mutual_lens.v3").expect("compiles");
+        assert!(
+            dag.nodes()
+                .iter()
+                .filter_map(Behavior::as_loop)
+                .any(|l| { matches!(l.bound, LoopBound::Descent { .. }) }),
+            "expected at least one LoopBound::Descent (mutual cluster)"
+        );
+        let run_even = dag.declaration_by_name("run_even").expect("run_even").id;
+        let err =
+            apply_lens_declaration(&dag, run_even, &[FieldValue::Literal(LiteralBits::Int(1))])
+                .expect_err("loop interpretation is unimplemented");
+        assert!(
+            matches!(err, LensApplyError::UnimplementedLoopBound),
+            "expected UnimplementedLoopBound, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn apply_lens_declaration_arity_mismatch() {
+        let src = r#"module m
+fn f(a: Int, b: Int) -> Int = a + b
+"#;
+        let dag = compile_to_dag(src, "arity.v3").expect("compiles");
+        let id = dag.declaration_by_name("f").unwrap().id;
+        let err = apply_lens_declaration(&dag, id, &[FieldValue::Literal(LiteralBits::Int(1))])
+            .expect_err("wrong arity");
+        assert!(
+            matches!(
+                err,
+                LensApplyError::ArityMismatch {
+                    expected: 2,
+                    got: 1
+                }
+            ),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn branch_miss_when_scrutinee_matches_no_arm() {
+        let src = r#"module m
+fn p(b: Bool) -> Int = match b { True => 1, False => 0 }
+"#;
+        let dag = compile_to_dag(src, "branch_miss.v3").expect("compiles");
+        let id = dag.declaration_by_name("p").unwrap().id;
+        let err = apply_lens_declaration(&dag, id, &[FieldValue::Literal(LiteralBits::Int(42))])
+            .expect_err("Int is not True/False");
+        assert!(matches!(err, LensApplyError::BranchMiss), "{err:?}");
     }
 }
