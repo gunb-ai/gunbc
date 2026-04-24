@@ -1008,6 +1008,7 @@ fn substrate_coproducts_match_runtime_carriers() {
                     String::from("name"),
                     String::from("type_params"),
                     String::from("target"),
+                    String::from("refinement"),
                     String::from("span"),
                 ],
             ),
