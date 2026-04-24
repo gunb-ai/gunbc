@@ -47,11 +47,15 @@ Under that discipline, R2's goals are the Tier-1 thesis claims that are *not* ga
    - Unhandled diagnostic paths
    - Unenumerated effects
 
-5. **R2 closure demo** — simple "it runs" artifact per lane close. Director-coordinated. Not a lane — see Demo discipline below.
+5. **§6a per-method-metadata pick** — per `docs/design-substrate-carrier-port-program.md §6a`, a deferred design call on where per-method metadata (`size_effect`, `cost_shape`, `callback_element_position` on `ordered_ring_templates()` et al.) lives. Four options in the design doc: (0) keep lens-local lookup tables; (1) substrate field-level refinements; (2) per-algebra metadata carriers; (3) unified `MethodContract` carrier. E-I pre-flight evidence has landed in R1, so the "defer until E-I evidence" trigger has fired; this is the R2 residual after T-LaneE (E-family carrier port) closes in R1. S-sized design-call close, not substrate-capability work.
+
+6. **R2 closure demo** — simple "it runs" artifact per lane close. Director-coordinated. Not a lane — see Demo discipline below.
 
 ## Manager structure
 
-**1 standing manager + Director.** Count = concurrent critical paths. R2 has one: Grounding's `Pilot → Rust → Engine → Tests → Dissolve`. All other R2 work (Goals 2–4) is parallel modeling-faithfulness / substrate / impossible-bug closure with no critical-path coordination pressure — Director dispatches workers directly against the shared fill queue.
+**1 standing manager + Director.** Count = concurrent critical paths. R2 has one: Grounding's `Pilot → Rust → Engine → Tests → Dissolve`. All other R2 work (Goals 2–5) is parallel modeling-faithfulness / substrate / impossible-bug / metadata-pick closure with no critical-path coordination pressure — Director dispatches workers directly against the shared fill queue.
+
+**Cross-manager notifications convention.** The R1 brief pattern of `Cross-manager notifications queued` sections continues: Grounding Manager's brief carries one; Director surfaces any parallel-lane blockers or dependencies on the Grounding critical path through the same channel. With only one standing manager in R2, the convention degenerates in practice to "Grounding Manager → Director" and "Director → Grounding Manager" signals.
 
 ### Grounding Manager
 
@@ -63,7 +67,7 @@ Continues `docs/briefs/grounding-manager.md` (refreshed for R2 scope on promotio
 ### Director (ad-hoc)
 
 - R1 residual closure surveillance (none expected per all-R1-gates-green closure criterion).
-- **R2 non-Grounding lane dispatch:** T-Modeling (Goal 2), T-Substrate (Goal 3), T-ImpossibleBugs (Goal 4). These are all parallel-capable — no critical path among them and no critical-path relationship to Grounding — so no standing manager is justified. Director picks top-priority unblocked work for any idle worker.
+- **R2 non-Grounding lane dispatch:** T-Modeling (Goal 2), T-Substrate (Goal 3), T-ImpossibleBugs (Goal 4), T-PerMethodMetadata (Goal 5). All parallel-capable — no critical path among them and no critical-path relationship to Grounding — so no standing manager is justified. Director picks top-priority unblocked work for any idle worker.
 - R2 demo coordination: surfaces "it runs" artifacts at each lane close to user.
 - Weekly dependency health check: which lanes are within 1 step of unblocking? Which workers are on fill vs. ready?
 
@@ -75,15 +79,17 @@ Continues `docs/briefs/grounding-manager.md` (refreshed for R2 scope on promotio
 | T-Modeling | M | Director (ad-hoc) | int-lit / Secret<T> / Dimensions (Goal 2) |
 | T-Substrate | M | Director (ad-hoc) | Three scoped-subset sub-lanes (Goal 3): cardinality-for-int-lit; nominal-opaque-for-Secret; parametric-algebra-attachment-for-Dimensions — each scoped to its paired T-Modeling unblock, not full substrate-capability |
 | T-ImpossibleBugs | S | Director (ad-hoc) | nested-optional flatten / unhandled-diagnostic-paths / unenumerated-effects (Goal 4) |
+| T-PerMethodMetadata | S | Director (ad-hoc) | §6a per-method-metadata carrier pick (Goal 5) — design-call close, not substrate-capability work |
 
-**Goal 5 (R2 closure demo) is not a lane.** It is a cross-lane closure discipline (see "Demo discipline" below): each lane's closure PR ships its own simple "it runs" artifact; Director coordinates surfacing. No separate T-Demo lane owner, no separate demo-authoring critical path.
+**Goal 6 (R2 closure demo) is not a lane.** It is a cross-lane closure discipline (see "Demo discipline" below): each lane's closure PR ships its own simple "it runs" artifact; Director coordinates surfacing. No separate T-Demo lane owner, no separate demo-authoring critical path.
 
 **Lanes deliberately absent (R1 gates, closed by R1 lane acceptance):**
 - T-LensMigration / `lens_producer_files_remaining` — R1 T-PB-A gate per PR #752.
 - T-ShimFloor / `pb_hand_rust_at_shim_floor` / `pb_compiler_std_ratchet_zero` / `pb_rust_tests_outside_residual_zero` — R1 T-PB-A + T-PB-B gates.
-- T-EFamilyClose — R1 T-LaneE's critical-path carrier work, enabling the R1 `complexity_merge_sort_is_nlogn` + `complexity_v3_matches_v2_oracle` gates.
+- T-EFamilyClose — R1 T-LaneE's critical-path carrier work (E-T, E-C, E-I, E-P, E-M sub-lanes), enabling the R1 `complexity_merge_sort_is_nlogn` + `complexity_v3_matches_v2_oracle` gates. All E-family carrier-port work closes in R1; only the §6a metadata-pick residual inherits to R2 (Goal 5).
+- T-TestGen-tail (`testgen_mock_backed_integration_safe` / `MockBackedInvariant` wiring) — R1 T-TestGen gate per `ROADMAP.md §"Lane acceptance — .dag gates"`. Closes in R1.
 
-R2 does not re-own any of the above; under all-R1-gates-green R1 closure, those gates ARE the close conditions and R2 inherits nothing there.
+R2 does not re-own any of the above; under all-R1-gates-green R1 closure, those gates ARE the close conditions and R2 inherits nothing there (except Goal 5's §6a residual, which was not an R1 gate).
 
 ## Dependency DAG
 
@@ -97,11 +103,12 @@ T-Modeling:       int-lit      ← T-Substrate cardinality-for-int-lit
                   Secret<T>    ← T-Substrate nominal-opaque-for-Secret
                   Dimensions   ← T-Substrate parametric-algebra-for-Dimensions
 T-ImpossibleBugs: 3 independent classes (any worker)
-(Goal 5 demo artifacts ship with each lane's closure PR — not a
+T-PerMethodMetadata: §6a pick (any worker; independent)
+(Goal 6 demo artifacts ship with each lane's closure PR — not a
  separate dependency-DAG node; see Demo discipline section.)
 ```
 
-Parallel-capable work at any time: Grounding has 2 fill slots (Python, Go) alongside its critical path; Director dispatch has 3 T-Substrate sub-lanes + 3 T-Modeling items (each pair-blocked) + 3 T-ImpossibleBugs classes, for roughly 6–9 slots depending on T-Substrate unblock timing.
+Parallel-capable work at any time: Grounding has 2 fill slots (Python, Go) alongside its critical path; Director dispatch has 3 T-Substrate sub-lanes + 3 T-Modeling items (each pair-blocked) + 3 T-ImpossibleBugs classes + 1 T-PerMethodMetadata pick, for roughly 7–10 slots depending on T-Substrate unblock timing.
 
 ## R1 closure criteria
 
@@ -114,7 +121,9 @@ Rationale: consistent with anti-deferral stance — tail-shaped work closes befo
 1. **R1 gates green** → Director declares R1 closed.
 2. **R1 residual sweep** — every open R1 ledger row gets an R1-or-R2 assignment. No orphaning. Done in the R1 closure PR. Expected to be short under all-gates-green criterion.
 3. **Manager dissolution** — all R1 standing managers (Surface, Substrate, Testgen, Self-hosting) archive with closure banners. Their scopes are fully absorbed by R1's gate acceptance; no inheritance into R2 managers. Grounding Manager remains, refreshed for R2 scope.
-4. **R2 open** — this doc promotes to `ROADMAP.md` as `## Release R2 Program` section. `docs/briefs/grounding-manager.md` refreshed for R2 scope. No new manager briefs authored (Director dispatches T-Modeling / T-Substrate / T-ImpossibleBugs directly; no Structural Close Manager).
+4. **R2 open** — this doc promotes to `ROADMAP.md` as `## Release R2 Program` section. `docs/briefs/grounding-manager.md` refreshed for R2 scope. No new manager briefs authored (Director dispatches T-Modeling / T-Substrate / T-ImpossibleBugs / T-PerMethodMetadata directly; no Structural Close Manager).
+
+**v2 retirement (explicit non-scoping note):** The v2 compiler at `src/v2/` persists as test oracle into R2 and is NOT on the R2 ledger. Its retirement is external post-R2 operational cleanup — no thesis claim depends on v2 being absent. Differential-test-oracle retirement is bounded by adoption/documentation concerns, not release-gate discipline.
 
 ## Demo discipline — visibility as structural requirement
 
@@ -164,7 +173,11 @@ THESIS authority (`THESIS.md:155-182`) lists:
 
 **Required before promotion:** a table mapping every Tier-1 / Tier-2 / Tier-3 claim to its R1-closed / R2-gated / post-R2-external disposition, with any gaps (claim named in THESIS but not mapped) flagged as pre-promotion blockers. Non-blocking for this PR; blocking for ROADMAP promotion.
 
-**Not done in this PR** because the PR is scope-setting and the coverage audit is a sibling deliverable; both land as prerequisites to the `## Release R2 Program` ROADMAP section.
+**Audit format:** table with columns `Tier | Claim | Disposition (R1 / R2 / post-R2-external) | Gate or lane name | Evidence (PR# or gate name) | Status`. Gaps are rows with disposition column empty or claim not in THESIS list.
+
+**Ownership:** Director authors as a sibling PR. PM reviews for completeness against `THESIS.md §"Thesis claims — complete list"`.
+
+**Timeline:** lands as part of the R1 closure → R2 promotion transition (step 4 in Transition mechanics above). Not a separate program.
 
 ### 3. Pre-promotion `≤5 irreducible-shim` gate-name review (gate before ROADMAP promotion)
 
