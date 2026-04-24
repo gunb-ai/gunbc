@@ -46,7 +46,7 @@
 #                         (default scripts/slow-test-exemptions.txt).
 #   TEST_TIMEOUT_MAX_EXEMPTIONS
 #                         Ratchet floor for active exemption entries
-#                         (default 43, captured 2026-04-24). Lower this
+#                         (default 42, captured 2026-04-24). Lower this
 #                         value in the same PR that removes exemptions.
 
 set -euo pipefail
@@ -55,7 +55,7 @@ log_file_arg=${1:-}
 budget_ms=${2:-${TEST_TIMEOUT_MS:-2000}}
 pkg=${TEST_TIMEOUT_PACKAGE:-v3-compiler}
 exempt_file=${TEST_TIMEOUT_EXEMPT:-scripts/slow-test-exemptions.txt}
-max_exemptions=${TEST_TIMEOUT_MAX_EXEMPTIONS:-43}
+max_exemptions=${TEST_TIMEOUT_MAX_EXEMPTIONS:-42}
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root=$(cd "$script_dir/.." && pwd)

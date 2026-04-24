@@ -448,7 +448,7 @@ impl RustcHarness {
 // fixture boundary:
 //   - `MissingCost` — the lens emits no cost for a named bind the
 //     test explicitly constructed. Malformed fixture or lens regression.
-//   - negative `FoundCost(c)` — the complexity algebra is non-negative
+//   - negative `Hit(c)` — the complexity algebra is non-negative
 //     by construction; a negative value is an invariant violation
 //     upstream of the test.
 //
@@ -463,7 +463,7 @@ use v3_compiler::lens_cost::CostLookup;
 /// `i64 × i64 → bool`).
 pub fn require_fixture_cost_i64(lookup: CostLookup, context: &str) -> i64 {
     match lookup {
-        CostLookup::FoundCost { _0: cost } => {
+        CostLookup::Hit(cost) => {
             assert!(
                 cost >= 0,
                 "complexity lens emitted negative cost `{cost}` for {context} — \
@@ -472,9 +472,9 @@ pub fn require_fixture_cost_i64(lookup: CostLookup, context: &str) -> i64 {
             );
             cost
         }
-        CostLookup::MissingCost => {
+        CostLookup::Miss => {
             panic!(
-                "complexity lens returned MissingCost for {context} — malformed \
+                "complexity lens returned Miss for {context} — malformed \
                  fixture or lens regression (the named bind exists in the Dag but \
                  has no cost entry)."
             );
