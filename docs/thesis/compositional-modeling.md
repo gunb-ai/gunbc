@@ -12,14 +12,14 @@ summarizes before the body so readers can place each section.
 
 | Section | Key mechanism shown | Status | Evidence / gap |
 |---|---|---|---|
-| Part 1 — primitives | `Int64 = OrderedRing<Word64>` | `[live]` | `dsl/std/bit.dag`, `dsl/std/integer.dag`, `dsl/std/algebra.dag` |
+| Part 1 — primitives | `Int64 = OrderedRing<Word64>` | `[live]` | Bit/Byte/Word64 at `dsl/std/bit.dag:20`, `:26`, `:31`; `Int64` decl at `dsl/std/integer.dag:34`; `OrderedRing` decl at `dsl/std/algebra.dag:176-193` |
 | Part 1 — primitives | Operations fall out of algebra attachment | `[live]` | `dsl/std/algebra.dag:49-85` (denotational grounding) + `:176-193` (OrderedRing declaration) |
 | Part 2 — refinements | `Nat = Int where x >= 0` as an alias-form refinement | `[target]` for the alias form shown; `[live]` only for the parameter/generic form | Alias-RHS `where` clause is currently dropped by `parse_type_rhs_after_eq` → `skip_where_clause` (`src/v3/compiler/parse_parser_body.txt:597`→`:620`, drop at `:651`); DB-11 at `ROADMAP.md:231` tracks closure. Parameter-form `fn foo<T where predicate>` works today per DB-3 + `test_3a3_*` acceptance tests |
 | Part 2 — refinements | Refinement preserves through arithmetic | `[live]` partially, `[target]` for full composition law | DB-3 supports parameter/generic `where` (`ROADMAP.md:231`); alias-RHS `where` still skipped in `src/v3/compiler/parse_parser_body.txt:651` `skip_where_clause` (drop site; call at `parse_type_rhs_after_eq:597`→`:620`) — tracked under DB-11 (`ROADMAP.md:231`) |
 | Part 3 — arity | `List<T>`, `Option<T>`, `NonEmpty<T>` as cardinality tags | `[live]` for List/Option; `[target]` for NonEmpty | NonEmpty as a first-class type composes on cardinality-substrate work tracked at `ROADMAP.md:305` ("Fixed-width types aren't structurally fixed" — cardinality not substrate-enforced until alias `where` parses/lowers per DB-11 gap) |
 | Part 3 — arity | Nested-optional flatten by composition law | `[target]` | gated on cardinality-substrate row (`ROADMAP.md:305`) + DB-11 alias-RHS closure (`ROADMAP.md:231`) |
 | Part 3 — arity | Testgen generating boundary tests from cardinality | `[target]` | DB-15 schema landed (`ROADMAP.md:235`); runner + `MockBackedInvariant` wiring remain under T-TestGen lane (`ROADMAP.md:51`, `:65`) |
-| Part 4 — custom types | `Duration<Unit>`, `Money<Currency>` via dimensions | `[live]` for framework; `[target]` for unit-mismatch enforcement consumer | `src/v3/std/dimensions.dag` TERMINAL; Dimension wiring for lens consumers is deferred under the v3 lens honesty pass (`ROADMAP.md:333`) + DB-7 (`ROADMAP.md:235`); unit-mismatch enforcement consumer tracked at `ROADMAP.md:364` |
+| Part 4 — custom types | `Duration<Unit>`, `Money<Currency>` via dimensions | `[live]` for the `Dimension<Carrier>` proof-dimension framework (one-parameter); `[target]` for typed-value-wrapper shape shown and unit-mismatch enforcement consumer | `Dimension<Carrier>` decl at `src/v3/std/dimensions.dag:61` (one-parameter, `witness_of` / `compose` / `identity`); framework-name-collision noted in Part 4 body. Dimension wiring for lens consumers deferred under v3 lens honesty pass (`ROADMAP.md:333`) + DB-7 (`:235`); typed-value-wrapper + unit-mismatch enforcement tracked at `ROADMAP.md:364` |
 | Part 4 — custom types | `Secret<T>` as opaque nominal type | `[target]` | currently `Secret = String` alias per `dsl/std/types.dag:237`; nominal-wrapper graduation tracked at `ROADMAP.md:365` |
 | Part 5 — reconciliation | Cross-team AuthUser reconciliation | `[target]` | composes NonEmpty (cardinality substrate, `ROADMAP.md:305`) + Secret nominal wrapper (`ROADMAP.md:365`) + enforced refinement preservation (DB-11, `ROADMAP.md:231`) |
 | Part 6 — testgen | Generated integration tests for under-modeled boundaries | `[target]` | DB-15 runner + `MockBackedInvariant` wiring under T-TestGen (`ROADMAP.md:51`, `:65`, `:235`) |
@@ -741,7 +741,11 @@ nominal opacity (`ROADMAP.md:365`).
 
 **Each team continues to use their own convention internally. The
 boundary is the one place the reconciliation happens, and the
-compiler forces it to be an author-time choice.**
+compiler forces it to be an author-time choice.** `[target]` —
+composes the Part 5 row's cited targets: NonEmpty (cardinality
+substrate at `ROADMAP.md:305` + DB-11 at `:231`), refinement
+preservation (DB-11 at `:231`), and `Secret` nominal opacity
+(`ROADMAP.md:365`).
 
 - No silent downgrade ("empty → []" without the programmer noticing)
 - No shared-crate ceremony ("let's put AuthUser in a third crate
