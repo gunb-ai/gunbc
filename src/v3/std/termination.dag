@@ -5,6 +5,8 @@
 
 module std.termination
 
+import std.types { PositiveInt }
+
 // At each recursive call edge, a ranking dimension either strictly decreases,
 // does not increase, or is unknown. The lattice ordering is:
 // DescentUnknown < NonIncreasing < Strict.
@@ -95,11 +97,10 @@ type RankingDimension
   | TokenPosition { param: String }
   | SetCardinality { param: String }
 
-// 🟢 TERMINAL at descent-witness scope. Raw `Int` cannot carry shrink
-// evidence because zero and negative values are not descent witnesses.
-type PositiveDescentAmount
-  = OneStep
-  | AdditionalStep { previous: PositiveDescentAmount }
+// 🟢 TERMINAL at descent-witness scope. Division witnesses need a stronger
+// refinement than generic positivity; derive it from the shared PositiveInt
+// authority instead of introducing a parallel positive number carrier.
+type DivisionDescentFactor = PositiveInt where range(min: 2)
 
 // Concrete code pattern that witnesses descent for a ranking dimension.
 // Bootstrap constraint: name-like payloads are Strings until function and
@@ -109,8 +110,9 @@ type PositiveDescentAmount
 // are first-class substrate values instead of names.
 type DescentSource
   = ChildAccessor { accessor: String }
-  | ListShrink { amount: PositiveDescentAmount }
-  | ArithmeticDecrease { op: String, by: PositiveDescentAmount }
+  | ListShrink { amount: PositiveInt }
+  | ArithmeticSubtract { by: PositiveInt }
+  | ArithmeticDivide { by: DivisionDescentFactor }
   | ParserAdvance { witness: String }
   | SetRemoval { element: String }
   | FoldIteration
