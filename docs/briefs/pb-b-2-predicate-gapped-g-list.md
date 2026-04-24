@@ -35,19 +35,19 @@ authority):
 - **Schema-declared** — `TestPredicate` variants present in
   `src/v3/std/verification.dag` (all 🟡 Scaffold):
   `Compiles`, `FailsWithDiagnostic`, `OutputEquals`,
-  `PortHasState`, `CostBounded`, `MockBackedInvariant`,
-  `ExecuteCommand`, `ForAllTargets`, `LensOutputEquals`,
-  `DifferentialEquals`, `AlgebraicLaw`.
+  `PortHasState`, `CostBounded`, `BehavioralObservation`,
+  `MockBackedInvariant`, `ExecuteCommand`, `ForAllTargets`,
+  `LensOutputEquals`, `DifferentialEquals`, `AlgebraicLaw`.
 - **Runner-dispatched today** — verified against the dispatch
   table at `src/v3/compiler/src/test_runner.rs:101`:
   `Compiles`, `FailsWithDiagnostic`, `OutputEquals`,
   `PortHasState`, `CostBounded`. All other schema variants
   currently fall through to `ClaimResult::NotYetImplemented`.
-- **Schema-declared but runner-NYI** — `MockBackedInvariant`
-  (PR #722 in review), `ExecuteCommand`, `ForAllTargets`,
-  `LensOutputEquals`, `DifferentialEquals`, `AlgebraicLaw`.
-  These are Testgen's runner-wiring backlog, *distinct* from the
-  six predicate-gapped shapes below.
+- **Schema-declared but runner-NYI** — `BehavioralObservation`,
+  `MockBackedInvariant` (PR #722 in review), `ExecuteCommand`,
+  `ForAllTargets`, `LensOutputEquals`, `DifferentialEquals`,
+  `AlgebraicLaw`. These are Testgen's runner-wiring backlog,
+  *distinct* from the six predicate-gapped shapes below.
 
 Authority for the predicate list is `verification.dag`; this brief
 only describes consumer need.
@@ -86,36 +86,43 @@ evaluate and the G-bucket it unlocks. These are proposal shapes;
 exact names/fields are Testgen's call. Item #7 was retracted after
 review — see the stub below.
 
-1. **`BindExists { program, name }`** — closes the "find a named
+**Program authority.** None of these shapes carry a `program`
+field. The program under test is already single-authority on the
+enclosing `TestClaim` (`source` / `file_name` at
+`src/v3/std/verification.dag:169`); predicate variants consume
+that outer claim and must not fork a second program slot (cf.
+existing variants like `PortHasState` / `CostBounded`).
+
+1. **`BindExists { name }`** — closes the "find a named
    Bind in the compiled Dag" step used by every pipe_desugar test
    and by the `m1_lens_structural_resolution`, `m2_field_access_
    binding`, and `m2_lens_*_migration` modules.
 
-2. **`BindValueIsTransformTo { program, bind_name, target }`**
+2. **`BindValueIsTransformTo { bind_name, target }`**
    with `target ∈ { CallableNamed(String) | FieldProjection{label}
    | Operator(OpKind) }`. Closes the `assert_target_name` helper
    pattern — the dominant assertion in pipe_desugar and in the
    four `m2_lens_*_migration` suites.
 
-3. **`TransformInputIsLiteral { program, bind_name, port_index,
-   literal }`** — closes the `literal_input` helper; needed for
+3. **`TransformInputIsLiteral { bind_name, port_index, literal }`**
+   — closes the `literal_input` helper; needed for
    pipe-left-injection, comparison-feeding, and the field-access
    binding tests.
 
-4. **`NodeCountByBehavior { program, behavior_kind, count_rel }`**
+4. **`NodeCountByBehavior { behavior_kind, count_rel }`**
    where `count_rel ∈ { Equals | AtLeast | AtMost }`. Closes the
    substrate-walk assertions in `m1_substrate_test.rs` (91 tests)
    and `lane2_stage_2b_db18_test.rs`. Without this, those 91
    imperative walks block port.
 
-5. **`DeclarationResolvedByStructure { program, name }`** — closes
+5. **`DeclarationResolvedByStructure { name }`** — closes
    the `AtomPayload::ResolvedByStructure(..)` / `ResolvedByName(..)`
    follow-through in `pipe_desugar::assert_target_name` and in
    `m1_fn_external_body_reconciliation_test.rs`.
 
-6. **`PortShapeEquals { program, bind_name, port_index,
-   type_shape }`** — generalizes `primitive_shape` and is the
-   port-typing analog of #2. Closes type-resolution claims in
+6. **`PortShapeEquals { bind_name, port_index, type_shape }`**
+   — generalizes `primitive_shape` and is the port-typing analog
+   of #2. Closes type-resolution claims in
    `m1_5_verification_test.rs` and the structural-resolution
    migration modules.
 
