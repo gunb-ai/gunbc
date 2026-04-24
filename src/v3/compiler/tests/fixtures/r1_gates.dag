@@ -1,6 +1,6 @@
 // std.r1_gates - Day-1 R1 gate declarations (integration-test fixture).
 //
-// **Authority:** Edit `r1_gates.template.dag` (this file). The sibling `r1_gates.dag` is
+// **Authority:** Hand-edit `r1_gates.template.dag` only. Companion `r1_gates.dag` is
 // **generated** on every `cargo build` of `v3-compiler`: `build.rs` splices
 // `src/v3/lenses/named_function_count.dag` into `user_authored_lens_compiles_gate.source`
 // (single-line placeholder token, see `build.rs` `emit_r1_gates_fixture`) so the on-disk lens

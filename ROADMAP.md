@@ -80,9 +80,9 @@ Day-1 PR #717 landed explicit `LensOutputEquals` dispatch and fixtures with **no
 
 1. **`eval_lens_output_equals` witness compile** (`src/v3/compiler/src/test_runner.rs`): remove the side `compile_to_dag(&claim.source, …)` once the runner performs real `LensOutputEquals` evaluation so compilation lives only on the apply/compare path. Until then the receipt is intentionally thin (trivial fixture `source`); a lowering failure can surface as `Fail` while the predicate is still runner-deferred.
 
-2. **Split fixture** (`src/v3/compiler/tests/fixtures/r1_lens_output_equals_gate.dag`): delete the file and fold its claim into `src/v3/compiler/tests/fixtures/r1_gates.dag` after same-TU lowering fixes `DeclarationRef` / `Int` resolution when `LensOutputEquals(Int, …)` shares a module with the large embedded `user_authored_lens_compiles_gate` `source` string. Cross-ref: **T-LensAPI**, **T-LaneE** lane acceptance (`LensOutputEquals` [ext]). Check: merged fixture + `cargo test -p v3-compiler` green, then remove the split file.
+2. **Split fixture** — **Done:** `r1_lens_output_equals_gate.dag` removed; `LensOutputEquals` gate lives in `src/v3/compiler/tests/fixtures/r1_gates.dag` (same-TU lowering unblocked by T-LensAPI runner work).
 
-3. **P2 parallel lens text** (`r1_gates.dag` + `m1_5_user_authored_lens_gate_test.rs` lockstep): remove the duplicated `TestClaim.source` mirror of `src/v3/lenses/named_function_count.dag` and delete the byte-identical ratchet test when a single authority exists (generated fixture splice, `TestClaim` / substrate path resolution for `source`, or runner-resolved lens `DeclarationRef` from the bootstrap DAG per INVARIANTS.md P2).
+3. **P2 parallel lens text** — **Done (D4):** `v3-compiler/build.rs` splices `src/v3/lenses/named_function_count.dag` into generated `r1_gates.dag` from hand-edited `r1_gates.template.dag`; `m1_5_user_authored_lens_gate_test` still ratchets lowered `source` against `include_str!(.../named_function_count.dag)`. **Follow-on:** dissolve fixture-local `fn count_named_bind` / `fn named_function_count` stubs when `DeclarationRef` can resolve the lens from `program_dag` alone; optional same treatment for `lens_composition_associative_gate.source` vs `lens_composition_associative_witness.dag`.
 
 ### Dependency DAG
 

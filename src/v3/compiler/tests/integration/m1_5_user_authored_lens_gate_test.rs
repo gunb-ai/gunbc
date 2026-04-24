@@ -1,11 +1,12 @@
 //! **Layer:** integration
 //!
 //! Day-1 R1 gate `user_authored_lens_compiles`: **canonical** program text is
-//! `src/v3/lenses/named_function_count.dag`. The gate fixture embeds a duplicate
-//! `TestClaim.source` string (P2 parallel copy — see `r1_gates.dag` header); this
-//! module ratchets fixture bytes against `include_str!(.../named_function_count.dag)`
-//! then runs `compile_to_dag` on the extracted `source` over the standard bootstrap
-//! (`Dag::new()`), without bundling the lens into the bootstrap.
+//! `src/v3/lenses/named_function_count.dag`. The gate fixture `r1_gates.dag` is
+//! **build-generated** from `r1_gates.template.dag` (`v3-compiler/build.rs` splices the
+//! lens bytes into `TestClaim.source`). This module ratchets the lowered `source` field
+//! against `include_str!(.../named_function_count.dag)` then runs `compile_to_dag` on
+//! that payload over the standard bootstrap (`Dag::new()`), without bundling the lens
+//! into the bootstrap.
 //!
 //! **Behavior receipt (TESTING.md):** `user_authored_lens_testclaim_payload_tracks_on_disk_lens_and_compiles`
 //! lowers the gate fixture, reads `source` off the lowered `TestClaim`, and runs
@@ -15,7 +16,7 @@
 //! from a second file, because that pattern would require the lens in `Dag::new()`
 //! bootstrap, which this demo deliberately avoids.
 //!
-//! Schedule: ROADMAP.md subsection "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" item 3.
+//! D4 splice: ROADMAP.md "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" item 3.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};
@@ -107,9 +108,8 @@ fn user_authored_lens_testclaim_payload_tracks_on_disk_lens_and_compiles() {
 
     assert_eq!(
         source, ON_DISK_LENS,
-        "`TestClaim.source` in `r1_gates.dag` must stay byte-identical to the canonical \
-         `src/v3/lenses/named_function_count.dag` (P2 parallel copy ratchet until ROADMAP \
-         scheduled cleanup item 3 removes the duplicate)"
+        "`TestClaim.source` in generated `r1_gates.dag` must match the canonical \
+         `src/v3/lenses/named_function_count.dag` (build.rs splice ratchet)"
     );
     assert_eq!(
         file_name, "src/v3/lenses/named_function_count.dag",

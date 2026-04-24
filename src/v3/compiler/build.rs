@@ -222,7 +222,7 @@ fn main() {
         env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set by Cargo");
     let manifest_path = PathBuf::from(&manifest_dir);
     let v3_dir = manifest_path.parent().expect("compiler dir has parent");
-    emit_r1_gates_fixture(&manifest_path, &v3_dir);
+    emit_r1_gates_fixture(&manifest_path, v3_dir);
     let src_dir = v3_dir.parent().expect("v3 dir has parent");
     let repo_root = src_dir.parent().expect("src dir has parent");
     let std_dir = v3_dir.join("std");
