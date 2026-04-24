@@ -399,6 +399,7 @@ fn computation_lowering_functions_preserve_std_body_spans() {
         "lower_call_pattern",
         "size_bound_param",
         "is_constant_bound",
+        "forever_iteration_bound",
         "constant_bound_value",
         "algebra_profile_to_dimension",
         "type_iteration_dimension",
@@ -412,11 +413,12 @@ fn computation_lowering_functions_preserve_std_body_spans() {
 
 #[test]
 fn computation_lowering_rust_mirror_matches_dag_authority() {
+    use v3_compiler::dag::ShrinkFactor::{ConstantShrink, ProportionalShrink};
     use CallPattern::{
         ArithmeticDescentCall, ChildAccessorCall, CollectionShrinkCall, FoldBodyCall,
         ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
     };
-    use DescentEvidence::{NonIncreasing, Strict};
+    use DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
     use IterationPrimitive::{Descend, Fold, Repeat};
     use SizeBound::{ArithmeticParam, CollectionSize, Forever, TreeSize};
 
@@ -442,6 +444,17 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                     param: String::from("collection"),
                 },
                 evidence: Strict,
+                factor: Some(ConstantShrink { amount: 1 }),
+            },
+        ),
+        (
+            CollectionShrinkCall { amount: 0 },
+            LoweringTarget {
+                primitive: Fold,
+                bound: CollectionSize {
+                    param: String::from("collection"),
+                },
+                evidence: DescentUnknown,
                 factor: None,
             },
         ),
@@ -456,6 +469,34 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                     param: String::from("n"),
                 },
                 evidence: Strict,
+                factor: Some(ConstantShrink { amount: 1 }),
+            },
+        ),
+        (
+            ArithmeticDescentCall {
+                op: String::from("divide"),
+                by: 2,
+            },
+            LoweringTarget {
+                primitive: Repeat,
+                bound: ArithmeticParam {
+                    param: String::from("n"),
+                },
+                evidence: Strict,
+                factor: Some(ProportionalShrink { divisor: 2 }),
+            },
+        ),
+        (
+            ArithmeticDescentCall {
+                op: String::from("divide"),
+                by: 1,
+            },
+            LoweringTarget {
+                primitive: Repeat,
+                bound: ArithmeticParam {
+                    param: String::from("n"),
+                },
+                evidence: DescentUnknown,
                 factor: None,
             },
         ),
@@ -537,7 +578,7 @@ fn computation_size_bound_helpers_match_dag_authority() {
     assert!(is_constant_bound(&forever));
 
     assert_eq!(constant_bound_value(&explicit), 7);
-    assert_eq!(constant_bound_value(&forever), 1);
+    assert_eq!(constant_bound_value(&forever), i64::MAX);
     assert_eq!(constant_bound_value(&tree), 0);
 }
 

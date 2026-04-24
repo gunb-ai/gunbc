@@ -931,22 +931,57 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::CollectionShrinkCall { .. } => LoweringTarget {
-            primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize {
-                param: "collection".to_string(),
-            },
-            evidence: DescentEvidence::Strict,
-            factor: None,
-        },
-        CallPattern::ArithmeticDescentCall { .. } => LoweringTarget {
-            primitive: IterationPrimitive::Repeat,
-            bound: SizeBound::ArithmeticParam {
-                param: "n".to_string(),
-            },
-            evidence: DescentEvidence::Strict,
-            factor: None,
-        },
+        CallPattern::CollectionShrinkCall { amount } => {
+            if amount >= 1 {
+                LoweringTarget {
+                    primitive: IterationPrimitive::Fold,
+                    bound: SizeBound::CollectionSize {
+                        param: "collection".to_string(),
+                    },
+                    evidence: DescentEvidence::Strict,
+                    factor: Some(ShrinkFactor::ConstantShrink { amount }),
+                }
+            } else {
+                LoweringTarget {
+                    primitive: IterationPrimitive::Fold,
+                    bound: SizeBound::CollectionSize {
+                        param: "collection".to_string(),
+                    },
+                    evidence: DescentEvidence::DescentUnknown,
+                    factor: None,
+                }
+            }
+        }
+        CallPattern::ArithmeticDescentCall { op, by } => {
+            if (op == "subtract" || op == "sub") && by >= 1 {
+                LoweringTarget {
+                    primitive: IterationPrimitive::Repeat,
+                    bound: SizeBound::ArithmeticParam {
+                        param: "n".to_string(),
+                    },
+                    evidence: DescentEvidence::Strict,
+                    factor: Some(ShrinkFactor::ConstantShrink { amount: by }),
+                }
+            } else if op == "divide" && by >= 2 {
+                LoweringTarget {
+                    primitive: IterationPrimitive::Repeat,
+                    bound: SizeBound::ArithmeticParam {
+                        param: "n".to_string(),
+                    },
+                    evidence: DescentEvidence::Strict,
+                    factor: Some(ShrinkFactor::ProportionalShrink { divisor: by }),
+                }
+            } else {
+                LoweringTarget {
+                    primitive: IterationPrimitive::Repeat,
+                    bound: SizeBound::ArithmeticParam {
+                        param: "n".to_string(),
+                    },
+                    evidence: DescentEvidence::DescentUnknown,
+                    factor: None,
+                }
+            }
+        }
         CallPattern::ParserAdvanceCall { .. } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
             bound: SizeBound::CollectionSize {
@@ -993,10 +1028,15 @@ pub fn is_constant_bound(bound: &SizeBound) -> bool {
     matches!(bound, SizeBound::ExplicitCount { .. } | SizeBound::Forever)
 }
 
+/// Word64 top iterate count for [`SizeBound::Forever`] / `repeat(max_int)`.
+pub fn forever_iteration_bound() -> i64 {
+    i64::MAX
+}
+
 pub fn constant_bound_value(bound: &SizeBound) -> i64 {
     match bound {
         SizeBound::ExplicitCount { n } => *n,
-        SizeBound::Forever => 1,
+        SizeBound::Forever => forever_iteration_bound(),
         _ => 0,
     }
 }

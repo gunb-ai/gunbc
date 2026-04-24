@@ -98,7 +98,7 @@
 module std.computation
 
 import std.iteration { }
-import std.termination { DescentEvidence, RankingDimension }
+import std.termination { DescentEvidence, DescentUnknown, RankingDimension }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
@@ -224,15 +224,33 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
         bound: TreeSize { param: a },
         evidence: Strict, factor: none }
 
-    CollectionShrinkCall { amount: _ } =>
-      LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: "collection" },
-        evidence: Strict, factor: none }
+    CollectionShrinkCall { amount: k } =>
+      if k >= 1 {
+        LoweringTarget { primitive: Fold,
+          bound: CollectionSize { param: "collection" },
+          evidence: Strict,
+          factor: Some { value: ConstantShrink { amount: k } } } }
+      else {
+        LoweringTarget { primitive: Fold,
+          bound: CollectionSize { param: "collection" },
+          evidence: DescentUnknown, factor: none } }
 
-    ArithmeticDescentCall { op: _, by: _ } =>
-      LoweringTarget { primitive: Repeat,
-        bound: ArithmeticParam { param: "n" },
-        evidence: Strict, factor: none }
+    ArithmeticDescentCall { op: o, by: k } =>
+      if (o == "subtract" || o == "sub") && k >= 1 {
+        LoweringTarget { primitive: Repeat,
+          bound: ArithmeticParam { param: "n" },
+          evidence: Strict,
+          factor: Some { value: ConstantShrink { amount: k } } } }
+      else {
+        if o == "divide" && k >= 2 {
+          LoweringTarget { primitive: Repeat,
+            bound: ArithmeticParam { param: "n" },
+            evidence: Strict,
+            factor: Some { value: ProportionalShrink { divisor: k } } } }
+        else {
+          LoweringTarget { primitive: Repeat,
+            bound: ArithmeticParam { param: "n" },
+            evidence: DescentUnknown, factor: none } } }
 
     ParserAdvanceCall { witness: _ } =>
       LoweringTarget { primitive: Fold,
@@ -284,14 +302,16 @@ fn is_constant_bound(bound: SizeBound) -> Bool {
 
 // Get the constant value for a constant bound.
 // ExplicitCount returns the developer-specified literal.
-// Forever returns 1 (machine max — asymptotically constant).
+// Forever returns the Word64 iteration cap (same as repeat(max_int); see std.iteration).
 // Precondition: is_constant_bound(bound) must be true.
 // Non-constant bounds return 0 (identity for SizeConst in CostSum)
 // to fail visibly rather than fabricating a plausible value.
+fn forever_iteration_bound() -> Int { 9223372036854775807 }
+
 fn constant_bound_value(bound: SizeBound) -> Int {
   match bound {
     ExplicitCount { n: count } => count
-    Forever                    => 1
+    Forever                    => forever_iteration_bound()
     _                          => 0
   }
 }

@@ -134,6 +134,24 @@ type InductiveField {
   element_type: String      // type of the element (== type_name for self-referential, different for cross-type)
 }
 
+fn recursion_shape_eq(a: RecursionShape, b: RecursionShape) -> Bool {
+  match a {
+    DirectRecursion => match b { DirectRecursion => true, _ => false }
+    ListRecursion => match b { ListRecursion => true, _ => false }
+    OptionalRecursion => match b { OptionalRecursion => true, _ => false }
+    SetRecursion => match b { SetRecursion => true, _ => false }
+    MapValueRecursion => match b { MapValueRecursion => true, _ => false }
+  }
+}
+
+fn inductive_field_eq(a: InductiveField, b: InductiveField) -> Bool {
+  a.type_name == b.type_name &&
+    a.variant_name == b.variant_name &&
+    a.field_name == b.field_name &&
+    recursion_shape_eq(a: a.shape, b: b.shape) &&
+    a.element_type == b.element_type
+}
+
 
 // =========================================================================
 // InductiveField → RankingDimension
@@ -217,7 +235,7 @@ fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
         SubValueUnknown => SubValueUnknown
         PreservedValue => PreservedValue
         StrictSubValue { field: fb, factor: _ } =>
-          if fa.field_name == fb.field_name { a } else { SubValueUnknown }
+          if inductive_field_eq(a: fa, b: fb) { a } else { SubValueUnknown }
         _ => SubValueUnknown
       }
     IteratedSubValue { field: fa } =>
@@ -225,7 +243,7 @@ fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
         SubValueUnknown => SubValueUnknown
         PreservedValue => PreservedValue
         IteratedSubValue { field: fb } =>
-          if fa.field_name == fb.field_name { a } else { SubValueUnknown }
+          if inductive_field_eq(a: fa, b: fb) { a } else { SubValueUnknown }
         _ => SubValueUnknown
       }
     ArithmeticDescent { param: pa, factor: _ } =>
@@ -257,7 +275,7 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
         SubValueUnknown => a
         PreservedValue => a
         StrictSubValue { field: fb, factor: _ } =>
-          if fa.field_name == fb.field_name { a } else { SubValueUnknown }
+          if inductive_field_eq(a: fa, b: fb) { a } else { SubValueUnknown }
         _ => SubValueUnknown
       }
     IteratedSubValue { field: fa } =>
@@ -265,7 +283,7 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
         SubValueUnknown => a
         PreservedValue => a
         IteratedSubValue { field: fb } =>
-          if fa.field_name == fb.field_name { a } else { SubValueUnknown }
+          if inductive_field_eq(a: fa, b: fb) { a } else { SubValueUnknown }
         _ => SubValueUnknown
       }
     ArithmeticDescent { param: pa, factor: _ } =>
@@ -480,6 +498,7 @@ type CostBound
   | AtomicBound { cost: AtomicCost }             // O(n^k) or O(log n)
   | ProductBound { factors: List<AtomicCost> }   // O(f1 · f2 · ...)
   | SumOfProductsBound { terms: List<List<AtomicCost>> }  // O(Σ(Π fi))
+  // SumBound: structural alternative stack only here; per-term terminal receipts/ledgers land with E-I consumers (lane 1+).
   | SumBound { terms: List<CostBound> }         // O(max terms) / structural alternative stack (E-I: List<CostBound>)
   | ForeverBound                                 // O(2^63-1) — repeat(max_int)
   | ErrorBound                                   // fail-closed: invalid/unresolvable

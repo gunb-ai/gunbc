@@ -41,6 +41,14 @@ pub struct InductiveField {
     pub element_type: String,
 }
 
+fn inductive_field_eq(fa: &InductiveField, fb: &InductiveField) -> bool {
+    fa.type_name == fb.type_name
+        && fa.variant_name == fb.variant_name
+        && fa.field_name == fb.field_name
+        && fa.shape == fb.shape
+        && fa.element_type == fb.element_type
+}
+
 pub fn inductive_field_to_dimension(
     field: Rc<InductiveField>,
     param: String,
@@ -87,7 +95,7 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
             SubValueRelation::StrictSubValue { field: fb, .. } => {
-                if (fa.field_name.clone().as_str() == fb.field_name.clone().as_str()) {
+                if inductive_field_eq(fa.as_ref(), fb.as_ref()) {
                     a.clone()
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
@@ -99,7 +107,7 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
             SubValueRelation::IteratedSubValue { field: fb, .. } => {
-                if (fa.field_name.clone().as_str() == fb.field_name.clone().as_str()) {
+                if inductive_field_eq(fa.as_ref(), fb.as_ref()) {
                     a.clone()
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
@@ -133,7 +141,7 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             SubValueRelation::SubValueUnknown => a.clone(),
             SubValueRelation::PreservedValue => a.clone(),
             SubValueRelation::StrictSubValue { field: fb, .. } => {
-                if (fa.field_name.clone().as_str() == fb.field_name.clone().as_str()) {
+                if inductive_field_eq(fa.as_ref(), fb.as_ref()) {
                     a.clone()
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
@@ -145,7 +153,7 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             SubValueRelation::SubValueUnknown => a.clone(),
             SubValueRelation::PreservedValue => a.clone(),
             SubValueRelation::IteratedSubValue { field: fb, .. } => {
-                if (fa.field_name.clone().as_str() == fb.field_name.clone().as_str()) {
+                if inductive_field_eq(fa.as_ref(), fb.as_ref()) {
                     a.clone()
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
