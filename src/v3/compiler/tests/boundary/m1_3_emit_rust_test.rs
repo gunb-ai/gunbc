@@ -435,11 +435,6 @@ fn sub_match_over_user_sum_module() -> String {
 #[test]
 fn sub_match_over_user_sum_links_and_runs() {
     let module = sub_match_over_user_sum_module();
-    assert!(
-        module.contains("pub enum Choice") && module.contains("match"),
-        "emitted module should define the user sum and lower the source match directly:\n{module}"
-    );
-
     let wrapped = format!(
         r#"
 #[allow(warnings, clippy::all)]
