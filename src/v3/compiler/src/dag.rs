@@ -1300,6 +1300,11 @@ fn collect_body_node(
     }
 }
 
+/// 🟢 TERMINAL private proof-state.
+///
+/// Local E-P producer state: either callable template provenance was resolved
+/// to a declaration, or it was not. This is not a substrate carrier; it keeps
+/// the bounded instantiation peel fail-closed before emitting side-table facts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CallableProvenance {
     Resolved(DeclarationId),
