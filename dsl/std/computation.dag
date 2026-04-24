@@ -122,14 +122,17 @@ import std.algebra {
 // (for constants/Forever) or tracked symbolically (for parameters/collections).
 // =========================================================================
 //
-// 🟡 MIXED coproduct — size-bound source for lowering. Dissolution: `param: String`
-// name bridges on `CollectionSize` / `TreeSize` / `ArithmeticParam` → structural size-parameter
-// refs when reflected params exist; `Forever` stays a terminal finite-bound atom.
-// `ExplicitCount*` uses Peano for strictly positive repeat counts and a zero tag so negative
-// literals are not representable (P2 / P4; PR #726 openai-pro review).
+// 🟡 MIXED coproduct — size-bound source for lowering. Dissolution: `param` / `witness` /
+// `element` string bridges on collection-like bounds → structural size-parameter refs when
+// reflected params exist; `Forever` stays a terminal finite-bound atom.
+// `ParserStreamSize` / `WorklistDrainSize` keep parser-advance vs worklist-drain distinct from
+// generic `CollectionSize` (P2 facts-flow-forward). `ExplicitCount*` uses Peano for strictly
+// positive repeat counts and a zero tag so negative literals are not representable (P2 / P4).
 
 type SizeBound
   = CollectionSize { param: String }   // |list|, |set|, |map.keys| — finite by Layer 3
+  | ParserStreamSize { witness: String } // parser advance: token-stream / state param name
+  | WorklistDrainSize { element: String }  // worklist drain: set / element param name
   | TreeSize { param: String }         // |node.descendants| — finite by DAG acyclicity
   | ArithmeticParam { param: String }  // function parameter n — finite by Word64
   | ExplicitCountZero                  // repeat / bound literal 0 (no negative inhabitant)
@@ -215,8 +218,8 @@ type CallPattern
 //   | CollectionShrinkCall     | fold           | CollectionSize       |
 //   | ArithmeticSubtractCall   | repeat         | ArithmeticParam      |
 //   | ArithmeticDivideCall     | repeat         | ArithmeticParam      |
-//   | ParserAdvanceCall        | fold           | CollectionSize(tokens)|
-//   | WorklistDrainCall        | fold           | CollectionSize(set)  |
+//   | ParserAdvanceCall        | fold           | ParserStreamSize(witness)|
+//   | WorklistDrainCall        | fold           | WorklistDrainSize(element)|
 //   | FoldBodyCall             | (already fold) | (inherited)          |
 //   | SameArgumentCall         | repeat         | Forever               |
 //
@@ -251,9 +254,10 @@ type IterationPrimitive
   | Descend
   | Repeat
 
-// `lower_call_pattern` copies **CallPattern-carried** `String` slots into `SizeBound.param`
-// (no fabricated `"n"` / `"collection"` placeholders). Dissolution: replace those `String`
-// bridges with structural size-parameter refs when reflected params land (E-P / modeling).
+// `lower_call_pattern` forwards **CallPattern-carried** `String` slots into the matching
+// `SizeBound` (`ParserStreamSize` / `WorklistDrainSize` keep parser vs worklist identity).
+// No fabricated `"n"` / `"collection"` placeholders. Dissolution: structural size-parameter refs
+// when reflected params land (E-P / modeling).
 fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
   match pattern {
     ChildAccessorCall { accessor: a } =>
@@ -281,12 +285,12 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
 
     ParserAdvanceCall { witness: w } =>
       LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: w },
+        bound: ParserStreamSize { witness: w },
         evidence: Strict, factor: none }
 
     WorklistDrainCall { element: e } =>
       LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: e },
+        bound: WorklistDrainSize { element: e },
         evidence: Strict, factor: none }
 
     FoldBodyCall { outer_collection: oc } =>
@@ -302,14 +306,16 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
 }
 
 // Extract the parameter name from a SizeBound, or none for constant bounds.
-// Named bounds (TreeSize, CollectionSize, ArithmeticParam) have a parameter
-// that varies with input — these produce O(n)-class costs.
+// Named bounds (TreeSize, CollectionSize, ParserStreamSize, WorklistDrainSize, ArithmeticParam)
+// carry a string label that varies with input — these produce O(n)-class costs.
 // Constant bounds (ExplicitCount, Forever) are fixed values — they produce
 // O(1)-class costs because the iteration count doesn't depend on input size.
 fn size_bound_param(bound: SizeBound) -> String? {
   match bound {
     TreeSize { param: p }       => Some { value: p }
     CollectionSize { param: p } => Some { value: p }
+    ParserStreamSize { witness: w } => Some { value: w }
+    WorklistDrainSize { element: e } => Some { value: e }
     ArithmeticParam { param: p } => Some { value: p }
     ExplicitCountZero           => none
     ExplicitCountPositive { steps: _ } => none

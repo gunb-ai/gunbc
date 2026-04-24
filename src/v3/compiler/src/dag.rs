@@ -948,6 +948,8 @@ pub fn map_evidence_merge_at(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SizeBound {
     CollectionSize { param: String },
+    ParserStreamSize { witness: String },
+    WorklistDrainSize { element: String },
     TreeSize { param: String },
     ArithmeticParam { param: String },
     ExplicitCountZero,
@@ -1121,13 +1123,13 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
         },
         CallPattern::ParserAdvanceCall { witness } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize { param: witness },
+            bound: SizeBound::ParserStreamSize { witness },
             evidence: DescentEvidence::Strict,
             factor: None,
         },
         CallPattern::WorklistDrainCall { element } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize { param: element },
+            bound: SizeBound::WorklistDrainSize { element },
             evidence: DescentEvidence::Strict,
             factor: None,
         },
@@ -1430,9 +1432,11 @@ fn ordinal_param_label(idx: usize) -> String {
 
 pub fn size_bound_param(bound: &SizeBound) -> Option<&str> {
     match bound {
-        SizeBound::TreeSize { param }
-        | SizeBound::CollectionSize { param }
-        | SizeBound::ArithmeticParam { param } => Some(param.as_str()),
+        SizeBound::TreeSize { param } => Some(param.as_str()),
+        SizeBound::CollectionSize { param } => Some(param.as_str()),
+        SizeBound::ParserStreamSize { witness } => Some(witness.as_str()),
+        SizeBound::WorklistDrainSize { element } => Some(element.as_str()),
+        SizeBound::ArithmeticParam { param } => Some(param.as_str()),
         SizeBound::ExplicitCountZero
         | SizeBound::ExplicitCountPositive { .. }
         | SizeBound::Forever => None,
