@@ -29,3 +29,5 @@ mod pipeline;
 mod render_repeat_test;
 #[cfg(test)]
 mod source_audit;
+#[cfg(test)]
+mod sub_value_lattice_factor_test;
