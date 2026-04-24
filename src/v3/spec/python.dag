@@ -48,7 +48,6 @@ data python_statements: StatementSyntax = {
 }
 
 data python_expressions: ExpressionSyntax = {
-  binary_op: "({lhs} {op} {rhs})"
   field_access: "{object}.{field}"
   function_call: "{func}({args})"
   closure: "lambda {params}: {body}"
@@ -450,7 +449,7 @@ data python_int_add: OperatorRealization = {
   language: python_language
   target: Int
   op: OrderedRing.add
-  carrier: "+"
+  carrier: "({lhs} + {rhs})"
   cost: 1
 }
 
@@ -458,7 +457,7 @@ data python_int_sub: OperatorRealization = {
   language: python_language
   target: Int
   op: OrderedRing.sub
-  carrier: "-"
+  carrier: "({lhs} - {rhs})"
   cost: 1
 }
 
@@ -466,7 +465,15 @@ data python_int_mul: OperatorRealization = {
   language: python_language
   target: Int
   op: OrderedRing.mul
-  carrier: "*"
+  carrier: "({lhs} * {rhs})"
+  cost: 1
+}
+
+data python_int_div: OperatorRealization = {
+  language: python_language
+  target: Int
+  op: OrderedRing.div
+  carrier: "(__v3_idiv({lhs}, {rhs}))"
   cost: 1
 }
 
@@ -474,7 +481,7 @@ data python_int_eq: OperatorRealization = {
   language: python_language
   target: Int
   op: OrderedRing.eq
-  carrier: "=="
+  carrier: "({lhs} == {rhs})"
   cost: 1
 }
 
@@ -482,7 +489,7 @@ data python_node_id_eq: OperatorRealization = {
   language: python_language
   target: NodeId
   op: OrderedRing.eq
-  carrier: "=="
+  carrier: "({lhs} == {rhs})"
   cost: 1
 }
 
@@ -490,7 +497,7 @@ data python_port_id_eq: OperatorRealization = {
   language: python_language
   target: PortId
   op: OrderedRing.eq
-  carrier: "=="
+  carrier: "({lhs} == {rhs})"
   cost: 1
 }
 
@@ -498,7 +505,7 @@ data python_declaration_id_eq: OperatorRealization = {
   language: python_language
   target: DeclarationId
   op: OrderedRing.eq
-  carrier: "=="
+  carrier: "({lhs} == {rhs})"
   cost: 1
 }
 
@@ -506,31 +513,7 @@ data python_int_ne: OperatorRealization = {
   language: python_language
   target: Int
   op: OrderedRing.ne
-  carrier: "!="
-  cost: 1
-}
-
-data python_node_id_ne: OperatorRealization = {
-  language: python_language
-  target: NodeId
-  op: OrderedRing.ne
-  carrier: "!="
-  cost: 1
-}
-
-data python_port_id_ne: OperatorRealization = {
-  language: python_language
-  target: PortId
-  op: OrderedRing.ne
-  carrier: "!="
-  cost: 1
-}
-
-data python_declaration_id_ne: OperatorRealization = {
-  language: python_language
-  target: DeclarationId
-  op: OrderedRing.ne
-  carrier: "!="
+  carrier: "({lhs} != {rhs})"
   cost: 1
 }
 
@@ -538,7 +521,7 @@ data python_int_lt: OperatorRealization = {
   language: python_language
   target: Int
   op: OrderedRing.lt
-  carrier: "<"
+  carrier: "({lhs} < {rhs})"
   cost: 1
 }
 
@@ -546,7 +529,7 @@ data python_int_le: OperatorRealization = {
   language: python_language
   target: Int
   op: OrderedRing.le
-  carrier: "<="
+  carrier: "({lhs} <= {rhs})"
   cost: 1
 }
 
@@ -554,7 +537,7 @@ data python_int_gt: OperatorRealization = {
   language: python_language
   target: Int
   op: OrderedRing.gt
-  carrier: ">"
+  carrier: "({lhs} > {rhs})"
   cost: 1
 }
 
@@ -562,7 +545,7 @@ data python_int_ge: OperatorRealization = {
   language: python_language
   target: Int
   op: OrderedRing.ge
-  carrier: ">="
+  carrier: "({lhs} >= {rhs})"
   cost: 1
 }
 
@@ -570,7 +553,7 @@ data python_bool_meet: OperatorRealization = {
   language: python_language
   target: Bool
   op: BooleanAlgebra.meet
-  carrier: "and"
+  carrier: "({lhs} and {rhs})"
   cost: 1
 }
 
@@ -578,7 +561,7 @@ data python_bool_join: OperatorRealization = {
   language: python_language
   target: Bool
   op: BooleanAlgebra.join
-  carrier: "or"
+  carrier: "({lhs} or {rhs})"
   cost: 1
 }
 

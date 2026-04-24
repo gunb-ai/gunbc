@@ -719,11 +719,13 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
         other => panic!("expected Reference for op, got {other:?}"),
     }
 
-    // carrier → "+" (Literal String)
+    // carrier → "({lhs} + {rhs})" (full-expression template; PR #681 unified all
+    // OperatorRealization carriers to self-describing templates, dissolving the
+    // former binary_op / carrier dual-authority split)
     assert_eq!(fields[3].0, "carrier");
     assert!(matches!(
         &fields[3].1,
-        v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::String(s)) if s == "+"
+        v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::String(s)) if s == "({lhs} + {rhs})"
     ));
 
     // cost → 1 (Literal Int)

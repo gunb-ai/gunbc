@@ -90,6 +90,38 @@ fn emit_python_bool_logical_ops_use_keyword_carriers() {
     );
 }
 
+/// Verify that the Int arithmetic and comparison operators added in PR #681
+/// emit the correct Python expression templates. These are always-on emit-level
+/// checks; they do not require a Python toolchain.
+#[test]
+fn emit_python_int_operators_use_correct_expression_templates() {
+    let src = "fn f(a: Int, b: Int) -> Int = a * b\n";
+    let out = emit_python_module_from_source(src, "int_mul_py.v3");
+    assert!(
+        out.contains("* ") || out.contains(" *"),
+        "mul carrier must emit `*`; got:\n{out}"
+    );
+
+    let src = "fn f(a: Int, b: Int) -> Int = a / b\n";
+    let out = emit_python_module_from_source(src, "int_div_py.v3");
+    assert!(
+        out.contains("__v3_idiv("),
+        "div carrier must emit `__v3_idiv(...)`; got:\n{out}"
+    );
+
+    let src = "fn f(a: Int, b: Int) -> Bool = a != b\n";
+    let out = emit_python_module_from_source(src, "int_ne_py.v3");
+    assert!(out.contains("!="), "ne carrier must emit `!=`; got:\n{out}");
+
+    let src = "fn f(a: Int, b: Int) -> Bool = a < b\n";
+    let out = emit_python_module_from_source(src, "int_lt_py.v3");
+    assert!(out.contains(" < "), "lt carrier must emit `<`; got:\n{out}");
+
+    let src = "fn f(a: Int, b: Int) -> Bool = a > b\n";
+    let out = emit_python_module_from_source(src, "int_gt_py.v3");
+    assert!(out.contains(" > "), "gt carrier must emit `>`; got:\n{out}");
+}
+
 #[test]
 fn emit_python_wrappers_match_shared_entrypoint() {
     let program_source = "\
