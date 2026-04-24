@@ -1,22 +1,22 @@
 //! **Layer:** boundary (TESTING.md § test layers — class-5 multi-target
 //! toolchain roundtrip).
 //!
-//! T-Emit lane closure test: `emit_omni_demo_fixtures_green`.
+//! Two tests live here:
 //!
-//! Verifies that the "omni demo" fixtures — the subset of `PROGRAM_FIXTURES`
-//! whose lowering is supported by Rust, Go, **and** Python — produce
-//! identical stdout under each target's native toolchain.
+//! * `emit_omni_demo_rust_roundtrip` — non-ignored CI gate.  Emits all
+//!   omni-set fixtures to Rust, compiles via rustc, and checks stdout.
+//!   Rustc is always available so this runs unconditionally.
 //!
-//! Rust always executes (rustc is always available in the build
-//! environment).  Go and Python execute when their toolchains are
-//! present, and are silently skipped otherwise.  The test therefore
-//! passes in CI (rustc-only) and performs the full three-way
-//! comparison when run locally with all toolchains installed.
+//! * `emit_omni_demo_fixtures_green` — T-Emit lane closure receipt.
+//!   Marked `#[ignore]` because it requires Go **and** Python toolchains
+//!   that are not present in CI.  When run with `--ignored` it asserts
+//!   both toolchains are reachable and fails hard if either is absent;
+//!   a missing toolchain is an unmet receipt, not a skip.
 //!
-//! Run locally with all toolchains:
+//! Run the full three-way proof locally:
 //!
 //!   cargo test -p v3-compiler --test integration \
-//!       emit_omni_demo_fixtures_green -- --nocapture
+//!       emit_omni_demo_fixtures_green -- --ignored --nocapture
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -37,6 +37,14 @@ fn next_roundtrip_dir() -> PathBuf {
         std::process::id(),
         id
     ))
+}
+
+fn omni_fixtures() -> Vec<&'static crate::common::determinism_fixtures::ProgramFixture> {
+    PROGRAM_FIXTURES
+        .iter()
+        .filter(|f| !GO_EMIT_EXCLUDE.contains(&f.name))
+        .filter(|f| !PYTHON_EMIT_EXCLUDE.contains(&f.name))
+        .collect()
 }
 
 /// Emit `source` as a Rust program, compile via rustc, run, and return
@@ -73,20 +81,9 @@ fn rust_stdout(source: &str) -> String {
     String::from_utf8_lossy(&run.stdout).trim().to_string()
 }
 
-/// Emit `source` as a Go program, run via `go run`, and return trimmed
-/// stdout.  Returns `None` when the Go toolchain is not available.
-fn go_stdout(fixture_name: &str, source: &str) -> Option<String> {
-    let go_available = Command::new("go")
-        .arg("version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .ok()
-        .is_some_and(|s| s.success());
-    if !go_available {
-        return None;
-    }
-
+/// Emit `source` as a Go program, run via `go run`, and return trimmed stdout.
+/// Panics (not `None`) — callers must only invoke this when `go` is confirmed present.
+fn go_stdout(fixture_name: &str, source: &str) -> String {
     let dag = cached_compile_to_dag(source, "omni_parity.v3");
     let rendered = emit(&dag, EmitTarget::Go)
         .unwrap_or_else(|e| panic!("Go emit failed for fixture `{fixture_name}`: {e:?}"))
@@ -110,23 +107,12 @@ fn go_stdout(fixture_name: &str, source: &str) -> Option<String> {
         String::from_utf8_lossy(&run.stdout),
         String::from_utf8_lossy(&run.stderr),
     );
-    Some(String::from_utf8_lossy(&run.stdout).trim().to_string())
+    String::from_utf8_lossy(&run.stdout).trim().to_string()
 }
 
-/// Emit `source` as a Python program, run via `python3`, and return
-/// trimmed stdout.  Returns `None` when python3 is not available.
-fn python_stdout(fixture_name: &str, source: &str) -> Option<String> {
-    let python_available = Command::new("python3")
-        .arg("--version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .ok()
-        .is_some_and(|s| s.success());
-    if !python_available {
-        return None;
-    }
-
+/// Emit `source` as a Python program, run via `python3`, and return trimmed stdout.
+/// Panics (not `None`) — callers must only invoke this when `python3` is confirmed present.
+fn python_stdout(fixture_name: &str, source: &str) -> String {
     let dag = cached_compile_to_dag(source, "omni_parity.v3");
     let rendered = emit(&dag, EmitTarget::Python)
         .unwrap_or_else(|e| panic!("Python emit failed for fixture `{fixture_name}`: {e:?}"))
@@ -147,48 +133,75 @@ fn python_stdout(fixture_name: &str, source: &str) -> Option<String> {
         "python3 failed for fixture `{fixture_name}`:\nsource:\n{rendered}\nstderr:\n{}",
         String::from_utf8_lossy(&run.stderr),
     );
-    Some(String::from_utf8_lossy(&run.stdout).trim().to_string())
+    String::from_utf8_lossy(&run.stdout).trim().to_string()
 }
 
-/// T-Emit lane closure test.
-///
-/// For each fixture in the "omni" set (those not excluded from any
-/// target), emit to Rust, Go, and Python; execute under the target's
-/// toolchain; and assert all three outputs agree.
-///
-/// The omni set is derived automatically from `PROGRAM_FIXTURES` minus
-/// `GO_EMIT_EXCLUDE` minus `PYTHON_EMIT_EXCLUDE` — no hard-coded list
-/// to keep in sync.
-#[test]
-fn emit_omni_demo_fixtures_green() {
-    let omni_fixtures: Vec<_> = PROGRAM_FIXTURES
-        .iter()
-        .filter(|f| !GO_EMIT_EXCLUDE.contains(&f.name))
-        .filter(|f| !PYTHON_EMIT_EXCLUDE.contains(&f.name))
-        .collect();
+fn toolchain_available(cmd: &str, probe_arg: &str) -> bool {
+    Command::new(cmd)
+        .arg(probe_arg)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .ok()
+        .is_some_and(|s| s.success())
+}
 
+/// CI gate: Rust-only roundtrip over all omni fixtures.
+///
+/// Rustc is always available; this test runs unconditionally.  It proves
+/// that the omni fixture set emits valid, executable Rust — the minimum bar
+/// for every commit.
+#[test]
+fn emit_omni_demo_rust_roundtrip() {
+    let fixtures = omni_fixtures();
     assert!(
-        !omni_fixtures.is_empty(),
+        !fixtures.is_empty(),
+        "omni fixture set must not be empty — check exclude lists"
+    );
+    for fixture in &fixtures {
+        rust_stdout(fixture.source);
+    }
+}
+
+/// T-Emit lane closure receipt: all three targets produce identical stdout.
+///
+/// Marked `#[ignore]` because `go` and `python3` are not present in CI.
+/// Run locally with `--ignored` to execute the full three-way proof.  The
+/// test asserts both toolchains are reachable and **fails hard** if either
+/// is absent — a missing toolchain is an unmet receipt, not a skip.
+#[test]
+#[ignore = "requires go and python3 toolchains; run locally: cargo test ... -- --ignored --nocapture"]
+fn emit_omni_demo_fixtures_green() {
+    assert!(
+        toolchain_available("go", "version"),
+        "go toolchain not found — this test requires go to be on PATH"
+    );
+    assert!(
+        toolchain_available("python3", "--version"),
+        "python3 toolchain not found — this test requires python3 to be on PATH"
+    );
+
+    let fixtures = omni_fixtures();
+    assert!(
+        !fixtures.is_empty(),
         "omni fixture set must not be empty — check exclude lists"
     );
 
-    for fixture in &omni_fixtures {
+    for fixture in &fixtures {
         let rust = rust_stdout(fixture.source);
 
-        if let Some(go) = go_stdout(fixture.name, fixture.source) {
-            assert_eq!(
-                go, rust,
-                "Go output diverged from Rust baseline for fixture `{}`",
-                fixture.name
-            );
-        }
+        let go = go_stdout(fixture.name, fixture.source);
+        assert_eq!(
+            go, rust,
+            "Go output diverged from Rust baseline for fixture `{}`",
+            fixture.name
+        );
 
-        if let Some(py) = python_stdout(fixture.name, fixture.source) {
-            assert_eq!(
-                py, rust,
-                "Python output diverged from Rust baseline for fixture `{}`",
-                fixture.name
-            );
-        }
+        let py = python_stdout(fixture.name, fixture.source);
+        assert_eq!(
+            py, rust,
+            "Python output diverged from Rust baseline for fixture `{}`",
+            fixture.name
+        );
     }
 }
