@@ -1,0 +1,23 @@
+// std.r1_gates - Day-1 R1 gate declarations (integration-test fixture).
+//
+// `TestClaim.source` is the full user lens program text (same bytes as
+// `src/v3/lenses/named_function_count.dag`); `m1_5_user_authored_lens_gate_test`
+// asserts lockstep so the claim stays single-authority for the compile receipt.
+// Integration test then `compile_to_dag`s that extracted `source` (runner-shaped
+// `Compiles` receipt). Payload is a standalone `module lenses.named_function_count`
+// unit (imports std only), not a consumer that imports this module from bootstrap.
+//
+// Lives under `src/v3/compiler/tests/fixtures/` so it is **not** auto-staged
+// into `Dag::new()` bootstrap (`src/v3/std/*.dag` is build-script enumerated).
+
+module std.r1_gates
+
+import std.verification { TestClaim }
+
+data user_authored_lens_compiles_gate: TestClaim = {
+  name: "user_authored_lens_compiles",
+  source: "// lenses.named_function_count - minimal user-authored lens (Day-1 gate demo).\n//\n// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A.\n// See docs/v3-lens-capability-register.md.\n//\n// **Not** bundled into `Dag::new()` bootstrap: it compiles externally via\n// `compile_to_dag` (see `m1_5_user_authored_lens_gate_test`). Demo only:\n// counts `Bind` behaviors whose `name` is non-empty. Not in `regen.dag`.\n\nmodule lenses.named_function_count\n\nimport std.list { fold }\nimport std.substrate { Dag, Behavior }\n\nfn count_named_bind(behavior: Behavior) -> Int =\n  match behavior {\n    Value(v) => 0\n    Transform(t) => 0\n    Branch(b) => 0\n    Loop(l) => 0\n    Bind(bind) => if bind.name == \"\" then 0 else 1\n  }\n\nfn named_function_count(d: Dag) -> Int =\n  fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))\n",
+  file_name: "src/v3/lenses/named_function_count.dag",
+  predicate: Compiles,
+  requires: []
+}
