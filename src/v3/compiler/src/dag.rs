@@ -723,6 +723,16 @@ pub enum OperatorKind {
     Logical(LogicalOp),
 }
 
+// 🟡 SCAFFOLD — Rust execution mirror for `src/v3/std/termination.dag`.
+//
+// The `.dag` declarations are the carrier authority, but std block bodies
+// still lower as `ArrowBody::Unparsed`, so the lattice helpers below are the
+// temporary executable bridge. Dissolution trigger: when std block bodies lower
+// and can be evaluated from `.dag`, replace these helper bodies with calls into
+// the evaluated `.dag` authority or remove them with the first real consumer.
+// `m2_substrate_inhabitance_test` pins the carrier shape, body-span staging
+// contract, and current Rust mirror behavior until that trigger fires.
+
 /// 🟢 TERMINAL at termination-proof scope.
 ///
 /// Rust mirror of the durable evidence lattice declared in
@@ -833,6 +843,10 @@ pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence 
     }
 }
 
+/// Legacy E-T helper name retained for carrier API parity.
+///
+/// Fail-closed behavior means no unary helper may fabricate `Strict` from
+/// weaker evidence; strict promotion requires a separate structural witness.
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
     evidence
 }
