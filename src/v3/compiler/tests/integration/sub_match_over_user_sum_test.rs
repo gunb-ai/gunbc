@@ -63,7 +63,11 @@ fn main() {{
 }}
 "#
     );
-    harness().compile(&wrapped, "sub_match_over_user_sum", HarnessLinkMode::Standalone)
+    harness().compile(
+        &wrapped,
+        "sub_match_over_user_sum",
+        HarnessLinkMode::Standalone,
+    )
 }
 
 #[test]
