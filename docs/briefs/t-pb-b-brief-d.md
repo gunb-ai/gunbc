@@ -1,6 +1,7 @@
 # T-PB-B — Brief D (parallel to T-PB-A)
 
 **Status:** pre-landing inventory + draft `TestClaim` fixtures.
+
 **Authority:** Post-R2 residuals in `TESTING.md` (compiler-internal `#[cfg(test)]` under `src/v3/compiler/src/`; boundary tests invoking external toolchains). **Schema:** `src/v3/std/verification.dag` (`TestClaim`, `TestPredicate`, `requires: List<ResourceReference>`).
 
 **Gates (unchanged):** Do not remove or replace existing Rust integration tests as the source of truth. Do not assert `pb_test_file_generated_from_dag` or `pb_rust_tests_outside_residual_zero` until Testgen signals. Draft `.v3` / `.dag` modules here are **fixtures** for eventual runner wiring.
