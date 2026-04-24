@@ -1233,17 +1233,27 @@ impl<'a> Ctx<'a> {
             Behavior::Value(v) => Ok(render_value(v, &self.indexes.syntax.literals)),
             Behavior::Transform(t) => self.render_transform(t, locals),
             Behavior::Branch(b) => self.render_branch(b, locals),
-            Behavior::Loop(_) => {
-                // emit_go does not yet model `Behavior::Loop`. Earlier
-                // code rendered just the loop body's result port, which
-                // silently dropped the iteration semantics — a Loop
-                // over a list became its first iteration's expression.
-                // Fail-closed instead so callers see the unsupported
-                // case directly.
-                Err(EmitError::UnsupportedBehavior(
-                    "emit_go does not yet support Behavior::Loop; iteration construct must be expressed via fold/map/filter callables for now"
-                        .to_string(),
-                ))
+            Behavior::Loop(l) => {
+                // Behavior::Loop has exactly two construction sites in lower.rs,
+                // both for recursive user functions:
+                //   1. Cardinality bound (lower.rs ~3631): single recursive fn
+                //      with descent-provable termination; bound.count = first
+                //      param port.
+                //   2. Descent bound (lower.rs ~382): mutual-recursion cluster.
+                //
+                // In both cases `l.body` is the root node of the function's
+                // body DAG, which already contains recursive self-calls. Go
+                // supports recursion natively, so rendering the body node's
+                // result port is semantically correct: the emitted expression
+                // preserves the recursive structure and terminates for the same
+                // structural reasons the compiler proved at lower time.
+                //
+                // Collection folds (fold/map/filter) route through callable
+                // realizations and never reach Behavior::Loop. If a future IR
+                // change adds Loop for non-recursive collection iteration, this
+                // site must emit explicit iteration instead.
+                let body_port = behavior_result_port(self.dag.node(l.body));
+                self.render_port(body_port, locals)
             }
             Behavior::Bind(bind) => Ok(bind.name.clone()),
         }
