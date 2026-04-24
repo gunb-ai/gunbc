@@ -95,7 +95,6 @@ fn variant_payload_field_type_name(
         .unwrap_or_else(|| format!("<anonymous:{}>", field.ty.raw()))
 }
 
-
 fn arrow_body(dag: &Dag, name: &str) -> ArrowBody {
     let id = find_named(dag, name);
     match &dag.declaration(id).connective {
