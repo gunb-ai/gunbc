@@ -8,6 +8,10 @@
 //! read `CharClass` rows structurally from that authority file.
 //!
 //! Keep `byte_matches` aligned with `char_in_class` on code points U+0000–U+007F.
+//!
+//! **Lane framing:** tokenizer-side interim only — not structural consumption of
+//! `CharClass` from lowered `tokenize.dag` (see M1(2.8) class-5 gap #3). Remove
+//! this module when `regen_tokenize` can read class predicates from `.dag`.
 
 /// Mirrors `std.unicode::CharClass` variant names for generated call sites.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

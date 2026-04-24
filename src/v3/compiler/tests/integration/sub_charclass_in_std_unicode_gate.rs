@@ -1,10 +1,16 @@
 //! **Layer:** integration
 //!
-//! T-Sub `sub_charclass_in_std_unicode` (ROADMAP.md:358): `CharClass` lives in
-//! `dsl/std/unicode.dag`; the SG-1 tokenizer must not embed hidden
-//! `is_ascii_*` host predicates in generated Rust — it consumes the same ASCII
-//! scalar classification structurally via `tokenize_char_class` (until M1(2.8)
-//! allows `CharClass` `data` rows in `tokenize.dag`).
+//! T-Sub `sub_charclass_in_std_unicode` — **tokenizer half / bounded interim**
+//! (ROADMAP.md:358). This gate ratchets: (1) `CharClass` + `char_in_class` exist
+//! in `dsl/std/unicode.dag`; (2) generated `tokenize_generated.rs` routes ASCII
+//! scanner classes through `tokenize_char_class` (no hidden `is_ascii_*` in
+//! emitted Rust); (3) the mirror matches Rust’s ASCII helpers on 0..=127.
+//!
+//! **Out of scope for this gate:** `syntax.dag` / `std.syntax` operator-symbol
+//! and keyword-map retagging; structural `CharClass` `data` in `tokenize.dag`
+//! (blocked on M1(2.8) class-5 gap #3 — list / sum-variant literals in `data`
+//! bodies). Full lane closure = those follow-ups + deleting the Rust mirror once
+//! the compiler can lower class rows from `.dag`.
 
 use v3_compiler::tokenize_char_class::{byte_matches, TokenizerCharClass};
 
