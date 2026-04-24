@@ -1038,6 +1038,8 @@ impl LoopBound {
     }
 }
 
+include!("dag_lookup_generated.rs");
+
 include!("dag_cost_generated.rs");
 
 #[derive(Debug, Clone)]
