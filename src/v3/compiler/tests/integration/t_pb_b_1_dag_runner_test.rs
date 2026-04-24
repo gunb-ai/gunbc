@@ -23,7 +23,16 @@ fn lower(source: &'static str, file: &'static str) -> Dag {
     // diagnostics). The retired `t_pb_b_1_tests_dag_smoke_test` required the
     // same: declaring `tests/dag` harness compiles with no module diagnostics.
     match compile_to_dag(source, file) {
-        Ok(dag) => dag,
+        Ok(dag) => {
+            // Explicit compile-smoke receipt: same as the retired
+            // `t_pb_b_1_tests_dag_smoke_test` (in addition to `Ok` ⟺ empty in `lib.rs`).
+            assert!(
+                dag.diagnostics().is_empty(),
+                "{file} (declaring `tests/dag` harness): expected empty module diagnostics, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            );
+            dag
+        }
         Err(CompileError::Semantic(dag)) => {
             panic!(
                 "{file} (declaring `tests/dag` harness) should lower without module diagnostics — \
