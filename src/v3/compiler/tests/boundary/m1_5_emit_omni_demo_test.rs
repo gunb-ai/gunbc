@@ -63,7 +63,10 @@ fn rust_stdout(source: &str) -> String {
         .stderr(Stdio::inherit())
         .status()
         .expect("invoke rustc");
-    assert!(compile.success(), "rustc failed on emitted source:\n{rendered}");
+    assert!(
+        compile.success(),
+        "rustc failed on emitted source:\n{rendered}"
+    );
 
     let run = Command::new(&bin_path).output().expect("run rust binary");
     assert!(run.status.success(), "compiled rust binary exited non-zero");
