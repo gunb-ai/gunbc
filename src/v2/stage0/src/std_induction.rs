@@ -383,19 +383,26 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
                 accessor: f.field_name.clone(),
             }))
         }
-        SubValueRelation::ArithmeticDescent { factor: f, .. } => match (*f.clone()).clone() {
-            ShrinkFactor::ConstantShrink { steps: p, .. } => {
+        SubValueRelation::ArithmeticDescent {
+            param: p,
+            factor: f,
+            ..
+        } => match (*f.clone()).clone() {
+            ShrinkFactor::ConstantShrink { steps, .. } => {
                 Some(Rc::new(CallPattern::ArithmeticSubtractCall {
-                    steps: p.clone(),
+                    steps: steps.clone(),
+                    ring_param: p.clone(),
                 }))
             }
             ShrinkFactor::ProportionalShrink { divisor: d, .. } => {
                 Some(Rc::new(CallPattern::ArithmeticDivideCall {
                     divisor: d.clone(),
+                    ring_param: p.clone(),
                 }))
             }
             ShrinkFactor::UnitShrink => Some(Rc::new(CallPattern::ArithmeticSubtractCall {
                 steps: Rc::new(PositiveDescentAmount::OneStep),
+                ring_param: p.clone(),
             })),
         },
         SubValueRelation::PreservedValue => Some(Rc::new(CallPattern::SameArgumentCall)),

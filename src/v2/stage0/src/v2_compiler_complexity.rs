@@ -4994,12 +4994,16 @@ pub fn proof_to_call_pattern(proof: Rc<TerminationProof>) -> Rc<CallPattern> {
                     accessor: p.clone(),
                 })
             }
-            RankingDimension::ListLength { .. } => Rc::new(CallPattern::CollectionShrinkCall {
-                amount: Rc::new(PositiveDescentAmount::OneStep),
-            }),
-            RankingDimension::ArithmeticValue { .. } => {
+            RankingDimension::ListLength { param: p, .. } => {
+                Rc::new(CallPattern::CollectionShrinkCall {
+                    amount: Rc::new(PositiveDescentAmount::OneStep),
+                    collection: p.clone(),
+                })
+            }
+            RankingDimension::ArithmeticValue { param: p, .. } => {
                 Rc::new(CallPattern::ArithmeticSubtractCall {
                     steps: Rc::new(PositiveDescentAmount::OneStep),
+                    ring_param: p.clone(),
                 })
             }
             RankingDimension::TokenPosition { param: p, .. } => {
@@ -5023,7 +5027,15 @@ pub fn classify_recursion_pattern(
     {
         let path_calls = max_path_self_calls(body.clone(), func_name.clone(), si.clone());
         if (path_calls.clone() == 0) {
-            lower_call_pattern(Rc::new(CallPattern::FoldBodyCall))
+            {
+                let outer = match params.clone().first().cloned() {
+                    Some(p0) => param_node_name_at(p0.clone(), si.clone()),
+                    None => "_fold_body".to_string(),
+                };
+                lower_call_pattern(Rc::new(CallPattern::FoldBodyCall {
+                    outer_collection: outer,
+                }))
+            }
         } else {
             {
                 let all_evidence =
@@ -6931,9 +6943,27 @@ pub fn classify_scc_recursion_pattern(
                             __all
                         };
                         if all_arithmetic {
-                            lower_call_pattern(Rc::new(CallPattern::ArithmeticSubtractCall {
-                                steps: Rc::new(PositiveDescentAmount::OneStep),
-                            }))
+                            {
+                                let ring_param = match members.clone().first().cloned() {
+                                    Some(m0) => {
+                                        match v2_rt::map_get(&scc_measure_params, m0.clone()) {
+                                            Some(pmap) => match Rc::new(v2_rt::map_keys(&pmap))
+                                                .first()
+                                                .cloned()
+                                            {
+                                                Some(k) => k.clone(),
+                                                None => "_scc_arithmetic".to_string(),
+                                            },
+                                            None => "_scc_arithmetic".to_string(),
+                                        }
+                                    }
+                                    None => "_scc_arithmetic".to_string(),
+                                };
+                                lower_call_pattern(Rc::new(CallPattern::ArithmeticSubtractCall {
+                                    steps: Rc::new(PositiveDescentAmount::OneStep),
+                                    ring_param: ring_param,
+                                }))
+                            }
                         } else {
                             lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
                         }

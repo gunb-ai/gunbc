@@ -345,15 +345,15 @@ fn computation_carriers_bootstrap_from_v3_std() {
             ),
             (
                 String::from("CollectionShrinkCall"),
-                vec![String::from("amount")],
+                vec![String::from("amount"), String::from("collection")],
             ),
             (
                 String::from("ArithmeticSubtractCall"),
-                vec![String::from("steps")],
+                vec![String::from("steps"), String::from("ring_param")],
             ),
             (
                 String::from("ArithmeticDivideCall"),
-                vec![String::from("divisor")],
+                vec![String::from("divisor"), String::from("ring_param")],
             ),
             (
                 String::from("ParserAdvanceCall"),
@@ -363,7 +363,10 @@ fn computation_carriers_bootstrap_from_v3_std() {
                 String::from("WorklistDrainCall"),
                 vec![String::from("element")],
             ),
-            (String::from("FoldBodyCall"), Vec::new()),
+            (
+                String::from("FoldBodyCall"),
+                vec![String::from("outer_collection")],
+            ),
             (String::from("SameArgumentCall"), Vec::new()),
         ]
     );
@@ -457,11 +460,12 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
         (
             CollectionShrinkCall {
                 amount: PositiveDescentAmount::OneStep,
+                collection: String::from("xs"),
             },
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
-                    param: String::from("collection"),
+                    param: String::from("xs"),
                 },
                 evidence: Strict,
                 factor: Some(ConstantShrink {
@@ -474,11 +478,12 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                 amount: PositiveDescentAmount::AdditionalStep {
                     previous: Box::new(PositiveDescentAmount::OneStep),
                 },
+                collection: String::from("xs"),
             },
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
-                    param: String::from("collection"),
+                    param: String::from("xs"),
                 },
                 evidence: Strict,
                 factor: Some(ConstantShrink {
@@ -491,6 +496,7 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
         (
             ArithmeticSubtractCall {
                 steps: PositiveDescentAmount::OneStep,
+                ring_param: String::from("n"),
             },
             LoweringTarget {
                 primitive: Repeat,
@@ -506,6 +512,7 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
         (
             ArithmeticDivideCall {
                 divisor: ProportionalDivisor::DivideByTwo,
+                ring_param: String::from("n"),
             },
             LoweringTarget {
                 primitive: Repeat,
@@ -523,6 +530,7 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                 divisor: ProportionalDivisor::StrictlyLarger {
                     inner: Box::new(ProportionalDivisor::DivideByTwo),
                 },
+                ring_param: String::from("n"),
             },
             LoweringTarget {
                 primitive: Repeat,
@@ -544,7 +552,7 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
-                    param: String::from("tokens"),
+                    param: String::from("advance"),
                 },
                 evidence: Strict,
                 factor: None,
@@ -557,18 +565,20 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
-                    param: String::from("worklist"),
+                    param: String::from("item"),
                 },
                 evidence: Strict,
                 factor: None,
             },
         ),
         (
-            FoldBodyCall,
+            FoldBodyCall {
+                outer_collection: String::from("items"),
+            },
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
-                    param: String::from("outer_collection"),
+                    param: String::from("items"),
                 },
                 evidence: NonIncreasing,
                 factor: None,
