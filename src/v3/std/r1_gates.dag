@@ -1,0 +1,29 @@
+// R1 — hand-authored TestClaim / TestSuite gate declarations (T-TestGen lane).
+//
+// `testgen_manual_claim_is_first_class` (ROADMAP.md:51, [ext]): a developer-authored
+// `TestClaim` in `.dag` is evaluated by the same `TestRunner` dispatch as generated
+// claims — no special-case path.
+//
+// Dissolution trigger: fold into a consolidated `r1_release_gates.dag` once the
+// full R1 gate surface is stable; keep the receipt that manual claims stay first-class.
+
+module v3.std.r1_gates
+
+import std.verification { TestClaim, TestSuite }
+
+// Fixture: `broken` is declared `String` but returns `Int` (`x`) → TypeMismatch.
+data manual_negative_claim_gate: TestClaim = {
+  name: "testgen_manual_claim_is_first_class",
+  source: "fn broken(x: Int) -> String = x",
+  file_name: "manual_claim_fixture.v3",
+  predicate: FailsWithDiagnostic({
+    kind: TypeMismatch,
+    detail_contains: AnyDetail
+  }),
+  requires: []
+}
+
+data manual_claim_suite: TestSuite = {
+  name: "manual_claim_suite",
+  claims: [manual_negative_claim_gate]
+}

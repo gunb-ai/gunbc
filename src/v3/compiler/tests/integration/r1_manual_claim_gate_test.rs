@@ -1,7 +1,7 @@
 //! **Layer:** integration
 //!
 //! R1 T-TestGen gate `testgen_manual_claim_is_first_class` (ROADMAP.md:51, `[ext]`):
-//! hand-authored `TestClaim` values in `tests/fixtures/r1_gates.dag` (shared with the
+//! hand-authored `TestClaim` values in `src/v3/compiler/tests/fixtures/r1_gates.dag` (shared with the
 //! Day-1 lens gate) compile via `compile_to_dag` and run through the same
 //! `TestRunner::run_suite` dispatch as generated claims (`test_runner.rs`).
 //!
