@@ -140,9 +140,9 @@ pub enum LensApplyError {
 }
 
 /// Lower a declaration [`ValueBody`] into the structural [`FieldValue`] carrier used by the
-/// lens interpreter (references keep their [`DeclarationId`] edges from `fixture_dag`).
+/// lens interpreter (references keep their [`DeclarationId`] edges from the fixture DAG).
 pub fn field_value_from_value_body(
-    fixture_dag: &Dag,
+    _fixture_dag: &Dag,
     body: &ValueBody,
 ) -> Result<FieldValue, LensApplyError> {
     match body {
@@ -150,7 +150,7 @@ pub fn field_value_from_value_body(
         ValueBody::Structural { fields } => {
             let mut out = Vec::with_capacity(fields.len());
             for (label, fv) in fields {
-                out.push((label.clone(), clone_field_value(fixture_dag, fv)?));
+                out.push((label.clone(), clone_field_value(fv)?));
             }
             Ok(FieldValue::Record(out))
         }
@@ -160,21 +160,21 @@ pub fn field_value_from_value_body(
     }
 }
 
-fn clone_field_value(fixture_dag: &Dag, value: &FieldValue) -> Result<FieldValue, LensApplyError> {
+fn clone_field_value(value: &FieldValue) -> Result<FieldValue, LensApplyError> {
     match value {
         FieldValue::Literal(bits) => Ok(FieldValue::Literal(bits.clone())),
         FieldValue::Reference(id) => Ok(FieldValue::Reference(*id)),
         FieldValue::Record(fields) => {
             let mut out = Vec::with_capacity(fields.len());
             for (label, fv) in fields {
-                out.push((label.clone(), clone_field_value(fixture_dag, fv)?));
+                out.push((label.clone(), clone_field_value(fv)?));
             }
             Ok(FieldValue::Record(out))
         }
         FieldValue::List(values) => Ok(FieldValue::List(
             values
                 .iter()
-                .map(|v| clone_field_value(fixture_dag, v))
+                .map(clone_field_value)
                 .collect::<Result<_, _>>()?,
         )),
         FieldValue::Variant {
@@ -184,7 +184,7 @@ fn clone_field_value(fixture_dag: &Dag, value: &FieldValue) -> Result<FieldValue
             constructor: *constructor,
             payload: payload
                 .iter()
-                .map(|v| clone_field_value(fixture_dag, v))
+                .map(clone_field_value)
                 .collect::<Result<_, _>>()?,
         }),
     }
@@ -266,10 +266,8 @@ impl<'a> EvalCtx<'a> {
         match &t.target {
             TransformTarget::Callable(callee) => {
                 let decl = self.dag.declaration(*callee);
-                if is_fold_instantiation(self.dag, &decl)
-                    && t.inputs.len() == 2
-                    && t.span.file.contains("lenses/")
-                {
+                let fold_noise = t.span.file.contains("algebra.dag");
+                if is_fold_instantiation(self.dag, decl) && t.inputs.len() == 2 && !fold_noise {
                     let list = self.eval_port(t.inputs[0])?;
                     let init = self.eval_port(t.inputs[1])?;
                     let step_bind = find_fold_step_bind(self.dag, &t.span).ok_or(
@@ -387,7 +385,7 @@ impl<'a> EvalCtx<'a> {
         } = &decl.connective
         else {
             return Err(LensApplyError::UnimplementedCallable(format!(
-                "`{name}` (id={}) is not an arrow",
+                "`{name}` (id={}) is not an evaluated callable arrow",
                 callee.raw()
             )));
         };
