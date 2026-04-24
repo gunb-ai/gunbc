@@ -87,11 +87,28 @@ Counts are approximate; overlapping classifications (a single line can combine P
 
 Under correct implementation of the full model (Read→Borrow + Last-use→Move + Copy→bit-copy):
 
-- **~70 clones become Borrow** (Pattern 1a, 3, 4, 6-inspect, 7, 8a for Copy types)
-- **~12–14 clones become Move** (Pattern 1b, 5, 6 consume-arms, 8b)
-- **~1–3 clones remain as Clone** (Pattern 1c, 8c, 9)
+- **~65 clones become Borrow** (Pattern 1a-Read, 3-project, 4-`&self`-method, 6-inspect, 7-project) — these consumers only read; `&T` in emitted code.
+- **~12–14 clones become Move** (Pattern 1b-last-use-consume, 5-fold-acc-init, 6-consume-arms, 8b-last-use-field-non-Copy) — these consumers transfer ownership at last use; move semantics in emitted code.
+- **~5 become Bit-copy** (Pattern 8a-Copy-typed struct field; subset of 1a / 3 that operate on Copy types) — these are Construct+Copy or Read+Copy cases where no `.clone()` emits because the Copy trait handles the duplication at the bit level. Distinct outcome from Borrow: bit-copy produces an owned value (for construction) without a borrow in emitted code.
+- **~1–3 clones remain as Clone** (Pattern 1c-not-last-use-consume, 8c-not-last-use-field-non-Copy, 9-genuine-multi-use) — these are genuine non-Copy consumes where a later consumer still needs the value; `.clone()` in emitted code.
 
-Pattern bookkeeping: each pattern lands in exactly one outcome bucket. Pattern 2's "double-clone on passing" does **not** contribute any surviving Clone outcome — the inner clone is already classified under Pattern 1's subletters (1a/1b/1c), and the outer clone simply vanishes as pure waste. Pattern 8a (Copy-type field) is listed under Borrow-as-bit-copy because Copy types don't generate a `.clone()` call; the bit-copy happens transparently. Patterns split by subletter (1a/1b/1c, 8a/8b/8c) reflect the three possible outcomes for that pattern depending on consumer disposition + last-use-ness + Copy-ness.
+Pattern bookkeeping — four-axis taxonomy:
+
+The outcome buckets above are **emitted-code shapes** (what the emitter renders), not axis labels. The primary axes (Read vs Construct, Last-use, Copy) determine which outcome bucket each use-site lands in:
+
+| Primary axes | Emitted outcome |
+|---|---|
+| Read, any last-use-ness, any Copy-ness | **Borrow** |
+| Construct + Last-use + non-Copy | **Move** |
+| Construct + not-Last-use + non-Copy | **Clone** |
+| Construct + any-last-use-ness + Copy | **Bit-copy** (no explicit emission) |
+| Read + Copy | **Bit-copy in reads** (folded into Borrow when source is referenced; or bit-copy when pattern-matched by value) |
+
+Additional bookkeeping:
+
+- **Pattern 2** ("double-clone on passing") does not contribute any surviving Clone outcome. The inner clone inherits classification from the underlying Pattern 1 cell (1a/1b/1c); the outer clone vanishes as pure waste.
+- **Pattern 8a** (Copy-type struct field) is Construct+Copy → **Bit-copy**, not Borrow. Earlier bookkeeping that listed it under "Borrow-as-bit-copy" conflated two axes; the correct separation is that Bit-copy is its own emitted outcome, distinct from Borrow.
+- **Subletter patterns** (1a/1b/1c, 8a/8b/8c) reflect branching on disposition × last-use × Copy-ness. Each subletter lands in exactly one outcome bucket.
 
 **Predicted optimal floor: ~1–3 genuine clones.** (Same number referenced in §4.3 and §5 below.)
 
