@@ -6,7 +6,7 @@ pub enum TemplateArgumentLookup {
     MissingTemplateArgument,
     FoundTemplateArgument { _0: DeclarationId },
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TemplateArgumentBinding {
     Conflict,
     NoOp,

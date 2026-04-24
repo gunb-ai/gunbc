@@ -1,13 +1,13 @@
 // AUTO-GENERATED from `src/v3/lenses/variant_payload.dag` via
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum VariantPayloadShape {
     Empty,
     PositionalSingle,
     NamedFields { _0: Vec<String> },
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum VariantPayloadShapeLookup {
     DeclarationMissing,
     NotPayloadProduct,
