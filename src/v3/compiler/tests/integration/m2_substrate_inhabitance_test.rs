@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
     join_evidence, kernel_algebra_profile, lower_call_pattern, map_evidence_merge_at,
@@ -10,7 +11,6 @@ use v3_compiler::dag::{
     SubValueRelation, TypeConnective, ValueBody,
 };
 use v3_compiler::parse_surface;
-use v3_compiler::compile_to_dag;
 use v3_compiler::Dag;
 use v3_compiler::Diagnostic;
 use v3_compiler::{parse_for_test, tokenize_for_test};
