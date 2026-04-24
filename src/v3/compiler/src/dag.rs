@@ -905,7 +905,8 @@ pub fn tree_size_bound(param: String) -> SizeBound {
 pub enum CallPattern {
     ChildAccessorCall { accessor: String },
     CollectionShrinkCall { amount: PositiveInt },
-    ArithmeticDescentCall { op: String, by: PositiveInt },
+    ArithmeticSubtractCall { by: PositiveInt },
+    ArithmeticDivideCall { by: DivisionDescentFactor },
     ParserAdvanceCall { witness: String },
     WorklistDrainCall { element: String },
     FoldBodyCall,
@@ -965,7 +966,15 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::ArithmeticDescentCall { .. } => LoweringTarget {
+        CallPattern::ArithmeticSubtractCall { .. } => LoweringTarget {
+            primitive: IterationPrimitive::Repeat,
+            bound: SizeBound::ArithmeticParam {
+                param: "n".to_string(),
+            },
+            evidence: DescentEvidence::Strict,
+            factor: None,
+        },
+        CallPattern::ArithmeticDivideCall { .. } => LoweringTarget {
             primitive: IterationPrimitive::Repeat,
             bound: SizeBound::ArithmeticParam {
                 param: "n".to_string(),

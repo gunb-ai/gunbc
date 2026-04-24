@@ -331,8 +331,12 @@ fn computation_carriers_bootstrap_from_v3_std() {
                 vec![String::from("amount")],
             ),
             (
-                String::from("ArithmeticDescentCall"),
-                vec![String::from("op"), String::from("by")],
+                String::from("ArithmeticSubtractCall"),
+                vec![String::from("by")],
+            ),
+            (
+                String::from("ArithmeticDivideCall"),
+                vec![String::from("by")],
             ),
             (
                 String::from("ParserAdvanceCall"),
@@ -402,8 +406,8 @@ fn computation_lowering_functions_preserve_std_body_spans() {
 #[test]
 fn computation_lowering_rust_mirror_matches_dag_authority() {
     use CallPattern::{
-        ArithmeticDescentCall, ChildAccessorCall, CollectionShrinkCall, FoldBodyCall,
-        ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
+        ArithmeticDivideCall, ArithmeticSubtractCall, ChildAccessorCall, CollectionShrinkCall,
+        FoldBodyCall, ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
     };
     use DescentEvidence::{NonIncreasing, Strict};
     use IterationPrimitive::{Descend, Fold, Repeat};
@@ -435,10 +439,18 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
             },
         ),
         (
-            ArithmeticDescentCall {
-                op: String::from("sub"),
-                by: 1,
+            ArithmeticSubtractCall { by: 1 },
+            LoweringTarget {
+                primitive: Repeat,
+                bound: ArithmeticParam {
+                    param: String::from("n"),
+                },
+                evidence: Strict,
+                factor: None,
             },
+        ),
+        (
+            ArithmeticDivideCall { by: 2 },
             LoweringTarget {
                 primitive: Repeat,
                 bound: ArithmeticParam {

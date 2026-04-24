@@ -36,10 +36,15 @@ fn tree_size_bound(param: String) -> SizeBound {
 // `witness`, `element`) and the carrier itself dissolve once E-I/E-P land
 // per-call provenance — at which point `CallPattern` becomes a projection
 // of `SubValueRelation` evidence rather than an authored shape.
+// Arithmetic descent is split across subtract/divide so the refinement on
+// each operator (subtract by >= 1, divide by >= 2) is representable at the
+// carrier, mirroring `std.termination::DescentSource::ArithmeticSubtract /
+// ArithmeticDivide`. No String `op` tag is authored — the variant is the op.
 type CallPattern
   = ChildAccessorCall { accessor: String }
   | CollectionShrinkCall { amount: PositiveInt }
-  | ArithmeticDescentCall { op: String, by: PositiveInt }
+  | ArithmeticSubtractCall { by: PositiveInt }
+  | ArithmeticDivideCall { by: DivisionDescentFactor }
   | ParserAdvanceCall { witness: String }
   | WorklistDrainCall { element: String }
   | FoldBodyCall
@@ -87,7 +92,12 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
         bound: CollectionSize { param: "collection" },
         evidence: Strict, factor: none }
 
-    ArithmeticDescentCall { op: _, by: _ } =>
+    ArithmeticSubtractCall { by: _ } =>
+      LoweringTarget { primitive: Repeat,
+        bound: ArithmeticParam { param: "n" },
+        evidence: Strict, factor: none }
+
+    ArithmeticDivideCall { by: _ } =>
       LoweringTarget { primitive: Repeat,
         bound: ArithmeticParam { param: "n" },
         evidence: Strict, factor: none }
