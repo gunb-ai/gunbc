@@ -265,6 +265,8 @@ impl<'a> TestRunner<'a> {
         //
         // TODO: delete side-check `compile_to_dag` when `eval_lens_output_equals` applies
         // the lens for real (no duplicate compile in the runner for this predicate).
+        // Today’s gate fixture uses trivial `claim.source` (`let _: Int = 0`); the compile
+        // is a thin structural receipt until real lens evaluation consumes meaningful witness text.
         if let Err(err) = compile_to_dag(&claim.source, &claim.file_name) {
             return ClaimResult::Fail(format!(
                 "LensOutputEquals: claim `source` did not compile (needed for future lens application): {err:?}"

@@ -6,6 +6,12 @@
 // `LensOutputEquals` resolve from that merged std graph; the explicit import below
 // documents the verification surface without implying a standalone module file.
 //
+// Predicate shape: `LensOutputEquals(Int, lens_output_ref_input, lens_output_ref_expected)`
+// reuses the first slot as a **type** (`Int`) — a DeclarationRef-shaped stand-in for the
+// future “lens function” edge, same convention as `lens_output_equals_predicate_accepts_*`
+// (mock-invariant harness). Do not read `lens_ref = Int` as a real lens declaration; when
+// T-LensAPI lands, replace with an actual lens `DeclarationRef` and real apply/compare.
+//
 // Kept separate from `r1_gates.dag`: compiling `LensOutputEquals(Int, …)` in the
 // same translation unit as the large embedded `user_authored_lens_compiles_gate`
 // `source` string currently breaks `DeclarationRef` resolution for `Int` in this
