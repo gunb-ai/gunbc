@@ -1135,16 +1135,15 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
             };
             let callee_template = callable_target_template_for_provenance(dag, target_decl);
             let evidence = match (caller_template, callee_template) {
-                (CallableProvenance::Resolved(caller), CallableProvenance::Resolved(callee))
-                    if caller == callee =>
-                {
-                    transform
-                        .inputs
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, arg)| classify_call_argument(dag, caller, idx, *arg))
-                        .collect()
-                }
+                (
+                    CallableProvenance::Resolved(caller_template),
+                    CallableProvenance::Resolved(callee_template),
+                ) if caller_template == callee_template => transform
+                    .inputs
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, arg)| classify_call_argument(dag, caller, idx, *arg))
+                    .collect(),
                 (CallableProvenance::Resolved(_), CallableProvenance::Resolved(_)) => continue,
                 (CallableProvenance::Resolved(_), CallableProvenance::Unresolved)
                 | (CallableProvenance::Unresolved, _) => {
@@ -1279,7 +1278,10 @@ enum CallableProvenance {
 
 const CALLABLE_PROVENANCE_TEMPLATE_DEPTH_LIMIT: usize = 16;
 
-fn callable_target_template_for_provenance(dag: &Dag, mut decl: DeclarationId) -> CallableProvenance {
+fn callable_target_template_for_provenance(
+    dag: &Dag,
+    mut decl: DeclarationId,
+) -> CallableProvenance {
     // Bounded peel over materialized instantiations. Hitting the cap means the
     // producer cannot prove self-vs-non-self provenance, so callers emit
     // `SubValueUnknown` rather than silently dropping the call edge.
