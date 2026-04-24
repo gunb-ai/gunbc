@@ -1,9 +1,14 @@
 //! M9 / P4: Peano literal bridges cap at 256 — oversize `Int` inputs must fail closed (`none`),
 //! not deep-recurse or wrap (PR #726 review: boundary regression).
+//!
+//! `master_theorem` / `work_exponent`: same ceiling must apply **before** `int_pow_bounded`
+//! (PR #726 meta-review: raw exponent fail-closed at the cost-algebra boundary).
 
 use std::rc::Rc;
 
-use v2_compiler::std_induction::{cost_bound_is_sum_bound, cost_constant, sum_bound};
+use v2_compiler::std_induction::{
+    cost_bound_is_sum_bound, cost_constant, master_theorem, sum_bound, CostBound, RecurrenceForm,
+};
 use v2_compiler::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
 };
@@ -30,4 +35,32 @@ fn sum_bound_has_cost_bound_introspection_consumer() {
     let b = sum_bound(terms);
     assert!(cost_bound_is_sum_bound(b));
     assert!(!cost_bound_is_sum_bound(cost_constant()));
+}
+
+#[test]
+fn master_theorem_rejects_work_exponent_above_peano_cap() {
+    let form = Rc::new(RecurrenceForm {
+        param: "n".to_string(),
+        branches: 2,
+        divisor: 2,
+        work_exponent: 257,
+    });
+    assert!(matches!(
+        master_theorem(&form).as_ref(),
+        CostBound::ErrorBound
+    ));
+}
+
+#[test]
+fn master_theorem_rejects_negative_work_exponent() {
+    let form = Rc::new(RecurrenceForm {
+        param: "n".to_string(),
+        branches: 2,
+        divisor: 2,
+        work_exponent: -1,
+    });
+    assert!(matches!(
+        master_theorem(&form).as_ref(),
+        CostBound::ErrorBound
+    ));
 }

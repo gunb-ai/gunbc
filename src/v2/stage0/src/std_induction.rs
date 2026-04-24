@@ -700,18 +700,29 @@ pub fn int_mul_checked(a: i64, b: i64) -> Option<i64> {
     }
 }
 
-pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (exp.clone() < 0) {
+pub fn bounded_int_pow_exponent(k: i64) -> Option<i64> {
+    if (k.clone() < 0) {
+        None
+    } else {
+        if (k.clone() > 256) {
             None
         } else {
-            if (exp.clone() > 256) {
-                None
-            } else {
-                if (exp.clone() == 0) {
+            Some(k.clone())
+        }
+    }
+}
+
+pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || match bounded_int_pow_exponent(exp) {
+            None => None,
+            Some(e) => {
+                if (e.clone() == 0) {
                     Some(1)
                 } else {
-                    match int_pow_bounded(base.clone(), (exp.clone() - 1)) {
+                    match int_pow_bounded(base.clone(), (e.clone() - 1)) {
                         Some(prev) => match int_mul_checked(base.clone(), prev.clone()) {
                             Some(prod) => Some(prod.clone()),
                             None => None,
@@ -720,8 +731,8 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
                     }
                 }
             }
-        }
-    })
+        },
+    )
 }
 
 pub fn ceil_log(base: i64, argument: i64) -> Option<i64> {
@@ -764,61 +775,66 @@ pub fn master_theorem(form: &Rc<RecurrenceForm>) -> Rc<CostBound> {
         let b = form.divisor.clone();
         let d = form.work_exponent.clone();
         let n = form.param.clone();
-        if ((((a.clone() < 1) || (b.clone() < 2)) || (d.clone() < 0)) || (d.clone() > 256)) {
+        if ((a.clone() < 1) || (b.clone() < 2)) {
             Rc::new(CostBound::ErrorBound)
         } else {
-            match int_pow_bounded(b.clone(), d.clone()) {
+            match bounded_int_pow_exponent(d) {
                 None => Rc::new(CostBound::ErrorBound),
-                Some(b_to_d) => {
-                    if (a.clone() < b_to_d.clone()) {
-                        match d.clone() {
-                            0 => Rc::new(CostBound::ConstantBound),
-                            _ => cost_poly(n.clone(), d.clone()),
-                        }
-                    } else {
-                        if (a.clone() == b_to_d.clone()) {
-                            match d.clone() {
-                                0 => cost_log(n.clone()),
-                                _ => match positive_descent_amount_from_positive_int(d.clone()) {
-                                    Some(deg) => Rc::new(CostBound::ProductBound {
-                                        factors: Rc::new(vec![
-                                            Rc::new(AtomicCost::PolyCost {
-                                                param: n.clone(),
-                                                exponent: Rc::new(
-                                                    PolynomialExponent::IntegerExpPos {
-                                                        degree: deg.clone(),
-                                                    },
-                                                ),
-                                            }),
-                                            Rc::new(AtomicCost::LogCost { param: n.clone() }),
-                                        ]),
-                                    }),
-                                    None => Rc::new(CostBound::ErrorBound),
-                                },
+                Some(d_ok) => match int_pow_bounded(b.clone(), d_ok.clone()) {
+                    None => Rc::new(CostBound::ErrorBound),
+                    Some(b_to_d) => {
+                        if (a.clone() < b_to_d.clone()) {
+                            match d_ok.clone() {
+                                0 => Rc::new(CostBound::ConstantBound),
+                                _ => cost_poly(n.clone(), d_ok.clone()),
                             }
                         } else {
-                            match proportional_divisor_from_int_at_least_two(b.clone()) {
-                                Some(base_w) => {
-                                    match positive_descent_amount_from_positive_int(a.clone()) {
-                                        Some(arg_w) => Rc::new(CostBound::AtomicBound {
-                                            cost: Rc::new(AtomicCost::PolyCost {
-                                                param: n.clone(),
-                                                exponent: Rc::new(
-                                                    PolynomialExponent::LogBasedExp {
-                                                        base: base_w.clone(),
-                                                        argument: arg_w.clone(),
-                                                    },
-                                                ),
-                                            }),
+                            if (a.clone() == b_to_d.clone()) {
+                                match d_ok.clone() {
+                                    0 => cost_log(n.clone()),
+                                    _ => match positive_descent_amount_from_positive_int(
+                                        d_ok.clone(),
+                                    ) {
+                                        Some(deg) => Rc::new(CostBound::ProductBound {
+                                            factors: Rc::new(vec![
+                                                Rc::new(AtomicCost::PolyCost {
+                                                    param: n.clone(),
+                                                    exponent: Rc::new(
+                                                        PolynomialExponent::IntegerExpPos {
+                                                            degree: deg.clone(),
+                                                        },
+                                                    ),
+                                                }),
+                                                Rc::new(AtomicCost::LogCost { param: n.clone() }),
+                                            ]),
                                         }),
                                         None => Rc::new(CostBound::ErrorBound),
-                                    }
+                                    },
                                 }
-                                None => Rc::new(CostBound::ErrorBound),
+                            } else {
+                                match proportional_divisor_from_int_at_least_two(b.clone()) {
+                                    Some(base_w) => {
+                                        match positive_descent_amount_from_positive_int(a.clone()) {
+                                            Some(arg_w) => Rc::new(CostBound::AtomicBound {
+                                                cost: Rc::new(AtomicCost::PolyCost {
+                                                    param: n.clone(),
+                                                    exponent: Rc::new(
+                                                        PolynomialExponent::LogBasedExp {
+                                                            base: base_w.clone(),
+                                                            argument: arg_w.clone(),
+                                                        },
+                                                    ),
+                                                }),
+                                            }),
+                                            None => Rc::new(CostBound::ErrorBound),
+                                        }
+                                    }
+                                    None => Rc::new(CostBound::ErrorBound),
+                                }
                             }
                         }
                     }
-                }
+                },
             }
         }
     }
