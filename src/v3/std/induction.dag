@@ -823,7 +823,7 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
   let d = form.work_exponent
   let n = form.param
   // Fail-closed: invalid inputs produce ErrorBound, not fabricated O(1).
-  // P4: `bounded_int_pow_exponent` rejects `work_exponent` outside [0,256] before `int_pow_bounded`.
+  // P4: `bounded_int_pow_exponent` rejects `work_exponent` outside [0, peano_literal_materialization_cap()] before `int_pow_bounded`.
   if a < 1 || b < 2 { ErrorBound }
   else {
     match bounded_int_pow_exponent(k: d) {
