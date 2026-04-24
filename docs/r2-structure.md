@@ -25,31 +25,29 @@ Post-R2 is external work (adoption, documentation, community) — not on the the
 
 ## Goals
 
-1. **Grounding Completeness** — target-side primitive types for Rust/Python/Go structurally declared; coercion via inhabitance search; Track-13 dissolution. Inherits from `ROADMAP.md §"Post-R1 Program — Grounding Completeness"` → promotes to R2 lane `T-Ground`.
+**Gate-ownership discipline.** Every R1 gate listed in `ROADMAP.md §"Lane acceptance — .dag gates"` closes in R1 under the locked all-R1-gates-green criterion (see R1 closure criteria below). That means concerns gated there — **lens purity** (`lens_producer_files_remaining` on T-PB-A via PR #752), **self-hosting shim-floor close** (T-PB-A `pb_hand_rust_at_shim_floor` + `pb_compiler_std_ratchet_zero` + T-PB-B `pb_rust_tests_outside_residual_zero`), and **E-family carrier port closure** (the T-LaneE critical path enabling `complexity_merge_sort_is_nlogn` + `complexity_v3_matches_v2_oracle`) — are **R1 scope, not R2**. R2 does not duplicate release authority over gates ROADMAP already assigns to R1 lanes.
 
-2. **Lens Purity by Construction** — every lens body `.dag`-authored; kernel closure replaces reviewer-convention. `lens_producer_files_remaining` gate (introduced via PR #752) lands at zero.
+Under that discipline, R2's goals are the Tier-1 thesis claims that are *not* gated in R1 today:
 
-3. **Self-hosting shim-floor close** — T-PB-A non-test census reaches ≤5 irreducible shims per `docs/design-pure-bootstrap.md`; T-PB-B outside-residual-zero (per `TESTING.md §Post-R2 shape`); compiler-std consolidation ratchet → 0.
+1. **Grounding Completeness** — target-side primitive types for Rust/Python/Go structurally declared; coercion via inhabitance search; Track-13 dissolution. Inherits from `ROADMAP.md §"Post-R1 Program — Grounding Completeness"` → promotes to R2 lane `T-Ground`. Not in R1's gate list today; R2 is where it lands.
 
-4. **Modeling-faithfulness dissolution** — three Tier-1 type-refinement gaps close:
+2. **Modeling-faithfulness dissolution** — three Tier-1 type-refinement gaps close:
    - Surface int-literal magnitude at concept layer (P4 row on `ROADMAP.md`; originating analysis on PR #745)
    - `Secret<T>` nominal-opaque graduation (`ROADMAP.md` post-merge-debt section, 2026-04-23 thesis-doc surface)
    - `Dimension<Carrier>` typed value wrapper with phantom-parameter unit-mismatch enforcement (ibid.)
 
-5. **Substrate prereqs** — named as explicit R2 sub-lanes with **scoped acceptance criteria** (sufficient-to-unblock, not full-capability). Each prereq is pinned to a specific Goal 4 item; full substrate-capability lanes retain open design calls that may predate or postdate R2, and this structure does not commit R2 to close them all:
+3. **Substrate prereqs** — named as explicit R2 sub-lanes with **scoped acceptance criteria** (sufficient-to-unblock, not full-capability). Each prereq is pinned to a specific Goal 2 item; full substrate-capability lanes retain open design calls that may predate or postdate R2, and this structure does not commit R2 to close them all:
 
    - **Cardinality-substrate subset sufficient to close int-literal magnitude refinement** — enough cardinality modeling to let `IntLit` carry a magnitude that narrows to target int algebra at reconciliation. Does NOT commit to the full cardinality-substrate capability (fixed-width-types by-construction, container cardinality bounds in Grounding, etc. — those remain open design calls outside R2 scope unless additional R2 items demand them).
    - **Nominal-opaque substrate sufficient to graduate `Secret<T>`** — enough nominal-type modeling to carry construction-restriction (`where only X may construct`) semantics. Adjacent to DB-11 alias-RHS `where` (landed in R1 via PR #703); may or may not overlap DB-18 territory. Acceptance is `Secret<T>` graduation, not a general nominal-type program.
    - **Parametric algebra attachment subset sufficient to inhabit `Dimension<Carrier>` in an abelian group algebra** — enough substrate capability to let `Dimension<Unit>` carry phantom-parameter arithmetic (propagate through operations, compile error on unit-mismatch). Primary authority is `ROADMAP.md §"Post-R1 Program — Grounding Completeness"` (the "Why post-R1" paragraph), which tags this dependency `DB-18 parametric algebra attachment` — but `docs/db-history/db-18.md` currently scopes DB-18 to workflow-effect carrier + Rust reflection (Part 2 shipped) + Go-accessor follow-up (Part 3), not parametric algebra attachment. That mismatch is an existing ROADMAP ↔ db-history inconsistency, not one introduced by this doc; a pre-promotion DB-lane rename or new DB number may be warranted. R2 acceptance is: `Dimension<Unit>` phantom-parameter arithmetic compiles with unit-mismatch errors, independent of the DB-tag the substrate ends up carrying.
 
-6. **Remaining R2+ impossible-bug classes** — three classes currently tagged `[R2+]` in `ROADMAP.md §"Lane acceptance — .dag gates"` (T-Demo row; THESIS §"Enumerable impossible-bug classes" is the authority on scheduling tags):
+4. **Remaining R2+ impossible-bug classes** — three classes currently tagged `[R2+]` in `ROADMAP.md §"Lane acceptance — .dag gates"` (T-Demo row; THESIS §"Enumerable impossible-bug classes" is the authority on scheduling tags):
    - Nested-optional flatten
    - Unhandled diagnostic paths
    - Unenumerated effects
 
-7. **E-family carrier port closure** — E-I finish → E-P → E-M → §6a per-method-metadata call, per `docs/design-substrate-carrier-port-program.md`. Per-method-metadata option-pick deferred in R1; decides here.
-
-8. **R2 closure demo** — simple "it runs" artifact per lane close. Director-coordinated. No dedicated demo lane (see Demo discipline below).
+5. **R2 closure demo** — simple "it runs" artifact per lane close. Director-coordinated. Not a lane — see Demo discipline below.
 
 ## Manager structure
 
