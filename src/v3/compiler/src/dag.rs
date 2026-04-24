@@ -960,19 +960,36 @@ pub fn tree_size_bound(param: String) -> SizeBound {
 /// 🟡 SCAFFOLD — `CallPattern` coproduct (`docs/modeling-discipline.md` §4).
 ///
 /// Authority: `src/v3/std/computation.dag`. Peano shrink payloads are proof-grade (terminal
-/// at witness shape); `String` slots + synthetic `lower_call_pattern` size labels dissolve
-/// with per-call provenance (E-P) and structural parameter refs. **Named trigger:** same as
-/// [`SizeBound`]. **Ledger:**
+/// at witness shape); `String` slots on `CallPattern` forward into `SizeBound.param` via
+/// `lower_call_pattern` (no fabricated size labels). Dissolves with structural parameter refs
+/// (E-P). **Named trigger:** same as [`SizeBound`]. **Ledger:**
 /// `m2_substrate_inhabitance_test::computation_lowering_rust_mirror_matches_dag_authority`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallPattern {
-    ChildAccessorCall { accessor: String },
-    CollectionShrinkCall { amount: PositiveDescentAmount },
-    ArithmeticSubtractCall { steps: PositiveDescentAmount },
-    ArithmeticDivideCall { divisor: ProportionalDivisor },
-    ParserAdvanceCall { witness: String },
-    WorklistDrainCall { element: String },
-    FoldBodyCall,
+    ChildAccessorCall {
+        accessor: String,
+    },
+    CollectionShrinkCall {
+        amount: PositiveDescentAmount,
+        collection: String,
+    },
+    ArithmeticSubtractCall {
+        steps: PositiveDescentAmount,
+        ring_param: String,
+    },
+    ArithmeticDivideCall {
+        divisor: ProportionalDivisor,
+        ring_param: String,
+    },
+    ParserAdvanceCall {
+        witness: String,
+    },
+    WorklistDrainCall {
+        element: String,
+    },
+    FoldBodyCall {
+        outer_collection: String,
+    },
     SameArgumentCall,
 }
 
@@ -1079,50 +1096,43 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::CollectionShrinkCall { amount } => LoweringTarget {
+        CallPattern::CollectionShrinkCall { amount, collection } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize {
-                param: "collection".to_string(),
-            },
+            bound: SizeBound::CollectionSize { param: collection },
             evidence: DescentEvidence::Strict,
             factor: Some(ShrinkFactor::ConstantShrink { steps: amount }),
         },
-        CallPattern::ArithmeticSubtractCall { steps } => LoweringTarget {
+        CallPattern::ArithmeticSubtractCall { steps, ring_param } => LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: SizeBound::ArithmeticParam {
-                param: "n".to_string(),
-            },
+            bound: SizeBound::ArithmeticParam { param: ring_param },
             evidence: DescentEvidence::Strict,
             factor: Some(ShrinkFactor::ConstantShrink { steps }),
         },
-        CallPattern::ArithmeticDivideCall { divisor } => LoweringTarget {
+        CallPattern::ArithmeticDivideCall {
+            divisor,
+            ring_param,
+        } => LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: SizeBound::ArithmeticParam {
-                param: "n".to_string(),
-            },
+            bound: SizeBound::ArithmeticParam { param: ring_param },
             evidence: DescentEvidence::Strict,
             factor: Some(ShrinkFactor::ProportionalShrink { divisor }),
         },
-        CallPattern::ParserAdvanceCall { .. } => LoweringTarget {
+        CallPattern::ParserAdvanceCall { witness } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize {
-                param: "tokens".to_string(),
-            },
+            bound: SizeBound::CollectionSize { param: witness },
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::WorklistDrainCall { .. } => LoweringTarget {
+        CallPattern::WorklistDrainCall { element } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: SizeBound::CollectionSize {
-                param: "worklist".to_string(),
-            },
+            bound: SizeBound::CollectionSize { param: element },
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::FoldBodyCall => LoweringTarget {
+        CallPattern::FoldBodyCall { outer_collection } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
             bound: SizeBound::CollectionSize {
-                param: "outer_collection".to_string(),
+                param: outer_collection,
             },
             evidence: DescentEvidence::NonIncreasing,
             factor: None,

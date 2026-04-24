@@ -124,6 +124,7 @@ Each placeholder below gets promoted to a full brief when dispatched. Stop-signa
 - **Work:** port `SizeBound`, `CallPattern`, `ShrinkFactor`, `IterationPrimitive`, `LoweringTarget`, `IterationDimension`, `lower_call_pattern`, plus the helpers (`size_bound_param`, `is_constant_bound`, `constant_bound_value`, `algebra_profile_to_dimension`, `type_iteration_dimension`). Requires E-T landed.
 - **Acceptance:** `lower_call_pattern` is the v3 lowering authority. `cost.dag` can begin consuming `CallPattern` (partial progress recorded in register).
 - **STOP-AND-ESCALATE:** profile-lookup (`kernel_algebra_profile`) has a v3 gap → surface, don't paper over.
+- **Dissolution / semantic ledger (non-blocking receipt, PR #726 review):** `constant_bound_value` now returns `Int?` and, for `SizeBound::Forever`, yields the signed iteration cap (`forever_iteration_bound()` / `i64::MAX` in the Rust mirror), not a collapsed `1` coefficient. Older readers may have treated “constant value of Forever” as an O(1) literal; the live meaning is **iteration bound / repeat cap** (same posture as `repeat(max_int)` in `std.iteration`), with `none` reserved for non-constant bounds so callers cannot silently conflate “not constant” with zero.
 
 ### Lane E-I — Port `SubValueRelation` + inductive fields + cost algebra `(M)`
 

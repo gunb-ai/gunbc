@@ -51,13 +51,30 @@ pub fn positive_descent_count(steps: Rc<PositiveDescentAmount>) -> i64 {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CallPattern {
-    ChildAccessorCall { accessor: String },
-    CollectionShrinkCall { amount: Rc<PositiveDescentAmount> },
-    ArithmeticSubtractCall { steps: Rc<PositiveDescentAmount> },
-    ArithmeticDivideCall { divisor: Rc<ProportionalDivisor> },
-    ParserAdvanceCall { witness: String },
-    WorklistDrainCall { element: String },
-    FoldBodyCall,
+    ChildAccessorCall {
+        accessor: String,
+    },
+    CollectionShrinkCall {
+        amount: Rc<PositiveDescentAmount>,
+        collection: String,
+    },
+    ArithmeticSubtractCall {
+        steps: Rc<PositiveDescentAmount>,
+        ring_param: String,
+    },
+    ArithmeticDivideCall {
+        divisor: Rc<ProportionalDivisor>,
+        ring_param: String,
+    },
+    ParserAdvanceCall {
+        witness: String,
+    },
+    WorklistDrainCall {
+        element: String,
+    },
+    FoldBodyCall {
+        outer_collection: String,
+    },
     SameArgumentCall,
 }
 
@@ -93,53 +110,56 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
-        CallPattern::CollectionShrinkCall { amount: p, .. } => Rc::new(LoweringTarget {
+        CallPattern::CollectionShrinkCall {
+            amount: p,
+            collection: c,
+            ..
+        } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize {
-                param: "collection".to_string(),
-            }),
+            bound: Rc::new(SizeBound::CollectionSize { param: c.clone() }),
             evidence: DescentEvidence::Strict,
             factor: Some(Rc::new(ShrinkFactor::ConstantShrink { steps: p.clone() })),
         }),
-        CallPattern::ArithmeticSubtractCall { steps: p, .. } => Rc::new(LoweringTarget {
+        CallPattern::ArithmeticSubtractCall {
+            steps: p,
+            ring_param: r,
+            ..
+        } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: Rc::new(SizeBound::ArithmeticParam {
-                param: "n".to_string(),
-            }),
+            bound: Rc::new(SizeBound::ArithmeticParam { param: r.clone() }),
             evidence: DescentEvidence::Strict,
             factor: Some(Rc::new(ShrinkFactor::ConstantShrink { steps: p.clone() })),
         }),
-        CallPattern::ArithmeticDivideCall { divisor: d, .. } => Rc::new(LoweringTarget {
+        CallPattern::ArithmeticDivideCall {
+            divisor: d,
+            ring_param: r,
+            ..
+        } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: Rc::new(SizeBound::ArithmeticParam {
-                param: "n".to_string(),
-            }),
+            bound: Rc::new(SizeBound::ArithmeticParam { param: r.clone() }),
             evidence: DescentEvidence::Strict,
             factor: Some(Rc::new(ShrinkFactor::ProportionalShrink {
                 divisor: d.clone(),
             })),
         }),
-        CallPattern::ParserAdvanceCall { .. } => Rc::new(LoweringTarget {
+        CallPattern::ParserAdvanceCall { witness: w, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize {
-                param: "tokens".to_string(),
-            }),
+            bound: Rc::new(SizeBound::CollectionSize { param: w.clone() }),
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
-        CallPattern::WorklistDrainCall { .. } => Rc::new(LoweringTarget {
+        CallPattern::WorklistDrainCall { element: e, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize {
-                param: "worklist".to_string(),
-            }),
+            bound: Rc::new(SizeBound::CollectionSize { param: e.clone() }),
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
-        CallPattern::FoldBodyCall => Rc::new(LoweringTarget {
+        CallPattern::FoldBodyCall {
+            outer_collection: oc,
+            ..
+        } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize {
-                param: "outer_collection".to_string(),
-            }),
+            bound: Rc::new(SizeBound::CollectionSize { param: oc.clone() }),
             evidence: DescentEvidence::NonIncreasing,
             factor: None,
         }),

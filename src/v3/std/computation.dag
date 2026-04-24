@@ -45,12 +45,12 @@ fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
 // payloads stay terminal (shared with `std.termination`).
 type CallPattern
   = ChildAccessorCall { accessor: String }
-  | CollectionShrinkCall { amount: PositiveDescentAmount }
-  | ArithmeticSubtractCall { steps: PositiveDescentAmount }
-  | ArithmeticDivideCall { divisor: ProportionalDivisor }
+  | CollectionShrinkCall { amount: PositiveDescentAmount, collection: String }
+  | ArithmeticSubtractCall { steps: PositiveDescentAmount, ring_param: String }
+  | ArithmeticDivideCall { divisor: ProportionalDivisor, ring_param: String }
   | ParserAdvanceCall { witness: String }
   | WorklistDrainCall { element: String }
-  | FoldBodyCall
+  | FoldBodyCall { outer_collection: String }
   | SameArgumentCall
 
 // 🟢 TERMINAL coproduct — shrink-rate witnesses aligned with `std.termination`. Dissolution: none
@@ -76,11 +76,8 @@ type LoweringTarget {
   factor: ShrinkFactor?
 }
 
-// `lower_call_pattern` fills `SizeBound.param` with **synthetic** labels
-// (`"collection"`, `"n"`, `"tokens"`, `"worklist"`, `"outer_collection"`) — not
-// reflective IR parameter names. They exist only so `LoweringTarget` has a
-// well-shaped `SizeBound` shell until `CallPattern` / lowering carries structural
-// size-parameter refs; dissolution replaces these literals with real param refs.
+// `lower_call_pattern` copies CallPattern-carried `String` slots into `SizeBound.param`
+// (no fabricated size labels). String bridges dissolve with structural refs (E-P).
 fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
   match pattern {
     ChildAccessorCall { accessor: a } =>
@@ -88,37 +85,37 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
         bound: TreeSize { param: a },
         evidence: Strict, factor: none }
 
-    CollectionShrinkCall { amount: p } =>
+    CollectionShrinkCall { amount: p, collection: c } =>
       LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: "collection" },
+        bound: CollectionSize { param: c },
         evidence: Strict,
         factor: Some { value: ConstantShrink { steps: p } } }
 
-    ArithmeticSubtractCall { steps: p } =>
+    ArithmeticSubtractCall { steps: p, ring_param: r } =>
       LoweringTarget { primitive: Repeat,
-        bound: ArithmeticParam { param: "n" },
+        bound: ArithmeticParam { param: r },
         evidence: Strict,
         factor: Some { value: ConstantShrink { steps: p } } }
 
-    ArithmeticDivideCall { divisor: d } =>
+    ArithmeticDivideCall { divisor: d, ring_param: r } =>
       LoweringTarget { primitive: Repeat,
-        bound: ArithmeticParam { param: "n" },
+        bound: ArithmeticParam { param: r },
         evidence: Strict,
         factor: Some { value: ProportionalShrink { divisor: d } } }
 
-    ParserAdvanceCall { witness: _ } =>
+    ParserAdvanceCall { witness: w } =>
       LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: "tokens" },
+        bound: CollectionSize { param: w },
         evidence: Strict, factor: none }
 
-    WorklistDrainCall { element: _ } =>
+    WorklistDrainCall { element: e } =>
       LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: "worklist" },
+        bound: CollectionSize { param: e },
         evidence: Strict, factor: none }
 
-    FoldBodyCall =>
+    FoldBodyCall { outer_collection: oc } =>
       LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: "outer_collection" },
+        bound: CollectionSize { param: oc },
         evidence: NonIncreasing, factor: none }
 
     SameArgumentCall =>

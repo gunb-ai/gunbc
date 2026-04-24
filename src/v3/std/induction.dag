@@ -456,13 +456,13 @@ fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
   match relation {
     StrictSubValue { field: f, factor: _ }    => Some { value: ChildAccessorCall { accessor: f.field_name } }
     IteratedSubValue { field: f }             => Some { value: ChildAccessorCall { accessor: f.field_name } }
-    ArithmeticDescent { param: _, factor: f } =>
+    ArithmeticDescent { param: p, factor: f } =>
       match f {
-        ConstantShrink { steps: p } =>
-          Some { value: ArithmeticSubtractCall { steps: p } }
+        ConstantShrink { steps: steps } =>
+          Some { value: ArithmeticSubtractCall { steps: steps, ring_param: p } }
         ProportionalShrink { divisor: d } =>
-          Some { value: ArithmeticDivideCall { divisor: d } }
-        UnitShrink => Some { value: ArithmeticSubtractCall { steps: OneStep } }
+          Some { value: ArithmeticDivideCall { divisor: d, ring_param: p } }
+        UnitShrink => Some { value: ArithmeticSubtractCall { steps: OneStep, ring_param: p } }
       }
     PreservedValue                            => Some { value: SameArgumentCall }
     SubValueUnknown                           => none
@@ -674,10 +674,10 @@ fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
 //   d: exponent of per-level non-recursive work (≥ 0; `master_theorem` rejects d < 0 → ErrorBound)
 //
 // P4 / P3 (cost-algebra boundary): `work_exponent` stays typed as `Int` while recurrence inputs
-// are a bootstrap scaffold, but **`master_theorem` rejects `d` outside `[0, 256]` before any
-// `b^d` materialization**, and `int_pow_bounded` caps `exp` at the same M9 ceiling as
-// `std.termination` Peano literal bridges — fail-closed to `ErrorBound` / `none` (no raw `*`
-// on the power path; see `int_mul_checked`).
+// are a bootstrap scaffold, but **`bounded_int_pow_exponent`** is the single authority gate:
+// `master_theorem` and `int_pow_bounded` route raw exponents through it **before** any `b^d`
+// recursion — same closed `[0, 256]` as `std.termination` Peano literal bridges (M9).
+// Oversized / negative → `none` / `ErrorBound` (no raw `*` on the power path; see `int_mul_checked`).
 //
 // 🟡 SCAFFOLD. Master-theorem input bundles a symbolic `param: String` with `Int` recurrence
 // coefficients; structural parameter refs dissolve with reflected function params.
@@ -742,31 +742,46 @@ fn int_mul_checked(a: Int, b: Int) -> Int? {
   }
 }
 
-// b^exp for exp ≥ 0 (exp = 0 → Some { value: 1 }). exp < 0 → none — no silent plausible
-// wrong output (P3; same posture as `ceil_log` / `cost_poly`). `master_theorem` still
-// rejects d < 0 → ErrorBound before calling; callers that omit that guard get `none`.
+// P4 / E-I (numeric boundary): sole gate from raw `Int` exponents / recurrence work degree into
+// `int_pow_bounded`'s recursive core. Same closed interval [0, 256] as Peano literal bridges in
+// `std.termination` (M9). Reject **before** any power recursion; do not hand `exp` to the
+// recursive `int_pow_bounded` body until it passes here (PR #726: fail before materialization).
+fn bounded_int_pow_exponent(k: Int) -> Int? {
+  if k < 0 { none }
+  else { if k > 256 { none } else { Some { value: k } } }
+}
+
+// b^exp for exp ≥ 0 (exp = 0 → Some { value: 1 }). Out-of-range exp → none via
+// `bounded_int_pow_exponent` — no silent plausible wrong output (P3; same posture as `ceil_log` / `cost_poly`).
 //
-// P4 (decidability): cap exp at 256 — same ceiling as `positive_descent_amount_from_positive_int`
-// / `proportional_divisor_from_int_at_least_two` in `std.termination` (M9 literal bridges).
-// Without this, a huge `work_exponent` forces O(exp) stack recursion before overflow can
-// return `none`. Oversized exp → `none` → `master_theorem` → `ErrorBound` (fail-closed).
+// P4 (degenerate bases): for `base ∈ {0, 1, -1}`, short-circuit before recursion (Codex #726).
 fn int_pow_bounded(base: Int, exp: Int) -> Int? {
-  if exp < 0 { none }
-  else {
-    if exp > 256 { none }
-    else {
-      if exp == 0 { Some { value: 1 } }
+  match bounded_int_pow_exponent(k: exp) {
+    None => none
+    Some { value: e } =>
+      if e == 0 { Some { value: 1 } }
       else {
-        match int_pow_bounded(base: base, exp: exp - 1) {
-          Some { value: prev } =>
-            match int_mul_checked(a: base, b: prev) {
-              Some { value: prod } => Some { value: prod }
-              None => none
+        if base == 0 { Some { value: 0 } }
+        else {
+          if base == 1 { Some { value: 1 } }
+          else {
+            if base == (0 - 1) {
+              let half = e / 2
+              if half + half == e { Some { value: 1 } } else { Some { value: 0 - 1 } }
             }
-          None => none
+            else {
+              match int_pow_bounded(base: base, exp: e - 1) {
+                Some { value: prev } =>
+                  match int_mul_checked(a: base, b: prev) {
+                    Some { value: prod } => Some { value: prod }
+                    None => none
+                  }
+                None => none
+              }
+            }
+          }
         }
       }
-    }
   }
 }
 
@@ -799,46 +814,47 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
   let d = form.work_exponent
   let n = form.param
   // Fail-closed: invalid inputs produce ErrorBound, not fabricated O(1).
-  // P4: reject `work_exponent` above the M9 literal-bridge ceiling (256) before any `b^d`
-  // work — aligns with `int_pow_bounded`'s exp cap / Peano materialization in `std.termination`.
-  if a < 1 || b < 2 || d < 0 || d > 256 { ErrorBound }
+  // P4: `bounded_int_pow_exponent` rejects `work_exponent` outside [0,256] before `int_pow_bounded`.
+  if a < 1 || b < 2 { ErrorBound }
   else {
-    // P4/P3: `d` is in [0,256] here (guard above). `int_pow_bounded` still caps `exp` and
-    // multiplies only via `int_mul_checked` — no raw `Int` power on unbounded `work_exponent`.
-    match int_pow_bounded(base: b, exp: d) {
+    match bounded_int_pow_exponent(k: d) {
       None => ErrorBound
-      Some { value: b_to_d } =>
-        if a < b_to_d {
-          // Case 3: per-level work dominates → O(n^d)
-          match d {
-            0 => ConstantBound
-            _ => cost_poly(param: n, degree: d)
-          }
-        } else {
-          if a == b_to_d {
-            // Case 2: balanced → O(n^d · log n)
-            match d {
-              0 => cost_log(param: n)
-              _ =>
-                match positive_descent_amount_from_positive_int(k: d) {
-                  Some { value: deg } =>
-                    ProductBound { factors: [PolyCost { param: n, exponent: IntegerExpPos { degree: deg } }, LogCost { param: n }] }
+      Some { value: d_ok } =>
+        match int_pow_bounded(base: b, exp: d_ok) {
+          None => ErrorBound
+          Some { value: b_to_d } =>
+            if a < b_to_d {
+              // Case 3: per-level work dominates → O(n^d)
+              match d_ok {
+                0 => ConstantBound
+                _ => cost_poly(param: n, degree: d_ok)
+              }
+            } else {
+              if a == b_to_d {
+                // Case 2: balanced → O(n^d · log n)
+                match d_ok {
+                  0 => cost_log(param: n)
+                  _ =>
+                    match positive_descent_amount_from_positive_int(k: d_ok) {
+                      Some { value: deg } =>
+                        ProductBound { factors: [PolyCost { param: n, exponent: IntegerExpPos { degree: deg } }, LogCost { param: n }] }
+                      None => ErrorBound
+                    }
+                }
+              } else {
+                // Case 1: sub-problem work dominates → O(n^(log_b(a)))
+                // Exact representation via LogBasedExp — no approximation
+                match proportional_divisor_from_int_at_least_two(k: b) {
+                  Some { value: baseW } =>
+                    match positive_descent_amount_from_positive_int(k: a) {
+                      Some { value: argW } =>
+                        AtomicBound { cost: PolyCost { param: n, exponent: LogBasedExp { base: baseW, argument: argW } } }
+                      None => ErrorBound
+                    }
                   None => ErrorBound
                 }
+              }
             }
-          } else {
-            // Case 1: sub-problem work dominates → O(n^(log_b(a)))
-            // Exact representation via LogBasedExp — no approximation
-            match proportional_divisor_from_int_at_least_two(k: b) {
-              Some { value: baseW } =>
-                match positive_descent_amount_from_positive_int(k: a) {
-                  Some { value: argW } =>
-                    AtomicBound { cost: PolyCost { param: n, exponent: LogBasedExp { base: baseW, argument: argW } } }
-                  None => ErrorBound
-                }
-              None => ErrorBound
-            }
-          }
         }
     }
   }

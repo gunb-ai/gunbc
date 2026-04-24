@@ -2977,8 +2977,8 @@ fn proof_to_call_pattern(proof: TerminationProof) -> CallPattern {
   match proof.dimensions |> first {
     Some { value: dim } => match dim {
       TreeSize { param: p }        => ChildAccessorCall { accessor: p }
-      ListLength { param: _ }      => CollectionShrinkCall { amount: OneStep }
-      ArithmeticValue { param: _ } => ArithmeticSubtractCall { steps: OneStep }
+      ListLength { param: p }      => CollectionShrinkCall { amount: OneStep, collection: p }
+      ArithmeticValue { param: p } => ArithmeticSubtractCall { steps: OneStep, ring_param: p }
       TokenPosition { param: p }   => ParserAdvanceCall { witness: p }
       SetCardinality { param: p }  => WorklistDrainCall { element: p }
     }
@@ -2989,7 +2989,11 @@ fn proof_to_call_pattern(proof: TerminationProof) -> CallPattern {
 fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>, parser_always_advancing: Map<String, Bool>, si: Map<String, NewlineIndex>) -> LoweringTarget {
   let path_calls = max_path_self_calls(body: body, func_name: func_name, si: si)
   if path_calls == 0 {
-    lower_call_pattern(pattern: FoldBodyCall)
+    let outer = match params |> first {
+      Some { value: p0 } => param_node_name_at(n: p0, source_indices: si)
+      None => "_fold_body"
+    }
+    lower_call_pattern(pattern: FoldBodyCall { outer_collection: outer })
   } else {
     // ── Step 1: Try descent_evidence (single authority) ──────────────
     // Read the evidence that CX-L2 annotated on ExprCall nodes.
@@ -3916,7 +3920,19 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
             }
           )
           if all_arithmetic {
-            lower_call_pattern(pattern: ArithmeticSubtractCall { steps: OneStep })
+            let ring_param = match members |> first {
+              Some { value: m0 } =>
+                match map_get(scc_measure_params, m0) {
+                  Some { value: pmap } =>
+                    match map_keys(pmap) |> first {
+                      Some { value: k } => k
+                      None => "_scc_arithmetic"
+                    }
+                  None => "_scc_arithmetic"
+                }
+              None => "_scc_arithmetic"
+            }
+            lower_call_pattern(pattern: ArithmeticSubtractCall { steps: OneStep, ring_param: ring_param })
           } else {
             lower_call_pattern(pattern: SameArgumentCall)
           }
