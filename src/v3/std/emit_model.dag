@@ -227,7 +227,7 @@ type RustRecordDeriveTemplates {
 }
 // TODO(dissolve, #676 / P2): when `TypeDefinitionSyntax` (or a per-target
 // substrate field) authors declared derive lists — e.g. `derives: List<…>` —
-// map `DeclFirstClassArrowWalk` / record `#[derive(…)]` from that list and
+// map first-class-`fn` / record `#[derive(…)]` from that list and
 // delete this Rust-only type plus the empty-string `record_derive_templates`
 // stub `data` rows in Go/Python `*_language` (no parallel placeholder).
 

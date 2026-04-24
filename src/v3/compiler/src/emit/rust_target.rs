@@ -2826,14 +2826,16 @@ struct RenderLocals {
 }
 
 /// Controls `Instantiation` recursion in `decl_includes_first_class_arrow_data`.
+/// User-fn **return** carrier must follow only **type arguments** so primitive
+/// return types (`Int`, …) do not transitively pick up unrelated callable shapes
+/// from a template id's stdlib substrate. Record / enum `Debug` omission needs
+/// the **template** head for user generics like `G<T>` (C-8 / #676 inline
+/// review); use [`DeclFirstClassArrowWalk::RecordDeriveOmitDebug`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DeclFirstClassArrowWalk {
-    /// User-fn return / param carrier: follow type **arguments** only. Template
-    /// heads (`Int`, `List`, …) can transitively mention `fn` in stdlib without the
-    /// **applied** type carrying first-class callable data.
     AppliedTypeArguments,
-    /// User record / enum `Debug` omission: also follow `Instantiation::template`
-    /// so zero-arity applied heads cannot hide callable fields (Codex #676).
+    /// Walk `Instantiation::template` unless the head is `List` (avoids
+    /// `List`-template noise; `G<T>` still uncovers callable fields in `G`'s `Conj`).
     RecordDeriveOmitDebug,
 }
 
@@ -4916,10 +4918,13 @@ impl<'a> Ctx<'a> {
     /// emitted Rust uses `Rc<dyn Fn…>` which is not `Debug` — user `struct` /
     /// `enum` derives must omit `Debug` (see `rust_record_derive_templates`).
     ///
-    /// For `TypeConnective::Instantiation`, `RecordDeriveOmitDebug` walks **both**
-    /// type arguments and the template head so zero-arity instantiations cannot
-    /// hide callable fields; `AppliedTypeArguments` follows arguments only
-    /// (Codex #676 api-review).
+    /// For `TypeConnective::Instantiation`, `RecordDeriveOmitDebug` follows
+    /// type **arguments** and, when the head is not the `List` template, the
+    /// **template** so a user `G<T>` (callable fields on `G`, not on `T`) is
+    /// not missed for `#[derive(Debug)]` policy (C-8; #676). User-fn **return**
+    /// carrier selection uses `AppliedTypeArguments` (arguments only) so
+    /// `Int` / other primitives do not spuriously force `Rc` on callable
+    /// parameters.
     fn decl_includes_first_class_arrow_data(
         &self,
         declaration: DeclarationId,
@@ -4944,13 +4949,16 @@ impl<'a> Ctx<'a> {
                 template,
                 arguments,
             } => {
-                let args = arguments
-                    .iter()
-                    .any(|arg| self.decl_includes_first_class_arrow_data(arg.value, visited, walk));
+                let from_args = arguments.iter().any(|arg| {
+                    self.decl_includes_first_class_arrow_data(arg.value, visited, walk)
+                });
                 match walk {
-                    DeclFirstClassArrowWalk::AppliedTypeArguments => args,
+                    DeclFirstClassArrowWalk::AppliedTypeArguments => from_args,
                     DeclFirstClassArrowWalk::RecordDeriveOmitDebug => {
-                        args || self.decl_includes_first_class_arrow_data(*template, visited, walk)
+                        from_args
+                            || (!self.is_list_template(*template)
+                                && self
+                                    .decl_includes_first_class_arrow_data(*template, visited, walk))
                     }
                 }
             }
