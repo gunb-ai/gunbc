@@ -1,7 +1,5 @@
 //! **Layer:** integration
 
-use std::path::PathBuf;
-
 use v3_compiler::dag::{FieldValue, LiteralBits};
 use v3_compiler::test_runner::TestClaimValue;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -299,22 +297,31 @@ data suite: TestSuite = {
     let results = TestRunner::new(&dag).run_suite("suite");
 
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].result, ClaimResult::NotYetImplemented);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(msg)
+            if msg.contains("MockBackedInvariant")
+                && msg.contains("not implemented in the Rust test runner")
+    ));
 }
 
-#[test]
-#[ignore = "Brief 1 dependency: std/r1_gates.dag/user_authored_lens_compiles_gate is not present in this worktree yet"]
-fn test_runner_runs_user_authored_lens_compiles_gate() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("repo root")
-        .to_path_buf();
-    let gate = repo_root.join("src/v3/std/r1_gates.dag");
-    let source =
-        std::fs::read_to_string(&gate).unwrap_or_else(|err| panic!("read {gate:?}: {err}"));
-    let dag = compile_clean(&source, "src/v3/std/r1_gates.dag");
-    let results = TestRunner::new(&dag).run_suite("user_authored_lens_compiles_gate");
+const R1_GATES_FIXTURE: &str = include_str!("../fixtures/r1_gates.dag");
 
-    assert_all_pass(&results);
+#[test]
+fn test_runner_dispatches_r1_gates_lens_output_equals_claim() {
+    let dag = compile_clean(
+        R1_GATES_FIXTURE,
+        "src/v3/compiler/tests/fixtures/r1_gates.dag",
+    );
+    let results = TestRunner::new(&dag).run_suite("r1_lens_output_equals_suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(msg)
+            if msg.contains("LensOutputEquals")
+                && msg.contains("named_function_count")
+                && msg.contains("lens_query_empty_dag")
+                && msg.contains("lens_query_expected_zero")
+    ));
 }

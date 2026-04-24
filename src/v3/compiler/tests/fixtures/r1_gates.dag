@@ -7,12 +7,53 @@
 // `Compiles` receipt). Payload is a standalone `module lenses.named_function_count`
 // unit (imports std only), not a consumer that imports this module from bootstrap.
 //
+// **LensOutputEquals gate.** `lens_output_equals_named_function_count_gate` carries
+// `LensOutputEquals(named_function_count, lens_query_empty_dag, lens_query_expected_zero)`
+// with fixture-local declarations; the Rust runner resolves `DeclarationRef` edges
+// and returns `NotYetImplemented` until lens application is wired (Brief 3).
+//
 // Lives under `src/v3/compiler/tests/fixtures/` so it is **not** auto-staged
 // into `Dag::new()` bootstrap (`src/v3/std/*.dag` is build-script enumerated).
 
 module std.r1_gates
 
-import std.verification { TestClaim }
+import std.verification { TestClaim, TestSuite }
+import std.list { empty, fold }
+import std.substrate { Dag, Behavior, Declaration, DagPort, Cluster }
+
+fn count_named_bind(behavior: Behavior) -> Int =
+  match behavior {
+    Value(v) => 0
+    Transform(t) => 0
+    Branch(b) => 0
+    Loop(l) => 0
+    Bind(bind) => if bind.name == "" then 0 else 1
+  }
+
+fn named_function_count(d: Dag) -> Int =
+  fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))
+
+data lens_query_empty_dag: Dag = {
+  declarations: empty<Declaration>()
+  nodes: empty<Behavior>()
+  ports: empty<DagPort>()
+  clusters: empty<Cluster>()
+}
+
+data lens_query_expected_zero: Int = 0
+
+data lens_output_equals_named_function_count_gate: TestClaim = {
+  name: "lens_output_equals_named_function_count",
+  source: "let _: Int = 0\n",
+  file_name: "r1_lens_output_placeholder.v3",
+  predicate: LensOutputEquals(named_function_count, lens_query_empty_dag, lens_query_expected_zero),
+  requires: []
+}
+
+data r1_lens_output_equals_suite: TestSuite = {
+  name: "r1_lens_output_equals_suite",
+  claims: [lens_output_equals_named_function_count_gate]
+}
 
 data user_authored_lens_compiles_gate: TestClaim = {
   name: "user_authored_lens_compiles",

@@ -10,7 +10,8 @@ use crate::{compile_to_dag, CompileError};
 pub enum ClaimResult {
     Pass,
     Fail(String),
-    NotYetImplemented,
+    /// Runner does not implement this path yet; message is surfaced to tests and logs.
+    NotYetImplemented(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,7 +104,10 @@ impl<'a> TestRunner<'a> {
                     "OutputEquals" => self.eval_output_equals(claim, &payload),
                     "PortHasState" => self.eval_port_has_state(claim, &payload),
                     "CostBounded" => self.eval_cost_bounded(claim, &payload),
-                    _ => ClaimResult::NotYetImplemented,
+                    "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
+                    _ => ClaimResult::NotYetImplemented(format!(
+                        "TestPredicate `{label}` is not implemented in the Rust test runner"
+                    )),
                 },
                 None => ClaimResult::Fail("predicate is not a structural variant".to_string()),
             }
@@ -206,6 +210,81 @@ impl<'a> TestRunner<'a> {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!("bind `{bind_name}` state did not match `{label}`"))
+        }
+    }
+
+    fn eval_lens_output_equals(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [lens_fv, input_fv, expected_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "LensOutputEquals payload should be exactly three DeclarationRef fields \
+                 (lens_ref, input_ref, expected_ref); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let lens_id = match self.resolve_declaration_ref_edge(lens_fv, "lens_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let input_id = match self.resolve_declaration_ref_edge(input_fv, "input_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let expected_id = match self.resolve_declaration_ref_edge(expected_fv, "expected_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+
+        let lens_decl = self.dag.declaration(lens_id);
+        let input_decl = self.dag.declaration(input_id);
+        let expected_decl = self.dag.declaration(expected_id);
+
+        let lens_name = decl_display_name(self.dag, lens_id, lens_decl);
+        let input_name = decl_display_name(self.dag, input_id, input_decl);
+        let expected_name = decl_display_name(self.dag, expected_id, expected_decl);
+
+        if input_decl.value_body.is_none() {
+            return ClaimResult::Fail(format!(
+                "LensOutputEquals: input_ref `{input_name}` has no value body"
+            ));
+        }
+        if expected_decl.value_body.is_none() {
+            return ClaimResult::Fail(format!(
+                "LensOutputEquals: expected_ref `{expected_name}` has no value body"
+            ));
+        }
+
+        if let Err(err) = compile_to_dag(&claim.source, &claim.file_name) {
+            return ClaimResult::Fail(format!(
+                "LensOutputEquals: claim `source` did not compile (needed for future lens application): {err:?}"
+            ));
+        }
+
+        ClaimResult::NotYetImplemented(format!(
+            "LensOutputEquals: runner does not apply lens functions or compare lens output yet \
+             (resolved lens={lens_name}, input={input_name}, expected={expected_name}; \
+             `source` compiles for future wiring)"
+        ))
+    }
+
+    fn resolve_declaration_ref_edge(
+        &self,
+        value: &FieldValue,
+        field_label: &str,
+    ) -> Result<DeclarationId, String> {
+        match value {
+            FieldValue::Reference(id) => Ok(*id),
+            FieldValue::Record(fields) if fields.is_empty() => Err(format!(
+                "LensOutputEquals `{field_label}`: DeclarationRef is the empty record literal {{}} — use an identifier \
+                 so lowering emits FieldValue::Reference(DeclarationId), not an empty record",
+            )),
+            other => Err(format!(
+                "LensOutputEquals `{field_label}`: expected FieldValue::Reference(DeclarationId) \
+                 for a DeclarationRef edge, got {other:?}"
+            )),
         }
     }
 
@@ -381,6 +460,12 @@ fn record_fields(value: &FieldValue) -> Option<&[(String, FieldValue)]> {
         FieldValue::Record(fields) => Some(fields),
         _ => None,
     }
+}
+
+fn decl_display_name(dag: &Dag, id: DeclarationId, decl: &Declaration) -> String {
+    decl.name
+        .clone()
+        .unwrap_or_else(|| format!("Declaration#{}", id.raw()))
 }
 
 fn find_bind<'a>(
