@@ -56,18 +56,18 @@ pub fn analyze_symbolic_cost_dimension(
     for behavior in d.nodes() {
         let port = behavior_result_port(behavior);
         match symbolic_cost_of(d, &port) {
-            SymbolicCostLookup::MissingCost => witnesses.push(Witness::Violates {
+            SymbolicCostLookup::Miss => witnesses.push(Witness::Violates {
                 reason: "missing symbolic cost for behavior result port".into(),
                 at: behavior.clone(),
             }),
-            SymbolicCostLookup::FoundCost { _0: cost } => witnesses.push(Witness::Inhabits(cost)),
+            SymbolicCostLookup::Hit(cost) => witnesses.push(Witness::Inhabits(cost)),
         }
     }
 
     let root = d.node(workflow_root);
     let composed = match symbolic_cost_of(d, &behavior_result_port(root)) {
-        SymbolicCostLookup::FoundCost { _0: cost } => cost,
-        SymbolicCostLookup::MissingCost => SymbolicCost::UnknownCost {
+        SymbolicCostLookup::Hit(cost) => cost,
+        SymbolicCostLookup::Miss => SymbolicCost::UnknownCost {
             _0: "missing symbolic cost for workflow root result port".into(),
         },
     };

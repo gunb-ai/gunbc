@@ -2,11 +2,19 @@ use std::collections::HashMap;
 
 use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
+<<<<<<< HEAD
     join_evidence, kernel_algebra_profile, lower_call_pattern, map_evidence_merge_at,
     merge_evidence, optional_evidence_meet, promote_to_strict, size_bound_param, tree_size_bound,
     type_iteration_dimension, AlgebraProfile, ArrowBody, CallPattern, DescentEvidence, FieldValue,
     IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
     ProportionalDivisor, SizeBound, TypeConnective, ValueBody,
+=======
+    join_evidence, lower_call_pattern, map_evidence_merge_at, merge_evidence,
+    optional_evidence_meet, promote_to_strict, size_bound_param, tree_size_bound,
+    type_iteration_dimension, AlgebraProfile, ArrowBody, CallPattern, DescentEvidence,
+    DivisionDescentFactor, FieldValue, IterationDimension, IterationPrimitive, LoweringTarget,
+    ShrinkFactor, SizeBound, TypeConnective, ValueBody,
+>>>>>>> origin/e-c-branch
 };
 use v3_compiler::parse_surface;
 use v3_compiler::Dag;
@@ -66,6 +74,38 @@ fn sum_variants(dag: &Dag, name: &str) -> Vec<(String, Vec<String>)> {
     }
 }
 
+<<<<<<< HEAD
+=======
+fn variant_payload_field_type_name(
+    dag: &Dag,
+    sum_name: &str,
+    variant_name: &str,
+    field_name: &str,
+) -> String {
+    let id = find_named(dag, sum_name);
+    let TypeConnective::Disj { variants } = &dag.declaration(id).connective else {
+        panic!("expected `{sum_name}` to lower to a Disj");
+    };
+    let variant = variants
+        .iter()
+        .find(|variant| variant.label == variant_name)
+        .unwrap_or_else(|| panic!("variant `{variant_name}` not found under `{sum_name}`"));
+    let TypeConnective::Conj { children } = &dag.declaration(variant.ty).connective else {
+        panic!("expected variant `{variant_name}` under `{sum_name}` to lower to a Conj payload");
+    };
+    let field = children
+        .iter()
+        .find(|field| field.label == field_name)
+        .unwrap_or_else(|| {
+            panic!("field `{field_name}` not found on variant `{variant_name}` under `{sum_name}`")
+        });
+    dag.declaration(field.ty)
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("<anonymous:{}>", field.ty.raw()))
+}
+
+>>>>>>> origin/e-c-branch
 fn arrow_body(dag: &Dag, name: &str) -> ArrowBody {
     let id = find_named(dag, name);
     match &dag.declaration(id).connective {
@@ -215,6 +255,7 @@ fn termination_carriers_bootstrap_from_v3_std() {
         ]
     );
     assert_eq!(
+<<<<<<< HEAD
         sum_variants(&dag, "PositiveDescentAmount"),
         vec![
             (String::from("OneStep"), Vec::new()),
@@ -222,6 +263,12 @@ fn termination_carriers_bootstrap_from_v3_std() {
                 String::from("AdditionalStep"),
                 vec![String::from("previous")]
             ),
+=======
+        sum_variants(&dag, "DivisionDescentFactor"),
+        vec![
+            (String::from("Two"), Vec::new()),
+            (String::from("GreaterThanTwo"), vec![String::from("extra")]),
+>>>>>>> origin/e-c-branch
         ]
     );
     assert_eq!(
@@ -232,6 +279,7 @@ fn termination_carriers_bootstrap_from_v3_std() {
                 vec![String::from("accessor")]
             ),
             (String::from("ListShrink"), vec![String::from("amount")]),
+<<<<<<< HEAD
             (
                 String::from("ArithmeticSubtractDescent"),
                 vec![String::from("steps")],
@@ -240,11 +288,34 @@ fn termination_carriers_bootstrap_from_v3_std() {
                 String::from("ArithmeticDivideDescent"),
                 vec![String::from("divisor")],
             ),
+=======
+            (String::from("ArithmeticSubtract"), vec![String::from("by")],),
+            (String::from("ArithmeticDivide"), vec![String::from("by")],),
+>>>>>>> origin/e-c-branch
             (String::from("ParserAdvance"), vec![String::from("witness")]),
             (String::from("SetRemoval"), vec![String::from("element")]),
             (String::from("FoldIteration"), Vec::new()),
         ]
     );
+<<<<<<< HEAD
+=======
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DivisionDescentFactor", "GreaterThanTwo", "extra"),
+        "PositiveInt"
+    );
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DescentSource", "ListShrink", "amount"),
+        "PositiveInt"
+    );
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DescentSource", "ArithmeticSubtract", "by"),
+        "PositiveInt"
+    );
+    assert_eq!(
+        variant_payload_field_type_name(&dag, "DescentSource", "ArithmeticDivide", "by"),
+        "DivisionDescentFactor"
+    );
+>>>>>>> origin/e-c-branch
     assert_eq!(record_fields(&dag, "TerminationProof"), vec!["dimensions"]);
     assert_eq!(
         record_fields(&dag, "ProofEdge"),
@@ -261,7 +332,10 @@ fn termination_lattice_functions_preserve_std_body_spans() {
         "merge_evidence",
         "join_evidence",
         "promote_to_strict",
+<<<<<<< HEAD
         "proportional_divisor_to_int",
+=======
+>>>>>>> origin/e-c-branch
         "optional_evidence_meet",
         "map_evidence_merge_at",
     ] {
@@ -345,6 +419,7 @@ fn computation_carriers_bootstrap_from_v3_std() {
             ),
             (
                 String::from("CollectionShrinkCall"),
+<<<<<<< HEAD
                 vec![String::from("amount")],
             ),
             (
@@ -364,10 +439,35 @@ fn computation_carriers_bootstrap_from_v3_std() {
                 vec![String::from("element")],
             ),
             (String::from("FoldBodyCall"), Vec::new()),
+=======
+                vec![String::from("collection"), String::from("amount")],
+            ),
+            (
+                String::from("ArithmeticSubtractCall"),
+                vec![String::from("param"), String::from("by")],
+            ),
+            (
+                String::from("ArithmeticDivideCall"),
+                vec![String::from("param"), String::from("by")],
+            ),
+            (
+                String::from("ParserAdvanceCall"),
+                vec![String::from("stream"), String::from("witness")],
+            ),
+            (
+                String::from("WorklistDrainCall"),
+                vec![String::from("worklist"), String::from("element")],
+            ),
+            (
+                String::from("FoldBodyCall"),
+                vec![String::from("outer_collection")],
+            ),
+>>>>>>> origin/e-c-branch
             (String::from("SameArgumentCall"), Vec::new()),
         ]
     );
     assert_eq!(
+<<<<<<< HEAD
         sum_variants(&dag, "ProportionalDivisor"),
         vec![
             (String::from("DivideByTwo"), Vec::new()),
@@ -379,6 +479,12 @@ fn computation_carriers_bootstrap_from_v3_std() {
         vec![
             (String::from("UnitShrink"), Vec::new()),
             (String::from("ConstantShrink"), vec![String::from("steps")]),
+=======
+        sum_variants(&dag, "ShrinkFactor"),
+        vec![
+            (String::from("UnitShrink"), Vec::new()),
+            (String::from("ConstantShrink"), vec![String::from("amount")]),
+>>>>>>> origin/e-c-branch
             (
                 String::from("ProportionalShrink"),
                 vec![String::from("divisor")],
@@ -414,10 +520,15 @@ fn computation_lowering_functions_preserve_std_body_spans() {
     for name in [
         "tree_size_bound",
         "lower_call_pattern",
+<<<<<<< HEAD
         "positive_descent_count",
         "size_bound_param",
         "is_constant_bound",
         "forever_iteration_bound",
+=======
+        "size_bound_param",
+        "is_constant_bound",
+>>>>>>> origin/e-c-branch
         "constant_bound_value",
         "algebra_profile_to_dimension",
         "type_iteration_dimension",
@@ -431,13 +542,20 @@ fn computation_lowering_functions_preserve_std_body_spans() {
 
 #[test]
 fn computation_lowering_rust_mirror_matches_dag_authority() {
+<<<<<<< HEAD
     use v3_compiler::dag::ShrinkFactor::{ConstantShrink, ProportionalShrink};
+=======
+>>>>>>> origin/e-c-branch
     use CallPattern::{
         ArithmeticDivideCall, ArithmeticSubtractCall, ChildAccessorCall, CollectionShrinkCall,
         FoldBodyCall, ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
     };
     use DescentEvidence::{NonIncreasing, Strict};
     use IterationPrimitive::{Descend, Fold, Repeat};
+<<<<<<< HEAD
+=======
+    use ShrinkFactor::{ConstantShrink, ProportionalShrink};
+>>>>>>> origin/e-c-branch
     use SizeBound::{ArithmeticParam, CollectionSize, Forever, TreeSize};
 
     let cases = vec![
@@ -456,11 +574,17 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
         ),
         (
             CollectionShrinkCall {
+<<<<<<< HEAD
                 amount: PositiveDescentAmount::OneStep,
+=======
+                collection: String::from("items"),
+                amount: 1,
+>>>>>>> origin/e-c-branch
             },
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
+<<<<<<< HEAD
                     param: String::from("collection"),
                 },
                 evidence: Strict,
@@ -486,11 +610,22 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                         previous: Box::new(PositiveDescentAmount::OneStep),
                     },
                 }),
+=======
+                    param: String::from("items"),
+                },
+                evidence: Strict,
+                factor: Some(ConstantShrink { amount: 1 }),
+>>>>>>> origin/e-c-branch
             },
         ),
         (
             ArithmeticSubtractCall {
+<<<<<<< HEAD
                 steps: PositiveDescentAmount::OneStep,
+=======
+                param: String::from("n"),
+                by: 1,
+>>>>>>> origin/e-c-branch
             },
             LoweringTarget {
                 primitive: Repeat,
@@ -498,18 +633,28 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                     param: String::from("n"),
                 },
                 evidence: Strict,
+<<<<<<< HEAD
                 factor: Some(ConstantShrink {
                     steps: PositiveDescentAmount::OneStep,
                 }),
+=======
+                factor: Some(ConstantShrink { amount: 1 }),
+>>>>>>> origin/e-c-branch
             },
         ),
         (
             ArithmeticDivideCall {
+<<<<<<< HEAD
                 divisor: ProportionalDivisor::DivideByTwo,
+=======
+                param: String::from("k"),
+                by: DivisionDescentFactor::Two,
+>>>>>>> origin/e-c-branch
             },
             LoweringTarget {
                 primitive: Repeat,
                 bound: ArithmeticParam {
+<<<<<<< HEAD
                     param: String::from("n"),
                 },
                 evidence: Strict,
@@ -534,11 +679,22 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                     divisor: ProportionalDivisor::StrictlyLarger {
                         inner: Box::new(ProportionalDivisor::DivideByTwo),
                     },
+=======
+                    param: String::from("k"),
+                },
+                evidence: Strict,
+                factor: Some(ProportionalShrink {
+                    divisor: DivisionDescentFactor::Two,
+>>>>>>> origin/e-c-branch
                 }),
             },
         ),
         (
             ParserAdvanceCall {
+<<<<<<< HEAD
+=======
+                stream: String::from("tokens"),
+>>>>>>> origin/e-c-branch
                 witness: String::from("advance"),
             },
             LoweringTarget {
@@ -552,23 +708,41 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
         ),
         (
             WorklistDrainCall {
+<<<<<<< HEAD
+=======
+                worklist: String::from("frontier"),
+>>>>>>> origin/e-c-branch
                 element: String::from("item"),
             },
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
+<<<<<<< HEAD
                     param: String::from("worklist"),
+=======
+                    param: String::from("frontier"),
+>>>>>>> origin/e-c-branch
                 },
                 evidence: Strict,
                 factor: None,
             },
         ),
         (
+<<<<<<< HEAD
             FoldBodyCall,
             LoweringTarget {
                 primitive: Fold,
                 bound: CollectionSize {
                     param: String::from("outer_collection"),
+=======
+            FoldBodyCall {
+                outer_collection: String::from("outer"),
+            },
+            LoweringTarget {
+                primitive: Fold,
+                bound: CollectionSize {
+                    param: String::from("outer"),
+>>>>>>> origin/e-c-branch
                 },
                 evidence: NonIncreasing,
                 factor: None,
@@ -615,8 +789,20 @@ fn computation_size_bound_helpers_match_dag_authority() {
     assert!(is_constant_bound(&forever));
 
     assert_eq!(constant_bound_value(&explicit), Some(7));
+<<<<<<< HEAD
     assert_eq!(constant_bound_value(&forever), Some(i64::MAX));
     assert_eq!(constant_bound_value(&tree), None);
+=======
+    // `Forever` projects to the constant-cost COEFFICIENT `1` for the
+    // size/cost algebra (SameArgumentCall → Repeat(Forever) collapses to a
+    // single-unit cost projection per v2's `dsl/std/computation.dag:269-275`).
+    // This is NOT a claim that `Forever` represents a finite iteration
+    // count of 1.
+    assert_eq!(constant_bound_value(&forever), Some(1));
+    assert_eq!(constant_bound_value(&tree), None);
+    assert_eq!(constant_bound_value(&collection), None);
+    assert_eq!(constant_bound_value(&arithmetic), None);
+>>>>>>> origin/e-c-branch
 }
 
 #[test]
@@ -654,6 +840,7 @@ fn computation_iteration_dimension_helpers_match_kernel_profile_authority() {
 }
 
 #[test]
+<<<<<<< HEAD
 fn v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority() {
     fn v2_profile_to_v3(p: v2_compiler::std_algebra::AlgebraProfile) -> AlgebraProfile {
         use v2_compiler::std_algebra::AlgebraProfile as V2;
@@ -684,6 +871,8 @@ fn v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority() {
 }
 
 #[test]
+=======
+>>>>>>> origin/e-c-branch
 fn substrate_coproducts_match_runtime_carriers() {
     let dag = Dag::new();
 
@@ -1095,6 +1284,7 @@ fn substrate_coproducts_match_runtime_carriers() {
                     String::from("name"),
                     String::from("type_params"),
                     String::from("target"),
+                    String::from("refinement"),
                     String::from("span"),
                 ],
             ),

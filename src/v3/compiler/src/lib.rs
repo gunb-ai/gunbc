@@ -107,15 +107,17 @@ pub mod parse_tables {
 }
 
 /// Cost lens. The authority lives in `src/v3/lenses/complexity.dag`;
-/// the Rust projection is auto-emitted into
-/// `src/v3/compiler/src/lens_cost_generated.rs` and re-exported here
-/// so callers use `v3_compiler::lens_cost::{cost_of, CostLookup}`.
-/// Editing the lens means editing the `.dag` — there is no
+/// the Rust surface is `emit_rust_module` output in
+/// `lens_cost_generated.rs` (committed; same PR as the `.dag` when the lens
+/// changes). Generated `cost_of` / `CostEntry` use `crate::dag::Lookup<i64>`,
+/// the Rust projection of `v3.std.lookup::Lookup<Int>`. `CostLookup` below is
+/// **only** a public type alias (`Lookup<i64>`), not a second sum type — single
+/// carrier, facts-flow-forward from the lens authority.
+/// Editing the lens means editing the `.dag` and regenerating — there is no
 /// hand-written implementation on this crate side.
 ///
-/// L-8 compliance: `cost_of` returns the typed `CostLookup` carrier
-/// (`MissingCost | FoundCost(Int)`). Callers pattern-match on the
-/// variant rather than receiving a panicked-collapsed `usize`.
+/// L-8 compliance: callers pattern-match on `Hit` / `Miss` (via `CostLookup` or
+/// `Lookup<i64>`) rather than a panicked-collapsed `usize`.
 pub mod lens_cost {
     #[allow(
         dead_code,
@@ -124,16 +126,23 @@ pub mod lens_cost {
         unused_variables,
         clippy::clone_on_copy,
         clippy::collapsible_else_if,
+        clippy::double_parens,
         clippy::large_enum_variant
     )]
     mod generated {
+        // Regen can emit a redundant paren around some `Hit(...)` payload
+        // subexpressions (`Hit((1 + n))` vs `Hit(1 + n)`) — relax until emission
+        // drops one stable layer of grouping.
         use crate::dag::*;
         use crate::diagnostics::*;
 
         include!("lens_cost_generated.rs");
     }
 
-    pub use generated::{cost_of, CostLookup};
+    pub use generated::cost_of;
+    /// Rust projection of the shared `v3.std.lookup::Lookup` carrier
+    /// (`Miss | Hit`); stability alias for embedders.
+    pub type CostLookup = crate::dag::Lookup<i64>;
 
     #[cfg(test)]
     mod tests {
@@ -150,8 +159,8 @@ pub mod lens_cost {
 
         fn expect_found(lookup: CostLookup) -> i64 {
             match lookup {
-                CostLookup::FoundCost { _0: c } => c,
-                CostLookup::MissingCost => panic!("expected FoundCost, got MissingCost"),
+                CostLookup::Hit(c) => c,
+                CostLookup::Miss => panic!("expected Hit, got Miss"),
             }
         }
 
@@ -347,7 +356,12 @@ pub mod lens_cost_symbolic {
         include!("lens_cost_symbolic_generated.rs");
     }
 
-    pub use generated::{symbolic_cost_of, SymbolicCostEntry, SymbolicCostLookup};
+    pub use generated::{symbolic_cost_of, SymbolicCostEntry};
+    /// Rust projection of the shared `v3.std.lookup::Lookup` carrier
+    /// at `SymbolicCost`. Alias (not a second sum type) — the lens now
+    /// returns `Lookup<SymbolicCost>` directly; this name stays for
+    /// embedder stability, mirroring `lens_cost::CostLookup`.
+    pub type SymbolicCostLookup = crate::dag::Lookup<crate::dag::SymbolicCost>;
 }
 
 /// Provenance lens. The authority lives in
@@ -850,14 +864,6 @@ pub(crate) mod lower_helpers {
 pub mod lens_idempotency {
     pub use crate::workflow_idempotency::analyze_workflow;
 }
-/// Back-compat module path for the Stage 2e parallelism lens.
-///
-/// The dedicated `lens_parallelism.rs` wrapper retired once the native-Dag
-/// bridge collapsed to a single re-export. Keep the module name as an API alias
-/// until callers move to the crate-root `analyze_parallelism` export.
-pub mod lens_parallelism {
-    pub use crate::workflow_parallelism::analyze_parallelism;
-}
 // Surface pipeline for this crate (not workspace-root `src/tokenize.rs` / `src/parse.rs`):
 // `tokenize.dag` → `regen_tokenize` → `tokenize_generated.rs`,
 // `parse_parser_body.txt` → `regen_parse` → `parse_generated.rs` (`parse` module),
@@ -1064,7 +1070,7 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
 /// `parse_surface.dag` staged fixture so the fresh parse is first-of-name and can be
 /// lowered without duplicate-declaration diagnostics.
 #[allow(clippy::result_large_err)]
-pub fn compile_parse_surface_std_authority_dag(
+fn compile_onto_parse_surface_free_bootstrap(
     source: &str,
     file: &str,
 ) -> Result<Dag, CompileError> {
@@ -1080,6 +1086,67 @@ pub fn compile_parse_surface_std_authority_dag(
     } else {
         Err(CompileError::Semantic(dag))
     }
+}
+
+#[allow(clippy::result_large_err)]
+pub fn compile_parse_surface_std_authority_dag(
+    source: &str,
+    file: &str,
+) -> Result<Dag, CompileError> {
+    compile_onto_parse_surface_free_bootstrap(source, file)
+}
+
+/// `emit_rust_module` pattern-matches `SurfaceItem` using the embedded bootstrap
+/// mirror, which can trail `parse_surface.dag` by one field on `TypeAlias` until
+/// `regen_bootstrap` is refreshed. Patch emitted `lower_helpers` Rust so the
+/// `TypeAlias` arm includes `refinement` when absent (DB-11 / `regen_lens` / SG-6).
+///
+/// **Dissolution:** delete this helper and the call sites in `regen_lens` and
+/// SG-6 `emit_registry_module` when `regen_lens` + rustfmt output already contains
+/// `refinement: __i_refinement` on `TypeAlias` (i.e. `emit` matches `parse_surface`
+/// and `sg6_lower_helpers_generated_module_matches_checked_in_snapshot` is green
+/// with the `patch_` call removed from those paths).
+///
+/// **Fail-closed:** if the mirror still omits `refinement` on `TypeAlias`, the
+/// pre-patch substring must be present; otherwise this panics. A silent
+/// `replace` no-op (e.g. rustfmt rewrote line breaks) would otherwise match the
+/// idempotency check while shipping a broken `lower_helpers` arm.
+pub fn patch_lower_helpers_generated_type_alias_refinement(src: &str) -> String {
+    if src.contains("refinement: __i_refinement") {
+        return src.to_string();
+    }
+    // Exact rustfmt line breaks for `regen_lens` + `lower_helpers` (see SG-6 snapshot).
+    const LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT: &str = concat!(
+        "        SurfaceItem::TypeAlias {",
+        "\n            name: __i_name,",
+        "\n            type_params: __i_type_params,",
+        "\n            target: __i_target,",
+        "\n            span: __i_span,",
+    );
+    const LOWER_HELPERS_TYPE_ALIAS_WITH_REFINEMENT: &str = concat!(
+        "        SurfaceItem::TypeAlias {",
+        "\n            name: __i_name,",
+        "\n            type_params: __i_type_params,",
+        "\n            target: __i_target,",
+        "\n            refinement: __i_refinement,",
+        "\n            span: __i_span,",
+    );
+    if !src.contains(LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT) {
+        panic!(
+            "patch_lower_helpers_generated_type_alias_refinement: pre-DB-11 `TypeAlias` \
+             emit pattern not found; rustfmt/emit shape may have changed. Update this bridge, \
+             or run `regen_bootstrap` / regen the embedded mirror so `refinement` is native."
+        );
+    }
+    let out = src.replace(
+        LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT,
+        LOWER_HELPERS_TYPE_ALIAS_WITH_REFINEMENT,
+    );
+    assert_ne!(
+        out, src,
+        "patch should have inserted `refinement: __i_refinement` on `TypeAlias`"
+    );
+    out
 }
 
 /// PB-1 scaffold helper: re-run the pre-snapshot std bootstrap path for
@@ -1325,4 +1392,17 @@ fn first_differing_line(lhs: &[u8], rhs: &[u8]) -> String {
         lhs.len(),
         rhs.len()
     )
+}
+
+#[cfg(test)]
+mod lower_helpers_type_alias_refinement_patch_tests {
+    use super::patch_lower_helpers_generated_type_alias_refinement;
+
+    #[test]
+    fn is_noop_when_type_alias_arm_already_binds_refinement_placeholder() {
+        let s =
+            "match __i_item { SurfaceItem::TypeAlias { refinement: __i_refinement, .. } => {} }";
+        let out = patch_lower_helpers_generated_type_alias_refinement(s);
+        assert_eq!(out, s);
+    }
 }

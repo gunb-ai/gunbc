@@ -759,6 +759,7 @@ pub enum RankingDimension {
 
 /// 🟢 TERMINAL at descent-witness scope.
 ///
+<<<<<<< HEAD
 /// Structural positive amount used so zero/negative shrink witnesses are not
 /// representable in proof carriers.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -827,12 +828,23 @@ pub fn proportional_divisor_from_i64(k: i64) -> Option<ProportionalDivisor> {
         };
     }
     Some(cur)
+=======
+/// Rust mirror of the structural `DivisionDescentFactor` carrier. `Two` is the
+/// minimum valid divisor; `GreaterThanTwo.extra` is a PositiveInt-shaped offset
+/// above two, represented as `i64` until refined values carry generated runtime
+/// wrappers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DivisionDescentFactor {
+    Two,
+    GreaterThanTwo { extra: i64 },
+>>>>>>> origin/e-c-branch
 }
 
 /// 🟡 SCAFFOLD.
 ///
 /// The witness taxonomy is durable for E-T; String payloads dissolve when
 /// accessor, operation, witness, and element references become first-class
+<<<<<<< HEAD
 /// substrate values.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescentSource {
@@ -840,6 +852,17 @@ pub enum DescentSource {
     ListShrink { amount: PositiveDescentAmount },
     ArithmeticSubtractDescent { steps: PositiveDescentAmount },
     ArithmeticDivideDescent { divisor: ProportionalDivisor },
+=======
+/// substrate values. PositiveInt-shaped payloads are represented as raw `i64`
+/// until refined values carry generated runtime wrappers; the `.dag` authority
+/// remains the source of the positivity contract.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DescentSource {
+    ChildAccessor { accessor: String },
+    ListShrink { amount: i64 },
+    ArithmeticSubtract { by: i64 },
+    ArithmeticDivide { by: DivisionDescentFactor },
+>>>>>>> origin/e-c-branch
     ParserAdvance { witness: String },
     SetRemoval { element: String },
     FoldIteration,
@@ -897,12 +920,15 @@ pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence 
 ///
 /// Fail-closed behavior means no unary helper may fabricate `Strict` from
 /// weaker evidence; strict promotion requires a separate structural witness.
+<<<<<<< HEAD
 ///
 /// P5 bridge: identifier suggests promotion; this mirror is identity on the
 /// three `DescentEvidence` variants today (same fail-closed contract as
 /// `std.termination`). Dissolution: rename to e.g. `evidence_passthrough_preserving_strict`
 /// and/or remove `v2.compiler.complexity` call sites when parser progress threads
 /// `Strict` at the witness site.
+=======
+>>>>>>> origin/e-c-branch
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
     evidence
 }
@@ -933,6 +959,31 @@ pub fn map_evidence_merge_at(
     base
 }
 
+<<<<<<< HEAD
+=======
+// 🟡 SCAFFOLD — Rust execution mirror for `src/v3/std/computation.dag`.
+//
+// The `.dag` declarations are the carrier authority; these Rust enums and
+// helpers are the temporary executable bridge until std block bodies lower
+// out of `ArrowBody::Unparsed`. Per-coproduct dissolution receipts below
+// match the `.dag` source; `m2_substrate_inhabitance_test` pins the carrier
+// shape and current Rust mirror behavior.
+//
+// 🟡 Refined-numeric bridge: `PositiveInt`-typed fields on the `.dag` side
+// (`CollectionShrinkCall.amount`, `ArithmeticSubtractCall.by`,
+// `ConstantShrink.amount`) surface here as plain `i64` until runtime refined-
+// value wrappers land. "Illegal states unrepresentable" holds at the carrier
+// authority, not at the Rust mirror field type; construct via authored paths.
+// Structural refinements that are already encoded as coproducts on the `.dag`
+// side (`DivisionDescentFactor = Two | GreaterThanTwo { extra }`) *do* flow
+// through as enums and stay enforced here.
+
+/// 🟡 SCAFFOLD.
+///
+/// The five size regimes are durable, but `param: String` payloads dissolve
+/// when function parameters and field accessors become first-class
+/// substrate references rather than names (same bridge as `RankingDimension`).
+>>>>>>> origin/e-c-branch
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SizeBound {
     CollectionSize { param: String },
@@ -946,6 +997,7 @@ pub fn tree_size_bound(param: String) -> SizeBound {
     SizeBound::TreeSize { param }
 }
 
+<<<<<<< HEAD
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallPattern {
     ChildAccessorCall { accessor: String },
@@ -965,6 +1017,62 @@ pub enum ShrinkFactor {
     ProportionalShrink { divisor: ProportionalDivisor },
 }
 
+=======
+/// 🟡 SCAFFOLD.
+///
+/// Call-site classifier mirroring `DescentSource`. Variant taxonomy is
+/// durable for E-C; String payloads and the carrier itself dissolve once
+/// E-I/E-P land per-call provenance and `CallPattern` becomes a projection
+/// of `SubValueRelation` evidence rather than an authored shape.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CallPattern {
+    ChildAccessorCall {
+        accessor: String,
+    },
+    CollectionShrinkCall {
+        collection: String,
+        amount: i64,
+    },
+    ArithmeticSubtractCall {
+        param: String,
+        by: i64,
+    },
+    ArithmeticDivideCall {
+        param: String,
+        by: DivisionDescentFactor,
+    },
+    ParserAdvanceCall {
+        stream: String,
+        witness: String,
+    },
+    WorklistDrainCall {
+        worklist: String,
+        element: String,
+    },
+    FoldBodyCall {
+        outer_collection: String,
+    },
+    SameArgumentCall,
+}
+
+/// 🟢 TERMINAL at shrink-factor scope.
+///
+/// Closed algebra of how a ranking measure shrinks per call edge: by one,
+/// by a constant, or by a divisor. Amounts and divisors reuse the shared
+/// `PositiveInt` / `DivisionDescentFactor` authorities so zero / negative /
+/// divide-by-one witnesses are unrepresentable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShrinkFactor {
+    UnitShrink,
+    ConstantShrink { amount: i64 },
+    ProportionalShrink { divisor: DivisionDescentFactor },
+}
+
+/// 🟢 TERMINAL.
+///
+/// Closed alphabet of the behavioral concept DAG (fold / descend / repeat);
+/// see `MODELING.md` M9. All higher-level computation desugars onto these.
+>>>>>>> origin/e-c-branch
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IterationPrimitive {
     Fold,
@@ -972,6 +1080,14 @@ pub enum IterationPrimitive {
     Repeat,
 }
 
+<<<<<<< HEAD
+=======
+/// 🟡 SCAFFOLD aggregate.
+///
+/// Per-call staging record bundling the carriers above. Dissolves into the
+/// E-I/E-P lens query once per-call provenance producers exist; field set
+/// is then recovered structurally rather than authored.
+>>>>>>> origin/e-c-branch
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoweringTarget {
     pub primitive: IterationPrimitive,
@@ -988,6 +1104,7 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
             evidence: DescentEvidence::Strict,
             factor: None,
         },
+<<<<<<< HEAD
         CallPattern::CollectionShrinkCall { amount } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
             bound: SizeBound::CollectionSize {
@@ -1032,6 +1149,42 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
             primitive: IterationPrimitive::Fold,
             bound: SizeBound::CollectionSize {
                 param: "outer_collection".to_string(),
+=======
+        CallPattern::CollectionShrinkCall { collection, amount } => LoweringTarget {
+            primitive: IterationPrimitive::Fold,
+            bound: SizeBound::CollectionSize { param: collection },
+            evidence: DescentEvidence::Strict,
+            factor: Some(ShrinkFactor::ConstantShrink { amount }),
+        },
+        CallPattern::ArithmeticSubtractCall { param, by } => LoweringTarget {
+            primitive: IterationPrimitive::Repeat,
+            bound: SizeBound::ArithmeticParam { param },
+            evidence: DescentEvidence::Strict,
+            factor: Some(ShrinkFactor::ConstantShrink { amount: by }),
+        },
+        CallPattern::ArithmeticDivideCall { param, by } => LoweringTarget {
+            primitive: IterationPrimitive::Repeat,
+            bound: SizeBound::ArithmeticParam { param },
+            evidence: DescentEvidence::Strict,
+            factor: Some(ShrinkFactor::ProportionalShrink { divisor: by }),
+        },
+        CallPattern::ParserAdvanceCall { stream, .. } => LoweringTarget {
+            primitive: IterationPrimitive::Fold,
+            bound: SizeBound::CollectionSize { param: stream },
+            evidence: DescentEvidence::Strict,
+            factor: None,
+        },
+        CallPattern::WorklistDrainCall { worklist, .. } => LoweringTarget {
+            primitive: IterationPrimitive::Fold,
+            bound: SizeBound::CollectionSize { param: worklist },
+            evidence: DescentEvidence::Strict,
+            factor: None,
+        },
+        CallPattern::FoldBodyCall { outer_collection } => LoweringTarget {
+            primitive: IterationPrimitive::Fold,
+            bound: SizeBound::CollectionSize {
+                param: outer_collection,
+>>>>>>> origin/e-c-branch
             },
             evidence: DescentEvidence::NonIncreasing,
             factor: None,
@@ -1054,10 +1207,18 @@ pub fn size_bound_param(bound: &SizeBound) -> Option<&str> {
     }
 }
 
+<<<<<<< HEAD
+=======
+/// `Forever` is "constant" in the sense that it collapses to a fixed
+/// constant-cost COEFFICIENT in the size/cost algebra — *not* that it
+/// carries a finite runtime iteration count. See [`constant_bound_value`]
+/// for the coefficient projection.
+>>>>>>> origin/e-c-branch
 pub fn is_constant_bound(bound: &SizeBound) -> bool {
     matches!(bound, SizeBound::ExplicitCount { .. } | SizeBound::Forever)
 }
 
+<<<<<<< HEAD
 /// Signed `Int` top iterate count (`i64::MAX`) for [`SizeBound::Forever`] / `repeat(max_int)`.
 pub fn forever_iteration_bound() -> i64 {
     i64::MAX
@@ -1068,10 +1229,33 @@ pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
     match bound {
         SizeBound::ExplicitCount { n } => Some(*n),
         SizeBound::Forever => Some(forever_iteration_bound()),
+=======
+/// Returns the constant VALUE only for `SizeBound` variants that carry one
+/// directly, and the constant-cost COEFFICIENT for `Forever`. Non-constant
+/// bounds yield `None` rather than fabricating 0.
+///
+/// `Forever => Some(1)` is the O(1) constant-cost coefficient for the
+/// size/cost algebra (SameArgumentCall → Repeat(Forever) collapses to a
+/// single-unit cost projection per v2's `dsl/std/computation.dag:269-275`).
+/// It is NOT a claim that `Forever` represents a finite iteration count
+/// of 1.
+pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
+    match bound {
+        SizeBound::ExplicitCount { n } => Some(*n),
+        SizeBound::Forever => Some(1),
+>>>>>>> origin/e-c-branch
         _ => None,
     }
 }
 
+<<<<<<< HEAD
+=======
+/// 🟢 TERMINAL.
+///
+/// Projection of the algebra-profile table into the three iteration regimes.
+/// Closed alongside `IterationPrimitive`; new dimensions land via a new
+/// algebra profile, not a new variant here.
+>>>>>>> origin/e-c-branch
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IterationDimension {
     TreeDescent,
@@ -1079,6 +1263,16 @@ pub enum IterationDimension {
     ArithmeticRepeat,
 }
 
+<<<<<<< HEAD
+=======
+/// 🟡 SCAFFOLD.
+///
+/// Rust mirror of `std.algebra::AlgebraProfile`. The variant set is closed
+/// (the seven kernel algebra profiles), but the Rust enum and the
+/// `kernel_algebra_profile` table below are transitional bridges. Dissolves
+/// when std block bodies evaluate from `.dag` and the algebra-profile
+/// authority can be queried directly instead of mirrored in Rust.
+>>>>>>> origin/e-c-branch
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AlgebraProfile {
     OrderedRingProfile,
@@ -1111,6 +1305,7 @@ pub fn type_iteration_dimension(type_name: &str) -> Option<IterationDimension> {
     kernel_algebra_profile(type_name).and_then(algebra_profile_to_dimension)
 }
 
+<<<<<<< HEAD
 /// Kernel type name → iteration algebra profile (`Int`, `List`, …).
 ///
 /// Semantic authority is `dsl/std/algebra.dag` (`data kernel_algebra_profile`).
@@ -1125,6 +1320,11 @@ pub fn type_iteration_dimension(type_name: &str) -> Option<IterationDimension> {
 /// std-body staging trigger as the termination-lattice scaffold above), delete
 /// this mirror and read the evaluated map instead.
 pub fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
+=======
+// Transitional mirror of `std.algebra::kernel_algebra_profile` for the E-C
+// Rust-side parity tests; the `.dag` table remains the semantic source.
+fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
+>>>>>>> origin/e-c-branch
     match type_name {
         "Int" => Some(AlgebraProfile::OrderedRingProfile),
         "Float" => Some(AlgebraProfile::ApproximateFieldProfile),
@@ -1304,6 +1504,8 @@ impl LoopBound {
         }
     }
 }
+
+include!("dag_lookup_generated.rs");
 
 include!("dag_cost_generated.rs");
 

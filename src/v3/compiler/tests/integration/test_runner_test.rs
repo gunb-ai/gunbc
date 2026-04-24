@@ -7,6 +7,11 @@ use v3_compiler::test_runner::TestClaimValue;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::{compile_to_dag, CompileError};
 
+const MOCK_BACKED_INVARIANT_FIXTURE: &str =
+    include_str!("../fixtures/r1_mock_backed_invariant_gate.dag");
+const R1_LENS_OUTPUT_EQUALS_FIXTURE: &str =
+    include_str!("../fixtures/r1_lens_output_equals_gate.dag");
+
 fn compile_clean(source: &str, file: &str) -> v3_compiler::dag::Dag {
     match compile_to_dag(source, file) {
         Ok(dag) => dag,
@@ -281,12 +286,12 @@ data suite: TestSuite = {
 fn test_runner_marks_non_day_one_predicates_not_yet_implemented() {
     let source = r#"
 data claim_nyi: TestClaim = {
-  name: "mock backed invariant",
+  name: "behavioral observation",
   source: "let x: Int = 0",
   file_name: "runner_nyi.v3",
   // Struct-variant field names are schema metadata today; the surface parser
   // accepts positional payload syntax for authored values.
-  predicate: MockBackedInvariant(Int, Bool),
+  predicate: BehavioralObservation(Int, Int, Int),
   requires: []
 }
 
@@ -299,7 +304,146 @@ data suite: TestSuite = {
     let results = TestRunner::new(&dag).run_suite("suite");
 
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].result, ClaimResult::NotYetImplemented);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(reason)
+            if reason.contains("BehavioralObservation")
+    ));
+}
+
+#[test]
+fn mock_backed_invariant_predicate_accepts_declaration_ref_like_lens_output_equals() {
+    let source = r#"
+data claim: TestClaim = {
+  name: "c",
+  source: "let _: Int = 0",
+  file_name: "f.v3",
+  predicate: MockBackedInvariant(Int, Int),
+  requires: []
+}
+"#;
+    compile_clean(source, "mock_backed_invariant_harness.v3");
+}
+
+#[test]
+fn test_runner_dispatches_mock_backed_invariant_claim() {
+    let dag = compile_clean(
+        MOCK_BACKED_INVARIANT_FIXTURE,
+        "src/v3/compiler/tests/fixtures/r1_mock_backed_invariant_gate.dag",
+    );
+    let results = TestRunner::new(&dag).run_suite("mock_backed_invariant_suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(reason)
+            if reason.contains("mock simulation is not wired")
+                && reason.contains("mock_subject_ref")
+                && reason.contains("mock_invariant_ref")
+    ));
+}
+
+#[test]
+fn test_runner_mock_backed_invariant_does_not_fabricate_pass_for_clean_source() {
+    let source = r#"
+data subject_ref: Int = 0
+data invariant_ref: Int = 0
+
+data claim: TestClaim = {
+  name: "mock backed clean source",
+  source: "let x: Int = 1",
+  file_name: "clean_mock_subject.v3",
+  predicate: MockBackedInvariant(subject_ref, invariant_ref),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "clean_mock_subject_suite",
+  claims: [claim]
+}
+"#;
+    let dag = compile_clean(source, "clean_mock_subject_harness.v3");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(reason)
+            if reason.contains("mock simulation is not wired")
+                && reason.contains("subject_ref")
+                && reason.contains("invariant_ref")
+    ));
+}
+
+#[test]
+fn lens_output_equals_predicate_accepts_declaration_ref_literals_like_mock_invariant() {
+    let source = r#"
+data claim: TestClaim = {
+  name: "c",
+  source: "let _: Int = 0",
+  file_name: "f.v3",
+  predicate: LensOutputEquals(Int, Int, Int),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "s",
+  claims: [claim]
+}
+"#;
+    compile_clean(source, "lens_output_equals_int_harness.v3");
+}
+
+#[test]
+fn test_runner_dispatches_r1_gates_lens_output_equals_claim() {
+    let dag = compile_clean(
+        R1_LENS_OUTPUT_EQUALS_FIXTURE,
+        "src/v3/compiler/tests/fixtures/r1_lens_output_equals_gate.dag",
+    );
+    let results = TestRunner::new(&dag).run_suite("r1_lens_output_equals_suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(msg)
+            if msg.contains("LensOutputEquals")
+                && msg.contains("Int")
+                && msg.contains("lens_output_ref_input")
+                && msg.contains("lens_output_ref_expected")
+    ));
+}
+
+#[test]
+fn test_runner_algebraic_law_commutativity_returns_not_yet_implemented() {
+    let source = r#"
+module test.algebraic_law_commutativity_nyi
+
+import std.verification { AlgebraicLaw, TestClaim, TestSuite }
+
+fn lens_placeholder(a: Int, b: Int) -> Int = a + b
+
+data claim_comm: TestClaim = {
+  name: "algebraic law commutativity",
+  source: "let x: Int = 1",
+  file_name: "algebraic_law_comm.v3",
+  predicate: AlgebraicLaw(Commutativity, lens_placeholder),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "algebraic_law_commutativity_suite",
+  claims: [claim_comm]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_algebraic_law_comm.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(reason)
+            if reason.contains("AlgebraicLaw::Commutativity")
+    ));
 }
 
 #[test]

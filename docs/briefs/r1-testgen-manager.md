@@ -91,7 +91,20 @@ compose. When this closes, the R1 release gates themselves
   is the hand-off signal for T-PB-B landing. Self-hosting drafts
   `.dag` `TestClaim` declarations during Day-1, waits on this
   signal, then converts pipeline / contract tests. Notify
-  Self-hosting when the runner lands.
+  Self-hosting when the runner lands. **Landable compile-only batch:**
+  `docs/briefs/t-pb-b-1.md` + `src/v3/compiler/tests/dag/`.
+  **Pre–Rust-deletion checklist (single source — edit here only; do
+  not fork a competing numbered list in other briefs):** (1) Runner
+  accepts v3 `.dag` modules under `src/v3/compiler/tests/dag/` with
+  the same `compile_to_dag` entrypoint as today’s integration harness,
+  or documents a different path/layout — align before moving claims
+  off Rust. (2) Confirm `requires: []` vs `empty()` for
+  `List<ResourceReference>` matches the runner’s parser/lowering.
+  (3) Confirm M1(2.8) predicate-inlining constraints for
+  `PortHasState` / `CostBounded` (`docs/briefs/t-pb-b-1.md`). (4)
+  **First Rust deletion batch:** one thin `Compiles`-only duplicate
+  (e.g. `thesis_validation_test` or `pipe_desugar`) only after (1)–(3)
+  are green for that claim shape.
 - **Sideways to Surface Manager.** `emit_omni_demo_fixtures_green`
   and the three `emit_*` gates under T-Emit require `ExecuteCommand`
   + `ForAllTargets` predicates — these are T-TestGen `[ext]`
@@ -132,10 +145,12 @@ Lane-owner dispatch status (update as sub-deliverables close):
 **T-LensAPI:**
 - [x] `user_authored_lens_compiles` gate (Day-1) passes
       (PR #679, merged 2026-04-24)
-- [ ] `AlgebraicLaw` predicate (schema extension, shared with
-      lens_composition_associative) — predicate declared in #678;
-      runner evaluation not yet wired
-- [ ] `lens_composition_associative` gate compiles + evaluates
+- [x] `AlgebraicLaw` predicate runner evaluation wired
+      (PR #728, merged 2026-04-24 — `Associativity` resolves `lens_ref`,
+      compiles the claim program, and checks the canonical structural
+      witness)
+- [x] `lens_composition_associative` gate compiles + evaluates
+      (PR #728, merged 2026-04-24 — witness + `r1_gates.dag` suite)
 - [ ] `lens_output_is_queryable_data` gate compiles + evaluates
       (PR #717 in review — adds runner seam dispatch for `LensOutputEquals` → NYI(String);
       gate stays [ ] until runner executes lens functions)
@@ -150,6 +165,14 @@ Lane-owner dispatch status (update as sub-deliverables close):
 
 Decisions log (append as they happen):
 
+- 2026-04-24: **T-LensAPI `lens_composition_associative` closed** via
+  PR #728. Runner dispatch of `AlgebraicLaw { law: Associativity }`,
+  witness DAG, and `r1_gates.dag` suite landed together. Remaining
+  T-LensAPI work: `lens_output_is_queryable_data` (PR #717 in review).
+- 2026-04-24: T-PB-B / Testgen **pre–Rust-deletion** coordination
+  checklist consolidated in this brief (Hand-off → Self-hosting);
+  `docs/briefs/t-pb-b-1.md` now points here instead of duplicating
+  numbered items.
 - 2026-04-24: `ForAllTargets` self-referential variant dissolved to
   `{ command, args, expect_exit_code }` to preserve bounded-kernel
   invariant (Node is the only recursive type).

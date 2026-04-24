@@ -3660,6 +3660,25 @@ impl<'a> Ctx<'a> {
             ));
         }
         let field_name = single_field_label.unwrap_or("_0");
+        // `v3.std.lookup::Lookup::Hit` is a Rust tuple variant (`Hit(T)` in
+        // `dag_lookup_generated`); other single-`_0` sum arms stay struct-style.
+        // Dissolution trigger: today `Conj` children for a sum arm do not record
+        // "tuple vs struct payload" for Rust; emit would otherwise use struct
+        // patterns for every `_0` field. When positionality is a fact on the
+        // `Declaration` / `Disj` surface (or spec-driven), drop this name-match
+        // and read it structurally. Paired with `render_variant_constructor`'s
+        // `Lookup`/`Hit` constructor branch.
+        let is_lookup_hit = field_name == "_0"
+            && matches!(
+                qualified_name.split("::").collect::<Vec<_>>().as_slice(),
+                [a, b] if *a == "Lookup" && *b == "Hit"
+            );
+        if is_lookup_hit {
+            return Some(render_named_template(
+                &self.indexes.syntax.patterns.variant_pattern_positional,
+                &[("name", qualified_name), ("binding", rendered_binding)],
+            ));
+        }
         let bindings = render_named_template(
             &self.indexes.syntax.patterns.field_binding,
             &[("field", field_name), ("binding", rendered_binding)],
@@ -3791,6 +3810,53 @@ impl<'a> Ctx<'a> {
         Ok(scrutinee_disj == bool_disj)
     }
 
+    /// v3.std.lookup / v3.std.algebra: `miss_*_lookup` / `hit_*_lookup`
+    /// are thin monomorphized `Lookup<T>` constructors (one pair per
+    /// element type — `Int`, `SymbolicCost`, …). Emit as `Lookup::Miss`
+    /// / `Lookup::Hit(...)` so generated lens code does not call
+    /// out-of-scope shims. Runs before [`Self::render_realized_callable`]
+    /// so a registered callable strategy does not pre-empt enum lowering.
+    fn lookup_monomorphized_constructor_emit(
+        &self,
+        t: &TransformNode,
+        template: DeclarationId,
+        locals: &RenderLocals,
+    ) -> Result<Option<String>, EmitError> {
+        let Some(name) = self.dag.declaration(template).name.as_deref() else {
+            return Ok(None);
+        };
+        let is_miss = name == "miss_int_lookup" || name == "miss_symbolic_cost_lookup";
+        let is_hit = name == "hit_int_lookup" || name == "hit_symbolic_cost_lookup";
+        if is_miss {
+            if !t.inputs.is_empty() {
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "{name}() expects zero arguments"
+                )));
+            }
+            return Ok(Some("Lookup::Miss".to_string()));
+        }
+        if is_hit {
+            if t.inputs.len() != 1 {
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "{name}(v) expected one argument, got {}",
+                    t.inputs.len()
+                )));
+            }
+            let arg = self.elide_explicit_borrow(&self.render_input_use(
+                InputConsumer::Transform(t),
+                InputSlot::Positional(0),
+                locals,
+            )?);
+            let out = if arg.starts_with('(') {
+                format!("Lookup::Hit{arg}")
+            } else {
+                format!("Lookup::Hit({arg})")
+            };
+            return Ok(Some(out));
+        }
+        Ok(None)
+    }
+
     fn render_callable_transform(
         &self,
         t: &TransformNode,
@@ -3798,6 +3864,9 @@ impl<'a> Ctx<'a> {
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
         let (template, arguments) = callable_template(target, self.dag);
+        if let Some(rendered) = self.lookup_monomorphized_constructor_emit(t, template, locals)? {
+            return Ok(rendered);
+        }
         if let Some(rendered) = self.render_substrate_accessor(t, template, locals)? {
             return Ok(rendered);
         }
@@ -4218,6 +4287,28 @@ impl<'a> Ctx<'a> {
         }
         if children.is_empty() {
             return Ok(Some(qualified_name));
+        }
+        // Dissolution: same "tuple `Hit` for `v3.std.lookup` only" bridge as
+        // `render_single_field_variant_pattern` (pattern side); see long comment
+        // there. Until variant payload positionality is DAG-carried, keep narrow.
+        if children.len() == 1
+            && children[0].label == "_0"
+            && enum_name == "Lookup"
+            && variant_name == "Hit"
+        {
+            let value = self.elide_explicit_borrow(&self.render_input_use(
+                InputConsumer::Transform(consumer),
+                InputSlot::Positional(0),
+                locals,
+            )?);
+            // `elide` may leave a parenthesized value (`(0)`) for literals; do not
+            // add a second paren layer (`((0))`).
+            let out = if value.starts_with('(') {
+                format!("{qualified_name}{value}")
+            } else {
+                format!("{qualified_name}({value})")
+            };
+            return Ok(Some(out));
         }
         let fields = children
             .iter()

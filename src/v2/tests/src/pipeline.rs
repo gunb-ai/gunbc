@@ -135,6 +135,76 @@ pub fn collect_dag_sources(
     }
 }
 
+#[test]
+fn parser_progress_witnesses_construct_strict_without_unary_promotion() {
+    use v2_compiler::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
+    use v2_compiler::v2_compiler_complexity::{parser_result_state_progress, ParserResultSource};
+
+    let empty = Rc::new(HashMap::new());
+
+    assert_eq!(
+        parser_result_state_progress(
+            Rc::new(ParserResultSource::ParserResultAdvance {
+                input: NonIncreasing
+            }),
+            empty.clone(),
+            empty.clone(),
+            "advanced".to_string(),
+        ),
+        Strict
+    );
+    assert_eq!(
+        parser_result_state_progress(
+            Rc::new(ParserResultSource::ParserResultAdvance {
+                input: DescentUnknown
+            }),
+            empty.clone(),
+            empty.clone(),
+            "unknown".to_string(),
+        ),
+        DescentUnknown
+    );
+
+    let consumed_true_set = Rc::new(HashMap::from([("eat_result".to_string(), true)]));
+    assert_eq!(
+        parser_result_state_progress(
+            Rc::new(ParserResultSource::ParserResultEat {
+                input: NonIncreasing
+            }),
+            empty.clone(),
+            consumed_true_set,
+            "eat_result".to_string(),
+        ),
+        Strict
+    );
+
+    let parser_always_advancing = Rc::new(HashMap::from([("parse_tail".to_string(), true)]));
+    assert_eq!(
+        parser_result_state_progress(
+            Rc::new(ParserResultSource::ParserResultCall {
+                input: NonIncreasing,
+                callee: "parse_tail".to_string(),
+            }),
+            parser_always_advancing,
+            empty.clone(),
+            "call_result".to_string(),
+        ),
+        Strict
+    );
+
+    assert_eq!(
+        parser_result_state_progress(
+            Rc::new(ParserResultSource::ParserResultDirectState {
+                input: NonIncreasing
+            }),
+            empty.clone(),
+            empty,
+            "direct".to_string(),
+        ),
+        NonIncreasing
+    );
+}
+
 // ── M1 regression tests ────────────────────────────────────────────────
 
 #[test]

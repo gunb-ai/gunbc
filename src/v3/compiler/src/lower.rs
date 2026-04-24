@@ -276,6 +276,7 @@ pub(crate) fn lower_bodies_phase(
     // Sole caller of `lower_parameter_refinement` for parameter
     // `where` clauses (single construction authority).
     lower_parameter_refinements_phase(dag, module, symbols, is_first);
+    lower_type_alias_refinements_phase(dag, module, symbols, is_first);
     let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
     let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     for (idx, item) in module.items.iter().enumerate() {
@@ -463,6 +464,117 @@ fn seed_function_signatures_phase(
     }
 }
 
+/// DB-11 (3a.3): allocate the predicate `Declaration` for a `where`
+/// refinement (parameter or type-alias RHS). `bind_name` is the sole
+/// `SurfaceExpr::Var` binding installed in the predicate scope:
+///
+/// - **Function parameters:** `bind_name` is the parameter identifier (e.g.
+///   `d` in `d: Int where d != 0`).
+/// - **Type-alias RHS:** `bind_name` is the **alias's declared name**, not a
+///   fresh synthetic parameter. Surface rule: the refined value is referred to
+///   by the same identifier as the alias itself, e.g.
+///   `type PositiveInt = Int where PositiveInt > 0` — `PositiveInt` in the
+///   predicate names the subject of type `Int` (the alias's RHS base). This is
+///   deliberate user-facing semantics, not an implementation accident; see
+///   `test_db11_type_alias_where_survives_parse_and_lower` in
+///   `m2_feature_parity_test.rs`.
+///
+/// In every call, `bind_name` is the surface spelling the author uses for the
+/// **value being refined**; it is not a second name for the type. The single
+/// `Var` in scope is bound to a port of shape `base_decl_id` (the base type
+/// for that value).
+fn build_refinement_predicate_declaration(
+    base_decl_id: DeclarationId,
+    predicate: &SurfaceExpr,
+    bind_name: &str,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+    subject_span: SourceSpan,
+) -> DeclarationId {
+    let pred_span = expr_span(predicate);
+    let pred_param_port = dag.alloc_port(None);
+    match declaration_to_port_shape(base_decl_id, dag, &subject_span) {
+        Ok(shape) => dag.set_port_type(pred_param_port, shape),
+        Err(diag) => dag.mark_unresolved(pred_param_port, diag),
+    }
+
+    let mut pred_scope: HashMap<String, PortId> = HashMap::new();
+    pred_scope.insert(bind_name.to_string(), pred_param_port);
+    let pred_callable_scope: CallableScope = CallableScope::new();
+    let bool_decl_id = symbols
+        .get("Bool")
+        .copied()
+        .unwrap_or_else(|| alloc_identifier_stub(dag, "Bool", &pred_span));
+    let pred_value_port = lower_expr(
+        predicate,
+        dag,
+        &pred_scope,
+        &pred_callable_scope,
+        symbols,
+        Some(bool_decl_id),
+    );
+
+    let bind_id = dag.alloc_node_id();
+    dag.push_node(Behavior::Bind(BindNode {
+        id: bind_id,
+        name: format!("<refinement:{bind_name}>"),
+        value: pred_value_port,
+        params: vec![pred_param_port],
+        span: pred_span.clone(),
+        lane2_workflow: None,
+    }));
+
+    let pred_decl_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: pred_decl_id,
+        name: None,
+        connective: TypeConnective::Arrow {
+            inputs: vec![base_decl_id],
+            output: bool_decl_id,
+            body: ArrowBody::UserDefined(bind_id),
+        },
+        type_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span: pred_span,
+    });
+    pred_decl_id
+}
+
+/// P3 / “facts flow forward” for `dsl/std/types.dag` where predicate lowering
+/// is deferred: allocate a **non-Arrow** declaration id used only as
+/// `Declaration::refinement` for those aliases. Refinement discharge in infer
+/// requires a `Arrow` + `UserDefined` `Bind` predicate; this placeholder uses a
+/// `Conj` so it is never mistaken for a lowered `Bool` predicate, except for
+/// identity on the same `DeclarationId` (the alias matches itself at call sites).
+/// The name encodes the heuristic; see `lower_type_alias_refinements_phase`
+/// **Heuristic (PB-1)** / **Dissolution**.
+fn alloc_deferred_types_dag_refinement_placeholder(
+    dag: &mut Dag,
+    alias_name: &str,
+    span: SourceSpan,
+) -> DeclarationId {
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id,
+        name: Some(format!(
+            "<std/types.dag: `where` parsed, predicate not lowered: {alias_name}>"
+        )),
+        connective: TypeConnective::Conj { children: vec![] },
+        type_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span: span.clone(),
+    });
+    id
+}
+
 /// DB-11 (3a.3): lower a parameter's `where` refinement into a
 /// predicate `Declaration` and a refined type `Declaration`.
 ///
@@ -490,57 +602,14 @@ fn lower_parameter_refinement(
     dag: &mut Dag,
     param_span: SourceSpan,
 ) -> DeclarationId {
-    let pred_span = expr_span(predicate);
-    let pred_param_port = dag.alloc_port(None);
-    match declaration_to_port_shape(base_decl_id, dag, &param_span) {
-        Ok(shape) => dag.set_port_type(pred_param_port, shape),
-        Err(diag) => dag.mark_unresolved(pred_param_port, diag),
-    }
-
-    let mut pred_scope: HashMap<String, PortId> = HashMap::new();
-    pred_scope.insert(param_name.to_string(), pred_param_port);
-    let pred_callable_scope: CallableScope = CallableScope::new();
-    let bool_decl_id = symbols
-        .get("Bool")
-        .copied()
-        .unwrap_or_else(|| alloc_identifier_stub(dag, "Bool", &pred_span));
-    let pred_value_port = lower_expr(
+    let pred_decl_id = build_refinement_predicate_declaration(
+        base_decl_id,
         predicate,
-        dag,
-        &pred_scope,
-        &pred_callable_scope,
+        param_name,
         symbols,
-        Some(bool_decl_id),
+        dag,
+        param_span.clone(),
     );
-
-    let bind_id = dag.alloc_node_id();
-    dag.push_node(Behavior::Bind(BindNode {
-        id: bind_id,
-        name: format!("<refinement:{param_name}>"),
-        value: pred_value_port,
-        params: vec![pred_param_port],
-        span: pred_span.clone(),
-        lane2_workflow: None,
-    }));
-
-    let pred_decl_id = dag.alloc_declaration_id();
-    dag.push_declaration(Declaration {
-        id: pred_decl_id,
-        name: None,
-        connective: TypeConnective::Arrow {
-            inputs: vec![base_decl_id],
-            output: bool_decl_id,
-            body: ArrowBody::UserDefined(bind_id),
-        },
-        type_params: Vec::new(),
-        meta_tag: None,
-        specialization_parent: None,
-        inhabits: None,
-        value_body: None,
-        refinement: None,
-        span: pred_span,
-    });
-
     let refined_id = dag.alloc_declaration_id();
     dag.push_declaration(Declaration {
         id: refined_id,
@@ -687,6 +756,97 @@ fn lower_parameter_refinements_phase(
     }
 }
 
+/// DB-11: lower `type Name = T where …` after the data pre-pass so
+/// predicates can reference top-level `data` (same phase ordering as
+/// [`lower_parameter_refinements_phase`]).
+///
+/// Predicate lowering uses [`build_refinement_predicate_declaration`] with
+/// `bind_name = Name`: the `where` expression resolves `Var`s spelling the alias
+/// identifier to the refined base type `T`. Authors write the subject as the
+/// alias name; there is no separate hidden parameter symbol.
+///
+/// **Heuristic (PB-1):** for `span.file == "dsl/std/types.dag"`, we do **not**
+/// call [`build_refinement_predicate_declaration`] (unresolved `pattern` /
+/// `range` / … would emit diagnostics in the std seed and break snapshot
+/// identity), but we **do** set [`Declaration::refinement`] to a
+/// **placeholder** (see [`alloc_deferred_types_dag_refinement_placeholder`]) so
+/// the parsed `where` is not dropped silently: downstream sees a named carrier,
+/// not `None` as if no refinement were authored.
+///
+/// **Dissolution (delete the file gate / placeholders when one of these is
+/// true):** (1) the bootstrap supplies resolved Bool-level helpers (or
+/// realizations) for `types.dag` refinement calls so predicate lowering is
+/// diagnostic-clean; (2) a `meta_tag` (or other substrate flag) marks
+/// documentation-only refinements, replacing the string-compare; or (3) PB-1
+/// defers to a different authority file list so `types.dag` is not
+/// `compile`d in the snapshot path that must stay diagnostic-empty.
+fn lower_type_alias_refinements_phase(
+    dag: &mut Dag,
+    module: &SurfaceModule,
+    symbols: &HashMap<String, DeclarationId>,
+    is_first: &[bool],
+) {
+    for (idx, item) in module.items.iter().enumerate() {
+        if !is_first[idx] {
+            continue;
+        }
+        let SurfaceItem::TypeAlias {
+            name,
+            target,
+            refinement,
+            span,
+            ..
+        } = item
+        else {
+            continue;
+        };
+        let Some(predicate) = refinement.as_ref() else {
+            continue;
+        };
+        let decl_id = *symbols
+            .get(name)
+            .expect("type alias name missing from symbol table (first pass must register it)");
+        if let Some((shape_label, frag_span)) = refinement_predicate_out_of_fragment(predicate) {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "`where` predicate shape not supported in \
+                         DB-11 3a.3: `{shape_label}` lowers through \
+                         a Branch/Loop/Bind node, but the discharge \
+                         walker and composite-narrowing path only \
+                         support Value and Transform expression \
+                         bodies. Use a direct comparison or a call \
+                         to a Bool-returning helper instead."
+                    ),
+                    fixes: Vec::new(),
+                    span: frag_span,
+                },
+            );
+            continue;
+        }
+        let local = local_scope_from_parent(dag, decl_id);
+        let base_decl_id = type_to_declaration_id(target, symbols, &local, dag);
+        dag.declaration_mut(decl_id).connective =
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(base_decl_id));
+
+        if span.file == "dsl/std/types.dag" {
+            let ph = alloc_deferred_types_dag_refinement_placeholder(dag, name, span.clone());
+            dag.declaration_mut(decl_id).refinement = Some(ph);
+            continue;
+        }
+        let pred_decl_id = build_refinement_predicate_declaration(
+            base_decl_id,
+            predicate,
+            name,
+            symbols,
+            dag,
+            span.clone(),
+        );
+        dag.declaration_mut(decl_id).refinement = Some(pred_decl_id);
+    }
+}
+
 /// DB-11 (3a.3) fragment gate. Walks a `where`-predicate
 /// `SurfaceExpr` and returns `Some((shape_label, span))` for the
 /// first sub-expression whose lowering would produce a `Branch`,
@@ -718,8 +878,12 @@ fn refinement_predicate_out_of_fragment(expr: &SurfaceExpr) -> Option<(&'static 
         SurfaceExpr::VariantRecord { span, .. } => {
             Some(("named constructor literal", span.clone()))
         }
-        SurfaceExpr::Record { span, .. } => Some(("record literal", span.clone())),
-        SurfaceExpr::List { span, .. } => Some(("list literal", span.clone())),
+        SurfaceExpr::Record { fields, .. } => fields
+            .iter()
+            .find_map(|field| refinement_predicate_out_of_fragment(&field.value)),
+        SurfaceExpr::List { elements, .. } => elements
+            .iter()
+            .find_map(refinement_predicate_out_of_fragment),
     }
 }
 

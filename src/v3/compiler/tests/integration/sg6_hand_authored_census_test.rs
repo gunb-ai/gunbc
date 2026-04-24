@@ -59,9 +59,9 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use crate::common::integration_rs_cementing_path_attr_binds_mod_stem;
-use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, Declaration, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::emit_rust::emit_rust_module;
+use v3_compiler::{compile_to_dag, patch_lower_helpers_generated_type_alias_refinement};
 
 fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -148,10 +148,6 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     // tables — not `LensRegistryEntry`-tagged lens declarations), so
     // for SG-1 it lands as a parallel shim rather than a registry entry.
     //
-    // SG-3f-prep receipts `regen_lower.rs`: pass-through from canonical
-    // `lower.rs` to `lower_generated.rs` (not `lib.rs` authority) until
-    // `lower.dag` lands (SELF_HOSTING.md §4).
-    //
     // Dissolution trigger (SG-2+): unify `regen_tokenize` with the
     // registry-driven pattern — either extend `regen.dag` to carry a
     // tokenizer-registry shape that `regen_lens` can dispatch on, or
@@ -161,7 +157,6 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     let expected: BTreeSet<String> = [
         "regen_bootstrap.rs",
         "regen_lens.rs",
-        "regen_lower.rs",
         "regen_parse.rs",
         // SG-2c-1 grammar-tables prototype: `regen_parse_tables` projects
         // `src/v3/compiler/parse_tables.dag` into
@@ -184,8 +179,7 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     assert_eq!(
         actual, expected,
         "SG-6 hand-authored bin census changed. The census is \
-         `regen_lens` (reads `src/v3/compiler/regen.dag`), `regen_lower` \
-         (reads `src/v3/compiler/src/lower.rs`), `regen_parse` \
+         `regen_lens` (reads `src/v3/compiler/regen.dag`), `regen_parse` \
          (reads `src/v3/std/parse_surface.dag` for Surface carriers), `regen_tokenize` \
          (reads `src/v3/compiler/tokenize.dag`), `regen_v3`, and \
          `self_host_fixed_point`. Adding a new bin re-introduces a \
@@ -270,10 +264,13 @@ fn emit_registry_module(row: &RegistryRow) -> String {
     );
     let raw = emit_rust_module(&dag)
         .unwrap_or_else(|err| panic!("emit compiled module for {}: {err:?}", row.name));
-    rustfmt_stdout(
-        &format!("{}{raw}", generated_header(&row.lens_file)),
-        &format!("generated module `{}`", row.name),
-    )
+    let mut combined = format!("{}{raw}", generated_header(&row.lens_file));
+    combined = rustfmt_stdout(&combined, &format!("generated module `{}`", row.name));
+    if row.generated_file == "src/v3/compiler/src/lower_helpers_generated.rs" {
+        combined = patch_lower_helpers_generated_type_alias_refinement(&combined);
+        combined = rustfmt_stdout(&combined, &format!("generated module `{}`", row.name));
+    }
+    combined
 }
 
 fn checked_in_generated_module(row: &RegistryRow) -> String {
