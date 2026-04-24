@@ -261,6 +261,9 @@ impl<'a> TestRunner<'a> {
         // proves the witness program lowers today. When lens application lands,
         // fold this check into the real evaluation path or drop it — do not layer
         // redundant compiler calls indefinitely (PR #717 review).
+        //
+        // TODO: remove side-check `compile_to_dag` once `eval_lens_output_equals`
+        // performs real lens evaluation (compilation should happen on that path only).
         if let Err(err) = compile_to_dag(&claim.source, &claim.file_name) {
             return ClaimResult::Fail(format!(
                 "LensOutputEquals: claim `source` did not compile (needed for future lens application): {err:?}"
