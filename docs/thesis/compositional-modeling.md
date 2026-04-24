@@ -14,7 +14,7 @@ summarizes before the body so readers can place each section.
 |---|---|---|---|
 | Part 1 — primitives | `Int64 = OrderedRing<Word64>` | `[live]` | `dsl/std/bit.dag`, `dsl/std/integer.dag`, `dsl/std/algebra.dag` |
 | Part 1 — primitives | Operations fall out of algebra attachment | `[live]` | `dsl/std/algebra.dag:49-85` (denotational grounding) + `:176-193` (OrderedRing declaration) |
-| Part 2 — refinements | `Nat = Int where x >= 0` | `[live]` | DB-3 lowered; `test_3a3_*` acceptance tests |
+| Part 2 — refinements | `Nat = Int where x >= 0` as an alias-form refinement | `[target]` for the alias form shown; `[live]` only for the parameter/generic form | Alias-RHS `where` clause is currently dropped by `parse_type_rhs_after_eq` → `skip_where_clause` (`src/v3/compiler/parse_parser_body.txt:597`→`:620`, drop at `:651`); DB-11 at `ROADMAP.md:231` tracks closure. Parameter-form `fn foo<T where predicate>` works today per DB-3 + `test_3a3_*` acceptance tests |
 | Part 2 — refinements | Refinement preserves through arithmetic | `[live]` partially, `[target]` for full composition law | DB-3 supports parameter/generic `where` (`ROADMAP.md:231`); alias-RHS `where` still skipped in `src/v3/compiler/parse_parser_body.txt:651` `skip_where_clause` (drop site; call at `parse_type_rhs_after_eq:597`→`:620`) — tracked under DB-11 (`ROADMAP.md:231`) |
 | Part 3 — arity | `List<T>`, `Option<T>`, `NonEmpty<T>` as cardinality tags | `[live]` for List/Option; `[target]` for NonEmpty | NonEmpty as a first-class type composes on cardinality-substrate work tracked at `ROADMAP.md:305` ("Fixed-width types aren't structurally fixed" — cardinality not substrate-enforced until alias `where` parses/lowers per DB-11 gap) |
 | Part 3 — arity | Nested-optional flatten by composition law | `[target]` | gated on cardinality-substrate row (`ROADMAP.md:305`) + DB-11 alias-RHS closure (`ROADMAP.md:231`) |
@@ -54,7 +54,12 @@ type itself — easy enough that you do it by default, not as a
 heroic act of discipline. Once the information is in the type, the
 compiler can reason about it, composing it across function
 boundaries, across service boundaries, across teams. The bugs that
-come from the lost information stop existing.
+come from the lost information stop existing `[target]` — the
+"stop existing" formulation is the composite mature-system
+guarantee built across Parts 1–6; each specific mechanism that
+makes it true is tagged and cited in its own Part (cardinality
+substrate at `ROADMAP.md:305`, DB-11 at `:231`, T-TestGen at
+`:51`/`:65`/`:235`, unit-mismatch at `:364`, `Secret<T>` at `:365`).
 
 This document walks up from primitive types to multi-service
 workflows, showing at each level how composition turns conventions

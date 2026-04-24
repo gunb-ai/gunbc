@@ -71,9 +71,14 @@ the citation points to that file.
 ## R1 scope authority
 
 R1 scope — the lane list, acceptance gates, and schedule — lives only
-in `THESIS.md` and `ROADMAP.md` `[live]` (see `THESIS.md`,
-`ROADMAP.md`). No other document maintains parallel R1 scope
-authority `[live]`. Other documents may:
+in `THESIS.md` and `ROADMAP.md` `[live]` (see
+`THESIS.md:155` ("Thesis claims — complete list" section) and
+`ROADMAP.md:15` ("Release R1 Program" section); lane table at
+`ROADMAP.md:41-55`; acceptance gates at `:57-76`). No other
+document maintains parallel R1 scope authority `[live]` — this
+file establishes that rule; its companion authorities above are
+the only places where R1 scope content is authored. Other
+documents may:
 
 - **Propose** scope changes in `PROPOSAL` mode, with a follow-up PR
   amending `THESIS.md` / `ROADMAP.md`.
@@ -102,10 +107,13 @@ table `[live]`.
 ## GAP / PARTIAL single-ledger rule
 
 A document that flags a gap points to one follow-up artifact — the
-`ROADMAP.md` tracked-debt ledger row `[live]` (see `ROADMAP.md`
-tracked-debts section). Documents link to the ledger; documents do
-not recreate planning state, proposal queues, or sub-ledgers
-`[live]`.
+`ROADMAP.md` tracked-debt ledger row `[live]` (see
+`ROADMAP.md:248` "## Tracked debts — 2026-04 analyses" section
+header + per-category subsections at `:274` (P0), `:280` (P1),
+`:286` (P2), `:295` (P3), `:303` (P4), `:308-359` (post-merge
+cohorts), `:360-365` (PR #672 thesis-doc surface)). Documents link
+to the ledger; documents do not recreate planning state, proposal
+queues, or sub-ledgers `[live]`.
 
 Numbered items (bug classes, lane identifiers, debt rows) live in one
 authoritative doc `[live]`. Other docs cite by number; they do not
@@ -114,7 +122,8 @@ renumber. Cross-reference drift is a violation of this rule `[live]`.
 ## Relationship to INVARIANTS
 
 This contract is a thesis-doc-specific enforcement shape of two
-existing invariants `[live]` (see `INVARIANTS.md`):
+existing invariants `[live]` (see `INVARIANTS.md:23` P1 Modeling
+Faithfulness + `:96` P2 Boundary Discipline):
 
 - **P1 Modeling Faithfulness** — "Documentation Describes Live
   State." Mode declaration + per-claim tagging make the live-state
@@ -162,9 +171,11 @@ If a brief grows into claim-authority territory, it graduates into
 
 This is the thesis-doc surface applying the same `[invariant-reveal]`
 discipline that `ROADMAP.md` introduced in PR #669 for tracked
-debts `[live]` (see `ROADMAP.md`, PR #669). Pattern: when the same
-finding class fires across different sites, graduate the finding to
-a rule rather than patching each site.
+debts `[live]` (see `ROADMAP.md:252-273` "Debt classification —
+framing" subsection where the `[invariant-reveal]` tag was
+introduced; PR #669 is the originating merge). Pattern: when the
+same finding class fires across different sites, graduate the
+finding to a rule rather than patching each site.
 
 ## Maintenance
 
