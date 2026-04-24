@@ -1119,8 +1119,8 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
 pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
     let mut entries = Vec::new();
 
-    for caller in dag.nodes().iter().filter_map(Behavior::as_bind) {
-        let Some(caller_decl) = declaration_for_bind(dag, caller) else {
+    for caller_decl in dag.declarations() {
+        let Some(caller) = declaration_body_bind(dag, caller_decl) else {
             continue;
         };
         let Some(caller_template) = callable_target_template_for_provenance(dag, caller_decl.id)
@@ -1165,22 +1165,17 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
     entries
 }
 
-fn declaration_for_bind<'a>(dag: &'a Dag, bind: &BindNode) -> Option<&'a Declaration> {
-    // Lowering allocates one `BindNode` for each function body and keeps its span
-    // inside the owning declaration span. Duplicate-name declarations elsewhere
-    // must not satisfy E-P provenance by name alone, so this lookup is
-    // span-authoritative and fail-closed on zero or multiple matches.
-    let mut matches = dag
-        .declarations()
-        .iter()
-        .filter(|decl| decl.name.as_deref() == Some(bind.name.as_str()))
-        .filter(|decl| {
-            decl.span.file == bind.span.file
-                && decl.span.byte_start <= bind.span.byte_start
-                && decl.span.byte_end >= bind.span.byte_end
-        });
-    let first = matches.next()?;
-    matches.next().is_none().then_some(first)
+fn declaration_body_bind<'a>(dag: &'a Dag, decl: &Declaration) -> Option<&'a BindNode> {
+    // Use the lowered structural authority: function declarations point at
+    // their owning body bind through `ArrowBody::UserDefined`.
+    let TypeConnective::Arrow {
+        body: ArrowBody::UserDefined(bind_id),
+        ..
+    } = &decl.connective
+    else {
+        return None;
+    };
+    dag.node_opt(bind_id)?.as_bind()
 }
 
 fn callable_target_template_for_provenance(
