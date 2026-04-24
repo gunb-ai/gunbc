@@ -257,13 +257,14 @@ impl<'a> TestRunner<'a> {
             ));
         }
 
-        // Bridge receipt: `claim.source` is not the predicate DAG; this compile
-        // proves the witness program lowers today. When lens application lands,
-        // fold this check into the real evaluation path or drop it — do not layer
-        // redundant compiler calls indefinitely (PR #717 review).
+        // Bridge receipt: `claim.source` is not the predicate DAG; this compile is a
+        // witness check only — it can turn an otherwise NYI claim into `Fail` if the
+        // string does not lower. When the real lens-apply path exists, **delete** this
+        // whole block (do not leave it layered or “superseded” in place); compilation
+        // belongs on the evaluation path only (P5 tracked debt — PR #717 / claude-opus review).
         //
-        // TODO: remove side-check `compile_to_dag` once `eval_lens_output_equals`
-        // performs real lens evaluation (compilation should happen on that path only).
+        // TODO: delete side-check `compile_to_dag` when `eval_lens_output_equals` applies
+        // the lens for real (no duplicate compile in the runner for this predicate).
         if let Err(err) = compile_to_dag(&claim.source, &claim.file_name) {
             return ClaimResult::Fail(format!(
                 "LensOutputEquals: claim `source` did not compile (needed for future lens application): {err:?}"

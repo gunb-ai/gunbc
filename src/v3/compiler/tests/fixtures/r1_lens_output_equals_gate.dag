@@ -15,6 +15,10 @@
 // lowering is fixed. Dissolution trigger: ROADMAP.md lane table **T-LensAPI** (user-authored
 // lenses + composition) and lane acceptance **T-LaneE** (`LensOutputEquals` [ext]) — this
 // split is a compiler-snapshot bridge, not permanent fixture policy.
+//
+// Checkable receipt: open a tracking issue for “same-TU lowering” when filed and link it
+// here; until then, dissolution is the commit that moves this claim into `r1_gates.dag`
+// and passes `cargo test -p v3-compiler` for merged fixture + deleted split file.
 
 import std.verification { TestClaim, TestSuite }
 
