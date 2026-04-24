@@ -141,16 +141,25 @@ mod t_demo_fixture_test {
     use std::path::PathBuf;
 
     use v3_compiler::compile_to_dag;
+    use v3_compiler::dag::Dag;
+
+    const FIXTURE: &str = "src/v3/compiler/tests/t_demo/t_demo_fixtures.dag";
+
+    fn fixture_source() -> String {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .join(FIXTURE);
+        fs::read_to_string(path).expect("read T-Demo fixture skeleton")
+    }
+
+    fn compile_fixture(source: &str) -> Dag {
+        compile_to_dag(source, FIXTURE).expect("T-Demo fixture skeleton compiles")
+    }
 
     #[test]
     fn t_demo_fixture_skeleton_compiles() {
-        let fixture = "src/v3/compiler/tests/t_demo/t_demo_fixtures.dag";
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../..")
-            .join(fixture);
-        let source = fs::read_to_string(path).expect("read T-Demo fixture skeleton");
-
-        let dag = compile_to_dag(&source, fixture).expect("T-Demo fixture skeleton compiles");
+        let source = fixture_source();
+        let dag = compile_fixture(&source);
 
         assert!(
             dag.diagnostics().is_empty(),
@@ -159,37 +168,64 @@ mod t_demo_fixture_test {
         );
     }
 
+    fn find_string_field(source: &str, claim_name: &str, field_name: &str) -> String {
+        let claim_start = source
+            .find(&format!("let {claim_name}: TestClaim"))
+            .unwrap_or_else(|| panic!("T-Demo claim `{claim_name}` should be declared"));
+        let field_start = source[claim_start..]
+            .find(&format!("{field_name}: \""))
+            .unwrap_or_else(|| panic!("T-Demo claim `{claim_name}` missing `{field_name}` field"))
+            + claim_start;
+        let value_start = field_start + field_name.len() + 3;
+        read_dag_string_literal(&source[value_start..])
+    }
+
+    fn read_dag_string_literal(input: &str) -> String {
+        let mut out = String::new();
+        let mut escaped = false;
+        for ch in input.chars() {
+            if escaped {
+                out.push(ch);
+                escaped = false;
+                continue;
+            }
+            match ch {
+                '\\' => escaped = true,
+                '"' => return out,
+                _ => out.push(ch),
+            }
+        }
+        panic!("unterminated T-Demo string literal")
+    }
+
+    fn claim_source_and_file(fixture_source: &str, claim_name: &str) -> (String, String) {
+        (
+            find_string_field(fixture_source, claim_name, "source"),
+            find_string_field(fixture_source, claim_name, "file_name"),
+        )
+    }
+
     #[test]
     fn t_demo_claim_sources_compile() {
-        let claims = [
-            (
-                "fn pair_score(xs: List<Int>) -> Int = fold(xs, 0, |outer, x| outer + fold(xs, 0, |inner, y| inner + x + y))",
-                "fixture_compiler_nerd_canonical_complexity.v3",
-            ),
-            (
-                "type OwnedPayload { left: Int right: Int } fn combine_payload(payload: OwnedPayload) -> Int = payload.left + payload.right",
-                "fixture_compiler_nerd_canonical_ownership.v3",
-            ),
-            (
-                "let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)",
-                "fixture_compiler_nerd_canonical_parallelism.v3",
-            ),
-            (
-                "let upsert_effect = derive_op_effect(\"upsert_project\", \"PUT\", \"/projects/{project_id}\")",
-                "fixture_integration_canonical_effects.v3",
-            ),
-            (
-                "let retry_verdict = compose_effects([{ operation_name: \"upsert_project\", shape: IsIdempotent(UpsertEffect { key_source: PathParam { param: \"project_id\" } }) }, { operation_name: \"append_audit_log\", shape: IsBreaking(AppendEffect) }])",
-                "fixture_integration_canonical_idempotency.v3",
-            ),
-            (
-                "import std.list { empty } let generated_claim: TestClaim = { name: \"upsert_project_compiles\", source: \"let upsert_effect = derive_op_effect(\\\"upsert_project\\\", \\\"PUT\\\", \\\"/projects/{project_id}\\\")\", file_name: \"upsert_project_claim.v3\", predicate: Compiles, requires: empty() }",
-                "fixture_integration_canonical_testgen.v3",
-            ),
+        let fixture_source = fixture_source();
+        let fixture_dag = compile_fixture(&fixture_source);
+        assert!(
+            fixture_dag.diagnostics().is_empty(),
+            "T-Demo fixture skeleton should compile without diagnostics: {:?}",
+            fixture_dag.diagnostics()
+        );
+        let claim_names = [
+            "compiler_nerd_complexity_compiles",
+            "compiler_nerd_ownership_compiles",
+            "compiler_nerd_parallelism_compiles",
+            "integration_effects_compiles",
+            "integration_idempotency_compiles",
+            "integration_testgen_compiles",
         ];
 
-        for (source, file_name) in claims {
-            let dag = compile_to_dag(source, file_name).expect("T-Demo claim source compiles");
+        for claim_name in claim_names {
+            let (source, file_name) = claim_source_and_file(&fixture_source, claim_name);
+            let dag = compile_to_dag(&source, &file_name).expect("T-Demo claim source compiles");
             assert!(
                 dag.diagnostics().is_empty(),
                 "T-Demo claim source `{file_name}` should compile without diagnostics: {:?}",
