@@ -156,15 +156,16 @@ Lane-owner dispatch status (update as sub-deliverables close):
       (after T-LensAPI; `idempotency.dag` itself is already COMPLETE per
       `docs/v3-lens-capability-register.md:42`).
 - [ ] Impossible-bugs suite (`impossible_bug_class_suite_r1`,
-      `ROADMAP.md:72`) — **parked upstream-of-gates, testgen trigger
-      now fully met**. Re-dispatch when the first `[live]` R1 bug-class
-      proof row lands from a remaining upstream:
+      `ROADMAP.md:72`) — **parked upstream-of-gates**. Re-dispatch
+      when the first `[live]` R1 bug-class proof row lands:
   - Testgen runner + `MockBackedInvariant` wiring
-    (`ROADMAP.md:51`, `:65`, `:235`). **Both halves `[live]`**:
-    runner via #688 (foundation) + #705 (T-Demo consumer proof);
-    `MockBackedInvariant` wiring landed in #722 (2026-04-24).
-    Testgen side of the trigger is met; idempotency-class bug-proof
-    rows can now be dispatched into this lane on testgen alone.
+    (`ROADMAP.md:51`, `:65`, `:235`). **Runner foundation `[live]`**
+    via #688 + #705. `MockBackedInvariant` **dispatch + schema
+    wiring** landed in #722, but the runner still returns
+    `ClaimResult::NotYetImplemented` for mock simulation
+    (`src/v3/compiler/src/test_runner.rs:454`). Trigger remains
+    **half-met** until the runner actually evaluates a mock-backed
+    invariant claim, not just routes it.
   - Substrate T-LaneE (`complexity_merge_sort_is_nlogn` /
     `complexity_v3_matches_v2_oracle`) — pending.
   - Surface T-Emit (`emit_omni_demo_fixtures_green`) — pending.
@@ -238,12 +239,13 @@ Decisions log (append as they happen):
   `MockBackedInvariant` wiring for idempotency-class proofs is the
   remaining piece. Notify Director when the other half lands so W3 can
   re-dispatch against honest claims.
-- **2026-04-24** — `MockBackedInvariant` wiring landed in #722.
-  Testgen side of the impossible-bugs trigger is now **fully met**.
-  Suite remains parked on the two non-testgen upstreams (Substrate
-  T-LaneE, Surface T-Emit); idempotency-class proof rows can be
-  dispatched on testgen alone if Director chooses to lead with that
-  bug class rather than wait for all three triggers.
+- **2026-04-24** — `MockBackedInvariant` dispatch + schema wiring
+  landed in #722, but runner mock simulation is still
+  `NotYetImplemented` (`test_runner.rs:454`). Initial brief refresh
+  in #743 overstated this as "both halves live"; corrected after
+  Codex review on #743 flagged P1 (Documentation Describes Live
+  State). Trigger remains half-met until evaluation lands, not just
+  dispatch.
 
 Open questions for director:
 
