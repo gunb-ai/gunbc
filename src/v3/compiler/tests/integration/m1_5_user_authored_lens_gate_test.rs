@@ -25,6 +25,10 @@ const ON_DISK_LENS: &str = include_str!("../../../lenses/named_function_count.da
 const ON_DISK_LENS_COMPOSITION_WITNESS: &str =
     include_str!("../../../lenses/lens_composition_associative_witness.dag");
 
+// `r1_gates.dag` carries a parallel `fn lens_composition_op` for `DeclarationRef` lowering;
+// the runner checks the witness by name in `program_dag` only, but the bodies must not drift.
+const LENS_COMPOSITION_OP_DEF: &str = "fn lens_composition_op(a: Int, b: Int) -> Int = a + b";
+
 fn testclaim_string_field(dag: &Dag, gate_name: &str, label: &str) -> String {
     let decl = dag
         .declaration_by_name(gate_name)
@@ -144,5 +148,17 @@ fn lens_composition_associative_testclaim_source_tracks_on_disk_witness() {
         &source,
         &file_name,
         "TestClaim `source` payload (lens_composition_associative witness)",
+    );
+}
+
+#[test]
+fn lens_composition_associative_r1_gates_stub_locksteps_witness_operator_line() {
+    assert!(
+        ON_DISK_LENS_COMPOSITION_WITNESS.contains(LENS_COMPOSITION_OP_DEF),
+        "witness file must contain {LENS_COMPOSITION_OP_DEF:?}"
+    );
+    assert!(
+        R1_GATES_SOURCE.contains(LENS_COMPOSITION_OP_DEF),
+        "r1_gates.dag must contain the same `lens_composition_op` definition as the witness file"
     );
 }

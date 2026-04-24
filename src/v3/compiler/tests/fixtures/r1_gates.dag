@@ -37,7 +37,9 @@ data sub_match_over_user_sum_gate: TestSuite = {
 // Naming stub for `DeclarationRef` resolution on `AlgebraicLaw(Associativity, lens_composition_op)`.
 // The runner resolves `lens_ref` by name from this fixture DAG, then looks up the same name in
 // the compiled `program_dag` (`TestClaim.source`). The stub body is unused at evaluation time —
-// only the name must stay synchronized with the witness module.
+// only the **name** is asserted against `program_dag`; keep the **body** byte-identical to
+// `src/v3/lenses/lens_composition_associative_witness.dag` anyway so the parallel copy cannot
+// silently drift (merge hazard / reader confusion).
 // Dissolution trigger: once the runner resolves lens refs directly from `program_dag` without a
 // fixture-side stub, delete this declaration.
 fn lens_composition_op(a: Int, b: Int) -> Int = a + b

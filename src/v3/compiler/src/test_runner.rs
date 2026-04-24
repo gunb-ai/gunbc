@@ -19,6 +19,12 @@ pub struct ClaimEvaluation {
     pub result: ClaimResult,
 }
 
+/// Suffix after `AlgebraicLaw::<kind> is ` in errors from [`eval_algebraic_law_for_claim_program`]
+/// when the law kind is not implemented there. Harnesses may use
+/// [`str::contains`] on this constant instead of duplicating literals (C-5 discipline).
+pub const ALGEBRAIC_LAW_UNSUPPORTED_KIND_MESSAGE_SUFFIX: &str =
+    "not evaluable in the Rust runner yet";
+
 /// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
 ///
 /// Today only `Associativity` is supported, and only for the canonical
@@ -26,6 +32,12 @@ pub struct ClaimEvaluation {
 /// `lens_composition_associative` R1 gate. `lens_ref` is a [`FieldValue::Reference`]
 /// into `fixture_dag`; the runner resolves the **name** and looks up the same
 /// name in `program_dag`.
+///
+/// **Modeling debt (P1):** associativity is recognized by structural pattern match on
+/// `TransformTarget::Operator(Arithmetic(Add))`, not by reading an `OrderedRing` witness
+/// from the substrate. **Dissolution:** delete `declaration_is_binary_int_add_associativity_witness`
+/// once `AlgebraicLaw` evaluation consumes algebra / law facts from surfaced `.dag`
+/// (e.g. reflected `OrderedRing` evidence) instead of this bounded Rust recognizer.
 pub fn eval_algebraic_law_for_claim_program(
     fixture_dag: &Dag,
     program_dag: &Dag,
@@ -35,7 +47,8 @@ pub fn eval_algebraic_law_for_claim_program(
     let (law_label, law_payload) = variant_fields(fixture_dag, law)?;
     if law_label != "Associativity" {
         return Err(format!(
-            "AlgebraicLaw::{law_label} is not evaluable in the Rust runner yet"
+            "AlgebraicLaw::{law_label} is {}",
+            ALGEBRAIC_LAW_UNSUPPORTED_KIND_MESSAGE_SUFFIX
         ));
     }
     if !law_payload.is_empty() {
@@ -629,6 +642,10 @@ fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, String>
     }
 }
 
+/// Bounded scaffold: proves the named declaration is binary `Int` addition at the L1
+/// operator edge. **Dissolution:** remove this helper when `AlgebraicLaw` reads law
+/// witnesses from the substrate (same trigger as the modeling note on
+/// `eval_algebraic_law_for_claim_program`); do not grow new ad-hoc operator recognizers here.
 fn declaration_is_binary_int_add_associativity_witness(dag: &Dag, decl: &Declaration) -> bool {
     let TypeConnective::Arrow {
         inputs,

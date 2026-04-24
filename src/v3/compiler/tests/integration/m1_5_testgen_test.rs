@@ -7,7 +7,9 @@ use v3_compiler::dag::{
 };
 use v3_compiler::lens_cost::cost_of;
 use v3_compiler::lens_testgen::{GeneratedClaim, TestgenLens};
-use v3_compiler::test_runner::eval_algebraic_law_for_claim_program;
+use v3_compiler::test_runner::{
+    eval_algebraic_law_for_claim_program, ALGEBRAIC_LAW_UNSUPPORTED_KIND_MESSAGE_SUFFIX,
+};
 use v3_compiler::Diagnostic;
 
 use crate::common::{cached_compile_any, cached_compile_outcome, CachedCompileOutcome};
@@ -375,7 +377,7 @@ fn predicate_holds(
             match eval_algebraic_law_for_claim_program(expectation_dag, &inner, payload) {
                 Ok(holds) => holds,
                 Err(message)
-                    if message.contains("not evaluable in the Rust runner yet") =>
+                    if message.contains(ALGEBRAIC_LAW_UNSUPPORTED_KIND_MESSAGE_SUFFIX) =>
                 {
                     runner_deferred_panic("AlgebraicLaw")
                 }
