@@ -134,12 +134,9 @@ fn load_runtime_bootstrap_authorities(
     excluded_staged_paths: &[&str],
     excluded_compiler_paths: &[&str],
 ) {
-    let staged_iter = STAGED_FILES
-        .iter()
-        .copied()
-        .filter(|(path, _)| {
-            *path != RELEASE_GATE_DECLARATIONS_FILE && !excluded_staged_paths.contains(path)
-        });
+    let staged_iter = STAGED_FILES.iter().copied().filter(|(path, _)| {
+        *path != RELEASE_GATE_DECLARATIONS_FILE && !excluded_staged_paths.contains(path)
+    });
     let compiler_iter = COMPILER_FILES
         .iter()
         .copied()
