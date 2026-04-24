@@ -7,6 +7,7 @@ use v3_compiler::dag::{
 };
 use v3_compiler::lens_cost::cost_of;
 use v3_compiler::lens_testgen::{GeneratedClaim, TestgenLens};
+use v3_compiler::test_runner::eval_algebraic_law_for_claim_program;
 use v3_compiler::Diagnostic;
 
 use crate::common::{cached_compile_any, cached_compile_outcome, CachedCompileOutcome};
@@ -366,7 +367,23 @@ fn predicate_holds(
         "MockBackedInvariant" => runner_deferred_panic("MockBackedInvariant"),
         "LensOutputEquals" => runner_deferred_panic("LensOutputEquals"),
         "DifferentialEquals" => runner_deferred_panic("DifferentialEquals"),
-        "AlgebraicLaw" => runner_deferred_panic("AlgebraicLaw"),
+        "AlgebraicLaw" => {
+            let inner = match cached_compile_outcome(source, file_name) {
+                CachedCompileOutcome::Clean(dag) => dag,
+                _ => return false,
+            };
+            match eval_algebraic_law_for_claim_program(expectation_dag, &inner, payload) {
+                Ok(holds) => holds,
+                Err(message)
+                    if message.contains("not evaluable in the Rust runner yet") =>
+                {
+                    runner_deferred_panic("AlgebraicLaw")
+                }
+                Err(message) => panic!(
+                    "m1_5 testgen harness: AlgebraicLaw payload malformed — do not treat as ordinary false: {message}"
+                ),
+            }
+        }
         "ExecuteCommand" => {
             let Some((command, args, expect_exit)) = parse_shell_predicate_payload(payload) else {
                 panic!(
@@ -885,7 +902,7 @@ fn extension_predicates_reach_interpreter_boundary() {
         "TestPredicate",
         "AlgebraicLaw",
         vec![
-            sum_variant(&dag, "AlgebraicLawKind", "Associativity", Vec::new()),
+            sum_variant(&dag, "AlgebraicLawKind", "Commutativity", Vec::new()),
             declaration_ref_field(&dag, "Value"),
         ],
     );

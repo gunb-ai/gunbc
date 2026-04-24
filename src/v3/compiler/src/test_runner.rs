@@ -1,6 +1,6 @@
 use crate::dag::{
-    Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective,
-    ValueBody,
+    ArithmeticOp, ArrowBody, Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
+    OperatorKind, PortId, PortState, TransformTarget, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
 use crate::lens_cost::{cost_of, CostLookup};
@@ -17,6 +17,35 @@ pub enum ClaimResult {
 pub struct ClaimEvaluation {
     pub claim_name: String,
     pub result: ClaimResult,
+}
+
+/// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
+///
+/// Today only `Associativity` is supported, and only for the canonical
+/// `fn <name>(a: Int, b: Int) -> Int = a + b` witness shape used by the
+/// `lens_composition_associative` R1 gate. `lens_ref` is a [`FieldValue::Reference`]
+/// into `fixture_dag`; the runner resolves the **name** and looks up the same
+/// name in `program_dag`.
+pub fn eval_algebraic_law_for_claim_program(
+    fixture_dag: &Dag,
+    program_dag: &Dag,
+    payload: &[FieldValue],
+) -> Result<bool, String> {
+    let (law, lens_ref) = algebraic_law_payload_fields(payload)?;
+    let (law_label, law_payload) = variant_fields(fixture_dag, law)?;
+    if law_label != "Associativity" {
+        return Err(format!(
+            "AlgebraicLaw::{law_label} is not evaluable in the Rust runner yet"
+        ));
+    }
+    if !law_payload.is_empty() {
+        return Err("Associativity should be payload-free".to_string());
+    }
+    let lens_name = declaration_ref_name(fixture_dag, lens_ref)?;
+    let Some(target) = program_dag.declaration_by_name(&lens_name) else {
+        return Ok(false);
+    };
+    Ok(declaration_is_binary_int_add_associativity_witness(program_dag, target))
 }
 
 #[derive(Debug, Clone)]
@@ -103,6 +132,7 @@ impl<'a> TestRunner<'a> {
                     "OutputEquals" => self.eval_output_equals(claim, &payload),
                     "PortHasState" => self.eval_port_has_state(claim, &payload),
                     "CostBounded" => self.eval_cost_bounded(claim, &payload),
+                    "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                     _ => ClaimResult::NotYetImplemented,
                 },
                 None => ClaimResult::Fail("predicate is not a structural variant".to_string()),
@@ -206,6 +236,31 @@ impl<'a> TestRunner<'a> {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!("bind `{bind_name}` state did not match `{label}`"))
+        }
+    }
+
+    fn eval_algebraic_law(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
+        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(_)) => {
+                return ClaimResult::Fail(
+                    "claim program compiled with diagnostics (AlgebraicLaw requires a clean compile)"
+                        .to_string(),
+                );
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "claim program did not compile (AlgebraicLaw): {err:?}"
+                ));
+            }
+        };
+        match eval_algebraic_law_for_claim_program(self.dag, &program_dag, payload) {
+            Ok(true) => ClaimResult::Pass,
+            Ok(false) => ClaimResult::Fail(
+                "AlgebraicLaw associativity witness not satisfied (expected binary Int `+`)"
+                    .to_string(),
+            ),
+            Err(reason) => ClaimResult::Fail(reason),
         }
     }
 
@@ -499,4 +554,112 @@ fn variant_label(dag: &Dag, variant_id: DeclarationId) -> Option<String> {
                 .map(|variant| variant.label.clone()),
             _ => None,
         })
+}
+
+fn algebraic_law_payload_fields(
+    payload: &[FieldValue],
+) -> Result<(&FieldValue, &FieldValue), String> {
+    match payload {
+        [law, lens_ref] => Ok((law, lens_ref)),
+        [FieldValue::Record(fields)] => {
+            let law = field(fields, "law").ok_or_else(|| {
+                "AlgebraicLaw payload record is missing `law` field".to_string()
+            })?;
+            let lens_ref = field(fields, "lens_ref").ok_or_else(|| {
+                "AlgebraicLaw payload record is missing `lens_ref` field".to_string()
+            })?;
+            Ok((law, lens_ref))
+        }
+        _ => Err(format!(
+            "AlgebraicLaw payload should be [law, lens_ref] or a record, got len {}",
+            payload.len()
+        )),
+    }
+}
+
+fn variant_fields<'a>(
+    dag: &Dag,
+    value: &'a FieldValue,
+) -> Result<(String, &'a [FieldValue]), String> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err("expected AlgebraicLawKind variant".to_string());
+    };
+    let label = variant_label(dag, *constructor).ok_or_else(|| {
+        format!(
+            "variant constructor {:?} not found under any sum",
+            constructor
+        )
+    })?;
+    Ok((label, payload.as_slice()))
+}
+
+fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, String> {
+    match value {
+        FieldValue::Reference(id) => dag
+            .declaration(*id)
+            .name
+            .clone()
+            .ok_or_else(|| format!("lens_ref declaration {:?} is anonymous", id)),
+        other => Err(format!(
+            "lens_ref should be a DeclarationRef (FieldValue::Reference), got {other:?}"
+        )),
+    }
+}
+
+fn declaration_is_binary_int_add_associativity_witness(dag: &Dag, decl: &Declaration) -> bool {
+    let TypeConnective::Arrow {
+        inputs,
+        output,
+        body,
+    } = &decl.connective
+    else {
+        return false;
+    };
+    let Some(int_decl) = dag.declaration_by_name("Int") else {
+        return false;
+    };
+    let int_id = int_decl.id;
+    if inputs.len() != 2 || inputs[0] != int_id || inputs[1] != int_id || *output != int_id {
+        return false;
+    }
+    let ArrowBody::UserDefined(root) = body else {
+        return false;
+    };
+    let Behavior::Bind(bind) = dag.node(*root) else {
+        return false;
+    };
+    if bind.params.len() != 2 {
+        return false;
+    }
+    let Some(producer) = dag.resolve_producer_opt(&bind.value) else {
+        return false;
+    };
+    let Behavior::Transform(transform) = producer else {
+        return false;
+    };
+    if !matches!(
+        transform.target,
+        TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add))
+    ) {
+        return false;
+    }
+    if transform.inputs.len() != 2 {
+        return false;
+    }
+    same_port_id_set(&bind.params, &transform.inputs)
+}
+
+fn same_port_id_set(params: &[PortId], inputs: &[PortId]) -> bool {
+    if params.len() != inputs.len() {
+        return false;
+    }
+    let mut a: Vec<u32> = params.iter().map(PortId::raw).collect();
+    let mut b: Vec<u32> = inputs.iter().map(PortId::raw).collect();
+    a.sort_unstable();
+    b.sort_unstable();
+    a == b
 }
