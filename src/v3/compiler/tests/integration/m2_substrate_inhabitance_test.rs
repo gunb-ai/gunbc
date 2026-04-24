@@ -4,9 +4,9 @@ use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
     join_evidence, lower_call_pattern, map_evidence_merge_at, merge_evidence,
     optional_evidence_meet, promote_to_strict, size_bound_param, tree_size_bound,
-    type_iteration_dimension, AlgebraProfile, ArrowBody, CallPattern, DescentEvidence, FieldValue,
-    IterationDimension, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
-    TypeConnective, ValueBody,
+    type_iteration_dimension, AlgebraProfile, ArrowBody, CallPattern, DescentEvidence,
+    DivisionDescentFactor, FieldValue, IterationDimension, IterationPrimitive, LoweringTarget,
+    ShrinkFactor, SizeBound, TypeConnective, ValueBody,
 };
 use v3_compiler::parse_surface;
 use v3_compiler::Dag;
@@ -514,7 +514,7 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
         (
             ArithmeticDivideCall {
                 param: String::from("k"),
-                by: 2,
+                by: DivisionDescentFactor::Two,
             },
             LoweringTarget {
                 primitive: Repeat,
@@ -522,7 +522,9 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                     param: String::from("k"),
                 },
                 evidence: Strict,
-                factor: Some(ProportionalShrink { divisor: 2 }),
+                factor: Some(ProportionalShrink {
+                    divisor: DivisionDescentFactor::Two,
+                }),
             },
         ),
         (
