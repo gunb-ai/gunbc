@@ -59,8 +59,8 @@ Post-R2 is external work (adoption, documentation, community) — not on the the
 
 Continues `docs/briefs/grounding-manager.md` (refreshed for R2 scope on promotion). Owns T-Ground sub-program.
 
-- **Critical path:** T-Ground-Pilot → T-Ground-Engine → T-Ground-Tests → T-Ground-Dissolve.
-- **Fill queue:** T-Ground-Rust, T-Ground-Python, T-Ground-Go (3-way parallel after Pilot validates).
+- **Critical path:** T-Ground-Pilot → T-Ground-Rust → T-Ground-Engine → T-Ground-Tests → T-Ground-Dissolve (per `ROADMAP.md:169` — Rust is on the critical path because Engine blocks on layers 1–3 populated and Rust is the first layer-populating target).
+- **Fill queue:** T-Ground-Python, T-Ground-Go (2-way parallel after Pilot validates; run alongside Rust but are not gated by Engine-blocking).
 
 ### Structural Close Manager
 
@@ -97,7 +97,8 @@ New brief at `docs/briefs/r2-structural-close-manager.md` (to author on promotio
 ## Dependency DAG
 
 ```
-T-Ground:         Pilot → {Rust, Python, Go} → Engine → Tests → Dissolve
+T-Ground:         Pilot → Rust → Engine → Tests → Dissolve   (critical path)
+                  Python, Go run parallel after Pilot (fill queue; not Engine-blocking)
 T-EFamilyClose:   E-I (in flight) → E-P → E-M → §6a pick
 T-Substrate:      cardinality-for-int-lit (subset) ──→ unblocks T-Modeling int-lit
                   nominal-opaque-for-Secret (subset) ─→ unblocks T-Modeling Secret<T>
@@ -111,7 +112,7 @@ T-ImpossibleBugs: 3 independent classes (any worker)
 T-Demo:           per-lane artifact (trails each lane close)
 ```
 
-Parallel-capable work at any time ≥ N workers × fill-queue depth (5 fill queues on Structural Close Manager + 3 on Grounding).
+Parallel-capable work at any time ≥ N workers × fill-queue depth (5 fill queues on Structural Close Manager + 2 on Grounding).
 
 ## R1 closure criteria
 
