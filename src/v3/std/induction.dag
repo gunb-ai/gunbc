@@ -523,7 +523,9 @@ type AtomicCost
 // Composite bounds are represented in sum-of-products normal form:
 //   O((V+E) · log V) = SumOfProductsBound { [[Poly(V,1), Log(V)], [Poly(E,1), Log(V)]] }
 //
-// This can represent any polynomial-logarithmic cost without recursion.
+// That SOP path (and `ProductBound` / `AtomicCost`) needs no `CostBound`→`CostBound`
+// self-edge; `SumBound` below is the **sole** deliberate `CostBound` self-reference
+// (see kernel invariant above — not anonymous substrate recursion like `Node`).
 //
 // 🟡 MIXED. SOP / product shapes are structural lists of `AtomicCost`; `SumBound` stacks
 // alternatives; string-named atoms inherit scaffold from `AtomicCost`; `ErrorBound` is fail-closed.

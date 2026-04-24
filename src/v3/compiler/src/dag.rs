@@ -794,33 +794,34 @@ pub fn proportional_divisor_to_int(d: &ProportionalDivisor) -> i64 {
     }
 }
 
-/// Builds a Peano witness in O(k) stack depth and allocations. Current producers
-/// supply small literal `k` from authored sources; if a future surface feeds
-/// unbounded user `Int` here, add an explicit upper bound returning `none` rather
-/// than relying on this recursion alone.
+/// Builds a Peano witness in O(k) allocations with **iterative** construction (no
+/// deep recursion — safe if a future producer passes a large computed `k`). Heap
+/// and time stay linear in `k`; cap at the call site if unbounded user `Int` is a concern.
 pub fn positive_amount_from_i64(k: i64) -> Option<PositiveDescentAmount> {
     if k <= 0 {
-        None
-    } else if k == 1 {
-        Some(PositiveDescentAmount::OneStep)
-    } else {
-        Some(PositiveDescentAmount::AdditionalStep {
-            previous: Box::new(positive_amount_from_i64(k - 1)?),
-        })
+        return None;
     }
+    let mut cur = PositiveDescentAmount::OneStep;
+    for _ in 1..k {
+        cur = PositiveDescentAmount::AdditionalStep {
+            previous: Box::new(cur),
+        };
+    }
+    Some(cur)
 }
 
-/// Same complexity notes as [`positive_amount_from_i64`] (`k` must be ≥ 2).
+/// Same stack-safety story as [`positive_amount_from_i64`] (`k` must be ≥ 2).
 pub fn proportional_divisor_from_i64(k: i64) -> Option<ProportionalDivisor> {
     if k < 2 {
-        None
-    } else if k == 2 {
-        Some(ProportionalDivisor::DivideByTwo)
-    } else {
-        Some(ProportionalDivisor::StrictlyLarger {
-            inner: Box::new(proportional_divisor_from_i64(k - 1)?),
-        })
+        return None;
     }
+    let mut cur = ProportionalDivisor::DivideByTwo;
+    for _ in 2..k {
+        cur = ProportionalDivisor::StrictlyLarger {
+            inner: Box::new(cur),
+        };
+    }
+    Some(cur)
 }
 
 /// 🟡 SCAFFOLD.
