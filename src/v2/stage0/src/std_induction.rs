@@ -15,6 +15,7 @@ use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 use crate::std_termination::RankingDimension::TreeSize;
 pub use crate::std_termination::{
+    positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
     proportional_divisor_to_int, DescentEvidence, PositiveDescentAmount, ProportionalDivisor,
     RankingDimension,
 };
@@ -363,9 +364,24 @@ pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PolynomialExponent {
-    IntegerExp { value: i64 },
-    FractionExp { numerator: i64, root: i64 },
-    LogBasedExp { base: i64, argument: i64 },
+    IntegerExpZero,
+    IntegerExpPos {
+        degree: Rc<PositiveDescentAmount>,
+    },
+    FractionExp {
+        numerator: Rc<PositiveDescentAmount>,
+        root: Rc<PositiveDescentAmount>,
+    },
+    LogBasedExp {
+        base: Rc<ProportionalDivisor>,
+        argument: Rc<PositiveDescentAmount>,
+    },
+}
+
+pub fn poly_exp_degree_one() -> Rc<PolynomialExponent> {
+    Rc::new(PolynomialExponent::IntegerExpPos {
+        degree: Rc::new(PositiveDescentAmount::OneStep),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -420,7 +436,7 @@ pub fn cost_linear(param: String) -> Rc<CostBound> {
     Rc::new(CostBound::AtomicBound {
         cost: Rc::new(AtomicCost::PolyCost {
             param: param,
-            exponent: Rc::new(PolynomialExponent::IntegerExp { value: 1 }),
+            exponent: poly_exp_degree_one(),
         }),
     })
 }
@@ -429,14 +445,26 @@ pub fn cost_poly(param: String, degree: i64) -> Rc<CostBound> {
     if (degree.clone() < 0) {
         Rc::new(CostBound::ErrorBound)
     } else {
-        Rc::new(CostBound::AtomicBound {
-            cost: Rc::new(AtomicCost::PolyCost {
-                param: param,
-                exponent: Rc::new(PolynomialExponent::IntegerExp {
-                    value: degree.clone(),
+        if (degree.clone() == 0) {
+            Rc::new(CostBound::AtomicBound {
+                cost: Rc::new(AtomicCost::PolyCost {
+                    param: param,
+                    exponent: Rc::new(PolynomialExponent::IntegerExpZero),
                 }),
-            }),
-        })
+            })
+        } else {
+            match positive_descent_amount_from_positive_int(degree.clone()) {
+                Some(deg) => Rc::new(CostBound::AtomicBound {
+                    cost: Rc::new(AtomicCost::PolyCost {
+                        param: param,
+                        exponent: Rc::new(PolynomialExponent::IntegerExpPos {
+                            degree: deg.clone(),
+                        }),
+                    }),
+                }),
+                None => Rc::new(CostBound::ErrorBound),
+            }
+        }
     }
 }
 
@@ -444,15 +472,18 @@ pub fn cost_root(param: String, k: i64) -> Rc<CostBound> {
     if (k.clone() <= 0) {
         Rc::new(CostBound::ErrorBound)
     } else {
-        Rc::new(CostBound::AtomicBound {
-            cost: Rc::new(AtomicCost::PolyCost {
-                param: param,
-                exponent: Rc::new(PolynomialExponent::FractionExp {
-                    numerator: 1,
-                    root: k.clone(),
+        match positive_descent_amount_from_positive_int(k.clone()) {
+            Some(rw) => Rc::new(CostBound::AtomicBound {
+                cost: Rc::new(AtomicCost::PolyCost {
+                    param: param,
+                    exponent: Rc::new(PolynomialExponent::FractionExp {
+                        numerator: Rc::new(PositiveDescentAmount::OneStep),
+                        root: rw.clone(),
+                    }),
                 }),
             }),
-        })
+            None => Rc::new(CostBound::ErrorBound),
+        }
     }
 }
 
@@ -475,7 +506,7 @@ pub fn cost_nlogn(param: &String) -> Rc<CostBound> {
         factors: Rc::new(vec![
             Rc::new(AtomicCost::PolyCost {
                 param: param.clone(),
-                exponent: Rc::new(PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: poly_exp_degree_one(),
             }),
             Rc::new(AtomicCost::LogCost {
                 param: param.clone(),
@@ -489,11 +520,11 @@ pub fn cost_graph_linear(v_param: String, e_param: String) -> Rc<CostBound> {
         terms: Rc::new(vec![
             Rc::new(vec![Rc::new(AtomicCost::PolyCost {
                 param: v_param,
-                exponent: Rc::new(PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: poly_exp_degree_one(),
             })]),
             Rc::new(vec![Rc::new(AtomicCost::PolyCost {
                 param: e_param,
-                exponent: Rc::new(PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: poly_exp_degree_one(),
             })]),
         ]),
     })
@@ -564,28 +595,39 @@ pub fn master_theorem(form: &Rc<RecurrenceForm>) -> Rc<CostBound> {
                     if (a.clone() == b_to_d.clone()) {
                         match d.clone() {
                             0 => cost_log(n.clone()),
-                            _ => Rc::new(CostBound::ProductBound {
-                                factors: Rc::new(vec![
-                                    Rc::new(AtomicCost::PolyCost {
-                                        param: n.clone(),
-                                        exponent: Rc::new(PolynomialExponent::IntegerExp {
-                                            value: d.clone(),
+                            _ => match positive_descent_amount_from_positive_int(d.clone()) {
+                                Some(deg) => Rc::new(CostBound::ProductBound {
+                                    factors: Rc::new(vec![
+                                        Rc::new(AtomicCost::PolyCost {
+                                            param: n.clone(),
+                                            exponent: Rc::new(PolynomialExponent::IntegerExpPos {
+                                                degree: deg.clone(),
+                                            }),
                                         }),
-                                    }),
-                                    Rc::new(AtomicCost::LogCost { param: n.clone() }),
-                                ]),
-                            }),
+                                        Rc::new(AtomicCost::LogCost { param: n.clone() }),
+                                    ]),
+                                }),
+                                None => Rc::new(CostBound::ErrorBound),
+                            },
                         }
                     } else {
-                        Rc::new(CostBound::AtomicBound {
-                            cost: Rc::new(AtomicCost::PolyCost {
-                                param: n.clone(),
-                                exponent: Rc::new(PolynomialExponent::LogBasedExp {
-                                    base: b.clone(),
-                                    argument: a.clone(),
-                                }),
-                            }),
-                        })
+                        match proportional_divisor_from_int_at_least_two(b.clone()) {
+                            Some(base_w) => {
+                                match positive_descent_amount_from_positive_int(a.clone()) {
+                                    Some(arg_w) => Rc::new(CostBound::AtomicBound {
+                                        cost: Rc::new(AtomicCost::PolyCost {
+                                            param: n.clone(),
+                                            exponent: Rc::new(PolynomialExponent::LogBasedExp {
+                                                base: base_w.clone(),
+                                                argument: arg_w.clone(),
+                                            }),
+                                        }),
+                                    }),
+                                    None => Rc::new(CostBound::ErrorBound),
+                                }
+                            }
+                            None => Rc::new(CostBound::ErrorBound),
+                        }
                     }
                 }
             }
@@ -715,7 +757,7 @@ pub fn dijkstra_bound() -> Rc<CostBound> {
             Rc::new(vec![
                 Rc::new(AtomicCost::PolyCost {
                     param: "V".to_string(),
-                    exponent: Rc::new(PolynomialExponent::IntegerExp { value: 1 }),
+                    exponent: poly_exp_degree_one(),
                 }),
                 Rc::new(AtomicCost::LogCost {
                     param: "V".to_string(),
@@ -724,7 +766,7 @@ pub fn dijkstra_bound() -> Rc<CostBound> {
             Rc::new(vec![
                 Rc::new(AtomicCost::PolyCost {
                     param: "E".to_string(),
-                    exponent: Rc::new(PolynomialExponent::IntegerExp { value: 1 }),
+                    exponent: poly_exp_degree_one(),
                 }),
                 Rc::new(AtomicCost::LogCost {
                     param: "V".to_string(),
@@ -739,11 +781,11 @@ pub fn bellman_ford_bound() -> Rc<CostBound> {
         factors: Rc::new(vec![
             Rc::new(AtomicCost::PolyCost {
                 param: "V".to_string(),
-                exponent: Rc::new(PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: poly_exp_degree_one(),
             }),
             Rc::new(AtomicCost::PolyCost {
                 param: "E".to_string(),
-                exponent: Rc::new(PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: poly_exp_degree_one(),
             }),
         ]),
     })

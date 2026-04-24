@@ -68,7 +68,9 @@ import std.termination {
   RankingDimension, TreeSize,
   PositiveDescentAmount, OneStep, AdditionalStep,
   ProportionalDivisor, DivideByTwo, StrictlyLarger,
-  proportional_divisor_to_int
+  proportional_divisor_to_int,
+  positive_descent_amount_from_positive_int,
+  proportional_divisor_from_int_at_least_two
 }
 import std.computation {
   CallPattern, ChildAccessorCall, FoldBodyCall, SameArgumentCall,
@@ -473,26 +475,27 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
 // PolynomialExponent — exact representation of asymptotic exponents
 // =========================================================================
 
-// Polynomial exponents in complexity bounds. Three forms:
-//   IntegerExp: n^k for integer k ≥ 0 (O(1) at k=0, O(n), O(n²), …). **`cost_poly` rejects k < 0
-//   → `ErrorBound`** — negative polynomial degrees are not valid Big-O poly costs (P3 fail-closed).
-//   FractionExp: n^(1/k) for positive root k (O(√n), O(∛n))
-//   LogBasedExp: n^(log_b(a)) for exact divide-and-conquer bounds
-//     (Karatsuba: n^(log_2(3)), Strassen: n^(log_2(7)))
+// Polynomial exponents in complexity bounds:
+//   IntegerExpZero: O(1) in n (degree 0).
+//   IntegerExpPos: O(n^k) for k ≥ 1 via `PositiveDescentAmount` (same Peano family as termination).
+//   FractionExp: n^(p/r) with strictly positive Peano numerators/roots (typ. p=1).
+//   LogBasedExp: n^(log_b(a)) with divisor witness b ≥ 2 and positive Peano argument a.
 //
-// FractionExp uses `root` (not denominator): the k-th root of n.
-// Constructors (cost_root, kth_root_bound) reject root ≤ 0 → ErrorBound.
-// LogBasedExp base > 1 and argument > 0 are validated at `master_theorem` entry;
-// `ceil_log` rejects base < 2 or argument < 1 (returns none).
-// Represents the exponent structurally — no precision loss.
+// `cost_poly` / `master_theorem` are the typed bridges from `Int` literals; invalid or
+// oversized degrees fail closed (`ErrorBound` / `none`) — M9 matches `std.termination` caps.
 //
-// 🟡 MIXED at E-I exponent scope. Carriers still use `Int` fields; **API-level** gates above
-// keep illegal exponent states fail-closed (full structural witnesses are a follow-on).
+// 🟢 TERMINAL coproduct at E-I exponent scope — negative roots, bases < 2, and non-positive
+// log arguments are not representable as inhabitants (only via the `Int` bridges above).
 
 type PolynomialExponent
-  = IntegerExp { value: Int }
-  | FractionExp { numerator: Int, root: Int }
-  | LogBasedExp { base: Int, argument: Int }
+  = IntegerExpZero
+  | IntegerExpPos { degree: PositiveDescentAmount }
+  | FractionExp { numerator: PositiveDescentAmount, root: PositiveDescentAmount }
+  | LogBasedExp { base: ProportionalDivisor, argument: PositiveDescentAmount }
+
+fn poly_exp_degree_one() -> PolynomialExponent {
+  IntegerExpPos { degree: OneStep }
+}
 
 
 // =========================================================================
@@ -557,27 +560,43 @@ fn sum_bound(terms: List<CostBound>) -> CostBound {
 }
 
 fn cost_constant() -> CostBound { ConstantBound }
-fn cost_linear(param: String) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: IntegerExp { value: 1 } } } }
+fn cost_linear(param: String) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: poly_exp_degree_one() } } }
 fn cost_poly(param: String, degree: Int) -> CostBound {
   if degree < 0 { ErrorBound }
-  else { AtomicBound { cost: PolyCost { param: param, exponent: IntegerExp { value: degree } } } }
+  else {
+    if degree == 0 {
+      AtomicBound { cost: PolyCost { param: param, exponent: IntegerExpZero } }
+    } else {
+      match positive_descent_amount_from_positive_int(k: degree) {
+        Some { value: deg } =>
+          AtomicBound { cost: PolyCost { param: param, exponent: IntegerExpPos { degree: deg } } }
+        None => ErrorBound
+      }
+    }
+  }
 }
 fn cost_root(param: String, k: Int) -> CostBound {
   if k <= 0 { ErrorBound }
-  else { AtomicBound { cost: PolyCost { param: param, exponent: FractionExp { numerator: 1, root: k } } } }
+  else {
+    match positive_descent_amount_from_positive_int(k: k) {
+      Some { value: rw } =>
+        AtomicBound { cost: PolyCost { param: param, exponent: FractionExp { numerator: OneStep, root: rw } } }
+      None => ErrorBound
+    }
+  }
 }
 fn cost_sqrt(param: String) -> CostBound { cost_root(param: param, k: 2) }
 fn cost_cbrt(param: String) -> CostBound { cost_root(param: param, k: 3) }
 fn cost_log(param: String) -> CostBound { AtomicBound { cost: LogCost { param: param } } }
 
 fn cost_nlogn(param: String) -> CostBound {
-  ProductBound { factors: [PolyCost { param: param, exponent: IntegerExp { value: 1 } }, LogCost { param: param }] }
+  ProductBound { factors: [PolyCost { param: param, exponent: poly_exp_degree_one() }, LogCost { param: param }] }
 }
 
 fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
   SumOfProductsBound { terms: [
-    [PolyCost { param: v_param, exponent: IntegerExp { value: 1 } }],
-    [PolyCost { param: e_param, exponent: IntegerExp { value: 1 } }]
+    [PolyCost { param: v_param, exponent: poly_exp_degree_one() }],
+    [PolyCost { param: e_param, exponent: poly_exp_degree_one() }]
   ] }
 }
 
@@ -648,12 +667,25 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
         // Case 2: balanced → O(n^d · log n)
         match d {
           0 => cost_log(param: n)
-          _ => ProductBound { factors: [PolyCost { param: n, exponent: IntegerExp { value: d } }, LogCost { param: n }] }
+          _ =>
+            match positive_descent_amount_from_positive_int(k: d) {
+              Some { value: deg } =>
+                ProductBound { factors: [PolyCost { param: n, exponent: IntegerExpPos { degree: deg } }, LogCost { param: n }] }
+              None => ErrorBound
+            }
         }
       } else {
         // Case 1: sub-problem work dominates → O(n^(log_b(a)))
         // Exact representation via LogBasedExp — no approximation
-        AtomicBound { cost: PolyCost { param: n, exponent: LogBasedExp { base: b, argument: a } } }
+        match proportional_divisor_from_int_at_least_two(k: b) {
+          Some { value: baseW } =>
+            match positive_descent_amount_from_positive_int(k: a) {
+              Some { value: argW } =>
+                AtomicBound { cost: PolyCost { param: n, exponent: LogBasedExp { base: baseW, argument: argW } } }
+              None => ErrorBound
+            }
+          None => ErrorBound
+        }
       }
     }
   }
@@ -766,16 +798,16 @@ fn bfs_dfs_bound() -> CostBound {
 fn dijkstra_bound() -> CostBound {
   // O((V+E) · log V) in sum-of-products: O(V·log V + E·log V)
   SumOfProductsBound { terms: [
-    [PolyCost { param: "V", exponent: IntegerExp { value: 1 } }, LogCost { param: "V" }],
-    [PolyCost { param: "E", exponent: IntegerExp { value: 1 } }, LogCost { param: "V" }]
+    [PolyCost { param: "V", exponent: poly_exp_degree_one() }, LogCost { param: "V" }],
+    [PolyCost { param: "E", exponent: poly_exp_degree_one() }, LogCost { param: "V" }]
   ] }
 }
 
 // https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm
 fn bellman_ford_bound() -> CostBound {
   ProductBound { factors: [
-    PolyCost { param: "V", exponent: IntegerExp { value: 1 } },
-    PolyCost { param: "E", exponent: IntegerExp { value: 1 } }
+    PolyCost { param: "V", exponent: poly_exp_degree_one() },
+    PolyCost { param: "E", exponent: poly_exp_degree_one() }
   ] }
 }
 

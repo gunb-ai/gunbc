@@ -22,7 +22,7 @@ pub use crate::std_graph::{
 };
 use crate::std_induction::AtomicCost::PolyCost;
 use crate::std_induction::CostBound::{AtomicBound, ConstantBound, ErrorBound, ForeverBound};
-use crate::std_induction::PolynomialExponent::IntegerExp;
+use crate::std_induction::PolynomialExponent::*;
 use crate::std_induction::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::SubValueRelation::{
     ArithmeticDescent, IteratedSubValue, PreservedValue, StrictSubValue, SubValueUnknown,

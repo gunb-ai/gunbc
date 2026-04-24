@@ -794,11 +794,15 @@ pub fn proportional_divisor_to_int(d: &ProportionalDivisor) -> i64 {
     }
 }
 
-/// Builds a Peano witness in O(k) allocations with **iterative** construction (no
-/// deep recursion — safe if a future producer passes a large computed `k`). Heap
-/// and time stay linear in `k`; cap at the call site if unbounded user `Int` is a concern.
+/// Maximum Peano links materialized from a single `i64` literal (M9 / decidability).
+///
+/// Larger requests fail closed with [`None`] instead of value-sized compiler work.
+pub const MAX_PEANO_MATERIALIZATION: i64 = 4096;
+
+/// Builds a Peano witness with **iterative** construction (no deep recursion).
+/// Returns [`None`] when `k` is out of range or exceeds [`MAX_PEANO_MATERIALIZATION`].
 pub fn positive_amount_from_i64(k: i64) -> Option<PositiveDescentAmount> {
-    if k <= 0 {
+    if !(1..=MAX_PEANO_MATERIALIZATION).contains(&k) {
         return None;
     }
     let mut cur = PositiveDescentAmount::OneStep;
@@ -810,9 +814,9 @@ pub fn positive_amount_from_i64(k: i64) -> Option<PositiveDescentAmount> {
     Some(cur)
 }
 
-/// Same stack-safety story as [`positive_amount_from_i64`] (`k` must be ≥ 2).
+/// Iterative construction; `k` must be ≥ 2 and ≤ [`MAX_PEANO_MATERIALIZATION`].
 pub fn proportional_divisor_from_i64(k: i64) -> Option<ProportionalDivisor> {
-    if k < 2 {
+    if !(2..=MAX_PEANO_MATERIALIZATION).contains(&k) {
         return None;
     }
     let mut cur = ProportionalDivisor::DivideByTwo;

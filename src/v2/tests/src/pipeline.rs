@@ -6321,9 +6321,13 @@ fn len(xs: MyList<Int>) -> Int {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "xs".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                    value: 1
-                }),
+                exponent: Rc::new(
+                    v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                        degree: Rc::new(
+                            v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                        ),
+                    }
+                ),
             }),
         },
         "linked list length should be O(n)"
@@ -6360,9 +6364,13 @@ fn size(t: BinTree<Int>) -> Int {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                    value: 1
-                }),
+                exponent: Rc::new(
+                    v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                        degree: Rc::new(
+                            v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                        ),
+                    }
+                ),
             }),
         },
         "binary tree traversal is catamorphism: O(n), not O(2^n)"
@@ -6400,9 +6408,13 @@ fn count(c: Chain) -> Int {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "c".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                    value: 1
-                }),
+                exponent: Rc::new(
+                    v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                        degree: Rc::new(
+                            v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                        ),
+                    }
+                ),
             }),
         },
         "optional chain traversal should be O(n)"
@@ -6500,9 +6512,13 @@ fn sum_tree(t: Tree) -> Int {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                    value: 1
-                }),
+                exponent: Rc::new(
+                    v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                        degree: Rc::new(
+                            v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                        ),
+                    }
+                ),
             }),
         },
         "fold over children should produce catamorphism O(n) bound"
@@ -6543,9 +6559,13 @@ fn search(tree: BST<Int>, target: Int) -> Bool {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "tree".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                    value: 1
-                }),
+                exponent: Rc::new(
+                    v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                        degree: Rc::new(
+                            v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                        ),
+                    }
+                ),
             }),
         },
         "BST search is O(n) worst case (catamorphism on tree structure)"
@@ -6584,9 +6604,13 @@ fn insert(tree: BST<Int>, val: Int) -> BST<Int> {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "tree".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                    value: 1
-                }),
+                exponent: Rc::new(
+                    v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                        degree: Rc::new(
+                            v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                        ),
+                    }
+                ),
             }),
         },
         "BST insert is O(n) worst case"
@@ -6627,9 +6651,13 @@ fn depth(t: BinTree<Int>) -> Int {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                    value: 1
-                }),
+                exponent: Rc::new(
+                    v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                        degree: Rc::new(
+                            v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                        ),
+                    }
+                ),
             }),
         },
         "tree depth is O(n) catamorphism"
@@ -7197,9 +7225,13 @@ fn last_elem(xs: MyList<Int>) -> Int {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "xs".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                    value: 1
-                }),
+                exponent: Rc::new(
+                    v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                        degree: Rc::new(
+                            v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                        ),
+                    }
+                ),
             }),
         },
         "last_elem time should be O(n)"
@@ -7239,9 +7271,13 @@ fn size(t: BinTree<Int>) -> Int {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                    value: 1
-                }),
+                exponent: Rc::new(
+                    v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                        degree: Rc::new(
+                            v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                        ),
+                    }
+                ),
             }),
         },
         "size time should be O(n)"
@@ -7252,9 +7288,13 @@ fn size(t: BinTree<Int>) -> Int {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                    value: 1
-                }),
+                exponent: Rc::new(
+                    v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                        degree: Rc::new(
+                            v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                        ),
+                    }
+                ),
             }),
         },
         "non-tail tree size should have O(n) stack"
@@ -7404,9 +7444,13 @@ fn bad_walk(t: Tree) -> Int {
             v2_compiler::std_induction::CostBound::AtomicBound {
                 cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                     param: "t".to_string(),
-                    exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                        value: 1
-                    }),
+                    exponent: Rc::new(
+                        v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                            degree: Rc::new(
+                                v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                            ),
+                        }
+                    ),
                 }),
             },
             "fold-hidden recursion on same sub-value must not produce catamorphism O(n)"
@@ -7451,9 +7495,13 @@ fn dup(t: Tree) -> Int {
             v2_compiler::std_induction::CostBound::AtomicBound {
                 cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                     param: "t".to_string(),
-                    exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                        value: 1
-                    }),
+                    exponent: Rc::new(
+                        v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                            degree: Rc::new(
+                                v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                            ),
+                        }
+                    ),
                 }),
             },
             "duplicate same-child descent must not produce catamorphism O(n)"
@@ -7516,9 +7564,13 @@ fn eval(e: Expr) -> Int {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "e".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                    value: 1
-                }),
+                exponent: Rc::new(
+                    v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                        degree: Rc::new(
+                            v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                        ),
+                    }
+                ),
             }),
         },
         "match-shape-recurse-children is a catamorphism O(n)"
@@ -7566,9 +7618,13 @@ fn sum_labels(c: Container) -> Int {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "c".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                    value: 1
-                }),
+                exponent: Rc::new(
+                    v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                        degree: Rc::new(
+                            v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                        ),
+                    }
+                ),
             }),
         },
         "fold-over-collection-field is a catamorphism O(n)"
@@ -7628,9 +7684,13 @@ fn count_items(item: Item) -> Int {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "item".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
-                    value: 1
-                }),
+                exponent: Rc::new(
+                    v2_compiler::std_induction::PolynomialExponent::IntegerExpPos {
+                        degree: Rc::new(
+                            v2_compiler::std_termination::PositiveDescentAmount::OneStep
+                        ),
+                    }
+                ),
             }),
         },
         "mixed-field-recursion is a catamorphism O(n)"

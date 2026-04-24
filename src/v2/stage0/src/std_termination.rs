@@ -160,14 +160,18 @@ pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<Rc<PositiveDe
         if (k.clone() <= 0) {
             None
         } else {
-            if (k.clone() == 1) {
-                Some(Rc::new(PositiveDescentAmount::OneStep))
+            if (k.clone() > 4096) {
+                None
             } else {
-                match positive_descent_amount_from_positive_int((k.clone() - 1)) {
-                    Some(prev) => Some(Rc::new(PositiveDescentAmount::AdditionalStep {
-                        previous: prev.clone(),
-                    })),
-                    None => None,
+                if (k.clone() == 1) {
+                    Some(Rc::new(PositiveDescentAmount::OneStep))
+                } else {
+                    match positive_descent_amount_from_positive_int((k.clone() - 1)) {
+                        Some(prev) => Some(Rc::new(PositiveDescentAmount::AdditionalStep {
+                            previous: prev.clone(),
+                        })),
+                        None => None,
+                    }
                 }
             }
         }
@@ -179,14 +183,18 @@ pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<Rc<Proportio
         if (k.clone() < 2) {
             None
         } else {
-            if (k.clone() == 2) {
-                Some(Rc::new(ProportionalDivisor::DivideByTwo))
+            if (k.clone() > 4096) {
+                None
             } else {
-                match proportional_divisor_from_int_at_least_two((k.clone() - 1)) {
-                    Some(prev) => Some(Rc::new(ProportionalDivisor::StrictlyLarger {
-                        inner: prev.clone(),
-                    })),
-                    None => None,
+                if (k.clone() == 2) {
+                    Some(Rc::new(ProportionalDivisor::DivideByTwo))
+                } else {
+                    match proportional_divisor_from_int_at_least_two((k.clone() - 1)) {
+                        Some(prev) => Some(Rc::new(ProportionalDivisor::StrictlyLarger {
+                            inner: prev.clone(),
+                        })),
+                        None => None,
+                    }
                 }
             }
         }

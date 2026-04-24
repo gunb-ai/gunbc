@@ -43,7 +43,7 @@ import std.induction {
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CostBound, ConstantBound, AtomicBound, ForeverBound, ErrorBound,
-  AtomicCost, PolyCost, PolynomialExponent, IntegerExp,
+  AtomicCost, PolyCost, PolynomialExponent,
   sub_value_to_evidence, sub_value_to_call_pattern, sub_value_to_lowering_target, catamorphism_bound, derive_bound,
 }
 import v2.std.core {
