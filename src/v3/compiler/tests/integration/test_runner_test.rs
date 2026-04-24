@@ -332,36 +332,44 @@ fn test_runner_dispatches_mock_backed_invariant_claim() {
     let results = TestRunner::new(&dag).run_suite("mock_backed_invariant_suite");
 
     assert_eq!(results.len(), 1);
-    assert_all_pass(&results);
+    assert!(matches!(
+        &results[0].result,
+        ClaimResult::NotYetImplemented(reason)
+            if reason.contains("mock simulation is not wired")
+                && reason.contains("mock_subject_ref")
+                && reason.contains("mock_invariant_ref")
+    ));
 }
 
 #[test]
-fn test_runner_mock_backed_invariant_fails_when_subject_source_fails() {
+fn test_runner_mock_backed_invariant_does_not_fabricate_pass_for_clean_source() {
     let source = r#"
 data subject_ref: Int = 0
 data invariant_ref: Int = 0
 
 data claim: TestClaim = {
-  name: "bad mock subject",
-  source: "let x: Bool = 1",
-  file_name: "bad_mock_subject.v3",
+  name: "mock backed clean source",
+  source: "let x: Int = 1",
+  file_name: "clean_mock_subject.v3",
   predicate: MockBackedInvariant(subject_ref, invariant_ref),
   requires: []
 }
 
 data suite: TestSuite = {
-  name: "bad_mock_subject_suite",
+  name: "clean_mock_subject_suite",
   claims: [claim]
 }
 "#;
-    let dag = compile_clean(source, "bad_mock_subject_harness.v3");
+    let dag = compile_clean(source, "clean_mock_subject_harness.v3");
     let results = TestRunner::new(&dag).run_suite("suite");
 
     assert_eq!(results.len(), 1);
     assert!(matches!(
         &results[0].result,
-        ClaimResult::Fail(reason)
-            if reason.contains("subject_ref") && reason.contains("invariant_ref")
+        ClaimResult::NotYetImplemented(reason)
+            if reason.contains("mock simulation is not wired")
+                && reason.contains("subject_ref")
+                && reason.contains("invariant_ref")
     ));
 }
 
