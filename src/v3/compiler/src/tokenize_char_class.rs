@@ -40,11 +40,10 @@ pub(crate) fn byte_matches(byte: u8, class: TokenizerCharClass) -> bool {
         TokenizerCharClass::IdentStart => {
             (65..=90).contains(&cp) || (97..=122).contains(&cp) || cp == 95
         }
+        // Same predicate as `std.unicode::char_in_class` / `IdentContinue`: digit ∪ ident-start.
         TokenizerCharClass::IdentContinue => {
             byte_matches(byte, TokenizerCharClass::Digit)
-                || (65..=90).contains(&cp)
-                || (97..=122).contains(&cp)
-                || cp == 95
+                || byte_matches(byte, TokenizerCharClass::IdentStart)
         }
     }
 }
@@ -58,6 +57,9 @@ mod sub_charclass_in_std_unicode_gate {
     //! **Sync boundary:** parity here is `byte_matches` vs `u8::is_ascii_*`, not
     //! evaluated `char_in_class` from `.dag`; keep `tokenize_char_class.rs` and
     //! `unicode.dag` predicates edited together until an interpreter-backed check exists.
+    //! Substring anchors below only catch gross drift (missing sum, restored host
+    //! `is_ascii_*`, accidental reintroduction of `char_in_class` self-call on the
+    //! same `c` in `IdentContinue`); they do not prove arithmetic matches `.dag`.
 
     use super::{byte_matches, TokenizerCharClass};
 
@@ -72,6 +74,14 @@ mod sub_charclass_in_std_unicode_gate {
                 && UNICODE_DAG.contains("Whitespace")
                 && UNICODE_DAG.contains("IdentContinue"),
             "expected `CharClass` sum + `char_in_class` predicate in `dsl/std/unicode.dag` authority"
+        );
+        assert!(
+            UNICODE_DAG.contains("IdentContinue => (cp >= 48 && cp <= 57)"),
+            "expected `IdentContinue` to inline the digit range (no `char_in_class` recursion on the same `c`)"
+        );
+        assert!(
+            !UNICODE_DAG.contains("char_in_class(c: c, class: Digit)"),
+            "`IdentContinue` must not recurse into `char_in_class` with the same `c` (CX / bounded recursion)"
         );
     }
 
