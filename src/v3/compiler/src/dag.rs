@@ -1327,10 +1327,6 @@ fn classify_call_argument(
         return relation;
     }
 
-    if let Some(relation) = field_descent_relation(dag, param, arg) {
-        return relation;
-    }
-
     SubValueRelation::SubValueUnknown
 }
 
@@ -1365,24 +1361,6 @@ fn arithmetic_descent_relation(
         param: ordinal_param_label(idx),
         factor,
     })
-}
-
-fn field_descent_relation(dag: &Dag, param: PortId, arg: PortId) -> Option<SubValueRelation> {
-    let Behavior::Transform(transform) = dag.resolve_producer_opt(&arg)? else {
-        return None;
-    };
-    let TransformTarget::FieldProject { field_child, .. } = &transform.target else {
-        return None;
-    };
-    // A field projection from the inductive parameter is only useful evidence
-    // after the producer can read the field's declared `RecursionShape`.
-    // `field_child` proves the projection resolved; it does not distinguish
-    // `DirectRecursion` from List/Optional/Set/Map positions, so this first
-    // E-P slice fails closed instead of minting a guessed `StrictSubValue`.
-    if transform.inputs.as_slice() == [param] && field_child.is_some() {
-        return None;
-    }
-    None
 }
 
 fn literal_int_at(dag: &Dag, port: PortId) -> Option<i64> {
