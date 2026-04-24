@@ -186,6 +186,10 @@ mod t_demo_fixture_test {
         ] {
             let results = TestRunner::new(&dag).run_suite(suite_name);
             assert!(
+                !results.is_empty(),
+                "T-Demo suite `{suite_name}` should contain Day-1 Compiles claims"
+            );
+            assert!(
                 results
                     .iter()
                     .all(|result| result.result == ClaimResult::Pass),
