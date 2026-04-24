@@ -77,6 +77,7 @@ include!(concat!(env!("OUT_DIR"), "/v3_specs.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_compiler_files.rs"));
 
 const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
+
 fn declaration_name_preference_rank(file: &str) -> usize {
     if file.starts_with("src/v3/") {
         2
