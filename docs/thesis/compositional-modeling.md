@@ -19,20 +19,19 @@ summarizes before the body so readers can place each section.
 | Part 3 — arity | `List<T>`, `Option<T>`, `NonEmpty<T>` as cardinality tags | `[live]` for List/Option; `[target]` for NonEmpty | NonEmpty as a first-class type composes on cardinality-substrate work tracked at `ROADMAP.md:305` ("Fixed-width types aren't structurally fixed" — cardinality not substrate-enforced until alias `where` parses/lowers per DB-11 gap) |
 | Part 3 — arity | Nested-optional flatten by composition law | `[target]` | gated on cardinality-substrate row (`ROADMAP.md:305`) + DB-11 alias-RHS closure (`ROADMAP.md:231`) |
 | Part 3 — arity | Testgen generating boundary tests from cardinality | `[target]` | DB-15 schema landed (`ROADMAP.md:235`); runner + `MockBackedInvariant` wiring remain under T-TestGen lane (`ROADMAP.md:51`, `:65`) |
-| Part 4 — custom types | `Duration<Unit>`, `Money<Currency>` via dimensions | `[live]` for framework; `[target]` for unit-mismatch enforcement consumer | `src/v3/std/dimensions.dag` TERMINAL; Dimension wiring for lens consumers is deferred under the v3 lens honesty pass (`ROADMAP.md:333`) + DB-7 (`ROADMAP.md:235`). A Duration/Money unit-mismatch enforcement lens is not yet its own ledger row — see "Unscheduled gaps" below |
-| Part 4 — custom types | `Secret<T>` as opaque nominal type | `[target]` | currently `Secret = String` alias per `dsl/std/types.dag:237`; no ROADMAP row schedules the nominal-wrapper graduation today — see "Unscheduled gaps" below |
+| Part 4 — custom types | `Duration<Unit>`, `Money<Currency>` via dimensions | `[live]` for framework; `[target]` for unit-mismatch enforcement consumer | `src/v3/std/dimensions.dag` TERMINAL; Dimension wiring for lens consumers is deferred under the v3 lens honesty pass (`ROADMAP.md:333`) + DB-7 (`ROADMAP.md:235`); unit-mismatch enforcement consumer tracked at `ROADMAP.md:364` |
+| Part 4 — custom types | `Secret<T>` as opaque nominal type | `[target]` | currently `Secret = String` alias per `dsl/std/types.dag:237`; nominal-wrapper graduation tracked at `ROADMAP.md:365` |
 | Part 5 — reconciliation | Cross-team AuthUser reconciliation | `[target]` | composes NonEmpty (cardinality substrate, `ROADMAP.md:305`) + Secret nominal wrapper (unscheduled, below) + enforced refinement preservation (DB-11, `ROADMAP.md:231`) |
 | Part 6 — testgen | Generated integration tests for under-modeled boundaries | `[target]` | DB-15 runner + `MockBackedInvariant` wiring under T-TestGen (`ROADMAP.md:51`, `:65`, `:235`) |
 | Part 7 — scale | Multi-service workflow with typed boundaries | `[target]` | composes Parts 3–6 targets; each specific gap cites its ROADMAP row above |
 
-**Unscheduled gaps surfaced by this doc.** Two `[target]` items
-above do not yet have their own tracked-debt row in `ROADMAP.md`
-and are filed as follow-ups to add:
-(a) Duration/Money unit-mismatch enforcement consumer (adjacent to
-`ROADMAP.md:333`), and (b) `Secret<T>` nominal-wrapper graduation
-(adjacent to `dsl/std/types.dag:237`). Per the doc-authority
-single-ledger rule, these warrant ledger rows before the doc's
-claims on them should be treated as scheduled.
+**Ledger rows for the two story-surfaced gaps.** Both `[target]`
+items in Parts 4–5 that reference unit-mismatch enforcement and
+`Secret<T>` nominal-wrapper graduation cite the ledger rows added
+for this PR at `ROADMAP.md:364` (unit-mismatch) and
+`ROADMAP.md:365` (`Secret<T>`). Per the doc-authority
+single-ledger rule, the gap pointer is a ROADMAP row — no sub-
+ledger lives in this doc.
 
 **Reading guide.** Sections 1 and 2 describe the current tree.
 Section 3 is half-and-half (cardinality exists; some compositional
@@ -591,9 +590,8 @@ type Duration<Unit> = Dimension<Int64, Unit>
 that rejects `Duration<Second> + Duration<Millisecond>` without
 explicit conversion. DB-3 shipped the framework (`ROADMAP.md:235`);
 Dimension wiring for lens consumers is deferred under the v3 lens
-honesty pass (`ROADMAP.md:333`). A Duration/Money unit-mismatch
-enforcement lens does not yet have its own ledger row — filed as
-follow-up in the claim-status table's "Unscheduled gaps" note.
+honesty pass (`ROADMAP.md:333`). Unit-mismatch enforcement consumer
+tracked at `ROADMAP.md:364`.
 
 `Duration<Second>` and `Duration<Millisecond>` are distinct types.
 Addition respects dimension. Conversion is an explicit operation.
@@ -611,11 +609,10 @@ type Secret<T> { value: T }
 ```
 
 `[target]` — `Secret = String` is a type alias today per
-`dsl/std/types.dag:237`. The nominal-opaque-wrapper graduation does
-not yet have its own ledger row — filed as follow-up in the
-claim-status table's "Unscheduled gaps" note. Closure depends on
-a nominal-vs-alias distinction in the substrate plus the construction-
-restriction modeling shown in the snippet above.
+`dsl/std/types.dag:237`. Nominal-wrapper graduation is tracked at
+`ROADMAP.md:365`. Closure depends on a nominal-vs-alias
+distinction in the substrate plus the construction-restriction
+modeling shown in the snippet above.
 
 Once `Secret<Token>` is nominally opaque:
 - `println("token=" + secret)` → compile error (no String coercion)
@@ -723,8 +720,7 @@ Explicit reconciliation required. Choose one:
 error composes targets each already cited above: NonEmpty (on
 cardinality substrate at `ROADMAP.md:305` + DB-11 at `:231`),
 refinement preservation (DB-11 at `:231`), and enforced `Secret`
-nominal opacity (unscheduled — see claim-status table's
-"Unscheduled gaps" note).
+nominal opacity (`ROADMAP.md:365`).
 
 **Each team continues to use their own convention internally. The
 boundary is the one place the reconciliation happens, and the

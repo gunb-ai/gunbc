@@ -140,9 +140,12 @@ Each manager brief should:
    on another lane).
 5. List explicit hand-off points to other managers (e.g., "Testgen
    unblocks Self-hosting's T-PB-B half when runner closes").
-6. Flag any `[target]` it depends on that is **unscheduled** (no
-   tracked-debt ledger row yet) so the director can add the row
-   before manager work blocks on the gap.
+6. If any `[target]` it depends on has no tracked-debt ledger row,
+   escalate to director so the row lands before manager work
+   blocks on the gap. Per the doc-authority single-ledger rule
+   ([`doc-authority.md`](../thesis/doc-authority.md)), gaps point
+   to one follow-up artifact — the `ROADMAP.md` ledger row — not
+   to a sub-queue in a brief.
 
 Manager briefs do not re-author lane content; `ROADMAP.md` remains
 authoritative. Manager briefs provide the *why*, the sequencing,
