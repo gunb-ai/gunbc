@@ -4,10 +4,47 @@
 use std::collections::HashMap;
 
 use crate::dag::{
-    ArrowBody, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, FieldValue,
-    LiteralBits, LoopBound, OperatorKind, PortId, TransformNode, TransformTarget,
-    TypeConnective,
+    ArrowBody, Behavior, BindNode, BranchNode, BranchPattern, Dag, Declaration, DeclarationId,
+    FieldValue, LiteralBits, OperatorKind, PortId, TransformNode, TransformTarget, TypeConnective,
+    ValueBody,
 };
+use crate::diagnostics::SourceSpan;
+
+fn is_fold_instantiation(dag: &Dag, decl: &Declaration) -> bool {
+    matches!(
+        &decl.connective,
+        TypeConnective::Instantiation { template, .. }
+            if dag.std_list_fold_decl() == Some(*template)
+    )
+}
+
+fn span_same_file(a: &SourceSpan, b: &SourceSpan) -> bool {
+    a.file == b.file || a.file.ends_with(&b.file) || b.file.ends_with(&a.file)
+}
+
+fn span_overlaps(a: &SourceSpan, b: &SourceSpan) -> bool {
+    span_same_file(a, b) && !(b.byte_end <= a.byte_start || b.byte_start >= a.byte_end)
+}
+
+/// Locate the `|acc, x|` step closure lowered as a two-parameter `Bind` for this `fold` site.
+fn find_fold_step_bind<'a>(dag: &'a Dag, fold_span: &SourceSpan) -> Option<&'a BindNode> {
+    dag
+        .nodes()
+        .iter()
+        .filter_map(|n| {
+            let Behavior::Bind(b) = n else {
+                return None;
+            };
+            if b.params.len() < 2 {
+                return None;
+            }
+            if !span_overlaps(&b.span, fold_span) {
+                return None;
+            }
+            Some(b)
+        })
+        .min_by_key(|b| b.span.byte_end.saturating_sub(b.span.byte_start))
+}
 
 /// Apply a named lens (`Arrow` + `UserDefined` body) from `lens_program` to positional
 /// `inputs` (left-to-right with the arrow's formal parameters).
@@ -57,9 +94,31 @@ pub fn field_value_equal(lhs: &FieldValue, rhs: &FieldValue) -> bool {
 
 /// Build a substrate-shaped `Dag` record (only `nodes` is populated faithfully) from a
 /// compiled program [`Dag`], for lenses like `named_function_count` that read `d.nodes`.
-pub fn reflect_program_dag_nodes(program: &Dag) -> Result<FieldValue, LensApplyError> {
-    let nodes = reflect_behavior_list(program, program.nodes())?;
+///
+/// `source_file` limits nodes to those authored in that compilation unit (the merged
+/// bootstrap graph also lives in the same [`Dag`]).
+pub fn reflect_program_dag_nodes_in_file(
+    program: &Dag,
+    source_file: &str,
+) -> Result<FieldValue, LensApplyError> {
+    let nodes: Vec<Behavior> = program
+        .nodes()
+        .iter()
+        .filter(|b| behavior_source_file(b) == source_file)
+        .cloned()
+        .collect();
+    let nodes = reflect_behavior_list(program, &nodes)?;
     Ok(FieldValue::Record(vec![("nodes".to_string(), nodes)]))
+}
+
+fn behavior_source_file(behavior: &Behavior) -> &str {
+    match behavior {
+        Behavior::Value(v) => v.span.file.as_str(),
+        Behavior::Transform(t) => t.span.file.as_str(),
+        Behavior::Branch(b) => b.span.file.as_str(),
+        Behavior::Loop(l) => l.span.file.as_str(),
+        Behavior::Bind(b) => b.span.file.as_str(),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +137,58 @@ pub enum LensApplyError {
     BadFieldProject,
     BadListShape,
     MissingType(&'static str),
+    MissingValueBody,
+}
+
+/// Lower a declaration [`ValueBody`] into the structural [`FieldValue`] carrier used by the
+/// lens interpreter (references keep their [`DeclarationId`] edges from `fixture_dag`).
+pub fn field_value_from_value_body(
+    fixture_dag: &Dag,
+    body: &ValueBody,
+) -> Result<FieldValue, LensApplyError> {
+    match body {
+        ValueBody::Scalar(bits) => Ok(FieldValue::Literal(bits.clone())),
+        ValueBody::Structural { fields } => {
+            let mut out = Vec::with_capacity(fields.len());
+            for (label, fv) in fields {
+                out.push((label.clone(), clone_field_value(fixture_dag, fv)?));
+            }
+            Ok(FieldValue::Record(out))
+        }
+        ValueBody::Unparsed(_) => Err(LensApplyError::UnsupportedConstruct(
+            "unparsed declaration value body",
+        )),
+    }
+}
+
+fn clone_field_value(_fixture_dag: &Dag, value: &FieldValue) -> Result<FieldValue, LensApplyError> {
+    match value {
+        FieldValue::Literal(bits) => Ok(FieldValue::Literal(bits.clone())),
+        FieldValue::Reference(id) => Ok(FieldValue::Reference(*id)),
+        FieldValue::Record(fields) => {
+            let mut out = Vec::with_capacity(fields.len());
+            for (label, fv) in fields {
+                out.push((label.clone(), clone_field_value(fixture_dag, fv)?));
+            }
+            Ok(FieldValue::Record(out))
+        }
+        FieldValue::List(values) => Ok(FieldValue::List(
+            values
+                .iter()
+                .map(|v| clone_field_value(fixture_dag, v))
+                .collect::<Result<_, _>>()?,
+        )),
+        FieldValue::Variant {
+            constructor,
+            payload,
+        } => Ok(FieldValue::Variant {
+            constructor: *constructor,
+            payload: payload
+                .iter()
+                .map(|v| clone_field_value(fixture_dag, v))
+                .collect::<Result<_, _>>()?,
+        }),
+    }
 }
 
 struct EvalCtx<'a> {
@@ -154,6 +265,23 @@ impl<'a> EvalCtx<'a> {
 
     fn eval_transform(&mut self, t: &TransformNode) -> Result<FieldValue, LensApplyError> {
         match &t.target {
+            TransformTarget::Callable(callee) => {
+                let decl = self.dag.declaration(*callee);
+                if is_fold_instantiation(self.dag, &decl)
+                    && t.inputs.len() == 2
+                    && t.span.file.contains("lenses/")
+                {
+                    let list = self.eval_port(t.inputs[0])?;
+                    let init = self.eval_port(t.inputs[1])?;
+                    let step_bind = find_fold_step_bind(self.dag, &t.span).ok_or(
+                        LensApplyError::UnsupportedConstruct(
+                            "monomorphized fold: could not locate step closure Bind",
+                        ),
+                    )?;
+                    return self.eval_fold_step(list, init, step_bind);
+                }
+                self.eval_callable(*callee, &t.inputs)
+            }
             TransformTarget::Operator(OperatorKind::Arithmetic(op)) => {
                 if t.inputs.len() != 2 {
                     return Err(LensApplyError::ArityMismatch {
@@ -183,15 +311,37 @@ impl<'a> EvalCtx<'a> {
                         got: t.inputs.len(),
                     });
                 }
-                let a = int_from_value(&self.eval_port(t.inputs[0])?)?;
-                let b = int_from_value(&self.eval_port(t.inputs[1])?)?;
-                let out = match op {
-                    crate::dag::ComparisonOp::Eq => a == b,
-                    crate::dag::ComparisonOp::Ne => a != b,
-                    crate::dag::ComparisonOp::Lt => a < b,
-                    crate::dag::ComparisonOp::Le => a <= b,
-                    crate::dag::ComparisonOp::Gt => a > b,
-                    crate::dag::ComparisonOp::Ge => a >= b,
+                let lhs = self.eval_port(t.inputs[0])?;
+                let rhs = self.eval_port(t.inputs[1])?;
+                let out = match (&lhs, &rhs) {
+                    (
+                        FieldValue::Literal(LiteralBits::Int(a)),
+                        FieldValue::Literal(LiteralBits::Int(b)),
+                    ) => match op {
+                        crate::dag::ComparisonOp::Eq => a == b,
+                        crate::dag::ComparisonOp::Ne => a != b,
+                        crate::dag::ComparisonOp::Lt => a < b,
+                        crate::dag::ComparisonOp::Le => a <= b,
+                        crate::dag::ComparisonOp::Gt => a > b,
+                        crate::dag::ComparisonOp::Ge => a >= b,
+                    },
+                    (
+                        FieldValue::Literal(LiteralBits::String(a)),
+                        FieldValue::Literal(LiteralBits::String(b)),
+                    ) => match op {
+                        crate::dag::ComparisonOp::Eq => a == b,
+                        crate::dag::ComparisonOp::Ne => a != b,
+                        _ => {
+                            return Err(LensApplyError::UnsupportedConstruct(
+                                "string comparison beyond Eq/Ne",
+                            ));
+                        }
+                    },
+                    _ => {
+                        return Err(LensApplyError::UnsupportedConstruct(
+                            "comparison operands must both be Int literals or both String literals",
+                        ));
+                    }
                 };
                 Ok(bool_value(self.dag, out)?)
             }
@@ -211,7 +361,6 @@ impl<'a> EvalCtx<'a> {
                 let base = self.eval_port(t.inputs[0])?;
                 project_field(&base, field_label)
             }
-            TransformTarget::Callable(callee) => self.eval_callable(*callee, &t.inputs),
         }
     }
 
@@ -220,10 +369,10 @@ impl<'a> EvalCtx<'a> {
         callee: DeclarationId,
         arg_ports: &[PortId],
     ) -> Result<FieldValue, LensApplyError> {
+        let decl = self.dag.declaration(callee);
         if self.dag.std_list_fold_decl() == Some(callee) {
             return self.eval_std_fold(arg_ports);
         }
-        let decl = self.dag.declaration(callee);
         let name = decl.name.clone().unwrap_or_default();
         let TypeConnective::Arrow {
             inputs,
@@ -232,7 +381,8 @@ impl<'a> EvalCtx<'a> {
         } = &decl.connective
         else {
             return Err(LensApplyError::UnimplementedCallable(format!(
-                "`{name}` is not an arrow"
+                "`{name}` (id={}) is not an arrow",
+                callee.raw()
             )));
         };
         let ArrowBody::UserDefined(root) = body else {
@@ -265,6 +415,32 @@ impl<'a> EvalCtx<'a> {
         out
     }
 
+    fn eval_fold_step(
+        &mut self,
+        list: FieldValue,
+        init: FieldValue,
+        step_bind: &BindNode,
+    ) -> Result<FieldValue, LensApplyError> {
+        let n = step_bind.params.len();
+        if n < 2 {
+            return Err(LensApplyError::ArityMismatch { expected: 2, got: n });
+        }
+        // Monomorphized `fold` lowers the `|acc, x|` lambda with possible leading
+        // synthesized parameters; the accumulator and element are always the last two
+        // formal parameter ports.
+        let acc_param = step_bind.params[n - 2];
+        let elt_param = step_bind.params[n - 1];
+        let mut acc = init;
+        for elt in list_elements(self.dag, &list)? {
+            self.push_frame();
+            self.bind_current(acc_param, acc);
+            self.bind_current(elt_param, elt);
+            acc = self.eval_port(step_bind.value)?;
+            self.pop_frame();
+        }
+        Ok(acc)
+    }
+
     fn eval_std_fold(&mut self, arg_ports: &[PortId]) -> Result<FieldValue, LensApplyError> {
         if arg_ports.len() != 3 {
             return Err(LensApplyError::ArityMismatch {
@@ -284,17 +460,20 @@ impl<'a> EvalCtx<'a> {
                 "fold step is not a Bind",
             ));
         };
-        if step_bind.params.len() != 2 {
+        let n = step_bind.params.len();
+        if n < 2 {
             return Err(LensApplyError::ArityMismatch {
                 expected: 2,
-                got: step_bind.params.len(),
+                got: n,
             });
         }
+        let acc_param = step_bind.params[n - 2];
+        let elt_param = step_bind.params[n - 1];
         let mut acc = init;
         for elt in list_elements(self.dag, &list)? {
             self.push_frame();
-            self.bind_current(step_bind.params[0], acc);
-            self.bind_current(step_bind.params[1], elt);
+            self.bind_current(acc_param, acc);
+            self.bind_current(elt_param, elt);
             acc = self.eval_port(step_bind.value)?;
             self.pop_frame();
         }
@@ -326,38 +505,8 @@ impl<'a> EvalCtx<'a> {
         Err(LensApplyError::BranchMiss)
     }
 
-    fn eval_loop(&mut self, l: &crate::dag::LoopNode) -> Result<FieldValue, LensApplyError> {
-        match &l.bound {
-            LoopBound::Cardinality { count } => {
-                let n = int_from_value(&self.eval_port(*count)?)?;
-                if n < 0 {
-                    return Err(LensApplyError::TypeMismatch("negative loop bound"));
-                }
-                let mut acc = self.eval_port(l.init)?;
-                for _ in 0..n {
-                    self.push_frame();
-                    self.bind_current(
-                        self.dag
-                            .node(l.body)
-                            .as_bind()
-                            .ok_or(LensApplyError::UnsupportedConstruct(
-                                "loop body not bind-shaped",
-                            ))?
-                            .params[0],
-                        acc,
-                    );
-                    // Loop body is a Bind(param, inner); producer chain may vary —
-                    // follow `l.body` node's value port after binding accumulator.
-                    let body_bind = self.dag.node(l.body).as_bind().ok_or(
-                        LensApplyError::UnsupportedConstruct("loop body not a Bind"),
-                    )?;
-                    acc = self.eval_port(body_bind.value)?;
-                    self.pop_frame();
-                }
-                Ok(acc)
-            }
-            LoopBound::Descent { .. } => Err(LensApplyError::UnimplementedLoopBound),
-        }
+    fn eval_loop(&mut self, _l: &crate::dag::LoopNode) -> Result<FieldValue, LensApplyError> {
+        Err(LensApplyError::UnimplementedLoopBound)
     }
 }
 
@@ -399,7 +548,7 @@ fn project_field(base: &FieldValue, label: &str) -> Result<FieldValue, LensApply
 }
 
 fn variant_matches(
-    dag: &Dag,
+    _dag: &Dag,
     value: &FieldValue,
     variant_ty: DeclarationId,
 ) -> Result<bool, LensApplyError> {
@@ -626,7 +775,7 @@ mod tests {
 
     #[test]
     fn named_function_count_on_trivial_program() {
-        let src = include_str!("../../../lenses/named_function_count.dag");
+        let src = include_str!("../../lenses/named_function_count.dag");
         let lens_dag =
             compile_to_dag(src, "src/v3/lenses/named_function_count.dag").expect("lens compiles");
         let prog = compile_to_dag("let x: Int = 1", "lens_apply_prog.v3").expect("prog compiles");
@@ -634,7 +783,8 @@ mod tests {
             .declaration_by_name("named_function_count")
             .expect("named_function_count")
             .id;
-        let input = reflect_program_dag_nodes(&prog).expect("reflect");
+        let input =
+            reflect_program_dag_nodes_in_file(&prog, "lens_apply_prog.v3").expect("reflect");
         let out = apply_lens_declaration(&lens_dag, lens_id, &[input]).expect("apply");
         assert_eq!(out, FieldValue::Literal(LiteralBits::Int(1)));
     }

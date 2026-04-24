@@ -1,8 +1,12 @@
 use crate::dag::{
-    ArithmeticOp, ArrowBody, Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
-    OperatorKind, PortId, PortState, TransformTarget, TypeConnective, ValueBody,
+    Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, PortId, PortState,
+    TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
+use crate::lens_apply::{
+    apply_lens_declaration, field_value_equal, field_value_from_value_body,
+    reflect_program_dag_nodes_in_file, int_associativity_holds,
+};
 use crate::lens_cost::{cost_of, CostLookup};
 use crate::{compile_to_dag, CompileError};
 
@@ -32,17 +36,10 @@ pub enum AlgebraicLawProgramError {
 
 /// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
 ///
-/// Today only `Associativity` is supported, and only for the canonical
-/// `fn <name>(a: Int, b: Int) -> Int = a + b` witness shape used by the
-/// `lens_composition_associative` R1 gate. `lens_ref` is a [`FieldValue::Reference`]
-/// into `fixture_dag`; the runner resolves the **name** and looks up the same
-/// name in `program_dag`.
-///
-/// **Modeling debt (P1):** associativity is recognized by structural pattern match on
-/// `TransformTarget::Operator(Arithmetic(Add))`, not by reading an `OrderedRing` witness
-/// from the substrate. **Dissolution:** delete `declaration_is_binary_int_add_associativity_witness`
-/// once `AlgebraicLaw` evaluation consumes algebra / law facts from surfaced `.dag`
-/// (e.g. reflected `OrderedRing` evidence) instead of this bounded Rust recognizer.
+/// `Associativity` is evaluated by applying the lens twice under both parenthesizations on
+/// fixed deterministic sample integers (substrate route — no per-lens string recognizers).
+/// `lens_ref` is a [`FieldValue::Reference`] into `fixture_dag`; the runner resolves the
+/// **name** and looks up the same name in `program_dag`.
 pub fn eval_algebraic_law_for_claim_program(
     fixture_dag: &Dag,
     program_dag: &Dag,
@@ -62,10 +59,9 @@ pub fn eval_algebraic_law_for_claim_program(
     let Some(target) = program_dag.declaration_by_name(&lens_name) else {
         return Ok(false);
     };
-    Ok(declaration_is_binary_int_add_associativity_witness(
-        program_dag,
-        target,
-    ))
+    int_associativity_holds(program_dag, target.id, 2, 3, 5).map_err(|e| {
+        AlgebraicLawProgramError::MalformedPayload(format!("lens apply error: {e:?}"))
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -307,26 +303,74 @@ impl<'a> TestRunner<'a> {
             ));
         }
 
-        // Bridge receipt: `claim.source` is not the predicate DAG; this compile is a
-        // witness check only — it can turn an otherwise NYI claim into `Fail` if the
-        // string does not lower. When the real lens-apply path exists, **delete** this
-        // whole block (do not leave it layered or “superseded” in place); compilation
-        // belongs on the evaluation path only (P5 tracked debt — PR #717 / claude-opus review).
-        //
-        // Schedule: ROADMAP.md subsection "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" item 1.
-        // Today’s gate fixture uses trivial `claim.source` (`let _: Int = 0`); the compile
-        // is a thin structural receipt until real lens evaluation consumes meaningful witness text.
-        if let Err(err) = compile_to_dag(&claim.source, &claim.file_name) {
-            return ClaimResult::Fail(format!(
-                "LensOutputEquals: claim `source` did not compile (needed for future lens application): {err:?}"
-            ));
-        }
+        // R1 gate sentinel: `Dag` inputs are not yet expressible as structural `data` bodies in the
+        // fixture DSL; `r1_lens_output_input_from_program` names a typed placeholder while the
+        // runner reflects `Dag.nodes` from `TestClaim.source` / `file_name` (dissolve when Dag
+        // literals land — ROADMAP LensOutputEquals cleanup).
+        const PROGRAM_INPUT_SENTINEL: &str = "r1_lens_output_input_from_program";
+        let input_field = if input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL) {
+            match compile_to_dag(&claim.source, &claim.file_name) {
+                Ok(program_dag) => {
+                    match reflect_program_dag_nodes_in_file(&program_dag, &claim.file_name) {
+                        Ok(v) => v,
+                        Err(err) => {
+                            return ClaimResult::Fail(format!(
+                                "LensOutputEquals: could not reflect `Dag` nodes from claim program: {err:?}"
+                            ));
+                        }
+                    }
+                }
+                Err(err) => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals: claim `source` did not compile (needed for `{PROGRAM_INPUT_SENTINEL}` input sentinel): {err:?}"
+                    ));
+                }
+            }
+        } else {
+            match &input_decl.value_body {
+                Some(body) => match field_value_from_value_body(self.dag, body) {
+                    Ok(v) => v,
+                    Err(err) => {
+                        return ClaimResult::Fail(format!(
+                            "LensOutputEquals: could not lower input_ref `{input_name}` value: {err:?}"
+                        ));
+                    }
+                },
+                None => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals: input_ref `{input_name}` has no value body (use `{PROGRAM_INPUT_SENTINEL}` sentinel when the input `Dag` is only available via `TestClaim.source`)"
+                    ));
+                }
+            }
+        };
 
-        ClaimResult::NotYetImplemented(format!(
-            "LensOutputEquals: runner does not apply lens functions or compare lens output yet \
-             (resolved lens={lens_name}, input={input_name}, expected={expected_name}; \
-             `source` compiles for future wiring)"
-        ))
+        let expected_field = match field_value_from_value_body(self.dag, expected_decl.value_body.as_ref().expect("checked")) {
+            Ok(v) => v,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals: could not lower expected_ref `{expected_name}` value: {err:?}"
+                ));
+            }
+        };
+
+        let computed = match apply_lens_declaration(self.dag, lens_id, std::slice::from_ref(&input_field)) {
+            Ok(v) => v,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals: applying lens `{lens_name}` failed: {err:?}"
+                ));
+            }
+        };
+
+        if field_value_equal(&computed, &expected_field) {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "LensOutputEquals: expected {} for `{expected_name}`, computed {} for lens `{lens_name}` (input `{input_name}`)",
+                render_field_value(self.dag, &expected_field),
+                render_field_value(self.dag, &computed),
+            ))
+        }
     }
 
     fn resolve_declaration_ref_id(
@@ -394,7 +438,7 @@ impl<'a> TestRunner<'a> {
         match eval_algebraic_law_for_claim_program(self.dag, &program_dag, payload) {
             Ok(true) => ClaimResult::Pass,
             Ok(false) => ClaimResult::Fail(
-                "AlgebraicLaw associativity witness not satisfied (expected binary Int `+`)"
+                "AlgebraicLaw associativity not satisfied for fixed sample inputs (2, 3, 5)"
                     .to_string(),
             ),
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => ClaimResult::Fail(message),
@@ -808,60 +852,3 @@ fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, Algebra
     }
 }
 
-/// Bounded scaffold: proves the named declaration is binary `Int` addition at the L1
-/// operator edge. **Dissolution:** remove this helper when `AlgebraicLaw` reads law
-/// witnesses from the substrate (same trigger as the modeling note on
-/// `eval_algebraic_law_for_claim_program`); do not grow new ad-hoc operator recognizers here.
-fn declaration_is_binary_int_add_associativity_witness(dag: &Dag, decl: &Declaration) -> bool {
-    let TypeConnective::Arrow {
-        inputs,
-        output,
-        body,
-    } = &decl.connective
-    else {
-        return false;
-    };
-    let Some(int_decl) = dag.declaration_by_name("Int") else {
-        return false;
-    };
-    let int_id = int_decl.id;
-    if inputs.len() != 2 || inputs[0] != int_id || inputs[1] != int_id || *output != int_id {
-        return false;
-    }
-    let ArrowBody::UserDefined(root) = body else {
-        return false;
-    };
-    let Behavior::Bind(bind) = dag.node(*root) else {
-        return false;
-    };
-    if bind.params.len() != 2 {
-        return false;
-    }
-    let Some(producer) = dag.resolve_producer_opt(&bind.value) else {
-        return false;
-    };
-    let Behavior::Transform(transform) = producer else {
-        return false;
-    };
-    if !matches!(
-        transform.target,
-        TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add))
-    ) {
-        return false;
-    }
-    if transform.inputs.len() != 2 {
-        return false;
-    }
-    same_port_id_set(&bind.params, &transform.inputs)
-}
-
-fn same_port_id_set(params: &[PortId], inputs: &[PortId]) -> bool {
-    if params.len() != inputs.len() {
-        return false;
-    }
-    let mut a: Vec<u32> = params.iter().map(|p| p.raw()).collect();
-    let mut b: Vec<u32> = inputs.iter().map(|p| p.raw()).collect();
-    a.sort_unstable();
-    b.sort_unstable();
-    a == b
-}

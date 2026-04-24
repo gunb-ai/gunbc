@@ -9,8 +9,6 @@ use v3_compiler::{compile_to_dag, CompileError};
 
 const MOCK_BACKED_INVARIANT_FIXTURE: &str =
     include_str!("../fixtures/r1_mock_backed_invariant_gate.dag");
-const R1_LENS_OUTPUT_EQUALS_FIXTURE: &str =
-    include_str!("../fixtures/r1_lens_output_equals_gate.dag");
 
 fn compile_clean(source: &str, file: &str) -> v3_compiler::dag::Dag {
     match compile_to_dag(source, file) {
@@ -396,21 +394,16 @@ data suite: TestSuite = {
 
 #[test]
 fn test_runner_dispatches_r1_gates_lens_output_equals_claim() {
-    let dag = compile_clean(
-        R1_LENS_OUTPUT_EQUALS_FIXTURE,
-        "src/v3/compiler/tests/fixtures/r1_lens_output_equals_gate.dag",
-    );
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let gate = manifest_dir.join("tests/fixtures/r1_gates.dag");
+    let source =
+        std::fs::read_to_string(&gate).unwrap_or_else(|err| panic!("read {gate:?}: {err}"));
+    let dag = compile_clean(&source, "src/v3/compiler/tests/fixtures/r1_gates.dag");
     let results = TestRunner::new(&dag).run_suite("r1_lens_output_equals_suite");
 
     assert_eq!(results.len(), 1);
-    assert!(matches!(
-        &results[0].result,
-        ClaimResult::NotYetImplemented(msg)
-            if msg.contains("LensOutputEquals")
-                && msg.contains("Int")
-                && msg.contains("lens_output_ref_input")
-                && msg.contains("lens_output_ref_expected")
-    ));
+    assert_eq!(results[0].claim_name, "lens_output_equals_gate");
+    assert_eq!(results[0].result, ClaimResult::Pass);
 }
 
 #[test]
