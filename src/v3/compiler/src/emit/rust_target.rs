@@ -5044,6 +5044,17 @@ impl<'a> Ctx<'a> {
         }
         let decl = self.dag.declaration(declaration);
         if let Some(name) = &decl.name {
+            // Named user `struct` / `sum` (record or enum) are the Rust name authority
+            // for a field like `cb: Callback` when `Callback` is its own `type` item,
+            // even if that record transitively contains first-class `fn` storage — do
+            // not run the alias-only `decl_includes_first_class_arrow_data` fast-path
+            // below (codex #676: `Wrapper { cb: Callback }` with `Callback { f: fn… }`).
+            if matches!(
+                &decl.connective,
+                TypeConnective::Conj { .. } | TypeConnective::Disj { .. }
+            ) {
+                return Ok(name.clone());
+            }
             // `type F = fn(...) -> _` is a **named** declaration whose connective is
             // `Arrow` + `NoBody`. The Rust layer does not emit a `type F = …` typedef
             // for first-class `fn` data, so returning `F` would be plausible but

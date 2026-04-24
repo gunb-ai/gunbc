@@ -467,6 +467,22 @@ fn emit_callable_field_types_expand_chained_fn_type_alias() {
     );
 }
 
+/// #676 (codex): a named record that only *contains* callable storage (`Callback`)
+/// must still be spellable as `Callback` when nested in another struct field
+/// (`Wrapper { cb: Callback }`) — P2 name authority, not re-expanded as a fn alias.
+#[test]
+fn emit_callable_nested_named_record_field_uses_type_name() {
+    let src = "type Callback { handler: fn(Int) -> Int }\n\
+type Wrapper { cb: Callback }\n";
+    let out = emit_module(src);
+    assert!(
+        out.contains("pub struct Callback")
+            && out.contains("pub struct Wrapper")
+            && out.contains("cb: Callback"),
+        "Wrapper must reference `Callback` by name; got:\n{out}"
+    );
+}
+
 /// #676: a user `struct` that **contains** a first-class `fn` (via a type alias)
 /// must still lower the **name** in non-field positions (`fn` params), not
 /// `MissingTypeRealization` (claude review, follow-up to `decl_includes` in
