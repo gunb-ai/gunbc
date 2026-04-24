@@ -135,6 +135,10 @@ mod sg3_surface_reflection_consumer_test;
 mod sg6_hand_authored_census_test;
 #[path = "integration/sg7_prep_variant_payload_freshness_test.rs"]
 mod sg7_prep_variant_payload_freshness_test;
+#[path = "integration/t_pb_b_1_tests_dag_smoke_test.rs"]
+mod t_pb_b_1_tests_dag_smoke_test;
+#[path = "integration/t_pb_b_brief_d_fixture_smoke_test.rs"]
+mod t_pb_b_brief_d_fixture_smoke_test;
 #[path = "integration/test_runner_test.rs"]
 mod test_runner_test;
 #[path = "integration/testgen_structural_coverage_gate_test.rs"]
