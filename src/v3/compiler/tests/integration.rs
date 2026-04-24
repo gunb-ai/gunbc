@@ -113,6 +113,8 @@ mod pb1_bootstrap_full_snapshot_test;
 mod pb1_bootstrap_std_snapshot_test;
 #[path = "integration/pipe_desugar.rs"]
 mod pipe_desugar;
+#[path = "integration/r1_manual_claim_gate_test.rs"]
+mod r1_manual_claim_gate_test;
 #[path = "integration/sg0_census_test.rs"]
 mod sg0_census_test;
 #[path = "integration/sg1_tokenize_authority_test.rs"]
