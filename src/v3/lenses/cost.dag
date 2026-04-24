@@ -11,8 +11,11 @@
 // `SizeVar { name: String }` has. Output dimensions, certainty, and
 // asymptotic classification from v2 are also not carried. Dimension
 // wiring is deferred on grammar gaps (see the `Dimension<SymbolicCost>`
-// discussion lower in this file). No behavioral cementing test
-// exercises this lens yet.
+// discussion lower in this file). Lane E-C stages `CallPattern` /
+// `LoweringTarget` carrier vocabulary in `std.computation`, but this
+// lens still does not consume per-call descent evidence until E-I/E-P
+// supply `SubValueRelation` and a producer. No behavioral cementing
+// test exercises this lens yet.
 //
 // Shared carrier: `v3.std.lookup.Lookup` (compiler-std consolidation;
 // see docs/thesis/compiler-std-consolidation.md). The prior lens-local
