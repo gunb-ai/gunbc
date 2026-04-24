@@ -1,11 +1,12 @@
 //! **Layer:** integration
 //!
 //! Day-1 R1 gate `user_authored_lens_compiles`: **canonical** program text is
-//! `src/v3/lenses/named_function_count.dag`. The gate fixture embeds a duplicate
-//! `TestClaim.source` string (P2 parallel copy — see `r1_gates.dag` header); this
-//! module ratchets fixture bytes against `include_str!(.../named_function_count.dag)`
-//! then runs `compile_to_dag` on the extracted `source` over the standard bootstrap
-//! (`Dag::new()`), without bundling the lens into the bootstrap.
+//! `src/v3/lenses/named_function_count.dag`. The gate fixture `r1_gates.dag` is
+//! **build-generated** from `r1_gates.template.dag` (`v3-compiler/build.rs` splices the
+//! lens bytes into `TestClaim.source`). This module ratchets the lowered `source` field
+//! against `include_str!(.../named_function_count.dag)` then runs `compile_to_dag` on
+//! that payload over the standard bootstrap (`Dag::new()`), without bundling the lens
+//! into the bootstrap.
 //!
 //! **Behavior receipt (TESTING.md):** `user_authored_lens_testclaim_payload_tracks_on_disk_lens_and_compiles`
 //! lowers the gate fixture, reads `source` off the lowered `TestClaim`, and runs
@@ -15,18 +16,22 @@
 //! from a second file, because that pattern would require the lens in `Dag::new()`
 //! bootstrap, which this demo deliberately avoids.
 //!
-//! Schedule: ROADMAP.md subsection "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" item 3.
+//! D4 splice: ROADMAP.md "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" item 3.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};
+use v3_compiler::test_runner::R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS;
 use v3_compiler::CompileError;
 
 const R1_GATES_SOURCE: &str = include_str!("../fixtures/r1_gates.dag");
+const R1_GATES_TEMPLATE: &str = include_str!("../fixtures/r1_gates.template.dag");
 const R1_MOCK_BACKED_INVARIANT_GATE_SOURCE: &str =
     include_str!("../fixtures/r1_mock_backed_invariant_gate.dag");
-const R1_LENS_OUTPUT_EQUALS_GATE_SOURCE: &str =
-    include_str!("../fixtures/r1_lens_output_equals_gate.dag");
 const ON_DISK_LENS: &str = include_str!("../../../lenses/named_function_count.dag");
+
+/// Parallel-copy ratchet: must match `src/v3/lenses/named_function_count.dag` lines 15–25 and
+/// the stub `fn` block in `r1_gates.template.dag` (LensOutputEquals evaluates these fixture decls).
+const NAMED_FUNCTION_COUNT_FIXTURE_FN_BLOCK: &str = "fn count_named_bind(behavior: Behavior) -> Int =\n  match behavior {\n    Value(v) => 0\n    Transform(t) => 0\n    Branch(b) => 0\n    Loop(l) => 0\n    Bind(bind) => if bind.name == \"\" then 0 else 1\n  }\n\nfn named_function_count(d: Dag) -> Int =\n  fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))";
 const ON_DISK_LENS_COMPOSITION_WITNESS: &str =
     include_str!("../../../lenses/lens_composition_associative_witness.dag");
 
@@ -67,6 +72,15 @@ fn assert_compile_clean(source: &str, file_name: &str, label: &str) {
 }
 
 #[test]
+fn lens_output_equals_canonical_lens_bytes_match_build_splice_authority() {
+    assert_eq!(
+        ON_DISK_LENS, R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS,
+        "`test_runner::R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS` must match the on-disk lens (same \
+         authority as `build.rs` splice for `LensOutputEquals` / Compiles gates)"
+    );
+}
+
+#[test]
 fn r1_gates_fixture_compiles_against_bootstrap_context() {
     assert_compile_clean(
         R1_GATES_SOURCE,
@@ -81,15 +95,6 @@ fn r1_mock_backed_invariant_gate_fixture_compiles_against_bootstrap_context() {
         R1_MOCK_BACKED_INVARIANT_GATE_SOURCE,
         "src/v3/compiler/tests/fixtures/r1_mock_backed_invariant_gate.dag",
         "gate fixture `r1_mock_backed_invariant_gate.dag`",
-    );
-}
-
-#[test]
-fn r1_lens_output_equals_gate_fixture_compiles_against_bootstrap_context() {
-    assert_compile_clean(
-        R1_LENS_OUTPUT_EQUALS_GATE_SOURCE,
-        "src/v3/compiler/tests/fixtures/r1_lens_output_equals_gate.dag",
-        "gate fixture `r1_lens_output_equals_gate.dag`",
     );
 }
 
@@ -118,9 +123,8 @@ fn user_authored_lens_testclaim_payload_tracks_on_disk_lens_and_compiles() {
 
     assert_eq!(
         source, ON_DISK_LENS,
-        "`TestClaim.source` in `r1_gates.dag` must stay byte-identical to the canonical \
-         `src/v3/lenses/named_function_count.dag` (P2 parallel copy ratchet until ROADMAP \
-         scheduled cleanup item 3 removes the duplicate)"
+        "`TestClaim.source` in generated `r1_gates.dag` must match the canonical \
+         `src/v3/lenses/named_function_count.dag` (build.rs splice ratchet)"
     );
     assert_eq!(
         file_name, "src/v3/lenses/named_function_count.dag",
@@ -172,6 +176,19 @@ fn lens_composition_associative_testclaim_source_tracks_on_disk_witness() {
         &source,
         &file_name,
         "TestClaim `source` payload (lens_composition_associative witness)",
+    );
+}
+
+#[test]
+fn r1_gates_template_named_function_count_stubs_lockstep_on_disk_lens() {
+    assert!(
+        ON_DISK_LENS.contains(NAMED_FUNCTION_COUNT_FIXTURE_FN_BLOCK),
+        "on-disk `named_function_count.dag` should still carry the stub `fn` block this test pins"
+    );
+    assert!(
+        R1_GATES_TEMPLATE.contains(NAMED_FUNCTION_COUNT_FIXTURE_FN_BLOCK),
+        "`r1_gates.template.dag` fixture stubs must stay byte-identical to the canonical lens \
+         (LensOutputEquals applies the fixture DAG, not `program_dag`, until DeclarationRef cleanup)"
     );
 }
 
