@@ -23,13 +23,22 @@ subject of this doc.
 
 ## What ships today
 
-Runner predicates on `main` (per r1-testgen-manager working state):
+Authority split (to avoid this brief becoming a second schema
+authority):
 
-- `Compiles` / `FailsWithDiagnostic` — outcome on whole program.
-- `ExecuteCommand`, `ForAllTargets` — target-toolchain boundary.
-- `LensOutputEquals`, `DifferentialEquals` — lens-level equality.
-- `AlgebraicLaw` (declared; runner evaluation WIP).
-- `MockBackedInvariant` (PR #722 in review).
+- **Schema on `main`** — `TestPredicate` variants already declared
+  in `src/v3/std/verification.dag` (all currently carry the 🟡
+  Scaffold marker): `Compiles`, `FailsWithDiagnostic`,
+  `ExecuteCommand`, `ForAllTargets`, `LensOutputEquals`,
+  `DifferentialEquals`, `AlgebraicLaw`, `MockBackedInvariant`.
+- **Runner-wired today** (per r1-testgen-manager working state):
+  `Compiles`, `FailsWithDiagnostic`, `ExecuteCommand`,
+  `ForAllTargets`, `LensOutputEquals`, `DifferentialEquals`.
+- **Runner-WIP** — `AlgebraicLaw` evaluation; `MockBackedInvariant`
+  (PR #722 in review).
+
+Authority for the predicate list is `verification.dag`; this brief
+only describes consumer need.
 
 All of these treat the compiled artifact as a **black box** or
 compare **lens outputs**. None of them can pose the question
@@ -58,11 +67,12 @@ prove path-of-Behaviors exists with these labels/identities.*
 That is a **structural query over the post-compile substrate**,
 not an outcome predicate.
 
-## Needs-schema list (Testgen backlog)
+## Needs-schema list (Testgen backlog — six live shapes)
 
 Each item names a `TestPredicate` shape we cannot currently
 evaluate and the G-bucket it unlocks. These are proposal shapes;
-exact names/fields are Testgen's call.
+exact names/fields are Testgen's call. Item #7 was retracted after
+review — see the stub below.
 
 1. **`BindExists { program, name }`** — closes the "find a named
    Bind in the compiled Dag" step used by every pipe_desugar test
