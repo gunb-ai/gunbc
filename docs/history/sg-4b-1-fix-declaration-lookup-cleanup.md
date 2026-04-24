@@ -1,5 +1,11 @@
 # SG-4b-1-fix — Declaration-lookup authority cleanup `(S)`
 
+> **Historical receipt.** This lane is closed by SG-4b-1-fix. The live code now
+> imports `declaration_by_id` from `std.substrate`, and
+> `DeclarationLookup` / `find_declaration` are gone from
+> `src/v3/lenses/variant_payload.dag`. This brief remains as the dispatch
+> record; do not treat the Work section below as open.
+
 ## Context
 
 PR #609 (SG-4b-1) surfaced a **parallel declaration-lookup authority** pattern. Per a later cleanup on main, `infer_helpers.dag` / `infer_helpers_generated.rs` no longer carry it (only `TemplateArgumentLookup` remains there). **But the pattern persists on main in `src/v3/lenses/variant_payload.dag`**:
@@ -35,7 +41,7 @@ fn find_declaration(decls: List<Declaration>, target: DeclarationId) -> Declarat
 - `src/v3/compiler/src/dag.rs` — `pub fn declaration(&self, id: DeclarationId) -> &Declaration` is the canonical Rust accessor (the Host realization the new reflected accessor will bind to)
 - `src/v3/lenses/infer_helpers.dag` (sanity-check only — confirm it no longer has `DeclarationLookup`; the pattern migrated/was cleaned up here)
 - My REQUEST_CHANGES review on #609 for the original rationale (same concern, different file)
-- `INVARIANTS.md` §C-8 (fail-closed discipline) and §Track 9 (constructor-validation)
+- `INVARIANTS.md#c-8` (fail-closed discipline) and `INVARIANTS.md#p2-boundary-discipline` (constructor-validation / witness-carrying boundary discipline)
 
 ## Work — two-step lane
 
