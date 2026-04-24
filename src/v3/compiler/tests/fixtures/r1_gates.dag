@@ -14,6 +14,8 @@
 //
 // Lives under `src/v3/compiler/tests/fixtures/` so it is **not** auto-staged
 // into `Dag::new()` bootstrap (`src/v3/std/*.dag` is build-script enumerated).
+// `sub_match_over_user_sum_links_and_runs` also extracts this claim source for
+// the rustc boundary receipt, so the named T-Sub gate has one program witness.
 
 module std.r1_gates
 
@@ -21,7 +23,7 @@ import std.verification { Compiles, TestClaim, TestSuite }
 
 data sub_match_over_user_sum: TestClaim = {
   name: "sub_match_over_user_sum",
-  source: "type Surface = Alpha | Beta\nfn classify(s: Surface) -> Int = match s { Alpha => 1, Beta => 2 }\n",
+  source: "type Choice = Number(Int) | Missing\n\nfn score(choice: Choice) -> Int =\n  match choice {\n    Number(value) => value\n    Missing => 0\n  }\n\nlet result: Bool = score(Number(7)) == 7 && score(Missing) == 0\n",
   file_name: "r1_sub_match_over_user_sum.v3",
   predicate: Compiles,
   requires: []
