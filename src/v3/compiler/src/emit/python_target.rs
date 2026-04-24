@@ -1015,18 +1015,29 @@ impl<'a> Ctx<'a> {
 
     fn render_loop(
         &self,
-        _loop_node: &crate::dag::LoopNode,
-        _locals: &RenderLocals,
+        loop_node: &crate::dag::LoopNode,
+        locals: &RenderLocals,
     ) -> Result<String, EmitPythonError> {
-        // emit_python does not yet model `Behavior::Loop`. Earlier
-        // code rendered just the loop body's result port, silently
-        // dropping iteration semantics — a Loop became its first
-        // iteration's expression. Fail-closed instead so callers see
-        // the unsupported case directly.
-        Err(EmitPythonError::Unsupported(
-            "emit_python does not yet support Behavior::Loop; iteration construct must be expressed via fold/map/filter callables for now"
-                .to_string(),
-        ))
+        // Behavior::Loop has exactly two construction sites in lower.rs,
+        // both for recursive user functions:
+        //   1. Cardinality bound (lower.rs ~3631): single recursive fn with
+        //      descent-provable termination; bound.count = first param port.
+        //   2. Descent bound (lower.rs ~382): mutual-recursion cluster.
+        //
+        // In both cases `loop_node.body` is the root node of the function's
+        // body DAG, which already contains recursive self-calls to the same
+        // or mutually-recursive functions. Rendering the body node's result
+        // port preserves those calls. Python supports recursion natively, so
+        // the emitted expression is semantically correct without any iteration
+        // scaffolding. The `source`/`init`/`bound` fields encode the
+        // termination *proof*, not operational iteration state.
+        //
+        // Collection folds (fold/map/filter) route through callable
+        // realizations (__v3_fold etc.) and never reach Behavior::Loop.
+        // If a future IR change adds Loop for non-recursive collection
+        // iteration, this site must be updated to emit explicit iteration.
+        let body_port = super::behavior_result_port(self.dag.node(loop_node.body));
+        self.render_port(body_port, locals)
     }
 
     fn render_callable_transform(
