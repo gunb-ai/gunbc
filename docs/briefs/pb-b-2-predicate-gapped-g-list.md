@@ -100,7 +100,9 @@ existing variants like `PortHasState` / `CostBounded`).
 
 2. **`BindValueIsTransformTo { bind_name, producer_path, target }`**
    with `target ∈ { CallableNamed(String) | FieldProjection{label}
-   | Operator(OpKind) }` and `producer_path: List<PortIndex>`
+   | Operator(OperatorKind) }` and `producer_path: List<Int>`
+   (each element is a list index into the current Transform's
+   `inputs: List<PortId>` — see `src/v3/std/substrate.dag:267`)
    walking `value.produced_by → inputs[path[0]].produced_by → …`
    (empty path = the bind's direct producer). The path is required
    to cover the nested producer chains in
@@ -183,7 +185,9 @@ landed predicates) plus the Post-R2 Rust residuals.
   live shapes are new `TestPredicate` variants carrying a
   substrate query against the compiled Dag.
 - No new carrier type in user-facing surface — `TypeShape`,
-  `OpKind`, `Behavior` kind names already exist in v3.
+  `OperatorKind` (substrate.dag:160), `ComparisonOp`
+  (substrate.dag:141), `PortId` (substrate.dag:5), and `Behavior`
+  kind names already exist in v3.
 - No parallel "test DSL" for Dag traversal: predicates should
   name **what** to prove, never **how** to walk (see
   `feedback_lenses_not_passes` and `feedback_no_textual_
