@@ -60,3 +60,19 @@ data manual_claim_suite: TestSuite = {
   name: "manual_claim_suite",
   claims: [manual_negative_claim_gate]
 }
+
+// R1 T-TestGen gate: the runner evaluates a structural fact about a compiled
+// fixture DAG, not just "source compiles." This binds a named value through a
+// small function call, then asserts the bind's value port resolved.
+data testgen_structural_coverage_gate: TestClaim = {
+  name: "testgen_structural_coverage",
+  source: "fn double(x: Int) -> Int = x + x\nlet structural_result: Int = double(3)",
+  file_name: "structural_coverage_fixture.v3",
+  predicate: PortHasState("structural_result", Resolved),
+  requires: []
+}
+
+data testgen_structural_coverage_suite: TestSuite = {
+  name: "testgen_structural_coverage_suite",
+  claims: [testgen_structural_coverage_gate]
+}
