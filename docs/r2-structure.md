@@ -40,7 +40,7 @@ Post-R2 is external work (adoption, documentation, community) — not on the the
 
    - **Cardinality-substrate subset sufficient to close int-literal magnitude refinement** — enough cardinality modeling to let `IntLit` carry a magnitude that narrows to target int algebra at reconciliation. Does NOT commit to the full cardinality-substrate capability (fixed-width-types by-construction, container cardinality bounds in Grounding, etc. — those remain open design calls outside R2 scope unless additional R2 items demand them).
    - **Nominal-opaque substrate sufficient to graduate `Secret<T>`** — enough nominal-type modeling to carry construction-restriction (`where only X may construct`) semantics. Adjacent to DB-11 alias-RHS `where` (landed in R1 via PR #703); may or may not overlap DB-18 territory. Acceptance is `Secret<T>` graduation, not a general nominal-type program.
-   - **Parametric algebra attachment subset sufficient to inhabit `Dimension<Carrier>` in an abelian group algebra** — enough of DB-18 Part-3+ to let `Dimension<Unit>` carry phantom-parameter arithmetic (propagate through operations, compile error on unit-mismatch). DB-18 Part-2 carrier already shipped (`docs/db-history/db-18.md`); R2 scopes Part-3+ surface to just this attachment, not the full parametric-algebra program.
+   - **Parametric algebra attachment subset sufficient to inhabit `Dimension<Carrier>` in an abelian group algebra** — enough substrate capability to let `Dimension<Unit>` carry phantom-parameter arithmetic (propagate through operations, compile error on unit-mismatch). Primary authority is `ROADMAP.md:155` which tags this dependency `DB-18 parametric algebra attachment` — but `docs/db-history/db-18.md` currently scopes DB-18 to workflow-effect carrier + Rust reflection (Part 2 shipped) + Go-accessor follow-up (Part 3), not parametric algebra attachment. That mismatch is an existing ROADMAP ↔ db-history inconsistency, not one introduced by this doc; a pre-promotion DB-lane rename or new DB number may be warranted. R2 acceptance is: `Dimension<Unit>` phantom-parameter arithmetic compiles with unit-mismatch errors, independent of the DB-tag the substrate ends up carrying.
 
 6. **Remaining R2+ impossible-bug classes** — three classes currently tagged `[R2+]` at `ROADMAP.md:72` (THESIS §"Enumerable impossible-bug classes" is the authority on scheduling tags):
    - Nested-optional flatten
@@ -148,9 +148,11 @@ Purpose: proof-of-work visibility at director cadence. Without it, program slips
 - **R2 includes substrate prereqs explicitly** per user's (i)-over-(ii) preference (honest scope over tight scope), with **scoped acceptance criteria** per Director refinement (each sub-lane closes on unblock of its paired Goal 4 item; full substrate-capability lanes are not R2-committed).
 - **Anti-deferral principle is the frame, not velocity numbers.** Per Director observation: 16-hour R1 execution was a peak-day sample, not a baseline. The principle "if dissolution direction is clear and named, deferral is problem-finding not problem-solving" is what survives cadence shifts.
 
-## Open calls — one remaining
+## Open calls
 
-**Post-R2 stance — strong vs weak endorsement.** The proposal currently reads as *strong*: "R2 = thesis close; post-R2 is external (adoption/docs/community); R3 reserved as escape hatch only." That's consistent with anti-deferral + close-everything-knowable. But it commits us to: no future thesis-claim release after R2.
+### 1. Post-R2 stance — strong vs weak endorsement (user decision)
+
+The proposal currently reads as *strong*: "R2 = thesis close; post-R2 is external (adoption/docs/community); R3 reserved as escape hatch only." That's consistent with anti-deferral + close-everything-knowable. But it commits us to: no future thesis-claim release after R2.
 
 Two readings for user to explicitly pick:
 
@@ -161,6 +163,19 @@ Director leans strong if user trusts the anti-deferral principle; leans weaker i
 
 **Pending user decision.** Other R2 structure is locked; this is the one remaining endorsement before the doc promotes to ROADMAP.
 
+### 2. Pre-promotion thesis-claim coverage mapping (gate before ROADMAP promotion)
+
+Surfaced by codex API review on `6fdd8341`: the "close-everything/post-R2-external-only" framing requires an explicit mapping from THESIS tiers to concrete R1/R2/post-R2 disposition, so no thesis claim is implicitly-positioned. Otherwise "close-everything" is an assertion without audit.
+
+THESIS authority (`THESIS.md:155-182`) lists:
+- **Tier 1 — Structural correctness** (type mismatches, CX termination, coercion = emission, ownership no-alias, **Grounding completeness**).
+- **Tier 2 — Runtime safety** (division-by-zero, integer overflow, out-of-bounds, force-unwrap, partial functions — proven safe or made total).
+- **Tier 3 — Verification from structure** (L4 emitted ≡ .dag, L5 cross-target parity, L6 structural-form coverage, L7 algebraic laws).
+
+**Required before promotion:** a table mapping every Tier-1 / Tier-2 / Tier-3 claim to its R1-closed / R2-gated / post-R2-external disposition, with any gaps (claim named in THESIS but not mapped) flagged as pre-promotion blockers. Non-blocking for this PR; blocking for ROADMAP promotion.
+
+**Not done in this PR** because the PR is scope-setting and the coverage audit is a sibling deliverable; both land as prerequisites to the `## Release R2 Program` ROADMAP section.
+
 ## Cross-refs
 
 - Parent: `ROADMAP.md` (R1 program at `:15`; Grounding Completeness post-R1 at `:149`; Tracked-debts ledger at `:291`).
@@ -168,5 +183,5 @@ Director leans strong if user trusts the anti-deferral principle; leans weaker i
 - Self-hosting anchor: `docs/design-pure-bootstrap.md` (≤5 shim floor + SG census).
 - Thesis: `THESIS.md §"Enumerable impossible-bug classes"` (R2+ tags authority); `THESIS.md §"Thesis claims — complete list"` (Tier-1 claim lineage).
 - Lens capability: `docs/v3-lens-capability-register.md` (per-lens capability tracking).
-- DB history: `docs/db-history/db-18.md` (DB-18 Part-2 shipped; Part-3+ is R2 work).
+- DB history: `docs/db-history/db-18.md` (DB-18 Part-2 shipped: workflow-effect carrier + Rust reflection; Part-3 queued: Go accessor). Note: `ROADMAP.md:155` tags "DB-18 parametric algebra attachment" as a post-R1 blocker; that label is not obviously aligned with db-history's DB-18 scope — a pre-promotion rename or new DB number may be warranted for the R2 parametric-algebra prereq.
 - Related PRs: #745 (P4 int-literal row — substrate motivation for T-Modeling), #752 (T-PB-A lens-producer priority slice — substrate motivation for T-LensMigration gate).
