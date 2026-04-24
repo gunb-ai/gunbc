@@ -213,16 +213,7 @@ fn termination_carriers_bootstrap_from_v3_std() {
             (String::from("SetCardinality"), vec![String::from("param")]),
         ]
     );
-    assert_eq!(
-        sum_variants(&dag, "PositiveDescentAmount"),
-        vec![
-            (String::from("OneStep"), Vec::new()),
-            (
-                String::from("AdditionalStep"),
-                vec![String::from("previous")]
-            ),
-        ]
-    );
+    let _division_factor = find_named(&dag, "DivisionDescentFactor");
     assert_eq!(
         sum_variants(&dag, "DescentSource"),
         vec![
@@ -231,10 +222,8 @@ fn termination_carriers_bootstrap_from_v3_std() {
                 vec![String::from("accessor")]
             ),
             (String::from("ListShrink"), vec![String::from("amount")]),
-            (
-                String::from("ArithmeticDecrease"),
-                vec![String::from("op"), String::from("by")],
-            ),
+            (String::from("ArithmeticSubtract"), vec![String::from("by")],),
+            (String::from("ArithmeticDivide"), vec![String::from("by")],),
             (String::from("ParserAdvance"), vec![String::from("witness")]),
             (String::from("SetRemoval"), vec![String::from("element")]),
             (String::from("FoldIteration"), Vec::new()),

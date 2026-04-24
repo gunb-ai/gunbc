@@ -33,4 +33,5 @@ Header:
 
 Register in `tests/integration.rs` with
 `#[path = "boundary/<name>.rs"] mod <name>;` and add the workspace-
-relative path to `tests/integration/sg0_census_test.rs::EXPECTED_HAND_AUTHORED`.
+relative path to `tests/integration/sg0_census_test.rs::EXPECTED_HAND_AUTHORED_TEST`
+(boundary tests are the T-PB-B test sub-ratchet).

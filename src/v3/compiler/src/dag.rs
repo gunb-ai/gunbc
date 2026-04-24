@@ -759,15 +759,10 @@ pub enum RankingDimension {
 
 /// 🟢 TERMINAL at descent-witness scope.
 ///
-/// Structural positive amount used so zero/negative shrink witnesses are not
-/// representable in proof carriers.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PositiveDescentAmount {
-    OneStep,
-    AdditionalStep {
-        previous: Box<PositiveDescentAmount>,
-    },
-}
+/// Rust mirror of `DivisionDescentFactor = PositiveInt where range(min: 2)`.
+/// The executable mirror uses `i64` until refined values carry generated
+/// runtime wrappers.
+pub type DivisionDescentFactor = i64;
 
 /// 🟡 SCAFFOLD.
 ///
@@ -776,22 +771,12 @@ pub enum PositiveDescentAmount {
 /// substrate values.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescentSource {
-    ChildAccessor {
-        accessor: String,
-    },
-    ListShrink {
-        amount: PositiveDescentAmount,
-    },
-    ArithmeticDecrease {
-        op: String,
-        by: PositiveDescentAmount,
-    },
-    ParserAdvance {
-        witness: String,
-    },
-    SetRemoval {
-        element: String,
-    },
+    ChildAccessor { accessor: String },
+    ListShrink { amount: i64 },
+    ArithmeticSubtract { by: i64 },
+    ArithmeticDivide { by: DivisionDescentFactor },
+    ParserAdvance { witness: String },
+    SetRemoval { element: String },
     FoldIteration,
 }
 

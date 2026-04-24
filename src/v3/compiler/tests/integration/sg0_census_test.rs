@@ -163,7 +163,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit_rust.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/lens_depth.rs",
-    "src/v3/compiler/src/lens_parallelism.rs",
     "src/v3/compiler/src/lens_testgen.rs",
     "src/v3/compiler/src/lens_unused_parameters.rs",
     "src/v3/compiler/src/lib.rs",
@@ -244,6 +243,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
     "src/v3/compiler/tests/integration/test_runner_test.rs",
+    "src/v3/compiler/tests/integration/testgen_structural_coverage_gate_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
 ];

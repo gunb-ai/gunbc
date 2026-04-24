@@ -25,7 +25,7 @@ import v2.compiler.parse {
 import std.termination {
   DescentEvidence, Strict, NonIncreasing, DescentUnknown,
   RankingDimension, TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality,
-  DescentSource, ChildAccessor, ListShrink, ArithmeticDecrease, ParserAdvance, SetRemoval, FoldIteration,
+  DescentSource, ChildAccessor, ListShrink, ArithmeticSubtract, ArithmeticDivide, ParserAdvance, SetRemoval, FoldIteration,
   TerminationProof, ProofEdge,
   merge_evidence, join_evidence, evidence_rank, promote_to_strict,
   optional_evidence_meet, map_evidence_merge_at

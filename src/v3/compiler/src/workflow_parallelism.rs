@@ -107,7 +107,11 @@ fn pairwise_cross_branch_commutes(
     Ok(())
 }
 
-pub(crate) fn analyze_parallelism(d: &Dag, workflow_root: NodeId) -> WorkflowParallelismReport {
+/// Analyze whether a `ParallelEffect` workflow can be scheduled concurrently.
+///
+/// This remains the native Rust bridge for `src/v3/lenses/parallelism.dag`
+/// while that lens surface is still pending full `.dag` ownership.
+pub fn analyze_parallelism(d: &Dag, workflow_root: NodeId) -> WorkflowParallelismReport {
     let Some(workflow) = d.lane2_workflow_effect_at(&workflow_root) else {
         return parallel_unsupported(
             ParallelismUnsupportedKind::NoWorkflowProjection,

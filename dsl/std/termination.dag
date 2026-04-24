@@ -33,6 +33,7 @@
 module std.termination
 
 import std.algebra { Ordering }
+import std.types { PositiveInt }
 // NOTE: is_valid_proof lives in std.graph (graph algorithm needs SCC
 // primitives). Cannot re-export here (circular: termination → graph →
 // termination). Consumers import from std.graph directly.
@@ -190,12 +191,10 @@ type RankingDimension
   | TokenPosition { param: String }      // parser state.position
   | SetCardinality { param: String }     // |set| via remove
 
-// Raw Int cannot be descent evidence: zero and negative shrink amounts are
-// not valid witnesses. This structural positive number makes invalid proof
-// amounts unrepresentable.
-type PositiveDescentAmount
-  = OneStep
-  | AdditionalStep { previous: PositiveDescentAmount }
+// Division only witnesses arithmetic descent for factors >= 2. This refines
+// the shared PositiveInt authority instead of introducing a parallel positive
+// number model.
+type DivisionDescentFactor = PositiveInt where range(min: 2)
 
 // =========================================================================
 // Descent sources: HOW descent is witnessed at a call site
@@ -211,7 +210,8 @@ type PositiveDescentAmount
 //     an accessor result is provably smaller (subtree < tree).
 //   - ListShrink: skip(n) for n >= 1 produces a shorter list.
 //     Grounded in List algebra (|skip(n, l)| = max(0, |l| - n)).
-//   - ArithmeticDecrease: n-k for k >= 1, or n/k for k >= 2.
+//   - ArithmeticSubtract: n-k for k >= 1.
+//   - ArithmeticDivide: n/k for k >= 2.
 //     Grounded in OrderedRing (subtract decreases, division too).
 //   - ParserAdvance: advance/expect/eat move position forward.
 //     Grounded in ParserState contract (position is monotonic).
@@ -223,8 +223,9 @@ type PositiveDescentAmount
 // identity. When .dag supports function references, these should become structural.
 type DescentSource
   = ChildAccessor { accessor: String }         // e.g., "binop_left"
-  | ListShrink { amount: PositiveDescentAmount } // skip(amount), amount >= 1
-  | ArithmeticDecrease { op: String, by: PositiveDescentAmount } // "subtract" by 1, "divide" by 2
+  | ListShrink { amount: PositiveInt }         // skip(amount), amount >= 1
+  | ArithmeticSubtract { by: PositiveInt }     // n - by, by >= 1
+  | ArithmeticDivide { by: DivisionDescentFactor } // n / by, by >= 2
   | ParserAdvance { witness: String }          // "advance", "expect", "eat"
   | SetRemoval { element: String }             // set remove in work-list drain
   | FoldIteration                              // body of fold — bounded by |collection|
