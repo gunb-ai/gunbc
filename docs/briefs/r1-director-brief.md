@@ -152,6 +152,43 @@ authoritative. Manager briefs provide the *why*, the sequencing,
 and the cross-manager coordination surface above what `ROADMAP.md`
 already names.
 
+## Staffing set
+
+The minimum orientation set for a new session, by role.
+
+**Staffing a manager session** (Surface / Substrate / Testgen /
+Self-hosting / Release):
+
+1. [`CLAUDE.md`](../../CLAUDE.md) — repo-root agent discipline
+   pointers: `INVARIANTS.md`, `ROADMAP.md`, `MODELING.md`,
+   `CODING.md`, `TESTING.md`, `src/v2/DESIGN.md`.
+2. This brief — coordination context (manager composition,
+   escalation path, framing questions).
+3. The manager's own brief, naming its slice of R1:
+   - Surface: [`r1-surface-manager.md`](r1-surface-manager.md)
+   - Substrate: [`r1-substrate-manager.md`](r1-substrate-manager.md)
+   - Testgen: [`r1-testgen-manager.md`](r1-testgen-manager.md)
+   - Self-hosting: [`r1-selfhosting-manager.md`](r1-selfhosting-manager.md)
+   - Release: [`r1-release-manager.md`](r1-release-manager.md)
+4. [`ROADMAP.md`](../../ROADMAP.md) §"Release R1 Program"
+   (`:15-147`) for the authoritative lane / gate list.
+
+**Staffing a director session:** everything above, with all five
+manager briefs read in parallel (not just one), plus
+[`docs/r2-structure.md`](../r2-structure.md) for the forward view
+after R1 closes.
+
+**R1 → R2 transition.** When R1 closes per all-gates-green
+criterion and `docs/r2-structure.md` promotes to a `## Release R2
+Program` section in `ROADMAP.md`, this Staffing set section
+refactors into an R2 Director brief. The five R1 manager briefs
+archive with closure banners; their files remain in-tree as
+historical references but are no longer read as staffing
+authority. The R2 staffing targets become the Structural Close
+Manager brief (to be authored on promotion) and the refreshed
+Grounding Manager brief at
+[`docs/briefs/grounding-manager.md`](grounding-manager.md).
+
 ## Notes and open items
 
 - **Two story-surfaced gaps now have ledger rows** at

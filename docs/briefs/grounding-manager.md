@@ -1,27 +1,45 @@
-# Grounding Manager Brief — Post-R1 Grounding Completeness Program
+# R2 Grounding Manager Brief
+
+**Status:** `PROPOSAL` — pending R2 proposal
+([`docs/r2-structure.md`](../r2-structure.md), PR #754) merge +
+R1 all-gates-green closure. Until then, this brief is the R2
+Grounding Manager's scope-in-preparation; it does not dispatch
+work. On R2 promotion, the `PROPOSAL` banner lifts and this brief
+becomes the live dispatch authority for the lane.
 
 ## Orient before reading
 
+- **R2 structure authority:** [`docs/r2-structure.md`](../r2-structure.md)
+  (in PROPOSAL mode at PR #754). Names this manager as one of
+  two R2 standing managers (alongside R2 Structural Close
+  Manager) and locates the T-Ground lane within the R2 program.
+  On promotion, the authoritative section becomes
+  `ROADMAP.md §"Release R2 Program"`.
 - **Program scope authority:** [`ROADMAP.md`](../../ROADMAP.md)
-  §"Post-R1 Program — Grounding Completeness" — lane list,
-  acceptance gates, dependencies.
-- **Thesis claim tracked:** `THESIS.md` §"Thesis claims —
-  complete list" → Tier 1 → "Grounding completeness." This
-  program is the ROADMAP counterpart of that thesis claim.
+  §"Post-R1 Program — Grounding Completeness" (`:149`+) — lane
+  list, acceptance gates, dependencies. Promotes into R2 lane
+  `T-Ground` on R2 proposal merge; the pre-promotion section
+  remains the scope reference until then.
+- **Thesis claim tracked:** [`THESIS.md`](../../THESIS.md)
+  §"Thesis claims — complete list" → Tier 1 → "Grounding
+  completeness." This program is the ROADMAP counterpart of that
+  thesis claim.
 - **Architectural authority:** [`docs/single-emitter-design.md`](../single-emitter-design.md)
   (coercion = emission; algebra-homomorphism-not-lookup;
-  `TypeCheckpoint` / `InhabitantDecl` dissolve). This
-  manager operationalizes that architectural design.
+  `TypeCheckpoint` / `InhabitantDecl` dissolve). This manager
+  operationalizes that architectural design.
 - **Work breakdown + worked examples:** the target-grounding
   proposal — [PR #695](https://github.com/gunb-ai/gunbc/pull/695),
   landing at `docs/thesis/target-grounding-proposal.md` on merge.
   The proposal doc is in PROPOSAL mode; promotion to committed
-  happens when #695 and this amendment ([PR #721](https://github.com/gunb-ai/gunbc/pull/721))
+  happens when #695 and [PR #721](https://github.com/gunb-ai/gunbc/pull/721)
   both merge and this program formally dispatches.
-- **Coordination context:** [R1 Director Brief](r1-director-brief.md)
-  for the manager-escalation model. This manager operates under
-  the same governance — scope changes route to director; manager
-  owns lane-level dispatch inside scope.
+- **Coordination context:** on R2 promotion, this brief's
+  coordination context becomes the R2 Director Brief (refactored
+  from [R1 Director Brief](r1-director-brief.md)'s Staffing
+  section). This manager operates under the same governance —
+  scope changes route to director; manager owns lane-level
+  dispatch inside scope.
 
 ## Slice
 
@@ -150,32 +168,45 @@ table-driven scaffolding in a single Track 13 PR.
 
 ## Hand-off points
 
-- **Sideways to Surface Manager.** Surface Manager (R1 T-Emit
-  lane) owns emit-pipeline template validation, operator
-  carrier templates, etc. Grounding's engine work touches the
-  same emit pipeline boundary. Coordinate on whether engine
-  changes require emit-pipeline changes (likely yes, since
-  the engine replaces the declared-carrier read path).
-- **Sideways to Testgen Manager.** Testgen Manager (R1
-  T-TestGen lane) owns the `TestClaim` runner. Grounding's
-  T-Ground-Tests lane lands new `TestClaim` variants
-  (routing-stability, L4 witness-based certification). These
-  need Testgen runner capabilities that may require further
-  schema extensions beyond what R1 ships.
-- **Up to director.** Substrate-capability claims this
-  program relies on (DB-11 closure, cardinality-substrate,
-  optionally DB-18) — if any of those lanes shift schedule,
-  flag to director. Grounding's timeline is substantially
-  determined by theirs.
+R2 manager structure is **2 standing managers + Director** per
+[`docs/r2-structure.md`](../r2-structure.md). R1's Surface /
+Testgen / Substrate / Self-hosting / Release managers archive on
+R1 close; their emit-pipeline, testgen-runner, and substrate-
+capability responsibilities fold into R2 Structural Close
+Manager or Director ad-hoc dispatch.
+
+- **Sideways to R2 Structural Close Manager.** Owns T-EFamilyClose,
+  T-ShimFloor, T-Modeling, T-Substrate (substrate prereq sub-lanes),
+  T-LensMigration, T-ImpossibleBugs. The emit-pipeline boundary
+  Grounding's engine touches is Structural Close territory post-R1
+  (formerly Surface Manager T-Emit). Coordinate on:
+  - Emit-pipeline changes that Grounding's engine requires
+    (replacing the declared-carrier read path).
+  - Substrate-capability sub-lanes Grounding blocks on — each is
+    scoped in R2 T-Substrate to unblock a paired T-Modeling item,
+    not full substrate-capability close (see R2 proposal Goal 5).
+    Grounding's T-Ground-Rust / -Python / -Go block similarly on
+    cardinality-substrate + DB-11 closure; schedule-shift flags
+    route through Structural Close Manager.
+- **Sideways to Director.** The `TestClaim` runner Grounding's
+  T-Ground-Tests lane depends on is no longer a standing-manager
+  authority in R2 (R1 Testgen Manager archives on R1 close). New
+  `TestClaim` variants (routing-stability, L4 witness-based
+  certification) that require predicate schema extensions route
+  to Director for ad-hoc dispatch; Director picks worker capacity
+  per R2 transition mechanics.
+- **Up to director.** Substrate-capability claims this program
+  relies on (DB-11 closure, cardinality-substrate, optionally the
+  parametric-algebra-attachment in R2 T-Substrate). Schedule-
+  shift or scope-change flags route via director.
 - **Up to director.** If pilot surfaces a class of problems
-  that suggests the proposal's architecture needs amendment
-  (e.g., the minimum-satisfier discipline produces ambiguous
-  choices faster than expected), escalate to director for
-  design amendment rather than patch-in-lane.
-- **Up to director.** Any proposal to amend the
-  grounding-completeness claim in THESIS.md (e.g., scoping
-  fewer targets, adjusting the Track 13 dissolution trigger)
-  is a scope change.
+  suggesting the proposal's architecture needs amendment (e.g.,
+  minimum-satisfier discipline produces ambiguous choices faster
+  than expected), escalate for design amendment rather than
+  patch-in-lane.
+- **Up to director.** Any proposal to amend the grounding-
+  completeness claim in THESIS.md (e.g., scoping fewer targets,
+  adjusting the Track 13 dissolution trigger) is a scope change.
 
 ## Pilot-gate acceptance
 
