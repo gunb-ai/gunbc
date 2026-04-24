@@ -26,6 +26,9 @@ fn lower(source: &'static str, file: &'static str) -> Dag {
         Ok(dag) => {
             // Explicit compile-smoke receipt: same as the retired
             // `t_pb_b_1_tests_dag_smoke_test` (in addition to `Ok` ⟺ empty in `lib.rs`).
+            // Belt-and-suspenders against C-8 / `compile_to_dag` contract drift; unreachable
+            // if `Ok` truly implies an empty table — kept so reviewers and grep see the
+            // harness receipt without relying only on the `Result` shape.
             assert!(
                 dag.diagnostics().is_empty(),
                 "{file} (declaring `tests/dag` harness): expected empty module diagnostics, got {:?}",
