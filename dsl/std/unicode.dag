@@ -24,7 +24,8 @@ type CharClass = Whitespace | Digit | IdentStart | IdentContinue
 fn char_in_class(c: Char, class: CharClass) -> Bool {
   let cp = code_point(c: c)
   match class {
-    Whitespace => (cp >= 9 && cp <= 13) || cp == 32
+    // Match Rust `u8::is_ascii_whitespace`: TAB, LF, FF, CR, SPACE — not U+000B VT.
+    Whitespace => cp == 9 || cp == 10 || cp == 12 || cp == 13 || cp == 32
     Digit => cp >= 48 && cp <= 57
     IdentStart => (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || cp == 95
     IdentContinue => char_in_class(c: c, class: Digit)

@@ -22,7 +22,10 @@ pub enum TokenizerCharClass {
 pub fn byte_matches(byte: u8, class: TokenizerCharClass) -> bool {
     let cp = byte as i64;
     match class {
-        TokenizerCharClass::Whitespace => (9..=13).contains(&cp) || cp == 32,
+        // Match Rust `u8::is_ascii_whitespace` (excludes vertical tab U+000B).
+        TokenizerCharClass::Whitespace => {
+            matches!(byte, b'\t' | b'\n' | b'\x0C' | b'\r' | b' ')
+        }
         TokenizerCharClass::Digit => (48..=57).contains(&cp),
         TokenizerCharClass::IdentStart => {
             (65..=90).contains(&cp) || (97..=122).contains(&cp) || cp == 95
