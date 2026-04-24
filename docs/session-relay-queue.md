@@ -12,6 +12,7 @@
 | #664 (compiler→std tranche 2 / `v3.std.parse_surface`, session `zesty-lark-436`) | https://github.com/gunb-ai/gunbc/pull/664 |
 | #707 (T-TestGen schema extensions, session `eager-wren-78`) | https://github.com/gunb-ai/gunbc/pull/707 |
 | #708 (T-TestGen / stacked `pr-707` head; same session relay bucket) | https://github.com/gunb-ai/gunbc/pull/708 |
+| #712 (T-TestGen; **draft**, branch `pr-707` — session `eager-wren-78`) | https://github.com/gunb-ai/gunbc/pull/712 |
 
 #### #664 relay index (dashboard ingest — pointers only)
 
@@ -62,6 +63,14 @@ Full text stays on **GitHub**; this index is a stable handle for agents.
 | **`api-review`** (relay — **Human** dashboard ingest) — **`94fe21be…`** @ **2026-04-24T05:10:25Z** — **`<!-- [api-review] provider:codex model:gpt-5.4 sha:94fe21be trigger:schedule -->`** — **Verdict:** **APPROVE** — **same** parent **`94fe21be`** as **#707** Codex **05:05:42Z** row (second **Codex** scheduled body on **#708**): narrow **test/docs** plumbing; **no** concrete **INVARIANTS** / **`CODING.md`** / **`TESTING.md`** violation claimed; manual **`TestClaim`** moved out of std bootstrap preserves **single-authority**; integration exercises **`TestRunner::run_suite`** path under test; new hand-authored Rust test in **SG-0** census ratchet — [issue comment (authoritative)](https://github.com/gunb-ai/gunbc/pull/708#issuecomment-4310801904) — **+1** in relay payload = other queued dashboard items |
 | **Human** (briansrls) — **2026-04-24T05:10:59Z** — **CI receipt:** **v3** + **fmt** **green** on new push; **`ci`** + **`self_host_ratchet`** still running at post time — **ask:** replace session-dashboard **default PR body** before merge (gate name, **`ROADMAP.md`** line, why **`ResolveError`**, why **`tests/fixtures/`** wording) — **ingest note (PR description):** `gh pr view 708` at ingest shows **non-default** body already (T-TestGen gate, **`ROADMAP.md:51`** + lane-acceptance bullet, **`ResolveError`** vs **`TypeMismatch`**, **`src/v3/compiler/tests/fixtures/`** rationale — canonical path, **not** repo-root **`tests/fixtures/`**) — relay may lag **`gh pr edit`** or use shorthand “**`tests/fixtures/`**” for the **compiler** integration fixture tree — [issue comment (authoritative)](https://github.com/gunb-ai/gunbc/pull/708#issuecomment-4310805373) |
 | **`api-review`** (relay — **Human** dashboard ingest) — **`a10ecbfc…`** @ **2026-04-24T05:23:55Z** — **`<!-- [api-review] provider:claude model:claude-opus-4-7 sha:a10ecbfc trigger:schedule -->`** — **Verdict:** **APPROVE** — narrow diff: **`manual_negative_claim_gate`** + **`manual_claim_suite`** in existing **`r1_gates.dag`** fixture; rationale outside **`src/v3/std/`** bootstrap enumeration; **SG-0** census + **`test_runner_test.rs`** path updates — **no** invariant / modeling-discipline issues called out — **exploratory (non-blocking):** unify path construction (**`r1_manual_claim_gate_test.rs`** `repo_root` + **`src/v3/compiler/tests/fixtures/`** vs **`test_runner_test.rs`** `manifest_dir.join("tests/fixtures/r1_gates.dag")`) — **ingest note:** `manifest_dir` is **`v3-compiler`** crate root; **`tests/fixtures/`** under that path is **not** the same string as repo-root **`tests/`**; **canonical** on-disk file is **`src/v3/compiler/tests/fixtures/r1_gates.dag`** — “shorter” `join` only works if relative segments match layout — optional **suite** assertions: **`results.len() == 1`** vs per-claim loop for clearer failures when suite grows — **rebase context:** parent **`a10ecbfc`** was **`pr-707` tip** before **`main` rebase**; line **SHAs** on branch **move** — [issue comment (authoritative)](https://github.com/gunb-ai/gunbc/pull/708#issuecomment-4310879723) — **+5** in relay payload = other queued dashboard items |
+
+#### #712 relay index (dashboard ingest — pointers only)
+
+Full text stays on **GitHub**; this index is a stable handle for agents.
+
+| Source | Link |
+|:---|:---|
+| **Human** (dashboard relay) — **PR #712** attached as **draft** (**`headRefName`:** **`pr-707`**, same stack as **#708**) — while **`isDraft`**, **scheduled** auto-reviews and default **CI** gates **do not** run; **manual** “Trigger” clicks in the dashboard **still** fire (**user intent** overrides the draft gate) — when implementation is ready for auto-coverage: **`gh pr ready 712 --repo gunb-ai/gunbc`** — [PR #712](https://github.com/gunb-ai/gunbc/pull/712) |
 
 #### #589 relay index (dashboard ingest — pointers only)
 
