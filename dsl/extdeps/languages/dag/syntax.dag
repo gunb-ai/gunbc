@@ -97,22 +97,22 @@ data dag_non_name_keywords: Map<String, Bool> = {
 // (the expression loop handles them as pipe/field-access, not binary ops).
 
 data dag_operators: List<OperatorSpec> = [
-  OperatorSpec { symbol: [63, 63], left_bp: 3, right_bp: 4, binop: NullCoalesce, algebra_field: none },
-  OperatorSpec { symbol: [124, 124], left_bp: 5, right_bp: 6, binop: Or, algebra_field: none },
-  OperatorSpec { symbol: [38, 38], left_bp: 7, right_bp: 8, binop: And, algebra_field: none },
-  OperatorSpec { symbol: [61, 61], left_bp: 9, right_bp: 10, binop: Eq, algebra_field: none },
-  OperatorSpec { symbol: [33, 61], left_bp: 9, right_bp: 10, binop: Ne, algebra_field: none },
-  OperatorSpec { symbol: [60], left_bp: 11, right_bp: 12, binop: Lt, algebra_field: none },
-  OperatorSpec { symbol: [62], left_bp: 11, right_bp: 12, binop: Gt, algebra_field: none },
-  OperatorSpec { symbol: [60, 61], left_bp: 11, right_bp: 12, binop: Le, algebra_field: none },
-  OperatorSpec { symbol: [62, 61], left_bp: 11, right_bp: 12, binop: Ge, algebra_field: none },
-  OperatorSpec { symbol: [43], left_bp: 13, right_bp: 14, binop: Add, algebra_field: none },
-  OperatorSpec { symbol: [45], left_bp: 13, right_bp: 14, binop: Sub, algebra_field: none },
-  OperatorSpec { symbol: [42], left_bp: 15, right_bp: 16, binop: Mul, algebra_field: none },
-  OperatorSpec { symbol: [47], left_bp: 15, right_bp: 16, binop: Div, algebra_field: none },
-  OperatorSpec { symbol: [37], left_bp: 15, right_bp: 16, binop: Mod, algebra_field: none },
-  OperatorSpec { symbol: [124, 62], left_bp: 17, right_bp: 18, binop: none, algebra_field: none },
-  OperatorSpec { symbol: [46], left_bp: 19, right_bp: 20, binop: none, algebra_field: none }
+  OperatorSpec { symbol: "??", left_bp: 3, right_bp: 4, binop: NullCoalesce, algebra_field: none },
+  OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: Or, algebra_field: none },
+  OperatorSpec { symbol: "&&", left_bp: 7, right_bp: 8, binop: And, algebra_field: none },
+  OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: Eq, algebra_field: none },
+  OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: Ne, algebra_field: none },
+  OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: Lt, algebra_field: none },
+  OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: Gt, algebra_field: none },
+  OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: Le, algebra_field: none },
+  OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: Ge, algebra_field: none },
+  OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add, algebra_field: none },
+  OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub, algebra_field: none },
+  OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul, algebra_field: none },
+  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div, algebra_field: none },
+  OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod, algebra_field: none },
+  OperatorSpec { symbol: "|>", left_bp: 17, right_bp: 18, binop: none, algebra_field: none },
+  OperatorSpec { symbol: ".", left_bp: 19, right_bp: 20, binop: none, algebra_field: none }
 ]
 
 data dag_syntax_spec: SyntaxSpec = SyntaxSpec {

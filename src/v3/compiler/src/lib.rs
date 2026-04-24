@@ -854,6 +854,7 @@ mod parse;
 mod pipeline_authority;
 mod regen_parse_emit;
 mod regen_parse_tables_emit;
+mod tokenize_char_class;
 #[allow(
     dead_code,
     unused_imports,
