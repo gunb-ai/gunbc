@@ -29,7 +29,7 @@
 
 module std.r1_gates
 
-import std.verification { Compiles, TestClaim, TestSuite }
+import std.verification { AlgebraicLaw, Compiles, TestClaim, TestSuite }
 
 data sub_match_over_user_sum: TestClaim = {
   name: "sub_match_over_user_sum",
@@ -45,6 +45,17 @@ data sub_match_over_user_sum_gate: TestSuite = {
 }
 
 // Mirror of `src/v3/lenses/named_function_count.dag` — see ROADMAP schedule item 3 (file header).
+
+// Naming stub for `DeclarationRef` resolution on `AlgebraicLaw(Associativity, lens_composition_op)`.
+// The runner resolves `lens_ref` by name from this fixture DAG, then looks up the same name in
+// the compiled `program_dag` (`TestClaim.source`). The stub body is unused at evaluation time —
+// only the **name** is asserted against `program_dag`; keep the **body** byte-identical to
+// `src/v3/lenses/lens_composition_associative_witness.dag` anyway so the parallel copy cannot
+// silently drift (merge hazard / reader confusion).
+// Dissolution trigger: once the runner resolves lens refs directly from `program_dag` without a
+// fixture-side stub, delete this declaration.
+fn lens_composition_op(a: Int, b: Int) -> Int = a + b
+
 data user_authored_lens_compiles_gate: TestClaim = {
   name: "user_authored_lens_compiles",
   source: "// lenses.named_function_count - minimal user-authored lens (Day-1 gate demo).\n//\n// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A.\n// See docs/v3-lens-capability-register.md.\n//\n// **Not** bundled into `Dag::new()` bootstrap: it compiles externally via\n// `compile_to_dag` (see `m1_5_user_authored_lens_gate_test`). Demo only:\n// counts `Bind` behaviors whose `name` is non-empty. Not in `regen.dag`.\n\nmodule lenses.named_function_count\n\nimport std.list { fold }\nimport std.substrate { Dag, Behavior }\n\nfn count_named_bind(behavior: Behavior) -> Int =\n  match behavior {\n    Value(v) => 0\n    Transform(t) => 0\n    Branch(b) => 0\n    Loop(l) => 0\n    Bind(bind) => if bind.name == \"\" then 0 else 1\n  }\n\nfn named_function_count(d: Dag) -> Int =\n  fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))\n",
@@ -70,6 +81,19 @@ data manual_negative_claim_gate: TestClaim = {
 data manual_claim_suite: TestSuite = {
   name: "manual_claim_suite",
   claims: [manual_negative_claim_gate]
+}
+
+data lens_composition_associative_gate: TestClaim = {
+  name: "lens_composition_associative",
+  source: "// lenses.lens_composition_associative_witness - minimal `[ext]` gate witness for\n// `lens_composition_associative` (T-LensAPI / AlgebraicLaw::Associativity).\n//\n// The Rust test runner recognizes `lens_composition_op` as a structurally\n// canonical associative binary operation on `Int` (`a + b`) until lens\n// composition is reflected end-to-end in the substrate.\n//\n// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A beyond the witness shape.\n// Not bundled into `Dag::new()` bootstrap; see `m1_5_user_authored_lens_gate_test`\n// lockstep pattern for `r1_gates.dag`.\n\nmodule lenses.lens_composition_associative_witness\n\nfn lens_composition_op(a: Int, b: Int) -> Int = a + b\n",
+  file_name: "src/v3/lenses/lens_composition_associative_witness.dag",
+  predicate: AlgebraicLaw(Associativity, lens_composition_op),
+  requires: []
+}
+
+data lens_composition_associative_suite: TestSuite = {
+  name: "lens_composition_associative_suite",
+  claims: [lens_composition_associative_gate]
 }
 
 // R1 T-TestGen gate: the runner evaluates a structural fact about a compiled
