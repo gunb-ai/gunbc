@@ -51,6 +51,9 @@ type CostEntry {
   cost: Lookup<Int>
 }
 
+// P2 / facts-flow: `emit_rust_module` → `src/v3/compiler/src/lens_cost_generated.rs`
+// (regen_lens; committed with lens edits). `v3_compiler::lens_cost::CostLookup` in
+// `lib.rs` is a **type alias** for `Lookup<i64>`, not a parallel enum.
 fn cost_of(d: Dag, port_id: PortId) -> Lookup<Int> =
   lookup_cost(compute_costs(d), port_id)
 
