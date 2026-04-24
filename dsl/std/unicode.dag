@@ -26,6 +26,25 @@ import std.types { Char }
 // DFS from `dsl/std/`). Once M1(2.8) allows structural class rows in
 // tokenizer authority, revisit whether this sum moves to a lexical sibling
 // (e.g. std-facing tokenize) vs staying co-located with scalar `Char` helpers.
+//
+// **Dissolution receipt — `CharClass` (modeling-discipline principle 4).**
+// 🟢 TERMINAL at ASCII-oriented lexical scanner scope: four irreducible named
+// buckets for the closed `char_in_class` dispatch (and the mirrored
+// `TokenizerCharClass` in the v3 tokenizer bridge). Four-pattern ledger:
+// 1 Fact placement — rejected: a single authority (`char_in_class`) already owns
+//   all four predicates; scattering them would duplicate the same four-way
+//   dispatch without a richer upstream fact.
+// 2 Variant-is-data — rejected: shapes differ materially (fixed whitespace set
+//   vs digit range vs letter/underscore rules; `IdentContinue` delegates to
+//   `Digit`), not interchangeable labels on one record.
+// 3 Algebraic form — rejected: not a thin `Apply` over one shared `std/`
+//   numeric elimination; each variant names a distinct ASCII rule aligned with
+//   the historical `u8::is_ascii_*` scanner contract until tokenizer authority
+//   can read structural class rows (M1(2.8) class-5 gap #3).
+// 4 Dimensional — rejected: variants are not axes of one interpretation space.
+//
+// Named follow-up (not silent variant accretion here): fuller Unicode-wide
+// identifier classes / tokenizer structural consumption — ROADMAP tokenize lane.
 
 type CharClass = Whitespace | Digit | IdentStart | IdentContinue
 
