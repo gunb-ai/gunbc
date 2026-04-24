@@ -896,9 +896,7 @@ fn emit_rust_fixtures_rustc_green() {
     for fixture in REFLECTED_FIXTURES {
         let stdout = run_reflected(fixture.name);
         let (ok, label) = match &fixture.expected_stdout {
-            ReflectedExpected::Exact(expected) => {
-                (stdout == *expected, format!("{expected:?}"))
-            }
+            ReflectedExpected::Exact(expected) => (stdout == *expected, format!("{expected:?}")),
             ReflectedExpected::PositiveInt => (
                 stdout.parse::<i64>().is_ok_and(|n| n > 0),
                 "positive integer".to_owned(),
