@@ -124,7 +124,7 @@ type SymbolicCost
 // cannot yet prove bare `Miss` / `Hit(v)` bodies against a generic
 // `Lookup<value>` return type, so each concrete element gets a named
 // constructor. Rust emit lowers both calls to `Lookup::Miss` /
-// `Lookup::Hit(..)` (see `lookup_constructor_emit` in `rust_target.rs`).
+// `Lookup::Hit(..)` (see `lookup_monomorphized_constructor_emit` in `rust_target.rs`).
 // Lives here (not in `v3.std.lookup`) because `SymbolicCost` is the
 // lens-side algebra element and `std.lookup` must stay free of algebra
 // imports.
