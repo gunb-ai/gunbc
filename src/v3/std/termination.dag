@@ -51,9 +51,11 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   }
 }
 
+// Fail closed: strict descent cannot be fabricated from non-increase without
+// a separate structural witness.
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   match evidence {
-    NonIncreasing => Strict
+    NonIncreasing => NonIncreasing
     Strict => Strict
     DescentUnknown => DescentUnknown
   }
