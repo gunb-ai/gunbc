@@ -45,7 +45,7 @@ Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomp
 | Lane | Size | Covers | Cross-ref into debt ledger |
 |------|------|--------|----------------------------|
 | T-P0 | S | P0 sweep (repeat_string, REST_OPS, no_profile_sentinel) | §P0 — real bugs |
-| T-Sub | S | `match` over user sums, `CharClass` in std.unicode, type-alias `where` | §P4 (bit.dag refinements), Character-level under-consumption |
+| T-Sub | S | `match` over user sums (landed PR #702), `CharClass` in std.unicode, type-alias `where` (landed PR #703) | §P4 (bit.dag refinements), Character-level under-consumption |
 | T-Emit | M | Rust harden, #650 generic-bound fidelity, Python/Go reconcile | SurfaceLiteral→LiteralBits, variant-constructor template |
 | T-LaneE | XL | Complexity lens v2 parity via substrate-carrier-port | Existing Lane E-T/C/I/P/M program |
 | T-TestGen | L | Testgen runner, service simulation, first-class TestClaim | DB-15 follow-up |
@@ -59,7 +59,7 @@ Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomp
 This section lists gate names + schema-compilability tags; full `TestClaim` declarations will land as deliverables of the lane-brief drafting step (lane owners author them as `.dag` after being named). Each predicate is tagged `[Day 1]` (compiles against today's DB-15 schema — `Compiles`, `FailsWithDiagnostic`, `OutputEquals`, `CostBounded`, `PortHasState`) or `[ext]` (requires a T-TestGen schema extension before compiling). Day-1 predicates are a minority — the majority block on T-TestGen's runner + schema work, which is why T-TestGen is the gate-enabling lane.
 
 - **T-P0.** `p0_repeat_string_correct` [Day 1] · `p0_no_fabrication_sentinel` [ext] · `p0_rest_ops_aligned` [ext]
-- **T-Sub.** `sub_match_over_user_sum` [Day 1] · `sub_type_alias_where_lowers` [ext] · `sub_charclass_in_std_unicode` [ext]
+- **T-Sub.** `sub_match_over_user_sum` [Day 1, landed PR #702] · `sub_type_alias_where_lowers` [ext, landed PR #703] · `sub_charclass_in_std_unicode` [ext, open: phase-2 reproduction/triage]
 - **T-Emit.** `emit_rust_fixtures_rustc_green` [ext: `ExecuteCommand`] · `emit_generic_bounds_survive` [ext] · `emit_omni_demo_fixtures_green` [ext: `ForAllTargets` + `ExecuteCommand`]
 - **T-LaneE.** `complexity_merge_sort_is_nlogn` [ext: `LensOutputEquals`] · `complexity_v3_matches_v2_oracle` [ext: `DifferentialEquals`]
 - **T-TestGen.** `testgen_structural_coverage` [ext] · `testgen_mock_backed_integration_safe` [ext: `MockBackedInvariant` wiring] · `testgen_manual_claim_is_first_class` [ext]
@@ -128,7 +128,7 @@ Read bottom-up. Arrows point producer → consumer.
 
 **Critical path.** `max(T-LaneE, T-PB-A, T-Sub → T-TestGen → T-PB-B) → T-Demo`.
 
-- T-LaneE and T-PB-A do not gate each other; both XL. T-LaneE runs from W0 with no upstream dependencies. T-PB-A starts W0 in parallel — its file clusters that don't require match emit run immediately; match-emit-dependent clusters (regen-emits-match, variant-constructor templates) wait on T-Sub's `sub-match-over-user-sum` before they can close. The DAG above is authoritative on the specific cluster-level edges.
+- T-LaneE and T-PB-A do not gate each other; both XL. T-LaneE runs from W0 with no upstream dependencies. T-PB-A starts W0 in parallel. Its former match-emit-dependent clusters (regen-emits-match, variant-constructor templates) are no longer blocked on T-Sub's `sub_match_over_user_sum` gate because PR #702 landed that receipt. The DAG above is authoritative on the specific cluster-level edges.
 - T-LensAPI is decoupled, starts W0.
 - T-TestGen is the serial hinge for T-PB-B.
 - T-Emit (M) feeds T-Demo but is off the critical path — the XL lanes dominate its duration, so T-Emit is slack relative to T-LaneE / T-PB-A.
@@ -271,7 +271,7 @@ The full deferral ledger moved to [docs/history/roadmap-active-deferrals.md](doc
 - `DB-8`: fixed-point ratchet infrastructure landed; full self-hosting cycle remains gated on Lane 1e. See [docs/db-history/db-8.md](docs/db-history/db-8.md).
 - `DB-9`: mutual-recursion lowering shipped under the R2 substrate shape. See [docs/db-history/db-9.md](docs/db-history/db-9.md).
 - `DB-10`: `data` value semantics shipped; the historical trade-off receipt moved out of line. See [docs/db-history/db-10.md](docs/db-history/db-10.md).
-- `DB-11`: Parameter / generic **`where`** refinement lowered (see `test_3a3_*`); out-of-fragment rejection and narrowing receipts moved out of line. **`type X = … where …` on type aliases is not closed:** the handwritten parser still skips the alias RHS clause (`parse_type_rhs_after_eq` → `skip_where_clause`, `src/v3/compiler/src/parse.rs`). Std surfaces must not treat alias refinements as enforced until that gap lands (see **Type-alias `where` parsing gap** in [docs/db-history/db-11.md](docs/db-history/db-11.md)).
+- `DB-11`: Parameter / generic **`where`** refinement lowered (see `test_3a3_*`); out-of-fragment rejection and narrowing receipts moved out of line. Type-alias RHS `where` parsing + lowering landed in PR #703 and is covered by `test_db11_type_alias_where_*` integration receipts. See [docs/db-history/db-11.md](docs/db-history/db-11.md).
 - `DB-12`: surface generics shipped as a tests-first slice. See [docs/db-history/db-12.md](docs/db-history/db-12.md).
 - `DB-13`: Disj dotted-path support shipped as a tests-first slice. See [docs/db-history/db-13.md](docs/db-history/db-13.md).
 - `DB-14`: substrate accessor follow-on remains open through the E-9 bootstrap rewrite. See [docs/db-history/db-14.md](docs/db-history/db-14.md).
