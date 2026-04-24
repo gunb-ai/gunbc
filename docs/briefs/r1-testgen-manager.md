@@ -134,9 +134,9 @@ compose. When this closes, the R1 release gates themselves
     move and which stay.
   **Explicit Testgen sign-off — guard before any deletion PR opens:**
   1. Receipts (1)–(3) reviewed on main and still green (`cargo test
-     -p v3-compiler-tests t_pb_b_1_dag_runner_test` passes; the
-     class-5 pin `test_runner_data_bodies_reject_requires_empty_call_today`
-     still passes). 2. For each Rust `#[test]` proposed for deletion,
+     -p v3-compiler t_pb_b_1_dag_runner_test` passes; the class-5 pin
+     `test_runner_data_bodies_reject_requires_empty_call_today` still
+     passes). 2. For each Rust `#[test]` proposed for deletion,
      name the `.dag` `TestClaim` (suite + claim name) that covers it
      and confirm `TestRunner::run_suite` returns `ClaimResult::Pass`
      on today's runner — no inference by filename. 3. PR #735
@@ -146,8 +146,9 @@ compose. When this closes, the R1 release gates themselves
      Testgen manager records the sign-off in this brief's *Decisions
      log* **before** the self-hosting manager opens the deletion PR;
      without that entry, the self-hosting lane stays parked on
-     `ROADMAP.md:51`-adjacent work and does not delete Rust tests.
-     Scope-NO today: deleting tests whose shape is rendered-diagnostic
+     `ROADMAP.md` T-PB-B lane work (`pb_rust_tests_outside_residual_zero`)
+     and does not delete Rust tests.
+     Out of scope today: deleting tests whose shape is rendered-diagnostic
      only, shared-predicate (`let pred_*: TestPredicate`) factored, or
      `let`+`empty()` backed — those depend on runner seams / M1(2.8)
      class-5 lift that have not landed.
