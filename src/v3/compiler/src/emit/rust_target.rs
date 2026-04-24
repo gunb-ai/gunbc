@@ -4507,6 +4507,12 @@ impl<'a> Ctx<'a> {
         let param_dispositions = self.callable_param_dispositions(declaration.id, inputs.len());
         let mut locals = RenderLocals::default();
         let mut output_callable_walk = HashSet::new();
+        // C-8 / #676: there is no separate "return-only" / `AppliedTypeArguments` walk. The
+        // return slot uses the same `decl_includes_first_class_arrow_data` as struct derives /
+        // storage — including `Instantiation` (args **and** non-`List` **template**), so
+        // first-class `fn` living only "under" a template head still sets this flag. That
+        // unifies with `rust_type_name_for_user_function_parameter` (compose `Rc` when the
+        // return carries callable data anywhere).
         let return_includes_first_class_arrow =
             self.decl_includes_first_class_arrow_data(*output, &mut output_callable_walk);
         let params = bind
