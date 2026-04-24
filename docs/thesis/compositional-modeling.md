@@ -13,7 +13,7 @@ summarizes before the body so readers can place each section.
 | Section | Key mechanism shown | Status | Evidence / gap |
 |---|---|---|---|
 | Part 1 — primitives | `Int64 = OrderedRing<Word64>` | `[live]` | `dsl/std/bit.dag`, `dsl/std/integer.dag`, `dsl/std/algebra.dag` |
-| Part 1 — primitives | Operations fall out of algebra attachment | `[live]` | same |
+| Part 1 — primitives | Operations fall out of algebra attachment | `[live]` | `dsl/std/algebra.dag:49-85` (denotational grounding) + `:176-193` (OrderedRing declaration) |
 | Part 2 — refinements | `Nat = Int where x >= 0` | `[live]` | DB-3 lowered; `test_3a3_*` acceptance tests |
 | Part 2 — refinements | Refinement preserves through arithmetic | `[live]` partially, `[target]` for full composition law | DB-3 supports parameter/generic `where` (`ROADMAP.md:231`); alias-RHS `where` still skipped in `src/v3/compiler/src/parse.rs` `skip_where_clause` — tracked under DB-11 (`ROADMAP.md:231`) |
 | Part 3 — arity | `List<T>`, `Option<T>`, `NonEmpty<T>` as cardinality tags | `[live]` for List/Option; `[target]` for NonEmpty | NonEmpty as a first-class type composes on cardinality-substrate work tracked at `ROADMAP.md:305` ("Fixed-width types aren't structurally fixed" — cardinality not substrate-enforced until alias `where` parses/lowers per DB-11 gap) |
@@ -154,16 +154,22 @@ attached by the `inhabits` edge. `[live]` — `dsl/std/algebra.dag:176-193`.
 **Signed vs unsigned is a structural distinction, not a runtime
 bit.** `Int64` inhabits `OrderedRing` (has `negate`); `UInt64`
 inhabits `Semiring` (doesn't). Subtraction on `UInt64` is not
-well-formed — the operation isn't in the algebra. `[live]`. In C,
-unsigned subtraction silently wraps; the "it's unsigned" property
-lives only in comments.
+well-formed — the operation isn't in the algebra. `[live]` —
+`dsl/std/integer.dag:37-40` declares `UInt64 = Semiring<Word64>`;
+`dsl/std/algebra.dag:145-150` declares `Semiring` without `negate`
+or `sub`. In C, unsigned subtraction silently wraps; the "it's
+unsigned" property lives only in comments.
 
 **Operations for your new type fall out for free.** If you declare
 `type Money = OrderedRing<Int64>` and attach the algebra, you get
 `+`, `-`, `*`, `<`, `>` without writing `Add`, `Sub`, `Ord` impls
-manually. `[live]` — inhabits edges work today. Rust requires
-explicit `Add<Money>`, `Sub<Money>`, `Ord` for `Money` as a newtype
-over `i64` — about ten lines of boilerplate per type.
+manually. `[live]` for std-library types — the same pattern is how
+`dsl/std/integer.dag:31-44` attaches `OrderedRing` to each
+`IntN`/`UIntN`. User-authored extensions of the same pattern are
+`[target]` under DB-18 parametric-algebra-attachment
+(`ROADMAP.md:231`). Rust requires explicit `Add<Money>`,
+`Sub<Money>`, `Ord` for `Money` as a newtype over `i64` — about ten
+lines of boilerplate per type.
 
 **Generic operations work on anything that inhabits the right
 algebra.** A `sum` that takes any `Monoid` works on `List<Int>`,
@@ -171,7 +177,11 @@ algebra.** A `sum` that takes any `Monoid` works on `List<Int>`,
 empty), `List<Duration<Second>>` (if Duration inhabits
 Monoid), `List<Bool>` (if you pick `(Bool, false, ||)` or
 `(Bool, true, &&)` as the Monoid). One function; works on every
-Monoid; no runtime dispatch; no boilerplate. `[live]`.
+Monoid; no runtime dispatch; no boilerplate. `[live]` for the
+underlying `inhabits`-edge mechanism — see `dsl/std/algebra.dag:49-85`
+(denotational grounding: which types inhabit which algebras) and
+`dsl/std/string_type.dag:16` (`String = FreeMonoid<Char>`), which
+evidences non-numeric inhabitance in tree.
 
 **Cross-target emission is determined by the carrier + algebra.**
 Int64 in Rust becomes `i64`; in Python becomes arbitrary-precision
@@ -212,14 +222,17 @@ once the alias gap closes; the parameter case works today.
 `x >= 0 ∧ y >= 0 → x + y >= 0`, derives that the result is `Nat`.
 The refinement is preserved because the operation is structurally
 closed on the refinement. `[target]` — composition-preserves-
-refinement is gated on the alias-refinement lowering landing.
+refinement across alias-form refinements is gated on DB-11 closure
+(`ROADMAP.md:231`; alias-RHS `where` clause currently skipped at
+`src/v3/compiler/src/parse.rs` `skip_where_clause`).
 
 `Positive * Positive : Positive`. Same logic: `x > 0 ∧ y > 0 → xy > 0`.
-`[target]`.
+`[target]` — same DB-11 closure (`ROADMAP.md:231`).
 
 `Positive - Positive : Int` (not `Positive`). Subtraction of two
 positives can produce zero or negative. The compiler drops the
-refinement because it isn't preserved by the operation. `[target]`.
+refinement because it isn't preserved by the operation. `[target]`
+— same DB-11 closure (`ROADMAP.md:231`).
 
 This is the meta-beat: **refinements aren't annotations the compiler
 trusts blindly.** They're structural facts, and composition preserves
@@ -236,8 +249,9 @@ compiler doesn't check that the result is still in range unless
 `Nat::new` validates at runtime.
 
 In gunbc, the preservation is a compile-time fact derived from the
-algebra, not a runtime check you write. `[target]` — composition
-law needed.
+algebra, not a runtime check you write. `[target]` — DB-11
+alias-RHS closure (`ROADMAP.md:231`) supplies the parse path;
+refinement-composition-through-algebra is the follow-up consumer.
 
 ### The generalization
 
@@ -398,8 +412,10 @@ type ParseTree { nodes: List<Node> }    // List<T> admits empty
 The parser author cannot implement the "deallocate empty tree"
 convention. The tree is never null. Reading `tree.nodes` gives a
 `List<Node>` that might be empty; pattern-match or fold handles
-that. `[live]` — List admits empty by default; every caller gets a
-list they can't assume is non-empty.
+that. `[live]` — `dsl/std/types.dag:211` (`type List<element> =
+FreeMonoid<element>`); `FreeMonoid` declares `empty: FreeMonoid<T>`
+at `dsl/std/algebra.dag:302`, so every `List<T>` value may be empty
+and every caller gets a list they can't assume is non-empty.
 
 **Shape 2: tree always has ≥ 1 node; absence is its own state.**
 
@@ -411,9 +427,12 @@ let maybe_tree: Option<ParseTree> = parse(src)
 `NonEmpty<Node>` is `Cardinality<Node, AtLeast(1)>` — a type-level
 tag saying "at least one Node." `ParseTree` structurally cannot hold
 zero nodes. `Some(t)` carries the guarantee `t.nodes.length >= 1`.
-`[target]` — NonEmpty as a first-class type is a gap today; `.first()`
-on NonEmpty returning `T` (not `Option<T>`) requires cardinality
-composition.
+`[target]` — NonEmpty as a first-class type sits on cardinality-
+substrate work tracked at `ROADMAP.md:305` (cardinality not
+substrate-enforced until alias-form `where` parses/lowers) + DB-11
+(`ROADMAP.md:231`). `.first()` on NonEmpty returning `T` (not
+`Option<T>`) is the downstream consequence of that substrate
+landing.
 
 With Shape 2:
 - Engineer A's code works: `Some(t)` does mean ≥1 node.
@@ -436,7 +455,9 @@ type TreeState = NeverCreated
 ```
 
 Pattern-match forces handling all three. No convention required;
-the compiler enforces the distinction. `[target]`.
+the compiler enforces the distinction. `[target]` — requires the
+same cardinality-substrate work as Shape 2 above
+(`ROADMAP.md:305` + DB-11 at `:231`).
 
 ### Cardinality as a substrate axis
 
@@ -459,10 +480,13 @@ compiler tracks what happens to the cardinality:
 
 - `map(f, List<T>) : List<U>` — cardinality unchanged.
 - `filter(p, List<T>) : List<T>` — refinement weakens: `NonEmpty<T>`
-  after filter drops to `List<T>` (filter may produce empty). `[target]`.
+  after filter drops to `List<T>` (filter may produce empty).
+  `[target]` — cardinality-substrate row (`ROADMAP.md:305`) +
+  DB-11 (`:231`).
 - `fold(init, f, List<T>) : U` — no longer cardinality-bearing.
 - `first(NonEmpty<T>) : T` — returns a value, not `Option<T>`,
-  because the cardinality guarantees at least one. `[target]`.
+  because the cardinality guarantees at least one. `[target]` —
+  same cardinality-substrate row + DB-11.
 - `first(List<T>) : Option<T>` — returns Option because List may
   be empty.
 
@@ -479,8 +503,10 @@ Cardinality<Cardinality<T, AtMost(1)>, AtMost(1)>  ≡  Cardinality<T, AtMost(1)
 ```
 
 Nested optionals collapse by the composition law, not by user
-action. `[target]` — this is the cardinality substrate work gated
-behind ROADMAP class 3 (nested-optional flatten).
+action. `[target]` — cardinality-substrate work at `ROADMAP.md:305`
++ DB-11 alias-RHS closure at `:231`. (The earlier "ROADMAP class 3"
+reference pointed at a draft audit that did not land; the
+authoritative pointer is the ledger row.)
 
 ### Testgen as the last line of defense
 
@@ -563,8 +589,11 @@ type Duration<Unit> = Dimension<Int64, Unit>
 `src/v3/std/dimensions.dag` (🟢 TERMINAL for structural surface).
 `[target]` for the unit-mismatch enforcement lens — the consumer
 that rejects `Duration<Second> + Duration<Millisecond>` without
-explicit conversion. DB-3 shipped the framework; the enforcement
-wire-up is follow-up.
+explicit conversion. DB-3 shipped the framework (`ROADMAP.md:235`);
+Dimension wiring for lens consumers is deferred under the v3 lens
+honesty pass (`ROADMAP.md:333`). A Duration/Money unit-mismatch
+enforcement lens does not yet have its own ledger row — filed as
+follow-up in the claim-status table's "Unscheduled gaps" note.
 
 `Duration<Second>` and `Duration<Millisecond>` are distinct types.
 Addition respects dimension. Conversion is an explicit operation.
@@ -582,8 +611,11 @@ type Secret<T> { value: T }
 ```
 
 `[target]` — `Secret = String` is a type alias today per
-`dsl/std/types.dag:237`; nominal opaque wrapper is a gap closed by
-the T-Secret lane.
+`dsl/std/types.dag:237`. The nominal-opaque-wrapper graduation does
+not yet have its own ledger row — filed as follow-up in the
+claim-status table's "Unscheduled gaps" note. Closure depends on
+a nominal-vs-alias distinction in the substrate plus the construction-
+restriction modeling shown in the snippet above.
 
 Once `Secret<Token>` is nominally opaque:
 - `println("token=" + secret)` → compile error (no String coercion)
@@ -687,9 +719,12 @@ Explicit reconciliation required. Choose one:
   - Model as distinct types; pick per-call-site.
 ```
 
-`[target]` — this kind of cross-team structural reconciliation error
-composes existing mechanisms (NonEmpty, Option, refinement
-preservation) that are target state today.
+`[target]` — this kind of cross-team structural reconciliation
+error composes targets each already cited above: NonEmpty (on
+cardinality substrate at `ROADMAP.md:305` + DB-11 at `:231`),
+refinement preservation (DB-11 at `:231`), and enforced `Secret`
+nominal opacity (unscheduled — see claim-status table's
+"Unscheduled gaps" note).
 
 **Each team continues to use their own convention internally. The
 boundary is the one place the reconciliation happens, and the
@@ -757,10 +792,14 @@ The testgen runner:
 
 Every cardinality transition you encoded in a type becomes a test
 the compiler generates. You didn't write the test; the type did.
+`[target]` — DB-15 schema landed (`ROADMAP.md:235`); the runner +
+`MockBackedInvariant` wiring that evaluates generated tests is
+T-TestGen (`ROADMAP.md:51`, `:65`).
 
 ### The modeling-to-testing pipeline
 
-The relationship between modeling and testing becomes:
+The relationship between modeling and testing becomes (all
+`[target]` — pending T-TestGen runner at `ROADMAP.md:51`, `:65`):
 
 - **Fully modeled boundary** → testgen generates zero tests for it
   (the type proves what matters; no residual coverage needed)
@@ -786,7 +825,13 @@ If your types are complete, testgen is mostly silent. If your
 types are sketchy, testgen lights up and covers the gaps.
 
 No boundary is "unprotected." No bug class is "oh we'll catch it
-in prod." Either the type caught it, or testgen did.
+in prod." Either the type caught it, or testgen did. `[target]` —
+this is the mature-system guarantee; it depends on the `[target]`
+items cited in the claim-status table above (cardinality substrate
+per `ROADMAP.md:305`, DB-11 alias-RHS closure per `ROADMAP.md:231`,
+and T-TestGen runner + `MockBackedInvariant` wiring per
+`ROADMAP.md:51`, `:65`, `:235`). No single ledger row owns the
+composite guarantee; it's the conjunction of those rows landing.
 
 ---
 
@@ -795,10 +840,14 @@ in prod." Either the type caught it, or testgen did.
 When five services compose in one workflow — say, a GitHub
 issue-classifier hitting GitHub, Anthropic, Postgres, GCS, Slack —
 every mechanism described above applies in the same way. `[target]`
-— the five-service workflow example depends on typed service
-boundaries (classes 1, 2, 7 in the impossible-bug-classes audit),
-full cardinality composition, the reconciliation story, and
-testgen's mock-backed runner.
+— the five-service workflow example composes targets already
+cited above: typed service boundaries (extdeps surface live at
+`dsl/extdeps/`; retry/effect enforcement across composed services
+is `[target]` and not yet a dedicated ledger row — filed as a
+further unscheduled gap), full cardinality composition
+(`ROADMAP.md:305` + DB-11 at `:231`), the cross-team reconciliation
+story (composes the targets in Part 5 above), and T-TestGen's
+mock-backed runner (`ROADMAP.md:51`, `:65`, `:235`).
 
 Typical integration code in Rust: ~2,400 lines across 20 files
 covering five services × their types × their retry policies × their
@@ -815,7 +864,8 @@ harnesses, boundary tests — all fall out of the modeling.
 
 **Integration effort in gunbc is linear per service.** Each service
 costs roughly its own declarations. Composition is the compiler's
-problem, not yours.
+problem, not yours. `[target]` — depends on the composite targets
+cited in the workflow paragraph above.
 
 **Integration effort in Rust is super-linear.** Each new service
 pair introduces a new boundary, a new type-sharing question, a new
@@ -844,7 +894,13 @@ the residual.**
 gunbc's claim is not "we prevent 26 bug classes." It's **"we turn
 the conventions your team has been carrying in readmes, comments,
 and discipline into types, and then the bugs that come from
-dropped conventions stop existing."**
+dropped conventions stop existing."** `[target]` — the "stop
+existing" formulation is the composite mature-system guarantee
+that depends on the Part 3–6 `[target]` rows above (cardinality
+substrate at `ROADMAP.md:305`, DB-11 at `:231`, T-TestGen at
+`:51`/`:65`/`:235`, plus unscheduled Secret and unit-mismatch
+rows). For the live-today subset, see the `[live]` rows in the
+claim-status table.
 
 The sustainability argument: types are cheap to extend and compose
 because the mechanism is uniform — Bit all the way up to AuthUser
