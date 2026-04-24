@@ -4,11 +4,12 @@
 use std::collections::HashMap;
 
 use crate::dag::{
-    ArrowBody, Behavior, BindNode, BranchNode, BranchPattern, Dag, Declaration, DeclarationId,
-    FieldValue, LiteralBits, OperatorKind, PortId, TransformNode, TransformTarget, TypeConnective,
-    ValueBody,
+    ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, Dag, Declaration,
+    DeclarationId, FieldValue, LiteralBits, OperatorKind, PortId, TransformNode, TransformTarget,
+    TypeConnective, ValueBody,
 };
 use crate::diagnostics::SourceSpan;
+use crate::infer_helpers::resolve_template_argument_value;
 
 fn is_fold_instantiation(dag: &Dag, decl: &Declaration) -> bool {
     matches!(
@@ -26,16 +27,115 @@ fn span_overlaps(a: &SourceSpan, b: &SourceSpan) -> bool {
     span_same_file(a, b) && !(b.byte_end <= a.byte_start || b.byte_start >= a.byte_end)
 }
 
-/// Locate the `|acc, x|` step closure lowered as a two-parameter `Bind` for this `fold` site.
-///
-/// **Scaffold (D1):** monomorphized `std.list.fold` lowering does not attach a first-class graph
-/// edge from the `Transform` to its step `Bind`; the interpreter recovers the step bind by
-/// **span overlap** with the `fold` site (narrowest overlapping `Bind` with ≥2 params). Wrong
-/// binds in the same span could theoretically collide — bounded gate scope only.
-///
-/// **Dissolution:** preserve the step closure as an explicit operand / `Behavior` edge from the
-/// `fold` transform so `lens_apply` does not depend on span heuristics.
-fn find_fold_step_bind<'a>(dag: &'a Dag, fold_span: &SourceSpan) -> Option<&'a BindNode> {
+const LENS_APPLY_TYPE_WALK_DEPTH: usize = 32;
+
+fn declaration_is_callable_type(dag: &Dag, current: DeclarationId, depth: usize) -> bool {
+    if depth >= LENS_APPLY_TYPE_WALK_DEPTH {
+        return false;
+    }
+    match &dag.declaration(current).connective {
+        TypeConnective::Arrow { .. } => true,
+        TypeConnective::Instantiation { template, .. } => {
+            declaration_is_callable_type(dag, *template, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            declaration_is_callable_type(dag, *next, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::Literal(_))
+        | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        | TypeConnective::Atom(AtomPayload::TypeParam(_))
+        | TypeConnective::Conj { .. }
+        | TypeConnective::Disj { .. }
+        | TypeConnective::Cardinality { .. } => false,
+    }
+}
+
+/// Arrow formals of `std.list.fold` whose types are callable — the step `f` slot.
+fn fold_template_callable_formals(dag: &Dag, fold_template: DeclarationId) -> Vec<DeclarationId> {
+    let decl = dag.declaration(fold_template);
+    let TypeConnective::Arrow { inputs, .. } = &decl.connective else {
+        return Vec::new();
+    };
+    inputs
+        .iter()
+        .copied()
+        .filter(|&i| declaration_is_callable_type(dag, i, 0))
+        .collect()
+}
+
+/// Peel `Instantiation` carriers (same contract as [`LensInterpreter::eval_callable`]) until an
+/// `Arrow` with `UserDefined` body; return the root `Bind` when it has ≥2 params (step closure).
+fn monomorph_callable_bind_root(dag: &Dag, mut decl_id: DeclarationId) -> Option<&BindNode> {
+    for _ in 0..LENS_APPLY_TYPE_WALK_DEPTH {
+        let decl = dag.declaration(decl_id);
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => {
+                if dag.std_list_fold_decl() == Some(*template) {
+                    return None;
+                }
+                decl_id = *template;
+            }
+            TypeConnective::Arrow { body, .. } => {
+                let ArrowBody::UserDefined(root) = body else {
+                    return None;
+                };
+                return match dag.node(*root) {
+                    Behavior::Bind(b) if b.params.len() >= 2 => Some(b),
+                    _ => None,
+                };
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// Primary path: walk `Instantiation.arguments` on the monomorphized fold callee — substrate
+/// `DeclarationId` keyed to the template's callable formal — then resolve the step `Arrow` root
+/// `Bind`. Matches builder/runtime arity: the step is not a `Transform` input port.
+fn find_fold_step_bind_via_instantiation(
+    dag: &Dag,
+    fold_callable_id: DeclarationId,
+) -> Option<&BindNode> {
+    let decl = dag.declaration(fold_callable_id);
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &decl.connective
+    else {
+        return None;
+    };
+    if dag.std_list_fold_decl() != Some(*template) {
+        return None;
+    }
+    let formals = fold_template_callable_formals(dag, *template);
+    let depth_budget = LENS_APPLY_TYPE_WALK_DEPTH as i64;
+
+    let mut ambiguous_fallback: Vec<&BindNode> = Vec::new();
+    for arg in arguments {
+        let resolved = resolve_template_argument_value(&depth_budget, arguments, arg.value);
+        let Some(b) = monomorph_callable_bind_root(dag, resolved) else {
+            continue;
+        };
+        if formals.contains(&arg.parameter) {
+            return Some(b);
+        }
+        if !ambiguous_fallback
+            .iter()
+            .any(|existing| existing.id == b.id)
+        {
+            ambiguous_fallback.push(b);
+        }
+    }
+    (ambiguous_fallback.len() == 1).then(|| ambiguous_fallback[0])
+}
+
+/// Fallback (D1): span overlap when instantiation facts are absent or ambiguous.
+fn find_fold_step_bind_by_span_overlap<'a>(
+    dag: &'a Dag,
+    fold_span: &SourceSpan,
+) -> Option<&'a BindNode> {
     dag.nodes()
         .iter()
         .filter_map(|n| {
@@ -51,6 +151,26 @@ fn find_fold_step_bind<'a>(dag: &'a Dag, fold_span: &SourceSpan) -> Option<&'a B
             Some(b)
         })
         .min_by_key(|b| b.span.byte_end.saturating_sub(b.span.byte_start))
+}
+
+/// Locate the `|acc, x|` step closure lowered as a two-parameter `Bind` for this `fold` site.
+///
+/// **Primary:** [`find_fold_step_bind_via_instantiation`] follows template-argument substrate
+/// edges from the monomorphized `std.list.fold` `Instantiation` (the step is not a runtime `Port`
+/// when arity collapses to list + init).
+///
+/// **Fallback:** [`find_fold_step_bind_by_span_overlap`] — narrowest overlapping `Bind` with ≥2
+/// params in the same source file span as the `fold` transform (bounded gate scope only).
+///
+/// **Dissolution:** attach the step as an explicit `Transform` input / behavior edge so neither
+/// path is needed.
+fn find_fold_step_bind<'a>(
+    dag: &'a Dag,
+    fold_callable_id: DeclarationId,
+    fold_span: &SourceSpan,
+) -> Option<&'a BindNode> {
+    find_fold_step_bind_via_instantiation(dag, fold_callable_id)
+        .or_else(|| find_fold_step_bind_by_span_overlap(dag, fold_span))
 }
 
 /// Apply a named lens (`Arrow` + `UserDefined` body) from `lens_program` to positional
@@ -304,7 +424,7 @@ impl<'a> EvalCtx<'a> {
                 if is_fold_instantiation(self.dag, decl) && t.inputs.len() == 2 && !fold_noise {
                     let list = self.eval_port(t.inputs[0])?;
                     let init = self.eval_port(t.inputs[1])?;
-                    let step_bind = find_fold_step_bind(self.dag, &t.span).ok_or(
+                    let step_bind = find_fold_step_bind(self.dag, *callee, &t.span).ok_or(
                         LensApplyError::UnsupportedConstruct(
                             "monomorphized fold: could not locate step closure Bind",
                         ),
@@ -904,6 +1024,38 @@ fn sum(xs: List<Int>) -> Int =
         let empty = empty_substrate_list_value(&dag).expect("empty list");
         let out = apply_lens_declaration(&dag, sum_id, &[empty]).expect("fold empty");
         assert_eq!(out, FieldValue::Literal(LiteralBits::Int(99)));
+    }
+
+    #[test]
+    fn monomorphized_fold_step_bind_recovered_via_instantiation_arguments() {
+        let src = r#"module m
+import std.list { List, fold }
+
+fn sum(xs: List<Int>) -> Int =
+  fold(xs, 99, |acc, x| acc + x)
+"#;
+        let dag = compile_to_dag(src, "mono_fold_bind_paths.v3").expect("compiles");
+        let fold_transform = dag
+            .nodes()
+            .iter()
+            .find_map(|n| {
+                let Behavior::Transform(t) = n else {
+                    return None;
+                };
+                let TransformTarget::Callable(callee) = &t.target else {
+                    return None;
+                };
+                super::is_fold_instantiation(&dag, dag.declaration(*callee)).then_some(t)
+            })
+            .expect("monomorphized fold transform");
+        let TransformTarget::Callable(callee) = &fold_transform.target else {
+            unreachable!();
+        };
+        let via_inst =
+            super::find_fold_step_bind_via_instantiation(&dag, *callee).expect("inst path");
+        let combined = super::find_fold_step_bind(&dag, *callee, &fold_transform.span)
+            .expect("find_fold_step_bind");
+        assert_eq!(combined.id, via_inst.id);
     }
 
     #[test]
