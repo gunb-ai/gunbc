@@ -186,8 +186,9 @@ Decisions log (append as they happen):
 - **2026-04-24** — Director: `docs/thesis/` edits (impossible-bugs
   narrative) are director-owned per `doc-authority.md` (PR #672). W3
   parked upstream-of-gates; re-dispatch on first R1 `[live]` proof row.
-- **2026-04-24** — T-Receipts bundle 1 landed (#685); bundle 2 (#687,
-  slow-test-exemption meta-ratchet) green-lit pending rebase on #685.
+- **2026-04-24** — T-Receipts bundle 1 landed (#685); merge order per
+  director for bundle 2 (#687, slow-test-exemption meta-ratchet):
+  #685 → #687.
 
 Open questions for director:
 
