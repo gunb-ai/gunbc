@@ -237,11 +237,23 @@ Decisions log (append as they happen):
   sign-off entry in this log naming the specific `#[test]` → `.dag`
   `TestClaim` mapping.** Self-hosting manager should continue to treat
   item (4) as parked until that entry appears.
-- 2026-04-24: **T-LensAPI `lens_composition_associative` closed** via
-  PR #728. Runner dispatch of `AlgebraicLaw { law: Associativity }`,
-  witness DAG, and `r1_gates.dag` suite landed together. Remaining
-  T-LensAPI work: `lens_output_is_queryable_data` (PR #717 dispatch merged
-  2026-04-24; gate awaits D1 primitive — PR #741 draft).
+- 2026-04-24: **T-LensAPI lane effectively closed** via PR #741 (D1+D2+D3+D4
+  bundle). `apply_lens_declaration` lens-application primitive + frame-based
+  `EvalCtx` + authoritative `std.list.fold` dispatch land as D1;
+  `eval_lens_output_equals` and `eval_algebraic_law_for_claim_program` now
+  consume D1 directly (D2, D3). D4 folds the split
+  `r1_lens_output_equals_gate.dag` back into `r1_gates.dag` via a new
+  `r1_gates.template.dag` + `build.rs` splice-at-build-time. Two Rust
+  structural recognizers deleted (`declaration_is_binary_int_add_associativity_witness`
+  + the `compile_to_dag` bridge receipt inside `eval_lens_output_equals`).
+  **Supersedes #740** (wise-koi-316 AlgebraicLaw direction, archived without
+  merging). ROADMAP "Scheduled cleanups: LensOutputEquals runner and R1
+  gate fixtures" items 1–3 all dissolved in the same PR. Lane non-goals
+  called out in PR body: `reflect_behavior` still lossy for
+  Transform/Branch/Loop variants; only `AlgebraicLawKind::Associativity`
+  is evaluated (other kinds stay `NotYetImplemented`).
+- 2026-04-24: **T-LensAPI `lens_composition_associative` initial dispatch**
+  via PR #728 (Rust operator-shape recognizer), later dissolved by PR #741.
 - 2026-04-24: T-PB-B / Testgen **pre–Rust-deletion** coordination
   checklist consolidated in this brief (Hand-off → Self-hosting);
   `docs/briefs/t-pb-b-1.md` now points here instead of duplicating
