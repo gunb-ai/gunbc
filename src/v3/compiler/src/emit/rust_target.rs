@@ -4928,10 +4928,13 @@ impl<'a> Ctx<'a> {
     ///
     /// For `Instantiation`, we walk type **arguments** and, when the head is
     /// not the `List` template, the **template** (so a user `G<T>` can carry
-    /// callable data on `G` without it appearing in `T`). The `List` head is
-    /// skipped: callables in `List<T>` always appear in `T`. The primitive
-    /// check above **short-circuits** `-> Int` (etc.) so we do not follow those
-    /// type roots into ring/algebra noise (C-8; #676).
+    /// callable data on `G` without it appearing in `T`). The `List` head and
+    /// the `PartialFunction` head (surface `Map<K, V>`) are skipped: the first
+    /// is always element-shaped in `T`; the second is a `Conj` of algebra
+    /// `Arrow`+`NoBody` *operations* (lookup, insert, …) that must not be
+    /// taken for user first-class `fn` *values* (C-8; #676).
+    /// The primitive check above **short-circuits** `-> Int` (etc.) so we do
+    /// not follow those type roots into ring/algebra noise.
     fn decl_includes_first_class_arrow_data(
         &self,
         declaration: DeclarationId,
@@ -4963,6 +4966,7 @@ impl<'a> Ctx<'a> {
                     .any(|arg| self.decl_includes_first_class_arrow_data(arg.value, visited));
                 from_args
                     || (!self.is_list_template(*template)
+                        && !self.is_partial_function_template(*template)
                         && self.decl_includes_first_class_arrow_data(*template, visited))
             }
             TypeConnective::Cardinality { element, .. } => {
@@ -5265,6 +5269,14 @@ impl<'a> Ctx<'a> {
             .is_some_and(|list| list == declaration)
     }
 
+    /// `Map<K, V>` instantiates the std `PartialFunction` record; its fields are
+    /// not user first-class `fn` as in `peel_resolved_chain_to_first_class_arrow`.
+    fn is_partial_function_template(&self, declaration: DeclarationId) -> bool {
+        self.dag
+            .partial_function_template()
+            .is_some_and(|pfun| pfun == declaration)
+    }
+
     fn render_list_item_construct_expr(
         &self,
         list_port: PortId,
@@ -5515,9 +5527,36 @@ fn algebra_field_for_operator(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
     use crate::compile_to_dag;
     use crate::diagnostics::SourceSpan;
+
+    #[test]
+    fn first_class_fn_walk_does_not_confuse_map_partial_function_with_user_fn() {
+        let dag = compile_to_dag("let _x: Int = 0\n", "t.v3").expect("compiles");
+        let map = dag
+            .declaration_by_name("Map")
+            .expect("Map from std should load in bootstrap")
+            .id;
+        let indexes = RealizationIndexes::build(&dag).expect("indexes build");
+        let input_use_facts = InputUseFacts::build(&dag, &indexes);
+        let bound_names: HashMap<PortId, LocalBinding> = HashMap::new();
+        let ctx = Ctx {
+            dag: &dag,
+            indexes: &indexes,
+            bound_names: &bound_names,
+            input_use_facts: &input_use_facts,
+            mode: EmitRustMode::Module,
+        };
+        let mut visited = HashSet::new();
+        assert!(
+            !ctx.decl_includes_first_class_arrow_data(map, &mut visited),
+            "`Map<K,V>`'s `PartialFunction` head carries `Arrow`+`NoBody` for algebra operations, \
+not user `fn` data; must not set return-carrier / Rc on callable params (PR #676)"
+        );
+    }
 
     #[test]
     fn render_field_project_reads_borrowed_nodes_without_cloning() {

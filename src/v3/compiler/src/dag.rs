@@ -1613,6 +1613,12 @@ pub(crate) struct StdlibTypeCache {
     /// declaration ids instead of reconstructing stdlib identity
     /// through `declaration_by_name("List")`.
     pub list: Option<DeclarationId>,
+    /// The `Map<K, V> = PartialFunction<…>` template head (`PartialFunction` in
+    /// `dsl/std`). The underlying record carries algebra `Arrow`+`NoBody` fields
+    /// for operations, not first-class `fn` **values** — emit must not recurse
+    /// the template in `decl_includes_first_class_arrow_data` the way it does
+    /// for a user `G<T>` (PR #676).
+    pub partial_function: Option<DeclarationId>,
 }
 
 /// Substrate declarations emitters used to resolve via
@@ -2207,6 +2213,13 @@ impl Dag {
         self.stdlib_types.list
     }
 
+    /// The `Map` type constructor’s underlying `PartialFunction` record template
+    /// (`Map<K, V> = Inst(PartialFunction, [K, V])` in `dsl/std`). See
+    /// [`Dag::list_template`].
+    pub fn partial_function_template(&self) -> Option<DeclarationId> {
+        self.stdlib_types.partial_function
+    }
+
     /// Typed accessor for the canonical `OrderedRing` algebra declaration.
     /// Used by emitters for operator-field fallback without per-call name lookup.
     pub fn ordered_ring_decl(&self) -> Option<DeclarationId> {
@@ -2735,6 +2748,8 @@ impl Dag {
             .map(|d| d.id);
         self.populate_target_clean_emission_bindings();
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
+        self.stdlib_types.partial_function =
+            self.declaration_by_name("PartialFunction").map(|d| d.id);
 
         self.emit_anchors.ordered_ring = self.declaration_by_name("OrderedRing").map(|d| d.id);
         self.emit_anchors.substrate_accessor_binding = self
