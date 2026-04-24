@@ -12,9 +12,12 @@
   (coercion = emission; algebra-homomorphism-not-lookup;
   `TypeCheckpoint` / `InhabitantDecl` dissolve). This
   manager operationalizes that architectural design.
-- **Work breakdown + worked examples:** [`docs/thesis/target-grounding-proposal.md`](../thesis/target-grounding-proposal.md)
-  (PROPOSAL mode as of this brief's authoring; promotion to
-  committed mode happens when this program formally dispatches).
+- **Work breakdown + worked examples:** the target-grounding
+  proposal — [PR #695](https://github.com/gunb-ai/gunbc/pull/695),
+  landing at `docs/thesis/target-grounding-proposal.md` on merge.
+  The proposal doc is in PROPOSAL mode; promotion to committed
+  happens when #695 and this amendment ([PR #721](https://github.com/gunb-ai/gunbc/pull/721))
+  both merge and this program formally dispatches.
 - **Coordination context:** [R1 Director Brief](r1-director-brief.md)
   for the manager-escalation model. This manager operates under
   the same governance — scope changes route to director; manager
@@ -67,10 +70,12 @@ Today (pre-dispatch state):
 - The `single-emitter-design.md` architectural critique is
   committed design: "The mapping should fall out from the
   algebra, not from a hand-maintained table."
-- `target-grounding-proposal.md` provides worked examples for
-  five primitive types, the six-layer scope partition, fail-
-  closed tie-breaking, and the three-way L4 split (routing /
-  structural-shape / algebra-satisfaction).
+- The target-grounding proposal (PR #695) provides worked
+  examples for five primitive types, the six-layer scope
+  partition, fail-closed tie-breaking, and the three-way L4
+  split (routing / structural-shape / algebra-satisfaction).
+  Will land at `docs/thesis/target-grounding-proposal.md` on
+  merge.
 
 The ask: close each lane. Produce structural target models,
 wire the inhabitance-search engine, assert routing stability,
