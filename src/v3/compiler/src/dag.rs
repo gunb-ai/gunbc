@@ -779,8 +779,8 @@ pub type DivisionDescentFactor = i64;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescentSource {
     ChildAccessor { accessor: String },
-    ListShrink { amount: i64 },
-    ArithmeticSubtract { by: i64 },
+    ListShrink { amount: PositiveInt },
+    ArithmeticSubtract { by: PositiveInt },
     ArithmeticDivide { by: DivisionDescentFactor },
     ParserAdvance { witness: String },
     SetRemoval { element: String },
