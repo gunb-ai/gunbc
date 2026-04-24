@@ -1,4 +1,9 @@
-// std/induction.dag -- Inductive type structure and structural recursion.
+// std.induction -- v3-staged inductive structure, sub-value relations, and cost
+// bounds (Lane E-I). Bootstrap-staged mirror of `dsl/std/induction.dag` for
+// v3. Keep carrier shapes and pure helpers aligned with `dsl/` while v2 still
+// scans `dsl/`.
+//
+// std/induction.dag (origin) -- Inductive type structure and structural recursion.
 //
 // Every .dag type with recursive fields is an inductive type. Its
 // structure contains all the information needed for termination proofs
