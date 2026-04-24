@@ -24,9 +24,9 @@ mod infer_semantics;
 #[cfg(test)]
 mod int_pow_bounded_test;
 #[cfg(test)]
-mod peano_materialization_cap_test;
-#[cfg(test)]
 mod parse;
+#[cfg(test)]
+mod peano_materialization_cap_test;
 #[cfg(test)]
 mod pipeline;
 #[cfg(test)]
