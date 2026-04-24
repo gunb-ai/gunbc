@@ -302,11 +302,22 @@ about what *not* to build into the current path.
 `[proposed]` — decisions that need to be resolved when this
 promotes to committed work:
 
-- **Tie-breaking.** When two candidates satisfy equally (e.g.,
-  both `RustI64` and `RustI128` satisfy `OrderedRing<Word64>` by
-  supertyping), what's the rule? Proposal: narrowest carrier
-  wins. Edge: what if one is `native_cpu_op` and another is
-  `emulated_cpu_op`? Proposal: prefer native. Formalize.
+- **Tie-breaking — fail-closed, not silent pick.** When two or more
+  candidates satisfy identically on every declared dimension
+  (same algebra, same carrier width, same qualifiers), the search
+  surfaces a structured diagnostic naming the candidates and the
+  constraint that would disambiguate — it does *not* silently
+  select one via narrow-wins-heuristics. Silent pick is exactly
+  the mystery-behavior class the thesis aims to eliminate. User
+  disambiguates by either (a) adding a qualifier to the user type
+  (`where native_op` signals intent) or (b) declaring a
+  preference rule on the target side (`data rust_prefer_native_i_over_emulated: TargetPreferenceRule`
+  as a single-authority override that itself is structural, not a
+  compiler-internal heuristic). Note `RustI64` vs `RustI128` for
+  `OrderedRing<Word64>` is *not* a genuine tie — `RustI64`'s
+  carrier strictly-narrower satisfies the bound more tightly;
+  `RustI128` is a wider-than-required supertype. True ties are
+  rarer than they look, and should remain so by design.
 - **Escape hatches for target-specific intent.** Sometimes the
   user wants a specific representation (e.g., boxed vs unboxed,
   stack vs heap). How is that signal expressed on the user side
@@ -331,15 +342,38 @@ promotes to committed work:
 
 ## Relationship to the current design
 
-`[proposed]` — the current design's L4 verification (differential
-test of two groundings) is the existing answer to "how do we know
-the target primitive satisfies the declared algebra?" Structural
-coercion obviates most of L4: if the target primitive's algebra
-is structurally declared and the coercion search matched on that
-algebra, consistency is by construction, not by differential
-test. L4 would simplify to "does the named target primitive's
-emitted behavior match the declared quirks?" — a narrower check
-than the current whole-algebra differential.
+`[proposed]` — L4 verification (differential test of two
+groundings) in the current design conflates two concerns:
+**routing correctness** ("did we pick the right target
+primitive?") and **algebra-satisfaction consistency** ("does the
+chosen target primitive actually obey the declared algebra?").
+Structural coercion splits them cleanly.
+
+- **Algebra-satisfaction consistency** — structural coercion
+  obviates this half of L4. If the target primitive's algebra is
+  structurally declared and the search matched on that algebra,
+  consistency is by construction; no differential test of "does
+  Rust's `i64` satisfy `OrderedRing`?" needed.
+- **Routing correctness** — structural coercion *replaces*
+  differential L4 here with a stronger **routing-stability**
+  property ("user's `Int64` always resolves to Rust's `i64`,
+  never silently to `i128` or `Vec<Bit>`"). This is what the
+  layer-5 coercion-routing tests cover. But there's a residual
+  L4-shaped class: **a legal search finding a target primitive
+  the engineer didn't intend** (e.g., a new Rust primitive
+  declared post-hoc whose algebra legally satisfies user's
+  constraint but whose semantics the engineer didn't mean to
+  adopt). The residual check: generate witness values, execute
+  on the chosen target primitive, compare to the interpreter's
+  result on the same inputs. Narrower than the current whole-
+  algebra differential — it's a sanity-check-on-choice, not a
+  re-verification-of-the-whole-chain.
+
+Net effect: consistency shifts from check to construction;
+routing stability becomes a first-class test class; and the
+residual end-to-end differential survives specifically for cases
+where the *choice* might be semantically wrong even though the
+*search* was mechanically correct.
 
 ## When to promote
 
