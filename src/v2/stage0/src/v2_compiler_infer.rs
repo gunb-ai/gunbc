@@ -4455,6 +4455,69 @@ pub fn classify_size_expr(val: &Rc<Node>, ctx: &Rc<DescentContext>) -> Option<Rc
     }
 }
 
+pub fn proportional_skip_alias_plus_literal(
+    alias_expr: &Rc<Node>,
+    lit_expr: Rc<Node>,
+    param_name: &String,
+    ctx: &Rc<DescentContext>,
+) -> Option<Rc<SubValueRelation>> {
+    match (*alias_expr.expr_data.clone()).clone() {
+        ExprData::ExprVar { .. } => {
+            let aname = expr_var_name_at(
+                alias_expr.clone(),
+                ctx.type_env.clone().source_indices.clone(),
+            );
+            match v2_rt::map_get(&ctx.size_aliases.clone(), aname)
+                .as_deref()
+                .cloned()
+            {
+                Some(SizeExpr::DividedSize {
+                    param: p,
+                    divisor: d,
+                    ..
+                }) => {
+                    if (p.clone().as_str() == param_name.clone().as_str()) {
+                        match (*lit_expr.expr_data.clone()).clone() {
+                            ExprData::ExprLiteral { ref value, .. } => {
+                                let LiteralValue::LitInt { value: k, .. } = value.as_ref() else {
+                                    unreachable!()
+                                };
+                                if (k.clone() > 0) {
+                                    match proportional_divisor_from_int_at_least_two(d.clone()) {
+                                        Some(div_w) => {
+                                            let synth_field = Rc::new(InductiveField {
+                                                type_name: param_name.clone(),
+                                                variant_name: "".to_string(),
+                                                field_name: "skip".to_string(),
+                                                shape: RecursionShape::ListRecursion,
+                                                element_type: param_name.clone(),
+                                            });
+                                            Some(Rc::new(SubValueRelation::StrictSubValue {
+                                                field: synth_field,
+                                                factor: Rc::new(ShrinkFactor::ProportionalShrink {
+                                                    divisor: div_w.clone(),
+                                                }),
+                                            }))
+                                        }
+                                        None => None,
+                                    }
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 pub fn classify_collection_shrink(
     arg_expr: &Rc<Node>,
     param_name: &String,
@@ -4565,9 +4628,28 @@ Rc::new(SubValueRelation::StrictSubValue {
                                                 }
                                                 ExprData::ExprBinOp { op, .. } => {
                                                     match op.clone() {
-                                                        BinOp::Add => Rc::new(
-                                                            SubValueRelation::SubValueUnknown,
-                                                        ),
+                                                        BinOp::Add => {
+                                                            if (mname.clone().as_str()
+                                                                == "skip".to_string().as_str())
+                                                            {
+                                                                {
+                                                                    let left =
+                                                                        binop_left(arg_val.clone());
+                                                                    let right = binop_right(
+                                                                        arg_val.clone(),
+                                                                    );
+                                                                    match proportional_skip_alias_plus_literal(&left, right.clone(), &param_name, &ctx) {
+    Some(rel) => rel.clone(),
+    None => match proportional_skip_alias_plus_literal(&right, left.clone(), &param_name, &ctx) {
+    Some(rel) => rel.clone(),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+},
+}
+                                                                }
+                                                            } else {
+                                                                Rc::new(SubValueRelation::SubValueUnknown)
+                                                            }
+                                                        }
                                                         BinOp::Sub => Rc::new(
                                                             SubValueRelation::SubValueUnknown,
                                                         ),

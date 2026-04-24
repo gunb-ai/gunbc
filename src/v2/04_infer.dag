@@ -2480,7 +2480,7 @@ fn classify_size_expr(val: Node, ctx: DescentContext) -> SizeExpr? {
   }
 }
 
-fn proportional_skip_alias_plus_literal(alias_expr: Node, lit_expr: Node, param_name: String, ctx: DescentContext) -> SubValueRelation {
+fn proportional_skip_alias_plus_literal(alias_expr: Node, lit_expr: Node, param_name: String, ctx: DescentContext) -> SubValueRelation? {
   match alias_expr.expr_data {
     ExprVar { binding_kind: _ } =>
       let aname = expr_var_name_at(texpr: alias_expr, source_indices: ctx.type_env.source_indices)
@@ -2493,16 +2493,16 @@ fn proportional_skip_alias_plus_literal(alias_expr: Node, lit_expr: Node, param_
                   match proportional_divisor_from_int_at_least_two(k: d) {
                     Some { value: div_w } =>
                       let synth_field = InductiveField { type_name: param_name, variant_name: "", field_name: "skip", shape: ListRecursion, element_type: param_name }
-                      StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: div_w } }
-                    None => SubValueUnknown
+                      Some { value: StrictSubValue { field: synth_field, factor: ProportionalShrink { divisor: div_w } } }
+                    None => none
                   }
-                } else { SubValueUnknown }
-              _ => SubValueUnknown
+                } else { none }
+              _ => none
             }
-          } else { SubValueUnknown }
-        _ => SubValueUnknown
+          } else { none }
+        _ => none
       }
-    _ => SubValueUnknown
+    _ => none
   }
 }
 
@@ -2563,8 +2563,12 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                             let left = binop_left(texpr: arg_val)
                             let right = binop_right(texpr: arg_val)
                             match proportional_skip_alias_plus_literal(alias_expr: left, lit_expr: right, param_name: param_name, ctx: ctx) {
-                              SubValueUnknown => proportional_skip_alias_plus_literal(alias_expr: right, lit_expr: left, param_name: param_name, ctx: ctx)
-                              rel => rel
+                              Some { value: rel } => rel
+                              None =>
+                                match proportional_skip_alias_plus_literal(alias_expr: right, lit_expr: left, param_name: param_name, ctx: ctx) {
+                                  Some { value: rel } => rel
+                                  None => SubValueUnknown
+                                }
                             }
                           } else { SubValueUnknown }
                         Sub => SubValueUnknown
