@@ -1349,35 +1349,18 @@ fn field_descent_relation(dag: &Dag, param: PortId, arg: PortId) -> Option<SubVa
     let Behavior::Transform(transform) = dag.resolve_producer_opt(&arg)? else {
         return None;
     };
-    let TransformTarget::FieldProject {
-        field_label,
-        field_child,
-    } = &transform.target
-    else {
+    let TransformTarget::FieldProject { field_child, .. } = &transform.target else {
         return None;
     };
-    // Narrow by construction: only direct field projection from the inductive
-    // parameter port is evidence. List/map/optional traversal and nested
-    // projections stay unknown until producers can identify those shapes.
-    if transform.inputs.as_slice() != [param] || field_child.is_none() {
+    // A field projection from the inductive parameter is only useful evidence
+    // after the producer can read the field's declared `RecursionShape`.
+    // `field_child` proves the projection resolved; it does not distinguish
+    // `DirectRecursion` from List/Optional/Set/Map positions, so this first
+    // E-P slice fails closed instead of minting a guessed `StrictSubValue`.
+    if transform.inputs.as_slice() == [param] && field_child.is_some() {
         return None;
     }
-
-    let type_name = port_type_name(dag, param)?;
-    let element_type = field_child
-        .and_then(|decl| dag.declaration_opt(&decl))
-        .and_then(|decl| decl.name.clone())?;
-
-    Some(SubValueRelation::StrictSubValue {
-        field: InductiveField {
-            type_name,
-            variant_name: String::new(),
-            field_name: field_label.clone(),
-            shape: RecursionShape::DirectRecursion,
-            element_type,
-        },
-        factor: ShrinkFactor::UnitShrink,
-    })
+    None
 }
 
 fn literal_int_at(dag: &Dag, port: PortId) -> Option<i64> {
@@ -1387,13 +1370,6 @@ fn literal_int_at(dag: &Dag, port: PortId) -> Option<i64> {
             _ => None,
         },
         _ => None,
-    }
-}
-
-fn port_type_name(dag: &Dag, port: PortId) -> Option<String> {
-    match dag.port(port).state() {
-        PortState::Resolved(ty) => dag.declaration(ty.declaration).name.clone(),
-        PortState::Uninferred | PortState::Unresolved => None,
     }
 }
 
