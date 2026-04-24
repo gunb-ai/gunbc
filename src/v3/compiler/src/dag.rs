@@ -974,6 +974,11 @@ pub enum RecursionShape {
 
 /// Runtime mirror of `std.induction::InductiveField` for E-P provenance.
 ///
+/// Keep this aligned with `src/v3/std/induction.dag`:
+/// - `type RecursionShape`
+/// - `type InductiveField`
+/// - `type SubValueRelation`
+///
 /// 🟡 SCAFFOLD. String identity matches the current `.dag` carrier and dissolves
 /// when reflected declaration/field references replace the string bridge.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -1110,7 +1115,10 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
         let Some(caller_decl) = declaration_for_bind(dag, caller) else {
             continue;
         };
-        let caller_template = callable_target_template_for_provenance(dag, caller_decl.id);
+        let Some(caller_template) = callable_target_template_for_provenance(dag, caller_decl.id)
+        else {
+            continue;
+        };
 
         for transform in dag.nodes().iter().filter_map(Behavior::as_transform) {
             if !span_contains(&caller.span, &transform.span) {
@@ -1119,7 +1127,10 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
             let TransformTarget::Callable(target_decl) = transform.target else {
                 continue;
             };
-            let callee_template = callable_target_template_for_provenance(dag, target_decl);
+            let Some(callee_template) = callable_target_template_for_provenance(dag, target_decl)
+            else {
+                continue;
+            };
             if callee_template != caller_template {
                 continue;
             }
@@ -1147,25 +1158,34 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
 }
 
 fn declaration_for_bind<'a>(dag: &'a Dag, bind: &BindNode) -> Option<&'a Declaration> {
-    dag.declarations()
+    // Lowering allocates one `BindNode` for each function body and keeps its span
+    // inside the owning declaration span. Duplicate-name declarations elsewhere
+    // must not satisfy E-P provenance by name alone, so this lookup is
+    // span-authoritative and fail-closed on zero or multiple matches.
+    let mut matches = dag
+        .declarations()
         .iter()
         .filter(|decl| decl.name.as_deref() == Some(bind.name.as_str()))
-        .find(|decl| {
+        .filter(|decl| {
             decl.span.file == bind.span.file
                 && decl.span.byte_start <= bind.span.byte_start
                 && decl.span.byte_end >= bind.span.byte_end
-        })
-        .or_else(|| dag.declaration_by_name(&bind.name))
+        });
+    let first = matches.next()?;
+    matches.next().is_none().then_some(first)
 }
 
-fn callable_target_template_for_provenance(dag: &Dag, mut decl: DeclarationId) -> DeclarationId {
+fn callable_target_template_for_provenance(
+    dag: &Dag,
+    mut decl: DeclarationId,
+) -> Option<DeclarationId> {
     for _ in 0..16 {
         match &dag.declaration(decl).connective {
             TypeConnective::Instantiation { template, .. } => decl = *template,
-            _ => return decl,
+            _ => return Some(decl),
         }
     }
-    decl
+    None
 }
 
 fn span_contains(outer: &SourceSpan, inner: &SourceSpan) -> bool {
@@ -1211,6 +1231,8 @@ fn arithmetic_descent_relation(
     let TransformTarget::Operator(OperatorKind::Arithmetic(op)) = transform.target else {
         return None;
     };
+    // First E-P slice recognizes the same left-operand convention as the v3
+    // recursive termination gate: `param - k` and `param / k`, not `k - param`.
     if transform.inputs.len() != 2 || transform.inputs[0] != param {
         return None;
     }
@@ -1241,7 +1263,10 @@ fn field_descent_relation(dag: &Dag, param: PortId, arg: PortId) -> Option<SubVa
     else {
         return None;
     };
-    if transform.inputs.as_slice() != [param] {
+    // Narrow by construction: only direct field projection from the inductive
+    // parameter port is evidence. List/map/optional traversal and nested
+    // projections stay unknown until producers can identify those shapes.
+    if transform.inputs.as_slice() != [param] || field_child.is_none() {
         return None;
     }
 

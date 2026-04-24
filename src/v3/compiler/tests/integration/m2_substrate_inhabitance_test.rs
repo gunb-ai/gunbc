@@ -355,6 +355,54 @@ fn countdown(n: Int) -> Int =
 }
 
 #[test]
+fn e_p_runtime_mirror_matches_induction_carrier_shape() {
+    let dag = Dag::new();
+
+    assert_eq!(
+        sum_variants(&dag, "RecursionShape"),
+        vec![
+            (String::from("DirectRecursion"), vec![]),
+            (String::from("ListRecursion"), vec![]),
+            (String::from("OptionalRecursion"), vec![]),
+            (String::from("SetRecursion"), vec![]),
+            (String::from("MapValueRecursion"), vec![]),
+        ],
+        "Rust RecursionShape mirror in dag.rs must stay aligned with src/v3/std/induction.dag"
+    );
+    assert_eq!(
+        record_fields(&dag, "InductiveField"),
+        vec![
+            "type_name",
+            "variant_name",
+            "field_name",
+            "shape",
+            "element_type"
+        ],
+        "Rust InductiveField mirror in dag.rs must stay aligned with src/v3/std/induction.dag"
+    );
+    assert_eq!(
+        sum_variants(&dag, "SubValueRelation"),
+        vec![
+            (
+                String::from("StrictSubValue"),
+                vec![String::from("field"), String::from("factor")]
+            ),
+            (
+                String::from("IteratedSubValue"),
+                vec![String::from("field")]
+            ),
+            (
+                String::from("ArithmeticDescent"),
+                vec![String::from("param"), String::from("factor")]
+            ),
+            (String::from("PreservedValue"), vec![]),
+            (String::from("SubValueUnknown"), vec![]),
+        ],
+        "Rust SubValueRelation mirror in dag.rs must stay aligned with src/v3/std/induction.dag"
+    );
+}
+
+#[test]
 fn computation_carriers_bootstrap_from_v3_std() {
     let dag = Dag::new();
     assert!(
