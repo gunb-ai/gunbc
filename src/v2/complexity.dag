@@ -376,27 +376,12 @@ fn set_has(m: Map<String, Bool>, key: String) -> Bool {
 // promote_to_strict and merge_evidence are now in std.termination
 // (the single authority for the DescentEvidence lattice)
 
-<<<<<<< HEAD
-// Promote `input` to Strict given that the caller has already established a
-// structural advance witness (token stream moved forward). Inlines the
-// pre-`8ccf8abed` semantics of `promote_to_strict`: without that structural
-// witness, `std.termination::promote_to_strict` is fail-closed (identity);
-// the parser-progress classifier below supplies the witness at each
-// ParserResultAdvance / Expect / Eat(consumed) / Call(always-advancing) site,
-// so the promotion is sound here.
-fn strict_given_advance_witness(input: DescentEvidence) -> DescentEvidence {
-  match input {
-    NonIncreasing => Strict
-    Strict => Strict
-    _ => DescentUnknown
-=======
 // Concrete parser witnesses advance a state that is already known not to be
 // ahead of the original parser state. They do not rescue unknown provenance.
 fn strict_after_parser_witness(input: DescentEvidence) -> DescentEvidence {
   match input {
     DescentUnknown => DescentUnknown
     _ => Strict
->>>>>>> origin/main
   }
 }
 
@@ -440,29 +425,17 @@ fn parser_state_base_var(expr: Node, si: Map<String, NewlineIndex>) -> String? {
 
 fn parser_result_state_progress(source: ParserResultSource, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, result_name: String) -> DescentEvidence {
   match source {
-<<<<<<< HEAD
-    ParserResultAdvance { input: input } => strict_given_advance_witness(input: input)
-    ParserResultExpect { input: input } => strict_given_advance_witness(input: input)
-    ParserResultEat { input: input } =>
-      if set_has(m: consumed_true_set, key: result_name) {
-        strict_given_advance_witness(input: input)
-=======
     ParserResultAdvance { input: input } => strict_after_parser_witness(input: input)
     ParserResultExpect { input: input } => strict_after_parser_witness(input: input)
     ParserResultEat { input: input } =>
       if set_has(m: consumed_true_set, key: result_name) {
         strict_after_parser_witness(input: input)
->>>>>>> origin/main
       } else {
         input
       }
     ParserResultCall { input: input, callee: callee } =>
       if set_has(m: consumed_true_set, key: result_name) || set_has(m: parser_always_advancing, key: callee) {
-<<<<<<< HEAD
-        strict_given_advance_witness(input: input)
-=======
         strict_after_parser_witness(input: input)
->>>>>>> origin/main
       } else {
         input
       }
@@ -728,11 +701,7 @@ fn parser_call_edge_progress(call_node: Node, state_param: ParserStateParam, env
         consumed_true_set: consumed_true_set,
       si: si)
       if set_has(m: parser_always_advancing, key: expr_call_func_at(texpr: call_node, source_indices: si)) {
-<<<<<<< HEAD
-        strict_given_advance_witness(input: input_progress)
-=======
         strict_after_parser_witness(input: input_progress)
->>>>>>> origin/main
       } else {
         input_progress
       }
