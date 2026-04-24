@@ -25,7 +25,7 @@ Post-R2 is external work (adoption, documentation, community) — not on the the
 
 ## Goals
 
-1. **Grounding Completeness** — target-side primitive types for Rust/Python/Go structurally declared; coercion via inhabitance search; Track-13 dissolution. Inherits from `ROADMAP.md:149` "Post-R1 Program — Grounding Completeness" → promotes to R2 lane `T-Ground`.
+1. **Grounding Completeness** — target-side primitive types for Rust/Python/Go structurally declared; coercion via inhabitance search; Track-13 dissolution. Inherits from `ROADMAP.md §"Post-R1 Program — Grounding Completeness"` → promotes to R2 lane `T-Ground`.
 
 2. **Lens Purity by Construction** — every lens body `.dag`-authored; kernel closure replaces reviewer-convention. `lens_producer_files_remaining` gate (introduced via PR #752) lands at zero.
 
@@ -40,9 +40,9 @@ Post-R2 is external work (adoption, documentation, community) — not on the the
 
    - **Cardinality-substrate subset sufficient to close int-literal magnitude refinement** — enough cardinality modeling to let `IntLit` carry a magnitude that narrows to target int algebra at reconciliation. Does NOT commit to the full cardinality-substrate capability (fixed-width-types by-construction, container cardinality bounds in Grounding, etc. — those remain open design calls outside R2 scope unless additional R2 items demand them).
    - **Nominal-opaque substrate sufficient to graduate `Secret<T>`** — enough nominal-type modeling to carry construction-restriction (`where only X may construct`) semantics. Adjacent to DB-11 alias-RHS `where` (landed in R1 via PR #703); may or may not overlap DB-18 territory. Acceptance is `Secret<T>` graduation, not a general nominal-type program.
-   - **Parametric algebra attachment subset sufficient to inhabit `Dimension<Carrier>` in an abelian group algebra** — enough substrate capability to let `Dimension<Unit>` carry phantom-parameter arithmetic (propagate through operations, compile error on unit-mismatch). Primary authority is `ROADMAP.md:155` which tags this dependency `DB-18 parametric algebra attachment` — but `docs/db-history/db-18.md` currently scopes DB-18 to workflow-effect carrier + Rust reflection (Part 2 shipped) + Go-accessor follow-up (Part 3), not parametric algebra attachment. That mismatch is an existing ROADMAP ↔ db-history inconsistency, not one introduced by this doc; a pre-promotion DB-lane rename or new DB number may be warranted. R2 acceptance is: `Dimension<Unit>` phantom-parameter arithmetic compiles with unit-mismatch errors, independent of the DB-tag the substrate ends up carrying.
+   - **Parametric algebra attachment subset sufficient to inhabit `Dimension<Carrier>` in an abelian group algebra** — enough substrate capability to let `Dimension<Unit>` carry phantom-parameter arithmetic (propagate through operations, compile error on unit-mismatch). Primary authority is `ROADMAP.md §"Post-R1 Program — Grounding Completeness"` (the "Why post-R1" paragraph), which tags this dependency `DB-18 parametric algebra attachment` — but `docs/db-history/db-18.md` currently scopes DB-18 to workflow-effect carrier + Rust reflection (Part 2 shipped) + Go-accessor follow-up (Part 3), not parametric algebra attachment. That mismatch is an existing ROADMAP ↔ db-history inconsistency, not one introduced by this doc; a pre-promotion DB-lane rename or new DB number may be warranted. R2 acceptance is: `Dimension<Unit>` phantom-parameter arithmetic compiles with unit-mismatch errors, independent of the DB-tag the substrate ends up carrying.
 
-6. **Remaining R2+ impossible-bug classes** — three classes currently tagged `[R2+]` at `ROADMAP.md:72` (THESIS §"Enumerable impossible-bug classes" is the authority on scheduling tags):
+6. **Remaining R2+ impossible-bug classes** — three classes currently tagged `[R2+]` in `ROADMAP.md §"Lane acceptance — .dag gates"` (T-Demo row; THESIS §"Enumerable impossible-bug classes" is the authority on scheduling tags):
    - Nested-optional flatten
    - Unhandled diagnostic paths
    - Unenumerated effects
@@ -59,7 +59,7 @@ Post-R2 is external work (adoption, documentation, community) — not on the the
 
 Continues `docs/briefs/grounding-manager.md` (refreshed for R2 scope on promotion). Owns T-Ground sub-program.
 
-- **Critical path:** T-Ground-Pilot → T-Ground-Rust → T-Ground-Engine → T-Ground-Tests → T-Ground-Dissolve (per `ROADMAP.md:169` — Rust is on the critical path because Engine blocks on layers 1–3 populated and Rust is the first layer-populating target).
+- **Critical path:** T-Ground-Pilot → T-Ground-Rust → T-Ground-Engine → T-Ground-Tests → T-Ground-Dissolve (per `ROADMAP.md §"Post-R1 Grounding lanes"` — Rust is on the critical path because Engine blocks on layers 1–3 populated and Rust is the first layer-populating target).
 - **Fill queue:** T-Ground-Python, T-Ground-Go (2-way parallel after Pilot validates; run alongside Rust but are not gated by Engine-blocking).
 
 ### Structural Close Manager
@@ -118,7 +118,7 @@ Parallel-capable work at any time ≥ N workers × fill-queue depth (5 fill queu
 
 ## R1 closure criteria
 
-**All R1 gates green.** R1 closes when all 9 lane gates named at `ROADMAP.md:61-73` evaluate green, including omni-emit (`emit_omni_demo_fixtures_green`). No director-defined subset-close. Rationale: consistent with anti-deferral stance — tail-shaped work closes before R1 declares done; R2 doesn't inherit R1 residuals.
+**All R1 gates green.** R1 closes when all 9 lane gates named in `ROADMAP.md §"Lane acceptance — .dag gates"` evaluate green, including omni-emit (`emit_omni_demo_fixtures_green`). No director-defined subset-close. Rationale: consistent with anti-deferral stance — tail-shaped work closes before R1 declares done; R2 doesn't inherit R1 residuals.
 
 ## Transition mechanics
 
@@ -178,10 +178,10 @@ THESIS authority (`THESIS.md:155-182`) lists:
 
 ## Cross-refs
 
-- Parent: `ROADMAP.md` (R1 program at `:15`; Grounding Completeness post-R1 at `:149`; Tracked-debts ledger at `:291`).
+- Parent: `ROADMAP.md` (sections: `## Release R1 Program`; `## Post-R1 Program — Grounding Completeness`; `## Tracked debts — 2026-04 analyses`).
 - Substrate design: `docs/design-substrate-carrier-port-program.md` (E-family lanes + §6a per-method-metadata).
 - Self-hosting anchor: `docs/design-pure-bootstrap.md` (≤5 shim floor + SG census).
 - Thesis: `THESIS.md §"Enumerable impossible-bug classes"` (R2+ tags authority); `THESIS.md §"Thesis claims — complete list"` (Tier-1 claim lineage).
 - Lens capability: `docs/v3-lens-capability-register.md` (per-lens capability tracking).
-- DB history: `docs/db-history/db-18.md` (DB-18 Part-2 shipped: workflow-effect carrier + Rust reflection; Part-3 queued: Go accessor). Note: `ROADMAP.md:155` tags "DB-18 parametric algebra attachment" as a post-R1 blocker; that label is not obviously aligned with db-history's DB-18 scope — a pre-promotion rename or new DB number may be warranted for the R2 parametric-algebra prereq.
+- DB history: `docs/db-history/db-18.md` (DB-18 Part-2 shipped: workflow-effect carrier + Rust reflection; Part-3 queued: Go accessor). Note: `ROADMAP.md §"Post-R1 Program — Grounding Completeness"` tags "DB-18 parametric algebra attachment" as a post-R1 blocker; that label is not obviously aligned with db-history's DB-18 scope — a pre-promotion rename or new DB number may be warranted for the R2 parametric-algebra prereq.
 - Related PRs: #745 (P4 int-literal row — substrate motivation for T-Modeling), #752 (T-PB-A lens-producer priority slice — substrate motivation for T-LensMigration gate).
