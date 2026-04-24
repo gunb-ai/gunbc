@@ -903,13 +903,32 @@ pub fn tree_size_bound(param: String) -> SizeBound {
 /// of `SubValueRelation` evidence rather than an authored shape.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallPattern {
-    ChildAccessorCall { accessor: String },
-    CollectionShrinkCall { collection: String, amount: PositiveInt },
-    ArithmeticSubtractCall { param: String, by: PositiveInt },
-    ArithmeticDivideCall { param: String, by: DivisionDescentFactor },
-    ParserAdvanceCall { stream: String, witness: String },
-    WorklistDrainCall { worklist: String, element: String },
-    FoldBodyCall { outer_collection: String },
+    ChildAccessorCall {
+        accessor: String,
+    },
+    CollectionShrinkCall {
+        collection: String,
+        amount: PositiveInt,
+    },
+    ArithmeticSubtractCall {
+        param: String,
+        by: PositiveInt,
+    },
+    ArithmeticDivideCall {
+        param: String,
+        by: DivisionDescentFactor,
+    },
+    ParserAdvanceCall {
+        stream: String,
+        witness: String,
+    },
+    WorklistDrainCall {
+        worklist: String,
+        element: String,
+    },
+    FoldBodyCall {
+        outer_collection: String,
+    },
     SameArgumentCall,
 }
 
