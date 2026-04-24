@@ -79,7 +79,6 @@ mod bootstrap_generated_without_parse_surface {
 mod builder;
 mod effects;
 mod ports;
-mod termination;
 
 pub use effects::{
     BranchArm, BreakingShape, CompositionVerdict, CreateCause, EffectShape, HttpMethodScalar,
@@ -90,12 +89,6 @@ pub use effects::{
 pub use ports::{
     BoolPortRef, ElementRef, NonEmptyList, NonSingletonList, ParamRef, Port, TransformRef,
 };
-pub use termination::{
-    evidence_rank, join_evidence, map_evidence_merge_at, merge_evidence, optional_evidence_meet,
-    promote_to_strict, DescentEvidence, DescentSource, ProofEdge, RankingDimension,
-    TerminationProof,
-};
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeId(u32);
 
@@ -728,6 +721,115 @@ pub enum OperatorKind {
     Arithmetic(ArithmeticOp),
     Comparison(ComparisonOp),
     Logical(LogicalOp),
+}
+
+/// Descent evidence lattice mirrored from `src/v3/std/termination.dag`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DescentEvidence {
+    Strict,
+    NonIncreasing,
+    DescentUnknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RankingDimension {
+    TreeSize { param: String },
+    ListLength { param: String },
+    ArithmeticValue { param: String },
+    TokenPosition { param: String },
+    SetCardinality { param: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DescentSource {
+    ChildAccessor { accessor: String },
+    ListShrink { amount: i64 },
+    ArithmeticDecrease { op: String, by: i64 },
+    ParserAdvance { witness: String },
+    SetRemoval { element: String },
+    FoldIteration,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminationProof {
+    pub dimensions: Vec<RankingDimension>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProofEdge {
+    pub caller: String,
+    pub callee: String,
+    pub evidence: Vec<DescentEvidence>,
+}
+
+pub fn evidence_rank(evidence: DescentEvidence) -> i64 {
+    match evidence {
+        DescentEvidence::Strict => 2,
+        DescentEvidence::NonIncreasing => 1,
+        DescentEvidence::DescentUnknown => 0,
+    }
+}
+
+pub fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+    match a {
+        DescentEvidence::Strict => match b {
+            DescentEvidence::Strict => DescentEvidence::Strict,
+            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
+            DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+        },
+        DescentEvidence::NonIncreasing => match b {
+            DescentEvidence::Strict => DescentEvidence::NonIncreasing,
+            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
+            DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+        },
+        DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+    }
+}
+
+pub fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+    match a {
+        DescentEvidence::DescentUnknown => b,
+        DescentEvidence::NonIncreasing => match b {
+            DescentEvidence::Strict => DescentEvidence::Strict,
+            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
+            DescentEvidence::DescentUnknown => DescentEvidence::NonIncreasing,
+        },
+        DescentEvidence::Strict => DescentEvidence::Strict,
+    }
+}
+
+pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
+    match evidence {
+        DescentEvidence::NonIncreasing => DescentEvidence::Strict,
+        DescentEvidence::Strict => DescentEvidence::Strict,
+        DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+    }
+}
+
+pub fn optional_evidence_meet(
+    a: Option<DescentEvidence>,
+    b: Option<DescentEvidence>,
+) -> Option<DescentEvidence> {
+    match a {
+        None => b,
+        Some(va) => match b {
+            None => a,
+            Some(vb) => Some(merge_evidence(va, vb)),
+        },
+    }
+}
+
+pub fn map_evidence_merge_at(
+    mut base: HashMap<String, DescentEvidence>,
+    key: String,
+    new_val: DescentEvidence,
+) -> HashMap<String, DescentEvidence> {
+    let merged = match base.get(&key).copied() {
+        Some(existing) => merge_evidence(existing, new_val),
+        None => new_val,
+    };
+    base.insert(key, merged);
+    base
 }
 
 #[derive(Debug, Clone)]
