@@ -324,13 +324,15 @@ data suite: TestSuite = {
     compile_clean(source, "lens_output_equals_int_harness.v3");
 }
 
-const R1_GATES_FIXTURE: &str = include_str!("../fixtures/r1_gates.dag");
+const R1_LENS_OUTPUT_EQUALS_FIXTURE: &str =
+    include_str!("../fixtures/r1_lens_output_equals_gate.dag");
 
 #[test]
 fn test_runner_dispatches_r1_gates_lens_output_equals_claim() {
-    // Virtual file name: some fixture paths alter how `DeclarationRef` names
-    // resolve inside `LensOutputEquals` (see `lens_output_equals_predicate_accepts_*`).
-    let dag = compile_clean(R1_GATES_FIXTURE, "r1_lens_output_equals_gate_fixture.v3");
+    let dag = compile_clean(
+        R1_LENS_OUTPUT_EQUALS_FIXTURE,
+        "src/v3/compiler/tests/fixtures/r1_lens_output_equals_gate.dag",
+    );
     let results = TestRunner::new(&dag).run_suite("r1_lens_output_equals_suite");
 
     assert_eq!(results.len(), 1);

@@ -1,0 +1,22 @@
+// Minimal `LensOutputEquals` gate fixture for `test_runner` integration.
+// Kept separate from `r1_gates.dag`: compiling `LensOutputEquals(Int, …)` in the
+// same translation unit as the large embedded `user_authored_lens_compiles_gate`
+// `source` string currently breaks `DeclarationRef` resolution for `Int` in this
+// compiler snapshot (isolated harness: `lens_output_equals_predicate_accepts_*`).
+
+data lens_output_ref_input: Int = 0
+
+data lens_output_ref_expected: Int = 0
+
+data lens_output_equals_gate: TestClaim = {
+  name: "lens_output_equals_gate",
+  source: "let _: Int = 0\n",
+  file_name: "r1_lens_output_placeholder.v3",
+  predicate: LensOutputEquals(Int, lens_output_ref_input, lens_output_ref_expected),
+  requires: []
+}
+
+data r1_lens_output_equals_suite: TestSuite = {
+  name: "r1_lens_output_equals_suite",
+  claims: [lens_output_equals_gate]
+}
