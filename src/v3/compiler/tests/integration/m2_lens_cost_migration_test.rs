@@ -96,8 +96,8 @@ fn build_roundtrip_harness(module_source: &str) -> PathBuf {
              _ => None \
            }}).expect(\"bind\"); \
            match emitted::cost_of(&dag, &bind.value) {{ \
-             emitted::CostLookup::FoundCost {{ _0: cost }} => println!(\"{{}}\", cost), \
-             emitted::CostLookup::MissingCost => panic!(\"complexity lens returned MissingCost for bind `{{}}` — malformed DAG\", bind.name), \
+             emitted::CostLookup::Hit(cost) => println!(\"{{}}\", cost), \
+             emitted::CostLookup::Miss => panic!(\"complexity lens returned Miss for bind `{{}}` — malformed DAG\", bind.name), \
            }} \
          }}"
     );

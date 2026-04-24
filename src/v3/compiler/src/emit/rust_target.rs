@@ -4120,6 +4120,32 @@ impl<'a> Ctx<'a> {
         template: DeclarationId,
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
+        if let Some(name) = self.dag.declaration(template).name.as_deref() {
+            if name == "miss_int_lookup" {
+                if !consumer.inputs.is_empty() {
+                    return Err(EmitError::UnsupportedBehavior(
+                        "miss_int_lookup() expects zero arguments".to_string(),
+                    ));
+                }
+                return Ok("Lookup::Miss".to_string());
+            }
+            if name == "hit_int_lookup" {
+                if consumer.inputs.len() != 1 {
+                    return Err(EmitError::UnsupportedBehavior(format!(
+                        "hit_int_lookup(n) expected one argument, got {}",
+                        consumer.inputs.len()
+                    )));
+                }
+                let arg = self.elide_explicit_borrow(
+                    &self.render_input_use(
+                        InputConsumer::Transform(consumer),
+                        InputSlot::Positional(0),
+                        locals,
+                    )?,
+                );
+                return Ok(format!("Lookup::Hit({arg})"));
+            }
+        }
         if let Some(rendered) = self.render_variant_constructor(consumer, template, locals)? {
             return Ok(rendered);
         }

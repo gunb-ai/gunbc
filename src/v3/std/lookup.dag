@@ -9,6 +9,12 @@
 //
 // Bootstrap staging: `src/v3/std/` until the v2 firewall dissolves and
 // `dsl/std/` subsumes v3 std (same gate as `std.list` / `std.algebra`).
+//
+// `miss_int_lookup` / `hit_int_lookup` are Int-monomorphized helpers
+// (v3 infer does not yet close generic `miss_lookup<value>` /
+// `hit_lookup<value>` with body `Miss` / `Hit(v)`). Rust lens emission
+// treats these two callables as `Lookup::Miss` / `Lookup::Hit` (see
+// `emit_rust_target::render_general_callable`).
 
 module v3.std.lookup
 
@@ -16,11 +22,6 @@ import std.types { Int }
 
 // Generic sum: one authority for “absent vs present” at a typed value.
 // Variant labels `Miss` / `Hit` mirror the thesis `Missing | Found(T)` naming.
-//
-// v3 inference note: polymorphic `miss_lookup<value>` / `hit_lookup<value>`
-// with body `Miss` / `Hit(v)` does not yet prove against `Lookup<value>` in
-// the bind pass (generic sum + type-param return). Int-typed helpers are the
-// supported surface for `Lookup<Int>` today (e.g. lenses/complexity.dag).
 type Lookup<value>
   = Miss
   | Hit(value)

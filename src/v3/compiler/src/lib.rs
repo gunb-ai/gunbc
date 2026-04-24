@@ -113,8 +113,9 @@ pub mod parse_tables {
 /// Editing the lens means editing the `.dag` — there is no
 /// hand-written implementation on this crate side.
 ///
-/// L-8 compliance: `cost_of` returns the typed `CostLookup` carrier
-/// (`MissingCost | FoundCost(Int)`). Callers pattern-match on the
+/// L-8 compliance: `cost_of` returns the typed `v3.std.lookup::Lookup<Int>`
+/// carrier, projected in Rust as [`CostLookup`](crate::dag::Lookup) =
+/// `Lookup<i64>` (`Miss | Hit(Int)`). Callers pattern-match on the
 /// variant rather than receiving a panicked-collapsed `usize`.
 pub mod lens_cost {
     #[allow(
@@ -133,7 +134,10 @@ pub mod lens_cost {
         include!("lens_cost_generated.rs");
     }
 
-    pub use generated::{cost_of, CostLookup};
+    pub use generated::cost_of;
+    /// Rust projection of the shared `v3.std.lookup::Lookup` carrier
+    /// (`Miss | Hit`); stability alias for embedders.
+    pub type CostLookup = crate::dag::Lookup<i64>;
 
     #[cfg(test)]
     mod tests {
@@ -150,8 +154,8 @@ pub mod lens_cost {
 
         fn expect_found(lookup: CostLookup) -> i64 {
             match lookup {
-                CostLookup::FoundCost { _0: c } => c,
-                CostLookup::MissingCost => panic!("expected FoundCost, got MissingCost"),
+                CostLookup::Hit(c) => c,
+                CostLookup::Miss => panic!("expected Hit, got Miss"),
             }
         }
 
