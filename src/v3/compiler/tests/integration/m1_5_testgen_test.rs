@@ -7,9 +7,7 @@ use v3_compiler::dag::{
 };
 use v3_compiler::lens_cost::cost_of;
 use v3_compiler::lens_testgen::{GeneratedClaim, TestgenLens};
-use v3_compiler::test_runner::{
-    eval_algebraic_law_for_claim_program, ALGEBRAIC_LAW_UNSUPPORTED_KIND_MESSAGE_SUFFIX,
-};
+use v3_compiler::test_runner::{eval_algebraic_law_for_claim_program, AlgebraicLawProgramError};
 use v3_compiler::Diagnostic;
 
 use crate::common::{cached_compile_any, cached_compile_outcome, CachedCompileOutcome};
@@ -376,12 +374,10 @@ fn predicate_holds(
             };
             match eval_algebraic_law_for_claim_program(expectation_dag, &inner, payload) {
                 Ok(holds) => holds,
-                Err(message)
-                    if message.contains(ALGEBRAIC_LAW_UNSUPPORTED_KIND_MESSAGE_SUFFIX) =>
-                {
+                Err(AlgebraicLawProgramError::UnsupportedLaw { .. }) => {
                     runner_deferred_panic("AlgebraicLaw")
                 }
-                Err(message) => panic!(
+                Err(AlgebraicLawProgramError::MalformedPayload(message)) => panic!(
                     "m1_5 testgen harness: AlgebraicLaw payload malformed — do not treat as ordinary false: {message}"
                 ),
             }
@@ -899,16 +895,38 @@ fn extension_predicates_reach_interpreter_boundary() {
     );
     assert_runner_deferred_panics(&dag, positive_source, file, &diff, "DifferentialEquals");
 
+    // Unsupported `AlgebraicLawKind` is classified by `AlgebraicLawProgramError` (not panic
+    // message substrings). The M1.5 interpreter still panics on this path; the public helper
+    // is the typed contract shared with the DB-15 `TestRunner` lane (`NotYetImplemented`).
+    let algebraic_law_payload = vec![
+        sum_variant(&dag, "AlgebraicLawKind", "Commutativity", Vec::new()),
+        declaration_ref_field(&dag, "Value"),
+    ];
+    let inner = match cached_compile_outcome(positive_source, file) {
+        CachedCompileOutcome::Clean(program_dag) => program_dag,
+        other => panic!(
+            "extension_predicates fixture should compile cleanly for AlgebraicLaw probe, got {other:?}"
+        ),
+    };
+    assert_eq!(
+        eval_algebraic_law_for_claim_program(&dag, &inner, &algebraic_law_payload),
+        Err(AlgebraicLawProgramError::UnsupportedLaw {
+            law_label: "Commutativity".to_string(),
+        })
+    );
     let law = sum_variant(
         &dag,
         "TestPredicate",
         "AlgebraicLaw",
-        vec![
-            sum_variant(&dag, "AlgebraicLawKind", "Commutativity", Vec::new()),
-            declaration_ref_field(&dag, "Value"),
-        ],
+        algebraic_law_payload.clone(),
     );
-    assert_runner_deferred_panics(&dag, positive_source, file, &law, "AlgebraicLaw");
+    assert!(
+        catch_unwind(AssertUnwindSafe(|| {
+            predicate_holds(&dag, positive_source, file, &law);
+        }))
+        .is_err(),
+        "M1.5 harness should panic fail-closed on runner-deferred AlgebraicLaw"
+    );
 
     let behavioral = sum_variant(
         &dag,

@@ -19,11 +19,15 @@ pub struct ClaimEvaluation {
     pub result: ClaimResult,
 }
 
-/// Suffix after `AlgebraicLaw::<kind> is ` in errors from [`eval_algebraic_law_for_claim_program`]
-/// when the law kind is not implemented there. Harnesses may use
-/// [`str::contains`] on this constant instead of duplicating literals (C-5 discipline).
-pub const ALGEBRAIC_LAW_UNSUPPORTED_KIND_MESSAGE_SUFFIX: &str =
-    "not evaluable in the Rust runner yet";
+/// Typed failure modes for [`eval_algebraic_law_for_claim_program`] (C-5: no string
+/// sub-match on `Err` to classify behavior — discriminate on this enum).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AlgebraicLawProgramError {
+    /// Law kind is not implemented in the public helper (M1.5 harness: treat as runner-deferred).
+    UnsupportedLaw { law_label: String },
+    /// Predicate payload or referenced structure is invalid for evaluation.
+    MalformedPayload(String),
+}
 
 /// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
 ///
@@ -42,17 +46,16 @@ pub fn eval_algebraic_law_for_claim_program(
     fixture_dag: &Dag,
     program_dag: &Dag,
     payload: &[FieldValue],
-) -> Result<bool, String> {
+) -> Result<bool, AlgebraicLawProgramError> {
     let (law, lens_ref) = algebraic_law_payload_fields(payload)?;
     let (law_label, law_payload) = variant_fields(fixture_dag, law)?;
     if law_label != "Associativity" {
-        return Err(format!(
-            "AlgebraicLaw::{law_label} is {}",
-            ALGEBRAIC_LAW_UNSUPPORTED_KIND_MESSAGE_SUFFIX
-        ));
+        return Err(AlgebraicLawProgramError::UnsupportedLaw { law_label });
     }
     if !law_payload.is_empty() {
-        return Err("Associativity should be payload-free".to_string());
+        return Err(AlgebraicLawProgramError::MalformedPayload(
+            "Associativity should be payload-free".to_string(),
+        ));
     }
     let lens_name = declaration_ref_name(fixture_dag, lens_ref)?;
     let Some(target) = program_dag.declaration_by_name(&lens_name) else {
@@ -260,11 +263,25 @@ impl<'a> TestRunner<'a> {
         // `NotYetImplemented` (runner cannot evaluate yet), not `Fail` (claim false).
         let (law, _) = match algebraic_law_payload_fields(payload) {
             Ok(parts) => parts,
-            Err(reason) => return ClaimResult::Fail(reason),
+            Err(AlgebraicLawProgramError::MalformedPayload(message)) => {
+                return ClaimResult::Fail(message);
+            }
+            Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => {
+                return ClaimResult::Fail(format!(
+                    "internal: UnsupportedLaw({law_label}) from AlgebraicLaw payload parse"
+                ));
+            }
         };
         let (law_label, law_payload) = match variant_fields(self.dag, law) {
             Ok(parts) => parts,
-            Err(reason) => return ClaimResult::Fail(reason),
+            Err(AlgebraicLawProgramError::MalformedPayload(message)) => {
+                return ClaimResult::Fail(message);
+            }
+            Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => {
+                return ClaimResult::Fail(format!(
+                    "internal: UnsupportedLaw({law_label}) from AlgebraicLawKind variant parse"
+                ));
+            }
         };
         if law_label != "Associativity" {
             return ClaimResult::NotYetImplemented;
@@ -293,7 +310,12 @@ impl<'a> TestRunner<'a> {
                 "AlgebraicLaw associativity witness not satisfied (expected binary Int `+`)"
                     .to_string(),
             ),
-            Err(reason) => ClaimResult::Fail(reason),
+            Err(AlgebraicLawProgramError::MalformedPayload(message)) => ClaimResult::Fail(message),
+            Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => {
+                ClaimResult::Fail(format!(
+                    "internal: AlgebraicLaw helper returned UnsupportedLaw({law_label}) after Associativity gate"
+                ))
+            }
         }
     }
 
@@ -591,54 +613,62 @@ fn variant_label(dag: &Dag, variant_id: DeclarationId) -> Option<String> {
 
 fn algebraic_law_payload_fields(
     payload: &[FieldValue],
-) -> Result<(&FieldValue, &FieldValue), String> {
+) -> Result<(&FieldValue, &FieldValue), AlgebraicLawProgramError> {
     match payload {
         [law, lens_ref] => Ok((law, lens_ref)),
         [FieldValue::Record(fields)] => {
-            let law = field(fields, "law")
-                .ok_or_else(|| "AlgebraicLaw payload record is missing `law` field".to_string())?;
+            let law = field(fields, "law").ok_or_else(|| {
+                AlgebraicLawProgramError::MalformedPayload(
+                    "AlgebraicLaw payload record is missing `law` field".to_string(),
+                )
+            })?;
             let lens_ref = field(fields, "lens_ref").ok_or_else(|| {
-                "AlgebraicLaw payload record is missing `lens_ref` field".to_string()
+                AlgebraicLawProgramError::MalformedPayload(
+                    "AlgebraicLaw payload record is missing `lens_ref` field".to_string(),
+                )
             })?;
             Ok((law, lens_ref))
         }
-        _ => Err(format!(
+        _ => Err(AlgebraicLawProgramError::MalformedPayload(format!(
             "AlgebraicLaw payload should be [law, lens_ref] or a record, got len {}",
             payload.len()
-        )),
+        ))),
     }
 }
 
 fn variant_fields<'a>(
     dag: &Dag,
     value: &'a FieldValue,
-) -> Result<(String, &'a [FieldValue]), String> {
+) -> Result<(String, &'a [FieldValue]), AlgebraicLawProgramError> {
     let FieldValue::Variant {
         constructor,
         payload,
     } = value
     else {
-        return Err("expected AlgebraicLawKind variant".to_string());
+        return Err(AlgebraicLawProgramError::MalformedPayload(
+            "expected AlgebraicLawKind variant".to_string(),
+        ));
     };
     let label = variant_label(dag, *constructor).ok_or_else(|| {
-        format!(
+        AlgebraicLawProgramError::MalformedPayload(format!(
             "variant constructor {:?} not found under any sum",
             constructor
-        )
+        ))
     })?;
     Ok((label, payload.as_slice()))
 }
 
-fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, String> {
+fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, AlgebraicLawProgramError> {
     match value {
-        FieldValue::Reference(id) => dag
-            .declaration(*id)
-            .name
-            .clone()
-            .ok_or_else(|| format!("lens_ref declaration {:?} is anonymous", id)),
-        other => Err(format!(
+        FieldValue::Reference(id) => dag.declaration(*id).name.clone().ok_or_else(|| {
+            AlgebraicLawProgramError::MalformedPayload(format!(
+                "lens_ref declaration {:?} is anonymous",
+                id
+            ))
+        }),
+        other => Err(AlgebraicLawProgramError::MalformedPayload(format!(
             "lens_ref should be a DeclarationRef (FieldValue::Reference), got {other:?}"
-        )),
+        ))),
     }
 }
 
