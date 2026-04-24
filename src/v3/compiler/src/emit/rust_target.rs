@@ -367,7 +367,7 @@ struct TypeDefinitionSyntaxBinding {
 }
 
 #[derive(Debug, Clone)]
-struct RustRecordDeriveTemplatesBinding {
+struct RecordDeriveTemplateBundleBinding {
     struct_def_no_debug: String,
     enum_def_no_debug: String,
 }
@@ -496,8 +496,8 @@ struct RustLanguageSyntax {
     type_definitions: TypeDefinitionSyntaxBinding,
     /// From `rust_language.record_derive_templates` (`LanguageSpec` in
     /// `emit_model.dag`); Rust data is `rust_record_derive_templates` in
-    /// `rust.dag` — not part of shared `TypeDefinitionSyntax` (Codex #676 / P2).
-    record_derive_no_debug: RustRecordDeriveTemplatesBinding,
+    /// `rust.dag` — `RecordDeriveTemplateBundle` (target-neutral; Rust consumes).
+    record_derive_no_debug: RecordDeriveTemplateBundleBinding,
     patterns: PatternMatchSyntaxBinding,
     collection_ops: CollectionOpsBinding,
     values: ValueConstructionSyntaxBinding,
@@ -1283,7 +1283,7 @@ impl RustLanguageSyntax {
                 dag,
                 require_field_decl_ref(fields, "type_definitions", language_decl)?,
             )?,
-            record_derive_no_debug: parse_rust_record_derive_templates(
+            record_derive_no_debug: parse_record_derive_template_bundle(
                 dag,
                 require_field_decl_ref(fields, "record_derive_templates", language_decl)?,
             )?,
@@ -1415,12 +1415,12 @@ fn parse_type_definition_syntax(
     })
 }
 
-fn parse_rust_record_derive_templates(
+fn parse_record_derive_template_bundle(
     dag: &Dag,
     declaration: DeclarationId,
-) -> Result<RustRecordDeriveTemplatesBinding, EmitError> {
+) -> Result<RecordDeriveTemplateBundleBinding, EmitError> {
     let fields = structural_fields_for_decl(dag, declaration)?;
-    Ok(RustRecordDeriveTemplatesBinding {
+    Ok(RecordDeriveTemplateBundleBinding {
         struct_def_no_debug: syntax_field_string(fields, "struct_def_no_debug", declaration)?,
         enum_def_no_debug: syntax_field_string(fields, "enum_def_no_debug", declaration)?,
     })

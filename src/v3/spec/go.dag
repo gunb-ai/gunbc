@@ -9,7 +9,7 @@ import v3.std.emit_model {
   PatternRealization, PatternStrategy,
   StatementSyntax, ExpressionSyntax, ControlFlowSyntax,
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
-  TypeDefinitionSyntax, RustRecordDeriveTemplates, PatternMatchSyntax,
+  TypeDefinitionSyntax, RecordDeriveTemplateBundle, PatternMatchSyntax,
   CollectionOps, ValueConstructionSyntax, LanguageSpec
 }
 import v3.std.computation_model {
@@ -1089,9 +1089,10 @@ data go_value_construction: ValueConstructionSyntax = {
 // vs value struct), re-declare it AND wire the emitter consumer
 // in the same PR.
 
-// Stub: `emit_go` does not consume `RustRecordDeriveTemplates`; field exists
-// so `LanguageSpec` matches `emit_model.dag` (P2 single boundary).
-data go_record_derive_templates: RustRecordDeriveTemplates = {
+// P2 / E-6: `emit_go` does not read this yet — empty
+// `RecordDeriveTemplateBundle` inhabits `LanguageSpec.record_derive_templates`
+// (shared Conj with Rust); not cross-target Rust authority.
+data go_record_derive_templates: RecordDeriveTemplateBundle = {
   struct_def_no_debug: ""
   enum_def_no_debug: ""
 }

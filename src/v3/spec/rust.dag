@@ -59,7 +59,7 @@ import v3.std.emit_model {
   PatternRealization, PatternStrategy,
   StatementSyntax, ExpressionSyntax, ControlFlowSyntax,
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
-  TypeDefinitionSyntax, RustRecordDeriveTemplates, PatternMatchSyntax,
+  TypeDefinitionSyntax, RecordDeriveTemplateBundle, PatternMatchSyntax,
   CollectionOps, ValueConstructionSyntax, RenderingModel, LanguageSpec
 }
 import v3.std.substrate {
@@ -1174,7 +1174,7 @@ data rust_type_defs: TypeDefinitionSyntax = {
   enum_data_variant: "{name} { {fields} },"
 }
 
-data rust_record_derive_templates: RustRecordDeriveTemplates = {
+data rust_record_derive_templates: RecordDeriveTemplateBundle = {
   struct_def_no_debug: "#[derive(Clone)]\npub struct {name} { {fields} }"
   enum_def_no_debug: "#[derive(Clone)]\npub enum {name} { {variants} }"
 }

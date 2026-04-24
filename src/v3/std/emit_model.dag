@@ -207,8 +207,8 @@ type TypeApplicationSyntax {
 }
 
 // Shared `LanguageSpec.type_definitions` shape — every target instantiates this
-// conj. `LanguageSpec.record_derive_templates` points at `RustRecordDeriveTemplates`
-// (Rust: real templates in `rust.dag`; Go/Python: stub data items — P2 boundary).
+// conj. `LanguageSpec.record_derive_templates` points at
+// `RecordDeriveTemplateBundle` (per-target `data` in `*_spec/*.dag`).
 type TypeDefinitionSyntax {
   struct_def: String
   struct_field: String
@@ -217,21 +217,23 @@ type TypeDefinitionSyntax {
   enum_data_variant: String
 }
 
-// Rust-only: outer `struct` / `enum` templates when `Debug` cannot be derived
-// (`Rc<dyn Fn…>` fields). **Typed authority** for the existing
-// `LanguageSpec.record_derive_templates` field (P2: Go/Python carry empty stub
-// `data` for inhabitance only; see TODO below — not an undeclared extension).
-// `emit_rust` reads `rust_language` → `data rust_record_derive_templates` in
-// `src/v3/spec/rust.dag` (not a side channel).
-type RustRecordDeriveTemplates {
+// Target-neutral string templates for emitting a user `struct` / `enum` when a
+// full `Debug` (or other) derive set cannot be used — e.g. first-class
+// `fn` storage fields (Rust: `Rc<dyn Fn…>`). **Only `emit_rust` consumes
+// this today**; Go/Python `*_record_derive_templates` are empty
+// `RecordDeriveTemplateBundle` `data` rows that **inhabit** the shared
+// `LanguageSpec` Conj (same P2 single-shape rule as `type_definitions`: every
+// target’s `*_language` must be structurally complete) — those emitters
+// do not read the strings until they implement the policy.
+// See TODO(dissolve) and `INVARIANTS.md#e-6` (boundary / unconsumed data).
+type RecordDeriveTemplateBundle {
   struct_def_no_debug: String
   enum_def_no_debug: String
 }
 // TODO(dissolve, #676 / P2): when `TypeDefinitionSyntax` (or a per-target
-// substrate field) authors declared derive lists — e.g. `derives: List<…>` —
-// map first-class-`fn` / record `#[derive(…)]` from that list and
-// delete this Rust-only type plus the empty-string `record_derive_templates`
-// stub `data` rows in Go/Python `*_language` (no parallel placeholder).
+// substrate field) authors declared per-target derive / repr policy, wire
+// record emission from that list and remove placeholder empty bundles where a
+// target has nothing to say yet.
 
 type PatternMatchSyntax {
   match_expr: String
@@ -300,8 +302,8 @@ type LanguageSpec {
   functions: DeclarationRef
   type_applications: DeclarationRef
   type_definitions: DeclarationRef
-  // P2: see `RustRecordDeriveTemplates` TODO(dissolve) — not every target
-  // has Rust derive text; empty stubs exist until per-target derives land.
+  // P2: see `RecordDeriveTemplateBundle` TODO(dissolve) in this file; empty
+  // `data` in non-Rust specs inhabit the Conj only (E-6).
   record_derive_templates: DeclarationRef
   patterns: DeclarationRef
   collection_ops: DeclarationRef
