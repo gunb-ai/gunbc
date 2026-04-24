@@ -470,18 +470,11 @@ data python_int_mul: OperatorRealization = {
   cost: 1
 }
 
-// Semantic constraint: Python `//` is floor division (rounds toward −∞),
-// while Rust and Go integer `/` truncate toward zero.  For positive
-// operands these agree; for negative dividends they diverge
-// (e.g. -7 / 2 → -3 in Rust/Go, -4 in Python).  The omni-fixture set
-// does not exercise negative-dividend division, so parity holds for all
-// current fixtures.  Pin here rather than fix until a target-appropriate
-// truncating-div primitive (`int(-7 / 2)` or equivalent) is modeled.
 data python_int_div: OperatorRealization = {
   language: python_language
   target: Int
   op: OrderedRing.div
-  carrier: "//"
+  carrier: "__v3_idiv({lhs}, {rhs})"
   cost: 1
 }
 

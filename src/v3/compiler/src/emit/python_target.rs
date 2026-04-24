@@ -674,6 +674,10 @@ pub(crate) fn emit_python_with_mode(
         "__T = typing.TypeVar(\"__T\")".to_string(),
         "__U = typing.TypeVar(\"__U\")".to_string(),
         "def __v3_fold(items: list[typing.Any], init: typing.Any, fn: typing.Callable[[typing.Any, typing.Any], typing.Any]) -> typing.Any:\n    acc = init\n    for item in items:\n        acc = fn(acc, item)\n    return acc".to_string(),
+        // Python `//` is floor division; `OrderedRing.div` requires truncation toward zero.
+        // `divmod` adjusts the floor quotient by +1 when the remainder is non-zero and
+        // operand signs differ — restoring C-style truncation without floating-point.
+        "def __v3_idiv(a: int, b: int) -> int:\n    q, r = divmod(a, b)\n    return q + (1 if r != 0 and (a < 0) != (b < 0) else 0)".to_string(),
         "def __v3_unreachable(label: str) -> typing.NoReturn:\n    raise ValueError(label)".to_string(),
     ];
 
@@ -796,10 +800,17 @@ impl<'a> Ctx<'a> {
         })?;
         let lhs = self.render_port(t.inputs[0], locals)?;
         let rhs = self.render_port(t.inputs[1], locals)?;
-        Ok(render_named_template(
-            &self.indexes.syntax.binary_op,
-            &[("lhs", &lhs), ("op", carrier), ("rhs", &rhs)],
-        ))
+        // Carriers that contain `{lhs}` are full-expression templates
+        // (e.g. `__v3_idiv({lhs}, {rhs})`); render them directly instead
+        // of inserting into the infix `binary_op` template.
+        if carrier.contains("{lhs}") {
+            Ok(render_named_template(carrier, &[("lhs", &lhs), ("rhs", &rhs)]))
+        } else {
+            Ok(render_named_template(
+                &self.indexes.syntax.binary_op,
+                &[("lhs", &lhs), ("op", carrier), ("rhs", &rhs)],
+            ))
+        }
     }
 
     fn render_branch(
