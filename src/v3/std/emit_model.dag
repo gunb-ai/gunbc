@@ -206,25 +206,25 @@ type TypeApplicationSyntax {
   optional: String
 }
 
-// **P2 single-authority / dissolution (post-#676):** `struct_def_no_debug` and
-// `enum_def_no_debug` live on this conj so every `LanguageSpec` row satisfies the
-// same schema. Only Rust uses different `_no_debug` strings today (first-class
-// `fn` / `Rc<dyn Fn…>` is not `Debug` — see `src/v3/spec/rust.dag` callable note
-// and "lift … into `TypeRealization`-style rows" there). `go.dag` / `python.dag`
-// intentionally duplicate `struct_def` / `enum_def` into the `_no_debug` keys
-// for uniformity; nothing enforces they stay in sync if the primary templates
-// drift — that is conventional parity until derive policy moves to a substrate
-// field or per-target realization rows (same dissolution direction as rust.dag).
+// Shared `LanguageSpec.type_definitions` shape — every target instantiates this
+// conj. Rust-only `#[derive(Clone)]`-only outer templates for records/enums
+// that carry `Rc<dyn Fn…>` live separately as `RustRecordDeriveTemplates` in
+// `rust.dag` (`data rust_record_derive_templates`), not here (Codex #676 / P2
+// boundary: no authored-but-unread fields on Go/Python).
 type TypeDefinitionSyntax {
   struct_def: String
-  // `Rc<dyn Fn…>` (first-class `fn` in storage positions) is `Clone` but not
-  // `Debug`; user records carrying it must omit `Debug` from derives.
-  struct_def_no_debug: String
   struct_field: String
   enum_def: String
-  enum_def_no_debug: String
   enum_unit_variant: String
   enum_data_variant: String
+}
+
+// Rust-only: outer `struct` / `enum` templates when `Debug` cannot be derived
+// (`Rc<dyn Fn…>` fields). Consumed only by `emit_rust` via
+// `rust_record_derive_templates` in `src/v3/spec/rust.dag`.
+type RustRecordDeriveTemplates {
+  struct_def_no_debug: String
+  enum_def_no_debug: String
 }
 
 type PatternMatchSyntax {

@@ -360,12 +360,16 @@ struct TypeApplicationSyntaxBinding {
 #[derive(Debug, Clone)]
 struct TypeDefinitionSyntaxBinding {
     struct_def: String,
-    struct_def_no_debug: String,
     struct_field: String,
     enum_def: String,
-    enum_def_no_debug: String,
     enum_unit_variant: String,
     enum_data_variant: String,
+}
+
+#[derive(Debug, Clone)]
+struct RustRecordDeriveTemplatesBinding {
+    struct_def_no_debug: String,
+    enum_def_no_debug: String,
 }
 
 #[derive(Debug, Clone)]
@@ -490,6 +494,9 @@ struct RustLanguageSyntax {
     functions: FunctionSyntaxBinding,
     type_applications: TypeApplicationSyntaxBinding,
     type_definitions: TypeDefinitionSyntaxBinding,
+    /// `data rust_record_derive_templates` in `rust.dag` — Rust-only; not part
+    /// of shared `TypeDefinitionSyntax` (Codex #676 / P2).
+    record_derive_no_debug: RustRecordDeriveTemplatesBinding,
     patterns: PatternMatchSyntaxBinding,
     collection_ops: CollectionOpsBinding,
     values: ValueConstructionSyntaxBinding,
@@ -1275,6 +1282,7 @@ impl RustLanguageSyntax {
                 dag,
                 require_field_decl_ref(fields, "type_definitions", language_decl)?,
             )?,
+            record_derive_no_debug: parse_rust_record_derive_templates(dag)?,
             patterns: parse_pattern_match_syntax(
                 dag,
                 require_field_decl_ref(fields, "patterns", language_decl)?,
@@ -1396,12 +1404,25 @@ fn parse_type_definition_syntax(
     let fields = structural_fields_for_decl(dag, declaration)?;
     Ok(TypeDefinitionSyntaxBinding {
         struct_def: syntax_field_string(fields, "struct_def", declaration)?,
-        struct_def_no_debug: syntax_field_string(fields, "struct_def_no_debug", declaration)?,
         struct_field: syntax_field_string(fields, "struct_field", declaration)?,
         enum_def: syntax_field_string(fields, "enum_def", declaration)?,
-        enum_def_no_debug: syntax_field_string(fields, "enum_def_no_debug", declaration)?,
         enum_unit_variant: syntax_field_string(fields, "enum_unit_variant", declaration)?,
         enum_data_variant: syntax_field_string(fields, "enum_data_variant", declaration)?,
+    })
+}
+
+fn parse_rust_record_derive_templates(
+    dag: &Dag,
+) -> Result<RustRecordDeriveTemplatesBinding, EmitError> {
+    let declaration = dag
+        .declaration_by_name("rust_record_derive_templates")
+        .ok_or(EmitError::MissingTargetSyntax(
+            "rust_record_derive_templates",
+        ))?;
+    let fields = structural_fields_for_decl(dag, declaration.id)?;
+    Ok(RustRecordDeriveTemplatesBinding {
+        struct_def_no_debug: syntax_field_string(fields, "struct_def_no_debug", declaration.id)?,
+        enum_def_no_debug: syntax_field_string(fields, "enum_def_no_debug", declaration.id)?,
     })
 }
 
@@ -4577,7 +4598,11 @@ impl<'a> Ctx<'a> {
                     .collect::<Result<Vec<_>, _>>()?;
                 let fields_joined = join_rendered(&fields, " ");
                 let template = if omit_debug {
-                    &self.indexes.syntax.type_definitions.struct_def_no_debug
+                    &self
+                        .indexes
+                        .syntax
+                        .record_derive_no_debug
+                        .struct_def_no_debug
                 } else {
                     &self.indexes.syntax.type_definitions.struct_def
                 };
@@ -4597,7 +4622,7 @@ impl<'a> Ctx<'a> {
                     .collect::<Result<Vec<_>, _>>()?;
                 let variants_joined = join_rendered(&rendered_variants, " ");
                 let template = if omit_debug {
-                    &self.indexes.syntax.type_definitions.enum_def_no_debug
+                    &self.indexes.syntax.record_derive_no_debug.enum_def_no_debug
                 } else {
                     &self.indexes.syntax.type_definitions.enum_def
                 };
@@ -4852,7 +4877,7 @@ impl<'a> Ctx<'a> {
     /// True when `declaration` (including nested record / sum / generic args)
     /// carries anonymous first-class `fn` (`ArrowBody::NoBody`) anywhere, so
     /// emitted Rust uses `Rc<dyn Fn…>` which is not `Debug` — user `struct` /
-    /// `enum` derives must omit `Debug` (see `rust_type_defs.struct_def_no_debug`).
+    /// `enum` derives must omit `Debug` (see `rust_record_derive_templates`).
     fn decl_includes_first_class_arrow_data(
         &self,
         declaration: DeclarationId,

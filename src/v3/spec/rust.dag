@@ -59,8 +59,8 @@ import v3.std.emit_model {
   PatternRealization, PatternStrategy,
   StatementSyntax, ExpressionSyntax, ControlFlowSyntax,
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
-  TypeDefinitionSyntax, PatternMatchSyntax, CollectionOps,
-  ValueConstructionSyntax, RenderingModel, LanguageSpec
+  TypeDefinitionSyntax, RustRecordDeriveTemplates, PatternMatchSyntax,
+  CollectionOps, ValueConstructionSyntax, RenderingModel, LanguageSpec
 }
 import v3.std.substrate {
   SubstrateAccessorRealization, SubstrateAccessorBinding,
@@ -980,8 +980,8 @@ data rust_main_wrap: BehaviorRealization = {
 //
 // **Derive split (blocking #676 api-review):** `dyn Fn` does not implement
 // `Debug`, so user `struct` / `enum` definitions that (transitively) carry
-// first-class `fn` storage use `struct_def_no_debug` / `enum_def_no_debug`
-// (`#[derive(Clone)]` only) from `rust_type_defs`; see `emit/rust_target.rs`.
+// first-class `fn` storage use `rust_record_derive_templates` (`#[derive(Clone)]`
+// only); see `emit/rust_target.rs`.
 
 data rust_empty_callable: CallableRealization = {
   language: rust_language
@@ -1167,12 +1167,15 @@ data rust_type_applications: TypeApplicationSyntax = {
 
 data rust_type_defs: TypeDefinitionSyntax = {
   struct_def: "#[derive(Clone, Debug)]\npub struct {name} { {fields} }"
-  struct_def_no_debug: "#[derive(Clone)]\npub struct {name} { {fields} }"
   struct_field: "pub {name}: {type},"
   enum_def: "#[derive(Clone, Debug)]\npub enum {name} { {variants} }"
-  enum_def_no_debug: "#[derive(Clone)]\npub enum {name} { {variants} }"
   enum_unit_variant: "{name},"
   enum_data_variant: "{name} { {fields} },"
+}
+
+data rust_record_derive_templates: RustRecordDeriveTemplates = {
+  struct_def_no_debug: "#[derive(Clone)]\npub struct {name} { {fields} }"
+  enum_def_no_debug: "#[derive(Clone)]\npub enum {name} { {variants} }"
 }
 
 data rust_patterns: PatternMatchSyntax = {

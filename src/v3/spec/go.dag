@@ -1041,10 +1041,8 @@ data go_type_applications: TypeApplicationSyntax = {
 
 data go_type_defs: TypeDefinitionSyntax = {
   struct_def: "type {name} struct { {fields} }"
-  struct_def_no_debug: "type {name} struct { {fields} }"
   struct_field: "{name} {type}"
   enum_def: "type {name} interface{}"
-  enum_def_no_debug: "type {name} interface{}"
   enum_unit_variant: "{name}"
   enum_data_variant: "{name}"
 }
