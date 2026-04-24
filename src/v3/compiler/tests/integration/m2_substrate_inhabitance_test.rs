@@ -225,14 +225,8 @@ fn termination_carriers_bootstrap_from_v3_std() {
                 vec![String::from("accessor")]
             ),
             (String::from("ListShrink"), vec![String::from("amount")]),
-            (
-                String::from("ArithmeticSubtract"),
-                vec![String::from("by")],
-            ),
-            (
-                String::from("ArithmeticDivide"),
-                vec![String::from("by")],
-            ),
+            (String::from("ArithmeticSubtract"), vec![String::from("by")],),
+            (String::from("ArithmeticDivide"), vec![String::from("by")],),
             (String::from("ParserAdvance"), vec![String::from("witness")]),
             (String::from("SetRemoval"), vec![String::from("element")]),
             (String::from("FoldIteration"), Vec::new()),
