@@ -1,7 +1,5 @@
 //! **Layer:** integration
 
-use std::path::PathBuf;
-
 use v3_compiler::dag::{FieldValue, LiteralBits};
 use v3_compiler::test_runner::TestClaimValue;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
