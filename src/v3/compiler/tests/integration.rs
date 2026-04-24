@@ -73,6 +73,8 @@ mod m1_4_emit_python_test;
 mod m1_5_emit_omni_demo_test;
 #[path = "integration/m1_5_testgen_test.rs"]
 mod m1_5_testgen_test;
+#[path = "integration/m1_5_user_authored_lens_gate_test.rs"]
+mod m1_5_user_authored_lens_gate_test;
 #[path = "integration/m1_5_verification_test.rs"]
 mod m1_5_verification_test;
 #[path = "integration/m1_fn_external_body_reconciliation_test.rs"]
