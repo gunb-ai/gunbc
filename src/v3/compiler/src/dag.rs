@@ -964,6 +964,59 @@ pub enum ShrinkFactor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RecursionShape {
+    DirectRecursion,
+    ListRecursion,
+    OptionalRecursion,
+    SetRecursion,
+    MapValueRecursion,
+}
+
+/// Runtime mirror of `std.induction::InductiveField` for E-P provenance.
+///
+/// 🟡 SCAFFOLD. String identity matches the current `.dag` carrier and dissolves
+/// when reflected declaration/field references replace the string bridge.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InductiveField {
+    pub type_name: String,
+    pub variant_name: String,
+    pub field_name: String,
+    pub shape: RecursionShape,
+    pub element_type: String,
+}
+
+/// Runtime mirror of `std.induction::SubValueRelation` for E-P provenance.
+///
+/// 🟡 SCAFFOLD. The `.dag` type remains the authority; this mirror exists so the
+/// native DAG lens can expose per-call evidence while std block bodies still
+/// lower as `ArrowBody::Unparsed`. Dissolution trigger: generated/reflected
+/// lens execution can construct `std.induction::SubValueRelation` directly.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SubValueRelation {
+    StrictSubValue {
+        field: InductiveField,
+        factor: ShrinkFactor,
+    },
+    IteratedSubValue {
+        field: InductiveField,
+    },
+    ArithmeticDescent {
+        param: String,
+        factor: ShrinkFactor,
+    },
+    PreservedValue,
+    SubValueUnknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallDescentEvidence {
+    pub call: NodeId,
+    pub caller: String,
+    pub callee: String,
+    pub evidence: Vec<SubValueRelation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IterationPrimitive {
     Fold,
     Descend,
@@ -1041,6 +1094,202 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
             factor: None,
         },
     }
+}
+
+/// E-P per-call descent evidence side table.
+///
+/// This is option P-c from `docs/design-substrate-carrier-port-program.md`: keep
+/// `TransformNode` minimal and derive a named side table from lowered call
+/// structure. It currently records self-call evidence only, because those are
+/// the call edges v2 consumes for termination/cost descent. Non-proved argument
+/// positions fail closed to [`SubValueRelation::SubValueUnknown`].
+pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
+    let mut entries = Vec::new();
+
+    for caller in dag.nodes().iter().filter_map(Behavior::as_bind) {
+        let Some(caller_decl) = declaration_for_bind(dag, caller) else {
+            continue;
+        };
+        let caller_template = callable_target_template_for_provenance(dag, caller_decl.id);
+
+        for transform in dag.nodes().iter().filter_map(Behavior::as_transform) {
+            if !span_contains(&caller.span, &transform.span) {
+                continue;
+            }
+            let TransformTarget::Callable(target_decl) = transform.target else {
+                continue;
+            };
+            let callee_template = callable_target_template_for_provenance(dag, target_decl);
+            if callee_template != caller_template {
+                continue;
+            }
+
+            let evidence = transform
+                .inputs
+                .iter()
+                .enumerate()
+                .map(|(idx, arg)| classify_call_argument(dag, caller, idx, *arg))
+                .collect();
+            entries.push(CallDescentEvidence {
+                call: transform.id,
+                caller: caller.name.clone(),
+                callee: dag
+                    .declaration(callee_template)
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("decl#{}", callee_template.raw())),
+                evidence,
+            });
+        }
+    }
+
+    entries
+}
+
+fn declaration_for_bind<'a>(dag: &'a Dag, bind: &BindNode) -> Option<&'a Declaration> {
+    dag.declarations()
+        .iter()
+        .filter(|decl| decl.name.as_deref() == Some(bind.name.as_str()))
+        .find(|decl| {
+            decl.span.file == bind.span.file
+                && decl.span.byte_start <= bind.span.byte_start
+                && decl.span.byte_end >= bind.span.byte_end
+        })
+        .or_else(|| dag.declaration_by_name(&bind.name))
+}
+
+fn callable_target_template_for_provenance(dag: &Dag, mut decl: DeclarationId) -> DeclarationId {
+    for _ in 0..16 {
+        match &dag.declaration(decl).connective {
+            TypeConnective::Instantiation { template, .. } => decl = *template,
+            _ => return decl,
+        }
+    }
+    decl
+}
+
+fn span_contains(outer: &SourceSpan, inner: &SourceSpan) -> bool {
+    outer.file == inner.file
+        && outer.byte_start <= inner.byte_start
+        && inner.byte_end <= outer.byte_end
+}
+
+fn classify_call_argument(
+    dag: &Dag,
+    caller: &BindNode,
+    idx: usize,
+    arg: PortId,
+) -> SubValueRelation {
+    let Some(param) = caller.params.get(idx).copied() else {
+        return SubValueRelation::SubValueUnknown;
+    };
+
+    if arg == param {
+        return SubValueRelation::PreservedValue;
+    }
+
+    if let Some(relation) = arithmetic_descent_relation(dag, idx, param, arg) {
+        return relation;
+    }
+
+    if let Some(relation) = field_descent_relation(dag, param, arg) {
+        return relation;
+    }
+
+    SubValueRelation::SubValueUnknown
+}
+
+fn arithmetic_descent_relation(
+    dag: &Dag,
+    idx: usize,
+    param: PortId,
+    arg: PortId,
+) -> Option<SubValueRelation> {
+    let Behavior::Transform(transform) = dag.resolve_producer_opt(&arg)? else {
+        return None;
+    };
+    let TransformTarget::Operator(OperatorKind::Arithmetic(op)) = transform.target else {
+        return None;
+    };
+    if transform.inputs.len() != 2 || transform.inputs[0] != param {
+        return None;
+    }
+    let literal = literal_int_at(dag, transform.inputs[1])?;
+    let factor = match op {
+        ArithmeticOp::Sub => ShrinkFactor::ConstantShrink {
+            steps: positive_amount_from_i64(literal)?,
+        },
+        ArithmeticOp::Div => ShrinkFactor::ProportionalShrink {
+            divisor: proportional_divisor_from_i64(literal)?,
+        },
+        ArithmeticOp::Add | ArithmeticOp::Mul => return None,
+    };
+    Some(SubValueRelation::ArithmeticDescent {
+        param: ordinal_param_label(idx),
+        factor,
+    })
+}
+
+fn field_descent_relation(dag: &Dag, param: PortId, arg: PortId) -> Option<SubValueRelation> {
+    let Behavior::Transform(transform) = dag.resolve_producer_opt(&arg)? else {
+        return None;
+    };
+    let TransformTarget::FieldProject {
+        field_label,
+        field_child,
+    } = &transform.target
+    else {
+        return None;
+    };
+    if transform.inputs.as_slice() != [param] {
+        return None;
+    }
+
+    let type_name = port_type_name(dag, param);
+    let element_type = field_child
+        .and_then(|decl| dag.declaration_opt(&decl))
+        .and_then(|decl| decl.name.clone())
+        .unwrap_or_else(|| type_name.clone());
+
+    Some(SubValueRelation::StrictSubValue {
+        field: InductiveField {
+            type_name,
+            variant_name: String::new(),
+            field_name: field_label.clone(),
+            shape: RecursionShape::DirectRecursion,
+            element_type,
+        },
+        factor: ShrinkFactor::UnitShrink,
+    })
+}
+
+fn literal_int_at(dag: &Dag, port: PortId) -> Option<i64> {
+    match dag.resolve_producer_opt(&port)? {
+        Behavior::Value(value) => match &value.data {
+            LiteralBits::Int(n) => Some(*n),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn port_type_name(dag: &Dag, port: PortId) -> String {
+    match dag.port(port).state() {
+        PortState::Resolved(ty) => dag
+            .declaration(ty.declaration)
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("decl#{}", ty.declaration.raw())),
+        PortState::Uninferred | PortState::Unresolved => "unknown".to_string(),
+    }
+}
+
+/// 🟡 SCAFFOLD. `BindNode` currently carries parameter ports but not parameter
+/// names, so the side table uses stable ordinal labels. Dissolves when E-P can
+/// read reflected parameter names or when `SubValueRelation::ArithmeticDescent`
+/// carries a structural `ParamRef`.
+fn ordinal_param_label(idx: usize) -> String {
+    format!("param_{idx}")
 }
 
 pub fn size_bound_param(bound: &SizeBound) -> Option<&str> {

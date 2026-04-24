@@ -3,12 +3,14 @@ use std::collections::HashMap;
 use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
     join_evidence, kernel_algebra_profile, lower_call_pattern, map_evidence_merge_at,
-    merge_evidence, optional_evidence_meet, promote_to_strict, size_bound_param, tree_size_bound,
-    type_iteration_dimension, AlgebraProfile, ArrowBody, CallPattern, DescentEvidence, FieldValue,
-    IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
-    ProportionalDivisor, SizeBound, TypeConnective, ValueBody,
+    merge_evidence, optional_evidence_meet, per_call_descent_evidence, promote_to_strict,
+    size_bound_param, tree_size_bound, type_iteration_dimension, AlgebraProfile, ArrowBody,
+    CallPattern, DescentEvidence, FieldValue, IterationDimension, IterationPrimitive,
+    LoweringTarget, PositiveDescentAmount, ProportionalDivisor, ShrinkFactor, SizeBound,
+    SubValueRelation, TypeConnective, ValueBody,
 };
 use v3_compiler::parse_surface;
+use v3_compiler::compile_to_dag;
 use v3_compiler::Dag;
 use v3_compiler::Diagnostic;
 use v3_compiler::{parse_for_test, tokenize_for_test};
@@ -315,6 +317,41 @@ fn termination_lattice_rust_mirror_matches_dag_authority() {
     assert_eq!(merged.get("n"), Some(&NonIncreasing));
     let inserted = map_evidence_merge_at(merged, String::from("m"), Strict);
     assert_eq!(inserted.get("m"), Some(&Strict));
+}
+
+#[test]
+fn e_p_per_call_descent_evidence_side_table_reads_recursive_call() {
+    let dag = compile_to_dag(
+        "\
+fn countdown(n: Int) -> Int =
+  if n == 0 then 0 else countdown(n - 1)
+",
+        "e_p_countdown.v3",
+    )
+    .expect("recursive countdown fixture compiles");
+
+    let entries = per_call_descent_evidence(&dag);
+    let countdown = entries
+        .iter()
+        .find(|entry| entry.caller == "countdown" && entry.callee == "countdown")
+        .unwrap_or_else(|| panic!("expected countdown self-call evidence, got {entries:?}"));
+
+    assert_eq!(countdown.evidence.len(), 1);
+    match &countdown.evidence[0] {
+        SubValueRelation::ArithmeticDescent { param, factor } => {
+            assert_eq!(
+                param, "param_0",
+                "E-P side table uses the stable ordinal scaffold until BindNode exposes parameter names"
+            );
+            assert_eq!(
+                factor,
+                &ShrinkFactor::ConstantShrink {
+                    steps: PositiveDescentAmount::OneStep
+                }
+            );
+        }
+        other => panic!("expected arithmetic descent for countdown(n - 1), got {other:?}"),
+    }
 }
 
 #[test]
