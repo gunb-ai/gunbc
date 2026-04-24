@@ -18,7 +18,8 @@ fn lens_silent_on_named_user_defined_fn() {
     let found = violations(&dag);
     assert!(
         found.is_empty(),
-        "user fn with UserDefined body must not be flagged, got: {found:?}"
+        "user fn with UserDefined body must not be flagged, got {} hit(s)",
+        found.len()
     );
 }
 
@@ -29,7 +30,8 @@ fn lens_silent_on_anonymous_arrow_type_expression() {
     let found = violations(&dag);
     assert!(
         found.is_empty(),
-        "anonymous fn-type expressions must not be flagged, got: {found:?}"
+        "anonymous fn-type expressions must not be flagged, got {} hit(s)",
+        found.len()
     );
 }
 
@@ -39,6 +41,7 @@ fn lens_silent_on_named_type_alias_to_arrow() {
     let found = violations(&dag);
     assert!(
         found.is_empty(),
-        "named type-alias arrow (NoBody) must not be flagged, got: {found:?}"
+        "named type-alias arrow (NoBody) must not be flagged, got {} hit(s)",
+        found.len()
     );
 }
