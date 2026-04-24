@@ -309,6 +309,34 @@ let result: Int = ignore_payload(Empty)
         .expect("go post_emit_verifier rejected pilot source — E-5 contract regression");
 }
 
+/// Direct receipt that a plain recursive user function lowers through
+/// `Behavior::Loop` and emits correct Go. The source uses descent-provable
+/// recursion (first arg decrements by 1), so it lowers to a Cardinality-bound
+/// Loop. Comparing against the Rust baseline proves the body-port rendering
+/// preserves the recursive self-call and produces the right result.
+///
+/// Gated `#[ignore]` — CI sandboxes may not carry `go`.
+/// Run locally:
+///     cargo test -p v3-compiler --test integration \
+///         emit_go_recursive_fn_matches_rust_result -- --ignored --nocapture
+#[test]
+#[ignore]
+fn emit_go_recursive_fn_matches_rust_result() {
+    let source = "\
+fn count(n: Int) -> Int = if n == 0 then 0 else 1 + count(n - 1)
+let result: Int = count(6)
+";
+    // Structural: Loop node must be present in the lowered DAG.
+    let dag = cached_compile_to_dag(source, "recursive_loop_receipt.v3");
+    let has_loop = dag.nodes().iter().any(|b| matches!(b, v3_compiler::dag::Behavior::Loop(_)));
+    assert!(has_loop, "recursive fn must lower to Behavior::Loop");
+
+    let rust = rust_stdout(source);
+    let Some(go) = go_stdout(source) else { return };
+    assert_eq!(rust, go, "Rust and Go diverged on recursive fn output");
+    assert_eq!(rust, "6", "count(6) must output 6");
+}
+
 #[test]
 fn emit_go_wrapper_matches_shared_entrypoint() {
     let program_source = "\
