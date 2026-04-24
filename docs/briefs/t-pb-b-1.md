@@ -17,9 +17,12 @@
 
 ## Coordination checklist (Testgen manager)
 
-1. Runner accepts **v3 `.dag` modules** under `src/v3/compiler/tests/dag/` with the same `compile_to_dag` entrypoint as today’s integration harness, or requires a different path/layout — align before moving claims off Rust.
-2. **`requires: []`** vs `empty()` — current `.dag` files use literal `[]` for `List<ResourceReference>`; confirm the runner’s parser/lowering agrees.
-3. **First Rust deletion batch** — pick one module (e.g. a thin `Compiles`-only duplicate of `thesis_validation_test` or `pipe_desugar`) only after (1)–(2) are green.
+**Single source:** The operational pre–Rust-deletion checklist (runner
+entrypoint for `src/v3/compiler/tests/dag/`, `requires: []` vs
+`empty()`, M1(2.8) inlining, first Rust deletion batch) lives only in
+**`docs/briefs/r1-testgen-manager.md`** → *Hand-off points* → **Sideways
+to Self-hosting Manager**. Update that paragraph first; this brief
+describes what is already landed in-repo above.
 
 ## Inventory
 

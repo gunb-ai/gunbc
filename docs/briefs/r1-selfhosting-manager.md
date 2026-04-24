@@ -88,6 +88,11 @@ the two acknowledged residuals.
 - **Sideways from Testgen Manager.** T-TestGen's runner closure is
   the gate for T-PB-B. Testgen manager signals readiness; this
   manager dispatches the Rust→.dag test conversion at that signal.
+  The numbered **pre–Rust-deletion** coordination items (runner
+  entrypoint, `requires`, M1(2.8), first deletion batch) are maintained
+  only in **`docs/briefs/r1-testgen-manager.md`** (*Hand-off points* →
+  **Sideways to Self-hosting Manager**) — keep that list single-source
+  until Testgen replies.
 - **Up to director.** Any proposal to adjust the two TESTING.md
   residual categories (what counts as compiler-internal unit test,
   what counts as external-toolchain boundary test). These are
