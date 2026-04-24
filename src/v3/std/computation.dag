@@ -86,19 +86,19 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
       LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: "collection" },
         evidence: Strict,
-        factor: Some { value: ConstantShrink { amount: positive_descent_count(steps: p) } } } }
+        factor: Some { value: ConstantShrink { amount: positive_descent_count(steps: p) } } }
 
     ArithmeticSubtractCall { steps: p } =>
       LoweringTarget { primitive: Repeat,
         bound: ArithmeticParam { param: "n" },
         evidence: Strict,
-        factor: Some { value: ConstantShrink { amount: positive_descent_count(steps: p) } } } }
+        factor: Some { value: ConstantShrink { amount: positive_descent_count(steps: p) } } }
 
     ArithmeticDivideCall { divisor: d } =>
       LoweringTarget { primitive: Repeat,
         bound: ArithmeticParam { param: "n" },
         evidence: Strict,
-        factor: Some { value: ProportionalShrink { divisor: proportional_divisor_to_int(d: d) } } } }
+        factor: Some { value: ProportionalShrink { divisor: proportional_divisor_to_int(d: d) } } }
 
     ParserAdvanceCall { witness: _ } =>
       LoweringTarget { primitive: Fold,
