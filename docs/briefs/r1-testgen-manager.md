@@ -19,14 +19,14 @@
 
 This manager owns two lanes:
 
-- **`T-TestGen`** (`ROADMAP.md:49`) — testgen runner, service
+- **`T-TestGen`** (`ROADMAP.md:51`) — testgen runner, service
   simulation, first-class `TestClaim`. Size **L**. DB-15 follow-up
   (`ROADMAP.md:235`).
   - `testgen_structural_coverage` — `[ext]` gate.
   - `testgen_mock_backed_integration_safe` — `[ext]` gate;
     requires `MockBackedInvariant` wiring.
   - `testgen_manual_claim_is_first_class` — `[ext]` gate.
-- **`T-LensAPI`** (`ROADMAP.md:50`, lens capability honesty pass
+- **`T-LensAPI`** (`ROADMAP.md:52`, lens capability honesty pass
   at `:333`) — user-authored lenses + composition. Size **M-L**.
   - `user_authored_lens_compiles` — `[Day 1]` gate.
   - `lens_composition_associative` — `[ext]` gate; requires

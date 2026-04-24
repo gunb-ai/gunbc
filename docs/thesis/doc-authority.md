@@ -144,6 +144,20 @@ Not a bulk-amend-the-tree obligation; apply when touched `[live]`.
 contract-compliance is a PR-review line item for any new doc under
 the subtree `[live]`.
 
+## Scope of this contract
+
+This contract governs documents under `docs/thesis/` specifically.
+Documents under `docs/briefs/` (coordination briefs, lane briefs,
+receipts) follow a lighter discipline: cite `file:line` for live
+claims, cite a `ROADMAP.md` tracked-debt ledger row for `[target]`
+dependencies, and respect the single-ledger rule — but are not
+required to carry mode declarations or per-claim paragraph tags.
+The rationale: briefs are operational documents whose lifecycle is
+tied to in-flight work (dispatch, receipts, stale sweeps), not to
+the long-lived thesis-claim authority that this contract protects.
+If a brief grows into claim-authority territory, it graduates into
+`docs/thesis/` and inherits the full contract `[live]`.
+
 ## Precedent
 
 This is the thesis-doc surface applying the same `[invariant-reveal]`

@@ -560,20 +560,24 @@ Every convention your team has can be a type.
 ### Money with currency
 
 ```dag
-type Money<Currency> = OrderedGroup<Int64>
+// [target] — the composite algebra (abelian group under +, total
+// order via compare, NO multiplication) is not yet in the live
+// tree; `dsl/std/algebra.dag:129` has `AbelianGroup<T>` but no
+// ordered variant, and `OrderedRing<T>` includes `*` which is
+// wrong for money. User-defined parametric algebra attachment is
+// DB-18 territory (ROADMAP.md:231 for the DB row catalog).
+type Money<Currency>  // abelian group with compare, phantom Currency
 ```
 
-`[target]` — depends on user-defined parametric algebra attachment,
-ROADMAP DB-18 territory.
-
-`Money<USD>` and `Money<EUR>` are different types because the
-phantom parameter differs. The algebra (addition, negation,
-comparison) is inherited. `Money<USD> + Money<USD> : Money<USD>`.
-`Money<USD> + Money<EUR>` is a compile error. `Money<USD> *
-Money<USD>` is a compile error — `*` isn't in `OrderedGroup`. In
-C/Rust you'd typically have `Money` as a newtype over `i64` and
-get `*` by default, producing nonsense like "5 USD × 3 USD = 15 USD
-squared."
+At target, `Money<USD>` and `Money<EUR>` are different types
+because the phantom parameter differs. The algebra (addition,
+negation, comparison) is inherited from whichever named algebra the
+substrate lands for "abelian group with compare, no multiplication."
+`Money<USD> + Money<USD> : Money<USD>`; `Money<USD> + Money<EUR>`
+is a compile error; `Money<USD> * Money<USD>` is a compile error —
+`*` isn't in the inhabited algebra. In C/Rust you'd typically have
+`Money` as a newtype over `i64` and get `*` by default, producing
+nonsense like "5 USD × 3 USD = 15 USD squared."
 
 The phantom parameter is how conventions about identity propagate
 through arithmetic.
@@ -581,22 +585,24 @@ through arithmetic.
 ### Duration with units
 
 ```dag
-type Duration<Unit> = Dimension<Int64, Unit>
+// [target] — Duration<Unit> as a typed value wrapper carrying a
+// phantom Unit parameter is a substrate concern (typed value
+// wrappers with phantom parameters). The tree does not offer this
+// shape today; the closest live type, `Dimension<Carrier>` at
+// `src/v3/std/dimensions.dag:61`, is a one-parameter
+// proof-dimension framework (`witness_of` / `compose` / `identity`)
+// for behavioral analysis — not a typed-value-wrapper for
+// arithmetic. Unit-mismatch enforcement consumer for the target
+// Duration shape is tracked at `ROADMAP.md:364`.
+type Duration<Unit>  // Int64-carried value with phantom Unit; abelian group with compare
 ```
 
-`[live]` for the `Dimension<Carrier>` framework per
-`src/v3/std/dimensions.dag` (🟢 TERMINAL for structural surface).
-`[target]` for the unit-mismatch enforcement lens — the consumer
-that rejects `Duration<Second> + Duration<Millisecond>` without
-explicit conversion. DB-3 shipped the framework (`ROADMAP.md:235`);
-Dimension wiring for lens consumers is deferred under the v3 lens
-honesty pass (`ROADMAP.md:333`). Unit-mismatch enforcement consumer
-tracked at `ROADMAP.md:364`.
-
-`Duration<Second>` and `Duration<Millisecond>` are distinct types.
-Addition respects dimension. Conversion is an explicit operation.
-Rust's `uom` crate does the same thing, but opt-in and library-
-level; gunbc does it substrate-level with one declaration.
+At target, `Duration<Second>` and `Duration<Millisecond>` are
+distinct types. Addition respects dimension. Conversion is an
+explicit operation. Rust's `uom` crate does the same thing, but
+opt-in and library-level; the gunbc target is substrate-level with
+one declaration — same shape as `Money<Currency>` above, different
+phantom.
 
 ### Secrets with nominal opacity
 
@@ -766,15 +772,23 @@ mock-backed harness is follow-up work.
 
 ### How it works
 
-A `TestClaim` is declared in `.dag` (schema at `src/v3/std/verification.dag`):
+A `TestClaim` is declared in `.dag` (schema at
+`src/v3/std/verification.dag`, `MockBackedInvariant` at `:92`,
+`TestClaim` at `:101`). Mock resources flow through
+`TestClaim.requires: List<ResourceReference>` (the single
+obligation-walk authority), **not** through the predicate variant —
+`MockBackedInvariant` carries only `subject` + `invariant`:
 
 ```dag
 data auth_user_roundtrip_test: TestClaim = {
-  predicate:  MockBackedInvariant(
-    subject:  receive_from_orders_v2,
-    mock:     orders_api_simulator,
+  name:      "auth_user_roundtrip_test",
+  source:    "examples/auth_user_roundtrip.dag",
+  file_name: "auth_user_roundtrip.dag",
+  predicate: MockBackedInvariant {
+    subject:   receive_from_orders_v2,
     invariant: response_matches_boundary_contract,
-  )
+  },
+  requires: [ orders_api_simulator ],
 }
 ```
 

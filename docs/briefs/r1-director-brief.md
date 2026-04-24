@@ -57,14 +57,14 @@ alongside, not as a gate.
 ## The five managers
 
 Each manager owns one coherent slice of R1 work. The nine R1 lanes
-named in `ROADMAP.md:44-54` are distributed across the five
+named in `ROADMAP.md:47-55` are distributed across the five
 managers as a coordination overlay; the lane list and acceptance
 gates remain authored there, not here. The framing question column
 below names the manager-level *why* — used to keep scope honest.
 
-| Manager | R1 lanes owned (`ROADMAP.md:44-54`) | Framing question the manager answers |
+| Manager | R1 lanes owned (`ROADMAP.md:47-55`) | Framing question the manager answers |
 |---|---|---|
-| **Substrate** | `T-LaneE` — complexity lens v2 parity via substrate-carrier-port (five ordered sub-lanes T → C → I → P → M per `ROADMAP.md:334-340`) | Does v3's substrate carry the same descent/call/value/method information v2 carried, well enough that complexity / cost / idempotency / parallelism lenses can run on v3 authority without Rust oracles? |
+| **Substrate** | `T-LaneE` — complexity lens v2 parity via substrate-carrier-port (five ordered sub-lanes T → C → I → P → M — parent row `ROADMAP.md:334`, sub-lanes `:335-339`) | Does v3's substrate carry the same descent/call/value/method information v2 carried, well enough that complexity / cost / idempotency / parallelism lenses can run on v3 authority without Rust oracles? |
 | **Self-hosting** | `T-PB-A` (pure bootstrap, non-test surface) + `T-PB-B` (tests-as-data, pipeline + contract tests port to `.dag`) | Does gunbc compile itself from a named minimal Rust shim, with the residual Rust floor structurally bounded and mechanically checkable, including tests-as-data? |
 | **Surface** | `T-P0` (P0 sweep — `repeat_string`, `REST_OPS`, `no_profile_sentinel`) + `T-Sub` (`match` over user sums; `CharClass` in `std.unicode`; type-alias `where`) + `T-Emit` (Rust harden, #650 generic-bound fidelity, Python/Go reconcile) | Do the user-surface capabilities — bug fixes, missing-feature closures, and multi-target emission — land such that generated code runs under external toolchains and no "it works around the gap" scaffolding survives? |
 | **Testgen** | `T-TestGen` (runner, service simulation, first-class `TestClaim`) + `T-LensAPI` (user-authored lenses + composition) | Can the release gates evaluate as `.dag` programs end-to-end — schema runner executes each predicate, `MockBackedInvariant` wires service simulation, and user-authored lenses compose so the evaluation surface is itself first-class `.dag`? |

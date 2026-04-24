@@ -18,13 +18,13 @@
 
 This manager owns three lanes:
 
-- **`T-P0`** (`ROADMAP.md:45`) — P0 sweep:
+- **`T-P0`** (`ROADMAP.md:47`) — P0 sweep:
   - `repeat_string` — real bug in existing emission.
   - `REST_OPS` — drift between the declared REST ops surface and
     what's actually emitted.
   - `no_profile_sentinel` — fabrication sentinel audit.
   - Size **S**. Brief-level receipts live at `docs/briefs/p0-*.md`.
-- **`T-Sub`** (`ROADMAP.md:46`) — three missing surface
+- **`T-Sub`** (`ROADMAP.md:48`) — three missing surface
   capabilities:
   - `match` over user sums (`sub_match_over_user_sum` — `[Day 1]`
     gate).
@@ -33,7 +33,7 @@ This manager owns three lanes:
   - type-alias `where` (`sub_type_alias_where_lowers` — `[ext]`
     gate; alias-RHS parser skip per DB-11 at `ROADMAP.md:231`).
   - Size **S**.
-- **`T-Emit`** (`ROADMAP.md:48`) — emission hardness:
+- **`T-Emit`** (`ROADMAP.md:49`) — emission hardness:
   - Rust harden.
   - PR #650 generic-bound fidelity.
   - Python/Go reconcile.
@@ -60,7 +60,7 @@ Today:
   refinements are advertised in the story doc as `[target]`;
   closing this lane moves them toward `[live]`.
 - `CharClass` in `std.unicode` is the character-level consumption
-  gap per `ROADMAP.md:305`+ — the types exist in `dsl/std/`; the
+  gap per `ROADMAP.md:358` — the types exist in `dsl/std/`; the
   tokenizer and syntax authorities aren't using them yet.
 - Cross-target emission green-ness is the external-toolchain
   receipt: generated Rust compiles under `rustc`; generated Python
@@ -88,7 +88,7 @@ for a principal engineer to verify in one evening.
   visible integration win (PR-level, not scope-amendment-level).
 - **Parallel.** T-Sub `sub_charclass_in_std_unicode` dispatches.
   Add `CharClass = Whitespace | Digit | IdentStart | IdentContinue`
-  (or superset) to `std.unicode` per `ROADMAP.md:305+`;
+  (or superset) to `std.unicode` per `ROADMAP.md:358`;
   retype the opaque-string fields in `tokenize.dag` / `syntax.dag`
   (`suffix: Char`, `output_codepoint: Char`, `pattern: List<Char>`,
   etc.); rewire `regen_tokenize` to read class predicates
@@ -118,7 +118,7 @@ for a principal engineer to verify in one evening.
   — that's an R1 scope question, not a lane-owner call.
 - **Up to director.** If the `CharClass` lane reveals more
   character-level consumption gaps beyond what's cited at
-  `ROADMAP.md:305+`, flag to director so the cardinality-substrate
+  `ROADMAP.md:358`, flag to director so the cardinality-substrate
   ledger row can be amended rather than expanding the lane.
 
 ## Working state

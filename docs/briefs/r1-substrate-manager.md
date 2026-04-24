@@ -19,11 +19,11 @@
 
 This manager owns one lane: **`T-LaneE`** — complexity lens v2
 parity via substrate-carrier-port
-(`ROADMAP.md:47`, program doc at
+(`ROADMAP.md:50`, program doc at
 [`docs/design-substrate-carrier-port-program.md`](../design-substrate-carrier-port-program.md)).
 
 Size is **XL**; decomposed into five ordered sub-lanes
-(`ROADMAP.md:334-340`):
+(parent row `ROADMAP.md:334`; sub-lanes `:335-339`):
 
 - **E-T** — port `DescentEvidence` + proof structure (**S**). No
   deps.

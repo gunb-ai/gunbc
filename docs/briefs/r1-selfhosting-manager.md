@@ -18,7 +18,7 @@
 
 This manager owns two lanes:
 
-- **`T-PB-A`** (`ROADMAP.md:50`) — compiler self-emits (fixed-
+- **`T-PB-A`** (`ROADMAP.md:53`) — compiler self-emits (fixed-
   point); **non-test** hand-Rust surface reaches the ≤5 irreducible-
   shim floor per [`docs/design-pure-bootstrap.md`](../design-pure-bootstrap.md).
   Generated escape hatch OK. Live baseline is the non-test subset
@@ -26,7 +26,7 @@ This manager owns two lanes:
   `EXPECTED_HAND_AUTHORED_FRAGMENTS` crate-root scaffolds) in
   `src/v3/compiler/tests/integration/sg0_census_test.rs`. This
   brief does not freeze the count.
-- **`T-PB-B`** (`ROADMAP.md:51`) — tests-as-data. Pipeline and
+- **`T-PB-B`** (`ROADMAP.md:54`) — tests-as-data. Pipeline and
   contract tests port to `.dag`. The two `TESTING.md §Post-R2 shape`
   residual categories (compiler-internal unit tests for Rust-only
   helpers; external-toolchain boundary tests invoking

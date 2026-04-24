@@ -19,12 +19,12 @@
 
 This manager owns two lanes (one scoped, one continuous):
 
-- **`T-Demo`** (`ROADMAP.md:52`) — two canonical fixtures +
+- **`T-Demo`** (`ROADMAP.md:55`) — two canonical fixtures +
   impossible-bugs suite + narrative. Size **M**.
   - `fixture_compiler_nerd_canonical` — `[Day 1 (Compiles)]` +
     `[ext]` for lens-output demos. Demonstrates: complexity,
     ownership, parallelism.
-  - Additional fixture(s) per `ROADMAP.md:52+` (flesh out from
+  - Additional fixture(s) per `ROADMAP.md:55+` (flesh out from
     lane authority).
   - Impossible-bugs narrative — the part that makes the reward-
     structure pitch concrete for a reader.
@@ -45,7 +45,7 @@ Today:
 - Story-doc Part 7 describes a five-service integration
   (`docs/thesis/compositional-modeling.md`), tagged `[target]` with
   composite gap pointers. R1's T-Demo scope is narrower than a
-  five-service demo; the lane authority at `ROADMAP.md:52` defines
+  five-service demo; the lane authority at `ROADMAP.md:55` defines
   the two canonical fixtures in play.
 - The impossible-bugs-suite claim from the story doc is partially
   a T-Demo deliverable (narrative + fixtures) and partially a
@@ -114,7 +114,7 @@ while the other managers ship.
 - **Up to director.** Any proposed T-Demo scope expansion (third
   fixture, five-service integration, etc.) routes to director.
   R1's T-Demo is explicitly scoped to two canonical fixtures +
-  impossible-bugs suite per `ROADMAP.md:52`.
+  impossible-bugs suite per `ROADMAP.md:55`.
 - **Up to director.** If at any point R1 scope expands to depend
   on either of the two story-surfaced gaps tracked at
   `ROADMAP.md:364` (Duration/Money unit-mismatch enforcement
@@ -143,7 +143,7 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [ ] `fixture_compiler_nerd_canonical` — Compiles (Day-1)
 - [ ] `fixture_compiler_nerd_canonical` — lens-output demos evaluate
       (after T-LensAPI)
-- [ ] Additional fixture per `ROADMAP.md:52+` (lane-owner defines
+- [ ] Additional fixture per `ROADMAP.md:55+` (lane-owner defines
       scope)
 - [ ] Impossible-bugs suite narrative + fixtures drafted
 - [ ] Impossible-bugs suite claims honest against Parts 1–6 `[live]`
