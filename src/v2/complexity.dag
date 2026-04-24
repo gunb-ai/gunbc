@@ -375,7 +375,12 @@ fn set_has(m: Map<String, Bool>, key: String) -> Bool {
 }
 
 // promote_to_strict and merge_evidence are now in std.termination
-// (the single authority for the DescentEvidence lattice)
+// (the single authority for the DescentEvidence lattice).
+//
+// Parser-progress paths below still call promote_to_strict on accumulated
+// evidence, but that helper is fail-closed: it does not upgrade
+// NonIncreasing to Strict without a separate structural witness. Callers
+// that already hold Strict keep it; unknown stays unknown.
 
 fn empty_parser_progress_env() -> ParserProgressEnv {
   ParserProgressEnv {

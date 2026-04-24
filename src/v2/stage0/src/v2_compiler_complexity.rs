@@ -423,6 +423,11 @@ pub fn parser_state_base_var(
     }
 }
 
+/// Maps a parser result to progress evidence.
+///
+/// Still threads inputs through `promote_to_strict`, which is fail-closed: it
+/// preserves `DescentEvidence::NonIncreasing` and never fabricates
+/// `DescentEvidence::Strict` from it (see `std_termination::promote_to_strict`).
 pub fn parser_result_state_progress(
     source: Rc<ParserResultSource>,
     parser_always_advancing: Rc<HashMap<String, bool>>,
@@ -808,6 +813,8 @@ pub fn parser_env_with_binding(
     }
 }
 
+/// Parser call edges may call `promote_to_strict` on callee-known-advancing paths;
+/// same fail-closed contract as `parser_result_state_progress`.
 pub fn parser_call_edge_progress(
     call_node: &Rc<Node>,
     state_param: &Rc<ParserStateParam>,
