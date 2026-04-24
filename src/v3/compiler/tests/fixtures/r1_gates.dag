@@ -17,7 +17,6 @@
 
 module std.r1_gates
 
-<<<<<<< HEAD
 import std.verification { Compiles, TestClaim, TestSuite }
 
 data sub_match_over_user_sum: TestClaim = {
@@ -32,9 +31,6 @@ data sub_match_over_user_sum_gate: TestSuite = {
   name: "sub_match_over_user_sum_gate",
   claims: [sub_match_over_user_sum]
 }
-=======
-import std.verification { TestClaim, TestSuite }
->>>>>>> origin/main
 
 data user_authored_lens_compiles_gate: TestClaim = {
   name: "user_authored_lens_compiles",
