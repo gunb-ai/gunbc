@@ -7,11 +7,17 @@
 // `Compiles` receipt). Payload is a standalone `module lenses.named_function_count`
 // unit (imports std only), not a consumer that imports this module from bootstrap.
 //
+// **T-TestGen** (`testgen_manual_claim_is_first_class`, ROADMAP.md:51, [ext]): hand-authored
+// `manual_negative_claim_gate` + `manual_claim_suite` live in this same module so one
+// fixture file stays the R1 gate surface without growing `src/v3/std/*.dag` (bootstrap
+// enumerates that tree — see PR #679 / review round 1).
+//
 // Lives under `src/v3/compiler/tests/fixtures/` so it is **not** auto-staged
 // into `Dag::new()` bootstrap (`src/v3/std/*.dag` is build-script enumerated).
 
 module std.r1_gates
 
+<<<<<<< HEAD
 import std.verification { Compiles, TestClaim, TestSuite }
 
 data sub_match_over_user_sum: TestClaim = {
@@ -26,6 +32,9 @@ data sub_match_over_user_sum_gate: TestSuite = {
   name: "sub_match_over_user_sum_gate",
   claims: [sub_match_over_user_sum]
 }
+=======
+import std.verification { TestClaim, TestSuite }
+>>>>>>> origin/main
 
 data user_authored_lens_compiles_gate: TestClaim = {
   name: "user_authored_lens_compiles",
@@ -33,4 +42,23 @@ data user_authored_lens_compiles_gate: TestClaim = {
   file_name: "src/v3/lenses/named_function_count.dag",
   predicate: Compiles,
   requires: []
+}
+
+// Fixture: return type says `String` but body is `Int` (`x`). The substrate surfaces
+// this as `ResolveError` ("parameter … does not satisfy its declared signature"), not
+// `TypeMismatch` — the gate matches the live diagnostic kind.
+data manual_negative_claim_gate: TestClaim = {
+  name: "testgen_manual_claim_is_first_class",
+  source: "fn broken(x: Int) -> String = x",
+  file_name: "manual_claim_fixture.v3",
+  predicate: FailsWithDiagnostic({
+    kind: ResolveError,
+    detail_contains: AnyDetail
+  }),
+  requires: []
+}
+
+data manual_claim_suite: TestSuite = {
+  name: "manual_claim_suite",
+  claims: [manual_negative_claim_gate]
 }

@@ -303,6 +303,7 @@ data suite: TestSuite = {
 }
 
 #[test]
+<<<<<<< HEAD
 fn test_runner_runs_sub_match_over_user_sum_gate() {
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -327,6 +328,12 @@ fn test_runner_runs_user_authored_lens_compiles_gate() {
         .expect("repo root")
         .to_path_buf();
     let gate = repo_root.join("src/v3/compiler/tests/fixtures/r1_gates.dag");
+=======
+#[ignore = "Brief 1 dependency: user_authored_lens_compiles gate wiring still pending"]
+fn test_runner_runs_user_authored_lens_compiles_gate() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let gate = manifest_dir.join("tests/fixtures/r1_gates.dag");
+>>>>>>> origin/main
     let source =
         std::fs::read_to_string(&gate).unwrap_or_else(|err| panic!("read {gate:?}: {err}"));
     let dag = compile_clean(&source, "src/v3/compiler/tests/fixtures/r1_gates.dag");
