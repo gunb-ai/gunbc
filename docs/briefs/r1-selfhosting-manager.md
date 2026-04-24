@@ -121,6 +121,13 @@ Lane-owner dispatch status (update as sub-deliverables close):
       (`t_pb_b_1_tests_dag_smoke_test`); brief `docs/briefs/t-pb-b-1.md`.
       **Not** Rust test deletion and **not** `pb_*` — those stay unchecked below
       until Testgen signs off.
+- [x] T-PB-B-1 — Runner-backed integration test landed (PR #736,
+      `t_pb_b_1_dag_runner_test`): closes pre–Rust-deletion checklist items (1)
+      runner accepts `tests/dag/` layout via `compile_to_dag`, (2) `requires: []`
+      lowers to a runner-consumable shape; (3) M1(2.8) inlining is structurally
+      enforced in `t_pb_b_1_contract_port_cost.dag`. Item (4) first-deletion batch
+      still owned by Testgen per single-source checklist in
+      `docs/briefs/r1-testgen-manager.md`.
 - [x] Brief D — Draft `.v3` `TestClaim` / `TestSuite` for pipeline smoke
       (compile-smoke + inventory only; Rust integration tests remain canonical;
       see `docs/briefs/t-pb-b-brief-d.md` +
@@ -129,14 +136,22 @@ Lane-owner dispatch status (update as sub-deliverables close):
       previous row; `contract_diagnostic_smoke.v3` + `contract_port_cost_smoke.v3`)
 - [x] Identify and scope the two TESTING.md residual categories
       per-test (extended D/G/A/B matrix in Brief D)
-- [ ] Land **runner-backed** `.dag` test conversion + Rust deletions once Testgen
-      signals runner readiness (T-PB-B-1 already landed **declarative data +
-      compile smoke** only — see `docs/briefs/t-pb-b-1.md`)
+- [ ] Land **Rust deletions** for the three T-PB-B-1 claim shapes once Testgen
+      signals on checklist item (4) first-deletion batch (declarative data +
+      compile smoke + runner-backed evaluation for these three suites already
+      landed via PR #736 — see `docs/briefs/t-pb-b-1.md`)
 - [ ] `pb_test_file_generated_from_dag` + `pb_rust_tests_outside_residual_zero`
       predicates evaluate true
 
 Decisions log (append as they happen):
 
+- 2026-04-24: **T-PB-B-1 runner wiring (PR #736)** — `t_pb_b_1_dag_runner_test`
+  evaluates all three landed `tests/dag/*.dag` suites through `TestRunner::run_suite`
+  (all claims pass); mechanically closes pre–Rust-deletion checklist items (1) runner
+  entrypoint / layout and (2) `requires: []` lowering. Also aligns the `contract_port_cost`
+  cost witness to the runner-evaluated `Eq 3` value (was a placeholder `Eq 8` copied from
+  the unevaluated `m1_5_verification` smoke) across the landed `.dag` and Brief D `.v3`
+  siblings. Rust deletion and `pb_*` still gated on Testgen checklist item (4).
 - 2026-04-24: **T-PB-A reduction wave active.** Non-test hand-Rust shims
   retired today: lens_idempotency wrapper (#699), lens_parallelism wrapper
   (#715), lens_parallelism compatibility alias (#724), lower pass-through
