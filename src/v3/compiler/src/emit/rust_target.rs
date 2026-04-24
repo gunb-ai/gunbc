@@ -4816,21 +4816,20 @@ impl<'a> Ctx<'a> {
         self.rust_type_name_for_decl_storage(ty.declaration)
     }
 
-    /// Rust type spelling for a port consumed under **borrow** read strategy.
-    /// Callable (`Arrow`) parameters use the by-value `impl Fn + Clone` surface
-    /// here — not `&impl Fn…` (PR #650) — so this is not strictly “borrowed”
-    /// for that one shape; see `rust_borrowed_type_name_for_decl` for `&T` only.
+    /// Rust type spelling for a port consumed under **borrow** read strategy
+    /// when the port is **not** a first-class callable (`fn` data) type.
+    /// Callable-shaped user `fn` parameters are routed in
+    /// `rust_type_name_for_user_function_parameter` **before** this helper is
+    /// consulted (`impl Fn + Clone` or `Rc<dyn Fn…>` per return composition).
+    /// Non-callable ports delegate to `rust_borrowed_type_name_for_decl` (`&T` /
+    /// `&[U]` only).
     fn rust_borrowed_type_name_for_port(&self, port: PortId) -> Result<String, EmitError> {
         let ty = self
             .dag
             .port(port)
             .value_type()
             .ok_or(EmitError::UntypedPort(port))?;
-        let decl = ty.declaration;
-        if self.type_declaration_peels_to_arrow(decl) {
-            return self.rust_arrow_as_parameter_impl_fn_clone(decl);
-        }
-        self.rust_borrowed_type_name_for_decl(decl)
+        self.rust_borrowed_type_name_for_decl(ty.declaration)
     }
 
     /// Peel `ResolvedBy{Structure,Name}` atoms until a first-class
@@ -4911,9 +4910,10 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    /// `&T` / `&[U]` spellings for borrowed emission. **Does not** handle
-    /// peeled callable `Arrow` types — `rust_borrowed_type_name_for_port`
-    /// routes those to `rust_arrow_as_parameter_impl_fn_clone` first.
+    /// `&T` / `&[U]` spellings for borrowed emission. **Does not** handle peeled
+    /// callable `Arrow` types — callers must use
+    /// `rust_type_name_for_user_function_parameter` for user `fn` parameters
+    /// (which selects `impl Fn + Clone` vs `Rc<dyn Fn…>` before borrow paths).
     fn rust_borrowed_type_name_for_decl(
         &self,
         declaration: DeclarationId,
