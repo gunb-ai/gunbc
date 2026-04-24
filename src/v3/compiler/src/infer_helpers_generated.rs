@@ -2,11 +2,6 @@
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
 #[derive(Clone, Debug)]
-pub enum TemplateArgumentLookup {
-    MissingTemplateArgument,
-    FoundTemplateArgument { _0: DeclarationId },
-}
-#[derive(Clone, Debug)]
 pub enum TemplateArgumentBinding {
     Conflict,
     NoOp,
@@ -64,14 +59,12 @@ pub fn payload_binding_span(p0: &Path, p1: SourceSpan) -> SourceSpan {
 pub fn template_argument_value(
     p0: &[TemplateArgument],
     p1: &DeclarationId,
-) -> TemplateArgumentLookup {
+) -> Lookup<DeclarationId> {
     match p0 {
-        [] => TemplateArgumentLookup::MissingTemplateArgument,
+        [] => Lookup::Miss,
         [__list_head, __list_tail @ ..] => {
             if ((__list_head).parameter == (*(p1))) {
-                TemplateArgumentLookup::FoundTemplateArgument {
-                    _0: (__list_head).value,
-                }
+                Lookup::Hit((__list_head).value)
             } else {
                 template_argument_value(__list_tail, p1)
             }
@@ -87,8 +80,8 @@ pub fn resolve_template_argument_value(
         p2
     } else {
         match &(template_argument_value(p1, &p2)) {
-            TemplateArgumentLookup::MissingTemplateArgument => p2,
-            TemplateArgumentLookup::FoundTemplateArgument { _0: next } => {
+            Lookup::Miss => p2,
+            Lookup::Hit(next) => {
                 if ((*(next)) == p2) {
                     p2
                 } else {

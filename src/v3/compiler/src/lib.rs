@@ -729,10 +729,6 @@ mod infer;
 /// and relocating extracted helper modules out of `lenses/` once the
 /// consolidated regen target lands.
 pub(crate) mod infer_helpers {
-    /// Rust projection of `v3.std.lookup::Lookup<DeclarationId>` for
-    /// `template_argument_value` — type alias only, not a second sum type.
-    pub(crate) type TemplateArgumentLookup = crate::dag::Lookup<crate::dag::DeclarationId>;
-
     #[allow(
         dead_code,
         unused_imports,

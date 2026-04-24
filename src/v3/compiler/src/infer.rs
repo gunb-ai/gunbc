@@ -26,7 +26,7 @@ use std::collections::HashSet;
 
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, Field,
-    LiteralBits, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
+    LiteralBits, Lookup, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective,
 };
 use crate::diagnostics::{
@@ -39,7 +39,7 @@ use crate::infer_helpers::{
     push_template_argument_binding as generated_push_template_argument_binding,
     resolve_template_argument_value as generated_resolve_template_argument_value,
     template_argument_value as generated_template_argument_value, NormalizedInstantiationArgs,
-    TemplateArgumentBinding, TemplateArgumentLookup, TemplateArgumentsMatch,
+    TemplateArgumentBinding, TemplateArgumentsMatch,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
@@ -1487,8 +1487,8 @@ fn template_argument_value(
     parameter: DeclarationId,
 ) -> Option<DeclarationId> {
     match generated_template_argument_value(arguments, &parameter) {
-        TemplateArgumentLookup::Hit(value) => Some(value),
-        TemplateArgumentLookup::Miss => None,
+        Lookup::Hit(value) => Some(value),
+        Lookup::Miss => None,
     }
 }
 
