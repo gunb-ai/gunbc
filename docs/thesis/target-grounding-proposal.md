@@ -226,10 +226,15 @@ declared.
 
 ### 5. `Option<T>`
 
-**User side** (`[live]` via structural cardinality; `[target]` for
-`NonEmpty` per `ROADMAP.md:305` substrate work):
+**User side** (`[proposed]` alias shape — no live `type Option<T>`
+alias exists in `dsl/std/` today; optional-of-one cardinality
+currently lives in the substrate / connective layer. The alias
+form shown here is what the thesis-facing surface would look like
+once the cardinality-substrate work lands, tracked at
+`ROADMAP.md:305` + DB-11 at `:231`):
 
 ```dag
+// [proposed] — target alias form; not a live declaration
 type Option<T> = Cardinality<T, AtMost(1)>
 ```
 
@@ -272,10 +277,18 @@ migration stays possible:
 1. **Keep `TypeRealization.carrier` as a settable field, but treat
    it as cache, not authority, in any new code.** Schema unchanged;
    semantics shift when layer 6 lands.
-2. **Don't let new consumers read `carrier` as a format-string with
-   placeholders.** Current consumers read it as a leaf name; if
-   that contract holds, the shift from declared-string to
-   computed-string is local to the emitter.
+2. **Don't widen `carrier`'s placeholder grammar.** The current
+   emitter already renders carriers as named-placeholder templates
+   via `render_named_template` at
+   `src/v3/compiler/src/emit/rust_target.rs:1461` (15+ call sites
+   on HEAD) — e.g., `Vec<{element}>`, `HashMap<{key}, {value}>`.
+   That existing contract is fine and compatible with the
+   structural-coercion migration: a computed carrier can render
+   the same template string the declared carrier did today. The
+   discipline item is narrower: do not add *new* placeholder
+   semantics (new placeholder names, new rendering rules) that
+   the derivation pipeline would then have to reproduce. Keep the
+   current placeholder set frozen during R1.
 3. **Treat new target spec entries as additions, not
    reformulations, during R1.** Existing declarations stay; new
    ones are added structurally alongside only after layer 1
