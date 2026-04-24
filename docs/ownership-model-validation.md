@@ -14,7 +14,7 @@ The fan-out framing was an initial modeling attempt that conflated cardinality (
 
 This doc pressure-tests the corrected model against the **87 clones in the original `lens_unused_parameters_generated.rs`** (snapshot at git sha `be75d9eec`, PR #466 initial commit). That file is the historical source of the "90 clones in 287 lines" in the design doc and is the densest concentration of the problem.
 
-If the model covers 100% of baseline cases and the residual 5 clones after optimization sit inside the model's predicted genuine-clone envelope, the model is validated as *complete* for R2 thesis-close purposes.
+If the model covers 100% of baseline cases and the residual 5 clones after optimization-in-progress reduce to the model's predicted optimal floor under sound last-use tracking, the model is validated as *complete* for R2 thesis-close purposes.
 
 ---
 
@@ -89,11 +89,11 @@ Under correct implementation of the full model (Read→Borrow + Last-use→Move 
 
 - **~70 clones become Borrow** (Pattern 1a, 3, 4, 6-inspect, 7, 8a for Copy types)
 - **~12–14 clones become Move** (Pattern 1b, 5, 6 consume-arms, 8b)
-- **~3–5 clones remain as Clone** (Pattern 1c, 2 retained inner, 8c, 9)
+- **~1–3 clones remain as Clone** (Pattern 1c, 8c, 9)
 
-Pattern bookkeeping: each pattern lands in exactly one outcome bucket. Pattern 2's "inner clone retained" is counted in the Clone bucket because the inner clone is what survives; the outer clone vanishes (not an outcome — just removed). Pattern 8a (Copy-type field) is listed under Borrow-as-bit-copy because Copy types don't generate a `.clone()` call; the bit-copy happens transparently. Patterns split by subletter (1a/1b/1c, 8a/8b/8c) reflect the three possible outcomes for that pattern depending on consumer disposition + last-use-ness + Copy-ness.
+Pattern bookkeeping: each pattern lands in exactly one outcome bucket. Pattern 2's "double-clone on passing" does **not** contribute any surviving Clone outcome — the inner clone is already classified under Pattern 1's subletters (1a/1b/1c), and the outer clone simply vanishes as pure waste. Pattern 8a (Copy-type field) is listed under Borrow-as-bit-copy because Copy types don't generate a `.clone()` call; the bit-copy happens transparently. Patterns split by subletter (1a/1b/1c, 8a/8b/8c) reflect the three possible outcomes for that pattern depending on consumer disposition + last-use-ness + Copy-ness.
 
-**Predicted optimal floor: ~3–5 genuine clones.**
+**Predicted optimal floor: ~1–3 genuine clones.** (Same number referenced in §4.3 and §5 below.)
 
 ### §4.2 Current floor
 
@@ -103,9 +103,9 @@ Pattern bookkeeping: each pattern lands in exactly one outcome bucket. Pattern 2
 
 ### §4.3 Gap analysis
 
-Current is at the **upper end** of the model's predicted genuine envelope, but with an important caveat: the current 5 clones include cases that **should be moves under the model** (Patterns 1b, 5, 8b) but are conservatively cloned because sound last-use-in-template-order tracking is not yet implemented (the failed `OwnedConstructLastUse` optimization of PR #475 was reverted as unsound in rendered Rust evaluation order).
+Current (5) is **above** the model's predicted optimal floor (~1–3) because the current 5 clones include cases that **should be moves under the model** (Patterns 1b, 5, 8b) but are conservatively cloned — sound last-use-in-template-order tracking is not yet implemented (the failed `OwnedConstructLastUse` optimization of PR #475 was reverted as unsound in rendered Rust evaluation order).
 
-Under sound last-use tracking, the floor drops to **~1–3 genuine clones** (Patterns 1c + 9 + any residual 8c).
+Under sound last-use tracking, the floor drops from 5 to the ~1–3 optimal (Patterns 1c + 9 + any residual 8c).
 
 The gap between 5 (current) and 1–3 (optimal) is **implementation debt, not modeling debt**. The model is correct; the emitter is currently pessimistic in the Consumed→Clone path.
 
@@ -115,7 +115,7 @@ The gap between 5 (current) and 1–3 (optimal) is **implementation debt, not mo
 
 **Model is validated against the 87 baseline cases.** Every case fits exactly one model category. No phenomenon surfaces that requires a modeling primitive beyond the three-dimensional framing.
 
-The current 5-clone floor is within the model's predicted genuine envelope, with a clear implementation-debt gap to the true optimal (~1–3). Shrinking that gap is an optimization (sound last-use tracking in template order) — not a modeling question.
+The current 5-clone floor sits above the model's predicted optimal (~1–3), with a clear implementation-debt gap explained by the conservative Consumed→Clone policy. Shrinking that gap is an optimization (sound last-use tracking in template order) — not a modeling question.
 
 **For R2 thesis-close purposes**, the ownership model is sound. The pressure-test against the 87 cases removes "fan-out was wrong" as a lingering concern and replaces it with "Read vs Construct × Last-Use × Copy, empirically complete over the densest-clone baseline in the codebase."
 
