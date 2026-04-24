@@ -170,9 +170,10 @@ fn emit_r1_gates_fixture(manifest_path: &Path, v3_dir: &Path) {
             e
         )
     });
-    if !template.contains(SPLICE_SENTINEL) {
+    let splice_count = template.matches(SPLICE_SENTINEL).count();
+    if splice_count != 1 {
         panic!(
-            "{} must contain splice sentinel `{SPLICE_SENTINEL}`",
+            "{} must contain exactly one `{SPLICE_SENTINEL}` (found {splice_count})",
             template_path.display()
         );
     }

@@ -450,6 +450,51 @@ data suite: TestSuite = {
 }
 
 #[test]
+fn lens_output_equals_malformed_claim_source_fails_closed_with_literal_input() {
+    // INVARIANTS P3 / TESTING: tokenize/parse failure for `TestClaim.source` must surface as
+    // `Fail`, not fall back to the fixture lens (which could still `Pass` on a stub).
+    let source = r#"
+module test.lens_output_equals_bad_claim_source
+
+import std.substrate { Dag }
+import std.verification { LensOutputEquals, TestClaim, TestSuite }
+
+fn zero_on_dag(d: Dag) -> Int = 0
+
+data lens_input: Int = 7
+
+data lens_expected: Int = 0
+
+data claim_bad_program: TestClaim = {
+  name: "bad source should not fall back to fixture lens",
+  source: "this is not valid v3 >>>",
+  file_name: "lens_output_equals_bad_claim_source.v3",
+  predicate: LensOutputEquals(zero_on_dag, lens_input, lens_expected),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "suite",
+  claims: [claim_bad_program]
+}
+"#;
+    let dag = compile_clean(source, "lens_output_equals_bad_claim_source_harness.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::Fail(reason)
+                if reason.contains("did not compile")
+                    || reason.contains("failed inference")
+        ),
+        "expected compile-time failure for malformed claim.source, got {:?}",
+        results[0].result
+    );
+}
+
+#[test]
 fn test_runner_dispatches_r1_gates_lens_output_equals_claim() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let gate = manifest_dir.join("tests/fixtures/r1_gates.dag");

@@ -342,16 +342,19 @@ impl<'a> TestRunner<'a> {
         // resolves against the fixture `Dag` for lowering, but for `named_function_count` the
         // runner compiles `R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS` (same file as `build.rs` splices
         // for `user_authored_lens_compiles_gate`) for `apply_lens_declaration` — not the
-        // fixture-local stub body. Other lens names: prefer `TestClaim.source` when it compiles and
-        // exports the same declaration name, else fall back to the fixture graph.
+        // fixture-local stub body. Other lens names: if `TestClaim.source` exports the same
+        // declaration name, apply that program; else fall back to the fixture graph.
         //
         // **Dissolution trigger (name-keyed bridge):** delete the `lens_decl.name ==
         // Some("named_function_count")` arm and this entire parallel authority when
         // `DeclarationRef` resolves lens executable identity from `program_dag` (or structured
         // `TestClaim` metadata) without fixture-local stub bodies — same upstream fix as retiring
         // `PROGRAM_INPUT_SENTINEL` string dispatch above.
-        let program_dag_opt: Option<Dag> = match compile_to_dag(&claim.source, &claim.file_name) {
-            Ok(dag) => Some(dag),
+        // INVARIANTS P3 / TESTING: `TestClaim.source` must lower cleanly — never ignore
+        // tokenize/parse failures and fall back to the fixture graph (that would let malformed
+        // programs `Pass` when inputs/lens resolve only from the fixture).
+        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
             Err(CompileError::Semantic(dag)) => {
                 return ClaimResult::Fail(format!(
                     "LensOutputEquals: claim `source` / `{}` failed inference: {:?}",
@@ -360,22 +363,15 @@ impl<'a> TestRunner<'a> {
                 ));
             }
             Err(err) => {
-                if input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL) {
-                    return ClaimResult::Fail(format!(
-                        "LensOutputEquals: claim `source` did not compile (needed for `{PROGRAM_INPUT_SENTINEL}` input sentinel): {err:?}"
-                    ));
-                }
-                None
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals: claim `source` / `{}` did not compile: {err:?}",
+                    claim.file_name
+                ));
             }
         };
 
         let input_field = if input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL) {
-            let Some(program_dag) = program_dag_opt.as_ref() else {
-                return ClaimResult::Fail(format!(
-                    "LensOutputEquals: claim `source` did not compile (needed for `{PROGRAM_INPUT_SENTINEL}` input sentinel)"
-                ));
-            };
-            match reflect_program_dag_nodes_in_file(program_dag, &claim.file_name) {
+            match reflect_program_dag_nodes_in_file(&program_dag, &claim.file_name) {
                 Ok(v) => v,
                 Err(err) => {
                     return ClaimResult::Fail(format!(
@@ -439,25 +435,23 @@ impl<'a> TestRunner<'a> {
             None
         };
 
-        let (lens_program, lens_apply_id) = if let Some(ref cld) =
-            canonical_named_function_count_dag
-        {
-            let Some(d) = cld.declaration_by_name("named_function_count") else {
-                return ClaimResult::Fail(
+        let (lens_program, lens_apply_id) =
+            if let Some(ref cld) = canonical_named_function_count_dag {
+                let Some(d) = cld.declaration_by_name("named_function_count") else {
+                    return ClaimResult::Fail(
                     "LensOutputEquals: canonical named_function_count lens missing root declaration"
                         .to_string(),
                 );
+                };
+                (cld, d.id)
+            } else if let Some(name) = lens_decl.name.as_deref() {
+                match program_dag.declaration_by_name(name) {
+                    Some(d) => (&program_dag, d.id),
+                    None => (self.dag, lens_id),
+                }
+            } else {
+                (self.dag, lens_id)
             };
-            (cld, d.id)
-        } else if let (Some(pd), Some(name)) = (program_dag_opt.as_ref(), lens_decl.name.as_deref())
-        {
-            match pd.declaration_by_name(name) {
-                Some(d) => (pd, d.id),
-                None => (self.dag, lens_id),
-            }
-        } else {
-            (self.dag, lens_id)
-        };
 
         let computed = match apply_lens_declaration(
             lens_program,
