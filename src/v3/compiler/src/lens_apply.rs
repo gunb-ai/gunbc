@@ -19,13 +19,6 @@ fn is_fold_instantiation(dag: &Dag, decl: &Declaration) -> bool {
     )
 }
 
-fn span_same_file(a: &SourceSpan, b: &SourceSpan) -> bool {
-    // Strict equality only (no `ends_with` / substring): e.g. `foo.dag` must not match
-    // `barfoo.dag`. Fold span overlap is D1-only; lowering should attach the same logical path
-    // to both spans.
-    a.file == b.file
-}
-
 /// Skip the monomorphized `std.list.fold` → [`eval_fold_step`] fast path for transforms whose
 /// source site lives in `v3.std.algebra` (staged mirror: `dsl/std/algebra.dag`).
 ///
@@ -42,10 +35,6 @@ fn span_same_file(a: &SourceSpan, b: &SourceSpan) -> bool {
 fn fold_site_skips_d1_monomorph_list_fold_path(span: &SourceSpan) -> bool {
     let f = span.file.as_str();
     f.ends_with("std/algebra.dag") || f.ends_with(r"std\algebra.dag")
-}
-
-fn span_overlaps(a: &SourceSpan, b: &SourceSpan) -> bool {
-    span_same_file(a, b) && !(b.byte_end <= a.byte_start || b.byte_start >= a.byte_end)
 }
 
 const LENS_APPLY_TYPE_WALK_DEPTH: usize = 32;
@@ -152,46 +141,17 @@ fn find_fold_step_bind_via_instantiation(
     (ambiguous_fallback.len() == 1).then(|| ambiguous_fallback[0])
 }
 
-/// Fallback (D1): span overlap when instantiation facts are absent or ambiguous.
-fn find_fold_step_bind_by_span_overlap<'a>(
-    dag: &'a Dag,
-    fold_span: &SourceSpan,
-) -> Option<&'a BindNode> {
-    dag.nodes()
-        .iter()
-        .filter_map(|n| {
-            let Behavior::Bind(b) = n else {
-                return None;
-            };
-            if b.params.len() < 2 {
-                return None;
-            }
-            if !span_overlaps(&b.span, fold_span) {
-                return None;
-            }
-            Some(b)
-        })
-        .min_by_key(|b| b.span.byte_end.saturating_sub(b.span.byte_start))
-}
-
 /// Locate the `|acc, x|` step closure lowered as a two-parameter `Bind` for this `fold` site.
 ///
-/// **Primary:** [`find_fold_step_bind_via_instantiation`] follows template-argument substrate
-/// edges from the monomorphized `std.list.fold` `Instantiation` (the step is not a runtime `Port`
-/// when arity collapses to list + init).
+/// Uses only [`find_fold_step_bind_via_instantiation`]: template-argument substrate edges from
+/// the monomorphized `std.list.fold` `Instantiation` (the step is not a runtime `Transform` input
+/// port when arity collapses to list + init). No span-overlap recovery — that would not be a
+/// declared substrate dependency (Facts Flow Forward).
 ///
-/// **Fallback:** [`find_fold_step_bind_by_span_overlap`] — narrowest overlapping `Bind` with ≥2
-/// params in the same source file span as the `fold` transform (bounded gate scope only).
-///
-/// **Dissolution:** attach the step as an explicit `Transform` input / behavior edge so neither
-/// path is needed.
-fn find_fold_step_bind<'a>(
-    dag: &'a Dag,
-    fold_callable_id: DeclarationId,
-    fold_span: &SourceSpan,
-) -> Option<&'a BindNode> {
+/// **Dissolution:** attach the step as an explicit `Transform` input / behavior edge and delete
+/// the `Instantiation`-walk indirection when lowering guarantees a direct edge.
+fn find_fold_step_bind(dag: &Dag, fold_callable_id: DeclarationId) -> Option<&BindNode> {
     find_fold_step_bind_via_instantiation(dag, fold_callable_id)
-        .or_else(|| find_fold_step_bind_by_span_overlap(dag, fold_span))
 }
 
 /// Apply a named lens (`Arrow` + `UserDefined` body) from `lens_program` to positional
@@ -447,9 +407,10 @@ impl<'a> EvalCtx<'a> {
                 {
                     let list = self.eval_port(t.inputs[0])?;
                     let init = self.eval_port(t.inputs[1])?;
-                    let step_bind = find_fold_step_bind(self.dag, *callee, &t.span).ok_or(
+                    let step_bind = find_fold_step_bind(self.dag, *callee).ok_or(
                         LensApplyError::UnsupportedConstruct(
-                            "monomorphized fold: could not locate step closure Bind",
+                            "monomorphized fold: could not locate step closure Bind via \
+                             Instantiation arguments (no span overlap fallback)",
                         ),
                     )?;
                     return self.eval_fold_step(list, init, step_bind);
@@ -1112,8 +1073,7 @@ fn sum(xs: List<Int>) -> Int =
         };
         let via_inst =
             super::find_fold_step_bind_via_instantiation(&dag, *callee).expect("inst path");
-        let combined = super::find_fold_step_bind(&dag, *callee, &fold_transform.span)
-            .expect("find_fold_step_bind");
+        let combined = super::find_fold_step_bind(&dag, *callee).expect("find_fold_step_bind");
         assert_eq!(combined.id, via_inst.id);
     }
 
