@@ -55,6 +55,8 @@ mod lane2_stage_2d_symbolic_cost_test;
 mod lane2_stage_2e_parallelism_test;
 #[path = "integration/lane3_stage_3b_db1_test.rs"]
 mod lane3_stage_3b_db1_test;
+#[path = "integration/lane_e_t_termination_test.rs"]
+mod lane_e_t_termination_test;
 #[path = "integration/lens_register_correspondence_test.rs"]
 mod lens_register_correspondence_test;
 #[path = "integration/m0_acceptance.rs"]

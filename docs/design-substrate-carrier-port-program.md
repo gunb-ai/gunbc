@@ -1,8 +1,8 @@
 # Substrate Carrier Port Program
 
-**Status:** Design only (Brief E, 2026-04-22). No code changes in this PR.
+**Status:** Execution started. Lane E-T landed 2026-04-24; remaining lanes stay queued in dependency order.
 **Scope:** Program-of-work scoping for porting v2's `DescentEvidence` / `CallPattern` / `SubValueRelation` / `MethodSemantics` carrier families into the v3 substrate so that v3 lenses over termination, cost, and method dispatch can reach `BEHAVIORALLY COMPLETE` per `docs/v3-lens-capability-register.md`.
-**Not this PR:** no substrate edits; no lens migrations; no carrier lane execution. Each carrier family becomes a separate lane placeholder below.
+**Remaining scope:** no lens migrations in E-T; remaining carrier families stay separate lane placeholders below.
 
 ## 1. Why this document exists
 
@@ -102,7 +102,7 @@ Each lane closes with a receipt per `docs/v3-lens-capability-register.md § Disc
 
 | Lane | Register rows that move | Behavioral axis | Cementing test |
 |---|---|---|---|
-| T | — (no direct lens depends on T alone) | `complexity.dag` / `cost.dag` partial progress | prerequisite only |
+| T | — (no direct lens depends on T alone) | `complexity.dag` / `cost.dag` partial progress | Landed 2026-04-24: `src/v3/std/termination.dag` bootstraps `DescentEvidence`, `RankingDimension`, `DescentSource`, `TerminationProof`, `ProofEdge`, and lattice helpers; `lane_e_t_termination_test` covers bootstrap shape + lattice mirror behavior. |
 | C | `cost.dag` begins PROXY → partial | PROXY still, but "What v2 has that v3 drops" column shrinks | golden for `CallPattern` dispatch |
 | I | types ported; no lens row moves yet — producer still missing | PROXY still (pending E-P) | carrier round-trip tests only |
 | P | `complexity.dag` / `cost.dag` advance on the non-method-dispatch slice; "What v2 has that v3 drops" column shrinks to `MethodSemantics` + grammar/emit items | PROXY still (pending E-M for method-dispatch) | v2-oracle-vs-v3 per-call descent-evidence golden for non-method-dispatch inputs |

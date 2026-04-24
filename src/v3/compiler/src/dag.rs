@@ -79,6 +79,7 @@ mod bootstrap_generated_without_parse_surface {
 mod builder;
 mod effects;
 mod ports;
+mod termination;
 
 pub use effects::{
     BranchArm, BreakingShape, CompositionVerdict, CreateCause, EffectShape, HttpMethodScalar,
@@ -88,6 +89,11 @@ pub use effects::{
 };
 pub use ports::{
     BoolPortRef, ElementRef, NonEmptyList, NonSingletonList, ParamRef, Port, TransformRef,
+};
+pub use termination::{
+    evidence_rank, join_evidence, map_evidence_merge_at, merge_evidence, optional_evidence_meet,
+    promote_to_strict, DescentEvidence, DescentSource, ProofEdge, RankingDimension,
+    TerminationProof,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
