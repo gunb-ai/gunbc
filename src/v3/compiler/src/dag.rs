@@ -794,10 +794,11 @@ pub fn proportional_divisor_to_int(d: &ProportionalDivisor) -> i64 {
     }
 }
 
-/// Maximum Peano links materialized from a single `i64` literal (M9 / decidability).
+/// Maximum Peano links materialized from a single `i64` literal (M9 / P4).
 ///
-/// Larger requests fail closed with [`None`] instead of value-sized compiler work.
-pub const MAX_PEANO_MATERIALIZATION: i64 = 4096;
+/// Must stay aligned with `dsl/std/termination.dag` literal bridges. Larger
+/// requests fail closed with [`None`] instead of deep recursive materialization.
+pub const MAX_PEANO_MATERIALIZATION: i64 = 256;
 
 /// Builds a Peano witness with **iterative** construction (no deep recursion).
 /// Returns [`None`] when `k` is out of range or exceeds [`MAX_PEANO_MATERIALIZATION`].

@@ -233,12 +233,12 @@ fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
 
 // Validated bridges for analyzer literal sites (e.g. `skip(k)`, `n / d`).
 // `none` when `k` is not a positive witness — callers must fail closed.
-// M9 / decidability: refuse witness depths above 4096 so literal-sized `Int` inputs
-// cannot force value-sized compiler work (fail closed with `none`).
+// M9 / P4: refuse witness depths above 256 so literal-sized `Int` inputs cannot
+// force deep recursive materialization (infer + std share this cap; fail closed).
 fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
   if k <= 0 { none }
   else {
-    if k > 4096 { none }
+    if k > 256 { none }
     else {
       if k == 1 { Some { value: OneStep } }
       else {
@@ -255,7 +255,7 @@ fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
 fn proportional_divisor_from_int_at_least_two(k: Int) -> ProportionalDivisor? {
   if k < 2 { none }
   else {
-    if k > 4096 { none }
+    if k > 256 { none }
     else {
       if k == 2 { Some { value: DivideByTwo } }
       else {

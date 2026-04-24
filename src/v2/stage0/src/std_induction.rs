@@ -8,7 +8,8 @@ use crate::std_computation::IterationPrimitive::{Descend, Fold, Repeat};
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_computation::SizeBound::{ArithmeticParam, CollectionSize, Forever};
 pub use crate::std_computation::{
-    tree_size_bound, CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
+    positive_descent_count, tree_size_bound, CallPattern, IterationPrimitive, LoweringTarget,
+    ShrinkFactor, SizeBound,
 };
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
@@ -125,6 +126,27 @@ pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence 
     }
 }
 
+pub fn shrink_factor_eq(a: Rc<ShrinkFactor>, b: Rc<ShrinkFactor>) -> bool {
+    match (*a).clone() {
+        ShrinkFactor::UnitShrink => match (*b).clone() {
+            ShrinkFactor::UnitShrink => true,
+            _ => false,
+        },
+        ShrinkFactor::ConstantShrink { steps: sa, .. } => match (*b).clone() {
+            ShrinkFactor::ConstantShrink { steps: sb, .. } => {
+                (positive_descent_count(sa.clone()) == positive_descent_count(sb.clone()))
+            }
+            _ => false,
+        },
+        ShrinkFactor::ProportionalShrink { divisor: da, .. } => match (*b).clone() {
+            ShrinkFactor::ProportionalShrink { divisor: db, .. } => {
+                (proportional_divisor_to_int(da.clone()) == proportional_divisor_to_int(db.clone()))
+            }
+            _ => false,
+        },
+    }
+}
+
 pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
     match (*a.clone()).clone() {
         SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
@@ -132,12 +154,27 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             _ => Rc::new(SubValueRelation::PreservedValue),
         },
-        SubValueRelation::StrictSubValue { field: fa, .. } => match (*b).clone() {
+        SubValueRelation::StrictSubValue {
+            field: fa,
+            factor: fac_a,
+            ..
+        } => match (*b).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
-            SubValueRelation::StrictSubValue { field: fb, .. } => {
+            SubValueRelation::StrictSubValue {
+                field: fb,
+                factor: fac_b,
+                ..
+            } => {
                 if inductive_field_eq(&fa, &fb) {
-                    a.clone()
+                    if shrink_factor_eq(fac_a.clone(), fac_b.clone()) {
+                        Rc::new(SubValueRelation::StrictSubValue {
+                            field: fa.clone(),
+                            factor: fac_a.clone(),
+                        })
+                    } else {
+                        Rc::new(SubValueRelation::SubValueUnknown)
+                    }
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
                 }
@@ -156,12 +193,27 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             }
             _ => Rc::new(SubValueRelation::SubValueUnknown),
         },
-        SubValueRelation::ArithmeticDescent { param: pa, .. } => match (*b).clone() {
+        SubValueRelation::ArithmeticDescent {
+            param: pa,
+            factor: fac_a,
+            ..
+        } => match (*b).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
-            SubValueRelation::ArithmeticDescent { param: pb, .. } => {
+            SubValueRelation::ArithmeticDescent {
+                param: pb,
+                factor: fac_b,
+                ..
+            } => {
                 if (pa.clone().as_str() == pb.clone().as_str()) {
-                    a.clone()
+                    if shrink_factor_eq(fac_a.clone(), fac_b.clone()) {
+                        Rc::new(SubValueRelation::ArithmeticDescent {
+                            param: pa.clone(),
+                            factor: fac_a.clone(),
+                        })
+                    } else {
+                        Rc::new(SubValueRelation::SubValueUnknown)
+                    }
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
                 }
@@ -178,12 +230,27 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::PreservedValue),
             _ => b.clone(),
         },
-        SubValueRelation::StrictSubValue { field: fa, .. } => match (*b.clone()).clone() {
+        SubValueRelation::StrictSubValue {
+            field: fa,
+            factor: fac_a,
+            ..
+        } => match (*b.clone()).clone() {
             SubValueRelation::SubValueUnknown => a.clone(),
             SubValueRelation::PreservedValue => a.clone(),
-            SubValueRelation::StrictSubValue { field: fb, .. } => {
+            SubValueRelation::StrictSubValue {
+                field: fb,
+                factor: fac_b,
+                ..
+            } => {
                 if inductive_field_eq(&fa, &fb) {
-                    a.clone()
+                    if shrink_factor_eq(fac_a.clone(), fac_b.clone()) {
+                        Rc::new(SubValueRelation::StrictSubValue {
+                            field: fa.clone(),
+                            factor: fac_a.clone(),
+                        })
+                    } else {
+                        Rc::new(SubValueRelation::SubValueUnknown)
+                    }
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
                 }
@@ -202,12 +269,27 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
             }
             _ => Rc::new(SubValueRelation::SubValueUnknown),
         },
-        SubValueRelation::ArithmeticDescent { param: pa, .. } => match (*b.clone()).clone() {
+        SubValueRelation::ArithmeticDescent {
+            param: pa,
+            factor: fac_a,
+            ..
+        } => match (*b.clone()).clone() {
             SubValueRelation::SubValueUnknown => a.clone(),
             SubValueRelation::PreservedValue => a.clone(),
-            SubValueRelation::ArithmeticDescent { param: pb, .. } => {
+            SubValueRelation::ArithmeticDescent {
+                param: pb,
+                factor: fac_b,
+                ..
+            } => {
                 if (pa.clone().as_str() == pb.clone().as_str()) {
-                    a.clone()
+                    if shrink_factor_eq(fac_a.clone(), fac_b.clone()) {
+                        Rc::new(SubValueRelation::ArithmeticDescent {
+                            param: pa.clone(),
+                            factor: fac_a.clone(),
+                        })
+                    } else {
+                        Rc::new(SubValueRelation::SubValueUnknown)
+                    }
                 } else {
                     Rc::new(SubValueRelation::SubValueUnknown)
                 }
