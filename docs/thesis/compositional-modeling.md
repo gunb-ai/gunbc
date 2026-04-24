@@ -582,7 +582,9 @@ negation, comparison) is inherited from whichever named algebra the
 substrate lands for "abelian group with compare, no multiplication."
 `Money<USD> + Money<USD> : Money<USD>`; `Money<USD> + Money<EUR>`
 is a compile error; `Money<USD> * Money<USD>` is a compile error —
-`*` isn't in the inhabited algebra. In C/Rust you'd typically have
+`*` isn't in the inhabited algebra. `[target]` — per `ROADMAP.md:364`
+(typed-value-wrapper row) + DB-18 at `:231` (parametric algebra
+attachment). In C/Rust you'd typically have
 `Money` as a newtype over `i64` and get `*` by default, producing
 nonsense like "5 USD × 3 USD = 15 USD squared."
 
@@ -606,10 +608,11 @@ type Duration<Unit>  // Int64-carried value with phantom Unit; abelian group wit
 
 At target, `Duration<Second>` and `Duration<Millisecond>` are
 distinct types. Addition respects dimension. Conversion is an
-explicit operation. Rust's `uom` crate does the same thing, but
-opt-in and library-level; the gunbc target is substrate-level with
-one declaration — same shape as `Money<Currency>` above, different
-phantom.
+explicit operation. `[target]` — per `ROADMAP.md:364` (typed-value-
+wrapper row; same row as Money above). Rust's `uom` crate does the
+same thing, but opt-in and library-level; the gunbc target is
+substrate-level with one declaration — same shape as `Money<Currency>`
+above, different phantom.
 
 ### Secrets with nominal opacity
 
@@ -635,7 +638,8 @@ Once `Secret<Token>` is nominally opaque:
   (typed secrets manager); no raw constructor
 
 The convention "don't log secrets" becomes a structural fact,
-enforced at every call site, not at code review.
+enforced at every call site, not at code review. `[target]` — per
+`ROADMAP.md:365` (`Secret<T>` nominal-wrapper graduation).
 
 ### The common pattern
 
