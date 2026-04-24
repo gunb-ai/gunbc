@@ -117,8 +117,10 @@ Lane-owner dispatch status (update as sub-deliverables close):
       T-TestGen extensions land
 
 **T-PB-B:**
-- [x] T-PB-B-1 — Landed `src/v3/compiler/tests/dag/*.dag` + compile-only smoke
-      (`t_pb_b_1_tests_dag_smoke_test`); brief `docs/briefs/t-pb-b-1.md`.
+- [x] T-PB-B-1 — Landed `src/v3/compiler/tests/dag/*.dag` + brief
+      `docs/briefs/t-pb-b-1.md` (former compile-only smoke
+      `t_pb_b_1_tests_dag_smoke_test` retired as redundant with
+      `t_pb_b_1_dag_runner_test` — 2026-04-25).
       **Not** Rust test deletion and **not** `pb_*` — those stay unchecked below
       until Testgen signs off.
 - [x] T-PB-B-1 — Runner-backed integration test landed (PR #736,
@@ -136,10 +138,10 @@ Lane-owner dispatch status (update as sub-deliverables close):
       previous row; `contract_diagnostic_smoke.v3` + `contract_port_cost_smoke.v3`)
 - [x] Identify and scope the two TESTING.md residual categories
       per-test (extended D/G/A/B matrix in Brief D)
-- [ ] Land **Rust deletions** for the three T-PB-B-1 claim shapes once Testgen
-      signals on checklist item (4) first-deletion batch (declarative data +
-      compile smoke + runner-backed evaluation for these three suites already
-      landed via PR #736 — see `docs/briefs/t-pb-b-1.md`)
+- [ ] Land **Rust deletions** for the remaining T-PB-B-1 / thesis inventory
+      (checklist item (4) follow-on) once Testgen records sign-off in
+      `docs/briefs/r1-testgen-manager.md` (first slice: redundant compile-smoke
+      file **landed** 2026-04-25; see *Decisions log*).
 - [ ] `pb_test_file_generated_from_dag` + `pb_rust_tests_outside_residual_zero`
       predicates evaluate true
 
@@ -161,8 +163,8 @@ Decisions log (append as they happen):
   floor read from `src/v3/compiler/tests/integration/sg0_census_test.rs`;
   the ≤5 irreducible-shim target not yet reached.
 - 2026-04-24: **T-PB-B-1** — landed `src/v3/compiler/tests/dag/*.dag` (`data` `TestClaim` /
-  `TestSuite` per `std.verification`) + `t_pb_b_1_tests_dag_smoke_test`; Rust tests not
-  deleted; Testgen runner / `pb_*` coordination still open (`docs/briefs/t-pb-b-1.md`).
+  `TestSuite` per `std.verification`); redundant compile-smoke file later
+  retired. Further Rust deletions / `pb_*` coordination: `docs/briefs/t-pb-b-1.md`.
 - 2026-04-23: **Brief D** (`docs/briefs/t-pb-b-brief-d.md`) — extended T-PB-B inventory +
   D/G/A/B matrix + draft `TestClaim` fixtures (`tests/fixtures/t_pb_b_brief_d/*.v3`);
   compile smoke via `t_pb_b_brief_d_fixture_smoke_test` (no `pb_*`, Rust tests unchanged).

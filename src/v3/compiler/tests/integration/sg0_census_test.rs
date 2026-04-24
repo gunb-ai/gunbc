@@ -171,6 +171,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit_rust.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/lens_apply.rs",
+    // T-PB-A: `lens_depth.rs` retired — unused observational lens (no in-tree consumer).
     "src/v3/compiler/src/lens_testgen.rs",
     "src/v3/compiler/src/lens_unused_parameters.rs",
     "src/v3/compiler/src/lib.rs",
