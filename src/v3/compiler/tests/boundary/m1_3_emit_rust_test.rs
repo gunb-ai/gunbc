@@ -373,6 +373,14 @@ fn emit_callable_field_types_use_rc_dyn_fn_storage() {
     let src = "type Callback { handler: fn(Int) -> Int }\n";
     let out = emit_module(src);
     assert!(
+        out.contains("#[derive(Clone)]\npub struct Callback"),
+        "Rc<dyn Fn…> is not Debug — struct must use clone-only derive; got:\n{out}"
+    );
+    assert!(
+        !out.contains("#[derive(Clone, Debug)]\npub struct Callback"),
+        "Debug derive is invalid with dyn Fn field; got:\n{out}"
+    );
+    assert!(
         out.contains("handler: std::rc::Rc<dyn Fn(i64) -> i64>"),
         "expected `std::rc::Rc<dyn Fn…>` in struct field, not `impl Fn`; got:\n{out}"
     );
@@ -387,6 +395,14 @@ fn emit_callable_field_types_use_rc_dyn_fn_storage() {
 fn emit_callable_list_element_types_use_rc_dyn_fn_in_vec() {
     let src = "type Holders { callbacks: List<fn(Int) -> Int> }\n";
     let out = emit_module(src);
+    assert!(
+        out.contains("#[derive(Clone)]\npub struct Holders"),
+        "Vec<Rc<dyn Fn…>> is not Debug — struct must use clone-only derive; got:\n{out}"
+    );
+    assert!(
+        !out.contains("#[derive(Clone, Debug)]\npub struct Holders"),
+        "Debug derive is invalid with Vec<Rc<dyn Fn…>> field; got:\n{out}"
+    );
     assert!(
         out.contains("callbacks: Vec<std::rc::Rc<dyn Fn(i64) -> i64>>"),
         "expected Vec<Rc<dyn Fn…>> for List<fn…>; got:\n{out}"

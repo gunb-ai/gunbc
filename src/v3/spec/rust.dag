@@ -967,6 +967,21 @@ data rust_main_wrap: BehaviorRealization = {
 // ─────────────────────────────────────────────────────────────────
 // Callable realizations — staged std.list helpers.
 // ─────────────────────────────────────────────────────────────────
+//
+// First-class surface function types (`fn(A) -> B`, lowered as
+// `TypeConnective::Arrow` with `ArrowBody::NoBody`) are **not** a single
+// `TypeRealization` row: the Rust emitter chooses the carrier by **position**
+// (`ArrowRustEmitPolicy` in `emit/rust_target.rs`):
+//   - user `fn` parameters → `impl Fn(A) -> B + Clone` (PR #650);
+//   - struct fields / `List` / `Map` / `Optional` / top-level `let` / inferred
+//     return → `std::rc::Rc<dyn Fn(A) -> B>`;
+//   - any other type-name context → fail closed (`UnsupportedBehavior`) until a
+//     realization-backed path exists here.
+//
+// **Derive split (blocking #676 api-review):** `dyn Fn` does not implement
+// `Debug`, so user `struct` / `enum` definitions that (transitively) carry
+// first-class `fn` storage use `struct_def_no_debug` / `enum_def_no_debug`
+// (`#[derive(Clone)]` only) from `rust_type_defs`; see `emit/rust_target.rs`.
 
 data rust_empty_callable: CallableRealization = {
   language: rust_language
@@ -1152,8 +1167,10 @@ data rust_type_applications: TypeApplicationSyntax = {
 
 data rust_type_defs: TypeDefinitionSyntax = {
   struct_def: "#[derive(Clone, Debug)]\npub struct {name} { {fields} }"
+  struct_def_no_debug: "#[derive(Clone)]\npub struct {name} { {fields} }"
   struct_field: "pub {name}: {type},"
   enum_def: "#[derive(Clone, Debug)]\npub enum {name} { {variants} }"
+  enum_def_no_debug: "#[derive(Clone)]\npub enum {name} { {variants} }"
   enum_unit_variant: "{name},"
   enum_data_variant: "{name} { {fields} },"
 }

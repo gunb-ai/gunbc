@@ -208,8 +208,12 @@ type TypeApplicationSyntax {
 
 type TypeDefinitionSyntax {
   struct_def: String
+  // `Rc<dyn Fn…>` (first-class `fn` in storage positions) is `Clone` but not
+  // `Debug`; user records carrying it must omit `Debug` from derives.
+  struct_def_no_debug: String
   struct_field: String
   enum_def: String
+  enum_def_no_debug: String
   enum_unit_variant: String
   enum_data_variant: String
 }

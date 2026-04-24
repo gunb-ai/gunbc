@@ -86,8 +86,10 @@ data python_type_applications: TypeApplicationSyntax = {
 
 data python_type_definitions: TypeDefinitionSyntax = {
   struct_def: "@dataclass\nclass {name}:\n{fields}"
+  struct_def_no_debug: "@dataclass\nclass {name}:\n{fields}"
   struct_field: "{name}: {type}"
   enum_def: "class {name}:\n    pass\n\n{variants}"
+  enum_def_no_debug: "class {name}:\n    pass\n\n{variants}"
   enum_unit_variant: "@dataclass\nclass {name}({parent}):\n    pass"
   enum_data_variant: "@dataclass\nclass {name}({parent}):\n{fields}"
 }

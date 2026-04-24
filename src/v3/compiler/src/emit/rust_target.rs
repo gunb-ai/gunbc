@@ -360,8 +360,10 @@ struct TypeApplicationSyntaxBinding {
 #[derive(Debug, Clone)]
 struct TypeDefinitionSyntaxBinding {
     struct_def: String,
+    struct_def_no_debug: String,
     struct_field: String,
     enum_def: String,
+    enum_def_no_debug: String,
     enum_unit_variant: String,
     enum_data_variant: String,
 }
@@ -1394,8 +1396,10 @@ fn parse_type_definition_syntax(
     let fields = structural_fields_for_decl(dag, declaration)?;
     Ok(TypeDefinitionSyntaxBinding {
         struct_def: syntax_field_string(fields, "struct_def", declaration)?,
+        struct_def_no_debug: syntax_field_string(fields, "struct_def_no_debug", declaration)?,
         struct_field: syntax_field_string(fields, "struct_field", declaration)?,
         enum_def: syntax_field_string(fields, "enum_def", declaration)?,
+        enum_def_no_debug: syntax_field_string(fields, "enum_def_no_debug", declaration)?,
         enum_unit_variant: syntax_field_string(fields, "enum_unit_variant", declaration)?,
         enum_data_variant: syntax_field_string(fields, "enum_data_variant", declaration)?,
     })
@@ -2798,6 +2802,20 @@ enum RenderMode {
 struct RenderLocals {
     names: HashMap<PortId, LocalBinding>,
     payload_bindings: HashMap<PortId, VariantPayloadBinding<LocalBinding>>,
+}
+
+/// Policy for lowering anonymous `TypeConnective::Arrow` (`fn(..)->_` types)
+/// to Rust text. `impl Trait` spellings and `Rc<dyn Fn…>` are only legal in
+/// explicit, position-specific emit paths (blocking api-review on #676).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // `RejectFirstClassFn`: explicit fail-closed default for unknown emit contexts.
+enum ArrowRustEmitPolicy {
+    /// Fail closed unless the caller routes through a vetted carrier.
+    RejectFirstClassFn,
+    /// `std::rc::Rc<dyn Fn…>` — struct fields, collection instantiations,
+    /// top-level `let` annotations, inferred return slots, and nested
+    /// callable types inside `impl Fn` parameter lists.
+    StorageRcDynFn,
 }
 
 #[allow(dead_code)]
@@ -4532,24 +4550,42 @@ impl<'a> Ctx<'a> {
         }
         match &declaration.connective {
             TypeConnective::Conj { children } => {
+                let omit_debug = children.iter().any(|field| {
+                    let mut visited = HashSet::new();
+                    self.decl_includes_first_class_arrow_data(field.ty, &mut visited)
+                });
                 let fields = children
                     .iter()
                     .map(|field| self.render_struct_field(field))
                     .collect::<Result<Vec<_>, _>>()?;
                 let fields_joined = join_rendered(&fields, " ");
+                let template = if omit_debug {
+                    &self.indexes.syntax.type_definitions.struct_def_no_debug
+                } else {
+                    &self.indexes.syntax.type_definitions.struct_def
+                };
                 Ok(render_named_template(
-                    &self.indexes.syntax.type_definitions.struct_def,
+                    template,
                     &[("name", name), ("fields", &fields_joined)],
                 ))
             }
             TypeConnective::Disj { variants } => {
+                let omit_debug = variants.iter().any(|variant| {
+                    let mut visited = HashSet::new();
+                    self.decl_includes_first_class_arrow_data(variant.ty, &mut visited)
+                });
                 let rendered_variants = variants
                     .iter()
                     .map(|variant| self.render_enum_variant(variant))
                     .collect::<Result<Vec<_>, _>>()?;
                 let variants_joined = join_rendered(&rendered_variants, " ");
+                let template = if omit_debug {
+                    &self.indexes.syntax.type_definitions.enum_def_no_debug
+                } else {
+                    &self.indexes.syntax.type_definitions.enum_def
+                };
                 Ok(render_named_template(
-                    &self.indexes.syntax.type_definitions.enum_def,
+                    template,
                     &[("name", name), ("variants", &variants_joined)],
                 ))
             }
@@ -4560,7 +4596,11 @@ impl<'a> Ctx<'a> {
     }
 
     fn render_struct_field(&self, field: &Field) -> Result<String, EmitError> {
-        let ty = self.rust_type_name_for_decl(field.ty)?;
+        // Record fields are **not** `impl Trait` positions. First-class `fn`
+        // types use the storage carrier (`Rc<dyn Fn…>`) under
+        // `ArrowRustEmitPolicy::StorageRcDynFn` — never `rust_arrow_as_parameter_impl_fn_clone`
+        // (PR #676 inline review / INVARIANTS.md C-8 fail-closed vs plausible Rust).
+        let ty = self.rust_type_name_for_decl_storage(field.ty)?;
         Ok(render_named_template(
             &self.indexes.syntax.type_definitions.struct_field,
             &[("name", &field.label), ("type", &ty)],
@@ -4690,43 +4730,31 @@ impl<'a> Ctx<'a> {
     }
 
     /// `impl Fn(...) -> R + Clone` for a first-class `fn` type used **only**
-    /// in direct user-function parameter position. See
-    /// `rust_type_name_for_decl_at_depth` for storage-shaped `Rc<dyn Fn…>`
-    /// used in struct fields and generic arguments.
+    /// in direct user-function parameter position (this is **not** the
+    /// context-free `rust_type_name_for_decl_with_policy` renderer — record
+    /// fields / `Vec<…>` / etc. never call here). Nested parameter/return types
+    /// use `rust_type_name_for_decl_storage` (`Rc<dyn Fn…>`). See
+    /// `ArrowRustEmitPolicy` and `src/v3/spec/rust.dag` (first-class callable note).
+    /// Future: lift the two spellings into `rust.dag` `TypeRealization`-style rows
+    /// for full THESIS “declared target realization” parity (today: policy + spec comment).
     fn rust_arrow_as_parameter_impl_fn_clone(
         &self,
-        mut declaration: DeclarationId,
+        declaration: DeclarationId,
     ) -> Result<String, EmitError> {
-        let mut visited = HashSet::new();
-        loop {
-            if !visited.insert(declaration) {
-                return Err(EmitError::UnsupportedBehavior(
-                    "rust_arrow_as_parameter_impl_fn_clone: ResolvedBy peel cycle".to_string(),
-                ));
-            }
-            let decl = self.dag.declaration(declaration);
-            match &decl.connective {
-                TypeConnective::Arrow { inputs, output, .. } => {
-                    let param_types = inputs
-                        .iter()
-                        .map(|i| self.rust_type_name_for_decl(*i))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    let param_str = param_types.join(", ");
-                    let ret_str = self.rust_type_name_for_decl(*output)?;
-                    return Ok(format!("impl Fn({param_str}) -> {ret_str} + Clone"));
-                }
-                TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-                | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
-                    declaration = *next;
-                }
-                _ => {
-                    return Err(EmitError::UnsupportedBehavior(
-                        "rust_arrow_as_parameter_impl_fn_clone: peeled declaration is not Arrow"
-                            .to_string(),
-                    ));
-                }
-            }
-        }
+        let Some((inputs, output)) = self.peel_resolved_chain_to_first_class_arrow(declaration)
+        else {
+            return Err(EmitError::UnsupportedBehavior(
+                "rust_arrow_as_parameter_impl_fn_clone: declaration does not peel to Arrow"
+                    .to_string(),
+            ));
+        };
+        let param_types = inputs
+            .iter()
+            .map(|i| self.rust_type_name_for_decl_storage(*i))
+            .collect::<Result<Vec<_>, _>>()?;
+        let param_str = param_types.join(", ");
+        let ret_str = self.rust_type_name_for_decl_storage(output)?;
+        Ok(format!("impl Fn({param_str}) -> {ret_str} + Clone"))
     }
 
     fn rust_type_name_for_port(&self, port: PortId) -> Result<String, EmitError> {
@@ -4735,53 +4763,111 @@ impl<'a> Ctx<'a> {
             .port(port)
             .value_type()
             .ok_or(EmitError::UntypedPort(port))?;
-        self.rust_type_name_for_decl(ty.declaration)
+        self.rust_type_name_for_decl_storage(ty.declaration)
     }
 
+    /// Rust type spelling for a port consumed under **borrow** read strategy.
+    /// Callable (`Arrow`) parameters use the by-value `impl Fn + Clone` surface
+    /// here — not `&impl Fn…` (PR #650) — so this is not strictly “borrowed”
+    /// for that one shape; see `rust_borrowed_type_name_for_decl` for `&T` only.
     fn rust_borrowed_type_name_for_port(&self, port: PortId) -> Result<String, EmitError> {
         let ty = self
             .dag
             .port(port)
             .value_type()
             .ok_or(EmitError::UntypedPort(port))?;
-        self.rust_borrowed_type_name_for_decl(ty.declaration)
+        let decl = ty.declaration;
+        if self.type_declaration_peels_to_arrow(decl) {
+            return self.rust_arrow_as_parameter_impl_fn_clone(decl);
+        }
+        self.rust_borrowed_type_name_for_decl(decl)
     }
 
-    /// True when `declaration` (after peeling `ResolvedBy*` atoms)
-    /// is a first-class function type (`fn(...) -> _` in surface),
-    /// i.e. a `TypeConnective::Arrow` used as data rather than as a
-    /// named function item.
-    ///
-    /// Uses a `HashSet` cycle guard (same idea as `decl_is_copy_rec`) instead
-    /// of a depth cap on the peel walk.
-    fn type_declaration_peels_to_arrow(&self, mut declaration: DeclarationId) -> bool {
+    /// Peel `ResolvedBy{Structure,Name}` atoms until a first-class
+    /// `TypeConnective::Arrow` with `ArrowBody::NoBody` is found.
+    /// `None` on cycle, on `ArrowBody::UserDefined` / other heads, or when no
+    /// such arrow is reachable.
+    fn peel_resolved_chain_to_first_class_arrow(
+        &self,
+        mut declaration: DeclarationId,
+    ) -> Option<(Vec<DeclarationId>, DeclarationId)> {
         let mut visited = HashSet::new();
         loop {
             if !visited.insert(declaration) {
-                return false;
+                return None;
             }
             let decl = self.dag.declaration(declaration);
             match &decl.connective {
-                TypeConnective::Arrow { .. } => return true,
+                TypeConnective::Arrow {
+                    inputs,
+                    output,
+                    body: ArrowBody::NoBody,
+                } => {
+                    return Some((inputs.clone(), *output));
+                }
+                TypeConnective::Arrow { .. } => return None,
                 TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
                 | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                     declaration = *next;
                 }
-                _ => return false,
+                _ => return None,
             }
         }
     }
 
+    /// True when `declaration` (after peeling `ResolvedBy*` atoms)
+    /// is a first-class function type (`fn(...) -> _` in surface),
+    /// i.e. a `TypeConnective::Arrow` with `ArrowBody::NoBody` (data `fn`, not a
+    /// user `fn` item's `ArrowBody::UserDefined`).
+    fn type_declaration_peels_to_arrow(&self, declaration: DeclarationId) -> bool {
+        self.peel_resolved_chain_to_first_class_arrow(declaration)
+            .is_some()
+    }
+
+    /// True when `declaration` (including nested record / sum / generic args)
+    /// carries anonymous first-class `fn` (`ArrowBody::NoBody`) anywhere, so
+    /// emitted Rust uses `Rc<dyn Fn…>` which is not `Debug` — user `struct` /
+    /// `enum` derives must omit `Debug` (see `rust_type_defs.struct_def_no_debug`).
+    fn decl_includes_first_class_arrow_data(
+        &self,
+        declaration: DeclarationId,
+        visited: &mut HashSet<DeclarationId>,
+    ) -> bool {
+        if !visited.insert(declaration) {
+            return false;
+        }
+        if self.type_declaration_peels_to_arrow(declaration) {
+            return true;
+        }
+        let decl = self.dag.declaration(declaration);
+        match &decl.connective {
+            TypeConnective::Conj { children } => children
+                .iter()
+                .any(|field| self.decl_includes_first_class_arrow_data(field.ty, visited)),
+            TypeConnective::Disj { variants } => variants
+                .iter()
+                .any(|variant| self.decl_includes_first_class_arrow_data(variant.ty, visited)),
+            TypeConnective::Instantiation { arguments, .. } => arguments
+                .iter()
+                .any(|arg| self.decl_includes_first_class_arrow_data(arg.value, visited)),
+            TypeConnective::Cardinality { element, .. } => {
+                self.decl_includes_first_class_arrow_data(*element, visited)
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                self.decl_includes_first_class_arrow_data(*next, visited)
+            }
+            _ => false,
+        }
+    }
+
+    /// `&T` / `&[U]` spellings for borrowed emission. **Does not** handle
+    /// peeled callable `Arrow` types — `rust_borrowed_type_name_for_port`
+    /// routes those to `rust_arrow_as_parameter_impl_fn_clone` first.
     fn rust_borrowed_type_name_for_decl(
         &self,
         declaration: DeclarationId,
     ) -> Result<String, EmitError> {
-        if self.type_declaration_peels_to_arrow(declaration) {
-            // `&impl Fn(...) -> T + Clone` is ill-formed in Rust; parameter
-            // slots use `impl Fn + Clone` (PR #650), not `&…` or the storage
-            // `Rc<dyn Fn>` form used in struct fields / generic arguments.
-            return self.rust_arrow_as_parameter_impl_fn_clone(declaration);
-        }
         let decl = self.dag.declaration(declaration);
         match &decl.connective {
             TypeConnective::Instantiation {
@@ -4794,24 +4880,39 @@ impl<'a> Ctx<'a> {
                             "borrowed List carrier expects exactly one type argument".to_string(),
                         ));
                     };
-                    let element_name = self.rust_type_name_for_decl(element.value)?;
+                    let element_name = self.rust_type_name_for_decl_storage(element.value)?;
                     Ok(format!("&[{element_name}]"))
                 } else {
-                    Ok(format!("&{}", self.rust_type_name_for_decl(declaration)?))
+                    Ok(format!(
+                        "&{}",
+                        self.rust_type_name_for_decl_storage(declaration)?
+                    ))
                 }
             }
-            _ => Ok(format!("&{}", self.rust_type_name_for_decl(declaration)?)),
+            _ => Ok(format!(
+                "&{}",
+                self.rust_type_name_for_decl_storage(declaration)?
+            )),
         }
     }
 
-    fn rust_type_name_for_decl(&self, declaration: DeclarationId) -> Result<String, EmitError> {
-        self.rust_type_name_for_decl_at_depth(declaration, 0)
+    /// Vetted storage positions (`Rc<dyn Fn…>`) for anonymous `fn` types.
+    fn rust_type_name_for_decl_storage(
+        &self,
+        declaration: DeclarationId,
+    ) -> Result<String, EmitError> {
+        self.rust_type_name_for_decl_with_policy(
+            declaration,
+            0,
+            ArrowRustEmitPolicy::StorageRcDynFn,
+        )
     }
 
-    fn rust_type_name_for_decl_at_depth(
+    fn rust_type_name_for_decl_with_policy(
         &self,
         declaration: DeclarationId,
         depth: usize,
+        arrow_policy: ArrowRustEmitPolicy,
     ) -> Result<String, EmitError> {
         if depth >= 32 {
             return Err(EmitError::UnsupportedBehavior(
@@ -4829,33 +4930,54 @@ impl<'a> Ctx<'a> {
             TypeConnective::Instantiation {
                 template,
                 arguments,
-            } => self.render_instantiated_type(*template, arguments, depth + 1),
+            } => self.render_instantiated_type(*template, arguments, depth + 1, arrow_policy),
             TypeConnective::Cardinality {
                 element,
                 bound: crate::dag::CardinalityBound::AtMostOne,
             } => {
-                let inner = self.rust_type_name_for_decl_at_depth(*element, depth + 1)?;
+                let inner =
+                    self.rust_type_name_for_decl_with_policy(*element, depth + 1, arrow_policy)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.type_applications.optional,
                     &[("element", &inner)],
                 ))
             }
-            TypeConnective::Arrow { inputs, output, .. } => {
-                // `impl Trait` is not valid in struct fields, `Vec<…>` type
-                // arguments, etc. Use an explicit `Rc<dyn Fn…>` storage carrier
-                // outside direct fn-parameter slots (matched by
-                // `rust_type_name_for_user_function_parameter`).
-                let param_types = inputs
-                    .iter()
-                    .map(|i| self.rust_type_name_for_decl_at_depth(*i, depth + 1))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let param_str = param_types.join(", ");
-                let ret_str = self.rust_type_name_for_decl_at_depth(*output, depth + 1)?;
-                Ok(format!("std::rc::Rc<dyn Fn({param_str}) -> {ret_str}>"))
-            }
+            // Anonymous `Arrow` (`fn(..)->_` as data): `impl Fn + Clone` is **not**
+            // produced here — only `StorageRcDynFn` → `Rc<dyn Fn…>` or
+            // `RejectFirstClassFn` → `UnsupportedBehavior` (INVARIANTS.md C-8).
+            TypeConnective::Arrow { inputs, output, .. } => match arrow_policy {
+                ArrowRustEmitPolicy::RejectFirstClassFn => Err(EmitError::UnsupportedBehavior(
+                    "emit_rust: first-class function type (`fn(...) -> _` / TypeConnective::Arrow) \
+                     in an unsupported Rust type-name context; supported carriers are: user `fn` \
+                     parameters via `rust_type_name_for_user_function_parameter` (`impl Fn + \
+                     Clone`), and struct fields / collection instantiations / top-level `let` / \
+                     inferred return slots via `rust_type_name_for_decl_storage` (`std::rc::Rc<dyn \
+                     Fn…>`). See `src/v3/spec/rust.dag` header on first-class callable surfaces."
+                        .to_string(),
+                )),
+                ArrowRustEmitPolicy::StorageRcDynFn => {
+                    let param_types = inputs
+                        .iter()
+                        .map(|i| {
+                            self.rust_type_name_for_decl_with_policy(
+                                *i,
+                                depth + 1,
+                                ArrowRustEmitPolicy::StorageRcDynFn,
+                            )
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let param_str = param_types.join(", ");
+                    let ret_str = self.rust_type_name_for_decl_with_policy(
+                        *output,
+                        depth + 1,
+                        ArrowRustEmitPolicy::StorageRcDynFn,
+                    )?;
+                    Ok(format!("std::rc::Rc<dyn Fn({param_str}) -> {ret_str}>"))
+                }
+            },
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
-                self.rust_type_name_for_decl_at_depth(*next, depth + 1)
+                self.rust_type_name_for_decl_with_policy(*next, depth + 1, arrow_policy)
             }
             _ => Err(EmitError::MissingTypeRealization {
                 target: declaration,
@@ -4868,23 +4990,31 @@ impl<'a> Ctx<'a> {
         template: DeclarationId,
         arguments: &[TemplateArgument],
         depth: usize,
+        arrow_policy: ArrowRustEmitPolicy,
     ) -> Result<String, EmitError> {
         let Some(binding) = self.indexes.instantiations.get(&template) else {
             return Err(EmitError::MissingTypeRealization { target: template });
         };
         match arguments {
             [element] => {
-                let element_name =
-                    self.rust_type_name_for_decl_at_depth(element.value, depth + 1)?;
+                let element_name = self.rust_type_name_for_decl_with_policy(
+                    element.value,
+                    depth + 1,
+                    arrow_policy,
+                )?;
                 Ok(render_named_template(
                     &binding.carrier,
                     &[("element", &element_name)],
                 ))
             }
             [key, value] => {
-                let key_name = self.rust_type_name_for_decl_at_depth(key.value, depth + 1)?;
-                let value_name =
-                    self.rust_type_name_for_decl_at_depth(value.value, depth + 1)?;
+                let key_name =
+                    self.rust_type_name_for_decl_with_policy(key.value, depth + 1, arrow_policy)?;
+                let value_name = self.rust_type_name_for_decl_with_policy(
+                    value.value,
+                    depth + 1,
+                    arrow_policy,
+                )?;
                 Ok(render_named_template(
                     &binding.carrier,
                     &[("key", &key_name), ("value", &value_name)],
@@ -5227,6 +5357,12 @@ mod tests {
     use super::*;
     use crate::compile_to_dag;
     use crate::diagnostics::SourceSpan;
+
+    #[test]
+    fn arrow_rust_emit_policy_reject_variant_is_constructible() {
+        let _ = ArrowRustEmitPolicy::RejectFirstClassFn;
+        let _ = ArrowRustEmitPolicy::StorageRcDynFn;
+    }
 
     #[test]
     fn render_field_project_reads_borrowed_nodes_without_cloning() {
