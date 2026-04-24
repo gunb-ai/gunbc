@@ -40,10 +40,7 @@ fn sum_bound_has_cost_bound_introspection_consumer() {
 #[test]
 fn sum_bound_rejects_empty_alternative_stack() {
     let terms = Rc::new(vec![]);
-    assert!(matches!(
-        sum_bound(&terms).as_ref(),
-        CostBound::ErrorBound
-    ));
+    assert!(matches!(sum_bound(&terms).as_ref(), CostBound::ErrorBound));
 }
 
 #[test]
