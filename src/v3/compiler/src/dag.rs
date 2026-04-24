@@ -977,23 +977,23 @@ pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
             evidence: DescentEvidence::Strict,
             factor: None,
         },
-        CallPattern::CollectionShrinkCall { collection, .. } => LoweringTarget {
+        CallPattern::CollectionShrinkCall { collection, amount } => LoweringTarget {
             primitive: IterationPrimitive::Fold,
             bound: SizeBound::CollectionSize { param: collection },
             evidence: DescentEvidence::Strict,
-            factor: None,
+            factor: Some(ShrinkFactor::ConstantShrink { amount }),
         },
-        CallPattern::ArithmeticSubtractCall { param, .. } => LoweringTarget {
+        CallPattern::ArithmeticSubtractCall { param, by } => LoweringTarget {
             primitive: IterationPrimitive::Repeat,
             bound: SizeBound::ArithmeticParam { param },
             evidence: DescentEvidence::Strict,
-            factor: None,
+            factor: Some(ShrinkFactor::ConstantShrink { amount: by }),
         },
-        CallPattern::ArithmeticDivideCall { param, .. } => LoweringTarget {
+        CallPattern::ArithmeticDivideCall { param, by } => LoweringTarget {
             primitive: IterationPrimitive::Repeat,
             bound: SizeBound::ArithmeticParam { param },
             evidence: DescentEvidence::Strict,
-            factor: None,
+            factor: Some(ShrinkFactor::ProportionalShrink { divisor: by }),
         },
         CallPattern::ParserAdvanceCall { stream, .. } => LoweringTarget {
             primitive: IterationPrimitive::Fold,

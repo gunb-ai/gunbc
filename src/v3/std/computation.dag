@@ -92,20 +92,23 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
         bound: TreeSize { param: a },
         evidence: Strict, factor: none }
 
-    CollectionShrinkCall { collection: c, amount: _ } =>
+    CollectionShrinkCall { collection: c, amount: k } =>
       LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: c },
-        evidence: Strict, factor: none }
+        evidence: Strict,
+        factor: Some { value: ConstantShrink { amount: k } } }
 
-    ArithmeticSubtractCall { param: p, by: _ } =>
+    ArithmeticSubtractCall { param: p, by: k } =>
       LoweringTarget { primitive: Repeat,
         bound: ArithmeticParam { param: p },
-        evidence: Strict, factor: none }
+        evidence: Strict,
+        factor: Some { value: ConstantShrink { amount: k } } }
 
-    ArithmeticDivideCall { param: p, by: _ } =>
+    ArithmeticDivideCall { param: p, by: k } =>
       LoweringTarget { primitive: Repeat,
         bound: ArithmeticParam { param: p },
-        evidence: Strict, factor: none }
+        evidence: Strict,
+        factor: Some { value: ProportionalShrink { divisor: k } } }
 
     ParserAdvanceCall { stream: s, witness: _ } =>
       LoweringTarget { primitive: Fold,

@@ -5,7 +5,8 @@ use v3_compiler::dag::{
     join_evidence, lower_call_pattern, map_evidence_merge_at, merge_evidence,
     optional_evidence_meet, promote_to_strict, size_bound_param, tree_size_bound,
     type_iteration_dimension, AlgebraProfile, ArrowBody, CallPattern, DescentEvidence, FieldValue,
-    IterationDimension, IterationPrimitive, LoweringTarget, SizeBound, TypeConnective, ValueBody,
+    IterationDimension, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
+    TypeConnective, ValueBody,
 };
 use v3_compiler::parse_surface;
 use v3_compiler::Dag;
@@ -414,6 +415,7 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
     };
     use DescentEvidence::{NonIncreasing, Strict};
     use IterationPrimitive::{Descend, Fold, Repeat};
+    use ShrinkFactor::{ConstantShrink, ProportionalShrink};
     use SizeBound::{ArithmeticParam, CollectionSize, Forever, TreeSize};
 
     let cases = vec![
@@ -441,7 +443,7 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                     param: String::from("items"),
                 },
                 evidence: Strict,
-                factor: None,
+                factor: Some(ConstantShrink { amount: 1 }),
             },
         ),
         (
@@ -455,7 +457,7 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                     param: String::from("n"),
                 },
                 evidence: Strict,
-                factor: None,
+                factor: Some(ConstantShrink { amount: 1 }),
             },
         ),
         (
@@ -469,7 +471,7 @@ fn computation_lowering_rust_mirror_matches_dag_authority() {
                     param: String::from("k"),
                 },
                 evidence: Strict,
-                factor: None,
+                factor: Some(ProportionalShrink { divisor: 2 }),
             },
         ),
         (
