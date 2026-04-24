@@ -74,6 +74,16 @@ This section lists gate names + schema-compilability tags; full `TestClaim` decl
 
 **T-Demo scoping note.** All lanes ship features whole (no compromise per §Goals). T-Demo curates the R1 *narrative* — fixtures and impossible-bug demos selected for visceral audience impact, not exhaustive feature coverage. Audience curation is demo-scoping; feature shipment is lane-scoping.
 
+### Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures
+
+Day-1 PR #717 landed explicit `LensOutputEquals` dispatch and fixtures with **no inline `TODO` in code**: the items below are the authoritative schedule (T-LensAPI / compiler lowering / schema), not drive-by debt comments.
+
+1. **`eval_lens_output_equals` witness compile** (`src/v3/compiler/src/test_runner.rs`): remove the side `compile_to_dag(&claim.source, …)` once the runner performs real `LensOutputEquals` evaluation so compilation lives only on the apply/compare path. Until then the receipt is intentionally thin (trivial fixture `source`); a lowering failure can surface as `Fail` while the predicate is still runner-deferred.
+
+2. **Split fixture** (`src/v3/compiler/tests/fixtures/r1_lens_output_equals_gate.dag`): delete the file and fold its claim into `src/v3/compiler/tests/fixtures/r1_gates.dag` after same-TU lowering fixes `DeclarationRef` / `Int` resolution when `LensOutputEquals(Int, …)` shares a module with the large embedded `user_authored_lens_compiles_gate` `source` string. Cross-ref: **T-LensAPI**, **T-LaneE** lane acceptance (`LensOutputEquals` [ext]). Check: merged fixture + `cargo test -p v3-compiler` green, then remove the split file.
+
+3. **P2 parallel lens text** (`r1_gates.dag` + `m1_5_user_authored_lens_gate_test.rs` lockstep): remove the duplicated `TestClaim.source` mirror of `src/v3/lenses/named_function_count.dag` and delete the byte-identical ratchet test when a single authority exists (generated fixture splice, `TestClaim` / substrate path resolution for `source`, or runner-resolved lens `DeclarationRef` from the bootstrap DAG per INVARIANTS.md P2).
+
 ### Dependency DAG
 
 ```
