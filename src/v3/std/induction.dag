@@ -491,6 +491,10 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
 //
 // 🟢 TERMINAL coproduct at E-I exponent scope — negative roots, bases < 2, and non-positive
 // log arguments are not representable as inhabitants (only via the `Int` bridges above).
+//
+// E-P note (api-review): exponents intentionally reuse termination Peano carriers for now;
+// a later lane can swap degree/root/base slots to `std.types` bounded refinements once
+// refinement lowering is uniform across consumers (same story as `std.termination`).
 
 type PolynomialExponent
   = IntegerExpZero
