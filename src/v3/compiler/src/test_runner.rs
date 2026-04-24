@@ -243,6 +243,23 @@ impl<'a> TestRunner<'a> {
     }
 
     fn eval_algebraic_law(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
+        // Only `Associativity` is wired. Other `AlgebraicLawKind` variants are
+        // `NotYetImplemented` (runner cannot evaluate yet), not `Fail` (claim false).
+        let (law, _) = match algebraic_law_payload_fields(payload) {
+            Ok(parts) => parts,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        let (law_label, law_payload) = match variant_fields(self.dag, law) {
+            Ok(parts) => parts,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        if law_label != "Associativity" {
+            return ClaimResult::NotYetImplemented;
+        }
+        if !law_payload.is_empty() {
+            return ClaimResult::Fail("Associativity should be payload-free".to_string());
+        }
+
         let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(dag) => dag,
             Err(CompileError::Semantic(_)) => {

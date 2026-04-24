@@ -34,10 +34,12 @@ data sub_match_over_user_sum_gate: TestSuite = {
   claims: [sub_match_over_user_sum]
 }
 
-// Declaration anchor for `AlgebraicLaw` `lens_ref` — must share the same
-// declaration name as `lens_composition_op` in the `TestClaim.source` program
-// (see `src/v3/lenses/lens_composition_associative_witness.dag`); the runner
-// resolves by name inside the compiled claim program.
+// Naming stub for `DeclarationRef` resolution on `AlgebraicLaw(Associativity, lens_composition_op)`.
+// The runner resolves `lens_ref` by name from this fixture DAG, then looks up the same name in
+// the compiled `program_dag` (`TestClaim.source`). The stub body is unused at evaluation time —
+// only the name must stay synchronized with the witness module.
+// Dissolution trigger: once the runner resolves lens refs directly from `program_dag` without a
+// fixture-side stub, delete this declaration.
 fn lens_composition_op(a: Int, b: Int) -> Int = a + b
 
 data user_authored_lens_compiles_gate: TestClaim = {
