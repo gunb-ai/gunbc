@@ -98,7 +98,7 @@ hypotheses before committing to them.
 
 ### Lesson 3: "Construct-discard-reconstruct" is the root pattern
 
-The thesis and INVARIANTS.md:104 already named this pattern:
+The thesis and `INVARIANTS.md#p1-modeling-faithfulness` already name this pattern:
 
 > When the compiler compensates conservatively, the real fix is
 > usually to stop losing a fact, not to optimize the compensation.
@@ -375,8 +375,8 @@ at the usage site.
 
 The prior draft of this unification invented a "transition
 relation" type to replace the existing chain. That was the
-wrong framing per Codex review and INVARIANTS.md §Single
-authority. The right framing is: **the authorities already
+wrong framing per Codex review and `INVARIANTS.md#p2-boundary-discipline`
+single-authority discipline. The right framing is: **the authorities already
 exist; thread their outputs through the boundary so they can
 be composed downstream.**
 
