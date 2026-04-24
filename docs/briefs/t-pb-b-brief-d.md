@@ -1,6 +1,6 @@
 # T-PB-B — Brief D (parallel to T-PB-A)
 
-**Status:** pre-landing inventory + draft `TestClaim` fixtures.  
+**Status:** pre-landing inventory + draft `TestClaim` fixtures.
 **Authority:** Post-R2 residuals in `TESTING.md` (compiler-internal `#[cfg(test)]` under `src/v3/compiler/src/`; boundary tests invoking external toolchains). **Schema:** `src/v3/std/verification.dag` (`TestClaim`, `TestPredicate`, `requires: List<ResourceReference>`).
 
 **Gates (unchanged):** Do not remove or replace existing Rust integration tests as the source of truth. Do not assert `pb_test_file_generated_from_dag` or `pb_rust_tests_outside_residual_zero` until Testgen signals. Draft `.v3` / `.dag` modules here are **fixtures** for eventual runner wiring.
@@ -117,16 +117,16 @@ Unit modules under `tests/unit/` follow **residual A** when they test harness-on
 
 ## First-wave port ordering (when Testgen opens)
 
-1. Pure **D** rows: `Compiles` / `FailsWithDiagnostic` / `PortHasState` / `CostBounded` / `OutputEquals` aligned with existing Rust claims (`thesis_*` subsets, `m2_feature_parity` simple cases, `m1_5_verification`-style witnesses).  
-2. **D+G:** migrate after predicate extensions or non-tautological `BehavioralObservation` paths land.  
-3. **B:** keep subprocess in Rust; optional `TestClaim.requires` `ResourceReference` hooks when DB-15 materialization wires mocks/toolchains.  
+1. Pure **D** rows: `Compiles` / `FailsWithDiagnostic` / `PortHasState` / `CostBounded` / `OutputEquals` aligned with existing Rust claims (`thesis_*` subsets, `m2_feature_parity` simple cases, `m1_5_verification`-style witnesses).
+2. **D+G:** migrate after predicate extensions or non-tautological `BehavioralObservation` paths land.
+3. **B:** keep subprocess in Rust; optional `TestClaim.requires` `ResourceReference` hooks when DB-15 materialization wires mocks/toolchains.
 4. **A:** last — or never as user `.dag` claims; may become generated manifest + one shim.
 
 ---
 
 ## Related
 
-- `docs/briefs/r1-selfhosting-manager.md` — T-PB-B manager checklist.  
-- `TESTING.md` — Post-R2 residuals; one-claim-per-test discipline.  
-- `src/v3/std/verification.dag` — `TestClaim` / `TestPredicate` schema.  
+- `docs/briefs/r1-selfhosting-manager.md` — T-PB-B manager checklist.
+- `TESTING.md` — Post-R2 residuals; one-claim-per-test discipline.
+- `src/v3/std/verification.dag` — `TestClaim` / `TestPredicate` schema.
 - Fixtures: `src/v3/compiler/tests/fixtures/t_pb_b_brief_d/`.
