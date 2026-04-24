@@ -4,9 +4,8 @@ use crate::dag::{
 };
 use crate::diagnostics::Diagnostic;
 use crate::lens_apply::{
-    apply_lens_declaration, field_value_equal, field_value_from_value_body,
-    int_associativity_holds_all_triples, reflect_program_dag_nodes_in_file,
-    ASSOCIATIVITY_WITNESS_TRIPLES,
+    apply_lens_declaration, field_value_from_value_body, int_associativity_holds_all_triples,
+    reflect_program_dag_nodes_in_file, ASSOCIATIVITY_WITNESS_TRIPLES,
 };
 use crate::lens_cost::{cost_of, CostLookup};
 use crate::{compile_to_dag, CompileError};
@@ -466,7 +465,7 @@ impl<'a> TestRunner<'a> {
             }
         };
 
-        if field_value_equal(&computed, &expected_field) {
+        if computed == expected_field {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(

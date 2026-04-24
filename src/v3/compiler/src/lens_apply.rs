@@ -196,11 +196,6 @@ pub fn apply_lens_declaration(
     ctx.eval_port(root_bind.value)
 }
 
-/// Structural equality on the interpreter's [`FieldValue`] surface (T-LensAPI / D2).
-pub fn field_value_equal(lhs: &FieldValue, rhs: &FieldValue) -> bool {
-    lhs == rhs
-}
-
 /// Build a substrate-shaped `Dag` record (only `nodes` is populated faithfully) from a
 /// compiled program [`Dag`], for lenses like `named_function_count` that read `d.nodes`.
 ///
@@ -924,7 +919,7 @@ pub fn int_associativity_holds(
     let left = apply_lens_declaration(program_dag, lens_decl_id, &[left_ab, int(c)])?;
     let right_bc = apply_lens_declaration(program_dag, lens_decl_id, &[int(b), int(c)])?;
     let right = apply_lens_declaration(program_dag, lens_decl_id, &[int(a), right_bc])?;
-    Ok(field_value_equal(&left, &right))
+    Ok(left == right)
 }
 
 /// True iff [`int_associativity_holds`] succeeds for every triple in `triples`.
