@@ -15,9 +15,9 @@
 //! from a second file, because that pattern would require the lens in `Dag::new()`
 //! bootstrap, which this demo deliberately avoids.
 //!
-//! TODO(dissolve: P2 parallel copy): same trigger as `r1_gates.dag` — remove the
-//! ratchet once `TestClaim` can bind program text from a single authority without
-//! duplicating bytes in the hand-authored fixture.
+//! TODO(dissolve: P2 parallel copy): same triggers as `r1_gates.dag` header (generated /
+//! path-backed single authority, or runner-resolved lens via `DeclarationRef` from the
+//! bootstrap DAG — then delete this lockstep ratchet).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};

@@ -11,6 +11,10 @@
 // the lens file, or a `TestClaim` / substrate affordance that resolves `source` from
 // path without duplicating bytes in this hand-authored fixture).
 //
+// Dissolution: once the runner can resolve a lens declaration by reference from the
+// bootstrap DAG, the inline `source` string can be replaced by a direct `DeclarationRef`
+// edge and the lockstep test deleted.
+//
 // Integration test then `compile_to_dag`s the extracted `source` (runner-shaped
 // `Compiles` receipt). Payload is a standalone `module lenses.named_function_count`
 // unit (imports std only), not a consumer that imports this module from bootstrap.
