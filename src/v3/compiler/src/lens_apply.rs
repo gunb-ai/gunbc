@@ -33,8 +33,9 @@ fn is_fold_instantiation(dag: &Dag, decl: &Declaration) -> bool {
 /// (R1-certified step shape, or third `Transform` operand for the step so arity matches
 /// [`eval_std_fold`]) and delete this helper.
 fn fold_site_skips_d1_monomorph_list_fold_path(span: &SourceSpan) -> bool {
-    let f = span.file.as_str();
-    f.ends_with("std/algebra.dag") || f.ends_with(r"std\algebra.dag")
+    // `SourceSpan.file` is normalized to forward slashes in the lowering paths we exercise;
+    // do not guess Windows separators until a span fact proves backslashes appear here.
+    span.file.as_str().ends_with("std/algebra.dag")
 }
 
 const LENS_APPLY_TYPE_WALK_DEPTH: usize = 32;
@@ -277,43 +278,13 @@ pub fn field_value_from_value_body(
         ValueBody::Structural { fields } => {
             let mut out = Vec::with_capacity(fields.len());
             for (label, fv) in fields {
-                out.push((label.clone(), clone_field_value(fv)?));
+                out.push((label.clone(), fv.clone()));
             }
             Ok(FieldValue::Record(out))
         }
         ValueBody::Unparsed(_) => Err(LensApplyError::UnsupportedConstruct(
             "unparsed declaration value body",
         )),
-    }
-}
-
-fn clone_field_value(value: &FieldValue) -> Result<FieldValue, LensApplyError> {
-    match value {
-        FieldValue::Literal(bits) => Ok(FieldValue::Literal(bits.clone())),
-        FieldValue::Reference(id) => Ok(FieldValue::Reference(*id)),
-        FieldValue::Record(fields) => {
-            let mut out = Vec::with_capacity(fields.len());
-            for (label, fv) in fields {
-                out.push((label.clone(), clone_field_value(fv)?));
-            }
-            Ok(FieldValue::Record(out))
-        }
-        FieldValue::List(values) => Ok(FieldValue::List(
-            values
-                .iter()
-                .map(clone_field_value)
-                .collect::<Result<_, _>>()?,
-        )),
-        FieldValue::Variant {
-            constructor,
-            payload,
-        } => Ok(FieldValue::Variant {
-            constructor: *constructor,
-            payload: payload
-                .iter()
-                .map(clone_field_value)
-                .collect::<Result<_, _>>()?,
-        }),
     }
 }
 
