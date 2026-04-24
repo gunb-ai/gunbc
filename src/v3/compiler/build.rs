@@ -53,10 +53,6 @@
 //   `src/v3/compiler/src/lib.rs`, which boots from a clone that omits that staged
 //   fixture to avoid the duplicate-name path.
 //
-//   `r1_gates.dag` is intentionally omitted from `STAGED_FILES`: release-gate
-//   `TestClaim` declarations are runner inputs, not bootstrap std authorities
-//   seeded into every `Dag`.
-//
 // `bootstrap.rs` uses `include!(concat!(env!("OUT_DIR"), ...))` to
 // pull the arrays in. The `include_str!` calls inside the generated
 // files resolve at compile time against absolute paths, so the
@@ -199,7 +195,7 @@ fn main() {
     // `substrate_minimal` + `effects` before full `substrate` so `substrate.dag`
     // can import `WorkflowEffect` for reflected `lane2_workflow` without a
     // module cycle (`effects` still needs `PortId` / list primitives first).
-    let mut staged_entries = collect_dag_entries(
+    let staged_entries = collect_dag_entries(
         &std_dir,
         &[
             "list.dag",
@@ -208,12 +204,6 @@ fn main() {
             "substrate.dag",
         ],
     );
-    staged_entries.retain(|p| {
-        p.file_name()
-            .and_then(|s| s.to_str())
-            .map(|n| n != "r1_gates.dag")
-            .unwrap_or(true)
-    });
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
     let mut compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
     // `tokenize.dag` is SG-1 tokenizer authority consumed by `regen_tokenize`; it is

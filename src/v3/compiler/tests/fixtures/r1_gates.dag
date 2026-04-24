@@ -12,7 +12,20 @@
 
 module std.r1_gates
 
-import std.verification { TestClaim }
+import std.verification { Compiles, TestClaim, TestSuite }
+
+data sub_match_over_user_sum: TestClaim = {
+  name: "sub_match_over_user_sum",
+  source: "type Surface = Alpha | Beta\nfn classify(s: Surface) -> Int = match s { Alpha => 1, Beta => 2 }\n",
+  file_name: "r1_sub_match_over_user_sum.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data sub_match_over_user_sum_gate: TestSuite = {
+  name: "sub_match_over_user_sum_gate",
+  claims: [sub_match_over_user_sum]
+}
 
 data user_authored_lens_compiles_gate: TestClaim = {
   name: "user_authored_lens_compiles",
