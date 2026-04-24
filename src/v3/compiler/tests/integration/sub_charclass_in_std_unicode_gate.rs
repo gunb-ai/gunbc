@@ -17,15 +17,13 @@ fn sub_charclass_in_std_unicode_gate_unicode_dag_defines_char_class() {
     compile_to_dag(UNICODE_DAG, "dsl/std/unicode.dag")
         .unwrap_or_else(|e| panic!("unicode.dag should compile with CharClass: {e:?}"));
     assert!(
-        UNICODE_DAG.contains("type CharClass")
-            && UNICODE_DAG.contains("fn char_in_class"),
+        UNICODE_DAG.contains("type CharClass") && UNICODE_DAG.contains("fn char_in_class"),
         "expected `CharClass` sum + `char_in_class` predicate in std.unicode authority"
     );
 }
 
 #[test]
-fn sub_charclass_in_std_unicode_gate_generated_tokenizer_avoids_ascii_host_predicates(
-) {
+fn sub_charclass_in_std_unicode_gate_generated_tokenizer_avoids_ascii_host_predicates() {
     assert!(
         !TOKENIZE_GENERATED.contains("is_ascii_whitespace")
             && !TOKENIZE_GENERATED.contains("is_ascii_digit")

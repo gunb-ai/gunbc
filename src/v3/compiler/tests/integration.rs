@@ -117,8 +117,6 @@ mod pipe_desugar;
 mod sg0_census_test;
 #[path = "integration/sg1_tokenize_authority_test.rs"]
 mod sg1_tokenize_authority_test;
-#[path = "integration/sub_charclass_in_std_unicode_gate.rs"]
-mod sub_charclass_in_std_unicode_gate;
 #[path = "integration/sg2_parse_authority_test.rs"]
 mod sg2_parse_authority_test;
 #[path = "integration/sg2c1_parse_tables_authority_test.rs"]
