@@ -33,7 +33,6 @@
 module std.termination
 
 import std.algebra { Ordering }
-import std.types { PositiveInt }
 // NOTE: is_valid_proof lives in std.graph (graph algorithm needs SCC
 // primitives). Cannot re-export here (circular: termination → graph →
 // termination). Consumers import from std.graph directly.
@@ -132,7 +131,6 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 
 // Fail closed: strict descent cannot be fabricated from non-increase without
 // a separate structural witness.
-<<<<<<< HEAD
 //
 // 🟡 P5 BRIDGE. The name reads like unary promotion; the body only preserves
 // `Strict` / `NonIncreasing` and maps other positions to `DescentUnknown` — no
@@ -140,8 +138,6 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 // still call this symbol for historical wiring; dissolution: rename to something
 // like `evidence_passthrough_preserving_strict` (or delete call sites) once parser
 // progress threads `Strict` at the witness site without this hop.
-=======
->>>>>>> origin/e-c-branch
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   match evidence {
     NonIncreasing => NonIncreasing
@@ -201,7 +197,6 @@ type RankingDimension
   | TokenPosition { param: String }      // parser state.position
   | SetCardinality { param: String }     // |set| via remove
 
-<<<<<<< HEAD
 // 🟢 TERMINAL at descent-witness scope. Raw `Int` cannot carry shrink
 // evidence because zero and negative values are not descent witnesses.
 // This structural positive number makes invalid proof amounts unrepresentable.
@@ -274,15 +269,6 @@ fn proportional_divisor_from_int_at_least_two(k: Int) -> ProportionalDivisor? {
     }
   }
 }
-=======
-// 🟢 TERMINAL at descent-witness scope. Division only witnesses arithmetic
-// descent for factors >= 2. The v3 bootstrap currently erases alias `where`
-// refinements, so encode the boundary as a structural carrier and compose
-// values above two from the shared PositiveInt authority.
-type DivisionDescentFactor
-  = Two
-  | GreaterThanTwo { extra: PositiveInt }
->>>>>>> origin/e-c-branch
 
 // =========================================================================
 // Descent sources: HOW descent is witnessed at a call site
@@ -298,15 +284,9 @@ type DivisionDescentFactor
 //     an accessor result is provably smaller (subtree < tree).
 //   - ListShrink: skip(n) for n >= 1 produces a shorter list.
 //     Grounded in List algebra (|skip(n, l)| = max(0, |l| - n)).
-<<<<<<< HEAD
 //   - ArithmeticSubtractDescent: subtract k for k >= 1 (structural witness).
 //   - ArithmeticDivideDescent: divide by d for d >= 2 (structural divisor).
 //     Grounded in OrderedRing (subtract decreases; proportional division too).
-=======
-//   - ArithmeticSubtract: n-k for k >= 1.
-//   - ArithmeticDivide: n/k for k >= 2.
-//     Grounded in OrderedRing (subtract decreases, division too).
->>>>>>> origin/e-c-branch
 //   - ParserAdvance: advance/expect/eat move position forward.
 //     Grounded in ParserState contract (position is monotonic).
 //   - SetRemoval: removing an element from a finite set.
@@ -317,15 +297,9 @@ type DivisionDescentFactor
 // identity. When .dag supports function references, these should become structural.
 type DescentSource
   = ChildAccessor { accessor: String }         // e.g., "binop_left"
-<<<<<<< HEAD
   | ListShrink { amount: PositiveDescentAmount } // skip(amount), amount >= 1
   | ArithmeticSubtractDescent { steps: PositiveDescentAmount }
   | ArithmeticDivideDescent { divisor: ProportionalDivisor }
-=======
-  | ListShrink { amount: PositiveInt }         // skip(amount), amount >= 1
-  | ArithmeticSubtract { by: PositiveInt }     // n - by, by >= 1
-  | ArithmeticDivide { by: DivisionDescentFactor } // n / by, by >= 2
->>>>>>> origin/e-c-branch
   | ParserAdvance { witness: String }          // "advance", "expect", "eat"
   | SetRemoval { element: String }             // set remove in work-list drain
   | FoldIteration                              // body of fold — bounded by |collection|

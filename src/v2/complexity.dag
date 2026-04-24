@@ -25,18 +25,11 @@ import v2.compiler.parse {
 import std.termination {
   DescentEvidence, Strict, NonIncreasing, DescentUnknown,
   RankingDimension, TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality,
-<<<<<<< HEAD
   DescentSource, ChildAccessor, ListShrink, ArithmeticSubtractDescent, ArithmeticDivideDescent, ParserAdvance, SetRemoval, FoldIteration,
   TerminationProof, ProofEdge,
   merge_evidence, join_evidence, evidence_rank, promote_to_strict,
   optional_evidence_meet, map_evidence_merge_at,
   OneStep
-=======
-  DescentSource, ChildAccessor, ListShrink, ArithmeticSubtract, ArithmeticDivide, ParserAdvance, SetRemoval, FoldIteration,
-  TerminationProof, ProofEdge,
-  merge_evidence, join_evidence, evidence_rank,
-  optional_evidence_meet, map_evidence_merge_at
->>>>>>> origin/e-c-branch
 }
 import std.computation {
   CallPattern,

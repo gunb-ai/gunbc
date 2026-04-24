@@ -1,10 +1,6 @@
 # Substrate Carrier Port Program
 
-<<<<<<< HEAD
-**Status:** Execution started. Lanes **E-T**, **E-C**, and **E-I** have landed their **carrier surfaces** in `src/v3/std/{termination,computation,induction}.dag` (bootstrap mirrors of `dsl/std/*`). **Remaining** program work is **E-P** (per-call evidence producers), **E-M** (`MethodSemantics` port-or-subsume), and the non-carrier grammar/emit items the lens register lists for full `BEHAVIORALLY COMPLETE` on cost/complexity — not staging the E-I types themselves.
-=======
-**Status:** Execution started. Lane E-T landed 2026-04-24 via PR #682; Lane E-C staged on an e-c-branch merge of main; remaining lanes stay queued in dependency order.
->>>>>>> origin/e-c-branch
+**Status:** Execution started. Lane **E-T** landed 2026-04-24 (PR #682). Lanes **E-C** and **E-I** have landed their **carrier surfaces** in `src/v3/std/{computation,induction}.dag` (and E-T in `termination.dag`), bootstrap mirrors of `dsl/std/*`. **E-C** integration also tracks `e-c-branch` merges of `main`. **Remaining** program work is **E-P** (per-call evidence producers), **E-M** (`MethodSemantics` port-or-subsume), and the non-carrier grammar/emit items the lens register lists for full `BEHAVIORALLY COMPLETE` on cost/complexity — not staging the E-I types themselves.
 **Scope:** Program-of-work scoping for porting v2's `DescentEvidence` / `CallPattern` / `SubValueRelation` / `MethodSemantics` carrier families into the v3 substrate so that v3 lenses over termination, cost, and method dispatch can reach `BEHAVIORALLY COMPLETE` per `docs/v3-lens-capability-register.md`.
 **Remaining scope:** no lens migrations in E-T; remaining carrier families stay separate lane placeholders below.
 
@@ -23,11 +19,7 @@ Full inventories (names only — read source files for shapes):
 **`dsl/std/termination.dag` (355L)** — proof-theory for well-founded descent.
 - `DescentEvidence = Strict | NonIncreasing | DescentUnknown` (+ lattice fns `merge_evidence`, `join_evidence`, `promote_to_strict`, `evidence_rank`, `optional_evidence_meet`, `map_evidence_merge_at`).
 - `RankingDimension = TreeSize | ListLength | ArithmeticValue | TokenPosition | SetCardinality` (each wraps `param: String`).
-<<<<<<< HEAD
 - `DescentSource = ChildAccessor | ListShrink | ArithmeticSubtractDescent | ArithmeticDivideDescent | ParserAdvance | SetRemoval | FoldIteration`.
-=======
-- `DescentSource = ChildAccessor | ListShrink | ArithmeticSubtract | ArithmeticDivide | ParserAdvance | SetRemoval | FoldIteration`.
->>>>>>> origin/e-c-branch
 - `TerminationProof { dimensions: List<RankingDimension> }`, `ProofEdge { caller, callee, evidence: List<DescentEvidence> }`.
 
 **`dsl/std/computation.dag` (384L)** — syntax-to-primitive lowering table.
@@ -64,8 +56,8 @@ For each family: **Shape** (sum/product/record/constraint) · **Consumers** (v2 
 
 ### 3.2 Family C — `CallPattern` + lowering (`computation.dag`)
 
-- **Scope note.** The subtract/divide split and the refined-authority reuse land on the v3 side only (`src/v3/std/computation.dag`); v2's authored surface continues to construct `ArithmeticDescentCall { op: "subtract", by: 1 }` in `src/v2/complexity.dag` until a later lane revisits `dsl/std/computation.dag`. "No String `op` tag is authored" describes the v3 carrier, not v2's.
-- **Shape.** `CallPattern` is an 8-variant flat coproduct; amount-carrying variants reuse the shared `std.types::PositiveInt` and `std.termination::DivisionDescentFactor` authorities instead of raw `Int`, and the arithmetic cases split into `ArithmeticSubtractCall { by: PositiveInt }` / `ArithmeticDivideCall { by: DivisionDescentFactor }` (mirroring `DescentSource::ArithmeticSubtract` / `ArithmeticDivide`) so zero / negative / divide-by-one witnesses are unrepresentable and no String `op` tag is authored. `SizeBound` 5-variant flat. `IterationPrimitive` 3-variant pure enum. `LoweringTarget` is a record over the above plus `DescentEvidence` + `ShrinkFactor?` (with `ConstantShrink { amount: PositiveInt }` / `ProportionalShrink { divisor: DivisionDescentFactor }`). `IterationDimension` 3-variant pure enum. `lower_call_pattern` is a pure total function — one match, no recursion.
+- **Scope note.** The subtract/divide split and Peano shrink witnesses land on the v3 side (`src/v3/std/computation.dag` aligned with `std.termination`); v2's authored surface continues to pattern-match `CallPattern` / `DescentSource` variants in `src/v2/complexity.dag` against the `dsl/std/*` mirrors until a later lane revisits cross-file naming. "No String `op` tag is authored" describes the v3 carrier, not v2's.
+- **Shape.** `CallPattern` is a flat coproduct; amount-carrying variants reuse `std.termination::PositiveDescentAmount` and `ProportionalDivisor` (Peano-style witnesses), mirroring `DescentSource::ListShrink` / `ArithmeticSubtractDescent` / `ArithmeticDivideDescent`, so non-positive steps and divide-by-one are unrepresentable. `SizeBound` 5-variant flat (`ExplicitCount` still carries `Int` on the v3 mirror today). `IterationPrimitive` 3-variant pure enum. `LoweringTarget` bundles `DescentEvidence` + optional `ShrinkFactor` (`ConstantShrink` / `ProportionalShrink` use the same Peano carriers). `IterationDimension` 3-variant pure enum. `lower_call_pattern` is a pure total function — one match, no recursion.
 - **Consumers.** v2: complexity/cost derivation of asymptotic class. v3 promotions: `cost.dag` gains the "which primitive, which bound" fact for each self-call; pairs with family T to give `complexity.dag` the recurrence form.
 - **Dependencies.** `CallPattern` depends on nothing beyond its own file. `LoweringTarget` depends on family T (`DescentEvidence`). `ShrinkFactor` currently lives in `computation.dag` but is used by family I — see `induction.dag:147` comment explaining the move to break a circular import. Keep the placement (`ShrinkFactor` stays in computation).
 - **Blockers.** None structural. Port target same routing call as family T.
@@ -112,13 +104,8 @@ Each lane closes with a receipt per `docs/v3-lens-capability-register.md § Disc
 | Lane | Register rows that move | Behavioral axis | Cementing test |
 |---|---|---|---|
 | T | — (no direct lens depends on T alone) | `complexity.dag` / `cost.dag` partial progress | Staged 2026-04-23 in PR #682: `src/v3/std/termination.dag` bootstraps `DescentEvidence`, `RankingDimension`, `DescentSource`, `TerminationProof`, `ProofEdge`, and lattice helpers; `m2_substrate_inhabitance_test` covers bootstrap shape + lattice mirror behavior. |
-<<<<<<< HEAD
 | C | `cost.dag` begins PROXY → partial | PROXY still, but "What v2 has that v3 drops" column shrinks | `src/v3/std/computation.dag` bootstraps `SizeBound`, `CallPattern`, `ShrinkFactor`, `IterationPrimitive`, `LoweringTarget`, `IterationDimension`, and lowering helpers; `m2_substrate_inhabitance_test` covers bootstrap shape + `lower_call_pattern` / bound-helper behavior. Full cost/complexity parity still waits on **E-P** per-call producers (not on E-I carrier presence). |
 | I | types ported; no lens row moves yet — producer still missing | PROXY still (pending E-P) | **Landed:** `src/v3/std/induction.dag` bootstraps `SubValueRelation`, `InductiveField`, `RecursionShape`, `CostBound` (+ lattice + master-theorem surface); `m2_substrate_inhabitance_test` and `e_i_lane_induction_preflight_test` pin the carrier shape. Lens rows still wait on **E-P** to attach per-call evidence. |
-=======
-| C | `cost.dag` begins PROXY → partial | PROXY still, but "What v2 has that v3 drops" column shrinks | Staged on e-c-branch (post-#682 merge): `src/v3/std/computation.dag` bootstraps `SizeBound`, `CallPattern`, `ShrinkFactor`, `IterationPrimitive`, `LoweringTarget`, `IterationDimension`, and lowering helpers; `m2_substrate_inhabitance_test` covers bootstrap shape + `lower_call_pattern` / bound-helper behavior. Full cost/complexity parity still waits on E-I/E-P producers. |
-| I | types ported; no lens row moves yet — producer still missing | PROXY still (pending E-P) | carrier round-trip tests only |
->>>>>>> origin/e-c-branch
 | P | `complexity.dag` / `cost.dag` advance on the non-method-dispatch slice; "What v2 has that v3 drops" column shrinks to `MethodSemantics` + grammar/emit items | PROXY still (pending E-M for method-dispatch) | v2-oracle-vs-v3 per-call descent-evidence golden for non-method-dispatch inputs |
 | M | either a ported `MethodSemantics` surface (M-a) or a register footnote explaining v3's structural subsumption (M-b). Closes carrier-parity for `complexity.dag` / `cost.dag`. Full `BEHAVIORALLY COMPLETE` still requires `cost.dag`'s separate non-carrier blockers to clear (`Dimension<SymbolicCost>` wiring deferred on grammar/data-body gaps per the register; named `SizeVariable` with v2's value semantics). Those live outside this program. | carrier-parity column goes to N/A; the remaining `cost.dag` drop-list lives on after E-M | design receipt (M-b) or cementing test covering method-dispatch (M-a) |
 

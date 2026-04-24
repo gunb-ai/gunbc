@@ -5,11 +5,6 @@
 
 module std.termination
 
-<<<<<<< HEAD
-=======
-import std.types { PositiveInt }
-
->>>>>>> origin/e-c-branch
 // At each recursive call edge, a ranking dimension either strictly decreases,
 // does not increase, or is unknown. The lattice ordering is:
 // DescentUnknown < NonIncreasing < Strict.
@@ -61,14 +56,11 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
 
 // Fail closed: strict descent cannot be fabricated from non-increase without
 // a separate structural witness.
-<<<<<<< HEAD
 //
 // 🟡 P5 BRIDGE. Name reads like unary promotion; body is fail-closed (see `dsl` mirror).
 // Parser-progress in `v2.compiler.complexity` still references this symbol;
 // dissolution: rename (e.g. `evidence_passthrough_preserving_strict`) or delete
 // call sites when witness threading no longer needs this hop.
-=======
->>>>>>> origin/e-c-branch
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   match evidence {
     NonIncreasing => NonIncreasing
@@ -108,7 +100,6 @@ type RankingDimension
   | TokenPosition { param: String }
   | SetCardinality { param: String }
 
-<<<<<<< HEAD
 // 🟢 TERMINAL at descent-witness scope. Raw `Int` cannot carry shrink
 // evidence because zero and negative values are not descent witnesses.
 //
@@ -176,15 +167,6 @@ fn proportional_divisor_from_int_at_least_two(k: Int) -> ProportionalDivisor? {
     }
   }
 }
-=======
-// 🟢 TERMINAL at descent-witness scope. Division witnesses need a factor of at
-// least two. The current bootstrap does not preserve alias `where` refinements
-// in generated mirrors, so model the `>= 2` boundary structurally and compose
-// the "more than two" case from the shared PositiveInt authority.
-type DivisionDescentFactor
-  = Two
-  | GreaterThanTwo { extra: PositiveInt }
->>>>>>> origin/e-c-branch
 
 // Concrete code pattern that witnesses descent for a ranking dimension.
 // Bootstrap constraint: name-like payloads are Strings until function and
@@ -194,15 +176,9 @@ type DivisionDescentFactor
 // are first-class substrate values instead of names.
 type DescentSource
   = ChildAccessor { accessor: String }
-<<<<<<< HEAD
   | ListShrink { amount: PositiveDescentAmount }
   | ArithmeticSubtractDescent { steps: PositiveDescentAmount }
   | ArithmeticDivideDescent { divisor: ProportionalDivisor }
-=======
-  | ListShrink { amount: PositiveInt }
-  | ArithmeticSubtract { by: PositiveInt }
-  | ArithmeticDivide { by: DivisionDescentFactor }
->>>>>>> origin/e-c-branch
   | ParserAdvance { witness: String }
   | SetRemoval { element: String }
   | FoldIteration

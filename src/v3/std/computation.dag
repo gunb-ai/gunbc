@@ -6,16 +6,11 @@
 
 module std.computation
 
-<<<<<<< HEAD
 import std.termination {
   DescentEvidence, DescentUnknown, Strict, NonIncreasing,
   PositiveDescentAmount, OneStep, AdditionalStep,
   ProportionalDivisor, DivideByTwo, StrictlyLarger
 }
-=======
-import std.termination { DescentEvidence, DivisionDescentFactor }
-import std.types { NonNegativeInt, PositiveInt }
->>>>>>> origin/e-c-branch
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
@@ -24,32 +19,20 @@ import std.algebra {
   kernel_algebra_profile
 }
 
-<<<<<<< HEAD
 // 🟡 MIXED coproduct — E-C `SizeBound` carrier (five-way flat sum). Dissolution: collapse
 // `param: String` symbolic slots to structural size-parameter refs; `ExplicitCount` /
 // `Forever` remain terminal finite-bound atoms (no String bridge).
-=======
-// 🟡 SCAFFOLD. The five size regimes are durable, but the `param: String`
-// payload mirrors the same first-class-reference bridge as
-// `std.termination::RankingDimension` and dissolves when function parameters
-// and field accessors are substrate references rather than names.
->>>>>>> origin/e-c-branch
 type SizeBound
   = CollectionSize { param: String }
   | TreeSize { param: String }
   | ArithmeticParam { param: String }
-<<<<<<< HEAD
   | ExplicitCount { n: Int }
-=======
-  | ExplicitCount { n: NonNegativeInt }
->>>>>>> origin/e-c-branch
   | Forever
 
 fn tree_size_bound(param: String) -> SizeBound {
   TreeSize { param: param }
 }
 
-<<<<<<< HEAD
 fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
   match steps {
     OneStep => 1
@@ -79,60 +62,13 @@ type ShrinkFactor
 
 // 🟢 TERMINAL coproduct — `Fold` | `Descend` | `Repeat` lowering enum (Lane E-C). Dissolution:
 // none (kept in lockstep with `std.iteration` primitives).
-=======
-// 🟡 SCAFFOLD. Call-site classifier mirroring `DescentSource`. The variant
-// taxonomy is durable for E-C, but String payloads (`accessor`, `op`,
-// `witness`, `element`) and the carrier itself dissolve once E-I/E-P land
-// per-call provenance — at which point `CallPattern` becomes a projection
-// of `SubValueRelation` evidence rather than an authored shape.
-// Every descent-carrying variant also carries the source parameter name it
-// descends over, so `lower_call_pattern` can project it into the
-// `SizeBound.param` slot instead of fabricating a canned string. (The name
-// remains a `String` bootstrap bridge mirroring `RankingDimension.param`;
-// it dissolves with the same first-class-reference wave.)
-// Arithmetic descent is split across subtract/divide so the refinement on
-// each operator (subtract by >= 1, divide by >= 2) is representable at the
-// carrier, mirroring `std.termination::DescentSource::ArithmeticSubtract /
-// ArithmeticDivide`. No String `op` tag is authored — the variant is the op.
-type CallPattern
-  = ChildAccessorCall { accessor: String }
-  | CollectionShrinkCall { collection: String, amount: PositiveInt }
-  | ArithmeticSubtractCall { param: String, by: PositiveInt }
-  | ArithmeticDivideCall { param: String, by: DivisionDescentFactor }
-  | ParserAdvanceCall { stream: String, witness: String }
-  | WorklistDrainCall { worklist: String, element: String }
-  | FoldBodyCall { outer_collection: String }
-  | SameArgumentCall
-
-// 🟢 TERMINAL at shrink-factor scope. Closed algebra of how a ranking
-// measure decreases per call edge: by one, by a constant, or by a divisor.
-// No further refinement is owed at the carrier layer. Amounts and divisors
-// reuse the shared `PositiveInt` / `DivisionDescentFactor` authorities so
-// zero / negative / divide-by-one witnesses are unrepresentable.
-type ShrinkFactor
-  = UnitShrink
-  | ConstantShrink { amount: PositiveInt }
-  | ProportionalShrink { divisor: DivisionDescentFactor }
-
-// 🟢 TERMINAL. The three iteration primitives are the closed alphabet of
-// the behavioral concept DAG (fold / descend / repeat); see MODELING.md M9.
-// All higher-level computation desugars onto these three.
->>>>>>> origin/e-c-branch
 type IterationPrimitive
   = Fold
   | Descend
   | Repeat
 
-<<<<<<< HEAD
 // 🟡 MIXED record — product of the coproduct carriers above (not a coproduct itself).
 // Dissolution inherits from `SizeBound` / `CallPattern` / optional `ShrinkFactor` String bridges.
-=======
-// 🟡 SCAFFOLD aggregate. `LoweringTarget` bundles the carriers above into a
-// per-call staging record consumed by the E-C Rust mirror until E-I/E-P
-// produce the same record from per-call provenance lenses; at that point
-// this struct dissolves into the lens query and the field set is recovered
-// structurally, not authored.
->>>>>>> origin/e-c-branch
 type LoweringTarget {
   primitive: IterationPrimitive
   bound: SizeBound
@@ -140,14 +76,11 @@ type LoweringTarget {
   factor: ShrinkFactor?
 }
 
-<<<<<<< HEAD
 // `lower_call_pattern` fills `SizeBound.param` with **synthetic** labels
 // (`"collection"`, `"n"`, `"tokens"`, `"worklist"`, `"outer_collection"`) — not
 // reflective IR parameter names. They exist only so `LoweringTarget` has a
 // well-shaped `SizeBound` shell until `CallPattern` / lowering carries structural
 // size-parameter refs; dissolution replaces these literals with real param refs.
-=======
->>>>>>> origin/e-c-branch
 fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
   match pattern {
     ChildAccessorCall { accessor: a } =>
@@ -155,7 +88,6 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
         bound: TreeSize { param: a },
         evidence: Strict, factor: none }
 
-<<<<<<< HEAD
     CollectionShrinkCall { amount: p } =>
       LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: "collection" },
@@ -187,39 +119,6 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
     FoldBodyCall =>
       LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: "outer_collection" },
-=======
-    CollectionShrinkCall { collection: c, amount: k } =>
-      LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: c },
-        evidence: Strict,
-        factor: Some { value: ConstantShrink { amount: k } } }
-
-    ArithmeticSubtractCall { param: p, by: k } =>
-      LoweringTarget { primitive: Repeat,
-        bound: ArithmeticParam { param: p },
-        evidence: Strict,
-        factor: Some { value: ConstantShrink { amount: k } } }
-
-    ArithmeticDivideCall { param: p, by: k } =>
-      LoweringTarget { primitive: Repeat,
-        bound: ArithmeticParam { param: p },
-        evidence: Strict,
-        factor: Some { value: ProportionalShrink { divisor: k } } }
-
-    ParserAdvanceCall { stream: s, witness: _ } =>
-      LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: s },
-        evidence: Strict, factor: none }
-
-    WorklistDrainCall { worklist: w, element: _ } =>
-      LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: w },
-        evidence: Strict, factor: none }
-
-    FoldBodyCall { outer_collection: oc } =>
-      LoweringTarget { primitive: Fold,
-        bound: CollectionSize { param: oc },
->>>>>>> origin/e-c-branch
         evidence: NonIncreasing, factor: none }
 
     SameArgumentCall =>
@@ -239,13 +138,6 @@ fn size_bound_param(bound: SizeBound) -> String? {
   }
 }
 
-<<<<<<< HEAD
-=======
-// `Forever` is "constant" in the sense that it collapses to a fixed
-// constant-cost COEFFICIENT in the size/cost algebra — *not* that it carries
-// a finite runtime iteration count. See `constant_bound_value` for the
-// coefficient projection.
->>>>>>> origin/e-c-branch
 fn is_constant_bound(bound: SizeBound) -> Bool {
   match bound {
     ExplicitCount { n: _ } => true
@@ -254,7 +146,6 @@ fn is_constant_bound(bound: SizeBound) -> Bool {
   }
 }
 
-<<<<<<< HEAD
 // Signed `Int` top iterate count (`i64::MAX`); matches `repeat(max_int)` cap.
 fn forever_iteration_bound() -> Int { 9223372036854775807 }
 
@@ -263,26 +154,10 @@ fn constant_bound_value(bound: SizeBound) -> Int? {
   match bound {
     ExplicitCount { n: count } => Some { value: count }
     Forever                    => Some { value: forever_iteration_bound() }
-=======
-// Returns the constant VALUE only for `SizeBound` variants that carry one
-// directly, and the constant-cost COEFFICIENT for `Forever`. Non-constant
-// bounds map to `none` rather than fabricating 0. Pair with
-// `is_constant_bound` at the call site if a Bool guard is needed.
-//
-// `Forever => Some(1)` is the O(1) constant-cost coefficient for the
-// size/cost algebra (SameArgumentCall → Repeat(Forever) collapses to a
-// single-unit cost projection per v2's `dsl/std/computation.dag:269-275`).
-// It is NOT a claim that `Forever` represents a finite iteration count of 1.
-fn constant_bound_value(bound: SizeBound) -> Int? {
-  match bound {
-    ExplicitCount { n: count } => Some { value: count }
-    Forever                    => Some { value: 1 }
->>>>>>> origin/e-c-branch
     _                          => none
   }
 }
 
-<<<<<<< HEAD
 // =========================================================================
 // Type-directed iteration dimension (Lane E-C): algebra profile → bound kind
 // =========================================================================
@@ -293,15 +168,6 @@ type IterationDimension
   = TreeDescent       // child accessor / tree-size descent
   | CollectionFold    // collection-sized iteration (list, set, map keys, …)
   | ArithmeticRepeat   // arithmetic-param / ordered-ring repeat bounds
-=======
-// 🟢 TERMINAL. Projection of the algebra-profile table into the three
-// iteration regimes. Closed alongside `IterationPrimitive`; new dimensions
-// would have to land via a new algebra profile, not a new variant here.
-type IterationDimension
-  = TreeDescent
-  | CollectionFold
-  | ArithmeticRepeat
->>>>>>> origin/e-c-branch
 
 fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? {
   match profile {
