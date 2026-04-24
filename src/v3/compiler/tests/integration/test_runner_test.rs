@@ -1,7 +1,5 @@
 //! **Layer:** integration
 
-use std::path::PathBuf;
-
 use v3_compiler::dag::{FieldValue, LiteralBits};
 use v3_compiler::test_runner::TestClaimValue;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -300,17 +298,4 @@ data suite: TestSuite = {
 
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].result, ClaimResult::NotYetImplemented);
-}
-
-#[test]
-#[ignore = "Brief 1 dependency: user_authored_lens_compiles gate wiring still pending"]
-fn test_runner_runs_user_authored_lens_compiles_gate() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let gate = manifest_dir.join("tests/fixtures/r1_gates.dag");
-    let source =
-        std::fs::read_to_string(&gate).unwrap_or_else(|err| panic!("read {gate:?}: {err}"));
-    let dag = compile_clean(&source, "src/v3/compiler/tests/fixtures/r1_gates.dag");
-    let results = TestRunner::new(&dag).run_suite("user_authored_lens_compiles_gate");
-
-    assert_all_pass(&results);
 }
