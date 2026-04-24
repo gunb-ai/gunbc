@@ -1,4 +1,6 @@
-// std.r1_gates - Day-1 R1 gate declarations (integration-test fixture).
+// R1 gate declarations (integration-test fixture; top-level so `std.types` imports
+// resolve the same way as other `compile_to_dag` harnesses — a `module std.r1_gates`
+// wrapper breaks `DeclarationRef` edges to `Int` in `LensOutputEquals` today).
 //
 // `TestClaim.source` is the full user lens program text (same bytes as
 // `src/v3/lenses/named_function_count.dag`); `m1_5_user_authored_lens_gate_test`
@@ -15,10 +17,7 @@
 // Lives under `src/v3/compiler/tests/fixtures/` so it is **not** auto-staged
 // into `Dag::new()` bootstrap (`src/v3/std/*.dag` is build-script enumerated).
 
-module std.r1_gates
-
 import std.verification { TestClaim, TestSuite }
-import std.types { Int }
 import std.list { List, empty, fold }
 import std.substrate { Dag, Behavior, Declaration, DagPort, Cluster }
 
@@ -52,15 +51,16 @@ let lens_query_empty_dag: Dag = {
 
 data lens_query_expected_named_fn_count: Int = 0
 
+// `lens_ref` points at the substrate `Dag` type declaration until inference
+// accepts callable declarations in `LensOutputEquals` positions (fn refs
+// currently trip a `DeclarationRef` vs `Int` template conflict). The
+// fixture-local `named_function_count` lens remains for documentation and
+// future wiring.
 let lens_output_equals_named_function_count_gate: TestClaim = {
   name: "lens_output_equals_named_function_count",
   source: "let _: Int = 0\n",
   file_name: "r1_lens_output_placeholder.v3",
-  // `lens_ref` uses the `Int` type declaration until inference accepts callable
-  // declarations in `LensOutputEquals` positions (fn refs currently trip
-  // `DeclarationRef` vs `Int` template conflict). `named_function_count` remains
-  // the fixture-local lens implementation for documentation and future wiring.
-  predicate: LensOutputEquals(Int, lens_query_empty_dag, lens_query_expected_named_fn_count),
+  predicate: LensOutputEquals(Dag, lens_query_empty_dag, lens_query_expected_named_fn_count),
   requires: []
 }
 
