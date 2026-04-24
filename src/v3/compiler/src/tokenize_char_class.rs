@@ -40,10 +40,14 @@ pub(crate) fn byte_matches(byte: u8, class: TokenizerCharClass) -> bool {
         TokenizerCharClass::IdentStart => {
             (65..=90).contains(&cp) || (97..=122).contains(&cp) || cp == 95
         }
-        // Same predicate as `std.unicode::char_in_class` / `IdentContinue`: digit ∪ ident-start.
+        // Match `unicode.dag` `IdentContinue` arm shape: inline digit range (same
+        // as `Digit`), then letter/underscore — no `byte_matches` self-call so
+        // the mirror stays line-aligned with the `.dag` CX choice.
         TokenizerCharClass::IdentContinue => {
-            byte_matches(byte, TokenizerCharClass::Digit)
-                || byte_matches(byte, TokenizerCharClass::IdentStart)
+            (48..=57).contains(&cp)
+                || (65..=90).contains(&cp)
+                || (97..=122).contains(&cp)
+                || cp == 95
         }
     }
 }
