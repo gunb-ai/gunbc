@@ -4136,13 +4136,11 @@ impl<'a> Ctx<'a> {
                         consumer.inputs.len()
                     )));
                 }
-                let arg = self.elide_explicit_borrow(
-                    &self.render_input_use(
-                        InputConsumer::Transform(consumer),
-                        InputSlot::Positional(0),
-                        locals,
-                    )?,
-                );
+                let arg = self.elide_explicit_borrow(&self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(0),
+                    locals,
+                )?);
                 return Ok(format!("Lookup::Hit({arg})"));
             }
         }
