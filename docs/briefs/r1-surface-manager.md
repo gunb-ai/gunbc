@@ -150,7 +150,7 @@ Decisions log (append as they happen):
 
 - `2026-04-23` — T-P0 reclassified from dispatchable R1 work to already-landed
   closure on current ancestry after direct source audit (`dsl/std/render.dag`,
-  `src/v2/tests/src/effects.rs`, `dsl/std/types.dag`,
+  `src/v2/tests/src/effects.rs`,
   `src/v2/tests/src/bug_sentinel_ratchet.rs`). Keep the lane in the brief only
   as an enabling receipt for downstream R1 work.
 
