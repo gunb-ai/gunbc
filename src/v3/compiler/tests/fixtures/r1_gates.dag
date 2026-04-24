@@ -18,7 +18,7 @@
 module std.r1_gates
 
 import std.verification { TestClaim, TestSuite }
-import std.types { Int, Bool }
+import std.types { Int }
 import std.list { List, empty, fold }
 import std.substrate { Dag, Behavior, Declaration, DagPort, Cluster }
 
@@ -50,11 +50,13 @@ let lens_query_empty_dag: Dag = {
   clusters: empty_clusters
 }
 
+data lens_query_expected_named_fn_count: Int = 0
+
 let lens_output_equals_named_function_count_gate: TestClaim = {
   name: "lens_output_equals_named_function_count",
   source: "let _: Int = 0\n",
   file_name: "r1_lens_output_placeholder.v3",
-  predicate: MockBackedInvariant(Int, Bool),
+  predicate: LensOutputEquals(named_function_count, lens_query_empty_dag, lens_query_expected_named_fn_count),
   requires: []
 }
 
