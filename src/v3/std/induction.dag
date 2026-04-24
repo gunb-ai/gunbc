@@ -75,7 +75,8 @@ import std.termination {
   ProportionalDivisor, DivideByTwo, StrictlyLarger,
   proportional_divisor_to_int,
   positive_descent_amount_from_positive_int,
-  proportional_divisor_from_int_at_least_two
+  proportional_divisor_from_int_at_least_two,
+  peano_literal_materialization_cap
 }
 import std.computation {
   CallPattern, ChildAccessorCall, FoldBodyCall, SameArgumentCall,
@@ -681,7 +682,7 @@ fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
 // P4 / P3 (cost-algebra boundary): `work_exponent` stays typed as `Int` while recurrence inputs
 // are a bootstrap scaffold, but **`bounded_int_pow_exponent`** is the single authority gate:
 // `master_theorem` and `int_pow_bounded` route raw exponents through it **before** any `b^d`
-// recursion — same closed `[0, 256]` as `std.termination` Peano literal bridges (M9).
+// recursion — same closed `[0, peano_literal_materialization_cap()]` as `std.termination` (M9).
 // Oversized / negative → `none` / `ErrorBound` (no raw `*` on the power path; see `int_mul_checked`).
 //
 // 🟡 SCAFFOLD. Master-theorem input bundles a symbolic `param: String` with `Int` recurrence
@@ -748,12 +749,15 @@ fn int_mul_checked(a: Int, b: Int) -> Int? {
 }
 
 // P4 / E-I (numeric boundary): sole gate from raw `Int` exponents / recurrence work degree into
-// `int_pow_bounded`'s recursive core. Same closed interval [0, 256] as Peano literal bridges in
-// `std.termination` (M9). Reject **before** any power recursion; do not hand `exp` to the
+// `int_pow_bounded`'s recursive core. Upper bound is `peano_literal_materialization_cap()` from
+// `std.termination` (P2 single authority — Codex #726). Reject **before** any power recursion; do not hand `exp` to the
 // recursive `int_pow_bounded` body until it passes here (PR #726: fail before materialization).
 fn bounded_int_pow_exponent(k: Int) -> Int? {
   if k < 0 { none }
-  else { if k > 256 { none } else { Some { value: k } } }
+  else {
+    if k > peano_literal_materialization_cap() { none }
+    else { Some { value: k } }
+  }
 }
 
 // b^exp for exp ≥ 0 (exp = 0 → Some { value: 1 }). Out-of-range exp → none via
