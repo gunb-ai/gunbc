@@ -187,13 +187,6 @@ fn program_expected(name: &str) -> &'static str {
         .expected_stdout
 }
 
-/// Descriptor for one reflected-module rustc roundtrip fixture. Each
-/// descriptor becomes a submodule in the batched harness; tests
-/// dispatch by `name` at runtime.
-///
-/// Previously each fixture compiled its own rustc binary, paying a
-/// fresh linker + codegen cost per test (~3-5s on CI cold cache).
-/// Batching all fixtures into one compilation amortizes that cost.
 /// Expected output shape for a reflected-module roundtrip fixture.
 enum ReflectedExpected {
     /// Exact stdout string (trimmed).
@@ -202,6 +195,13 @@ enum ReflectedExpected {
     PositiveInt,
 }
 
+/// Descriptor for one reflected-module rustc roundtrip fixture. Each
+/// descriptor becomes a submodule in the batched harness; tests
+/// dispatch by `name` at runtime.
+///
+/// Previously each fixture compiled its own rustc binary, paying a
+/// fresh linker + codegen cost per test (~3-5s on CI cold cache).
+/// Batching all fixtures into one compilation amortizes that cost.
 struct ReflectedFixture {
     name: &'static str,
     module_source: &'static str,
@@ -752,6 +752,11 @@ fn roundtrip_temp_dirs_are_unique() {
 // The nine tests below dispatch into one batched rustc-roundtrip
 // program harness. Fixture sources live in `PROGRAM_FIXTURES`; the
 // harness compiles on first access and is reused across tests.
+//
+// These run unconditionally (no `#[ignore]`), giving per-fixture test
+// names in cargo output. `emit_rust_fixtures_rustc_green` (below) is the
+// `#[ignore]`d full-matrix gate that sweeps the same fixtures in one shot;
+// both coexist because the per-fixture names are useful for triage.
 
 #[test]
 fn rustc_roundtrip_list_fold_prints_six() {
