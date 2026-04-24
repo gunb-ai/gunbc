@@ -19,7 +19,7 @@
 //!       emit_omni_demo_fixtures_green -- --ignored --nocapture
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -30,13 +30,29 @@ use v3_compiler::emit_rust::emit_rust;
 
 static ROUNDTRIP_ID: AtomicUsize = AtomicUsize::new(0);
 
-fn next_roundtrip_dir() -> PathBuf {
-    let id = ROUNDTRIP_ID.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "v3_emit_omni_roundtrip_{}_{}",
-        std::process::id(),
-        id
-    ))
+struct TmpDir(PathBuf);
+
+impl TmpDir {
+    fn new() -> Self {
+        let id = ROUNDTRIP_ID.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "v3_emit_omni_roundtrip_{}_{}",
+            std::process::id(),
+            id
+        ));
+        std::fs::create_dir_all(&path).expect("create tmp dir");
+        TmpDir(path)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TmpDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 fn omni_fixtures() -> Vec<&'static crate::common::determinism_fixtures::ProgramFixture> {
@@ -52,10 +68,9 @@ fn omni_fixtures() -> Vec<&'static crate::common::determinism_fixtures::ProgramF
 fn rust_stdout(source: &str) -> String {
     let dag = cached_compile_to_dag(source, "omni_parity.v3");
     let rendered = emit_rust(&dag).expect("Rust emit succeeded");
-    let tmp_dir = next_roundtrip_dir();
-    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
-    let src_path = tmp_dir.join("main.rs");
-    let bin_path = tmp_dir.join("main_bin");
+    let tmp_dir = TmpDir::new();
+    let src_path = tmp_dir.path().join("main.rs");
+    let bin_path = tmp_dir.path().join("main_bin");
     std::fs::File::create(&src_path)
         .and_then(|mut f| f.write_all(rendered.as_bytes()))
         .expect("write rust source");
@@ -88,9 +103,8 @@ fn go_stdout(fixture_name: &str, source: &str) -> String {
     let rendered = emit(&dag, EmitTarget::Go)
         .unwrap_or_else(|e| panic!("Go emit failed for fixture `{fixture_name}`: {e:?}"))
         .text;
-    let tmp_dir = next_roundtrip_dir();
-    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
-    let src_path = tmp_dir.join("main.go");
+    let tmp_dir = TmpDir::new();
+    let src_path = tmp_dir.path().join("main.go");
     std::fs::File::create(&src_path)
         .and_then(|mut f| f.write_all(rendered.as_bytes()))
         .expect("write go source");
@@ -98,7 +112,7 @@ fn go_stdout(fixture_name: &str, source: &str) -> String {
     let run = Command::new("go")
         .arg("run")
         .arg(&src_path)
-        .current_dir(&tmp_dir)
+        .current_dir(tmp_dir.path())
         .output()
         .expect("invoke go run");
     assert!(
@@ -117,9 +131,8 @@ fn python_stdout(fixture_name: &str, source: &str) -> String {
     let rendered = emit(&dag, EmitTarget::Python)
         .unwrap_or_else(|e| panic!("Python emit failed for fixture `{fixture_name}`: {e:?}"))
         .text;
-    let tmp_dir = next_roundtrip_dir();
-    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
-    let src_path = tmp_dir.join("main.py");
+    let tmp_dir = TmpDir::new();
+    let src_path = tmp_dir.path().join("main.py");
     std::fs::File::create(&src_path)
         .and_then(|mut f| f.write_all(rendered.as_bytes()))
         .expect("write python source");
