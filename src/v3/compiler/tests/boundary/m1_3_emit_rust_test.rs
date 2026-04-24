@@ -853,3 +853,70 @@ fn rustc_roundtrip_int_addition_prints_three() {
     let stdout = roundtrip_stdout("let x: Int = 1 + 2");
     assert_eq!(stdout, "3", "compiled binary printed {stdout:?}, not `3`");
 }
+
+/// Gate test: the full Rust fixture matrix (all 9 program fixtures and
+/// all 5 reflected-module fixtures) compiles and produces the expected
+/// output under a real `rustc`. Passes when every individual
+/// `rustc_roundtrip_*` test would pass.
+///
+/// Gated behind `#[ignore]` for the same reason as the individual
+/// roundtrip tests — CI may not have `rustc`. Run locally:
+///
+///     cargo test -p v3-compiler --test m1_3_emit_rust_test \
+///         emit_rust_fixtures_rustc_green -- --ignored --nocapture
+#[test]
+#[ignore]
+fn emit_rust_fixtures_rustc_green() {
+    const PROGRAM_CASES: &[(&str, &str)] = &[
+        ("list_fold_six", "6"),
+        ("generic_list_fold_one", "1"),
+        ("list_map_then_fold_twelve", "12"),
+        ("list_filter_then_fold_seven", "7"),
+        ("nested_list_builtins_inside_lambda_six", "6"),
+        ("user_function_call_three", "3"),
+        ("recursive_function_call_six", "6"),
+        ("record_literal_through_function_one", "1"),
+        ("user_sum_match_zero", "0"),
+    ];
+    const REFLECTED_CASES: &[(&str, &str)] = &[
+        ("bind_count", "2"),
+        ("singleton_span", "1"),
+        ("result_port_is_param", "1"),
+        ("bind_names", "2"),
+    ];
+
+    let mut failures: Vec<String> = Vec::new();
+
+    for (name, expected) in PROGRAM_CASES {
+        let stdout = run_program(name);
+        if stdout != *expected {
+            failures.push(format!(
+                "program {name:?}: expected {expected:?}, got {stdout:?}"
+            ));
+        }
+    }
+
+    // node_count must be a positive integer; check separately.
+    let node_count_stdout = run_reflected("node_count");
+    if !node_count_stdout.parse::<i64>().is_ok_and(|n| n > 0) {
+        failures.push(format!(
+            "reflected node_count: expected positive integer, got {node_count_stdout:?}"
+        ));
+    }
+
+    for (name, expected) in REFLECTED_CASES {
+        let stdout = run_reflected(name);
+        if stdout != *expected {
+            failures.push(format!(
+                "reflected {name:?}: expected {expected:?}, got {stdout:?}"
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "emit_rust_fixtures_rustc_green: {} fixture(s) failed:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
