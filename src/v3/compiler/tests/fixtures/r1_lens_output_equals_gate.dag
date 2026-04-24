@@ -17,14 +17,8 @@
 // `source` string currently breaks `DeclarationRef` resolution for `Int` in this
 // compiler snapshot (isolated harness: `lens_output_equals_predicate_accepts_*`).
 //
-// TODO(dissolve): fold back into `r1_gates.dag` once same-TU `DeclarationRef` + `Int`
-// lowering is fixed. Dissolution trigger: ROADMAP.md lane table **T-LensAPI** (user-authored
-// lenses + composition) and lane acceptance **T-LaneE** (`LensOutputEquals` [ext]) — this
-// split is a compiler-snapshot bridge, not permanent fixture policy.
-//
-// Checkable receipt: open a tracking issue for “same-TU lowering” when filed and link it
-// here; until then, dissolution is the commit that moves this claim into `r1_gates.dag`
-// and passes `cargo test -p v3-compiler` for merged fixture + deleted split file.
+// Schedule: ROADMAP.md subsection "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" item 2
+// (fold into `r1_gates.dag` after same-TU lowering; lanes T-LensAPI, T-LaneE acceptance).
 
 import std.verification { TestClaim, TestSuite }
 

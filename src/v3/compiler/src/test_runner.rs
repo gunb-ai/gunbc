@@ -263,8 +263,7 @@ impl<'a> TestRunner<'a> {
         // whole block (do not leave it layered or “superseded” in place); compilation
         // belongs on the evaluation path only (P5 tracked debt — PR #717 / claude-opus review).
         //
-        // TODO: delete side-check `compile_to_dag` when `eval_lens_output_equals` applies
-        // the lens for real (no duplicate compile in the runner for this predicate).
+        // Schedule: ROADMAP.md subsection "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" item 1.
         // Today’s gate fixture uses trivial `claim.source` (`let _: Int = 0`); the compile
         // is a thin structural receipt until real lens evaluation consumes meaningful witness text.
         if let Err(err) = compile_to_dag(&claim.source, &claim.file_name) {

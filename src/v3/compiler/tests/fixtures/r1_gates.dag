@@ -6,14 +6,8 @@
 // DSL requires a literal today, so bytes are duplicated and ratcheted by
 // `m1_5_user_authored_lens_gate_test` against `include_str!(.../named_function_count.dag)`.
 //
-// TODO(dissolve: P2 parallel copy): delete this inline mirror once program text can
-// attach to a single authority without a second string (e.g. generated `.dag` from
-// the lens file, or a `TestClaim` / substrate affordance that resolves `source` from
-// path without duplicating bytes in this hand-authored fixture).
-//
-// Dissolution: once the runner can resolve a lens declaration by reference from the
-// bootstrap DAG, the inline `source` string can be replaced by a direct `DeclarationRef`
-// edge and the lockstep test deleted.
+// Schedule: ROADMAP.md subsection "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" item 3
+// (single authority for lens program text; may use runner `DeclarationRef` from bootstrap DAG).
 //
 // Integration test then `compile_to_dag`s the extracted `source` (runner-shaped
 // `Compiles` receipt). Payload is a standalone `module lenses.named_function_count`
@@ -50,7 +44,7 @@ data sub_match_over_user_sum_gate: TestSuite = {
   claims: [sub_match_over_user_sum]
 }
 
-// Mirror of `src/v3/lenses/named_function_count.dag` — TODO(dissolve) at file header.
+// Mirror of `src/v3/lenses/named_function_count.dag` — see ROADMAP schedule item 3 (file header).
 data user_authored_lens_compiles_gate: TestClaim = {
   name: "user_authored_lens_compiles",
   source: "// lenses.named_function_count - minimal user-authored lens (Day-1 gate demo).\n//\n// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY N/A.\n// See docs/v3-lens-capability-register.md.\n//\n// **Not** bundled into `Dag::new()` bootstrap: it compiles externally via\n// `compile_to_dag` (see `m1_5_user_authored_lens_gate_test`). Demo only:\n// counts `Bind` behaviors whose `name` is non-empty. Not in `regen.dag`.\n\nmodule lenses.named_function_count\n\nimport std.list { fold }\nimport std.substrate { Dag, Behavior }\n\nfn count_named_bind(behavior: Behavior) -> Int =\n  match behavior {\n    Value(v) => 0\n    Transform(t) => 0\n    Branch(b) => 0\n    Loop(l) => 0\n    Bind(bind) => if bind.name == \"\" then 0 else 1\n  }\n\nfn named_function_count(d: Dag) -> Int =\n  fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))\n",

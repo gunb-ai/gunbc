@@ -15,9 +15,7 @@
 //! from a second file, because that pattern would require the lens in `Dag::new()`
 //! bootstrap, which this demo deliberately avoids.
 //!
-//! TODO(dissolve: P2 parallel copy): same triggers as `r1_gates.dag` header (generated /
-//! path-backed single authority, or runner-resolved lens via `DeclarationRef` from the
-//! bootstrap DAG — then delete this lockstep ratchet).
+//! Schedule: ROADMAP.md subsection "Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" item 3.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};
@@ -104,8 +102,8 @@ fn user_authored_lens_testclaim_payload_tracks_on_disk_lens_and_compiles() {
     assert_eq!(
         source, ON_DISK_LENS,
         "`TestClaim.source` in `r1_gates.dag` must stay byte-identical to the canonical \
-         `src/v3/lenses/named_function_count.dag` (P2 parallel copy ratchet; dissolve when \
-         the fixture no longer duplicates lens bytes — see TODO in `r1_gates.dag`)"
+         `src/v3/lenses/named_function_count.dag` (P2 parallel copy ratchet until ROADMAP \
+         scheduled cleanup item 3 removes the duplicate)"
     );
     assert_eq!(
         file_name, "src/v3/lenses/named_function_count.dag",
