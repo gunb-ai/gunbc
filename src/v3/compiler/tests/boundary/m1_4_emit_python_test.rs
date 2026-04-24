@@ -329,6 +329,18 @@ class Dag:
     nodes: list[Behavior]
     ports: list[DagPort]
     clusters: list[typing.Any]
+
+def port(d: Dag, id: PortId) -> typing.Optional[DagPort]:
+    for p in d.ports:
+        if p.id == id:
+            return p
+    return None
+
+def node(d: Dag, id: NodeId) -> typing.Optional[Behavior]:
+    for n in d.nodes:
+        if n._0.id == id:
+            return n
+    return None
 "#
 }
 
@@ -534,13 +546,11 @@ fn py_debug<T: std::fmt::Debug>(value: &T) -> String {
     format!("{inner:?}")
 }
 
-// emit_python_lens_module compiles unused_parameters.dag, which uses
-// recursive helpers that lower to `Behavior::Loop`. emit_python now
-// fail-closes on Loop instead of silently rendering the body's result
-// port. Re-enable once emit_python gains Loop emission (Lane 1e
-// consolidation).
+// unused_parameters.dag contains recursive helpers (walk_steps etc.) that
+// lower to Behavior::Loop. emit_python renders those by emitting the body
+// DAG's result port, which preserves the recursive self-calls — Python
+// supports recursion natively, so the emitted code is semantically correct.
 #[test]
-#[ignore = "blocked on emit_python Behavior::Loop support; previously passed via silent loop-body collapse"]
 fn emit_python_module_marks_ownership_as_skipped_for_gc_target() {
     let module = emit_python_lens_module();
     assert!(
@@ -746,9 +756,7 @@ fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(unique_value) => 0, Empt
         .expect("python post_emit_verifier rejected pilot source — E-5 contract regression");
 }
 
-// Same Loop blocker as emit_python_module_marks_ownership_as_skipped_for_gc_target.
 #[test]
-#[ignore = "blocked on emit_python Behavior::Loop support; previously passed via silent loop-body collapse"]
 fn emitted_python_lens_matches_emitted_rust_lens_on_reflected_programs() {
     let rust_module = emit_rust_lens_module();
     let python_module = emit_python_lens_module();
@@ -778,4 +786,63 @@ fn emitted_python_lens_matches_emitted_rust_lens_on_reflected_programs() {
             "unexpected rendered unused-parameter set for {file_name}"
         );
     }
+}
+
+/// Direct receipt that a plain recursive user function lowers through
+/// `Behavior::Loop` and emits correct Python. The source uses descent-provable
+/// recursion (first arg decrements by 1), so it lowers to a Cardinality-bound
+/// Loop. Emitting and running it proves the body-port rendering preserves the
+/// recursive self-call and produces the right result.
+///
+/// `count(6)` = 6 (counts non-negative integers from n down to 0, returns n).
+/// `count(0)` = 0 (base case).
+///
+/// Gated `#[ignore]` — CI sandboxes may not carry python3.
+/// Run locally:
+///     cargo test -p v3-compiler --test integration \
+///         emit_python_recursive_fn_produces_correct_result -- --ignored --nocapture
+#[test]
+#[ignore]
+fn emit_python_recursive_fn_produces_correct_result() {
+    let source = "\
+fn count(n: Int) -> Int = if n == 0 then 0 else 1 + count(n - 1)
+let result: Int = count(6)
+";
+    let dag = compile_to_dag(source, "recursive_loop_receipt.v3").expect("compiles");
+
+    // Verify Loop node is present — this is the structural claim.
+    let has_loop = dag
+        .nodes()
+        .iter()
+        .any(|b| matches!(b, v3_compiler::dag::Behavior::Loop(_)));
+    assert!(has_loop, "recursive fn must lower to Behavior::Loop");
+
+    let rendered = emit_python_text(&dag).expect("emits python");
+
+    // Structural: the recursive call must appear in the emitted source.
+    assert!(
+        rendered.contains("count("),
+        "recursive self-call must appear in emitted Python: {rendered}"
+    );
+
+    // Execution: python3 must print the correct result.
+    let tmp_dir = next_roundtrip_dir();
+    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
+    let src_path = tmp_dir.join("main.py");
+    std::fs::File::create(&src_path)
+        .and_then(|mut f| f.write_all(rendered.as_bytes()))
+        .expect("write python source");
+
+    let run = Command::new("python3")
+        .arg(&src_path)
+        .output()
+        .expect("run python3");
+    assert!(
+        run.status.success(),
+        "python3 failed on emitted recursive source:\n{}\nstderr:\n{}",
+        rendered,
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&run.stdout).trim().to_string();
+    assert_eq!(stdout, "6", "count(6) must print 6, got: {stdout}");
 }
