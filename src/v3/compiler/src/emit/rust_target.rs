@@ -4681,10 +4681,36 @@ impl<'a> Ctx<'a> {
         self.rust_borrowed_type_name_for_decl(ty.declaration)
     }
 
+    /// True when `declaration` (after peeling `ResolvedBy*` atoms)
+    /// is a first-class function type (`fn(...) -> _` in surface),
+    /// i.e. a `TypeConnective::Arrow` used as data rather than as a
+    /// named function item.
+    fn type_declaration_peels_to_arrow(&self, mut declaration: DeclarationId) -> bool {
+        const MAX_DEPTH: usize = 32;
+        for _ in 0..MAX_DEPTH {
+            let decl = self.dag.declaration(declaration);
+            match &decl.connective {
+                TypeConnective::Arrow { .. } => return true,
+                TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                    declaration = *next;
+                }
+                _ => return false,
+            }
+        }
+        false
+    }
+
     fn rust_borrowed_type_name_for_decl(
         &self,
         declaration: DeclarationId,
     ) -> Result<String, EmitError> {
+        if self.type_declaration_peels_to_arrow(declaration) {
+            // `&impl Fn(...) -> T + Clone` is ill-formed in Rust; keep the
+            // same by-value `impl Fn` contract as `rust_type_name_for_decl`.
+            // See v2 `emit_rust_param_type` / PR #650 post-mortem.
+            return self.rust_type_name_for_decl(declaration);
+        }
         let decl = self.dag.declaration(declaration);
         match &decl.connective {
             TypeConnective::Instantiation {
@@ -4742,6 +4768,15 @@ impl<'a> Ctx<'a> {
                     &self.indexes.syntax.type_applications.optional,
                     &[("element", &inner)],
                 ))
+            }
+            TypeConnective::Arrow { inputs, output, .. } => {
+                let param_types = inputs
+                    .iter()
+                    .map(|i| self.rust_type_name_for_decl_at_depth(*i, depth + 1))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let param_str = param_types.join(", ");
+                let ret_str = self.rust_type_name_for_decl_at_depth(*output, depth + 1)?;
+                Ok(format!("impl Fn({param_str}) -> {ret_str} + Clone"))
             }
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
@@ -4833,7 +4868,8 @@ impl<'a> Ctx<'a> {
             TypeConnective::Conj { .. }
             | TypeConnective::Disj { .. }
             | TypeConnective::Instantiation { .. }
-            | TypeConnective::Cardinality { .. } => Ok(false),
+            | TypeConnective::Cardinality { .. }
+            | TypeConnective::Arrow { .. } => Ok(false),
             _ => Ok(false),
         }
     }

@@ -345,6 +345,26 @@ fn emit_rust_single_int_binding() {
     assert!(out.contains("println!(\"{}\", x)"), "got: {out}");
 }
 
+/// T-Emit / PR #650 receipt: first-class `fn(A) -> B` parameters must
+/// lower to Rust `impl Fn(A) -> B + Clone`, not miss realizations or
+/// emit `&impl Fn...`. See `docs/postmortems/pr-650-emitter-callable-clone-bound.md`.
+#[test]
+fn emit_generic_bounds_survive() {
+    // Body avoids higher-order `f(...)` calls — those are a separate emit
+    // seam; this receipt only pins the **Rust type line** for callable params.
+    let src = "fn twice(f: fn(Int) -> Int) -> Int = 0\n";
+    let out = emit_module(src);
+    let sig = "fn twice(p0: impl Fn(i64) -> i64 + Clone) -> i64";
+    assert!(
+        out.contains(sig),
+        "callable param should carry synthesized + Clone (downstream rustc / stage0 contract); got:\n{out}"
+    );
+    assert!(
+        !out.contains("&impl Fn"),
+        "borrowed callable param type must not be spelled as &impl Fn; got:\n{out}"
+    );
+}
+
 #[test]
 fn emit_rust_addition() {
     let out = emit("let x: Int = 1 + 2");
