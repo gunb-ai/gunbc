@@ -1,0 +1,145 @@
+// std.computation -- v3-staged computational lowering carriers.
+//
+// Bootstrap-staged mirror of `dsl/std/computation.dag` for Lane E-C. Keep
+// these carrier shapes and pure lowering helpers aligned while v2 still scans
+// `dsl/`. This file depends on Lane E-T's `std.termination` carriers.
+
+module std.computation
+
+import std.termination { DescentEvidence }
+import std.algebra {
+  AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
+  BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
+  FreeMonoidScalarProfile, FreeMonoidCollectionProfile,
+  PartialFunctionProfile,
+  kernel_algebra_profile
+}
+
+type SizeBound
+  = CollectionSize { param: String }
+  | TreeSize { param: String }
+  | ArithmeticParam { param: String }
+  | ExplicitCount { n: Int }
+  | Forever
+
+fn tree_size_bound(param: String) -> SizeBound {
+  TreeSize { param: param }
+}
+
+type CallPattern
+  = ChildAccessorCall { accessor: String }
+  | CollectionShrinkCall { amount: Int }
+  | ArithmeticDescentCall { op: String, by: Int }
+  | ParserAdvanceCall { witness: String }
+  | WorklistDrainCall { element: String }
+  | FoldBodyCall
+  | SameArgumentCall
+
+type ShrinkFactor
+  = UnitShrink
+  | ConstantShrink { amount: Int }
+  | ProportionalShrink { divisor: Int }
+
+type IterationPrimitive
+  = Fold
+  | Descend
+  | Repeat
+
+type LoweringTarget {
+  primitive: IterationPrimitive
+  bound: SizeBound
+  evidence: DescentEvidence
+  factor: ShrinkFactor?
+}
+
+fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
+  match pattern {
+    ChildAccessorCall { accessor: a } =>
+      LoweringTarget { primitive: Descend,
+        bound: TreeSize { param: a },
+        evidence: Strict, factor: none }
+
+    CollectionShrinkCall { amount: _ } =>
+      LoweringTarget { primitive: Fold,
+        bound: CollectionSize { param: "collection" },
+        evidence: Strict, factor: none }
+
+    ArithmeticDescentCall { op: _, by: _ } =>
+      LoweringTarget { primitive: Repeat,
+        bound: ArithmeticParam { param: "n" },
+        evidence: Strict, factor: none }
+
+    ParserAdvanceCall { witness: _ } =>
+      LoweringTarget { primitive: Fold,
+        bound: CollectionSize { param: "tokens" },
+        evidence: Strict, factor: none }
+
+    WorklistDrainCall { element: _ } =>
+      LoweringTarget { primitive: Fold,
+        bound: CollectionSize { param: "worklist" },
+        evidence: Strict, factor: none }
+
+    FoldBodyCall =>
+      LoweringTarget { primitive: Fold,
+        bound: CollectionSize { param: "outer_collection" },
+        evidence: NonIncreasing, factor: none }
+
+    SameArgumentCall =>
+      LoweringTarget { primitive: Repeat,
+        bound: Forever,
+        evidence: NonIncreasing, factor: none }
+  }
+}
+
+fn size_bound_param(bound: SizeBound) -> String? {
+  match bound {
+    TreeSize { param: p }       => Some { value: p }
+    CollectionSize { param: p } => Some { value: p }
+    ArithmeticParam { param: p } => Some { value: p }
+    ExplicitCount { n: _ }      => none
+    Forever                     => none
+  }
+}
+
+fn is_constant_bound(bound: SizeBound) -> Bool {
+  match bound {
+    ExplicitCount { n: _ } => true
+    Forever                => true
+    _                      => false
+  }
+}
+
+fn constant_bound_value(bound: SizeBound) -> Int {
+  match bound {
+    ExplicitCount { n: count } => count
+    Forever                    => 1
+    _                          => 0
+  }
+}
+
+type IterationDimension
+  = TreeDescent
+  | CollectionFold
+  | ArithmeticRepeat
+
+fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? {
+  match profile {
+    FreeMonoidCollectionProfile     => Some { value: CollectionFold }
+    FreeMonoidScalarProfile         => Some { value: CollectionFold }
+    BooleanAlgebraCollectionProfile => Some { value: CollectionFold }
+    PartialFunctionProfile          => Some { value: CollectionFold }
+    OrderedRingProfile              => Some { value: ArithmeticRepeat }
+    ApproximateFieldProfile         => Some { value: ArithmeticRepeat }
+    BooleanAlgebraProfile           => none
+  }
+}
+
+fn type_iteration_dimension(type_name: String) -> IterationDimension? {
+  if type_name == "Node" { Some { value: TreeDescent } }
+  else {
+    match kernel_algebra_profile |> get(type_name) {
+      Some { value: p } => algebra_profile_to_dimension(profile: p)
+      None => none
+    }
+  }
+}

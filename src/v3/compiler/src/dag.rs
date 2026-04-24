@@ -832,6 +832,184 @@ pub fn map_evidence_merge_at(
     base
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SizeBound {
+    CollectionSize { param: String },
+    TreeSize { param: String },
+    ArithmeticParam { param: String },
+    ExplicitCount { n: i64 },
+    Forever,
+}
+
+pub fn tree_size_bound(param: String) -> SizeBound {
+    SizeBound::TreeSize { param }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CallPattern {
+    ChildAccessorCall { accessor: String },
+    CollectionShrinkCall { amount: i64 },
+    ArithmeticDescentCall { op: String, by: i64 },
+    ParserAdvanceCall { witness: String },
+    WorklistDrainCall { element: String },
+    FoldBodyCall,
+    SameArgumentCall,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ShrinkFactor {
+    UnitShrink,
+    ConstantShrink { amount: i64 },
+    ProportionalShrink { divisor: i64 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IterationPrimitive {
+    Fold,
+    Descend,
+    Repeat,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoweringTarget {
+    pub primitive: IterationPrimitive,
+    pub bound: SizeBound,
+    pub evidence: DescentEvidence,
+    pub factor: Option<ShrinkFactor>,
+}
+
+pub fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
+    match pattern {
+        CallPattern::ChildAccessorCall { accessor } => LoweringTarget {
+            primitive: IterationPrimitive::Descend,
+            bound: SizeBound::TreeSize { param: accessor },
+            evidence: DescentEvidence::Strict,
+            factor: None,
+        },
+        CallPattern::CollectionShrinkCall { .. } => LoweringTarget {
+            primitive: IterationPrimitive::Fold,
+            bound: SizeBound::CollectionSize {
+                param: "collection".to_string(),
+            },
+            evidence: DescentEvidence::Strict,
+            factor: None,
+        },
+        CallPattern::ArithmeticDescentCall { .. } => LoweringTarget {
+            primitive: IterationPrimitive::Repeat,
+            bound: SizeBound::ArithmeticParam {
+                param: "n".to_string(),
+            },
+            evidence: DescentEvidence::Strict,
+            factor: None,
+        },
+        CallPattern::ParserAdvanceCall { .. } => LoweringTarget {
+            primitive: IterationPrimitive::Fold,
+            bound: SizeBound::CollectionSize {
+                param: "tokens".to_string(),
+            },
+            evidence: DescentEvidence::Strict,
+            factor: None,
+        },
+        CallPattern::WorklistDrainCall { .. } => LoweringTarget {
+            primitive: IterationPrimitive::Fold,
+            bound: SizeBound::CollectionSize {
+                param: "worklist".to_string(),
+            },
+            evidence: DescentEvidence::Strict,
+            factor: None,
+        },
+        CallPattern::FoldBodyCall => LoweringTarget {
+            primitive: IterationPrimitive::Fold,
+            bound: SizeBound::CollectionSize {
+                param: "outer_collection".to_string(),
+            },
+            evidence: DescentEvidence::NonIncreasing,
+            factor: None,
+        },
+        CallPattern::SameArgumentCall => LoweringTarget {
+            primitive: IterationPrimitive::Repeat,
+            bound: SizeBound::Forever,
+            evidence: DescentEvidence::NonIncreasing,
+            factor: None,
+        },
+    }
+}
+
+pub fn size_bound_param(bound: &SizeBound) -> Option<&str> {
+    match bound {
+        SizeBound::TreeSize { param }
+        | SizeBound::CollectionSize { param }
+        | SizeBound::ArithmeticParam { param } => Some(param.as_str()),
+        SizeBound::ExplicitCount { .. } | SizeBound::Forever => None,
+    }
+}
+
+pub fn is_constant_bound(bound: &SizeBound) -> bool {
+    matches!(bound, SizeBound::ExplicitCount { .. } | SizeBound::Forever)
+}
+
+pub fn constant_bound_value(bound: &SizeBound) -> i64 {
+    match bound {
+        SizeBound::ExplicitCount { n } => *n,
+        SizeBound::Forever => 1,
+        _ => 0,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IterationDimension {
+    TreeDescent,
+    CollectionFold,
+    ArithmeticRepeat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AlgebraProfile {
+    OrderedRingProfile,
+    ApproximateFieldProfile,
+    BooleanAlgebraProfile,
+    BooleanAlgebraCollectionProfile,
+    FreeMonoidScalarProfile,
+    FreeMonoidCollectionProfile,
+    PartialFunctionProfile,
+}
+
+pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<IterationDimension> {
+    match profile {
+        AlgebraProfile::FreeMonoidCollectionProfile
+        | AlgebraProfile::FreeMonoidScalarProfile
+        | AlgebraProfile::BooleanAlgebraCollectionProfile
+        | AlgebraProfile::PartialFunctionProfile => Some(IterationDimension::CollectionFold),
+        AlgebraProfile::OrderedRingProfile | AlgebraProfile::ApproximateFieldProfile => {
+            Some(IterationDimension::ArithmeticRepeat)
+        }
+        AlgebraProfile::BooleanAlgebraProfile => None,
+    }
+}
+
+pub fn type_iteration_dimension(type_name: &str) -> Option<IterationDimension> {
+    if type_name == "Node" {
+        return Some(IterationDimension::TreeDescent);
+    }
+
+    kernel_algebra_profile(type_name).and_then(algebra_profile_to_dimension)
+}
+
+// Transitional mirror of `std.algebra::kernel_algebra_profile` for the E-C
+// Rust-side parity tests; the `.dag` table remains the semantic source.
+fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
+    match type_name {
+        "Int" => Some(AlgebraProfile::OrderedRingProfile),
+        "Float" => Some(AlgebraProfile::ApproximateFieldProfile),
+        "Bool" => Some(AlgebraProfile::BooleanAlgebraProfile),
+        "String" => Some(AlgebraProfile::FreeMonoidScalarProfile),
+        "List" => Some(AlgebraProfile::FreeMonoidCollectionProfile),
+        "Set" => Some(AlgebraProfile::BooleanAlgebraCollectionProfile),
+        "Map" => Some(AlgebraProfile::PartialFunctionProfile),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ValueNode {
     pub id: NodeId,
