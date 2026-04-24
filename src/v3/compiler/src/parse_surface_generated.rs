@@ -217,6 +217,7 @@ pub enum SurfaceItem {
         name: String,
         type_params: Vec<String>,
         target: SurfaceType,
+        refinement: Option<SurfaceExpr>,
         span: SourceSpan,
     },
 }
