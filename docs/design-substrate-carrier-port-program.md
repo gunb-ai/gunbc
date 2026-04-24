@@ -1,8 +1,8 @@
 # Substrate Carrier Port Program
 
-**Status:** Design only (Brief E, 2026-04-22). No code changes in this PR.
+**Status:** Execution started. Lane E-T staged 2026-04-23 in PR #682; remaining lanes stay queued in dependency order.
 **Scope:** Program-of-work scoping for porting v2's `DescentEvidence` / `CallPattern` / `SubValueRelation` / `MethodSemantics` carrier families into the v3 substrate so that v3 lenses over termination, cost, and method dispatch can reach `BEHAVIORALLY COMPLETE` per `docs/v3-lens-capability-register.md`.
-**Not this PR:** no substrate edits; no lens migrations; no carrier lane execution. Each carrier family becomes a separate lane placeholder below.
+**Remaining scope:** no lens migrations in E-T; remaining carrier families stay separate lane placeholders below.
 
 ## 1. Why this document exists
 
@@ -16,10 +16,10 @@ The audit also flagged P4 Decidability as "mostly unchanged" by the 2026-04-21 w
 
 Full inventories (names only — read source files for shapes):
 
-**`dsl/std/termination.dag` (344L)** — proof-theory for well-founded descent.
+**`dsl/std/termination.dag` (355L)** — proof-theory for well-founded descent.
 - `DescentEvidence = Strict | NonIncreasing | DescentUnknown` (+ lattice fns `merge_evidence`, `join_evidence`, `promote_to_strict`, `evidence_rank`, `optional_evidence_meet`, `map_evidence_merge_at`).
 - `RankingDimension = TreeSize | ListLength | ArithmeticValue | TokenPosition | SetCardinality` (each wraps `param: String`).
-- `DescentSource = ChildAccessor | ListShrink | ArithmeticDecrease | ParserAdvance | SetRemoval | FoldIteration`.
+- `DescentSource = ChildAccessor | ListShrink | ArithmeticSubtract | ArithmeticDivide | ParserAdvance | SetRemoval | FoldIteration`.
 - `TerminationProof { dimensions: List<RankingDimension> }`, `ProofEdge { caller, callee, evidence: List<DescentEvidence> }`.
 
 **`dsl/std/computation.dag` (384L)** — syntax-to-primitive lowering table.
@@ -48,7 +48,7 @@ For each family: **Shape** (sum/product/record/constraint) · **Consumers** (v2 
 
 ### 3.1 Family T — `DescentEvidence` + proof structure
 
-- **Shape.** `DescentEvidence` is a flat 3-variant coproduct. `RankingDimension` is a 5-variant coproduct each carrying `param: String`. `TerminationProof` and `ProofEdge` are records. `DescentSource` is a 6-variant coproduct. All forms are decidable, bounded, already phrased as pure algebra with a named lattice structure (`BoundedLattice<DescentEvidence>` — meet/join pair).
+- **Shape.** `DescentEvidence` is a flat 3-variant coproduct. `RankingDimension` is a 5-variant coproduct each carrying `param: String`. `TerminationProof` and `ProofEdge` are records. `DescentSource` is a 7-variant coproduct. All forms are decidable, bounded, already phrased as pure algebra with a named lattice structure (`BoundedLattice<DescentEvidence>` — meet/join pair).
 - **Consumers.** v2: complexity.dag proof construction, cost composition, the termination checker (`std.graph.is_valid_proof`). v3 promotions unlocked: `complexity.dag` PROXY → COMPLETE (partial — also needs family I/C), `cost.dag` PROXY → COMPLETE (partial — needs family I for `SubValueRelation`).
 - **Dependencies.** Internal-only: `DescentEvidence` requires `Ordering` from `std.algebra` (already v3-reachable as `dsl/std/algebra.dag`). `RankingDimension.param: String` is a bootstrap-constraint bridge — file header explicitly says "When .dag supports function references, these should become structural." Port with `String` for now; do not widen scope to "teach substrate function refs" in this lane.
 - **Blockers.** None structural. This family is the cleanest port — it's pure data + pure lattice fns. Port target is either `src/v3/std/termination.dag` (mirroring v3 std layout) or direct consumption of `dsl/std/termination.dag` from v3 lenses once the v3 grammar subset covers it. The file-preference-rank scaffold (ROADMAP) means `src/v3/std/*` vs `dsl/std/*` is currently a routing call, not a shape decision.
@@ -102,7 +102,7 @@ Each lane closes with a receipt per `docs/v3-lens-capability-register.md § Disc
 
 | Lane | Register rows that move | Behavioral axis | Cementing test |
 |---|---|---|---|
-| T | — (no direct lens depends on T alone) | `complexity.dag` / `cost.dag` partial progress | prerequisite only |
+| T | — (no direct lens depends on T alone) | `complexity.dag` / `cost.dag` partial progress | Staged 2026-04-23 in PR #682: `src/v3/std/termination.dag` bootstraps `DescentEvidence`, `RankingDimension`, `DescentSource`, `TerminationProof`, `ProofEdge`, and lattice helpers; `m2_substrate_inhabitance_test` covers bootstrap shape + lattice mirror behavior. |
 | C | `cost.dag` begins PROXY → partial | PROXY still, but "What v2 has that v3 drops" column shrinks | golden for `CallPattern` dispatch |
 | I | types ported; no lens row moves yet — producer still missing | PROXY still (pending E-P) | carrier round-trip tests only |
 | P | `complexity.dag` / `cost.dag` advance on the non-method-dispatch slice; "What v2 has that v3 drops" column shrinks to `MethodSemantics` + grammar/emit items | PROXY still (pending E-M for method-dispatch) | v2-oracle-vs-v3 per-call descent-evidence golden for non-method-dispatch inputs |
