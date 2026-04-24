@@ -54,3 +54,21 @@ fn user_authored_lens_compiles_fixture() {
         Err(other) => panic!("unexpected compile error: {other:?}"),
     }
 }
+
+#[test]
+fn r1_gates_dag_stages_against_bootstrap_snapshot() {
+    let dag = bootstrapped_dag();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap should load `src/v3/std/r1_gates.dag` (tail-appended) with no diagnostics, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let gate = dag
+        .declaration_by_name("user_authored_lens_compiles_gate")
+        .expect("`user_authored_lens_compiles_gate` should stage from std.r1_gates");
+    assert_eq!(
+        gate.span.file.as_str(),
+        "src/v3/std/r1_gates.dag",
+        "gate declaration should retain r1_gates.dag provenance for the Day-1 witness"
+    );
+}

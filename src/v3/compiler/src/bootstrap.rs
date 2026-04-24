@@ -8,6 +8,9 @@
 // - `STAGED_FILES`   (`src/v3/std/*.dag`)
 // - `V3_SPECS`       (`src/v3/spec/*.dag`)
 // - `COMPILER_FILES` (`src/v3/compiler/*.dag`, minus `tokenize.dag`)
+// - `src/v3/lenses/named_function_count.dag` (user-authored lens; not in `regen.dag`)
+// - `src/v3/std/r1_gates.dag` (tail-appended after the staged batch so it loads
+//   after `verification.dag`; still listed in `STAGED_FILES` for `build.rs` discovery)
 //
 // `compile_parse_surface_std_authority_dag` uses the companion snapshot
 // that omits `src/v3/std/parse_surface.dag`, so a fresh parse+lower of
