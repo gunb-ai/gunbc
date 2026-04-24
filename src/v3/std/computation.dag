@@ -19,14 +19,15 @@ import std.algebra {
   kernel_algebra_profile
 }
 
-// 🟡 MIXED coproduct — E-C `SizeBound` carrier (five-way flat sum). Dissolution: collapse
-// `param: String` symbolic slots to structural size-parameter refs; `ExplicitCount` /
-// `Forever` remain terminal finite-bound atoms (no String bridge).
+// 🟡 MIXED coproduct — E-C `SizeBound` carrier. Dissolution: collapse `param: String` symbolic
+// slots to structural size-parameter refs; `Forever` remains a terminal atom. Explicit repeat
+// counts split zero vs Peano-positive (PR #726 — no negative `Int` inhabitant).
 type SizeBound
   = CollectionSize { param: String }
   | TreeSize { param: String }
   | ArithmeticParam { param: String }
-  | ExplicitCount { n: Int }
+  | ExplicitCountZero
+  | ExplicitCountPositive { steps: PositiveDescentAmount }
   | Forever
 
 fn tree_size_bound(param: String) -> SizeBound {
@@ -130,14 +131,16 @@ fn size_bound_param(bound: SizeBound) -> String? {
     TreeSize { param: p }       => Some { value: p }
     CollectionSize { param: p } => Some { value: p }
     ArithmeticParam { param: p } => Some { value: p }
-    ExplicitCount { n: _ }      => none
+    ExplicitCountZero           => none
+    ExplicitCountPositive { steps: _ } => none
     Forever                     => none
   }
 }
 
 fn is_constant_bound(bound: SizeBound) -> Bool {
   match bound {
-    ExplicitCount { n: _ } => true
+    ExplicitCountZero => true
+    ExplicitCountPositive { steps: _ } => true
     Forever                => true
     _                      => false
   }
@@ -146,10 +149,11 @@ fn is_constant_bound(bound: SizeBound) -> Bool {
 // Signed `Int` top iterate count (`i64::MAX`); matches `repeat(max_int)` cap.
 fn forever_iteration_bound() -> Int { 9223372036854775807 }
 
-// `none` when the bound is not constant (avoids conflating with `ExplicitCount { n: 0 }`).
+// `none` when the bound is not constant (zero is `ExplicitCountZero`, not a named param).
 fn constant_bound_value(bound: SizeBound) -> Int? {
   match bound {
-    ExplicitCount { n: count } => Some { value: count }
+    ExplicitCountZero => Some { value: 0 }
+    ExplicitCountPositive { steps: s } => Some { value: positive_descent_count(steps: s) }
     Forever                    => Some { value: forever_iteration_bound() }
     _                          => none
   }

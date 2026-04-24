@@ -3,10 +3,11 @@ use std::collections::HashMap;
 use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
     join_evidence, kernel_algebra_profile, lower_call_pattern, map_evidence_merge_at,
-    merge_evidence, optional_evidence_meet, promote_to_strict, size_bound_param, tree_size_bound,
-    type_iteration_dimension, AlgebraProfile, ArrowBody, CallPattern, DescentEvidence, FieldValue,
-    IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
-    ProportionalDivisor, SizeBound, TypeConnective, ValueBody,
+    merge_evidence, optional_evidence_meet, positive_amount_from_i64, promote_to_strict,
+    size_bound_param, tree_size_bound, type_iteration_dimension, AlgebraProfile, ArrowBody,
+    CallPattern, DescentEvidence, FieldValue, IterationDimension, IterationPrimitive,
+    LoweringTarget, PositiveDescentAmount, ProportionalDivisor, SizeBound, TypeConnective,
+    ValueBody,
 };
 use v3_compiler::parse_surface;
 use v3_compiler::Dag;
@@ -332,7 +333,11 @@ fn computation_carriers_bootstrap_from_v3_std() {
             (String::from("CollectionSize"), vec![String::from("param")]),
             (String::from("TreeSize"), vec![String::from("param")]),
             (String::from("ArithmeticParam"), vec![String::from("param")]),
-            (String::from("ExplicitCount"), vec![String::from("n")]),
+            (String::from("ExplicitCountZero"), Vec::new()),
+            (
+                String::from("ExplicitCountPositive"),
+                vec![String::from("steps")],
+            ),
             (String::from("Forever"), Vec::new()),
         ]
     );
@@ -609,21 +614,27 @@ fn computation_size_bound_helpers_match_dag_authority() {
     let arithmetic = SizeBound::ArithmeticParam {
         param: String::from("n"),
     };
-    let explicit = SizeBound::ExplicitCount { n: 7 };
+    let explicit = SizeBound::ExplicitCountPositive {
+        steps: positive_amount_from_i64(7).expect("literal 7 is in Peano materialization range"),
+    };
+    let explicit_zero = SizeBound::ExplicitCountZero;
     let forever = SizeBound::Forever;
 
     assert_eq!(size_bound_param(&tree), Some("node"));
     assert_eq!(size_bound_param(&collection), Some("items"));
     assert_eq!(size_bound_param(&arithmetic), Some("n"));
     assert_eq!(size_bound_param(&explicit), None);
+    assert_eq!(size_bound_param(&explicit_zero), None);
     assert_eq!(size_bound_param(&forever), None);
 
     assert!(!is_constant_bound(&tree));
     assert!(!is_constant_bound(&collection));
     assert!(!is_constant_bound(&arithmetic));
     assert!(is_constant_bound(&explicit));
+    assert!(is_constant_bound(&explicit_zero));
     assert!(is_constant_bound(&forever));
 
+    assert_eq!(constant_bound_value(&explicit_zero), Some(0));
     assert_eq!(constant_bound_value(&explicit), Some(7));
     assert_eq!(constant_bound_value(&forever), Some(i64::MAX));
     assert_eq!(constant_bound_value(&tree), None);

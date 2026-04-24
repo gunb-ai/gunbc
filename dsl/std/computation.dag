@@ -122,15 +122,18 @@ import std.algebra {
 // (for constants/Forever) or tracked symbolically (for parameters/collections).
 // =========================================================================
 //
-// 🟡 MIXED coproduct — five-way size-bound source for lowering. Dissolution: `param: String`
+// 🟡 MIXED coproduct — size-bound source for lowering. Dissolution: `param: String`
 // name bridges on `CollectionSize` / `TreeSize` / `ArithmeticParam` → structural size-parameter
-// refs when reflected params exist; `ExplicitCount` / `Forever` stay terminal finite-bound atoms.
+// refs when reflected params exist; `Forever` stays a terminal finite-bound atom.
+// `ExplicitCount*` uses Peano for strictly positive repeat counts and a zero tag so negative
+// literals are not representable (P2 / P4; PR #726 openai-pro review).
 
 type SizeBound
   = CollectionSize { param: String }   // |list|, |set|, |map.keys| — finite by Layer 3
   | TreeSize { param: String }         // |node.descendants| — finite by DAG acyclicity
   | ArithmeticParam { param: String }  // function parameter n — finite by Word64
-  | ExplicitCount { n: Int }           // developer-specified literal
+  | ExplicitCountZero                  // repeat / bound literal 0 (no negative inhabitant)
+  | ExplicitCountPositive { steps: PositiveDescentAmount }  // repeat k, k ≥ 1 structurally
   | Forever                            // the largest representable bound
 
 // Constructor for TreeSize bound — avoids name collision when importing
@@ -308,7 +311,8 @@ fn size_bound_param(bound: SizeBound) -> String? {
     TreeSize { param: p }       => Some { value: p }
     CollectionSize { param: p } => Some { value: p }
     ArithmeticParam { param: p } => Some { value: p }
-    ExplicitCount { n: _ }      => none
+    ExplicitCountZero           => none
+    ExplicitCountPositive { steps: _ } => none
     Forever                     => none
   }
 }
@@ -318,14 +322,15 @@ fn size_bound_param(bound: SizeBound) -> String? {
 // a fixed number of times regardless of input size.
 fn is_constant_bound(bound: SizeBound) -> Bool {
   match bound {
-    ExplicitCount { n: _ } => true
+    ExplicitCountZero => true
+    ExplicitCountPositive { steps: _ } => true
     Forever                => true
     _                      => false
   }
 }
 
 // Get the constant value for a constant bound.
-// ExplicitCount returns the developer-specified literal (including 0).
+// `ExplicitCountZero` / `ExplicitCountPositive` project through `positive_descent_count` for k≥1.
 // Forever returns the signed-64 iteration cap (same as repeat(max_int); see std.iteration).
 // Non-constant bounds return `none` so callers cannot confuse “not constant” with a literal 0.
 // Signed `Int` top iterate count (`i64::MAX`); matches `repeat(max_int)` cap.
@@ -333,7 +338,8 @@ fn forever_iteration_bound() -> Int { 9223372036854775807 }
 
 fn constant_bound_value(bound: SizeBound) -> Int? {
   match bound {
-    ExplicitCount { n: count } => Some { value: count }
+    ExplicitCountZero => Some { value: 0 }
+    ExplicitCountPositive { steps: s } => Some { value: positive_descent_count(steps: s) }
     Forever                    => Some { value: forever_iteration_bound() }
     _                          => none
   }
@@ -366,7 +372,7 @@ fn constant_bound_value(bound: SizeBound) -> Int? {
 //   Fold with CollectionSize(c)       → O(|c| * per_element_cost)
 //   Descend with TreeSize(t)          → O(|t| * per_node_cost)
 //   Repeat with ArithmeticParam(n)    → O(n * per_step_cost)
-//   Repeat with ExplicitCount(k)      → O(k * per_step_cost)
+//   Repeat with ExplicitCountPositive(k) / ExplicitCountZero → O(k * per_step_cost)
 //   Repeat with Forever                → O(2^63 * per_step_cost)
 //
 // Nested computations multiply bounds:

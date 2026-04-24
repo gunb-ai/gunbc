@@ -949,7 +949,8 @@ pub enum SizeBound {
     CollectionSize { param: String },
     TreeSize { param: String },
     ArithmeticParam { param: String },
-    ExplicitCount { n: i64 },
+    ExplicitCountZero,
+    ExplicitCountPositive { steps: PositiveDescentAmount },
     Forever,
 }
 
@@ -1087,12 +1088,17 @@ pub fn size_bound_param(bound: &SizeBound) -> Option<&str> {
         SizeBound::TreeSize { param }
         | SizeBound::CollectionSize { param }
         | SizeBound::ArithmeticParam { param } => Some(param.as_str()),
-        SizeBound::ExplicitCount { .. } | SizeBound::Forever => None,
+        SizeBound::ExplicitCountZero
+        | SizeBound::ExplicitCountPositive { .. }
+        | SizeBound::Forever => None,
     }
 }
 
 pub fn is_constant_bound(bound: &SizeBound) -> bool {
-    matches!(bound, SizeBound::ExplicitCount { .. } | SizeBound::Forever)
+    matches!(
+        bound,
+        SizeBound::ExplicitCountZero | SizeBound::ExplicitCountPositive { .. } | SizeBound::Forever
+    )
 }
 
 /// Signed `Int` top iterate count (`i64::MAX`) for [`SizeBound::Forever`] / `repeat(max_int)`.
@@ -1100,10 +1106,11 @@ pub fn forever_iteration_bound() -> i64 {
     i64::MAX
 }
 
-/// `None` when `bound` is not constant (`ExplicitCount` / `Forever` only).
+/// `None` when `bound` is not constant (`ExplicitCount*` / `Forever` only).
 pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
     match bound {
-        SizeBound::ExplicitCount { n } => Some(*n),
+        SizeBound::ExplicitCountZero => Some(0),
+        SizeBound::ExplicitCountPositive { steps } => Some(positive_descent_count(steps)),
         SizeBound::Forever => Some(forever_iteration_bound()),
         _ => None,
     }
