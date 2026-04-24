@@ -7,7 +7,7 @@
 module std.computation
 
 import std.termination { DescentEvidence, DivisionDescentFactor }
-import std.types { PositiveInt }
+import std.types { NonNegativeInt, PositiveInt }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
@@ -24,7 +24,7 @@ type SizeBound
   = CollectionSize { param: String }
   | TreeSize { param: String }
   | ArithmeticParam { param: String }
-  | ExplicitCount { n: Int }
+  | ExplicitCount { n: NonNegativeInt }
   | Forever
 
 fn tree_size_bound(param: String) -> SizeBound {
