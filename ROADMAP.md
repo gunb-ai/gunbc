@@ -136,6 +136,39 @@ Both land inside T-PB-A because dissolving the compiler-local surface forces bot
 
 R1 absorbs what was "Post-A/B Lane Plan" and L1.5 forward work, framed by release deliverable rather than architectural stage. The status table below stays accurate for backward-looking context; R1 is the forward-looking companion.
 
+## Post-R1 Program — Grounding Completeness
+
+Named post-R1 program promoted from the target-grounding proposal ([PR #695](https://github.com/gunb-ai/gunbc/pull/695), landing at `docs/thesis/target-grounding-proposal.md` on merge; `PROPOSAL` mode on the proposal doc itself; this ROADMAP section is the committed scope counterpart). Architectural authority remains [`docs/single-emitter-design.md`](docs/single-emitter-design.md) (ROADMAP Track 13 / single-emitter dissolution). This section names concrete lanes; the proposal doc carries worked examples and work-estimate detail.
+
+**The claim.** Target-side primitive types in Rust, Python, and Go are structurally modeled from their language references (Rust Reference §Types at <https://doc.rust-lang.org/reference/types.html>; Python data model; Go specification). Algebra inhabitance is declared structurally on target primitives, parallel to how user-side `.dag` types declare inhabitance (`Int64 = OrderedRing<Word64>`). Coercion is a structural algebra-homomorphism search, not a name-keyed table lookup. The current `TypeCheckpoint` / `InhabitantDecl` / `carrier: String` surface is bootstrap scaffolding that dissolves via Track 13 closure at the end of this program.
+
+**Why post-R1.** This is a substantial program (sized ~T-LaneE equivalent), cleanly separable from R1's release gates, and blocked in full on post-R1 substrate capabilities (DB-11 alias-RHS `where` parsing; cardinality-substrate; optionally DB-18 parametric algebra attachment). A Day-1-dispatchable pilot lane exists that uses only live substrate.
+
+### Post-R1 Grounding lanes
+
+| Lane | Size | Covers | Blockers |
+|------|------|--------|----------|
+| T-Ground-Pilot | S | Rust integer family (i8–i64, u8–u64, bool, Unit) + toy inhabitance-search engine + routing-stability tests demonstrating parity with current table lookup | None — uses only live substrate; dispatchable post-R1 Day-1 |
+| T-Ground-Rust | XL | Two-authority split: **(a) Rust Reference §Types** (<https://doc.rust-lang.org/reference/types.html>) — language-level structural types: boolean, numeric (integer + floating-point), textual (`char`, `str`), never, tuple, array, slice, struct, enum, union, function item, function pointer (`fn(...) -> ...`), closure, reference (`&T`, `&mut T`), raw pointer (`*const T`, `*mut T`), trait object (`dyn Trait`), `impl Trait`. **(b) std-library carriers** (std documentation is the authority, separate from the reference) — `String`, `Vec<T>`, `Box<T>`, `Rc<T>`, `Arc<T>`, `HashMap<K,V>`, `BTreeMap<K,V>`, `HashSet<T>`, `BTreeSet<T>`, `Option<T>`, `Result<T, E>`. Each category cites its own authority; mixing them into one "Rust Reference" claim is a faithfulness violation. | DB-11 (refinement-carrying qualifiers on primitives), cardinality-substrate (container cardinality bounds) |
+| T-Ground-Python | L | Two-authority split: **(a) Python language reference** — built-in types (numeric int/float/complex, bool, None, sequence list/tuple/range, text str, binary bytes/bytearray, mapping dict, set, frozenset, callable, module, class). **(b) CPython stdlib** (`typing`, `collections`, etc. — when lanes grow beyond built-ins). | DB-11; cardinality-substrate |
+| T-Ground-Go | L | Two-authority split: **(a) Go language specification** (<https://go.dev/ref/spec>) — boolean, numeric, string, array, slice, struct, pointer, function, interface, map, channel. **(b) Go standard library carriers** when modeling beyond the spec's primitives. | DB-11; cardinality-substrate |
+| T-Ground-Engine | M | Inhabitance-search walker; minimum-satisfier selection; fail-closed tie-breaking with structured diagnostic (per the target-grounding proposal's tie-breaking discipline — [PR #695](https://github.com/gunb-ai/gunbc/pull/695)) | Layers 1–3 populated to a useful coverage threshold |
+| T-Ground-Tests | S | Routing-stability TestClaim class; L4 witness-based certification for target-side algebra-inhabitance claims per `verifiability-invariant.md` ("consistent by construction + verified by L4") | T-TestGen runner green (R1 deliverable); layers 1–4 |
+| T-Ground-Dissolve | S | Track 13 closure — single PR deleting the coercion scaffolding entirely: **`dsl/std/coercion.dag`** (schema file: `TypeCheckpoint` / `InhabitantDecl` / `CallableRepr` / `CastSyntax`), **`dsl/extdeps/languages/{rust,python,go,dag}/types.dag`** (per-target instantiation tables), **`TypeRealization.carrier: String`** field in `src/v3/std/emit_model.dag`, and every emit-pipeline call site reading the old surface. Routing-stability assertions are authored as direct `TestClaim` declarations (not graduations of `TypeCheckpoint` / `InhabitantDecl` data), so the scaffolding's testgen-assertion role dissolves alongside its routing-authority role. | All other lanes reaching parity with current table |
+
+**Critical path:** `T-Ground-Pilot → T-Ground-Rust → T-Ground-Engine → T-Ground-Tests → T-Ground-Dissolve`. Python and Go lanes run parallel after Pilot validates the pattern.
+
+**Grounding Manager** coordinates per [`docs/briefs/grounding-manager.md`](docs/briefs/grounding-manager.md). R1 Director Brief's escalation discipline continues to apply: scope changes to this program route to director; amendments to THESIS.md §"Grounding completeness" / this ROADMAP section require director-authored PRs.
+
+**Acceptance gates** (to be authored as `TestClaim` declarations once T-TestGen runner is green):
+- `ground_rust_int_family_structurally_declared` [Day 1 after Pilot]
+- `ground_rust_reference_complete` [ext: after DB-11 + cardinality-substrate]
+- `ground_routing_stability` [ext: after engine]
+- `ground_l4_certified_rust_i64_inhabits_orderedring` [ext: after tests]
+- `ground_track13_dissolution_complete` [ext: single Dissolve PR]
+
+**Thesis claim tracked by this program:** "Grounding completeness" per THESIS.md §"Thesis claims — complete list" (Tier 1 — Structural correctness).
+
 ## Status at a glance
 
 | Milestone | State | Notes |
