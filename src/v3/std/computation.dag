@@ -23,7 +23,9 @@ import std.algebra {
 // `element` string bridges to structural size-parameter refs; `Forever` remains a terminal atom.
 // `ParserStreamSize` / `WorklistDrainSize` keep parser advance vs worklist drain distinct from
 // generic `CollectionSize` (P2 facts-flow / PR #726 review). Explicit repeat counts split zero vs
-// Peano-positive (no negative `Int` inhabitant).
+// Peano-positive (no negative `Int` inhabitant). **No** `ExplicitCount { n: Int }` carrier exists
+// here: only `ExplicitCountZero` and `ExplicitCountPositive { steps: PositiveDescentAmount }`, so
+// `constant_bound_value` never treats a signed raw `Int` repeat as a valid `SizeBound` constant.
 type SizeBound
   = CollectionSize { param: String }
   | ParserStreamSize { witness: String }
