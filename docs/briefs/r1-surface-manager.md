@@ -54,9 +54,11 @@ Today:
   blocks self-hosting surface (Self-hosting manager's T-PB-A half
   will consume it as soon as it lands).
 - Type-alias `where` is the DB-11 gap — parser `skip_where_clause`
-  per `src/v3/compiler/src/parse.rs`. Alias-form refinements are
-  advertised in the story doc as `[target]`; closing this lane
-  moves them toward `[live]`.
+  in `src/v3/compiler/parse_parser_body.txt:651` (called from
+  `parse_type_rhs_after_eq:597` at `:620`; generated counterpart at
+  `src/v3/compiler/src/parse_generated.rs:678`). Alias-form
+  refinements are advertised in the story doc as `[target]`;
+  closing this lane moves them toward `[live]`.
 - `CharClass` in `std.unicode` is the character-level consumption
   gap per `ROADMAP.md:305`+ — the types exist in `dsl/std/`; the
   tokenizer and syntax authorities aren't using them yet.
@@ -79,10 +81,11 @@ for a principal engineer to verify in one evening.
   blocker.
 - **Parallel.** T-Sub `sub_type_alias_where_lowers` dispatches.
   Requires DB-11 alias-RHS parse path closure
-  (`src/v3/compiler/src/parse.rs` `skip_where_clause`). Once this
-  lane lands, the story doc's alias-refinement claims tighten from
-  `[target]` toward `[live]` — that's a visible integration win
-  (PR-level, not scope-amendment-level).
+  (`src/v3/compiler/parse_parser_body.txt:651` `skip_where_clause`
+  is the drop; `parse_type_rhs_after_eq:597` at `:620` is the call
+  site). Once this lane lands, the story doc's alias-refinement
+  claims tighten from `[target]` toward `[live]` — that's a
+  visible integration win (PR-level, not scope-amendment-level).
 - **Parallel.** T-Sub `sub_charclass_in_std_unicode` dispatches.
   Add `CharClass = Whitespace | Digit | IdentStart | IdentContinue`
   (or superset) to `std.unicode` per `ROADMAP.md:305+`;

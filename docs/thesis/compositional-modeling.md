@@ -15,7 +15,7 @@ summarizes before the body so readers can place each section.
 | Part 1 — primitives | `Int64 = OrderedRing<Word64>` | `[live]` | `dsl/std/bit.dag`, `dsl/std/integer.dag`, `dsl/std/algebra.dag` |
 | Part 1 — primitives | Operations fall out of algebra attachment | `[live]` | `dsl/std/algebra.dag:49-85` (denotational grounding) + `:176-193` (OrderedRing declaration) |
 | Part 2 — refinements | `Nat = Int where x >= 0` | `[live]` | DB-3 lowered; `test_3a3_*` acceptance tests |
-| Part 2 — refinements | Refinement preserves through arithmetic | `[live]` partially, `[target]` for full composition law | DB-3 supports parameter/generic `where` (`ROADMAP.md:231`); alias-RHS `where` still skipped in `src/v3/compiler/src/parse.rs` `skip_where_clause` — tracked under DB-11 (`ROADMAP.md:231`) |
+| Part 2 — refinements | Refinement preserves through arithmetic | `[live]` partially, `[target]` for full composition law | DB-3 supports parameter/generic `where` (`ROADMAP.md:231`); alias-RHS `where` still skipped in `src/v3/compiler/parse_parser_body.txt:651` `skip_where_clause` (drop site; call at `parse_type_rhs_after_eq:597`→`:620`) — tracked under DB-11 (`ROADMAP.md:231`) |
 | Part 3 — arity | `List<T>`, `Option<T>`, `NonEmpty<T>` as cardinality tags | `[live]` for List/Option; `[target]` for NonEmpty | NonEmpty as a first-class type composes on cardinality-substrate work tracked at `ROADMAP.md:305` ("Fixed-width types aren't structurally fixed" — cardinality not substrate-enforced until alias `where` parses/lowers per DB-11 gap) |
 | Part 3 — arity | Nested-optional flatten by composition law | `[target]` | gated on cardinality-substrate row (`ROADMAP.md:305`) + DB-11 alias-RHS closure (`ROADMAP.md:231`) |
 | Part 3 — arity | Testgen generating boundary tests from cardinality | `[target]` | DB-15 schema landed (`ROADMAP.md:235`); runner + `MockBackedInvariant` wiring remain under T-TestGen lane (`ROADMAP.md:51`, `:65`) |
@@ -224,7 +224,7 @@ The refinement is preserved because the operation is structurally
 closed on the refinement. `[target]` — composition-preserves-
 refinement across alias-form refinements is gated on DB-11 closure
 (`ROADMAP.md:231`; alias-RHS `where` clause currently skipped at
-`src/v3/compiler/src/parse.rs` `skip_where_clause`).
+`src/v3/compiler/parse_parser_body.txt:651` `skip_where_clause` (drop site; call at `parse_type_rhs_after_eq:597`→`:620`)).
 
 `Positive * Positive : Positive`. Same logic: `x > 0 ∧ y > 0 → xy > 0`.
 `[target]` — same DB-11 closure (`ROADMAP.md:231`).
@@ -270,7 +270,7 @@ type BoundedString<N> = String where length(x) <= N
 `[target]` for all of these — examples of what refinement-lowering
 will enable once the alias-RHS parsing closes per ROADMAP DB-11
 (generic-parameter `where` already lowers; alias-RHS is the gap —
-`src/v3/compiler/src/parse.rs` `skip_where_clause`).
+`src/v3/compiler/parse_parser_body.txt:651` `skip_where_clause` (drop site; call at `parse_type_rhs_after_eq:597`→`:620`)).
 
 ### Compile time vs runtime
 

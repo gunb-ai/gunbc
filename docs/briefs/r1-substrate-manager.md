@@ -63,8 +63,11 @@ like.
 
 - **Day 1.** E-T dispatches. No blockers. Port `DescentEvidence`
   carriers + lattice functions into v3-reachable
-  `std/termination.dag`. Receipt: parse/lower/emit green; port-
-  progress entry in the design doc.
+  `dsl/std/termination.dag` (the live module; already imported
+  cross-tree, e.g. `dsl/std/computation.dag:101` references
+  `std.termination { DescentEvidence, RankingDimension }`).
+  Receipt: parse/lower/emit green; port-progress entry in the
+  design doc.
 - **After E-T lands.** E-C dispatches. Port
   `SizeBound` / `CallPattern` / `ShrinkFactor` /
   `IterationPrimitive` / `LoweringTarget` / `IterationDimension` +
