@@ -602,6 +602,21 @@ fn sum_bound(terms: List<CostBound>) -> CostBound {
   SumBound { terms: terms }
 }
 
+// E-6: minimal destructor for `SumBound` — first match arm that *observes* the self-edge
+// variant so the coproduct is not constructor-only. Full dominance / cost comparison on
+// `List<CostBound>` remains deferred to lane consumers; this predicate is the intake hook.
+fn cost_bound_is_sum_bound(b: CostBound) -> Bool {
+  match b {
+    SumBound { terms: _ } => true
+    ConstantBound => false
+    AtomicBound { cost: _ } => false
+    ProductBound { factors: _ } => false
+    SumOfProductsBound { terms: _ } => false
+    ForeverBound => false
+    ErrorBound => false
+  }
+}
+
 fn cost_constant() -> CostBound { ConstantBound }
 fn cost_linear(param: String) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: poly_exp_degree_one() } } }
 fn cost_poly(param: String, degree: Int) -> CostBound {
