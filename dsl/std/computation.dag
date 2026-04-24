@@ -390,9 +390,9 @@ fn constant_bound_value(bound: SizeBound) -> Int? {
 // dimensions for every parameter.
 // =========================================================================
 
-// 🟢 TERMINAL. Tags which iteration dimension applies for a kernel `AlgebraProfile`
-// (same routing as `algebra_profile_to_dimension`); complements `IterationPrimitive`
-// (what lowers) with “which bound kind” the profile summary uses in analyses.
+// 🟢 TERMINAL coproduct — E-C dissolution receipt: tags which iteration dimension
+// applies for a kernel `AlgebraProfile` (same routing as `algebra_profile_to_dimension`);
+// complements `IterationPrimitive` (what lowers) with which bound kind analyses use.
 type IterationDimension
   = TreeDescent       // child accessor descent → check_child: true
   | CollectionFold    // collection shrink     → check_list: true

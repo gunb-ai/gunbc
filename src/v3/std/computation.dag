@@ -150,12 +150,16 @@ fn constant_bound_value(bound: SizeBound) -> Int? {
   }
 }
 
-// 🟢 TERMINAL. Dimension tags routing kernel `AlgebraProfile` → iteration bound kind
-// (parallel summary to `IterationPrimitive` lowering).
+// =========================================================================
+// Type-directed iteration dimension (Lane E-C): algebra profile → bound kind
+// =========================================================================
+// 🟢 TERMINAL coproduct — E-C dissolution receipt: which symbolic bound class applies
+// when analyzing recursion through a kernel `AlgebraProfile` (complements
+// `IterationPrimitive`, which records what lowers, not which bound kind applies).
 type IterationDimension
-  = TreeDescent
-  | CollectionFold
-  | ArithmeticRepeat
+  = TreeDescent       // child accessor / tree-size descent
+  | CollectionFold    // collection-sized iteration (list, set, map keys, …)
+  | ArithmeticRepeat   // arithmetic-param / ordered-ring repeat bounds
 
 fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? {
   match profile {
