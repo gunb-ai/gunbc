@@ -94,17 +94,24 @@ compose. When this closes, the R1 release gates themselves
   Self-hosting when the runner lands. **Landable compile-only batch:**
   `docs/briefs/t-pb-b-1.md` + `src/v3/compiler/tests/dag/`.
   **Pre–Rust-deletion checklist (single source — edit here only; do
-  not fork a competing numbered list in other briefs):** (1) Runner
-  accepts v3 `.dag` modules under `src/v3/compiler/tests/dag/` with
-  the same `compile_to_dag` entrypoint as today’s integration harness,
-  or documents a different path/layout — align before moving claims
-  off Rust. (2) Confirm `requires: []` vs `empty()` for
-  `List<ResourceReference>` matches the runner’s parser/lowering.
-  (3) Confirm M1(2.8) predicate-inlining constraints for
-  `PortHasState` / `CostBounded` (`docs/briefs/t-pb-b-1.md`). (4)
-  **First Rust deletion batch:** one thin `Compiles`-only duplicate
+  not fork a competing numbered list in other briefs):** (1) **[done,
+  PR #736]** Runner accepts v3 `.dag` modules under
+  `src/v3/compiler/tests/dag/` with the same `compile_to_dag`
+  entrypoint as today’s integration harness — proven by
+  `t_pb_b_1_dag_runner_test`. (2) **[done, PR #736, scoped-NO]**
+  `requires: []` vs `empty()` for `List<ResourceReference>`: **not
+  equivalent in `data` bodies today.** Runner path must stay on `[]`;
+  `empty()` is rejected by M1(2.8) class-5. Receipt pinned by
+  `test_runner_data_bodies_reject_requires_empty_call_today`. Receipt
+  paragraph in `docs/briefs/t-pb-b-1.md`. (3) **[done for Day-1 predicate
+  shapes, PR #736]** M1(2.8) predicate-inlining constraints for
+  `PortHasState` / `CostBounded`: inlined on each `TestClaim` record in
+  `t_pb_b_1_contract_port_cost.dag`; standalone
+  `data _: TestPredicate = …` bodies remain NYI under the same
+  class-5 restriction. Receipt paragraph in `docs/briefs/t-pb-b-1.md`.
+  (4) **First Rust deletion batch:** one thin `Compiles`-only duplicate
   (e.g. `thesis_validation_test` or `pipe_desugar`) only after (1)–(3)
-  are green for that claim shape.
+  are green for that claim shape — Testgen manager call.
 - **Sideways to Surface Manager.** `emit_omni_demo_fixtures_green`
   and the three `emit_*` gates under T-Emit require `ExecuteCommand`
   + `ForAllTargets` predicates — these are T-TestGen `[ext]`
@@ -137,7 +144,10 @@ Lane-owner dispatch status (update as sub-deliverables close):
       (PR #688, merged 2026-04-24)
 - [x] `testgen_structural_coverage` gate compiles + evaluates
       (PR #720, merged 2026-04-24)
-- [ ] `MockBackedInvariant` wiring (PR #722 in review — DRAFT, needs CI + coordination with #717)
+- [x] `MockBackedInvariant` wiring
+      (PR #722, merged 2026-04-24 — runner dispatches on `MockBackedInvariant`,
+      resolves both `DeclarationRef` edges, returns `NotYetImplemented(String)`
+      naming the unresolved mock-simulation step)
 - [ ] `testgen_mock_backed_integration_safe` gate compiles + evaluates
 - [x] `testgen_manual_claim_is_first_class` gate compiles + evaluates
       (PR #707, merged 2026-04-24)
@@ -152,8 +162,10 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [x] `lens_composition_associative` gate compiles + evaluates
       (PR #728, merged 2026-04-24 — witness + `r1_gates.dag` suite)
 - [ ] `lens_output_is_queryable_data` gate compiles + evaluates
-      (PR #717 in review — adds runner seam dispatch for `LensOutputEquals` → NYI(String);
-      gate stays [ ] until runner executes lens functions)
+      (PR #717 merged 2026-04-24 — dispatch + `DeclarationRef` resolution landed,
+      runner returns `NotYetImplemented(String)`; gate stays [ ] until T-LensAPI D1
+      lens-application primitive + D2 `eval_lens_output_equals` real apply/compare land.
+      D1 in flight as PR #741)
 
 **Schema extensions owned here that other managers consume:**
 - [x] `ExecuteCommand` predicate (Surface T-Emit consumer) — landed PR #678
@@ -168,7 +180,8 @@ Decisions log (append as they happen):
 - 2026-04-24: **T-LensAPI `lens_composition_associative` closed** via
   PR #728. Runner dispatch of `AlgebraicLaw { law: Associativity }`,
   witness DAG, and `r1_gates.dag` suite landed together. Remaining
-  T-LensAPI work: `lens_output_is_queryable_data` (PR #717 in review).
+  T-LensAPI work: `lens_output_is_queryable_data` (PR #717 dispatch merged
+  2026-04-24; gate awaits D1 primitive — PR #741 draft).
 - 2026-04-24: T-PB-B / Testgen **pre–Rust-deletion** coordination
   checklist consolidated in this brief (Hand-off → Self-hosting);
   `docs/briefs/t-pb-b-1.md` now points here instead of duplicating
