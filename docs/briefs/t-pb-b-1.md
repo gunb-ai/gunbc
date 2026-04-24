@@ -6,14 +6,16 @@
 
 - **`src/v3/compiler/tests/dag/*.dag`** — `TestClaim` / `TestSuite` as `data` declarations (`module v3.compiler.tests.t_pb_b_1.*`), schema from `src/v3/std/verification.dag`.
 - **`t_pb_b_1_tests_dag_smoke_test`** — `compile_to_dag` smoke only (no predicate evaluation, no `pb_*`).
+- **`t_pb_b_1_dag_runner_test`** (PR #736) — runner evaluates each landed `TestSuite`'s claims via `TestRunner::run_suite`; covers `Compiles`, `FailsWithDiagnostic{TypeMismatch}`, `PortHasState`, `CostBounded`. See *Receipts for pre–Rust-deletion checklist* below for the per-item coverage.
 
-**Compile-smoke caveat (until runner):** The smoke helpers accept both `Ok(dag)` and `Err(CompileError::Semantic(dag))`, then assert empty **module** diagnostics. That proves the declaring `.dag` / `.v3` file lowers as a harness artifact — it does **not** evaluate `TestPredicate` (`Compiles`, `FailsWithDiagnostic`, …). When Testgen runs claims for real, `FailsWithDiagnostic` must be proven by the runner on the embedded program, **not** by empty diagnostics on the outer file (which would invert the predicate). **`t_pb_b_1_contract_diagnostic_smoke.dag`** is the sharp example: it names `FailsWithDiagnostic` for embedded `source: "let x: Bool = 1"`, while smoke still requires the **wrapper** module to lower without diagnostics. Do not treat that as semantic proof of the negative, and do not promote diagnostic-negative fixtures to CI-backed assertions without the runner (see also Brief D duplicate-authority / dissolution).
+**Compile-smoke caveat (smoke tests only):** `t_pb_b_1_tests_dag_smoke_test` does **not** call `TestRunner`; it only asserts the declaring module lowers with empty diagnostics. Its helpers accept both `Ok(dag)` and `Err(CompileError::Semantic(dag))` and then check empty **module** diagnostics — that proves the declaring `.dag` / `.v3` file lowers as a harness artifact, it does **not** evaluate `TestPredicate` (`Compiles`, `FailsWithDiagnostic`, …). Predicate evaluation for the `.dag` suites lives in `t_pb_b_1_dag_runner_test` instead: `FailsWithDiagnostic` is proven there by the runner on the embedded program, **not** by empty diagnostics on the outer file (which would invert the predicate). **`t_pb_b_1_contract_diagnostic_smoke.dag`** is the sharp example: it names `FailsWithDiagnostic` for embedded `source: "let x: Bool = 1"`, the smoke still requires the **wrapper** module to lower without diagnostics, and the runner test is what actually witnesses the embedded negative. Do not treat the smoke pass as semantic proof of the negative, and do not promote diagnostic-negative fixtures to CI-backed assertions from the smoke path alone (see also Brief D duplicate-authority / dissolution; the Brief D `.v3` `let`-binding path is still smoke-only).
 
 **Compiler constraint (today):** M1(2.8) rejects standalone `data …: TestPredicate = PortHasState(…)` / `CostBounded(…)` bodies as opaque. Inline those predicates **inside** each `TestClaim` `data` record (see `t_pb_b_1_contract_port_cost.dag`) until class-5 data bodies lift the restriction — call this out when Testgen chooses how to factor shared predicates.
 
 ## Explicitly not landed (needs Testgen manager)
 
-- Wiring these files to the **Testgen runner** and CI evaluation order.
+Runner wiring for `src/v3/compiler/tests/dag/*.dag` **is** landed (PR #736 — see the receipts section below for (1)/(2)/(3) coverage); CI evaluation order is the existing `cargo test -p v3-compiler` path. Still open here:
+
 - **Deleting** redundant Rust integration tests (deferred until runner + schema assumptions are approved — avoids large revert).
 - **`pb_test_file_generated_from_dag`** / **`pb_rust_tests_outside_residual_zero`**.
 
