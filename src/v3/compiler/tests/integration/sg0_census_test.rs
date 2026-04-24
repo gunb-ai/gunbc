@@ -175,6 +175,9 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
     "src/v3/compiler/src/test_runner.rs",
+    // R1 T-Sub `sub_charclass_in_std_unicode`: Rust mirror of `std.unicode::CharClass`
+    // until M1(2.8) allows `CharClass` / `List<Char>` in `tokenize.dag` `data` bodies.
+    "src/v3/compiler/src/tokenize_char_class.rs",
     "src/v3/compiler/src/workflow_idempotency.rs",
     "src/v3/compiler/src/workflow_parallelism.rs",
 ];
