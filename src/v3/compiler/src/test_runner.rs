@@ -313,8 +313,8 @@ impl<'a> TestRunner<'a> {
             return ClaimResult::Fail(format!("bind `{bind_name}` not found"));
         };
         let actual = match cost_of(&dag, &bind.value) {
-            CostLookup::FoundCost { _0 } => _0,
-            CostLookup::MissingCost => {
+            CostLookup::Hit(actual) => actual,
+            CostLookup::Miss => {
                 return ClaimResult::Fail(format!("missing cost for bind `{bind_name}`"));
             }
         };
