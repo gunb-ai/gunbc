@@ -60,8 +60,8 @@ pub struct Correction {
 
 DAG_LOOKUP_TEMPLATE = """#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Lookup<T> {
-    Missing,
-    Found(T),
+    Miss,
+    Hit(T),
 }
 """
 

@@ -10,9 +10,21 @@
 // Bootstrap staging: `src/v3/std/` until the v2 firewall dissolves and
 // `dsl/std/` subsumes v3 std (same gate as `std.list` / `std.algebra`).
 
-module std.lookup
+module v3.std.lookup
 
 // Generic sum: one authority for “absent vs present” at a typed value.
+// Variant labels `Miss` / `Hit` mirror the thesis `Missing | Found(T)` naming.
+//
+// v3 inference note: a bare `Miss` pattern under `Lookup<value>` does not
+// always unify to `Lookup<Int>` at return positions; consumers that need a
+// concrete `Lookup<Int>` should use `miss_lookup` / `hit_lookup` below until
+// the polymorphic empty-arm story hardens.
 type Lookup<value>
-  = Missing
-  | Found(value)
+  = Miss
+  | Hit(value)
+
+fn miss_lookup<value>() -> Lookup<value> =
+  Miss
+
+fn hit_lookup<value>(v: value) -> Lookup<value> =
+  Hit(v)

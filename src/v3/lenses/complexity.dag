@@ -27,31 +27,31 @@
 // rewriting that exchanges recursive graph descent for sequential
 // map build.
 //
-// **Fail-closed on malformed references.** `CostLookup` keeps
-// `MissingCost` distinct from `FoundCost(0)` so a port referenced by
+// **Fail-closed on malformed references.** `Lookup<Int>` keeps
+// `Miss` distinct from `Hit(0)` so a port referenced by
 // a consumer but absent from the cost map cannot masquerade as a
 // legitimate zero-cost leaf. The accumulator is pre-seeded with an
 // entry (cost 0) for every `bind.params` port — parameters are the
 // only legitimate absent-from-d.nodes zero-cost leaves. Any remaining
-// `MissingCost` at lookup time means the DAG references a port whose
+// `Miss` at lookup time means the DAG references a port whose
 // producer is not in `d.nodes`, which is malformed and surfaces at
 // the Rust boundary (`CostLens::cost_of` panics).
+//
+// Shared carrier: `v3.std.lookup.Lookup` (see docs/thesis/compiler-std-consolidation.md).
 
 module lenses.complexity
 
 import std.list { List, empty, fold, cons, concat }
 import std.substrate { Dag, DagPort, Behavior, BranchPath, NodeId, PortId }
+import std.types { Int }
+import v3.std.lookup { Lookup, hit_lookup, miss_lookup }
 
 type CostEntry {
   port: PortId
-  cost: CostLookup
+  cost: Lookup<Int>
 }
 
-type CostLookup
-  = MissingCost
-  | FoundCost(Int)
-
-fn cost_of(d: Dag, port_id: PortId) -> CostLookup =
+fn cost_of(d: Dag, port_id: PortId) -> Lookup<Int> =
   lookup_cost(compute_costs(d), port_id)
 
 fn compute_costs(d: Dag) -> List<CostEntry> =
@@ -85,14 +85,14 @@ fn param_entries(params: List<PortId>) -> List<CostEntry> =
     Empty => empty()
     Cons(payload) =>
       cons(
-        { port: payload.head, cost: FoundCost(0) },
+        { port: payload.head, cost: hit_lookup<Int>(0) },
         param_entries(payload.tail)
       )
   }
 
 fn entry_for(acc: List<CostEntry>, behavior: Behavior) -> CostEntry =
   match behavior {
-    Value(v) => { port: v.result_port, cost: FoundCost(0) }
+    Value(v) => { port: v.result_port, cost: hit_lookup<Int>(0) }
     Transform(t) =>
       {
         port: t.result_port
@@ -127,19 +127,19 @@ fn entry_for(acc: List<CostEntry>, behavior: Behavior) -> CostEntry =
       }
   }
 
-fn sum_costs(acc: List<CostEntry>, ports: List<PortId>) -> CostLookup =
-  fold(ports, FoundCost(0), |sum, port_id|
+fn sum_costs(acc: List<CostEntry>, ports: List<PortId>) -> Lookup<Int> =
+  fold(ports, hit_lookup<Int>(0), |sum, port_id|
     add_cost(sum, lookup_cost(acc, port_id))
   )
 
-fn max_path_cost(acc: List<CostEntry>, paths: List<BranchPath>) -> CostLookup =
-  fold(paths, FoundCost(0), |best, path|
+fn max_path_cost(acc: List<CostEntry>, paths: List<BranchPath>) -> Lookup<Int> =
+  fold(paths, hit_lookup<Int>(0), |best, path|
     max_cost(best, lookup_cost(acc, path.result_port))
   )
 
-fn lookup_cost(acc: List<CostEntry>, port_id: PortId) -> CostLookup =
+fn lookup_cost(acc: List<CostEntry>, port_id: PortId) -> Lookup<Int> =
   match acc {
-    Empty => MissingCost
+    Empty => miss_lookup<Int>()
     Cons(payload) =>
       if payload.head.port == port_id then
         payload.head.cost
@@ -150,28 +150,28 @@ fn lookup_cost(acc: List<CostEntry>, port_id: PortId) -> CostLookup =
 // Fail-closed arithmetic: a missing operand makes the whole sum
 // missing. Silent zero-fallback would let a malformed DAG masquerade
 // as a valid computation with cost 0.
-fn add_one(c: CostLookup) -> CostLookup =
+fn add_one(c: Lookup<Int>) -> Lookup<Int> =
   match c {
-    MissingCost => MissingCost
-    FoundCost(n) => FoundCost(1 + n)
+    Miss => miss_int_lookup()
+    Hit(n) => hit_int_lookup(1 + n)
   }
 
-fn add_cost(a: CostLookup, b: CostLookup) -> CostLookup =
+fn add_cost(a: Lookup<Int>, b: Lookup<Int>) -> Lookup<Int> =
   match a {
-    MissingCost => MissingCost
-    FoundCost(x) =>
+    Miss => miss_int_lookup()
+    Hit(x) =>
       match b {
-        MissingCost => MissingCost
-        FoundCost(y) => FoundCost(x + y)
+        Miss => miss_int_lookup()
+        Hit(y) => hit_int_lookup(x + y)
       }
   }
 
-fn max_cost(a: CostLookup, b: CostLookup) -> CostLookup =
+fn max_cost(a: Lookup<Int>, b: Lookup<Int>) -> Lookup<Int> =
   match a {
-    MissingCost => MissingCost
-    FoundCost(x) =>
+    Miss => miss_int_lookup()
+    Hit(x) =>
       match b {
-        MissingCost => MissingCost
-        FoundCost(y) => FoundCost(if x > y then x else y)
+        Miss => miss_int_lookup()
+        Hit(y) => hit_int_lookup(if x > y then x else y)
       }
   }
