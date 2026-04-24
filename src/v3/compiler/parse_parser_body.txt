@@ -671,7 +671,12 @@ impl<'a> Parser<'a> {
     /// the std corpus. `parse_call_args` recognizes `f(a: x, b: y)`-shaped
     /// opens so inner commas in `range(min: …, max: …)` are not mistaken for
     /// top-level `where` segment separators (they desugar to a single
-    /// `Record` argument). **Lowering** defers those refinements for
+    /// `Record` argument). The same path covers **one** bound, e.g.
+    /// `range(min: 1)` (still `Ident` + `:` after `(`). SG-2
+    /// `handwritten_parser_accepts_types_dag` tokenizes and parses the full
+    /// `dsl/std/types.dag` corpus; PB-1’s committed `bootstrap_std_generated.rs`
+    /// snapshot carries **no** parse-phase `Diagnostic` rows for that file.
+    /// **Lowering** defers those refinements for
     /// `dsl/std/types.dag` until std defines the helpers (see
     /// `lower_type_alias_refinements_phase` in `lower.rs`), which keeps PB-1
     /// bootstrap snapshots diagnostic-clean — the “broken bootstrap artifact”

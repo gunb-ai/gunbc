@@ -1094,14 +1094,47 @@ pub fn compile_parse_surface_std_authority_dag(
 /// mirror, which can trail `parse_surface.dag` by one field on `TypeAlias` until
 /// `regen_bootstrap` is refreshed. Patch emitted `lower_helpers` Rust so the
 /// `TypeAlias` arm includes `refinement` when absent (DB-11 / `regen_lens` / SG-6).
+///
+/// **Fail-closed:** if the mirror still omits `refinement` on `TypeAlias`, the
+/// pre-patch substring must be present; otherwise this panics. A silent
+/// `replace` no-op (e.g. rustfmt rewrote line breaks) would otherwise match the
+/// idempotency check while shipping a broken `lower_helpers` arm.
 pub fn patch_lower_helpers_generated_type_alias_refinement(src: &str) -> String {
     if src.contains("refinement: __i_refinement") {
         return src.to_string();
     }
-    src.replace(
-        "        SurfaceItem::TypeAlias {\n            name: __i_name,\n            type_params: __i_type_params,\n            target: __i_target,\n            span: __i_span,",
-        "        SurfaceItem::TypeAlias {\n            name: __i_name,\n            type_params: __i_type_params,\n            target: __i_target,\n            refinement: __i_refinement,\n            span: __i_span,",
-    )
+    // Exact rustfmt line breaks for `regen_lens` + `lower_helpers` (see SG-6 snapshot).
+    const LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT: &str = concat!(
+        "        SurfaceItem::TypeAlias {",
+        "\n            name: __i_name,",
+        "\n            type_params: __i_type_params,",
+        "\n            target: __i_target,",
+        "\n            span: __i_span,",
+    );
+    const LOWER_HELPERS_TYPE_ALIAS_WITH_REFINEMENT: &str = concat!(
+        "        SurfaceItem::TypeAlias {",
+        "\n            name: __i_name,",
+        "\n            type_params: __i_type_params,",
+        "\n            target: __i_target,",
+        "\n            refinement: __i_refinement,",
+        "\n            span: __i_span,",
+    );
+    if !src.contains(LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT) {
+        panic!(
+            "patch_lower_helpers_generated_type_alias_refinement: pre-DB-11 `TypeAlias` \
+             emit pattern not found; rustfmt/emit shape may have changed. Update this bridge, \
+             or run `regen_bootstrap` / regen the embedded mirror so `refinement` is native."
+        );
+    }
+    let out = src.replace(
+        LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT,
+        LOWER_HELPERS_TYPE_ALIAS_WITH_REFINEMENT,
+    );
+    assert_ne!(
+        out, src,
+        "patch should have inserted `refinement: __i_refinement` on `TypeAlias`"
+    );
+    out
 }
 
 /// PB-1 scaffold helper: re-run the pre-snapshot std bootstrap path for

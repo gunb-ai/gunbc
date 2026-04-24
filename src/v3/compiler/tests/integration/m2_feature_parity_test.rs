@@ -9,7 +9,10 @@
 
 use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{AtomPayload, Dag, TypeConnective};
+use v3_compiler::dag::{
+    AtomPayload, Behavior, ComparisonOp, Dag, LogicalOp, OperatorKind, TransformTarget,
+    TypeConnective,
+};
 use v3_compiler::CompileError;
 
 fn compile_any(src: &str, file: &str) -> Dag {
@@ -387,10 +390,72 @@ fn test_db11_type_alias_where_comma_conjoins() {
     // (same surface shape as `type X = T where a, b` in std).
     // Each conjunct uses the alias identifier `Bounded` as the subject name
     // (same binding rule as `test_db11_type_alias_where_survives_parse_and_lower`).
+    let file = "alias_where_multi.v3";
     let src = "type Bounded = Int where Bounded > 0, Bounded < 100";
-    let dag = cached_compile_to_dag(src, "alias_where_multi.v3");
+    let dag = cached_compile_to_dag(src, file);
     let decl = dag.declaration_by_name("Bounded").expect("`Bounded`");
-    assert!(decl.refinement.is_some(), "expected lowered refinement");
+    let pred_id = decl
+        .refinement
+        .expect("expected lowered refinement predicate");
+    let pred = dag.declaration(pred_id);
+    assert_eq!(
+        pred.span.file, file,
+        "refinement predicate must live in the test file"
+    );
+
+    // Must lower to a single `&&` (two `Comparison` conjuncts). A regression
+    // that kept only the first `where` part or forgot to conjoin would miss
+    // the `Logical(And)` and/or one comparison at this file scope.
+    let logical_ands = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_transform)
+        .filter(|t| t.span.file == file)
+        .filter(|t| {
+            matches!(
+                t.target,
+                TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And))
+            )
+        })
+        .count();
+    assert_eq!(
+        logical_ands, 1,
+        "expected one comma-folded `&&` in the predicate"
+    );
+
+    let comparison_ops = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_transform)
+        .filter(|t| t.span.file == file)
+        .filter(|t| {
+            matches!(
+                t.target,
+                TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt))
+                    | TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt))
+            )
+        })
+        .count();
+    assert_eq!(
+        comparison_ops, 2,
+        "expected `Bounded > 0` and `Bounded < 100` to each lower to a comparison Transform"
+    );
+}
+
+/// `dsl/std/types.dag` line shapes for alias refinements (R1 / DB-11 manager receipt):
+/// `range(min: …)` uses call sugar (`parse_call_args` + `label:`), and
+/// `non_empty, pattern("…")` splits only on top-level commas. Exercised under the
+/// real std filename so `lower_type_alias_refinements_phase` skips predicate
+/// lowering and PB-1 stays diagnostic-clean while parse coverage is locked.
+#[test]
+fn test_db11_type_alias_where_accepts_types_dag_constraint_spellings() {
+    let f = "dsl/std/types.dag";
+    for src in [
+        "type R = Int where range(min: 1)",
+        "type S = String where non_empty, pattern(\"x\")",
+    ] {
+        let _ = cached_compile_to_dag(src, f);
+    }
 }
 
 #[test]

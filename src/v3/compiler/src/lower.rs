@@ -478,6 +478,11 @@ fn seed_function_signatures_phase(
 ///   deliberate user-facing semantics, not an implementation accident; see
 ///   `test_db11_type_alias_where_survives_parse_and_lower` in
 ///   `m2_feature_parity_test.rs`.
+///
+/// In every call, `bind_name` is the surface spelling the author uses for the
+/// **value being refined**; it is not a second name for the type. The single
+/// `Var` in scope is bound to a port of shape `base_decl_id` (the base type
+/// for that value).
 fn build_refinement_predicate_declaration(
     base_decl_id: DeclarationId,
     predicate: &SurfaceExpr,
