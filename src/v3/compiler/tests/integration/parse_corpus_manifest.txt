@@ -32,7 +32,7 @@ src/v3/std/emit_model.dag	32	62082	79a40df329c1a24b
 src/v3/std/induction.dag	56	88794	546f74c63c189c50
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
 src/v3/std/lookup.dag	5	4734	f97d4e536b675b1b
-src/v3/std/parse_surface.dag	17	94961	9b9d42b7673f21d3
+src/v3/std/parse_surface.dag	17	95016	6ec32dc641fb4c40
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/substrate.dag	52	112220	4a342ae6dabbf419
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672

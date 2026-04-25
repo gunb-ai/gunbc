@@ -12,7 +12,7 @@
 module v3.std.parse_surface
 
 import std.list { List }
-import v3.std.substrate { SourceSpan, OperatorKind }
+import v3.std.substrate { SourceSpan, OperatorKind, IntLiteralMagnitude }
 
 type DagDifference {
   detail: String
@@ -108,12 +108,14 @@ type SurfacePattern
 
 // 🟢 TERMINAL at parse_surface surface-literal scope. Three literal classes are irreducible
 // input distinctions here; ledger: patterns 1–4 N/A (no finer substrate split without changing
-// the language surface). **Naming contract:** SurfaceLiteral variant labels MUST stay `Int` /
+// the language surface). **Naming contract:** SurfaceLiteral variant *labels* MUST stay `Int` /
 // `Bool` / `String` — the same names as the historical handwritten parser — so generated Rust
 // matches `lower.rs` and every `SurfaceLiteral::…` constructor site. Do not rename to
-// `IntLit` / `BoolLit` / `StringLit` (tokenizer token kinds, not surface literals).
+// `IntLit` / `BoolLit` / `StringLit` (tokenizer token kinds, not surface literals). The `Int`
+// branch payload is `IntLiteralMagnitude` (same substrate leaf as `LiteralBits.LitInt` and
+// `TokenKind::IntLit`), not `std.integer::Int` / default Int64.
 type SurfaceLiteral
-  = Int(Int)
+  = Int(IntLiteralMagnitude)
   | Bool(Bool)
   | String(String)
 

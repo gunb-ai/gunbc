@@ -730,15 +730,9 @@ def render_parse_surface_sum(name: str, variants: list[VariantDef]) -> str:
         if variant.kind == "unit":
             lines.append(f"    {variant.name},")
         elif variant.kind == "tuple":
-            # R2: `SurfaceLiteral::Int` in parse_surface.dag still names payload `Int`
-            # (semantic default int); runtime mirror is i128 here. Substrate
-            # `LiteralBits::Int` uses `IntLiteralMagnitude` in substrate.dag
-            # (regen: IntLiteralMagnitude -> i128 in `dag_scalar_generated`).
-            rust_tuple_ty = (
-                "i128"
-                if name == "SurfaceLiteral" and variant.name == "Int"
-                else rust_type(variant.payload)
-            )
+            # `rust_type` maps substrate names (e.g. `IntLiteralMagnitude` -> i128);
+            # no per-variant overrides — parse_surface.dag must name the same carriers as substrate.
+            rust_tuple_ty = rust_type(variant.payload)
             lines.append(f"    {variant.name}({rust_tuple_ty}),")
         elif variant.kind == "record":
             lines.append(f"    {variant.name} {{")
