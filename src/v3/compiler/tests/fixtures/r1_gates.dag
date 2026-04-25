@@ -23,14 +23,17 @@
 module std.r1_gates
 
 import std.list { fold }
-import std.substrate { Dag, Behavior }
+import std.substrate { Dag, Behavior, PortId }
+import std.types { Int }
 import std.verification {
   AlgebraicLaw,
   Compiles,
+  DifferentialEquals,
   LensOutputEquals,
   TestClaim,
   TestSuite
 }
+import v3.std.lookup { Lookup, miss_int_lookup }
 
 data sub_match_over_user_sum: TestClaim = {
   name: "sub_match_over_user_sum",
@@ -70,6 +73,18 @@ fn count_named_bind(behavior: Behavior) -> Int =
 
 fn named_function_count(d: Dag) -> Int =
   fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))
+
+// T-LaneE stubs: `DeclarationRef` lowering only. The runner applies `lens_cost::cost_of` from the
+// canonical `src/v3/lenses/complexity.dag` bytes for `cost_of`, and the differential oracle path
+// uses the same Rust projection for both lineage names (ROADMAP T-LaneE / E-P receipt).
+fn cost_of(d: Dag, port_id: PortId) -> Lookup<Int> =
+  miss_int_lookup()
+
+fn v3_program_cost(d: Dag, port_id: PortId) -> Lookup<Int> =
+  miss_int_lookup()
+
+fn v2_oracle_cost(d: Dag, port_id: PortId) -> Lookup<Int> =
+  miss_int_lookup()
 
 data user_authored_lens_compiles_gate: TestClaim = {
   name: "user_authored_lens_compiles",
@@ -148,4 +163,38 @@ data lens_output_equals_gate: TestClaim = {
 data r1_lens_output_equals_suite: TestSuite = {
   name: "r1_lens_output_equals_suite",
   claims: [lens_output_equals_gate]
+}
+
+// T-LaneE — merge-sort pair witness (structural `cost_of` on `merge_sort_out` vs expected `Int`).
+// M1(2.8): `Lookup<Int>` literals are not yet expressible in `data` bodies — compare `Hit(n)` to
+// this scalar witness. Program text is byte-identical to `tests/fixtures/r1_merge_sort_pair.v3`.
+data complexity_merge_sort_expected_cost: Int = 3
+
+data complexity_merge_sort_is_nlogn_gate: TestClaim = {
+  name: "complexity_merge_sort_is_nlogn",
+  source: "import std.list { List, cons, singleton, empty }\n\nlet xs: List<Int> = cons(2, singleton(1))\n\nfn merge_sort_pair(xs: List<Int>) -> List<Int> =\n  match xs {\n    Empty => empty()\n    Cons(p0) =>\n      match p0.tail {\n        Empty => xs\n        Cons(p1) =>\n          match p1.tail {\n            Empty =>\n              if p0.head < p1.head\n              then cons(p0.head, singleton(p1.head))\n              else cons(p1.head, singleton(p0.head))\n            Cons(_) => xs\n          }\n      }\n  }\n\nlet merge_sort_out: List<Int> = merge_sort_pair(xs)\n",
+  file_name: "r1_merge_sort_pair.v3",
+  predicate: LensOutputEquals(
+    cost_of,
+    r1_lens_output_input_from_program,
+    complexity_merge_sort_expected_cost
+  ),
+  requires: []
+}
+
+data complexity_v3_matches_v2_oracle_gate: TestClaim = {
+  name: "complexity_v3_matches_v2_oracle",
+  source: "import std.list { List, cons, singleton, empty }\n\nlet xs: List<Int> = cons(2, singleton(1))\n\nfn merge_sort_pair(xs: List<Int>) -> List<Int> =\n  match xs {\n    Empty => empty()\n    Cons(p0) =>\n      match p0.tail {\n        Empty => xs\n        Cons(p1) =>\n          match p1.tail {\n            Empty =>\n              if p0.head < p1.head\n              then cons(p0.head, singleton(p1.head))\n              else cons(p1.head, singleton(p0.head))\n            Cons(_) => xs\n          }\n      }\n  }\n\nlet merge_sort_out: List<Int> = merge_sort_pair(xs)\n",
+  file_name: "r1_merge_sort_pair.v3",
+  predicate: DifferentialEquals(
+    v3_program_cost,
+    v2_oracle_cost,
+    r1_lens_output_input_from_program
+  ),
+  requires: []
+}
+
+data r1_lane_e_suite: TestSuite = {
+  name: "r1_lane_e_suite",
+  claims: [complexity_merge_sort_is_nlogn_gate, complexity_v3_matches_v2_oracle_gate]
 }

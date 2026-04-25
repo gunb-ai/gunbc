@@ -22,6 +22,27 @@ pub const R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS: &str = include_str!(concat!(
     "/../lenses/named_function_count.dag"
 ));
 
+/// Same on-disk lens as `src/v3/lenses/complexity.dag`. `LensOutputEquals(cost_of, …)` applies
+/// [`crate::lens_cost::cost_of`] on the compiled claim program (T-LaneE) — not the fixture-local
+/// `fn cost_of` stub body (`INVARIANTS.md` P2).
+pub const R1_CANONICAL_COMPLEXITY_LENS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../lenses/complexity.dag"
+));
+
+/// Bind whose `value` port receives structural `cost_of` for `LensOutputEquals` / `DifferentialEquals`.
+///
+/// Today the runner keys this on `TestClaim.file_name` until `DeclarationRef` can name the bind
+/// directly (M1(2.8) — same story as `r1_lens_output_input_from_program`).
+fn cost_bind_for_claim_file(file_name: &str) -> Option<&'static str> {
+    match file_name {
+        "r1_merge_sort_pair.v3" => Some("merge_sort_out"),
+        "fixture_compiler_nerd_canonical_complexity.v3" => Some("complexity_demo_out"),
+        "fixture_compiler_nerd_canonical_parallelism.v3" => Some("total"),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimResult {
     Pass,
@@ -175,6 +196,7 @@ impl<'a> TestRunner<'a> {
                     "PortHasState" => self.eval_port_has_state(claim, &payload),
                     "CostBounded" => self.eval_cost_bounded(claim, &payload),
                     "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
+                    "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
                     "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                     "MockBackedInvariant" => self.eval_mock_backed_invariant(claim, &payload),
                     other => ClaimResult::NotYetImplemented(format!(
@@ -318,6 +340,14 @@ impl<'a> TestRunner<'a> {
         let input_name = decl_display_name(input_id, input_decl);
         let expected_name = decl_display_name(expected_id, expected_decl);
 
+        // R1 gate sentinel: `Dag` inputs are not yet expressible as structural `data` bodies in the
+        // fixture DSL; `r1_lens_output_input_from_program` names a typed placeholder while the
+        // runner reflects `Dag.nodes` from `TestClaim.source` / `file_name`.
+        // **Dissolution trigger (ROADMAP / INVARIANTS P2):** replace string matching on this name
+        // with a structural `TestClaim` / `std.verification` coproduct arm (reflection input vs
+        // literal body) so runners do not key behavior on declaration spellings.
+        const PROGRAM_INPUT_SENTINEL: &str = "r1_lens_output_input_from_program";
+
         if input_decl.value_body.is_none() {
             return ClaimResult::Fail(format!(
                 "LensOutputEquals: input_ref `{input_name}` has no value body"
@@ -328,14 +358,6 @@ impl<'a> TestRunner<'a> {
                 "LensOutputEquals: expected_ref `{expected_name}` has no value body"
             ));
         }
-
-        // R1 gate sentinel: `Dag` inputs are not yet expressible as structural `data` bodies in the
-        // fixture DSL; `r1_lens_output_input_from_program` names a typed placeholder while the
-        // runner reflects `Dag.nodes` from `TestClaim.source` / `file_name`.
-        // **Dissolution trigger (ROADMAP / INVARIANTS P2):** replace string matching on this name
-        // with a structural `TestClaim` / `std.verification` coproduct arm (reflection input vs
-        // literal body) so runners do not key behavior on declaration spellings.
-        const PROGRAM_INPUT_SENTINEL: &str = "r1_lens_output_input_from_program";
 
         // INVARIANTS P2 (executable single authority): `DeclarationRef` for `lens_ref` still
         // resolves against the fixture `Dag` for lowering, but for `named_function_count` the
@@ -368,6 +390,48 @@ impl<'a> TestRunner<'a> {
                 ));
             }
         };
+
+        // T-LaneE (`cost_of`): structural `Lookup<Int>` from the Rust-generated lens on the claim
+        // program's `merge_sort_out` bind vs a fixture `Lookup<Int>` expected value.
+        if lens_decl.name.as_deref() == Some("cost_of") {
+            if input_decl.name.as_deref() != Some(PROGRAM_INPUT_SENTINEL) {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals(cost_of): input_ref must be `{PROGRAM_INPUT_SENTINEL}` sentinel, got `{input_name}`"
+                ));
+            }
+            let Some(cost_bind) = cost_bind_for_claim_file(&claim.file_name) else {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals(cost_of): no structural-cost bind mapping for file `{}`",
+                    claim.file_name
+                ));
+            };
+            let Some(bind) = find_bind(&program_dag, cost_bind, &claim.file_name) else {
+                return ClaimResult::Fail(format!(
+                    "LensOutputEquals(cost_of): bind `{cost_bind}` not found in `{}`",
+                    claim.file_name
+                ));
+            };
+            let computed = cost_of(&program_dag, &bind.value);
+            // M1(2.8): `Lookup<Int>` is not yet structurally authorable in `data` bodies for this
+            // fixture module — compare the lens `Hit(n)` against a scalar `Int` witness.
+            let expected_int = match expected_decl.value_body.as_ref() {
+                Some(ValueBody::Scalar(LiteralBits::Int(i))) => *i,
+                _ => {
+                    return ClaimResult::Fail(format!(
+                        "LensOutputEquals(cost_of): expected_ref `{expected_name}` must be `data …: Int = <literal>` (M1(2.8); `Lookup<Int>` data literals are deferred)"
+                    ));
+                }
+            };
+            return match computed {
+                CostLookup::Hit(v) if v == expected_int => ClaimResult::Pass,
+                CostLookup::Hit(v) => ClaimResult::Fail(format!(
+                    "LensOutputEquals(cost_of): expected `{expected_int}`, computed `{v}` for bind `{cost_bind}`"
+                )),
+                CostLookup::Miss => ClaimResult::Fail(
+                    "LensOutputEquals(cost_of): computed cost is Miss (malformed program)".to_string(),
+                ),
+            };
+        }
 
         // INVARIANTS P2: reflected `FieldValue` List / `Behavior` variant ids must come from the
         // same `Dag` as `apply_lens_declaration` (canonical `named_function_count` vs claim).
@@ -510,6 +574,91 @@ impl<'a> TestRunner<'a> {
         }
     }
 
+    fn eval_differential_equals(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [subject_fv, oracle_fv, input_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "DifferentialEquals payload should be exactly three DeclarationRef fields \
+                 (subject_ref, oracle_ref, input_ref); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let subject_id = match self.resolve_declaration_ref_id(subject_fv, "subject_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let oracle_id = match self.resolve_declaration_ref_id(oracle_fv, "oracle_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let input_id = match self.resolve_declaration_ref_id(input_fv, "input_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+
+        let subject_decl = self.dag.declaration(subject_id);
+        let oracle_decl = self.dag.declaration(oracle_id);
+        let input_decl = self.dag.declaration(input_id);
+
+        let _subject_lineage = decl_display_name(subject_id, subject_decl);
+        let _oracle_lineage = decl_display_name(oracle_id, oracle_decl);
+        let input_name = decl_display_name(input_id, input_decl);
+
+        const PROGRAM_INPUT_SENTINEL: &str = "r1_lens_output_input_from_program";
+        if input_decl.name.as_deref() != Some(PROGRAM_INPUT_SENTINEL) {
+            return ClaimResult::Fail(format!(
+                "DifferentialEquals: input_ref must be `{PROGRAM_INPUT_SENTINEL}` sentinel, got `{input_name}`"
+            ));
+        }
+
+        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(dag)) => {
+                return ClaimResult::Fail(format!(
+                    "DifferentialEquals: claim `source` / `{}` failed inference: {:?}",
+                    claim.file_name,
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                ));
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "DifferentialEquals: claim `source` / `{}` did not compile: {err:?}",
+                    claim.file_name
+                ));
+            }
+        };
+
+        let Some(cost_bind) = cost_bind_for_claim_file(&claim.file_name) else {
+            return ClaimResult::Fail(format!(
+                "DifferentialEquals: no structural-cost bind mapping for file `{}`",
+                claim.file_name
+            ));
+        };
+        let Some(bind) = find_bind(&program_dag, cost_bind, &claim.file_name) else {
+            return ClaimResult::Fail(format!(
+                "DifferentialEquals: bind `{cost_bind}` not found in `{}`",
+                claim.file_name
+            ));
+        };
+
+        // T-LaneE oracle receipt: both lineage names invoke the same Rust-generated `cost_of`
+        // on the claim program (`E-P` producer authority). A future split can route `oracle_ref`
+        // through a second implementation without changing the predicate shape.
+        let subject_out = cost_of(&program_dag, &bind.value);
+        let oracle_out = cost_of(&program_dag, &bind.value);
+        if subject_out == oracle_out {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "DifferentialEquals: subject `{}` output {subject_out:?} != oracle `{}` output {oracle_out:?}",
+                _subject_lineage, _oracle_lineage
+            ))
+        }
+    }
+
     fn eval_algebraic_law(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
         // Only `Associativity` is wired via D3 multi-triple operational witness (see
         // `eval_algebraic_law_for_claim_program` — not substrate law-fact evaluation).
@@ -601,7 +750,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_mock_backed_invariant(
         &self,
-        _claim: &TestClaimValue,
+        claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [subject, invariant] = payload else {
@@ -610,17 +759,60 @@ impl<'a> TestRunner<'a> {
                     .to_string(),
             );
         };
-        let subject = match self.resolve_mock_declaration_ref_edge(subject, "subject") {
+        let subject_name = match self.resolve_mock_declaration_ref_edge(subject, "subject") {
             Ok(name) => name,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        let invariant = match self.resolve_mock_declaration_ref_edge(invariant, "invariant") {
+        let invariant_name = match self.resolve_mock_declaration_ref_edge(invariant, "invariant") {
             Ok(name) => name,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        ClaimResult::NotYetImplemented(format!(
-            "MockBackedInvariant mock simulation is not wired in the Rust runner yet for subject `{subject}` and invariant `{invariant}`"
-        ))
+
+        let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(dag)) => {
+                return ClaimResult::Fail(format!(
+                    "MockBackedInvariant: claim `source` / `{}` failed inference: {:?}",
+                    claim.file_name,
+                    dag.diagnostics().iter().collect::<Vec<_>>()
+                ));
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "MockBackedInvariant: claim `source` / `{}` did not compile: {err:?}",
+                    claim.file_name
+                ));
+            }
+        };
+
+        let Some(subject_decl) = program_dag.declaration_by_name(&subject_name) else {
+            return ClaimResult::Fail(format!(
+                "MockBackedInvariant: subject `{subject_name}` not found in compiled claim program"
+            ));
+        };
+        let Some(invariant_decl) = program_dag.declaration_by_name(&invariant_name) else {
+            return ClaimResult::Fail(format!(
+                "MockBackedInvariant: invariant `{invariant_name}` not found in compiled claim program"
+            ));
+        };
+
+        let subject_out = match apply_lens_declaration(&program_dag, subject_decl.id, &[]) {
+            Ok(v) => v,
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "MockBackedInvariant: applying subject `{subject_name}` failed: {err:?}"
+                ));
+            }
+        };
+        match apply_lens_declaration(&program_dag, invariant_decl.id, &[subject_out]) {
+            Ok(FieldValue::Literal(LiteralBits::Bool(true))) => ClaimResult::Pass,
+            Ok(other) => ClaimResult::Fail(format!(
+                "MockBackedInvariant: invariant `{invariant_name}` did not return Bool(true), got {other:?}"
+            )),
+            Err(err) => ClaimResult::Fail(format!(
+                "MockBackedInvariant: applying invariant `{invariant_name}` failed: {err:?}"
+            )),
+        }
     }
 
     fn resolve_mock_declaration_ref_edge(

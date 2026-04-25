@@ -207,6 +207,20 @@ mod t_demo_fixture_test {
             );
         }
     }
+
+    #[test]
+    fn t_demo_impossible_bug_suite_r1_passes() {
+        let source = fixture_source();
+        let dag = compile_fixture(&source);
+        let results = TestRunner::new(&dag).run_suite("impossible_bug_class_suite_r1");
+        assert_eq!(results.len(), 3);
+        assert!(
+            results
+                .iter()
+                .all(|result| result.result == ClaimResult::Pass),
+            "impossible-bug demos should observe diagnostics / token failures, got {results:?}"
+        );
+    }
 }
 
 mod lane2_stage_2f_dimension_test {
