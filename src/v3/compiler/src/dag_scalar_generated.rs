@@ -27,3 +27,34 @@ pub enum PortState {
     Resolved(TypeShape),
     Unresolved,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ArithmeticOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ComparisonOp {
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LogicalOp {
+    And,
+    Or,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OperatorKind {
+    Arithmetic(ArithmeticOp),
+    Comparison(ComparisonOp),
+    Logical(LogicalOp),
+}
