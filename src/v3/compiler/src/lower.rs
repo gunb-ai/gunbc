@@ -2431,22 +2431,11 @@ fn lower_data_item(
         }
         Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
             match lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag) {
-                Ok(bits) => Some(crate::dag::ValueBody::Scalar(bits)),
-                Err(Diagnostic::ResolveError { .. }) => {
-                    suppress_unparsed_scaffold = true;
-                    report_declaration_error(
-                        dag,
-                        Diagnostic::ResolveError {
-                            name: format!(
-                                "data `{name}`'s scalar body does not match declared type",
-                            ),
-                            span: body_span.clone(),
-                            fixes: Vec::new(),
-                        },
-                    );
-                    None
+                LowerScalarLiteralOutcome::Literal(bits) => {
+                    Some(crate::dag::ValueBody::Scalar(bits))
                 }
-                Err(diag) => {
+                LowerScalarLiteralOutcome::NotApplicable => None,
+                LowerScalarLiteralOutcome::Reject(diag) => {
                     suppress_unparsed_scaffold = true;
                     report_declaration_error(dag, diag);
                     None
@@ -2848,9 +2837,11 @@ fn lower_structural_field_value(
     }
 
     match lower_scalar_literal_for_type(expr, expected_type, dag) {
-        Ok(literal_bits) => return Some(crate::dag::FieldValue::Literal(literal_bits)),
-        Err(Diagnostic::ResolveError { .. }) => {}
-        Err(diag) => {
+        LowerScalarLiteralOutcome::Literal(literal_bits) => {
+            return Some(crate::dag::FieldValue::Literal(literal_bits));
+        }
+        LowerScalarLiteralOutcome::NotApplicable => {}
+        LowerScalarLiteralOutcome::Reject(diag) => {
             report_declaration_error(dag, diag);
             return None;
         }
@@ -3167,17 +3158,19 @@ fn lower_structural_field_value(
     None
 }
 
+enum LowerScalarLiteralOutcome {
+    Literal(LiteralBits),
+    NotApplicable,
+    Reject(Diagnostic),
+}
+
 fn lower_scalar_literal_for_type(
     expr: &SurfaceExpr,
     expected_type: DeclarationId,
     dag: &Dag,
-) -> Result<LiteralBits, Diagnostic> {
+) -> LowerScalarLiteralOutcome {
     let SurfaceExpr::Literal { value, .. } = expr else {
-        return Err(Diagnostic::ResolveError {
-            name: "expected scalar literal".to_string(),
-            span: expr_span(expr),
-            fixes: Vec::new(),
-        });
+        return LowerScalarLiteralOutcome::NotApplicable;
     };
     let literal_bits = match value {
         SurfaceLiteral::Int(v) => LiteralBits::Int(*v),
@@ -3202,11 +3195,11 @@ fn lower_scalar_literal_for_type(
             .unwrap_or(false),
     };
     if type_ok {
-        return Ok(literal_bits);
+        return LowerScalarLiteralOutcome::Literal(literal_bits);
     }
     if let LiteralBits::Int(value) = literal_bits {
         if let Some(range) = integer_range_for_decl(dag, expected_type) {
-            return Err(magnitude_out_of_range(
+            return LowerScalarLiteralOutcome::Reject(magnitude_out_of_range(
                 value,
                 TypeShape::new(expected_type),
                 range,
@@ -3214,7 +3207,7 @@ fn lower_scalar_literal_for_type(
             ));
         }
     }
-    Err(Diagnostic::ResolveError {
+    LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
         name: "scalar literal does not match declared type".to_string(),
         span: expr_span(expr),
         fixes: Vec::new(),
