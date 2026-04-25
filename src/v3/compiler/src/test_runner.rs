@@ -553,7 +553,9 @@ fn child_wait_for_execute_command(
 ///
 /// - **No stdout/stderr capture** — `stdin`/`stdout`/`stderr` are the null device so malicious or
 ///   chatty children cannot exhaust memory; only the exit code is read (P3/P4: bounded, fail-closed
-///   outcomes).
+///   outcomes). This path does **not** use [`std::process::Command::output`]; it uses
+///   [`std::process::Command::spawn`] and a wall-bounded `try_wait` loop (`child_wait_for_execute_command` in
+///   this file).
 /// - **Wall clock** — [`EXECUTE_COMMAND_WALL_TIMEOUT`]; on exceed, the process group is signalled
 ///   (Unix) and the result is a typed failure (not a hang).
 /// - **Linux: user+PID namespace (when `unshare(1)` is usable)** — the usual path wraps in
