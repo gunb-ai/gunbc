@@ -1,5 +1,7 @@
 # T-Ground-Engine — Phase 1 (Pilot-Scope Production Walker)
 
+> **Status update (2026-04-25)** — Phase 0 substrate audit complete: see [`t-ground-engine-substrate-audit.md`](t-ground-engine-substrate-audit.md) (PR #768, merged). Director routed Route 1: small loader-close via ad-hoc Director dispatch, then Engine re-dispatches in **sharpened-(b)** form (sibling crate consuming `.dag` declarations via the loader's public accessor). See [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md). **Workers: do not re-run Phase 0** — the audit is settled. The structural contracts in this brief (no mirroring, state-space discipline, fail-closed by construction, SG-0 untouched) carry forward. Phase 0 instructions below are decision history. Re-dispatch brief authored against the loader-close PR's actual public-accessor shape will supersede this one.
+
 **Status**: PROPOSAL — same formal gates as the parent program (R1 all-gates-green closure + R2 promotion of [`docs/r2-structure.md`](../r2-structure.md)). Pilot merge ([PR #765](https://github.com/gunb-ai/gunbc/pull/765), commit `2909f9e05`) is a necessary-not-sufficient signal. Director-discretionary dispatch is honored under the same posture the pilot dispatched under.
 
 **Lane**: T-Ground-Engine (M) per ROADMAP.md §"Post-R1 Grounding lanes". This brief covers **Phase 1 only** — the pilot-scope subset. Engine grows in subsequent phases as full-reference lanes land (cross-type coercion paths, container types, Python/Go targets).
