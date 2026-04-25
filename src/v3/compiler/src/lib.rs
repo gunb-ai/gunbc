@@ -76,7 +76,8 @@ pub mod operators {
             unused_parens,
             unused_variables,
             clippy::clone_on_copy,
-            clippy::collapsible_else_if
+            clippy::collapsible_else_if,
+            clippy::enum_variant_names
         )]
 
         use crate::dag::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
@@ -102,7 +103,8 @@ pub mod parse_tables {
         unused_imports,
         unused_parens,
         clippy::clone_on_copy,
-        clippy::collapsible_else_if
+        clippy::collapsible_else_if,
+        clippy::enum_variant_names
     )]
 
     include!("parse_tables_generated.rs");
@@ -128,6 +130,7 @@ pub mod lens_cost {
         unused_variables,
         clippy::clone_on_copy,
         clippy::collapsible_else_if,
+        clippy::enum_variant_names,
         clippy::double_parens,
         clippy::large_enum_variant
     )]
@@ -349,7 +352,8 @@ pub mod lens_cost_symbolic {
         unused_parens,
         unused_variables,
         clippy::clone_on_copy,
-        clippy::collapsible_else_if
+        clippy::collapsible_else_if,
+        clippy::enum_variant_names
     )]
     mod generated {
         use crate::dag::*;
@@ -389,7 +393,8 @@ pub mod lens_provenance {
         unused_parens,
         unused_variables,
         clippy::clone_on_copy,
-        clippy::collapsible_else_if
+        clippy::collapsible_else_if,
+        clippy::enum_variant_names
     )]
     mod generated {
         use crate::dag::*;
@@ -530,7 +535,8 @@ pub mod lens_structural_resolution {
         unused_parens,
         unused_variables,
         clippy::clone_on_copy,
-        clippy::collapsible_else_if
+        clippy::collapsible_else_if,
+        clippy::enum_variant_names
     )]
     mod generated {
         use crate::dag::*;
@@ -734,7 +740,8 @@ pub(crate) mod infer_helpers {
         unused_parens,
         unused_variables,
         clippy::clone_on_copy,
-        clippy::collapsible_else_if
+        clippy::collapsible_else_if,
+        clippy::enum_variant_names
     )]
     mod generated {
         use crate::dag::*;
@@ -765,7 +772,8 @@ pub(crate) mod lower_helpers {
         unused_parens,
         unused_variables,
         clippy::clone_on_copy,
-        clippy::collapsible_else_if
+        clippy::collapsible_else_if,
+        clippy::enum_variant_names
     )]
     mod generated {
         use crate::diagnostics::SourceSpan;
@@ -893,7 +901,8 @@ mod regen_parse_tables_emit;
     unused_parens,
     unused_variables,
     clippy::clone_on_copy,
-    clippy::collapsible_else_if
+    clippy::collapsible_else_if,
+    clippy::enum_variant_names
 )]
 #[path = "tokenize_generated.rs"]
 mod tokenize;
@@ -911,6 +920,7 @@ pub(crate) mod variant_payload {
         unused_variables,
         clippy::clone_on_copy,
         clippy::collapsible_else_if,
+        clippy::enum_variant_names,
         clippy::cmp_owned,
         clippy::large_enum_variant
     )]
