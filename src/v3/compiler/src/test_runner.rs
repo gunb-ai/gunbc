@@ -390,7 +390,8 @@ fn shell_dash_c_script_string(args: &[String]) -> Option<&str> {
 /// we would otherwise false-positive `true && true`, `2>&1`, `n>&m`, and the default-fd shorthand
 /// `>&d` (e.g. `>&2` in `command >&2`). **Quoted** `&` (e.g. `echo \"&\"`)
 /// is not modeled and may be fail-closed as if it were a background `&` — an acceptable
-/// false-reject; user should rephrase without relying on a literal `&` in the `-c` string.
+/// false-reject; user should rephrase without relying on a literal `&` in the `-c` string. This is
+/// the likeliest UX foot-gun for hand-authored `.dag` claims (api-review 994fa40d).
 ///
 /// **TODO(dissolution, T-PB-B, input shaping):** retire literal `String::replace` here when
 /// `ExecuteCommand`’s `command`+`args` are narrow enough to forbid ambiguous `sh -c` (schema gate),
@@ -897,8 +898,8 @@ fn child_wait_for_execute_command(
 ///   is discarded to avoid a filling pipe. A matching exit on the **logical**
 ///   child is not re-run for a `unshare:`-shaped line in this capture (C-5, given logical stderr is
 ///   not on the pipe). Wall+stdio+pgrp still apply. Empty wrapper stderr after an exit **mismatch**
-///   is retried (direct) **only in `#[cfg(test)]` builds** — see
-///   [`unshare_sandbox_broken_relaunch_with_direct`].
+///   is retried (direct) in `#[cfg(test)]` **or** with `GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH` —
+///   see [`unshare_sandbox_broken_relaunch_with_direct`].
 /// - **Heuristic on `&` in `sh`/`bash`/… `-c` scripts (all hosts, including `sh -ec` / `sh -lc`)** — a
 ///   bare shell background `&`
 ///   (after eliding `&&` and a few `>&` / `&>`-style token spellings) is still rejected: cheap extra
@@ -938,6 +939,11 @@ pub enum ExecuteCommandHostOutcome {
     Mismatch { expected: i64, actual: i64 },
     /// All other `ClaimResult` needs (always `Fail` or `NotYetImplemented` in practice) —
     /// timeout, policy, signal, spawn error, etc.
+    ///
+    /// **TODO(dissolution, T-PB-B, C-5):** if call sites need to *branch* on host-failure *kind* without
+    /// string authority, expand this into a dedicated `enum` (e.g. timeout / spawn / policy) and
+    /// reserve [`ClaimResult`] for the final reported edge only — the current `Other` is a **partial**
+    /// carrier (PR #792; api-review 994fa40d).
     Other(ClaimResult),
 }
 
@@ -1114,6 +1120,8 @@ pub fn evaluate_execute_command_host_outcome(
                             true
                         }
                         Ok(m) if !unshare_stderr_indicates_sandbox_setup_failure(m) => false,
+                        // Defensive fail-closed: the `Ok` arms above should exhaust; keep `confirm`
+                        // on any new `Ok` pattern without an explicit `false` (PR #792, review 994fa40d).
                         Ok(_) => true,
                     };
                     if need_direct_host_confirm {
