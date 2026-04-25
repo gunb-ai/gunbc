@@ -4,17 +4,16 @@
 > `keen-wren-319` per ad-hoc Director dispatch. Inputs: three independent
 > 2026-04-25 analyses (Reflective `gpt-5-5-pro@7f74f09`, Exploratory
 > `gpt-5-4-pro@a8f0825`, Exploratory `gpt-5-5-pro@7f74f09`); PR #809
-> (post-merge debt rows from those analyses, **OPEN at synthesis time**);
+> (post-merge debt rows from those analyses, merged 2026-04-25 mid-PR);
 > live ROADMAP §"Tracked debts"; live cited scaffold files. Output:
 > course-of-action recommendation for Director on how to plan debt paydown
 > alongside R2 + Pure Bootstrap to Zero.
 
-> **Brief drift note (non-blocking).** Dispatching brief states
-> "PR #809 ... just landed on `main`" — at synthesis time PR #809 is still
-> `OPEN` (`pm/roadmap-debt-from-2026-04-25-analyses` not yet merged). All
-> citations to "post-merge debt 2026-04-25" rows below reference PR #809's
-> in-flight diff content; once #809 merges those `ROADMAP.md` line citations
-> become authoritative.
+> **Note on PR #809.** Merged 2026-04-25T18:13:39Z; line citations to
+> `ROADMAP.md §"Tracked debts" → "Post-merge debt (2026-04-25 reflective
+> + exploratory analyses)"` are authoritative. (At initial synthesis
+> authoring time #809 was still open; this note retained for historical
+> traceability.)
 
 ---
 
@@ -459,8 +458,10 @@ managers consume the discipline as part of their normal lane intake.
 
 **Do these, in this order.**
 
-1. **Land PR #809** (open at synthesis time). Unblocks all 2026-04-25
-   debt-row citations; required prerequisite for the briefs below.
+1. **PR #809 prerequisite is satisfied** — merged 2026-04-25; debt-row
+   line citations to ROADMAP §"Post-merge debt (2026-04-25 reflective +
+   exploratory analyses)" are now authoritative. Briefs B1-B7 below
+   can be authored against current `main`.
 2. **Dispatch Tier 0 fail-closed P3 fixes** (3 small parallel briefs):
    Go `UnknownVariant`, `lower_fn_body` Arrow re-derive, lens fold
    ambiguous fallback. Each S-scope, independent. **Expect:** 1 cycle.
