@@ -133,7 +133,7 @@ pub(crate) fn magnitude_out_of_range(
         span,
         fixes: vec![Correction {
             description: hint,
-            span: SourceSpan::synthetic("<int-literal-range-hint>"),
+            span: SourceSpan::new("<int-literal-range-hint>", 0, 0),
             new_source: String::new(),
         }],
     }

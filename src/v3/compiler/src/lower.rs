@@ -2839,8 +2839,13 @@ fn lower_structural_field_value(
         }
     }
 
-    if let Some(literal_bits) = lower_scalar_literal_for_type(expr, expected_type, dag) {
-        return Some(crate::dag::FieldValue::Literal(literal_bits));
+    match lower_scalar_literal_for_type(expr, expected_type, dag) {
+        Ok(literal_bits) => return Some(crate::dag::FieldValue::Literal(literal_bits)),
+        Err(Diagnostic::ResolveError { .. }) => {}
+        Err(diag) => {
+            report_declaration_error(dag, diag);
+            return None;
+        }
     }
 
     if let Some(element_type) = list_element_type(dag, expected_type) {
