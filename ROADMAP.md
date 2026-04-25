@@ -45,7 +45,7 @@ Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomp
 | Lane | Size | Covers | Cross-ref into debt ledger |
 |------|------|--------|----------------------------|
 | T-P0 | S | P0 sweep (repeat_string, REST_OPS, no_profile_sentinel) | §P0 — real bugs |
-| T-Sub | S | `match` over user sums (landed PR #702), `CharClass` in std.unicode, type-alias `where` (landed PR #703) | §P4 (bit.dag refinements), Character-level under-consumption |
+| T-Sub | S | `match` over user sums (landed PR #702), `CharClass` in std.unicode (phase-1 landed PR #693; **phase-2 reclassified to R2 substrate-capability per Class 5 Gap 3 — not an R1 T-Sub gate**), type-alias `where` (landed PR #703) | §P4 (bit.dag refinements), Character-level under-consumption |
 | T-Emit | M | Rust harden, #650 generic-bound fidelity, Python/Go reconcile | SurfaceLiteral→LiteralBits, variant-constructor template |
 | T-LaneE | XL | Complexity lens v2 parity via substrate-carrier-port | Existing Lane E-T/C/I/P/M program |
 | T-TestGen | L | Testgen runner, service simulation, first-class TestClaim | DB-15 follow-up |
@@ -59,7 +59,7 @@ Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomp
 This section lists gate names + schema-compilability tags; full `TestClaim` declarations will land as deliverables of the lane-brief drafting step (lane owners author them as `.dag` after being named). Each predicate is tagged `[Day 1]` (compiles against today's DB-15 schema — `Compiles`, `FailsWithDiagnostic`, `OutputEquals`, `CostBounded`, `PortHasState`) or `[ext]` (requires a T-TestGen schema extension before compiling). Day-1 predicates are a minority — the majority block on T-TestGen's runner + schema work, which is why T-TestGen is the gate-enabling lane.
 
 - **T-P0.** `p0_repeat_string_correct` [Day 1] · `p0_no_fabrication_sentinel` [ext] · `p0_rest_ops_aligned` [ext]
-- **T-Sub.** `sub_match_over_user_sum` [Day 1, landed PR #702] · `sub_type_alias_where_lowers` [ext, landed PR #703] · `sub_charclass_in_std_unicode` [ext, open: phase-2 reproduction/triage]
+- **T-Sub.** `sub_match_over_user_sum` [Day 1, landed PR #702] · `sub_type_alias_where_lowers` [ext, landed PR #703] · ~~`sub_charclass_in_std_unicode`~~ — phase-1 landed PR #693; **phase-2 reclassified to R2 substrate-capability** (top-level `ValueBody` list/sum + `std.unicode` bootstrap/load-set per Class 5 Gap 3 row below) — no longer an R1 T-Sub gate; tracked in `docs/r2-structure.md` Goal 3 / T-Substrate as a 4th scoped sub-lane (consumer: tokenizer)
 - **T-Emit.** `emit_rust_fixtures_rustc_green` [ext: `ExecuteCommand`] · `emit_generic_bounds_survive` [ext] · `emit_omni_demo_fixtures_green` [ext: `ForAllTargets` + `ExecuteCommand`]
 - **T-LaneE.** `complexity_merge_sort_is_nlogn` [ext: `LensOutputEquals`] · `complexity_v3_matches_v2_oracle` [ext: `DifferentialEquals`]
 - **T-TestGen.** `testgen_structural_coverage` [ext] · `testgen_mock_backed_integration_safe` [ext: `MockBackedInvariant` wiring] · `testgen_manual_claim_is_first_class` [ext] — T-TestGen also owns scoping the predicate shape for `[ext]` gates that other lanes consume; currently includes `lens_producer_files_remaining` for T-PB-A (enumeration declared in `sg0_census_test.rs` at scoping time).
