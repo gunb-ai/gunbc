@@ -20,7 +20,8 @@
   `DeclarationRef` fields.
 - **[`src/v3/compiler/src/test_runner.rs:20-48`](../../src/v3/compiler/src/test_runner.rs)** —
   canonical `named_function_count.dag` `include_str!` bridge and
-  fixture-filename routing comments.
+  fixture-filename routing comments, including
+  `cost_bind_for_claim_file`.
 - **[`src/v3/compiler/src/test_runner.rs:1589-1765`](../../src/v3/compiler/src/test_runner.rs)** —
   `LensOutputEquals` program-input sentinel path.
 - **[`src/v3/compiler/src/test_runner.rs:1829-1866`](../../src/v3/compiler/src/test_runner.rs)** —
@@ -65,12 +66,18 @@ The current runner has two different facts collapsed into strings:
 2. **Canonical lens identity.** `named_function_count` uses
    `include_str!("../lenses/named_function_count.dag")` and
    filename checks to recover the canonical lens program.
+3. **Output-bind identity.** `cost_bind_for_claim_file` maps
+   `TestClaim.file_name` to ordinary bind names such as
+   `merge_sort_out` and `lane_e_diff_out`. This is a fixture-filename
+   bridge for "which bind is the asserted output?", not a property of
+   the source program.
 
 Plain `DeclarationRef` already carries "this field names a
 declaration" but it does not, by itself, distinguish ordinary
 declaration values from the special program-input role, nor does it
-load the referenced lens program. B4.1 should land the smallest
-structural role layer needed by the runner, then migrate the consumers.
+load the referenced lens program, nor does it say which bind is the
+claim output. B4.1 should land the smallest structural role layer
+needed by the runner, then migrate the consumers.
 
 ## Slice
 
@@ -94,24 +101,40 @@ structural role layer needed by the runner, then migrate the consumers.
    - Delete or confine the `include_str!` canonical-lens bridge once
      the runner can obtain the referenced lens program structurally.
 
-3. **Migrate `LensOutputEquals`.**
+3. **Model output-bind identity structurally (§0.2).**
+   - Replace `cost_bind_for_claim_file(TestClaim.file_name)` with a
+     structural reference from the claim payload to the output bind
+     declaration.
+   - Prefer a `DeclarationRef` field (or a typed role wrapper over a
+     `DeclarationRef`) that names the exact bind declaration whose
+     value port should be compared.
+   - If the current verification payload cannot express "this bind is
+     the claim output" without a broader role model, STOP and split a
+     named B4.1a follow-up brief before implementation.
+   - Do not replace the file-name map with another string-to-string
+     registry.
+
+4. **Migrate `LensOutputEquals`.**
    - Replace `PROGRAM_INPUT_SENTINEL` checks at
      `test_runner.rs:1594`, `:1617`, `:1642`, and `:1709` with the
      structural program-input role.
    - Preserve fail-closed behavior for ordinary `input_ref`
      declarations with missing value bodies.
 
-4. **Migrate `DifferentialEquals`.**
+5. **Migrate `DifferentialEquals`.**
    - Replace the `PROGRAM_INPUT_SENTINEL` check at
      `test_runner.rs:1855` with the same structural program-input
      role.
 
-5. **Update fixtures and tests.**
+6. **Update fixtures and tests.**
    - Rewrite `r1_gates.dag`, `r1_gates.template.dag`, and
      `t_demo_fixtures.dag` to use the structural carrier.
    - Add regression coverage that an ordinary declaration named like
      the old sentinel is not treated as program input unless it carries
      the structural role.
+   - Add regression coverage that an ordinary fixture filename no
+     longer selects a claim output bind unless the claim carries the
+     structural output-bind reference.
 
 ## Acceptance
 
@@ -122,10 +145,18 @@ structural role layer needed by the runner, then migrate the consumers.
       `include_str!` once the referenced lens identity is structurally
       available. If this proves to require a separate registry carrier,
       STOP and split that registry carrier as B4.1a.
+- [ ] `cost_bind_for_claim_file` and its `TestClaim.file_name` routing
+      are removed or split into a named B4.1a follow-up before any
+      runner migration PR proceeds.
+- [ ] Claim output-bind selection is carried by a structural
+      `DeclarationRef`/role reference, not by fixture filename or bind
+      name strings.
 - [ ] Fixtures use `DeclarationRef` plus the new structural role layer;
       no replacement sentinel string is introduced.
 - [ ] Regression test proves name-only spoofing of the old sentinel
       does not select the program-input path.
+- [ ] Regression test proves filename-only spoofing does not select an
+      output bind without the structural output-bind reference.
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` passes.
 - [ ] `cargo clippy --all-targets -- -D warnings` clean.
 - [ ] `cargo fmt --all --check` clean.
