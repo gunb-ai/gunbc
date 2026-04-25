@@ -22,6 +22,15 @@ to the cascade promotion PR** per the design doc's Promotion
 mechanism. Until then: program runs structurally without
 committing to a release-ledger label.
 
+**Cross-program coordination routing.** Cross-program signals
+between Zero-Floor and R2 (Grounding + R2 ad-hoc lanes) route
+through Director, who is the only entity with both program
+contexts. Manager-to-manager direct coordination is for
+substrate-shape only (per Cross-manager notifications queued
+below); broader cross-program concerns (scope, ledger placement,
+sequencing decisions affecting both programs) escalate to
+Director.
+
 ## Orient before reading
 
 - **Program scope authority:** [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md)
@@ -102,8 +111,12 @@ subject" holds at the implementation layer rather than just the
 thesis-claim layer?**
 
 Today (pre-dispatch state):
-- 35 files in `EXPECTED_HAND_AUTHORED_NON_TEST` (post #763
-  `lens_depth.rs` retirement).
+- **Live count authority:** `src/v3/compiler/tests/integration/sg0_census_test.rs`
+  `EXPECTED_HAND_AUTHORED_NON_TEST` and `EXPECTED_HAND_AUTHORED_TEST`
+  arrays. Read at dispatch time; brief does not restate the count
+  inline (drift risk). Reference snapshot: 35 NON_TEST files at
+  brief authoring (post #763 `lens_depth.rs` retirement); use the
+  live array as the source-of-truth for any audit work.
 - TESTING.md "Post-R2 shape" residual carves out two Rust-authored
   test categories permanently.
 - `bootstrap.rs` is hand-Rust (~470 LOC) with the chicken-egg
@@ -216,6 +229,16 @@ promotes; then transitions here.
 - **Director** (escalation hub for scope changes, cross-program
   conflicts, release-ledger placement decisions, cascade
   promotion PR authoring).
+  - **Specific coordination case: `tokenize_char_class.rs` retirement.**
+    PB-Tier1-Sweep retirement of `tokenize_char_class.rs` (per
+    Working state) closes Class 5 Gap 3 from the substrate side,
+    which unblocks the R2 T-Substrate 4th sub-lane (charclass phase-2
+    consumer = tokenizer). Zero-Floor Manager signals Director when
+    this retirement lands; Director coordinates dispatch of the
+    R2 T-Substrate sub-lane (Director-ad-hoc per `r2-structure.md`,
+    no standing R2 manager owns it). One-sided note from this brief
+    by design: the consumer side is Director-dispatched, so the
+    bidirectional pairing collapses to Zero-Floor → Director.
 
 ### Up to director
 
@@ -338,19 +361,28 @@ below are scaffolding.
 
 Decisions log (append as they happen):
 
-- _(none yet — manager is pre-promotion; brief authored
-  2026-04-25 per Director request after #762 merge)_
+- **2026-04-25** — Brief authored per Director request after #762
+  merge (charclass reclassification + zero-floor design doc
+  PROPOSAL).
+- **2026-04-25** — **PB-1 lineage transition: automatic at R1
+  Self-hosting archive.** No explicit handoff PR required. Verification
+  on results: PB-1 sub-lane PRs authored after R1 close should cite
+  Zero-Floor Manager as reporting channel; if they cite R1 Self-hosting
+  (which has archived), the transition didn't take and Director
+  surfaces it. Manager confirms first post-R1-archive PB-1 PR routes
+  here as the verification artifact.
+- **2026-04-25** — **Cascade promotion PR authoring split.** Manager
+  authors the three pre-promotion deliverables as separate PRs (audit
+  table inline-able into cascade; PB-1 brief amendment; first
+  prototyped lane closure). Director authors the cascade promotion PR
+  itself using those as inputs. Pattern matches "what worked" from R1
+  brief refreshes: managers own their scope surfaces; director owns
+  cross-cutting authority changes (the cascade is cross-cutting across
+  4 authority docs).
 
 Open questions for director:
 
-- **R1 Self-hosting → Zero-Floor PB-1 lineage transition timing.**
-  R1 Self-hosting archives at R1 close (hours-to-day per Director
-  estimate). Confirm transition is automatic at archival, or
-  requires an explicit handoff PR before R1 closes.
-- **Cascade promotion PR authoring lead.** Director's section in
-  Hand-off says Director authors. Confirm: this manager's three
-  pre-promotion deliverables are inputs to that PR, or this
-  manager authors-then-Director-reviews?
+- _(none — both resolved 2026-04-25; see Decisions log below)_
 
 Cross-manager notifications queued:
 
