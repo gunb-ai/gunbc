@@ -219,6 +219,8 @@ pub type PositiveInt = i64;
 
 pub type NonNegativeInt = i64;
 
+pub type PilotIntegerRangeBound = String;
+
 pub type PathSegment = String;
 
 pub type GlobSegment = String;
