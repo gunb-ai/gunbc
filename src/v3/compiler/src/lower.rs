@@ -34,6 +34,10 @@ use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
 };
 use crate::infer::{concretize_decl_with_subst, SubstStack};
+use crate::int_literal_ranges::{
+    int_literal_fits_expected_type, integer_range_for_decl, magnitude_out_of_range,
+    IntegerRangeLookup,
+};
 use crate::lower_helpers::{expr_span, item_span, pattern_binding_names};
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
 use crate::parse::{
@@ -277,6 +281,7 @@ pub(crate) fn lower_bodies_phase(
     // `where` clauses (single construction authority).
     lower_parameter_refinements_phase(dag, module, symbols, is_first);
     lower_type_alias_refinements_phase(dag, module, symbols, is_first);
+    validate_scalar_data_refinements_phase(dag, module, symbols, is_first);
     let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
     let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     for (idx, item) in module.items.iter().enumerate() {
@@ -848,6 +853,159 @@ fn lower_type_alias_refinements_phase(
         );
         dag.declaration_mut(decl_id).refinement = Some(pred_decl_id);
     }
+}
+
+/// DB-11 / T-Substrate scalar-literal refinement boundary.
+///
+/// Top-level `data` bodies lower before alias refinements are attached
+/// so refinement predicates can reference data constants. That means
+/// `lower_scalar_literal_for_type` can only check base scalar
+/// cardinality in the data pre-pass. After alias refinements land, this
+/// validation pass rejects any already-scalar-lowered data declaration
+/// whose declared type now carries a lowered predicate refinement,
+/// including scalar literals nested inside structural data bodies. A raw
+/// scalar literal is base-type evidence, not predicate evidence; callers
+/// must introduce a narrowing branch or another refinement-bearing
+/// source. Deferred placeholders are skipped because they intentionally
+/// carry no lowered predicate to discharge until their PB-1 dissolution
+/// trigger lands.
+fn validate_scalar_data_refinements_phase(
+    dag: &mut Dag,
+    module: &SurfaceModule,
+    symbols: &HashMap<String, DeclarationId>,
+    is_first: &[bool],
+) {
+    for (idx, item) in module.items.iter().enumerate() {
+        if !is_first[idx] {
+            continue;
+        }
+        let SurfaceItem::Data {
+            name, body_span, ..
+        } = item
+        else {
+            continue;
+        };
+        let Some(&decl_id) = symbols.get(name) else {
+            continue;
+        };
+        let decl = dag.declaration(decl_id);
+        let Some(expected) = decl.meta_tag else {
+            continue;
+        };
+        let Some(value_body) = decl.value_body.as_ref() else {
+            continue;
+        };
+        if !value_body_contains_undischarged_scalar_literal(dag, expected, value_body) {
+            continue;
+        }
+        dag.declaration_mut(decl_id).value_body = None;
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{name}` scalar literal does not satisfy the expected \
+                     `where` refinement — no narrowing branch in scope"
+                ),
+                span: body_span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+    }
+}
+
+fn value_body_contains_undischarged_scalar_literal(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    value_body: &crate::dag::ValueBody,
+) -> bool {
+    match value_body {
+        crate::dag::ValueBody::Scalar(_) => {
+            scalar_literal_requires_refinement_discharge(dag, expected_type)
+        }
+        crate::dag::ValueBody::Structural { fields } => {
+            structural_fields_contain_undischarged_scalar_literal(dag, expected_type, fields)
+        }
+        crate::dag::ValueBody::Unparsed(_) => false,
+    }
+}
+
+fn structural_fields_contain_undischarged_scalar_literal(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    fields: &[(String, crate::dag::FieldValue)],
+) -> bool {
+    let Some(conj_id) = walk_to_conj_decl(dag, expected_type) else {
+        return false;
+    };
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return false;
+    };
+    fields.iter().any(|(label, value)| {
+        let Some(field) = children.iter().find(|field| field.label == *label) else {
+            return false;
+        };
+        field_value_contains_undischarged_scalar_literal(dag, field.ty, value)
+    })
+}
+
+fn field_value_contains_undischarged_scalar_literal(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    value: &crate::dag::FieldValue,
+) -> bool {
+    match value {
+        crate::dag::FieldValue::Literal(_) => {
+            scalar_literal_requires_refinement_discharge(dag, expected_type)
+        }
+        crate::dag::FieldValue::Reference(_) => false,
+        crate::dag::FieldValue::Record(fields) => {
+            structural_fields_contain_undischarged_scalar_literal(dag, expected_type, fields)
+        }
+        crate::dag::FieldValue::List(values) => {
+            list_element_type(dag, expected_type).is_some_and(|element_type| {
+                values.iter().any(|element| {
+                    field_value_contains_undischarged_scalar_literal(dag, element_type, element)
+                })
+            })
+        }
+        crate::dag::FieldValue::Variant {
+            constructor,
+            payload,
+        } => variant_payload_fields_for_lowering(dag, *constructor).is_some_and(|fields| {
+            payload
+                .iter()
+                .zip(fields.iter())
+                .any(|(value, (_, field_type))| {
+                    field_value_contains_undischarged_scalar_literal(dag, *field_type, value)
+                })
+        }),
+    }
+}
+
+fn is_deferred_refinement_placeholder(dag: &Dag, refinement: DeclarationId) -> bool {
+    dag.declaration(refinement)
+        .name
+        .as_deref()
+        .is_some_and(|name| {
+            name.starts_with("<std/types.dag: `where` parsed, predicate not lowered: ")
+        })
+}
+
+fn scalar_literal_requires_refinement_discharge(dag: &Dag, expected_type: DeclarationId) -> bool {
+    let mut current = expected_type;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        if let Some(refinement) = decl.refinement {
+            return !is_deferred_refinement_placeholder(dag, refinement);
+        }
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            _ => return false,
+        }
+    }
+    false
 }
 
 /// DB-11 (3a.3) fragment gate. Walks a `where`-predicate
@@ -2433,26 +2591,23 @@ fn lower_data_item(
     //     parser emits `SurfaceExpr::Map`; the sibling substrate
     //     sub-lane converts this arm to `ValueBody::Map`).
     //   - Anything else   → ValueBody::Unparsed fallback.
+    let mut suppress_unparsed_scaffold = false;
     let value_body = match body {
         Some(SurfaceExpr::Record { fields, .. }) => {
             lower_record_to_structural(name, fields, ty_decl_id, body_span, symbols, dag)
         }
         Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
-            lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag)
-                .map(crate::dag::ValueBody::Scalar)
-                .or_else(|| {
-                    report_declaration_error(
-                        dag,
-                        Diagnostic::ResolveError {
-                            name: format!(
-                                "data `{name}`'s scalar body does not match declared type",
-                            ),
-                            span: body_span.clone(),
-                            fixes: Vec::new(),
-                        },
-                    );
+            match lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag) {
+                LowerScalarLiteralOutcome::Literal(bits) => {
+                    Some(crate::dag::ValueBody::Scalar(bits))
+                }
+                LowerScalarLiteralOutcome::NotApplicable => None,
+                LowerScalarLiteralOutcome::Reject(diag) => {
+                    suppress_unparsed_scaffold = true;
+                    report_declaration_error(dag, diag);
                     None
-                })
+                }
+            }
         }
         // Parser sub-lane: `SurfaceExpr::Map` parses today but does NOT
         // yet lower to `ValueBody::Map` — the substrate sub-lane lands
@@ -2465,9 +2620,11 @@ fn lower_data_item(
         Some(SurfaceExpr::Map { .. }) => None,
         _ => None,
     };
-    let final_body =
-        value_body.unwrap_or_else(|| crate::dag::ValueBody::Unparsed(body_span.clone()));
-    dag.declaration_mut(decl_id).value_body = Some(final_body);
+    dag.declaration_mut(decl_id).value_body = match value_body {
+        Some(body) => Some(body),
+        None if suppress_unparsed_scaffold => None,
+        None => Some(crate::dag::ValueBody::Unparsed(body_span.clone())),
+    };
 }
 
 /// Walk a declaration through `Instantiation` / `ResolvedIdentifier`
@@ -2855,8 +3012,15 @@ fn lower_structural_field_value(
         }
     }
 
-    if let Some(literal_bits) = lower_scalar_literal_for_type(expr, expected_type, dag) {
-        return Some(crate::dag::FieldValue::Literal(literal_bits));
+    match lower_scalar_literal_for_type(expr, expected_type, dag) {
+        LowerScalarLiteralOutcome::Literal(literal_bits) => {
+            return Some(crate::dag::FieldValue::Literal(literal_bits));
+        }
+        LowerScalarLiteralOutcome::NotApplicable => {}
+        LowerScalarLiteralOutcome::Reject(diag) => {
+            report_declaration_error(dag, diag);
+            return None;
+        }
     }
 
     if let Some(element_type) = list_element_type(dag, expected_type) {
@@ -3170,13 +3334,26 @@ fn lower_structural_field_value(
     None
 }
 
+/// 🟢 TERMINAL — file-local lowering outcome coproduct.
+///
+/// 4-pattern check: Pattern 1 (fact placement) reaches the terminal
+/// control-flow split here: successful scalar lowering, non-literal
+/// fallthrough, and typed rejection each flow to a different caller
+/// branch. Patterns 2-4 do not apply because the variants are not a
+/// shared labeled payload, algebraic operation, or dimensional product.
+enum LowerScalarLiteralOutcome {
+    Literal(LiteralBits),
+    NotApplicable,
+    Reject(Diagnostic),
+}
+
 fn lower_scalar_literal_for_type(
     expr: &SurfaceExpr,
     expected_type: DeclarationId,
     dag: &Dag,
-) -> Option<LiteralBits> {
+) -> LowerScalarLiteralOutcome {
     let SurfaceExpr::Literal { value, .. } = expr else {
-        return None;
+        return LowerScalarLiteralOutcome::NotApplicable;
     };
     let literal_bits = match value {
         SurfaceLiteral::Int(v) => LiteralBits::Int(*v),
@@ -3187,9 +3364,15 @@ fn lower_scalar_literal_for_type(
     let bool_decl_id = dag.declaration_by_name("Bool").map(|d| d.id);
     let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
     let type_ok = match &literal_bits {
-        LiteralBits::Int(_) => int_decl_id
-            .map(|id| walks_to(dag, expected_type, id))
-            .unwrap_or(false),
+        LiteralBits::Int(value) => {
+            int_decl_id
+                .map(|id| walks_to(dag, expected_type, id))
+                .unwrap_or(false)
+                || matches!(
+                    int_literal_fits_expected_type(dag, *value, expected_type),
+                    Ok(Some(true))
+                )
+        }
         LiteralBits::Bool(_) => bool_decl_id
             .map(|id| walks_to(dag, expected_type, id))
             .unwrap_or(false),
@@ -3197,7 +3380,36 @@ fn lower_scalar_literal_for_type(
             .map(|id| walks_to(dag, expected_type, id))
             .unwrap_or(false),
     };
-    type_ok.then_some(literal_bits)
+    if type_ok {
+        let span = expr_span(expr);
+        if scalar_literal_requires_refinement_discharge(dag, expected_type) {
+            return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
+                name: "scalar literal does not satisfy the expected `where` refinement — no narrowing branch in scope".to_string(),
+                span,
+                fixes: Vec::new(),
+            });
+        }
+        return LowerScalarLiteralOutcome::Literal(literal_bits);
+    }
+    if let LiteralBits::Int(value) = literal_bits {
+        match integer_range_for_decl(dag, expected_type) {
+            IntegerRangeLookup::Found(range) => {
+                return LowerScalarLiteralOutcome::Reject(magnitude_out_of_range(
+                    value,
+                    TypeShape::new(expected_type),
+                    range,
+                    expr_span(expr),
+                ));
+            }
+            IntegerRangeLookup::Invalid(diag) => return LowerScalarLiteralOutcome::Reject(diag),
+            IntegerRangeLookup::Missing => {}
+        }
+    }
+    LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
+        name: "scalar literal does not match declared type".to_string(),
+        span: expr_span(expr),
+        fixes: Vec::new(),
+    })
 }
 
 fn list_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<DeclarationId> {
