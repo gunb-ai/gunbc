@@ -2856,6 +2856,18 @@ impl Dag {
     /// unreachable here. Referring to a type parameter, variant
     /// constructor, or realization instance by name outside its
     /// parent's body is a compile error, not silent mis-resolution.
+    pub fn declaration_by_name(&self, name: &str) -> Option<&Declaration> {
+        self.declarations
+            .iter()
+            .filter(|d| d.name.as_deref() == Some(name))
+            .max_by_key(|decl| {
+                (
+                    Self::declaration_name_preference_rank(&decl.span.file),
+                    std::cmp::Reverse(decl.id.raw()),
+                )
+            })
+    }
+
     /// Typed accessor for the `rust_pilot_primitives` data declaration
     /// from `dsl/extdeps/languages/rust/primitives.dag` (loaded via
     /// `EXTDEPS_BOOTSTRAP_FIXTURES` in `bootstrap.rs`). Returns the
@@ -2882,18 +2894,6 @@ impl Dag {
     /// `Dag.diagnostics`.
     pub fn rust_pilot_primitives(&self) -> Option<&Declaration> {
         self.declaration_by_name("rust_pilot_primitives")
-    }
-
-    pub fn declaration_by_name(&self, name: &str) -> Option<&Declaration> {
-        self.declarations
-            .iter()
-            .filter(|d| d.name.as_deref() == Some(name))
-            .max_by_key(|decl| {
-                (
-                    Self::declaration_name_preference_rank(&decl.span.file),
-                    std::cmp::Reverse(decl.id.raw()),
-                )
-            })
     }
 
     /// DB-10 (3a.2): read the compile-time value body attached to a
