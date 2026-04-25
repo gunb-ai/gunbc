@@ -33,8 +33,24 @@
 // Coverage is currently `rust/primitives.dag` only (T-Ground-Engine pilot
 // unblock, Director-dispatched); expansion to python/go primitives is a
 // file-system extension once those targets reach the same pilot stage.
-// Transitional shape: PB-1's eventual extension to cover extdeps as a fifth
-// snapshot set absorbs this list cleanly with no `bootstrap.rs` edit.
+//
+// **Type-structure-only load (Path 2 scoping).** The top-level
+// `rust_pilot_primitives: List<RustPrimitive> = [...]` data declaration
+// lowers with `value_body = ValueBody::Unparsed(span)` because v3's
+// `ValueBody` enum does not yet carry a top-level list/aggregate variant
+// (`dag.rs:258-287`). Type-structure walking of `RustPrimitive =
+// IntegerPrimitive | NonIntegerPrimitive {...}` is fully available via the
+// loaded declarations; the 10-element pilot enumeration becomes walkable
+// only when R2 T-Substrate's 4th sub-lane lands the top-level
+// `ValueBody::List`/aggregate extension. Same substrate gap as
+// `kernel_algebra_profile`'s hand-Rust mirror (`dag.rs:1530`) and
+// tokenizer `sub_charclass_in_std_unicode` phase-2.
+//
+// Transitional shape: PB-Bootstrap-Process lane (Zero-Floor program;
+// tracked in `docs/design-pure-bootstrap-zero.md` §"New lanes") absorbs
+// `bootstrap.rs` entirely when it lands `bootstrap.dag` declaring the
+// workflow as data — at that point this loader logic becomes part of the
+// to-be-generated content with no hand-Rust edit.
 //
 // Bootstrap failures (tokenize/parse/lower errors on std/ files,
 // unresolved cross-file references) attach to the Dag's diagnostic
