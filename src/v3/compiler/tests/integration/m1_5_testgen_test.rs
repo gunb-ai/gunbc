@@ -243,6 +243,10 @@ fn runner_deferred_panic(label: &str) -> ! {
 /// `ExecuteCommand` is the **declared** host-process spawn boundary: everything else in this
 /// harness stays data-only; arbitrary `command` + `args` use the same `std::process` path as
 /// [`v3_compiler::test_runner::evaluate_execute_command_exit_code`].
+///
+/// The harness is **only a boolean** (`Pass` / any `Fail` / policy reject → not-holds for the
+/// lens); it does not surface the distinct `ClaimResult::Fail` substrings. Use
+/// [`v3_compiler::test_runner::TestRunner`] and `TESTING.md` for triage-oriented semantics.
 fn execute_command_m1_5_holds(payload: &[FieldValue]) -> bool {
     let Some((command, args, expect_exit)) = parse_execute_command_fields(payload) else {
         panic!(

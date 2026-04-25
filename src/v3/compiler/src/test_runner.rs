@@ -340,17 +340,92 @@ pub const EXECUTE_COMMAND_WALL_TIMEOUT: Duration = Duration::from_secs(30);
 
 const EXECUTE_COMMAND_WAIT_POLL: Duration = Duration::from_millis(20);
 
+/// Shells that interpret `-c <script>` the way POSIX `sh` does. If the script text contains `&`
+/// (background), the direct `Child` can exit with the expected code while unbounded work continues
+/// — not trackable with a single direct wait. Fail-closed with a typed message (P3/P4).
+fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<ClaimResult> {
+    const SHELL_STEMS: [&str; 5] = ["sh", "bash", "dash", "ksh", "zsh"];
+    let stem = std::path::Path::new(command)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(command);
+    if !SHELL_STEMS.contains(&stem) {
+        return None;
+    }
+    if args.first().map(String::as_str) != Some("-c") {
+        return None;
+    }
+    if args.len() < 2 {
+        return None;
+    }
+    if !args[1].contains('&') {
+        return None;
+    }
+    Some(ClaimResult::Fail(
+        "ExecuteCommand: shell `-c` script contains `&` (background) — the direct process can \
+         exit while descendants keep running; not a supported host boundary. Remove `&` or use a \
+         direct executable (P3/P4 fail-closed)."
+            .to_string(),
+    ))
+}
+
+/// Configure `Command` for the host check: no capture, and on Unix a new process group for the
+/// child so a timeout can `kill(2)` the whole process group.
+fn build_execute_command_process(command: &str, args: &[String]) -> Command {
+    let mut c = Command::new(command);
+    c.args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            c.pre_exec(|| {
+                if libc::setpgid(0, 0) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+    c
+}
+
+/// Best-effort: signal the process **group** (see `setpgid` in `pre_exec`); then `Child::kill` for
+/// portability. A successful `sh -c '…&'`-style path is pre-blocked; `wait` after a SIGKILL is
+/// still unbounded in the API, but the child is reaped in practice.
+#[cfg(unix)]
+fn kill_process_group_on_timeout(child: &mut std::process::Child) {
+    use libc::{kill, SIGKILL};
+    let p = child.id() as i32;
+    if p != 0 {
+        if unsafe { kill(-p, SIGKILL) } < 0 {
+            let _ = child.kill();
+        }
+    } else {
+        let _ = child.kill();
+    }
+}
+#[cfg(not(unix))]
+fn kill_process_group_on_timeout(child: &mut std::process::Child) {
+    let _ = child.kill();
+}
+
 /// Spawns a host process and checks exit status. Used by the Rust `TestRunner` and the M1.5
 /// harness (single canonical path per PB-Runtime brief).
 ///
 /// - **No stdout/stderr capture** — `stdin`/`stdout`/`stderr` are the null device so malicious or
 ///   chatty children cannot exhaust memory; only the exit code is read (P3/P4: bounded, fail-closed
 ///   outcomes).
-/// - **Wall clock** — [`EXECUTE_COMMAND_WALL_TIMEOUT`]; on exceed, the child is killed and the
-///   result is a typed failure (not a hang).
+/// - **Wall clock** — [`EXECUTE_COMMAND_WALL_TIMEOUT`]; on exceed, the process group is signalled
+///   (Unix) and the result is a typed failure (not a hang).
+/// - **No shell `&` in `sh`/`bash`/… `-c` scripts** — a background `&` lets the direct child exit
+///   with a matching code while unbounded work continues; such claims are rejected with
+///   `ClaimResult::Fail` (P3/P4). General process-tree / sandbox control is a separate policy track.
 ///
-/// Fail messages distinguish spawn error, timeout, missing exit code (signal), and exit-code
-/// mismatch.
+/// Fail messages distinguish spawn error, policy reject, timeout, missing exit code (signal), and
+/// exit-code mismatch.
 pub fn evaluate_execute_command_exit_code(
     command: &str,
     args: &[String],
@@ -370,16 +445,11 @@ fn evaluate_execute_command_exit_code_with_wall_time(
     expect_exit_code: i64,
     wall_time: Duration,
 ) -> ClaimResult {
-    // Not `Command::output()`: that buffers stdout/stderr with no wall timeout. Spawn + null
-    // stdio + try_wait loop below enforces P3/P4 fail-closed bounds (see module docs on
-    // `EXECUTE_COMMAND_WALL_TIMEOUT`).
-    let mut child = match Command::new(command)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-    {
+    if let Some(r) = reject_unbounded_shell_background(command, args) {
+        return r;
+    }
+    let mut cmd = build_execute_command_process(command, args);
+    let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(err) => {
             return ClaimResult::Fail(format!("ExecuteCommand spawn error ({command}): {err}"));
@@ -392,15 +462,10 @@ fn evaluate_execute_command_exit_code_with_wall_time(
             Ok(Some(status)) => break status,
             Ok(None) => {
                 if Instant::now() >= deadline {
-                    if let Err(e) = child.kill() {
-                        return ClaimResult::Fail(format!(
-                            "ExecuteCommand: timed out after {wall_label}s; kill() failed: {e}",
-                        ));
-                    }
-                    // Reap; exit code after kill is not asserted — we return timeout regardless.
+                    kill_process_group_on_timeout(&mut child);
                     let _ = child.wait();
                     return ClaimResult::Fail(format!(
-                        "ExecuteCommand: process exceeded {wall_label}s wall-clock limit (timeout — child killed, fail-closed)",
+                        "ExecuteCommand: process exceeded {wall_label}s wall-clock limit (timeout — process group / child killed, fail-closed)"
                     ));
                 }
                 std::thread::sleep(EXECUTE_COMMAND_WAIT_POLL);
@@ -1569,9 +1634,26 @@ fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, Algebra
 
 #[cfg(test)]
 mod execute_command_timebound_tests {
+    use super::evaluate_execute_command_exit_code;
     use super::evaluate_execute_command_exit_code_with_wall_time;
     use super::ClaimResult;
     use std::time::Duration;
+
+    #[test]
+    fn sh_dash_c_background_ampersand_is_rejected() {
+        let r = evaluate_execute_command_exit_code(
+            "sh",
+            &[String::from("-c"), String::from("sleep 600 &")],
+            0,
+        );
+        let ClaimResult::Fail(m) = r else {
+            panic!("expected fail-closed for shell background, got {r:?}");
+        };
+        assert!(
+            m.contains("background") || m.contains("descendants") || m.contains("shell `-c`"),
+            "expected policy message, got: {m}"
+        );
+    }
 
     #[test]
     #[cfg(unix)]

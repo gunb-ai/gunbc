@@ -12,9 +12,11 @@ license.workspace = true
 # no Optional, no service calls (M2). Five L1 behaviors hardcoded
 # in Rust; std/-backed dispatch lands in M1.
 #
-# Zero dependencies at M0.1. Add only when a concrete need surfaces.
-
+# `libc` is Unix-only: process-group + kill for `ExecuteCommand` (PB-Runtime).
 [dependencies]
+
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2", default-features = false }
 
 [dev-dependencies]
 # Interpreter-backed receipts for substrate behavior (repeat_string, etc.).

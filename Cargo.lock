@@ -667,6 +667,7 @@ dependencies = [
 name = "v3-compiler"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "v2-compiler",
  "v2-compiler-tests",
 ]
