@@ -33,13 +33,13 @@ The fix is one-site, structural, and parallels existing `variant_parent_info` ca
    ```
    with the `let Some(..) = .. else { return Err(..) }` shape used at `emit.rs:1791` and `rust_target.rs:4325`. The outer function's signature already returns `Result<_, EmitError>`.
 3. Verify call-graph: every caller of the Go branch-emission path already propagates `Result`. No signature change needed.
-4. **Regression test — optional, deferrable.** A unit test that constructs a `Dag` with a variant declaration lacking a `Disjunction` parent would assert the new error; however, `emit.rs` has no existing `#[test]` precedent and emit testing today happens via integration fixtures (`tests/integration/*`). If a hermetic unit test is straightforward, add it. **If test setup requires building a novel Dag-construction harness, skip and note the gap in the PR description for follow-up.** The structural fail-closed at step 2 is the load-bearing change; the test is a structural assertion against future regressions, not a gate on landing.
+4. **Regression test — optional, deferrable; skip surfaces a substrate signal.** A unit test that constructs a `Dag` with a variant declaration lacking a `Disjunction` parent would assert the new error; however, `emit.rs` has no existing `#[test]` precedent and emit testing today happens via integration fixtures (`tests/integration/*`). If a hermetic unit test is straightforward, add it. **If test setup requires building a novel Dag-construction harness, skip and (a) add a ROADMAP debt row for emit-side hermetic-unit-test infrastructure (or cite an existing one) with named dissolution trigger, and (b) reference that row in the PR body.** The fact that this test would require novel harness work is itself a `feedback_emitter_workaround_is_gap_symptom` signal — emit-side hermetic-unit-test infrastructure is the missing substrate. The skip becomes productive (surfaces a substrate gap for dispatch) rather than corrosive (does not set a "tests are optional" precedent). The structural fail-closed at step 2 is the load-bearing change.
 
 ## Acceptance
 
 - [ ] `EmitError::VariantParentNotFound` (or equivalent) added; existing `EmitError` shape preserved.
 - [ ] `emit.rs:1456-1464` no longer falls back to a literal string; fails closed via `Result`.
-- [ ] Regression test asserts the new error variant is returned for the missing-parent case **OR** PR description records why test setup was non-trivial and routes the gap to follow-up.
+- [ ] Regression test asserts the new error variant is returned for the missing-parent case **OR** PR adds a ROADMAP debt row (or cites an existing one) for emit-side hermetic-unit-test harness infrastructure with named dissolution trigger, and references it in the PR body.
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` passes.
 - [ ] `cargo clippy --all-targets -- -D warnings` clean.
 - [ ] `cargo fmt --all --check` clean.
