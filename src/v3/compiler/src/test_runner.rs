@@ -2323,6 +2323,7 @@ fn diagnostic_kind(diagnostic: &Diagnostic) -> &'static str {
         Diagnostic::TokenizerError { .. } => "TokenizerError",
         Diagnostic::ParseError { .. } => "ParseError",
         Diagnostic::TypeMismatch { .. } => "TypeMismatch",
+        Diagnostic::UnitMismatch { .. } => "UnitMismatch",
         Diagnostic::ArityMismatch { .. } => "ArityMismatch",
         Diagnostic::ResolveError { .. } => "ResolveError",
         Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",

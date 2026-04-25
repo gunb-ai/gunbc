@@ -156,10 +156,23 @@ type Declaration {
   name: String?
   connective: TypeConnective
   type_params: List<DeclarationId>
+  phantom_params: List<PhantomParameter>
   meta_tag: DeclarationId?
   inhabits: DeclarationId?
   value_body: ValueBody?
   span: SourceSpan
+}
+
+// Phantom parameters are compile-time-only parameters on a value wrapper.
+// The first landed consumer is `Dimension<Unit>`/Money-style arithmetic:
+// values under the same phantom compose under abelian-group closure, while
+// distinct phantom values produce a unit-mismatch diagnostic before ordinary
+// structural type mismatch. `algebra` is a typed edge to the existing
+// algebra authority (`AbelianGroup` or an instantiation thereof), not a
+// parallel closed tag.
+type PhantomParameter {
+  parameter: DeclarationId
+  algebra: DeclarationId
 }
 
 // 🟡 SCAFFOLD. Arithmetic operators inherit the operator-shim

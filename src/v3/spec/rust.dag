@@ -267,6 +267,18 @@ data rust_template_argument: TypeRealization = {
   cost: 1
 }
 
+data rust_phantom_parameter: TypeRealization = {
+  language: rust_language
+  target: PhantomParameter
+  carrier: "PhantomParameter"
+  is_copy: false
+  fields: [
+    { dag_name: "parameter", access: DirectField("parameter"), borrowed_read: false },
+    { dag_name: "algebra", access: DirectField("algebra"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
 data rust_field_entry: TypeRealization = {
   language: rust_language
   target: FieldEntry
@@ -418,6 +430,7 @@ data rust_declaration: TypeRealization = {
     { dag_name: "name", access: DirectField("name"), borrowed_read: false },
     { dag_name: "connective", access: DirectField("connective"), borrowed_read: false },
     { dag_name: "type_params", access: DirectField("type_params"), borrowed_read: false },
+    { dag_name: "phantom_params", access: DirectField("phantom_params"), borrowed_read: false },
     { dag_name: "meta_tag", access: DirectField("meta_tag"), borrowed_read: false },
     { dag_name: "inhabits", access: DirectField("inhabits"), borrowed_read: false },
     { dag_name: "value_body", access: DirectField("value_body"), borrowed_read: false },
