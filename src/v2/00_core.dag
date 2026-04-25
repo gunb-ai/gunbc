@@ -588,7 +588,7 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
         || expr_has_non_tail_self_call(texpr: s, fn_name: fn_name, in_tail: false)
         || expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
     ExprReturn { value: v } =>
-      expr_has_non_tail_self_call(texpr: v, fn_name: fn_name, in_tail: false)
+      expr_has_non_tail_self_call(texpr: v, fn_name: fn_name, in_tail: in_tail)
     NoExprData => false
   }
 }
