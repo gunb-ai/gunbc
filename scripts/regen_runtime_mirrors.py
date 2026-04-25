@@ -710,6 +710,8 @@ def parse_surface_field_type(record_name: str, label: str, ty: str) -> str:
         return "SurfaceExpr"
     if record_name == "SurfaceMatchArm" and label == "body":
         return "SurfaceExpr"
+    if record_name == "SurfaceMapEntry" and label == "value":
+        return "SurfaceExpr"
     return rust_type(ty)
 
 
@@ -759,6 +761,7 @@ def render_parse_surface_module(records: dict[str, RecordDef], sums: dict[str, l
         render_parse_surface_record(records["SurfaceField"]),
         render_parse_surface_record(records["SurfaceVariant"]),
         render_parse_surface_record(records["SurfaceRecordField"]),
+        render_parse_surface_record(records["SurfaceMapEntry"]),
         render_parse_surface_record(records["SurfaceMatchArm"]),
         render_parse_surface_record(records["SurfacePatternField"]),
         render_parse_surface_sum("VariantPayload", sums["VariantPayload"]),

@@ -4,9 +4,9 @@
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::{LogicalOp, OperatorKind};
 pub use crate::parse_surface::{
-    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceMatchArm, SurfaceModule,
-    SurfaceParam, SurfacePattern, SurfacePatternField, SurfaceRecordField, SurfaceType,
-    SurfaceVariant, VariantPayload,
+    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceMapEntry, SurfaceMatchArm,
+    SurfaceModule, SurfaceParam, SurfacePattern, SurfacePatternField, SurfaceRecordField,
+    SurfaceType, SurfaceVariant, VariantPayload,
 };
 use crate::parse_tables::{
     binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, primary_atom_class,
@@ -242,6 +242,26 @@ impl<'a> Parser<'a> {
                 span: SourceSpan::new(self.file, kw.span.byte_start, body_end),
             });
         }
+        // Sibling lookahead for map literals (`{ String : ...`). Routes
+        // string-keyed `{...}` data bodies into `parse_map_literal`,
+        // emitting `SurfaceExpr::Map`. Disambiguation is unambiguous:
+        // record-literal lookahead requires `{ Ident :`; map-literal
+        // requires `{ StringLit :`. Bare `{}` (empty) and any other
+        // shape continue to fall through to `skip_brace_balanced`.
+        if self.looks_like_map_literal() {
+            let body_expr = self.parse_map_literal()?;
+            let body_end = match &body_expr {
+                SurfaceExpr::Map { span, .. } => span.byte_end,
+                _ => unreachable!("parse_map_literal always returns Map"),
+            };
+            return Ok(SurfaceItem::Data {
+                name,
+                ty,
+                body: Some(body_expr),
+                body_span: SourceSpan::new(self.file, open_span.byte_start, body_end),
+                span: SourceSpan::new(self.file, kw.span.byte_start, body_end),
+            });
+        }
         let end = self.skip_brace_balanced()?;
         let body_span = SourceSpan::new(self.file, open_span.byte_start, end);
         Ok(SurfaceItem::Data {
@@ -302,6 +322,76 @@ impl<'a> Parser<'a> {
         let close = self.expect_kind(TokenKind::RBrace)?;
         Ok(SurfaceExpr::Record {
             fields,
+            span: SourceSpan::new(self.file, open.span.byte_start, close.span.byte_end),
+        })
+    }
+
+    /// 3-token lookahead for the map-literal disambiguation in
+    /// `parse_data_item`. Returns `true` when the next three tokens are
+    /// `{`, then `StringLit(_)`, then `:` — the unambiguous start of a
+    /// map-literal entry. Sibling to `looks_like_record_literal`
+    /// (`{ Ident :`); the two are mutually exclusive at the entry token
+    /// because a string-literal token is structurally distinct from an
+    /// identifier token. Empty `{}` falls through to neither (and routes
+    /// into `skip_brace_balanced` per the existing scaffolded-body
+    /// path) — string-key non-empty maps are the only shape this lane
+    /// admits; empty-map syntax is deferred until a real consumer needs
+    /// it (no consumer in the 22-declaration survey produces an empty
+    /// map literal at the top level).
+    fn looks_like_map_literal(&self) -> bool {
+        let t0 = self.tokens.get(self.pos);
+        let t1 = self.tokens.get(self.pos + 1);
+        let t2 = self.tokens.get(self.pos + 2);
+        match (t0, t1, t2) {
+            (Some(a), Some(b), Some(c)) => {
+                matches!(a.kind, TokenKind::LBrace)
+                    && matches!(b.kind, TokenKind::StringLit(_))
+                    && matches!(c.kind, TokenKind::Colon)
+            }
+            _ => false,
+        }
+    }
+
+    /// Parse a map literal starting at `{`. Called from
+    /// `parse_data_item` after `looks_like_map_literal` confirms the
+    /// lookahead. Reads `"key": expr` pairs separated by `,` (or
+    /// whitespace), terminated by `}`. Each entry's key is the parsed
+    /// string-literal contents (the parser only enters this path after
+    /// `looks_like_map_literal` matched a `StringLit` token; any
+    /// non-string key here is an internal invariant violation).
+    fn parse_map_literal(&mut self) -> Result<SurfaceExpr, Diagnostic> {
+        let open = self.expect_kind(TokenKind::LBrace)?;
+        let mut entries: Vec<SurfaceMapEntry> = Vec::new();
+        while !matches!(self.peek().kind, TokenKind::RBrace) {
+            let key_token = self.bump().clone();
+            let (key, key_span) = match key_token.kind {
+                TokenKind::StringLit(s) => (s, key_token.span.clone()),
+                other => {
+                    return Err(Diagnostic::ParseError {
+                        message: format!(
+                            "expected string-literal key in map literal, got {other:?}"
+                        ),
+                        span: key_token.span,
+                        fixes: Vec::new(),
+                    });
+                }
+            };
+            self.expect_kind(TokenKind::Colon)?;
+            let value = self.parse_expr()?;
+            let value_end = expr_span(&value).byte_end;
+            entries.push(SurfaceMapEntry {
+                key,
+                key_span: key_span.clone(),
+                value,
+                span: SourceSpan::new(self.file, key_span.byte_start, value_end),
+            });
+            if matches!(self.peek().kind, TokenKind::Comma) {
+                self.bump();
+            }
+        }
+        let close = self.expect_kind(TokenKind::RBrace)?;
+        Ok(SurfaceExpr::Map {
+            entries,
             span: SourceSpan::new(self.file, open.span.byte_start, close.span.byte_end),
         })
     }
@@ -1486,6 +1576,7 @@ pub(crate) fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::If { span, .. }
         | SurfaceExpr::Match { span, .. }
         | SurfaceExpr::Record { span, .. }
-        | SurfaceExpr::List { span, .. } => span,
+        | SurfaceExpr::List { span, .. }
+        | SurfaceExpr::Map { span, .. } => span,
     }
 }

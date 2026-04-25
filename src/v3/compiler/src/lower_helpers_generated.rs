@@ -55,6 +55,10 @@ pub fn expr_span(p0: &parse_surface::SurfaceExpr) -> SourceSpan {
             elements: __e_elements,
             span: __e_span,
         } => (__e_span).clone(),
+        SurfaceExpr::Map {
+            entries: __e_entries,
+            span: __e_span,
+        } => (__e_span).clone(),
     }
 }
 pub fn item_span(p0: &parse_surface::SurfaceItem) -> SourceSpan {

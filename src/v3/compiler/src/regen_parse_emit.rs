@@ -83,8 +83,8 @@ fn emit_parse_module(parser_body: &str) -> String {
     out.push_str("use crate::diagnostics::{Diagnostic, SourceSpan};\n");
     out.push_str(
         "pub use crate::parse_surface::{SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, \
-         SurfaceMatchArm, SurfaceModule, SurfaceParam, SurfacePattern, SurfacePatternField, \
-         SurfaceRecordField, SurfaceType, SurfaceVariant, VariantPayload};\n",
+         SurfaceMapEntry, SurfaceMatchArm, SurfaceModule, SurfaceParam, SurfacePattern, \
+         SurfacePatternField, SurfaceRecordField, SurfaceType, SurfaceVariant, VariantPayload};\n",
     );
     out.push_str(
         "use crate::parse_tables::{binary_op_at_level, bracket_role, is_type_rhs_boundary_keyword, \

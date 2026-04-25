@@ -1242,6 +1242,10 @@ fn substrate_coproducts_match_runtime_carriers() {
                 String::from("List"),
                 vec![String::from("elements"), String::from("span")],
             ),
+            (
+                String::from("Map"),
+                vec![String::from("entries"), String::from("span")],
+            ),
         ]
     );
     assert_eq!(
