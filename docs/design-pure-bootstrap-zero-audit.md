@@ -48,9 +48,11 @@ Zero-Floor program's lane taxonomy
 
 **Evidence (verified at `4d2423da8`):**
 
-- **26 `*_generated.rs` files** under `src/v3/compiler/src/` covering
-  substrate, parse, tokenize, infer, lower, diagnostics, lens,
-  operators, types, serialize, variant_payload, bootstrap.
+- **23 `*_generated.rs` files** under `src/v3/compiler/src/` (matches
+  `build.rs` `REGEN_OUTPUTS` enumeration) covering substrate
+  (5: scalar/branch/cluster/cost/lookup), bootstrap (2), parse
+  (3: parse/surface/tables), lens (5), helpers (2: infer/lower),
+  diagnostics, operators, serialize, tokenize, types, variant_payload.
 - `src/v3/compiler/src/dag.rs` is a **hybrid**: at `:497`, `:1678`,
   `:1699`, `:1710` it `include!()`s four substrate-shape generated
   files (`dag_scalar_generated`, `dag_branch_generated`,
