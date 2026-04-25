@@ -74,9 +74,10 @@ fn count_named_bind(behavior: Behavior) -> Int =
 fn named_function_count(d: Dag) -> Int =
   fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))
 
-// T-LaneE stubs: `DeclarationRef` lowering only. The runner applies `lens_cost::cost_of` from the
-// canonical `src/v3/lenses/complexity.dag` bytes for `cost_of`, and the differential oracle path
-// uses the same Rust projection for both lineage names (ROADMAP T-LaneE / E-P receipt).
+// T-LaneE stubs: `DeclarationRef` lowering only (bodies `miss_int_lookup()` — not consulted).
+// `LensOutputEquals(cost_of, …)` → runner `lens_cost::cost_of` (emit from `complexity.dag`).
+// `DifferentialEquals(v3_program_cost, v2_oracle_cost, …)` → host forward-fold vs the same emit
+// (`test_runner::lane_e_host_*` vs `lens_cost::cost_of`; ROADMAP T-LaneE / E-P receipt, api-review #764).
 fn cost_of(d: Dag, port_id: PortId) -> Lookup<Int> =
   miss_int_lookup()
 
