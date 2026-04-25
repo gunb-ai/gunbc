@@ -517,9 +517,10 @@ fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
 /// authority, fail-closed for ambiguous empty stderr. (Second-run-on-empty can still flip
 /// non-idempotent work; keep test claims to idempotent or narrow commands — PR #792.)
 /// `unshare:`-pattern, read errors, `take` failure, and non-zero host-confirmation are unchanged;
-/// the latter is independent of this buffer case. If release parity for this *one* retry is ever
-/// required, prefer a single **explicit** env opt-in (T-PB-B, “data not build-time” discipline)
-/// over reinterpreting `#[cfg(test)]` — not implemented; review #792, non-blocking.
+/// the latter is independent of this buffer case. **Prefer a single explicit env opt-in
+/// (T-PB-B) before** debugging “same fixture, different `cfg`” — the usual next step to erase
+/// `cargo test` / `cargo build` divergence on this one retry; not implemented; review
+/// #792 / 5ecbe568, non-blocking.
 ///
 /// **P5 (dissolution — shared target):** Retire (1) the `#[cfg(test)]` empty-stderr relaunch and
 /// (2) the **non-zero exit** direct-`Child` “host confirmation” re-exec in
@@ -947,6 +948,15 @@ pub fn evaluate_execute_command_m1_5(
 /// Core host run: **typed** outcome. Map to [`ClaimResult`] with
 /// [`ExecuteCommandHostOutcome::into_claim_result`] for [`TestRunner`], or match directly from
 /// [`evaluate_execute_command_m1_5`].
+///
+/// **P2(d) (implicit re-execution):** On Linux, the `loop` may spawn a **second** `Child` once
+/// for (1) unshare post-start setup failure, (2) non-zero-`expect_exit_code` “host confirmation”
+/// when the unshare(1) path is ambiguous, or (3) empty piped wrapper stderr on exit **mismatch**
+/// in `#[cfg(test)]` only — all single-retry, documented in [`unshare_sandbox_broken_relaunch_with_direct`]
+/// and the **P3 (empty buffer)** / **P5 (dissolution — shared target)** block. Optional T-PB-B:
+/// factoring *which* of those three authorized the relaunch into a small `enum` at this seam
+/// (setup-vs-`exec` *reason* wire) can shrink the audit surface while the P5 “typed setup carrier”
+/// is still out-of-tree — **non**-blocking (PR #792 review 5ecbe568).
 pub fn evaluate_execute_command_host_outcome(
     command: &str,
     args: &[String],
