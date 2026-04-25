@@ -18,9 +18,10 @@
 ## Frame — groundedness gates lenses (revised)
 
 The language vocabulary is **primitives + namespacing/composition only**:
+- 6 type connectives (`Atom | Conj | Disj | Arrow | Cardinality | Instantiation`) — per [`docs/thesis/the-substrate-two-coordinated-shapes.md`](../thesis/the-substrate-two-coordinated-shapes.md) §"The vocabulary closes here". `Atom` carries payloads at the user-input boundary; the other five decompose.
 - 5 behaviors (`Value | Transform | Branch | Loop | Bind`)
-- typed substrate carriers
-- 4 type connectives (`Conjunction | Disjunction | Cardinality | Bit`)
+
+The carriers B4 lands (`DeclarationRef`, structural fold-shape carrier, structural emit-helper carrier, structural extdeps-fixture-set carrier) are **defined using** this vocabulary — they are typed declarations the substrate composes from connectives + behaviors, not extensions of the vocabulary.
 
 There is no user-defined-primitive feature, no escape syntax, no annotation the compiler can't see through. **Consequence: there is no "ungrounded user program" category.** A user "leaving the stack" inside the language means composing primitives into named patterns (namespacing) — the compiler sees through; lenses apply for free. "Leaving the stack" outside the language means literally writing a different compiler — not our concern until they ground their outputs back into our primitives by emitting `.dag`.
 
