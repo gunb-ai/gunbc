@@ -60,7 +60,10 @@ Today the parser silently accepts no effect declaration; after this PR, the surf
 4. Add lowerer extension (per req 5) producing the post-parser substrate carrier; resolve each surface effect to its `OperationEffect` declaration.
 5. Regen `parse_generated.rs` (per `feedback_no_generated_code_on_disk`).
 6. Exhaustive-match audit + updates (per req 6).
-7. Smoke test: parser accepts `fn read_user(id: String) -> User effects [Read]` and produces a function declaration whose `signature: FnSignature` carries `declared_effects = [ReadEffect]`. **NOTE**: this PR does NOT consume the field via lens (sibling substrate sub-lane does that); after this PR the field is populated but unread. That's expected; the sibling sub-lane closes that path. Test should assert the parser-output shape, not end-to-end lens behavior.
+7. Smoke tests at the right stage boundaries (parser-output vs. lowerer-resolved — facts-flow-forward discipline):
+   - **Parser smoke**: parser accepts `fn read_user(id: String) -> User effects [Read]` and produces a function declaration whose `signature: FnSignature` carries `declared_effects: List<SurfaceType>` with one entry — a `SurfaceType::Named { name: "Read", ... }` reference. Assert the parsed surface shape only; do NOT assert resolution to `OperationEffect`.
+   - **Lowerer smoke**: same source through the lowerer produces the resolved post-parser substrate carrier with `[ReadEffect]` (or whatever variant `derive_op_effect` / req 5's resolution produces). The boundary between the two tests is the parser→lowerer authority split.
+   - **NOTE**: this PR does NOT consume the field via lens (sibling substrate sub-lane does that); after this PR the field is populated and resolved but unread by any lens. That's expected; the sibling sub-lane closes that path.
 
 ## Acceptance
 
@@ -70,7 +73,7 @@ Today the parser silently accepts no effect declaration; after this PR, the surf
 - [ ] Lowerer resolves surface effects to `OperationEffect` declarations.
 - [ ] `parse_generated.rs` regenerated; no hand edits.
 - [ ] All `SurfaceType` / `SurfaceItem` exhaustive-match sites updated.
-- [ ] Parser smoke test: function with declared-effects clause parses to populated `declared_effects` field.
+- [ ] Parser smoke test asserts surface shape only (`List<SurfaceType>` references); lowerer smoke test asserts resolution to `OperationEffect`. Stage boundary preserved.
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` / `clippy --all-targets -- -D warnings` / `fmt --all --check` clean.
 - [ ] DB-8 fixed-point converges bit-identically.
 - [ ] SG-0 census deltas: regen-output updates land in REGEN_OUTPUTS partition.
