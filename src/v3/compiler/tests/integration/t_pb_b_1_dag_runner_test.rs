@@ -92,6 +92,8 @@ fn t_pb_b_1_contract_port_cost_suite_passes_through_runner() {
 /// `ExecuteCommand` through the same `tests/dag` path as T-PB-B-1 (PB-Runtime extension).
 /// Boundary migration: `m1_4_emit_python_test::python_stdout` pattern → declarative
 /// `ExecuteCommand` (this suite uses `sh`/`echo` / `true` so CI need not install CPython).
+/// Repository CI (`.github/workflows/ci.yml` `v3` job) is Linux-only; on Windows, `sh`/`echo` may
+/// be absent or diverge — this test is not run on Windows in CI today.
 #[test]
 fn t_pb_b_1_execute_command_boundary_suite_passes_through_runner() {
     let dag = lower(

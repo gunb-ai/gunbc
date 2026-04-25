@@ -1,4 +1,5 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use crate::dag::{
     Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, Path, PortId, PortState,
@@ -332,21 +333,84 @@ fn list_string_literal_values(value: &FieldValue) -> Option<Vec<String>> {
     Some(out)
 }
 
+/// Hard wall-clock for [`evaluate_execute_command_exit_code`]: fail-closed `ClaimResult::Fail`
+/// (not hang / not unbounded) so checked-in `TestClaim` data cannot block CI on a runaway child.
+/// Adjusting the limit is policy; the substrate has no per-claim override today.
+pub const EXECUTE_COMMAND_WALL_TIMEOUT: Duration = Duration::from_secs(30);
+
+const EXECUTE_COMMAND_WAIT_POLL: Duration = Duration::from_millis(20);
+
 /// Spawns a host process and checks exit status. Used by the Rust `TestRunner` and the M1.5
-/// harness (single canonical path per PB-Runtime brief). Fail messages distinguish spawn error,
-/// missing exit code (signal), and exit-code mismatch.
+/// harness (single canonical path per PB-Runtime brief).
+///
+/// - **No stdout/stderr capture** — `stdin`/`stdout`/`stderr` are the null device so malicious or
+///   chatty children cannot exhaust memory; only the exit code is read (P3/P4: bounded, fail-closed
+///   outcomes).
+/// - **Wall clock** — [`EXECUTE_COMMAND_WALL_TIMEOUT`]; on exceed, the child is killed and the
+///   result is a typed failure (not a hang).
+///
+/// Fail messages distinguish spawn error, timeout, missing exit code (signal), and exit-code
+/// mismatch.
 pub fn evaluate_execute_command_exit_code(
     command: &str,
     args: &[String],
     expect_exit_code: i64,
 ) -> ClaimResult {
-    let output = match Command::new(command).args(args).output() {
-        Ok(out) => out,
+    evaluate_execute_command_exit_code_with_wall_time(
+        command,
+        args,
+        expect_exit_code,
+        EXECUTE_COMMAND_WALL_TIMEOUT,
+    )
+}
+
+fn evaluate_execute_command_exit_code_with_wall_time(
+    command: &str,
+    args: &[String],
+    expect_exit_code: i64,
+    wall_time: Duration,
+) -> ClaimResult {
+    // Not `Command::output()`: that buffers stdout/stderr with no wall timeout. Spawn + null
+    // stdio + try_wait loop below enforces P3/P4 fail-closed bounds (see module docs on
+    // `EXECUTE_COMMAND_WALL_TIMEOUT`).
+    let mut child = match Command::new(command)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
         Err(err) => {
             return ClaimResult::Fail(format!("ExecuteCommand spawn error ({command}): {err}"));
         }
     };
-    let Some(actual) = output.status.code().map(i64::from) else {
+    let wall_label = format!("{:.2}", wall_time.as_secs_f64());
+    let deadline = Instant::now() + wall_time;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    if let Err(e) = child.kill() {
+                        return ClaimResult::Fail(format!(
+                            "ExecuteCommand: timed out after {wall_label}s; kill() failed: {e}",
+                        ));
+                    }
+                    // Reap; exit code after kill is not asserted — we return timeout regardless.
+                    let _ = child.wait();
+                    return ClaimResult::Fail(format!(
+                        "ExecuteCommand: process exceeded {wall_label}s wall-clock limit (timeout — child killed, fail-closed)",
+                    ));
+                }
+                std::thread::sleep(EXECUTE_COMMAND_WAIT_POLL);
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!("ExecuteCommand: wait on child failed: {err}"));
+            }
+        }
+    };
+    let Some(actual) = status.code().map(i64::from) else {
         return ClaimResult::Fail(
             "ExecuteCommand: child terminated by signal (no host exit code)".to_string(),
         );
@@ -1500,5 +1564,30 @@ fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, Algebra
         other => Err(AlgebraicLawProgramError::MalformedPayload(format!(
             "lens_ref should be a DeclarationRef (FieldValue::Reference), got {other:?}"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod execute_command_timebound_tests {
+    use super::evaluate_execute_command_exit_code_with_wall_time;
+    use super::ClaimResult;
+    use std::time::Duration;
+
+    #[test]
+    #[cfg(unix)]
+    fn long_running_child_fails_closed_with_timeout_message() {
+        let r = evaluate_execute_command_exit_code_with_wall_time(
+            "sh",
+            &[String::from("-c"), String::from("sleep 5")],
+            0,
+            Duration::from_millis(150),
+        );
+        let ClaimResult::Fail(msg) = r else {
+            panic!("expected timeout fail, got {r:?}");
+        };
+        assert!(
+            msg.contains("0.15") && msg.contains("exceeded") && msg.contains("wall-clock"),
+            "expected timeout phrasing, got: {msg}"
+        );
     }
 }
