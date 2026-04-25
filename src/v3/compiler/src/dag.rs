@@ -2163,6 +2163,9 @@ static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock:
 });
 
 impl Dag {
+    // Only `bootstrap_regen_fresh` constructs an empty Dag for regen; omitting
+    // that module without `bootstrap-regen-fresh` would otherwise trip `dead_code`.
+    #[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
     pub(crate) fn empty() -> Self {
         Self {
             nodes: Vec::new(),

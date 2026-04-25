@@ -64,6 +64,9 @@ use crate::dag::{ArrowBody, Dag, Declaration, TemplateArgument, TypeConnective};
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::pipeline_authority::{ordered_pipeline_stages, PIPELINE_AUTHORITY_FILE};
 
+// `bootstrap_regen_fresh` (feature `bootstrap-regen-fresh`) is the primary
+// runtime consumer; default lib builds still compile this file for tests here.
+#[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
 const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
 
 /// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).
@@ -82,6 +85,7 @@ const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
 /// `type … inhabits … =` in `dsl/` (then express
 /// `type Bool inhabits BooleanAlgebra<Bool> = True | False` in
 /// `dsl/std/types.dag` and delete `patch_kernel_bool_boolean_algebra_inhabits`).
+#[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
 pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
     const BOOL_TYPES_FILE: &str = "dsl/std/types.dag";
     let Some(bool_decl) = dag
@@ -164,6 +168,7 @@ pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
 // (same runtime for every target), so "one realization per stage" is
 // the correct authority there.
 
+#[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
 pub(crate) fn materialize_pipeline_realizations(dag: &mut Dag) {
     let stages = match ordered_pipeline_stages(dag) {
         Ok(stages) => stages,
@@ -227,6 +232,7 @@ pub(crate) fn materialize_pipeline_realizations(dag: &mut Dag) {
     }
 }
 
+#[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
 fn report_pipeline_authority_error(dag: &mut Dag, name: String) {
     dag.attach_diagnostic(Diagnostic::ResolveError {
         name,
