@@ -523,14 +523,13 @@ fn unshare_sandbox_broken_relaunch_with_direct(
     if unshare_stderr_indicates_sandbox_setup_failure(&buf) {
         return true;
     }
-    if buf.trim().is_empty() {
-        if std::env::var(GUNBC_RELAUNCH_UNSHARE_ON_EMPTY_STDERR)
+    if buf.trim().is_empty()
+        && std::env::var(GUNBC_RELAUNCH_UNSHARE_ON_EMPTY_STDERR)
             .map(|s| s == "1" || s.eq_ignore_ascii_case("true"))
             .unwrap_or(false)
-        {
-            // Piped stderr, read ok, no bytes: with env opt-in only; default false (P3, codex #792).
-            return true;
-        }
+    {
+        // Piped stderr, read ok, no bytes: with env opt-in only; default false (P3, codex #792).
+        return true;
     }
     false
 }
