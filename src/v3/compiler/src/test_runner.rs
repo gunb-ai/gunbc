@@ -2527,11 +2527,7 @@ mod execute_command_timebound_tests {
             String::from("sleep 600 &"),
         ];
         assert!(shell_argv_may_start_unbounded_background(&v));
-        let r = evaluate_execute_command_exit_code(
-            "sh",
-            &v,
-            0,
-        );
+        let r = evaluate_execute_command_exit_code("sh", &v, 0);
         let ClaimResult::Fail(m) = r else {
             panic!("expected fail-closed for sh -c sh -ec + &, got {r:?}");
         };
