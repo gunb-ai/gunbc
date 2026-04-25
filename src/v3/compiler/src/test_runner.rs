@@ -686,7 +686,9 @@ pub fn evaluate_execute_command_m1_5(
 ) -> Result<ExecuteCommandM1_5Proposition, ClaimResult> {
     match evaluate_execute_command_exit_code(command, args, expect_exit_code) {
         ClaimResult::Pass => Ok(ExecuteCommandM1_5Proposition::Satisfied),
-        ClaimResult::Fail(msg) if msg.starts_with(EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX) => {
+        ClaimResult::Fail(msg)
+            if msg.starts_with(EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX) =>
+        {
             Ok(ExecuteCommandM1_5Proposition::UnsatisfiedExitMismatch)
         }
         other @ (ClaimResult::Fail(_) | ClaimResult::NotYetImplemented(_)) => Err(other),
@@ -1970,9 +1972,9 @@ mod execute_command_timebound_tests {
     use super::evaluate_execute_command_exit_code;
     use super::evaluate_execute_command_exit_code_with_wall_time;
     use super::evaluate_execute_command_m1_5;
-    use super::ExecuteCommandM1_5Proposition;
     use super::shell_dash_c_may_start_background_after_eliding_artifacts;
     use super::ClaimResult;
+    use super::ExecuteCommandM1_5Proposition;
     use std::time::Duration;
 
     #[test]
@@ -2029,12 +2031,12 @@ mod execute_command_timebound_tests {
     #[test]
     #[cfg(unix)]
     fn m1_5_exit_mismatch_is_unsatisfied() {
-        let p = evaluate_execute_command_m1_5(
-            "sh",
-            &[String::from("-c"), String::from("exit 1")],
-            0,
+        let p =
+            evaluate_execute_command_m1_5("sh", &[String::from("-c"), String::from("exit 1")], 0);
+        assert_eq!(
+            p,
+            Ok(ExecuteCommandM1_5Proposition::UnsatisfiedExitMismatch)
         );
-        assert_eq!(p, Ok(ExecuteCommandM1_5Proposition::UnsatisfiedExitMismatch));
     }
 
     #[test]
