@@ -3302,11 +3302,17 @@ mod tests {
             "missing_variant_parent.v3",
         )
         .expect("compiles");
-        let right_variant = dag
-            .declaration_by_name("Right")
-            .expect("Right variant declaration")
-            .id;
         let choice_decl = dag.declaration_by_name("Choice").expect("Choice decl").id;
+        let right_variant = match &dag.declaration(choice_decl).connective {
+            TypeConnective::Disj { variants } => {
+                variants
+                    .iter()
+                    .find(|v| v.label == "Right")
+                    .expect("Right variant in Choice")
+                    .ty
+            }
+            _ => panic!("Choice should lower to a Disj"),
+        };
         let TypeConnective::Disj { variants } = &mut dag.declaration_mut(choice_decl).connective
         else {
             panic!("Choice should lower to a Disj");
