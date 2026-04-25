@@ -270,6 +270,10 @@ fn substrate_declares_expected_reflection_surface() {
         vec!["name", "value", "span"]
     );
     assert_eq!(
+        record_fields(&dag, "SurfaceMapEntry"),
+        vec!["key", "key_span", "value", "span"]
+    );
+    assert_eq!(
         record_fields(&dag, "SurfaceMatchArm"),
         vec!["pattern", "body", "span"]
     );
@@ -1388,6 +1392,7 @@ fn rust_dag_realizes_reflected_substrate_types() {
         "VariantPayload",
         "SurfaceType",
         "SurfaceRecordField",
+        "SurfaceMapEntry",
         "SurfaceMatchArm",
         "SurfacePatternField",
         "SurfacePattern",
@@ -1432,6 +1437,7 @@ fn all_target_languages_realize_reflected_surface_types() {
         "VariantPayload",
         "SurfaceType",
         "SurfaceRecordField",
+        "SurfaceMapEntry",
         "SurfaceMatchArm",
         "SurfacePatternField",
         "SurfacePattern",
@@ -1750,6 +1756,52 @@ let note = \"ok\"\n";
             ));
         }
         other => panic!("expected string let, got {other:?}"),
+    }
+}
+
+/// Parser sub-lane smoke test: a `kernel_algebra_profile`-shaped data
+/// declaration parses into `SurfaceItem::Data` whose body is a
+/// `SurfaceExpr::Map` with the asserted entries. Routes through
+/// `parse_data_item` → `looks_like_map_literal` (`{ String :` lookahead)
+/// → `parse_map_literal`. Lowering of `SurfaceExpr::Map` to
+/// `ValueBody::Map` is the substrate sub-lane's deliverable; this test
+/// asserts the parser-output shape only.
+#[test]
+fn parse_data_item_with_map_body_emits_surface_expr_map() {
+    let source = "data kernel_algebra_profile: Map<String, AlgebraProfile> = {\n  \"Int\": OrderedRingProfile,\n  \"Float\": ApproximateFieldProfile,\n  \"Bool\": BooleanAlgebraProfile,\n  \"String\": FreeMonoidScalarProfile,\n  \"List\": FreeMonoidCollectionProfile,\n  \"Set\": BooleanAlgebraCollectionProfile,\n  \"Map\": PartialFunctionProfile\n}\n";
+    let tokens = tokenize_for_test(source, "map_literal_data.v3").expect("tokenize");
+    let parsed = parse_for_test(&tokens, "map_literal_data.v3").expect("parse map-literal data");
+    assert_eq!(parsed.items.len(), 1);
+    match &parsed.items[0] {
+        parse_surface::SurfaceItem::Data {
+            name,
+            body: Some(parse_surface::SurfaceExpr::Map { entries, .. }),
+            ..
+        } => {
+            assert_eq!(name, "kernel_algebra_profile");
+            let expected: Vec<(&str, &str)> = vec![
+                ("Int", "OrderedRingProfile"),
+                ("Float", "ApproximateFieldProfile"),
+                ("Bool", "BooleanAlgebraProfile"),
+                ("String", "FreeMonoidScalarProfile"),
+                ("List", "FreeMonoidCollectionProfile"),
+                ("Set", "BooleanAlgebraCollectionProfile"),
+                ("Map", "PartialFunctionProfile"),
+            ];
+            assert_eq!(entries.len(), expected.len());
+            for (entry, (expected_key, expected_value_var)) in entries.iter().zip(expected.iter()) {
+                assert_eq!(&entry.key, expected_key);
+                match &entry.value {
+                    parse_surface::SurfaceExpr::Var { name, .. } => {
+                        assert_eq!(name, expected_value_var);
+                    }
+                    other => panic!(
+                        "expected map entry value to be SurfaceExpr::Var({expected_value_var}), got {other:?}"
+                    ),
+                }
+            }
+        }
+        other => panic!("expected SurfaceItem::Data with SurfaceExpr::Map body, got {other:?}"),
     }
 }
 

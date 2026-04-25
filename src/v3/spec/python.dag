@@ -38,7 +38,7 @@ import v3.std.clean_emission {
 }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
-  VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMatchArm,
+  VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMapEntry, SurfaceMatchArm,
   SurfacePatternField, SurfacePattern, SurfaceLiteral, SurfaceExpr
 }
 
@@ -400,6 +400,20 @@ data python_surface_record_field: TypeRealization = {
   is_copy: false
   fields: [
     { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "value", access: DirectField("value"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data python_surface_map_entry: TypeRealization = {
+  language: python_language
+  target: SurfaceMapEntry
+  carrier: "SurfaceMapEntry"
+  is_copy: false
+  fields: [
+    { dag_name: "key", access: DirectField("key"), borrowed_read: false },
+    { dag_name: "key_span", access: DirectField("key_span"), borrowed_read: false },
     { dag_name: "value", access: DirectField("value"), borrowed_read: false },
     { dag_name: "span", access: DirectField("span"), borrowed_read: false }
   ]

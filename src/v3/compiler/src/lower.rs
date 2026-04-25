@@ -5441,22 +5441,19 @@ fn lower_expr(
             // directly. A `SurfaceExpr::Map` reaching `lower_expr` means
             // it appeared in expression position (function body, etc.),
             // which is out of scope for the parser sub-lane. Fail-closed
-            // diagnostic per `feedback_fail_closed_discipline`.
-            report_declaration_error(
+            // expression-level diagnostic via `unresolved_port` (the
+            // expression-position diagnostic-port channel) — not
+            // `report_declaration_error`, which is for declaration-level
+            // failures and would route the diagnostic through the wrong
+            // channel here.
+            unresolved_port(
                 dag,
                 Diagnostic::ResolveError {
                     name: "map literals are not yet supported in expression position (top-level data declarations only)".to_string(),
                     span: span.clone(),
                     fixes: Vec::new(),
                 },
-            );
-            let stub = alloc_identifier_stub(dag, "__map_literal_in_expr_position__", span);
-            dag.alloc_port(None);
-            // Return a fresh port (no producer) so the caller's
-            // structural shape is unaffected; the diagnostic is the
-            // primary effect.
-            let _ = stub;
-            dag.alloc_port(None)
+            )
         }
     }
 }
