@@ -177,9 +177,15 @@ without entailment substrate:
   `NonZeroU32`. The "proof" is the *constructor call site*, dischargeable
   by `match` / `unwrap_or_else`. No entailment check needed; the type
   carries the discharge.
-- Pattern-match destructuring — `match Option::from(b) { Some(nz) => a /
-  nz, None => ... }` makes the discharge syntactically explicit at the
-  call site. Same closure as the smart-constructor path.
+- Pattern-match destructuring against a checked constructor — e.g.
+  `match NonZeroInt::new(b) { Some(nz) => a / nz, None => ... }` where
+  `NonZeroInt::new: fn(Int) -> Option<NonZeroInt>` is the smart
+  constructor that *checks* `b != 0` and returns `None` otherwise. The
+  `nz` binding is structurally `NonZeroInt`, not a wrapped raw `Int`,
+  so the type carries the proof. (A generic `Option::from(b)` wrapper
+  would NOT close the bug class — it can produce `Some(0)` and the
+  `Some` arm still admits division by zero. The constructor must be
+  checked.) Same closure as the smart-constructor path above.
 
 Neither requires DB-11 entailment. Both are pure
 algebra/sum-totality work in `dsl/std/`.
