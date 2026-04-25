@@ -207,8 +207,9 @@ fn data_int_literal_range_narrowing_does_not_bypass_refinement() {
             "data_int_literal_refined_alias_discharge.v3",
         ),
     ] {
-        let err = compile_to_dag(source, file)
-            .expect_err("range-compatible data literal must still fail missing refinement evidence");
+        let err = compile_to_dag(source, file).expect_err(
+            "range-compatible data literal must still fail missing refinement evidence",
+        );
         let CompileError::Semantic(dag) = err else {
             panic!("expected semantic diagnostic, got {err:?}");
         };
