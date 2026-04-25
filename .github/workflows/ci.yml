@@ -210,6 +210,23 @@ jobs:
           fi
           scripts/check-test-timeout.sh /tmp/v3-test-timings.log
 
+      # PB-1-e — DB-8 fresh-compile gate at regen time. Replaces the in-tree
+      # `compile_full_bootstrap_dag()` vs committed-snapshot drift tests with a
+      # CI-side check: regen the bootstrap snapshot from authority, then assert
+      # the committed `bootstrap_*_generated.rs` files are byte-identical to a
+      # fresh compile. Any drift (hand-edit, stale regen, substrate change) fails
+      # CI here. See `docs/briefs/pb-1-e-residual-scaffold-retirement-worker.md`.
+      - name: v3 bootstrap snapshot fresh-compile gate
+        run: |
+          cargo run -p v3-compiler --bin regen_bootstrap
+          if ! git diff --exit-code -- \
+            src/v3/compiler/src/bootstrap_std_generated.rs \
+            src/v3/compiler/src/bootstrap_generated.rs \
+            src/v3/compiler/src/bootstrap_generated_without_parse_surface.rs; then
+            echo "::error::Committed bootstrap snapshot drifted from a fresh compile. Run \`cargo run -p v3-compiler --bin regen_bootstrap\` and commit the result."
+            exit 1
+          fi
+
       - name: v3 Compiler Clippy
         run: cargo clippy -p v3-compiler --all-targets -- -D warnings
 
