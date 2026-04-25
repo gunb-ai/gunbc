@@ -26,8 +26,8 @@ use std::collections::HashSet;
 
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, Field,
-    LiteralBits, Lookup, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
-    TypeConnective,
+    LiteralBits, Lookup, PhantomParameter, PortId, PortState, TemplateArgument, TransformNode,
+    TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -1095,21 +1095,39 @@ fn phantom_unit_mismatch(
 ) -> Option<Diagnostic> {
     let expected_inst = instantiation_parts(dag, expected_ty.declaration)?;
     let actual_inst = instantiation_parts(dag, actual_ty.declaration)?;
-    if expected_inst.template != actual_inst.template {
-        return None;
-    }
-    let template = dag.declaration(expected_inst.template);
-    for phantom in &template.phantom_params {
+    let expected_template = dag.declaration(expected_inst.template);
+    for phantom in &expected_template.phantom_params {
         if let Err(diag) =
             require_abelian_group_phantom_algebra(dag, phantom.algebra, phantom.parameter, span)
         {
             return Some(diag);
         }
-        if !template.type_params.contains(&phantom.parameter) {
+        if !expected_template.type_params.contains(&phantom.parameter) {
             return Some(malformed_phantom_parameter_diagnostic(
                 dag,
                 expected_inst.template,
                 phantom.parameter,
+                span,
+            ));
+        }
+        let Some(actual_phantom) =
+            mapped_phantom_parameter(dag, expected_inst.template, phantom, actual_inst.template)
+        else {
+            continue;
+        };
+        if let Err(diag) = require_abelian_group_phantom_algebra(
+            dag,
+            actual_phantom.algebra,
+            actual_phantom.parameter,
+            span,
+        ) {
+            return Some(diag);
+        }
+        if !phantom_algebras_equivalent(dag, phantom.algebra, actual_phantom.algebra) {
+            return Some(unsupported_phantom_algebra_diagnostic(
+                dag,
+                actual_phantom.algebra,
+                actual_phantom.parameter,
                 span,
             ));
         }
@@ -1129,12 +1147,12 @@ fn phantom_unit_mismatch(
         let Some(actual_arg) = actual_inst
             .arguments
             .iter()
-            .find(|arg| arg.parameter == phantom.parameter)
+            .find(|arg| arg.parameter == actual_phantom.parameter)
         else {
             return Some(missing_phantom_argument_diagnostic(
                 dag,
                 actual_inst.template,
-                phantom.parameter,
+                actual_phantom.parameter,
                 "actual",
                 span,
             ));
@@ -1240,6 +1258,34 @@ fn require_abelian_group_phantom_algebra(
     Err(unsupported_phantom_algebra_diagnostic(
         dag, algebra, parameter, span,
     ))
+}
+
+fn phantom_algebras_equivalent(
+    dag: &Dag,
+    lhs_algebra: DeclarationId,
+    rhs_algebra: DeclarationId,
+) -> bool {
+    lhs_algebra == rhs_algebra || declaration_shapes_equivalent(dag, lhs_algebra, rhs_algebra, 0)
+}
+
+fn mapped_phantom_parameter(
+    dag: &Dag,
+    source_template: DeclarationId,
+    source_phantom: &PhantomParameter,
+    target_template: DeclarationId,
+) -> Option<PhantomParameter> {
+    let source_decl = dag.declaration(source_template);
+    let target_decl = dag.declaration(target_template);
+    let source_index = source_decl
+        .type_params
+        .iter()
+        .position(|parameter| *parameter == source_phantom.parameter)?;
+    let target_parameter = target_decl.type_params.get(source_index).copied()?;
+    target_decl
+        .phantom_params
+        .iter()
+        .find(|target_phantom| target_phantom.parameter == target_parameter)
+        .cloned()
 }
 
 struct InstantiationParts<'a> {
