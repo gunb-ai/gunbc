@@ -1,4 +1,6 @@
-# T-ImpossibleBugs — unenumerated effects `(S, R2; SPLIT — parser sub-lane lands first)`
+# T-ImpossibleBugs — unenumerated effects `(S, R2; SUPERSEDED 2026-04-25)`
+
+> **🔄 SUPERSEDED 2026-04-25 by [`docs/briefs/t-impossiblebugs-unenumerated-effects-design.md`](t-impossiblebugs-unenumerated-effects-design.md).** The lens-vs-declaration framing in this brief is **retracted**. Under closed-system structural derivation (parallel to closed-system complexity), effects derive from the composition of typed primitive operations — there is no annotation surface, no declared-vs-inferred lens check. See the design doc for the 5-behavior compositional-fold mechanism + worked examples + redundancy treatment. **Do not author new work against this brief; route to the design doc.** No code has merged against this brief; the cleanup is doc-only.
 
 > **Director ad-hoc dispatch.** R2 T-ImpossibleBugs class 3 of 3 per
 > [`docs/r2-structure.md`](../r2-structure.md) §"Goal 4". Independent
