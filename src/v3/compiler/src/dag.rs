@@ -2797,6 +2797,34 @@ impl Dag {
             })
     }
 
+    /// Typed accessor for the `rust_pilot_primitives` data declaration
+    /// from `dsl/extdeps/languages/rust/primitives.dag` (loaded via
+    /// `EXTDEPS_BOOTSTRAP_FIXTURES` in `bootstrap.rs`). Returns the
+    /// top-level `List<RustPrimitive>` declaration whose *type* the
+    /// target-grounding engine walks structurally (`RustPrimitive =
+    /// IntegerPrimitive | NonIntegerPrimitive {target_name, algebra,
+    /// carrier, is_copy[, overflow]}`).
+    ///
+    /// **Path 2 partial Req-1 satisfaction.** The returned declaration's
+    /// `value_body` is `ValueBody::Unparsed(SourceSpan)` — v3's
+    /// `ValueBody` enum does not yet carry a top-level list/aggregate
+    /// variant, so the 10-element pilot enumeration is not yet walkable
+    /// as structured records. Consumers that only need the type shape
+    /// (sum variants, variant fields, tag enums) can walk through
+    /// `connective` immediately; consumers that need to enumerate the
+    /// concrete pilot primitives must wait for R2 T-Substrate's 4th
+    /// sub-lane to land the top-level `ValueBody::List`/aggregate
+    /// extension (same substrate gap as `kernel_algebra_profile` at
+    /// `dag.rs:1530` and tokenizer `sub_charclass_in_std_unicode`
+    /// phase-2).
+    ///
+    /// Returns `None` only when bootstrap failed to load
+    /// `rust/primitives.dag`, in which case a diagnostic is already on
+    /// `Dag.diagnostics`.
+    pub fn rust_pilot_primitives(&self) -> Option<&Declaration> {
+        self.declaration_by_name("rust_pilot_primitives")
+    }
+
     /// DB-10 (3a.2): read the compile-time value body attached to a
     /// declaration. Returns `None` for declarations without a
     /// value body (type aliases, bare type declarations, function
