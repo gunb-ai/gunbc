@@ -44,6 +44,7 @@ data go_execution_model: TargetExecutionModel = {
 data go_source_filtering: SourceFiltering = {
   excluded_prefixes: [
     "dsl/std/",
+    "dsl/extdeps/",
     "src/v3/std/",
     "src/v3/spec/",
     "src/v3/compiler/",
