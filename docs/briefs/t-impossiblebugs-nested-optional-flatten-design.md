@@ -140,7 +140,7 @@ The guard predicate is exactly: outer bound `AtMostOne` *and* inner bound `AtMos
 
 ## Q4 — Recommendation: bypass implementation brief shape
 
-**Outcome: (a) bypass-feasible.** Director can fast-track an implementation brief (XS, not S).
+**Outcome: (a) bypass-feasible.** Director can fast-track an implementation brief at lane size **S** (see §Dispatch profile below; original draft sized XS based on a lower-only design that PR #798 review correctly rejected).
 
 ### Implementation-brief shape
 
@@ -185,7 +185,7 @@ The cardinality substrate THESIS:343 names as the gate is the **v2** state (`ret
 
 ### Why not "park"
 
-The bypass is small (XS), well-scoped (specific to `AtMostOne ∧ AtMostOne`), structurally grounded (algebraic idempotence of `AtMostOne`), and the substrate prerequisite is already met. Parking would be conservative beyond what the evidence supports.
+The bypass is small (S; see §Dispatch profile), well-scoped (specific to `AtMostOne ∧ AtMostOne`), structurally grounded (algebraic idempotence of `AtMostOne`), and the substrate prerequisite is already met. Parking would be conservative beyond what the evidence supports.
 
 ## Cross-manager note
 
