@@ -171,7 +171,7 @@ pub mod lens_cost {
         }
 
         fn int_value(dag: &mut Dag, value: i64) -> PortId {
-            dag.push_value(LiteralBits::Int(value), span())
+            dag.push_value(LiteralBits::Int(value.into()), span())
         }
 
         fn add(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {
@@ -733,6 +733,7 @@ pub use bootstrap_regen_fresh::{
 
 mod dimension;
 mod infer;
+mod integer_range;
 
 /// SG-4 prep: first .dag-authority slice of `infer.rs`. Authority
 /// lives in `src/v3/lenses/infer_helpers.dag`; the Rust projection is

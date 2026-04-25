@@ -185,6 +185,15 @@ pub enum Diagnostic {
         span: SourceSpan,
         fixes: Vec<Correction>,
     },
+    /// Integer literal magnitude is outside the target type's declared inclusive range.
+    MagnitudeOutOfRange {
+        value: i128,
+        min: i128,
+        max: i128,
+        target: String,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
+    },
 }
 
 impl Diagnostic {
@@ -196,7 +205,8 @@ impl Diagnostic {
             | Diagnostic::ArityMismatch { span, .. }
             | Diagnostic::ResolveError { span, .. }
             | Diagnostic::UnitMismatch { span, .. }
-            | Diagnostic::BranchConditionNotBool { span, .. } => span,
+            | Diagnostic::BranchConditionNotBool { span, .. }
+            | Diagnostic::MagnitudeOutOfRange { span, .. } => span,
         }
     }
 
@@ -208,7 +218,8 @@ impl Diagnostic {
             | Diagnostic::ArityMismatch { fixes, .. }
             | Diagnostic::ResolveError { fixes, .. }
             | Diagnostic::UnitMismatch { fixes, .. }
-            | Diagnostic::BranchConditionNotBool { fixes, .. } => fixes,
+            | Diagnostic::BranchConditionNotBool { fixes, .. }
+            | Diagnostic::MagnitudeOutOfRange { fixes, .. } => fixes,
         }
     }
 
@@ -240,6 +251,15 @@ impl Diagnostic {
                 Some(ty) => format!("branch condition port is not Bool (got {ty:?})"),
                 None => "branch condition port is not Bool (type not resolved)".to_string(),
             },
+            Diagnostic::MagnitudeOutOfRange {
+                value,
+                min,
+                max,
+                target,
+                ..
+            } => format!(
+                "integer literal {value} is out of range for type `{target}` (valid {min}..={max})"
+            ),
         }
     }
 }

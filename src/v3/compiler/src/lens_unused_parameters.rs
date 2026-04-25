@@ -77,7 +77,7 @@ mod tests {
     }
 
     fn int_value(dag: &mut Dag, value: i64) -> PortId {
-        dag.push_value(LiteralBits::Int(value), span())
+        dag.push_value(LiteralBits::Int(value.into()), span())
     }
 
     fn add(dag: &mut Dag, lhs: PortId, rhs: PortId) -> PortId {

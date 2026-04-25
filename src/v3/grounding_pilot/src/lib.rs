@@ -107,6 +107,9 @@ pub enum RustPrimitive {
         carrier: TargetCarrier,
         is_copy: bool,
         overflow: IntegerOverflow,
+        /// Inclusive range (decimal), mirrors `extdeps/.../primitives.dag`.
+        range_min_inclusive: &'static str,
+        range_max_inclusive: &'static str,
     },
     NonIntegerPrimitive {
         target_name: &'static str,
@@ -174,6 +177,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         carrier: TargetCarrier::Byte,
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
+        range_min_inclusive: "-128",
+        range_max_inclusive: "127",
     },
     RustPrimitive::IntegerPrimitive {
         target_name: "i16",
@@ -181,6 +186,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         carrier: TargetCarrier::Word16,
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
+        range_min_inclusive: "-32768",
+        range_max_inclusive: "32767",
     },
     RustPrimitive::IntegerPrimitive {
         target_name: "i32",
@@ -188,6 +195,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         carrier: TargetCarrier::Word32,
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
+        range_min_inclusive: "-2147483648",
+        range_max_inclusive: "2147483647",
     },
     RustPrimitive::IntegerPrimitive {
         target_name: "i64",
@@ -195,6 +204,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         carrier: TargetCarrier::Word64,
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
+        range_min_inclusive: "-9223372036854775808",
+        range_max_inclusive: "9223372036854775807",
     },
     // Unsigned integers — Semiring over machine-word carriers.
     RustPrimitive::IntegerPrimitive {
@@ -203,6 +214,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         carrier: TargetCarrier::Byte,
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
+        range_min_inclusive: "0",
+        range_max_inclusive: "255",
     },
     RustPrimitive::IntegerPrimitive {
         target_name: "u16",
@@ -210,6 +223,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         carrier: TargetCarrier::Word16,
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
+        range_min_inclusive: "0",
+        range_max_inclusive: "65535",
     },
     RustPrimitive::IntegerPrimitive {
         target_name: "u32",
@@ -217,6 +232,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         carrier: TargetCarrier::Word32,
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
+        range_min_inclusive: "0",
+        range_max_inclusive: "4294967295",
     },
     RustPrimitive::IntegerPrimitive {
         target_name: "u64",
@@ -224,6 +241,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         carrier: TargetCarrier::Word64,
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
+        range_min_inclusive: "0",
+        range_max_inclusive: "18446744073709551615",
     },
     // Bool — BooleanAlgebra over Bit.
     RustPrimitive::NonIntegerPrimitive {

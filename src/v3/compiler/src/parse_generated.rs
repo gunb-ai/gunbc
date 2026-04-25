@@ -1130,6 +1130,39 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_primary(&mut self) -> Result<SurfaceExpr, Diagnostic> {
+        if matches!(self.peek().kind, TokenKind::Minus) {
+            let minus = self.bump().clone();
+            let inner = self.parse_primary()?;
+            return match inner {
+                SurfaceExpr::Literal {
+                    value: SurfaceLiteral::Int(n),
+                    span: inner_span,
+                } => {
+                    let v = n.checked_neg().ok_or_else(|| Diagnostic::ParseError {
+                        message: "this integer literal cannot be negated (overflow)".to_string(),
+                        span: SourceSpan::new(
+                            self.file,
+                            minus.span.byte_start,
+                            inner_span.byte_end,
+                        ),
+                        fixes: Vec::new(),
+                    })?;
+                    Ok(SurfaceExpr::Literal {
+                        value: SurfaceLiteral::Int(v),
+                        span: SourceSpan::new(
+                            self.file,
+                            minus.span.byte_start,
+                            inner_span.byte_end,
+                        ),
+                    })
+                }
+                _ => Err(Diagnostic::ParseError {
+                    message: "unary `-` is only valid before an integer literal".to_string(),
+                    span: minus.span,
+                    fixes: Vec::new(),
+                }),
+            };
+        }
         let peek = &self.peek().kind;
         match primary_prefix_dispatch(peek) {
             Some(PrimaryPrefixDispatch::If) => return self.parse_if(),

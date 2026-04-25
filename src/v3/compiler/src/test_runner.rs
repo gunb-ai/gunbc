@@ -286,7 +286,7 @@ pub fn parse_execute_command_fields(payload: &[FieldValue]) -> Option<(String, V
                 .iter()
                 .find(|(label, _)| label == "expect_exit_code")
                 .and_then(|(_, value)| match value {
-                    FieldValue::Literal(LiteralBits::Int(n)) => Some(*n),
+                    FieldValue::Literal(LiteralBits::Int(n)) => i64::try_from(*n).ok(),
                     _ => None,
                 })?;
             let args = fields
@@ -303,7 +303,8 @@ pub fn parse_execute_command_fields(payload: &[FieldValue]) -> Option<(String, V
             let FieldValue::Literal(LiteralBits::Int(expect_exit_code)) = code else {
                 return None;
             };
-            Some((command.clone(), argv, *expect_exit_code))
+            let exit = i64::try_from(*expect_exit_code).ok()?;
+            Some((command.clone(), argv, exit))
         }
         _ => None,
     }
@@ -1668,7 +1669,7 @@ impl<'a> TestRunner<'a> {
                 }
             };
             return match computed {
-                CostLookup::Hit(v) if v == expected_int => ClaimResult::Pass,
+                CostLookup::Hit(v) if i128::from(v) == expected_int => ClaimResult::Pass,
                 CostLookup::Hit(v) => ClaimResult::Fail(format!(
                     "LensOutputEquals(cost_of): expected `{expected_int}`, computed `{v}` for bind `{cost_bind}`"
                 )),
@@ -2054,7 +2055,10 @@ impl<'a> TestRunner<'a> {
                 ));
             }
         };
-        if self.compare_cost(comparator, actual, *bound) {
+        let Some(bound_i64) = i64::try_from(*bound).ok() else {
+            return ClaimResult::Fail("CostBounded: int bound does not fit i64".to_string());
+        };
+        if self.compare_cost(comparator, actual, bound_i64) {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!("cost {actual} did not satisfy bound {bound}"))
@@ -2327,6 +2331,7 @@ fn diagnostic_kind(diagnostic: &Diagnostic) -> &'static str {
         Diagnostic::ArityMismatch { .. } => "ArityMismatch",
         Diagnostic::ResolveError { .. } => "ResolveError",
         Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
+        Diagnostic::MagnitudeOutOfRange { .. } => "MagnitudeOutOfRange",
     }
 }
 

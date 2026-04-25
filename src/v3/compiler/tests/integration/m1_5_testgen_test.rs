@@ -330,7 +330,12 @@ fn predicate_holds(
                 cost_of(&dag, &bind.value),
                 &format!("bind `{bind_name}`"),
             );
-            compare_cost(expectation_dag, comparator, actual, *bound)
+            compare_cost(
+                expectation_dag,
+                comparator,
+                actual,
+                i64::try_from(*bound).expect("testgen cost bound out of i64 range"),
+            )
         }
         "OutputEquals" => runner_deferred_panic("OutputEquals"),
         "BehavioralObservation" => runner_deferred_panic("BehavioralObservation"),
@@ -460,6 +465,7 @@ fn diagnostic_kind(diag: &Diagnostic) -> &'static str {
         Diagnostic::ArityMismatch { .. } => "ArityMismatch",
         Diagnostic::ResolveError { .. } => "ResolveError",
         Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
+        Diagnostic::MagnitudeOutOfRange { .. } => "MagnitudeOutOfRange",
     }
 }
 
@@ -479,7 +485,9 @@ fn diagnostic_detail(diag: &Diagnostic) -> String {
         } => format!("{function} expected {expected}, got {actual}"),
         Diagnostic::UnitMismatch { .. } => diag.message(),
         Diagnostic::ResolveError { name, .. } => name.clone(),
-        Diagnostic::BranchConditionNotBool { .. } => diag.message(),
+        Diagnostic::BranchConditionNotBool { .. } | Diagnostic::MagnitudeOutOfRange { .. } => {
+            diag.message()
+        }
     }
 }
 
@@ -558,7 +566,7 @@ fn cost_bounded_predicate(dag: &Dag, bind_name: &str, comparator: &str, bound: i
         vec![
             FieldValue::Literal(LiteralBits::String(bind_name.to_string())),
             sum_variant(dag, "ComparisonOp", comparator, Vec::new()),
-            FieldValue::Literal(LiteralBits::Int(bound)),
+            FieldValue::Literal(LiteralBits::Int(i128::from(bound))),
         ],
     )
 }
@@ -571,7 +579,7 @@ fn execute_command_predicate(dag: &Dag) -> FieldValue {
         vec![
             FieldValue::Literal(LiteralBits::String(String::from("true"))),
             FieldValue::List(Vec::new()),
-            FieldValue::Literal(LiteralBits::Int(0)),
+            FieldValue::Literal(LiteralBits::Int(0i128)),
         ],
     )
 }
@@ -584,7 +592,7 @@ fn for_all_targets_predicate(dag: &Dag) -> FieldValue {
         vec![
             FieldValue::Literal(LiteralBits::String(String::from("true"))),
             FieldValue::List(Vec::new()),
-            FieldValue::Literal(LiteralBits::Int(0)),
+            FieldValue::Literal(LiteralBits::Int(0i128)),
         ],
     )
 }
@@ -845,7 +853,7 @@ fn extension_predicates_reach_interpreter_boundary() {
         vec![
             FieldValue::Literal(LiteralBits::String(String::from("false"))),
             FieldValue::List(Vec::new()),
-            FieldValue::Literal(LiteralBits::Int(0)),
+            FieldValue::Literal(LiteralBits::Int(0i128)),
         ],
     );
     assert!(

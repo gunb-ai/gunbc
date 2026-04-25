@@ -34,6 +34,7 @@ use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
 };
 use crate::infer::{concretize_decl_with_subst, SubstStack};
+use crate::integer_range;
 use crate::lower_helpers::{expr_span, item_span, pattern_binding_names};
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
 use crate::parse::{
@@ -3152,9 +3153,9 @@ fn lower_structural_field_value(
 fn lower_scalar_literal_for_type(
     expr: &SurfaceExpr,
     expected_type: DeclarationId,
-    dag: &Dag,
+    dag: &mut Dag,
 ) -> Option<LiteralBits> {
-    let SurfaceExpr::Literal { value, .. } = expr else {
+    let SurfaceExpr::Literal { value, span } = expr else {
         return None;
     };
     let literal_bits = match value {
@@ -3166,9 +3167,36 @@ fn lower_scalar_literal_for_type(
     let bool_decl_id = dag.declaration_by_name("Bool").map(|d| d.id);
     let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
     let type_ok = match &literal_bits {
-        LiteralBits::Int(_) => int_decl_id
-            .map(|id| walks_to(dag, expected_type, id))
-            .unwrap_or(false),
+        LiteralBits::Int(v) => {
+            if let Some((lo, hi)) = integer_range::i128_range_for_integer_decl(dag, expected_type) {
+                if *v < lo || *v > hi {
+                    report_declaration_error(
+                        dag,
+                        Diagnostic::MagnitudeOutOfRange {
+                            value: *v,
+                            min: lo,
+                            max: hi,
+                            target: declaration_display_name(dag, expected_type),
+                            span: span.clone(),
+                            fixes: witness_correction_for_decl(
+                                dag,
+                                expected_type,
+                                span.clone(),
+                                format!("use a type whose value range includes this literal (valid {lo}..={hi})"),
+                            )
+                            .into_iter()
+                            .collect(),
+                        },
+                    );
+                    return None;
+                }
+                true
+            } else {
+                int_decl_id
+                    .map(|id| walks_to(dag, expected_type, id))
+                    .unwrap_or(false)
+            }
+        }
         LiteralBits::Bool(_) => bool_decl_id
             .map(|id| walks_to(dag, expected_type, id))
             .unwrap_or(false),

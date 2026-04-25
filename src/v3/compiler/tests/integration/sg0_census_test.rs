@@ -149,6 +149,11 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // hand-authored substrate, not new handwritten logic. Dissolution path:
 // the same `include!` / producer-owned route that eventually replaces
 // `dag.rs` itself replaces these submodules simultaneously.
+//
+// R2 T-Substrate (int-literal magnitude, brief `t-substrate-cardinality-int-lit-worker`):
+// `integer_range.rs` is the std/integer.dag name→`i128` range table + helper used by
+// infer/lowering; not yet declarative. Dissolution trigger: range facts live in `.dag` and
+// the host shims to them.
 const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
@@ -171,6 +176,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
     "src/v3/compiler/src/infer.rs",
+    "src/v3/compiler/src/integer_range.rs",
     "src/v3/compiler/src/lens_apply.rs",
     // T-PB-A: `lens_depth.rs` retired — unused observational lens (no in-tree consumer).
     "src/v3/compiler/src/lens_testgen.rs",
@@ -219,6 +225,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // the dsl/extdeps loader surface.
     "src/v3/compiler/tests/integration/extdeps_rust_primitives_loader_test.rs",
     "src/v3/compiler/tests/integration/four_fixture_regression_test.rs",
+    // R2 T-Substrate: end-to-end int literal magnitude / `MagnitudeOutOfRange` / i64::MIN.
+    "src/v3/compiler/tests/integration/int_literal_magnitude_r2_test.rs",
     "src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2a_effects_smoke.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2b_db18_test.rs",

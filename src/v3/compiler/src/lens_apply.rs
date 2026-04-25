@@ -398,7 +398,7 @@ impl<'a> EvalCtx<'a> {
                 let a = int_from_value(&self.eval_port(t.inputs[0])?)?;
                 let b = int_from_value(&self.eval_port(t.inputs[1])?)?;
                 let n = apply_arithmetic_int(*op, a, b)?;
-                Ok(FieldValue::Literal(LiteralBits::Int(n)))
+                Ok(FieldValue::Literal(LiteralBits::Int(i128::from(n))))
             }
             TransformTarget::Operator(OperatorKind::Comparison(op)) => {
                 if t.inputs.len() != 2 {
@@ -628,7 +628,9 @@ impl<'a> EvalCtx<'a> {
 
 fn int_from_value(v: &FieldValue) -> Result<i64, LensApplyError> {
     match v {
-        FieldValue::Literal(LiteralBits::Int(n)) => Ok(*n),
+        FieldValue::Literal(LiteralBits::Int(n)) => {
+            i64::try_from(*n).map_err(|_| LensApplyError::TypeMismatch("expected i64-suitable Int"))
+        }
         _ => Err(LensApplyError::TypeMismatch("expected Int literal")),
     }
 }
@@ -848,7 +850,7 @@ fn reflect_behavior(dag: &Dag, behavior: &Behavior) -> Result<FieldValue, LensAp
                 ("payload".to_string(), FieldValue::Literal(v.data.clone())),
                 (
                     "result_port".to_string(),
-                    FieldValue::Literal(LiteralBits::Int(i64::from(v.output.raw()))),
+                    FieldValue::Literal(LiteralBits::Int(i128::from(v.output.raw()))),
                 ),
             ]);
             Ok(FieldValue::Variant {
@@ -860,7 +862,7 @@ fn reflect_behavior(dag: &Dag, behavior: &Behavior) -> Result<FieldValue, LensAp
             let id = behavior_variant_id(dag, "Transform")?;
             let payload = FieldValue::Record(vec![(
                 "result_port".to_string(),
-                FieldValue::Literal(LiteralBits::Int(i64::from(t.output.raw()))),
+                FieldValue::Literal(LiteralBits::Int(i128::from(t.output.raw()))),
             )]);
             Ok(FieldValue::Variant {
                 constructor: id,
@@ -871,7 +873,7 @@ fn reflect_behavior(dag: &Dag, behavior: &Behavior) -> Result<FieldValue, LensAp
             let id = behavior_variant_id(dag, "Branch")?;
             let payload = FieldValue::Record(vec![(
                 "result_port".to_string(),
-                FieldValue::Literal(LiteralBits::Int(i64::from(b.output.raw()))),
+                FieldValue::Literal(LiteralBits::Int(i128::from(b.output.raw()))),
             )]);
             Ok(FieldValue::Variant {
                 constructor: id,
@@ -882,7 +884,7 @@ fn reflect_behavior(dag: &Dag, behavior: &Behavior) -> Result<FieldValue, LensAp
             let id = behavior_variant_id(dag, "Loop")?;
             let payload = FieldValue::Record(vec![(
                 "result_port".to_string(),
-                FieldValue::Literal(LiteralBits::Int(i64::from(l.output.raw()))),
+                FieldValue::Literal(LiteralBits::Int(i128::from(l.output.raw()))),
             )]);
             Ok(FieldValue::Variant {
                 constructor: id,
@@ -932,7 +934,7 @@ pub fn int_associativity_holds(
     b: i64,
     c: i64,
 ) -> Result<bool, LensApplyError> {
-    let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n));
+    let int = |n: i64| FieldValue::Literal(LiteralBits::Int(i128::from(n)));
     let left_ab = apply_lens_declaration(program_dag, lens_decl_id, &[int(a), int(b)])?;
     let left = apply_lens_declaration(program_dag, lens_decl_id, &[left_ab, int(c)])?;
     let right_bc = apply_lens_declaration(program_dag, lens_decl_id, &[int(b), int(c)])?;
@@ -1001,7 +1003,7 @@ fn f(a: Int, b: Int) -> Int = a + b
             &dag,
             id,
             &[
-                FieldValue::Literal(LiteralBits::Int(i64::MAX)),
+                FieldValue::Literal(LiteralBits::Int(i128::from(i64::MAX))),
                 FieldValue::Literal(LiteralBits::Int(1)),
             ],
         )

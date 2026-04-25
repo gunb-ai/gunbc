@@ -34,7 +34,7 @@ fn literal_int(expr: &parse_surface::SurfaceExpr) -> Option<i64> {
         parse_surface::SurfaceExpr::Literal {
             value: parse_surface::SurfaceLiteral::Int(n),
             ..
-        } => Some(*n),
+        } => i64::try_from(*n).ok(),
         _ => None,
     }
 }

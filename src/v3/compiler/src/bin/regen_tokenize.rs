@@ -660,7 +660,9 @@ fn extract_int_field(fields: &[(String, FieldValue)], key: &str) -> i64 {
         .find_map(|(k, v)| (k == key).then_some(v))
         .unwrap_or_else(|| panic!("missing field {key}"));
     match fv {
-        FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(n)) => *n,
+        FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(n)) => {
+            i64::try_from(*n).expect("string escape codepoint out of i64 for tokenizer")
+        }
         _ => panic!("field {key}: expected int literal"),
     }
 }

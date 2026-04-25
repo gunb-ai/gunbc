@@ -72,7 +72,15 @@ fn dag_new_exposes_rust_pilot_primitives_type_structure() {
     };
     assert_eq!(
         integer_field_labels,
-        vec!["target_name", "algebra", "carrier", "is_copy", "overflow"],
+        vec![
+            "target_name",
+            "algebra",
+            "carrier",
+            "is_copy",
+            "overflow",
+            "range_min_inclusive",
+            "range_max_inclusive"
+        ],
         "IntegerPrimitive field order is load-bearing for T-Ground L4-(C) witness consumption"
     );
 

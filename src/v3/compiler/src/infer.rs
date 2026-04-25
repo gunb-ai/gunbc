@@ -707,25 +707,94 @@ enum Decision {
 fn decide(dag: &Dag, index: usize) -> Decision {
     match &dag.nodes()[index] {
         Behavior::Value(v) => {
-            let shape_and_name = match &v.data {
-                LiteralBits::Int(_) => (dag.int_shape(), "Int"),
-                LiteralBits::Bool(_) => (dag.bool_shape(), "Bool"),
-                LiteralBits::String(_) => (dag.string_shape(), "String"),
-            };
-            let Some(ty) = shape_and_name.0 else {
-                return Decision::Fail(
-                    v.output,
-                    Diagnostic::ResolveError {
-                        name: format!(
-                            "primitive `{}` missing from declaration table — bootstrap failed",
-                            shape_and_name.1
-                        ),
-                        span: v.span.clone(),
-                        fixes: Vec::new(),
-                    },
-                );
-            };
-            Decision::Set(v.output, ty)
+            match &v.data {
+                LiteralBits::Int(lit) => {
+                    let Some(int_shape) = dag.int_shape() else {
+                        return Decision::Fail(
+                            v.output,
+                            Diagnostic::ResolveError {
+                                name: "primitive `Int` missing from declaration table — bootstrap failed"
+                                    .to_string(),
+                                span: v.span.clone(),
+                                fixes: Vec::new(),
+                            },
+                        );
+                    };
+                    match &dag.port(v.output).state() {
+                        PortState::Uninferred => Decision::Set(v.output, int_shape),
+                        PortState::Unresolved => Decision::Retry,
+                        PortState::Resolved(ty) => {
+                            if let Some((lo, hi)) = crate::integer_range::i128_range_for_integer_decl(
+                                dag,
+                                ty.declaration,
+                            ) {
+                                if *lit < lo || *lit > hi {
+                                    return Decision::Fail(
+                                        v.output,
+                                        Diagnostic::MagnitudeOutOfRange {
+                                            value: *lit,
+                                            min: lo,
+                                            max: hi,
+                                            target: declaration_display_name(dag, ty.declaration),
+                                            span: v.span.clone(),
+                                            fixes: witness_correction_for_decl(
+                                                dag,
+                                                ty.declaration,
+                                                v.span.clone(),
+                                                format!(
+                                                    "use a type whose value range includes this literal (valid {lo}..={hi})"
+                                                ),
+                                            )
+                                            .into_iter()
+                                            .collect(),
+                                        },
+                                    );
+                                }
+                                return Decision::Retry;
+                            }
+                            if type_shapes_equivalent(dag, ty, &int_shape) {
+                                return Decision::Retry;
+                            }
+                            if is_retryable_generic_decl(dag, ty.declaration) {
+                                return Decision::Set(v.output, int_shape);
+                            }
+                            Decision::Set(v.output, int_shape)
+                        }
+                    }
+                }
+                LiteralBits::Bool(_) => {
+                    let name = "Bool";
+                    let Some(ty) = dag.bool_shape() else {
+                        return Decision::Fail(
+                            v.output,
+                            Diagnostic::ResolveError {
+                                name: format!(
+                                    "primitive `{name}` missing from declaration table — bootstrap failed"
+                                ),
+                                span: v.span.clone(),
+                                fixes: Vec::new(),
+                            },
+                        );
+                    };
+                    Decision::Set(v.output, ty)
+                }
+                LiteralBits::String(_) => {
+                    let name = "String";
+                    let Some(ty) = dag.string_shape() else {
+                        return Decision::Fail(
+                            v.output,
+                            Diagnostic::ResolveError {
+                                name: format!(
+                                    "primitive `{name}` missing from declaration table — bootstrap failed"
+                                ),
+                                span: v.span.clone(),
+                                fixes: Vec::new(),
+                            },
+                        );
+                    };
+                    Decision::Set(v.output, ty)
+                }
+            }
         }
         Behavior::Transform(t) => decide_transform(dag, t),
         Behavior::Branch(b) => {
@@ -1850,15 +1919,6 @@ fn resolve_arrow_decl_walk(
     }
 }
 
-fn literal_decl_id(dag: &Dag, literal: &LiteralBits) -> Option<DeclarationId> {
-    let name = match literal {
-        LiteralBits::Int(_) => "Int",
-        LiteralBits::Bool(_) => "Bool",
-        LiteralBits::String(_) => "String",
-    };
-    dag.declaration_by_name(name).map(|decl| decl.id)
-}
-
 fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
     let resolved_decl = match dag.port(port).state() {
         PortState::Resolved(ty) => ty.declaration,
@@ -1871,8 +1931,8 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
         });
     };
     match dag.node(produced_by) {
-        Behavior::Value(v) => Some(PortTypeContext {
-            decl: literal_decl_id(dag, &v.data)?,
+        Behavior::Value(_v) => Some(PortTypeContext {
+            decl: resolved_decl,
             subst: SubstStack::new(),
         }),
         Behavior::Transform(t) => match &t.target {

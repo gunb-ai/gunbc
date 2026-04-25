@@ -1317,7 +1317,7 @@ fn arithmetic_descent_relation(
 fn literal_int_at(dag: &Dag, port: PortId) -> Option<i64> {
     match dag.resolve_producer_opt(&port)? {
         Behavior::Value(value) => match &value.data {
-            LiteralBits::Int(n) => Some(*n),
+            LiteralBits::Int(n) => i64::try_from(*n).ok(),
             _ => None,
         },
         _ => None,

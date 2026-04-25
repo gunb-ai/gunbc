@@ -3,7 +3,7 @@
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiteralBits {
-    Int(i64),
+    Int(i128),
     Bool(bool),
     String(String),
 }
