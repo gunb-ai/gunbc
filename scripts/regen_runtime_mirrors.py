@@ -783,6 +783,10 @@ def render_parse_surface_module(records: dict[str, RecordDef], sums: dict[str, l
 
 def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list[VariantDef]]) -> str:
     parts = [
+        # LiteralBits: `substrate.dag` uses `LitInt(IntLiteralMagnitude)` — not `Int`.
+        # The i128 width comes from `rust_type()["IntLiteralMagnitude"]` (see mapping
+        # in `rust_type`). Do **not** reintroduce `overrides={"Int": "i128"}` here; that
+        # would desync the mirror from the DAG payload name (single authority + FFF).
         render_sum(
             "LiteralBits",
             sums["LiteralBits"],
