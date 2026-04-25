@@ -301,6 +301,83 @@ data suite: TestSuite = {
 }
 
 #[test]
+fn test_runner_evaluates_execute_command_pass_and_fail() {
+    let pass = r#"
+data claim_true: TestClaim = {
+  name: "true exits 0",
+  source: "let x: Int = 0",
+  file_name: "runner_exec_pass.v3",
+  predicate: ExecuteCommand("true", [], 0),
+  requires: []
+}
+data suite_pass: TestSuite = { name: "execute_command_pass", claims: [claim_true] }
+"#;
+    let dag = compile_clean(pass, "test_runner_exec_pass.dag");
+    let results = TestRunner::new(&dag).run_suite("suite_pass");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].result, ClaimResult::Pass);
+
+    let mismatch = r#"
+data claim_mismatch: TestClaim = {
+  name: "expect 1, true exits 0",
+  source: "let x: Int = 0",
+  file_name: "runner_exec_mismatch.v3",
+  predicate: ExecuteCommand("true", [], 1),
+  requires: []
+}
+data suite_mismatch: TestSuite = { name: "execute_command_mismatch", claims: [claim_mismatch] }
+"#;
+    let dag = compile_clean(mismatch, "test_runner_exec_mismatch.dag");
+    let results = TestRunner::new(&dag).run_suite("suite_mismatch");
+    assert_eq!(results.len(), 1);
+    let ClaimResult::Fail(msg) = &results[0].result else {
+        panic!(
+            "expected Fail on exit mismatch, got {:?}",
+            results[0].result
+        );
+    };
+    assert!(
+        msg.contains("exit code mismatch") && msg.contains("expected 1") && msg.contains("got 0"),
+        "unexpected fail message: {msg}"
+    );
+}
+
+/// Missing-host-binary triage: on some hosts the failure is a **spawn** `Err` from
+/// `std::process::Command`; on **Linux** the runner usually prefixes with `unshare(1)`,
+/// so `unshare` may spawn successfully while the inner `exec` fails, surfacing as **exit
+/// code mismatch** (e.g. 127) instead; or `unshare` itself may fail to start. All remain
+/// typed `Fail` and distinguishable from other ExecuteCommand outcomes (PR #792 / claude review).
+#[test]
+fn test_runner_execute_command_missing_binary_is_distinguishable_fail() {
+    let source = r#"
+data claim: TestClaim = {
+  name: "no such binary",
+  source: "let x: Int = 0",
+  file_name: "runner_exec_spawn.v3",
+  predicate: ExecuteCommand(
+    "no_such_v3_test_binary_a7f2c1",
+    [],
+    0
+  ),
+  requires: []
+}
+data suite: TestSuite = { name: "execute_command_spawn", claims: [claim] }
+"#;
+    let dag = compile_clean(source, "test_runner_exec_spawn.dag");
+    let result = &TestRunner::new(&dag).run_suite("suite")[0].result;
+    let ClaimResult::Fail(msg) = result else {
+        panic!("expected Fail, got {result:?}");
+    };
+    assert!(
+        msg.contains("spawn error")
+            || msg.contains("exit code mismatch")
+            || (msg.contains("unshare(1)") && msg.contains("failed to start"))
+            || (msg.contains("unshare(1)") && msg.contains("post-start fallback")),
+        "expected missing-binary or unshare triage; got: {msg}"
+    );
+}
+
+#[test]
 fn test_runner_scopes_bind_lookup_to_claim_source_file() {
     let source = r#"
 data claim_state: TestClaim = {
