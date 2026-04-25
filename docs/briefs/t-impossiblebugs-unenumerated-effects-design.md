@@ -275,7 +275,7 @@ Smaller scope; stronger claim. The taxonomy-retirement scope (substrate-side) is
 
 ## Cross-manager note
 
-- **Zero-Floor Manager**: heads-up. Effect-signature tagging on std/ primitives may touch substrate-adjacent territory; coordinate at audit-phase if needed.
+- **Zero-Floor Manager**: heads-up. The audit-as-existence-check (Req 2) walks signature shape on std/ primitives — no parallel tag is added; per Q5.5/THESIS the signature shape IS the effect. Coordinate at audit-phase if signature reshaping (e.g., resource-threading on logging primitives that today return Unit) touches substrate-adjacent territory.
 - **Grounding Manager**: no current overlap.
 - **PM**: synergy framing (5-behavior fold table) is the load-bearing reframe; the effects lens is positioned as the next instance of an established pattern (idempotency / termination / omni-emit are prior art) rather than novel substrate work.
 
