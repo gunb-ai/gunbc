@@ -80,6 +80,26 @@ type SurfaceRecordField {
   span: SourceSpan
 }
 
+// 🟡 SCAFFOLD — map-literal key/value entry carrier. Same dissolution trigger
+// as `SurfaceExpr` (recursive list-body emission unblock).
+//
+// **Key shape rationale.** `key: String` (not `SurfaceLiteral::String`,
+// not `SurfaceExpr`) makes invalid map-literal keys unrepresentable at the
+// parse-surface boundary: the parser only emits `SurfaceMapEntry` after
+// matching a `StringLit` token in the `{ String : ... }` lookahead, so the
+// key field carries the parsed string content directly. Non-string keys
+// are not parseable today (string-key-only non-goal in the brief); when a
+// future sibling sub-lane lifts that restriction, *that* PR widens the
+// key carrier — not this one. `key_span` preserves the source-text span
+// of the string-literal token so downstream consumers (lowering, lenses,
+// diagnostics) can attach key-specific provenance without re-deriving it.
+type SurfaceMapEntry {
+  key: String
+  key_span: SourceSpan
+  value: SurfaceExpr
+  span: SourceSpan
+}
+
 type SurfaceMatchArm {
   pattern: SurfacePattern
   body: SurfaceExpr
@@ -163,6 +183,42 @@ type SurfaceExpr
     }
   | List {
       elements: List<SurfaceExpr>
+      span: SourceSpan
+    }
+  // Map literal — `{ "key": expr, ... }`. Disambiguated at the brace
+  // body via `looks_like_map_literal` (`{ String :` lookahead) to
+  // route into `parse_map_literal` instead of `parse_record_literal`
+  // (`{ Ident :`). Top-level data-body context only at this stage; the
+  // parser does not emit `Map` from expression-position braces.
+  //
+  // **Coproduct dissolution receipt** (per `feedback_coproduct_dissolution`,
+  // `LoopBound` precedent at docs/design-mutual-recursion-lowering.md:117-134):
+  // - Pattern 1 (fact placement): does not apply. The variant attaches to
+  //   the same expression slot as siblings; it discriminates KIND OF
+  //   LITERAL, not WHERE THE FACT LIVES.
+  // - Pattern 2 (variant-is-data): does not apply. `Map.entries` carries
+  //   `List<SurfaceMapEntry>` with key+value pairs, structurally distinct
+  //   from `Record.fields: List<SurfaceRecordField>` (which carries
+  //   identifier-labeled fields, not string keys) and `List.elements`
+  //   (which carries unkeyed elements). The shapes are different
+  //   carriers, not the same payload under different labels.
+  // - Pattern 3 (algebraic form): does not apply. Map literal is not a
+  //   point in a shared algebra with Record / List — record is a
+  //   labeled product (Conj inhabitance), list is a free monoid, map is
+  //   a partial function (`Map<K, V>` algebra, `kernel_algebra_profile`
+  //   names it `PartialFunctionProfile`). Three distinct algebraic
+  //   origins.
+  // - Pattern 4 (dimensional): does not apply. No shared coordinate
+  //   space `{label, key, element}` across the three variants where one
+  //   coordinate is absent in each — `Record.fields[i].name: String`
+  //   and `Map.entries[i].key: String` look superficially similar but
+  //   the surrounding semantics (record-field name resolution against a
+  //   declared product type vs. map-key arbitrary string-domain lookup)
+  //   are different uses of the string carrier.
+  // Verdict: `Map` is the correct coproduct addition; not dissolvable
+  // into the existing variants.
+  | Map {
+      entries: List<SurfaceMapEntry>
       span: SourceSpan
     }
 

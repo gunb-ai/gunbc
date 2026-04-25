@@ -887,6 +887,7 @@ fn refinement_predicate_out_of_fragment(expr: &SurfaceExpr) -> Option<(&'static 
         SurfaceExpr::List { elements, .. } => elements
             .iter()
             .find_map(refinement_predicate_out_of_fragment),
+        SurfaceExpr::Map { span, .. } => Some(("map literal", span.clone())),
     }
 }
 
@@ -1394,6 +1395,14 @@ fn collect_scope_bound_free_vars(
         SurfaceExpr::List { elements, .. } => {
             for el in elements {
                 collect_scope_bound_free_vars(el, scope, out);
+            }
+        }
+        SurfaceExpr::Map { entries, .. } => {
+            // Map keys are string literals (no scope-bound names).
+            // Values can reference scope-bound names like any other
+            // expression position.
+            for entry in entries {
+                collect_scope_bound_free_vars(&entry.value, scope, out);
             }
         }
     }
@@ -2420,6 +2429,9 @@ fn lower_data_item(
     // DB-10 (3a.2): `data x: T = v` bodies lower by shape:
     //   - Record literal → ValueBody::Structural (existing path).
     //   - Scalar literal  → ValueBody::Scalar (new path, DB-10).
+    //   - Map literal     → ValueBody::Unparsed (parser sub-lane: the
+    //     parser emits `SurfaceExpr::Map`; the sibling substrate
+    //     sub-lane converts this arm to `ValueBody::Map`).
     //   - Anything else   → ValueBody::Unparsed fallback.
     let value_body = match body {
         Some(SurfaceExpr::Record { fields, .. }) => {
@@ -2442,6 +2454,15 @@ fn lower_data_item(
                     None
                 })
         }
+        // Parser sub-lane: `SurfaceExpr::Map` parses today but does NOT
+        // yet lower to `ValueBody::Map` — the substrate sub-lane lands
+        // that variant + its lowering in a follow-up PR. Until then,
+        // map-bodied declarations route to `ValueBody::Unparsed`,
+        // identical to the wildcard fallback below; the explicit arm
+        // exists so `feedback_missing_checks_review_heuristic` flags
+        // this as the substrate sub-lane's edit point rather than
+        // hiding the variant under a wildcard.
+        Some(SurfaceExpr::Map { .. }) => None,
         _ => None,
     };
     let final_body =
@@ -4062,6 +4083,11 @@ fn collect_lambda_free_names(
                 collect_lambda_free_names(element, bound, free);
             }
         }
+        SurfaceExpr::Map { entries, .. } => {
+            for entry in entries {
+                collect_lambda_free_names(&entry.value, bound, free);
+            }
+        }
     }
 }
 
@@ -5397,6 +5423,27 @@ fn lower_expr(
             segment_spans,
             span,
         } => lower_field_path_expr(segments, segment_spans, span, dag, scope, symbols),
+        SurfaceExpr::Map { span, .. } => {
+            // Map literals are not lowerable as expressions in M1(2.8) —
+            // the parser admits them only in top-level data-body
+            // position, where `lower_data_item` handles the variant
+            // directly. A `SurfaceExpr::Map` reaching `lower_expr` means
+            // it appeared in expression position (function body, etc.),
+            // which is out of scope for the parser sub-lane. Fail-closed
+            // expression-level diagnostic via `unresolved_port` (the
+            // expression-position diagnostic-port channel) — not
+            // `report_declaration_error`, which is for declaration-level
+            // failures and would route the diagnostic through the wrong
+            // channel here.
+            unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: "map literals are not yet supported in expression position (top-level data declarations only)".to_string(),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                },
+            )
+        }
     }
 }
 
@@ -5778,6 +5825,9 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
         SurfaceExpr::Record { fields, .. } => {
             fields.iter().any(|f| is_recursive(&f.value, self_name))
         }
+        SurfaceExpr::Map { entries, .. } => {
+            entries.iter().any(|e| is_recursive(&e.value, self_name))
+        }
     }
 }
 
@@ -5974,6 +6024,16 @@ fn descent_provable(
         SurfaceExpr::List { elements, .. } => elements.iter().all(|element| {
             descent_provable(
                 element,
+                dag,
+                first_param_decl,
+                self_name,
+                first_param,
+                bindings,
+            )
+        }),
+        SurfaceExpr::Map { entries, .. } => entries.iter().all(|entry| {
+            descent_provable(
+                &entry.value,
                 dag,
                 first_param_decl,
                 self_name,
@@ -6503,6 +6563,9 @@ impl ClusterDescentChecker<'_> {
             SurfaceExpr::List { elements, .. } => elements
                 .iter()
                 .all(|element| self.expr(element, bindings, shadowed)),
+            SurfaceExpr::Map { entries, .. } => entries
+                .iter()
+                .all(|entry| self.expr(&entry.value, bindings, shadowed)),
         }
     }
 }
@@ -6570,6 +6633,11 @@ fn collect_recursive_callees(
         SurfaceExpr::List { elements, .. } => {
             for element in elements {
                 collect_recursive_callees(element, function_symbols, shadowed, out);
+            }
+        }
+        SurfaceExpr::Map { entries, .. } => {
+            for entry in entries {
+                collect_recursive_callees(&entry.value, function_symbols, shadowed, out);
             }
         }
     }
