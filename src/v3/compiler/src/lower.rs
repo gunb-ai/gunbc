@@ -3592,36 +3592,28 @@ fn lower_fn_item_expr_body(
     //    overwrite the fn's Arrow inputs to point at the duplicates
     //    — the seeded ones would stay in the DAG, orphaned. Read
     //    the seeded inputs directly instead.
-    let (param_decl_inputs, return_decl_id) = match &dag.declaration(fn_decl_id).connective {
-        TypeConnective::Arrow { inputs, output, .. } => (inputs.clone(), *output),
-        _ => {
-            // Defensive fallback — should not occur because
-            // `seed_function_signatures_phase` runs unconditionally
-            // on every `Fn` item before bodies are lowered. If the
-            // connective is not an Arrow here, the seed phase was
-            // skipped or the declaration was clobbered; re-derive
-            // to keep the body-lowering pass going and surface the
-            // real issue upstream.
-            let local_fallback = local_scope_from_parent(dag, fn_decl_id);
-            let inputs: Vec<DeclarationId> = params
-                .iter()
-                .map(|p| {
-                    let base = type_to_declaration_id(&p.ty, symbols, &local_fallback, dag);
-                    match &p.refinement {
-                        Some(predicate) => lower_parameter_refinement(
-                            base,
-                            predicate,
-                            &p.name,
-                            symbols,
-                            dag,
-                            p.ty.span().clone(),
-                        ),
-                        None => base,
-                    }
-                })
-                .collect();
-            let output = type_to_declaration_id(return_type, symbols, &local_fallback, dag);
-            (inputs, output)
+    let (param_decl_inputs, return_decl_id) = match dag.declaration(fn_decl_id).connective.clone() {
+        TypeConnective::Arrow { inputs, output, .. } => (inputs, output),
+        observed => {
+            let fn_decl = dag.declaration(fn_decl_id);
+            let fn_decl_name = fn_decl
+                .name
+                .as_deref()
+                .unwrap_or(name)
+                .to_string();
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "function declaration `{fn_decl_name}` ({fn_decl_id:?}) violated \
+                         lowering invariant: seed_function_signatures_phase did not produce \
+                         an Arrow connective for this Fn; observed connective: {observed:?}"
+                    ),
+                    fixes: Vec::new(),
+                    span: fn_decl.span.clone(),
+                },
+            );
+            return outer_scope;
         }
     };
     let mut param_ports: Vec<PortId> = Vec::with_capacity(params.len());
