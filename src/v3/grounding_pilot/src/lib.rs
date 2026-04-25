@@ -105,6 +105,8 @@ pub enum RustPrimitive {
         target_name: &'static str,
         algebra: IntegerAlgebra,
         carrier: TargetCarrier,
+        range_min_inclusive: &'static str,
+        range_max_inclusive: &'static str,
         is_copy: bool,
         overflow: IntegerOverflow,
     },
@@ -166,12 +168,20 @@ pub fn routing_key(p: &RustPrimitive) -> RoutingKey {
     }
 }
 
+// Mirrors `dsl/extdeps/languages/rust/primitives.dag` for the hand-authored
+// grounding pilot. Dissolution trigger matches the compiler census note:
+// once R2 T-Substrate's top-level aggregate `ValueBody` sub-lane makes
+// `rust_pilot_primitives` row values structurally walkable, this mirror's
+// integer ranges should be read from generated substrate accessors instead
+// of maintained as a third range list.
 pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
     // Signed integers — OrderedRing over machine-word carriers.
     RustPrimitive::IntegerPrimitive {
         target_name: "i8",
         algebra: IntegerAlgebra::OrderedRing,
         carrier: TargetCarrier::Byte,
+        range_min_inclusive: "-128",
+        range_max_inclusive: "127",
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
     },
@@ -179,6 +189,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         target_name: "i16",
         algebra: IntegerAlgebra::OrderedRing,
         carrier: TargetCarrier::Word16,
+        range_min_inclusive: "-32768",
+        range_max_inclusive: "32767",
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
     },
@@ -186,6 +198,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         target_name: "i32",
         algebra: IntegerAlgebra::OrderedRing,
         carrier: TargetCarrier::Word32,
+        range_min_inclusive: "-2147483648",
+        range_max_inclusive: "2147483647",
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
     },
@@ -193,6 +207,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         target_name: "i64",
         algebra: IntegerAlgebra::OrderedRing,
         carrier: TargetCarrier::Word64,
+        range_min_inclusive: "-9223372036854775808",
+        range_max_inclusive: "9223372036854775807",
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
     },
@@ -201,6 +217,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         target_name: "u8",
         algebra: IntegerAlgebra::Semiring,
         carrier: TargetCarrier::Byte,
+        range_min_inclusive: "0",
+        range_max_inclusive: "255",
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
     },
@@ -208,6 +226,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         target_name: "u16",
         algebra: IntegerAlgebra::Semiring,
         carrier: TargetCarrier::Word16,
+        range_min_inclusive: "0",
+        range_max_inclusive: "65535",
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
     },
@@ -215,6 +235,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         target_name: "u32",
         algebra: IntegerAlgebra::Semiring,
         carrier: TargetCarrier::Word32,
+        range_min_inclusive: "0",
+        range_max_inclusive: "4294967295",
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
     },
@@ -222,6 +244,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         target_name: "u64",
         algebra: IntegerAlgebra::Semiring,
         carrier: TargetCarrier::Word64,
+        range_min_inclusive: "0",
+        range_max_inclusive: "18446744073709551615",
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
     },
@@ -544,6 +568,108 @@ mod tests {
             );
             seen.push(key);
         }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct RangeFact<'a> {
+        target_name: &'a str,
+        algebra: &'a str,
+        carrier: &'a str,
+        min: &'a str,
+        max: &'a str,
+    }
+
+    fn quoted_field<'a>(block: &'a str, field: &str) -> &'a str {
+        let marker = format!("{field}: \"");
+        let start = block
+            .find(&marker)
+            .unwrap_or_else(|| panic!("missing `{field}` in IntegerRangeFact block:\n{block}"))
+            + marker.len();
+        let rest = &block[start..];
+        let end = rest.find('"').unwrap_or_else(|| {
+            panic!("unterminated `{field}` string in IntegerRangeFact block:\n{block}")
+        });
+        &rest[..end]
+    }
+
+    fn bare_field<'a>(block: &'a str, field: &str) -> &'a str {
+        let marker = format!("{field}: ");
+        let start = block
+            .find(&marker)
+            .unwrap_or_else(|| panic!("missing `{field}` in IntegerRangeFact block:\n{block}"))
+            + marker.len();
+        let rest = &block[start..];
+        let end = rest
+            .find([',', '\n'])
+            .unwrap_or_else(|| panic!("unterminated `{field}` value in block:\n{block}"));
+        rest[..end].trim()
+    }
+
+    fn integer_algebra_fact_label(algebra: IntegerAlgebra) -> &'static str {
+        match algebra {
+            IntegerAlgebra::OrderedRing => "OrderedRingAlgebra",
+            IntegerAlgebra::Semiring => "SemiringAlgebra",
+        }
+    }
+
+    fn target_carrier_fact_label(carrier: TargetCarrier) -> &'static str {
+        match carrier {
+            TargetCarrier::Byte => "ByteCarrier",
+            TargetCarrier::Word16 => "Word16Carrier",
+            TargetCarrier::Word32 => "Word32Carrier",
+            TargetCarrier::Word64 => "Word64Carrier",
+            TargetCarrier::Bit | TargetCarrier::Terminal => {
+                panic!("integer range mirror used non-integer carrier {carrier:?}")
+            }
+        }
+    }
+
+    fn integer_range_facts_from_dag_source(source: &str) -> Vec<RangeFact<'_>> {
+        source
+            .split("data ")
+            .filter(|block| block.contains(": IntegerRangeFact = {"))
+            .map(|block| RangeFact {
+                target_name: quoted_field(block, "target_name"),
+                algebra: bare_field(block, "algebra"),
+                carrier: bare_field(block, "carrier"),
+                min: quoted_field(block, "range_min_inclusive"),
+                max: quoted_field(block, "range_max_inclusive"),
+            })
+            .collect()
+    }
+
+    /// Drift pin for the temporary three-way range bridge. Until R2 makes
+    /// `rust_pilot_primitives` structurally walkable and this mirror is
+    /// deleted, the generated/walkable `IntegerRangeFact` rows and the
+    /// hand-authored grounding mirror must agree on integer bounds.
+    #[test]
+    fn integer_range_facts_match_grounding_pilot_mirror() {
+        let source = include_str!("../../../../dsl/extdeps/languages/rust/primitives.dag");
+        let facts = integer_range_facts_from_dag_source(source);
+        let mirrored: Vec<RangeFact<'_>> = RUST_PILOT_PRIMITIVES
+            .iter()
+            .filter_map(|primitive| match primitive {
+                RustPrimitive::IntegerPrimitive {
+                    target_name,
+                    algebra,
+                    carrier,
+                    range_min_inclusive,
+                    range_max_inclusive,
+                    ..
+                } => Some(RangeFact {
+                    target_name,
+                    algebra: integer_algebra_fact_label(*algebra),
+                    carrier: target_carrier_fact_label(*carrier),
+                    min: range_min_inclusive,
+                    max: range_max_inclusive,
+                }),
+                RustPrimitive::NonIntegerPrimitive { .. } => None,
+            })
+            .collect();
+        assert_eq!(
+            facts, mirrored,
+            "IntegerRangeFact rows in primitives.dag must match the grounding pilot mirror"
+        );
     }
 
     /// Fail-closed shape — a routing key with no declared inhabitant
