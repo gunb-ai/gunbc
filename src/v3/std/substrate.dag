@@ -24,12 +24,22 @@ type DagPort {
   produced_by: NodeId?
 }
 
-// Leaf structural types. `LitInt(Int)` maps to i128 in the Rust mirror (R2) —
-// carries full signed magnitude; reconciliation narrows to target algebras.
-// 🟢 TERMINAL. Literal carrier split matches dag.rs's runtime enum
-// one-for-one and is expected to persist as the leaf literal surface.
+// R2: Payload type for signed literal *magnitude* before reconciliation to a
+// fixed `std/integer` width. **Not** `std.integer::Int` (default Int64) — that
+// name is the semantic / default-width user `Int`, while this leaf is the
+// substrate carrier for the literal's bits. Rust mirror: i128
+// (`regen_runtime_mirrors`: `IntLiteralMagnitude` -> `i128`); the graph, not
+// a comment+override, is the authority for the widening.
+//
+// 🟢 TERMINAL. LiteralBits matches `crate::LiteralBits` one-for-one.
+type IntLiteralMagnitude {
+}
+
+// Leaf structural types. `LitInt` carries `IntLiteralMagnitude` (above), not
+// `Int` — full signed span for narrowing; `LitBool` / `LitString` unchanged.
+// 🟢 TERMINAL.
 type LiteralBits
-  = LitInt(Int)
+  = LitInt(IntLiteralMagnitude)
   | LitBool(Bool)
   | LitString(String)
 

@@ -614,6 +614,7 @@ def rust_type(source: str, overrides: dict[str, str] | None = None) -> str:
         "String": "String",
         "Bool": "bool",
         "Int": "i64",
+        "IntLiteralMagnitude": "i128",
         "NodeId": "NodeId",
         "PortId": "PortId",
         "ClusterId": "ClusterId",
@@ -729,7 +730,10 @@ def render_parse_surface_sum(name: str, variants: list[VariantDef]) -> str:
         if variant.kind == "unit":
             lines.append(f"    {variant.name},")
         elif variant.kind == "tuple":
-            # R2: int literal magnitude is i128; DAG payload type remains `Int`.
+            # R2: `SurfaceLiteral::Int` in parse_surface.dag still names payload `Int`
+            # (semantic default int); runtime mirror is i128 here. Substrate
+            # `LiteralBits::Int` uses `IntLiteralMagnitude` in substrate.dag
+            # (regen: IntLiteralMagnitude -> i128 in `dag_scalar_generated`).
             rust_tuple_ty = (
                 "i128"
                 if name == "SurfaceLiteral" and variant.name == "Int"
@@ -785,7 +789,6 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
             "#[derive(Debug, Clone, PartialEq, Eq)]",
             output_name="LiteralBits",
             variant_name_overrides={"LitInt": "Int", "LitBool": "Bool", "LitString": "String"},
-            overrides={"Int": "i128"},
         ),
         render_sum(
             "AtomPayload",
