@@ -86,6 +86,7 @@ fn bootstrap_loads_verification_authority_types() {
             (String::from("UnitMismatch"), Vec::new()),
             (String::from("ArityMismatch"), Vec::new()),
             (String::from("ResolveError"), Vec::new()),
+            (String::from("MagnitudeOutOfRange"), Vec::new()),
         ]
     );
     assert_eq!(
