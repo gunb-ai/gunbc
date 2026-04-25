@@ -227,20 +227,25 @@ Stronger framing than the Q1 amendment: *"tracking effects as a separate taxonom
 
 Title: `feat(v3): T-ImpossibleBugs effects lens — closed-system structural derivation (compositional fold over 5 behaviors)`
 
-**Reqs:**
+**Reqs** (aligned with Q4's audit-as-existence-check + Q5.5's path (ii) default):
 
-1. **Effects lens** at `src/v3/lenses/effect_enumeration.dag`, parallel to `cost.dag`. Walks the 5-behavior structure (Value / Transform / Branch / Loop / Bind); composes effect set per the Q2 table; surfaces structural-fact output (no annotation comparison).
-2. **Audit + tag std/ primitives** — every effectful primitive in `dsl/std/` carries an explicit `OperationEffect` signature. Generalizes `derive_op_effect`'s HTTP-derivation to all primitives.
-3. **Redundancy lens** — referential-transparency proof for repeated identical reads with no intervening write. Emits compile-time `RedundantReadError` (Tier 1, not Tier 3).
-4. **`reread(key)` primitive** in std/ for legitimate re-read cases. Structurally tagged.
-5. **Smoke + integration tests**: function with multiple typed-effect calls produces correct effect-set structural fact; redundant-read function fails compile; `reread`-using function compiles.
+1. **Effects lens** at `src/v3/lenses/effect_enumeration.dag`, parallel to `cost.dag`. Walks the 5-behavior structure (Value / Transform / Branch / Loop / Bind); **anchors on operation type-signature shape**, not on hand-declared OperationEffect tags; composes effect classification per the Q2 table; surfaces structural-fact output (no annotation comparison, no parallel-taxonomy lookup).
+2. **Audit-as-existence-check** — verify that every effectful primitive in `dsl/std/` + `dsl/extdeps/` has a type signature that structurally derives the right effect classification (returned-modified-resource → write-shaped; returns-derived-value-only → read-shaped). **NOT "tag every primitive"**. Per Q5.5: any primitive requiring a hand-declared `OperationEffect` tag because its signature doesn't structurally reveal the effect IS the existence-proof for path (ii) — taxonomy retirement.
+3. **Resource-threading discipline applied to existing primitives** — primitives that violate the discipline today (e.g., logging that returns Unit instead of `LogFile → LogFile'`) get reshaped per the audit's findings. Foundation step toward signature-shape coverage.
+4. **Redundancy lens** — referential-transparency proof for repeated identical reads with no intervening write. Emits compile-time `RedundantReadError` (Tier 1, not Tier 3).
+5. **`reread(key)` primitive** in std/ for legitimate re-read cases. Structurally tagged. Single authority for re-read intent (per claude review observation: extend `reread` rather than adding parallel primitives if cache-invalidation / transactional-refresh ever need similar affordance).
+6. **Transactional-pattern lens** — derived structural fact from Bind composition + typed transaction primitives (`Transaction → Transaction'`).
+7. **Asymmetric-tightening worked example** in implementation PR body — concrete demonstration that caller-side constraint via structural type matching rejects a callee whose body composes write-shaped operations beyond the caller's pinned set. (Per claude review observation; the one place declaration-shaped surface re-enters deserves a worked example since "structural type matching at the call site" is doing nontrivial work.)
+8. **Smoke + integration tests**: function with multiple typed-effect operations produces correct effect-set structural fact (derived from signature shape, not from tag lookup); redundant-read function fails compile; `reread`-using function compiles.
 
 **STOPs**:
-- If audit (req 2) reveals a primitive performing side effects without an `OperationEffect` tag (a hidden hole in the closed-system invariant), STOP — that's a substrate gap that needs filling first.
-- If the redundancy proof requires substrate primitives the lens can't read structurally (e.g., distinguishing pure from impure transforms inline), STOP — may need a `pure: Bool` fact or sibling carrier on Transform targets.
-- If asymmetric-tightening at caller surfaces a structural-type-matching gap (caller can't actually pin effect-set constraints structurally today), STOP — that's its own substrate sub-lane.
+- **OperationEffect retirement decision (path (i) vs (ii))** — if audit (req 2) finds the existence-proof for path (ii) (any primitive whose signature doesn't structurally reveal its effect), STOP and surface the retirement scope to Director. Substrate retirement (`OperationEffect` enum + `derive_op_effect` + `idempotency.dag` re-anchor) is its own dedicated sub-lane; this lane should not absorb it. If audit confirms path (i) (all primitives derive cleanly from signature shape), surface that finding for re-decision.
+- **Redundancy proof needs a `pure: Bool` carrier** — if the lens can't distinguish pure from impure Transforms inline, STOP. May need a sibling carrier on Transform targets. (Note: the deeper closed-system framing is that "pure" should also be derivable from signature shape — pure functions don't return modified resources — so this STOP may itself dissolve under further design.)
+- **Asymmetric-tightening structural gap** — if caller can't actually pin effect-set constraints structurally today (i.e., the type system doesn't yet express "I require callee body's signature-shape composition ⊆ {read-shaped}"), STOP — that's its own substrate sub-lane.
+- **Q4.5 P1 (extdeps typed-primitive bypass) — surfaced via lens findings**: lens reports structural-coverage-gap on `dsl/extdeps/llm/openai.dag:92-110`, `anthropic.dag:104-124`, `github/auth.dag:13-24` (and any others the audit finds). NOT a STOP; this is the lens delivering its closed-system-foundation-gap-visibility value. Director routes P1 closure to a dedicated extdeps-typed-primitive-consumption lane.
+- **Q4.5 P2 (ExecuteCommand)** — the lens itself doesn't depend on P2; only the TESTING.md `0-residual` claim does. NOT a STOP for this lane. P2 is independent.
 
-**Acceptance**: 4 worked examples from this design doc compile (or fail-compile) per their stated outcomes; lens output observable via standard lens-output infrastructure; cargo + clippy + fmt clean; DB-8 fixed-point converges.
+**Acceptance**: 4 worked examples from this design doc compile (or fail-compile) per their stated outcomes; lens output observable via standard lens-output infrastructure; lens reports structural-coverage-gap diagnostics on Q4.5 P1 bypass surfaces (gap becomes visible, not silent); audit produces existence-proof verdict (path (i) vs path (ii)) for Director re-decision on OperationEffect retirement; asymmetric-tightening worked example in PR body; cargo + clippy + fmt clean; DB-8 fixed-point converges.
 
 ## Capacity / sequencing impact
 
@@ -251,7 +256,13 @@ Title: `feat(v3): T-ImpossibleBugs effects lens — closed-system structural der
 | `t-impossiblebugs-unenumerated-effects-fn-arrow-refactor-worker.md` (#805 brief; Fn→Arrow refactor) | **KEEP** — independent value (cleans `params + return_type` vestige); not effects-specific |
 | Bulk std/ annotation lane (was Lane D) | **DISSOLVES** — no annotations to add |
 
-Net: 1 chain of 3 implementation lanes collapses to 1 implementation lane (effects lens) + 1 sub-lane (`reread` primitive in std/ if not already there) + 1 audit lane (tag std/ primitives with effect signatures). Smaller scope; stronger claim.
+Net: 1 chain of 3 implementation lanes collapses to:
+- 1 implementation lane (effects lens) — anchors on signature shape, not on tag lookup.
+- 1 audit-as-existence-check lane (verify primitives' signature-shape coverage; NOT "tag every primitive") — produces the path (i) vs (ii) verdict on `OperationEffect` retention.
+- 1 sub-lane (`reread` primitive in std/ if not already there) + 1 transactional-pattern lens.
+- 2 prereq lanes named in Q4.5: P1 extdeps typed-primitive consumption; P2 `ExecuteCommand` materialization. Both pre-existing tracked-debt; surfaced explicitly so the lens's closed-system claim is honest end-to-end.
+
+Smaller scope; stronger claim. The taxonomy-retirement scope (substrate-side) is **not** in this lane — it's surfaced by audit and routed to dedicated retirement lane if path (ii) wins.
 
 ## Cross-manager note
 
