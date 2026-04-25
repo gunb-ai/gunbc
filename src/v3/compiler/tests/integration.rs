@@ -163,6 +163,9 @@ mod t_demo_fixture_test {
 
     const FIXTURE: &str = "src/v3/compiler/tests/t_demo/t_demo_fixtures.dag";
 
+    /// Byte-sync with `t_demo_structural_cost_obligation_gate.source` in `t_demo_fixtures.dag`.
+    const T_DEMO_STRUCTURAL_COST_OBLIGATION_CLAIM_SOURCE: &str = "fn pair_score(xs: List<Int>) -> Int = fold(xs, 0, |outer, x| outer + fold(xs, 0, |inner, y| inner + x + y))\nlet complexity_demo_out: Int = pair_score(cons(1, singleton(2)))\n";
+
     fn fixture_source() -> String {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../..")
@@ -243,6 +246,19 @@ mod t_demo_fixture_test {
     }
 
     #[test]
+    fn t_demo_structural_cost_obligation_witness_compiles_cleanly() {
+        compile_to_dag(
+            T_DEMO_STRUCTURAL_COST_OBLIGATION_CLAIM_SOURCE,
+            "t_demo_structural_cost_obligation.v3",
+        )
+        .unwrap_or_else(|err| {
+            panic!(
+                "T-Demo structural cost witness must compile so CostBounded exercises lens_cost::cost_of, not tokenizer/parse failures: {err:?}"
+            )
+        });
+    }
+
+    #[test]
     fn t_demo_structural_cost_obligation_suite_observes_cost_bound_fail() {
         let source = fixture_source();
         let dag = compile_fixture(&source);
@@ -255,8 +271,8 @@ mod t_demo_fixture_test {
             );
         };
         assert!(
-            msg.contains("cost") && msg.contains("did not satisfy"),
-            "unexpected CostBounded failure message: {msg}"
+            msg.starts_with("cost ") && msg.contains("did not satisfy bound"),
+            "unexpected CostBounded failure message (expected structural bound receipt, not compile skip): {msg}"
         );
     }
 }

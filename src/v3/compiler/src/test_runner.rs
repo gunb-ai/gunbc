@@ -939,15 +939,24 @@ impl<'a> TestRunner<'a> {
         };
         let dag = match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(dag) => dag,
-            Err(err) => return ClaimResult::Fail(format!("source did not compile: {err:?}")),
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "CostBounded: claim source did not compile (structural cost check skipped): {err:?}"
+                ));
+            }
         };
         let Some(bind) = find_bind(&dag, bind_name, &claim.file_name) else {
-            return ClaimResult::Fail(format!("bind `{bind_name}` not found"));
+            return ClaimResult::Fail(format!(
+                "CostBounded: bind `{bind_name}` not found in `{}`",
+                claim.file_name
+            ));
         };
         let actual = match cost_of(&dag, &bind.value) {
             CostLookup::Hit(actual) => actual,
             CostLookup::Miss => {
-                return ClaimResult::Fail(format!("missing cost for bind `{bind_name}`"));
+                return ClaimResult::Fail(format!(
+                    "CostBounded: missing structural `cost_of` receipt for bind `{bind_name}`"
+                ));
             }
         };
         if self.compare_cost(comparator, actual, *bound) {

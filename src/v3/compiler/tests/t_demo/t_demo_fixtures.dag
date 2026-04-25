@@ -199,8 +199,9 @@ data fixture_integration_canonical: TestSuite = {
 // for `FailsWithDiagnostic`). The diagnostic prefix pins the sum-constructor mismatch, not a generic
 // upstream-only `compose_effects` failure.
 // `t_demo_structural_cost_obligation_suite` (below): nested `fold` + `CostBounded` vs structural
-// `cost_of` — runner `Fail` is the receipt (kept out of `impossible_bug_class_suite_r1` so that
-// suite is all `Pass` claims only).
+// `cost_of` — runner `Fail` is the receipt (`cost … did not satisfy bound …`, not a tokenizer
+// proxy; integration pins compile + message shape — PR #764). Kept out of
+// `impossible_bug_class_suite_r1` so that suite is all `Pass` claims only.
 data impossible_bug_type_drift: TestClaim = {
   name: "impossible_bug_class_suite_r1.transport_type_drift",
   source: "let drift: String = 1\n",
@@ -231,6 +232,8 @@ data impossible_bug_class_suite_r1: TestSuite = {
   ]
 }
 
+// When editing `source`, update `T_DEMO_STRUCTURAL_COST_OBLIGATION_CLAIM_SOURCE` in
+// `tests/integration.rs` (`t_demo_fixture_test`).
 data t_demo_structural_cost_obligation_gate: TestClaim = {
   name: "t_demo_structural_cost_obligation.pair_score_too_deep",
   source: "fn pair_score(xs: List<Int>) -> Int = fold(xs, 0, |outer, x| outer + fold(xs, 0, |inner, y| inner + x + y))\nlet complexity_demo_out: Int = pair_score(cons(1, singleton(2)))\n",
