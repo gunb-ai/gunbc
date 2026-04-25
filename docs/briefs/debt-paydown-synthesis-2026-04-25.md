@@ -91,8 +91,16 @@ All have triggers. Class belongs in §0 identity-carrier pass.
 | `find_fold_step_bind_via_instantiation` ambiguous unique-candidate fallback | `:105-148` | ✅ — same row, requires template-formal-edge structural identity | PR #809 (P1+P2) |
 | Lossy `Behavior → FieldValue` reflection (Transform/Branch/Loop/Bind drop fields) | `:859-907` | ✅ — generate from `src/v3/std/substrate.dag` or consume canonical .dag values | PR #809 "Lossy user-lens reflection" |
 
-Triggers all named. The first two participate in §0 identity class. The
-third is structural-substrate-reflection class (related but distinct).
+Triggers all named. **Classification (matches §0 + Tier 0 #3):** row 1
+(file-suffix fold-skip) participates in the §0 identity class —
+dissolves with the structural fold-shape carrier. Row 2 (ambiguous
+unique-candidate fallback) is an independent **P3 fail-closed leak**
+prioritized at **Tier 0 #3** for direct dispatch (B3); it is NOT in
+the §0 class because the fix is "remove the heuristic and require the
+structural template-formal edge to identify the callable" — a local
+fail-closed correction, not the substrate-wide identity-carrier
+program. Row 3 (lossy reflection) is the structural-substrate-
+reflection class (related to but distinct from §0).
 
 ### 1.3 Grounding (`src/v3/grounding_pilot/src/lib.rs` 584 LOC + `src/v3/grounding_engine/src/lib.rs` 557 LOC)
 
