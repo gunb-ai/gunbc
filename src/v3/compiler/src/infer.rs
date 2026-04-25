@@ -721,7 +721,46 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                     );
                 };
                 match &dag.port(v.output).state() {
-                    PortState::Uninferred => Decision::Set(v.output, int_shape),
+                    PortState::Uninferred => {
+                        if let Some(narrow) =
+                            int_literal_narrowing_shape_from_callable_stencil(dag, v.output)
+                        {
+                            if let Some((lo, hi)) =
+                                crate::integer_range::i128_range_for_integer_decl(
+                                    dag,
+                                    narrow.declaration,
+                                )
+                            {
+                                if *lit < lo || *lit > hi {
+                                    return Decision::Fail(
+                                        v.output,
+                                        Diagnostic::MagnitudeOutOfRange {
+                                            value: *lit,
+                                            min: lo,
+                                            max: hi,
+                                            target: declaration_display_name(
+                                                dag,
+                                                narrow.declaration,
+                                            ),
+                                            span: v.span.clone(),
+                                            fixes: witness_correction_for_decl(
+                                                dag,
+                                                narrow.declaration,
+                                                v.span.clone(),
+                                                format!(
+                                                    "use a type whose value range includes this literal (valid {lo}..={hi})"
+                                                ),
+                                            )
+                                            .into_iter()
+                                            .collect(),
+                                        },
+                                    );
+                                }
+                            }
+                            return Decision::Set(v.output, narrow);
+                        }
+                        Decision::Set(v.output, int_shape)
+                    }
                     PortState::Unresolved => Decision::Retry,
                     PortState::Resolved(ty) => {
                         if let Some((lo, hi)) =
@@ -2548,6 +2587,76 @@ fn resolve_direct_target_signature(
         // inference state (never stored in `Dag.declarations`).
         body: ArrowBody::NoBody,
     })
+}
+
+/// Stencil a concrete parameter [`TypeShape`] for an int literal that only flows
+/// into one or more [`TransformTarget::Callable`] arguments, using the callee's
+/// declaration and explicit template arguments only — *before* argument ports are
+/// [`PortState::Resolved`]. This mirrors let/data context-driven narrowing: the
+/// call-site parameter type can specialize the literal without defaulting to
+/// [`Dag::int_shape`] first.
+///
+/// If multiple call sites disagree on the same port, returns `None` and the
+/// default `Int` defaulting path is used. Non-integer (or not-yet-modelled)
+/// parameter types are skipped; only parameters that accept a scalar int
+/// (fixed-width int range, or the default `Int` shape) participate.
+fn int_literal_narrowing_shape_from_callable_stencil(
+    dag: &Dag,
+    call_argument_port: PortId,
+) -> Option<TypeShape> {
+    let int_shape = dag.int_shape()?;
+    let mut acc: Option<TypeShape> = None;
+    for node in dag.nodes() {
+        let Behavior::Transform(t) = node else {
+            continue;
+        };
+        let TransformTarget::Callable(callee) = &t.target else {
+            continue;
+        };
+        let Some(param_idx) = t
+            .inputs
+            .iter()
+            .position(|&p| p == call_argument_port)
+        else {
+            continue;
+        };
+        let (template, template_args) = callable_template_arguments(dag, *callee);
+        let retained = retained_template_arguments_for_target(dag, template, &template_args);
+        let Some(sig) = resolve_direct_target_signature(dag, *callee, &retained) else {
+            continue;
+        };
+        let &expected = sig.inputs.get(param_idx)?;
+        // Refined parameters (DB-11) are not a stencil target: defaulting the
+        // literal to [Dag::int_shape] first preserves structural mismatch and
+        // refinement-discharge at the [decide_transform] call site. Stenciling
+        // the literal as the refined parameter would incorrectly satisfy the
+        // value port before predicate evidence exists.
+        if dag.declaration(expected.declaration).refinement.is_some() {
+            continue;
+        }
+        if !param_accepts_uninferred_int_literal(dag, &expected, &int_shape) {
+            continue;
+        }
+        match &acc {
+            None => acc = Some(expected),
+            Some(prev) if type_shapes_equivalent(dag, prev, &expected) => {}
+            _ => {
+                return None;
+            }
+        }
+    }
+    acc
+}
+
+fn param_accepts_uninferred_int_literal(
+    dag: &Dag,
+    ty: &TypeShape,
+    int_shape: &TypeShape,
+) -> bool {
+    if crate::integer_range::i128_range_for_integer_decl(dag, ty.declaration).is_some() {
+        return true;
+    }
+    type_shapes_equivalent(dag, ty, int_shape)
 }
 
 fn resolve_callable_targets(dag: &mut Dag) -> bool {

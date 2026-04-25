@@ -72,3 +72,28 @@ fn let_annotated_uint8_256_magnitude_error() {
     };
     assert!(first_magnitude_out_of_range(&dag).is_some());
 }
+
+#[test]
+fn call_uint8_literal_narrows_to_param_type_in_range() {
+    let src = "fn id_u8(x: UInt8) -> UInt8 = x\nlet y: UInt8 = id_u8(5)\n";
+    let dag = compile_to_dag(src, "u8_call_narrow.v3").expect("compile");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "{:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn call_uint8_literal_256_is_magnitude_out_of_range() {
+    let src = "fn id_u8(x: UInt8) -> UInt8 = x\nlet y: UInt8 = id_u8(256)\n";
+    let err = compile_to_dag(src, "u8_call_oob.v3").expect_err("expected failure");
+    let dag = match err {
+        CompileError::Semantic(d) => d,
+        other => panic!("expected semantic, got {other:?}"),
+    };
+    let got = first_magnitude_out_of_range(&dag).expect("MagnitudeOutOfRange");
+    assert_eq!(got.0, 256);
+    assert_eq!(got.1, 0);
+    assert_eq!(got.2, 255);
+}
