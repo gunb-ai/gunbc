@@ -1,6 +1,14 @@
-# Pure Bootstrap to Zero — Design Proposal
+# Pure Bootstrap to Zero — Design
 
-**Status:** `PROPOSAL` — supersedes the ≤5-floor framing in [`docs/design-pure-bootstrap.md`](design-pure-bootstrap.md) and the 2-3 principled-floor framing introduced via [PR #756](https://github.com/gunb-ai/gunbc/pull/756) on promotion. Until then, this doc is the proposed direction; `design-pure-bootstrap.md` remains the live authority.
+**Status:** `LIVE` (promoted 2026-04-25 via cascade promotion PR). Supersedes the ≤5-floor framing in [`docs/design-pure-bootstrap.md`](design-pure-bootstrap.md) (now marked SUPERSEDED with explicit retraction) and the 2-3 principled-floor framing introduced via [PR #756](https://github.com/gunb-ai/gunbc/pull/756) (also retracted). This doc is the live authority on the Pure Bootstrap to Zero program.
+
+**Promotion evidence chain (cited in cascade promotion PR body):**
+- D1 audit: PRs #769 + #771 + #775 + #777 + #779 (audit doc with substrate-generation already proven; 23 generated files + 24 REGEN_OUTPUTS entries; 38-type substrate.dag coverage survey)
+- D2 PB-1 brief amendment: PR #770 (non-goals revised under 0-floor)
+- D3 TESTING.md "Post-R2 shape" rewrite: bundled into cascade promotion PR (Director-call per Promotion mechanism below)
+- D4(c) characterization: in #775 audit reframe (substrate generation already proven and shipping)
+- D4(a) prototyped lane closure: PR #780 (PB-Substrate v2 — ArithmeticOp/ComparisonOp/LogicalOp/OperatorKind via existing regen pattern)
+- PM acknowledgement: explicit user sign-off on direction + multiple manager-brief reviews from PM session
 
 ### Promotion mechanism
 

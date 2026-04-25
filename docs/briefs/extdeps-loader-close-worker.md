@@ -10,7 +10,11 @@
 
 ## Read first
 
+<<<<<<< HEAD
 - **[`docs/briefs/t-ground-engine-substrate-audit.md`](t-ground-engine-substrate-audit.md)** — the audit that surfaced this gap. Cites `bootstrap.rs:16-19` as the framing decision being revisited.
+=======
+- **[`docs/briefs/t-ground-engine-substrate-audit.md`](t-ground-engine-substrate-audit.md)** — the audit that surfaced this gap. Cites `bootstrap.rs:14-19` as the framing decision being revisited.
+>>>>>>> origin/main
 - **[`src/v3/compiler/src/bootstrap.rs`](../../src/v3/compiler/src/bootstrap.rs)** — current bootstrap; `Dag::new()` loads four authority sets (`std_fixtures`, `STAGED_FILES`, `V3_SPECS`, `COMPILER_FILES`). Header comment at `:14-19`: *"Production bootstrap does not inject target-language realizations."* That comment is being revisited in this PR.
 - **[`dsl/extdeps/languages/rust/primitives.dag`](../../dsl/extdeps/languages/rust/primitives.dag)** — the file that must become loadable. Contains `rust_pilot_primitives: List<RustPrimitive>` declarations (`RustPrimitive` is sum type partitioned into `IntegerPrimitive | NonIntegerPrimitive` per pilot brief / codex P2 adjudication on PR #765).
 - **[`src/v3/compiler/build.rs`](../../src/v3/compiler/build.rs)** — generated-snapshot pattern (`extdeps_generated`, `gunbc_generated`, etc.). Reference for adding a new fixture-set entry.
@@ -29,8 +33,13 @@ Per Grounding Manager's escalation doc §"Manager-side input for the loader-clos
 
 1. **Public accessor returns parsed `Declaration` walkable structurally.** Engine consumes `rust_pilot_primitives` as a `Declaration`-shaped value with structural walk semantics (matching how other bootstrap-loaded declarations are consumed). Not a string; not a private internal handle.
 2. **Stable shape Engine doesn't reach into private `Dag` internals.** The accessor must be a public API surface; consuming Engine code must not need `pub(crate)` or unsafe reach-throughs to walk the loaded data.
+<<<<<<< HEAD
 3. **Stale `bootstrap.rs:16-19` comment revisited in same PR.** That comment asserts production bootstrap doesn't load target-language realizations. This PR contradicts that assertion; the comment must be updated to reflect the new state (which realizations load, why, and what the boundary is now). Don't leave contradictory documentation.
 4. **SG-0 stance: transitional shape (default) or ratchet-bump escalation.** This work touches `bootstrap.rs` (SG-0-ratcheted hand-Rust). The **default-and-expected framing is transitional shape**: loader logic lands as a thin scaffold whose dissolution trigger is the **PB-Bootstrap-Process lane** (Zero-Floor program). When PB-Bootstrap-Process lands `bootstrap.dag` declaring the workflow as data, `bootstrap.rs` becomes a generated trampoline (or vanishes); the loader-close logic added here becomes part of the to-be-generated content at that point. PB-Bootstrap-Process is **already tracked** in `docs/design-pure-bootstrap-zero.md` §"New lanes" + Zero-Floor Manager brief working state — the dissolution trigger is concrete, not aspirational. Document the chosen transitional shape in the PR body, citing PB-Bootstrap-Process as the dissolution authority. **Ratchet bump is a STOP-AND-ESCALATE outcome**, not a routine choice — if the worker concludes transitional shape is genuinely not viable (the loader cannot fit a shape PB-Bootstrap-Process can absorb), surface to Director per STOP-AND-ESCALATE rules. Per the locked discipline (ratchet only goes down; if a fix needs a new violation, the violation belongs deeper; scaffolds dissolve into first-class structure with named dissolution triggers — see `INVARIANTS.md` and `docs/design-pure-bootstrap.md` for the canonical statements), ratchet-bump is an exception requiring explicit Director confirmation + tracked dissolution trigger, not author discretion.
+=======
+3. **Stale `bootstrap.rs:14-19` comment revisited in same PR.** That comment asserts production bootstrap doesn't load target-language realizations. This PR contradicts that assertion; the comment must be updated to reflect the new state (which realizations load, why, and what the boundary is now). Don't leave contradictory documentation.
+4. **SG-0 stance: transitional shape (default) or ratchet-bump escalation.** This work touches `bootstrap.rs` (SG-0-ratcheted hand-Rust). The **default-and-expected framing is transitional shape**: loader logic lands in a form PB-1 absorbs cleanly when PB-1's data-bootstrap of std_fixtures / STAGED_FILES extends to include extdeps as a fifth set. Document the chosen transitional shape in the PR body. **Ratchet bump is a STOP-AND-ESCALATE outcome**, not a routine choice — if the worker concludes transitional shape is genuinely not viable (the loader cannot fit PB-1's emerging pattern), surface to Director per STOP-AND-ESCALATE rules. Per the locked `feedback_ratchet_only_down.md` invariant, ratchet-bump is an exception requiring explicit Director confirmation, not author discretion.
+>>>>>>> origin/main
 5. **Coverage scope explicitly bounded.** Just `dsl/extdeps/languages/rust/primitives.dag` for this PR (smallest unblock for Engine-Phase-1)? Or all `dsl/extdeps/languages/*/*.dag` (covers Python/Go targets too, which Grounding's full-reference lanes will eventually need)? Pick + document. Smaller (rust only) is fine if it cleanly extends; larger (all extdeps languages) is fine if the loader pattern naturally generalizes.
 
 ## Slice — extdeps loader close
@@ -41,7 +50,11 @@ Per Grounding Manager's escalation doc §"Manager-side input for the loader-clos
 
 1. Add the file(s) per req 5 to a bootstrap fixture set. Could be a new fifth set (`EXTDEPS_LANGUAGE_FILES` or similar), or an extension of an existing set if cleaner. Worker's call.
 2. Implement public accessor (req 1, req 2). Naming convention should match existing accessors in `Dag` API surface; consult `bootstrap.rs` and `lib.rs` for prior art.
+<<<<<<< HEAD
 3. Update `bootstrap.rs:16-19` comment per req 3.
+=======
+3. Update `bootstrap.rs:14-19` comment per req 3.
+>>>>>>> origin/main
 4. Write integration test asserting:
    - `Dag::new()` loads `rust_pilot_primitives` without error
    - Public accessor returns a `Declaration`-shaped value with the correct identity
@@ -52,7 +65,11 @@ Per Grounding Manager's escalation doc §"Manager-side input for the loader-clos
 - [ ] All 5 consumer-side requirements satisfied + documented in PR body.
 - [ ] `dsl/extdeps/languages/rust/primitives.dag` loadable into bootstrap (per req 5 scope).
 - [ ] Public accessor for `rust_pilot_primitives` exists; Engine sharpened-(b) consumer-shape assertion holds (Engine team verifies post-merge).
+<<<<<<< HEAD
 - [ ] `bootstrap.rs:16-19` comment updated to reflect new boundary (req 3).
+=======
+- [ ] `bootstrap.rs:14-19` comment updated to reflect new boundary (req 3).
+>>>>>>> origin/main
 - [ ] SG-0 stance documented in PR body (req 4).
 - [ ] Integration test passes: `Dag::new()` loads + accessor returns walkable structure.
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` passes.
@@ -67,7 +84,11 @@ Surface to Director (`zesty-bear-812`); do not absorb scope.
 - **If the SG-0 stance choice (req 4) reveals the loader logic genuinely cannot fit PB-1's emerging pattern** (i.e., transitional-shape isn't viable, ratchet-bump is the only path) — STOP. Director needs to confirm ratchet bump explicitly before the PR commits to it.
 - **If req 5's coverage scope (rust-only vs all extdeps languages) reveals divergent loader patterns per language** (e.g., rust loads cleanly but python/go need extension extension) — STOP. Surface the divergence; pick rust-only and re-dispatch other languages per their needs.
 - **If the public accessor shape (req 1, req 2) requires extending `Dag` API surface beyond what existing accessors do** — STOP. Surface the extension proposal; Director coordinates with Zero-Floor Manager on whether the extension belongs in PB-Substrate scope.
+<<<<<<< HEAD
 - **If `bootstrap.rs:16-19` comment update (req 3) reveals the framing change has cross-doc implications** (e.g., other authority docs assert "no target-language realizations in bootstrap") — STOP. Surface the cross-doc consistency check; Director routes to docs-cascade if needed.
+=======
+- **If `bootstrap.rs:14-19` comment update (req 3) reveals the framing change has cross-doc implications** (e.g., other authority docs assert "no target-language realizations in bootstrap") — STOP. Surface the cross-doc consistency check; Director routes to docs-cascade if needed.
+>>>>>>> origin/main
 - **If DB-8 fixed-point drifts** — STOP immediately. Same no-compromise gate as PB-1.
 
 ## Non-goals
