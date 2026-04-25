@@ -144,7 +144,7 @@ a parallel proof system.
 | Bug class | Totality-by-omission shape |
 |---|---|
 | force-unwrap on None | Already done — partial form not in std/. |
-| Out-of-bounds indexing | Provide only `at(i: Int) -> Option<T>`; do not provide `[i]` returning `T`. (Audit: today's std/ does not appear to provide a partial indexer; verify before relying on this in implementation.) |
+| Out-of-bounds indexing | **Partial form reachable today** — `dsl/std/algebra.dag:305` declares `index: fn(Int) -> T` on FreeMonoid (returns bare `T`). Closure: retype to `index: fn(Int) -> T?` (or `Result<T, IndexOutOfBounds>`). Map's `get: fn(K) -> V?` at `:340` is already total and is the model shape. |
 | Division by zero | Provide only `divide(a: Int, b: Int) -> Result<Int, DivideByZero>` (or `Option<Int>`); remove `/` returning `Int`, OR retype `/` so its denominator must be a `NonZeroInt` constructed via a total `Int -> Option<NonZeroInt>` smart constructor. Either form closes the class without proof system. |
 | Integer overflow | Two valid totalities: (i) wrap-by-design with explicit `WrappingInt` carrier (totality via documented modular arithmetic, no failure case), or (ii) checked ops returning `Result<Int, IntOverflow>`. Either, not both, on the same operator. |
 
@@ -272,5 +272,6 @@ prerequisite for the bug-class closure THESIS:350 promises.
 - DiagnosticKind taxonomy:
   `src/v3/std/verification.dag:29-34`.
 - Operator declaration surface: `dsl/std/algebra.dag:196,305,379`.
+- Partial-form audit at HEAD: `dsl/std/algebra.dag:305` (FreeMonoid.index — partial), `:340` (Map.get — total via `V?`).
 - THESIS gate: `THESIS.md:348-350`.
 - DB-11 history: `docs/db-history/db-11.md`.
