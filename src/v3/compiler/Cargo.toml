@@ -28,6 +28,10 @@ bootstrap-regen-fresh = []
 libc = { version = "0.2", default-features = false }
 
 [dev-dependencies]
+# `integer_range` tests: decimal range strings must come from
+# `v3_grounding_pilot::RUST_PILOT_PRIMITIVES` (drift catch vs hardcoded test rows; see
+# T-Ground-IntegerRangeSingleAuthority in `src/integer_range.rs`).
+v3-grounding-pilot = { path = "../grounding_pilot" }
 # Interpreter-backed receipts for substrate behavior (repeat_string, etc.).
 v2-compiler = { path = "../../v2/stage0" }
 v2-compiler-tests = { path = "../../v2/tests" }

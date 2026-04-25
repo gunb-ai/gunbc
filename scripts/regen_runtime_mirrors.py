@@ -610,6 +610,8 @@ def rust_type(source: str, overrides: dict[str, str] | None = None) -> str:
     overrides = overrides or {}
     if source in overrides:
         return overrides[source]
+    # Literal carriers: also wired in v3 `regen_tokenize` `rust_type_for_decl_id` — one width
+    # for both (see T-Substrate-IntLiteralMagnitudeRustI128; same dissolution bucket).
     mapping = {
         "String": "String",
         "Bool": "bool",

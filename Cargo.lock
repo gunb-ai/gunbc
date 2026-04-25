@@ -670,6 +670,7 @@ dependencies = [
  "libc",
  "v2-compiler",
  "v2-compiler-tests",
+ "v3-grounding-pilot",
 ]
 
 [[package]]

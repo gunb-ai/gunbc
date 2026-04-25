@@ -32,7 +32,10 @@
 // DISSOLUTION:
 //   When T-Ground-Engine produces the production walker, this entire
 //   crate disappears alongside removal from workspace members. No
-//   upstream consumers, no tests outside this file.
+//   upstream *production* consumers. One dev-only exception: v3-compiler
+//   `integer_range` unit tests read `RUST_PILOT_PRIMITIVES` to assert alignment
+//   with `range_for_std_integer_name` (no second copy of decimal strings).
+//   All other tests stay in this file.
 //
 // SUBSTRATE-GAP FLAGS (carried forward from primitives.dag):
 //   1. Two's-complement-wrap is a closed-enum field on IntegerPrimitive

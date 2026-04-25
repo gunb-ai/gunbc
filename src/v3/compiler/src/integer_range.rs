@@ -62,49 +62,62 @@ fn range_for_std_integer_name(name: &str) -> Option<(i128, i128)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use v3_grounding_pilot::{RustPrimitive, RUST_PILOT_PRIMITIVES};
+
+    /// `std/integer` decl name (what infer narrows on) for each `IntegerPrimitive` Rust
+    /// `target_name` in `RUST_PILOT_PRIMITIVES` (e.g. `i8` ↔ `Int8`). Not duplicated in the
+    /// .dag: this is a stable bridge between the pilot’s routing key and the compiler table.
+    fn std_integer_name_for_pilot_rust_target(target: &str) -> Option<&'static str> {
+        match target {
+            "i8" => Some("Int8"),
+            "i16" => Some("Int16"),
+            "i32" => Some("Int32"),
+            "i64" => Some("Int64"),
+            "u8" => Some("UInt8"),
+            "u16" => Some("UInt16"),
+            "u32" => Some("UInt32"),
+            "u64" => Some("UInt64"),
+            _ => None,
+        }
+    }
 
     #[test]
     fn u8_range() {
         assert_eq!(range_for_std_integer_name("UInt8"), Some((0, 255)));
     }
 
-    /// Pilot `extdeps/.../primitives.dag` / `RUST_PILOT_PRIMITIVES` decimal range
-    /// strings must match this module’s `std/integer` name table — mechanical
-    /// catch for drift (see **T-Ground-IntegerRangeSingleAuthority** in module doc).
+    /// `range_min_inclusive` / `range_max_inclusive` in `RUST_PILOT_PRIMITIVES` (mirrors
+    /// `dsl/extdeps/.../primitives.dag`) must match this module’s `std/integer` name table
+    /// — a mechanical drift check without a *third* copy of decimal strings in this test
+    /// (Claude / api-review: **T-Ground-IntegerRangeSingleAuthority** receipt).
     /// **Dissolution:** remove this test when that trigger lands (single authority);
     /// grep for `extdeps_pilot_range_strings` so it is not left as a permanent crutch.
     #[test]
     fn extdeps_pilot_range_strings_match_std_integer_name_table() {
-        // Decimal endpoints copied from `dsl/extdeps/languages/rust/primitives.dag`
-        // `rust_pilot_primitives` IntegerPrimitive rows (keep in sync on edits).
-        let rows: &[(&str, &str, &str, &str)] = &[
-            ("Int8", "i8", "-128", "127"),
-            ("Int16", "i16", "-32768", "32767"),
-            ("Int32", "i32", "-2147483648", "2147483647"),
-            (
-                "Int64",
-                "i64",
-                "-9223372036854775808",
-                "9223372036854775807",
-            ),
-            ("UInt8", "u8", "0", "255"),
-            ("UInt16", "u16", "0", "65535"),
-            ("UInt32", "u32", "0", "4294967295"),
-            ("UInt64", "u64", "0", "18446744073709551615"),
-        ];
-        for &(std_name, _pilot_name, lo_s, hi_s) in rows {
+        for p in RUST_PILOT_PRIMITIVES {
+            let RustPrimitive::IntegerPrimitive {
+                target_name,
+                range_min_inclusive: lo_s,
+                range_max_inclusive: hi_s,
+                ..
+            } = p
+            else {
+                continue;
+            };
+            let std_name = std_integer_name_for_pilot_rust_target(target_name)
+                .unwrap_or_else(|| panic!("std/integer name mapping for {target_name}: add a row in std_integer_name_for_pilot_rust_target (new pilot Integer row?)"));
             let lo: i128 = lo_s
                 .parse()
-                .unwrap_or_else(|e| panic!("pilot {std_name} min {lo_s:?}: {e}"));
+                .unwrap_or_else(|e| panic!("pilot {std_name} min {lo_s:?} ({lo_s}): {e}"));
             let hi: i128 = hi_s
                 .parse()
-                .unwrap_or_else(|e| panic!("pilot {std_name} max {hi_s:?}: {e}"));
+                .unwrap_or_else(|e| panic!("pilot {std_name} max {hi_s:?} ({hi_s}): {e}"));
             let t = range_for_std_integer_name(std_name)
                 .unwrap_or_else(|| panic!("std name {std_name} must have a range in this table"));
             assert_eq!(
                 t,
                 (lo, hi),
-                "integer_range vs extdeps rust_pilot_primitives for {std_name} ({_pilot_name})"
+                "integer_range vs RUST_PILOT_PRIMITIVES {target_name} ({std_name})"
             );
         }
     }

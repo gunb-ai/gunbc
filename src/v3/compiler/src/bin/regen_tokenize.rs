@@ -293,6 +293,9 @@ fn emit_token_kind_enum(dag: &Dag) -> String {
     lines.join("\n")
 }
 
+// P2: literal-magnitude `substrate` name → Rust width matches `rust_type()` in
+// `scripts/regen_runtime_mirrors.py` (T-Substrate-IntLiteralMagnitudeRustI128, etc.); keep
+// the two regen entry points in sync.
 fn rust_type_for_decl_id(dag: &Dag, id: DeclarationId) -> String {
     let decl = dag.declaration(id);
     if let Some(name) = &decl.name {
