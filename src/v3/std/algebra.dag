@@ -115,6 +115,15 @@ type CostShape
 // `DeclarationId` identity, with the method contract facts cost/complexity
 // need co-located. It deliberately does not extend substrate declarations or
 // create one carrier per algebra.
+//
+// 🟡 TRANSITIONAL. This carrier centralizes facts that two lenses need today,
+// but it is not the endpoint. Field-level dissolution:
+// - `size_effect` dissolves into collection-cardinality-refined method
+//   signatures.
+// - `cost_shape` dissolves into a typed cost surface / structural cost
+//   derivation.
+// - `callback_element_position` dissolves into typed higher-order callback
+//   parameter shape.
 type MethodContract {
   algebra_id: DeclarationId
   method_id: DeclarationId

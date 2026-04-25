@@ -172,6 +172,8 @@ This is the same shape as the core port program at a different layer: **per-meth
 
 **Live receipt:** `src/v3/std/algebra.dag` declares `MethodContract`; `src/v3/lenses/cost.dag` imports it and includes `method_contract_cost_shape` as the minimal demo consumer. Bulk migration of `cost.dag` / `complexity.dag` to live call-site `MethodContract` lookup remains follow-up work after the §6a shape is locked.
 
+**Dissolution trigger:** `MethodContract` is a transitional carrier, not the endpoint. It centralizes duplicated per-method metadata while v3 lacks the richer upstream type-system facts. It dissolves field-by-field as those facts land: `size_effect` moves into collection-cardinality-refined method signatures; `cost_shape` moves into a typed cost surface / structural cost derivation; `callback_element_position` moves into typed higher-order callback parameter shape. When all three upstream concepts are structural, the sidecar carrier disappears.
+
 **Cross-reference:** see PR #654's investigation receipt for the full Lane G findings that surfaced this question.
 
 **Does not block the core four-carrier port program.** Queued as a design follow-up; **E-I carrier surface is landed** — this subsection is about per-method *metadata* placement, not about whether `SubValueRelation` exists in v3 std.
