@@ -93,16 +93,36 @@ fn assert_disk_matches(manifest_dir: &Path, file_name: &str, expected: &str) {
     let on_disk =
         fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     if on_disk != expected {
+        let hint = first_text_mismatch_hint(&on_disk, expected);
         panic!(
             "{file_name}: committed snapshot does not match fresh compile from .dag sources. \
              Run `cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap` \
              (without `--verify`) to \
              regenerate after intentional authority edits, or fix unintended drift. \
-             (byte length on_disk={}, expected={})",
-            on_disk.len(),
-            expected.len(),
+             {hint}",
         );
     }
+}
+
+/// Byte offset of first differing UTF-8 byte, plus lengths (for CI log triage).
+fn first_text_mismatch_hint(on_disk: &str, expected: &str) -> String {
+    let a = on_disk.as_bytes();
+    let b = expected.as_bytes();
+    let prefix_len = a.len().min(b.len());
+    let mut first_diff = None;
+    for i in 0..prefix_len {
+        if a[i] != b[i] {
+            first_diff = Some(i);
+            break;
+        }
+    }
+    // If one string is a strict prefix of the other, all shared bytes match.
+    let offset = first_diff.unwrap_or(prefix_len);
+    format!(
+        "(first differing byte index: {offset}, on_disk_len={}, expected_len={})",
+        on_disk.len(),
+        expected.len(),
+    )
 }
 
 fn write_generated(manifest_dir: &Path, file_name: &str, contents: &str) {

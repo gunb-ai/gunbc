@@ -59,35 +59,21 @@ fn declaration_name_preference_rank(file: &str) -> usize {
 
 pub fn compile_std_bootstrap_dag() -> Dag {
     let mut dag = Dag::empty();
-    bootstrap_std_fixtures_only(&mut dag);
+    load_fixtures(&mut dag, std_fixtures());
+    dag.populate_primitive_cache();
     dag
 }
 
 pub fn compile_full_bootstrap_dag_from_std_seed(std_seed: Dag) -> Dag {
     let mut dag = std_seed;
-    bootstrap_runtime_authorities_on(&mut dag, &[], &[]);
+    load_runtime_bootstrap_authorities(&mut dag, &[], &[]);
     dag
 }
 
 pub fn compile_full_bootstrap_without_parse_surface_dag_from_std_seed(std_seed: Dag) -> Dag {
     let mut dag = std_seed;
-    bootstrap_runtime_authorities_on(&mut dag, &["src/v3/std/parse_surface.dag"], &[]);
+    load_runtime_bootstrap_authorities(&mut dag, &["src/v3/std/parse_surface.dag"], &[]);
     dag
-}
-
-/// Caller must pass a fresh `Dag::empty()` (`compile_std_bootstrap_dag` is the
-/// only caller today). Avoids a redundant second `Dag::empty()` reset.
-fn bootstrap_std_fixtures_only(dag: &mut Dag) {
-    load_fixtures(dag, std_fixtures());
-    dag.populate_primitive_cache();
-}
-
-fn bootstrap_runtime_authorities_on(
-    dag: &mut Dag,
-    excluded_staged_paths: &[&str],
-    excluded_compiler_paths: &[&str],
-) {
-    load_runtime_bootstrap_authorities(dag, excluded_staged_paths, excluded_compiler_paths);
 }
 
 fn load_runtime_bootstrap_authorities(

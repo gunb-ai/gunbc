@@ -723,19 +723,7 @@ mod bootstrap_regen_fresh;
 /// (`--features bootstrap-regen-fresh`). Default `v3-compiler` builds omit this
 /// module; production callers load snapshots via `Dag::new()`.
 #[cfg(feature = "bootstrap-regen-fresh")]
-pub mod regen_bootstrap_compile {
-    pub use crate::bootstrap_regen_fresh::{
-        compile_full_bootstrap_dag_from_std_seed,
-        compile_full_bootstrap_without_parse_surface_dag_from_std_seed, compile_std_bootstrap_dag,
-    };
-}
-
-/// Crate-root aliases for the regen-only bootstrap compile helpers (same cfg +
-/// feature as [`regen_bootstrap_compile`]). Enables `cargo … --features
-/// bootstrap-regen-fresh` call sites and tests that import `compile_*` from
-/// `v3_compiler` without reaching into the submodule.
-#[cfg(feature = "bootstrap-regen-fresh")]
-pub use regen_bootstrap_compile::{
+pub use bootstrap_regen_fresh::{
     compile_full_bootstrap_dag_from_std_seed,
     compile_full_bootstrap_without_parse_surface_dag_from_std_seed, compile_std_bootstrap_dag,
 };
