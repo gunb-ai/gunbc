@@ -265,7 +265,15 @@ Slice:
    each std collection / numeric type + current totality status.
 2. **Per-row decision**: for each partial form still reachable, pick
    either Result-shape, Option-shape, or NonZero-typed-input shape.
-   Director-callable on shape choice; worker proposes default.
+   Director-callable on shape choice; worker proposes default. **For
+   any row that picks NonZero-typed-input as the operator-syntax
+   shape (e.g., `a / nz` rather than `divide_nz(a, nz)`)**: the
+   row STOPs and escalates — the asymmetric per-operand
+   operator-signature question is deferred to a separate substrate
+   brief (per-operand type variance in the algebra-operator
+   carrier; see §3 Division-by-zero row caveat). Non-operator
+   function shape (`fn divide_nz(a: Int, b: NonZeroInt) -> Int`)
+   is always available without escalation.
 3. **Removal sub-lane(s)**: one PR per partial-op class with
    - the partial-form removal (or retype),
    - the total replacement (if a new shape is needed),
