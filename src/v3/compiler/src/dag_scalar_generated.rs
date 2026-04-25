@@ -8,6 +8,15 @@ pub enum LiteralBits {
     String(String),
 }
 
+#[derive(Debug, Clone)]
+pub enum AtomPayload {
+    Literal(LiteralBits),
+    UnresolvedIdentifier(String),
+    ResolvedByStructure(DeclarationId),
+    ResolvedByName(DeclarationId),
+    TypeParam(String),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CardinalityBound {
     Exact(u32),
