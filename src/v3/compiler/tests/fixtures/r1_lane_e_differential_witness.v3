@@ -1,0 +1,4 @@
+// Minimal structural-cost witness for `complexity_v3_matches_v2_oracle` (T-LaneE).
+// Runner compares a host forward-fold receipt to `lens_cost::cost_of` (see `test_runner.rs`).
+
+let lane_e_diff_out: Int = 1 + 2

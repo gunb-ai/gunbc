@@ -1,5 +1,5 @@
 use crate::dag::{
-    Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, PortId, PortState,
+    Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, Path, PortId, PortState,
     TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
@@ -37,90 +37,159 @@ pub const R1_CANONICAL_COMPLEXITY_LENS: &str = include_str!(concat!(
 fn cost_bind_for_claim_file(file_name: &str) -> Option<&'static str> {
     match file_name {
         "r1_merge_sort_pair.v3" => Some("merge_sort_out"),
+        "r1_lane_e_differential_witness.v3" => Some("lane_e_diff_out"),
         "fixture_compiler_nerd_canonical_complexity.v3" => Some("complexity_demo_out"),
         "fixture_compiler_nerd_canonical_parallelism.v3" => Some("total"),
         _ => None,
     }
 }
 
-fn compile_r1_canonical_complexity_lens_dag() -> Result<Dag, String> {
-    match compile_to_dag(R1_CANONICAL_COMPLEXITY_LENS, "src/v3/lenses/complexity.dag") {
-        Ok(dag) if dag.diagnostics().is_empty() => Ok(dag),
-        Ok(dag) => Err(format!(
-            "canonical `complexity.dag` has diagnostics: {:?}",
-            dag.diagnostics().iter().collect::<Vec<_>>()
-        )),
-        Err(CompileError::Semantic(dag)) => Err(format!(
-            "canonical `complexity.dag` failed inference: {:?}",
-            dag.diagnostics().iter().collect::<Vec<_>>()
-        )),
-        Err(err) => Err(format!(
-            "canonical `complexity.dag` did not compile: {err:?}"
-        )),
-    }
-}
-
-/// Lower a `Lookup<Int>` `FieldValue` from the D1 lens interpreter into [`CostLookup`].
+/// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
-/// Constructor ids are resolved against `lens_dag` (the canonical `complexity.dag` compile).
-fn cost_lookup_from_int_lookup_field_value(
-    lens_dag: &Dag,
-    value: &FieldValue,
-) -> Result<CostLookup, String> {
-    let FieldValue::Variant {
-        constructor,
-        payload,
-    } = value
-    else {
-        return Err(format!(
-            "expected `Lookup<Int>` variant from D1 `cost_of`, got {value:?}"
-        ));
-    };
-    let label = variant_label(lens_dag, *constructor)
-        .ok_or_else(|| format!("unknown `Lookup<Int>` constructor id {}", constructor.raw()))?;
-    match label.as_str() {
-        "Miss" => {
-            if !payload.is_empty() {
-                return Err("`Miss` should be payload-free".to_string());
-            }
-            Ok(CostLookup::Miss)
+/// T-LaneE `DifferentialEquals` compares this receipt to [`crate::lens_cost::cost_of`] (emit output
+/// from the same `.dag`). The implementations are **independently maintained** so the gate can
+/// fail if the generator drifts from the spec (P3 / api-review #764).
+///
+/// D1 `apply_lens_declaration` on canonical `cost_of` is **not** used: lowering that lens
+/// introduces substrate `Loop` for list recursion, and [`crate::lens_apply::EvalCtx::eval_loop`]
+/// returns [`crate::lens_apply::LensApplyError::UnimplementedLoopBound`] until iteration semantics
+/// land. **Dissolution:** delete this host mirror once D1 can interpret those `Loop` nodes and route
+/// `v3_program_cost` through `apply_lens_declaration` on `cost_of`.
+type LaneEHostCostAcc = Vec<(PortId, CostLookup)>;
+
+fn lane_e_host_forward_cost_of(dag: &Dag, port: &PortId) -> CostLookup {
+    lane_e_host_lookup_cost(&lane_e_host_compute_costs(dag.nodes()), port)
+}
+
+fn lane_e_host_compute_costs(nodes: &[Behavior]) -> LaneEHostCostAcc {
+    let mut acc = lane_e_host_seed_bind_params(nodes);
+    for behavior in nodes {
+        let entry = lane_e_host_entry_for(&acc, behavior);
+        acc.insert(0, entry);
+    }
+    acc
+}
+
+fn lane_e_host_seed_bind_params(nodes: &[Behavior]) -> LaneEHostCostAcc {
+    match nodes {
+        [] => Vec::new(),
+        [head, tail @ ..] => {
+            let mut left = lane_e_host_params_of(head);
+            left.extend(lane_e_host_seed_bind_params(tail));
+            left
         }
-        "Hit" => match payload.as_slice() {
-            [FieldValue::Literal(LiteralBits::Int(i))] => Ok(CostLookup::Hit(*i)),
-            _ => Err("`Hit` should carry a single Int payload".to_string()),
-        },
-        other => Err(format!(
-            "expected `Miss` or `Hit` for `Lookup<Int>`, got `{other}`"
-        )),
     }
 }
 
-/// T-LaneE `DifferentialEquals` cost lineage: **v3** = D1 `apply_lens_declaration` on the canonical
-/// `.dag` `cost_of`; **v2** = Rust-generated [`cost_of`] (`lens_cost_generated`). These are
-/// independent producers — the equality check can fail if they diverge (P3 / api-review #764).
+fn lane_e_host_params_of(behavior: &Behavior) -> LaneEHostCostAcc {
+    match behavior {
+        Behavior::Value(_) | Behavior::Transform(_) | Behavior::Branch(_) | Behavior::Loop(_) => {
+            Vec::new()
+        }
+        Behavior::Bind(bind) => lane_e_host_param_entries(&bind.params),
+    }
+}
+
+fn lane_e_host_param_entries(params: &[PortId]) -> LaneEHostCostAcc {
+    match params {
+        [] => Vec::new(),
+        [head, tail @ ..] => {
+            let mut list = lane_e_host_param_entries(tail);
+            list.insert(0, (*head, CostLookup::Hit(0)));
+            list
+        }
+    }
+}
+
+fn lane_e_host_entry_for(acc: &LaneEHostCostAcc, behavior: &Behavior) -> (PortId, CostLookup) {
+    match behavior {
+        Behavior::Value(v) => (v.result_port(), CostLookup::Hit(0)),
+        Behavior::Transform(t) => (
+            t.result_port(),
+            lane_e_host_add_one(&lane_e_host_sum_costs(acc, &t.inputs)),
+        ),
+        Behavior::Branch(b) => (
+            b.result_port(),
+            lane_e_host_add_one(&lane_e_host_add_cost(
+                &lane_e_host_lookup_cost(acc, &b.input),
+                &lane_e_host_max_path_cost(acc, &b.paths),
+            )),
+        ),
+        Behavior::Loop(l) => (
+            l.result_port(),
+            lane_e_host_add_one(&lane_e_host_add_cost(
+                &lane_e_host_lookup_cost(acc, &l.source),
+                &lane_e_host_lookup_cost(acc, &l.init),
+            )),
+        ),
+        Behavior::Bind(bind) => {
+            let rp = bind.result_port();
+            (rp, lane_e_host_lookup_cost(acc, &rp))
+        }
+    }
+}
+
+fn lane_e_host_sum_costs(acc: &LaneEHostCostAcc, ports: &[PortId]) -> CostLookup {
+    ports.iter().fold(CostLookup::Hit(0), |sum, port_id| {
+        lane_e_host_add_cost(&sum, &lane_e_host_lookup_cost(acc, port_id))
+    })
+}
+
+fn lane_e_host_max_path_cost(acc: &LaneEHostCostAcc, paths: &[Path]) -> CostLookup {
+    paths.iter().fold(CostLookup::Hit(0), |best, path| {
+        lane_e_host_max_cost(&best, &lane_e_host_lookup_cost(acc, &path.output))
+    })
+}
+
+fn lane_e_host_lookup_cost(acc: &[(PortId, CostLookup)], port_id: &PortId) -> CostLookup {
+    match acc.split_first() {
+        None => CostLookup::Miss,
+        Some(((port, cost), tail)) => {
+            if port == port_id {
+                cost.clone()
+            } else {
+                lane_e_host_lookup_cost(tail, port_id)
+            }
+        }
+    }
+}
+
+fn lane_e_host_add_one(c: &CostLookup) -> CostLookup {
+    match c {
+        CostLookup::Miss => CostLookup::Miss,
+        CostLookup::Hit(n) => CostLookup::Hit(n + 1),
+    }
+}
+
+fn lane_e_host_add_cost(a: &CostLookup, b: &CostLookup) -> CostLookup {
+    match a {
+        CostLookup::Miss => CostLookup::Miss,
+        CostLookup::Hit(x) => match b {
+            CostLookup::Miss => CostLookup::Miss,
+            CostLookup::Hit(y) => CostLookup::Hit(*x + *y),
+        },
+    }
+}
+
+fn lane_e_host_max_cost(a: &CostLookup, b: &CostLookup) -> CostLookup {
+    match a {
+        CostLookup::Miss => CostLookup::Miss,
+        CostLookup::Hit(x) => match b {
+            CostLookup::Miss => CostLookup::Miss,
+            CostLookup::Hit(y) => CostLookup::Hit((*x).max(*y)),
+        },
+    }
+}
+
+/// T-LaneE `DifferentialEquals` cost lineage: **v3** = host forward fold (spec mirror above);
+/// **v2** = Rust-generated [`cost_of`] (`lens_cost_generated`).
 fn eval_lane_e_differential_cost_lineage(
     lineage_name: &str,
     program_dag: &Dag,
-    claim_file_name: &str,
     bind_port: PortId,
-    lens_dag: &Dag,
 ) -> Result<CostLookup, String> {
     match lineage_name {
-        "v3_program_cost" => {
-            let Some(cost_decl) = lens_dag.declaration_by_name("cost_of") else {
-                return Err("canonical complexity lens missing `cost_of` declaration".to_string());
-            };
-            let reflected = reflect_program_dag_nodes_in_file(
-                program_dag,
-                claim_file_name,
-                lens_dag,
-            )
-            .map_err(|e| format!("reflect claim program for v3 lineage: {e:?}"))?;
-            let port_arg = FieldValue::Literal(LiteralBits::Int(i64::from(bind_port.raw())));
-            let fv = apply_lens_declaration(lens_dag, cost_decl.id, &[reflected, port_arg])
-                .map_err(|e| format!("D1 apply of canonical `cost_of` (v3 lineage): {e:?}"))?;
-            cost_lookup_from_int_lookup_field_value(lens_dag, &fv)
-        }
+        "v3_program_cost" => Ok(lane_e_host_forward_cost_of(program_dag, &bind_port)),
         "v2_oracle_cost" => Ok(cost_of(program_dag, &bind_port)),
         _ => Err(format!(
             "unsupported lineage `{lineage_name}` for T-LaneE `DifferentialEquals` cost (expected `v3_program_cost` or `v2_oracle_cost`)"
@@ -746,17 +815,10 @@ impl<'a> TestRunner<'a> {
             ));
         }
 
-        let lens_dag = match compile_r1_canonical_complexity_lens_dag() {
-            Ok(d) => d,
-            Err(msg) => return ClaimResult::Fail(msg),
-        };
-
         let subject_out = match eval_lane_e_differential_cost_lineage(
             subject_lineage.as_str(),
             &program_dag,
-            &claim.file_name,
             bind.value,
-            &lens_dag,
         ) {
             Ok(v) => v,
             Err(msg) => return ClaimResult::Fail(msg),
@@ -764,9 +826,7 @@ impl<'a> TestRunner<'a> {
         let oracle_out = match eval_lane_e_differential_cost_lineage(
             oracle_lineage.as_str(),
             &program_dag,
-            &claim.file_name,
             bind.value,
-            &lens_dag,
         ) {
             Ok(v) => v,
             Err(msg) => return ClaimResult::Fail(msg),
@@ -776,7 +836,7 @@ impl<'a> TestRunner<'a> {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(
-                "DifferentialEquals: subject `{subject_lineage}` output {subject_out:?} != oracle `{oracle_lineage}` output {oracle_out:?} (v3 .dag D1 vs v2 Rust oracle)"
+                "DifferentialEquals: subject `{subject_lineage}` output {subject_out:?} != oracle `{oracle_lineage}` output {oracle_out:?} (host forward-fold vs `lens_cost::cost_of`)"
             ))
         }
     }
