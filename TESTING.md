@@ -187,26 +187,22 @@ predicate structurally.
 
 At that point the hermetic principle still holds — each
 `TestClaim` declaration is its own unit, the runtime just
-shares the compile work when sources match. Rust integration
-tests collapse to two residual categories:
+shares the compile work when sources match.
 
-- **Compiler-internal unit tests** inside `src/v3/compiler/src/`
-  (`#[cfg(test)] mod tests`) for Rust-only helpers
-- **Boundary tests** that must invoke external processes
-  (rustc, go, python)
-
-Everything else ports to `.dag`.
+> **🔄 RETRACTED 2026-04-25 (cascade promotion of `docs/design-pure-bootstrap-zero.md`).** The previous "two residual categories" framing (compiler-internal unit tests + external-toolchain boundary tests stay Rust-authored permanently) is **retracted under the 0-floor target**. Both categories dissolve:
+>
+> - **Rust-only-helper unit tests vanish naturally** — under 0-floor (per `docs/design-pure-bootstrap-zero.md` LIVE), there are no Rust-only helpers in v3's source tree; everything generates from `.dag`. Unit tests for non-existent helpers don't need to exist.
+> - **External-toolchain boundary tests migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations** as the cascade-named successor pattern. **Capability state today (2026-04-25):** the `ExecuteCommand` predicate is declared in `src/v3/std/verification.dag:115-119` (PR #678 landed the schema). Runner support is **foundation-only**: the M1.5 testgen harness at `src/v3/compiler/tests/integration/m1_5_testgen_test.rs:292-294` accepts only the tautological allowlist shape (`command == "true" && args.is_empty() && expect_exit == 0`) and panics fail-closed (`m1_5_testgen_test.rs:394-398`) on any other shape ("ExecuteCommand shell shape is not supported here (runner-owned — do not treat as ordinary false)"). The Rust `TestRunner` at `src/v3/compiler/src/test_runner.rs:352-382` returns `ClaimResult::NotYetImplemented(...)` for `ExecuteCommand` (no match arm). **Full runner support — arbitrary `command` + `args` (e.g., `rustc`, `python`, `go`) with exit-code capture — is deferred to the PB-Runtime lane** (Zero-Floor program). A `TestClaim` like *"emit Rust, invoke rustc on output, check exit code"* is structurally expressible as data today; **executing it is blocked** until PB-Runtime lands the runner extension.
+>
+> **0-residual is the target.** Until v3's source tree reaches 0 hand-authored files AND the PB-Runtime runner extension lands, write tests in whichever shape (Rust integration test OR `.dag` `TestClaim` evaluable by the current restricted runner) is cleanest for the work being done. On cascade-promoted PB-Runtime lane execution, residual Rust tests migrate per the `ExecuteCommand` pattern. See `docs/design-pure-bootstrap-zero.md` §"PB-Runtime" for the migration scope and runner-extension dependency.
 
 Until DB-15 R2's runtime lands, write Rust integration tests
 that match the guidelines above so the eventual port is a
 rewrite of shape, not of intent.
 
-**Post-R2 shape:** once DB-15 R2 ships, most of this document
-collapses into "see `dsl/std/verification.dag` for the test
-surface." The Rust-side residual is: compiler-internal unit
-tests (`#[cfg(test)] mod tests`) inside `src/v3/compiler/src/`,
-and boundary tests that invoke external toolchains. Everything
-else ports to `.dag`.
+~~**Post-R2 shape:** once DB-15 R2 ships, most of this document collapses into "see `dsl/std/verification.dag` for the test surface." The Rust-side residual is: compiler-internal unit tests (`#[cfg(test)] mod tests`) inside `src/v3/compiler/src/`, and boundary tests that invoke external toolchains. Everything else ports to `.dag`.~~
+
+**0-floor shape (post cascade promotion 2026-04-25):** once DB-15 R2 ships AND the Zero-Floor program reaches 0 hand-authored files (per `docs/design-pure-bootstrap-zero.md` LIVE) AND the PB-Runtime lane lands the `ExecuteCommand` runner extension (arbitrary `command` + `args` with exit-code capture — see capability-state note above), this document collapses into "see `dsl/std/verification.dag` for the test surface." There is **no Rust-side residual**: compiler-internal unit tests don't exist (no Rust-only helpers); external-toolchain tests use `ExecuteCommand`-based `.dag` `TestClaim` declarations evaluated by the extended runner. Everything is `.dag`.
 
 ## Anti-patterns
 
