@@ -35,7 +35,7 @@ fn main() {
     let full_dag = compile_full_bootstrap_dag_from_std_seed(std_dag.clone());
     let full_formatted = render_bootstrap_generated_rs(
         &full_dag,
-        "dsl/std/*.dag + src/v3/std/*.dag + src/v3/spec/*.dag + src/v3/compiler/*.dag minus tokenize.dag",
+        "dsl/std/*.dag + src/v3/std/*.dag + src/v3/spec/*.dag + src/v3/compiler/*.dag minus tokenize.dag + dsl/extdeps/languages/rust/primitives.dag",
         "bootstrapped_fixture_dag",
     )
     .unwrap_or_else(|e| panic!("regen_bootstrap full: {e}"));
@@ -45,7 +45,7 @@ fn main() {
         compile_full_bootstrap_without_parse_surface_dag_from_std_seed(std_dag);
     let full_no_parse_surface_formatted = render_bootstrap_generated_rs(
         &full_no_parse_surface_dag,
-        "dsl/std/*.dag + src/v3/std/*.dag + src/v3/spec/*.dag + src/v3/compiler/*.dag minus tokenize.dag and src/v3/std/parse_surface.dag",
+        "dsl/std/*.dag + src/v3/std/*.dag + src/v3/spec/*.dag + src/v3/compiler/*.dag minus tokenize.dag and src/v3/std/parse_surface.dag + dsl/extdeps/languages/rust/primitives.dag",
         "bootstrapped_fixture_without_parse_surface_dag",
     )
     .unwrap_or_else(|e| panic!("regen_bootstrap no-parse-surface: {e}"));

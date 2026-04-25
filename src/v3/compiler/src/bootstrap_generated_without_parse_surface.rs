@@ -1,4 +1,4 @@
-// AUTO-GENERATED from `dsl/std/*.dag + src/v3/std/*.dag + src/v3/spec/*.dag + src/v3/compiler/*.dag minus tokenize.dag and src/v3/std/parse_surface.dag` via `regen_bootstrap`.
+// AUTO-GENERATED from `dsl/std/*.dag + src/v3/std/*.dag + src/v3/spec/*.dag + src/v3/compiler/*.dag minus tokenize.dag and src/v3/std/parse_surface.dag + dsl/extdeps/languages/rust/primitives.dag` via `regen_bootstrap`.
 // Regenerate instead of hand-editing.
 
 pub(crate) fn bootstrapped_fixture_without_parse_surface_dag() -> Dag {
