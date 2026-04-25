@@ -198,11 +198,11 @@ data complexity_merge_sort_v3_matches_v2_oracle_gate: TestClaim = {
   requires: []
 }
 
-// Differential witness: trivial `1 + 2` bind — minimal smoke that host forward-fold and emit
-// `lens_cost::cost_of` agree when almost nothing happens structurally. Nested control-flow parity
-// is covered by `complexity_merge_sort_v3_matches_v2_oracle`; scalar structural depth by
-// `complexity_merge_sort_is_nlogn`. D1 `apply_lens_declaration(cost_of)` on the canonical lens
-// stays deferred (`Loop` / `UnimplementedLoopBound` in the lens graph).
+// Differential witness: `match` + `fold` over a short list (`r1_lane_e_differential_witness.v3`) so
+// `DifferentialEquals` compares host fold vs emit on **branch/list/fold** structure, not addition
+// alone. Merge-sort parity is `complexity_merge_sort_v3_matches_v2_oracle`; scalar `cost_of`
+// depth is `complexity_merge_sort_is_nlogn`. D1 `apply_lens_declaration(cost_of)` stays deferred
+// (`Loop` / `UnimplementedLoopBound` in the lens graph).
 data complexity_v3_matches_v2_oracle_gate: TestClaim = {
   name: "complexity_v3_matches_v2_oracle",
   source: "R1_LANE_E_DIFFERENTIAL_WITNESS_V3_SPLICE_V1",
