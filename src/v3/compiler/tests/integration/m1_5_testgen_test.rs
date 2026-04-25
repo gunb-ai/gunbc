@@ -460,6 +460,7 @@ fn diagnostic_kind(diag: &Diagnostic) -> &'static str {
         Diagnostic::ArityMismatch { .. } => "ArityMismatch",
         Diagnostic::ResolveError { .. } => "ResolveError",
         Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
+        Diagnostic::MagnitudeOutOfRange { .. } => "MagnitudeOutOfRange",
     }
 }
 
@@ -480,6 +481,7 @@ fn diagnostic_detail(diag: &Diagnostic) -> String {
         Diagnostic::UnitMismatch { .. } => diag.message(),
         Diagnostic::ResolveError { name, .. } => name.clone(),
         Diagnostic::BranchConditionNotBool { .. } => diag.message(),
+        Diagnostic::MagnitudeOutOfRange { .. } => diag.message(),
     }
 }
 

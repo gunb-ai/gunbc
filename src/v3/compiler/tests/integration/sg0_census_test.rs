@@ -149,6 +149,15 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // hand-authored substrate, not new handwritten logic. Dissolution path:
 // the same `include!` / producer-owned route that eventually replaces
 // `dag.rs` itself replaces these submodules simultaneously.
+//
+// T-Substrate cardinality subset for int literals (2026-04-25): the
+// range-comparison shim in `int_literal_ranges.rs` is host-side
+// reconciliation glue over already-declared String-decimal range facts
+// while `rust_pilot_primitives.value_body` remains an unparsed top-level
+// list. Dissolution trigger: R2 T-Substrate's top-level aggregate
+// `ValueBody` sub-lane makes `rust_pilot_primitives` row values
+// structurally walkable, at which point this helper should consume those
+// declared rows directly or move behind generated substrate accessors.
 const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
@@ -171,6 +180,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
     "src/v3/compiler/src/infer.rs",
+    "src/v3/compiler/src/int_literal_ranges.rs",
     "src/v3/compiler/src/lens_apply.rs",
     // T-PB-A: `lens_depth.rs` retired — unused observational lens (no in-tree consumer).
     "src/v3/compiler/src/lens_testgen.rs",
@@ -219,6 +229,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // the dsl/extdeps loader surface.
     "src/v3/compiler/tests/integration/extdeps_rust_primitives_loader_test.rs",
     "src/v3/compiler/tests/integration/four_fixture_regression_test.rs",
+    // T-Substrate cardinality subset for int literals: behavior receipt for
+    // range narrowing, explicit Int64 default, and MagnitudeOutOfRange.
+    // Dissolves into .dag-native/testgen coverage when diagnostic assertions
+    // can name this case without a host-side integration harness.
+    "src/v3/compiler/tests/integration/int_literal_cardinality_test.rs",
     "src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2a_effects_smoke.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2b_db18_test.rs",
