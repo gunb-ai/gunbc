@@ -628,6 +628,12 @@ fn evaluate_execute_command_exit_code_with_wall_time(
             }
         }
     };
+    // `continue` (Linux only) may re-run the logical command without `unshare(1)` if stderr
+    // shows namespace *setup* failed (not a logical exit).
+    #[cfg_attr(
+        not(target_os = "linux"),
+        allow(clippy::never_loop) // the only `continue` is under `#[cfg(target_os = "linux")]`
+    )]
     let status = loop {
         let s = match child_wait_for_execute_command(&mut child, wall_time) {
             Ok(s) => s,
