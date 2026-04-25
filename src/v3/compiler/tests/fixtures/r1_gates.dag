@@ -168,7 +168,8 @@ data r1_lens_output_equals_suite: TestSuite = {
 
 // T-LaneE — merge-sort pair witness (structural `cost_of` on `merge_sort_out` vs expected `Int`).
 // M1(2.8): `Lookup<Int>` literals are not yet expressible in `data` bodies — compare `Hit(n)` to
-// this scalar witness. Program text is byte-identical to `tests/fixtures/r1_merge_sort_pair.v3`.
+// this scalar witness. `TestClaim.source` is spliced from `tests/fixtures/r1_merge_sort_pair.v3`
+// at `cargo build` (see `emit_r1_gates_fixture` in `v3-compiler/build.rs`).
 data complexity_merge_sort_expected_cost: Int = 3
 
 data complexity_merge_sort_is_nlogn_gate: TestClaim = {
@@ -190,7 +191,7 @@ data complexity_merge_sort_is_nlogn_gate: TestClaim = {
 // on the canonical lens stays deferred (`Loop` / `UnimplementedLoopBound` in the lens graph).
 data complexity_v3_matches_v2_oracle_gate: TestClaim = {
   name: "complexity_v3_matches_v2_oracle",
-  source: "let lane_e_diff_out: Int = 1 + 2\n",
+  source: "// Minimal structural-cost witness for `complexity_v3_matches_v2_oracle` (T-LaneE).\n// Runner compares a host forward-fold receipt to `lens_cost::cost_of` (see `test_runner.rs`).\n\nlet lane_e_diff_out: Int = 1 + 2\n",
   file_name: "r1_lane_e_differential_witness.v3",
   predicate: DifferentialEquals(
     v3_program_cost,
