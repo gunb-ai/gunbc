@@ -456,7 +456,15 @@ fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<C
 /// The `-c` / combined-flag token may appear **anywhere** in the slice (e.g. `["sh", "-ec", "cmd"]` or
 /// `["-ec", "cmd"]`); codex PR #792, api-review e99b53e7: first-arg-only special case missed
 /// `env sh -ec "…&"`. Production guard uses [`shell_argv_may_start_unbounded_background`];
-/// this helper is kept for **unit** tests and doc parity.
+/// this helper is kept for **unit** tests and doc parity only.
+///
+/// **Not a model of the P3/P4 guard:** it returns the script for the *first* `-c` or combined
+/// `-?c?` in argv order. For `["sh", "-c", "sh", "-ec", "…&"]` that first script word is the
+/// *shell token* `sh` — a correct *slice-local* read, not the same as “what might background.”
+/// [`shell_argv_may_start_unbounded_background`] recurses for that case; the pre-spawn code never
+/// calls this helper. Confusion with `args[j+1..]` for `env sh -ec` is a false alarm: the tail is
+/// `["-ec", "script"]` and [`check_slice`]’s `s` is `args[i+1]` for the matched flag at `i`, not a
+/// mis-attached `shell_dash_c_script_string` (PR #792 inline, 2026-04-25).
 #[cfg(test)]
 fn shell_dash_c_script_string(args: &[String]) -> Option<&str> {
     for (i, a) in args.iter().enumerate() {
@@ -2710,6 +2718,23 @@ mod execute_command_timebound_tests {
             ]),
             Some("f")
         );
+    }
+
+    /// First-`-c`-only `shell_dash_c_script_string` can return the *nested shell token*; the
+    /// pre-spawn guard recurses. PR #792 inline: do not use the test helper in production.
+    #[test]
+    fn shell_dash_c_script_string_first_c_only_unlike_guard_nested_scan() {
+        use super::shell_argv_may_start_unbounded_background;
+        use super::shell_dash_c_script_string;
+        let nested = vec![
+            String::from("sh"),
+            String::from("-c"),
+            String::from("sh"),
+            String::from("-ec"),
+            String::from("sleep 600 &"),
+        ];
+        assert_eq!(shell_dash_c_script_string(&nested), Some("sh"));
+        assert!(shell_argv_may_start_unbounded_background(&nested));
     }
 
     /// `sh -ec` and `sh -lc` (codex) must be covered, not only `sh -c …`.
