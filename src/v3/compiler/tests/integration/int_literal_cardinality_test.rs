@@ -64,6 +64,22 @@ fn unconstrained_int_literal_still_defaults_to_int64() {
 }
 
 #[test]
+fn uint64_upper_half_literals_are_tracked_carrier_limitation() {
+    let err = compile_to_dag(
+        "data x: UInt64 = 9223372036854775808",
+        "uint64_upper_half_literal.v3",
+    )
+    .expect_err("u64 upper-half literals remain blocked by the i64 source literal carrier");
+    assert!(
+        matches!(
+            err,
+            CompileError::Tokenize(v3_compiler::diagnostics::Diagnostic::TokenizerError { .. })
+        ),
+        "expected tokenizer boundary before range reconciliation, got {err:?}"
+    );
+}
+
+#[test]
 fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
     let err = compile_to_dag("data x: UInt8 = 256", "int_literal_u8_oob.v3")
         .expect_err("UInt8 overflow must fail closed");

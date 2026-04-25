@@ -154,10 +154,15 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // range-comparison shim in `int_literal_ranges.rs` is host-side
 // reconciliation glue over already-declared String-decimal range facts
 // while `rust_pilot_primitives.value_body` remains an unparsed top-level
-// list. Dissolution trigger: R2 T-Substrate's top-level aggregate
+// list. It intentionally compares only source literals that already fit
+// `LiteralBits::Int(i64)`; the declared u64 upper half is not reachable
+// until the deferred carrier-widening lane replaces that source-literal
+// carrier. Dissolution triggers: R2 T-Substrate's top-level aggregate
 // `ValueBody` sub-lane makes `rust_pilot_primitives` row values
-// structurally walkable, at which point this helper should consume those
-// declared rows directly or move behind generated substrate accessors.
+// structurally walkable, and the carrier-widening lane makes the full
+// declared unsigned range parseable by source literals. At that point
+// this helper should consume those declared rows directly or move behind
+// generated substrate accessors.
 const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/build.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",

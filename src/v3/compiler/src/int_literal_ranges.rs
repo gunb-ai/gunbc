@@ -15,6 +15,12 @@ pub(crate) struct IntegerRange {
 }
 
 impl IntegerRange {
+    /// Current reconciliation receives only source literals that already
+    /// fit the existing `LiteralBits::Int(i64)` carrier. The declared
+    /// range facts remain full Rust target ranges (including u64's upper
+    /// half); literals above `i64::MAX` are rejected earlier by the
+    /// tokenizer until the deferred carrier-widening lane replaces the
+    /// source literal carrier.
     pub(crate) fn contains_i64(&self, value: i64) -> bool {
         let value = i128::from(value);
         self.min <= value && value <= self.max

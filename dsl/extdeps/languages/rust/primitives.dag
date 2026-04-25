@@ -260,6 +260,12 @@ data rust_u32_integer_range: IntegerRangeFact = {
   range_max_inclusive: "4294967295"
 }
 
+// Full Rust u64 cardinality is declared here even though this lane's
+// existing source literal carrier is still `LiteralBits::Int(i64)`.
+// The compiler can reconcile only literals that survive tokenization;
+// u64's upper half becomes reachable when the deferred carrier-widening
+// lane replaces that source-literal carrier. Do not mirror a truncated
+// u64 range in consumers.
 data rust_u64_integer_range: IntegerRangeFact = {
   target_name: "u64",
   algebra: SemiringAlgebra,
