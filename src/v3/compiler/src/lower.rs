@@ -280,6 +280,7 @@ pub(crate) fn lower_bodies_phase(
     // `where` clauses (single construction authority).
     lower_parameter_refinements_phase(dag, module, symbols, is_first);
     lower_type_alias_refinements_phase(dag, module, symbols, is_first);
+    validate_scalar_data_refinements_phase(dag, module, symbols, is_first);
     let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
     let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     for (idx, item) in module.items.iter().enumerate() {
@@ -850,6 +851,63 @@ fn lower_type_alias_refinements_phase(
             span.clone(),
         );
         dag.declaration_mut(decl_id).refinement = Some(pred_decl_id);
+    }
+}
+
+/// DB-11 / T-Substrate int-literal cardinality boundary.
+///
+/// Top-level `data` bodies lower before alias refinements are attached
+/// so refinement predicates can reference data constants. That means
+/// `lower_scalar_literal_for_type` can only check base scalar
+/// cardinality in the data pre-pass. After alias refinements land, this
+/// validation pass rejects any already-scalar-lowered data declaration
+/// whose declared type now carries a refinement. A raw scalar literal is
+/// range evidence, not predicate evidence; callers must introduce a
+/// narrowing branch or another refinement-bearing source.
+fn validate_scalar_data_refinements_phase(
+    dag: &mut Dag,
+    module: &SurfaceModule,
+    symbols: &HashMap<String, DeclarationId>,
+    is_first: &[bool],
+) {
+    for (idx, item) in module.items.iter().enumerate() {
+        if !is_first[idx] {
+            continue;
+        }
+        let SurfaceItem::Data {
+            name, body_span, ..
+        } = item
+        else {
+            continue;
+        };
+        let Some(&decl_id) = symbols.get(name) else {
+            continue;
+        };
+        let decl = dag.declaration(decl_id);
+        if !matches!(
+            decl.value_body,
+            Some(crate::dag::ValueBody::Scalar(LiteralBits::Int(_)))
+        ) {
+            continue;
+        }
+        let Some(expected) = decl.meta_tag else {
+            continue;
+        };
+        if dag.declaration(expected).refinement.is_none() {
+            continue;
+        }
+        dag.declaration_mut(decl_id).value_body = None;
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{name}` scalar literal does not satisfy the expected \
+                     `where` refinement — no narrowing branch in scope"
+                ),
+                span: body_span.clone(),
+                fixes: Vec::new(),
+            },
+        );
     }
 }
 
@@ -3202,6 +3260,13 @@ fn lower_scalar_literal_for_type(
             .unwrap_or(false),
     };
     if type_ok {
+        if dag.declaration(expected_type).refinement.is_some() {
+            return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
+                name: "scalar literal does not satisfy the expected `where` refinement — no narrowing branch in scope".to_string(),
+                span: expr_span(expr),
+                fixes: Vec::new(),
+            });
+        }
         return LowerScalarLiteralOutcome::Literal(literal_bits);
     }
     if let LiteralBits::Int(value) = literal_bits {
