@@ -314,13 +314,14 @@ Decisions log (append as they happen):
 - **2026-04-25** — Engine-Phase-1 brief landed (PR #767, `t-ground-engine-phase-1.md`). Audit-first discipline; no Rust-constant mirroring; variant-aware walker; SG-0 untouched.
 - **2026-04-25** — Engine-Phase-1 Phase 0 audit landed (PR #768, `t-ground-engine-substrate-audit.md`). Conclusion: both options (a) and (b) block on the same substrate gaps; escalation-class. Engine implementation parked.
 - **2026-04-25** — Engine substrate ask escalated to Director via [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md). Manager recommends Route 3: route Gap 1 close through Pure Bootstrap to Zero program (PB-1 / PB-Bootstrap-Process scope overlap).
+- **2026-04-25** — Director chose **Route 1** (small loader-close, ad-hoc Director dispatch). Manager recommendation overruled with substantive reasoning: PB-1 migrates *existing* fixture sets; deciding the bootstrap shape includes a new fifth set is upstream of PB-1's pattern. Faster unblock: sharpened (b) Engine within days vs quarters for full Pure Bootstrap to Zero scope. Manager internalized the upstream-vs-pattern distinction for future cross-manager flagging.
 
 Open questions for director:
 
-- **Engine substrate routing** — Route 1 / 2 / 3 / 4 per [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md). Manager recommends Route 3.
+- ~~**Engine substrate routing**~~ — RESOLVED 2026-04-25. Route 1 chosen by Director.
 - **R2 promotion timing** — formally still PROPOSAL pending R1 all-gates-green closure. R1 Census Close landed (PR #763) but Director-discretionary dispatch has been used for Pilot + Engine-Phase-1-audit. Consider formalizing the promotion or making the discretionary mode explicit in `r2-structure.md`.
 
 Cross-manager notifications queued:
 
-- **Pure Bootstrap to Zero Manager** (PR #766) — substrate ask: extdeps-load + Declaration accessor for `dsl/extdeps/languages/*/primitives.dag`. Surface on Director Route 3 endorsement (or pre-coordinate if Director endorses pre-coordination). See escalation doc §"Concrete ask."
+- ~~**Pure Bootstrap to Zero Manager** (PR #766) — substrate ask~~ — Director chose Route 1 (ad-hoc dispatch, not routed through Zero-Floor). Director handles Zero-Floor heads-up directly per cross-program coordination. No manager-side notification queued.
 - **Surface / Testgen Managers** (R1, archived on R1 close per `r2-structure.md`) — pilot's fail-closed-by-construction shape (`GroundingError::{Ambiguous, NoInhabitant}`) is general-purpose, not Grounding-specific. If their wind-down work hasn't closed yet, this shape is reusable as a contract baseline.

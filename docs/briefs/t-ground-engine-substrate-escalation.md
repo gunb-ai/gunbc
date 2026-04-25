@@ -1,8 +1,24 @@
 # T-Ground-Engine — Substrate Escalation to Director
 
-**Status**: PROPOSAL — pending Director routing decision. R2 Grounding Manager → Director. Engine-Phase-1 implementation parked until this routes.
+**Status**: ROUTED — Director chose **Route 1** on 2026-04-25 (small loader-close, ad-hoc Director dispatch). Manager originally recommended Route 3; Director overruled with substantive reasoning (see "Decision" section below). Engine-Phase-1 implementation re-dispatches in sharpened-(b) form once the loader-close PR lands.
 
 **Source evidence**: [`docs/briefs/t-ground-engine-substrate-audit.md`](t-ground-engine-substrate-audit.md) (PR #768, merged commit `4afc0d794`, 2026-04-25). Citations spot-verified against current main.
+
+---
+
+## Decision (recorded post-routing)
+
+**Route 1 chosen.** Director's reasoning (preserved verbatim from cross-session brief):
+
+1. **Doesn't fit cleanly in Zero-Floor's program.** PB-1 scope = migrating four *existing* bootstrap fixture sets (`std_fixtures` / `STAGED_FILES` / `V3_SPECS` / `COMPILER_FILES`) to generated constructors. Adding a fifth set (`dsl/extdeps/languages/*`) is upstream of PB-1 — it requires deciding the bootstrap shape includes it before PB-1's pattern applies. PB-Bootstrap-Process scope (`bootstrap.dag` declares workflow as data) is a discrete decision that can land before that lane exists. PB-Substrate generates `dag.rs` from `substrate.dag`; loader is adjacent but not the same surface.
+2. **The "no target-language realizations in bootstrap" comment at `bootstrap.rs:16-19` is a stale design assertion.** It was set when Engine didn't exist. Engine needs the realizations. Revisiting that decision = small dispatch, not program-scope work.
+3. **Faster unblock for Engine.** Route 1 (small loader-close) unblocks sharpened (b) Engine within a few days. Routing through Pure Bootstrap to Zero would have required PB-1 + PB-Substrate + emission-pipeline maturity all to land first.
+
+**Cross-program coordination handled by Director.** Heads-up to Pure Bootstrap to Zero Manager (`stern-swift-335`) flagged: PB-1's eventual constructor-emission pattern will absorb the new fifth fixture set when PB-1-b/c/d/e ship; no coordination conflict on `dag.rs` shape because loader-close doesn't touch substrate types.
+
+**What the manager recommendation got wrong.** Route 3's appeal was avoiding a discrete sub-lane that overlaps with PB-1. Director's correction: the overlap is illusory — PB-1 migrates *existing* fixture sets, doesn't decide *which* sets exist. Loader-close is a shape decision upstream of PB-1's pattern. Manager will internalize this distinction for future cross-manager flagging.
+
+The routes section below is preserved as decision history.
 
 ---
 
@@ -118,10 +134,24 @@ Note that Routes 1, 3, and 4 converge on the same Engine shape (sibling crate, s
 
 ## Decision Director needs to make
 
-1. **Routing** — Route 1, 2, 3, or 4? (Manager recommends Route 3.)
-2. **If Route 3** — coordinate with Pure Bootstrap to Zero Manager to add the extdeps-loader ask to PB-1 scope, sequenced early. Manager ready to draft the cross-manager-coordination message on Director signal.
-3. **If Route 1** — schedule a discrete substrate sub-lane. Manager defers to Director on which substrate program owns it.
-4. **If Route 2 or 4** — manager surfaces the parking decision and updates ROADMAP / working state accordingly.
+~~Original asks (resolved 2026-04-25 — see "Decision" section at top):~~
+
+1. ~~**Routing** — Route 1, 2, 3, or 4? (Manager recommends Route 3.)~~ → **Route 1 chosen.**
+2. ~~**If Route 3** — coordinate with Pure Bootstrap to Zero Manager.~~ → **N/A (Route 3 not chosen).**
+3. ~~**If Route 1** — schedule a discrete substrate sub-lane. Manager defers to Director on which substrate program owns it.~~ → **Director ad-hoc dispatch; loader-close worker authored under Director scope. Manager supplies Engine consumer requirements (see manager-side input below).**
+4. ~~**If Route 2 or 4** — manager surfaces the parking decision and updates ROADMAP / working state accordingly.~~ → **N/A.**
+
+### Manager-side input for the loader-close brief
+
+Engine-Phase-1's sharpened-(b) form requires the loader close to enable a **specific consumer interface**. Loader brief author should ensure these are satisfied so Engine can re-dispatch directly without a follow-up amendment:
+
+1. **Bootstrap loads `dsl/extdeps/languages/rust/primitives.dag`** into the production Dag. (For initial close, Rust target only is sufficient — Python / Go primitives.dag files don't exist yet.)
+2. **Public accessor returns `rust_pilot_primitives` as parsed `Declaration`/`Node`** to a downstream Rust caller, walkable structurally without re-implementing the parser. Audit characterizes this as the (b.i) shape — sibling-crate Engine reads `Declaration` and extracts `(target_name, algebra-variant, carrier-variant, is_copy[, overflow])` per element.
+3. **Stable enough shape that Engine doesn't have to reach into private `Dag` internals.** If the public accessor returns something that requires Engine to depend on parser-internal types, the loader close hasn't fully unblocked Engine.
+4. **Revisit `bootstrap.rs:16-19` comment.** The "Production bootstrap does not inject target-language realizations" assertion is the stale design Director called out. Loader-close PR should update or delete this comment in the same change (avoid leaving contradictory documentation).
+5. **SG-0 ratchet handling.** Loader-close edits live in `src/v3/compiler/src/bootstrap.rs` — ratcheted hand-Rust territory. Either (a) expansion is acceptable as a Director-sanctioned bump (loader-close is small and serves a load-bearing thesis claim), or (b) loader-close lands in a transitional shape that PB-1 absorbs cleanly. Loader brief author should pick and document.
+
+These are consumer-side requirements, not implementation prescriptions. Manager defers to substrate-side judgment on internal shape.
 
 ---
 
