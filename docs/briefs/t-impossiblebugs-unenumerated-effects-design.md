@@ -268,7 +268,7 @@ Net: 1 chain of 3 implementation lanes collapses to:
 - 1 audit-as-existence-check lane (verify primitives' signature-shape coverage; NOT "tag every primitive") — produces the path (i) vs (ii) verdict on `OperationEffect` retention.
 - 1 sub-lane (`reread` primitive in std/ if not already there) + 1 transactional-pattern lens.
 - 1 prereq lane + 1 residual lane named in Q4.5:
-  - **P1**: extdeps typed-primitive consumption — pre-existing tracked debt at ROADMAP:153-154; load-bearing for the lens's full-coverage claim.
+  - **P1**: extdeps typed-primitive consumption — pre-existing tracked debt at ROADMAP.md:348-349; load-bearing for the lens's full-coverage claim.
   - **P2**: `ExecuteCommand` runner primitive landed via PR #792; **only consumer-side bulk migration of existing Rust `Command::new` boundary tests remains** (tracked as ROADMAP residual, independent of the lens; not a materialization prereq).
 
 Smaller scope; stronger claim. The taxonomy-retirement scope (substrate-side) is **not** in this lane — it's surfaced by audit and routed to dedicated retirement lane if path (ii) wins.
