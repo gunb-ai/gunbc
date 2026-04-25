@@ -6,6 +6,14 @@
 //! `bootstrap_generated.rs` snapshot. Per PB-1-e mechanism (ii), the
 //! fresh-compile-vs-snapshot acid test runs at `regen_bootstrap` time
 //! (`--verify`), not in the default integration test suite.
+//!
+//! **Classification:** permanent PB-1-e **regen verification** substrate (not
+//! the old “delete once the drift harness stops needing runtime std” scaffold).
+//! **Dissolution:** when PB-Bootstrap-Process replaces this hand-Rust regen
+//! host with a declared `bootstrap.dag` / generated producer path, delete this
+//! module in favor of that single authority — same cost-of-change rule as the
+//! retired `bootstrap_std_fixtures_only` dissolution trigger, reframed for
+//! “regen host goes data-native” rather than “in-tree tests stop diffing.”
 
 use crate::dag::{Dag, DeclarationId};
 use crate::lower::{collect_symbols_phase, lower_bodies_phase, resolve_pending_identifiers};
