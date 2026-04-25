@@ -1,10 +1,13 @@
-# B4.1 — `DeclarationRef` consumer migration for runner identity bridges `(M, Tier 1)`
+# B4.1a — `DeclarationRef` consumer migration for runner identity bridges `(M, Tier 1)`
 
 > **Worker brief.** Reports through Director (`zesty-bear-812`).
 > First B4 Phase 1 sub-brief from
 > [`docs/briefs/b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-substrate-pass.md).
 > This is a consumer-migration brief, not a carrier-landing brief:
 > `DeclarationRef` already exists at `src/v3/spec/v3_l1.dag`.
+> This brief covers the runner-facing §0.1/§0.2/§0.3 portion of the
+> parent B4.1 scope. §0.5 and §0.7 are explicitly owned by named
+> follow-up briefs below.
 
 ## Read first
 
@@ -50,14 +53,45 @@
   `DeclarationRef` into `FieldValue::Reference`.
 
 Conclusion: do **not** add a new universal declaration-reference
-carrier. The remaining B4.1 work is a role/consumer migration on top
-of the existing `DeclarationRef`: replace runner-local sentinel and
-filename bridges with structural references that identify the program
-input role and canonical lens declaration without string dispatch.
+carrier. The runner slice of the remaining B4.1 work is a
+role/consumer migration on top of the existing `DeclarationRef`:
+replace runner-local sentinel and filename bridges with structural
+references that identify the program input role and canonical lens
+declaration without string dispatch.
+
+## Parent B4.1 Scope Split
+
+The parent brief defines B4.1 as the `DeclarationRef` consumer
+migration for §0.1, §0.2, §0.3, §0.5, and §0.7. This worker brief is
+therefore named **B4.1a** and covers only the runner identity bridges:
+
+- **§0.1 / §0.3 program-input and canonical-lens identity** in
+  `test_runner.rs`.
+- **§0.2 output-bind identity** in `cost_bind_for_claim_file` /
+  `TestClaim.file_name` routing.
+
+The remaining parent B4.1 sites are tracked as named follow-ups:
+
+- **B4.1b — structural type-alias carrier for §0.5.** Owns the
+  `span.file == "dsl/std/types.dag"` type-alias bridge at
+  `lower.rs:836`. Trigger: author and dispatch immediately after
+  B4.1a lands or earlier if an implementation touch in `lower.rs`
+  reaches the type-alias bridge. Acceptance must remove the
+  path-equality check or replace this brief with a Director-approved
+  substrate carrier if plain `DeclarationRef` is insufficient.
+- **B4.1c — structural declaration-source carrier for §0.7.** Owns
+  `declaration_name_preference_rank(&span.file)` in `dag.rs:2735-2764`
+  plus the lowerer call sites at `lower.rs:1451-1452` and
+  `lower.rs:1546-1547`. Trigger: author and dispatch after B4.1a or
+  any time declaration collision/preference behavior is edited.
+  Acceptance must dissolve the file-suffix preference table into a
+  structural declaration-source fact, or explicitly STOP with
+  Grounding/Zero-Floor if the carrier is broader than `DeclarationRef`
+  plus a role layer.
 
 ## Frame
 
-The current runner has two different facts collapsed into strings:
+The current runner has three different facts collapsed into strings:
 
 1. **Program input identity.** `r1_lens_output_input_from_program`
    means "the input value is the claim program DAG reflected from
@@ -76,7 +110,7 @@ Plain `DeclarationRef` already carries "this field names a
 declaration" but it does not, by itself, distinguish ordinary
 declaration values from the special program-input role, nor does it
 load the referenced lens program, nor does it say which bind is the
-claim output. B4.1 should land the smallest structural role layer
+claim output. B4.1a should land the smallest structural role layer
 needed by the runner, then migrate the consumers.
 
 ## Slice
@@ -110,7 +144,7 @@ needed by the runner, then migrate the consumers.
      value port should be compared.
    - If the current verification payload cannot express "this bind is
      the claim output" without a broader role model, STOP and split a
-     named B4.1a follow-up brief before implementation.
+     named B4.1a-runner-output follow-up brief before implementation.
    - Do not replace the file-name map with another string-to-string
      registry.
 
@@ -144,10 +178,10 @@ needed by the runner, then migrate the consumers.
 - [ ] Canonical lens lookup no longer depends on fixture filename or
       `include_str!` once the referenced lens identity is structurally
       available. If this proves to require a separate registry carrier,
-      STOP and split that registry carrier as B4.1a.
+      STOP and split that registry carrier as B4.1a-lens-registry.
 - [ ] `cost_bind_for_claim_file` and its `TestClaim.file_name` routing
-      are removed or split into a named B4.1a follow-up before any
-      runner migration PR proceeds.
+      are removed or split into a named B4.1a-runner-output follow-up
+      before any runner migration PR proceeds.
 - [ ] Claim output-bind selection is carried by a structural
       `DeclarationRef`/role reference, not by fixture filename or bind
       name strings.
@@ -173,6 +207,9 @@ needed by the runner, then migrate the consumers.
 - **Canonical lens identity requires loading a second DAG by path.**
   Do not replace one `include_str!` bridge with another string registry;
   split a structural lens-registry carrier brief.
+- **§0.5 type-alias or §0.7 declaration-source work is pulled into
+  this runner PR.** Stop and split to B4.1b or B4.1c unless Director
+  explicitly expands this brief.
 - **A fixture cannot express the program-input role without a string
   sentinel.** Stop; the carrier is under-specified.
 - **DB-8 drifts unexpectedly.** Stop immediately.
@@ -183,13 +220,14 @@ needed by the runner, then migrate the consumers.
   `std/algebra.dag` skip.
 - Not touching B4.3 emit-helper carriers.
 - Not touching B4.4 extdeps fixture-set carrier.
-- Not deleting file-preference rank in this PR; §0.7 likely needs a
-  dedicated declaration-source carrier after the B4.1 runner slice.
+- Not touching B4.1b §0.5 type-alias bridge.
+- Not touching B4.1c §0.7 declaration-source/file-preference rank.
 
 ## Reporting
 
-Single PR for B4.1 once implemented. Title:
-`fix(v3): B4.1 migrate runner identity bridges to DeclarationRef roles`.
+Single PR for B4.1a once implemented. Title:
+`fix(v3): B4.1a migrate runner identity bridges to DeclarationRef roles`.
 PR body must cite this brief, include the existing-authority audit
-above, and record whether canonical lens identity stayed in B4.1 or
-was split to B4.1a.
+above, and record whether canonical lens identity stayed in B4.1a or
+was split to B4.1a-lens-registry. Director must queue B4.1b and B4.1c
+before closing the parent B4.1 DeclarationRef migration.
