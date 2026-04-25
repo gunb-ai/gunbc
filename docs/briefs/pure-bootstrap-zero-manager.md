@@ -138,26 +138,42 @@ declares workflow including N=0 resolution).
 are fill queues operating in parallel; any available worker picks
 top-priority unblocked work.
 
-**Pre-promotion phase (Day-1 dispatch):**
+**Pre-promotion phase (Day-1 dispatch).** Cascade promotion requires
+**four** pre-promotion items per
+[`design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md)
+"Pre-promotion deliverables" + "What gate" sections:
 
-- **Pre-promotion deliverable 1: 35-file audit table.** Author the
-  file-by-file mapping (file → why-currently-hand-authored →
+- **Deliverable 1: 35-file audit table.** Author the file-by-file
+  mapping (file → why-currently-hand-authored →
   migration-path-into-PB-lane) inline for the cascade promotion PR.
   Director already authored a starting categorization in
   conversation with PM; this manager refines and authorities it.
-- **Pre-promotion deliverable 2: PB-1 brief amendment.** Amend
+- **Deliverable 2: PB-1 brief amendment.** Amend
   [`pb-1-data-driven-bootstrap.md`](pb-1-data-driven-bootstrap.md)
   non-goals to align with 0-floor (currently they explicitly
   reject deletion of tokenize/parse/lower/infer/emit and reject
   binary-blob format; under 0-floor those non-goals invert as
   scope absorbed into PB-* program lanes).
-- **Pre-promotion deliverable 3: first prototyped lane closure.**
-  Pick one PB-* lane and execute it end-to-end (e.g., PB-Substrate
-  pilot or PB-1-a continuation) to prove the migration pattern
-  before the cascade promotion PR locks the framing.
+- **Deliverable 3: TESTING.md "Post-R2 shape" rewrite.** Per
+  design doc Promotion mechanism — TESTING.md residual carve-outs
+  (compiler-internal unit tests for Rust-only helpers; external-
+  toolchain boundary tests) dissolve under 0-floor. **Authoring
+  ownership = Director-call at promotion time** per design doc:
+  bundle into cascade PR, or sibling PR landed first. This manager
+  surfaces the readiness signal (when PB-Runtime and ExecuteCommand-
+  based TestClaim migration work is sufficient evidence to author
+  the rewrite); Director picks bundle-vs-sibling and either authors
+  or directs authoring.
+- **Gate item 4: first prototyped lane closure.** Per design doc
+  Promotion mechanism's "What gate" — cascade PR includes at least
+  one prototyped lane closure proving an existing hand-Rust file
+  can be retired via `.dag` migration without regression. This
+  manager picks the lane (e.g., PB-Substrate pilot or PB-1-a
+  continuation) and executes end-to-end before the cascade locks
+  the framing.
 
-These three are this manager's first work; they gate cascade
-promotion.
+Items 1, 2, 4 are this manager's authoring; item 3's authoring is
+Director-call. All four gate cascade promotion.
 
 **Post-promotion phase (parallel-capable):**
 
@@ -242,12 +258,12 @@ promotes; then transitions here.
 
 ### Up to director
 
-- **Cascade promotion PR.** This manager prepares the three pre-
-  promotion deliverables (audit table + PB-1 brief amendment +
-  first prototyped lane closure); Director authors the cascade PR
-  per the design doc's Promotion mechanism. Atomic across multiple
-  authority docs; Director's call on bundling vs sibling for
-  TESTING.md rewrite.
+- **Cascade promotion PR.** This manager prepares three of the
+  four pre-promotion items (audit table + PB-1 brief amendment +
+  first prototyped lane closure); the fourth (TESTING.md rewrite)
+  is Director-call on authoring per design doc Promotion mechanism.
+  Director authors the cascade PR itself (atomic across multiple
+  authority docs) using the manager's deliverables as inputs.
 - **Release-ledger placement.** Whether the program lands as R2
   absorption / separately-named program / under Director closure
   is a Director call at promotion time per the design doc.
@@ -266,11 +282,16 @@ Lane-owner dispatch status (update as sub-deliverables close).
 Section populates on cascade promotion + first dispatches; entries
 below are scaffolding.
 
-**Pre-promotion deliverables (gates the cascade promotion PR):**
+**Pre-promotion items (all four gate the cascade promotion PR):**
 - [ ] 35-file audit table authored (file → why-current-hand-authored
-      → migration-path-into-PB-lane). Inline in cascade PR.
+      → migration-path-into-PB-lane). Inline in cascade PR. **Owner:** this manager.
 - [ ] PB-1 brief amendment ([`pb-1-data-driven-bootstrap.md`](pb-1-data-driven-bootstrap.md))
-      non-goals revised to align with 0-floor. Amends in cascade PR.
+      non-goals revised to align with 0-floor. Amends in cascade PR. **Owner:** this manager.
+- [ ] TESTING.md "Post-R2 shape" rewrite (residual carve-outs dissolve).
+      **Owner: Director-call** at promotion time per design doc — bundle into
+      cascade PR or sibling PR landed first; this manager surfaces the
+      readiness signal when PB-Runtime + ExecuteCommand-based TestClaim
+      migration is sufficient evidence to author the rewrite.
 - [ ] First prototyped lane closure (PB-Substrate pilot or PB-1-a
       continuation) proving migration pattern works. Cited in
       cascade PR.
