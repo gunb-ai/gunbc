@@ -1,36 +1,17 @@
 //! **Layer:** integration
+//!
+//! PB-1-e — in-tree DB-8 cross-check is now "the committed bootstrap snapshot is
+//! internally consistent": `Dag::new()` is diagnostic-clean and byte-stable across
+//! clones, and the std-only snapshot is a strict prefix-shape of the full snapshot.
+//! The fresh-parse-vs-snapshot acid test runs at regen time (`regen_bootstrap` +
+//! CI's `git diff --exit-code` on the committed `bootstrap_*_generated.rs`),
+//! not on every `cargo test`. See `docs/briefs/pb-1-e-residual-scaffold-retirement-worker.md`.
 
 use v3_compiler::{
-    compile_full_bootstrap_dag, compile_full_bootstrap_without_parse_surface_dag,
-    generated_full_bootstrap_dag, generated_full_bootstrap_without_parse_surface_dag,
-    generated_std_bootstrap_dag,
+    generated_full_bootstrap_dag, generated_std_bootstrap_dag,
     serialize::{first_difference, serialize_dag},
     Dag,
 };
-
-fn assert_no_bootstrap_drift(label: &str, runtime: &Dag, generated: &Dag) {
-    if let Some(diff) = first_difference(runtime, generated) {
-        panic!("{label} drifted from runtime bootstrap: {}", diff.detail);
-    }
-}
-
-#[test]
-fn generated_full_bootstrap_snapshot_matches_runtime_full_bootstrap() {
-    let runtime = compile_full_bootstrap_dag();
-    let generated = generated_full_bootstrap_dag();
-    assert_no_bootstrap_drift("generated full bootstrap", &runtime, &generated);
-}
-
-#[test]
-fn generated_full_bootstrap_without_parse_surface_matches_runtime_variant() {
-    let runtime = compile_full_bootstrap_without_parse_surface_dag();
-    let generated = generated_full_bootstrap_without_parse_surface_dag();
-    assert_no_bootstrap_drift(
-        "generated no-runtime-mirrors bootstrap",
-        &runtime,
-        &generated,
-    );
-}
 
 #[test]
 fn full_bootstrap_extends_std_snapshot() {
