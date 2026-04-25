@@ -5,10 +5,10 @@
 // are loaded from committed generated snapshots:
 //
 // - `std_fixtures`                 (`dsl/std/*.dag`)
-// - `STAGED_FILES`                 (`src/v3/std/*.dag`)
-// - `V3_SPECS`                     (`src/v3/spec/*.dag`)
-// - `COMPILER_FILES`               (`src/v3/compiler/*.dag`, minus `tokenize.dag`)
-// - `EXTDEPS_BOOTSTRAP_FIXTURES`   (scoped subset of `dsl/extdeps/languages/*/*.dag`)
+// - `STAGED_FILES` / `V3_SPECS` / `COMPILER_FILES` / extdeps primitives — fresh
+//   tokenize/parse/lower for these lives in `bootstrap_regen_fresh.rs` (feature
+//   `bootstrap-regen-fresh`, `regen_bootstrap` only); `Dag::new()` does not load
+//   them from disk at runtime.
 //
 // `compile_parse_surface_std_authority_dag` uses the companion snapshot
 // that omits `src/v3/std/parse_surface.dag`, so a fresh parse+lower of
@@ -60,195 +60,11 @@
 // go through. A failed bootstrap is visible to callers without a
 // side channel.
 
-use crate::dag::{ArrowBody, Dag, Declaration, DeclarationId, TemplateArgument, TypeConnective};
+use crate::dag::{ArrowBody, Dag, Declaration, TemplateArgument, TypeConnective};
 use crate::diagnostics::{Diagnostic, SourceSpan};
-use crate::lower::{collect_symbols_phase, lower_bodies_phase, resolve_pending_identifiers};
-use crate::parse::{parse, SurfaceModule};
 use crate::pipeline_authority::{ordered_pipeline_stages, PIPELINE_AUTHORITY_FILE};
-use crate::tokenize::tokenize;
-use std::collections::HashMap;
-
-const LOGIC_DAG: &str = include_str!("../../../../dsl/std/logic.dag");
-const BIT_DAG: &str = include_str!("../../../../dsl/std/bit.dag");
-const ALGEBRA_DAG: &str = include_str!("../../../../dsl/std/algebra.dag");
-const INTEGER_DAG: &str = include_str!("../../../../dsl/std/integer.dag");
-const FLOAT_DAG: &str = include_str!("../../../../dsl/std/float.dag");
-const STRING_TYPE_DAG: &str = include_str!("../../../../dsl/std/string_type.dag");
-const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
-
-// Scoped extdeps bootstrap authorities. See the `EXTDEPS_BOOTSTRAP_FIXTURES`
-// commentary in the file header: only pure structural-data extdeps authorities
-// are in scope, and expansion is a file-system edit to this array.
-const EXTDEPS_RUST_PRIMITIVES_DAG: &str =
-    include_str!("../../../../dsl/extdeps/languages/rust/primitives.dag");
-
-const EXTDEPS_BOOTSTRAP_FIXTURES: &[(&str, &str)] = &[(
-    "dsl/extdeps/languages/rust/primitives.dag",
-    EXTDEPS_RUST_PRIMITIVES_DAG,
-)];
-
-// M1(3) PR-B-unwind R1 — the v3-only staged files are enumerated
-// by `build.rs` at compile time and exposed via generated statics:
-//
-//   - `STAGED_FILES` for `src/v3/std/*.dag`
-//   - `V3_SPECS` for `src/v3/spec/*.dag`
-//   - `COMPILER_FILES` for `src/v3/compiler/*.dag`
-//
-// Adding a new staged std/spec/compiler file is a pure file-system change:
-// drop the `.dag` file in the staged directory, the build script
-// picks it up at the next compile, and the bootstrap loop loads it
-// without any `bootstrap.rs` edit.
-//
-// The pre-unwind shape had `const RUST_DAG: &str = include_str!(...)`
-// constants here and a hardcoded fixture array, which PR #445
-// review flagged as a duplicate-authority bug: the on-disk spec
-// files and the Rust constants were two parallel representations
-// of the same set. The build-script-generated staged arrays are the
-// single authority.
-//
-// **Why these live in `src/v3/std/` and `src/v3/spec/` instead of
-// `dsl/std/`.** v2's CI pipeline scans `dsl/` recursively and tries
-// to resolve every identifier in every record-literal field value.
-// v2 doesn't know about v3-only surface/substrate features, so
-// keeping staged files outside the v2-scanned tree is the cleanest
-// separation. v3 reads them via the build-script-generated arrays —
-// no source-root scanning involved.
-include!(concat!(env!("OUT_DIR"), "/v3_staged_files.rs"));
-include!(concat!(env!("OUT_DIR"), "/v3_specs.rs"));
-include!(concat!(env!("OUT_DIR"), "/v3_compiler_files.rs"));
 
 const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
-
-fn declaration_name_preference_rank(file: &str) -> usize {
-    if file.starts_with("src/v3/") {
-        2
-    } else if file.starts_with("dsl/") {
-        0
-    } else {
-        1
-    }
-}
-
-// PB-1 scaffold boundary: this legacy std-only runtime bootstrap path exists
-// solely for `regen_bootstrap` and the PB-1 equivalence tests. Production
-// bootstrap MUST seed from `Dag::std_fixture_bootstrap_snapshot()`, not from a
-// fresh `load_fixtures(std_fixtures())` pass.
-//
-// Named dissolution trigger: delete this helper once the PB-1 drift harness no
-// longer needs to re-run the pre-snapshot std bootstrap path (for example if
-// regen/tests compare against a direct `.dag`-to-snapshot receipt without
-// reconstructing the runtime std Dag in-process).
-pub(crate) fn bootstrap_std_fixtures_only(dag: &mut Dag) {
-    *dag = Dag::empty();
-    load_fixtures(dag, std_fixtures());
-    dag.populate_primitive_cache();
-}
-
-pub(crate) fn bootstrap_all_runtime(
-    dag: &mut Dag,
-    excluded_staged_paths: &[&str],
-    excluded_compiler_paths: &[&str],
-) {
-    *dag = Dag::std_fixture_bootstrap_snapshot();
-    // The std snapshot already represents `load_fixtures(std_fixtures())`
-    // after one `resolve_pending_identifiers` + `populate_primitive_cache`
-    // pass. Loading staged/spec/compiler fixtures on top re-runs both
-    // operations for the *combined* bootstrap Dag. That double-pass shape is
-    // intentional and must stay idempotent: the first pass closes the frozen
-    // std snapshot, the second closes cross-authority references introduced by
-    // `src/v3/std/*.dag`, `src/v3/spec/*.dag`, and `src/v3/compiler/*.dag`
-    // (while still tolerating dangling bootstrap-range stubs such as `Tuple`).
-    load_runtime_bootstrap_authorities(dag, excluded_staged_paths, excluded_compiler_paths);
-}
-
-pub(crate) fn bootstrap_runtime_authorities_on(
-    dag: &mut Dag,
-    excluded_staged_paths: &[&str],
-    excluded_compiler_paths: &[&str],
-) {
-    load_runtime_bootstrap_authorities(dag, excluded_staged_paths, excluded_compiler_paths);
-}
-
-fn load_runtime_bootstrap_authorities(
-    dag: &mut Dag,
-    excluded_staged_paths: &[&str],
-    excluded_compiler_paths: &[&str],
-) {
-    let staged_iter = STAGED_FILES
-        .iter()
-        .copied()
-        .filter(|(path, _)| !excluded_staged_paths.contains(path));
-    let compiler_iter = COMPILER_FILES
-        .iter()
-        .copied()
-        .filter(|(path, _)| !excluded_compiler_paths.contains(path));
-    let fixtures: Vec<(&str, &str)> = staged_iter
-        .chain(V3_SPECS.iter().copied())
-        .chain(compiler_iter)
-        .chain(EXTDEPS_BOOTSTRAP_FIXTURES.iter().copied())
-        .collect();
-    load_fixtures(dag, &fixtures);
-    materialize_pipeline_realizations(dag);
-    dag.populate_primitive_cache();
-}
-
-fn std_fixtures() -> &'static [(&'static str, &'static str)] {
-    &[
-        ("dsl/std/logic.dag", LOGIC_DAG),
-        ("dsl/std/bit.dag", BIT_DAG),
-        ("dsl/std/algebra.dag", ALGEBRA_DAG),
-        ("dsl/std/integer.dag", INTEGER_DAG),
-        ("dsl/std/float.dag", FLOAT_DAG),
-        ("dsl/std/types.dag", TYPES_DAG),
-        ("dsl/std/string_type.dag", STRING_TYPE_DAG),
-    ]
-}
-
-fn load_fixtures(dag: &mut Dag, fixtures: &[(&str, &str)]) {
-    let mut parsed: Vec<(SurfaceModule, Vec<bool>)> = Vec::with_capacity(fixtures.len());
-    for (file, source) in fixtures.iter() {
-        let Some(module) = parse_fixture(dag, source, file) else {
-            continue;
-        };
-        let (_stale_symbols, is_first) = collect_symbols_phase(dag, &module.items);
-        parsed.push((module, is_first));
-    }
-
-    // Rebuild the symbols map from the shared declaration table. By
-    // now every top-level declaration across all fixtures is present
-    // with its type_params slot populated, so Phase 2 can resolve
-    // every cross-file template reference at construction time.
-    // Use the same staged-v3-over-dsl preference policy as
-    // `collect_symbols`, otherwise Phase 1 can register the staged
-    // shadowing declaration but Phase 2 will still lower bodies
-    // against the legacy `dsl/` declaration.
-    let mut shared_symbols: HashMap<String, DeclarationId> = HashMap::new();
-    for d in dag.declarations() {
-        if let Some(name) = &d.name {
-            match shared_symbols.get(name).copied() {
-                None => {
-                    shared_symbols.insert(name.clone(), d.id);
-                }
-                Some(existing_id) => {
-                    let existing = dag.declaration(existing_id);
-                    let new_rank = declaration_name_preference_rank(&d.span.file);
-                    let existing_rank = declaration_name_preference_rank(&existing.span.file);
-                    if new_rank > existing_rank {
-                        shared_symbols.insert(name.clone(), d.id);
-                    }
-                }
-            }
-        }
-    }
-
-    // Phase 2: lower bodies using the shared symbols map.
-    for (module, is_first) in parsed.iter() {
-        lower_bodies_phase(dag, module, &shared_symbols, is_first);
-    }
-
-    resolve_pending_identifiers(dag);
-    patch_kernel_bool_boolean_algebra_inhabits(dag);
-}
 
 /// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).
 ///
@@ -266,7 +82,7 @@ fn load_fixtures(dag: &mut Dag, fixtures: &[(&str, &str)]) {
 /// `type … inhabits … =` in `dsl/` (then express
 /// `type Bool inhabits BooleanAlgebra<Bool> = True | False` in
 /// `dsl/std/types.dag` and delete `patch_kernel_bool_boolean_algebra_inhabits`).
-fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
+pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
     const BOOL_TYPES_FILE: &str = "dsl/std/types.dag";
     let Some(bool_decl) = dag
         .declarations()
@@ -348,7 +164,7 @@ fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
 // (same runtime for every target), so "one realization per stage" is
 // the correct authority there.
 
-fn materialize_pipeline_realizations(dag: &mut Dag) {
+pub(crate) fn materialize_pipeline_realizations(dag: &mut Dag) {
     let stages = match ordered_pipeline_stages(dag) {
         Ok(stages) => stages,
         Err(error) => {
@@ -417,23 +233,6 @@ fn report_pipeline_authority_error(dag: &mut Dag, name: String) {
         span: SourceSpan::new(PIPELINE_AUTHORITY_FILE, 0, 0),
         fixes: Vec::new(),
     });
-}
-
-fn parse_fixture(dag: &mut Dag, source: &str, file: &str) -> Option<SurfaceModule> {
-    let tokens = match tokenize(source, file) {
-        Ok(t) => t,
-        Err(diag) => {
-            dag.attach_diagnostic(diag);
-            return None;
-        }
-    };
-    match parse(&tokens, file) {
-        Ok(m) => Some(m),
-        Err(diag) => {
-            dag.attach_diagnostic(diag);
-            None
-        }
-    }
 }
 
 #[cfg(test)]
