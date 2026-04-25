@@ -41,7 +41,13 @@ Under that discipline, R2's goals are the Tier-1 thesis claims that are *not* ga
    - **Cardinality-substrate subset sufficient to close int-literal magnitude refinement** — enough cardinality modeling to let `IntLit` carry a magnitude that narrows to target int algebra at reconciliation. Consumer: T-Modeling int-lit (Goal 2). Does NOT commit to the full cardinality-substrate capability (fixed-width-types by-construction, container cardinality bounds in Grounding, etc. — those remain open design calls outside R2 scope unless additional R2 items demand them).
    - **Nominal-opaque substrate sufficient to graduate `Secret<T>`** — enough nominal-type modeling to carry construction-restriction (`where only X may construct`) semantics. Consumer: T-Modeling Secret<T> (Goal 2). Adjacent to DB-11 alias-RHS `where` (landed in R1 via PR #703); may or may not overlap DB-18 territory. Acceptance is `Secret<T>` graduation, not a general nominal-type program.
    - **Parametric algebra attachment subset sufficient to inhabit `Dimension<Carrier>` in an abelian group algebra** — enough substrate capability to let `Dimension<Unit>` carry phantom-parameter arithmetic (propagate through operations, compile error on unit-mismatch). Consumer: T-Modeling Dimensions (Goal 2). Primary authority is `ROADMAP.md §"Post-R1 Program — Grounding Completeness"` (the "Why post-R1" paragraph), which tags this dependency `DB-18 parametric algebra attachment` — but `docs/db-history/db-18.md` currently scopes DB-18 to workflow-effect carrier + Rust reflection (Part 2 shipped) + Go-accessor follow-up (Part 3), not parametric algebra attachment. That mismatch is an existing ROADMAP ↔ db-history inconsistency, not one introduced by this doc; a pre-promotion DB-lane rename or new DB number may be warranted. R2 acceptance is: `Dimension<Unit>` phantom-parameter arithmetic compiles with unit-mismatch errors, independent of the DB-tag the substrate ends up carrying.
-   - **Top-level `ValueBody` list/sum subset + `std.unicode` bootstrap inclusion sufficient to close `sub_charclass_in_std_unicode` phase-2** — enough Class 5 Gap 3 substrate capability for `data ascii_scan_order: List<CharClass> = [Whitespace, Digit, IdentStart, IdentContinue]` to lower structurally (rather than fall to `ValueBody::Unparsed` and trigger R14 hard-fail), plus the `Dag::new()` bootstrap/load-set decision that makes `std.unicode::CharClass` resolvable from `tokenize.dag`. Consumer: tokenizer (R1 T-Sub deferred this phase to substrate per Surface Manager handoff 2026-04-24; reclassified to R2 per ROADMAP amendment). Does NOT commit to the full Class 5 Gap 3 substrate-capability close (other top-level `ValueBody` consumers may need additional variants beyond list/sum); scoped to what unblocks the tokenizer charclass row only.
+   - **Top-level `ValueBody` list/sum subset + `std.unicode` bootstrap inclusion** — enough Class 5 Gap 3 substrate capability for `data ascii_scan_order: List<CharClass> = [Whitespace, Digit, IdentStart, IdentContinue]` (and similar list/sum top-level data declarations) to lower structurally (rather than fall to `ValueBody::Unparsed` and trigger R14 hard-fail), plus the `Dag::new()` bootstrap/load-set decision that makes `std.unicode::CharClass` and other extdeps-language declarations resolvable from compiler authorities. **Two named consumers, both of which share this list/sum substrate work**:
+     1. **Tokenizer charclass phase-2** — original consumer per PR #762 reclassification (R1 T-Sub deferred this phase to substrate per Surface Manager handoff 2026-04-24). Shape: `data ascii_scan_order: List<CharClass> = [...]` (list of sum).
+     2. **Engine sharpened-(b) full pilot enumeration** — surfaced by R2 Grounding loader-close worker (`clever-owl-123`) probe on PR #776 (`rust_pilot_primitives: List<RustPrimitive>` lowers as `Declaration` but `value_body` is `Unparsed(SourceSpan)`). Shape: list of sum (same substrate work as charclass).
+     
+     **Excluded from this sub-lane (substrate shape differs)**: `kernel_algebra_profile` mirror dissolution (existing P2 drift ratchet at `dag.rs:1530`) is a `Map<String, AlgebraProfile>` body — **map-shaped, not list-of-sum**. Hits the same R14 `ValueBody::Unparsed` hard-fail path, but requires a different `ValueBody` extension (e.g., `ValueBody::Map(...)` variant + lowerer support for top-level map literals). Tracked separately as a sibling future T-Substrate sub-lane / future cascade item; not bundled here per substrate-shape honesty (codex BLOCKING on PR #782 caught this scope conflation; corrected 2026-04-25).
+     
+     Does NOT commit to the full Class 5 Gap 3 substrate-capability close; scoped to the list/sum subset for the two named consumers. ROI is 2× the original single-consumer scoping (tokenizer + Engine), not 3× as initially framed.
 
 4. **Remaining R2+ impossible-bug classes** — three classes currently tagged `[R2+]` in `ROADMAP.md §"Lane acceptance — .dag gates"` (T-Demo row; THESIS §"Enumerable impossible-bug classes" is the authority on scheduling tags):
    - Nested-optional flatten
@@ -78,15 +84,15 @@ Continues `docs/briefs/grounding-manager.md` (refreshed for R2 scope on promotio
 |---|---|---|---|
 | T-Ground | XL | Grounding | Full T-Ground-* sub-program (Goal 1) |
 | T-Modeling | M | Director (ad-hoc) | int-lit / Secret<T> / Dimensions (Goal 2) |
-| T-Substrate | M | Director (ad-hoc) | Four scoped-subset sub-lanes (Goal 3): cardinality-for-int-lit; nominal-opaque-for-Secret; parametric-algebra-attachment-for-Dimensions; top-level-ValueBody-list/sum + std.unicode-bootstrap-for-tokenizer-charclass — each scoped to its paired R2 consumer (T-Modeling × 3 + tokenizer × 1), not full substrate-capability |
+| T-Substrate | M | Director (ad-hoc) | Four scoped-subset sub-lanes (Goal 3): cardinality-for-int-lit; nominal-opaque-for-Secret; parametric-algebra-attachment-for-Dimensions; top-level-ValueBody-list/sum + std.unicode-bootstrap (2 named consumers: tokenizer charclass phase-2 + Engine sharpened-(b) pilot enumeration — both share list-of-sum substrate work) — each sub-lane scoped to its paired R2 consumer set (T-Modeling × 3 + dual-consumer × 1), not full substrate-capability. Note: `kernel_algebra_profile` mirror dissolution is map-shaped (not list/sum) — tracked separately as a future T-Substrate sub-lane requiring distinct `ValueBody::Map` substrate work. |
 | T-ImpossibleBugs | S | Director (ad-hoc) | nested-optional flatten / unhandled-diagnostic-paths / unenumerated-effects (Goal 4) |
 | T-PerMethodMetadata | S | Director (ad-hoc) | §6a per-method-metadata carrier pick (Goal 5) — design-call close, not substrate-capability work |
 
 **Goal 6 (R2 closure demo) is not a lane.** It is a cross-lane closure discipline (see "Demo discipline" below): each lane's closure PR ships its own simple "it runs" artifact; Director coordinates surfacing. No separate T-Demo lane owner, no separate demo-authoring critical path.
 
 **Lanes deliberately absent (R1 gates, closed by R1 lane acceptance):**
-- T-LensMigration / `lens_producer_files_remaining` — R1 T-PB-A gate per PR #752.
-- T-ShimFloor / `pb_hand_rust_at_shim_floor` / `pb_compiler_std_ratchet_zero` / `pb_rust_tests_outside_residual_zero` — R1 T-PB-A + T-PB-B gates.
+- T-LensMigration / `lens_producer_files_remaining` — R1 T-PB-A gate per PR #752. **Cascade-promotion update 2026-04-25:** Pure Bootstrap to Zero program (LIVE per `docs/design-pure-bootstrap-zero.md`) absorbs the lens-producer migration as part of its PB-* lane structure. R1 retains the gate; Zero-Floor program owns the actual file-by-file migration work toward 0-floor.
+- ~~T-ShimFloor / `pb_hand_rust_at_shim_floor` / `pb_compiler_std_ratchet_zero` / `pb_rust_tests_outside_residual_zero` — R1 T-PB-A + T-PB-B gates.~~ **Cascade-promotion update 2026-04-25:** Pure Bootstrap to Zero program (LIVE) absorbs all shim-floor work; the gate target shifts from ≤5 to 0 (per ROADMAP T-PB-A row amendment in cascade promotion PR). R1's `pb_hand_rust_at_shim_floor` predicate redirects through the Zero-Floor program's lane structure.
 - T-EFamilyClose — R1 T-LaneE's critical-path carrier work (E-T, E-C, E-I, E-P, E-M sub-lanes), enabling the R1 `complexity_merge_sort_is_nlogn` + `complexity_merge_sort_v3_matches_v2_oracle` + `lane_e_bundled_witness_host_emit_parity` gates. All E-family carrier-port work closes in R1; only the §6a metadata-pick residual inherits to R2 (Goal 5).
 - T-TestGen-tail (`testgen_mock_backed_integration_safe` / `MockBackedInvariant` wiring) — R1 T-TestGen gate per `ROADMAP.md §"Lane acceptance — .dag gates"`. Closes in R1.
 
@@ -103,20 +109,24 @@ T-Ground:         Pilot → Rust → Engine → Tests → Dissolve   (critical p
 T-Substrate:      cardinality-for-int-lit (subset) ──→ unblocks T-Modeling int-lit
                   nominal-opaque-for-Secret (subset) ─→ unblocks T-Modeling Secret<T>
                   parametric-algebra-for-Dimensions (subset) ─→ unblocks T-Modeling Dimensions
-                  ValueBody-list/sum + std.unicode-bootstrap (subset) ─→ unblocks tokenizer charclass phase-2
+                  ValueBody-list/sum + std.unicode-bootstrap (subset) ─→ unblocks 2 consumers (shared list-of-sum substrate):
+                                                                       (i) tokenizer charclass phase-2
+                                                                       (ii) Engine sharpened-(b) pilot enumeration
+                  (kernel_algebra_profile mirror dissolution is map-shaped, NOT list/sum;
+                   tracked separately as a future T-Substrate sub-lane requiring ValueBody::Map extension)
 T-Modeling:       int-lit      ← T-Substrate cardinality-for-int-lit
                   Secret<T>    ← T-Substrate nominal-opaque-for-Secret
                   Dimensions   ← T-Substrate parametric-algebra-for-Dimensions
-Tokenizer charclass phase-2 (consumer of T-Substrate's 4th subset; not a peer lane —
-                  consumed inside T-Substrate scope, deliverable owned by tokenizer code):
-                  retype to Char / List<Char> / CharClass ← T-Substrate ValueBody-list/sum + std.unicode-bootstrap
+Dual-consumer of T-Substrate's 4th subset (neither is a peer lane — both consumed inside T-Substrate scope):
+                  (i)   Tokenizer charclass phase-2: retype to Char / List<Char> / CharClass
+                  (ii)  Engine sharpened-(b): full pilot enumeration via symbolic walk of rust_pilot_primitives
 T-ImpossibleBugs: 3 independent classes (any worker)
 T-PerMethodMetadata: §6a pick (any worker; independent)
 (Goal 6 demo artifacts ship with each lane's closure PR — not a
  separate dependency-DAG node; see Demo discipline section.)
 ```
 
-Parallel-capable work at any time: Grounding has 2 fill slots (Python, Go) alongside its critical path; Director dispatch has 4 T-Substrate sub-lanes (3 T-Modeling unblocks + 1 tokenizer-charclass unblock) + 3 T-Modeling items (each pair-blocked) + 1 tokenizer-charclass deliverable (pair-blocked on the 4th T-Substrate sub-lane) + 3 T-ImpossibleBugs classes + 1 T-PerMethodMetadata pick, for roughly 8–12 slots depending on T-Substrate unblock timing.
+Parallel-capable work at any time: Grounding has 2 fill slots (Python, Go) alongside its critical path; Director dispatch has 4 T-Substrate sub-lanes (3 T-Modeling unblocks + 1 dual-consumer unblock covering 2 consumers) + 3 T-Modeling items (each pair-blocked) + 2 deliverables pair-blocked on the 4th T-Substrate sub-lane (tokenizer charclass, Engine sharpened-(b)) + 3 T-ImpossibleBugs classes + 1 T-PerMethodMetadata pick, for roughly 9–13 slots depending on T-Substrate unblock timing.
 
 ## R1 closure criteria
 
@@ -176,25 +186,27 @@ THESIS authority (`THESIS.md:155-182`) lists:
 
 **Timeline:** lands as part of the R1 closure → R2 promotion transition (step 4 in Transition mechanics above). Not a separate program.
 
-### 2. Pre-promotion `≤5 irreducible-shim` gate-name review (gate before ROADMAP promotion)
+### 2. ~~Pre-promotion `≤5 irreducible-shim` gate-name review~~ — **RETRACTED (2026-04-25 cascade promotion)**
 
-Surfaced by user question on 2026-04-24: the "≤5 irreducible-shim" floor in `docs/design-pure-bootstrap.md` is framed as a principled target but is actually a generous ceiling. The doc itself names the narrower case: *"If (4) and (5) can be generated, the shim is 3 files"* (§"Irreducible shim (target state)") — and v2 achieves the floor with 2 files (CLI + interpreter). The principled boundary floor is 2–3, not 5.
+> **🔄 RETRACTED** — both Option A (sharpen the ≤5/3/2 trajectory) and Option B (rename gate to `pb_hand_rust_at_boundary_floor`) framed gate-name choices around fractional-shim numbers. Under the cascade-promoted 0-floor target per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md) (LIVE 2026-04-25; supersedes the prior ≤5-floor framing in `docs/design-pure-bootstrap.md`), the gate threshold is **0**, not "boundary-determined 2-3". Both options below are moot. The predicate name `pb_hand_rust_at_shim_floor` is retained as housekeeping (semantic shifted: "shim floor" now reads as 0 under cascade promotion); a future predicate rename to `pb_hand_rust_zero` is post-cascade housekeeping, not a pre-promotion blocker. Section preserved below for audit-trail readability of how the design call was framed before cascade.
 
-"≤5" reads as a principled absolute in gate names (e.g., `pb_hand_rust_at_shim_floor`) when it's really an upper bound carried for continuity with the 2024 design doc. Leaving the number unchallenged risks the "close-everything" claim of R2 resting on a shim-floor number that's looser than the principled floor.
+~~Surfaced by user question on 2026-04-24: the "≤5 irreducible-shim" floor in `docs/design-pure-bootstrap.md` is framed as a principled target but is actually a generous ceiling. The doc itself names the narrower case: *"If (4) and (5) can be generated, the shim is 3 files"* (§"Irreducible shim (target state)") — and v2 achieves the floor with 2 files (CLI + interpreter). The principled boundary floor is 2–3, not 5.~~
 
-**Required before promotion:** one of —
-- **Option A (sharpen-and-keep)** — edit `design-pure-bootstrap.md` to explicitly name the trajectory (`baseline → ~20 → 5 → 3 → 2`); keep `≤5` as the gate name but document that the principled boundary-determined floor is 2–3; promote R2 structure as-is.
-- **Option B (rename)** — rename the gate to `pb_hand_rust_at_boundary_floor` (threshold = boundary-determined, not a fixed number); land the doc edit + gate rename together; promote R2 structure after rename lands.
+~~"≤5" reads as a principled absolute in gate names (e.g., `pb_hand_rust_at_shim_floor`) when it's really an upper bound carried for continuity with the 2024 design doc. Leaving the number unchallenged risks the "close-everything" claim of R2 resting on a shim-floor number that's looser than the principled floor.~~
 
-Authority: `docs/design-pure-bootstrap.md` §"Irreducible shim (target state)"; v2 empirical evidence (CLI + interpreter = 2 files per the same doc's "Inspiration: v2's model" section).
+~~**Required before promotion:** one of —~~
+- ~~**Option A (sharpen-and-keep)** — edit `design-pure-bootstrap.md` to explicitly name the trajectory (`baseline → ~20 → 5 → 3 → 2`); keep `≤5` as the gate name but document that the principled boundary-determined floor is 2–3; promote R2 structure as-is.~~
+- ~~**Option B (rename)** — rename the gate to `pb_hand_rust_at_boundary_floor` (threshold = boundary-determined, not a fixed number); land the doc edit + gate rename together; promote R2 structure after rename lands.~~
 
-Non-blocking for this PR. Not done in this PR because the gate rename is a cross-doc edit with R1-lane-acceptance implications (T-PB-A's gate name would change); both land as prerequisites to the ROADMAP promotion.
+~~Authority: `docs/design-pure-bootstrap.md` §"Irreducible shim (target state)"; v2 empirical evidence (CLI + interpreter = 2 files per the same doc's "Inspiration: v2's model" section).~~
+
+~~Non-blocking for this PR. Not done in this PR because the gate rename is a cross-doc edit with R1-lane-acceptance implications (T-PB-A's gate name would change); both land as prerequisites to the ROADMAP promotion.~~
 
 ## Cross-refs
 
 - Parent: `ROADMAP.md` (sections: `## Release R1 Program`; `## Post-R1 Program — Grounding Completeness`; `## Tracked debts — 2026-04 analyses`).
 - Substrate design: `docs/design-substrate-carrier-port-program.md` (E-family lanes + §6a per-method-metadata).
-- Self-hosting anchor: `docs/design-pure-bootstrap.md` (≤5 shim floor + SG census).
+- Self-hosting anchor: [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md) (LIVE 2026-04-25; 0-floor target + SG census). Supersedes [`docs/design-pure-bootstrap.md`](design-pure-bootstrap.md) (now SUPERSEDED; ≤5-floor framing retracted).
 - Thesis: `THESIS.md §"Enumerable impossible-bug classes"` (R2+ tags authority); `THESIS.md §"Thesis claims — complete list"` (Tier-1 claim lineage).
 - Lens capability: `docs/v3-lens-capability-register.md` (per-lens capability tracking).
 - DB history: `docs/db-history/db-18.md` (DB-18 Part-2 shipped: workflow-effect carrier + Rust reflection; Part-3 queued: Go accessor). Note: `ROADMAP.md §"Post-R1 Program — Grounding Completeness"` tags "DB-18 parametric algebra attachment" as a post-R1 blocker; that label is not obviously aligned with db-history's DB-18 scope — a pre-promotion rename or new DB number may be warranted for the R2 parametric-algebra prereq.

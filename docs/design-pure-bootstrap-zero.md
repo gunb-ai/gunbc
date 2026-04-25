@@ -1,10 +1,20 @@
-# Pure Bootstrap to Zero — Design Proposal
+# Pure Bootstrap to Zero — Design
 
-**Status:** `PROPOSAL` — supersedes the ≤5-floor framing in [`docs/design-pure-bootstrap.md`](design-pure-bootstrap.md) and the 2-3 principled-floor framing introduced via [PR #756](https://github.com/gunb-ai/gunbc/pull/756) on promotion. Until then, this doc is the proposed direction; `design-pure-bootstrap.md` remains the live authority.
+**Status:** `LIVE` (promoted 2026-04-25 via cascade promotion [PR #782](https://github.com/gunb-ai/gunbc/pull/782)). Supersedes the ≤5-floor framing in [`docs/design-pure-bootstrap.md`](design-pure-bootstrap.md) (now marked SUPERSEDED with explicit retraction) and the 2-3 principled-floor framing introduced via [PR #756](https://github.com/gunb-ai/gunbc/pull/756) (also retracted). This doc is the live authority on the Pure Bootstrap to Zero program.
+
+**Promotion evidence chain (cited in cascade promotion PR body):**
+- D1 audit: PRs #769 + #771 + #775 + #777 + #779 (audit doc with substrate-generation already proven; 23 generated files + 24 REGEN_OUTPUTS entries; 38-type substrate.dag coverage survey)
+- D2 PB-1 brief amendment: PR #770 (non-goals revised under 0-floor)
+- D3 TESTING.md "Post-R2 shape" rewrite: bundled into cascade promotion PR (Director-call per Promotion mechanism below)
+- D4(c) characterization: in #775 audit reframe (substrate generation already proven and shipping)
+- D4(a) prototyped lane closure: PR #780 (PB-Substrate v2 — ArithmeticOp/ComparisonOp/LogicalOp/OperatorKind via existing regen pattern)
+- PM acknowledgement: explicit user sign-off on direction + multiple manager-brief reviews from PM session
 
 ### Promotion mechanism
 
-This doc is PROPOSAL until promoted. **Promotion is a single Director-authored cascade PR** that does **all** of the following atomically (no piecewise promotion — the framing change is load-bearing across multiple authorities and partial promotion would create contradiction):
+**(Historical context — promotion executed 2026-04-25 via cascade promotion PR; all retraction steps below were performed atomically per the no-piecewise-promotion clause. Section preserved for audit-trail readability of how the promotion happened.)**
+
+This doc was PROPOSAL until promoted. **Promotion was a single Director-authored cascade PR** that did **all** of the following atomically (no piecewise promotion — the framing change is load-bearing across multiple authorities and partial promotion would have created contradiction):
 
 - **Who promotes:** Director, after Grounding Manager (R2's standing manager) and at least one R2 substrate-prereq sub-lane have produced stable enough evidence that the (γ) shape is achievable in v3's substrate (i.e., not a paper proposal).
 - **What gate:** the cascade PR includes (a) at least one prototyped lane closure proving an existing hand-Rust file can be retired via `.dag` migration without regression, and (b) explicit acknowledgement from PM that the program structure is dispatchable.
@@ -16,7 +26,7 @@ This doc is PROPOSAL until promoted. **Promotion is a single Director-authored c
   - `TESTING.md` "Post-R2 shape" residual section either rewritten in this same cascade PR (bundled) or sibling PR landed first (separated). See "TESTING.md rewrite" section below.
   - This doc's status banner updated from `PROPOSAL` to `LIVE` with promotion date and citing the cascade PR number.
 
-If any retraction step can't land in the same PR (e.g., cascading conflicts), promotion blocks; this doc stays `PROPOSAL` until the cascade can be authored atomically.
+~~If any retraction step can't land in the same PR (e.g., cascading conflicts), promotion blocks; this doc stays `PROPOSAL` until the cascade can be authored atomically.~~ **(Resolved.)** Cascade landed atomically on 2026-04-25; all five retractions present in the cascade PR; doc is now LIVE.
 
 ### Pre-promotion deliverables
 
@@ -125,7 +135,7 @@ Current `TESTING.md` carves out two permanent Rust-authored test categories:
 Both dissolve under 0-floor:
 
 - **Rust-only-helper unit tests** vanish naturally — there are no Rust-only helpers; everything generates from `.dag`.
-- **External-toolchain boundary tests** migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations (the predicate landed in PR #678; runner support landed in #688/#741). A `TestClaim` like *"emit Rust, invoke rustc on output, check exit code"* is structurally identical to today's hand-Rust boundary tests.
+- **External-toolchain boundary tests** migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations as the cascade-named successor pattern. **Capability state today (2026-04-25):** the `ExecuteCommand` predicate is declared (`src/v3/std/verification.dag:115-119`; schema landed PR #678). Runner support is **foundation-only**: the M1.5 testgen harness allowlists `command == "true" && args.is_empty() && expect_exit == 0` and panics fail-closed on any other shape; the Rust `TestRunner` returns `ClaimResult::NotYetImplemented` for unhandled `ExecuteCommand` invocations. **Full runner support — arbitrary `command` + `args` (e.g., `rustc`, `python`, `go`) with exit-code capture — is the PB-Runtime lane's deliverable** (the runner-extension dependency for boundary-test migration). A `TestClaim` like *"emit Rust, invoke rustc on output, check exit code"* is structurally expressible as data today; **executing it requires the PB-Runtime runner extension**.
 
 **TESTING.md rewrite scope:**
 - Replace "Post-R2 shape" residual section with "0-residual" framing
