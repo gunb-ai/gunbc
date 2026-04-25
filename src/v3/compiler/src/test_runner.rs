@@ -54,7 +54,9 @@ fn compile_r1_canonical_complexity_lens_dag() -> Result<Dag, String> {
             "canonical `complexity.dag` failed inference: {:?}",
             dag.diagnostics().iter().collect::<Vec<_>>()
         )),
-        Err(err) => Err(format!("canonical `complexity.dag` did not compile: {err:?}")),
+        Err(err) => Err(format!(
+            "canonical `complexity.dag` did not compile: {err:?}"
+        )),
     }
 }
 
@@ -74,12 +76,8 @@ fn cost_lookup_from_int_lookup_field_value(
             "expected `Lookup<Int>` variant from D1 `cost_of`, got {value:?}"
         ));
     };
-    let label = variant_label(lens_dag, *constructor).ok_or_else(|| {
-        format!(
-            "unknown `Lookup<Int>` constructor id {}",
-            constructor.raw()
-        )
-    })?;
+    let label = variant_label(lens_dag, *constructor)
+        .ok_or_else(|| format!("unknown `Lookup<Int>` constructor id {}", constructor.raw()))?;
     match label.as_str() {
         "Miss" => {
             if !payload.is_empty() {
