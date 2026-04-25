@@ -80,6 +80,26 @@ type SurfaceRecordField {
   span: SourceSpan
 }
 
+// 🟡 SCAFFOLD — map-literal key/value entry carrier. Same dissolution trigger
+// as `SurfaceExpr` (recursive list-body emission unblock).
+//
+// **Key shape rationale.** `key: String` (not `SurfaceLiteral::String`,
+// not `SurfaceExpr`) makes invalid map-literal keys unrepresentable at the
+// parse-surface boundary: the parser only emits `SurfaceMapEntry` after
+// matching a `StringLit` token in the `{ String : ... }` lookahead, so the
+// key field carries the parsed string content directly. Non-string keys
+// are not parseable today (string-key-only non-goal in the brief); when a
+// future sibling sub-lane lifts that restriction, *that* PR widens the
+// key carrier — not this one. `key_span` preserves the source-text span
+// of the string-literal token so downstream consumers (lowering, lenses,
+// diagnostics) can attach key-specific provenance without re-deriving it.
+type SurfaceMapEntry {
+  key: String
+  key_span: SourceSpan
+  value: SurfaceExpr
+  span: SourceSpan
+}
+
 type SurfaceMatchArm {
   pattern: SurfacePattern
   body: SurfaceExpr
@@ -163,6 +183,10 @@ type SurfaceExpr
     }
   | List {
       elements: List<SurfaceExpr>
+      span: SourceSpan
+    }
+  | Map {
+      entries: List<SurfaceMapEntry>
       span: SourceSpan
     }
 
