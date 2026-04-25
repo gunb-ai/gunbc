@@ -815,6 +815,10 @@ impl<'a> TestRunner<'a> {
             ));
         }
 
+        // P3: `subject_ref` / `oracle_ref` are not decorative — `subject_lineage` vs
+        // `oracle_lineage` must dispatch distinct producers in
+        // `eval_lane_e_differential_cost_lineage` (host forward-fold vs `lens_cost::cost_of`), not
+        // two identical `cost_of` calls (PR #764 inline review).
         let subject_out = match eval_lane_e_differential_cost_lineage(
             subject_lineage.as_str(),
             &program_dag,
