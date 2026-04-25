@@ -261,25 +261,32 @@ dispatch in parallel. Each PR is small.
 
 4. **Identity-carrier substrate pass** (§0 class). Eight surface
    instances; one upstream cause. Director-level brief recommended.
-   **Frame (per `feedback_groundedness_gates_lenses.md`, 2026-04-25):
-   open surface, closed kernel.** The compiler tracks whether each
-   construct grounds in the kernel; grounded constructs get all lenses
-   for free via compositional opacity; ungrounded subtrees are labelled
-   "ungrounded, no claim" and the label propagates compositionally —
-   not silent failure, not fabrication. **Deliverable shape:**
-   `DeclarationRef` / structural template-formal edge / explicit input-
-   value carriers for `LensOutputEquals.input_ref` / structural emit-
-   helper carriers ARE the **grounded identity carriers**; remaining
-   `span.file` / sentinel-string fallbacks become the **ungrounded
-   fallback that lenses label and propagate**, not raw failure. Same
-   eight dissolution sites (#1.1, #1.2, `lower.rs:836`,
-   `emit.rs:3181/3206`, file-preference rank, `PROGRAM_INPUT_SENTINEL`,
-   `EXTDEPS_BOOTSTRAP_FIXTURES`, `include_str!` lens side-channels);
-   sharper structural mechanism — the lens contract becomes "report
-   ungrounded for ungrounded inputs," which is what makes the open
-   surface safe. The brief MUST specify ungrounded-label propagation as
-   part of the deliverable, not just the grounded carrier. **This is
-   the highest-leverage paydown in the entire inventory.**
+   **Frame (per `feedback_groundedness_gates_lenses.md` revised
+   2026-04-25):** the language vocabulary is **primitives + namespacing
+   / composition only** — there is no user-defined-primitive feature,
+   no escape syntax, no annotation the compiler can't see through.
+   Consequence: there is no "ungrounded user program" category; the
+   lens contract is "applies to every program by construction." If a
+   lens needs an ungrounded output path for user programs, the design
+   has a leak. **Diagnosis of the §0 class:** the eight sentinels
+   (`PROGRAM_INPUT_SENTINEL`, `span.file ==` checks, fixture-name
+   routing, `include_str!` lens side-channels, file-preference rank,
+   etc.) are NOT "ungrounded fallbacks the compiler labels." They are
+   **the compiler itself failing to use the language's primitives +
+   namespacing internally** — the compiler reaching for sentinel
+   strings instead of structural carriers (`DeclarationRef`, structural
+   template-formal edges for fold-step identity, explicit input-value
+   carriers for `LensOutputEquals.input_ref`, structural emit-helper
+   carriers in place of `bind.span.file`-keyed dispatch). **Tier 1
+   brief framing:** "the compiler holds itself to the language's own
+   vocabulary." Same eight dissolution sites (#1.1, #1.2,
+   `lower.rs:836`, `emit.rs:3181/3206`, file-preference rank,
+   `PROGRAM_INPUT_SENTINEL`, `EXTDEPS_BOOTSTRAP_FIXTURES`,
+   `include_str!` lens side-channels); sharper diagnosis — these are
+   compiler-internal vocabulary leaks, not user-surface ambiguity. The
+   structural fix (the carriers named above) is what makes the
+   compiler-internal usage match the user-surface vocabulary. **This
+   is the highest-leverage paydown in the entire inventory.**
 
 ### Tier 2 — risk-shaped + R2-coupled (S-scope each, dispatch with R2 lanes)
 
@@ -458,16 +465,20 @@ managers consume the discipline as part of their normal lane intake.
    Go `UnknownVariant`, `lower_fn_body` Arrow re-derive, lens fold
    ambiguous fallback. Each S-scope, independent. **Expect:** 1 cycle.
 3. **Author the Identity-Carrier Substrate Pass program brief**
-   (Tier 1, item #4). Treats the §0 class as ONE M-scope program in
-   the **groundedness frame**: grounded carriers (`DeclarationRef`,
-   structural fold-step edge, explicit `LensOutputEquals` input-value
-   carrier, structural emit-helper carriers) PLUS ungrounded-label
-   propagation (lenses report "ungrounded, no claim" rather than
-   failing or fabricating on remaining `span.file`/sentinel fallbacks);
-   enumerate the 8 surface dissolution sites; sequence substrate work
-   before site-by-site dissolution. **This is the synthesis's primary
-   recommendation. Expect:** 2-3 cycles for the program; sites collapse
-   rapidly once substrate lands.
+   (Tier 1, item #4). Treats the §0 class as ONE M-scope program
+   framed per `feedback_groundedness_gates_lenses.md` (revised):
+   **language vocabulary is primitives + namespacing/composition only;
+   there is no ungrounded user-program category; the compiler must
+   hold itself to the language's own vocabulary.** The §0 sentinels
+   are compiler-internal vocabulary leaks (the compiler reaching for
+   sentinel strings instead of structural carriers); the fix is to
+   replace them with `DeclarationRef`, structural template-formal
+   edges, explicit `LensOutputEquals` input-value carriers, and
+   structural emit-helper carriers. Enumerate the 8 surface
+   dissolution sites; sequence substrate work before site-by-site
+   dissolution. **This is the synthesis's primary recommendation.
+   Expect:** 2-3 cycles for the program; sites collapse rapidly once
+   substrate lands.
 4. **Adopt the paired-dispatch + per-PR gate + velocity-tripwire
    discipline (§4)** as a checklist-line addition to Director ad-hoc
    dispatch + a PR-template-line addition for `v3/` hand-Rust files.
@@ -499,7 +510,7 @@ dispatch under Director review until the ratio recovers. The current
 - **B1.** Tier 0a: Go `UnknownVariant` → `EmitError::VariantParentNotFound` (S).
 - **B2.** Tier 0b: `lower_fn_body_into_existing_decl` defensive fallback → diagnostic + seed-phase root cause (S).
 - **B3.** Tier 0c: Lens fold ambiguous unique-candidate fallback → require structural template-formal edge (S).
-- **B4.** **Tier 1 program brief: Identity-Carrier Substrate Pass (M, primary recommendation).** Class-of-pattern dissolution covering 8 surface sites; framed per `feedback_groundedness_gates_lenses.md` (grounded carriers + ungrounded-label propagation, NOT silent failure).
+- **B4.** **Tier 1 program brief: Identity-Carrier Substrate Pass (M, primary recommendation).** Class-of-pattern dissolution covering 8 surface sites; framed per `feedback_groundedness_gates_lenses.md` (revised): language has no escape syntax → no ungrounded-user-program category → lenses apply by construction. The §0 sentinels are compiler-internal vocabulary leaks; the brief frames as "the compiler holds itself to the language's own vocabulary."
 - **B5.** Tier 2a: Loop-emission construction-closure audit FIRST; reframe to "document construction-closure invariant as structural test" if closure holds, marker brief only if audit refutes closure (S, R2-coupled).
 - **B6.** Tier 2b: file-preference rank checklist completion (`computation`/`induction`/`termination`) (S, trivial).
 - **B7.** Priority hint to Zero-Floor Manager: lift `patch_lower_helpers_*` retirement to PB-Tier1-Sweep priority.
