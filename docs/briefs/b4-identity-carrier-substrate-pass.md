@@ -13,6 +13,8 @@
 - **`feedback_lenses_not_passes`** — analyses are lenses over physics; zero heuristics.
 - **`feedback_construction_over_ratchets`** — model first; violations dissolve.
 - **`feedback_no_metadata_markers`** — no `__is_X` string markers; model concepts structurally in `std/`.
+- **[`src/v3/std/substrate.dag`](../../src/v3/std/substrate.dag)** — live substrate authority (the .dag source of truth for the connectives + behaviors enumerated in §Frame).
+- **[`src/v3/spec/v3_l1.dag:69`](../../src/v3/spec/v3_l1.dag)** — **`DeclarationRef` already exists as live substrate authority**. Sentinel meta-type: *"a field declared `target: DeclarationRef` accepts an identifier value instead of a literal value at the data-body parse site, and that identifier is resolved to a DeclarationId during lowering. This is the structural alternative to passing declaration names as strings — the substrate carries the typed reference forward, no name-bridge lookup at consumption time."* B4.1 **consumes** this carrier; it does NOT design or land it. Existing consumers: `src/v3/std/verification.dag`, `src/v3/std/emit_model.dag`, `src/v3/spec/python.dag`.
 - **[`THESIS.md`](../../THESIS.md)** + **[`MODELING.md`](../../MODELING.md)** + **[`INVARIANTS.md`](../../INVARIANTS.md)**.
 
 ## Frame — groundedness gates lenses (revised)
@@ -58,14 +60,14 @@ This program is **not** "go fix eight files." That ordering would patch the symp
 
 ### Phase 1 — substrate carriers (M-scope, sequential)
 
-Land the typed carriers into `src/v3/std/` and lower them end-to-end:
+For each carrier: **first audit existing authorities in `src/v3/std/` + `src/v3/spec/`**; consume what's already landed; only design + land net-new substrate where the audit shows a real gap. Lower end-to-end so Phase 2 sites can dissolve mechanically.
 
-1. **`DeclarationRef`** — typed reference to a declaration by structural identity, not by name-string. Consumers: §0.1, §0.2, §0.3, §0.5, §0.7. Likely the largest sub-deliverable; substrate-port + lowering wiring + consumer migration.
-2. **Structural fold-shape carrier** (template-formal edge) — typed carrier on fold-template instantiation that records which formal binds the step. Consumers: §0.4 + B3's underlying invariant.
-3. **Structural emit-helper carrier** — typed role marker on `Bind` / `Branch` nodes that participate in match/named-alias emission, attached at lowering time, not inferred from `span.file`. Consumers: §0.6.
-4. **Structural extdeps-fixture-set carrier** — typed extdeps-bootstrap-set declaration, consumed by `bootstrap.rs::std_fixtures()`. Consumers: §0.8.
+1. **Consume the existing `DeclarationRef`** at `src/v3/spec/v3_l1.dag:69` — already-landed substrate authority. The work is **not** to design or land the carrier; it's to (a) audit which §0 sites can route through `DeclarationRef` directly and (b) extend lowering/resolution where consumers need additional structural data (e.g., role-tagged references, input-binding refs) on top of the base sentinel meta-type. Consumers: §0.1, §0.2, §0.3, §0.5, §0.7. Likely the largest sub-deliverable; the work is consumer migration + any role-extension layer the audit reveals.
+2. **Structural fold-shape carrier** (template-formal edge) — *new*: typed carrier on fold-template instantiation that records which formal binds the step. Consumers: §0.4 + B3's underlying invariant. Verify against current substrate before designing — search `src/v3/std/` for any existing fold-template-formal authority.
+3. **Structural emit-helper carrier** — *new*: typed role marker on `Bind` / `Branch` nodes that participate in match/named-alias emission, attached at lowering time, not inferred from `span.file`. Consumers: §0.6. Verify against current substrate.
+4. **Structural extdeps-fixture-set carrier** — *new*: typed extdeps-bootstrap-set declaration, consumed by `bootstrap.rs::std_fixtures()`. Consumers: §0.8. Verify against current substrate.
 
-Each of these is a sub-brief. Author and dispatch sequentially or in parallel where dependencies allow (DeclarationRef likely first; emit-helper carrier likely second since it's a smaller targeted shape; fold-shape carrier independent; fixture-set carrier independent of the other three).
+Each of these is a sub-brief. **Each sub-brief MUST grep `src/v3/std/` + `src/v3/spec/` for an existing authority before authoring "design and land" framing** (per `feedback_verify_thesis_claims` + `feedback_emitter_workaround_is_gap_symptom`). B4.1's audit already established the existing-authority case; B4.2/B4.3/B4.4 must repeat the discipline. Author and dispatch sequentially or in parallel where dependencies allow.
 
 ### Phase 2 — site dissolution (S-scope each, parallel after Phase 1)
 
@@ -83,7 +85,8 @@ Add a per-PR gate (and CI lint, if structural): **no new `span.file ==` / `span.
 
 ## Acceptance — program-level
 
-- [ ] All four Phase 1 carriers land in `src/v3/std/` with substrate-port + lowering + consumer migration.
+- [ ] B4.1: `DeclarationRef` migration consumed across §0.1, §0.2, §0.3, §0.5, §0.7 (no carrier landing — consume existing `src/v3/spec/v3_l1.dag:69`).
+- [ ] B4.2-B4.4: each new carrier (fold-shape, emit-helper, extdeps-fixture-set) lands in `src/v3/std/` with substrate-port + lowering + consumer migration, OR the sub-brief audit reveals an existing authority to consume.
 - [ ] All eight Phase 2 sites dissolve; sentinel strings deleted.
 - [ ] Phase 3 reviewer-discipline addition lands (PR-template line, brief checklist line).
 - [ ] DB-8 fixed-point converges bit-identically across every Phase 1 + Phase 2 PR.
@@ -93,7 +96,7 @@ Add a per-PR gate (and CI lint, if structural): **no new `span.file ==` / `span.
 ## Sub-brief dispatch order
 
 Director authors and dispatches per Phase 1 ordering:
-1. **B4.1 — `DeclarationRef` carrier** (largest; most consumers; gate for §0.1, §0.2, §0.3, §0.5, §0.7).
+1. **B4.1 — `DeclarationRef` consumer migration** (largest; most consumers; gate for §0.1, §0.2, §0.3, §0.5, §0.7). NOT a carrier-landing brief — `DeclarationRef` already exists at `src/v3/spec/v3_l1.dag:69`. Audit + consumer migration + any role-extension layer needed.
 2. **B4.2 — Structural fold-shape carrier** (independent; can run in parallel with B4.1).
 3. **B4.3 — Structural emit-helper carrier** (independent; can run in parallel with B4.1).
 4. **B4.4 — Structural extdeps-fixture-set carrier** (independent; can run in parallel with B4.1).
