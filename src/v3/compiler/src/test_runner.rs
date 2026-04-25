@@ -379,11 +379,11 @@ fn shell_interpreter_allows_bash_style_ampersand_gt_redirect(interpreter: Option
 /// The `-c` (or combined `-?c?`) at `c_flag_index` is run by the nearest preceding shell in
 /// `args`, or by `leading_hint` when the slice is `["-c", "script"]` / `["-ec", "script"]` only
 /// (e.g. `env(1)` + `sh -c` — the shell is not `args[0]` of the tail).
-fn shell_interpreter_for_c_flag(
-    args: &[String],
+fn shell_interpreter_for_c_flag<'a>(
+    args: &'a [String],
     c_flag_index: usize,
-    leading_hint: Option<&str>,
-) -> Option<&str> {
+    leading_hint: Option<&'a str>,
+) -> Option<&'a str> {
     if c_flag_index > 0 && shell_dash_c_background_stem_is_shell(&args[c_flag_index - 1]) {
         return Some(args[c_flag_index - 1].as_str());
     }
@@ -397,6 +397,10 @@ fn shell_interpreter_for_c_flag(
 /// in `args`, and **recursing** when a `-c` (or combined) **script** value is a shell path stem and
 /// more argv follow — e.g. `sh -c sh -ec "sleep&"` (POSIX: `-c` takes one script word, then
 /// `argv` continues) would otherwise be mis-read as a script of `sh` only (PR #792 inline; P4).
+///
+/// Production uses [`shell_argv_may_start_unbounded_background_with_hint`]; this wrapper is for
+/// unit tests only.
+#[cfg(test)]
 fn shell_argv_may_start_unbounded_background(args: &[String]) -> bool {
     shell_argv_may_start_unbounded_background_with_hint(args, None)
 }
@@ -2492,21 +2496,55 @@ mod execute_command_timebound_tests {
 
     #[test]
     fn elision_allows_and_chain_and_fd_redirects_without_fabricating_bare_ampersand() {
+        let sh = Some("sh");
         assert!(!shell_dash_c_may_start_background_after_eliding_artifacts(
-            "true && true"
+            "true && true",
+            sh,
         ));
         assert!(!shell_dash_c_may_start_background_after_eliding_artifacts(
-            "true 2>&1"
+            "true 2>&1",
+            sh,
         ));
         assert!(!shell_dash_c_may_start_background_after_eliding_artifacts(
-            "cmd 3>&4"
+            "cmd 3>&4", sh,
         ));
     }
 
     #[test]
     fn elision_still_fails_on_shell_background() {
         assert!(shell_dash_c_may_start_background_after_eliding_artifacts(
-            "sleep 600 &"
+            "sleep 600 &",
+            Some("sh"),
+        ));
+    }
+
+    /// On POSIX `sh`/`dash`, `&>` is not a single redirect token; eliding it as bash would
+    /// false-negative the background guard (openai-pro gpt-5-5-pro, PR #792).
+    #[test]
+    fn posix_sh_ampersand_gt_form_fails_closed_in_elision_helper() {
+        assert!(shell_dash_c_may_start_background_after_eliding_artifacts(
+            "sleep 600 &> /tmp/gunbc_posix_ampgt",
+            Some("sh"),
+        ));
+        assert!(shell_dash_c_may_start_background_after_eliding_artifacts(
+            "sleep 600 &> /tmp/gunbc_posix_ampgt",
+            Some("dash"),
+        ));
+    }
+
+    #[test]
+    fn bash_ampersand_gt_redir_is_elided_not_treated_as_background() {
+        assert!(!shell_dash_c_may_start_background_after_eliding_artifacts(
+            "true &> /dev/null",
+            Some("bash"),
+        ));
+    }
+
+    #[test]
+    fn unknown_shell_interpreter_ampersand_gt_fails_closed() {
+        assert!(shell_dash_c_may_start_background_after_eliding_artifacts(
+            "true &> /dev/null",
+            None,
         ));
     }
 
@@ -2519,6 +2557,55 @@ mod execute_command_timebound_tests {
         );
         let ClaimResult::Fail(m) = r else {
             panic!("expected fail-closed for shell background, got {r:?}");
+        };
+        assert!(
+            m.contains("background")
+                || m.contains("P3")
+                || m.contains("descendants")
+                || m.contains("shell `-c`"),
+            "expected policy message, got: {m}"
+        );
+    }
+
+    /// POSIX: `sleep 600 &> file` is `&` (background) + `>`, not bash `&>`; must not bypass the
+    /// guard (openai-pro gpt-5-5-pro, PR #792).
+    #[test]
+    fn sh_dash_c_posix_ampersand_gt_token_rejected() {
+        use super::reject_unbounded_shell_background;
+        let script = "sleep 600 &> /tmp/gunbc_reject_unbounded_ampgt";
+        assert!(
+            reject_unbounded_shell_background("sh", &[String::from("-c"), String::from(script),])
+                .is_some(),
+            "direct guard on reject_unbounded_shell_background"
+        );
+        let r = evaluate_execute_command_exit_code(
+            "sh",
+            &[String::from("-c"), String::from(script)],
+            0,
+        );
+        let ClaimResult::Fail(m) = r else {
+            panic!("expected fail-closed for sh -c &> parse, got {r:?}");
+        };
+        assert!(
+            m.contains("background")
+                || m.contains("P3")
+                || m.contains("descendants")
+                || m.contains("shell `-c`"),
+            "expected policy message, got: {m}"
+        );
+    }
+
+    /// `env(1)` + `sh -c` tail: interpreter hint must apply to `&>` (PR #792).
+    #[test]
+    fn env_sh_dash_c_posix_ampersand_gt_rejected() {
+        let script = "sleep 600 &> /tmp/gunbc_env_ampgt";
+        let r = evaluate_execute_command_exit_code(
+            "env",
+            &[String::from("sh"), String::from("-c"), String::from(script)],
+            0,
+        );
+        let ClaimResult::Fail(m) = r else {
+            panic!("expected fail-closed for env sh -c &>, got {r:?}");
         };
         assert!(
             m.contains("background")
@@ -2841,7 +2928,8 @@ mod execute_command_timebound_tests {
     #[test]
     fn sh_dash_c_greater_redir_to_fd2_is_not_background() {
         assert!(!shell_dash_c_may_start_background_after_eliding_artifacts(
-            "i=0; while [ $i -lt 1 ]; do i=$((i+1)); done >&2; exit 0"
+            "i=0; while [ $i -lt 1 ]; do i=$((i+1)); done >&2; exit 0",
+            Some("sh"),
         ));
     }
 
