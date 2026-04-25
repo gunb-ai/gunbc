@@ -36,7 +36,8 @@ emission pipeline as-of `royal-cat-649` HEAD (parent `2909f9e05`).
 
 ## Substrate gap 1 — extdeps not loaded into the bootstrap Dag
 
-`src/v3/compiler/src/bootstrap.rs:130-150` loads four authority sets via
+`src/v3/compiler/src/bootstrap.rs:131-151`
+(`load_runtime_bootstrap_authorities`) loads four authority sets via
 committed generated snapshots:
 
 - `std_fixtures` (`dsl/std/*.dag`)
@@ -45,7 +46,7 @@ committed generated snapshots:
 - `COMPILER_FILES` (`src/v3/compiler/*.dag`)
 
 `dsl/extdeps/languages/rust/primitives.dag` is **not** in any of these
-sets. The header comment is explicit (`bootstrap.rs:14-19`):
+sets. The header comment is explicit (`bootstrap.rs:16-19`):
 
 > Production bootstrap does not inject target-language realizations.
 > Realization facts for emitted languages live in `dsl/extdeps/languages/*`
@@ -132,6 +133,11 @@ A degenerate (b′) — sibling crate that re-mirrors `primitives.dag` as
 Rust constants again — would be the pilot at scale. The brief
 explicitly forbids it: "Engine must consume the `.dag` declarations
 directly. Eliminating mirroring is the load-bearing scope of this lane."
+For completeness in the manager-facing option space: (b′) was
+considered (including a tracked-debt variant with a named dissolution
+trigger of "loader-close lands ⇒ mirror deletes") and **rejected
+per brief**. Not offered as a route below; named here so manager sees
+the rejected alternative rather than its absence.
 
 ## What Engine-Phase-1 actually needs from the substrate
 
@@ -179,7 +185,12 @@ manager / Director judgment:
    (Substrate gap 1 close) before re-dispatching Engine-Phase-1. This
    is the smallest unblocking step and likely sufficient for a
    sibling-crate Engine that reads `Declaration`s structurally without
-   re-mirroring (option (b), sharpened).
+   re-mirroring (option (b), sharpened — call it (b.i)). Note the
+   tension flagged in §"Why (b) does not save us in pure form": the
+   `Declaration`/`Node` traversal under (b.i) is itself a mild form of
+   "interpret `.dag` AST in Rust." The route is acceptable as a
+   transitional bridge with a known dissolution into option (a) once
+   Gap 2 closes; not endorsed as a terminal shape.
 2. **Pursue (a) directly.** Bundle the loader close with the `.dag`
    walker authoring work, and additionally schedule list-body emission
    / heterogeneous-variant pattern-match capability as Engine-Phase-1
