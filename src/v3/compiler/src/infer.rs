@@ -1040,20 +1040,20 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                 );
             }
             PortState::Resolved(actual) => {
-                if let Some(diag) = phantom_unit_mismatch(
-                    dag,
-                    transform_target_display_name(dag, &t.target),
-                    expected_ty,
-                    actual,
-                    &t.span,
-                ) {
-                    return Decision::Fail(t.output, diag);
-                }
                 if !type_shapes_equivalent(dag, actual, expected_ty) {
                     if is_retryable_generic_decl(dag, actual.declaration)
                         || is_retryable_generic_decl(dag, expected_ty.declaration)
                     {
                         return Decision::Retry;
+                    }
+                    if let Some(diag) = phantom_unit_mismatch(
+                        dag,
+                        transform_target_display_name(dag, &t.target),
+                        expected_ty,
+                        actual,
+                        &t.span,
+                    ) {
+                        return Decision::Fail(t.output, diag);
                     }
                     return Decision::Fail(
                         t.output,
