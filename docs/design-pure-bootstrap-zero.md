@@ -135,7 +135,7 @@ Current `TESTING.md` carves out two permanent Rust-authored test categories:
 Both dissolve under 0-floor:
 
 - **Rust-only-helper unit tests** vanish naturally — there are no Rust-only helpers; everything generates from `.dag`.
-- **External-toolchain boundary tests** migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations (the predicate landed in PR #678; runner support landed in #688/#741). A `TestClaim` like *"emit Rust, invoke rustc on output, check exit code"* is structurally identical to today's hand-Rust boundary tests.
+- **External-toolchain boundary tests** migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations as the cascade-named successor pattern. **Capability state today (2026-04-25):** the `ExecuteCommand` predicate is declared (`src/v3/std/verification.dag:115-119`; schema landed PR #678). Runner support is **foundation-only**: the M1.5 testgen harness allowlists `command == "true" && args.is_empty() && expect_exit == 0` and panics fail-closed on any other shape; the Rust `TestRunner` returns `ClaimResult::NotYetImplemented` for unhandled `ExecuteCommand` invocations. **Full runner support — arbitrary `command` + `args` (e.g., `rustc`, `python`, `go`) with exit-code capture — is the PB-Runtime lane's deliverable** (the runner-extension dependency for boundary-test migration). A `TestClaim` like *"emit Rust, invoke rustc on output, check exit code"* is structurally expressible as data today; **executing it requires the PB-Runtime runner extension**.
 
 **TESTING.md rewrite scope:**
 - Replace "Post-R2 shape" residual section with "0-residual" framing
