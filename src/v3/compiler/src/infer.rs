@@ -26,8 +26,8 @@ use std::collections::HashSet;
 
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, Field,
-    LiteralBits, Lookup, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
-    TypeConnective,
+    LiteralBits, Lookup, PhantomParameter, PortId, PortState, TemplateArgument, TransformNode,
+    TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -247,6 +247,7 @@ fn ensure_optional_match_disj(
             }],
         },
         type_params: Vec::new(),
+        phantom_params: Vec::new(),
         meta_tag: None,
         specialization_parent: None,
         inhabits: None,
@@ -263,6 +264,7 @@ fn ensure_optional_match_disj(
             children: Vec::new(),
         },
         type_params: Vec::new(),
+        phantom_params: Vec::new(),
         meta_tag: None,
         specialization_parent: None,
         inhabits: None,
@@ -288,6 +290,7 @@ fn ensure_optional_match_disj(
             ],
         },
         type_params: Vec::new(),
+        phantom_params: Vec::new(),
         meta_tag: None,
         specialization_parent: None,
         inhabits: None,
@@ -1036,7 +1039,34 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                     },
                 );
             }
-            PortState::Resolved(actual) if type_shapes_equivalent(dag, actual, expected_ty) => {
+            PortState::Resolved(actual) => {
+                let types_equivalent = type_shapes_equivalent(dag, actual, expected_ty);
+                if !types_equivalent
+                    && (is_retryable_generic_decl(dag, actual.declaration)
+                        || is_retryable_generic_decl(dag, expected_ty.declaration))
+                {
+                    return Decision::Retry;
+                }
+                if let Some(diag) = phantom_unit_mismatch(
+                    dag,
+                    transform_target_display_name(dag, &t.target),
+                    expected_ty,
+                    actual,
+                    &t.span,
+                ) {
+                    return Decision::Fail(t.output, diag);
+                }
+                if !types_equivalent {
+                    return Decision::Fail(
+                        t.output,
+                        Diagnostic::TypeMismatch {
+                            expected: *expected_ty,
+                            actual: *actual,
+                            span: t.span.clone(),
+                            fixes: Vec::new(),
+                        },
+                    );
+                }
                 // DB-11 (3a.3) refinement discharge. Structural type
                 // equivalence just passed; now check that any refinement
                 // declared on the callee's parameter type is also carried
@@ -1051,25 +1081,236 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                     return Decision::Fail(t.output, diag);
                 }
             }
-            PortState::Resolved(actual) => {
-                if is_retryable_generic_decl(dag, actual.declaration)
-                    || is_retryable_generic_decl(dag, expected_ty.declaration)
-                {
-                    return Decision::Retry;
-                }
-                return Decision::Fail(
-                    t.output,
-                    Diagnostic::TypeMismatch {
-                        expected: *expected_ty,
-                        actual: *actual,
-                        span: t.span.clone(),
-                        fixes: Vec::new(),
-                    },
-                );
-            }
         }
     }
     Decision::Set(t.output, signature.output)
+}
+
+fn phantom_unit_mismatch(
+    dag: &Dag,
+    context: String,
+    expected_ty: &TypeShape,
+    actual_ty: &TypeShape,
+    span: &SourceSpan,
+) -> Option<Diagnostic> {
+    let expected_inst = instantiation_parts(dag, expected_ty.declaration)?;
+    let actual_inst = instantiation_parts(dag, actual_ty.declaration)?;
+    let expected_template = dag.declaration(expected_inst.template);
+    for phantom in &expected_template.phantom_params {
+        if let Err(diag) =
+            require_abelian_group_phantom_algebra(dag, phantom.algebra, phantom.parameter, span)
+        {
+            return Some(diag);
+        }
+        if !expected_template.type_params.contains(&phantom.parameter) {
+            return Some(malformed_phantom_parameter_diagnostic(
+                dag,
+                expected_inst.template,
+                phantom.parameter,
+                span,
+            ));
+        }
+        let Some(actual_phantom) =
+            mapped_phantom_parameter(dag, expected_inst.template, phantom, actual_inst.template)
+        else {
+            continue;
+        };
+        if let Err(diag) = require_abelian_group_phantom_algebra(
+            dag,
+            actual_phantom.algebra,
+            actual_phantom.parameter,
+            span,
+        ) {
+            return Some(diag);
+        }
+        if !phantom_algebras_equivalent(dag, phantom.algebra, actual_phantom.algebra) {
+            return Some(unsupported_phantom_algebra_diagnostic(
+                dag,
+                actual_phantom.algebra,
+                actual_phantom.parameter,
+                span,
+            ));
+        }
+        let Some(expected_arg) = expected_inst
+            .arguments
+            .iter()
+            .find(|arg| arg.parameter == phantom.parameter)
+        else {
+            return Some(missing_phantom_argument_diagnostic(
+                dag,
+                expected_inst.template,
+                phantom.parameter,
+                "expected",
+                span,
+            ));
+        };
+        let Some(actual_arg) = actual_inst
+            .arguments
+            .iter()
+            .find(|arg| arg.parameter == actual_phantom.parameter)
+        else {
+            return Some(missing_phantom_argument_diagnostic(
+                dag,
+                actual_inst.template,
+                actual_phantom.parameter,
+                "actual",
+                span,
+            ));
+        };
+        if expected_arg.value != actual_arg.value {
+            return Some(Diagnostic::UnitMismatch {
+                operator: context,
+                parameter: phantom_parameter_display_name(dag, phantom.parameter),
+                expected: TypeShape::new(expected_arg.value),
+                actual: TypeShape::new(actual_arg.value),
+                span: span.clone(),
+                fixes: Vec::new(),
+            });
+        }
+    }
+    None
+}
+
+fn malformed_phantom_parameter_diagnostic(
+    dag: &Dag,
+    template: DeclarationId,
+    parameter: DeclarationId,
+    span: &SourceSpan,
+) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: format!(
+            "malformed phantom parameter {} on {}: parameter is not in type_params",
+            phantom_parameter_display_name(dag, parameter),
+            declaration_display_name(dag, template),
+        ),
+        span: span.clone(),
+        fixes: Vec::new(),
+    }
+}
+
+fn missing_phantom_argument_diagnostic(
+    dag: &Dag,
+    template: DeclarationId,
+    parameter: DeclarationId,
+    side: &str,
+    span: &SourceSpan,
+) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: format!(
+            "malformed phantom instantiation for {}: missing {side} argument for phantom parameter {}",
+            declaration_display_name(dag, template),
+            phantom_parameter_display_name(dag, parameter),
+        ),
+        span: span.clone(),
+        fixes: Vec::new(),
+    }
+}
+
+fn unsupported_phantom_algebra_diagnostic(
+    dag: &Dag,
+    algebra: DeclarationId,
+    parameter: DeclarationId,
+    span: &SourceSpan,
+) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: format!(
+            "unsupported phantom algebra {} for phantom parameter {}",
+            declaration_display_name(dag, algebra),
+            phantom_parameter_display_name(dag, parameter),
+        ),
+        span: span.clone(),
+        fixes: Vec::new(),
+    }
+}
+
+fn require_abelian_group_phantom_algebra(
+    dag: &Dag,
+    algebra: DeclarationId,
+    parameter: DeclarationId,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let Some(canonical_abelian_group) = dag.abelian_group_decl() else {
+        return Err(unsupported_phantom_algebra_diagnostic(
+            dag, algebra, parameter, span,
+        ));
+    };
+    let mut current = algebra;
+    for _ in 0..WALK_DEPTH_LIMIT {
+        let decl = dag.declaration(current);
+        if current == canonical_abelian_group {
+            return Ok(());
+        }
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => {
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                current = *next;
+            }
+            _ => {
+                return Err(unsupported_phantom_algebra_diagnostic(
+                    dag, algebra, parameter, span,
+                ));
+            }
+        }
+    }
+    Err(unsupported_phantom_algebra_diagnostic(
+        dag, algebra, parameter, span,
+    ))
+}
+
+fn phantom_algebras_equivalent(
+    dag: &Dag,
+    lhs_algebra: DeclarationId,
+    rhs_algebra: DeclarationId,
+) -> bool {
+    lhs_algebra == rhs_algebra || declaration_shapes_equivalent(dag, lhs_algebra, rhs_algebra, 0)
+}
+
+fn mapped_phantom_parameter(
+    dag: &Dag,
+    source_template: DeclarationId,
+    source_phantom: &PhantomParameter,
+    target_template: DeclarationId,
+) -> Option<PhantomParameter> {
+    let source_decl = dag.declaration(source_template);
+    let target_decl = dag.declaration(target_template);
+    let source_index = source_decl
+        .type_params
+        .iter()
+        .position(|parameter| *parameter == source_phantom.parameter)?;
+    let target_parameter = target_decl.type_params.get(source_index).copied()?;
+    target_decl
+        .phantom_params
+        .iter()
+        .find(|target_phantom| target_phantom.parameter == target_parameter)
+        .cloned()
+}
+
+struct InstantiationParts<'a> {
+    template: DeclarationId,
+    arguments: &'a [crate::dag::TemplateArgument],
+}
+
+fn instantiation_parts(dag: &Dag, declaration: DeclarationId) -> Option<InstantiationParts<'_>> {
+    match &dag.declaration(declaration).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => Some(InstantiationParts {
+            template: *template,
+            arguments,
+        }),
+        _ => None,
+    }
+}
+
+fn phantom_parameter_display_name(dag: &Dag, parameter: DeclarationId) -> String {
+    match &dag.declaration(parameter).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) => name.clone(),
+        _ => declaration_display_name(dag, parameter),
+    }
 }
 
 /// DB-11 (3a.3) call-site refinement discharge. Returns `None` when
@@ -2308,6 +2549,7 @@ fn resolve_callable_targets(dag: &mut Dag) -> bool {
                     arguments: rewrite.arguments,
                 },
                 type_params: Vec::new(),
+                phantom_params: Vec::new(),
                 meta_tag: None,
                 specialization_parent: None,
                 inhabits: None,
@@ -2830,6 +3072,7 @@ fn materialize_specialized_payload_record(
             children: specialized_children,
         },
         type_params: Vec::new(),
+        phantom_params: Vec::new(),
         meta_tag: None,
         specialization_parent: None,
         inhabits: None,
@@ -2890,6 +3133,7 @@ pub(crate) fn concretize_decl_with_subst(
                     arguments: specialized_arguments,
                 },
                 type_params: Vec::new(),
+                phantom_params: Vec::new(),
                 meta_tag: None,
                 specialization_parent: None,
                 inhabits: None,
@@ -2915,6 +3159,7 @@ pub(crate) fn concretize_decl_with_subst(
                     bound,
                 },
                 type_params: Vec::new(),
+                phantom_params: Vec::new(),
                 meta_tag: None,
                 specialization_parent: None,
                 inhabits: None,
@@ -3125,6 +3370,7 @@ fn materialize_substituted_refined_decl(
             body: ArrowBody::UserDefined(bind_id),
         },
         type_params: Vec::new(),
+        phantom_params: Vec::new(),
         meta_tag: None,
         specialization_parent: None,
         inhabits: None,
@@ -3140,6 +3386,7 @@ fn materialize_substituted_refined_decl(
         name: None,
         connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(substituted_base)),
         type_params: Vec::new(),
+        phantom_params: Vec::new(),
         meta_tag: None,
         specialization_parent: None,
         inhabits: None,
@@ -4294,6 +4541,13 @@ fn declaration_shapes_equivalent(
             },
         ) => {
             declaration_shapes_equivalent(dag, *lhs_template, *rhs_template, depth + 1)
+                && phantom_arguments_equivalent_for_shape(
+                    dag,
+                    *lhs_template,
+                    lhs_arguments,
+                    *rhs_template,
+                    rhs_arguments,
+                )
                 && lhs_arguments.len() == rhs_arguments.len()
                 && lhs_arguments
                     .iter()
@@ -4363,10 +4617,90 @@ fn declaration_shapes_equivalent(
     }
 }
 
+fn phantom_arguments_equivalent_for_shape(
+    dag: &Dag,
+    lhs_template: DeclarationId,
+    lhs_arguments: &[TemplateArgument],
+    rhs_template: DeclarationId,
+    rhs_arguments: &[TemplateArgument],
+) -> bool {
+    phantom_arguments_preserved_from_template(
+        dag,
+        lhs_template,
+        lhs_arguments,
+        rhs_template,
+        rhs_arguments,
+    ) && phantom_arguments_preserved_from_template(
+        dag,
+        rhs_template,
+        rhs_arguments,
+        lhs_template,
+        lhs_arguments,
+    )
+}
+
+fn phantom_arguments_preserved_from_template(
+    dag: &Dag,
+    source_template: DeclarationId,
+    source_arguments: &[TemplateArgument],
+    target_template: DeclarationId,
+    target_arguments: &[TemplateArgument],
+) -> bool {
+    let source_decl = dag.declaration(source_template);
+    for phantom in &source_decl.phantom_params {
+        if require_abelian_group_phantom_algebra(
+            dag,
+            phantom.algebra,
+            phantom.parameter,
+            &synthetic_span(),
+        )
+        .is_err()
+        {
+            return false;
+        }
+        let Some(target_phantom) =
+            mapped_phantom_parameter(dag, source_template, phantom, target_template)
+        else {
+            return false;
+        };
+        if require_abelian_group_phantom_algebra(
+            dag,
+            target_phantom.algebra,
+            target_phantom.parameter,
+            &synthetic_span(),
+        )
+        .is_err()
+        {
+            return false;
+        }
+        if !phantom_algebras_equivalent(dag, phantom.algebra, target_phantom.algebra) {
+            return false;
+        }
+        let Some(source_arg) = source_arguments
+            .iter()
+            .find(|arg| arg.parameter == phantom.parameter)
+        else {
+            return false;
+        };
+        let Some(target_arg) = target_arguments
+            .iter()
+            .find(|arg| arg.parameter == target_phantom.parameter)
+        else {
+            return false;
+        };
+        if source_arg.value != target_arg.value {
+            return false;
+        }
+    }
+    true
+}
+
 #[cfg(test)]
 mod bool_logical_operator_arrow_tests {
     use super::*;
+    use crate::dag::PhantomParameter;
     use crate::infer_helpers::filter_non_self_template_arguments;
+    use crate::operators::ArithmeticOp;
 
     #[test]
     fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {
@@ -4400,6 +4734,827 @@ mod bool_logical_operator_arrow_tests {
         assert_eq!(sig.inputs[0].declaration, bool_shape.declaration);
         assert_eq!(sig.inputs[1].declaration, bool_shape.declaration);
         assert_eq!(sig.output.declaration, bool_shape.declaration);
+    }
+
+    #[test]
+    fn arithmetic_operator_checks_abelian_phantom_unit_closure_before_type_mismatch() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("<money-unit-test>", 0, 1);
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+        let abelian_group = dag
+            .declaration_by_name("AbelianGroup")
+            .expect("bootstrap AbelianGroup")
+            .id;
+
+        let currency = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: currency,
+            name: Some("Currency".to_string()),
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: usd,
+            name: Some("USD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: currency,
+                arguments: vec![],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let eur = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: eur,
+            name: Some("EUR".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: currency,
+                arguments: vec![],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let currency_abelian_group = dag.alloc_declaration_id();
+        let abelian_receiver = dag
+            .declaration(abelian_group)
+            .type_params
+            .first()
+            .copied()
+            .expect("AbelianGroup receiver type parameter");
+        dag.push_declaration(Declaration {
+            id: currency_abelian_group,
+            name: Some("CurrencyAbelianGroup".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: abelian_group,
+                arguments: vec![TemplateArgument {
+                    parameter: abelian_receiver,
+                    value: currency,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let int_abelian_group = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: int_abelian_group,
+            name: Some("IntAbelianGroup".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: abelian_group,
+                arguments: vec![TemplateArgument {
+                    parameter: abelian_receiver,
+                    value: int,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let money = dag.alloc_declaration_id();
+        let c_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: money,
+            name: Some("Money".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "amount".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: vec![c_param],
+            phantom_params: vec![PhantomParameter {
+                parameter: c_param,
+                algebra: currency_abelian_group,
+            }],
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        dag.push_declaration(Declaration {
+            id: c_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("C".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+
+        let money_usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: money_usd,
+            name: Some("MoneyUSD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: money,
+                arguments: vec![TemplateArgument {
+                    parameter: c_param,
+                    value: usd,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let money_eur = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: money_eur,
+            name: Some("MoneyEUR".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: money,
+                arguments: vec![TemplateArgument {
+                    parameter: c_param,
+                    value: eur,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let money_c = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: money_c,
+            name: Some("MoneyC".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: money,
+                arguments: vec![TemplateArgument {
+                    parameter: c_param,
+                    value: c_param,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let alt_c_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: alt_c_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("AltC".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let alt_money = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: alt_money,
+            name: Some("AltMoney".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "amount".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: vec![alt_c_param],
+            phantom_params: vec![PhantomParameter {
+                parameter: alt_c_param,
+                algebra: currency_abelian_group,
+            }],
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let alt_money_usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: alt_money_usd,
+            name: Some("AltMoneyUSD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: alt_money,
+                arguments: vec![TemplateArgument {
+                    parameter: alt_c_param,
+                    value: usd,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let alt_money_eur = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: alt_money_eur,
+            name: Some("AltMoneyEUR".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: alt_money,
+                arguments: vec![TemplateArgument {
+                    parameter: alt_c_param,
+                    value: eur,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let other_algebra_money = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: other_algebra_money,
+            name: Some("OtherAlgebraMoney".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "amount".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: vec![alt_c_param],
+            phantom_params: vec![PhantomParameter {
+                parameter: alt_c_param,
+                algebra: int_abelian_group,
+            }],
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let other_algebra_money_usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: other_algebra_money_usd,
+            name: Some("OtherAlgebraMoneyUSD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: other_algebra_money,
+                arguments: vec![TemplateArgument {
+                    parameter: alt_c_param,
+                    value: usd,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+
+        let lhs = dag.alloc_port_with_shape(TypeShape::new(money_usd));
+        let rhs_same = dag.alloc_port_with_shape(TypeShape::new(money_usd));
+        let rhs_other = dag.alloc_port_with_shape(TypeShape::new(money_eur));
+        let cross_template_rhs_other = dag.alloc_port_with_shape(TypeShape::new(alt_money_eur));
+        let ok_output = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![lhs, rhs_same],
+            span.clone(),
+        );
+        let bad_output = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![lhs, rhs_other],
+            span.clone(),
+        );
+        let cross_template_bad_output = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![lhs, cross_template_rhs_other],
+            span.clone(),
+        );
+        assert!(
+            type_shapes_equivalent(
+                &dag,
+                &TypeShape::new(money_usd),
+                &TypeShape::new(alt_money_usd)
+            ),
+            "structural equivalence should map phantom axes across equivalent templates"
+        );
+        assert!(
+            !type_shapes_equivalent(
+                &dag,
+                &TypeShape::new(money_usd),
+                &TypeShape::new(other_algebra_money_usd),
+            ),
+            "structural equivalence must compare mapped phantom algebra authority"
+        );
+        let money_missing_arg = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: money_missing_arg,
+            name: Some("MoneyMissingArg".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: money,
+                arguments: Vec::new(),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let malformed_lhs = dag.alloc_port_with_shape(TypeShape::new(money_missing_arg));
+        let malformed_rhs = dag.alloc_port_with_shape(TypeShape::new(money_missing_arg));
+        let malformed_output = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![malformed_lhs, malformed_rhs],
+            span.clone(),
+        );
+        let rogue_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: rogue_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("Rogue".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let bad_money = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: bad_money,
+            name: Some("BadMoney".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "amount".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: vec![c_param],
+            phantom_params: vec![PhantomParameter {
+                parameter: rogue_param,
+                algebra: currency_abelian_group,
+            }],
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let bad_money_usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: bad_money_usd,
+            name: Some("BadMoneyUSD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: bad_money,
+                arguments: vec![TemplateArgument {
+                    parameter: rogue_param,
+                    value: usd,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span,
+        });
+        let invalid_lhs = dag.alloc_port_with_shape(TypeShape::new(bad_money_usd));
+        let invalid_rhs = dag.alloc_port_with_shape(TypeShape::new(bad_money_usd));
+        let invalid_output = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![invalid_lhs, invalid_rhs],
+            SourceSpan::new("<money-unit-test>", 1, 2),
+        );
+        let unsupported_algebra = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: unsupported_algebra,
+            name: Some("CurrencyMonoid".to_string()),
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 2, 3),
+        });
+        let unsupported_money = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: unsupported_money,
+            name: Some("UnsupportedMoney".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "amount".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: vec![c_param],
+            phantom_params: vec![PhantomParameter {
+                parameter: c_param,
+                algebra: unsupported_algebra,
+            }],
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 2, 3),
+        });
+        let unsupported_money_usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: unsupported_money_usd,
+            name: Some("UnsupportedMoneyUSD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: unsupported_money,
+                arguments: vec![TemplateArgument {
+                    parameter: c_param,
+                    value: usd,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 2, 3),
+        });
+        let unsupported_lhs = dag.alloc_port_with_shape(TypeShape::new(unsupported_money_usd));
+        let unsupported_rhs = dag.alloc_port_with_shape(TypeShape::new(unsupported_money_usd));
+        let unsupported_output = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![unsupported_lhs, unsupported_rhs],
+            SourceSpan::new("<money-unit-test>", 2, 3),
+        );
+        let fake_abelian_group = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: fake_abelian_group,
+            name: Some("AbelianGroup".to_string()),
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 3, 4),
+        });
+        let fake_algebra_money = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: fake_algebra_money,
+            name: Some("FakeAlgebraMoney".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "amount".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: vec![c_param],
+            phantom_params: vec![PhantomParameter {
+                parameter: c_param,
+                algebra: fake_abelian_group,
+            }],
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 3, 4),
+        });
+        let fake_algebra_money_usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: fake_algebra_money_usd,
+            name: Some("FakeAlgebraMoneyUSD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: fake_algebra_money,
+                arguments: vec![TemplateArgument {
+                    parameter: c_param,
+                    value: usd,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 3, 4),
+        });
+        let fake_lhs = dag.alloc_port_with_shape(TypeShape::new(fake_algebra_money_usd));
+        let fake_rhs = dag.alloc_port_with_shape(TypeShape::new(fake_algebra_money_usd));
+        let fake_output = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![fake_lhs, fake_rhs],
+            SourceSpan::new("<money-unit-test>", 3, 4),
+        );
+        let accept_eur = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: accept_eur,
+            name: Some("accept_eur".to_string()),
+            connective: TypeConnective::Arrow {
+                inputs: vec![money_eur],
+                output: money_eur,
+                body: ArrowBody::NoBody,
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 3, 4),
+        });
+        let callable_lhs = dag.alloc_port_with_shape(TypeShape::new(money_usd));
+        let callable_output = dag.push_transform(
+            TransformTarget::Callable(accept_eur),
+            vec![callable_lhs],
+            SourceSpan::new("<money-unit-test>", 3, 4),
+        );
+        let generic_accept_money = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: generic_accept_money,
+            name: Some("accept_money".to_string()),
+            connective: TypeConnective::Arrow {
+                inputs: vec![money_c],
+                output: money_c,
+                body: ArrowBody::NoBody,
+            },
+            type_params: vec![c_param],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 4, 5),
+        });
+        let generic_callable_lhs = dag.alloc_port_with_shape(TypeShape::new(money_usd));
+        let generic_callable_output = dag.push_transform(
+            TransformTarget::Callable(generic_accept_money),
+            vec![generic_callable_lhs],
+            SourceSpan::new("<money-unit-test>", 4, 5),
+        );
+        let untracked_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: untracked_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("U".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 4, 5),
+        });
+        let untracked_money = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: untracked_money,
+            name: Some("UntrackedMoney".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "amount".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: vec![untracked_param],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 4, 5),
+        });
+        let untracked_money_usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: untracked_money_usd,
+            name: Some("UntrackedMoneyUSD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: untracked_money,
+                arguments: vec![TemplateArgument {
+                    parameter: untracked_param,
+                    value: usd,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 4, 5),
+        });
+        let untracked_callable_lhs = dag.alloc_port_with_shape(TypeShape::new(untracked_money_usd));
+        let untracked_callable_output = dag.push_transform(
+            TransformTarget::Callable(accept_eur),
+            vec![untracked_callable_lhs],
+            SourceSpan::new("<money-unit-test>", 4, 5),
+        );
+        assert!(
+            !type_shapes_equivalent(
+                &dag,
+                &TypeShape::new(untracked_money_usd),
+                &TypeShape::new(money_eur),
+            ),
+            "structural equivalence must preserve phantom axes from both templates"
+        );
+
+        infer(&mut dag);
+
+        assert_eq!(
+            dag.port(ok_output).state(),
+            &PortState::Resolved(TypeShape::new(money_usd))
+        );
+        let bad_diag = dag
+            .diagnostics()
+            .get(bad_output)
+            .expect("mismatched phantom unit should fail on operator output");
+        assert!(
+            matches!(
+                bad_diag,
+                Diagnostic::UnitMismatch {
+                    parameter,
+                    expected,
+                    actual,
+                    ..
+                } if parameter == "C"
+                    && expected.declaration == usd
+                    && actual.declaration == eur
+            ),
+            "unexpected diagnostic: {bad_diag:?}"
+        );
+        let cross_template_bad_diag = dag
+            .diagnostics()
+            .get(cross_template_bad_output)
+            .expect("mapped phantom units should fail across structurally equivalent templates");
+        assert!(
+            matches!(
+                cross_template_bad_diag,
+                Diagnostic::UnitMismatch {
+                    parameter,
+                    expected,
+                    actual,
+                    ..
+                } if parameter == "C"
+                    && expected.declaration == usd
+                    && actual.declaration == eur
+            ),
+            "unexpected diagnostic: {cross_template_bad_diag:?}"
+        );
+        let malformed_diag = dag
+            .diagnostics()
+            .get(malformed_output)
+            .expect("missing phantom instantiation argument should fail closed");
+        assert!(
+            matches!(
+                malformed_diag,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("missing expected argument for phantom parameter C")
+            ),
+            "unexpected diagnostic: {malformed_diag:?}"
+        );
+        let invalid_diag = dag
+            .diagnostics()
+            .get(invalid_output)
+            .expect("phantom parameter outside type_params should fail closed");
+        assert!(
+            matches!(
+                invalid_diag,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("parameter is not in type_params")
+            ),
+            "unexpected diagnostic: {invalid_diag:?}"
+        );
+        let unsupported_diag = dag
+            .diagnostics()
+            .get(unsupported_output)
+            .expect("unsupported phantom algebra should fail closed");
+        assert!(
+            matches!(
+                unsupported_diag,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("unsupported phantom algebra CurrencyMonoid")
+            ),
+            "unexpected diagnostic: {unsupported_diag:?}"
+        );
+        let fake_diag = dag
+            .diagnostics()
+            .get(fake_output)
+            .expect("non-canonical declaration named AbelianGroup should fail closed");
+        assert!(
+            matches!(
+                fake_diag,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("unsupported phantom algebra AbelianGroup")
+            ),
+            "unexpected diagnostic: {fake_diag:?}"
+        );
+        let callable_diag = dag
+            .diagnostics()
+            .get(callable_output)
+            .expect("callable boundary should enforce phantom units");
+        assert!(
+            matches!(
+                callable_diag,
+                Diagnostic::UnitMismatch {
+                    operator,
+                    parameter,
+                    expected,
+                    actual,
+                    ..
+                } if operator == "accept_eur"
+                    && parameter == "C"
+                    && expected.declaration == eur
+                    && actual.declaration == usd
+            ),
+            "unexpected diagnostic: {callable_diag:?}"
+        );
+        assert!(
+            matches!(
+                dag.port(generic_callable_output).state(),
+                PortState::Resolved(_)
+            ),
+            "generic callable should not fail phantom unit checking before C can bind"
+        );
+        assert!(
+            !matches!(
+                dag.diagnostics().get(generic_callable_output),
+                Some(Diagnostic::UnitMismatch { .. })
+            ),
+            "generic callable must not emit UnitMismatch before C can bind"
+        );
+        let untracked_callable_diag = dag
+            .diagnostics()
+            .get(untracked_callable_output)
+            .expect("structural wrapper without phantom axis should not satisfy phantom wrapper");
+        assert!(
+            matches!(
+                untracked_callable_diag,
+                Diagnostic::TypeMismatch { .. } | Diagnostic::ResolveError { .. }
+            ),
+            "unexpected diagnostic: {untracked_callable_diag:?}"
+        );
     }
 
     #[test]
@@ -4531,6 +5686,7 @@ mod bool_logical_operator_arrow_tests {
                 arguments: args.clone(),
             },
             type_params: Vec::new(),
+            phantom_params: Vec::new(),
             meta_tag: None,
             specialization_parent: None,
             inhabits: None,
