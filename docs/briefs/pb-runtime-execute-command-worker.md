@@ -16,7 +16,7 @@
 - [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md) §"New lanes" `PB-Runtime` — your standing program scope (sized M-L; one of the four PB-Runtime files).
 - [`TESTING.md`](../../TESTING.md) `:195` — **capability state callout** (updated with this lane). **Live source-of-truth** for what the runner does today. Historically, the 2026-04-25 cascade note also recorded pre-land state:
   - ExecuteCommand predicate: schema PR #678; runner was foundation-only (M1.5 `true` allowlist; `TestRunner` NYI) **until the PB-Runtime `ExecuteCommand` implementation landed.**
-- **As implemented:** arbitrary `command` + `args` + `expect_exit_code` with **bounded** host execution; see the **Landed lane receipt** blockquote above and `test_runner.rs`.
+- **As implemented:** arbitrary `command` + `args` + `expect_exit_code` with **bounded** host execution; see the **Landed lane receipt** blockquote above and `test_runner.rs` (unshare, pipes, and bounded re-exec are implemented there — a dense policy surface; keep this brief and [`TESTING.md`](../../TESTING.md) in sync when those branches or caps change).
 - [`src/v3/std/verification.dag`](../../src/v3/std/verification.dag) `:115-119` — ExecuteCommand schema (the source-of-truth for the data shape):
   ```
   | ExecuteCommand {

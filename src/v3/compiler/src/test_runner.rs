@@ -391,6 +391,12 @@ fn shell_dash_c_script_string(args: &[String]) -> Option<&str> {
 /// `>&d` (e.g. `>&2` in `command >&2`). **Quoted** `&` (e.g. `echo \"&\"`)
 /// is not modeled and may be fail-closed as if it were a background `&` — an acceptable
 /// false-reject; user should rephrase without relying on a literal `&` in the `-c` string.
+///
+/// **TODO(dissolution, T-PB-B, input shaping):** retire literal `String::replace` here when
+/// `ExecuteCommand`’s `command`+`args` are narrow enough to forbid ambiguous `sh -c` (schema gate),
+/// or a **typed** hermetic host runner supersedes the shell escape hatch, or a real `sh` subset
+/// parser is shared with CI policy — *input* heuristics are a smell on the same seam as P2(a) on
+/// outcomes, but this path only **rejects** (no accept-on-text-match for claim truth).
 fn shell_dash_c_may_start_background_after_eliding_artifacts(script: &str) -> bool {
     let mut t = script.to_string();
     while t.contains("&&") {
@@ -511,7 +517,9 @@ fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
 /// authority, fail-closed for ambiguous empty stderr. (Second-run-on-empty can still flip
 /// non-idempotent work; keep test claims to idempotent or narrow commands — PR #792.)
 /// `unshare:`-pattern, read errors, `take` failure, and non-zero host-confirmation are unchanged;
-/// the latter is independent of this buffer case.
+/// the latter is independent of this buffer case. If release parity for this *one* retry is ever
+/// required, prefer a single **explicit** env opt-in (T-PB-B, “data not build-time” discipline)
+/// over reinterpreting `#[cfg(test)]` — not implemented; review #792, non-blocking.
 ///
 /// **P5 (dissolution — shared target):** Retire (1) the `#[cfg(test)]` empty-stderr relaunch and
 /// (2) the **non-zero exit** direct-`Child` “host confirmation” re-exec in
