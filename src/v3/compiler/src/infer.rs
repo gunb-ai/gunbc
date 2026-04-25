@@ -754,9 +754,8 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                         if type_shapes_equivalent(dag, ty, &int_shape) {
                             return Decision::Retry;
                         }
-                        if is_retryable_generic_decl(dag, ty.declaration) {
-                            return Decision::Set(v.output, int_shape);
-                        }
+                        // No modeled integer range: default literal to `int_shape` (Int64) whether
+                        // the resolved target is a retryable generic template or not.
                         Decision::Set(v.output, int_shape)
                     }
                 }

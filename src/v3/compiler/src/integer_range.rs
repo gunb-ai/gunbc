@@ -1,6 +1,23 @@
-//! Substrate-backed numeric range facts for `std/integer.dag` surface types.
-//! R2: magnitude narrowing reads these bounds; `dsl/extdeps/.../primitives.dag`
-//! carries the Rust-pilot mirror as decimal strings (load-bearing for Engine).
+//! Inclusive `i128` bounds for `std/integer.dag` surface declarations used by
+//! R2 **infer/lower** magnitude checks (`MagnitudeOutOfRange`).
+//!
+//! **Authority (compiler path):** [`range_for_std_integer_name`] is a **name-keyed**
+//! table that must match `std/integer.dag`’s `Int8` / `UInt8` / `Int` / … meanings.
+//! This is **not** read from the DAG at runtime; it is the v3 compiler’s
+//! current single source for *narrowing* against *std integer decl names*.
+//!
+//! **Parallel authority (T-Ground / pilot):** `dsl/extdeps/languages/rust/primitives.dag`
+//! carries `range_min_inclusive` / `range_max_inclusive` on `IntegerPrimitive` (decimal
+//! strings) for the Rust *target* primitive table and grounding-engine validation. Those
+//! fields are **not** what `infer`/`lower` consult today — the two must stay
+//! **semantically aligned** (same min/max for the same width) or they can drift.
+//!
+//! **Named dissolution: T-Ground-IntegerRangeSingleAuthority** — one consumer-facing
+//! range source (e.g. read pilot `.dag` or a generated `include!` from one table), then
+//! delete the duplicate.
+//!
+//! **Walk cap (32):** local guard on alias / instantiation chains; not a substitute for
+//! substrate-typed chain depth (hoist if alias depth becomes a first-class fact).
 
 use crate::dag::{AtomPayload, Dag, DeclarationId, TypeConnective};
 
