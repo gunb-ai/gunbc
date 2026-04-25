@@ -443,9 +443,27 @@ fn is_unshare_permission_error(err: &std::io::Error) -> bool {
 /// [`build_execute_command_process`] (same as [`is_unshare_permission_error`] spawn-fallback) so
 /// P3 is satisfied without turning every `ExecuteCommand("true", …, 0)` into `Fail` on restricted
 /// Linux CI. If we cannot read stderr, retry direct (conservative: avoid conflating ambiguous
-/// unshare exit with `expect_exit_code`). util-linux: `unshare: unshare failed: …`.
+/// unshare exit with `expect_exit_code`).
+///
+/// util-linux prefixes *all* wrapper diagnostics with `unshare:` — including messages that do not
+/// contain the word `failed` (e.g. `unshare: Operation not permitted`). Treat any such line in the
+/// first 20 lines as a setup error so we don’t conflate a permission/setup failure with the
+/// logical program’s exit (PR #792).
 #[cfg(target_os = "linux")]
 const UNSHARE_STDERR_SCAN_CAP: u64 = 8 * 1024;
+
+/// Returns true if captured stderr from the `unshare(1)` wrapper process looks like util-linux’s
+/// own error output (as opposed to post-`exec` content from the logical `command` — the usual
+/// case, since util-linux is consistent about the `unshare:` prefix for wrapper failures).
+#[cfg(target_os = "linux")]
+fn unshare_stderr_indicates_sandbox_setup_failure(stderr_text: &str) -> bool {
+    for line in stderr_text.lines().take(20) {
+        if line.trim().starts_with("unshare:") {
+            return true;
+        }
+    }
+    false
+}
 
 #[cfg(target_os = "linux")]
 fn unshare_sandbox_broken_relaunch_with_direct(
@@ -467,13 +485,7 @@ fn unshare_sandbox_broken_relaunch_with_direct(
     {
         return true;
     }
-    for line in buf.lines().take(20) {
-        let t = line.trim();
-        if t.starts_with("unshare:") && t.contains("failed") {
-            return true;
-        }
-    }
-    false
+    unshare_stderr_indicates_sandbox_setup_failure(&buf)
 }
 
 /// Configure `Command` for the host check: no capture, and on Unix a new process group for the
@@ -1910,5 +1922,33 @@ mod execute_command_timebound_tests {
             msg.contains("0.15") && msg.contains("exceeded") && msg.contains("wall-clock"),
             "expected timeout phrasing, got: {msg}"
         );
+    }
+}
+
+// Linux: util-linux unshare(1) stderr heuristics for post-start direct retry (see PR #792).
+#[cfg(all(test, target_os = "linux"))]
+mod unshare_stderr_scan_tests {
+    use super::unshare_stderr_indicates_sandbox_setup_failure;
+
+    #[test]
+    fn any_unshare_prefix_triggers_not_only_failed_substring() {
+        assert!(unshare_stderr_indicates_sandbox_setup_failure(
+            "unshare: Operation not permitted\n"
+        ));
+    }
+
+    #[test]
+    fn classic_unshare_failed_message_still_triggers() {
+        assert!(unshare_stderr_indicates_sandbox_setup_failure(
+            "unshare: unshare failed: some syscall\n"
+        ));
+    }
+
+    #[test]
+    fn empty_or_unrelated_stderr_no_trigger() {
+        assert!(!unshare_stderr_indicates_sandbox_setup_failure(""));
+        assert!(!unshare_stderr_indicates_sandbox_setup_failure(
+            "hello from program\n"
+        ));
     }
 }
