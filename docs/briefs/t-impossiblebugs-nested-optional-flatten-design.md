@@ -6,7 +6,7 @@
 
 ## TL;DR
 
-**Recommendation: bypass-feasible.** v3 substrate already has `TypeConnective::Cardinality { element, bound: CardinalityBound }` as a first-class connective (`src/v3/compiler/src/dag.rs:395`); the cardinality-substrate gate THESIS:343 names is the **v2** state described in `docs/architecture.md:109`, and v3 is past it. `T??` parses today, lowers to nested `Cardinality { bound: AtMostOne, .. }`, and is structurally distinct from `T?` only because nothing collapses the outer wrap. A single substrate-level helper enforcing `AtMostOne ∧ AtMostOne = AtMostOne` at every `Cardinality` construction site (3 hand-Rust sites: `lower.rs` ×2, `infer.rs` ×1) closes the bug class without touching substrate shape. Implementation lane is **S**. (Original draft proposed lower-only XS; revised post-PR #798 review — see §Q3 *Revision*.)
+**Recommendation: bypass-feasible.** v3 substrate already has `TypeConnective::Cardinality { element, bound: CardinalityBound }` as a first-class connective (`src/v3/compiler/src/dag.rs:395`); the cardinality-substrate gate THESIS:343 names is the **v2** state described in `docs/architecture.md:109`, and v3 is past it. `T??` parses today, lowers to nested `Cardinality { bound: AtMostOne, .. }`, and is structurally distinct from `T?` only because nothing collapses the outer wrap. The fix is (a) one predicate `cardinality_idempotent_target` owning the `AtMostOne ∧ AtMostOne` rule, (b) one allocator `alloc_cardinality_decl` that consults it, and **(c) API closure on `TypeConnective::Cardinality`'s payload** so the variant cannot be constructed outside the allocator — mechanical enforcement of "illegal states unrepresentable," not by-convention. Implementation lane is **M** (revised from S after API-closure requirement landed; see §Q3 *API closure*). (Original draft proposed lower-only XS, then constructor-helper-by-convention S; revised post-PR #798 review — see §Q3 *Revision*.)
 
 ## Q1 — Surface-upstream check: does `T??` parse?
 
@@ -132,7 +132,54 @@ fn alloc_cardinality_decl(
 - `infer.rs:2902` (`concretize_decl_with_subst`) — direct call, returns `DeclarationId`.
 - `regen_bootstrap_emit.rs` (codegen for `bootstrap_std_generated.rs`) — emit calls to `alloc_cardinality_decl` instead of literal `TypeConnective::Cardinality { ... }` struct-init in regen output.
 
-**Single-authority requirement (per PR #798 Codex review):** the rule lives in exactly one place — `cardinality_idempotent_target`. No sibling helper that re-applies the rule. No literal `TypeConnective::Cardinality` construction outside `alloc_cardinality_decl`'s body. A second authority violates INVARIANTS.md P2 Boundary Discipline.
+**Single-authority requirement (per PR #798 Codex review #1):** the rule lives in exactly one place — `cardinality_idempotent_target`. No sibling helper that re-applies the rule. No literal `TypeConnective::Cardinality` construction outside `alloc_cardinality_decl`'s body. A second authority violates INVARIANTS.md P2 Boundary Discipline.
+
+### API closure: mechanical, not conventional (per PR #798 Codex review #2)
+
+A second Codex review correctly flagged that "all call sites consume `alloc_cardinality_decl`" is **convention-level** — a future caller can still write literal `TypeConnective::Cardinality { element, bound }` directly. Per `docs/modeling-discipline.md` practice 6 (API-level enforcement over convention), the substrate invariant must be mechanically enforced: the constructor API must be closed so the variant **cannot be constructed** outside `alloc_cardinality_decl`.
+
+Concretely, in Rust this means refactoring `TypeConnective::Cardinality`'s payload from a struct-variant with public fields:
+
+```rust
+// BEFORE — payload is publicly constructible anywhere TypeConnective is in scope.
+enum TypeConnective {
+    Cardinality { element: DeclarationId, bound: CardinalityBound },
+    ...
+}
+```
+
+…to a tuple-variant carrying a payload struct whose constructor is module-private:
+
+```rust
+// AFTER — payload's only constructor is `pub(super) fn new` reachable
+// only from the module that owns alloc_cardinality_decl. Callers outside
+// the module CANNOT construct CardinalityPayload, therefore CANNOT
+// construct TypeConnective::Cardinality. Pattern-matching destructure
+// stays public via accessor methods.
+mod cardinality_payload {
+    pub struct CardinalityPayload {
+        element: DeclarationId,
+        bound: CardinalityBound,
+    }
+    impl CardinalityPayload {
+        pub(super) fn new(element: DeclarationId, bound: CardinalityBound) -> Self {
+            Self { element, bound }
+        }
+        pub fn element(&self) -> DeclarationId { self.element }
+        pub fn bound(&self) -> &CardinalityBound { &self.bound }
+    }
+}
+enum TypeConnective {
+    Cardinality(CardinalityPayload),
+    ...
+}
+```
+
+`alloc_cardinality_decl` becomes the **only** function that calls `CardinalityPayload::new`. Nested `AtMostOne ∧ AtMostOne` is then mechanically unrepresentable — no caller, present or future, can bypass the predicate. This is "illegal states unrepresentable" by type-system enforcement, not by-convention/by-review.
+
+**Scope impact:** every existing destructure of `TypeConnective::Cardinality { element, bound }` (currently struct-variant style, ~30 sites grepped) becomes `TypeConnective::Cardinality(p) => { let element = p.element(); let bound = p.bound(); ... }` or equivalent. Mechanical, but pervasive.
+
+**Lane re-size:** API closure bumps the lane from S → M (~30-line core diff plus pattern-match migration across the compiler). The reviewer offered an alternative — keep the public-literal surface bounded with a dissolution trigger — but this contradicts modeling-discipline practice 6 and `feedback_construction_over_ratchets` (model first; violations dissolve). The recommendation is mechanical closure (M lane), not bounded scaffold. **Director-call** if M is too large for this slot — explicitly noted, not deferred to implementer.
 
 The guard is **specific to AtMostOne ∧ AtMostOne**. The other shapes are not idempotent and stay distinct:
 
@@ -147,7 +194,7 @@ The guard predicate is exactly: outer bound `AtMostOne` *and* inner bound `AtMos
 
 ## Q4 — Recommendation: bypass implementation brief shape
 
-**Outcome: (a) bypass-feasible.** Director can fast-track an implementation brief at lane size **S** (see §Dispatch profile below; original draft sized XS based on a lower-only design that PR #798 review correctly rejected).
+**Outcome: (a) bypass-feasible.** Director authors an implementation brief at lane size **M** (see §Dispatch profile below; sized to include API closure per §Q3 *API closure*. Earlier drafts sized XS / S correspond to rejected designs — lower-only sugar and helper-by-convention respectively).
 
 ### Implementation-brief shape
 
@@ -155,7 +202,7 @@ The guard predicate is exactly: outer bound `AtMostOne` *and* inner bound `AtMos
 
 **Reqs:**
 
-1. **Substrate-level idempotence helper.** Add `alloc_cardinality_decl` (or equivalent) in `src/v3/compiler/src/dag/builder.rs` enforcing `AtMostOne ∧ AtMostOne = AtMostOne` at allocation time. When `bound == AtMostOne` and `element`'s connective is `Cardinality { bound: AtMostOne, .. }`, return `element` directly without allocating a fresh outer wrap. Specific to `AtMostOne ∧ AtMostOne`; `Unbounded`, `Exact(n)`, and mixed-bound combinations untouched. **Do NOT** peel to `element`-as-element (would collapse `T??` to `T` instead of `T?` and contradict acceptance below) — the helper returns the existing inner *declaration* (its connective is already `Cardinality<T, AtMostOne>`), not its element-of-element.
+1. **Substrate-level idempotence helper + API closure.** Add `alloc_cardinality_decl` (or equivalent) in `src/v3/compiler/src/dag/builder.rs` enforcing `AtMostOne ∧ AtMostOne = AtMostOne` at allocation time. When `bound == AtMostOne` and `element`'s connective is `Cardinality { bound: AtMostOne, .. }`, return `element` directly without allocating a fresh outer wrap. Specific to `AtMostOne ∧ AtMostOne`; `Unbounded`, `Exact(n)`, and mixed-bound combinations untouched. **Do NOT** peel to `element`-as-element (would collapse `T??` to `T` instead of `T?` and contradict acceptance below) — the helper returns the existing inner *declaration* (its connective is already `Cardinality<T, AtMostOne>`), not its element-of-element. **Additionally close the `TypeConnective::Cardinality` constructor API** per §Q3 *API closure* — refactor the payload to a module-private struct so the variant cannot be constructed outside `alloc_cardinality_decl`. Pattern-match destructure stays public via accessor methods on the payload.
 2. **Route ALL Cardinality construction paths through `alloc_cardinality_decl`** per the §Q3 canonical sketch: `lower.rs:1949`, `lower.rs:2044` (via caller restructure), `infer.rs:2902`, and `regen_bootstrap_emit.rs` (codegen emits helper calls, not literal `TypeConnective::Cardinality { ... }` struct-init in `bootstrap_std_generated.rs`). The rule lives only in `cardinality_idempotent_target`. **No sibling helper. No literal `TypeConnective::Cardinality` construction outside `alloc_cardinality_decl`'s body** (including in regen output). Single authority for the substrate invariant.
 3. **Span policy.** When flatten triggers, reuse the inner declaration's span (the user wrote `T??`; the type they got is the inner `T?`'s declaration). No info-level "flattened to" hint — *"impossible by construction"* per discipline; the second `?` is silently absorbed at the substrate constructor. Verify no diagnostic / hover / error-printer round-trips `T??` back to the user as `T?` confusingly (per gpt-5-5-pro non-blocking observation on PR #798).
 4. **Test fixtures.**
@@ -173,7 +220,7 @@ The guard predicate is exactly: outer bound `AtMostOne` *and* inner bound `AtMos
 - **`OptionalOf<OptionalOf<X>>` in std-method authoring** is a separate brief (algebra-template lint), not in scope here. STOP if the implementer is tempted to fold it in.
 - **DB-8 fixed-point drifts** — STOP immediately.
 
-**Dispatch profile:** S. Single PR, single worker. ~30-line code diff (one predicate + `alloc_cardinality_decl` helper + 4 routed paths consuming it: `lower.rs:1949`, `lower.rs:2044` via caller restructure, `infer.rs:2902`, and `regen_bootstrap_emit.rs` codegen) + 3 test fixtures + PR-body doc. Not gated on any other lane. Independent of the other two T-ImpossibleBugs classes.
+**Dispatch profile:** M. Single PR, single worker. Core diff: one predicate + `alloc_cardinality_decl` helper + `CardinalityPayload` module-private payload + accessor methods + 4 routed construction paths (`lower.rs:1949`, `lower.rs:2044` via caller restructure, `infer.rs:2902`, `regen_bootstrap_emit.rs` codegen). Plus pattern-match migration: every existing `TypeConnective::Cardinality { element, bound }` destructure (~30 sites grepped) → `TypeConnective::Cardinality(p) => { ... p.element() ... p.bound() ... }`. Mechanical but pervasive. 3 test fixtures + PR-body doc. Not gated on any other lane. Independent of the other two T-ImpossibleBugs classes. **Director-call**: if M is too large for this slot, the alternative is bounded-scaffold convention with a tracked dissolution trigger to API closure — but that contradicts modeling-discipline practice 6 and `feedback_construction_over_ratchets`. Recommendation is M lane, mechanical closure.
 
 **Acceptance:**
 
