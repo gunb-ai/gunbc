@@ -730,6 +730,16 @@ pub mod regen_bootstrap_compile {
     };
 }
 
+/// Crate-root aliases for the regen-only bootstrap compile helpers (same cfg +
+/// feature as [`regen_bootstrap_compile`]). Enables `cargo … --features
+/// bootstrap-regen-fresh` call sites and tests that import `compile_*` from
+/// `v3_compiler` without reaching into the submodule.
+#[cfg(feature = "bootstrap-regen-fresh")]
+pub use regen_bootstrap_compile::{
+    compile_full_bootstrap_dag_from_std_seed,
+    compile_full_bootstrap_without_parse_surface_dag_from_std_seed, compile_std_bootstrap_dag,
+};
+
 mod dimension;
 mod infer;
 

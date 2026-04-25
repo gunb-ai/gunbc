@@ -17,11 +17,9 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use v3_compiler::regen_bootstrap_compile::{
+use v3_compiler::{
     compile_full_bootstrap_dag_from_std_seed,
     compile_full_bootstrap_without_parse_surface_dag_from_std_seed, compile_std_bootstrap_dag,
-};
-use v3_compiler::{
     generated_files::GENERATED_FILES, render_bootstrap_generated_rs,
     render_bootstrap_std_generated_rs,
 };
