@@ -418,12 +418,12 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(script: &str) -> bo
 /// boundary). Other Unix and Windows: no unprivileged one-shot equivalent; wall bound + pgrp
 /// signal on timeout + the `sh -c` `&` heuristic only—documented, not a full process-tree
 /// guarantee.
-/// If `unshare(1)` **spawn** returns `EPERM` / `PermissionDenied`, *or* a **started** `unshare(1)`
+/// If `unshare(1)` **spawn** returns `Err(…)` for **any** reason, *or* a **started** `unshare(1)`
 /// process prints util-linux `unshare:` lines on the captured **wrapper** stderr (namespace setup
-/// before `exec` to the logical `command` — the common `Operation not permitted` / EPERM class),
-/// the runner **falls back** to [`build_execute_command_process`] (direct `Child`); see
-/// [`unshare_sandbox_broken_relaunch_with_direct`]. Wall+null stdio+pgrp still hold; the
-/// PID-namespace **init**-style subtree teardown is skipped on that path.
+/// before `exec` to the logical `command` — e.g. `Operation not permitted` / `EPERM` / missing
+/// util-linux), the runner **falls back** to [`build_execute_command_process`] (direct `Child`);
+/// see [`unshare_sandbox_broken_relaunch_with_direct`] for post-start retry. Wall+null stdio+pgrp
+/// still hold on the direct path; the PID-namespace **init**-style subtree teardown is skipped.
 #[cfg(target_os = "linux")]
 fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
     let mut c = Command::new("unshare");
@@ -448,16 +448,10 @@ fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
     c
 }
 
-#[cfg(target_os = "linux")]
-fn is_unshare_permission_error(err: &std::io::Error) -> bool {
-    use std::io::ErrorKind;
-    err.kind() == ErrorKind::PermissionDenied || err.raw_os_error() == Some(libc::EPERM)
-}
-
 /// After `unshare(1)` exits, scan its stderr. If util-linux reported namespace setup failure (a
 /// common path is: process started, then `unshare(2)` / clone fails, **before** `exec` to the
 /// logical `command`), the exit code is **not** the program’s. **Retry once** with a direct
-/// [`build_execute_command_process`] (same as [`is_unshare_permission_error`] spawn-fallback) so
+/// [`build_execute_command_process`] (same as the Linux `unshare(1)` **spawn** fallback) so
 /// P3 is satisfied without turning every `ExecuteCommand("true", …, 0)` into `Fail` on restricted
 /// Linux CI. If we cannot read stderr, retry direct (conservative: avoid conflating ambiguous
 /// unshare exit with `expect_exit_code`).
@@ -629,10 +623,12 @@ fn child_wait_for_execute_command(
 ///   this file).
 /// - **Wall clock** — [`EXECUTE_COMMAND_WALL_TIMEOUT`]; on exceed, the process group is signalled
 ///   (Unix) and the result is a typed failure (not a hang).
-/// - **Linux: user+PID namespace (when `unshare(1)` is usable)** — the usual path wraps in
-///   `unshare(1) -c -f -p` (subtree/“init” style exit). On `unshare(1)` spawn `EPERM` or, after a
-///   start, (only when the observed exit does **not** already match the claim) `unshare(1)` stderr
-///   may be scanned for namespace **setup** failure, then the runner **re-runs once** with a
+/// - **Linux: user+PID namespace (when `unshare(1)` can be spawned)** — the usual path wraps in
+///   `unshare(1) -c -f -p` (subtree/“init” style exit). On any `unshare(1)` **spawn** `Err(…)` the
+///   runner falls back to a direct `Child` (util-linux not on `PATH`, `EPERM` at `execve`, etc.);
+///   after a **start**, (only when the observed exit does **not** already match the claim)
+///   wrapper `stderr` may be scanned for namespace **setup** failure, then the runner
+///   **re-runs once** with a
 ///   direct [`Command`] (see [`unshare_sandbox_broken_relaunch_with_direct`]) so setup failure never
 ///   masquerades as a matching `expect_exit_code` and portable claims still `Pass` in restricted
 ///   CI. Post-`exec`, child stderr shares the same pipe, so a matching exit never gets a second
@@ -708,25 +704,21 @@ fn evaluate_execute_command_exit_code_with_wall_time(
     let (mut child, mut from_unshare) = {
         #[cfg(target_os = "linux")]
         {
+            // Any unshare(1) spawn failure (not only EPERM) falls back: missing util-linux, wrong
+            // `PATH`, container policy, etc. must not block the logical `command` on the direct
+            // path (PR #792: PB-Runtime gap vs restricted Linux hosts).
             match build_execute_command_unshare(command, args).spawn() {
                 Ok(c) => (c, true),
-                Err(e) if is_unshare_permission_error(&e) => {
-                    match build_execute_command_process(command, args).spawn() {
-                        Ok(c) => (c, false),
-                        Err(e2) => {
-                            return ClaimResult::Fail(format!(
-                                "ExecuteCommand spawn error ({command}) after unshare(1) EPERM fallback: \
-                                 {e2}"
-                            ));
-                        }
+                Err(e_unshare) => match build_execute_command_process(command, args).spawn() {
+                    Ok(c) => (c, false),
+                    Err(e2) => {
+                        return ClaimResult::Fail(format!(
+                            "ExecuteCommand: could not run `{command}`: `unshare(1) -c -f -p` \
+                             wrapper failed to spawn: {e_unshare}; direct spawn also failed: {e2} \
+                             (P3/P4 — util-linux/namespace or host binary path)"
+                        ));
                     }
-                }
-                Err(e) => {
-                    return ClaimResult::Fail(format!(
-                        "ExecuteCommand: failed to start `unshare(1) -c -f -p` for `{command}`: {e} \
-                         (util-linux/namespace support — P3/P4)"
-                    ));
-                }
+                },
             }
         }
         #[cfg(not(target_os = "linux"))]
