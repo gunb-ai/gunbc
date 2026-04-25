@@ -26,15 +26,27 @@ Sub-lane closes the magnitude carrier + reconciliation narrowing. **Scope is suf
 
 ## Five consumer-side requirements
 
-1. **`IntLit` carries a magnitude carrier separable from i64-pre-narrowed bits.** Candidate: `std.natural`-style unbounded-magnitude carrier (positive magnitude + sign) as a new `LiteralBits` variant or as a parallel field. Worker picks shape; STOP-AND-ESCALATE if the choice has cross-consumer implications beyond int-lit.
-2. **Substrate models numeric ranges as declared facts on integer algebras.** Each `IntegerPrimitive` (i8/i16/.../u64) gets a range fact (e.g., `range: Range<Magnitude>` or `min`+`max` fields) in `dsl/extdeps/languages/rust/primitives.dag`. Pilot's Rust-mirror range knowledge dissolves into the substrate.
-3. **Reconciliation narrows magnitude-aware.** `infer.rs:704-725` `decide` arm grows: query the literal's magnitude + the call-site's expected target algebra; pick the narrowest fitting target; emit a structured `MagnitudeOutOfRange` diagnostic if no target fits. Default-when-unconstrained policy stays explicit (e.g., still default to `Int64` if no narrowing target is named) — surface the choice in PR description.
+1. **`IntLit` carries a single canonical magnitude payload; target-width compatibility views derive AFTER reconciliation, not before.** **Specified shape**: replace `LiteralBits::Int(i64)` with `LiteralBits::Int(<canonical>)`. Two carrier choices, each with explicit discipline:
+
+   **Honest framing**: Choice (b) is the **expected outcome** for this PR (`std.natural` doesn't yet exist as substrate); Choice (a) is the **dissolution target** that this lane's bridge migrates to when the typed unbounded-magnitude carrier lands. Worker should plan for Choice (b) implementation by default and explicitly document the migration path.
+
+   **Choice (a) — typed unbounded-magnitude carrier (DISSOLUTION TARGET; not currently available).** A `std.natural`-style carrier with no host-bound (signed magnitude). Pre-reconciliation literals are unbounded by construction; no out-of-bound diagnostic possible at the carrier level (only at narrowing). When `std.natural` lands as a substrate type, the bridge from (b) migrates here.
+
+   **Choice (b) — `i128` as M2-bridge (EXPECTED OUTCOME for this PR).** **Bounded carrier**; treated as **transitional scaffolding with explicit dissolution discipline**:
+   - **Bounds documented in PR body**: `i128` range is `-(2^127) .. 2^127 - 1`; the bridge's finiteness must be visible, not silent.
+   - **Fail-closed diagnostic**: literals whose magnitude exceeds `i128` range emit a structured `MagnitudeCarrierOutOfRange` diagnostic at tokenize / lower time. **No silent truncation, no panic, no overflow.** This is the bridge's bound-honesty surface.
+   - **Named dissolution trigger**: when `std.natural` (or equivalent typed unbounded-magnitude carrier) lands as substrate, `LiteralBits::Int(i128)` migrates to that carrier and the bridge dissolves. Worker documents the trigger in a doc-comment on `LiteralBits::Int` and surfaces it in PR body.
+   - Per `feedback_construction_over_ratchets` + scaffold-dissolution discipline: bridges with named dissolution triggers are acceptable; ungoverned bridges are not.
+
+   Do **NOT** add a parallel field or coexisting variant: that would create dual representations of the same fact at the same level and violate single-authority discipline. Pre-reconciliation, every int-literal is the single canonical form (whichever carrier shape was picked). Post-reconciliation, downstream consumers (emit, lens) project to target-width compat views from the canonical form via the reconciliation-decided target algebra. STOP-AND-ESCALATE if execution surfaces a consumer that requires the i64-pre-narrowed shape pre-reconciliation (would indicate a hidden coupling that needs Director scoping).
+2. **Substrate models numeric ranges as declared facts on integer algebras, using the SAME magnitude carrier as req 1.** Each `IntegerPrimitive` (i8/i16/.../u64) gets a range fact (e.g., `range_min: <canonical-magnitude>`, `range_max: <canonical-magnitude>` fields) in `dsl/extdeps/languages/rust/primitives.dag`. **Invariant: the magnitude type used for the literal payload (req 1) and the magnitude type used for range bounds (req 2) is one and the same** — one magnitude algebra, used both as literal payload and as range bound. This keeps reconciliation's "does the literal's magnitude fit the target's range?" check structural rather than a cross-type comparison. Pilot's Rust-mirror range knowledge dissolves into the substrate.
+3. **Reconciliation narrows magnitude-aware.** `infer.rs:704-725` `decide` arm grows: query the literal's magnitude + the call-site's expected target algebra; pick the narrowest fitting target; emit a structured `MagnitudeOutOfRange` diagnostic if no target fits. Default-when-unconstrained policy stays explicit (e.g., still default to `Int64` if no narrowing target is named) — surface the choice in PR description, and **add a tracked-follow-up note** (in PR body or as a ROADMAP/active-deferral entry) that the `Int64` default is itself a host-narrowing heuristic the lane is otherwise dissolving; full dissolution is out of scope here.
 4. **`i64::MIN` representable end-to-end.** Smoke test: a `data x: Int = -9223372036854775808` declaration lowers + reconciles + emits without the additive-inverse workaround. This is the canonical regression that motivated the lane.
 5. **Out-of-range literal emits structured diagnostic.** Smoke test: `data x: u8 = 256` produces a diagnostic naming the literal's magnitude + the target's range + a fix-hint suggesting a wider target. No silent truncation.
 
 ## Slice — magnitude carrier + reconciliation narrowing
 
-1. Add the magnitude carrier shape (per req 1) to `LiteralBits` or as a parallel `IntLitMagnitude` carrier. Update `dag_scalar_generated.rs` regen path; update tokenize to populate the magnitude alongside (or instead of) `i64` pre-narrowing.
+1. Replace `LiteralBits::Int(i64)` with `LiteralBits::Int(<canonical-unbounded>)` per req 1's specified shape (single canonical payload — no parallel field, no coexisting variant). Update `dag_scalar_generated.rs` regen path; update tokenize to populate the canonical magnitude (replacing `i64` pre-narrowing, not paralleling it).
 2. Add range facts to integer algebras (per req 2) in `dsl/extdeps/languages/rust/primitives.dag` (and Python/Go siblings if they declare integer primitives). Pilot mirror at `src/v3/grounding_pilot/src/lib.rs` updates accordingly.
 3. Extend `infer.rs:704-725` decide arm with magnitude-aware narrowing (per req 3). Keep the default-when-unconstrained policy explicit.
 4. Diagnostic for out-of-range literals (per req 5) — add a new `Diagnostic::MagnitudeOutOfRange` variant or equivalent at the appropriate location.
@@ -51,14 +63,14 @@ Sub-lane closes the magnitude carrier + reconciliation narrowing. **Scope is suf
 - [ ] Existing int-literal tests pass without modification (no silent regressions).
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` passes; `clippy --all-targets -- -D warnings` clean; `fmt --all --check` clean.
 - [ ] **DB-8 `self_host_fixed_point` converges bit-identically.**
-- [ ] SG-0 census deltas: any retired hand-Rust off the list; regen snapshot updates land in REGEN_OUTPUTS partition.
+- [ ] SG-0 census + regen-output deltas: this lane is **adding** substrate (magnitude carrier + range facts), not retiring hand-Rust files; expected census movement is **the pilot's Rust-mirror range constants becoming substrate-declared** (so the corresponding pilot Rust code that previously hard-coded ranges either retires or shrinks). Any regen snapshot updates land in REGEN_OUTPUTS partition.
 
 ## STOP-AND-ESCALATE
 
 Surface to Director.
 
-- **Magnitude carrier shape is consumer-visible** — if the chosen carrier (e.g., a new `LiteralBits` variant vs a parallel field) leaks into lens producers / serializer / cementer in ways that need cross-consumer redesign, STOP.
-- **Range-fact substrate touches `substrate.dag`** — coordinates with PB-Substrate (Zero-Floor); STOP for cross-program coordination.
+- **Canonical-payload type choice is consumer-visible** — if the chosen `LiteralBits::Int(<T>)` payload type (e.g., `i128` M2-bridge vs a typed unbounded magnitude) leaks into lens producers / serializer / cementer in ways that need cross-consumer redesign, STOP. (Note: per req 1, the choice is *which canonical type*, not *whether to add a parallel carrier* — that's already locked.)
+- **Range-fact substrate touches `dsl/std/substrate.dag` (NOT `dsl/extdeps/languages/*/primitives.dag`)** — extdeps language files are in-scope for this lane; only edits to `dsl/std/substrate.dag` itself trigger the STOP for cross-program coordination with PB-Substrate (Zero-Floor). Range facts on `IntegerPrimitive` in `dsl/extdeps/languages/rust/primitives.dag` (req 2) are NOT substrate.dag changes and do NOT require Zero-Floor coordination.
 - **Default-when-unconstrained policy** — if changing it (e.g., dropping the `Int64` default in favor of "unconstrained → diagnostic") is the cleaner shape, STOP. Director call.
 - **DB-8 fixed-point drifts** — STOP immediately.
 - **Magnitude carrier needs cardinality-substrate capability beyond range facts** (e.g., needs the full `Cardinality<T, Bound>` machinery to even express the range) — STOP. May indicate the sub-lane scoping was too narrow.
