@@ -3,6 +3,15 @@ name = "v3-compiler"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+# PB-1-e / Zero-Floor: `regen_bootstrap` is the only bin that enables
+# `bootstrap-regen-fresh`; listing bins explicitly keeps that boundary
+# without Cargo silently promoting a new `src/bin/*.rs` driver.
+autobins = false
+
+[features]
+# Fresh tokenize/parse/lower bootstrap for `regen_bootstrap` only — not part of
+# the default `v3-compiler` library build graph (production uses snapshots).
+bootstrap-regen-fresh = []
 
 # M0: the smallest v3 pipeline that exercises the full substrate.
 # parse -> lower to L1 behaviors -> infer types through Ports ->
@@ -20,3 +29,32 @@ license.workspace = true
 # Interpreter-backed receipts for substrate behavior (repeat_string, etc.).
 v2-compiler = { path = "../../v2/stage0" }
 v2-compiler-tests = { path = "../../v2/tests" }
+
+[[bin]]
+name = "regen_bootstrap"
+path = "src/bin/regen_bootstrap.rs"
+required-features = ["bootstrap-regen-fresh"]
+
+[[bin]]
+name = "regen_lens"
+path = "src/bin/regen_lens.rs"
+
+[[bin]]
+name = "regen_parse"
+path = "src/bin/regen_parse.rs"
+
+[[bin]]
+name = "regen_parse_tables"
+path = "src/bin/regen_parse_tables.rs"
+
+[[bin]]
+name = "regen_tokenize"
+path = "src/bin/regen_tokenize.rs"
+
+[[bin]]
+name = "regen_v3"
+path = "src/bin/regen_v3.rs"
+
+[[bin]]
+name = "self_host_fixed_point"
+path = "src/bin/self_host_fixed_point.rs"

@@ -1,3 +1,21 @@
+//! Regenerate `bootstrap_*_generated.rs` snapshots from on-disk `.dag` sources.
+//!
+//! This binary is the sole `v3-compiler` target with `required-features =
+//! ["bootstrap-regen-fresh"]`, so the fresh-parse bootstrap subgraph is not part
+//! of the default library build graph.
+//!
+//! PB-1-e mechanism (ii): the **fresh-compile vs committed snapshot** gate lives
+//! here, not in `cargo test`. Use `--verify` in CI (or before push) to assert the
+//! checked-in `bootstrap_*.rs` files match a from-scratch compile; omit `--verify`
+//! to write updated snapshots after intentional `.dag` changes.
+//!
+//! Local invocation (feature is required):
+//! `cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap`
+//! (append `-- --verify` to check without writing).
+
+use std::env;
+use std::fs;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use v3_compiler::{
@@ -13,6 +31,21 @@ const GENERATED_NO_PARSE_SURFACE_FILE: &str =
     "src/v3/compiler/src/bootstrap_generated_without_parse_surface.rs";
 
 fn main() {
+    let args: Vec<String> = env::args().skip(1).collect();
+    let verify_only = match args.as_slice() {
+        [] => false,
+        [flag] if flag == "--verify" => true,
+        unexpected => {
+            let _ = writeln!(
+                io::stderr(),
+                "regen_bootstrap: unexpected arguments: {unexpected:?}\n\
+                 Usage: regen_bootstrap [--verify]\n\
+                 Omit flags to write snapshots; pass exactly `--verify` to check without writing."
+            );
+            std::process::exit(2);
+        }
+    };
+
     for generated_file in [
         GENERATED_STD_FILE,
         GENERATED_FULL_FILE,
@@ -30,7 +63,6 @@ fn main() {
     let std_dag = compile_std_bootstrap_dag();
     let std_formatted = render_bootstrap_std_generated_rs(&std_dag)
         .unwrap_or_else(|e| panic!("regen_bootstrap std: {e}"));
-    write_generated(&manifest_dir, "bootstrap_std_generated.rs", &std_formatted);
 
     let full_dag = compile_full_bootstrap_dag_from_std_seed(std_dag.clone());
     let full_formatted = render_bootstrap_generated_rs(
@@ -39,7 +71,6 @@ fn main() {
         "bootstrapped_fixture_dag",
     )
     .unwrap_or_else(|e| panic!("regen_bootstrap full: {e}"));
-    write_generated(&manifest_dir, "bootstrap_generated.rs", &full_formatted);
 
     let full_no_parse_surface_dag =
         compile_full_bootstrap_without_parse_surface_dag_from_std_seed(std_dag);
@@ -49,11 +80,79 @@ fn main() {
         "bootstrapped_fixture_without_parse_surface_dag",
     )
     .unwrap_or_else(|e| panic!("regen_bootstrap no-parse-surface: {e}"));
+
+    if verify_only {
+        assert_disk_matches(&manifest_dir, "bootstrap_std_generated.rs", &std_formatted);
+        assert_disk_matches(&manifest_dir, "bootstrap_generated.rs", &full_formatted);
+        assert_disk_matches(
+            &manifest_dir,
+            "bootstrap_generated_without_parse_surface.rs",
+            &full_no_parse_surface_formatted,
+        );
+        println!("regen_bootstrap --verify: committed snapshots match fresh compile.");
+        return;
+    }
+
+    write_generated(&manifest_dir, "bootstrap_std_generated.rs", &std_formatted);
+    write_generated(&manifest_dir, "bootstrap_generated.rs", &full_formatted);
     write_generated(
         &manifest_dir,
         "bootstrap_generated_without_parse_surface.rs",
         &full_no_parse_surface_formatted,
     );
+}
+
+fn assert_disk_matches(manifest_dir: &Path, file_name: &str, expected: &str) {
+    let path = manifest_dir.join("src").join(file_name);
+    let on_disk =
+        fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    if on_disk != expected {
+        let hint = first_text_mismatch_hint(&on_disk, expected);
+        panic!(
+            "{file_name}: committed snapshot does not match fresh compile from .dag sources. \
+             Run `cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap` \
+             (without `--verify`) to \
+             regenerate after intentional authority edits, or fix unintended drift. \
+             {hint}",
+        );
+    }
+}
+
+/// Byte offset of first differing UTF-8 byte, lengths, and a small lossy window
+/// around the mismatch (UTF-8 boundaries not guaranteed inside the window).
+fn first_text_mismatch_hint(on_disk: &str, expected: &str) -> String {
+    const RADIUS: usize = 40;
+    let a = on_disk.as_bytes();
+    let b = expected.as_bytes();
+    let prefix_len = a.len().min(b.len());
+    let mut first_diff = None;
+    for i in 0..prefix_len {
+        if a[i] != b[i] {
+            first_diff = Some(i);
+            break;
+        }
+    }
+    // If one string is a strict prefix of the other, all shared bytes match.
+    let offset = first_diff.unwrap_or(prefix_len);
+    let window_disk = lossy_byte_window(a, offset, RADIUS);
+    let window_exp = lossy_byte_window(b, offset, RADIUS);
+    format!(
+        "(first differing byte index: {offset}, on_disk_len={}, expected_len={}, \
+         on_disk[…]≈{:?}, expected[…]≈{:?})",
+        on_disk.len(),
+        expected.len(),
+        window_disk,
+        window_exp,
+    )
+}
+
+fn lossy_byte_window(bytes: &[u8], center: usize, radius: usize) -> String {
+    if bytes.is_empty() {
+        return String::new();
+    }
+    let start = center.saturating_sub(radius).min(bytes.len());
+    let end = (center + radius).min(bytes.len());
+    String::from_utf8_lossy(&bytes[start..end]).into_owned()
 }
 
 fn write_generated(manifest_dir: &Path, file_name: &str, contents: &str) {
