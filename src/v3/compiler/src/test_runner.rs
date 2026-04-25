@@ -424,15 +424,37 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(script: &str) -> bo
 /// util-linux), the runner **falls back** to [`build_execute_command_process`] (direct `Child`);
 /// see [`unshare_sandbox_broken_relaunch_with_direct`] for post-start retry. Wall+null stdio+pgrp
 /// still hold on the direct path; the PID-namespace **init**-style subtree teardown is skipped.
+///
+/// The unshare path runs `unshare … -- sh -c` `UNSHARE_LOGICAL_BOOTSTRAP_SH` (on Linux: see
+/// that constant in this file), with `command`+`args` as argv (POSIX `$0`/`$@` — not
+/// shell-interpolated), so the **logical** process is `exec`’d with `stderr` → `/dev/null` while
+/// the parent’s piped `stderr` remains for util-linux and bootstrap output only (codex PR #792: split
+/// setup authority from the claim).
+#[cfg(target_os = "linux")]
+const UNSHARE_LOGICAL_BOOTSTRAP_SH: &str = "exec 2>/dev/null; exec \"$0\" \"$@\"";
+
 #[cfg(target_os = "linux")]
 fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
     let mut c = Command::new("unshare");
-    c.args(["-c", "-f", "-p", "--", command])
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        // stderr: capture so we can detect unshare(2) setup failures in the `unshare(1)` process
-        // (they would otherwise masquerade as a logical program exit, e.g. 1 == expect 1) — P3.
+    c.args([
+        "-c",
+        "-f",
+        "-p",
+        "--",
+        "sh",
+        "-c",
+        UNSHARE_LOGICAL_BOOTSTRAP_SH,
+    ])
+    .arg(command)
+    .args(args)
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+        // stderr: capture for util-linux + **pre-`exec`** child setup lines only; the **logical**
+        // process is re-exec’d with `stderr` → `/dev/null` (see
+        // [`UNSHARE_LOGICAL_BOOTSTRAP_SH`]) so exit-code-only claims are not entangled with logical
+        // `stderr` volume, pipe fill, or heuristics. [`child_wait_for_execute_command`] still
+        // **drains** this pipe during `try_wait` (O_NONBLOCK) in case a util-linux or bootstrap
+        // `sh` path is unexpectedly chatty.
         .stderr(Stdio::piped());
     {
         use std::os::unix::process::CommandExt;
@@ -462,10 +484,11 @@ fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
 /// logical program’s exit (PR #792).
 ///
 /// **C-5 / P3:** This scan is only applied when
-/// [`unshare_post_start_stderr_may_authorize_relaunch`] is true. After a successful `exec(2)`,
-/// stderr is the logical program’s stream, so a matching host exit must **not** be re-run on a
-/// `unshare:` line — that was the double-execution / authority leak the sentinel would otherwise
-/// create.
+/// [`unshare_post_start_stderr_may_authorize_relaunch`] is true. The logical `command` (after the
+/// Linux `UNSHARE_LOGICAL_BOOTSTRAP_SH` hop) has `stderr` to `/dev/null`, so a matching host exit
+/// from the logical `command` is not confusable with a post-hoc `unshare:` line from a chatty
+/// *user* program on the same capture (that source of false authority is gone; util-linux
+/// heuristics remain the concern).
 ///
 /// **P3 (empty buffer):** A second run when stderr is **empty** after an exit **mismatch** is
 /// **not** the default: it is enabled **only in `#[cfg(test)]` builds** of this crate
@@ -484,10 +507,10 @@ fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
 #[cfg(target_os = "linux")]
 const UNSHARE_STDERR_SCAN_CAP: u64 = 8 * 1024;
 
-/// `unshare(1)` pipes the **child’s** stderr after `exec` into the same capture, so a program can
-/// print util-linux-looking lines. Only when the observed **exit code already disagrees** with the
-/// claim may we treat the capture as a possible *wrapper* setup error and scan for `unshare:` to
-/// authorize a single direct-`Child` re-run.
+/// `unshare(1)` (and the thin `sh` bootstrap) may still write to the **parent** pipe before the
+/// logical `command` is `exec`’d with `stderr` off the pipe. Only when the observed **exit code
+/// already disagrees** with the claim may we treat the capture as a possible *wrapper* setup error
+/// and scan for `unshare:` to authorize a single direct-`Child` re-run.
 #[cfg(target_os = "linux")]
 fn unshare_post_start_stderr_may_authorize_relaunch(
     from_unshare: bool,
@@ -497,9 +520,10 @@ fn unshare_post_start_stderr_may_authorize_relaunch(
     from_unshare && status.code().map(i64::from) != Some(expect_exit_code)
 }
 
-/// Returns true if captured stderr from the `unshare(1)` wrapper process looks like util-linux’s
-/// own error output (as opposed to post-`exec` content from the logical `command` — the usual
-/// case, since util-linux is consistent about the `unshare:` prefix for wrapper failures).
+/// Returns true if captured stderr from the `unshare(1)` / wrapper side of the process looks like
+/// util-linux’s own error output (as opposed to logical-program noise — with
+/// `UNSHARE_LOGICAL_BOOTSTRAP_SH` the **logical** process does not use this pipe, but heuristics
+/// must stay prefix-based).
 #[cfg(target_os = "linux")]
 fn unshare_stderr_indicates_sandbox_setup_failure(stderr_text: &str) -> bool {
     for line in stderr_text.lines().take(20) {
@@ -585,16 +609,117 @@ fn kill_process_group_on_timeout(child: &mut std::process::Child) {
     let _ = child.kill();
 }
 
+/// Linux + `unshare(1)`: the parent holds a read end to a **piped** stderr. After the logical
+/// process `exec(2)`s, the same pipe carries its writes. If we only `try_wait` and never read,
+/// the child can block when the ~64KiB default pipe buffer fills; we only fail at wall timeout.
+/// [`linux_drain_piped_child_stderr_nonblocking_once`] discards *all* post-exec bytes (not a claim
+/// surface).
+#[cfg(target_os = "linux")]
+fn linux_piped_child_stderr_set_nonblock(fd: std::os::fd::RawFd, nonblock: bool) -> std::io::Result<()> {
+    // Same pattern as `std` net/uds: F_GETFL / F_SETFL with O_NONBLOCK.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let new = if nonblock {
+        flags | libc::O_NONBLOCK
+    } else {
+        flags & !libc::O_NONBLOCK
+    };
+    if unsafe { libc::fcntl(fd, libc::F_SETFL, new) } < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// Nonblocking **drain to discard**; loop until `WouldBlock` or EOF. Never blocks on an empty
+/// buffer (PR #792).
+#[cfg(target_os = "linux")]
+fn linux_drain_piped_child_stderr_nonblocking_once(stderr: &mut std::process::ChildStderr) {
+    use std::io::ErrorKind;
+    use std::io::Read;
+    let mut buf = [0u8; 8192];
+    loop {
+        match stderr.read(&mut buf) {
+            Ok(0) => break,
+            Ok(_) => continue,
+            Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+            Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+            Err(_) => break,
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+struct LinuxPipedChildStderrNonblockGuard {
+    fd: std::os::fd::RawFd,
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxPipedChildStderrNonblockGuard {
+    /// When `must_drain` and the `Child` has a piped stderr, set O_NONBLOCK for the read end. On
+    /// drop, restore **blocking** so the post-wait `read_to_string` / `take()` path keeps its
+    /// previous contract.
+    fn try_new(
+        must_drain: bool,
+        child: &std::process::Child,
+    ) -> Option<LinuxPipedChildStderrNonblockGuard> {
+        if !must_drain {
+            return None;
+        }
+        if child.stderr.is_none() {
+            return None;
+        }
+        use std::os::unix::io::AsRawFd;
+        let fd = child.stderr.as_ref()?.as_raw_fd();
+        if linux_piped_child_stderr_set_nonblock(fd, true).is_err() {
+            return None;
+        }
+        Some(LinuxPipedChildStderrNonblockGuard { fd })
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for LinuxPipedChildStderrNonblockGuard {
+    fn drop(&mut self) {
+        let _ = linux_piped_child_stderr_set_nonblock(self.fd, false);
+    }
+}
+
+/// On Linux when `must_drain_piped_child_stderr` is true (`unshare(1)` path), the wait loop
+/// nonblocking-drains the piped child stderr so it cannot fill and stall the child (PR #792).
 fn child_wait_for_execute_command(
     child: &mut std::process::Child,
     wall_time: Duration,
+    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
+    must_drain_piped_child_stderr: bool,
 ) -> Result<std::process::ExitStatus, ClaimResult> {
+    #[cfg(target_os = "linux")]
+    let _stder_nonblock = LinuxPipedChildStderrNonblockGuard::try_new(
+        must_drain_piped_child_stderr,
+        child,
+    );
+    // If we could not set nonblock, do not `read` in blocking mode (would block on an idle pipe).
+    #[cfg(target_os = "linux")]
+    let can_drain_nonblocking = _stder_nonblock.is_some();
+
     let wall_label = format!("{:.2}", wall_time.as_secs_f64());
     let deadline = Instant::now() + wall_time;
     loop {
         match child.try_wait() {
             Ok(Some(status)) => return Ok(status),
             Ok(None) => {
+                #[cfg(target_os = "linux")]
+                {
+                    if must_drain_piped_child_stderr
+                        && can_drain_nonblocking
+                        && child.stderr.is_some()
+                    {
+                        if let Some(s) = child.stderr.as_mut() {
+                            linux_drain_piped_child_stderr_nonblocking_once(s);
+                        }
+                    }
+                }
                 if Instant::now() >= deadline {
                     kill_process_group_on_timeout(child);
                     let _ = child.wait();
@@ -624,16 +749,20 @@ fn child_wait_for_execute_command(
 /// - **Wall clock** — [`EXECUTE_COMMAND_WALL_TIMEOUT`]; on exceed, the process group is signalled
 ///   (Unix) and the result is a typed failure (not a hang).
 /// - **Linux: user+PID namespace (when `unshare(1)` can be spawned)** — the usual path wraps in
-///   `unshare(1) -c -f -p` (subtree/“init” style exit). On any `unshare(1)` **spawn** `Err(…)` the
-///   runner falls back to a direct `Child` (util-linux not on `PATH`, `EPERM` at `execve`, etc.);
-///   after a **start**, (only when the observed exit does **not** already match the claim)
-///   wrapper `stderr` may be scanned for namespace **setup** failure, then the runner
-///   **re-runs once** with a
-///   direct [`Command`] (see [`unshare_sandbox_broken_relaunch_with_direct`]) so setup failure never
+///   `unshare(1) -c -f -p` plus a small POSIX `sh` bootstrap that `exec(2)`s
+///   the user `command`+`args` with **logical** `stderr` to `/dev/null` so the parent’s piped
+///   `stderr` is for util-linux and bootstrap `sh` only, not a shared authority with exit-code
+///   semantics (PR #792 codex). On any `unshare(1)` **spawn** `Err(…)` the runner falls back to a
+///   direct `Child` (util-linux not on `PATH`, `EPERM` at `execve`, etc.); after a **start**,
+///   (only when the observed exit does **not** already match the claim) wrapper `stderr` may be
+///   scanned for namespace **setup** failure, then the runner **re-runs once** with a direct
+///   [`Command`] (see [`unshare_sandbox_broken_relaunch_with_direct`]) so setup failure never
 ///   masquerades as a matching `expect_exit_code` and portable claims still `Pass` in restricted
-///   CI. Post-`exec`, child stderr shares the same pipe, so a matching exit never gets a second
-///   run on a `unshare:`-shaped line (C-5). Wall+stdio+pgrp still apply. Empty wrapper stderr
-///   after an exit **mismatch** is retried (direct) **only in `#[cfg(test)]` builds** — see
+///   CI. The `try_wait` loop also **drains** the pipe in nonblocking mode in case a wrapper path is
+///   unexpectedly chatty (bytes discarded, not a claim surface). A matching exit on the **logical**
+///   child is not re-run for a `unshare:`-shaped line in this capture (C-5, given logical stderr is
+///   not on the pipe). Wall+stdio+pgrp still apply. Empty wrapper stderr after an exit **mismatch**
+///   is retried (direct) **only in `#[cfg(test)]` builds** — see
 ///   [`unshare_sandbox_broken_relaunch_with_direct`].
 /// - **Heuristic on `&` in `sh`/`bash`/… `-c` scripts (all hosts, including `sh -ec` / `sh -lc`)** — a
 ///   bare shell background `&`
@@ -740,7 +869,7 @@ fn evaluate_execute_command_exit_code_with_wall_time(
         allow(clippy::never_loop) // the only `continue` is under `#[cfg(target_os = "linux")]`
     )]
     let status = loop {
-        let s = match child_wait_for_execute_command(&mut child, wall_time) {
+        let s = match child_wait_for_execute_command(&mut child, wall_time, from_unshare) {
             Ok(s) => s,
             Err(e) => return e,
         };
@@ -2028,6 +2157,29 @@ mod execute_command_timebound_tests {
         assert_eq!(
             p,
             Ok(ExecuteCommandM1_5Proposition::UnsatisfiedExitMismatch)
+        );
+    }
+
+    /// Linux: the unshare bootstrap re-`exec`s the user `command` with logical `stderr` to
+    /// `/dev/null` (and `child_wait` still drains the wrapper pipe). This must **Pass** (exit 0) and
+    /// not wall-timeout even if the logical command would be very chatty on `stderr` (PR #792).
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn unshare_path_drains_piped_stderr_so_huge_logical_stderr_does_not_stall() {
+        let c = 8000u32;
+        let body = format!(
+            "i=0; while [ $i -lt {c} ]; do printf 'xxxxxxxxxx'; i=$((i+1)); done >&2; exit 0"
+        );
+        let r = evaluate_execute_command_exit_code_with_wall_time(
+            "sh",
+            &[String::from("-c"), body],
+            0,
+            Duration::from_secs(2),
+        );
+        assert_eq!(
+            r,
+            ClaimResult::Pass,
+            "expected Pass when logical stderr > pipe; got {r:?}"
         );
     }
 
