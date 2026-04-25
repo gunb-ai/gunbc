@@ -1,9 +1,25 @@
-# T-ImpossibleBugs — unenumerated effects `(S, R2)`
+# T-ImpossibleBugs — unenumerated effects `(S, R2; SPLIT — parser sub-lane lands first)`
 
 > **Director ad-hoc dispatch.** R2 T-ImpossibleBugs class 3 of 3 per
 > [`docs/r2-structure.md`](../r2-structure.md) §"Goal 4". Independent
 > of the other two impossible-bug classes — any worker can dispatch
 > in parallel. Reports to Director (`zesty-bear-812`).
+>
+> **🔄 SPLIT 2026-04-25 (post-`sunny-otter-128` STOP-AND-ESCALATE).**
+> Worker correctly identified that brief req 2 (declared-effect carrier
+> as part of function type signature) requires surface-syntax authoring:
+> `SurfaceType.Arrow` and `SurfaceItem.Fn` (`src/v3/std/parse_surface.dag:71-75`,
+> `:185-199`) have **zero** effect slots today. Without parser surface,
+> every user function would have `declared_effects = []` while inference
+> returns non-empty — lens fires `EffectLeakageError` everywhere it's
+> enabled. Worker recommended sibling parser sub-lane (mirror of
+> `t-substrate-valuebody-map-parser-worker.md` precedent from #797).
+> **Director picked split.** Parser side now lives in
+> [`t-impossiblebugs-unenumerated-effects-parser-worker.md`](t-impossiblebugs-unenumerated-effects-parser-worker.md)
+> as a sibling pre-requisite sub-lane. This brief is now scoped to
+> **post-parser-extension state**: assumes `declared_effects` field is
+> already on `SurfaceType.Arrow` (or `SurfaceItem.Fn`) by the parser;
+> this PR consumes that via the lens + diagnostic.
 
 ## Read first
 
@@ -31,12 +47,12 @@ Sub-lane scope: enough effect-substrate to close declared-vs-actual leakage end-
 ## Three consumer-side requirements
 
 1. **Effect-inference pass — direct-call scope only (no inter-procedural call-graph walk).** Walks function body DAG; collects effects from **direct calls to known-effectful primitives** (e.g., calls that already have an `OperationEffect` derived via `derive_op_effect` at `effects.dag:722-755`). Does NOT follow transitive call chains (A calls B which calls C). Lives as a **lens** at `src/v3/lenses/effect_enumeration.dag`, parallel to `cost.dag` precedent (per `feedback_no_validation_passes` + cost/complexity-lens precedent: lens-shape, not validation-pass-shape; not a lowering-phase fact). The function-declaration *carries* a declared-effect carrier and a derived inferred-effect carrier as facts; mismatch is a structural Diagnostic, not a "check pass."
-2. **Declared-effect carrier on function declarations as part of the function type signature** (per `feedback_no_annotations` — first-class language feature, not annotation). Substrate-level: extend `Declaration` (or the function-arrow connective shape) to carry the declared effect set as a structural field. Surface syntax is part of the function type signature (mechanism: worker may anchor on existing arrow-body extension precedent; not an annotation, not a separate metadata channel). If parser-side surface-syntax authoring requires non-trivial parser scope, STOP-AND-ESCALATE — coordinate with parser owners on a coupled PR or sibling parser sub-lane.
+2. **Declared-effect carrier on function declarations as part of the function type signature — assumed already landed via parser sub-lane.** Per the split: the parser sub-lane ([`t-impossiblebugs-unenumerated-effects-parser-worker.md`](t-impossiblebugs-unenumerated-effects-parser-worker.md)) lands the surface-syntax extension to `SurfaceType.Arrow` (or `SurfaceItem.Fn`) and the lowered `declared_effects` field on the function-arrow connective. **STOP-AND-ESCALATE if dispatching against this brief and the parser sub-lane has NOT landed** — sequencing error. This substrate brief consumes the post-parser carrier; does NOT author it.
 3. **Structural carrier mismatch surfaces a Diagnostic (no validation pass).** At declaration site, the carrier facts (declared + inferred) are present; if declared ⊇ inferred fails (set-cover violation), the lens emits `EffectLeakageError` naming declared set + inferred set + specific operations that leak. Per `feedback_no_validation_passes` + C-8 fail-closed: this is structural mismatch on always-present carriers, not a pass that "checks" a validity property. Smoke + integration test: a function declares no effects but body directly calls `service.upsert(...)` (an `UpsertEffect`-emitting op per `derive_op_effect`) → diagnostic; same function with `UpsertEffect` declared → accepted.
 
 ## Slice — effect inference + declared-effect carrier + leakage diagnostic
 
-1. Add declared-effect carrier (per req 2) to function declarations as part of the function type signature. Parser/lowerer extension; STOP-AND-ESCALATE if parser scope balloons.
+1. **Pre-flight check (NOT a parser-extension step)**: confirm the parser sub-lane PR has merged and `SurfaceType.Arrow` (or `SurfaceItem.Fn`) carries the `declared_effects` field on `main`. If not, STOP per req 2 — that's a sequencing error.
 2. Implement effect-inference lens (per req 1) at `src/v3/lenses/effect_enumeration.dag`, parallel to cost.dag precedent.
 3. Structural-mismatch Diagnostic (per req 3). New `EffectLeakageError` variant.
 4. Demo using existing `OperationEffect` taxonomy: pick a function that calls a known-effectful primitive directly (e.g., a service method invoking `derive_op_effect` paths to produce `UpsertEffect` or `CreateEffect`). Do NOT pick `Logging` — it's not in the existing taxonomy and would force a coupled enum extension.
