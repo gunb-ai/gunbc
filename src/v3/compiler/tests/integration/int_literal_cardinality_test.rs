@@ -190,10 +190,18 @@ fn duplicate_integer_range_fact_fails_closed() {
         .map(|(_, diagnostic)| diagnostic.message())
         .collect();
     assert!(
-        messages
-            .iter()
-            .any(|message| message.contains("scalar literal does not match declared type")),
-        "duplicate range key should make narrowing unavailable, got {messages:?}"
+        dag.diagnostics().iter().any(|(_, diagnostic)| {
+            matches!(
+                diagnostic,
+                v3_compiler::diagnostics::Diagnostic::MalformedIntegerRangeFact {
+                    message,
+                    fixes,
+                    ..
+                } if message.contains("duplicate IntegerRangeFact")
+                    && fixes.is_empty()
+            )
+        }),
+        "duplicate range key should emit malformed fact diagnostic, got {messages:?}"
     );
 }
 
@@ -220,10 +228,18 @@ fn malformed_integer_range_fact_fails_closed() {
         .map(|(_, diagnostic)| diagnostic.message())
         .collect();
     assert!(
-        messages
-            .iter()
-            .any(|message| message.contains("scalar literal does not match declared type")),
-        "malformed range key should make narrowing unavailable, got {messages:?}"
+        dag.diagnostics().iter().any(|(_, diagnostic)| {
+            matches!(
+                diagnostic,
+                v3_compiler::diagnostics::Diagnostic::MalformedIntegerRangeFact {
+                    message,
+                    fixes,
+                    ..
+                } if message.contains("malformed IntegerRangeFact")
+                    && fixes.is_empty()
+            )
+        }),
+        "malformed range key should emit malformed fact diagnostic, got {messages:?}"
     );
 }
 

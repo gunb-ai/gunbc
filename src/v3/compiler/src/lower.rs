@@ -36,6 +36,7 @@ use crate::diagnostics::{
 use crate::infer::{concretize_decl_with_subst, SubstStack};
 use crate::int_literal_ranges::{
     int_literal_fits_expected_type, integer_range_for_decl, magnitude_out_of_range,
+    IntegerRangeLookup,
 };
 use crate::lower_helpers::{expr_span, item_span, pattern_binding_names};
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
@@ -3276,7 +3277,10 @@ fn lower_scalar_literal_for_type(
             int_decl_id
                 .map(|id| walks_to(dag, expected_type, id))
                 .unwrap_or(false)
-                || int_literal_fits_expected_type(dag, *value, expected_type).unwrap_or(false)
+                || matches!(
+                    int_literal_fits_expected_type(dag, *value, expected_type),
+                    Ok(Some(true))
+                )
         }
         LiteralBits::Bool(_) => bool_decl_id
             .map(|id| walks_to(dag, expected_type, id))
@@ -3297,13 +3301,17 @@ fn lower_scalar_literal_for_type(
         return LowerScalarLiteralOutcome::Literal(literal_bits);
     }
     if let LiteralBits::Int(value) = literal_bits {
-        if let Some(range) = integer_range_for_decl(dag, expected_type) {
-            return LowerScalarLiteralOutcome::Reject(magnitude_out_of_range(
-                value,
-                TypeShape::new(expected_type),
-                range,
-                expr_span(expr),
-            ));
+        match integer_range_for_decl(dag, expected_type) {
+            IntegerRangeLookup::Found(range) => {
+                return LowerScalarLiteralOutcome::Reject(magnitude_out_of_range(
+                    value,
+                    TypeShape::new(expected_type),
+                    range,
+                    expr_span(expr),
+                ));
+            }
+            IntegerRangeLookup::Invalid(diag) => return LowerScalarLiteralOutcome::Reject(diag),
+            IntegerRangeLookup::Missing => {}
         }
     }
     LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {

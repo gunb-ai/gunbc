@@ -43,6 +43,7 @@ use crate::infer_helpers::{
 };
 use crate::int_literal_ranges::{
     int_literal_fits_expected_type, integer_range_for_decl, literal_int_at, magnitude_out_of_range,
+    IntegerRangeLookup,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
@@ -1064,30 +1065,39 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                 }
                 if !types_equivalent {
                     if let Some(literal) = literal_int_at(dag, *input_port) {
-                        if int_literal_fits_expected_type(dag, literal, expected_ty.declaration)
-                            == Some(true)
+                        match int_literal_fits_expected_type(dag, literal, expected_ty.declaration)
                         {
-                            if let Some(diag) = check_refinement_discharge(
-                                dag,
-                                actual,
-                                expected_ty,
-                                &t.target,
-                                &t.span,
-                            ) {
+                            Ok(Some(true)) => {
+                                if let Some(diag) = check_refinement_discharge(
+                                    dag,
+                                    actual,
+                                    expected_ty,
+                                    &t.target,
+                                    &t.span,
+                                ) {
+                                    return Decision::Fail(t.output, diag);
+                                }
+                                continue;
+                            }
+                            Ok(Some(false)) | Ok(None) => {}
+                            Err(diag) => return Decision::Fail(t.output, diag),
+                        }
+                        match integer_range_for_decl(dag, expected_ty.declaration) {
+                            IntegerRangeLookup::Found(range) => {
+                                return Decision::Fail(
+                                    *input_port,
+                                    magnitude_out_of_range(
+                                        literal,
+                                        *expected_ty,
+                                        range,
+                                        t.span.clone(),
+                                    ),
+                                );
+                            }
+                            IntegerRangeLookup::Invalid(diag) => {
                                 return Decision::Fail(t.output, diag);
                             }
-                            continue;
-                        }
-                        if let Some(range) = integer_range_for_decl(dag, expected_ty.declaration) {
-                            return Decision::Fail(
-                                *input_port,
-                                magnitude_out_of_range(
-                                    literal,
-                                    *expected_ty,
-                                    range,
-                                    t.span.clone(),
-                                ),
-                            );
+                            IntegerRangeLookup::Missing => {}
                         }
                     }
                     return Decision::Fail(

@@ -194,6 +194,11 @@ pub enum Diagnostic {
         span: SourceSpan,
         fixes: Vec<Correction>,
     },
+    MalformedIntegerRangeFact {
+        message: String,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
+    },
 }
 
 impl Diagnostic {
@@ -206,7 +211,8 @@ impl Diagnostic {
             | Diagnostic::ResolveError { span, .. }
             | Diagnostic::UnitMismatch { span, .. }
             | Diagnostic::BranchConditionNotBool { span, .. }
-            | Diagnostic::MagnitudeOutOfRange { span, .. } => span,
+            | Diagnostic::MagnitudeOutOfRange { span, .. }
+            | Diagnostic::MalformedIntegerRangeFact { span, .. } => span,
         }
     }
 
@@ -219,7 +225,8 @@ impl Diagnostic {
             | Diagnostic::ResolveError { fixes, .. }
             | Diagnostic::UnitMismatch { fixes, .. }
             | Diagnostic::BranchConditionNotBool { fixes, .. }
-            | Diagnostic::MagnitudeOutOfRange { fixes, .. } => fixes,
+            | Diagnostic::MagnitudeOutOfRange { fixes, .. }
+            | Diagnostic::MalformedIntegerRangeFact { fixes, .. } => fixes,
         }
     }
 
@@ -261,6 +268,7 @@ impl Diagnostic {
             } => format!(
                 "integer literal `{literal}` is out of range for `{target}` (expected {range_min_inclusive}..={range_max_inclusive}, declared type {expected:?}); use a wider target"
             ),
+            Diagnostic::MalformedIntegerRangeFact { message, .. } => message.clone(),
         }
     }
 }

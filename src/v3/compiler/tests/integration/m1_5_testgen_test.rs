@@ -461,6 +461,7 @@ fn diagnostic_kind(diag: &Diagnostic) -> &'static str {
         Diagnostic::ResolveError { .. } => "ResolveError",
         Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
         Diagnostic::MagnitudeOutOfRange { .. } => "MagnitudeOutOfRange",
+        Diagnostic::MalformedIntegerRangeFact { .. } => "MalformedIntegerRangeFact",
     }
 }
 
@@ -482,6 +483,7 @@ fn diagnostic_detail(diag: &Diagnostic) -> String {
         Diagnostic::ResolveError { name, .. } => name.clone(),
         Diagnostic::BranchConditionNotBool { .. } => diag.message(),
         Diagnostic::MagnitudeOutOfRange { .. } => diag.message(),
+        Diagnostic::MalformedIntegerRangeFact { .. } => diag.message(),
     }
 }
 

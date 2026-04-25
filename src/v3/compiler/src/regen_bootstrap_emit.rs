@@ -666,6 +666,15 @@ fn render_diagnostic(diagnostic: &Diagnostic) -> String {
             render_source_span(span),
             render_corrections(fixes),
         ),
+        Diagnostic::MalformedIntegerRangeFact {
+            message,
+            span,
+            fixes,
+        } => format!(
+            "Diagnostic::MalformedIntegerRangeFact {{ message: {message:?}.to_string(), span: {}, fixes: {} }}",
+            render_source_span(span),
+            render_corrections(fixes),
+        ),
     }
 }
 

@@ -27,19 +27,54 @@ impl IntegerRange {
     }
 }
 
-pub(crate) fn integer_range_for_decl(dag: &Dag, decl: DeclarationId) -> Option<IntegerRange> {
-    let key = integer_routing_key_for_decl(dag, decl, 0)?;
-    let mut matches = dag
+pub(crate) enum IntegerRangeLookup {
+    Found(IntegerRange),
+    Missing,
+    Invalid(Diagnostic),
+}
+
+pub(crate) fn integer_range_for_decl(dag: &Dag, decl: DeclarationId) -> IntegerRangeLookup {
+    let Some(key) = integer_routing_key_for_decl(dag, decl, 0) else {
+        return IntegerRangeLookup::Missing;
+    };
+    let mut matches = Vec::new();
+    for decl in dag
         .declarations()
         .iter()
         .filter(|decl| is_integer_range_fact(dag, decl.meta_tag))
-        .filter_map(|decl| integer_range_fact(dag, decl.value_body.as_ref()?).ok())
-        .filter(|fact| fact.key == key);
-    let first = matches.next()?;
-    if matches.next().is_some() {
-        return None;
+    {
+        match integer_range_fact(dag, decl) {
+            Ok(fact) if fact.key == key => matches.push(fact),
+            Ok(_) => {}
+            Err(diag) => return IntegerRangeLookup::Invalid(diag),
+        }
     }
-    first.range
+    if matches.is_empty() {
+        return IntegerRangeLookup::Missing;
+    }
+    if let Some(fact) = matches.iter().find(|fact| fact.range.is_none()) {
+        return IntegerRangeLookup::Invalid(malformed_integer_range_fact(
+            format!(
+                "malformed IntegerRangeFact row for `{}`/`{}`; integer literal range narrowing is unavailable",
+                key.algebra, key.carrier
+            ),
+            fact.span.clone(),
+        ));
+    }
+    if matches.len() > 1 {
+        return IntegerRangeLookup::Invalid(malformed_integer_range_fact(
+            format!(
+                "duplicate IntegerRangeFact rows for `{}`/`{}`; integer literal range narrowing is ambiguous",
+                key.algebra, key.carrier
+            ),
+            matches[1].span.clone(),
+        ));
+    }
+    let fact = matches.remove(0);
+    match fact.range {
+        Some(range) => IntegerRangeLookup::Found(range),
+        None => unreachable!("malformed matching facts are handled before duplicate detection"),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +87,7 @@ struct IntegerRoutingKey {
 struct IntegerRangeFact {
     key: IntegerRoutingKey,
     range: Option<IntegerRange>,
+    span: SourceSpan,
 }
 
 fn integer_routing_key_for_decl(
@@ -114,15 +150,53 @@ fn is_integer_range_fact(dag: &Dag, meta_tag: Option<DeclarationId>) -> bool {
     dag.declaration(meta_tag).name.as_deref() == Some("IntegerRangeFact")
 }
 
-fn integer_range_fact(dag: &Dag, value_body: &ValueBody) -> Result<IntegerRangeFact, ()> {
+fn integer_range_fact(
+    dag: &Dag,
+    decl: &crate::dag::Declaration,
+) -> Result<IntegerRangeFact, Diagnostic> {
+    let value_body = decl.value_body.as_ref().ok_or_else(|| {
+        malformed_integer_range_fact(
+            "IntegerRangeFact declaration is missing a value body".to_string(),
+            decl.span.clone(),
+        )
+    })?;
     let ValueBody::Structural { fields } = value_body else {
-        return Err(());
+        return Err(malformed_integer_range_fact(
+            "IntegerRangeFact declaration must have a structural value body".to_string(),
+            decl.span.clone(),
+        ));
     };
     let key = IntegerRoutingKey {
-        algebra: variant_label_for_value(dag, require_field(fields, "algebra").ok_or(())?)
-            .ok_or(())?,
-        carrier: variant_label_for_value(dag, require_field(fields, "carrier").ok_or(())?)
-            .ok_or(())?,
+        algebra: variant_label_for_value(
+            dag,
+            require_field(fields, "algebra").ok_or_else(|| {
+                malformed_integer_range_fact(
+                    "IntegerRangeFact is missing `algebra`".to_string(),
+                    decl.span.clone(),
+                )
+            })?,
+        )
+        .ok_or_else(|| {
+            malformed_integer_range_fact(
+                "IntegerRangeFact `algebra` must be an IntegerAlgebra variant".to_string(),
+                decl.span.clone(),
+            )
+        })?,
+        carrier: variant_label_for_value(
+            dag,
+            require_field(fields, "carrier").ok_or_else(|| {
+                malformed_integer_range_fact(
+                    "IntegerRangeFact is missing `carrier`".to_string(),
+                    decl.span.clone(),
+                )
+            })?,
+        )
+        .ok_or_else(|| {
+            malformed_integer_range_fact(
+                "IntegerRangeFact `carrier` must be a TargetCarrier variant".to_string(),
+                decl.span.clone(),
+            )
+        })?,
     };
 
     let range = (|| {
@@ -142,7 +216,11 @@ fn integer_range_fact(dag: &Dag, value_body: &ValueBody) -> Result<IntegerRangeF
         })
     })();
 
-    Ok(IntegerRangeFact { key, range })
+    Ok(IntegerRangeFact {
+        key,
+        range,
+        span: decl.span.clone(),
+    })
 }
 
 fn require_field<'a>(fields: &'a [(String, FieldValue)], name: &str) -> Option<&'a FieldValue> {
@@ -188,8 +266,12 @@ pub(crate) fn int_literal_fits_expected_type(
     dag: &Dag,
     literal: i64,
     expected: DeclarationId,
-) -> Option<bool> {
-    integer_range_for_decl(dag, expected).map(|range| range.contains_i64(literal))
+) -> Result<Option<bool>, Diagnostic> {
+    match integer_range_for_decl(dag, expected) {
+        IntegerRangeLookup::Found(range) => Ok(Some(range.contains_i64(literal))),
+        IntegerRangeLookup::Missing => Ok(None),
+        IntegerRangeLookup::Invalid(diag) => Err(diag),
+    }
 }
 
 pub(crate) fn magnitude_out_of_range(
@@ -204,6 +286,14 @@ pub(crate) fn magnitude_out_of_range(
         range_min_inclusive: range.min_decimal.to_string(),
         range_max_inclusive: range.max_decimal.to_string(),
         expected,
+        span,
+        fixes: Vec::new(),
+    }
+}
+
+fn malformed_integer_range_fact(message: String, span: SourceSpan) -> Diagnostic {
+    Diagnostic::MalformedIntegerRangeFact {
+        message,
         span,
         fixes: Vec::new(),
     }

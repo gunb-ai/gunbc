@@ -2328,6 +2328,7 @@ fn diagnostic_kind(diagnostic: &Diagnostic) -> &'static str {
         Diagnostic::ResolveError { .. } => "ResolveError",
         Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
         Diagnostic::MagnitudeOutOfRange { .. } => "MagnitudeOutOfRange",
+        Diagnostic::MalformedIntegerRangeFact { .. } => "MalformedIntegerRangeFact",
     }
 }
 
