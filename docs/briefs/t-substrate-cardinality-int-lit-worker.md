@@ -28,9 +28,11 @@ Sub-lane closes the magnitude carrier + reconciliation narrowing. **Scope is suf
 
 1. **`IntLit` carries a single canonical magnitude payload; target-width compatibility views derive AFTER reconciliation, not before.** **Specified shape**: replace `LiteralBits::Int(i64)` with `LiteralBits::Int(<canonical>)`. Two carrier choices, each with explicit discipline:
 
-   **Choice (a) — typed unbounded-magnitude carrier (preferred when available).** A `std.natural`-style carrier with no host-bound (signed magnitude). Pre-reconciliation literals are unbounded by construction; no out-of-bound diagnostic possible at the carrier level (only at narrowing). When `std.natural` lands as a substrate type, this is the destination shape.
+   **Honest framing**: Choice (b) is the **expected outcome** for this PR (`std.natural` doesn't yet exist as substrate); Choice (a) is the **dissolution target** that this lane's bridge migrates to when the typed unbounded-magnitude carrier lands. Worker should plan for Choice (b) implementation by default and explicitly document the migration path.
 
-   **Choice (b) — `i128` as M2-bridge (allowed when (a) is not yet substrate-available).** **Bounded carrier**; treated as **transitional scaffolding with explicit dissolution discipline**:
+   **Choice (a) — typed unbounded-magnitude carrier (DISSOLUTION TARGET; not currently available).** A `std.natural`-style carrier with no host-bound (signed magnitude). Pre-reconciliation literals are unbounded by construction; no out-of-bound diagnostic possible at the carrier level (only at narrowing). When `std.natural` lands as a substrate type, the bridge from (b) migrates here.
+
+   **Choice (b) — `i128` as M2-bridge (EXPECTED OUTCOME for this PR).** **Bounded carrier**; treated as **transitional scaffolding with explicit dissolution discipline**:
    - **Bounds documented in PR body**: `i128` range is `-(2^127) .. 2^127 - 1`; the bridge's finiteness must be visible, not silent.
    - **Fail-closed diagnostic**: literals whose magnitude exceeds `i128` range emit a structured `MagnitudeCarrierOutOfRange` diagnostic at tokenize / lower time. **No silent truncation, no panic, no overflow.** This is the bridge's bound-honesty surface.
    - **Named dissolution trigger**: when `std.natural` (or equivalent typed unbounded-magnitude carrier) lands as substrate, `LiteralBits::Int(i128)` migrates to that carrier and the bridge dissolves. Worker documents the trigger in a doc-comment on `LiteralBits::Int` and surfaces it in PR body.

@@ -27,7 +27,7 @@
 
 - **[`THESIS.md` lines 342-344](../../THESIS.md)** — class definition + the *"Gated on cardinality refinement substrate work"* gate.
 - **[`docs/r2-structure.md` §"Goal 4"](../r2-structure.md)** — sub-lane scoping; tagged `[R2+]`.
-- **[`dsl/std/algebra.dag:423`](../../dsl/std/algebra.dag)** — `OptionalOf { inner: AlgebraTypeTemplate }` — the *actual* representation of "Optional" in v3 substrate. **NOT** an `Option<T>` type declaration. This is an algebra-template variant; the surface form `T?` desugars into this.
+- **[`dsl/std/algebra.dag:423`](../../dsl/std/algebra.dag)** — `OptionalOf { inner: AlgebraTypeTemplate }` — the *actual* representation of "Optional" in v3 substrate. **NOT** an `Option<T>` type declaration. This is an algebra-template variant; the surface form `T?` desugars into this. **Verify the line at dispatch time** (algebra.dag drifts; `grep -n "OptionalOf" dsl/std/algebra.dag` confirms current line).
 - **[`dsl/std/types.dag:29`](../../dsl/std/types.dag)** — *"syntax keeps it simple: T, T?, List<T>"*. Confirms `T?` is sugar; consumers everywhere use `T?` (`first() -> T?`, `last() -> T?`, etc. in `dsl/std/algebra.dag`).
 - **[`docs/architecture.md` §"How the compiler knows it" — cardinality bridge](../architecture.md)** — `return_cardinality` enum on Node; ~142 construction sites. The dissolution path THESIS names: cardinality refines into edge-existence patterns; once refined, `T??` becomes un-expressible at construction time. **None of this is in v3 substrate today.**
 - **[`MODELING.md`](../../MODELING.md)** — especially M9 (DFS the concept DAG); also `feedback_audit_adjacent_authority_first` (audit existing facts before authoring new vocabulary).
