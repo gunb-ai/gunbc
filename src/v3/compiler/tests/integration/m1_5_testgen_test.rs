@@ -7,7 +7,10 @@ use v3_compiler::dag::{
 };
 use v3_compiler::lens_cost::cost_of;
 use v3_compiler::lens_testgen::{GeneratedClaim, TestgenLens};
-use v3_compiler::test_runner::{eval_algebraic_law_for_claim_program, AlgebraicLawProgramError};
+use v3_compiler::test_runner::{
+    eval_algebraic_law_for_claim_program, evaluate_execute_command_exit_code,
+    parse_execute_command_fields, AlgebraicLawProgramError, ClaimResult,
+};
 use v3_compiler::Diagnostic;
 
 use crate::common::{cached_compile_any, cached_compile_outcome, CachedCompileOutcome};

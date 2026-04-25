@@ -277,9 +277,7 @@ const _: () = assert!(ASSOCIATIVITY_WITNESS_TRIPLES.len() > 1);
 
 /// Extracts `(command, args, expect_exit_code)` from `ExecuteCommand` lowered payloads
 /// (positional `Conj` fields or a single `Record`). Matches `m1_5_testgen` historical parser.
-pub fn parse_execute_command_fields(
-    payload: &[FieldValue],
-) -> Option<(String, Vec<String>, i64)> {
+pub fn parse_execute_command_fields(payload: &[FieldValue]) -> Option<(String, Vec<String>, i64)> {
     match payload {
         [FieldValue::Record(fields)] => {
             let command = execute_command_string_field(fields, "command")?;
@@ -310,10 +308,7 @@ pub fn parse_execute_command_fields(
     }
 }
 
-fn execute_command_string_field(
-    fields: &[(String, FieldValue)],
-    label: &str,
-) -> Option<String> {
+fn execute_command_string_field(fields: &[(String, FieldValue)], label: &str) -> Option<String> {
     fields
         .iter()
         .find(|(l, _)| l == label)
@@ -1024,11 +1019,7 @@ impl<'a> TestRunner<'a> {
         }
     }
 
-    fn eval_execute_command(
-        &self,
-        claim: &TestClaimValue,
-        payload: &[FieldValue],
-    ) -> ClaimResult {
+    fn eval_execute_command(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
         match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(_) => {}
             Err(CompileError::Semantic(_)) => {
