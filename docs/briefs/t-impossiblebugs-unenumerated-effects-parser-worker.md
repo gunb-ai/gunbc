@@ -100,7 +100,7 @@ Surface to Director.
 ## Reporting
 
 - Single PR. Title: `feat(v3): T-ImpossibleBugs parser-extension — declared_effects on FnSignature + SurfaceArrow (prereq for unenumerated-effects substrate sub-lane)`.
-- PR body cites this brief + addresses each of the 6 reqs + documents surface-syntax + Arrow-vs-Fn placement choices.
+- PR body cites this brief + addresses each of the 6 reqs + documents surface-syntax choice + `FnSignature` / `SurfaceArrow` co-invariant carrier rationale (placement is not a worker choice — fixed by req 1 + refactor-brief req 3).
 - On merge: signal Director; Director signals sibling substrate sub-lane (`t-impossiblebugs-unenumerated-effects-worker.md`) is now dispatchable.
 
 ## Cross-manager note
