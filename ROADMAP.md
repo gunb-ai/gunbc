@@ -84,6 +84,8 @@ Day-1 PR #717 landed explicit `LensOutputEquals` dispatch and fixtures with **no
 
 3. **P2 parallel lens text** — **Done (D4):** `v3-compiler/build.rs` splices `src/v3/lenses/named_function_count.dag` into generated `r1_gates.dag` from hand-edited `r1_gates.template.dag`; `m1_5_user_authored_lens_gate_test` still ratchets lowered `source` against `include_str!(.../named_function_count.dag)`. **Follow-on:** dissolve fixture-local `fn count_named_bind` / `fn named_function_count` stubs when `DeclarationRef` can resolve the lens from `program_dag` alone; optional same treatment for `lens_composition_associative_gate.source` vs `lens_composition_associative_witness.dag`.
 
+4. **PR #764 T-LaneE / test-runner scaffolds (meta-review `efbb9787`, SHIP_WITH_DEBT)** — Ingested 2026-04-25: do **not** re-litigate these as ad-hoc PR nits; track dissolution here. Checklist: structural `TestClaim` bind / input carriers (retire `cost_bind_for_claim_file` + `r1_lens_output_input_from_program` string keying, M1(2.8)); D1 `apply_lens_declaration(cost_of)` then delete `lane_e_host_*`; `Lookup<Int>` literals in `data` bodies; DB-15 `requires` with real `ResourceReference` rows for mock-backed `Pass` (until then NYI on empty `requires` is intentional); optional `.dag`-native failed-obligation predicate for T-Demo structural cost. **Receipt shape today:** `complexity_merge_sort_v3_matches_v2_oracle` is `DifferentialEquals` on `merge_sort_out` (`r1_merge_sort_pair.v3`); `lane_e_bundled_witness_host_emit_parity` is the bundled `lane_e_diff_out` witness (`r1_lane_e_differential_witness.v3` — `match` / list / `fold`, not the early `1+2` smoke).
+
 ### Dependency DAG
 
 ```
