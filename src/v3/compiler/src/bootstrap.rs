@@ -59,13 +59,20 @@
 // on every subsequent call — the same structural channel user errors
 // go through. A failed bootstrap is visible to callers without a
 // side channel.
+//
+// **PB-1-e split — what stays here:** `patch_kernel_bool_boolean_algebra_inhabits`,
+// `materialize_pipeline_realizations`, and `report_pipeline_authority_error` remain
+// in this file because the `#[cfg(test)]` module below exercises them on
+// `Dag::new()` snapshots. The regen-only fresh tokenize/parse/lower loop lives in
+// `bootstrap_regen_fresh.rs` (feature `bootstrap-regen-fresh`); do not duplicate
+// pipeline materialization there without relocating or rewriting these unit tests.
 
 use crate::dag::{ArrowBody, Dag, Declaration, TemplateArgument, TypeConnective};
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::pipeline_authority::{ordered_pipeline_stages, PIPELINE_AUTHORITY_FILE};
 
-// `bootstrap_regen_fresh` (feature `bootstrap-regen-fresh`) is the primary
-// runtime consumer; default lib builds still compile this file for tests here.
+// Used by `materialize_pipeline_realizations` (regen + unit tests below). When
+// `bootstrap-regen-fresh` is off, that path is cfg-dead in non-test lib builds.
 #[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
 const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
 
