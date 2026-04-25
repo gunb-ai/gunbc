@@ -210,7 +210,12 @@ jobs:
           fi
           scripts/check-test-timeout.sh /tmp/v3-test-timings.log
 
-      - name: v3 Compiler Clippy
+      # Default graph (no regen feature): locks in `cfg_attr(dead_code)` hygiene and
+      # ensures production targets stay clean without relying on the feature build alone.
+      - name: v3 Compiler Clippy (default features)
+        run: cargo clippy -p v3-compiler --all-targets -- -D warnings
+
+      - name: v3 Compiler Clippy (bootstrap-regen-fresh)
         run: cargo clippy -p v3-compiler --all-targets --features bootstrap-regen-fresh -- -D warnings
 
       # Type-check lib + default integration harness with the regen feature on
