@@ -93,8 +93,9 @@ compose. When this closes, the R1 release gates themselves
   signal, then converts pipeline / contract tests. Notify
   Self-hosting when the runner lands. **Landed batch (runner-backed):**
   `docs/briefs/t-pb-b-1.md` + `src/v3/compiler/tests/dag/` —
-  `t_pb_b_1_dag_runner_test` evaluates the landed suites (PR #736);
-  compile-smoke counterpart is `t_pb_b_1_tests_dag_smoke_test`.
+  `t_pb_b_1_dag_runner_test` evaluates the landed suites (PR #736); the
+  former compile-smoke-only `t_pb_b_1_tests_dag_smoke_test` is **retired**
+  (redundant with the runner test — *Decisions log* 2026-04-24).
   **Pre–Rust-deletion checklist (single source — edit here only; do
   not fork a competing numbered list in other briefs):** (1) **[done,
   PR #736]** Runner accepts v3 `.dag` modules under
@@ -111,9 +112,15 @@ compose. When this closes, the R1 release gates themselves
   `t_pb_b_1_contract_port_cost.dag`; standalone
   `data _: TestPredicate = …` bodies remain NYI under the same
   class-5 restriction. Receipt paragraph in `docs/briefs/t-pb-b-1.md`.
-  (4) **First Rust deletion batch — prep, not yet signed off.** Target
-  shape: one thin `Compiles`-only duplicate whose claim is already
-  covered by a landed `.dag` suite evaluated under
+  (4) **First Rust deletion batch — partial sign-off (2026-04-24).** The
+  three `#[test]` functions in the former `t_pb_b_1_tests_dag_smoke_test.rs`
+  (redundant compile-only coverage for the landed `tests/dag/*.dag` modules)
+  are **deleted**; replacement coverage and the `#[test]` → `TestClaim`
+  mapping are recorded in the *Decisions log* below. **Still open** for the
+  remainder of the inventory until a follow-on sign-off entry lands
+  (same four-point guard). Target shape for the **next** slice: one thin
+  `Compiles`-only duplicate (or `thesis_validation_test.rs` subset) whose
+  claim is already covered by a landed `.dag` suite evaluated under
   `t_pb_b_1_dag_runner_test`. Candidate inventory (under
   `src/v3/compiler/tests/integration/`, registered in `integration.rs`
   and enumerated in `sg0_census_test.rs`):
@@ -227,13 +234,43 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [x] `ExecuteCommand` predicate (Surface T-Emit consumer) — landed PR #678
 - [x] `ForAllTargets` predicate (Surface T-Emit consumer) — landed PR #678
 - [x] `LensOutputEquals` predicate (Substrate T-LaneE consumer
-      — `complexity_merge_sort_is_nlogn`) — landed PR #678
+      — `complexity_merge_sort_is_nlogn`) — landed PR #764 (suite: `r1_lane_e_suite`)
 - [x] `DifferentialEquals` predicate (Substrate T-LaneE consumer
-      — `complexity_v3_matches_v2_oracle`) — landed PR #678
+      — `complexity_merge_sort_v3_matches_v2_oracle`, `lane_e_bundled_witness_host_emit_parity`) — landed PR #764
 
 Decisions log (append as they happen):
 
-- 2026-04-24: **Pre–Rust-deletion checklist item (4) prepped, not signed
+- 2026-04-24 (Lane B / #763): **Pre–Rust-deletion checklist item (4) — first slice signed
+  off (redundant T-PB-B-1 compile-smoke).** Receipts (1)–(3) re-verified
+  green (`cargo test -p v3-compiler t_pb_b_1_dag_runner_test`,
+  `test_runner_data_bodies_reject_requires_empty_call_today`); PR #735
+  merged on main (`cf59f2288` — `CostBounded` witness for the candidate
+  claims is stable). **Deleted Rust tests** (file
+  `t_pb_b_1_tests_dag_smoke_test.rs` removed) and **replacement**:
+  `t_pb_b_1_dag_runner_test::lower` keeps the **empty module diagnostics**
+  compile-smoke receipt for each declaring `tests/dag/*.dag` harness, then
+  `TestRunner::run_suite` proves embedded `TestClaim` predicates (`ClaimResult::Pass`
+  for every claim — orthogonal to the outer harness diagnostic check). **Implementation
+  (current `lower` in `t_pb_b_1_dag_runner_test.rs`):** only `Ok(dag)` returns, with an
+  explicit `assert!(dag.diagnostics().is_empty())` on that arm; `Err(Semantic(_))` **panics**
+  (not a success path) — the declaring harness must compile with an empty module
+  diagnostic table before `run_suite` runs.
+  - `t_pb_b_1_pipeline_smoke_dag_lowers_cleanly` →
+    `t_pb_b_1_dag_runner_test::t_pb_b_1_pipeline_smoke_suite_passes_through_runner`
+    / suite `suite_pipeline_pipe_unary` / claim `claim_pipe_unary_compiles`
+    ("pipe unary call program compiles").
+  - `t_pb_b_1_contract_diagnostic_smoke_dag_lowers_cleanly` →
+    `t_pb_b_1_dag_runner_test::t_pb_b_1_contract_diagnostic_smoke_suite_passes_through_runner`
+    / suite `suite_contract_diagnostic_negatives` / claim `claim_bool_int_rejected`
+    ("Bool annotation rejects Int literal").
+  - `t_pb_b_1_contract_port_cost_dag_lowers_cleanly` →
+    `t_pb_b_1_dag_runner_test::t_pb_b_1_contract_port_cost_suite_passes_through_runner`
+    / suite `suite_contract_port_and_cost` / claims `claim_answer_resolved`,
+    `claim_answer_cost_bounded`. **Follow-on** first-batch work
+    (`thesis_validation_test.rs` subset; `pipe_desugar.rs` still excluded)
+  remains under the 2026-04-24 inventory + four-point guard until a
+  separate log entry names each `#[test]` → `TestClaim` pair.
+- 2026-04-24 (PR #751): **Pre–Rust-deletion checklist item (4) prepped, not signed
   off.** Candidate inventory narrowed — `pipe_desugar.rs` **excluded**
   from first batch (asserts `Transform` target / input arity / literal
   order / return shape; `t_pb_b_1_pipeline_smoke.dag` only witnesses

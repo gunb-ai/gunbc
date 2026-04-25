@@ -168,8 +168,9 @@ Lane-owner dispatch status (update as sub-deliverables close):
     Trigger remains
     **half-met** until the runner actually evaluates a mock-backed
     invariant claim, not just routes it.
-  - Substrate T-LaneE (`complexity_merge_sort_is_nlogn` /
-    `complexity_v3_matches_v2_oracle`) — pending.
+  - Substrate T-LaneE (`complexity_merge_sort_is_nlogn`,
+    `complexity_merge_sort_v3_matches_v2_oracle`,
+    `lane_e_bundled_witness_host_emit_parity` — `r1_lane_e_suite`) — landed PR #764; dissolution checklist ROADMAP `Scheduled cleanups` item 4.
   - Surface T-Emit (`emit_omni_demo_fixtures_green`) — pending.
   - PR #689 closed as premature (docs/thesis/ is director-owned per
     `doc-authority.md`). Narrative holds until at least one upstream

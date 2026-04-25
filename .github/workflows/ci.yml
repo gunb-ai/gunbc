@@ -236,13 +236,10 @@ jobs:
           # `pub fn cost_of(&self, port: PortId) -> usize` wrapper that
           # shadowed the generated `CostLookup` carrier.
           #
-          # Scope: every `src/v3/compiler/src/lens_*.rs` wrapper except
-          # `lens_depth.rs` (hand-written legacy lens, not migrated
-          # from .dag, so out of L-8 scope). `*_generated.rs` files are
-          # also scanned — they should never contain a collapsing
-          # wrapper, and catching one there would mean the emitter
-          # regressed.
-          wrappers=$(ls src/v3/compiler/src/lens_*.rs 2>/dev/null | grep -v "/lens_depth.rs$" || true)
+          # Scope: every `src/v3/compiler/src/lens_*.rs` file (hand-written
+          # and `*_generated.rs` — catching a collapsed wrapper in generated
+          # code would mean the emitter regressed).
+          wrappers=$(ls src/v3/compiler/src/lens_*.rs 2>/dev/null || true)
           if [ -z "$wrappers" ]; then
             echo "L-8: no lens wrapper files to scan"
             exit 0

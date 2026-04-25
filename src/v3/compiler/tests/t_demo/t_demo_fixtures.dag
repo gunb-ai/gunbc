@@ -1,11 +1,52 @@
 // T-Demo R1 fixture skeletons.
 //
-// This file lands only the Day-1 predicates that compile against the
-// current DB-15 verification schema. Stage (a) is fixture-declaration
-// compilation; DB-15 Compiles claims are runner-visible today. Lens-output
-// and broader predicate evaluation stay blocked on T-LensAPI / T-TestGen.
+// Day-1 `Compiles` claims stay the bootstrap surface. `[ext]` rows add `LensOutputEquals`,
+// `FailsWithDiagnostic`, and `PortHasState` receipts now that the v3 `TestRunner` predicates
+// are wired (T-LaneE / T-LensAPI / T-TestGen lane closure).
 
 module v3.compiler.tests.t_demo.t_demo_fixtures
+
+import std.list { fold }
+import std.substrate { Behavior, ComparisonOp, Dag, PortId }
+import std.verification {
+  AnyDetail,
+  Compiles,
+  Contains,
+  CostBounded,
+  FailsWithDiagnostic,
+  LensOutputEquals,
+  PortHasState,
+  Resolved,
+  TestClaim,
+  TestSuite,
+  TypeMismatch,
+  ResolveError
+}
+import v3.std.lookup { Lookup, miss_int_lookup }
+
+// ── `LensOutputEquals` stubs (DeclarationRef lowering only; runner uses canonical bytes). ──
+fn count_named_bind(behavior: Behavior) -> Int =
+  match behavior {
+    Value(v) => 0
+    Transform(t) => 0
+    Branch(b) => 0
+    Loop(l) => 0
+    Bind(bind) => if bind.name == "" then 0 else 1
+  }
+
+fn named_function_count(d: Dag) -> Int =
+  fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))
+
+fn cost_of(d: Dag, port_id: PortId) -> Lookup<Int> =
+  miss_int_lookup()
+
+data r1_lens_output_input_from_program: Int = 0
+
+data t_demo_complexity_cost_expected: Int = 3
+
+data t_demo_parallelism_cost_expected: Int = 4
+
+data t_demo_ownership_bind_count_expected: Int = 1
 
 data compiler_nerd_complexity_compiles: TestClaim = {
   name: "fixture_compiler_nerd_canonical.complexity_compiles",
@@ -31,14 +72,55 @@ data compiler_nerd_parallelism_compiles: TestClaim = {
   requires: []
 }
 
+data compiler_nerd_complexity_lens_output: TestClaim = {
+  name: "fixture_compiler_nerd_canonical.complexity_lens_output",
+  source: "fn pair_score(xs: List<Int>) -> Int = fold(xs, 0, |outer, x| outer + fold(xs, 0, |inner, y| inner + x + y))\nlet complexity_demo_out: Int = pair_score(cons(1, singleton(2)))\n",
+  file_name: "fixture_compiler_nerd_canonical_complexity.v3",
+  predicate: LensOutputEquals(
+    cost_of,
+    r1_lens_output_input_from_program,
+    t_demo_complexity_cost_expected
+  ),
+  requires: []
+}
+
+data compiler_nerd_ownership_lens_output: TestClaim = {
+  name: "fixture_compiler_nerd_canonical.ownership_lens_output",
+  source: "type OwnedPayload { left: Int right: Int } fn combine_payload(payload: OwnedPayload) -> Int = payload.left + payload.right\n",
+  file_name: "fixture_compiler_nerd_canonical_ownership.v3",
+  predicate: LensOutputEquals(
+    named_function_count,
+    r1_lens_output_input_from_program,
+    t_demo_ownership_bind_count_expected
+  ),
+  requires: []
+}
+
+data compiler_nerd_parallelism_lens_output: TestClaim = {
+  name: "fixture_compiler_nerd_canonical.parallelism_lens_output",
+  source: "let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)",
+  file_name: "fixture_compiler_nerd_canonical_parallelism.v3",
+  predicate: LensOutputEquals(
+    cost_of,
+    r1_lens_output_input_from_program,
+    t_demo_parallelism_cost_expected
+  ),
+  requires: []
+}
+
 data fixture_compiler_nerd_canonical: TestSuite = {
   name: "fixture_compiler_nerd_canonical",
   claims: [
     compiler_nerd_complexity_compiles,
     compiler_nerd_ownership_compiles,
-    compiler_nerd_parallelism_compiles
+    compiler_nerd_parallelism_compiles,
+    compiler_nerd_complexity_lens_output,
+    compiler_nerd_ownership_lens_output,
+    compiler_nerd_parallelism_lens_output
   ]
 }
+
+data t_demo_effects_bind_count_expected: Int = 1
 
 data integration_effects_compiles: TestClaim = {
   name: "fixture_integration_canonical.effects_compiles",
@@ -64,25 +146,103 @@ data integration_testgen_compiles: TestClaim = {
   requires: []
 }
 
+data integration_effects_lens_output: TestClaim = {
+  name: "fixture_integration_canonical.effects_lens_output",
+  source: "let upsert_effect = derive_op_effect(\"upsert_project\", \"PUT\", \"/projects/{project_id}\")",
+  file_name: "fixture_integration_canonical_effects.v3",
+  predicate: LensOutputEquals(
+    named_function_count,
+    r1_lens_output_input_from_program,
+    t_demo_effects_bind_count_expected
+  ),
+  requires: []
+}
+
+// Type-drift receipt (same pattern as `impossible_bug_type_drift`); not the effects idempotency
+// story — that lives on `integration_idempotency_compiles` + `impossible_bug_idempotency_violation`.
+data integration_type_drift_lens_output: TestClaim = {
+  name: "fixture_integration_canonical.type_drift_lens_output",
+  source: "let drift: Bool = 1\n",
+  file_name: "fixture_integration_canonical_type_drift_lens.v3",
+  predicate: FailsWithDiagnostic({
+    kind: TypeMismatch,
+    detail_contains: AnyDetail
+  }),
+  requires: []
+}
+
+data integration_testgen_runner_output: TestClaim = {
+  name: "fixture_integration_canonical.testgen_runner_output",
+  source: "fn double(x: Int) -> Int = x + x\nlet structural_result: Int = double(3)",
+  file_name: "fixture_integration_canonical_testgen_runner.v3",
+  predicate: PortHasState("structural_result", Resolved),
+  requires: []
+}
+
 data fixture_integration_canonical: TestSuite = {
   name: "fixture_integration_canonical",
   claims: [
     integration_effects_compiles,
     integration_idempotency_compiles,
-    integration_testgen_compiles
+    integration_testgen_compiles,
+    integration_effects_lens_output,
+    integration_type_drift_lens_output,
+    integration_testgen_runner_output
   ]
 }
 
-// [ext] fixture_compiler_nerd_canonical.complexity_lens_output
-//   Blocked on T-LensAPI `lens_output_is_queryable_data`.
-// [ext] fixture_compiler_nerd_canonical.ownership_lens_output
-//   Blocked on T-LensAPI `lens_output_is_queryable_data`.
-// [ext] fixture_compiler_nerd_canonical.parallelism_lens_output
-//   Blocked on T-LensAPI `lens_output_is_queryable_data`.
-//
-// [ext] fixture_integration_canonical.effects_lens_output
-//   Blocked on T-LensAPI `lens_output_is_queryable_data`.
-// [ext] fixture_integration_canonical.idempotency_lens_output
-//   Blocked on T-LensAPI `lens_output_is_queryable_data`.
-// [ext] fixture_integration_canonical.testgen_runner_output
-//   Blocked on T-TestGen runner evaluation.
+// `impossible_bug_class_suite_r1` — two `FailsWithDiagnostic` receipts (ROADMAP.md:71-72); structural
+// cost bound lives in `t_demo_structural_cost_obligation_suite` (integration asserts `Fail`).
+// `idempotency_violation`: `AppendEffect()` is breaking (monoid append) and must not appear under
+// `IsIdempotent`. Use nullary **call** syntax so lowering hits the `SurfaceExpr::Call` path (PR #764:
+// bare `AppendEffect` parses as `Var` and produced a one-token `ResolveError` that was too weak
+// for `FailsWithDiagnostic`). The diagnostic prefix pins the sum-constructor mismatch, not a generic
+// upstream-only `compose_effects` failure.
+// `t_demo_structural_cost_obligation_suite` (below): nested `fold` + `CostBounded` vs structural
+// `cost_of` — runner `Fail` is the receipt (`cost … did not satisfy bound …`, not a tokenizer
+// proxy; integration pins compile + message shape — PR #764). Kept out of
+// `impossible_bug_class_suite_r1` so that suite is all `Pass` claims only.
+data impossible_bug_type_drift: TestClaim = {
+  name: "impossible_bug_class_suite_r1.transport_type_drift",
+  source: "let drift: String = 1\n",
+  file_name: "impossible_bug_type_drift.v3",
+  predicate: FailsWithDiagnostic({
+    kind: TypeMismatch,
+    detail_contains: AnyDetail
+  }),
+  requires: []
+}
+
+data impossible_bug_idempotency_violation: TestClaim = {
+  name: "impossible_bug_class_suite_r1.idempotency_violation",
+  source: "let bad_compose = compose_effects([{ operation_name: \"noop\", shape: IsIdempotent(AppendEffect()) }])\n",
+  file_name: "impossible_bug_idempotency.v3",
+  predicate: FailsWithDiagnostic({
+    kind: ResolveError,
+    detail_contains: Contains("named constructor `AppendEffect` is not a variant of the expected sum type")
+  }),
+  requires: []
+}
+
+data impossible_bug_class_suite_r1: TestSuite = {
+  name: "impossible_bug_class_suite_r1",
+  claims: [
+    impossible_bug_type_drift,
+    impossible_bug_idempotency_violation
+  ]
+}
+
+// When editing `source`, update `T_DEMO_STRUCTURAL_COST_OBLIGATION_CLAIM_SOURCE` in
+// `tests/integration.rs` (`t_demo_fixture_test`).
+data t_demo_structural_cost_obligation_gate: TestClaim = {
+  name: "t_demo_structural_cost_obligation.pair_score_too_deep",
+  source: "fn pair_score(xs: List<Int>) -> Int = fold(xs, 0, |outer, x| outer + fold(xs, 0, |inner, y| inner + x + y))\nlet complexity_demo_out: Int = pair_score(cons(1, singleton(2)))\n",
+  file_name: "t_demo_structural_cost_obligation.v3",
+  predicate: CostBounded("complexity_demo_out", Lt, 1),
+  requires: []
+}
+
+data t_demo_structural_cost_obligation_suite: TestSuite = {
+  name: "t_demo_structural_cost_obligation_suite",
+  claims: [t_demo_structural_cost_obligation_gate]
+}

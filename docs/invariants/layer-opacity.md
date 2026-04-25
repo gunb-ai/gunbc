@@ -201,7 +201,7 @@ proposed:**
   flat list.
 - **Thesis-native.** The lens uses existing v3 infrastructure
   (reader lens over Dag, same shape as `lens_provenance`,
-  `lens_depth`, `lens_cost`). No new machinery.
+  `lens_cost`; `lens_depth` was a retired M0 experiment). No new machinery.
 - **Generalizes to other invariants.** The lens framework
   extends to every testable invariant over a DAG — scaffold
   boundaries, fail-closed discipline, structural duplication,
