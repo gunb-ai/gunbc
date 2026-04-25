@@ -822,9 +822,12 @@ fn kill_process_group_on_timeout(child: &mut std::process::Child) {
     let _ = child.kill();
 }
 
-/// Linux + `unshare(1)`: the parent holds a read end to a **piped** stderr. After the logical
-/// process `exec(2)`s, the same pipe carries its writes. If we only `try_wait` and never read,
-/// the child can block when the ~64KiB default pipe buffer fills; we only fail at wall timeout.
+/// Linux + `unshare(1)`: the parent holds a read end to a **piped** stderr for the **wrapper** side
+/// (util-linux, thin `sh` bootstrap, and any output **before** the final `exec` to the logical
+/// `command`). The logical process is re-`exec`’d with `stderr` → `/dev/null` (see
+/// [`UNSHARE_LOGICAL_BOOTSTRAP_SH`]); that pipe does **not** carry the logical process’s
+/// `stderr` after the hop. If we only `try_wait` and never read, the **wrapper** subtree can
+/// still block when the ~64KiB default pipe buffer fills; we only fail at wall timeout.
 /// [`linux_drain_piped_child_stderr_nonblocking_once`] keeps a bounded **prefix** (up to
 /// `UNSHARE_STDERR_SCAN_CAP` bytes) for the `unshare:` post-wait scan, then discards the rest
 /// in that round to avoid a filling pipe; bytes after the cap are not preserved for the scan
