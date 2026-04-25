@@ -166,7 +166,7 @@ The guard predicate is exactly: outer bound `AtMostOne` *and* inner bound `AtMos
 - **`OptionalOf<OptionalOf<X>>` in std-method authoring** is a separate brief (algebra-template lint), not in scope here. STOP if the implementer is tempted to fold it in.
 - **DB-8 fixed-point drifts** — STOP immediately.
 
-**Dispatch profile:** S (revised from XS post-#798 review). Single PR, single worker. ~30-line code diff (one predicate + `alloc_cardinality_decl` helper + 3 routed call sites consuming the predicate) + 3 test fixtures + PR-body doc. Not gated on any other lane. Independent of the other two T-ImpossibleBugs classes.
+**Dispatch profile:** S. Single PR, single worker. ~30-line code diff (one predicate + `alloc_cardinality_decl` helper + 3 routed call sites consuming the predicate) + 3 test fixtures + PR-body doc. Not gated on any other lane. Independent of the other two T-ImpossibleBugs classes.
 
 **Acceptance:**
 
