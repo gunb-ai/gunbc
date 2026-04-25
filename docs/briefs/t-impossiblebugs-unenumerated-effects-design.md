@@ -145,26 +145,33 @@ The substrate must make it impossible for a service definition to declare `messa
 
 **Sequencing**: prereq for the lens's *coverage* claim. The lens itself can land first (Q6 implementation brief); it just won't cover the bypassed extdeps surfaces until P1 closes. The lens's acceptance must surface structural-coverage-gap diagnostics on those surfaces (i.e., the lens itself reports "this surface has a structural hole; effect-derivation can't proceed structurally"). That's how the gap becomes load-bearing visible rather than silent.
 
-### P2 — `ExecuteCommand` fully materialized as a typed runner primitive
+### P2 — `ExecuteCommand` runner primitive: LANDED (PR #792); residual is bulk-migration
 
-Subprocess invocations need a typed primitive that derives "external-toolchain effect" structurally — analog of how `derive_op_effect` derives effects from HTTP method. Today the M1.5 testgen harness allowlists only `command == "true" && args.is_empty() && expect_exit == 0` and panics fail-closed on anything else; the Rust `TestRunner` returns `NotYetImplemented` for `ExecuteCommand` (see `TESTING.md:195` capability state callout).
+**Status update 2026-04-25 (post-`f073aa95e` Q4.5 authoring)**: PR #792 has shipped the PB-Runtime `ExecuteCommand` extension. Per TESTING.md:195 capability-state callout (post-#792):
+- Rust `TestRunner` + M1.5 testgen harness share one `std::process` path for arbitrary `command` + `args` + `expect_exit_code`.
+- M1.5 allowlist + fail-closed panic for disallowed `ExecuteCommand` shapes **retired**.
+- Distinguishable `ClaimResult::Fail` messages for spawn errors / wall-clock timeout / policy fails / exit mismatches.
+- Linux: `unshare(1)`-based namespace isolation when host allows.
+- T-PB-B-1 boundary migration example landed at `src/v3/compiler/tests/dag/t_pb_b_1_execute_command_boundary.dag`.
 
-**Why load-bearing**: TESTING.md (post-#782 cascade) committed to `0-residual` framing — boundary tests migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations. **Until `ExecuteCommand` can execute equivalent `.dag` TestClaims, deleting Rust boundary tests creates a verification gap.** Same closed-system shape applied to test execution: the typed runner primitive IS the path; subprocess invocations have nowhere structural to live until then.
+**My earlier P2 framing was stale** — described `ExecuteCommand` as `NotYetImplemented` when it's now fully materialized. **The typed-runner-primitive prerequisite is satisfied.**
 
-**Sequencing**: pre-requisite for *any* Rust boundary-test deletion. Already named under PB-Runtime in Zero-Floor Manager's program scope; Director-signaled twice. Should be priority once Zero-Floor's authoring queue clears.
+**Residual prereq (narrowed)**: bulk migration of existing Rust `Command::new("rustc" | "python3" | …)` boundary tests to `.dag` `TestClaim` declarations using `ExecuteCommand`. TESTING.md explicitly tracks this as residual: *"Residual bulk migration of older Rust `Command::new("rustc" | "python3" | …)` boundary tests to `.dag` remains its own work item on ROADMAP."* Until that bulk migration completes, deleting the existing Rust boundary tests creates a verification gap. **The prereq is no longer "build the runner primitive" — it's "migrate the consumers of the runner primitive."**
+
+**Sequencing**: not a structural prereq for the lens (P2 was always orthogonal to the effects lens itself; the design doc's framing of P2 was about TESTING.md's `0-residual` claim). Bulk migration proceeds at its own pace; lens implementation does not depend on it. Worker reading this doc treats P2 as **closed for runner-primitive purposes**; bulk migration is a tracked-residual ROADMAP item, not a load-bearing prereq for the lens.
 
 ### Why these belong in this design doc
 
 Both prereqs are load-bearing for the closed-system claim this doc commits to. Naming them in-doc surfaces the dependencies upfront rather than letting the implementation brief discover them as STOP-AND-ESCALATEs at dispatch time. Workers reading this doc see correctly that:
 - The lens at Q6 can land independently (worth the empirical receipt of structural-coverage diagnostics).
-- The closed-system claim's *full coverage* requires P1 + P2 closure.
+- The closed-system claim's *full coverage* requires P1 closure (P2 runner-primitive is already landed via PR #792; only bulk migration of consumers remains, which is independent of the lens).
 - Without P1: bypass surfaces visible only via the lens's own gap diagnostics (lens lands; reports holes).
 - Without P2: TESTING.md `0-residual` claim cannot be acted on (no Rust boundary-test deletion).
 
 Worker-discretion-vs-Director-call:
 - Lens implementation worker: dispatchable now; lens reports gaps as findings.
 - P1 closure: substantive substrate work touching extdeps; tracked debt at ROADMAP.md:153-154; should land via dedicated lane.
-- P2 closure: PB-Runtime in Zero-Floor; signal pending.
+- P2: runner primitive landed via PR #792. Only consumer-side bulk migration remains; tracked as ROADMAP residual, independent of the lens.
 
 ## Q5 — Asymmetric tightening (the only declaration-value exception)
 
@@ -243,7 +250,7 @@ Title: `feat(v3): T-ImpossibleBugs effects lens — closed-system structural der
 - **Redundancy proof needs a `pure: Bool` carrier** — if the lens can't distinguish pure from impure Transforms inline, STOP. May need a sibling carrier on Transform targets. (Note: the deeper closed-system framing is that "pure" should also be derivable from signature shape — pure functions don't return modified resources — so this STOP may itself dissolve under further design.)
 - **Asymmetric-tightening structural gap** — if caller can't actually pin effect-set constraints structurally today (i.e., the type system doesn't yet express "I require callee body's signature-shape composition ⊆ {read-shaped}"), STOP — that's its own substrate sub-lane.
 - **Q4.5 P1 (extdeps typed-primitive bypass) — surfaced via lens findings**: lens reports structural-coverage-gap on `dsl/extdeps/llm/openai.dag:92-110`, `anthropic.dag:104-124`, `github/auth.dag:13-24` (and any others the audit finds). NOT a STOP; this is the lens delivering its closed-system-foundation-gap-visibility value. Director routes P1 closure to a dedicated extdeps-typed-primitive-consumption lane.
-- **Q4.5 P2 (ExecuteCommand)** — the lens itself doesn't depend on P2; only the TESTING.md `0-residual` claim does. NOT a STOP for this lane. P2 is independent.
+- **Q4.5 P2 (ExecuteCommand)** — runner primitive landed via PR #792 (post-Q4.5-authoring update). The lens itself never depended on P2; bulk consumer migration is residual ROADMAP work and remains independent of this lane. NOT a STOP.
 
 **Acceptance**: 4 worked examples from this design doc compile (or fail-compile) per their stated outcomes; lens output observable via standard lens-output infrastructure; lens reports structural-coverage-gap diagnostics on Q4.5 P1 bypass surfaces (gap becomes visible, not silent); audit produces existence-proof verdict (path (i) vs path (ii)) for Director re-decision on OperationEffect retirement; asymmetric-tightening worked example in PR body; cargo + clippy + fmt clean; DB-8 fixed-point converges.
 
