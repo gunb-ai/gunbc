@@ -77,6 +77,33 @@ import std.list { List, empty, fold, cons, singleton, filter }
 import std.substrate { NonSingletonList, PortId }
 import v3.std.lookup { Lookup }
 
+// Complexity analysis reads this as a single authority for descent proofs.
+type CollectionSizeEffect
+  = ShrinkEffect
+  | ProjectionEffect
+  | IdentityEffect
+
+// Operation cost shape — structural contract on a method's algorithmic cost.
+// Declared per method on `MethodContract`; cost/complexity lenses read this
+// to compute cost expressions without string-dispatching on method names.
+type CostShape
+  = ShapeConstant
+  | ShapeLinearScan
+  | ShapeIterateBody
+  | ShapeSortBody
+
+// Unified per-method metadata carrier for v3 lens consumers. This is the
+// §6a Option 3 shape: one lookup key `(algebra_id, method_id)` with the
+// method contract facts cost/complexity need co-located. It deliberately
+// does not extend substrate declarations or create one carrier per algebra.
+type MethodContract {
+  algebra_id: String
+  method_id: String
+  size_effect: CollectionSizeEffect?
+  cost_shape: CostShape?
+  callback_element_position: Int?
+}
+
 // 🟢 TERMINAL. `SizeVariable` names the runtime size of a DAG
 // port's value. Two cost expressions correlate structurally via
 // `source_port` equality — different folds over the same port
