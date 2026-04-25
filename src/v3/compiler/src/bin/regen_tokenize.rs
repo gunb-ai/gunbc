@@ -256,11 +256,7 @@ fn emit_token_kind_enum(dag: &Dag) -> String {
             TypeConnective::Conj { children } if children.is_empty() => format!("    {},", v.label),
             TypeConnective::Conj { children } if children.len() == 1 => {
                 let field = &children[0];
-                let mut rust_ty = rust_type_for_decl_id(dag, field.ty);
-                // R2: pre-narrowed lexical int magnitude; DAG field type remains `Int`.
-                if v.label == "IntLit" {
-                    rust_ty = "i128".to_string();
-                }
+                let rust_ty = rust_type_for_decl_id(dag, field.ty);
                 let field_name = &field.label;
                 if field_name == "_0" {
                     format!("    {}({rust_ty}),", v.label)
@@ -303,6 +299,7 @@ fn rust_type_for_decl_id(dag: &Dag, id: DeclarationId) -> String {
         match name.as_str() {
             "String" => return "String".to_string(),
             "Int" | "Int64" => return "i64".to_string(),
+            "IntLiteralMagnitude" => return "i128".to_string(),
             _ => {}
         }
     }
@@ -318,6 +315,7 @@ fn rust_type_for_decl_id(dag: &Dag, id: DeclarationId) -> String {
             match template_decl.name.as_deref() {
                 Some("String") => "String".to_string(),
                 Some("Int") | Some("Int64") => "i64".to_string(),
+                Some("IntLiteralMagnitude") => "i128".to_string(),
                 other => panic!("unsupported instantiated type {other:?}"),
             }
         }

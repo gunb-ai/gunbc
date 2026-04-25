@@ -37,6 +37,6 @@ src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/substrate.dag	52	112220	4a342ae6dabbf419
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	18	36478	d010232f0373dc99
-src/v3/std/tokenize.dag	8	38819	2e158a74f33c18cc
+src/v3/std/tokenize.dag	8	38881	901b46b851ba0834
 src/v3/std/verification.dag	17	40875	6a1f8ab19e9180ca
 src/v3/std/workflows.dag	4	3135	bb6f9b042a02e8d6
