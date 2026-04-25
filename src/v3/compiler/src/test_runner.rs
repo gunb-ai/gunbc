@@ -481,6 +481,12 @@ fn is_unshare_permission_error(err: &std::io::Error) -> bool {
 /// non-idempotent work; keep test claims to idempotent or narrow commands — PR #792.)
 /// `unshare:`-pattern, read errors, `take` failure, and non-zero host-confirmation are unchanged;
 /// the latter is independent of this buffer case.
+///
+/// **P5 (dissolution, `#[cfg(test)]` branch):** Retire the test-only empty-stderr relaunch when
+/// unshare(1) can be **typed** as “setup did not reach logical `exec`” without a second `Child`
+/// (e.g. namespace errors on a **separate** fd, `pidfd`/ns inspection, or a different sandbox
+/// primitive), or when the **hosted** Linux pool no longer hits the PID-1 / empty-fd quirk
+/// (kernel/cap/namespace policy that makes the first `wait` match the direct `exec` result).
 #[cfg(target_os = "linux")]
 const UNSHARE_STDERR_SCAN_CAP: u64 = 8 * 1024;
 
@@ -533,6 +539,7 @@ fn unshare_sandbox_broken_relaunch_with_direct(
     if unshare_stderr_indicates_sandbox_setup_failure(&buf) {
         return true;
     }
+    // TODO(dissolution): remove `cfg!(test)` when module-doc P5 conditions are met.
     if buf.trim().is_empty() && cfg!(test) {
         // Piped stderr, read ok, no `unshare:`: second run only in test builds; production fail-closed.
         return true;
@@ -748,6 +755,9 @@ fn evaluate_execute_command_exit_code_with_wall_time(
                 // command may run twice (side-effecting `TestClaim`s should assume idempotence on
                 // this Linux path or a future follow-up to narrow the trigger; Claude review, PR
                 // #792).
+                // TODO(narrow, T-PB-B): only confirm when stderr/exit pattern suggests a wrapper
+                // artifact (mirror the post-mismatch gate); `rustc`/`python3` style invocations
+                // must not double-build on every non-zero `Pass` once boundary tests grow.
                 child = match build_execute_command_process(command, args).spawn() {
                     Ok(c) => c,
                     Err(e2) => {
