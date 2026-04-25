@@ -75,8 +75,9 @@ pub fn compile_full_bootstrap_without_parse_surface_dag_from_std_seed(std_seed: 
     dag
 }
 
+/// Caller must pass a fresh `Dag::empty()` (`compile_std_bootstrap_dag` is the
+/// only caller today). Avoids a redundant second `Dag::empty()` reset.
 fn bootstrap_std_fixtures_only(dag: &mut Dag) {
-    *dag = Dag::empty();
     load_fixtures(dag, std_fixtures());
     dag.populate_primitive_cache();
 }
