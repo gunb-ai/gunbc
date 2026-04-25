@@ -217,6 +217,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 - The two-shape distinction follows ROADMAP Track 16's explicit decision: the compiler emits programming languages; everything else is user code.
 - Cost scaling: Shape A is `O(1)` per language target; Shape B is `O(1)` per artifact class. Neither is `O(N × M)`. Effort scales with conceptual content, not with layer or target count.
 - Emission is independent of intent. You declare what the system does; separately, you declare what artifacts it becomes.
+- See [`docs/thesis/what-else-falls-out.md`](docs/thesis/what-else-falls-out.md) §"Two shapes of omni-emission" for the full Shape A vs Shape B treatment, including the per-target cost structure and the load-bearing reason the distinction must not be blurred.
 
 **Meta-process modeling:**
 - Bootstrap, CI, dev process modeled as .dag workflows.
@@ -302,6 +303,31 @@ empty set per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-
   `fixture_integration_canonical` for glue-generation audience), and
   T-LensAPI provides the opt-in-depth mechanism (user-authored lenses
   extend the proof surface without changing the base language).
+
+**Adoption model — economics, not enforcement:**
+- The thesis claims every program gets complexity, effects, termination,
+  idempotency, and ownership for free — by construction, not by opt-in.
+  This is structurally true (see §"Substrate shape" + `epistemic-stacking.md`):
+  the language vocabulary is the six type connectives and five behaviors;
+  every program decomposes through them; lenses are folds over that
+  decomposition. There is no in-language way to author a program the lenses
+  can't read.
+- "Leaving the stack" inside the language means composing primitives into
+  named patterns (namespacing). The compiler sees through; lenses still
+  apply. **Still inside the stack.**
+- "Leaving the stack" outside the language means writing a different
+  compiler on different primitives. The thesis does not prevent this and
+  does not need to — gunbc's lenses are folds over *our* primitives, so
+  they don't apply to a different compiler's outputs by construction
+  (until those outputs are grounded back into `.dag`). See
+  `epistemic-stacking.md` §"Positive corollary."
+- Adoption is therefore gated by **economics, not enforcement**: low cost
+  of entry (one composition layer, no annotation surface, surface syntax
+  is sugar over six connectives) × high free value (every lens applies to
+  every program). The recruiting mechanism is "you get the guarantees by
+  using the language at all," not a license check or a static analyzer
+  flagging non-compliant code. The user surface stays approachable; the
+  guarantees are unavoidable.
 
 **Tests are structural data:**
 - All tests are `TestClaim` declarations in `.dag` under the 0-floor cascade
