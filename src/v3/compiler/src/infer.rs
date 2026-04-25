@@ -2613,11 +2613,7 @@ fn int_literal_narrowing_shape_from_callable_stencil(
         let TransformTarget::Callable(callee) = &t.target else {
             continue;
         };
-        let Some(param_idx) = t
-            .inputs
-            .iter()
-            .position(|&p| p == call_argument_port)
-        else {
+        let Some(param_idx) = t.inputs.iter().position(|&p| p == call_argument_port) else {
             continue;
         };
         let (template, template_args) = callable_template_arguments(dag, *callee);
@@ -2648,11 +2644,7 @@ fn int_literal_narrowing_shape_from_callable_stencil(
     acc
 }
 
-fn param_accepts_uninferred_int_literal(
-    dag: &Dag,
-    ty: &TypeShape,
-    int_shape: &TypeShape,
-) -> bool {
+fn param_accepts_uninferred_int_literal(dag: &Dag, ty: &TypeShape, int_shape: &TypeShape) -> bool {
     if crate::integer_range::i128_range_for_integer_decl(dag, ty.declaration).is_some() {
         return true;
     }
