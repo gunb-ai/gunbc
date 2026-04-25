@@ -1099,14 +1099,40 @@ fn phantom_unit_mismatch(
         if !is_abelian_group_phantom_algebra(dag, phantom.algebra) {
             continue;
         }
-        let expected_arg = expected_inst
+        if !template.type_params.contains(&phantom.parameter) {
+            return Some(malformed_phantom_parameter_diagnostic(
+                dag,
+                expected_inst.template,
+                phantom.parameter,
+                span,
+            ));
+        }
+        let Some(expected_arg) = expected_inst
             .arguments
             .iter()
-            .find(|arg| arg.parameter == phantom.parameter)?;
-        let actual_arg = actual_inst
+            .find(|arg| arg.parameter == phantom.parameter)
+        else {
+            return Some(missing_phantom_argument_diagnostic(
+                dag,
+                expected_inst.template,
+                phantom.parameter,
+                "expected",
+                span,
+            ));
+        };
+        let Some(actual_arg) = actual_inst
             .arguments
             .iter()
-            .find(|arg| arg.parameter == phantom.parameter)?;
+            .find(|arg| arg.parameter == phantom.parameter)
+        else {
+            return Some(missing_phantom_argument_diagnostic(
+                dag,
+                actual_inst.template,
+                phantom.parameter,
+                "actual",
+                span,
+            ));
+        };
         if expected_arg.value != actual_arg.value {
             return Some(Diagnostic::UnitMismatch {
                 operator: crate::operators::symbol(op_kind),
@@ -1119,6 +1145,41 @@ fn phantom_unit_mismatch(
         }
     }
     None
+}
+
+fn malformed_phantom_parameter_diagnostic(
+    dag: &Dag,
+    template: DeclarationId,
+    parameter: DeclarationId,
+    span: &SourceSpan,
+) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: format!(
+            "malformed phantom parameter {} on {}: parameter is not in type_params",
+            phantom_parameter_display_name(dag, parameter),
+            declaration_display_name(dag, template),
+        ),
+        span: span.clone(),
+        fixes: Vec::new(),
+    }
+}
+
+fn missing_phantom_argument_diagnostic(
+    dag: &Dag,
+    template: DeclarationId,
+    parameter: DeclarationId,
+    side: &str,
+    span: &SourceSpan,
+) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: format!(
+            "malformed phantom instantiation for {}: missing {side} argument for phantom parameter {}",
+            declaration_display_name(dag, template),
+            phantom_parameter_display_name(dag, parameter),
+        ),
+        span: span.clone(),
+        fixes: Vec::new(),
+    }
 }
 
 fn is_abelian_group_phantom_algebra(dag: &Dag, algebra: DeclarationId) -> bool {
@@ -4678,7 +4739,94 @@ mod bool_logical_operator_arrow_tests {
         let bad_output = dag.push_transform(
             TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
             vec![lhs, rhs_other],
+            span.clone(),
+        );
+        let money_missing_arg = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: money_missing_arg,
+            name: Some("MoneyMissingArg".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: money,
+                arguments: Vec::new(),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let malformed_lhs = dag.alloc_port_with_shape(TypeShape::new(money_missing_arg));
+        let malformed_rhs = dag.alloc_port_with_shape(TypeShape::new(money_missing_arg));
+        let malformed_output = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![malformed_lhs, malformed_rhs],
+            span.clone(),
+        );
+        let rogue_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: rogue_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("Rogue".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let bad_money = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: bad_money,
+            name: Some("BadMoney".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "amount".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: vec![c_param],
+            phantom_params: vec![PhantomParameter {
+                parameter: rogue_param,
+                algebra: currency_abelian_group,
+            }],
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let bad_money_usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: bad_money_usd,
+            name: Some("BadMoneyUSD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: bad_money,
+                arguments: vec![TemplateArgument {
+                    parameter: rogue_param,
+                    value: usd,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
             span,
+        });
+        let invalid_lhs = dag.alloc_port_with_shape(TypeShape::new(bad_money_usd));
+        let invalid_rhs = dag.alloc_port_with_shape(TypeShape::new(bad_money_usd));
+        let invalid_output = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![invalid_lhs, invalid_rhs],
+            SourceSpan::new("<money-unit-test>", 1, 2),
         );
 
         infer(&mut dag);
@@ -4704,6 +4852,30 @@ mod bool_logical_operator_arrow_tests {
                     && actual.declaration == eur
             ),
             "unexpected diagnostic: {bad_diag:?}"
+        );
+        let malformed_diag = dag
+            .diagnostics()
+            .get(malformed_output)
+            .expect("missing phantom instantiation argument should fail closed");
+        assert!(
+            matches!(
+                malformed_diag,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("missing expected argument for phantom parameter C")
+            ),
+            "unexpected diagnostic: {malformed_diag:?}"
+        );
+        let invalid_diag = dag
+            .diagnostics()
+            .get(invalid_output)
+            .expect("phantom parameter outside type_params should fail closed");
+        assert!(
+            matches!(
+                invalid_diag,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("parameter is not in type_params")
+            ),
+            "unexpected diagnostic: {invalid_diag:?}"
         );
     }
 
