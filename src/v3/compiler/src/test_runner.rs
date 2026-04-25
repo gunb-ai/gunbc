@@ -533,6 +533,35 @@ fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
 #[cfg(target_os = "linux")]
 const UNSHARE_STDERR_SCAN_CAP: u64 = 8 * 1024;
 
+/// Set to `1` (or `true`, case-insensitive) so the unshare post-start **empty-wrapper-stderr** retry
+/// (exit mismatch) runs in `cargo build` as well as `cargo test` — T-PB-B, explicit data over
+/// build-shape-only gating. See [`unshare_sandbox_broken_relaunch_with_direct`].
+#[cfg(target_os = "linux")]
+const GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH: &str =
+    "GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH";
+
+/// Second direct `Child` in [`evaluate_execute_command_host_outcome`] (single retry each, P2(d) seam).
+#[cfg(target_os = "linux")]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum UnshareDirectRerun {
+    /// util-linux / wrapper: piped `stderr` read error, or `unshare:` in merged capture.
+    PostStartFallback,
+    /// exit mismatch, merged empty, `#[cfg(test)]` **or** this env; see
+    /// [`GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH`].
+    ExitMismatchEmptyWrapperStderr,
+    /// non-zero `expect` + code match: one host-confirmation `Child`.
+    NonzeroHostConfirm,
+}
+
+#[cfg(target_os = "linux")]
+fn unshare_reexec_after_spawn_error_label(reason: UnshareDirectRerun) -> &'static str {
+    match reason {
+        UnshareDirectRerun::PostStartFallback
+        | UnshareDirectRerun::ExitMismatchEmptyWrapperStderr => "unshare(1) post-start fallback",
+        UnshareDirectRerun::NonzeroHostConfirm => "unshare(1) host-exit confirmation",
+    }
+}
+
 /// **127** = command not found, **126** = not executable — common POSIX `sh` / `exec` results when
 /// the `command` cannot be `exec`’d. Under [`UNSHARE_LOGICAL_BOOTSTRAP_SH`], `exec 2>/dev/null` hides
 /// the shell’s “not found” line from the **wrapper** merge, so a missing binary can look like
