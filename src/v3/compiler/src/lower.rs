@@ -3175,10 +3175,12 @@ fn lower_scalar_literal_for_type(
     let bool_decl_id = dag.declaration_by_name("Bool").map(|d| d.id);
     let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
     let type_ok = match &literal_bits {
-        LiteralBits::Int(value) => int_decl_id
-            .map(|id| walks_to(dag, expected_type, id))
-            .unwrap_or(false)
-            || int_literal_fits_expected_type(dag, *value, expected_type).unwrap_or(false),
+        LiteralBits::Int(value) => {
+            int_decl_id
+                .map(|id| walks_to(dag, expected_type, id))
+                .unwrap_or(false)
+                || int_literal_fits_expected_type(dag, *value, expected_type).unwrap_or(false)
+        }
         LiteralBits::Bool(_) => bool_decl_id
             .map(|id| walks_to(dag, expected_type, id))
             .unwrap_or(false),
