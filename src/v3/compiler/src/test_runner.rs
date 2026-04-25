@@ -471,6 +471,8 @@ fn is_unshare_permission_error(err: &std::io::Error) -> bool {
 const UNSHARE_STDERR_SCAN_CAP: u64 = 8 * 1024;
 
 /// Opt-in: second run when piped wrapper stderr is empty (see module doc; default fail-closed).
+// TODO: Remove `GUNBC_V3_…` and env-gated path when unshare(1) setup vs logical-exit is
+// structurally disambiguated without a second `exec` (same-`.dag` CI-on vs dev-off; PR #792).
 #[cfg(target_os = "linux")]
 const GUNBC_RELAUNCH_UNSHARE_ON_EMPTY_STDERR: &str = "GUNBC_V3_RELAUNCH_UNSHARE_ON_EMPTY_STDERR";
 
@@ -736,6 +738,11 @@ fn evaluate_execute_command_exit_code_with_wall_time(
                 // semantics in a new PID namespace) — so C-5 must not be read as "never re-run
                 // when the code already matches" without a direct `Child` confirmation for **non-
                 // zero** expected codes (PR #792 integration: `true` is 0, not 1, on the host).
+                //
+                // This branch runs **on every** non-zero match, not only “suspected” spurious: the
+                // command may run twice (side-effecting `TestClaim`s should assume idempotence on
+                // this Linux path or a future follow-up to narrow the trigger; Claude review, PR
+                // #792).
                 child = match build_execute_command_process(command, args).spawn() {
                     Ok(c) => c,
                     Err(e2) => {
