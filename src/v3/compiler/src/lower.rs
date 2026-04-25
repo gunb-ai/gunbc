@@ -3596,11 +3596,7 @@ fn lower_fn_item_expr_body(
         TypeConnective::Arrow { inputs, output, .. } => (inputs, output),
         observed => {
             let fn_decl = dag.declaration(fn_decl_id);
-            let fn_decl_name = fn_decl
-                .name
-                .as_deref()
-                .unwrap_or(name)
-                .to_string();
+            let fn_decl_name = fn_decl.name.as_deref().unwrap_or(name).to_string();
             report_declaration_error(
                 dag,
                 Diagnostic::ResolveError {
