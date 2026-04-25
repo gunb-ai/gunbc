@@ -6712,6 +6712,57 @@ mod tests {
         );
     }
 
+    #[test]
+    fn fn_body_lowering_reports_non_arrow_seed_invariant_violation() {
+        let span = test_span();
+        let return_type = SurfaceType::Named {
+            name: "Int".to_string(),
+            span: span.clone(),
+        };
+        let body = SurfaceExpr::Literal {
+            value: SurfaceLiteral::Int(1),
+            span: span.clone(),
+        };
+        let module = SurfaceModule {
+            items: vec![SurfaceItem::Fn {
+                name: "bad_seed".to_string(),
+                type_params: Vec::new(),
+                params: Vec::new(),
+                return_type: return_type.clone(),
+                body: body.clone(),
+                span: span.clone(),
+            }],
+        };
+        let mut dag = Dag::new();
+        let (symbols, _is_first) = collect_symbols_phase(&mut dag, &module.items);
+        let mut mutual_state = MutualRecursionState::default();
+
+        lower_fn_item_expr_body(
+            "bad_seed",
+            &[],
+            &return_type,
+            &body,
+            &mut dag,
+            HashMap::new(),
+            &symbols,
+            &MutualRecursionPlans::default(),
+            &mut mutual_state,
+        );
+
+        assert!(
+            dag.diagnostics().iter().any(|(_, diagnostic)| {
+                matches!(
+                    diagnostic,
+                    Diagnostic::ResolveError { name, .. }
+                        if name.contains("function declaration `bad_seed`")
+                            && name.contains("seed_function_signatures_phase did not produce an Arrow connective")
+                            && name.contains("observed connective")
+                )
+            }),
+            "non-Arrow fn declarations at body lowering must fail closed with a diagnostic"
+        );
+    }
+
     /// Receipt for `Declaration::specialization_parent` on specialized anonymous
     /// `Disj` copies: the walker in `emit::rust_target` depends on this edge shape.
     #[test]
