@@ -5,7 +5,8 @@
 
 use v3_compiler::dag::{Dag, LiteralBits, ValueBody};
 use v3_compiler::diagnostics::Diagnostic;
-use v3_compiler::{compile_to_dag, CompileError};
+use v3_compiler::parse_surface::{self, SurfaceExpr, SurfaceItem, SurfaceLiteral};
+use v3_compiler::{compile_to_dag, parse_for_test, tokenize_for_test, CompileError};
 
 fn first_magnitude_out_of_range(dag: &Dag) -> Option<(i128, i128, i128, String)> {
     dag.diagnostics().iter().find_map(|(_, d)| match d {
@@ -34,6 +35,29 @@ fn data_int_accepts_i64_min_literal() {
         panic!("expected scalar int, got {body:?}");
     };
     assert_eq!(*v, i64::MIN as i128);
+}
+
+/// `|i128::MIN| = 2^127` is not a valid positive `i128` token; it must be written
+/// as unary `-` over the same digit string so the unsigned magnitude can be
+/// carried as `u128` through the tokenizer and merged in the parser (codex
+/// #796, signed-boundary). `Int` in `std/integer.dag` is `Int64`, so the full
+/// pipeline is not asserted here—only parse/tokenize R2.
+#[test]
+fn parse_accepts_i128_min_int_literal_magnitude() {
+    let src = "let x = -170141183460469231731687303715884105728\n";
+    let toks = tokenize_for_test(src, "i128min.v3").expect("tokenize");
+    let parsed = parse_for_test(&toks, "i128min.v3").expect("parse");
+    let m: &parse_surface::SurfaceModule = &parsed;
+    let Some(SurfaceItem::Let { expr, .. }) = m.items.first() else {
+        panic!("expected one let, got {:?}", m.items);
+    };
+    let SurfaceExpr::Literal { value, .. } = expr else {
+        panic!("expected literal, got {expr:?}");
+    };
+    let SurfaceLiteral::Int(n) = value else {
+        panic!("expected int literal, got {value:?}");
+    };
+    assert_eq!(*n, i128::MIN);
 }
 
 #[test]
