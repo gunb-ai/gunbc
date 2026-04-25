@@ -2424,6 +2424,7 @@ fn lower_data_item(
     //   - Record literal → ValueBody::Structural (existing path).
     //   - Scalar literal  → ValueBody::Scalar (new path, DB-10).
     //   - Anything else   → ValueBody::Unparsed fallback.
+    let mut suppress_unparsed_scaffold = false;
     let value_body = match body {
         Some(SurfaceExpr::Record { fields, .. }) => {
             lower_record_to_structural(name, fields, ty_decl_id, body_span, symbols, dag)
@@ -2431,8 +2432,8 @@ fn lower_data_item(
         Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
             match lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag) {
                 Ok(bits) => Some(crate::dag::ValueBody::Scalar(bits)),
-                Err(diag) => {
-                    report_declaration_error(dag, diag);
+                Err(Diagnostic::ResolveError { .. }) => {
+                    suppress_unparsed_scaffold = true;
                     report_declaration_error(
                         dag,
                         Diagnostic::ResolveError {
@@ -2445,13 +2446,20 @@ fn lower_data_item(
                     );
                     None
                 }
+                Err(diag) => {
+                    suppress_unparsed_scaffold = true;
+                    report_declaration_error(dag, diag);
+                    None
+                }
             }
         }
         _ => None,
     };
-    let final_body =
-        value_body.unwrap_or_else(|| crate::dag::ValueBody::Unparsed(body_span.clone()));
-    dag.declaration_mut(decl_id).value_body = Some(final_body);
+    dag.declaration_mut(decl_id).value_body = match value_body {
+        Some(body) => Some(body),
+        None if suppress_unparsed_scaffold => None,
+        None => Some(crate::dag::ValueBody::Unparsed(body_span.clone())),
+    };
 }
 
 /// Walk a declaration through `Instantiation` / `ResolvedIdentifier`

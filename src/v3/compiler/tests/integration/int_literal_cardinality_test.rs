@@ -66,6 +66,11 @@ fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
         .iter()
         .map(|(_, diagnostic)| diagnostic.message())
         .collect();
+    assert_eq!(
+        messages.len(),
+        1,
+        "out-of-range integer literal should emit one root-cause diagnostic, got {messages:?}"
+    );
     assert!(
         messages.iter().any(|message| {
             message.contains("integer literal `256`")
