@@ -71,12 +71,6 @@ const EXTDEPS_BOOTSTRAP_FIXTURES: &[(&str, &str)] = &[(
     EXTDEPS_RUST_PRIMITIVES_DAG,
 )];
 
-/// Name of the `rust_pilot_primitives` top-level `data` declaration in
-/// `dsl/extdeps/languages/rust/primitives.dag`. Single string literal —
-/// `Dag::rust_pilot_primitives()` and tests read this constant rather than
-/// duplicating the identifier.
-pub(crate) const RUST_PILOT_PRIMITIVES_NAME: &str = "rust_pilot_primitives";
-
 // M1(3) PR-B-unwind R1 — the v3-only staged files are enumerated
 // by `build.rs` at compile time and exposed via generated statics:
 //
