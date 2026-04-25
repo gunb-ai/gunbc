@@ -74,7 +74,7 @@ Surface to Director.
 
 ## Reporting
 
-- Single PR. Title: `feat(v3): T-ImpossibleBugs — declared-vs-inferred effect check (closes unenumerated-effects class via Logging demo)`.
+- Single PR. Title: `feat(v3): T-ImpossibleBugs — declared-vs-inferred effect check (closes unenumerated-effects class; demo via existing OperationEffect taxonomy)`.
 - PR body cites this brief + addresses the 3 reqs + documents the chosen demo effect class + the inference scope choice (lens vs lowering-phase).
 - On merge: signal Director; inter-procedural inference + bulk std/ annotation is post-cascade work.
 

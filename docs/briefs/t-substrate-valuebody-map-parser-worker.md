@@ -53,7 +53,8 @@ Today the parser falls into `skip_brace_balanced` for non-record `{...}` bodies;
 3. Edit `parse_parser_body.txt` (per reqs 2 + 3): add `looks_like_map_literal` + `parse_map_literal`; route from the existing brace-body entry.
 4. Regen `parse_generated.rs` (per req 4).
 5. Exhaustive-match audit + updates across consumers (per req 5).
-6. Smoke test: parser accepts `data kernel_algebra_profile: Map<String, AlgebraProfile> = { "Int": OrderedRingProfile, ... }` and produces a `SurfaceExpr::Map` with 7 entries. **NOTE**: this PR does NOT lower `SurfaceExpr::Map` to `ValueBody::Map` (sibling substrate sub-lane does that); after this PR the parsed `SurfaceExpr::Map` flows through `lower_data_item`'s catch-all → `ValueBody::Unparsed` → R14 hard-fail. That's expected; the sibling substrate sub-lane closes that path. Test should assert the parser-output shape, not end-to-end lowering.
+6. **Lowerer-side exhaustive-match consistency** (per req 5): add an explicit `SurfaceExpr::Map` arm to `lower_data_item` (and any other `match expr` site currently falling through via wildcard). The arm produces `ValueBody::Unparsed(span)` for now (sibling substrate sub-lane converts this to `ValueBody::Map`). **No wildcard `_` swallowing** — req 5 mandates exhaustive matches; the post-parser substrate sub-lane will replace this arm's body, not its existence.
+7. Smoke test: parser accepts `data kernel_algebra_profile: Map<String, AlgebraProfile> = { "Int": OrderedRingProfile, ... }` and produces a `SurfaceExpr::Map` with 7 entries. **NOTE**: this PR does NOT lower `SurfaceExpr::Map` to `ValueBody::Map` (sibling substrate sub-lane does that); after this PR the parsed `SurfaceExpr::Map` flows through the **explicit `Map` arm added in step 6** → `ValueBody::Unparsed` → R14 hard-fail. That's expected; the sibling substrate sub-lane replaces that arm's body. Test should assert the parser-output shape, not end-to-end lowering.
 
 ## Acceptance
 
