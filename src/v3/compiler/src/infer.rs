@@ -1067,6 +1067,15 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                         if int_literal_fits_expected_type(dag, literal, expected_ty.declaration)
                             == Some(true)
                         {
+                            if let Some(diag) = check_refinement_discharge(
+                                dag,
+                                actual,
+                                expected_ty,
+                                &t.target,
+                                &t.span,
+                            ) {
+                                return Decision::Fail(t.output, diag);
+                            }
                             continue;
                         }
                         if let Some(range) = integer_range_for_decl(dag, expected_ty.declaration) {

@@ -150,3 +150,28 @@ fn int_literal_ranges_follow_type_aliases() {
         "expected aliased MagnitudeOutOfRange details, got {messages:?}"
     );
 }
+
+#[test]
+fn int_literal_range_narrowing_does_not_bypass_refinement_discharge() {
+    let err = compile_to_dag(
+        "type PositiveInt = Int where PositiveInt > 0\n\
+         fn requires_positive(x: PositiveInt) -> Int = x\n\
+         fn bad() -> Int = requires_positive(1)",
+        "int_literal_refinement_discharge.v3",
+    )
+    .expect_err("range-compatible literal must still fail missing refinement discharge");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic diagnostic, got {err:?}");
+    };
+    let messages: Vec<String> = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, diagnostic)| diagnostic.message())
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("refinement") || message.contains("no narrowing")),
+        "expected refinement discharge failure, got {messages:?}"
+    );
+}
