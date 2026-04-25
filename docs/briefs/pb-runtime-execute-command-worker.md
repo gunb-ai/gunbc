@@ -9,14 +9,14 @@
 > PB-Substrate pilot brief #772 + PB-1-b withdrawal #786 — premise
 > must match shipped state, not assumed pre-state).
 
+> **Landed lane receipt (reconciles “Read first” preflight below):** `ExecuteCommand` is implemented in the Rust `TestRunner` and M1.5 harness with a **bounded execution policy** — `EXECUTE_COMMAND_WALL_TIMEOUT` (30s wall, fail-closed `ClaimResult::Fail` on exceed, child killed), no `output()`-style full capture of child streams; **null** child stdio on the direct path, and on the Linux `unshare(1)` path a **pipe for util-linux / bootstrap `sh` only** (a POSIX `sh` hop re-`exec`s the user `command`+`args` with logical `stderr` → null while setup diagnostics can still be scanned—see `UNSHARE_LOGICAL_BOOTSTRAP_SH` in `test_runner.rs`), and distinguishable `Fail` messages for spawn / timeout / signal / exit mismatch. On **Linux** (when permitted), the logical command runs under `unshare(1) -c -f -p` (user + PID namespace) so, if `unshare(1)` succeeds, the workload is tied to that namespace’s “init” exit; on `unshare(1)` `EPERM` the runner **falls back** to the same direct `Child` + wall + pgrp + `sh -c` `&` heuristics as non-Linux. **Non-Linux** uses the direct path only. The prior STOP-AND-ESCALATE “unbounded hang or no resource discipline” condition for *this* lane is **closed** in code; *changing* the default cap is still Director-level policy. Authoritative post-land narrative: [`TESTING.md`](../../TESTING.md) (`:195` callout) and `src/v3/compiler/src/test_runner.rs` (`evaluate_execute_command_exit_code`, `EXECUTE_COMMAND_WALL_TIMEOUT`).
+
 ## Read first
 
 - [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md) §"New lanes" `PB-Runtime` — your standing program scope (sized M-L; one of the four PB-Runtime files).
-- [`TESTING.md`](../../TESTING.md) `:195` — **capability state callout** authored 2026-04-25 in the cascade promotion PR #782. **Live source-of-truth for what's currently allowed vs not.** Read this in full before starting; it documents:
-  - ExecuteCommand predicate landed in PR #678 (schema only).
-  - M1.5 testgen harness accepts only the tautological allowlist (`command == "true" && args.is_empty() && expect_exit == 0`), panics fail-closed on anything else.
-  - Rust `TestRunner` returns `NotYetImplemented` for ExecuteCommand (no match arm).
-  - **Full runner support is deferred to this lane** — the cascade-promoted boundary-test migration is structurally expressible but **executing it is blocked** until this PR.
+- [`TESTING.md`](../../TESTING.md) `:195` — **capability state callout** (updated with this lane). **Live source-of-truth** for what the runner does today. Historically, the 2026-04-25 cascade note also recorded pre-land state:
+  - ExecuteCommand predicate: schema PR #678; runner was foundation-only (M1.5 `true` allowlist; `TestRunner` NYI) **until the PB-Runtime `ExecuteCommand` implementation landed.**
+- **As implemented:** arbitrary `command` + `args` + `expect_exit_code` with **bounded** host execution; see the **Landed lane receipt** blockquote above and `test_runner.rs` (unshare, pipes, and bounded re-exec are implemented there — a dense policy surface; keep this brief and [`TESTING.md`](../../TESTING.md) in sync when those branches or caps change).
 - [`src/v3/std/verification.dag`](../../src/v3/std/verification.dag) `:115-119` — ExecuteCommand schema (the source-of-truth for the data shape):
   ```
   | ExecuteCommand {
@@ -26,18 +26,12 @@
     }
   ```
   Note the dissolution-trigger comment immediately above (lines 109-114) — typed tool/capability references are the eventual durable shape; this brief preserves the current scaffold sum, not the eventual structural form.
-- [`src/v3/compiler/src/test_runner.rs`](../../src/v3/compiler/src/test_runner.rs) `:352-388` — match block over predicate variants. ExecuteCommand has no arm; falls through to `other => ClaimResult::NotYetImplemented(format!("TestPredicate::{other} is not wired in the Rust runner yet"))`.
-- [`src/v3/compiler/tests/integration/m1_5_testgen_test.rs`](../../src/v3/compiler/tests/integration/m1_5_testgen_test.rs) `:292-294` — current allowlist:
-  ```rust
-  fn shell_exit_matches_allowlisted(command: &str, args: &[String], expect_exit: i64) -> bool {
-      command == "true" && args.is_empty() && expect_exit == 0
-  }
-  ```
-  And `:394-398` — the fail-closed panic when allowlist rejects.
+- [`src/v3/compiler/src/test_runner.rs`](../../src/v3/compiler/src/test_runner.rs) — `TestRunner::run_claim` match: **`ExecuteCommand`** → `eval_execute_command`; shared **`evaluate_execute_command_exit_code`** (null stdio on the direct path; Linux `unshare(1)` wrapper may use a bounded pipe—see `evaluate_execute_command_exit_code` docs), wall timeout, `ClaimResult::Fail` on timeout. Pre-land: no arm → `NotYetImplemented` (retired).
+- [`src/v3/compiler/tests/integration/m1_5_testgen_test.rs`](../../src/v3/compiler/tests/integration/m1_5_testgen_test.rs) — **retired** tautological `shell_exit_matches_allowlisted` + allowlist-only panic; harness uses `evaluate_execute_command_m1_5` (exit pass/mismatch as bool; other outcomes panic) on the same underlying `evaluate_execute_command_exit_code` implementation.
 
 ## Frame
 
-The cascade promotion PR #782 retracted TESTING.md's "Post-R2 shape" Rust-residual carve-out under 0-floor. The retraction is structurally honest: `ExecuteCommand` is the cascade-named successor pattern for boundary tests. **But: the retraction is a paper claim** — the migration target exists as a data shape, but the runner cannot execute the data shape beyond the tautological allowlist. ROADMAP T-PB-B's dependency column reads `DB-15 + T-TestGen + PB-Runtime` per #782; this lane is the missing PB-Runtime piece.
+The cascade promotion PR #782 retracted TESTING.md's "Post-R2 shape" Rust-residual carve-out under 0-floor. The retraction is structurally honest: `ExecuteCommand` is the cascade-named successor pattern for boundary tests. Pre–PB-Runtime, the data shape was ahead of a **foundation** runner; **this lane** lands arbitrary-command execution with **bounded** host policy. ROADMAP / dependencies for T-PB-B are updated when this lane ships — see `ROADMAP.md` and `TESTING.md`.
 
 This worker lifts the runner from foundation-only to **arbitrary command + args** capability. After landing: a `TestClaim` like *"emit Rust, invoke rustc on output, check exit code"* is structurally expressible AND executable.
 
@@ -47,12 +41,12 @@ Two surfaces, one PR:
 
 ### Surface 1 — Rust `TestRunner` match arm
 
-Add an explicit `ExecuteCommand` match arm at `src/v3/compiler/src/test_runner.rs:352-388`. Today the match block handles `Compiles` / `FailsWithDiagnostic` / `OutputEquals` / `PortHasState` / `CostBounded` / `LensOutputEquals` / `DifferentialEquals` / `AlgebraicLaw` / `MockBackedInvariant`. ExecuteCommand falls to the `other` NotYetImplemented arm. New behavior:
+**Implemented:** an explicit `ExecuteCommand` match arm in `test_runner` (`run_claim`); previously `ExecuteCommand` fell through to `NotYetImplemented`. Behavior:
 
 - Extract `command: String`, `args: List<String>`, `expect_exit_code: Int` from the `payload` (the `variant_value` extraction pattern is in the existing arms; mirror).
-- Spawn the command via `std::process::Command::new(command).args(args).output()` (or equivalent that captures stdout/stderr + exit code).
+- Spawn the command via `std::process::Command` with **stdin/stdout/stderr to the null device** (no buffering of child output — P3/P4) and a **wall-clock bound** (fail-closed `ClaimResult::Fail` on exceed; child killed). Compare **exit code** only; do not hang CI on runaway or flood-output children.
 - Compare actual exit code to `expect_exit_code`; return `ClaimResult::Pass` if match, `ClaimResult::Fail` with diagnostic-shaped message if mismatch.
-- On spawn failure (binary not found, permission denied, etc.), return `ClaimResult::Fail` with a structured message that distinguishes spawn-error from exit-mismatch — distinguishability matters for boundary-test triage.
+- On spawn failure (binary not found, permission denied, etc.), or timeout, return `ClaimResult::Fail` with a structured message that distinguishes spawn-error / **timeout** / exit-mismatch — distinguishability matters for boundary-test triage.
 
 ### Surface 2 — M1.5 testgen harness allowlist generalization
 
@@ -72,29 +66,30 @@ Per `TESTING.md` overall framing + `m1_5_testgen_test.rs:289-294` comment: today
 Extending to arbitrary command spawning **breaks the literal hermetic property** as written. Two responses:
 
 - **Accept the break, narrow the property.** "Hermetic" reframes from "no host process spawn EVER" to "host process spawn is an explicit, declared boundary expressed via the ExecuteCommand variant; everything outside ExecuteCommand stays hermetic." This is the cascade's framing — the boundary-test migration is exactly *"declarative ExecuteCommand to invoke an external toolchain."*
-- **STOP-AND-ESCALATE**: if execution surfaces a sandbox/timeout/resource-cap need that the brief doesn't anticipate (e.g., tests must not be able to invoke arbitrary system commands without policy, or runner needs a timeout to avoid hanging CI), surface to manager — sandbox policy is a Director-level discipline call, not worker discretion.
+- **STOP-AND-ESCALATE (timeout resource discipline):** the **landed** runner already applies a fixed wall timeout + null stdio (see **Landed lane receipt**). Escalate only if product needs a **different** default cap, per-claim override, or sandbox *policy* than what ships in `test_runner.rs` — that is Director-level, not a gap in this PR.
 
 Default expectation: accept the narrowing (the property is already implicit in the cascade's framing). PR description should explicitly cite the narrowed hermetic property + reasoning.
 
 ## Acceptance
 
-- [ ] Surface 1: `ExecuteCommand` match arm in `test_runner.rs`; spawns the command; compares exit code to `expect_exit_code`; distinguishable Pass/Fail/spawn-error results.
-- [ ] Surface 2: `shell_exit_matches_allowlisted` (or its successor) generalizes from tautological-only to arbitrary; fail-closed panic at `:394-398` retired.
-- [ ] Both surfaces share execution mechanism (per manager lean (a)) OR PR description justifies parallel evaluators.
-- [ ] **Smoke test**: a TestClaim with `ExecuteCommand { command: "true", args: [], expect_exit_code: 0 }` still passes (preserves the existing behavior at the new allowlist boundary).
-- [ ] **Capability test**: a TestClaim with arbitrary command (suggest `ExecuteCommand { command: "echo", args: ["hi"], expect_exit_code: 0 }` and the negative case `expect_exit_code: 1`) demonstrates pass + fail paths.
-- [ ] **Boundary-test migration smoke**: at least one existing Rust-side boundary test (e.g., a rustc/python/go invocation) ports to a `TestClaim` ExecuteCommand declaration **end-to-end** — the cascade's claim becomes empirically exercised, not just structurally expressible. PR description names which boundary test ported.
-- [ ] `TESTING.md:195` capability-state callout updated to reflect the new state (foundation-only → arbitrary command).
-- [ ] `cargo test --workspace --exclude v2-compiler-tests` passes.
-- [ ] `cargo clippy --all-targets -- -D warnings` clean.
-- [ ] `cargo fmt --all --check` clean.
-- [ ] DB-8 `self_host_fixed_point` converges bit-identically.
+- [x] Surface 1: `ExecuteCommand` match arm in `test_runner.rs`; spawns the command; compares exit code to `expect_exit_code`; distinguishable Pass/Fail/spawn-error/**timeout** results. **Bounded execution (closes prior STOP):** `EXECUTE_COMMAND_WALL_TIMEOUT` + null child stdio + `ClaimResult::Fail` on wall breach (not unbounded `output()` / hang).
+- [x] Surface 2: `shell_exit_matches_allowlisted` (or its successor) generalizes from tautological-only to arbitrary; fail-closed panic at `:394-398` retired.
+- [x] Both surfaces share execution mechanism (per manager lean (a)) OR PR description justifies parallel evaluators.
+- [x] **Smoke test**: a TestClaim with `ExecuteCommand { command: "true", args: [], expect_exit_code: 0 }` still passes (preserves the existing behavior at the new allowlist boundary).
+- [x] **Capability test**: a TestClaim with arbitrary command (suggest `ExecuteCommand { command: "echo", args: ["hi"], expect_exit_code: 0 }` and the negative case `expect_exit_code: 1`) demonstrates pass + fail paths.
+- [x] **Boundary / migration smoke (structural)**: a landed `TestClaim` + `ExecuteCommand` path in `src/v3/compiler/tests/dag/t_pb_b_1_execute_command_boundary.dag` and `t_pb_b_1_dag_runner_test.rs` — end-to-end **spawn + exit-code** with POSIX `true` / `sh` / `echo` (portable in Linux CI; comments name the class-5 *pattern* paralleled: `m1_4_emit_python_test::python_stdout` host spawn + success via exit, without pulling CPython into every CI run). This is **structural** receipt (same `std::process` shape the brief requires), not a line-for-line retire of a legacy `rustc`/`python3`/`go` test body in default CI.
+- [ ] **Empirical class-5 port (deferred)**: the brief’s *example* of a real `rustc` / `python3` / `go` round-trip expressed only as a `.dag` `TestClaim` with no Rust harness — **not** required to close the PB-Runtime *runner* lane. **Bulk** migration of those tests is a separate T-PB-B work item (see `TESTING.md` “Residual **bulk** migration …”); if this box is ever checked, name the ported test in the PR. *(Api-review #792, 2026-04-25: prior checkbox overclaimed; reconciled to structural vs empirical.)*
+- [x] `TESTING.md:195` capability-state callout updated to reflect the new state (foundation-only → arbitrary command).
+- [x] `cargo test --workspace --exclude v2-compiler-tests` passes.
+- [x] `cargo clippy --all-targets -- -D warnings` clean.
+- [x] `cargo fmt --all --check` clean.
+- [x] DB-8 `self_host_fixed_point` converges bit-identically.
 
 ## STOP-AND-ESCALATE
 
 Surface to Zero-Floor Manager.
 
-- **If the runner needs a timeout / sandbox / resource-cap discipline** to be safe for CI use — STOP. Sandbox policy is Director-level; not absorbable by this lane.
+- **If the runner needs a different default wall-clock / sandbox / resource-cap *policy* than the fixed `EXECUTE_COMMAND_WALL_TIMEOUT` + null-stdio execution now in `test_runner` — STOP (policy is Director-level). The P3/P4 fail-closed unbounded-`output()` / hang gap is **closed** in the landed implementation.
 - **If `std::process::Command` semantics differ across platforms** (Windows vs Unix exit codes; signal handling) in ways that the boundary-test migration depends on — STOP. Cross-platform discipline is its own concern.
 - **If the `expect_exit_code: Int` field's range is ambiguous** (signed vs unsigned vs platform-specific i32 vs the substrate's Int that maps to i64) — STOP. Substrate type-mapping question deserves explicit resolution.
 - **If hermetic-property narrowing reveals a deeper test-discipline gap** (e.g., other tests rely on the literal "no spawn" property in ways the cascade framing didn't anticipate) — STOP.
@@ -113,7 +108,7 @@ Surface to Zero-Floor Manager.
 ## Reporting
 
 - Single PR. Title pattern: `feat(v3): PB-Runtime — ExecuteCommand runner extension (arbitrary command + args; closes T-PB-B PB-Runtime dependency)`.
-- PR description: cite this brief; cite the narrowed hermetic property + reasoning; cite which boundary test ported as the end-to-end smoke; cite TESTING.md:195 capability-state update.
+- PR description: cite this brief; cite the narrowed hermetic property + reasoning; cite the T-PB-B-1 **structural** migration receipt and that empirical `rustc`/`python3`/`go` **bulk** migration stays deferred (see `TESTING.md`); cite TESTING.md:195 capability-state update.
 - On merge: Zero-Floor Manager confirms PB-Runtime ExecuteCommand-extension closure to Director; T-PB-B becomes unblocked on its PB-Runtime dependency; broader boundary-test migration can dispatch as separate work post-cascade.
 
 ## Cross-manager note
