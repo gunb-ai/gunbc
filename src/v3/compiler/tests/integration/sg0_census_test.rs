@@ -159,6 +159,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bin/regen_v3.rs",
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
     "src/v3/compiler/src/bootstrap.rs",
+    "src/v3/compiler/src/bootstrap_regen_fresh.rs",
     "src/v3/compiler/src/dag.rs",
     "src/v3/compiler/src/dag/builder.rs",
     "src/v3/compiler/src/dag/effects.rs",
