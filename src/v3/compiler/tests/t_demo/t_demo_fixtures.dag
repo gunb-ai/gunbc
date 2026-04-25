@@ -193,9 +193,11 @@ data fixture_integration_canonical: TestSuite = {
 
 // `impossible_bug_class_suite_r1` — two `FailsWithDiagnostic` receipts (ROADMAP.md:71-72); structural
 // cost bound lives in `t_demo_structural_cost_obligation_suite` (integration asserts `Fail`).
-// `idempotency_violation`: `AppendEffect` is breaking (monoid append) and must not appear under
-// `IsIdempotent`; the compiler rejects it as an `IdempotentShape` mismatch (`ResolveError` + fix
-// text naming `IdempotentShape`).
+// `idempotency_violation`: `AppendEffect()` is breaking (monoid append) and must not appear under
+// `IsIdempotent`. Use nullary **call** syntax so lowering hits the `SurfaceExpr::Call` path (PR #764:
+// bare `AppendEffect` parses as `Var` and produced a one-token `ResolveError` that was too weak
+// for `FailsWithDiagnostic`). The diagnostic prefix pins the sum-constructor mismatch, not a generic
+// upstream-only `compose_effects` failure.
 // `t_demo_structural_cost_obligation_suite` (below): nested `fold` + `CostBounded` vs structural
 // `cost_of` — runner `Fail` is the receipt (kept out of `impossible_bug_class_suite_r1` so that
 // suite is all `Pass` claims only).
@@ -212,11 +214,11 @@ data impossible_bug_type_drift: TestClaim = {
 
 data impossible_bug_idempotency_violation: TestClaim = {
   name: "impossible_bug_class_suite_r1.idempotency_violation",
-  source: "let bad_compose = compose_effects([{ operation_name: \"noop\", shape: IsIdempotent(AppendEffect) }])\n",
+  source: "let bad_compose = compose_effects([{ operation_name: \"noop\", shape: IsIdempotent(AppendEffect()) }])\n",
   file_name: "impossible_bug_idempotency.v3",
   predicate: FailsWithDiagnostic({
     kind: ResolveError,
-    detail_contains: Contains("AppendEffect")
+    detail_contains: Contains("named constructor `AppendEffect` is not a variant of the expected sum type")
   }),
   requires: []
 }

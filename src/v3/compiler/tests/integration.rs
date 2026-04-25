@@ -159,6 +159,7 @@ mod t_demo_fixture_test {
     use v3_compiler::compile_to_dag;
     use v3_compiler::dag::Dag;
     use v3_compiler::test_runner::{ClaimResult, TestRunner};
+    use v3_compiler::CompileError;
 
     const FIXTURE: &str = "src/v3/compiler/tests/t_demo/t_demo_fixtures.dag";
 
@@ -206,6 +207,25 @@ mod t_demo_fixture_test {
                 "T-Demo suite `{suite_name}` should pass Day-1 Compiles claims, got {results:?}"
             );
         }
+    }
+
+    /// ROADMAP T-Demo / PR #764: `FailsWithDiagnostic.detail_contains` must pin the **sum
+    /// constructor** failure (`AppendEffect()` is not an `IdempotentShape` case), not a generic
+    /// `compose_effects` argument refinement message that omits `AppendEffect`.
+    #[test]
+    fn impossible_bug_idempotency_violation_emits_named_constructor_resolve_error() {
+        let src = "let bad_compose = compose_effects([{ operation_name: \"noop\", shape: IsIdempotent(AppendEffect()) }])\n";
+        let err = compile_to_dag(src, "impossible_bug_idempotency.v3")
+            .expect_err("idempotency-violation witness should not compile");
+        let CompileError::Semantic(dag) = err else {
+            panic!("expected Semantic(Dag) handoff, got {err:?}");
+        };
+        let msgs: Vec<String> = dag.diagnostics().iter().map(|(_, d)| d.message()).collect();
+        let needle = "named constructor `AppendEffect` is not a variant of the expected sum type";
+        assert!(
+            msgs.iter().any(|m| m.contains(needle)),
+            "expected nullary-call lowering to reject AppendEffect as IdempotentShape payload; got: {msgs:?}"
+        );
     }
 
     #[test]
