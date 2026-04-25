@@ -165,7 +165,10 @@ fn emit_r1_gates_fixture(manifest_path: &Path, v3_dir: &Path) {
     println!("cargo:rerun-if-changed={}", template_path.display());
     println!("cargo:rerun-if-changed={}", lens_path.display());
     println!("cargo:rerun-if-changed={}", merge_sort_pair_v3.display());
-    println!("cargo:rerun-if-changed={}", lane_e_diff_witness_v3.display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        lane_e_diff_witness_v3.display()
+    );
 
     let template = fs::read_to_string(&template_path).unwrap_or_else(|e| {
         panic!(
@@ -199,7 +202,10 @@ fn emit_r1_gates_fixture(manifest_path: &Path, v3_dir: &Path) {
     for (sentinel, label) in [
         (LENS_SPLICE_SENTINEL, "named_function_count lens"),
         (MERGE_SORT_PAIR_V3_SPLICE, "r1_merge_sort_pair.v3"),
-        (LANE_E_DIFF_WITNESS_V3_SPLICE, "r1_lane_e_differential_witness.v3"),
+        (
+            LANE_E_DIFF_WITNESS_V3_SPLICE,
+            "r1_lane_e_differential_witness.v3",
+        ),
     ] {
         let count = template.matches(sentinel).count();
         if count != 1 {
@@ -210,10 +216,8 @@ fn emit_r1_gates_fixture(manifest_path: &Path, v3_dir: &Path) {
         }
     }
 
-    let mut generated = template.replace(
-        LENS_SPLICE_SENTINEL,
-        &escape_dag_double_quoted_body(&lens),
-    );
+    let mut generated =
+        template.replace(LENS_SPLICE_SENTINEL, &escape_dag_double_quoted_body(&lens));
     generated = generated.replace(
         MERGE_SORT_PAIR_V3_SPLICE,
         &escape_dag_double_quoted_body(&merge_sort_pair_src),
