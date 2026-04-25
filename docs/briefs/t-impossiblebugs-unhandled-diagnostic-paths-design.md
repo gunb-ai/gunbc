@@ -113,12 +113,12 @@ is the largest and is independent: any proof-or-totality system that
 tries to honor user-attached refinements as proofs needs an entailment
 checker, and gunbc has none.
 
-This is the work behind THESIS:374's *"Gated on Tier 2 substrate
+This is the work behind THESIS:391's *"Gated on Tier 2 substrate
 (post-R1)"* phrasing in the [R2+] enumerable-bug-classes list. The
-gate is real. (Note on anchors: THESIS:374-376 names the narrower
+gate is real. (Note on anchors: THESIS:391-393 names the narrower
 R2 gate covering division-by-zero, OOB, and force-unwrap; the
 broader Tier 2 commitment at THESIS:175 also includes integer
-overflow and partial functions. The brief cites THESIS:374 for the
+overflow and partial functions. The brief cites THESIS:391 for the
 R2 gate and THESIS:175 for the broader "made total" branch
 referenced in §3.)
 
@@ -151,7 +151,7 @@ This is the load-bearing pattern. It's already the gunbc convention;
 the unhandled-diagnostic-paths lane should follow it rather than invent
 a parallel proof system.
 
-### Applied to the THESIS:175 / THESIS:374 enumeration
+### Applied to the THESIS:175 / THESIS:391 enumeration
 
 | Bug class | Totality-by-omission shape |
 |---|---|
@@ -268,7 +268,7 @@ surface (real closure) or merely *paired with a total alternative*
 ### Follow-on brief shape
 
 **Implementation brief: T-ImpossibleBugs — totality-by-omission for
-THESIS:175 / THESIS:374 partial-ops (per-class sub-lanes).**
+THESIS:175 / THESIS:391 partial-ops (per-class sub-lanes).**
 
 Slice:
 
@@ -336,7 +336,7 @@ verified-arithmetic mode where `b * b + 1` should let `a / (b*b+1)`
 compile because the denominator is provably nonzero — that's the
 right time to author the predicate-entailment + per-operator partiality
 + asymmetric-strip substrate. It is a Tier 2 R2+ extension, not a
-prerequisite for the bug-class closure THESIS:175 / THESIS:374 promises.
+prerequisite for the bug-class closure THESIS:175 / THESIS:391 promises.
 
 ## Receipts
 
@@ -360,5 +360,5 @@ prerequisite for the bug-class closure THESIS:175 / THESIS:374 promises.
 - Operator declaration surface: `dsl/std/algebra.dag:196,305,379`.
 - Partial-form audit at HEAD: `dsl/std/algebra.dag:305` (FreeMonoid.index — partial), `:340` (Map.get — total via `V?`).
 - `/` dispatch path at HEAD: `src/v3/compiler/operators.dag:53` maps `Div => "div"`; `dsl/std/algebra.dag:182` declares `OrderedRing.div: fn(T, T) -> T` (added in a sibling lane since the original brief was authored); the alias chain `dsl/std/integer.dag:43` (`type Int = Int64`) → `:34` (`type Int64 = OrderedRing<Word64>`) is consumed by the dispatch walk at `src/v3/compiler/src/infer.rs:3975-3977` (`TypeConnective::Atom(ResolvedBy*)` traversal), so `Int / Int` dispatches through the algebra-Conj walk to `OrderedRing.div`. The Rust-side primitive scaffold at `src/v3/compiler/src/infer.rs:4003-4015` remains as a fallback for types whose walk doesn't terminate at an algebra Conj declaring the requested field. Closure of bare `/` for `Int` requires both the algebra retype at `algebra.dag:182` AND migration of the per-target `OperatorRealization` carriers keyed on `OrderedRing.div` (`src/v3/spec/rust.dag:816`, `go.dag:742` render bare `({lhs} / {rhs})`; `src/v3/spec/python.dag:486` renders `(__v3_idiv({lhs}, {rhs}))` via the helper at `python_target.rs:680` pinned by `m1_4_emit_python_test.rs:108-109`) — under a total return shape, every carrier (including the Python helper) needs migration to construct the new return shape.
-- THESIS gates: `THESIS.md:175` (broad Tier 2 commitment — div / overflow / OOB / force-unwrap / partial functions, "proven safe or made total"); `THESIS.md:374-376` (narrower [R2+] enumerable-bug-classes gate — div / OOB / force-unwrap, "Gated on Tier 2 substrate (post-R1)").
+- THESIS gates: `THESIS.md:175` (broad Tier 2 commitment — div / overflow / OOB / force-unwrap / partial functions, "proven safe or made total"); `THESIS.md:391-393` (narrower [R2+] enumerable-bug-classes gate — div / OOB / force-unwrap, "Gated on Tier 2 substrate (post-R1)").
 - DB-11 history: `docs/db-history/db-11.md`.
