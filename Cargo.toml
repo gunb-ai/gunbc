@@ -12,6 +12,9 @@ members = [
     # for the Rust target. Sibling crate so the probe lifecycle is
     # isolated and the v3-compiler SG-0 ratchet is untouched.
     "src/v3/grounding_pilot",
+    # T-Ground-Engine Phase 1 — type-structure validation for Rust target
+    # primitive declarations loaded through v3-compiler's public accessor.
+    "src/v3/grounding_engine",
     # v1 compiler — ARCHIVED. No longer in the build or generation path.
     # Retained in src/v1/ for historical reference. Can be deleted.
 ]

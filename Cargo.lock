@@ -672,6 +672,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "v3-grounding-engine"
+version = "0.1.0"
+dependencies = [
+ "v3-compiler",
+ "v3-grounding-pilot",
+]
+
+[[package]]
 name = "v3-grounding-pilot"
 version = "0.1.0"
 
