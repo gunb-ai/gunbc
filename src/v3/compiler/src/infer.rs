@@ -1096,8 +1096,10 @@ fn phantom_unit_mismatch(
     }
     let template = dag.declaration(expected_inst.template);
     for phantom in &template.phantom_params {
-        if !is_abelian_group_phantom_algebra(dag, phantom.algebra) {
-            continue;
+        if let Err(diag) =
+            require_abelian_group_phantom_algebra(dag, phantom.algebra, phantom.parameter, span)
+        {
+            return Some(diag);
         }
         if !template.type_params.contains(&phantom.parameter) {
             return Some(malformed_phantom_parameter_diagnostic(
@@ -1182,12 +1184,34 @@ fn missing_phantom_argument_diagnostic(
     }
 }
 
-fn is_abelian_group_phantom_algebra(dag: &Dag, algebra: DeclarationId) -> bool {
+fn unsupported_phantom_algebra_diagnostic(
+    dag: &Dag,
+    algebra: DeclarationId,
+    parameter: DeclarationId,
+    span: &SourceSpan,
+) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: format!(
+            "unsupported phantom algebra {} for phantom parameter {}",
+            declaration_display_name(dag, algebra),
+            phantom_parameter_display_name(dag, parameter),
+        ),
+        span: span.clone(),
+        fixes: Vec::new(),
+    }
+}
+
+fn require_abelian_group_phantom_algebra(
+    dag: &Dag,
+    algebra: DeclarationId,
+    parameter: DeclarationId,
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
     let mut current = algebra;
     for _ in 0..WALK_DEPTH_LIMIT {
         let decl = dag.declaration(current);
         if decl.name.as_deref() == Some("AbelianGroup") {
-            return true;
+            return Ok(());
         }
         match &decl.connective {
             TypeConnective::Instantiation { template, .. } => {
@@ -1197,10 +1221,16 @@ fn is_abelian_group_phantom_algebra(dag: &Dag, algebra: DeclarationId) -> bool {
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
-            _ => return false,
+            _ => {
+                return Err(unsupported_phantom_algebra_diagnostic(
+                    dag, algebra, parameter, span,
+                ));
+            }
         }
     }
-    false
+    Err(unsupported_phantom_algebra_diagnostic(
+        dag, algebra, parameter, span,
+    ))
 }
 
 struct InstantiationParts<'a> {
