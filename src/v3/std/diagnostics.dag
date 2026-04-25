@@ -13,6 +13,7 @@ type CompilerDiagnosticKind
   = TokenizerError
   | ParseError
   | TypeMismatch
+  | UnitMismatch
   | ArityMismatch
   | ResolveError
 

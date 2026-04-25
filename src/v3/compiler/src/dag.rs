@@ -144,7 +144,7 @@ impl ClusterId {
 /// inner types of Cardinality bounds, Arrow inputs, etc.) also live here; only the
 /// `name` field distinguishes them.
 ///
-/// `type_params`, `meta_tag`, `specialization_parent`, `inhabits`, and
+/// `type_params`, `phantom_params`, `meta_tag`, `specialization_parent`, `inhabits`, and
 /// `value_body` are separate edges with distinct semantics:
 /// - `type_params`: the canonical carrier for generic parameters declared on
 ///   `type Foo<T, U> { ... }` / sum / alias items. Each entry is a
@@ -152,6 +152,12 @@ impl ClusterId {
 ///   params off the connective axis means `Conj.children` stays pure record
 ///   fields and `Disj.variants` stays pure sum alternatives — type params no
 ///   longer share a slot with either. Empty for most declarations.
+/// - `phantom_params`: the subset of `type_params` that must be preserved for
+///   type checking but do not correspond to runtime fields. Each entry also
+///   names the algebra that governs closure for that phantom value. The initial
+///   R2 Dimensions consumer needs only abelian-group closure, carried as a
+///   typed edge to the substrate algebra declaration: matching phantom values
+///   compose, mismatched values fail closed as a unit mismatch.
 /// - `meta_tag`: "this Conj's shape is constrained by the linked meta-type
 ///   declaration." Used for value construction (records, services,
 ///   transports) per M1_DESIGN.md §Q0. Empty across the M1(2.5) bootstrap
@@ -177,6 +183,7 @@ pub struct Declaration {
     pub name: Option<String>,
     pub connective: TypeConnective,
     pub type_params: Vec<DeclarationId>,
+    pub phantom_params: Vec<PhantomParameter>,
     pub meta_tag: Option<DeclarationId>,
     pub specialization_parent: Option<DeclarationId>,
     pub inhabits: Option<DeclarationId>,
@@ -204,6 +211,12 @@ pub struct Declaration {
     /// cond is a single-parameter predicate.
     pub refinement: Option<DeclarationId>,
     pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PhantomParameter {
+    pub parameter: DeclarationId,
+    pub algebra: DeclarationId,
 }
 
 /// Value-body shape for `data foo: T = { body }` declarations. Two
@@ -1925,6 +1938,8 @@ pub(crate) struct StdlibTypeCache {
 pub(crate) struct EmitAnchorCache {
     /// `OrderedRing` algebra Conj — canonical fallback for operator fields.
     pub ordered_ring: Option<DeclarationId>,
+    /// `AbelianGroup` algebra Conj — canonical authority for phantom-unit closure.
+    pub abelian_group: Option<DeclarationId>,
     /// `SubstrateAccessorBinding` meta-type for substrate accessor data items.
     pub substrate_accessor_binding: Option<DeclarationId>,
     /// `Dag` graph type (`src/v3/std/substrate.dag`).
@@ -2526,6 +2541,11 @@ impl Dag {
         self.emit_anchors.ordered_ring
     }
 
+    /// Typed accessor for the canonical `AbelianGroup` algebra declaration.
+    pub fn abelian_group_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.abelian_group
+    }
+
     /// Meta-type declaration id for `SubstrateAccessorBinding` data items.
     pub fn substrate_accessor_binding_meta(&self) -> Option<DeclarationId> {
         self.emit_anchors.substrate_accessor_binding
@@ -3080,6 +3100,7 @@ impl Dag {
             self.declaration_by_name("PartialFunction").map(|d| d.id);
 
         self.emit_anchors.ordered_ring = self.declaration_by_name("OrderedRing").map(|d| d.id);
+        self.emit_anchors.abelian_group = self.declaration_by_name("AbelianGroup").map(|d| d.id);
         self.emit_anchors.substrate_accessor_binding = self
             .declaration_by_name("SubstrateAccessorBinding")
             .map(|d| d.id);
@@ -3525,6 +3546,7 @@ mod tests {
             name: Some("duplicate_rust_clean_emission_binding".to_string()),
             connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(binding_meta)),
             type_params: Vec::new(),
+            phantom_params: Vec::new(),
             meta_tag: Some(binding_meta),
             specialization_parent: None,
             inhabits: None,
