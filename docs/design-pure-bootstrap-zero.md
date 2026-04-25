@@ -18,6 +18,14 @@ This doc is PROPOSAL until promoted. **Promotion is a single Director-authored c
 
 If any retraction step can't land in the same PR (e.g., cascading conflicts), promotion blocks; this doc stays `PROPOSAL` until the cascade can be authored atomically.
 
+### Pre-promotion deliverables
+
+These are assertions in this PROPOSAL whose empirical backing must surface in the promotion cascade PR (or in sibling PRs landed before promotion). Naming them explicitly so the cascade PR's reviewer can verify each before the framing change is locked:
+
+- **35-file audit table** — the §"Frame" claim that the "irreducible tier" (build.rs, bootstrap.rs, lib.rs, dag.rs, dag/ports.rs, dag/effects.rs) isn't structurally irreducible needs an inline table mapping each of the 35 `EXPECTED_HAND_AUTHORED_NON_TEST` entries to (a) why it's currently hand-authored, (b) which migration path retires it (PB-Substrate / PB-1 / PB-4 / PB-5 / PB-6 / PB-Lib+Build / PB-Runtime / PB-Bootstrap-Process / PB-Tier1-Sweep). Goes in the promotion cascade PR.
+- **PB-1 brief amendment** — `docs/briefs/pb-1-data-driven-bootstrap.md`'s non-goals (don't delete tokenize/parse/lower/infer/emit; don't go binary-blob; don't change Dag runtime format) invert under 0-floor. The brief must be amended in the promotion cascade PR (not silently after) so PB-1's downstream consumers see the revised scope.
+- **TESTING.md "Post-R2 shape" rewrite** — Director-call at promotion time on bundle-vs-sibling per §"TESTING.md rewrite" below; either way, must be authored before this PROPOSAL flips to LIVE.
+
 ## Frame
 
 **Goal: zero hand-authored files in v3's source tree.** Better than v2's 1-residual.
