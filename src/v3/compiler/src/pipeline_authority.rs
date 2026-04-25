@@ -16,9 +16,14 @@ pub(crate) enum PipelineSnapshotKind {
 
 #[derive(Debug, Clone)]
 pub(crate) struct PipelineStageAuthority {
+    // Read by `bootstrap::materialize_pipeline_realizations` when feature
+    // `bootstrap-regen-fresh` is enabled.
+    #[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
     pub(crate) stage: DeclarationId,
     pub(crate) stage_name: String,
+    #[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
     pub(crate) realization: DeclarationId,
+    #[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
     pub(crate) realization_name: String,
     pub(crate) snapshot_kind: PipelineSnapshotKind,
 }
