@@ -1453,15 +1453,10 @@ impl<'a> Ctx<'a> {
                     });
                 }
             };
-            let variant_name = variant_parent_info(self.dag, variant_id)
-                .map(|(_, variant_name)| variant_name)
-                .unwrap_or_else(|| {
-                    self.dag
-                        .declaration(variant_id)
-                        .name
-                        .clone()
-                        .unwrap_or_else(|| "UnknownVariant".to_string())
-                });
+            let Some((_parent_name, variant_name)) = variant_parent_info(self.dag, variant_id)
+            else {
+                return Err(EmitError::VariantParentNotFound { variant_id });
+            };
             let mut arm_locals = locals.clone();
             if let Some(binding) = &path.binding {
                 let elide = matches!(
@@ -3298,6 +3293,35 @@ mod tests {
             "got: {rendered}"
         );
         assert!(!rendered.contains("payload := v.inner;"), "got: {rendered}");
+    }
+
+    #[test]
+    fn go_sum_branch_fails_when_variant_parent_is_missing() {
+        let mut dag = compile_to_dag(
+            "type Choice = Left | Right\nfn pick(choice: Choice) -> Int = match choice { Left => 1, Right => 2 }\n",
+            "missing_variant_parent.v3",
+        )
+        .expect("compiles");
+        let right_variant = dag
+            .declaration_by_name("Right")
+            .expect("Right variant declaration")
+            .id;
+        let choice_decl = dag.declaration_by_name("Choice").expect("Choice decl").id;
+        let TypeConnective::Disj { variants } = &mut dag.declaration_mut(choice_decl).connective
+        else {
+            panic!("Choice should lower to a Disj");
+        };
+        variants.retain(|variant| variant.ty != right_variant);
+
+        let err = emit_module(&dag, EmitTarget::Go).expect_err("missing parent must fail closed");
+        assert!(
+            matches!(
+                err,
+                EmitDispatchError::Core(EmitError::VariantParentNotFound { variant_id })
+                    if variant_id == right_variant
+            ),
+            "expected VariantParentNotFound for Right, got {err:?}"
+        );
     }
 
     #[test]
