@@ -247,9 +247,12 @@ Slice:
 
 1. **Audit**: enumerate every partial operator/function currently
    reachable from user code (does `[i]` exist? does `force_unwrap`
-   exist? does `Int -> Int` `/` exist?). Output: a table with one
-   row per partial form on each std collection / numeric type +
-   current totality status.
+   exist? does `Int -> Int` `/` exist? **also: are
+   `OrderedRing.quotient` / `OrderedRing.remainder` at
+   `dsl/std/algebra.dag:477-478` user-reachable as partial forms,
+   distinct from the `/` operator? If so they are separate sub-lane
+   targets**). Output: a table with one row per partial form on
+   each std collection / numeric type + current totality status.
 2. **Per-row decision**: for each partial form still reachable, pick
    either Result-shape, Option-shape, or NonZero-typed-input shape.
    Director-callable on shape choice; worker proposes default.
