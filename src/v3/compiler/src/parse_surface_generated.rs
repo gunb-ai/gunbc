@@ -34,6 +34,14 @@ pub struct SurfaceRecordField {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SurfaceMapEntry {
+    pub key: String,
+    pub key_span: SourceSpan,
+    pub value: SurfaceExpr,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SurfaceMatchArm {
     pub pattern: SurfacePattern,
     pub body: SurfaceExpr,
@@ -152,6 +160,10 @@ pub enum SurfaceExpr {
     },
     List {
         elements: Vec<SurfaceExpr>,
+        span: SourceSpan,
+    },
+    Map {
+        entries: Vec<SurfaceMapEntry>,
         span: SourceSpan,
     },
 }

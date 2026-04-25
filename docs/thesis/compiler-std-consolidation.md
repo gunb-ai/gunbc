@@ -1,7 +1,7 @@
 # Compiler-`std/` Consolidation — the "no dual representations" end state
 
 > Parent: [THESIS.md](../../THESIS.md)
-> Related: [epistemic-stacking.md](epistemic-stacking.md), [structural-decompression.md](structural-decompression.md), [what-else-falls-out.md](what-else-falls-out.md)
+> Related: [epistemic-stacking.md](epistemic-stacking.md), [self-inspection.md](self-inspection.md), [structural-decompression.md](structural-decompression.md), [what-else-falls-out.md](what-else-falls-out.md)
 > Operational: [Pure Bootstrap to Zero design](../design-pure-bootstrap-zero.md) (LIVE 2026-04-25 — live authority; supersedes the [≤5-floor design doc](../design-pure-bootstrap.md) now marked SUPERSEDED), [lens capability register](../v3-lens-capability-register.md)
 
 ## Claim

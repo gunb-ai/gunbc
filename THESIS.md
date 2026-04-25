@@ -217,6 +217,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 - The two-shape distinction follows ROADMAP Track 16's explicit decision: the compiler emits programming languages; everything else is user code.
 - Cost scaling: Shape A is `O(1)` per language target; Shape B is `O(1)` per artifact class. Neither is `O(N × M)`. Effort scales with conceptual content, not with layer or target count.
 - Emission is independent of intent. You declare what the system does; separately, you declare what artifacts it becomes.
+- See [`docs/thesis/what-else-falls-out.md`](docs/thesis/what-else-falls-out.md) §"Two shapes of omni-emission" for the full Shape A vs Shape B treatment, including the per-target cost structure and the load-bearing reason the distinction must not be blurred.
 
 **Meta-process modeling:**
 - Bootstrap, CI, dev process modeled as .dag workflows.
@@ -303,6 +304,31 @@ empty set per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-
   T-LensAPI provides the opt-in-depth mechanism (user-authored lenses
   extend the proof surface without changing the base language).
 
+**Adoption model — economics, not enforcement:**
+- The thesis claims every program gets complexity, effects, termination,
+  idempotency, and ownership for free — by construction, not by opt-in.
+  This is structurally true (see §"Substrate shape" + `epistemic-stacking.md`):
+  the language vocabulary is the six type connectives and five behaviors;
+  every program decomposes through them; lenses are folds over that
+  decomposition. There is no in-language way to author a program the lenses
+  can't read.
+- "Leaving the stack" inside the language means composing primitives into
+  named patterns (namespacing). The compiler sees through; lenses still
+  apply. **Still inside the stack.**
+- "Leaving the stack" outside the language means writing a different
+  compiler on different primitives. The thesis does not prevent this and
+  does not need to — gunbc's lenses are folds over *our* primitives, so
+  they don't apply to a different compiler's outputs by construction
+  (until those outputs are grounded back into `.dag`). See
+  `epistemic-stacking.md` §"Positive corollary."
+- Adoption is therefore gated by **economics, not enforcement**: low cost
+  of entry (one composition layer, no annotation surface, surface syntax
+  is sugar over six connectives) × high free value (every lens applies to
+  every program). The recruiting mechanism is "you get the guarantees by
+  using the language at all," not a license check or a static analyzer
+  flagging non-compliant code. The user surface stays approachable; the
+  guarantees are unavoidable.
+
 **Tests are structural data:**
 - All tests are `TestClaim` declarations in `.dag` under the 0-floor cascade
   promotion (the prior `TESTING.md §"Post-R2 shape"` residual carve-out is
@@ -342,9 +368,26 @@ empty set per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-
   - **[R2+]** Nested-optional flatten: `Option<Option<T>>` accessor patterns
     that normal languages require hand-unwrapping. Gated on cardinality
     refinement substrate work.
-  - **[R2+]** Unenumerated effects: a function's actual effect set must match
-    its declared effect set; silent effect leakage is rejected. Gated on
-    deeper effect-system work beyond R1's Sub-A scope.
+  - **[R2+]** Unenumerated effects: operations are intrinsically read-shaped
+    or write-shaped via their type-signature shape (returned-modified-resource
+    indicates write; returns-derived-value-only indicates read). Consumers
+    walk the signatures directly; there is no parallel taxonomy or annotation
+    layer to declare or maintain. Tracking effects as a separate enumerated
+    concept IS the bug pattern, dissolved by construction. Every external
+    mutable resource (file handles, sockets, db connections) is modeled as a
+    typed parameter that's returned modified — same pattern as IO-monad
+    World-threading without the monad. Redundant operations (reads of the
+    same key with no intervening write-effect on that resource) are
+    structurally provable as identical via referential transparency, and
+    rejected at compile time; legitimate re-read uses an explicit `reread()`
+    primitive that structurally tags the intent. Transactional grouping is a
+    derived structural fact from Bind composition + typed transaction
+    primitives (`Transaction → Transaction'`), not a separate concept. Tier 1
+    (impossible by construction), not Tier 2 (lens-detected). See
+    [`docs/briefs/t-impossiblebugs-unenumerated-effects-design.md`](docs/briefs/t-impossiblebugs-unenumerated-effects-design.md)
+    §Q5.5 for the OperationEffect-taxonomy retirement rationale + audit-as-
+    existence-check; §Q1-Q3 for the 5-behavior compositional-fold mechanism +
+    worked examples.
   - **[R2+]** Unhandled diagnostic paths: Tier 2 runtime-safety proofs make
     division-by-zero, OOB, and force-unwrap either proven safe or made
     total — never partial. Gated on Tier 2 substrate (post-R1).

@@ -1,4 +1,6 @@
-# T-ImpossibleBugs unenumerated effects — parser extension `(M, R2 prereq)`
+# T-ImpossibleBugs unenumerated effects — parser extension `(M, R2 prereq; SUPERSEDED 2026-04-25)`
+
+> **🔄 SUPERSEDED 2026-04-25 by [`docs/briefs/t-impossiblebugs-unenumerated-effects-design.md`](t-impossiblebugs-unenumerated-effects-design.md).** The parser surface this brief proposed (`SurfaceArrow` / `FnSignature` `declared_effects` field + `effects [Read, Write]` clause syntax + lookahead + body parser) **vanishes** under closed-system framing. Effects derive structurally from typed primitive composition; there is no `declared_effects` clause to parse. See the design doc for the closed-system mechanism + 5-behavior compositional-fold pattern. **Do not author new work against this brief; route to the design doc.** No parser code has merged against this brief; the cleanup is doc-only. (Independent value: the [`t-impossiblebugs-unenumerated-effects-fn-arrow-refactor-worker.md`](t-impossiblebugs-unenumerated-effects-fn-arrow-refactor-worker.md) brief from #805 stays dispatchable — the Fn→Arrow refactor cleans the vestigial `params + return_type` split regardless of effects framing.)
 
 > **Director ad-hoc dispatch.** Sibling pre-requisite to the
 > [`t-impossiblebugs-unenumerated-effects-worker.md`](t-impossiblebugs-unenumerated-effects-worker.md)

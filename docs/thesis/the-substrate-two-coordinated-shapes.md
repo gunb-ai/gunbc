@@ -159,6 +159,22 @@ and the `Arrow → body` lookup on the other. Inference resolves
 types across this boundary; emission projects across it. There is
 no third substrate.
 
+**The vocabulary closes here.** Every `.dag` construct decomposes to
+one of the six type connectives or one of the five behaviors, plus
+references between them. `service`, `fn`, `type`, `operation`, `match`,
+`fold`, `where`, `via`, `inhabits`, `transport` — the entire surface
+syntax — is sugar over this composition layer. There is no other
+syntactic vocabulary. There is no annotation slot, no opaque
+intrinsic, no `unsafe` block, no escape into a foreign computation
+model. **Anything that looks like a new construct is either a new
+composition over existing connectives + behaviors, or it is substrate
+extension** — and substrate extension is a C1-class stop signal (see
+below). This is what makes lenses apply by construction: the lens is a
+fold over six connectives and five behaviors, and there is no
+program-shape outside that fold's domain. See §"Epistemic stacking" for
+the corollary at the user-program level (case 1 vs case 2; no
+opaque-intrinsic third case).
+
 **The load-bearing test: host `dsl/std/algebra.dag`.** For any
 candidate compiler-internal Declaration shape, the check is: *can
 it host the Node-tree form of `std/algebra.dag` as-is?*
