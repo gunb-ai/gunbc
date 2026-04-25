@@ -48,8 +48,10 @@ Zero-Floor program's lane taxonomy
 
 **Evidence (verified at `4d2423da8`):**
 
-- **23 `*_generated.rs` files** under `src/v3/compiler/src/` (matches
-  `build.rs` `REGEN_OUTPUTS` enumeration) covering substrate
+- **23 files matching `*_generated.rs`** under `src/v3/compiler/src/`
+  (`build.rs` `REGEN_OUTPUTS` enumerates 24 — adds
+  `bootstrap_generated_without_parse_surface.rs` which does not match
+  the suffix glob) covering substrate
   (5: scalar/branch/cluster/cost/lookup), bootstrap (2), parse
   (3: parse/surface/tables), lens (5), helpers (2: infer/lower),
   diagnostics, operators, serialize, tokenize, types, variant_payload.
