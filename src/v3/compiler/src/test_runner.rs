@@ -780,7 +780,11 @@ fn child_wait_for_execute_command(
 }
 
 /// Spawns a host process and checks exit status. Used by the Rust `TestRunner` and the M1.5
-/// harness (single canonical path per PB-Runtime brief).
+/// harness (single canonical path per PB-Runtime brief). Core logic is
+/// [`evaluate_execute_command_host_outcome`] ([`ExecuteCommandHostOutcome`]); this function and
+/// [`evaluate_execute_command_exit_code_with_wall_time`] map to [`ClaimResult`] at the reporting
+/// edge. [`evaluate_execute_command_m1_5`] classifies the typed outcome (C-5: no `Fail` string-prefix
+/// probing for exit mismatch; codex PR #792).
 ///
 /// - **No stdout/stderr capture** — `stdin`/`stdout`/`stderr` are the null device so malicious or
 ///   chatty children cannot exhaust memory; only the exit code is read (P3/P4: bounded, fail-closed
