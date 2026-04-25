@@ -570,6 +570,68 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct RangeFact<'a> {
+        target_name: &'a str,
+        min: &'a str,
+        max: &'a str,
+    }
+
+    fn quoted_field<'a>(block: &'a str, field: &str) -> &'a str {
+        let marker = format!("{field}: \"");
+        let start = block
+            .find(&marker)
+            .unwrap_or_else(|| panic!("missing `{field}` in IntegerRangeFact block:\n{block}"))
+            + marker.len();
+        let rest = &block[start..];
+        let end = rest.find('"').unwrap_or_else(|| {
+            panic!("unterminated `{field}` string in IntegerRangeFact block:\n{block}")
+        });
+        &rest[..end]
+    }
+
+    fn integer_range_facts_from_dag_source(source: &str) -> Vec<RangeFact<'_>> {
+        source
+            .split("data ")
+            .filter(|block| block.contains(": IntegerRangeFact = {"))
+            .map(|block| RangeFact {
+                target_name: quoted_field(block, "target_name"),
+                min: quoted_field(block, "range_min_inclusive"),
+                max: quoted_field(block, "range_max_inclusive"),
+            })
+            .collect()
+    }
+
+    /// Drift pin for the temporary three-way range bridge. Until R2 makes
+    /// `rust_pilot_primitives` structurally walkable and this mirror is
+    /// deleted, the generated/walkable `IntegerRangeFact` rows and the
+    /// hand-authored grounding mirror must agree on integer bounds.
+    #[test]
+    fn integer_range_facts_match_grounding_pilot_mirror() {
+        let source = include_str!("../../../../dsl/extdeps/languages/rust/primitives.dag");
+        let facts = integer_range_facts_from_dag_source(source);
+        let mirrored: Vec<RangeFact<'_>> = RUST_PILOT_PRIMITIVES
+            .iter()
+            .filter_map(|primitive| match primitive {
+                RustPrimitive::IntegerPrimitive {
+                    target_name,
+                    range_min_inclusive,
+                    range_max_inclusive,
+                    ..
+                } => Some(RangeFact {
+                    target_name,
+                    min: range_min_inclusive,
+                    max: range_max_inclusive,
+                }),
+                RustPrimitive::NonIntegerPrimitive { .. } => None,
+            })
+            .collect();
+        assert_eq!(
+            facts, mirrored,
+            "IntegerRangeFact rows in primitives.dag must match the grounding pilot mirror"
+        );
+    }
+
     /// Fail-closed shape — a routing key with no declared inhabitant
     /// returns NoInhabitant rather than silently picking. (BooleanAlgebra
     /// over Word64 is out-of-pilot-scope; using it here as a probe.)
