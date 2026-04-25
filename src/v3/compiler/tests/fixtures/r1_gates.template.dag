@@ -183,12 +183,11 @@ data complexity_merge_sort_is_nlogn_gate: TestClaim = {
   requires: []
 }
 
-// Differential witness: minimal `Int` bind so the gate stays cheap. `v3_program_cost` is a
-// host forward-fold receipt (see `test_runner::lane_e_host_forward_cost_of`); `v2_oracle_cost` is
-// `lens_cost::cost_of` (emit from `complexity.dag`). D1 `apply_lens_declaration(cost_of)` is
-// deferred: the canonical lens lowers list recursion to substrate `Loop`, which D1 does not
-// interpret yet (`LensApplyError::UnimplementedLoopBound`). Merge-sort cost remains on
-// `complexity_merge_sort_is_nlogn` (Rust `LensOutputEquals`).
+// Differential witness: trivial `1 + 2` bind — exercises that host forward-fold and emit
+// `lens_cost::cost_of` agree on a minimal program (both producers would need to diverge to fail).
+// Substantive structural depth is **not** what this row proves; `complexity_merge_sort_is_nlogn`
+// carries the merge-sort `LensOutputEquals(cost_of, …)` receipt. D1 `apply_lens_declaration(cost_of)`
+// on the canonical lens stays deferred (`Loop` / `UnimplementedLoopBound` in the lens graph).
 data complexity_v3_matches_v2_oracle_gate: TestClaim = {
   name: "complexity_v3_matches_v2_oracle",
   source: "let lane_e_diff_out: Int = 1 + 2\n",

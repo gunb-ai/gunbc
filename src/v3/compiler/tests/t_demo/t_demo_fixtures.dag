@@ -158,10 +158,12 @@ data integration_effects_lens_output: TestClaim = {
   requires: []
 }
 
-data integration_idempotency_lens_output: TestClaim = {
-  name: "fixture_integration_canonical.idempotency_lens_output",
+// Type-drift receipt (same pattern as `impossible_bug_type_drift`); not the effects idempotency
+// story — that lives on `integration_idempotency_compiles` + `impossible_bug_idempotency_violation`.
+data integration_type_drift_lens_output: TestClaim = {
+  name: "fixture_integration_canonical.type_drift_lens_output",
   source: "let drift: Bool = 1\n",
-  file_name: "fixture_integration_canonical_idempotency_lens.v3",
+  file_name: "fixture_integration_canonical_type_drift_lens.v3",
   predicate: FailsWithDiagnostic({
     kind: TypeMismatch,
     detail_contains: AnyDetail
@@ -184,12 +186,13 @@ data fixture_integration_canonical: TestSuite = {
     integration_idempotency_compiles,
     integration_testgen_compiles,
     integration_effects_lens_output,
-    integration_idempotency_lens_output,
+    integration_type_drift_lens_output,
     integration_testgen_runner_output
   ]
 }
 
-// `impossible_bug_class_suite_r1` — three visceral detector receipts (ROADMAP.md:71-72).
+// `impossible_bug_class_suite_r1` — two `FailsWithDiagnostic` receipts (ROADMAP.md:71-72); structural
+// cost bound lives in `t_demo_structural_cost_obligation_suite` (integration asserts `Fail`).
 // `idempotency_violation`: `AppendEffect` is breaking (monoid append) and must not appear under
 // `IsIdempotent`; the compiler rejects it as an `IdempotentShape` mismatch (`ResolveError` + fix
 // text naming `IdempotentShape`).

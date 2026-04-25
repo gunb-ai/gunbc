@@ -517,7 +517,15 @@ data suite: TestSuite = {
 
 #[test]
 fn r1_canonical_complexity_lens_bytes_include_cost_of() {
-    assert!(v3_compiler::test_runner::R1_CANONICAL_COMPLEXITY_LENS.contains("fn cost_of"));
+    let bytes = v3_compiler::test_runner::R1_CANONICAL_COMPLEXITY_LENS;
+    assert!(
+        bytes.contains("fn cost_of"),
+        "canonical lens should declare cost_of"
+    );
+    assert!(
+        bytes.contains("fn compute_costs") && bytes.contains("fn seed_bind_params"),
+        "canonical `complexity.dag` bytes should include the forward-fold spine, not just the `cost_of` signature"
+    );
 }
 
 #[test]

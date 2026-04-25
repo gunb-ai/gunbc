@@ -23,8 +23,10 @@ pub const R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS: &str = include_str!(concat!(
 ));
 
 /// Same on-disk lens as `src/v3/lenses/complexity.dag`. `LensOutputEquals(cost_of, …)` applies
-/// [`crate::lens_cost::cost_of`] on the compiled claim program (T-LaneE) — not the fixture-local
-/// `fn cost_of` stub body (`INVARIANTS.md` P2).
+/// [`crate::lens_cost::cost_of`] (emit from these bytes) on the compiled claim program — not
+/// `apply_lens_declaration` on this text (D1 `cost_of` blocks on lens-internal `Loop`). Bytes are
+/// still ratcheted in integration tests so the include stays aligned with the lens file.
+/// Fixture-local `fn cost_of` stubs are unrelated (`INVARIANTS.md` P2).
 pub const R1_CANONICAL_COMPLEXITY_LENS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../lenses/complexity.dag"
