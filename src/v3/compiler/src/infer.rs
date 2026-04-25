@@ -4858,6 +4858,69 @@ mod bool_logical_operator_arrow_tests {
             vec![invalid_lhs, invalid_rhs],
             SourceSpan::new("<money-unit-test>", 1, 2),
         );
+        let unsupported_algebra = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: unsupported_algebra,
+            name: Some("CurrencyMonoid".to_string()),
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 2, 3),
+        });
+        let unsupported_money = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: unsupported_money,
+            name: Some("UnsupportedMoney".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "amount".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: vec![c_param],
+            phantom_params: vec![PhantomParameter {
+                parameter: c_param,
+                algebra: unsupported_algebra,
+            }],
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 2, 3),
+        });
+        let unsupported_money_usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: unsupported_money_usd,
+            name: Some("UnsupportedMoneyUSD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: unsupported_money,
+                arguments: vec![TemplateArgument {
+                    parameter: c_param,
+                    value: usd,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 2, 3),
+        });
+        let unsupported_lhs = dag.alloc_port_with_shape(TypeShape::new(unsupported_money_usd));
+        let unsupported_rhs = dag.alloc_port_with_shape(TypeShape::new(unsupported_money_usd));
+        let unsupported_output = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![unsupported_lhs, unsupported_rhs],
+            SourceSpan::new("<money-unit-test>", 2, 3),
+        );
 
         infer(&mut dag);
 
@@ -4906,6 +4969,18 @@ mod bool_logical_operator_arrow_tests {
                     if name.contains("parameter is not in type_params")
             ),
             "unexpected diagnostic: {invalid_diag:?}"
+        );
+        let unsupported_diag = dag
+            .diagnostics()
+            .get(unsupported_output)
+            .expect("unsupported phantom algebra should fail closed");
+        assert!(
+            matches!(
+                unsupported_diag,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("unsupported phantom algebra CurrencyMonoid")
+            ),
+            "unexpected diagnostic: {unsupported_diag:?}"
         );
     }
 
