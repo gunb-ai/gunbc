@@ -41,12 +41,13 @@ Under that discipline, R2's goals are the Tier-1 thesis claims that are *not* ga
    - **Cardinality-substrate subset sufficient to close int-literal magnitude refinement** — enough cardinality modeling to let `IntLit` carry a magnitude that narrows to target int algebra at reconciliation. Consumer: T-Modeling int-lit (Goal 2). Does NOT commit to the full cardinality-substrate capability (fixed-width-types by-construction, container cardinality bounds in Grounding, etc. — those remain open design calls outside R2 scope unless additional R2 items demand them).
    - **Nominal-opaque substrate sufficient to graduate `Secret<T>`** — enough nominal-type modeling to carry construction-restriction (`where only X may construct`) semantics. Consumer: T-Modeling Secret<T> (Goal 2). Adjacent to DB-11 alias-RHS `where` (landed in R1 via PR #703); may or may not overlap DB-18 territory. Acceptance is `Secret<T>` graduation, not a general nominal-type program.
    - **Parametric algebra attachment subset sufficient to inhabit `Dimension<Carrier>` in an abelian group algebra** — enough substrate capability to let `Dimension<Unit>` carry phantom-parameter arithmetic (propagate through operations, compile error on unit-mismatch). Consumer: T-Modeling Dimensions (Goal 2). Primary authority is `ROADMAP.md §"Post-R1 Program — Grounding Completeness"` (the "Why post-R1" paragraph), which tags this dependency `DB-18 parametric algebra attachment` — but `docs/db-history/db-18.md` currently scopes DB-18 to workflow-effect carrier + Rust reflection (Part 2 shipped) + Go-accessor follow-up (Part 3), not parametric algebra attachment. That mismatch is an existing ROADMAP ↔ db-history inconsistency, not one introduced by this doc; a pre-promotion DB-lane rename or new DB number may be warranted. R2 acceptance is: `Dimension<Unit>` phantom-parameter arithmetic compiles with unit-mismatch errors, independent of the DB-tag the substrate ends up carrying.
-   - **Top-level `ValueBody` list/sum subset + `std.unicode` bootstrap inclusion** — enough Class 5 Gap 3 substrate capability for `data ascii_scan_order: List<CharClass> = [Whitespace, Digit, IdentStart, IdentContinue]` (and similar list/sum top-level data declarations) to lower structurally (rather than fall to `ValueBody::Unparsed` and trigger R14 hard-fail), plus the `Dag::new()` bootstrap/load-set decision that makes `std.unicode::CharClass` and other extdeps-language declarations resolvable from compiler authorities. **Three named consumers, all of which the same substrate work unblocks**:
-     1. **Tokenizer charclass phase-2** — original consumer per PR #762 reclassification (R1 T-Sub deferred this phase to substrate per Surface Manager handoff 2026-04-24).
-     2. **Engine sharpened-(b) full pilot enumeration** — surfaced by R2 Grounding loader-close worker (`clever-owl-123`) probe on PR #776 (`rust_pilot_primitives` lowers as `Declaration` but `value_body` is `Unparsed(SourceSpan)` — same gap).
-     3. **`kernel_algebra_profile` mirror dissolution** — existing P2 drift ratchet at `dag.rs:1530`. Same gap (`Map<String, AlgebraProfile>` declared in `dsl/std/algebra.dag` lands as `ValueBody::Unparsed` today).
+   - **Top-level `ValueBody` list/sum subset + `std.unicode` bootstrap inclusion** — enough Class 5 Gap 3 substrate capability for `data ascii_scan_order: List<CharClass> = [Whitespace, Digit, IdentStart, IdentContinue]` (and similar list/sum top-level data declarations) to lower structurally (rather than fall to `ValueBody::Unparsed` and trigger R14 hard-fail), plus the `Dag::new()` bootstrap/load-set decision that makes `std.unicode::CharClass` and other extdeps-language declarations resolvable from compiler authorities. **Two named consumers, both of which share this list/sum substrate work**:
+     1. **Tokenizer charclass phase-2** — original consumer per PR #762 reclassification (R1 T-Sub deferred this phase to substrate per Surface Manager handoff 2026-04-24). Shape: `data ascii_scan_order: List<CharClass> = [...]` (list of sum).
+     2. **Engine sharpened-(b) full pilot enumeration** — surfaced by R2 Grounding loader-close worker (`clever-owl-123`) probe on PR #776 (`rust_pilot_primitives: List<RustPrimitive>` lowers as `Declaration` but `value_body` is `Unparsed(SourceSpan)`). Shape: list of sum (same substrate work as charclass).
      
-     Does NOT commit to the full Class 5 Gap 3 substrate-capability close (other top-level `ValueBody` consumers beyond these three may need additional variants); scoped to what unblocks all three named consumers from one substrate work. ROI strictly higher than originally framed (single-consumer scoping); director-amended 2026-04-25 per cross-program convergence finding on PR #776.
+     **Excluded from this sub-lane (substrate shape differs)**: `kernel_algebra_profile` mirror dissolution (existing P2 drift ratchet at `dag.rs:1530`) is a `Map<String, AlgebraProfile>` body — **map-shaped, not list-of-sum**. Hits the same R14 `ValueBody::Unparsed` hard-fail path, but requires a different `ValueBody` extension (e.g., `ValueBody::Map(...)` variant + lowerer support for top-level map literals). Tracked separately as a sibling future T-Substrate sub-lane / future cascade item; not bundled here per substrate-shape honesty (codex BLOCKING on PR #782 caught this scope conflation; corrected 2026-04-25).
+     
+     Does NOT commit to the full Class 5 Gap 3 substrate-capability close; scoped to the list/sum subset for the two named consumers. ROI is 2× the original single-consumer scoping (tokenizer + Engine), not 3× as initially framed.
 
 4. **Remaining R2+ impossible-bug classes** — three classes currently tagged `[R2+]` in `ROADMAP.md §"Lane acceptance — .dag gates"` (T-Demo row; THESIS §"Enumerable impossible-bug classes" is the authority on scheduling tags):
    - Nested-optional flatten
@@ -83,7 +84,7 @@ Continues `docs/briefs/grounding-manager.md` (refreshed for R2 scope on promotio
 |---|---|---|---|
 | T-Ground | XL | Grounding | Full T-Ground-* sub-program (Goal 1) |
 | T-Modeling | M | Director (ad-hoc) | int-lit / Secret<T> / Dimensions (Goal 2) |
-| T-Substrate | M | Director (ad-hoc) | Four scoped-subset sub-lanes (Goal 3): cardinality-for-int-lit; nominal-opaque-for-Secret; parametric-algebra-attachment-for-Dimensions; top-level-ValueBody-list/sum + std.unicode-bootstrap (3 named consumers: tokenizer charclass phase-2 + Engine sharpened-(b) pilot enumeration + kernel_algebra_profile mirror dissolution — single substrate work unblocks all three) — each sub-lane scoped to its paired R2 consumer set (T-Modeling × 3 + multi-consumer × 1), not full substrate-capability |
+| T-Substrate | M | Director (ad-hoc) | Four scoped-subset sub-lanes (Goal 3): cardinality-for-int-lit; nominal-opaque-for-Secret; parametric-algebra-attachment-for-Dimensions; top-level-ValueBody-list/sum + std.unicode-bootstrap (2 named consumers: tokenizer charclass phase-2 + Engine sharpened-(b) pilot enumeration — both share list-of-sum substrate work) — each sub-lane scoped to its paired R2 consumer set (T-Modeling × 3 + dual-consumer × 1), not full substrate-capability. Note: `kernel_algebra_profile` mirror dissolution is map-shaped (not list/sum) — tracked separately as a future T-Substrate sub-lane requiring distinct `ValueBody::Map` substrate work. |
 | T-ImpossibleBugs | S | Director (ad-hoc) | nested-optional flatten / unhandled-diagnostic-paths / unenumerated-effects (Goal 4) |
 | T-PerMethodMetadata | S | Director (ad-hoc) | §6a per-method-metadata carrier pick (Goal 5) — design-call close, not substrate-capability work |
 
@@ -108,24 +109,24 @@ T-Ground:         Pilot → Rust → Engine → Tests → Dissolve   (critical p
 T-Substrate:      cardinality-for-int-lit (subset) ──→ unblocks T-Modeling int-lit
                   nominal-opaque-for-Secret (subset) ─→ unblocks T-Modeling Secret<T>
                   parametric-algebra-for-Dimensions (subset) ─→ unblocks T-Modeling Dimensions
-                  ValueBody-list/sum + std.unicode-bootstrap (subset) ─→ unblocks 3 consumers (single substrate work):
+                  ValueBody-list/sum + std.unicode-bootstrap (subset) ─→ unblocks 2 consumers (shared list-of-sum substrate):
                                                                        (i) tokenizer charclass phase-2
                                                                        (ii) Engine sharpened-(b) pilot enumeration
-                                                                       (iii) kernel_algebra_profile mirror dissolution
+                  (kernel_algebra_profile mirror dissolution is map-shaped, NOT list/sum;
+                   tracked separately as a future T-Substrate sub-lane requiring ValueBody::Map extension)
 T-Modeling:       int-lit      ← T-Substrate cardinality-for-int-lit
                   Secret<T>    ← T-Substrate nominal-opaque-for-Secret
                   Dimensions   ← T-Substrate parametric-algebra-for-Dimensions
-Multi-consumer of T-Substrate's 4th subset (none are peer lanes — all consumed inside T-Substrate scope):
+Dual-consumer of T-Substrate's 4th subset (neither is a peer lane — both consumed inside T-Substrate scope):
                   (i)   Tokenizer charclass phase-2: retype to Char / List<Char> / CharClass
                   (ii)  Engine sharpened-(b): full pilot enumeration via symbolic walk of rust_pilot_primitives
-                  (iii) kernel_algebra_profile: retire dag.rs:1530 hand-Rust mirror
 T-ImpossibleBugs: 3 independent classes (any worker)
 T-PerMethodMetadata: §6a pick (any worker; independent)
 (Goal 6 demo artifacts ship with each lane's closure PR — not a
  separate dependency-DAG node; see Demo discipline section.)
 ```
 
-Parallel-capable work at any time: Grounding has 2 fill slots (Python, Go) alongside its critical path; Director dispatch has 4 T-Substrate sub-lanes (3 T-Modeling unblocks + 1 multi-consumer unblock covering 3 consumers) + 3 T-Modeling items (each pair-blocked) + 3 deliverables pair-blocked on the 4th T-Substrate sub-lane (tokenizer charclass, Engine sharpened-(b), kernel_algebra_profile mirror dissolution) + 3 T-ImpossibleBugs classes + 1 T-PerMethodMetadata pick, for roughly 10–14 slots depending on T-Substrate unblock timing.
+Parallel-capable work at any time: Grounding has 2 fill slots (Python, Go) alongside its critical path; Director dispatch has 4 T-Substrate sub-lanes (3 T-Modeling unblocks + 1 dual-consumer unblock covering 2 consumers) + 3 T-Modeling items (each pair-blocked) + 2 deliverables pair-blocked on the 4th T-Substrate sub-lane (tokenizer charclass, Engine sharpened-(b)) + 3 T-ImpossibleBugs classes + 1 T-PerMethodMetadata pick, for roughly 9–13 slots depending on T-Substrate unblock timing.
 
 ## R1 closure criteria
 

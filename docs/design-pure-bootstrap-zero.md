@@ -1,6 +1,6 @@
 # Pure Bootstrap to Zero — Design
 
-**Status:** `LIVE` (promoted 2026-04-25 via cascade promotion PR). Supersedes the ≤5-floor framing in [`docs/design-pure-bootstrap.md`](design-pure-bootstrap.md) (now marked SUPERSEDED with explicit retraction) and the 2-3 principled-floor framing introduced via [PR #756](https://github.com/gunb-ai/gunbc/pull/756) (also retracted). This doc is the live authority on the Pure Bootstrap to Zero program.
+**Status:** `LIVE` (promoted 2026-04-25 via cascade promotion [PR #782](https://github.com/gunb-ai/gunbc/pull/782)). Supersedes the ≤5-floor framing in [`docs/design-pure-bootstrap.md`](design-pure-bootstrap.md) (now marked SUPERSEDED with explicit retraction) and the 2-3 principled-floor framing introduced via [PR #756](https://github.com/gunb-ai/gunbc/pull/756) (also retracted). This doc is the live authority on the Pure Bootstrap to Zero program.
 
 **Promotion evidence chain (cited in cascade promotion PR body):**
 - D1 audit: PRs #769 + #771 + #775 + #777 + #779 (audit doc with substrate-generation already proven; 23 generated files + 24 REGEN_OUTPUTS entries; 38-type substrate.dag coverage survey)
@@ -12,7 +12,9 @@
 
 ### Promotion mechanism
 
-This doc is PROPOSAL until promoted. **Promotion is a single Director-authored cascade PR** that does **all** of the following atomically (no piecewise promotion — the framing change is load-bearing across multiple authorities and partial promotion would create contradiction):
+**(Historical context — promotion executed 2026-04-25 via cascade promotion PR; all retraction steps below were performed atomically per the no-piecewise-promotion clause. Section preserved for audit-trail readability of how the promotion happened.)**
+
+This doc was PROPOSAL until promoted. **Promotion was a single Director-authored cascade PR** that did **all** of the following atomically (no piecewise promotion — the framing change is load-bearing across multiple authorities and partial promotion would have created contradiction):
 
 - **Who promotes:** Director, after Grounding Manager (R2's standing manager) and at least one R2 substrate-prereq sub-lane have produced stable enough evidence that the (γ) shape is achievable in v3's substrate (i.e., not a paper proposal).
 - **What gate:** the cascade PR includes (a) at least one prototyped lane closure proving an existing hand-Rust file can be retired via `.dag` migration without regression, and (b) explicit acknowledgement from PM that the program structure is dispatchable.
@@ -24,7 +26,7 @@ This doc is PROPOSAL until promoted. **Promotion is a single Director-authored c
   - `TESTING.md` "Post-R2 shape" residual section either rewritten in this same cascade PR (bundled) or sibling PR landed first (separated). See "TESTING.md rewrite" section below.
   - This doc's status banner updated from `PROPOSAL` to `LIVE` with promotion date and citing the cascade PR number.
 
-If any retraction step can't land in the same PR (e.g., cascading conflicts), promotion blocks; this doc stays `PROPOSAL` until the cascade can be authored atomically.
+~~If any retraction step can't land in the same PR (e.g., cascading conflicts), promotion blocks; this doc stays `PROPOSAL` until the cascade can be authored atomically.~~ **(Resolved.)** Cascade landed atomically on 2026-04-25; all five retractions present in the cascade PR; doc is now LIVE.
 
 ### Pre-promotion deliverables
 
