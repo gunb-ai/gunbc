@@ -3158,6 +3158,13 @@ fn lower_structural_field_value(
     None
 }
 
+/// 🟢 TERMINAL — file-local lowering outcome coproduct.
+///
+/// 4-pattern check: Pattern 1 (fact placement) reaches the terminal
+/// control-flow split here: successful scalar lowering, non-literal
+/// fallthrough, and typed rejection each flow to a different caller
+/// branch. Patterns 2-4 do not apply because the variants are not a
+/// shared labeled payload, algebraic operation, or dimensional product.
 enum LowerScalarLiteralOutcome {
     Literal(LiteralBits),
     NotApplicable,

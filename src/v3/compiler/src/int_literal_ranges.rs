@@ -49,6 +49,9 @@ fn integer_routing_key_for_decl(
     depth: usize,
 ) -> Option<IntegerRoutingKey> {
     if depth >= 32 {
+        // Alias/connective chains this deep are outside the current
+        // reconciliation contract. Treat the range lookup as unavailable
+        // and let callers fall through to the existing type diagnostics.
         return None;
     }
     let declaration = dag.declaration(decl);

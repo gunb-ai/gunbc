@@ -175,6 +175,9 @@ type RustPrimitive
       target_name: String          // Rust syntactic token: "i8".."i64", "u8".."u64"
       algebra: IntegerAlgebra
       carrier: TargetCarrier
+      // scaffold: R2 top-level aggregate `ValueBody` sub-lane makes
+      // `rust_pilot_primitives` rows structurally walkable; until then,
+      // consumers read the duplicated `IntegerRangeFact` rows below.
       range_min_inclusive: String
       range_max_inclusive: String
       is_copy: Bool
