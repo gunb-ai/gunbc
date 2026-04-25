@@ -510,19 +510,16 @@ fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
 /// *user* program on the same capture (that source of false authority is gone; util-linux
 /// heuristics remain the concern).
 ///
-/// **P3 (empty buffer):** A second run when stderr is **empty** after an exit **mismatch** is
-/// **not** the default: it is enabled **only in `#[cfg(test)]` builds** of this crate
-/// (the same `cargo test` path in CI and locally — no process environment flag). `cargo
-/// build` / `cargo build --release` never take this branch: the first unshare(1) exit is the
-/// authority, fail-closed for ambiguous empty stderr. (Second-run-on-empty can still flip
-/// non-idempotent work; keep test claims to idempotent or narrow commands — PR #792.)
-/// `unshare:`-pattern, read errors, `take` failure, and non-zero host-confirmation are unchanged;
-/// the latter is independent of this buffer case. **Prefer a single explicit env opt-in
-/// (T-PB-B) before** debugging “same fixture, different `cfg`” — the usual next step to erase
-/// `cargo test` / `cargo build` divergence on this one retry; not implemented; review
-/// #792 / 5ecbe568, non-blocking.
+/// **P3 (empty buffer):** A second run when merged wrapper stderr is **empty** after an exit
+/// **mismatch** is **enabled** in `#[cfg(test)]` builds of this crate, or when
+/// `GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH` is truthy (`1` or `true`); `cargo
+/// build` with that env can match `cargo test` for this *one* bounded retry. Without both, fail-closed:
+/// the first unshare(1) exit is authority. (Second-run-on-empty can still flip non-idempotent
+/// work; keep test claims to idempotent or narrow commands — PR #792.) `unshare:`-pattern, read
+/// errors, `take` failure, and non-zero host-confirmation are unchanged; the latter is
+/// independent of this buffer case.
 ///
-/// **P5 (dissolution — shared target):** Retire (1) the `#[cfg(test)]` empty-stderr relaunch and
+/// **P5 (dissolution — shared target):** Retire (1) the empty-stderr test/env relaunch and
 /// (2) the **non-zero exit** direct-`Child` “host confirmation” re-exec in
 /// `evaluate_execute_command_host_outcome` when unshare(1) / namespace setup can be **typed** as
 /// “setup did not reach logical `exec`” (or as a distinct setup failure) **without** a second
@@ -560,6 +557,21 @@ fn unshare_reexec_after_spawn_error_label(reason: UnshareDirectRerun) -> &'stati
         | UnshareDirectRerun::ExitMismatchEmptyWrapperStderr => "unshare(1) post-start fallback",
         UnshareDirectRerun::NonzeroHostConfirm => "unshare(1) host-exit confirmation",
     }
+}
+
+/// [`cfg!(test)`](https://doc.rust-lang.org/std/macro.cfg.html) **or** truthy
+/// `GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH` (see
+/// [`GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH`]) authorizes the empty-stderr
+/// second run on the unshare(1) path; default release builds are fail-closed without the env.
+#[cfg(target_os = "linux")]
+fn unshare_empty_stderr_relaunch_authorized() -> bool {
+    cfg!(test)
+        || std::env::var(GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH)
+            .ok()
+            .is_some_and(|s| {
+                let t = s.trim();
+                t == "1" || t.eq_ignore_ascii_case("true")
+            })
 }
 
 /// **127** = command not found, **126** = not executable — common POSIX `sh` / `exec` results when
@@ -639,27 +651,28 @@ fn unshare_sandbox_broken_relaunch_with_direct(
     from_unshare: bool,
     child: &mut std::process::Child,
     pre_wait_drain: &[u8],
-) -> bool {
+) -> Option<UnshareDirectRerun> {
     if !from_unshare {
-        return false;
+        return None;
     }
     let combined = match unshare_merged_wrapper_stderr_read(child, pre_wait_drain) {
         Ok(s) => s,
         // Cannot read wrapper stderr: unshare(1) exit may still be a setup artifact — retry direct.
         Err(()) => {
-            return true;
+            return Some(UnshareDirectRerun::PostStartFallback);
         }
     };
     if unshare_stderr_indicates_sandbox_setup_failure(&combined) {
-        return true;
+        return Some(UnshareDirectRerun::PostStartFallback);
     }
     // TODO(dissolution, P5): see module doc **P5 (shared target)** — same retirement as non-zero
-    // host-confirmation; remove this `#[cfg(test)]` arm when that lands.
-    if combined.trim().is_empty() && cfg!(test) {
-        // Piped stderr, read ok, no `unshare:`: second run only in test builds; production fail-closed.
-        return true;
+    // host-confirmation; drop `GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH` + `cfg!(test)` when
+    // that lands.
+    if combined.trim().is_empty() && unshare_empty_stderr_relaunch_authorized() {
+        // Piped stderr, read ok, no `unshare:`, empty merge: second run in test or with env.
+        return Some(UnshareDirectRerun::ExitMismatchEmptyWrapperStderr);
     }
-    false
+    None
 }
 
 /// Configure `Command` for the host check: no capture, and on Unix a new process group for the
@@ -981,11 +994,10 @@ pub fn evaluate_execute_command_m1_5(
 /// **P2(d) (implicit re-execution):** On Linux, the `loop` may spawn a **second** `Child` once
 /// for (1) unshare post-start setup failure, (2) non-zero-`expect_exit_code` “host confirmation”
 /// when the unshare(1) path is ambiguous, or (3) empty piped wrapper stderr on exit **mismatch**
-/// in `#[cfg(test)]` only — all single-retry, documented in [`unshare_sandbox_broken_relaunch_with_direct`]
-/// and the **P3 (empty buffer)** / **P5 (dissolution — shared target)** block. Optional T-PB-B:
-/// factoring *which* of those three authorized the relaunch into a small `enum` at this seam
-/// (setup-vs-`exec` *reason* wire) can shrink the audit surface while the P5 “typed setup carrier”
-/// is still out-of-tree — **non**-blocking (PR #792 review 5ecbe568).
+/// with `unshare_empty_stderr_relaunch_authorized`. The authority is
+/// `UnshareDirectRerun`; all single-retry, documented in [`unshare_sandbox_broken_relaunch_with_direct`]
+/// and the **P3 (empty buffer)** / **P5 (dissolution — shared target)** block. The P5 “typed setup
+/// carrier” still out-of-tree dissolves the string/`Child` heuristics together.
 pub fn evaluate_execute_command_host_outcome(
     command: &str,
     args: &[String],
@@ -1036,29 +1048,26 @@ pub fn evaluate_execute_command_host_outcome(
         not(target_os = "linux"),
         allow(clippy::never_loop) // the only `continue` is under `#[cfg(target_os = "linux")]`
     )]
-    let status =
-        loop {
-            // Fresh capture for this `Child` (each `continue` spins up a new process; stale bytes would
-            // poison the unshare: merge — codex PR #792).
+    let status = loop {
+        // Fresh capture for this `Child` (each `continue` spins up a new process; stale bytes would
+        // poison the unshare: merge — codex PR #792).
+        #[cfg(target_os = "linux")]
+        unshare_stderr_drain.clear();
+        let s = match child_wait_for_execute_command(
+            &mut child,
+            wall_time,
+            from_unshare,
             #[cfg(target_os = "linux")]
-            unshare_stderr_drain.clear();
-            let s = match child_wait_for_execute_command(
-                &mut child,
-                wall_time,
-                from_unshare,
-                #[cfg(target_os = "linux")]
-                &mut unshare_stderr_drain,
-            ) {
-                Ok(s) => s,
-                Err(e) => return ExecuteCommandHostOutcome::Other(e),
-            };
-            #[cfg(target_os = "linux")]
+            &mut unshare_stderr_drain,
+        ) {
+            Ok(s) => s,
+            Err(e) => return ExecuteCommandHostOutcome::Other(e),
+        };
+        #[cfg(target_os = "linux")]
+        {
+            if unshare_post_start_stderr_may_authorize_relaunch(from_unshare, &s, expect_exit_code)
             {
-                if unshare_post_start_stderr_may_authorize_relaunch(
-                    from_unshare,
-                    &s,
-                    expect_exit_code,
-                ) && unshare_sandbox_broken_relaunch_with_direct(
+                if let Some(reason) = unshare_sandbox_broken_relaunch_with_direct(
                     from_unshare,
                     &mut child,
                     &unshare_stderr_drain,
@@ -1067,65 +1076,71 @@ pub fn evaluate_execute_command_host_outcome(
                         Ok(c) => c,
                         Err(e2) => {
                             return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(format!(
-                            "ExecuteCommand spawn error ({command}) after unshare(1) post-start \
-                             fallback: {e2}"
-                        )));
+                                "ExecuteCommand spawn error ({command}) after {}: {e2}",
+                                unshare_reexec_after_spawn_error_label(reason)
+                            )));
                         }
                     };
                     from_unshare = false;
                     continue;
                 }
-                if from_unshare {
-                    let is_nonzero_match = s
-                        .code()
-                        .map(i64::from)
-                        .is_some_and(|c| c == expect_exit_code)
-                        && expect_exit_code != 0;
-                    if is_nonzero_match {
-                        // Non-zero + exit already matches: the unshare(1) path can (rarely) conflate
-                        // PID-1 or namespace semantics with a **direct** `Child` (see module docs). When
-                        // merged wrapper stderr shows **no** `unshare:` util-linux line, the wrapper did
-                        // not report setup failure — **skip** the direct confirmation run (P2(d); T-PB-B),
-                        // except 126/127: see `unshare_nonzero_match_never_skip_direct_for_shell_no_exec_exits`.
-                        // Read errors: conservative confirm (second `Child`).
-                        // TODO(dissolution, P5): shared retirement with `unshare_sandbox_broken_relaunch`
-                        // and `#[cfg(test)]` empty-stderr — see `unshare_sandbox_broken_relaunch_with_direct`
-                        // module doc **P5 (shared target)**.
-                        let merged =
-                            unshare_merged_wrapper_stderr_read(&mut child, &unshare_stderr_drain);
-                        let need_direct_host_confirm = match &merged {
+            }
+            if from_unshare {
+                let is_nonzero_match = s
+                    .code()
+                    .map(i64::from)
+                    .is_some_and(|c| c == expect_exit_code)
+                    && expect_exit_code != 0;
+                if is_nonzero_match {
+                    // Non-zero + exit already matches: the unshare(1) path can (rarely) conflate
+                    // PID-1 or namespace semantics with a **direct** `Child` (see module docs). When
+                    // merged wrapper stderr shows **no** `unshare:` util-linux line, the wrapper did
+                    // not report setup failure — **skip** the direct confirmation run (P2(d); T-PB-B),
+                    // except 126/127: see `unshare_nonzero_match_never_skip_direct_for_shell_no_exec_exits`.
+                    // Read errors: conservative confirm (second `Child`).
+                    // TODO(dissolution, P5): shared retirement with `unshare_sandbox_broken_relaunch`
+                    // and empty-stderr (test + GUNBC env) — see `unshare_sandbox_broken_relaunch_with_direct`
+                    // module doc **P5 (shared target)**.
+                    let merged =
+                        unshare_merged_wrapper_stderr_read(&mut child, &unshare_stderr_drain);
+                    let need_direct_host_confirm = match &merged {
                         Err(()) => true,
                         Ok(m) if unshare_stderr_indicates_sandbox_setup_failure(m) => true,
-                        Ok(m) if unshare_nonzero_match_never_skip_direct_for_shell_no_exec_exits(
-                            expect_exit_code,
-                        ) => true,
+                        Ok(m)
+                            if unshare_nonzero_match_never_skip_direct_for_shell_no_exec_exits(
+                                expect_exit_code,
+                            ) =>
+                        {
+                            true
+                        }
                         Ok(m) if !unshare_stderr_indicates_sandbox_setup_failure(m) => false,
                         Ok(_) => true,
                     };
-                        if need_direct_host_confirm {
-                            child = match build_execute_command_process(command, args).spawn() {
-                                Ok(c) => c,
-                                Err(e2) => {
-                                    return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(
-                                        format!(
-                                        "ExecuteCommand spawn error ({command}) after unshare(1) \
-                                         host-exit confirmation: {e2}"
+                    if need_direct_host_confirm {
+                        let reason = UnshareDirectRerun::NonzeroHostConfirm;
+                        child = match build_execute_command_process(command, args).spawn() {
+                            Ok(c) => c,
+                            Err(e2) => {
+                                return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(
+                                    format!(
+                                        "ExecuteCommand spawn error ({command}) after {}: {e2}",
+                                        unshare_reexec_after_spawn_error_label(reason)
                                     ),
-                                    ));
-                                }
-                            };
-                            from_unshare = false;
-                            continue;
-                        }
-                    } else {
-                        // P3/C-5: same fd as child stderr after exec; do not leave a piped `stderr` on
-                        // paths that skip the merge+decision above.
-                        let _ = child.stderr.take();
+                                ));
+                            }
+                        };
+                        from_unshare = false;
+                        continue;
                     }
+                } else {
+                    // P3/C-5: same fd as child stderr after exec; do not leave a piped `stderr` on
+                    // paths that skip the merge+decision above.
+                    let _ = child.stderr.take();
                 }
             }
-            break s;
-        };
+        }
+        break s;
+    };
     #[cfg(not(target_os = "linux"))]
     let _ = from_unshare;
     let Some(actual) = status.code().map(i64::from) else {
