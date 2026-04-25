@@ -342,9 +342,20 @@ empty set per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-
   - **[R2+]** Nested-optional flatten: `Option<Option<T>>` accessor patterns
     that normal languages require hand-unwrapping. Gated on cardinality
     refinement substrate work.
-  - **[R2+]** Unenumerated effects: a function's actual effect set must match
-    its declared effect set; silent effect leakage is rejected. Gated on
-    deeper effect-system work beyond R1's Sub-A scope.
+  - **[R2+]** Unenumerated effects: every effect performed in this system is
+    structurally visible at compile time; impossible to hide an effect because
+    the substrate IS the registry (effects derive from the composition of
+    typed primitive operations, parallel to how complexity derives from
+    bounded-kernel composition — same closed-system mechanism). There is no
+    declared-effects-vs-inferred-effects mismatch because there is no separate
+    "declared" surface — the structural fact is the only authority. Redundant
+    effects (e.g., reads of the same key with no intervening write-effect) are
+    structurally provable as identical via referential transparency, and
+    rejected at compile time; legitimate re-read uses an explicit `reread()`
+    primitive that structurally tags the intent. Tier 1 (impossible by
+    construction), not Tier 2 (lens-detected). See
+    [`docs/briefs/t-impossiblebugs-unenumerated-effects-design.md`](docs/briefs/t-impossiblebugs-unenumerated-effects-design.md)
+    for the 5-behavior compositional-fold mechanism + worked examples.
   - **[R2+]** Unhandled diagnostic paths: Tier 2 runtime-safety proofs make
     division-by-zero, OOB, and force-unwrap either proven safe or made
     total — never partial. Gated on Tier 2 substrate (post-R1).
