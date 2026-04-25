@@ -539,10 +539,24 @@ fn unshare_stderr_indicates_sandbox_setup_failure(stderr_text: &str) -> bool {
     false
 }
 
+/// Merge bytes captured while waiting (nonblocking pipe drain) with a post-`try_wait` read, using
+/// a single `UNSHARE_STDERR_SCAN_CAP` budget (codex PR #792: `unshare:` in the pre-exit window must
+/// not be lost before the setup-failure scan).
+#[cfg(target_os = "linux")]
+fn unshare_merge_stderr_for_setup_scan(pre_wait: &[u8], post_read: &str) -> String {
+    let pre_len = (pre_wait.len() as u64).min(UNSHARE_STDERR_SCAN_CAP) as usize;
+    let pre = &pre_wait[..pre_len];
+    let mut s = String::new();
+    s.push_str(&String::from_utf8_lossy(pre));
+    s.push_str(post_read);
+    s
+}
+
 #[cfg(target_os = "linux")]
 fn unshare_sandbox_broken_relaunch_with_direct(
     from_unshare: bool,
     child: &mut std::process::Child,
+    pre_wait_drain: &[u8],
 ) -> bool {
     if !from_unshare {
         return false;
@@ -552,18 +566,21 @@ fn unshare_sandbox_broken_relaunch_with_direct(
         return true;
     };
     use std::io::Read;
+    // Same total budget as a single 8 KiB `take` before the wait-loop capture (codex PR #792):
+    // merge pre-exit `unshare:…` lines seen during drain with any tail read after the child
+    // exits, without double-counting cap.
+    let pre_len = (pre_wait_drain.len() as u64).min(UNSHARE_STDERR_SCAN_CAP) as usize;
+    let take_remain = UNSHARE_STDERR_SCAN_CAP.saturating_sub(pre_len as u64);
     let mut buf = String::new();
-    if h.take(UNSHARE_STDERR_SCAN_CAP)
-        .read_to_string(&mut buf)
-        .is_err()
-    {
+    if h.take(take_remain).read_to_string(&mut buf).is_err() {
         return true;
     }
-    if unshare_stderr_indicates_sandbox_setup_failure(&buf) {
+    let combined = unshare_merge_stderr_for_setup_scan(pre_wait_drain, &buf);
+    if unshare_stderr_indicates_sandbox_setup_failure(&combined) {
         return true;
     }
     // TODO(dissolution): remove `cfg!(test)` when module-doc P5 conditions are met.
-    if buf.trim().is_empty() && cfg!(test) {
+    if combined.trim().is_empty() && cfg!(test) {
         // Piped stderr, read ok, no `unshare:`: second run only in test builds; production fail-closed.
         return true;
     }
@@ -617,8 +634,10 @@ fn kill_process_group_on_timeout(child: &mut std::process::Child) {
 /// Linux + `unshare(1)`: the parent holds a read end to a **piped** stderr. After the logical
 /// process `exec(2)`s, the same pipe carries its writes. If we only `try_wait` and never read,
 /// the child can block when the ~64KiB default pipe buffer fills; we only fail at wall timeout.
-/// [`linux_drain_piped_child_stderr_nonblocking_once`] discards *all* post-exec bytes (not a claim
-/// surface).
+/// [`linux_drain_piped_child_stderr_nonblocking_once`] keeps a bounded **prefix** (up to
+/// `UNSHARE_STDERR_SCAN_CAP` bytes) for the `unshare:` post-wait scan, then discards the rest
+/// in that round to avoid a filling pipe; bytes after the cap are not preserved for the scan
+/// (same budget as a single pre-fix `read_to_string` take).
 #[cfg(target_os = "linux")]
 fn linux_piped_child_stderr_set_nonblock(
     fd: std::os::fd::RawFd,
@@ -640,20 +659,31 @@ fn linux_piped_child_stderr_set_nonblock(
     Ok(())
 }
 
-/// Nonblocking **drain to discard**; loop until `WouldBlock` or EOF. Never blocks on an empty
-/// buffer (PR #792).
+/// Nonblocking drain of `ChildStderr`: prevents pipe stalls (PR #792). Appends into `capture` only
+/// while `capture.len() < cap`; any further bytes in this round are discarded so the read end does
+/// not back up. (Same authority bytes must be merged into the post-`try_wait` scan — codex: do not
+/// `capture` pre-exit and drop before [`unshare_sandbox_broken_relaunch_with_direct`].)
 #[cfg(target_os = "linux")]
-fn linux_drain_piped_child_stderr_nonblocking_once(stderr: &mut std::process::ChildStderr) {
+fn linux_drain_piped_child_stderr_nonblocking_once(
+    stderr: &mut std::process::ChildStderr,
+    capture: &mut Vec<u8>,
+    cap: usize,
+) {
     use std::io::ErrorKind;
     use std::io::Read;
     let mut buf = [0u8; 8192];
     loop {
-        match stderr.read(&mut buf) {
+        let n = match stderr.read(&mut buf) {
             Ok(0) => break,
-            Ok(_) => continue,
+            Ok(n) => n,
             Err(e) if e.kind() == ErrorKind::WouldBlock => break,
             Err(e) if e.kind() == ErrorKind::Interrupted => continue,
             Err(_) => break,
+        };
+        for &b in buf.iter().take(n) {
+            if capture.len() < cap {
+                capture.push(b);
+            }
         }
     }
 }
@@ -692,12 +722,16 @@ impl Drop for LinuxPipedChildStderrNonblockGuard {
 }
 
 /// On Linux when `must_drain_piped_child_stderr` is true (`unshare(1)` path), the wait loop
-/// nonblocking-drains the piped child stderr so it cannot fill and stall the child (PR #792).
+/// nonblocking-drains the piped child stderr so it cannot fill and stall the child (PR #792), and
+/// (same cap as post-wait read) appends a bounded prefix to `unshare_stderr_drain` for the
+/// [`unshare_stderr_indicates_sandbox_setup_failure`] scan (codex: do not drain away `unshare:`
+/// lines that arrive before exit).
 fn child_wait_for_execute_command(
     child: &mut std::process::Child,
     wall_time: Duration,
     #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
     must_drain_piped_child_stderr: bool,
+    #[cfg(target_os = "linux")] unshare_stderr_drain: &mut Vec<u8>,
 ) -> Result<std::process::ExitStatus, ClaimResult> {
     #[cfg(target_os = "linux")]
     let _stderr_nonblock =
@@ -719,7 +753,11 @@ fn child_wait_for_execute_command(
                         && child.stderr.is_some()
                     {
                         if let Some(s) = child.stderr.as_mut() {
-                            linux_drain_piped_child_stderr_nonblocking_once(s);
+                            linux_drain_piped_child_stderr_nonblocking_once(
+                                s,
+                                unshare_stderr_drain,
+                                UNSHARE_STDERR_SCAN_CAP as usize,
+                            );
                         }
                     }
                 }
@@ -762,7 +800,9 @@ fn child_wait_for_execute_command(
 ///   [`Command`] (see [`unshare_sandbox_broken_relaunch_with_direct`]) so setup failure never
 ///   masquerades as a matching `expect_exit_code` and portable claims still `Pass` in restricted
 ///   CI. The `try_wait` loop also **drains** the pipe in nonblocking mode in case a wrapper path is
-///   unexpectedly chatty (bytes discarded, not a claim surface). A matching exit on the **logical**
+///   unexpectedly chatty: a **bounded** prefix of bytes is **retained** for the same
+///   `unshare_stderr_indicates_sandbox_setup_failure` scan, then overflow in that read round
+///   is discarded to avoid a filling pipe. A matching exit on the **logical**
 ///   child is not re-run for a `unshare:`-shaped line in this capture (C-5, given logical stderr is
 ///   not on the pipe). Wall+stdio+pgrp still apply. Empty wrapper stderr after an exit **mismatch**
 ///   is retried (direct) **only in `#[cfg(test)]` builds** — see
@@ -867,19 +907,35 @@ fn evaluate_execute_command_exit_code_with_wall_time(
     };
     // `continue` (Linux only) may re-run the logical command without `unshare(1)` if stderr
     // shows namespace *setup* failed (not a logical exit).
+    #[cfg(target_os = "linux")]
+    let mut unshare_stderr_drain: Vec<u8> = Vec::new();
     #[cfg_attr(
         not(target_os = "linux"),
         allow(clippy::never_loop) // the only `continue` is under `#[cfg(target_os = "linux")]`
     )]
     let status = loop {
-        let s = match child_wait_for_execute_command(&mut child, wall_time, from_unshare) {
+        // Fresh capture for this `Child` (each `continue` spins up a new process; stale bytes would
+        // poison the unshare: merge — codex PR #792).
+        #[cfg(target_os = "linux")]
+        unshare_stderr_drain.clear();
+        let s = match child_wait_for_execute_command(
+            &mut child,
+            wall_time,
+            from_unshare,
+            #[cfg(target_os = "linux")]
+            &mut unshare_stderr_drain,
+        ) {
             Ok(s) => s,
             Err(e) => return e,
         };
         #[cfg(target_os = "linux")]
         {
             if unshare_post_start_stderr_may_authorize_relaunch(from_unshare, &s, expect_exit_code)
-                && unshare_sandbox_broken_relaunch_with_direct(from_unshare, &mut child)
+                && unshare_sandbox_broken_relaunch_with_direct(
+                    from_unshare,
+                    &mut child,
+                    &unshare_stderr_drain,
+                )
             {
                 child = match build_execute_command_process(command, args).spawn() {
                     Ok(c) => c,
@@ -2290,7 +2346,16 @@ mod execute_command_timebound_tests {
 // Linux: util-linux unshare(1) stderr heuristics for post-start direct retry (see PR #792).
 #[cfg(all(test, target_os = "linux"))]
 mod unshare_stderr_scan_tests {
+    use super::unshare_merge_stderr_for_setup_scan;
     use super::unshare_stderr_indicates_sandbox_setup_failure;
+
+    /// Regression: if `unshare:…` arrived only in the pre-exit (wait-loop) drain, it must not be
+    /// lost before the setup scan (codex PR #792, blocking review).
+    #[test]
+    fn pre_wait_drain_merged_with_empty_post_still_triggers() {
+        let c = unshare_merge_stderr_for_setup_scan(b"unshare: Operation not permitted\n", "");
+        assert!(unshare_stderr_indicates_sandbox_setup_failure(&c));
+    }
 
     #[test]
     fn any_unshare_prefix_triggers_not_only_failed_substring() {
