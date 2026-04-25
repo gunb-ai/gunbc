@@ -583,7 +583,7 @@ fn test_runner_runs_r1_lane_e_suite() {
         std::fs::read_to_string(&gate).unwrap_or_else(|err| panic!("read {gate:?}: {err}"));
     let dag = compile_clean(&source, "src/v3/compiler/tests/fixtures/r1_gates.dag");
     let results = TestRunner::new(&dag).run_suite("r1_lane_e_suite");
-    assert_eq!(results.len(), 2);
+    assert_eq!(results.len(), 3);
     assert_all_pass(&results);
 }
 

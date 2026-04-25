@@ -184,11 +184,25 @@ data complexity_merge_sort_is_nlogn_gate: TestClaim = {
   requires: []
 }
 
-// Differential witness: trivial `1 + 2` bind — exercises that host forward-fold and emit
-// `lens_cost::cost_of` agree on a minimal program (both producers would need to diverge to fail).
-// Substantive structural depth is **not** what this row proves; `complexity_merge_sort_is_nlogn`
-// carries the merge-sort `LensOutputEquals(cost_of, …)` receipt. D1 `apply_lens_declaration(cost_of)`
-// on the canonical lens stays deferred (`Loop` / `UnimplementedLoopBound` in the lens graph).
+// Cross-lineage parity on the merge-sort program: host forward-fold vs emit `lens_cost::cost_of`
+// on `merge_sort_out` (same bind as `complexity_merge_sort_is_nlogn` — independent producers).
+data complexity_merge_sort_v3_matches_v2_oracle_gate: TestClaim = {
+  name: "complexity_merge_sort_v3_matches_v2_oracle",
+  source: "R1_MERGE_SORT_PAIR_V3_SPLICE_V1",
+  file_name: "r1_merge_sort_pair.v3",
+  predicate: DifferentialEquals(
+    v3_program_cost,
+    v2_oracle_cost,
+    r1_lens_output_input_from_program
+  ),
+  requires: []
+}
+
+// Differential witness: trivial `1 + 2` bind — minimal smoke that host forward-fold and emit
+// `lens_cost::cost_of` agree when almost nothing happens structurally. Nested control-flow parity
+// is covered by `complexity_merge_sort_v3_matches_v2_oracle`; scalar structural depth by
+// `complexity_merge_sort_is_nlogn`. D1 `apply_lens_declaration(cost_of)` on the canonical lens
+// stays deferred (`Loop` / `UnimplementedLoopBound` in the lens graph).
 data complexity_v3_matches_v2_oracle_gate: TestClaim = {
   name: "complexity_v3_matches_v2_oracle",
   source: "R1_LANE_E_DIFFERENTIAL_WITNESS_V3_SPLICE_V1",
@@ -203,5 +217,9 @@ data complexity_v3_matches_v2_oracle_gate: TestClaim = {
 
 data r1_lane_e_suite: TestSuite = {
   name: "r1_lane_e_suite",
-  claims: [complexity_merge_sort_is_nlogn_gate, complexity_v3_matches_v2_oracle_gate]
+  claims: [
+    complexity_merge_sort_is_nlogn_gate,
+    complexity_merge_sort_v3_matches_v2_oracle_gate,
+    complexity_v3_matches_v2_oracle_gate
+  ]
 }
