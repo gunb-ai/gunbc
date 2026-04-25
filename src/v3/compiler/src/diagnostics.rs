@@ -256,9 +256,10 @@ impl Diagnostic {
                 target,
                 range_min_inclusive,
                 range_max_inclusive,
+                expected,
                 ..
             } => format!(
-                "integer literal `{literal}` is out of range for `{target}` (expected {range_min_inclusive}..={range_max_inclusive}); use a wider target"
+                "integer literal `{literal}` is out of range for `{target}` (expected {range_min_inclusive}..={range_max_inclusive}, declared type {expected:?}); use a wider target"
             ),
         }
     }

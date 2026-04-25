@@ -573,6 +573,8 @@ mod tests {
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct RangeFact<'a> {
         target_name: &'a str,
+        algebra: &'a str,
+        carrier: &'a str,
         min: &'a str,
         max: &'a str,
     }
@@ -590,12 +592,46 @@ mod tests {
         &rest[..end]
     }
 
+    fn bare_field<'a>(block: &'a str, field: &str) -> &'a str {
+        let marker = format!("{field}: ");
+        let start = block
+            .find(&marker)
+            .unwrap_or_else(|| panic!("missing `{field}` in IntegerRangeFact block:\n{block}"))
+            + marker.len();
+        let rest = &block[start..];
+        let end = rest
+            .find([',', '\n'])
+            .unwrap_or_else(|| panic!("unterminated `{field}` value in block:\n{block}"));
+        rest[..end].trim()
+    }
+
+    fn integer_algebra_fact_label(algebra: IntegerAlgebra) -> &'static str {
+        match algebra {
+            IntegerAlgebra::OrderedRing => "OrderedRingAlgebra",
+            IntegerAlgebra::Semiring => "SemiringAlgebra",
+        }
+    }
+
+    fn target_carrier_fact_label(carrier: TargetCarrier) -> &'static str {
+        match carrier {
+            TargetCarrier::Byte => "ByteCarrier",
+            TargetCarrier::Word16 => "Word16Carrier",
+            TargetCarrier::Word32 => "Word32Carrier",
+            TargetCarrier::Word64 => "Word64Carrier",
+            TargetCarrier::Bit | TargetCarrier::Terminal => {
+                panic!("integer range mirror used non-integer carrier {carrier:?}")
+            }
+        }
+    }
+
     fn integer_range_facts_from_dag_source(source: &str) -> Vec<RangeFact<'_>> {
         source
             .split("data ")
             .filter(|block| block.contains(": IntegerRangeFact = {"))
             .map(|block| RangeFact {
                 target_name: quoted_field(block, "target_name"),
+                algebra: bare_field(block, "algebra"),
+                carrier: bare_field(block, "carrier"),
                 min: quoted_field(block, "range_min_inclusive"),
                 max: quoted_field(block, "range_max_inclusive"),
             })
@@ -615,11 +651,15 @@ mod tests {
             .filter_map(|primitive| match primitive {
                 RustPrimitive::IntegerPrimitive {
                     target_name,
+                    algebra,
+                    carrier,
                     range_min_inclusive,
                     range_max_inclusive,
                     ..
                 } => Some(RangeFact {
                     target_name,
+                    algebra: integer_algebra_fact_label(*algebra),
+                    carrier: target_carrier_fact_label(*carrier),
                     min: range_min_inclusive,
                     max: range_max_inclusive,
                 }),
