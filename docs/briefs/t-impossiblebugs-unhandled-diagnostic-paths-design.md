@@ -145,7 +145,7 @@ a parallel proof system.
 |---|---|
 | force-unwrap on None | Already done — partial form not in std/. |
 | Out-of-bounds indexing | **Partial form reachable today** — `dsl/std/algebra.dag:305` declares `index: fn(Int) -> T` on FreeMonoid (returns bare `T`). Closure: retype to `index: fn(Int) -> T?` (or `Result<T, IndexOutOfBounds>`). Map's `get: fn(K) -> V?` at `:340` is already total and is the model shape. |
-| Division by zero | **Closure of bare `Int / Int` is harder than initially claimed**, because for Int operands the `/` arrow is NOT produced by any algebra-Conj field — it falls through to a Rust-side primitive scaffold at `src/v3/compiler/src/infer.rs:4003-4015` returning `(Int, Int) -> Int`. The algebra side has no `div` field at all: `dsl/std/algebra.dag:477` declares `quotient` on OrderedRing (Euclidean integer division with separate `remainder`), `:490` declares `reciprocal` on Field; neither is what `Arithmetic(Div)` resolves to. `src/v3/compiler/operators.dag:53` maps `Div => "div"`, but the algebra walk fails to find a `div` field and falls through. Three closure shapes, each with explicit cost: **(i) Hand-Rust retype of the Arithmetic(Div) primitive fallback** at `infer.rs:4004` to return `Result<Self, DivideByZero>` instead of `Self`. Compiler change, not algebra change; touches the documented class-5 scaffold gap. **(ii) Wire `div` through algebra-Conj** by adding a `div` field to Field with `return_type: Result<ReceiverSelf, DivideByZero>`, ensuring Int's `inhabits` chain terminates at that Field, and removing the primitive fallback for `Arithmetic(Div)`. Substrate-and-wiring work. **(iii) Non-operator total function** `fn divide_safe(a: Int, b: Int) -> Result<Int, DivideByZero>` — expressible today with no compiler or substrate change, but bare `a / b` still type-checks. Closure of the bug class requires (i) or (ii); (iii) alone is paired-not-closed (the acceptance-theatre trap). The NonZeroInt-typed-denominator shape is a separate concern: `(Int, NonZeroInt) -> Int` is asymmetric per-operand and not expressible as the `/` operator today (every `AlgebraOperatorDecl` at `algebra.dag:471-479+` uses symmetric `[ReceiverSelf, ReceiverSelf]`); it requires either extending `AlgebraOperatorDecl` for per-operand type variance or accepting a non-operator function shape `fn divide_nz(a: Int, b: NonZeroInt) -> Int`. |
+| Division by zero | **Closure target updated 2026-04-25 per codex review at sha `e41297cd`**: algebra.dag now declares `OrderedRing.div: fn(T, T) -> T` at `dsl/std/algebra.dag:181` (added in a sibling lane since the original brief was authored). `Int` inhabits `OrderedRingProfile` per `:460`, so `Int / Int` dispatch resolves through the algebra-Conj walk to `OrderedRing.div`. `src/v3/compiler/operators.dag:53` (`Div => "div"`) matches this field by name. The primitive scaffold at `src/v3/compiler/src/infer.rs:4003-4015` is still present as a fallback for types whose walk doesn't terminate at an algebra Conj, but for `Int` it is no longer the dispatch path. **Updated closure shapes**: **(i) Algebra retype** — change `OrderedRing.div`'s return type at `algebra.dag:181` from `fn(T, T) -> T` to `fn(T, T) -> Result<T, DivideByZero>` (or `Option<T>`). Single-line algebra change; consumers downstream (resolve_operator_arrow + emit) read the new return shape directly. This is the cheapest closure for `/`. **(ii) Audit the primitive fallback** at `infer.rs:4004` for any types that still resolve through it for `Arithmetic(Div)` (e.g., types whose `inhabits` chain doesn't reach OrderedRing/Field). If any partial-Div paths remain, retype the fallback for `Arithmetic(Div)` accordingly or remove the fallback for that case. **(iii) Non-operator total function** `fn divide_safe(a: Int, b: Int) -> Result<Int, DivideByZero>` — expressible today, but if (i) is not also done, bare `a / b` still type-checks via the algebra-Conj path; pairing without (i) is paired-not-closed (the acceptance-theatre trap). Closure of the bug class requires (i); (ii) is the audit completing it; (iii) alone is insufficient. The NonZeroInt-typed-denominator shape remains a separate concern: `(Int, NonZeroInt) -> Int` is asymmetric per-operand and is not expressible as the `/` operator today (every algebra-operator-decl uses symmetric per-operand types via `T,T -> T` arrow shapes); requires either extending the algebra-operator carrier for per-operand type variance or accepting a non-operator function shape `fn divide_nz(a: Int, b: NonZeroInt) -> Int`. |
 | Integer overflow | Two valid totalities: (i) wrap-by-design with explicit `WrappingInt` carrier (totality via documented modular arithmetic, no failure case), or (ii) checked ops returning `Result<Int, IntOverflow>`. Either, not both, on the same operator. |
 
 Each entry above closes its bug class by *making the partial form
@@ -211,25 +211,27 @@ Reasoning:
 - gunbc already uses totality-by-omission for `force_unwrap`. Following
   the existing convention is cheaper than inventing a parallel
   enforcement system.
-- For `/` specifically, the closure cost is **larger than for
-  force-unwrap / OOB**. Today `Int / Int` does NOT dispatch through
-  any algebra-Conj field — `dsl/std/algebra.dag` has no `div` field
-  on Field (only `reciprocal`), and `quotient` on OrderedRing is
-  Euclidean integer-quotient (paired with `remainder`), not the `/`
-  operator. `src/v3/compiler/operators.dag:53` maps `Div => "div"`
-  but the walk fails and falls through to the Rust-side primitive
-  scaffold at `infer.rs:4003-4015`. So the `/` removal sub-lane has
-  three concrete options, each with named cost: **(i) hand-Rust
-  retype** of the `Arithmetic(Div)` fallback to `Result<Self,
-  DivideByZero>`; **(ii) substrate wiring** — add `div` to Field
-  with the total return type, terminate Int's walk there, and
-  delete the primitive fallback for Div; **(iii) non-operator
-  function** (`divide_safe`) only, which is expressible today but
-  is paired-not-closed (the acceptance-theatre trap). The follow-on
-  lane should pick (i) or (ii) for genuine closure; (iii) alone is
-  insufficient. The asymmetric NonZeroInt-typed-denominator shape
-  is a separate substrate question (per-operand type variance in
-  `AlgebraOperatorDecl`) and should be deferred to its own brief.
+- For `/` specifically, the closure cost has **dropped since the
+  original brief authored**: `dsl/std/algebra.dag:181` now
+  declares `OrderedRing.div: fn(T, T) -> T`, and `Int` inhabits
+  `OrderedRingProfile` per `:460`, so `Int / Int` dispatches
+  through the algebra-Conj walk to `OrderedRing.div` (matching
+  `operators.dag:53`'s `Div => "div"` mapping). The closure is now
+  a **single-line algebra retype**: change `OrderedRing.div`'s
+  return at `algebra.dag:181` to `Result<T, DivideByZero>` (or
+  `Option<T>`). Consumers downstream read the new return shape
+  directly. The Rust-side primitive scaffold at
+  `infer.rs:4003-4015` remains as a general fallback for types
+  whose `inhabits` chain doesn't reach an algebra Conj that
+  declares the requested field; the follow-on audit (slice step
+  1) should verify whether any types still resolve `Arithmetic(Div)`
+  through that fallback and close those paths separately. Adding
+  `divide_safe` as a non-operator function alongside an unchanged
+  `OrderedRing.div: fn(T,T) -> T` is paired-not-closed (the
+  acceptance-theatre trap); closure requires the algebra retype.
+  The asymmetric NonZeroInt-typed-denominator shape remains a
+  separate substrate question (per-operand type variance in the
+  algebra-operator carrier) deferred to its own brief.
 - The proof-mode ergonomic concern is handled by smart-constructor /
   match patterns, not by predicate-entailment.
 
@@ -305,6 +307,6 @@ prerequisite for the bug-class closure THESIS:350 promises.
   `src/v3/std/verification.dag:29-34`.
 - Operator declaration surface: `dsl/std/algebra.dag:196,305,379`.
 - Partial-form audit at HEAD: `dsl/std/algebra.dag:305` (FreeMonoid.index — partial), `:340` (Map.get — total via `V?`).
-- `/` dispatch path at HEAD: `src/v3/compiler/operators.dag:53` maps `Div => "div"`; no algebra declares a `div` field (Field has `reciprocal:490`; OrderedRing has `quotient:477` for Euclidean integer-division); `Int / Int` falls through to the Rust-side primitive scaffold at `src/v3/compiler/src/infer.rs:4003-4015` returning `(Int, Int) -> Int`.
+- `/` dispatch path at HEAD: `src/v3/compiler/operators.dag:53` maps `Div => "div"`; `dsl/std/algebra.dag:181` declares `OrderedRing.div: fn(T, T) -> T` (added in a sibling lane since the original brief was authored); `:460` declares `Int` inhabits `OrderedRingProfile`, so `Int / Int` dispatches through the algebra-Conj walk to `OrderedRing.div`. The Rust-side primitive scaffold at `src/v3/compiler/src/infer.rs:4003-4015` remains as a fallback for types whose walk doesn't terminate at an algebra Conj declaring the requested field. Closure of bare `/` for `Int` reduces to a single-line algebra retype at `algebra.dag:181`.
 - THESIS gate: `THESIS.md:348-350`.
 - DB-11 history: `docs/db-history/db-11.md`.
