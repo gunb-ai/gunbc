@@ -36,7 +36,7 @@ Under that discipline, R2's goals are the Tier-1 thesis claims that are *not* ga
    - `Secret<T>` nominal-opaque graduation (`ROADMAP.md` post-merge-debt section, 2026-04-23 thesis-doc surface)
    - `Dimension<Carrier>` typed value wrapper with phantom-parameter unit-mismatch enforcement (ibid.)
 
-3. **Substrate prereqs** — named as explicit R2 sub-lanes with **scoped acceptance criteria** (sufficient-to-unblock, not full-capability). Each prereq is pinned to a specific R2 consumer (Goal 2 items + the tokenizer charclass closure inherited from R1); full substrate-capability lanes retain open design calls that may predate or postdate R2, and this structure does not commit R2 to close them all:
+3. **Substrate prereqs** — named as explicit R2 sub-lanes with **scoped acceptance criteria** (sufficient-to-unblock, not full-capability). Each prereq is pinned to a specific R2 consumer (Goal 2 items + the tokenizer charclass closure inherited from R1 per the named exception in *"Lanes deliberately absent"* below); full substrate-capability lanes retain open design calls that may predate or postdate R2, and this structure does not commit R2 to close them all:
 
    - **Cardinality-substrate subset sufficient to close int-literal magnitude refinement** — enough cardinality modeling to let `IntLit` carry a magnitude that narrows to target int algebra at reconciliation. Consumer: T-Modeling int-lit (Goal 2). Does NOT commit to the full cardinality-substrate capability (fixed-width-types by-construction, container cardinality bounds in Grounding, etc. — those remain open design calls outside R2 scope unless additional R2 items demand them).
    - **Nominal-opaque substrate sufficient to graduate `Secret<T>`** — enough nominal-type modeling to carry construction-restriction (`where only X may construct`) semantics. Consumer: T-Modeling Secret<T> (Goal 2). Adjacent to DB-11 alias-RHS `where` (landed in R1 via PR #703); may or may not overlap DB-18 territory. Acceptance is `Secret<T>` graduation, not a general nominal-type program.
@@ -107,7 +107,9 @@ T-Substrate:      cardinality-for-int-lit (subset) ──→ unblocks T-Modeling
 T-Modeling:       int-lit      ← T-Substrate cardinality-for-int-lit
                   Secret<T>    ← T-Substrate nominal-opaque-for-Secret
                   Dimensions   ← T-Substrate parametric-algebra-for-Dimensions
-T-CharClassPhase2: tokenizer retype to Char/List<Char>/CharClass ← T-Substrate ValueBody-list/sum + std.unicode-bootstrap
+Tokenizer charclass phase-2 (consumer of T-Substrate's 4th subset; not a peer lane —
+                  consumed inside T-Substrate scope, deliverable owned by tokenizer code):
+                  retype to Char / List<Char> / CharClass ← T-Substrate ValueBody-list/sum + std.unicode-bootstrap
 T-ImpossibleBugs: 3 independent classes (any worker)
 T-PerMethodMetadata: §6a pick (any worker; independent)
 (Goal 6 demo artifacts ship with each lane's closure PR — not a
