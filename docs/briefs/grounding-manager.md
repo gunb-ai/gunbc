@@ -5,8 +5,9 @@ Formal R2 promotion still pending R1 all-gates-green closure +
 [`docs/r2-structure.md`](../r2-structure.md) promotion to ROADMAP.
 Director-discretionary dispatch has been used since 2026-04-25 for
 T-Ground-Pilot (PR #765, merged) and T-Ground-Engine-Phase-1 audit
-(PR #768, merged). Engine implementation parked pending substrate
-routing — see [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md).
+(PR #768, merged). Engine implementation parked pending the loader-close
+PR (Director routed Route 1 on 2026-04-25; substrate ask is in flight as
+ad-hoc Director dispatch) — see [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md).
 Working state at the bottom of this brief reflects current dispatch state.
 
 ## Orient before reading

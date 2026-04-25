@@ -26,7 +26,7 @@ The routes section below is preserved as decision history.
 
 T-Ground-Engine-Phase-1 cannot dispatch as scoped. The Phase 0 substrate audit found that **both** the `.dag`-defined walker (option a) and the pure sibling-crate `.dag`-consumer (option b) block on the same substrate gap: `dsl/extdeps/languages/*` is not loaded into the bootstrap Dag and there is no public accessor for downstream code to read its declarations as parsed values. The pilot's Rust-constant mirror existed precisely because of this gap.
 
-**Recommendation**: route the substrate ask through the Pure Bootstrap to Zero program rather than as a discrete substrate sub-lane. PB-1 and PB-Bootstrap-Process already own `bootstrap.rs` evolution; the extdeps-load + Declaration-accessor work is a natural early sub-lane of that program. Sequencing the ask early in PB-1 (rather than after full PB-1 lands) avoids parking Engine-Phase-1 for the program's full XXL duration.
+**Live state (post-routing)**: Director chose **Route 1** on 2026-04-25 — small loader-close via ad-hoc Director dispatch. Engine re-dispatches in **sharpened-(b)** form (sibling crate consuming `.dag` declarations via the loader's public accessor) once the loader-close PR merges. Manager's original Route 3 recommendation (route through Pure Bootstrap to Zero) was overruled with substantive reasoning preserved in the "Decision" section above.
 
 ---
 
