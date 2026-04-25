@@ -2594,6 +2594,28 @@ fn require_parameter_dispositions(
         .collect()
 }
 
+/// Callable realization records carry `slot` as a widened [`LiteralBits::Int`]
+/// (`i128`) while downstream indexing uses `usize`. Fail closed when the
+/// value does not fit — no silent truncation of oversized literals.
+pub(crate) fn callable_parameter_slot_i128_to_usize(
+    declaration: DeclarationId,
+    slot_int: i128,
+) -> Result<usize, EmitError> {
+    if slot_int < 0 {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableParameter.slot must be non-negative",
+        });
+    }
+    if slot_int > usize::MAX as i128 {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableParameter.slot is too large to use as a machine index (exceeds usize::MAX)",
+        });
+    }
+    Ok(slot_int as usize)
+}
+
 fn parse_callable_parameter(
     dag: &Dag,
     value: &FieldValue,
@@ -2605,7 +2627,7 @@ fn parse_callable_parameter(
             detail: "CallableRealization.parameters entries must be CallableParameter records",
         });
     };
-    let slot = fields
+    let slot_value = fields
         .iter()
         .find(|(label, _)| label == "slot")
         .map(|(_, value)| value)
@@ -2613,18 +2635,13 @@ fn parse_callable_parameter(
             declaration,
             detail: "CallableParameter is missing required `slot` field",
         })?;
-    let FieldValue::Literal(LiteralBits::Int(slot_int)) = slot else {
+    let FieldValue::Literal(LiteralBits::Int(slot_int)) = slot_value else {
         return Err(EmitError::MalformedRealization {
             declaration,
             detail: "CallableParameter.slot must be an Int literal",
         });
     };
-    if *slot_int < 0 {
-        return Err(EmitError::MalformedRealization {
-            declaration,
-            detail: "CallableParameter.slot must be non-negative",
-        });
-    }
+    let slot = callable_parameter_slot_i128_to_usize(declaration, *slot_int)?;
     let disposition_value = fields
         .iter()
         .find(|(label, _)| label == "disposition")
@@ -2634,7 +2651,7 @@ fn parse_callable_parameter(
             detail: "CallableParameter is missing required `disposition` field",
         })?;
     let disposition = parse_parameter_disposition(dag, disposition_value, declaration)?;
-    Ok((*slot_int as usize, disposition))
+    Ok((slot, disposition))
 }
 
 fn parse_parameter_disposition(

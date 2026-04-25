@@ -46,9 +46,10 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    algebra_field_for_operator_shared, parse_pattern_strategy, primitive_type_id_for_port_shared,
-    walk_to_disj, EmitMode, PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding,
-    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    algebra_field_for_operator_shared, callable_parameter_slot_i128_to_usize, parse_pattern_strategy,
+    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
+    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
@@ -1916,7 +1917,7 @@ fn parse_callable_parameter(
             detail: "CallableRealization.parameters entries must be CallableParameter records",
         });
     };
-    let slot = fields
+    let slot_value = fields
         .iter()
         .find(|(label, _)| label == "slot")
         .map(|(_, value)| value)
@@ -1924,18 +1925,13 @@ fn parse_callable_parameter(
             declaration,
             detail: "CallableParameter is missing required `slot` field",
         })?;
-    let FieldValue::Literal(LiteralBits::Int(slot_int)) = slot else {
+    let FieldValue::Literal(LiteralBits::Int(slot_int)) = slot_value else {
         return Err(EmitError::MalformedRealization {
             declaration,
             detail: "CallableParameter.slot must be an Int literal",
         });
     };
-    if *slot_int < 0 {
-        return Err(EmitError::MalformedRealization {
-            declaration,
-            detail: "CallableParameter.slot must be non-negative",
-        });
-    }
+    let slot = callable_parameter_slot_i128_to_usize(declaration, *slot_int)?;
     let disposition_value = fields
         .iter()
         .find(|(label, _)| label == "disposition")
@@ -1945,7 +1941,7 @@ fn parse_callable_parameter(
             detail: "CallableParameter is missing required `disposition` field",
         })?;
     let disposition = parse_parameter_disposition(dag, disposition_value, declaration)?;
-    Ok((*slot_int as usize, disposition))
+    Ok((slot, disposition))
 }
 
 fn parse_parameter_disposition(
@@ -6009,6 +6005,27 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
 
         // Negative slot: rejected before the bound check.
         let fields = bind(vec![entry(-1, borrowed)]);
+        assert!(matches!(
+            require_parameter_dispositions(&dag, &fields, bogus_decl, 1),
+            Err(EmitError::MalformedRealization { .. }),
+        ));
+
+        // Widened [i128] token magnitude must not truncate: slot > usize::MAX
+        // fails at conversion (P2, emit/parameter decoding).
+        let oob = (usize::MAX as i128) + 1;
+        let fields = bind(vec![FieldValue::Record(vec![
+            (
+                "slot".to_string(),
+                FieldValue::Literal(LiteralBits::Int(oob)),
+            ),
+            (
+                "disposition".to_string(),
+                FieldValue::Variant {
+                    constructor: borrowed,
+                    payload: vec![],
+                },
+            ),
+        ])]);
         assert!(matches!(
             require_parameter_dispositions(&dag, &fields, bogus_decl, 1),
             Err(EmitError::MalformedRealization { .. }),
