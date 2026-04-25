@@ -513,11 +513,14 @@ fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
 /// `unshare:`-pattern, read errors, `take` failure, and non-zero host-confirmation are unchanged;
 /// the latter is independent of this buffer case.
 ///
-/// **P5 (dissolution, `#[cfg(test)]` branch):** Retire the test-only empty-stderr relaunch when
-/// unshare(1) can be **typed** as “setup did not reach logical `exec`” without a second `Child`
-/// (e.g. namespace errors on a **separate** fd, `pidfd`/ns inspection, or a different sandbox
-/// primitive), or when the **hosted** Linux pool no longer hits the PID-1 / empty-fd quirk
-/// (kernel/cap/namespace policy that makes the first `wait` match the direct `exec` result).
+/// **P5 (dissolution — shared target):** Retire (1) the `#[cfg(test)]` empty-stderr relaunch and
+/// (2) the **non-zero exit** direct-`Child` “host confirmation” re-exec in
+/// `evaluate_execute_command_host_outcome` when unshare(1) / namespace setup can be **typed** as
+/// “setup did not reach logical `exec`” (or as a distinct setup failure) **without** a second
+/// `Child` — e.g. namespace or util-linux state on a **separate** fd, `pidfd`/ns inspection, or a
+/// different sandbox primitive — or when the **hosted** Linux pool no longer hits the PID-1 /
+/// empty-fd / spurious-exit quirk (kernel/cap/namespace policy that makes the first `wait` match
+/// the direct `exec` result). Both branches are bounded policy today; one retirement hook.
 #[cfg(target_os = "linux")]
 const UNSHARE_STDERR_SCAN_CAP: u64 = 8 * 1024;
 
@@ -601,7 +604,8 @@ fn unshare_sandbox_broken_relaunch_with_direct(
     if unshare_stderr_indicates_sandbox_setup_failure(&combined) {
         return true;
     }
-    // TODO(dissolution): remove `cfg!(test)` when module-doc P5 conditions are met.
+    // TODO(dissolution, P5): see module doc **P5 (shared target)** — same retirement as non-zero
+    // host-confirmation; remove this `#[cfg(test)]` arm when that lands.
     if combined.trim().is_empty() && cfg!(test) {
         // Piped stderr, read ok, no `unshare:`: second run only in test builds; production fail-closed.
         return true;
@@ -1022,6 +1026,9 @@ pub fn evaluate_execute_command_host_outcome(
                     // merged wrapper stderr shows **no** `unshare:` util-linux line, the wrapper did
                     // not report setup failure — **skip** the direct confirmation run (P2(d); T-PB-B).
                     // Read errors: conservative confirm (second `Child`).
+                    // TODO(dissolution, P5): shared retirement with `unshare_sandbox_broken_relaunch`
+                    // and `#[cfg(test)]` empty-stderr — see `unshare_sandbox_broken_relaunch_with_direct`
+                    // module doc **P5 (shared target)**.
                     let merged =
                         unshare_merged_wrapper_stderr_read(&mut child, &unshare_stderr_drain);
                     match merged {
