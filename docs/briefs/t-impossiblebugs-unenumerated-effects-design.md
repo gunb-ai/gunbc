@@ -181,15 +181,6 @@ Both answer structurally. No new substrate needed for either.
 
 Stronger framing than the Q1 amendment: *"tracking effects as a separate taxonomy IS the bug pattern, dissolved by construction. Operations are intrinsically read-shaped or write-shaped or transactional via their type-signature shape; consumers walk the signatures directly; there is no parallel taxonomy to declare or maintain."*
 
-## Q5 — Asymmetric tightening (the only declaration-value exception)
-
-The closed-system framing does NOT preclude callers from constraining what callees they're willing to invoke. Two exception cases retain declaration value:
-
-- **Asymmetric tightening at caller**: a caller declares "I only invoke functions whose effect set ⊆ {Read}". Structural type matching at the call site fails for any callee whose body composes effects beyond Read. **Caller-side constraint, structural enforcement, no separate lens.**
-- **Override for test/correctness pinning**: rare; allows pinning a tighter contract for testing purposes. Same shape — caller-side constraint.
-
-Neither is "annotate the callee with `effects [...]`". Both are caller-pins-tighter-than-derive.
-
 ## Q6 — Director-actionable recommendation
 
 **Outcome: (a) closed-system framing.**
