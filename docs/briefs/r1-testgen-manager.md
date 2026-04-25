@@ -250,7 +250,11 @@ Decisions log (append as they happen):
   `t_pb_b_1_dag_runner_test::lower` keeps the **empty module diagnostics**
   compile-smoke receipt for each declaring `tests/dag/*.dag` harness, then
   `TestRunner::run_suite` proves embedded `TestClaim` predicates (`ClaimResult::Pass`
-  for every claim — orthogonal to the outer harness diagnostic check):
+  for every claim — orthogonal to the outer harness diagnostic check). **Implementation
+  (current `lower` in `t_pb_b_1_dag_runner_test.rs`):** only `Ok(dag)` returns, with an
+  explicit `assert!(dag.diagnostics().is_empty())` on that arm; `Err(Semantic(_))` **panics**
+  (not a success path) — the declaring harness must compile with an empty module
+  diagnostic table before `run_suite` runs.
   - `t_pb_b_1_pipeline_smoke_dag_lowers_cleanly` →
     `t_pb_b_1_dag_runner_test::t_pb_b_1_pipeline_smoke_suite_passes_through_runner`
     / suite `suite_pipeline_pipe_unary` / claim `claim_pipe_unary_compiles`
