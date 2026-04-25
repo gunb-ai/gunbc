@@ -1,5 +1,15 @@
 # PB-1 — Data-driven bootstrap loader `(XXL)`
 
+> **Scope note (Pre-promotion Deliverable 2 amendment, 2026-04-24).** PB-1
+> is **subsumed under the Pure Bootstrap to Zero program** per
+> [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md)
+> §"Subsumed lanes". Lane-owners report through the
+> [Zero-Floor Program Manager](pure-bootstrap-zero-manager.md) (parallel to
+> R2). PB-1's per-sub-lane work (a-e) is unchanged; the **non-goals
+> below are revised** so PB-1's downstream consumers see the 0-floor
+> framing rather than the prior ≤5-floor framing. See "Non-goals" below
+> for the inversion.
+
 ## Context
 
 Today `Dag::new()` runs the full compiler pipeline (tokenize + parse + lower) on `include_str!`'d `.dag` source files every time a `Dag` is constructed. This means:
@@ -83,11 +93,24 @@ Once PB-1-a through PB-1-d land:
 
 ## Non-goals
 
-- **Not deleting `tokenize.rs` / `parse.rs` / `lower.rs` / `infer.rs` / `emit.rs`** — PB-1 removes runtime-at-bootstrap *use* of them. Their dissolution as files is separate work (SG-2b, SG-3b proper, SG-4, Lane 1e).
-- **Not a format change for the `Dag` at runtime** — generated constructors produce the same `Dag` structure the runtime parse produces.
-- **Not a binary blob format** — emitted Rust source (matches v2's proven pattern). The design doc explicitly notes blob was considered and rejected.
-- **Not touching `.dag` user-facing syntax** — this is a stage0 runtime change only.
-- **Not changing the `Dag` builder API** — TM-1's builders are the surface; PB-1 uses them as-is.
+> **Revised under 0-floor (Pre-promotion Deliverable 2, 2026-04-24).** Three
+> non-goals from the ≤5-floor era invert under
+> [`design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md). PB-1
+> is now the **first phase of a chain that ends with all of those files
+> generated**. The retained non-goals below preserve PB-1's bounded scope
+> within the chain; the inverted non-goals are absorbed into sibling
+> PB-* program lanes.
+
+**Inverted (absorbed into sibling Zero-Floor lanes):**
+
+- ~~**Not deleting `tokenize.rs` / `parse.rs` / `lower.rs` / `infer.rs` / `emit.rs`**~~ — under 0-floor these files **do** retire. Out-of-scope for PB-1 but **in-scope for the Zero-Floor program**: lowering retires under PB-4, inference under PB-5, emit cluster under PB-6, parse/tokenize under their own PB-* sub-lanes (per [`design-pure-bootstrap-zero-audit.md`](../design-pure-bootstrap-zero-audit.md) lane assignments). PB-1 still doesn't delete them itself, but no longer asserts they remain as a long-term shape.
+- ~~**Not a format change for the `Dag` at runtime**~~ — under 0-floor `dag.rs` itself is **generated from `src/v3/std/substrate.dag`** (PB-Substrate lane). The `Dag` runtime format is allowed to evolve as the substrate model evolves; PB-1's generated constructors must keep pace with whatever shape PB-Substrate emits. Cross-manager substrate-shape coordination is the Zero-Floor Manager's responsibility per the brief's bidirectional Grounding-coordination protocol.
+- ~~**Not changing the `Dag` builder API**~~ — under 0-floor `dag/builder.rs` is in PB-Tier1-Sweep (regenerates with substrate types). PB-1's sub-lanes use whatever builder API exists at their landing time; the API is no longer load-bearing as a fixed surface.
+
+**Retained (PB-1's bounded scope within the chain):**
+
+- **Not a binary blob format** — emitted Rust source (matches v2's proven pattern). PB-1 specifically chooses constructor-emission over binary serialization. The Zero-Floor program does not revisit this; binary-blob remains rejected for PB-1's authority migration.
+- **Not touching `.dag` user-facing syntax** — PB-1 is a stage0 runtime change only. User-facing `.dag` surface evolves under R1 T-Sub / T-P0 (already-landed) and future surface programs, not under PB-1.
 
 ## Size
 
