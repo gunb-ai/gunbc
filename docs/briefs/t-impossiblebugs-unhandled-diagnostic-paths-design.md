@@ -286,12 +286,27 @@ Slice:
 3. **Removal sub-lane(s)**: one PR per partial-op class with
    - the partial-form removal (or retype),
    - the total replacement (if a new shape is needed),
-   - regression tests demonstrating the partial form no longer parses
-     or no longer dispatches,
+   - regression tests demonstrating the partial form is no longer
+     accepted at the surface (the specific diagnostic class depends
+     on the closure shape — see acceptance criterion below),
    - migration of any in-tree callers to the total form.
-4. **Acceptance**: for each closed class, a test asserting the partial
-   form produces a `ResolveError` (or parse error) at the surface, and
-   the total form compiles.
+4. **Acceptance**: for each closed class, a test asserting the
+   partial form produces a structured diagnostic at the surface
+   matched to the closure shape, AND the total form compiles. The
+   appropriate diagnostic varies:
+   - **Removal of the partial form** (e.g., remove the `[i]`
+     indexing surface) → `ResolveError` or parse error.
+   - **Return-retype** (e.g., `OrderedRing.div: fn(T,T) -> Result<T,
+     DivideByZero>`) → `TypeMismatch` at any stale bare site
+     (Result<Int> ≠ Int) — the operator still parses and
+     dispatches; the partiality manifests as a type-shape mismatch
+     against any caller assuming the old return.
+   - **Total-only retype** (e.g., `index: fn(Int) -> T?`) →
+     `TypeMismatch` at any stale site that consumed the bare `T`
+     directly.
+   The acceptance test must name the expected diagnostic class for
+   the chosen shape; "ResolveError or parse error" alone is too
+   narrow for return-retype closures.
 
 This sequencing avoids:
 
