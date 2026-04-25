@@ -1040,12 +1040,14 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                 );
             }
             PortState::Resolved(actual) => {
-                if let TransformTarget::Operator(op_kind) = &t.target {
-                    if let Some(diag) =
-                        phantom_unit_mismatch(dag, *op_kind, expected_ty, actual, &t.span)
-                    {
-                        return Decision::Fail(t.output, diag);
-                    }
+                if let Some(diag) = phantom_unit_mismatch(
+                    dag,
+                    transform_target_display_name(dag, &t.target),
+                    expected_ty,
+                    actual,
+                    &t.span,
+                ) {
+                    return Decision::Fail(t.output, diag);
                 }
                 if !type_shapes_equivalent(dag, actual, expected_ty) {
                     if is_retryable_generic_decl(dag, actual.declaration)
@@ -1084,7 +1086,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
 
 fn phantom_unit_mismatch(
     dag: &Dag,
-    op_kind: OperatorKind,
+    context: String,
     expected_ty: &TypeShape,
     actual_ty: &TypeShape,
     span: &SourceSpan,
@@ -1137,7 +1139,7 @@ fn phantom_unit_mismatch(
         };
         if expected_arg.value != actual_arg.value {
             return Some(Diagnostic::UnitMismatch {
-                operator: crate::operators::symbol(op_kind),
+                operator: context,
                 parameter: phantom_parameter_display_name(dag, phantom.parameter),
                 expected: TypeShape::new(expected_arg.value),
                 actual: TypeShape::new(actual_arg.value),
@@ -4486,6 +4488,12 @@ fn declaration_shapes_equivalent(
             },
         ) => {
             declaration_shapes_equivalent(dag, *lhs_template, *rhs_template, depth + 1)
+                && phantom_arguments_equivalent_for_shape(
+                    dag,
+                    *lhs_template,
+                    lhs_arguments,
+                    rhs_arguments,
+                )
                 && lhs_arguments.len() == rhs_arguments.len()
                 && lhs_arguments
                     .iter()
@@ -4553,6 +4561,43 @@ fn declaration_shapes_equivalent(
         }
         _ => false,
     }
+}
+
+fn phantom_arguments_equivalent_for_shape(
+    dag: &Dag,
+    template: DeclarationId,
+    lhs_arguments: &[TemplateArgument],
+    rhs_arguments: &[TemplateArgument],
+) -> bool {
+    let template_decl = dag.declaration(template);
+    for phantom in &template_decl.phantom_params {
+        if require_abelian_group_phantom_algebra(
+            dag,
+            phantom.algebra,
+            phantom.parameter,
+            &synthetic_span(),
+        )
+        .is_err()
+        {
+            return false;
+        }
+        let Some(lhs_arg) = lhs_arguments
+            .iter()
+            .find(|arg| arg.parameter == phantom.parameter)
+        else {
+            return false;
+        };
+        let Some(rhs_arg) = rhs_arguments
+            .iter()
+            .find(|arg| arg.parameter == phantom.parameter)
+        else {
+            return false;
+        };
+        if lhs_arg.value != rhs_arg.value {
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -4921,6 +4966,30 @@ mod bool_logical_operator_arrow_tests {
             vec![unsupported_lhs, unsupported_rhs],
             SourceSpan::new("<money-unit-test>", 2, 3),
         );
+        let accept_eur = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: accept_eur,
+            name: Some("accept_eur".to_string()),
+            connective: TypeConnective::Arrow {
+                inputs: vec![money_eur],
+                output: money_eur,
+                body: ArrowBody::NoBody,
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 3, 4),
+        });
+        let callable_lhs = dag.alloc_port_with_shape(TypeShape::new(money_usd));
+        let callable_output = dag.push_transform(
+            TransformTarget::Callable(accept_eur),
+            vec![callable_lhs],
+            SourceSpan::new("<money-unit-test>", 3, 4),
+        );
 
         infer(&mut dag);
 
@@ -4981,6 +5050,26 @@ mod bool_logical_operator_arrow_tests {
                     if name.contains("unsupported phantom algebra CurrencyMonoid")
             ),
             "unexpected diagnostic: {unsupported_diag:?}"
+        );
+        let callable_diag = dag
+            .diagnostics()
+            .get(callable_output)
+            .expect("callable boundary should enforce phantom units");
+        assert!(
+            matches!(
+                callable_diag,
+                Diagnostic::UnitMismatch {
+                    operator,
+                    parameter,
+                    expected,
+                    actual,
+                    ..
+                } if operator == "accept_eur"
+                    && parameter == "C"
+                    && expected.declaration == eur
+                    && actual.declaration == usd
+            ),
+            "unexpected diagnostic: {callable_diag:?}"
         );
     }
 
