@@ -455,7 +455,7 @@ fn unshare_sandbox_broken_relaunch_with_direct(
     if !from_unshare {
         return false;
     }
-    let Some(mut h) = child.stderr.take() else {
+    let Some(h) = child.stderr.take() else {
         // Cannot inspect; the exit code from `unshare(1)` may be a setup artifact — retry direct.
         return true;
     };
