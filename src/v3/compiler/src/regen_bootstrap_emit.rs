@@ -6,8 +6,9 @@ use crate::dag::{
     ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern,
     CardinalityBound, Cluster, ClusterId, ComparisonOp, Dag, Declaration, DeclarationId, Field,
     FieldValue, IntraClusterCall, LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent,
-    NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PortId, PortState,
-    TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueBody, ValueNode,
+    NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PhantomParameter,
+    PhantomParameterAlgebra, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
+    TypeConnective, ValueBody, ValueNode,
 };
 use crate::diagnostics::Diagnostic;
 
@@ -115,11 +116,12 @@ fn render_declarations(declarations: &[Declaration]) -> String {
 
 fn render_declaration(declaration: &Declaration) -> String {
     format!(
-        "Declaration {{ id: {}, name: {}, connective: {}, type_params: {}, meta_tag: {}, specialization_parent: {}, inhabits: {}, value_body: {}, refinement: {}, span: {} }}",
+        "Declaration {{ id: {}, name: {}, connective: {}, type_params: {}, phantom_params: {}, meta_tag: {}, specialization_parent: {}, inhabits: {}, value_body: {}, refinement: {}, span: {} }}",
         render_declaration_id(declaration.id),
         render_opt_string(declaration.name.as_deref()),
         render_type_connective(&declaration.connective),
         render_declaration_id_vec(&declaration.type_params),
+        render_phantom_params(&declaration.phantom_params),
         render_opt_declaration_id(declaration.meta_tag),
         render_opt_declaration_id(declaration.specialization_parent),
         render_opt_declaration_id(declaration.inhabits),
@@ -127,6 +129,29 @@ fn render_declaration(declaration: &Declaration) -> String {
         render_opt_declaration_id(declaration.refinement),
         render_source_span(&declaration.span),
     )
+}
+
+fn render_phantom_params(params: &[PhantomParameter]) -> String {
+    if params.is_empty() {
+        return "Vec::new()".to_string();
+    }
+    let rendered: Vec<String> = params
+        .iter()
+        .map(|param| {
+            format!(
+                "PhantomParameter {{ parameter: {}, algebra: {} }}",
+                render_declaration_id(param.parameter),
+                render_phantom_parameter_algebra(param.algebra)
+            )
+        })
+        .collect();
+    format!("vec![{}]", rendered.join(", "))
+}
+
+fn render_phantom_parameter_algebra(algebra: PhantomParameterAlgebra) -> &'static str {
+    match algebra {
+        PhantomParameterAlgebra::AbelianGroup => "PhantomParameterAlgebra::AbelianGroup",
+    }
 }
 
 fn render_type_connective(connective: &TypeConnective) -> String {
@@ -604,6 +629,20 @@ fn render_diagnostic(diagnostic: &Diagnostic) -> String {
         ),
         Diagnostic::ResolveError { name, span, fixes } => format!(
             "Diagnostic::ResolveError {{ name: {name:?}.to_string(), span: {}, fixes: {} }}",
+            render_source_span(span),
+            render_corrections(fixes),
+        ),
+        Diagnostic::UnitMismatch {
+            operator,
+            parameter,
+            expected,
+            actual,
+            span,
+            fixes,
+        } => format!(
+            "Diagnostic::UnitMismatch {{ operator: {operator:?}.to_string(), parameter: {parameter:?}.to_string(), expected: TypeShape::new({}), actual: TypeShape::new({}), span: {}, fixes: {} }}",
+            render_declaration_id(expected.declaration),
+            render_declaration_id(actual.declaration),
             render_source_span(span),
             render_corrections(fixes),
         ),

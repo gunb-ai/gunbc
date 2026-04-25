@@ -30,6 +30,7 @@ type DiagnosticKind
   = TokenizerError
   | ParseError
   | TypeMismatch
+  | UnitMismatch
   | ArityMismatch
   | ResolveError
 

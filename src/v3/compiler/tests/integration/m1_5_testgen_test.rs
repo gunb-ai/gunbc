@@ -496,6 +496,7 @@ fn diagnostic_kind(diag: &Diagnostic) -> &'static str {
         Diagnostic::TokenizerError { .. } => "TokenizerError",
         Diagnostic::ParseError { .. } => "ParseError",
         Diagnostic::TypeMismatch { .. } => "TypeMismatch",
+        Diagnostic::UnitMismatch { .. } => "UnitMismatch",
         Diagnostic::ArityMismatch { .. } => "ArityMismatch",
         Diagnostic::ResolveError { .. } => "ResolveError",
         Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
@@ -516,6 +517,7 @@ fn diagnostic_detail(diag: &Diagnostic) -> String {
             actual,
             ..
         } => format!("{function} expected {expected}, got {actual}"),
+        Diagnostic::UnitMismatch { .. } => diag.message(),
         Diagnostic::ResolveError { name, .. } => name.clone(),
         Diagnostic::BranchConditionNotBool { .. } => diag.message(),
     }

@@ -156,11 +156,25 @@ type Declaration {
   name: String?
   connective: TypeConnective
   type_params: List<DeclarationId>
+  phantom_params: List<PhantomParameter>
   meta_tag: DeclarationId?
   inhabits: DeclarationId?
   value_body: ValueBody?
   span: SourceSpan
 }
+
+// Phantom parameters are compile-time-only parameters on a value wrapper.
+// The first landed consumer is `Dimension<Unit>`/Money-style arithmetic:
+// values under the same phantom compose under abelian-group closure, while
+// distinct phantom values produce a unit-mismatch diagnostic before ordinary
+// structural type mismatch.
+type PhantomParameter {
+  parameter: DeclarationId
+  algebra: PhantomParameterAlgebra
+}
+
+type PhantomParameterAlgebra
+  = AbelianGroup
 
 // 🟡 SCAFFOLD. Arithmetic operators inherit the operator-shim
 // dissolution trigger: surface-operator syntax still lowers through

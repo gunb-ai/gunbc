@@ -3537,6 +3537,7 @@ mod tests {
             name: Some("duplicate_rust_clean_emission_binding".to_string()),
             connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(binding_meta)),
             type_params: Vec::new(),
+            phantom_params: Vec::new(),
             meta_tag: Some(binding_meta),
             specialization_parent: None,
             inhabits: None,

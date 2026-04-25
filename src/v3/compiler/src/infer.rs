@@ -247,6 +247,7 @@ fn ensure_optional_match_disj(
             }],
         },
         type_params: Vec::new(),
+        phantom_params: Vec::new(),
         meta_tag: None,
         specialization_parent: None,
         inhabits: None,
@@ -263,6 +264,7 @@ fn ensure_optional_match_disj(
             children: Vec::new(),
         },
         type_params: Vec::new(),
+        phantom_params: Vec::new(),
         meta_tag: None,
         specialization_parent: None,
         inhabits: None,
@@ -288,6 +290,7 @@ fn ensure_optional_match_disj(
             ],
         },
         type_params: Vec::new(),
+        phantom_params: Vec::new(),
         meta_tag: None,
         specialization_parent: None,
         inhabits: None,
@@ -1036,7 +1039,30 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                     },
                 );
             }
-            PortState::Resolved(actual) if type_shapes_equivalent(dag, actual, expected_ty) => {
+            PortState::Resolved(actual) => {
+                if let TransformTarget::Operator(op_kind) = &t.target {
+                    if let Some(diag) =
+                        phantom_unit_mismatch(dag, *op_kind, expected_ty, actual, &t.span)
+                    {
+                        return Decision::Fail(t.output, diag);
+                    }
+                }
+                if !type_shapes_equivalent(dag, actual, expected_ty) {
+                    if is_retryable_generic_decl(dag, actual.declaration)
+                        || is_retryable_generic_decl(dag, expected_ty.declaration)
+                    {
+                        return Decision::Retry;
+                    }
+                    return Decision::Fail(
+                        t.output,
+                        Diagnostic::TypeMismatch {
+                            expected: *expected_ty,
+                            actual: *actual,
+                            span: t.span.clone(),
+                            fixes: Vec::new(),
+                        },
+                    );
+                }
                 // DB-11 (3a.3) refinement discharge. Structural type
                 // equivalence just passed; now check that any refinement
                 // declared on the callee's parameter type is also carried
@@ -1051,25 +1077,70 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                     return Decision::Fail(t.output, diag);
                 }
             }
-            PortState::Resolved(actual) => {
-                if is_retryable_generic_decl(dag, actual.declaration)
-                    || is_retryable_generic_decl(dag, expected_ty.declaration)
-                {
-                    return Decision::Retry;
-                }
-                return Decision::Fail(
-                    t.output,
-                    Diagnostic::TypeMismatch {
-                        expected: *expected_ty,
-                        actual: *actual,
-                        span: t.span.clone(),
-                        fixes: Vec::new(),
-                    },
-                );
-            }
         }
     }
     Decision::Set(t.output, signature.output)
+}
+
+fn phantom_unit_mismatch(
+    dag: &Dag,
+    op_kind: OperatorKind,
+    expected_ty: &TypeShape,
+    actual_ty: &TypeShape,
+    span: &SourceSpan,
+) -> Option<Diagnostic> {
+    let expected_inst = instantiation_parts(dag, expected_ty.declaration)?;
+    let actual_inst = instantiation_parts(dag, actual_ty.declaration)?;
+    if expected_inst.template != actual_inst.template {
+        return None;
+    }
+    let template = dag.declaration(expected_inst.template);
+    for phantom in &template.phantom_params {
+        let expected_arg = expected_inst
+            .arguments
+            .iter()
+            .find(|arg| arg.parameter == phantom.parameter)?;
+        let actual_arg = actual_inst
+            .arguments
+            .iter()
+            .find(|arg| arg.parameter == phantom.parameter)?;
+        if expected_arg.value != actual_arg.value {
+            return Some(Diagnostic::UnitMismatch {
+                operator: crate::operators::symbol(op_kind),
+                parameter: phantom_parameter_display_name(dag, phantom.parameter),
+                expected: TypeShape::new(expected_arg.value),
+                actual: TypeShape::new(actual_arg.value),
+                span: span.clone(),
+                fixes: Vec::new(),
+            });
+        }
+    }
+    None
+}
+
+struct InstantiationParts<'a> {
+    template: DeclarationId,
+    arguments: &'a [crate::dag::TemplateArgument],
+}
+
+fn instantiation_parts(dag: &Dag, declaration: DeclarationId) -> Option<InstantiationParts<'_>> {
+    match &dag.declaration(declaration).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => Some(InstantiationParts {
+            template: *template,
+            arguments,
+        }),
+        _ => None,
+    }
+}
+
+fn phantom_parameter_display_name(dag: &Dag, parameter: DeclarationId) -> String {
+    match &dag.declaration(parameter).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) => name.clone(),
+        _ => declaration_display_name(dag, parameter),
+    }
 }
 
 /// DB-11 (3a.3) call-site refinement discharge. Returns `None` when
@@ -2308,6 +2379,7 @@ fn resolve_callable_targets(dag: &mut Dag) -> bool {
                     arguments: rewrite.arguments,
                 },
                 type_params: Vec::new(),
+                phantom_params: Vec::new(),
                 meta_tag: None,
                 specialization_parent: None,
                 inhabits: None,
@@ -2830,6 +2902,7 @@ fn materialize_specialized_payload_record(
             children: specialized_children,
         },
         type_params: Vec::new(),
+        phantom_params: Vec::new(),
         meta_tag: None,
         specialization_parent: None,
         inhabits: None,
@@ -2890,6 +2963,7 @@ pub(crate) fn concretize_decl_with_subst(
                     arguments: specialized_arguments,
                 },
                 type_params: Vec::new(),
+                phantom_params: Vec::new(),
                 meta_tag: None,
                 specialization_parent: None,
                 inhabits: None,
@@ -2915,6 +2989,7 @@ pub(crate) fn concretize_decl_with_subst(
                     bound,
                 },
                 type_params: Vec::new(),
+                phantom_params: Vec::new(),
                 meta_tag: None,
                 specialization_parent: None,
                 inhabits: None,
@@ -3125,6 +3200,7 @@ fn materialize_substituted_refined_decl(
             body: ArrowBody::UserDefined(bind_id),
         },
         type_params: Vec::new(),
+        phantom_params: Vec::new(),
         meta_tag: None,
         specialization_parent: None,
         inhabits: None,
@@ -3140,6 +3216,7 @@ fn materialize_substituted_refined_decl(
         name: None,
         connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(substituted_base)),
         type_params: Vec::new(),
+        phantom_params: Vec::new(),
         meta_tag: None,
         specialization_parent: None,
         inhabits: None,
@@ -4366,7 +4443,9 @@ fn declaration_shapes_equivalent(
 #[cfg(test)]
 mod bool_logical_operator_arrow_tests {
     use super::*;
+    use crate::dag::{PhantomParameter, PhantomParameterAlgebra};
     use crate::infer_helpers::filter_non_self_template_arguments;
+    use crate::operators::ArithmeticOp;
 
     #[test]
     fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {
@@ -4400,6 +4479,178 @@ mod bool_logical_operator_arrow_tests {
         assert_eq!(sig.inputs[0].declaration, bool_shape.declaration);
         assert_eq!(sig.inputs[1].declaration, bool_shape.declaration);
         assert_eq!(sig.output.declaration, bool_shape.declaration);
+    }
+
+    #[test]
+    fn arithmetic_operator_checks_abelian_phantom_unit_closure_before_type_mismatch() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("<money-unit-test>", 0, 1);
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+
+        let currency = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: currency,
+            name: Some("Currency".to_string()),
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: usd,
+            name: Some("USD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: currency,
+                arguments: vec![],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let eur = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: eur,
+            name: Some("EUR".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: currency,
+                arguments: vec![],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let money = dag.alloc_declaration_id();
+        let c_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: money,
+            name: Some("Money".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "amount".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: vec![c_param],
+            phantom_params: vec![PhantomParameter {
+                parameter: c_param,
+                algebra: PhantomParameterAlgebra::AbelianGroup,
+            }],
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        dag.push_declaration(Declaration {
+            id: c_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("C".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+
+        let money_usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: money_usd,
+            name: Some("MoneyUSD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: money,
+                arguments: vec![TemplateArgument {
+                    parameter: c_param,
+                    value: usd,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let money_eur = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: money_eur,
+            name: Some("MoneyEUR".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: money,
+                arguments: vec![TemplateArgument {
+                    parameter: c_param,
+                    value: eur,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+
+        let lhs = dag.alloc_port_with_shape(TypeShape::new(money_usd));
+        let rhs_same = dag.alloc_port_with_shape(TypeShape::new(money_usd));
+        let rhs_other = dag.alloc_port_with_shape(TypeShape::new(money_eur));
+        let ok_output = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![lhs, rhs_same],
+            span.clone(),
+        );
+        let bad_output = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![lhs, rhs_other],
+            span,
+        );
+
+        infer(&mut dag);
+
+        assert_eq!(
+            dag.port(ok_output).state(),
+            &PortState::Resolved(TypeShape::new(money_usd))
+        );
+        let bad_diag = dag
+            .diagnostics()
+            .get(bad_output)
+            .expect("mismatched phantom unit should fail on operator output");
+        assert!(
+            matches!(
+                bad_diag,
+                Diagnostic::UnitMismatch {
+                    parameter,
+                    expected,
+                    actual,
+                    ..
+                } if parameter == "C"
+                    && expected.declaration == usd
+                    && actual.declaration == eur
+            ),
+            "unexpected diagnostic: {bad_diag:?}"
+        );
     }
 
     #[test]
@@ -4531,6 +4782,7 @@ mod bool_logical_operator_arrow_tests {
                 arguments: args.clone(),
             },
             type_params: Vec::new(),
+            phantom_params: Vec::new(),
             meta_tag: None,
             specialization_parent: None,
             inhabits: None,
