@@ -71,6 +71,8 @@ mod tests {
     /// Pilot `extdeps/.../primitives.dag` / `RUST_PILOT_PRIMITIVES` decimal range
     /// strings must match this module’s `std/integer` name table — mechanical
     /// catch for drift (see **T-Ground-IntegerRangeSingleAuthority** in module doc).
+    /// **Dissolution:** remove this test when that trigger lands (single authority);
+    /// grep for `extdeps_pilot_range_strings` so it is not left as a permanent crutch.
     #[test]
     fn extdeps_pilot_range_strings_match_std_integer_name_table() {
         // Decimal endpoints copied from `dsl/extdeps/languages/rust/primitives.dag`
