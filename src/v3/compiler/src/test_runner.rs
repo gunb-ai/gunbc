@@ -1,3 +1,5 @@
+use std::process::Command;
+
 use crate::dag::{
     Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, Path, PortId, PortState,
     TypeConnective, ValueBody,
@@ -271,6 +273,98 @@ pub fn eval_algebraic_law_for_claim_program(
 /// material breadth (see `lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES`).
 const _: () = assert!(ASSOCIATIVITY_WITNESS_TRIPLES.len() > 1);
 
+// --- `TestPredicate::ExecuteCommand` (PB-Runtime) — shared by `TestRunner` and M1.5 testgen ---
+
+/// Extracts `(command, args, expect_exit_code)` from `ExecuteCommand` lowered payloads
+/// (positional `Conj` fields or a single `Record`). Matches `m1_5_testgen` historical parser.
+pub fn parse_execute_command_fields(
+    payload: &[FieldValue],
+) -> Option<(String, Vec<String>, i64)> {
+    match payload {
+        [FieldValue::Record(fields)] => {
+            let command = execute_command_string_field(fields, "command")?;
+            let expect_exit_code = fields
+                .iter()
+                .find(|(label, _)| label == "expect_exit_code")
+                .and_then(|(_, value)| match value {
+                    FieldValue::Literal(LiteralBits::Int(n)) => Some(*n),
+                    _ => None,
+                })?;
+            let args = fields
+                .iter()
+                .find(|(label, _)| label == "args")
+                .and_then(|(_, value)| list_string_literal_values(value))?;
+            Some((command, args, expect_exit_code))
+        }
+        [cmd, args, code] => {
+            let FieldValue::Literal(LiteralBits::String(command)) = cmd else {
+                return None;
+            };
+            let argv = list_string_literal_values(args)?;
+            let FieldValue::Literal(LiteralBits::Int(expect_exit_code)) = code else {
+                return None;
+            };
+            Some((command.clone(), argv, *expect_exit_code))
+        }
+        _ => None,
+    }
+}
+
+fn execute_command_string_field(
+    fields: &[(String, FieldValue)],
+    label: &str,
+) -> Option<String> {
+    fields
+        .iter()
+        .find(|(l, _)| l == label)
+        .and_then(|(_, v)| match v {
+            FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+}
+
+fn list_string_literal_values(value: &FieldValue) -> Option<Vec<String>> {
+    let FieldValue::List(items) = value else {
+        return None;
+    };
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        let FieldValue::Literal(LiteralBits::String(s)) = item else {
+            return None;
+        };
+        out.push(s.clone());
+    }
+    Some(out)
+}
+
+/// Spawns a host process and checks exit status. Used by the Rust `TestRunner` and the M1.5
+/// harness (single canonical path per PB-Runtime brief). Fail messages distinguish spawn error,
+/// missing exit code (signal), and exit-code mismatch.
+pub fn evaluate_execute_command_exit_code(
+    command: &str,
+    args: &[String],
+    expect_exit_code: i64,
+) -> ClaimResult {
+    let output = match Command::new(command).args(args).output() {
+        Ok(out) => out,
+        Err(err) => {
+            return ClaimResult::Fail(format!("ExecuteCommand spawn error ({command}): {err}"));
+        }
+    };
+    let Some(actual) = output.status.code().map(i64::from) else {
+        return ClaimResult::Fail(
+            "ExecuteCommand: child terminated by signal (no host exit code)".to_string(),
+        );
+    };
+    if actual == expect_exit_code {
+        ClaimResult::Pass
+    } else {
+        ClaimResult::Fail(format!(
+            "ExecuteCommand exit code mismatch: expected {expect_exit_code}, got {actual}"
+        ))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TestClaimValue {
     pub claim_name: String,
@@ -358,6 +452,7 @@ impl<'a> TestRunner<'a> {
                     "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
                     "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
                     "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
+                    "ExecuteCommand" => self.eval_execute_command(claim, &payload),
                     "MockBackedInvariant" => {
                         let inner = self.eval_mock_backed_invariant(claim, &payload);
                         if claim.requires.is_empty() {
@@ -927,6 +1022,34 @@ impl<'a> TestRunner<'a> {
                 "eval_algebraic_law gated on Associativity; helper cannot return UnsupportedLaw({law_label:?})"
             ),
         }
+    }
+
+    fn eval_execute_command(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(_) => {}
+            Err(CompileError::Semantic(_)) => {
+                return ClaimResult::Fail(
+                    "ExecuteCommand: claim program compiled with diagnostics (clean compile required)"
+                        .to_string(),
+                );
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "ExecuteCommand: claim program did not compile: {err:?}"
+                ));
+            }
+        }
+        let Some((command, args, expect_exit_code)) = parse_execute_command_fields(payload) else {
+            return ClaimResult::Fail(
+                "ExecuteCommand payload should be (String, List<String>, Int) — see verification.dag"
+                    .to_string(),
+            );
+        };
+        evaluate_execute_command_exit_code(&command, &args, expect_exit_code)
     }
 
     fn eval_cost_bounded(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
