@@ -561,6 +561,27 @@ fn unshare_merge_stderr_for_setup_scan(pre_wait: &[u8], post_read: &str) -> Stri
     s
 }
 
+/// Merges the wait-time drain with a blocking read of the rest of the wrapper’s piped `stderr` (8
+/// KiB total cap). Clears `child.stderr` if present. `Err(())` = no read handle, read error, or empty
+/// handle; callers treat that conservatively (e.g. relaunch / confirm).
+#[cfg(target_os = "linux")]
+fn unshare_merged_wrapper_stderr_read(
+    child: &mut std::process::Child,
+    pre_wait: &[u8],
+) -> Result<String, ()> {
+    use std::io::Read;
+    let Some(h) = child.stderr.take() else {
+        return Err(());
+    };
+    let pre_len = (pre_wait.len() as u64).min(UNSHARE_STDERR_SCAN_CAP) as usize;
+    let take_remain = UNSHARE_STDERR_SCAN_CAP.saturating_sub(pre_len as u64);
+    let mut buf = String::new();
+    if h.take(take_remain).read_to_string(&mut buf).is_err() {
+        return Err(());
+    }
+    Ok(unshare_merge_stderr_for_setup_scan(pre_wait, &buf))
+}
+
 #[cfg(target_os = "linux")]
 fn unshare_sandbox_broken_relaunch_with_direct(
     from_unshare: bool,
@@ -570,21 +591,13 @@ fn unshare_sandbox_broken_relaunch_with_direct(
     if !from_unshare {
         return false;
     }
-    let Some(h) = child.stderr.take() else {
-        // Cannot inspect; the exit code from `unshare(1)` may be a setup artifact — retry direct.
-        return true;
+    let combined = match unshare_merged_wrapper_stderr_read(child, pre_wait_drain) {
+        Ok(s) => s,
+        // Cannot read wrapper stderr: unshare(1) exit may still be a setup artifact — retry direct.
+        Err(()) => {
+            return true;
+        }
     };
-    use std::io::Read;
-    // Same total budget as a single 8 KiB `take` before the wait-loop capture (codex PR #792):
-    // merge pre-exit `unshare:…` lines seen during drain with any tail read after the child
-    // exits, without double-counting cap.
-    let pre_len = (pre_wait_drain.len() as u64).min(UNSHARE_STDERR_SCAN_CAP) as usize;
-    let take_remain = UNSHARE_STDERR_SCAN_CAP.saturating_sub(pre_len as u64);
-    let mut buf = String::new();
-    if h.take(take_remain).read_to_string(&mut buf).is_err() {
-        return true;
-    }
-    let combined = unshare_merge_stderr_for_setup_scan(pre_wait_drain, &buf);
     if unshare_stderr_indicates_sandbox_setup_failure(&combined) {
         return true;
     }
@@ -998,43 +1011,44 @@ pub fn evaluate_execute_command_host_outcome(
                 continue;
             }
             if from_unshare {
-                // P3/C-5: same fd as child stderr after exec; do not leave a piped `stderr` on a
-                // path that intentionally skips string-based setup detection.
-                let _ = child.stderr.take();
-            }
-            if from_unshare
-                && s.code()
+                let is_nonzero_match = s
+                    .code()
                     .map(i64::from)
                     .is_some_and(|c| c == expect_exit_code)
-                && expect_exit_code != 0
-            {
-                // The unshare(1) path can produce an exit that **matches** a non-zero
-                // `expect_exit_code` even when the host `exec` result would not (e.g. PID-1
-                // semantics in a new PID namespace) — so C-5 must not be read as "never re-run
-                // when the code already matches" without a direct `Child` confirmation for **non-
-                // zero** expected codes (PR #792 integration: `true` is 0, not 1, on the host).
-                //
-                // This branch runs **on every** non-zero match, not only “suspected” spurious: the
-                // command may run twice (side-effecting `TestClaim`s should assume idempotence on
-                // this Linux path or a future follow-up to narrow the trigger; Claude review, PR
-                // #792).
-                // TODO(narrow, T-PB-B): e.g. skip this confirmation when merged wrapper stderr
-                // (`unshare_merge_stderr_for_setup_scan` input: drain + post-wait read) contains **no**
-                // `unshare:`-prefixed line and the unshare(1) exit **already** matches
-                // `expect_exit_code` (P2(d) — re-exec is explicit, bounded policy, not a blanket
-                // double-build). Until then, `rustc`/`python3`-style work may run twice on every
-                // non-zero matching `Pass` on this path.
-                child = match build_execute_command_process(command, args).spawn() {
-                    Ok(c) => c,
-                    Err(e2) => {
-                        return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(format!(
-                            "ExecuteCommand spawn error ({command}) after unshare(1) host-exit \
-                             confirmation: {e2}"
-                        )));
+                    && expect_exit_code != 0;
+                if is_nonzero_match {
+                    // Non-zero + exit already matches: the unshare(1) path can (rarely) conflate
+                    // PID-1 or namespace semantics with a **direct** `Child` (see module docs). When
+                    // merged wrapper stderr shows **no** `unshare:` util-linux line, the wrapper did
+                    // not report setup failure — **skip** the direct confirmation run (P2(d); T-PB-B).
+                    // Read errors: conservative confirm (second `Child`).
+                    let merged =
+                        unshare_merged_wrapper_stderr_read(&mut child, &unshare_stderr_drain);
+                    match merged {
+                        Ok(m) if !unshare_stderr_indicates_sandbox_setup_failure(&m) => {
+                            // `break` below: trust the unshare(1) exit; `stderr` already read.
+                        }
+                        Ok(_) | Err(()) => {
+                            child = match build_execute_command_process(command, args).spawn() {
+                                Ok(c) => c,
+                                Err(e2) => {
+                                    return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(
+                                        format!(
+                                            "ExecuteCommand spawn error ({command}) after \
+                                             unshare(1) host-exit confirmation: {e2}"
+                                        ),
+                                    ));
+                                }
+                            };
+                            from_unshare = false;
+                            continue;
+                        }
                     }
-                };
-                from_unshare = false;
-                continue;
+                } else {
+                    // P3/C-5: same fd as child stderr after exec; do not leave a piped `stderr` on
+                    // paths that skip the merge+decision above.
+                    let _ = child.stderr.take();
+                }
             }
         }
         break s;
