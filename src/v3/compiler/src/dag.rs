@@ -1315,7 +1315,8 @@ fn arithmetic_descent_relation(
 }
 
 // Lens / arithmetic-descent: keep `i64` for legacy shrink-factor plumbing. Values outside
-// `i64` are omitted (`None`); a full i128 path here is follow-up (api-review, non-blocking).
+// `i64` are **intentionally** omitted (`None`) — not silent wrap/truncate of a value the
+// tokenizer could represent; a full i128 path here is follow-up (api-review, non-blocking).
 fn literal_int_at(dag: &Dag, port: PortId) -> Option<i64> {
     match dag.resolve_producer_opt(&port)? {
         Behavior::Value(value) => match &value.data {

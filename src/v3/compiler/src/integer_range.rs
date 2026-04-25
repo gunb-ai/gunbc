@@ -67,4 +67,38 @@ mod tests {
     fn u8_range() {
         assert_eq!(range_for_std_integer_name("UInt8"), Some((0, 255)));
     }
+
+    /// Pilot `extdeps/.../primitives.dag` / `RUST_PILOT_PRIMITIVES` decimal range
+    /// strings must match this module’s `std/integer` name table — mechanical
+    /// catch for drift (see **T-Ground-IntegerRangeSingleAuthority** in module doc).
+    #[test]
+    fn extdeps_pilot_range_strings_match_std_integer_name_table() {
+        // Decimal endpoints copied from `dsl/extdeps/languages/rust/primitives.dag`
+        // `rust_pilot_primitives` IntegerPrimitive rows (keep in sync on edits).
+        let rows: &[(&str, &str, &str, &str)] = &[
+            ("Int8", "i8", "-128", "127"),
+            ("Int16", "i16", "-32768", "32767"),
+            ("Int32", "i32", "-2147483648", "2147483647"),
+            ("Int64", "i64", "-9223372036854775808", "9223372036854775807"),
+            ("UInt8", "u8", "0", "255"),
+            ("UInt16", "u16", "0", "65535"),
+            ("UInt32", "u32", "0", "4294967295"),
+            ("UInt64", "u64", "0", "18446744073709551615"),
+        ];
+        for &(std_name, _pilot_name, lo_s, hi_s) in rows {
+            let lo: i128 = lo_s
+                .parse()
+                .unwrap_or_else(|e| panic!("pilot {std_name} min {lo_s:?}: {e}"));
+            let hi: i128 = hi_s
+                .parse()
+                .unwrap_or_else(|e| panic!("pilot {std_name} max {hi_s:?}: {e}"));
+            let t = range_for_std_integer_name(std_name)
+                .unwrap_or_else(|| panic!("std name {std_name} must have a range in this table"));
+            assert_eq!(
+                t,
+                (lo, hi),
+                "integer_range vs extdeps rust_pilot_primitives for {std_name} ({_pilot_name})"
+            );
+        }
+    }
 }

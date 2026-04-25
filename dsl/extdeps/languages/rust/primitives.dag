@@ -188,8 +188,12 @@ type RustPrimitive
       carrier: TargetCarrier
       is_copy: Bool
       overflow: IntegerOverflow
-      // Inclusive range endpoints (R2). `PilotIntegerRangeBound` rejects
-      // non-numerals; pair ordering + i128 fitness: T-Ground-PilotRangePairWitness.
+      // Inclusive range endpoints (R2). `std.types.PilotIntegerRangeBound` is a
+      // `String` refined to base-10 numeral form; that predicate is **not** lowered
+      // in the bootstrap graph yet, so the graph boundary is not fail-closed here.
+      // **Host (v3_grounding_pilot):** the mirror and unit tests lock base-10 shape,
+      // i128 parse, and `min <= max` for `rust_pilot_primitives` data until
+      // **T-Ground-PilotRangePairWitness** lands in substrate.
       range_min_inclusive: PilotIntegerRangeBound
       range_max_inclusive: PilotIntegerRangeBound
     }

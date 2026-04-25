@@ -399,6 +399,27 @@ pub fn ground(t: DagType) -> Result<&'static RustPrimitive, GroundingError> {
     find_inhabitant(dag_type_facts(t))
 }
 
+/// Host-side stand-in for `type PilotIntegerRangeBound = String where
+/// pattern(\"^[-+]?[0-9]+$\")` in `dsl/std/types.dag` while the refinement
+/// predicate is not lowered in the bootstrap graph (`<predicate not lowered>`
+/// placeholder in generated declarations). Fails closed on malformed text here
+/// so the hand mirror and `RUST_PILOT_PRIMITIVES` cannot silently drift.
+pub fn pilot_integer_range_bound_str_matches_types_dag_numeral_pattern(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    let b = s.as_bytes();
+    let i = if b.first().is_some_and(|&x| x == b'+' || x == b'-') {
+        1
+    } else {
+        0
+    };
+    if i >= s.len() {
+        return false; // `+` or `-` with no digits
+    }
+    s[i..].chars().all(|c| c.is_ascii_digit())
+}
+
 // =============================================================================
 // Phase 3 — routing-stability tests.
 //
@@ -601,10 +622,10 @@ mod tests {
         }
     }
 
-    /// R2 scaffold complement: `.dag` refines range text to base-10
-    /// numerals (`PilotIntegerRangeBound`); the mirror must still close
-    /// the interval witness (`min <= max`, i128-parsable) until
-    /// **T-Ground-PilotRangePairWitness** lands in substrate.
+    /// R2: host must enforce `std.types` `PilotIntegerRangeBound` surface
+    /// shape (base-10 numeral) because the graph refinement is not lowered
+    /// in bootstrap. Also closes `min <= max` and i128 as the witness until
+    /// **T-Ground-PilotRangePairWitness** .
     #[test]
     fn integer_primitive_range_text_parses_as_i128_and_orders() {
         for p in RUST_PILOT_PRIMITIVES {
@@ -615,6 +636,14 @@ mod tests {
                 ..
             } = p
             {
+                assert!(
+                    super::pilot_integer_range_bound_str_matches_types_dag_numeral_pattern(lo),
+                    "{target_name} range_min_inclusive {lo:?} must match base-10 numeral pattern (host guard; predicate not lowered in graph)"
+                );
+                assert!(
+                    super::pilot_integer_range_bound_str_matches_types_dag_numeral_pattern(hi),
+                    "{target_name} range_max_inclusive {hi:?} must match base-10 numeral pattern (host guard; predicate not lowered in graph)"
+                );
                 let a: i128 = lo
                     .parse()
                     .unwrap_or_else(|e| panic!("{target_name} min {lo:?} must parse: {e}"));
@@ -627,5 +656,29 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn numeral_pattern_matches_types_dag_regex_intent() {
+        let ok = |s: &str| {
+            assert!(
+                super::pilot_integer_range_bound_str_matches_types_dag_numeral_pattern(s),
+                "{s:?} expected match"
+            );
+        };
+        let bad = |s: &str| {
+            assert!(
+                !super::pilot_integer_range_bound_str_matches_types_dag_numeral_pattern(s),
+                "{s:?} expected reject"
+            );
+        };
+        ok("0");
+        ok("-128");
+        ok("18446744073709551615");
+        bad("");
+        bad("-");
+        bad("0x10");
+        bad(" 1");
+        bad("1a");
     }
 }

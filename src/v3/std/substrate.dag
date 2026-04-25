@@ -27,9 +27,15 @@ type DagPort {
 // R2: Payload type for signed literal *magnitude* before reconciliation to a
 // fixed `std/integer` width. **Not** `std.integer::Int` (default Int64) — that
 // name is the semantic / default-width user `Int`, while this leaf is the
-// substrate carrier for the literal's bits. Rust mirror: i128
-// (`regen_runtime_mirrors`: `IntLiteralMagnitude` -> `i128`); the graph, not
-// a comment+override, is the authority for the widening.
+// substrate identity for the literal carrier. The type has **no** width field
+// in-graph (empty record); the signed span is a **bridge** in regen, not
+// an extra data edge:
+//
+//   **Named bridge / dissolution: T-Substrate-IntLiteralMagnitudeRustI128** — regen
+//   (`regen_runtime_mirrors` / `regen_tokenize` `rust_type` name-keyed table)
+//   maps declaration `IntLiteralMagnitude` → `i128` for Rust, until a width
+//   (or `std.natural`) lives on the carrier in the graph. Keep one table per
+//   regen, not a second ad-hoc `Int` → `i128` override.
 //
 // 🟢 TERMINAL. LiteralBits matches `crate::LiteralBits` one-for-one.
 type IntLiteralMagnitude {

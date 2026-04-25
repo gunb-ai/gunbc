@@ -1130,6 +1130,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_primary(&mut self) -> Result<SurfaceExpr, Diagnostic> {
+        // Unary minus for integer magnitudes: lives in *this* file; `regen_parse`
+        // splices the fragment into `parse_generated.rs` (do not edit only the .rs).
         if matches!(self.peek().kind, TokenKind::Minus) {
             let minus = self.bump().clone();
             let inner = self.parse_primary()?;
