@@ -371,8 +371,10 @@ fn shell_argv_may_start_unbounded_background(args: &[String]) -> bool {
     }
 
     fn check_slice(args: &[String], depth: u32) -> bool {
+        // P3 / P4: if we cannot finish scanning, fail closed — a depth escape must not be taken as
+        // "no unbounded background" and allow a spawn past the policy guard (api-review codex 3a2a9f64).
         if depth > MAX_NEST {
-            return false;
+            return true;
         }
         for i in 0..args.len() {
             if &args[i] == "-c" {
@@ -2571,6 +2573,29 @@ mod execute_command_timebound_tests {
             panic!("expected fail-closed for env sh -c sh -ec + &, got {r:?}");
         };
         assert!(m.contains("background") || m.contains("P3") || m.contains("shell `-c`"));
+    }
+
+    /// P3 / P4: the nested shell scanner is bounded; exceeding it must not mean "no `&` → allow" (api-
+    /// review codex 3a2a9f64).
+    #[test]
+    fn sh_c_nesting_past_max_scan_depth_fails_closed_without_ampersand_in_scripts() {
+        use super::reject_unbounded_shell_background;
+        use super::shell_argv_may_start_unbounded_background;
+        let mut args = vec![String::from("sh"), String::from("-c"), String::from("true")];
+        for _ in 0..40 {
+            let mut t = vec![String::from("sh"), String::from("-c")];
+            t.extend_from_slice(&args);
+            args = t;
+        }
+        assert!(
+            shell_argv_may_start_unbounded_background(&args),
+            "depth-bound exhaustion must fail closed, not allow a spawn past the policy guard"
+        );
+        let r = reject_unbounded_shell_background("sh", &args);
+        assert!(
+            r.is_some(),
+            "expected policy fail when scan depth is exhausted, got {r:?}"
+        );
     }
 
     /// M1.5: policy `Fail` is `Err(ClaimResult)`, not propositional `false` (P3/DB-1, PR #792).
