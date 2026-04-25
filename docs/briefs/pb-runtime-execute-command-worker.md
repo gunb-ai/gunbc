@@ -82,7 +82,7 @@ Default expectation: accept the narrowing (the property is already implicit in t
 - [ ] Surface 2: `shell_exit_matches_allowlisted` (or its successor) generalizes from tautological-only to arbitrary; fail-closed panic at `:394-398` retired.
 - [ ] Both surfaces share execution mechanism (per manager lean (a)) OR PR description justifies parallel evaluators.
 - [ ] **Smoke test**: a TestClaim with `ExecuteCommand { command: "true", args: [], expect_exit_code: 0 }` still passes (preserves the existing behavior at the new allowlist boundary).
-- [ ] **Capability test**: a TestClaim with arbitrary command (suggest `ExecuteCommand { command: "echo", args: ["hi"], expect_exit_code: 0 }` and the negative case `expect_exit_code: 1`) demonstrates pass + fail paths.
+- [ ] **Capability test**: a TestClaim with arbitrary-but-cross-platform command demonstrates pass + fail paths. Suggested: `ExecuteCommand { command: "true", args: [], expect_exit_code: 0 }` (positive — already-allowlisted shape, smoke-tests the new path doesn't regress it) and `ExecuteCommand { command: "false", args: [], expect_exit_code: 0 }` (negative — exit-code 1 vs expected 0 → Fail). `true` / `false` are POSIX-standard and present on every Unix CI; avoid `echo` (PowerShell builtin vs Unix binary divergence). If Windows CI is in scope, surface command-choice to manager — POSIX-only smoke commands won't suffice.
 - [ ] **Boundary-test migration smoke**: at least one existing Rust-side boundary test (e.g., a rustc/python/go invocation) ports to a `TestClaim` ExecuteCommand declaration **end-to-end** — the cascade's claim becomes empirically exercised, not just structurally expressible. PR description names which boundary test ported.
 - [ ] `TESTING.md:195` capability-state callout updated to reflect the new state (foundation-only → arbitrary command).
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` passes.
@@ -114,8 +114,8 @@ Surface to Zero-Floor Manager.
 
 - Single PR. Title pattern: `feat(v3): PB-Runtime — ExecuteCommand runner extension (arbitrary command + args; closes T-PB-B PB-Runtime dependency)`.
 - PR description: cite this brief; cite the narrowed hermetic property + reasoning; cite which boundary test ported as the end-to-end smoke; cite TESTING.md:195 capability-state update.
-- On merge: Zero-Floor Manager confirms PB-Runtime ExecuteCommand-extension closure to Director; T-PB-B becomes unblocked on its PB-Runtime dependency; broader boundary-test migration can dispatch as separate work post-cascade.
+- On merge: Zero-Floor Manager confirms PB-Runtime ExecuteCommand-extension closure to Director, **explicitly citing T-PB-B's PB-Runtime dependency clearance** (per ROADMAP T-PB-B's updated dependency column from cascade #782). Director routes the T-PB-B unblock signal — R1 Self-hosting Manager has archived, so T-PB-B coordination flows through Director directly per the Decisions log on the program brief. Broader boundary-test migration can dispatch as separate work post-cascade.
 
 ## Cross-manager note
 
-No cross-manager signal needed at brief authoring time. If the migrated boundary test surfaces substrate-shape questions about `Int`'s exit-code semantics or the `ExecuteCommand` schema's expressiveness, surface to manager → Director per established cross-program coordination.
+No cross-manager signal needed at brief authoring time. **At worker landing time, the Director-facing "T-PB-B unblocked" signal is the load-bearing one** (per Reporting → On merge above) — call it out explicitly in the closure comment so Director can dispatch downstream T-PB-B work or signal whichever manager picks up the migration ledger. If the migrated boundary test surfaces substrate-shape questions about `Int`'s exit-code semantics or the `ExecuteCommand` schema's expressiveness, surface to manager → Director per established cross-program coordination.
