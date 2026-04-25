@@ -116,7 +116,7 @@ This sub-lane reshapes `SurfaceType.Arrow` to carry `List<ArrowInput>` (where `A
 - [ ] `parse_parser_body.txt` construction-site updates landed.
 - [ ] `parse_generated.rs` regenerated; no hand edits.
 - [ ] All `SurfaceType::Arrow` + `SurfaceItem::Fn`/`FnExternalBody` exhaustive-match sites updated; no new wildcard `_` arms.
-- [ ] Lowerer fail-closed on non-Arrow `signature`.
+- [ ] Lowerer destructures `FnSignature` exhaustively without wildcard arms (no runtime non-Arrow check needed — typed sub-carrier eliminates the case structurally per req 3).
 - [ ] Smoke tests for top-level fn + higher-order-type both produce the new shape.
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` / `clippy --all-targets -- -D warnings` / `fmt --all --check` clean.
 - [ ] DB-8 fixed-point converges bit-identically.
