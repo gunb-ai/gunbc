@@ -107,22 +107,77 @@ A redundancy lens walks the Bind sequence:
 
 `idempotency.dag` already walks workflow effect composition + computes idempotency from primitive algebraic properties. Same fold pattern as the other lenses; cited as proof the pattern works.
 
-## Q4 — What needs to land
+## Q4 — What needs to land (revised per Q5.5)
 
-This is **not** a substrate-extension lane. The substrate already exists:
+The closed-system foundation already exists at the substrate level:
 
-- ✅ `OperationEffect` taxonomy in `effects.dag` (Read/Upsert/Create/Append/Delete).
-- ✅ `derive_op_effect` at `effects.dag:722-755` already derives effects from HTTP method + path structurally (foundation of the closed-system shape).
-- ✅ Service primitives in `dsl/std/` + `dsl/extdeps/` carry typed effect signatures.
 - ✅ `Behavior` enum with the 5 primitives in `substrate.dag`.
+- ✅ Service primitives in `dsl/std/` + `dsl/extdeps/` carry **typed type-signature shapes** that structurally express read-vs-write (return derived value with resource unchanged → read; return modified resource → write). See Q5.5 for the deeper framing.
+- ⚠️ `OperationEffect` taxonomy in `effects.dag:262-506` (Read/Upsert/Create/Append/Delete) — **status pending Q5.5 audit-as-existence-check** (see below). Either retained as a normalized view derived from signature shape, or retired as parallel-representation.
+- ⚠️ `derive_op_effect` at `effects.dag:722-755` — same status; today derives from HTTP method + path, which IS the structural fact.
 
 What's needed:
 
-1. **Effects lens** at `src/v3/lenses/effect_enumeration.dag` (or sibling), parallel to `cost.dag` precedent. Walks the 5-behavior structure; composes effect set per the Q2 table; surfaces as a structural fact on each function declaration.
-2. **Generalize effect-derivation beyond HTTP** — any typed primitive that performs a side effect carries an effect signature (not just HTTP-derived ones). Audit existing `dsl/std/` primitives + tag.
-3. **Redundancy lens** (per aggressive reading) — referential-transparency proof for repeated identical reads with no intervening write. Compile-error-by-construction.
-4. **`reread(key)` primitive** in std/ — structurally tags legitimate re-read for the optimistic-lock / refresh-on-stale cases the redundancy lens would otherwise reject.
-5. **No parser surface, no `effects [...]` clause, no annotation**. Effects are the structural fact.
+1. **Effects lens** at `src/v3/lenses/effect_enumeration.dag` (or sibling), parallel to `cost.dag` precedent. Walks the 5-behavior structure; composes effect-classification per the Q2 table; surfaces as a structural fact on each function declaration. **Anchors on operation type-signature shape, not on hand-declared tags.**
+2. **Audit-as-existence-check** (formerly "tag every primitive"): verify that every effectful primitive in `dsl/std/` + `dsl/extdeps/` has a type signature that structurally derives the right effect classification (returned-modified-resource indicates write; returns-derived-value-only indicates read; etc.). **If any primitive requires a hand-declared tag because its signature doesn't structurally reveal the effect, that's the existence-proof that taxonomy retirement is needed (Q5.5 path (ii))**. If all primitives derive cleanly from signature shape, taxonomy can be retained as a normalized view (Q5.5 path (i)).
+3. **Resource-threading discipline for std/ primitives**: every external mutable resource must be modeled as a typed parameter that's returned modified (`log.info(msg, log: LogFile) → LogFile'`; sockets thread `Connection → Connection'`; etc.). Same pattern as IO-monad-style World-threading in pure-functional languages, without the monad — typed resource as parameter + returned-modified is the discipline. Forces the structural-signature-shape encoding at the substrate level. Audit (req 2) catches existing primitives that violate the discipline.
+4. **Redundancy lens** (per aggressive reading) — referential-transparency proof for repeated identical reads with no intervening write. Compile-error-by-construction.
+5. **`reread(key)` primitive** in std/ — structurally tags legitimate re-read for the optimistic-lock / refresh-on-stale cases the redundancy lens would otherwise reject.
+6. **Transactional-pattern lens** — derived structural fact from Bind composition + typed transaction primitives (`Transaction → Transaction'`). Lens walks the Bind chain and recognizes the begin-modify-commit shape structurally. Same closed-system fold.
+7. **No parser surface, no `effects [...]` clause, no annotation, no per-primitive tag declaration.** Effects are the structural fact (operation type-signature shape).
+
+## Q5 — Asymmetric tightening (the only declaration-value exception)
+
+The closed-system framing does NOT preclude callers from constraining what callees they're willing to invoke. Two exception cases retain declaration value:
+
+- **Asymmetric tightening at caller**: a caller declares "I only invoke functions whose composed effects ⊆ {read-shaped}". Structural type matching at the call site fails for any callee whose body composes write-shaped operations. **Caller-side constraint, structural enforcement via type-signature shape, no separate lens.**
+- **Override for test/correctness pinning**: rare; allows pinning a tighter contract for testing purposes. Same shape — caller-side constraint.
+
+Neither is "annotate the callee with `effects [...]`" or "tag the callee primitive with OperationEffect". Both are caller-pins-tighter-than-derive.
+
+## Q5.5 — OperationEffect taxonomy: retain as normalized view, or retire as parallel-representation?
+
+**Status: OPEN; resolution pending audit (Q4 req 2).**
+
+User's framing 2026-04-25 went one level deeper than the closed-system framing in Q1-Q5: *"having a Read effect might be a dual representation within our own language — i.e. the language should clearly know if it's reading something or writing something already"*.
+
+The deeper observation: a function's type-signature shape already structurally carries whether it reads or writes:
+- `service.get(id, svc) → User` (svc unchanged) is structurally a read.
+- `service.insert(data, svc) → UserService'` (svc modified-and-returned) is structurally a write.
+
+**The shape IS the effect.** A taxonomy `Read | Upsert | Create | Append | Delete` that names what the type signature already says is potentially `feedback_naming_is_aliasing` + `feedback_dissolve_bridges` + `feedback_parallel_representation_debt` firing at once.
+
+### Two paths
+
+**(i) OperationEffect taxonomy is a normalized view derived from signature shape.** Tags computed from operation type signatures (returned-modified-resource → write-shaped → tag as Upsert/Create; returns-derived-value-only → read-shaped → tag as Read). Per `feedback_naming_is_aliasing` — named types are namespaces over structural facts; tags are namespaces over the same. **Acceptable retention.** Idempotency lens + cost lens consumers continue to read tags; tags are computed from structure.
+
+**(ii) OperationEffect tags are required-to-be-declared per primitive.** Then they're parallel-representation to what the signature already carries. **Retire entirely**; consumers walk type signatures directly. Bigger reframe — touches existing landed substrate (`effects.dag`'s enum + `derive_op_effect` + `idempotency.dag`'s anchor consume OperationEffect today). Stronger discipline-claim.
+
+### Audit-as-existence-check (Q4 req 2 reframed)
+
+The audit decides:
+- **All effectful primitives in `dsl/std/` + `dsl/extdeps/` have type signatures that structurally derive the right effect classification** → path (i). Retain as normalized view; ensure no primitive declares its tag rather than deriving it.
+- **At least one effectful primitive requires a hand-declared tag because its signature doesn't structurally reveal the effect** → path (ii). The existence proof shows the taxonomy is parallel-representation; retire it.
+
+### Two design questions answered structurally (no new substrate)
+
+PM surfaced two cases that might not map cleanly to type-signature shape:
+
+1. **Operations whose external effects don't appear in their return type** — e.g., `log.info(msg)` returning Unit hides the file-write. **Resolution: every external mutable resource is modeled as a typed parameter that's returned modified.** `log.info(msg, log: LogFile) → LogFile'`. Sockets take `Connection`, return `Connection'`. File handles same. Forces the discipline at the type-signature level. Same pattern as Haskell IO monad's `World → (Result, World')` without the monad — typed resource threading is the discipline. **Existing primitives that violate this (e.g., logging that returns Unit) are the audit's existence-proof for path (ii).**
+
+2. **Atomicity / transactional grouping** — not a single-op property; it's a property of the COMPOSITION. **Resolution: transactional pattern is a derived structural fact from Bind composition + typed transaction primitives (`Transaction → Transaction'`).** A lens walks the Bind chain and recognizes the begin-modify-commit shape. Same closed-system fold pattern.
+
+Both answer structurally. No new substrate needed for either.
+
+### Director recommendation
+
+**Default expectation: path (ii).** User's deeper framing strongly suggests OperationEffect IS parallel-representation; the existence of `derive_op_effect` (deriving from HTTP method) is itself prior art that the structural fact is the authority and the tag is a renaming. Logging primitives that today return Unit are likely the audit's existence-proof.
+
+**If the audit produces a counterexample where path (i) is genuinely cleaner**, surface it in the implementation PR for re-decision. The default is retire.
+
+### THESIS amendment under (ii)
+
+Stronger framing than the Q1 amendment: *"tracking effects as a separate taxonomy IS the bug pattern, dissolved by construction. Operations are intrinsically read-shaped or write-shaped or transactional via their type-signature shape; consumers walk the signatures directly; there is no parallel taxonomy to declare or maintain."*
 
 ## Q5 — Asymmetric tightening (the only declaration-value exception)
 
