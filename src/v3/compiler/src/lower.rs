@@ -3597,6 +3597,7 @@ fn lower_fn_item_expr_body(
         observed => {
             let fn_decl = dag.declaration(fn_decl_id);
             let fn_decl_name = fn_decl.name.as_deref().unwrap_or(name).to_string();
+            let span = fn_decl.span.clone();
             report_declaration_error(
                 dag,
                 Diagnostic::ResolveError {
@@ -3606,7 +3607,7 @@ fn lower_fn_item_expr_body(
                          an Arrow connective for this Fn; observed connective: {observed:?}"
                     ),
                     fixes: Vec::new(),
-                    span: fn_decl.span.clone(),
+                    span,
                 },
             );
             return outer_scope;
