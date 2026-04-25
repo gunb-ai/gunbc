@@ -1,11 +1,14 @@
 # R2 Grounding Manager Brief
 
-**Status:** `PROPOSAL` — pending R2 proposal
-([`docs/r2-structure.md`](../r2-structure.md), PR #754) merge +
-R1 all-gates-green closure. Until then, this brief is the R2
-Grounding Manager's scope-in-preparation; it does not dispatch
-work. On R2 promotion, the `PROPOSAL` banner lifts and this brief
-becomes the live dispatch authority for the lane.
+**Status:** `PROPOSAL` (formal) → `ACTIVE` (Director-discretionary).
+Formal R2 promotion still pending R1 all-gates-green closure +
+[`docs/r2-structure.md`](../r2-structure.md) promotion to ROADMAP.
+Director-discretionary dispatch has been used since 2026-04-25 for
+T-Ground-Pilot (PR #765, merged) and T-Ground-Engine-Phase-1 audit
+(PR #768, merged). Engine implementation parked pending the loader-close
+PR (Director routed Route 1 on 2026-04-25; substrate ask is in flight as
+ad-hoc Director dispatch) — see [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md).
+Working state at the bottom of this brief reflects current dispatch state.
 
 ## Orient before reading
 
@@ -248,11 +251,11 @@ to director before dispatching full-reference work.
 
 Lane-owner dispatch status (update as sub-deliverables close):
 
-**T-Ground-Pilot:**
-- [ ] Rust primitive `.dag` declarations (i8–i64, u8–u64, bool, Unit)
-- [ ] Toy inhabitance-search engine
-- [ ] Routing-stability tests against pilot set (parity with current table)
-- [ ] Pilot receipt document
+**T-Ground-Pilot:** ✅ COMPLETE (PR #765 merged 2026-04-25 commit `2909f9e05`; receipt in [`grounding-pilot-receipt.md`](grounding-pilot-receipt.md))
+- [x] Rust primitive `.dag` declarations (i8–i64, u8–u64, bool, Unit)
+- [x] Toy inhabitance-search engine
+- [x] Routing-stability tests against pilot set (parity with current table)
+- [x] Pilot receipt document
 
 **T-Ground-Rust:**
 - [ ] Numeric types (integer, float, character)
@@ -278,11 +281,12 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [ ] Array, slice, map, struct, pointer
 - [ ] Function, interface, channel
 
-**T-Ground-Engine:**
-- [ ] Inhabitance-search walker
-- [ ] Minimum-satisfier selection
-- [ ] Fail-closed tie-breaking with structured diagnostic
-- [ ] Cross-type coercion paths (e.g., UTF-8 `Char ↔ u8`)
+**T-Ground-Engine:** ⏸️ PARKED — Phase 0 substrate audit complete (PR #768 merged 2026-04-25 commit `4afc0d794`); Director routed Route 1 (small loader-close, ad-hoc Director dispatch). Engine re-dispatches in sharpened-(b) form once the loader-close PR merges. See [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md).
+- [x] Phase 0 substrate audit (concluded escalation-class)
+- [ ] Inhabitance-search walker (Phase 1, blocked on loader-close PR)
+- [ ] Minimum-satisfier selection (Phase 1)
+- [ ] Fail-closed tie-breaking with structured diagnostic (Phase 1; pilot established the contract baseline)
+- [ ] Cross-type coercion paths (e.g., UTF-8 `Char ↔ u8`) (Phase 2; blocks on full-reference)
 
 **T-Ground-Tests:**
 - [ ] Routing-stability TestClaim variant declared
@@ -299,16 +303,30 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [ ] Remove `TypeRealization.carrier: String` field from `src/v3/std/emit_model.dag`
 - [ ] Remove emit-pipeline call sites reading the old surface
 - [ ] All test claims assert against the new structural authority (no residual reads of deleted scaffolding)
+- [ ] Delete `src/v3/grounding_pilot/` workspace member (scope-expansion confirmed in PR #765)
+- [ ] Delete Engine sibling crate if Route 1/3 dispatched as (b.i) (scope-expansion contingent on Director routing)
 - [ ] Track 13 closure PR lands — single step
 
 Decisions log (append as they happen):
 
-- _(none yet)_
+- **2026-04-25** — Pilot dispatched and merged under Director-discretionary dispatch (R2 promotion gates not yet formally fired). PR #765.
+- **2026-04-25** — Pilot lessons synthesized into [`grounding-pilot-receipt.md`](grounding-pilot-receipt.md). Five carry-forwards: Stratum-B finding, mirroring-as-substrate-ask, fail-closed contract baseline, SG-0 location reasoning, state-space discipline as full-reference precedent.
+- **2026-04-25** — Pilot's `RustPrimitive` partition (`IntegerPrimitive | NonIntegerPrimitive`) locked as full-reference precedent shape via codex P2 adjudication. Future widening to flat record is out of scope.
+- **2026-04-25** — Engine-Phase-1 brief landed (PR #767, `t-ground-engine-phase-1.md`). Audit-first discipline; no Rust-constant mirroring; variant-aware walker; SG-0 untouched.
+- **2026-04-25** — Engine-Phase-1 Phase 0 audit landed (PR #768, `t-ground-engine-substrate-audit.md`). Conclusion: both options (a) and (b) block on the same substrate gaps; escalation-class. Engine implementation parked.
+- **2026-04-25** — Engine substrate ask escalated to Director via [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md). Manager recommended Route 3: route Gap 1 close through Pure Bootstrap to Zero program (PB-1 / PB-Bootstrap-Process scope overlap). *(Past tense — overruled in next entry.)*
+- **2026-04-25** — Director chose **Route 1** (small loader-close, ad-hoc Director dispatch). Manager recommendation overruled with substantive reasoning: PB-1 migrates *existing* fixture sets; deciding the bootstrap shape includes a new fifth set is upstream of PB-1's pattern. Faster unblock: sharpened (b) Engine within days vs quarters for full Pure Bootstrap to Zero scope. Manager internalized the upstream-vs-pattern distinction for future cross-manager flagging.
 
 Open questions for director:
 
-- _(none yet — program is pre-dispatch)_
+- ~~**Engine substrate routing**~~ — RESOLVED 2026-04-25. Route 1 chosen by Director.
+- **R2 promotion timing** — formally still PROPOSAL pending R1 all-gates-green closure. R1 Census Close landed (PR #763) but Director-discretionary dispatch has been used for Pilot + Engine-Phase-1-audit. Consider formalizing the promotion or making the discretionary mode explicit in `r2-structure.md`. **See Tracked debt below.**
+
+Tracked debt (manager surfaces, Director resolves):
+
+- **Dual-status convention (`PROPOSAL` formal / `ACTIVE` discretionary).** Currently load-bearing for two dispatched lanes (Pilot, Engine-Phase-1 audit) and likely a third (loader-close → Engine re-dispatch). **Owner**: Director. **Forcing function**: if this convention survives one more dispatch (i.e., loader-close lands and Engine re-dispatches under it), manager surfaces as escalation rather than queued open-question — the cost of dual-authority dispatch state grows non-linearly past three live dispatches per `feedback_state_space_vs_behavioral_invariants` (status as an enum-with-implicit-modes admits illegal combinations like "PROPOSAL but ACTIVE"). **Resolution paths** (Director picks one): (a) formalize R2 promotion explicitly via `r2-structure.md` amendment; (b) add a "Director-discretionary dispatch" mode to `r2-structure.md` as a first-class status alongside PROPOSAL/ACTIVE; (c) defer formalization with explicit "do not let this accumulate" sunset commitment.
 
 Cross-manager notifications queued:
 
-- _(none yet — awaits R1 close + substrate-capability closure signals from Surface and Testgen Managers)_
+- ~~**Pure Bootstrap to Zero Manager** (PR #766) — substrate ask~~ — Director chose Route 1 (ad-hoc dispatch, not routed through Zero-Floor). Director handles Zero-Floor heads-up directly per cross-program coordination. No manager-side notification queued.
+- **Surface / Testgen Managers** (R1, archived on R1 close per `r2-structure.md`) — pilot's fail-closed-by-construction shape (`GroundingError::{Ambiguous, NoInhabitant}`) is general-purpose, not Grounding-specific. If their wind-down work hasn't closed yet, this shape is reusable as a contract baseline.
