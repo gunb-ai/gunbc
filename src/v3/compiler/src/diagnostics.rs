@@ -171,6 +171,14 @@ pub enum Diagnostic {
         span: SourceSpan,
         fixes: Vec<Correction>,
     },
+    UnitMismatch {
+        operator: String,
+        parameter: String,
+        expected: TypeShape,
+        actual: TypeShape,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
+    },
     BranchConditionNotBool {
         port: PortId,
         actual_type: Option<TypeShape>,
@@ -187,6 +195,7 @@ impl Diagnostic {
             | Diagnostic::TypeMismatch { span, .. }
             | Diagnostic::ArityMismatch { span, .. }
             | Diagnostic::ResolveError { span, .. }
+            | Diagnostic::UnitMismatch { span, .. }
             | Diagnostic::BranchConditionNotBool { span, .. } => span,
         }
     }
@@ -198,6 +207,7 @@ impl Diagnostic {
             | Diagnostic::TypeMismatch { fixes, .. }
             | Diagnostic::ArityMismatch { fixes, .. }
             | Diagnostic::ResolveError { fixes, .. }
+            | Diagnostic::UnitMismatch { fixes, .. }
             | Diagnostic::BranchConditionNotBool { fixes, .. } => fixes,
         }
     }
@@ -217,6 +227,15 @@ impl Diagnostic {
                 ..
             } => format!("{function} expected {expected}, got {actual}"),
             Diagnostic::ResolveError { name, .. } => name.clone(),
+            Diagnostic::UnitMismatch {
+                operator,
+                parameter,
+                expected,
+                actual,
+                ..
+            } => format!(
+                "unit mismatch for operator `{operator}` on phantom parameter `{parameter}`: abelian-group closure requires matching units (expected {expected:?}, got {actual:?})"
+            ),
             Diagnostic::BranchConditionNotBool { actual_type, .. } => match actual_type {
                 Some(ty) => format!("branch condition port is not Bool (got {ty:?})"),
                 None => "branch condition port is not Bool (type not resolved)".to_string(),
@@ -802,6 +821,7 @@ mod tests {
                 arguments: Vec::new(),
             },
             type_params: Vec::new(),
+            phantom_params: Vec::new(),
             meta_tag: None,
             specialization_parent: None,
             inhabits: None,
@@ -844,6 +864,7 @@ mod tests {
             name: Some("BigInt".to_string()),
             connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(int_decl)),
             type_params: Vec::new(),
+            phantom_params: Vec::new(),
             meta_tag: None,
             specialization_parent: None,
             inhabits: None,
@@ -863,6 +884,7 @@ mod tests {
                 }],
             },
             type_params: Vec::new(),
+            phantom_params: Vec::new(),
             meta_tag: None,
             specialization_parent: None,
             inhabits: None,
@@ -886,6 +908,7 @@ mod tests {
             name: Some("BigInt".to_string()),
             connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(int_decl)),
             type_params: Vec::new(),
+            phantom_params: Vec::new(),
             meta_tag: None,
             specialization_parent: None,
             inhabits: None,
@@ -905,6 +928,7 @@ mod tests {
                 }],
             },
             type_params: Vec::new(),
+            phantom_params: Vec::new(),
             meta_tag: None,
             specialization_parent: None,
             inhabits: None,
@@ -924,6 +948,7 @@ mod tests {
                 }],
             },
             type_params: Vec::new(),
+            phantom_params: Vec::new(),
             meta_tag: None,
             specialization_parent: None,
             inhabits: None,
@@ -969,6 +994,7 @@ mod tests {
                 ],
             },
             type_params: Vec::new(),
+            phantom_params: Vec::new(),
             meta_tag: None,
             specialization_parent: None,
             inhabits: None,
@@ -988,6 +1014,7 @@ mod tests {
                 }],
             },
             type_params: Vec::new(),
+            phantom_params: Vec::new(),
             meta_tag: None,
             specialization_parent: None,
             inhabits: None,

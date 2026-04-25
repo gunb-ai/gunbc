@@ -83,6 +83,7 @@ fn bootstrap_loads_verification_authority_types() {
             (String::from("TokenizerError"), Vec::new()),
             (String::from("ParseError"), Vec::new()),
             (String::from("TypeMismatch"), Vec::new()),
+            (String::from("UnitMismatch"), Vec::new()),
             (String::from("ArityMismatch"), Vec::new()),
             (String::from("ResolveError"), Vec::new()),
         ]
