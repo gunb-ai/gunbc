@@ -10,6 +10,11 @@
 //   `bootstrap-regen-fresh` (`regen_bootstrap` only). `Dag::new()` does not load
 //   them from disk at runtime.
 //
+// **Single authority at runtime:** `Dag::new()` (and `std_fixture_bootstrap_snapshot`)
+// materialize **only** from the committed `bootstrap_*_generated.rs` snapshots
+// (`include!` / generated Rust). They never re-tokenize or re-parse the `OUT_DIR`
+// fixture string tables — those arrays exist solely for the feature-gated regen host.
+//
 // `compile_parse_surface_std_authority_dag` uses the companion snapshot
 // that omits `src/v3/std/parse_surface.dag`, so a fresh parse+lower of
 // that authority still stays first-of-name.

@@ -118,8 +118,10 @@ fn assert_disk_matches(manifest_dir: &Path, file_name: &str, expected: &str) {
     }
 }
 
-/// Byte offset of first differing UTF-8 byte, plus lengths (for CI log triage).
+/// Byte offset of first differing UTF-8 byte, lengths, and a small lossy window
+/// around the mismatch (UTF-8 boundaries not guaranteed inside the window).
 fn first_text_mismatch_hint(on_disk: &str, expected: &str) -> String {
+    const RADIUS: usize = 40;
     let a = on_disk.as_bytes();
     let b = expected.as_bytes();
     let prefix_len = a.len().min(b.len());
@@ -132,11 +134,25 @@ fn first_text_mismatch_hint(on_disk: &str, expected: &str) -> String {
     }
     // If one string is a strict prefix of the other, all shared bytes match.
     let offset = first_diff.unwrap_or(prefix_len);
+    let window_disk = lossy_byte_window(a, offset, RADIUS);
+    let window_exp = lossy_byte_window(b, offset, RADIUS);
     format!(
-        "(first differing byte index: {offset}, on_disk_len={}, expected_len={})",
+        "(first differing byte index: {offset}, on_disk_len={}, expected_len={}, \
+         on_disk[…]≈{:?}, expected[…]≈{:?})",
         on_disk.len(),
         expected.len(),
+        window_disk,
+        window_exp,
     )
+}
+
+fn lossy_byte_window(bytes: &[u8], center: usize, radius: usize) -> String {
+    if bytes.is_empty() {
+        return String::new();
+    }
+    let start = center.saturating_sub(radius).min(bytes.len());
+    let end = (center + radius).min(bytes.len());
+    String::from_utf8_lossy(&bytes[start..end]).into_owned()
 }
 
 fn write_generated(manifest_dir: &Path, file_name: &str, contents: &str) {
