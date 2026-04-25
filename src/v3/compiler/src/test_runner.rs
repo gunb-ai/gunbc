@@ -831,6 +831,12 @@ pub fn evaluate_execute_command_exit_code(
 /// **Single authority** for the exit-mismatch `ClaimResult::Fail` string (M1.5 propositional read;
 /// [`evaluate_execute_command_m1_5`]). All other `ExecuteCommand` `Fail` messages are infrastructure
 /// or policy — not a boolean “predicate is false” (P3/DB-1, codex PR #792).
+//
+// TODO(dissolution, T-PB-B, M1.5): P2 [Host-process (a)](/INVARIANTS.md#p2-host-process-boundary) / C-5
+// — retire `msg.starts_with(EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX)` in
+// `evaluate_execute_command_m1_5` by carrying “exit ≠ expect” in **data** (e.g. a dedicated
+// `ClaimResult` variant, or a small return struct from a split “evaluate to typed outcome / to
+// claim string” API) so the propositional read `match`es a variant, not a free-form `Fail` prefix.
 pub const EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX: &str =
     "ExecuteCommand exit code mismatch: expected ";
 
@@ -847,6 +853,7 @@ pub enum ExecuteCommandM1_5Proposition {
 /// Distinguish “exit ≠ expect” from timeout, spawn error, `&` policy, signal, etc. `Err` is the
 /// full untyped `ClaimResult` (use [`TestRunner`] for strings); do not map `Err` to
 /// propositional `false` (P3/DB-1; codex PR #792).
+// Prefix arm: tracked string-shaped seam — see `EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX` TODO.
 pub fn evaluate_execute_command_m1_5(
     command: &str,
     args: &[String],
@@ -970,9 +977,12 @@ fn evaluate_execute_command_exit_code_with_wall_time(
                 // command may run twice (side-effecting `TestClaim`s should assume idempotence on
                 // this Linux path or a future follow-up to narrow the trigger; Claude review, PR
                 // #792).
-                // TODO(narrow, T-PB-B): only confirm when stderr/exit pattern suggests a wrapper
-                // artifact (mirror the post-mismatch gate); `rustc`/`python3` style invocations
-                // must not double-build on every non-zero `Pass` once boundary tests grow.
+                // TODO(narrow, T-PB-B): e.g. skip this confirmation when merged wrapper stderr
+                // (`unshare_merge_stderr_for_setup_scan` input: drain + post-wait read) contains **no**
+                // `unshare:`-prefixed line and the unshare(1) exit **already** matches
+                // `expect_exit_code` (P2(d) — re-exec is explicit, bounded policy, not a blanket
+                // double-build). Until then, `rustc`/`python3`-style work may run twice on every
+                // non-zero matching `Pass` on this path.
                 child = match build_execute_command_process(command, args).spawn() {
                     Ok(c) => c,
                     Err(e2) => {
