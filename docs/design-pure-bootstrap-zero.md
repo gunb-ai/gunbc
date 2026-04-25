@@ -105,6 +105,13 @@ Existing scope from `design-pure-bootstrap.md` continues to apply for the file-b
 
 **PB-Bootstrap-Process** (new, sized M, the conceptual core) — author `bootstrap.dag` describing the bootstrap workflow as data. Replace `bootstrap.rs` with a generated trampoline. Section "Bootstrap as data" above is its design.
 
+  **N=0 runtime boundary verification (per codex `7db5c913` review).** Whichever N=0 resolution lands (shipped binary / `gunbc-runtime` crate / rustc proc-macro), the runtime must be a *generic fixed-point substrate runner* — not hand-authored compiler logic relocated out of v3's source tree. Verification gates that PB-Bootstrap-Process must satisfy:
+  - **Operation set bounded.** The runtime invokes only the primitive substrate operations (Node / Conj / Disj / Cardinality / Bit per `feedback_compiler_is_dag_processor`) — no compiler-pass logic (no tokenize, no parse, no infer, no lower, no emit) lives in the runtime. If the runtime needs to do any of those, it does so by invoking generated `.dag` programs, not by carrying their logic.
+  - **Size budget.** A specific LOC ceiling on the runtime (target: <500 LOC of hand-Rust outside v3's tree, modulo language-stdlib-equivalent primitives). If the runtime grows past the budget, it's a signal that compiler authority leaked out.
+  - **Substrate-runner equivalence test.** A generic-substrate-runner test: feed the runtime a `.dag` program that's structurally equivalent to but textually different from v3's compiler.dag, verify the runtime evaluates it identically. This proves the runtime is generic over `.dag` programs, not specialized to v3's compiler.
+
+  These verification gates land in PB-Bootstrap-Process's acceptance criteria; the promotion cascade PR cites the test results.
+
 **PB-Workflow** (existing scope continued) — `workflow_idempotency.rs` and `workflow_parallelism.rs` migrate as Lane 2 dissolution lands.
 
 **PB-Tier1-Sweep** (per-file fast-retire, sized S each) — depends on above. The 13 Tier-1 files (regen binaries + bin helpers) retire as their backing migrations land. Not blocked on PB-Substrate / PB-Lib / etc., but blocked on PB-1 + PB-4/5/6.
