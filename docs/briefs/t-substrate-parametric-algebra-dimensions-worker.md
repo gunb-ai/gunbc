@@ -40,30 +40,46 @@ R2 acceptance is the **subset that lights up `Dimension<Unit>` end-to-end**, not
 ## Five consumer-side requirements
 
 1. **Phantom type parameter substrate** exists in v3. Either: extend `Declaration.type_params` to carry a `phantom: Bool` (or equivalent) per param; or add a sibling `Declaration.phantom_params` field. Phantom params don't appear in runtime values; the substrate carries this fact for type-checking + operator dispatch.
-2. **Abelian-group algebra attachment for phantom parameters.** A way to declare *"the `Currency` phantom parameter on `Money<C>` composes under an abelian group: `Money<USD> + Money<USD>` is valid (closure); `Money<USD> + Money<EUR>` is unit-mismatch (closure violated)."* Closest existing precedent: algebra-tag enums in `primitives.dag`, but parametric — worker decides shape.
-3. **Operator dispatch checks phantom parameters.** `infer.rs:3688-3767` `resolve_operator_arrow` (or sibling site) extends to check phantom-parameter consistency before resolving. New `Diagnostic::UnitMismatch` (or equivalent) emitted on violation, naming both phantom-parameter values + the operator + the abelian-group-closure violation.
-4. **`Dimension<Unit>` end-to-end demo.** Smoke test: `type Money<C> { amount: Int }` with phantom `C: Currency`; `let usd: Money<USD> = ...`; `let eur: Money<EUR> = ...`; `usd + usd` works; `usd + eur` produces structured unit-mismatch diagnostic.
+2. **Two distinct phantom-composition behaviors — split explicitly; do not conflate.** The lane has two semantically distinct closure laws on phantom parameters; both are needed to inhabit `Dimension<Unit>` end-to-end:
+
+   **(2a) Same-phantom closure under additive (and equivalence-class) ops.** `Money<USD> + Money<USD> = Money<USD>`; `Money<USD> + Money<EUR>` rejects with unit-mismatch. The phantom param must match exactly across operands; result inherits the matched param. This is the simpler check (parameter-equality at dispatch). Demonstrate via `Money<C>` `+` operator.
+
+   **(2b) Phantom composition laws under multiplicative / derived ops.** `Distance<Meter> / Time<Second> = Speed<MeterPerSecond>`; `Distance<Meter> * Distance<Meter> = Area<SquareMeter>`. The phantom params interact under composition rules declared by the algebra (division composes Meter/Second → MeterPerSecond; multiplication composes Meter*Meter → SquareMeter). The substrate must carry *which* composition rule attaches to *which* operator on *which* algebra. This is the harder check (parameter-composition lookup at dispatch).
+
+   Worker picks shape for both (parametric algebra-tag declaration, new carrier, etc. — surface choice in PR description), but **must demonstrate both behaviors end-to-end** to inhabit `Dimension<Unit>` per the brief's R2 acceptance. If (2b) execution surfaces unanticipated complexity (e.g., requires a typed compose-rule registry beyond what algebra-tag declarations carry), STOP-AND-ESCALATE — the demo may narrow to (2a) only with (2b) routed to a sibling sub-lane. Document the chosen shape + closure-rule-attachment mechanism in PR description.
+3. **Operator dispatch checks phantom parameters under the right algebraic obligation.** `infer.rs:3688-3767` `resolve_operator_arrow` (or sibling site) extends to check phantom-parameter consistency before resolving. **Diagnostic must name the correct algebraic obligation per req 2's split**: for **(2a) same-phantom additive ops**, the violation is **phantom-parameter equality** (`Money<USD> + Money<EUR>` rejects because `USD ≠ EUR` — not because abelian-group closure is violated, since both `USD` and `EUR` are valid abelian-group elements individually); for **(2b) phantom composition under multiplicative/derived ops**, the violation is **composition-rule absence/mismatch** (`Distance<Meter> / Time<Hour>` rejects because no declared composition rule maps `Meter / Hour → ?`). Two distinct diagnostic variants (or one variant with a `kind: ParameterEquality | CompositionRuleAbsent` tag — worker's call). Do NOT conflate the two as "abelian-group-closure violation"; that misnames the algebraic obligation per `MODELING.md` M9 / `std.algebra` discipline.
+4. **`Dimension<Unit>` end-to-end demo covering both (2a) and (2b).** Smoke tests:
+   - **(2a)** `type Money<C> { amount: Int }` with phantom `C: Currency`; `let usd: Money<USD> = ...`; `let eur: Money<EUR> = ...`; `usd + usd` works; `usd + eur` produces structured unit-mismatch diagnostic.
+   - **(2b)** `type Distance<U>`, `type Time<U>`, `type Speed<U>` with phantom unit params; declare `Distance<Meter> / Time<Second> = Speed<MeterPerSecond>` composition rule; `let d: Distance<Meter> = ...; let t: Time<Second> = ...; let s: Speed<MeterPerSecond> = d / t` compiles + types correctly; mismatched-unit composition (e.g., `d / Time<Hour>` with no declared composition for Meter/Hour) emits a structured composition-mismatch diagnostic.
+
+   If (2b) is deferred per the (2)-STOP route, document the deferral in PR description with the sibling-sub-lane name.
 5. **No regression on existing `Dimension<Carrier>` behavioral framework.** DB-3's `analyze_symbolic_cost_dimension` (`src/v3/compiler/src/dimension.rs:50`) and the `SymbolicCost` proof-dimension consumer continue to work. The behavioral-framework `Dimension<Carrier>` and the value-wrapper `Dimension<Unit>` are different consumers of the same parametric machinery; both must coexist after this PR.
 
-## Slice — phantom parameters + abelian-group attachment + dispatch check
+## Slice — phantom parameters + (2a) same-phantom + (2b) composition + dispatch check
 
 1. Add phantom-parameter substrate (per req 1) to v3 `Declaration` shape. Round-trip through serializer / cementer / DB-8.
-2. Add abelian-group algebra attachment (per req 2). Worker picks shape (parametric algebra-tag declaration vs new carrier).
-3. Extend operator dispatch (per req 3) at `infer.rs:3688-3767`. New diagnostic variant.
-4. Author `Money<C>` (or `Duration<Unit>` — worker discretion) demo type per req 4. Add to `dsl/std/` or fixture location.
-5. Smoke + integration tests for reqs 4 + 5. Verify DB-3 behavioral-framework still works.
+2. Add **(2a) same-phantom equality attachment** per req 2(2a) — algebra-tag declaration or carrier shape (worker picks; surface in PR description).
+3. Add **(2b) phantom-composition-rule attachment** per req 2(2b) — substrate carries which composition rule attaches to which operator on which algebra (e.g., `Distance / Time → Speed` declared rule). Worker picks shape (typed compose-rule registry, parametric algebra-tag extension, etc.). **If (2b) execution surfaces unanticipated complexity** (e.g., requires substrate beyond what algebra-tag declarations carry), STOP-AND-ESCALATE — narrow demo to (2a) only with (2b) routed to a sibling sub-lane; document deferral in PR body with sibling-sub-lane name.
+4. Extend operator dispatch (per req 3) at `infer.rs:3688-3767`. **Two distinct diagnostic forms** (or one variant with a tag): (2a) `ParameterEquality` violation; (2b) `CompositionRuleAbsent` violation. Do NOT conflate as "abelian-group-closure violation".
+5. Author **(2a) demo**: `Money<C>` (or `Duration<Unit>` — worker discretion) per req 4(2a). Add to `dsl/std/` or fixture location.
+6. Author **(2b) demo**: `Distance<U> / Time<U> = Speed<U>` (or worker-equivalent multiplicative/derived shape) per req 4(2b). Add the composition-rule declarations for Meter/Second→MeterPerSecond.
+7. Smoke + integration tests for **both (2a) and (2b)** demos per req 4. Verify DB-3 behavioral-framework still works (req 5).
 
 ## Acceptance
 
 - [ ] All 5 consumer-side requirements satisfied + documented in PR body.
 - [ ] Phantom-parameter substrate lands; round-trips through DB-8.
-- [ ] Abelian-group algebra attachment shape documented; worker rationale in PR body.
-- [ ] Operator dispatch checks phantom parameters; unit-mismatch diagnostic structured.
-- [ ] `Dimension<Unit>` end-to-end demo (`Money<USD>` or equivalent) compiles + tests pass.
+- [ ] **(2a) same-phantom equality attachment** lands; shape documented + worker rationale in PR body.
+- [ ] **(2b) phantom-composition-rule attachment** lands OR explicitly deferred-with-rationale per the STOP route (sibling-sub-lane name documented in PR body if deferred).
+- [ ] Operator dispatch checks phantom parameters; **two distinct diagnostic forms (or one tagged variant)** for (2a) `ParameterEquality` + (2b) `CompositionRuleAbsent`.
+- [ ] **(2a) end-to-end demo**: `Money<USD> + Money<USD>` works; `Money<USD> + Money<EUR>` produces `ParameterEquality` diagnostic.
+- [ ] **(2b) end-to-end demo** (OR explicit deferral receipt): `Distance<Meter> / Time<Second> = Speed<MeterPerSecond>` compiles + types correctly; mismatched-unit composition (e.g., `d / Time<Hour>`) produces `CompositionRuleAbsent` diagnostic.
 - [ ] DB-3 behavioral-framework (`analyze_symbolic_cost_dimension` etc.) regression-free.
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` / `clippy --all-targets -- -D warnings` / `fmt --all --check` clean.
 - [ ] DB-8 fixed-point converges bit-identically.
 - [ ] SG-0 census deltas as needed.
+
+**Acceptance gate**: a Money-only additive implementation does **NOT** meet acceptance unless (2b) is explicitly deferred via the STOP route with sibling-sub-lane name documented. Default expectation is both (2a) AND (2b) demos land; deferral is the exception, not the rule.
 
 ## STOP-AND-ESCALATE
 

@@ -26,20 +26,20 @@ The structural fix follows the **complexity-lens precedent** exactly:
 - At declaration site, type-check `declared_effects ⊇ inferred_effects` (declared covers everything actual).
 - On mismatch: emit `EffectLeakageError { declared, inferred, leaking_ops }`.
 
-Sub-lane scope: enough effect-substrate to close declared-vs-actual leakage end-to-end for at least one effect class (likely `Logging` as the demo). Other effect classes follow the same pattern.
+Sub-lane scope: enough effect-substrate to close declared-vs-actual leakage end-to-end for at least one effect class **using the existing `OperationEffect` taxonomy**. Other effect classes follow the same pattern.
 
 ## Three consumer-side requirements
 
-1. **Effect-inference pass.** Walks function body DAG; collects effects from called functions / built-in side-effect ops. Lives as a new lens (`src/v3/lenses/effect_enumeration.dag`, parallel to cost.dag) or as a lowering-phase fact (worker decides; surface in PR description).
-2. **Declared-effect carrier on function declarations.** Substrate-level field on function declarations carrying the declared effect set (e.g., `Set<EffectClass>` or `List<EffectClass>`). Parser must accept the syntax (likely `fn foo() effects: [...] { ... }` or annotation-style — worker decides surface syntax with explicit reasoning).
-3. **Type-check + diagnostic.** At declaration site, compare `declared_effects` against inferred-from-body. If declared ⊇ inferred (declared covers everything actual), accept. Otherwise emit `EffectLeakageError` naming the declared set, the inferred set, and specific operations that leak. Smoke + integration test: function declares `effects: []` but body calls `log(...)` → diagnostic; function declares `effects: [Logging]` and body calls `log(...)` → accepted.
+1. **Effect-inference pass — direct-call scope only (no inter-procedural call-graph walk).** Walks function body DAG; collects effects from **direct calls to known-effectful primitives** (e.g., calls that already have an `OperationEffect` derived via `derive_op_effect` at `effects.dag:722-755`). Does NOT follow transitive call chains (A calls B which calls C). Lives as a **lens** at `src/v3/lenses/effect_enumeration.dag`, parallel to `cost.dag` precedent (per `feedback_no_validation_passes` + cost/complexity-lens precedent: lens-shape, not validation-pass-shape; not a lowering-phase fact). The function-declaration *carries* a declared-effect carrier and a derived inferred-effect carrier as facts; mismatch is a structural Diagnostic, not a "check pass."
+2. **Declared-effect carrier on function declarations as part of the function type signature** (per `feedback_no_annotations` — first-class language feature, not annotation). Substrate-level: extend `Declaration` (or the function-arrow connective shape) to carry the declared effect set as a structural field. Surface syntax is part of the function type signature (mechanism: worker may anchor on existing arrow-body extension precedent; not an annotation, not a separate metadata channel). If parser-side surface-syntax authoring requires non-trivial parser scope, STOP-AND-ESCALATE — coordinate with parser owners on a coupled PR or sibling parser sub-lane.
+3. **Structural carrier mismatch surfaces a Diagnostic (no validation pass).** At declaration site, the carrier facts (declared + inferred) are present; if declared ⊇ inferred fails (set-cover violation), the lens emits `EffectLeakageError` naming declared set + inferred set + specific operations that leak. Per `feedback_no_validation_passes` + C-8 fail-closed: this is structural mismatch on always-present carriers, not a pass that "checks" a validity property. Smoke + integration test: a function declares no effects but body directly calls `service.upsert(...)` (an `UpsertEffect`-emitting op per `derive_op_effect`) → diagnostic; same function with `UpsertEffect` declared → accepted.
 
 ## Slice — effect inference + declared-effect carrier + leakage diagnostic
 
-1. Add declared-effect carrier (per req 2) to function declarations. Parser/lowerer extension.
-2. Implement effect-inference (per req 1) — new lens or lowering-phase fact.
-3. Type-check + diagnostic (per req 3). New `EffectLeakageError` variant.
-4. Annotate one demo effect class (`Logging` suggested) on the relevant std/ functions (e.g., `log`, `info`, etc.) so the inference has something to discover.
+1. Add declared-effect carrier (per req 2) to function declarations as part of the function type signature. Parser/lowerer extension; STOP-AND-ESCALATE if parser scope balloons.
+2. Implement effect-inference lens (per req 1) at `src/v3/lenses/effect_enumeration.dag`, parallel to cost.dag precedent.
+3. Structural-mismatch Diagnostic (per req 3). New `EffectLeakageError` variant.
+4. Demo using existing `OperationEffect` taxonomy: pick a function that calls a known-effectful primitive directly (e.g., a service method invoking `derive_op_effect` paths to produce `UpsertEffect` or `CreateEffect`). Do NOT pick `Logging` — it's not in the existing taxonomy and would force a coupled enum extension.
 5. Smoke + integration tests per req 3.
 
 ## Acceptance
@@ -48,7 +48,7 @@ Sub-lane scope: enough effect-substrate to close declared-vs-actual leakage end-
 - [ ] Declared-effect carrier on function declarations; round-trips through DB-8.
 - [ ] Effect-inference pass walks function bodies + collects actual effects.
 - [ ] Declared-vs-inferred comparison at type-check; structured diagnostic on mismatch.
-- [ ] End-to-end demo: silent `log` leakage → diagnostic; explicit `effects: [Logging]` → accepted.
+- [ ] End-to-end demo using existing `OperationEffect` taxonomy: silent leakage on a function declaring no effects but calling a known-effectful primitive (e.g., service `upsert`) → diagnostic; same function with explicit declaration → accepted.
 - [ ] Existing operation-level effect modeling (`derive_op_effect`, idempotency lens) regression-free.
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` / `clippy --all-targets -- -D warnings` / `fmt --all --check` clean.
 - [ ] DB-8 fixed-point converges bit-identically.
@@ -58,9 +58,9 @@ Sub-lane scope: enough effect-substrate to close declared-vs-actual leakage end-
 
 Surface to Director.
 
-- **Effect-inference walks beyond function-body scope** — if inference needs to follow inter-procedural call chains (e.g., A calls B which calls log; A must declare Logging), STOP. Inter-procedural inference is its own scope; sub-lane may need re-scoping.
-- **Effect-class enumeration** — if the existing `OperationEffect` enum doesn't cover the effect classes the demo needs (e.g., `Logging` isn't in the existing taxonomy), STOP. Director-call on whether to extend the enum or use a generalized effect-class.
-- **Declared-effect surface syntax conflicts** — if the chosen syntax (`fn foo() effects: [...]`) conflicts with parser / surface-lang authority, STOP. Coordinate with parser owners.
+- **Inference scope creeps beyond direct calls** — req 1 explicitly scopes to direct-call-only effect collection. If execution surfaces that the demo requires inter-procedural call-chain following (A→B→effect), STOP. That's a re-scoping decision; sub-lane may need to bundle a one-hop inter-procedural read or stay direct-call-only with the demo narrowed.
+- **Existing `OperationEffect` taxonomy can't cover the demo** — req 4 anchors on the existing taxonomy. If the chosen demo function's effect doesn't already have a `derive_op_effect`-driven `OperationEffect` variant, STOP. Either pick a different demo function, or escalate the enum-extension decision to Director (which would couple this lane to a taxonomy-extension PR).
+- **Declared-effect surface syntax requires non-trivial parser/grammar work** — req 2 anchors on extending the function-type-signature shape. If parser-side authoring requires invasive `parse_parser_body.txt` changes or a new `SurfaceExpr` variant, STOP. Coordinate with parser owners on a coupled PR or sibling parser sub-lane.
 - **Cost / complexity lens precedent doesn't generalize** — if reusing the lens-pattern for effect inference reveals shape mismatches, STOP.
 - **DB-8 fixed-point drifts** — STOP immediately.
 
@@ -74,7 +74,7 @@ Surface to Director.
 
 ## Reporting
 
-- Single PR. Title: `feat(v3): T-ImpossibleBugs — declared-vs-inferred effect check (closes unenumerated-effects class via Logging demo)`.
+- Single PR. Title: `feat(v3): T-ImpossibleBugs — declared-vs-inferred effect check (closes unenumerated-effects class; demo via existing OperationEffect taxonomy)`.
 - PR body cites this brief + addresses the 3 reqs + documents the chosen demo effect class + the inference scope choice (lens vs lowering-phase).
 - On merge: signal Director; inter-procedural inference + bulk std/ annotation is post-cascade work.
 
