@@ -719,6 +719,9 @@ mod bootstrap;
 #[cfg(feature = "bootstrap-regen-fresh")]
 mod bootstrap_regen_fresh;
 
+/// Fresh tokenize/parse/lower bootstrap used **only** by `regen_bootstrap`
+/// (`--features bootstrap-regen-fresh`). Default `v3-compiler` builds omit this
+/// module; production callers load snapshots via `Dag::new()`.
 #[cfg(feature = "bootstrap-regen-fresh")]
 pub mod regen_bootstrap_compile {
     pub use crate::bootstrap_regen_fresh::{

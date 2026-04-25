@@ -211,7 +211,10 @@ jobs:
           scripts/check-test-timeout.sh /tmp/v3-test-timings.log
 
       - name: v3 Compiler Clippy
-        run: cargo clippy -p v3-compiler --all-targets -- -D warnings
+        run: cargo clippy -p v3-compiler --all-targets --features bootstrap-regen-fresh -- -D warnings
+
+      - name: v3 regen_bootstrap snapshot gate (--verify)
+        run: cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
 
       - name: L-7 Substrate accessor reconstruction gate
         run: |

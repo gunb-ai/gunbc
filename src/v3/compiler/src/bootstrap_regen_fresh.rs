@@ -1,10 +1,11 @@
 //! Fresh tokenize/parse/lower bootstrap from on-disk `.dag` authorities.
 //!
-//! This module exists **only** for the `regen_bootstrap` binary (behind the
-//! `bootstrap-regen-fresh` Cargo feature). Production `Dag::new()` loads the
-//! committed `bootstrap_generated.rs` snapshot — see PB-1-e / mechanism (ii):
-//! the fresh-compile-vs-snapshot acid test runs at regen / `--verify` time,
-//! not on every `cargo test`.
+//! This module is compiled **only** with Cargo feature `bootstrap-regen-fresh`
+//! (the `regen_bootstrap` binary enables it via `required-features`). It is not
+//! a second production bootstrap authority: `Dag::new()` loads the committed
+//! `bootstrap_generated.rs` snapshot. Per PB-1-e mechanism (ii), the
+//! fresh-compile-vs-snapshot acid test runs at `regen_bootstrap` time
+//! (`--verify`), not in the default integration test suite.
 
 use crate::dag::{Dag, DeclarationId};
 use crate::lower::{collect_symbols_phase, lower_bodies_phase, resolve_pending_identifiers};

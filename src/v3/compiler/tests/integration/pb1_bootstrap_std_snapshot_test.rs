@@ -1,15 +1,21 @@
 //! **Layer:** integration
+//!
+//! PB-1-e: the runtime fresh-parse vs `bootstrap_std_generated.rs` drift harness
+//! retired in favor of `regen_bootstrap --verify`. These tests pin cheap
+//! structural facts about the committed std snapshot.
 
-use v3_compiler::{
-    compile_std_bootstrap_dag, generated_std_bootstrap_dag, serialize::first_difference,
-};
+use v3_compiler::generated_std_bootstrap_dag;
 
 #[test]
-fn generated_std_bootstrap_snapshot_matches_runtime_std_bootstrap() {
-    let runtime = compile_std_bootstrap_dag();
-    let generated = generated_std_bootstrap_dag();
+fn generated_std_bootstrap_snapshot_is_clean_and_substantive() {
+    let dag = generated_std_bootstrap_dag();
     assert!(
-        first_difference(&runtime, &generated).is_none(),
-        "generated std bootstrap drifted from runtime std bootstrap"
+        dag.diagnostics().is_empty(),
+        "expected clean std snapshot bootstrap, got {:?}",
+        dag.diagnostics()
+    );
+    assert!(
+        dag.declaration_by_name("Bool").is_some(),
+        "std snapshot should include kernel Bool"
     );
 }

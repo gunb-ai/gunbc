@@ -6,8 +6,8 @@
 //
 // - `std_fixtures`                 (`dsl/std/*.dag`)
 // - `STAGED_FILES` / `V3_SPECS` / `COMPILER_FILES` / extdeps primitives — fresh
-//   tokenize/parse/lower for these lives in `bootstrap_regen_fresh.rs` (feature
-//   `bootstrap-regen-fresh`, `regen_bootstrap` only); `Dag::new()` does not load
+//   tokenize/parse/lower lives in `bootstrap_regen_fresh.rs` behind feature
+//   `bootstrap-regen-fresh` (`regen_bootstrap` only). `Dag::new()` does not load
 //   them from disk at runtime.
 //
 // `compile_parse_surface_std_authority_dag` uses the companion snapshot
