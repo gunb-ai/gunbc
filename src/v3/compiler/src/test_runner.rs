@@ -507,7 +507,18 @@ fn unshare_sandbox_broken_relaunch_with_direct(
     {
         return true;
     }
-    unshare_stderr_indicates_sandbox_setup_failure(&buf)
+    if unshare_stderr_indicates_sandbox_setup_failure(&buf) {
+        return true;
+    }
+    if buf.trim().is_empty() {
+        // Piped stderr, read ok, **no** util-linux `unshare:` line and no other bytes: the host
+        // may have torn down the unshare(1) path in a way that does not print (e.g. `sh` as init in
+        // a new PID namespace exiting non-zero with nothing on this fd — see PR #792 / Linux CI).
+        // Only invoked when the exit code already failed the claim (C-5 gate); one direct-retry
+        // matches the "cannot inspect" `take()`-is-`None` path.
+        return true;
+    }
+    false
 }
 
 /// Configure `Command` for the host check: no capture, and on Unix a new process group for the
