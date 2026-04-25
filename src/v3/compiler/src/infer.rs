@@ -4497,6 +4497,7 @@ fn declaration_shapes_equivalent(
                     dag,
                     *lhs_template,
                     lhs_arguments,
+                    *rhs_template,
                     rhs_arguments,
                 )
                 && lhs_arguments.len() == rhs_arguments.len()
@@ -4570,12 +4571,36 @@ fn declaration_shapes_equivalent(
 
 fn phantom_arguments_equivalent_for_shape(
     dag: &Dag,
-    template: DeclarationId,
+    lhs_template: DeclarationId,
     lhs_arguments: &[TemplateArgument],
+    rhs_template: DeclarationId,
     rhs_arguments: &[TemplateArgument],
 ) -> bool {
-    let template_decl = dag.declaration(template);
-    for phantom in &template_decl.phantom_params {
+    phantom_arguments_preserved_from_template(
+        dag,
+        lhs_template,
+        lhs_arguments,
+        rhs_template,
+        rhs_arguments,
+    ) && phantom_arguments_preserved_from_template(
+        dag,
+        rhs_template,
+        rhs_arguments,
+        lhs_template,
+        lhs_arguments,
+    )
+}
+
+fn phantom_arguments_preserved_from_template(
+    dag: &Dag,
+    source_template: DeclarationId,
+    source_arguments: &[TemplateArgument],
+    target_template: DeclarationId,
+    target_arguments: &[TemplateArgument],
+) -> bool {
+    let source_decl = dag.declaration(source_template);
+    let target_decl = dag.declaration(target_template);
+    for phantom in &source_decl.phantom_params {
         if require_abelian_group_phantom_algebra(
             dag,
             phantom.algebra,
@@ -4586,19 +4611,36 @@ fn phantom_arguments_equivalent_for_shape(
         {
             return false;
         }
-        let Some(lhs_arg) = lhs_arguments
+        let Some(source_index) = source_decl
+            .type_params
+            .iter()
+            .position(|parameter| *parameter == phantom.parameter)
+        else {
+            return false;
+        };
+        let Some(target_parameter) = target_decl.type_params.get(source_index).copied() else {
+            return false;
+        };
+        if !target_decl
+            .phantom_params
+            .iter()
+            .any(|target_phantom| target_phantom.parameter == target_parameter)
+        {
+            return false;
+        }
+        let Some(source_arg) = source_arguments
             .iter()
             .find(|arg| arg.parameter == phantom.parameter)
         else {
             return false;
         };
-        let Some(rhs_arg) = rhs_arguments
+        let Some(target_arg) = target_arguments
             .iter()
-            .find(|arg| arg.parameter == phantom.parameter)
+            .find(|arg| arg.parameter == target_parameter)
         else {
             return false;
         };
-        if lhs_arg.value != rhs_arg.value {
+        if source_arg.value != target_arg.value {
             return false;
         }
     }
@@ -5058,6 +5100,73 @@ mod bool_logical_operator_arrow_tests {
             vec![callable_lhs],
             SourceSpan::new("<money-unit-test>", 3, 4),
         );
+        let untracked_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: untracked_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("U".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 4, 5),
+        });
+        let untracked_money = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: untracked_money,
+            name: Some("UntrackedMoney".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "amount".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: vec![untracked_param],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 4, 5),
+        });
+        let untracked_money_usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: untracked_money_usd,
+            name: Some("UntrackedMoneyUSD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: untracked_money,
+                arguments: vec![TemplateArgument {
+                    parameter: untracked_param,
+                    value: usd,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 4, 5),
+        });
+        let untracked_callable_lhs = dag.alloc_port_with_shape(TypeShape::new(untracked_money_usd));
+        let untracked_callable_output = dag.push_transform(
+            TransformTarget::Callable(accept_eur),
+            vec![untracked_callable_lhs],
+            SourceSpan::new("<money-unit-test>", 4, 5),
+        );
+        assert!(
+            !type_shapes_equivalent(
+                &dag,
+                &TypeShape::new(untracked_money_usd),
+                &TypeShape::new(money_eur),
+            ),
+            "structural equivalence must preserve phantom axes from both templates"
+        );
 
         infer(&mut dag);
 
@@ -5150,6 +5259,17 @@ mod bool_logical_operator_arrow_tests {
                     && actual.declaration == usd
             ),
             "unexpected diagnostic: {callable_diag:?}"
+        );
+        let untracked_callable_diag = dag
+            .diagnostics()
+            .get(untracked_callable_output)
+            .expect("structural wrapper without phantom axis should not satisfy phantom wrapper");
+        assert!(
+            matches!(
+                untracked_callable_diag,
+                Diagnostic::TypeMismatch { .. } | Diagnostic::ResolveError { .. }
+            ),
+            "unexpected diagnostic: {untracked_callable_diag:?}"
         );
     }
 
