@@ -65,23 +65,32 @@ import std.bit { Bit, Byte, Word16, Word32, Word64 }
 
 
 // =========================================================================
-// Target algebra tag.
+// Algebra tags, partitioned by overflow-bearing class.
 //
-// Closed enumeration identifying which std/algebra.dag structure a target
-// primitive inhabits. Each variant corresponds 1:1 to a std/algebra.dag
-// declaration:
-//   OrderedRingAlgebra   <-> std.algebra.OrderedRing<C>     (signed)
-//   SemiringAlgebra      <-> std.algebra.Semiring<C>        (unsigned)
-//   BooleanAlgebraAlgebra<-> std.algebra.BooleanAlgebra<C>  (Bool)
-//   TerminalAlgebra      <-> single-inhabitant terminal     (Unit; DB-11)
+// Closed enumerations identifying which std/algebra.dag structure a target
+// primitive inhabits. Partitioned into integer-bearing and non-integer-
+// bearing subtypes so that overflow facts attach only where they have
+// meaning — making `bool: Some(TwoComplementWrap)` and `i64: None`
+// structurally unrepresentable rather than ruled out by convention
+// (state-space modeling discipline; no validation passes).
+//
+//   IntegerAlgebra
+//     OrderedRingAlgebra  <-> std.algebra.OrderedRing<C>    (signed integers)
+//     SemiringAlgebra     <-> std.algebra.Semiring<C>       (unsigned integers)
+//
+//   NonIntegerAlgebra
+//     BooleanAlgebraAlgebra<-> std.algebra.BooleanAlgebra<C> (Bool)
+//     TerminalAlgebra      <-> single-inhabitant terminal    (Unit; DB-11)
 //
 // Substrate-gap flag #2: these tags are bridges to algebra references.
 // =========================================================================
 
-type TargetAlgebra
+type IntegerAlgebra
   = OrderedRingAlgebra
   | SemiringAlgebra
-  | BooleanAlgebraAlgebra
+
+type NonIntegerAlgebra
+  = BooleanAlgebraAlgebra
   | TerminalAlgebra
 
 
@@ -142,20 +151,30 @@ type IntegerOverflow
 // =========================================================================
 // Rust target-primitive declaration.
 //
-// Single record carrying the structural facts about one Rust target
-// primitive. Selection is by structural agreement on (algebra, carrier);
-// is_copy and overflow are target-specific qualifiers consumed downstream
-// (is_copy by sharing/Rc decisions; overflow by laws verification, T-Ground
-// L4-(C) witness scope).
+// Sum-typed so the integer/non-integer split is structural, not
+// conventional: overflow is a field on IntegerPrimitive and structurally
+// absent on NonIntegerPrimitive. State-space discipline — no
+// `bool: Some(TwoComplementWrap)`, no `i64: None`. is_copy carries on
+// both variants (target-specific Copy-trait fact consumed downstream by
+// sharing/Rc decisions). overflow carries on IntegerPrimitive only
+// (T-Ground L4-(C) witness consumer; substrate-gap flag #1 names DB-11
+// dissolution to a where-clause refinement on the algebra carrier).
 // =========================================================================
 
-type RustPrimitive {
-  target_name: String          // Rust syntactic token: "i64", "bool", "()"
-  algebra: TargetAlgebra
-  carrier: TargetCarrier
-  is_copy: Bool
-  overflow: IntegerOverflow?   // none for non-integer primitives
-}
+type RustPrimitive
+  = IntegerPrimitive {
+      target_name: String          // Rust syntactic token: "i8".."i64", "u8".."u64"
+      algebra: IntegerAlgebra
+      carrier: TargetCarrier
+      is_copy: Bool
+      overflow: IntegerOverflow
+    }
+  | NonIntegerPrimitive {
+      target_name: String          // Rust syntactic token: "bool", "()"
+      algebra: NonIntegerAlgebra
+      carrier: TargetCarrier
+      is_copy: Bool
+    }
 
 
 // =========================================================================
@@ -170,42 +189,42 @@ data rust_pilot_primitives: List<RustPrimitive> = [
   // Rust Reference §3.4. signed = additive inverse exists (negate in
   // OrderedRing). Wrap is the release-mode semantics.
 
-  { target_name: "i8",  algebra: OrderedRingAlgebra, carrier: ByteCarrier,
-    is_copy: true, overflow: Some { value: TwoComplementWrap } },
+  IntegerPrimitive { target_name: "i8",  algebra: OrderedRingAlgebra, carrier: ByteCarrier,
+    is_copy: true, overflow: TwoComplementWrap },
 
-  { target_name: "i16", algebra: OrderedRingAlgebra, carrier: Word16Carrier,
-    is_copy: true, overflow: Some { value: TwoComplementWrap } },
+  IntegerPrimitive { target_name: "i16", algebra: OrderedRingAlgebra, carrier: Word16Carrier,
+    is_copy: true, overflow: TwoComplementWrap },
 
-  { target_name: "i32", algebra: OrderedRingAlgebra, carrier: Word32Carrier,
-    is_copy: true, overflow: Some { value: TwoComplementWrap } },
+  IntegerPrimitive { target_name: "i32", algebra: OrderedRingAlgebra, carrier: Word32Carrier,
+    is_copy: true, overflow: TwoComplementWrap },
 
-  { target_name: "i64", algebra: OrderedRingAlgebra, carrier: Word64Carrier,
-    is_copy: true, overflow: Some { value: TwoComplementWrap } },
+  IntegerPrimitive { target_name: "i64", algebra: OrderedRingAlgebra, carrier: Word64Carrier,
+    is_copy: true, overflow: TwoComplementWrap },
 
 
   // -- Unsigned integers : Semiring over machine-word carriers -----------
   // Rust Reference §3.4. unsigned = no additive inverse (no negate in
   // Semiring). Distinguished from signed by algebra tag, not by carrier.
 
-  { target_name: "u8",  algebra: SemiringAlgebra, carrier: ByteCarrier,
-    is_copy: true, overflow: Some { value: TwoComplementWrap } },
+  IntegerPrimitive { target_name: "u8",  algebra: SemiringAlgebra, carrier: ByteCarrier,
+    is_copy: true, overflow: TwoComplementWrap },
 
-  { target_name: "u16", algebra: SemiringAlgebra, carrier: Word16Carrier,
-    is_copy: true, overflow: Some { value: TwoComplementWrap } },
+  IntegerPrimitive { target_name: "u16", algebra: SemiringAlgebra, carrier: Word16Carrier,
+    is_copy: true, overflow: TwoComplementWrap },
 
-  { target_name: "u32", algebra: SemiringAlgebra, carrier: Word32Carrier,
-    is_copy: true, overflow: Some { value: TwoComplementWrap } },
+  IntegerPrimitive { target_name: "u32", algebra: SemiringAlgebra, carrier: Word32Carrier,
+    is_copy: true, overflow: TwoComplementWrap },
 
-  { target_name: "u64", algebra: SemiringAlgebra, carrier: Word64Carrier,
-    is_copy: true, overflow: Some { value: TwoComplementWrap } },
+  IntegerPrimitive { target_name: "u64", algebra: SemiringAlgebra, carrier: Word64Carrier,
+    is_copy: true, overflow: TwoComplementWrap },
 
 
   // -- Bool : BooleanAlgebra over Bit -----------------------------------
   // Rust Reference §3.5. The canonical two-element Boolean algebra; carrier
   // is a single Bit.
 
-  { target_name: "bool", algebra: BooleanAlgebraAlgebra, carrier: BitCarrier,
-    is_copy: true, overflow: none },
+  NonIntegerPrimitive { target_name: "bool", algebra: BooleanAlgebraAlgebra, carrier: BitCarrier,
+    is_copy: true },
 
 
   // -- Unit : terminal object -------------------------------------------
@@ -213,6 +232,6 @@ data rust_pilot_primitives: List<RustPrimitive> = [
   // TerminalAlgebra/TerminalCarrier are sentinels for the not-yet-modeled
   // Cardinality<T, Exactly(1)> refinement.
 
-  { target_name: "()", algebra: TerminalAlgebra, carrier: TerminalCarrier,
-    is_copy: true, overflow: none }
+  NonIntegerPrimitive { target_name: "()", algebra: TerminalAlgebra, carrier: TerminalCarrier,
+    is_copy: true }
 ]
