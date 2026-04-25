@@ -82,7 +82,7 @@ import std.algebra { BooleanAlgebra }
 import v3.std.lookup { Lookup }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
-  VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMatchArm,
+  VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMapEntry, SurfaceMatchArm,
   SurfacePatternField, SurfacePattern, SurfaceLiteral, SurfaceExpr
 }
 
@@ -718,6 +718,20 @@ data rust_surface_record_field: TypeRealization = {
   is_copy: false
   fields: [
     { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "value", access: DirectField("value"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_surface_map_entry: TypeRealization = {
+  language: rust_language
+  target: SurfaceMapEntry
+  carrier: "parse_surface::SurfaceMapEntry"
+  is_copy: false
+  fields: [
+    { dag_name: "key", access: DirectField("key"), borrowed_read: false },
+    { dag_name: "key_span", access: DirectField("key_span"), borrowed_read: false },
     { dag_name: "value", access: DirectField("value"), borrowed_read: false },
     { dag_name: "span", access: DirectField("span"), borrowed_read: false }
   ]
