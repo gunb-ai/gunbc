@@ -3243,6 +3243,11 @@ fn lower_structural_field_value(
 /// lifts the literal payload above i64).
 fn integer_target_range(dag: &Dag, expected_type: DeclarationId) -> Option<(String, i128, i128)> {
     let mut current = expected_type;
+    // 32-hop bound: defensive cycle-stop matching the analogous walk in
+    // `walks_to` (this file, ~3550). Real alias chains in std/ are 1-2
+    // hops (e.g. `Int = Int64 = OrderedRing<Word64>`); 32 is the
+    // already-established invariant used by the sibling helper, so
+    // alias-chain walks across the lowering codebase share one bound.
     for _ in 0..32 {
         let decl = dag.declaration(current);
         if let Some(name) = &decl.name {

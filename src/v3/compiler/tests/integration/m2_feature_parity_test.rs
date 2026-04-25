@@ -1292,6 +1292,78 @@ fn cardinality_int_lit_int_alias_default_accepts_large_literal() {
 }
 
 #[test]
+fn cardinality_int_lit_all_narrow_types_pin_canonical_bounds() {
+    // Drift-catcher for the in-compiler narrowing map in
+    // `lower.rs::integer_target_range`. Symmetric with the pilot-side
+    // `pilot_range_strings_parse_to_canonical_i128_bounds` test in
+    // `grounding_pilot`. If `primitives.dag` (substrate authority)
+    // changes a bound but the in-compiler i128 mirror doesn't follow,
+    // the pilot drift test fires AND this test fires (catching the
+    // gap on the std-name-keyed compiler-side too). All three sources
+    // — substrate fact, pilot mirror, in-compiler map — must agree.
+    // All dissolve together when `ValueBody::List` + the std↔target
+    // correspondence land and the production walker reads bounds from
+    // `IntegerPrimitive` directly.
+    //
+    // Each row probes the narrow type with magnitude = max + 1 (or for
+    // Int* unsigneds, with a value beyond the upper bound) so the
+    // out-of-range branch fires deterministically and the diagnostic
+    // surfaces the canonical (min, max) pair.
+    let cases: &[(&str, i64, i128, i128)] = &[
+        ("Int8", 200, -128, 127),
+        ("Int16", 40000, -32_768, 32_767),
+        ("Int32", 3_000_000_000, -2_147_483_648, 2_147_483_647),
+        // Int64 omitted intentionally: Int64 is the default (`Int` alias)
+        // and `integer_target_range` does not register it for narrowing
+        // — Int64-bound literals are accepted by the existing default-
+        // when-unconstrained path. The lane's tracked-follow-up names
+        // dissolution of that default.
+        ("UInt8", 256, 0, 255),
+        ("UInt16", 70000, 0, 65_535),
+        ("UInt32", 5_000_000_000, 0, 4_294_967_295),
+        // UInt64 omitted intentionally: its range is [0, 2^64 - 1], which
+        // exceeds the i64 literal carrier's positive range entirely — no
+        // i64-representable literal overflows UInt64 from above, and
+        // negative literals require unary minus (deferred — req 4
+        // territory). The UInt64 → 18446744073709551615 substrate fact
+        // is pinned by the pilot's
+        // `pilot_range_strings_parse_to_canonical_i128_bounds`; the
+        // in-compiler i128 mirror is verified by code review until the
+        // typed-unbounded-magnitude sub-lane lifts the literal carrier
+        // above i64 and this test row becomes exercisable.
+    ];
+    for (target, value, expected_min, expected_max) in cases {
+        let src = format!("data x: {target} = {value}");
+        let dag = compile_any(&src, &format!("{target}_overflow.v3"));
+        let diag = dag
+            .diagnostics()
+            .iter()
+            .map(|(_, d)| d)
+            .find(|d| matches!(d, Diagnostic::MagnitudeOutOfRange { .. }))
+            .unwrap_or_else(|| {
+                panic!(
+                    "{target} overflow ({value}) must emit MagnitudeOutOfRange; got: {:?}",
+                    dag.diagnostics()
+                )
+            });
+        let Diagnostic::MagnitudeOutOfRange {
+            target_name,
+            magnitude,
+            target_min,
+            target_max,
+            ..
+        } = diag
+        else {
+            unreachable!()
+        };
+        assert_eq!(target_name, target, "diagnostic target_name drift");
+        assert_eq!(*magnitude, i128::from(*value), "{target}: magnitude drift");
+        assert_eq!(*target_min, *expected_min, "{target}: range_min drift");
+        assert_eq!(*target_max, *expected_max, "{target}: range_max drift");
+    }
+}
+
+#[test]
 fn cardinality_int_lit_alias_narrows_consistently_with_direct() {
     // Codex P2: type aliases lower through TypeConnective::Instantiation;
     // integer_target_range must follow Instantiation edges so aliased
