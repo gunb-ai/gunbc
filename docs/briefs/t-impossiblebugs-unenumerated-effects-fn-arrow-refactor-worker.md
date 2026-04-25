@@ -32,7 +32,7 @@
 ## Read first
 
 - **[`docs/briefs/t-impossiblebugs-unenumerated-effects-parser-worker.md`](t-impossiblebugs-unenumerated-effects-parser-worker.md)** — sibling parser sub-lane brief; blocks on this PR landing. The parser brief assumes `SurfaceType.Arrow` is the load-bearing function-type-signature carrier; this brief makes that assumption true on `Fn`.
-- **[`src/v3/std/parse_surface.dag:60-75`](../../src/v3/std/parse_surface.dag)** — `SurfaceType.Arrow` declaration; today carries `inputs: List<SurfaceType>` (pure types, no names, no refinements) + `output: SurfaceType` + `span: SourceSpan`. Higher-order types written `(A, B) -> C` flow through this.
+- **[`src/v3/std/parse_surface.dag:60-75`](../../src/v3/std/parse_surface.dag)** — `SurfaceType.Arrow` declaration; today carries `inputs: List<SurfaceType>` (pure types, no names, no refinements) + `output: SurfaceType` + `span: SourceSpan`. Higher-order types written `fn(A, B) -> C` flow through this (`fn(...)` prefix mandatory per `parse_atom_type` `KwFn` gate).
 - **[`src/v3/std/parse_surface.dag:33-37`](../../src/v3/std/parse_surface.dag)** — `SurfaceParam = { name: String, ty: SurfaceType, refinement: SurfaceExpr? }`. Carries the param-binding info that today lives parallel to `SurfaceType` on `Fn`.
 - **[`src/v3/std/parse_surface.dag:179-200`](../../src/v3/std/parse_surface.dag)** — `SurfaceItem.Fn` (and `FnExternalBody`); today: `name`, `type_params`, `params: List<SurfaceParam>`, `return_type: SurfaceType`, `body`, `span`. The `params` + `return_type` split is the vestige this brief dissolves.
 - **[`src/v3/compiler/parse_parser_body.txt`](../../src/v3/compiler/parse_parser_body.txt)** — parse-body algorithm authority. The function-item path constructs `Fn { params, return_type, ... }`; this brief routes that construction through an `Arrow` signature.
@@ -43,7 +43,7 @@
 
 ## Frame
 
-`SurfaceItem.Fn` today carries `params: List<SurfaceParam>` + `return_type: SurfaceType` as two fields. There is no synthesized `Arrow` on the function declaration — `SurfaceType.Arrow` only appears when a higher-order function type is *written out as a type annotation* (e.g., a parameter typed `(A, B) -> C`).
+`SurfaceItem.Fn` today carries `params: List<SurfaceParam>` + `return_type: SurfaceType` as two fields. There is no synthesized `Arrow` on the function declaration — `SurfaceType.Arrow` only appears when a higher-order function type is *written out as a type annotation* (e.g., a parameter typed `fn(A, B) -> C`).
 
 This split is a vestige. Function declarations *are* arrows: their structural type signature is `(input₁, …, inputₙ) -> output`. The parallel encoding (separate `params` + `return_type` fields on `Fn`, separate `Arrow.inputs` + `Arrow.output` on `SurfaceType`) is `feedback_parallel_representation_debt` waiting to be dissolved — the same shape encoded twice.
 
@@ -54,6 +54,16 @@ The downstream parser-effects sub-lane needs to add a `declared_effects` field t
 Both are dead-ends. The constructive fix is to dissolve the split: `SurfaceType.Arrow` carries the structural function-type signature uniformly, and `SurfaceItem.Fn` carries an `Arrow`-shaped signature alongside the bind-site param-name + refinement metadata.
 
 This sub-lane introduces two arrow-shape sub-carriers — `SurfaceArrow` (type position, `inputs: List<SurfaceType>` to match today's parser surface) wrapped by `SurfaceType.Arrow(SurfaceArrow)`, and `FnSignature` (declaration position, `inputs: List<NamedArrowInput>` so binderless params are structurally unrepresentable) carried directly by `SurfaceItem.Fn`. Effects do NOT land in this PR — that's the next sub-lane in the chain.
+
+### Live carrier table (post-refactor)
+
+| Position | Carrier | Inputs element | Notes |
+|---|---|---|---|
+| Declaration (top-level `fn` items) | `FnSignature { inputs, output, span }` | `NamedArrowInput { name, ty, refinement: SurfaceExpr? }` | `name` mandatory (no `Anonymous` shape); refinement-without-binder structurally unrepresentable |
+| Type annotation (higher-order `fn(...)`) | `SurfaceArrow { inputs, output, span }`, wrapped by `SurfaceType::Arrow(SurfaceArrow)` (no separate span on the variant) | `SurfaceType` | Anonymous-only; matches today's parser surface |
+| Retired by this PR | `SurfaceParam` | — | Dissolved into `NamedArrowInput`; zero references post-refactor |
+| **Absent** in this PR | `ArrowInput` | — | Earlier drafts proposed an `Anonymous \| Named` coproduct for type-position binders; type position is anonymous-only today, so the coproduct isn't introduced |
+| Future-only | named type-position binders | — | If a future PR adds `fn(x: A) -> B` syntax, that PR introduces the type-position carrier (with its own dissolution receipt at that time) |
 
 **Top-level functions + higher-order function types** for this PR. Closures / lambdas (which today use `SurfaceExpr::Lambda` with no explicit type signature) — out of scope; `Lambda` continues to carry `params: List<String>` + `body` as today.
 
@@ -131,7 +141,6 @@ Surface to Director.
 - **Exhaustive-match audit reveals consumer using wildcard `_`** — STOP. Surface a fix decision (this PR vs follow-up).
 - **Substrate-side `Arrow` shape needs a parallel refactor** — if the lowerer can't translate `Fn.signature: FnSignature` into the substrate `Declaration` / `Arrow` shape without also reshaping the substrate side, STOP. That's a separate sub-lane.
 - **`SurfaceArrow` / `FnSignature` introduction cascades into substrate authority** — reqs 2 + 3 introduce two top-level `parse_surface.dag` carriers. If grep surfaces consumers that expect `SurfaceType::Arrow { inputs, output, span }` as record-style fields (rather than `Arrow(SurfaceArrow)` positional payload) and updating them cascades beyond `lower.rs` + immediate parse consumers, STOP. May indicate a smaller-blast-radius shape (e.g., keeping `Arrow` as record-style and instead defining the sub-carriers as type aliases / typed views rather than wrapping payloads) is preferable.
-- **Type-position higher-order syntax accepts named binders today** (`fn(x: A) -> B`) — req 1 / `ArrowInput::Named(NamedArrowInput)` is the path. If the parser doesn't currently accept that form (i.e., type-position is anonymous-only on the surface today), worker may simplify `ArrowInput` to a single non-coproduct shape (just `Anonymous { ty }`-equivalent) and surface that simplification with rationale. STOP if the simplification would conflict with downstream effect-on-Arrow consumer expectations.
 - **DB-11 / refinement-strip interaction surfaces** (`infer.rs:3693-3703`) — if refinements on `NamedArrowInput` interact with DB-11's refinement strip in a non-obvious way, STOP.
 - **DB-8 fixed-point drifts** — STOP immediately.
 
@@ -141,7 +150,7 @@ Surface to Director.
 - **Not refactoring `SurfaceExpr::Lambda`.** Lambdas don't have explicit type signatures today; they're out of scope.
 - **Not refactoring substrate-side `Declaration` / `Arrow`.** Surface-side only.
 - **Not changing surface syntax.** The user-visible function-declaration syntax is unchanged; this is a pure construction-site refactor.
-- **Not changing higher-order type syntax.** `fn(A, B) -> C` continues to parse as today; the only structural change is that `Arrow.inputs` now wraps each entry in `ArrowInput::Anonymous { ty }`.
+- **Not changing higher-order type syntax.** `fn(A, B) -> C` continues to parse as today; type-position `Arrow.inputs` continues to be `List<SurfaceType>` — the only structural change at the type-position layer is that `SurfaceType::Arrow` now wraps a typed `SurfaceArrow` carrier (positional payload, no separate span on the variant).
 
 ## Reporting
 
