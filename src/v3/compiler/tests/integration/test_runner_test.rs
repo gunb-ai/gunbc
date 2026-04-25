@@ -31,6 +31,23 @@ fn assert_all_pass(results: &[v3_compiler::test_runner::ClaimEvaluation]) {
     );
 }
 
+#[test]
+fn r1_merge_sort_pair_fixture_cost_is_hit_three() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("tests/fixtures/r1_merge_sort_pair.v3");
+    let source = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}"));
+    let dag = compile_clean(&source, "r1_merge_sort_pair.v3");
+    let bind = dag.nodes().iter().find_map(|n| match n {
+        v3_compiler::dag::Behavior::Bind(b) if b.name == "merge_sort_out" => Some(b.clone()),
+        _ => None,
+    });
+    let Some(bind) = bind else {
+        panic!("merge_sort_out bind missing");
+    };
+    let cost = v3_compiler::lens_cost::cost_of(&dag, &bind.value);
+    assert_eq!(cost, v3_compiler::lens_cost::CostLookup::Hit(3));
+}
+
 fn claim_value(dag: &v3_compiler::dag::Dag, name: &str) -> TestClaimValue {
     let decl = dag
         .declaration_by_name(name)
@@ -389,24 +406,30 @@ fn test_runner_dispatches_mock_backed_invariant_claim() {
     let results = TestRunner::new(&dag).run_suite("mock_backed_invariant_suite");
 
     assert_eq!(results.len(), 1);
-    assert!(matches!(
-        &results[0].result,
-        ClaimResult::NotYetImplemented(reason)
-            if reason.contains("mock simulation is not wired")
-                && reason.contains("mock_subject_ref")
-                && reason.contains("mock_invariant_ref")
-    ));
+    assert_eq!(
+        results[0].claim_name,
+        "testgen_mock_backed_integration_safe"
+    );
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::NotYetImplemented(msg)
+                if msg.contains("MockBackedInvariant") && msg.contains("requires")
+        ),
+        "expected NYI for empty `requires` mock-backed receipt, got {:?}",
+        results[0].result
+    );
 }
 
 #[test]
-fn test_runner_mock_backed_invariant_does_not_fabricate_pass_for_clean_source() {
+fn test_runner_mock_backed_invariant_fails_when_invariant_rejects_subject_output() {
     let source = r#"
 data subject_ref: Int = 0
 data invariant_ref: Int = 0
 
 data claim: TestClaim = {
   name: "mock backed clean source",
-  source: "let x: Int = 1",
+  source: "fn subject_ref() -> Int = 500\n\nfn invariant_ref(code: Int) -> Bool = code == 200\n\nlet _: Int = 0\n",
   file_name: "clean_mock_subject.v3",
   predicate: MockBackedInvariant(subject_ref, invariant_ref),
   requires: []
@@ -423,10 +446,8 @@ data suite: TestSuite = {
     assert_eq!(results.len(), 1);
     assert!(matches!(
         &results[0].result,
-        ClaimResult::NotYetImplemented(reason)
-            if reason.contains("mock simulation is not wired")
-                && reason.contains("subject_ref")
-                && reason.contains("invariant_ref")
+        ClaimResult::Fail(reason)
+            if reason.contains("invariant") && reason.contains("Bool(true)")
     ));
 }
 
@@ -495,6 +516,19 @@ data suite: TestSuite = {
 }
 
 #[test]
+fn r1_canonical_complexity_lens_bytes_include_cost_of() {
+    let bytes = v3_compiler::test_runner::R1_CANONICAL_COMPLEXITY_LENS;
+    assert!(
+        bytes.contains("fn cost_of"),
+        "canonical lens should declare cost_of"
+    );
+    assert!(
+        bytes.contains("fn compute_costs") && bytes.contains("fn seed_bind_params"),
+        "canonical `complexity.dag` bytes should include the forward-fold spine, not just the `cost_of` signature"
+    );
+}
+
+#[test]
 fn test_runner_dispatches_r1_gates_lens_output_equals_claim() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let gate = manifest_dir.join("tests/fixtures/r1_gates.dag");
@@ -539,6 +573,18 @@ data suite: TestSuite = {
         ClaimResult::NotYetImplemented(reason)
             if reason.contains("AlgebraicLaw::Commutativity")
     ));
+}
+
+#[test]
+fn test_runner_runs_r1_lane_e_suite() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let gate = manifest_dir.join("tests/fixtures/r1_gates.dag");
+    let source =
+        std::fs::read_to_string(&gate).unwrap_or_else(|err| panic!("read {gate:?}: {err}"));
+    let dag = compile_clean(&source, "src/v3/compiler/tests/fixtures/r1_gates.dag");
+    let results = TestRunner::new(&dag).run_suite("r1_lane_e_suite");
+    assert_eq!(results.len(), 3);
+    assert_all_pass(&results);
 }
 
 #[test]

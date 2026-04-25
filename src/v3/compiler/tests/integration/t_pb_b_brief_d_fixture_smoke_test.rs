@@ -4,8 +4,10 @@
 //! `tests/fixtures/t_pb_b_brief_d/`. These files exercise `std.verification` shapes from real
 //! v3 source; they are **not** a `pb_*` gate and do not replace existing Rust tests.
 //!
-//! Same `Ok` / `Semantic` → empty-diagnostics pattern as `t_pb_b_1_tests_dag_smoke_test`
-//! (lowering proxy only; see `docs/briefs/t-pb-b-1.md` *Compile-smoke caveat*).
+//! Same `Ok` / `Semantic` → empty-diagnostics pattern as the former
+//! `t_pb_b_1_tests_dag_smoke_test` (retired — `t_pb_b_1_dag_runner_test` subsumes
+//! the landed `tests/dag/*.dag` sources). Lowering proxy only; see
+//! `docs/briefs/t-pb-b-1.md` *Compile-smoke caveat*.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::CompileError;

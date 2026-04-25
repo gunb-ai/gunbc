@@ -137,8 +137,6 @@ mod sg6_hand_authored_census_test;
 mod sg7_prep_variant_payload_freshness_test;
 #[path = "integration/t_pb_b_1_dag_runner_test.rs"]
 mod t_pb_b_1_dag_runner_test;
-#[path = "integration/t_pb_b_1_tests_dag_smoke_test.rs"]
-mod t_pb_b_1_tests_dag_smoke_test;
 #[path = "integration/t_pb_b_brief_d_fixture_smoke_test.rs"]
 mod t_pb_b_brief_d_fixture_smoke_test;
 #[path = "integration/test_runner_test.rs"]
@@ -159,8 +157,12 @@ mod t_demo_fixture_test {
     use v3_compiler::compile_to_dag;
     use v3_compiler::dag::Dag;
     use v3_compiler::test_runner::{ClaimResult, TestRunner};
+    use v3_compiler::CompileError;
 
     const FIXTURE: &str = "src/v3/compiler/tests/t_demo/t_demo_fixtures.dag";
+
+    /// Byte-sync with `t_demo_structural_cost_obligation_gate.source` in `t_demo_fixtures.dag`.
+    const T_DEMO_STRUCTURAL_COST_OBLIGATION_CLAIM_SOURCE: &str = "fn pair_score(xs: List<Int>) -> Int = fold(xs, 0, |outer, x| outer + fold(xs, 0, |inner, y| inner + x + y))\nlet complexity_demo_out: Int = pair_score(cons(1, singleton(2)))\n";
 
     fn fixture_source() -> String {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -206,6 +208,70 @@ mod t_demo_fixture_test {
                 "T-Demo suite `{suite_name}` should pass Day-1 Compiles claims, got {results:?}"
             );
         }
+    }
+
+    /// ROADMAP T-Demo / PR #764: `FailsWithDiagnostic.detail_contains` must pin the **sum
+    /// constructor** failure (`AppendEffect()` is not an `IdempotentShape` case), not a generic
+    /// `compose_effects` argument refinement message that omits `AppendEffect`.
+    #[test]
+    fn impossible_bug_idempotency_violation_emits_named_constructor_resolve_error() {
+        let src = "let bad_compose = compose_effects([{ operation_name: \"noop\", shape: IsIdempotent(AppendEffect()) }])\n";
+        let err = compile_to_dag(src, "impossible_bug_idempotency.v3")
+            .expect_err("idempotency-violation witness should not compile");
+        let CompileError::Semantic(dag) = err else {
+            panic!("expected Semantic(Dag) handoff, got {err:?}");
+        };
+        let msgs: Vec<String> = dag.diagnostics().iter().map(|(_, d)| d.message()).collect();
+        let needle = "named constructor `AppendEffect` is not a variant of the expected sum type";
+        assert!(
+            msgs.iter().any(|m| m.contains(needle)),
+            "expected nullary-call lowering to reject AppendEffect as IdempotentShape payload; got: {msgs:?}"
+        );
+    }
+
+    #[test]
+    fn t_demo_impossible_bug_suite_r1_passes() {
+        let source = fixture_source();
+        let dag = compile_fixture(&source);
+        let results = TestRunner::new(&dag).run_suite("impossible_bug_class_suite_r1");
+        assert_eq!(results.len(), 2);
+        assert!(
+            results
+                .iter()
+                .all(|result| result.result == ClaimResult::Pass),
+            "impossible-bug suite claims should all Pass (FailsWithDiagnostic receipts only), got {results:?}"
+        );
+    }
+
+    #[test]
+    fn t_demo_structural_cost_obligation_witness_compiles_cleanly() {
+        compile_to_dag(
+            T_DEMO_STRUCTURAL_COST_OBLIGATION_CLAIM_SOURCE,
+            "t_demo_structural_cost_obligation.v3",
+        )
+        .unwrap_or_else(|err| {
+            panic!(
+                "T-Demo structural cost witness must compile so CostBounded exercises lens_cost::cost_of, not tokenizer/parse failures: {err:?}"
+            )
+        });
+    }
+
+    #[test]
+    fn t_demo_structural_cost_obligation_suite_observes_cost_bound_fail() {
+        let source = fixture_source();
+        let dag = compile_fixture(&source);
+        let results = TestRunner::new(&dag).run_suite("t_demo_structural_cost_obligation_suite");
+        assert_eq!(results.len(), 1);
+        let ClaimResult::Fail(msg) = &results[0].result else {
+            panic!(
+                "structural cost obligation gate should Fail CostBounded (cost exceeds bound), got {:?}",
+                results[0].result
+            );
+        };
+        assert!(
+            msg.starts_with("cost ") && msg.contains("did not satisfy bound"),
+            "unexpected CostBounded failure message (expected structural bound receipt, not compile skip): {msg}"
+        );
     }
 }
 

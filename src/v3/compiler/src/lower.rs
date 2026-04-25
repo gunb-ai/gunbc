@@ -4989,10 +4989,17 @@ fn lower_expr(
                     })
                     .into_iter()
                     .collect();
+                let diagnostic_name = match expected_decl {
+                    Some(exp) if walk_to_disj_decl(dag, exp).is_some() => format!(
+                        "named constructor `{target}` is not a variant of the expected sum type `{}`",
+                        declaration_display_name(dag, exp)
+                    ),
+                    _ => target.clone(),
+                };
                 dag.mark_unresolved(
                     port,
                     Diagnostic::ResolveError {
-                        name: target.clone(),
+                        name: diagnostic_name,
                         span: span.clone(),
                         fixes,
                     },

@@ -63,8 +63,9 @@ path, but they are the same mechanism.**
    source. The patch applier is a follow-up PR after reflection.
 
 **The concrete failure mode this work prevents — for lenses.**
-The four lenses that ship today (`lens_provenance`, `lens_depth`,
-`lens_cost`, `lens_unused_parameters`) are all Rust modules.
+The reader lenses in active use today (`lens_provenance`,
+`lens_cost`, `lens_unused_parameters`) are Rust modules. The early
+`lens_depth` experiment is **retired** (unused observational code).
 Every new lens added as a Rust module grows a registry of known
 lens names, a dispatch pattern keyed on those names, and shared
 Rust-lens infrastructure. That is the same failure class as
@@ -241,9 +242,10 @@ for complexity/ownership/effects/trace is retiring debt.
 
 **Out of scope (deferred):**
 
-- Migrating `lens_provenance`, `lens_depth`, `lens_cost` to
-  `.dag`. The migration template is proven by
-  `lens_unused_parameters`; the other three are mechanical ports
+- Migrating `lens_provenance`, `lens_cost` to
+  `.dag`. (`lens_depth` was retired without a `.dag` port — unused experiment.)
+  The migration template is proven by
+  `lens_unused_parameters`; the other two are mechanical ports
   left as a follow-up.
 - Building `lens_complexity` as the v2/v3 comparison vehicle.
   That depends on this work landing first but is a separate
@@ -1829,8 +1831,8 @@ primitive lands MUST be a `.dag` program in `dsl/lenses/`
 operating over the query primitives in `std.substrate_query`.
 
 Rust lens modules (e.g., `src/v3/compiler/src/lens_*.rs`) are
-forbidden for new lenses. Exception: the migration of the three
-existing Rust lenses (`lens_provenance`, `lens_depth`, `lens_cost`)
+forbidden for new lenses. Exception: the migration of the remaining Rust lenses
+(`lens_provenance`, `lens_cost`; `lens_depth` already removed)
 is tracked as followup work; each deletion happens as its own
 PR, and no new Rust lens can land in the meantime.
 
@@ -1868,11 +1870,9 @@ structure used internally, it's bootstrap and is exempt.
 - **§2.3 `lens_unused_parameters`** — the signature example
   rewrites to `.dag`. The Rust form disappears. The test plan
   references the `.dag` fixtures.
-- **§7 "Existing infrastructure"** — the four-lens list updates
-  to reflect migration status. When this PR lands, the list is
-  `lens_unused_parameters (.dag), lens_provenance (Rust —
-  migration pending), lens_depth (Rust — migration pending),
-  lens_cost (Rust — migration pending)`.
+- **§7 "Existing infrastructure"** — the lens list updates
+  to reflect migration status: e.g. `lens_unused_parameters` (`.dag` or hybrid per current tree),
+  `lens_provenance` / `lens_cost` (Rust — migration pending); `lens_depth` **retired**.
 
 ---
 

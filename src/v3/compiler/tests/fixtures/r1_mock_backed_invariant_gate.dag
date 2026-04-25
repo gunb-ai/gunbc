@@ -1,25 +1,22 @@
-// Minimal MockBackedInvariant gate fixture.
-// Lives under tests/fixtures/ -- NOT src/v3/std/ -- not auto-staged into bootstrap.
-//
-// **requires: [] is intentional.** A real MockBackedInvariant claim puts its mock
-// transport on TestClaim.requires. The runner's requires gate (run_claim) currently
-// fails-closed on non-empty requires, so this fixture reaches the typed
-// MockBackedInvariant NYI path until T-TestGen wires real mock simulation.
+// R1 gate for `testgen_mock_backed_integration_safe` (ROADMAP). `MockBackedInvariant` names the
+// `TestPredicate` variant; `requires` stays `[]` until M1(2.8) can express `List<ResourceReference>`
+// bodies in fixture `.dag`. The runner performs hermetic subject+invariant application but does
+// not emit a mock-backed Pass when `requires` is empty (see `TestRunner::run_claim`).
+// Lives under tests/fixtures/ — not auto-staged into bootstrap.
 
 module std.r1_mock_backed_invariant_gate
 
 import std.verification { TestClaim, TestSuite }
 
-data mock_subject_ref: Int = 0
-data mock_invariant_ref: Int = 0
+fn mock_service_status() -> Int = 200
+
+fn mock_invariant_holds(code: Int) -> Bool = code == 200
 
 data mock_backed_invariant_gate: TestClaim = {
   name: "testgen_mock_backed_integration_safe",
-  source: "let _: Int = 0\n",
-  file_name: "mock_backed_placeholder.v3",
-  // Struct-variant field names are schema metadata today; the surface parser
-  // accepts positional payload syntax for authored values.
-  predicate: MockBackedInvariant(mock_subject_ref, mock_invariant_ref),
+  source: "fn mock_service_status() -> Int = 200\n\nfn mock_invariant_holds(code: Int) -> Bool = code == 200\n\nlet _: Int = 0\n",
+  file_name: "mock_backed_harness.v3",
+  predicate: MockBackedInvariant(mock_service_status, mock_invariant_holds),
   requires: []
 }
 

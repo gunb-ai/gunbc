@@ -25,7 +25,7 @@ Post-R2 is external work (adoption, documentation, community, ecosystem modeling
 
 ## Goals
 
-**Gate-ownership discipline.** Every R1 gate listed in `ROADMAP.md §"Lane acceptance — .dag gates"` closes in R1 under the locked all-R1-gates-green criterion (see R1 closure criteria below). That means concerns gated there — **lens purity** (`lens_producer_files_remaining` on T-PB-A via PR #752), **self-hosting shim-floor close** (T-PB-A `pb_hand_rust_at_shim_floor` + `pb_compiler_std_ratchet_zero` + T-PB-B `pb_rust_tests_outside_residual_zero`), and **E-family carrier port closure** (the T-LaneE critical path enabling `complexity_merge_sort_is_nlogn` + `complexity_v3_matches_v2_oracle`) — are **R1 scope, not R2**. R2 does not duplicate release authority over gates ROADMAP already assigns to R1 lanes.
+**Gate-ownership discipline.** Every R1 gate listed in `ROADMAP.md §"Lane acceptance — .dag gates"` closes in R1 under the locked all-R1-gates-green criterion (see R1 closure criteria below). That means concerns gated there — **lens purity** (`lens_producer_files_remaining` on T-PB-A via PR #752), **self-hosting shim-floor close** (T-PB-A `pb_hand_rust_at_shim_floor` + `pb_compiler_std_ratchet_zero` + T-PB-B `pb_rust_tests_outside_residual_zero`), and **E-family carrier port closure** (the T-LaneE critical path enabling `complexity_merge_sort_is_nlogn` + `complexity_merge_sort_v3_matches_v2_oracle` + `lane_e_bundled_witness_host_emit_parity`) — are **R1 scope, not R2**. R2 does not duplicate release authority over gates ROADMAP already assigns to R1 lanes.
 
 Under that discipline, R2's goals are the Tier-1 thesis claims that are *not* gated in R1 today:
 
@@ -87,7 +87,7 @@ Continues `docs/briefs/grounding-manager.md` (refreshed for R2 scope on promotio
 **Lanes deliberately absent (R1 gates, closed by R1 lane acceptance):**
 - T-LensMigration / `lens_producer_files_remaining` — R1 T-PB-A gate per PR #752.
 - T-ShimFloor / `pb_hand_rust_at_shim_floor` / `pb_compiler_std_ratchet_zero` / `pb_rust_tests_outside_residual_zero` — R1 T-PB-A + T-PB-B gates.
-- T-EFamilyClose — R1 T-LaneE's critical-path carrier work (E-T, E-C, E-I, E-P, E-M sub-lanes), enabling the R1 `complexity_merge_sort_is_nlogn` + `complexity_v3_matches_v2_oracle` gates. All E-family carrier-port work closes in R1; only the §6a metadata-pick residual inherits to R2 (Goal 5).
+- T-EFamilyClose — R1 T-LaneE's critical-path carrier work (E-T, E-C, E-I, E-P, E-M sub-lanes), enabling the R1 `complexity_merge_sort_is_nlogn` + `complexity_merge_sort_v3_matches_v2_oracle` + `lane_e_bundled_witness_host_emit_parity` gates. All E-family carrier-port work closes in R1; only the §6a metadata-pick residual inherits to R2 (Goal 5).
 - T-TestGen-tail (`testgen_mock_backed_integration_safe` / `MockBackedInvariant` wiring) — R1 T-TestGen gate per `ROADMAP.md §"Lane acceptance — .dag gates"`. Closes in R1.
 
 R2 does not re-own any of the above; under all-R1-gates-green R1 closure, those gates ARE the close conditions and R2 inherits nothing there — with two named exceptions:
