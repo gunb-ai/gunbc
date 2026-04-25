@@ -161,7 +161,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 
 **Correctness is structural, not behavioral (meta-claim):**
 - Every correctness dimension — type, arity, unit, effect, complexity, ownership, idempotency, and any user-declared invariant — is a structural fact carried by the program's data model.
-- The proof and test surface is structurally derived, not hand-maintained. Tier 1 and Tier 2 proofs close at compile time by reading the structure. Tier 3 runs emitted code, but the test surface is generated from structural `TestClaim` declarations in `.dag` — not hand-authored behavior assertions. The `TESTING.md §"Post-R2 shape"` residual (compiler-internal unit tests + external-toolchain boundary tests) is the explicit carve-out where hand-authored Rust remains; TESTING.md is the single authority on that residual.
+- The proof and test surface is structurally derived, not hand-maintained. Tier 1 and Tier 2 proofs close at compile time by reading the structure. Tier 3 runs emitted code, but the test surface is generated from structural `TestClaim` declarations in `.dag` — not hand-authored behavior assertions. Under the 0-floor target (per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-zero.md), LIVE 2026-04-25 — supersedes the prior ≤5-floor framing in `docs/design-pure-bootstrap.md`), the prior `TESTING.md §"Post-R2 shape"` residual carve-out (compiler-internal unit tests + external-toolchain boundary tests) is **retracted**: helper unit tests vanish naturally as their hand-Rust subjects dissolve, and boundary tests migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations per the cascade promotion. TESTING.md is the single authority on the migration path.
 - The dimension system is first-class user-extensible: a user writes a lens in `.dag`, and the compiler validates every program against it using the same mechanism it uses for built-in dimensions.
 - What mainstream languages catch via testing, profiling, schema validators, integration test suites, and production postmortems, gunbc catches by structurally deriving the proof or test — compile-time proofs for Tier 1/2, structurally-derived test surface for Tier 3.
 
@@ -245,10 +245,12 @@ Self-hosting is not one capability; it's three. All three are targets.
    `pipeline.rs` (`src/v2/tests/src/pipeline.rs` — the large pipeline/
    contract test file; live LOC reads from the file) exists only as
    `.dag` `TestClaim` declarations and generated target-language test code.
-   Per `TESTING.md` §"Post-R2 shape", two residual categories stay
-   Rust-authored: compiler-internal unit tests for Rust-only helpers, and
-   boundary tests that invoke external toolchains (rustc, go, python).
-   Everything else ports to `.dag`. **Pure Bootstrap's secondary
+   Under the 0-floor target (per `docs/design-pure-bootstrap-zero.md`, LIVE
+   2026-04-25), the prior `TESTING.md §"Post-R2 shape"` two-residual carve-out
+   is **retracted**: helper unit tests vanish naturally as their hand-Rust
+   subjects dissolve; boundary tests that invoke external toolchains (rustc,
+   go, python) migrate to `ExecuteCommand`-based `.dag` `TestClaim`
+   declarations. Everything ports to `.dag`. **Pure Bootstrap's secondary
    deliverable, couples to testgen.**
 
 Cost-of-change: editing any compiler concept — a new pass, substrate fact,
@@ -257,30 +259,33 @@ one `.dag` file. No
 matching hand edits to a Rust stage0 file. Stage0 Rust compiler internals
 (tokenize, parse, lower, infer, emit, lenses, std library) are emitted
 from the `.dag` graph and committed — not hand authored. Tests follow
-the carve-out in facet 3 above: pipeline/contract tests are `.dag`
-`TestClaim` data; the `TESTING.md §"Post-R2 shape"` residual categories
-(compiler-internal unit tests + external-toolchain boundary tests) remain
-Rust-authored. Hand-maintained surface target: the irreducible shim
-floor defined in `docs/design-pure-bootstrap.md` (authority on the **≤5
-bound** and the **current candidate set** for the non-test surface;
-specific files are candidates today and are ratified at graduation).
+the cascade-promoted shape in facet 3 above: all pipeline/contract tests
+are `.dag` `TestClaim` data; the prior `TESTING.md §"Post-R2 shape"`
+two-residual carve-out is **retracted** under 0-floor (compiler-internal
+unit tests + external-toolchain boundary tests both dissolve — helpers
+vanish with their subjects, boundary tests migrate to `ExecuteCommand`-based
+`.dag` `TestClaim` declarations). Hand-maintained surface target: **0**
+per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-zero.md)
+(LIVE 2026-04-25; supersedes the prior ≤5-floor framing in
+`docs/design-pure-bootstrap.md`).
 The live *count* of currently hand-authored files reads from the full
 SG-0 census in `src/v3/compiler/tests/integration/sg0_census_test.rs`
 (authority on the census): file-level **`EXPECTED_HAND_AUTHORED_NON_TEST`**
 plus **`EXPECTED_HAND_AUTHORED_FRAGMENTS`** (crate-root scaffolds) for the
 T-PB-A non-test surface, **`EXPECTED_HAND_AUTHORED_TEST`** for the T-PB-B test
 surface, and mechanical checks that paths land in the correct sub-ratchet.
-Non-test entries shrink toward the shim floor; test entries shrink toward the
-`TESTING.md` residual.
+Both subsets shrink toward 0 under the 0-floor cascade promotion.
 Generated escape hatch is acceptable for additional files; hand-authored
-beyond the shim is not.
+files are not.
 v2 achieves this pattern at ~97% (2 hand-maintained of 62 stage0 files);
-v3's trajectory is the Pure Bootstrap program.
+v3's trajectory is the Pure Bootstrap to Zero program (0 hand-maintained).
 
 Fixed-point acceptance: v3 binary compiles `compiler.dag` → produces
 bit-identical stage0 Rust + bit-identical emitted artifacts.
 `compiler.dag`'s `hand_maintained_src` list monotonically shrinks to the
-irreducible shim set defined in `docs/design-pure-bootstrap.md`.
+empty set per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-zero.md)
+(LIVE 2026-04-25; supersedes the ≤5 irreducible-shim framing in
+`docs/design-pure-bootstrap.md`).
 
 **Audience duality — opt-in depth (meta-feature):**
 - Core language stays approachable — types, functions, match, effects,
@@ -299,23 +304,23 @@ irreducible shim set defined in `docs/design-pure-bootstrap.md`.
   extend the proof surface without changing the base language).
 
 **Tests are structural data:**
-- Tests outside the `TESTING.md §"Post-R2 shape"` residual are `TestClaim`
-  declarations in `.dag`; the residual (compiler-internal unit tests +
-  external-toolchain boundary tests) remains Rust-authored, per TESTING.md
-  as single authority. Within the `.dag` surface, hand-authored tests and
-  generated tests share one predicate vocabulary — the predicates ARE the
-  test-writing language.
+- All tests are `TestClaim` declarations in `.dag` under the 0-floor cascade
+  promotion (the prior `TESTING.md §"Post-R2 shape"` residual carve-out is
+  retracted; helper unit tests vanish with their hand-Rust subjects, boundary
+  tests migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations).
+  Within the `.dag` surface, hand-authored tests and generated tests share
+  one predicate vocabulary — the predicates ARE the test-writing language.
+  TESTING.md is the single authority on the migration path.
 - Manual tests are upstream of code: behavioral contracts the code must
   satisfy. Testgen is downstream of code: structural coverage derived from
   the program the user wrote.
-- Rust tests **outside the `TESTING.md` §"Post-R2 shape" residual**
-  (compiler-internal unit tests + external-toolchain boundary tests) are a
-  language smell. Every hand-authored `.rs` test outside that residual
-  flags a predicate, effect-model, or mock surface the language doesn't
-  yet express. The operational release gate is ROADMAP T-PB-B's
+- Rust-authored tests are a language smell. Every hand-authored `.rs` test
+  flags a predicate, effect-model, or mock surface the language doesn't yet
+  express. The operational release gate is ROADMAP T-PB-B's
   `pb_rust_tests_outside_residual_zero`: zero Rust-authored tests exist
-  outside the residual. TESTING.md remains the single authority on the
-  residual categories; the acceptance claim lives in ROADMAP.
+  (predicate name retains "outside residual" for predicate-rename housekeeping;
+  semantically the residual is empty under cascade promotion, so "outside
+  residual" means "all"). The acceptance claim lives in ROADMAP.
 - Consequence of the pure-function posture: effects are explicit parameters,
   mocking is dependency-injection-by-construction, no hidden state means no
   flaky tests.
