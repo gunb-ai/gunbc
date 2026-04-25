@@ -391,18 +391,21 @@ fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<C
 }
 
 /// `sh`/`bash`/… with `-c` in **any** common spelling: standalone `"-c"`, or combined single-dash
-/// flags that include the `c` option (e.g. `"-ec"`, `"-lc"`) with the next argument as the script
-/// (codex/PR #792: `sh -c` only was too narrow).
+/// flags that include the `c` option (e.g. `"-ec"`, `"-lc"`) with the next argument as the script.
+/// The `-c` / combined-flag token may appear **anywhere** in the slice (e.g. `["sh", "-ec", "cmd"]` or
+/// `["-ec", "cmd"]`); codex PR #792, api-review e99b53e7: first-arg-only special case missed
+/// `env sh -ec "…&"`.
 fn shell_dash_c_script_string(args: &[String]) -> Option<&str> {
     for (i, a) in args.iter().enumerate() {
         if a == "-c" {
             return args.get(i + 1).map(String::as_str);
         }
-    }
-    if let (Some(f), Some(script)) = (args.first(), args.get(1)) {
-        if let Some(flags) = f.strip_prefix('-') {
+        if a.starts_with("--") {
+            continue;
+        }
+        if let Some(flags) = a.strip_prefix('-') {
             if !flags.is_empty() && !flags.starts_with('-') && flags.chars().any(|ch| ch == 'c') {
-                return Some(script.as_str());
+                return args.get(i + 1).map(String::as_str);
             }
         }
     }
@@ -2421,6 +2424,32 @@ mod execute_command_timebound_tests {
         );
     }
 
+    /// Combined `-ec` / `-lc` after the shell token: must not bypass the guard (api-review e99b53e7).
+    #[test]
+    fn env_sh_dash_ec_and_dash_lc_background_ampersand_are_rejected() {
+        for (flag, label) in [("-ec", "ec"), ("-lc", "lc")] {
+            let r = evaluate_execute_command_exit_code(
+                "env",
+                &[
+                    String::from("sh"),
+                    String::from(flag),
+                    String::from("sleep 600 &"),
+                ],
+                0,
+            );
+            let ClaimResult::Fail(m) = r else {
+                panic!("expected fail-closed for env sh {label} + background, got {r:?}");
+            };
+            assert!(
+                m.contains("background")
+                    || m.contains("P3")
+                    || m.contains("descendants")
+                    || m.contains("shell `-c`"),
+                "expected policy message, got: {m}"
+            );
+        }
+    }
+
     /// M1.5: policy `Fail` is `Err(ClaimResult)`, not propositional `false` (P3/DB-1, PR #792).
     #[test]
     fn m1_5_rejects_policy_fail_as_propositional() {
@@ -2515,6 +2544,23 @@ mod execute_command_timebound_tests {
         assert_eq!(
             shell_dash_c_script_string(&[String::from("-lc"), String::from("d")]),
             Some("d")
+        );
+        assert_eq!(
+            shell_dash_c_script_string(&[
+                String::from("sh"),
+                String::from("-ec"),
+                String::from("e")
+            ]),
+            Some("e")
+        );
+        assert_eq!(
+            shell_dash_c_script_string(&[
+                String::from("env"),
+                String::from("sh"),
+                String::from("-lc"),
+                String::from("f"),
+            ]),
+            Some("f")
         );
     }
 
