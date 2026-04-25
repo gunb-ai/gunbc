@@ -117,8 +117,20 @@ A downstream stage reads a lower layer not through its declared accessors but by
 
 **Receipt:** Lens implementations once reached into hand-written storage details of the substrate, so every storage refactor cascaded into lens edits. Dissolution: declared substrate query functions (L-7); lenses became consumers of a typed boundary instead of the storage itself.
 
+### <a id="p2-host-process-boundary"></a>Host-process boundary discipline
+
+**Rule:** Predicates that spawn **host processes** to evaluate a claim (e.g. `std::process` / `ExecuteCommand` in the test runner) meet the same boundary bar as the rest of the compiler: the contract is **typed and single-authority**, not a growing pile of string-heuristic special cases. Concretely:
+
+- **(a) Typed results, not string authority.** Outcomes for the host predicate are **variants or carriers**; consumers do not use free-form **diagnostic strings** (prefix probes, `contains` checks on mixed channels) as the long-run structural contract. DB-1’s typed-carrier discipline applies; C-5 is the anti-pattern. Where the implementation is still string-shaped, treat that as **tracked debt** with a named dissolution, not a steady-state.
+- **(b) Isolated logical-child I/O.** The **logical child** (the command under test) is not allowed to **share a diagnostic channel** with a wrapper, launcher, or sandbox setup so that **wrapper or harness artifacts** can be mistaken for claim evidence. The typed channel to the claim must be separable from setup noise. (C-5-adjacent when a shared stream becomes the only signal.)
+- **(c) Setup failure ≠ logical exit.** **Harness or sandbox setup failure** (e.g. cannot enter namespace, `unshare(1)` diagnostics, spawn layout failure) is a **separate typed outcome** from “the user command ran and exited *k*” — the two may not be collapsed or reinterpreted in one hop.
+- **(d) No implicit re-execution.** The runner does **not** re-run the user’s command as an **implicit recovery** path. A **second** execution of the same logical command is only allowed when it is **explicit policy** (documented, bounded, and reviewable) — not a hidden fallback to “try again and hope the failure mode changed.” (When policy explicitly allows a bounded confirmation run, the double-exec and idempotence assumptions are part of the stated contract, not a silent escape hatch.)
+
+**Receipt / audit hook:** T-PB-B and PB-Runtime work streams consume this boundary through `src/v3/compiler/src/test_runner.rs` (`evaluate_execute_command_exit_code` and shared parsers). Rounds of review in PR #792 (2026-04-25) converged the same *class* of find — fail-closed holes at the host / typed-channel border — with per-instance fixes each tagged (TODO, dissolution, `cfg!(test)` triggers). The structural move is: **one invariant, one audit of the function against (a)–(d)**, then ship or consolidate into a single policy table, instead of an unbounded sequence of ad hoc patches at the same seam.
+
 ### Related rules (home-of-record here)
 
+- **Host-process boundary discipline** — P2 subsection [above](#p2-host-process-boundary) (T-PB-B / PB-Runtime; PR #792 meta-review)
 - **Lenses Are Substrate Declarations** + **Reflected-Facts-When-Landed**
 - **Every Dependency Is A Substrate Fact**
 - **Minimal Information Per Interface**
