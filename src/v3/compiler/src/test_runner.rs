@@ -414,7 +414,9 @@ fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        // stderr: capture so we can detect unshare(2) setup failures in the `unshare(1)` process
+        // (they would otherwise masquerade as a logical program exit, e.g. 1 == expect 1) — P3.
+        .stderr(Stdio::piped());
     {
         use std::os::unix::process::CommandExt;
         unsafe {
@@ -433,6 +435,51 @@ fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
 fn is_unshare_permission_error(err: &std::io::Error) -> bool {
     use std::io::ErrorKind;
     err.kind() == ErrorKind::PermissionDenied || err.raw_os_error() == Some(libc::EPERM)
+}
+
+/// `unshare(1)` can exit (sometimes with a small code like 1) **before** it `exec(2)`-s the logical
+/// `command` when namespace setup fails. That exit must **not** be conflated with a matching
+/// `expect_exit_code` (P3: typed sandbox/setup failure, not a pass). util-linux messages look like
+/// `unshare: unshare failed: ...`.
+#[cfg(target_os = "linux")]
+const UNSHARE_STDERR_SCAN_CAP: u64 = 8 * 1024;
+
+#[cfg(target_os = "linux")]
+fn unshare_sandbox_setup_failure_from_child_stderr(
+    from_unshare: bool,
+    child: &mut std::process::Child,
+) -> Option<ClaimResult> {
+    if !from_unshare {
+        return None;
+    }
+    let Some(mut h) = child.stderr.take() else {
+        return Some(ClaimResult::Fail(
+            "ExecuteCommand: Linux `unshare(1)` stderr not available; cannot disambiguate \
+             sandbox setup failure from a logical exit code (P3) — P3"
+                .to_string(),
+        ));
+    };
+    use std::io::Read;
+    let mut buf = String::new();
+    if h.take(UNSHARE_STDERR_SCAN_CAP)
+        .read_to_string(&mut buf)
+        .is_err()
+    {
+        return Some(ClaimResult::Fail(
+            "ExecuteCommand: could not read `unshare(1)` stderr to validate the sandbox (P3)"
+                .to_string(),
+        ));
+    }
+    for line in buf.lines().take(20) {
+        let t = line.trim();
+        if t.starts_with("unshare:") && t.contains("failed") {
+            return Some(ClaimResult::Fail(format!(
+                "ExecuteCommand: Linux `unshare(1)` did not set up a sandbox: {t} (not a logical \
+                 program exit code) — P3"
+            )));
+        }
+    }
+    None
 }
 
 /// Configure `Command` for the host check: no capture, and on Unix a new process group for the
@@ -520,14 +567,14 @@ fn evaluate_execute_command_exit_code_with_wall_time(
     if let Some(r) = reject_unbounded_shell_background(command, args) {
         return r;
     }
-    let mut child = {
+    let (mut child, from_unshare) = {
         #[cfg(target_os = "linux")]
         {
             match build_execute_command_unshare(command, args).spawn() {
-                Ok(c) => c,
+                Ok(c) => (c, true),
                 Err(e) if is_unshare_permission_error(&e) => {
                     match build_execute_command_process(command, args).spawn() {
-                        Ok(c) => c,
+                        Ok(c) => (c, false),
                         Err(e2) => {
                             return ClaimResult::Fail(format!(
                                 "ExecuteCommand spawn error ({command}) after unshare(1) EPERM fallback: \
@@ -547,7 +594,7 @@ fn evaluate_execute_command_exit_code_with_wall_time(
         #[cfg(not(target_os = "linux"))]
         {
             match build_execute_command_process(command, args).spawn() {
-                Ok(c) => c,
+                Ok(c) => (c, false),
                 Err(err) => {
                     return ClaimResult::Fail(format!(
                         "ExecuteCommand spawn error ({command}): {err}"
@@ -576,6 +623,14 @@ fn evaluate_execute_command_exit_code_with_wall_time(
             }
         }
     };
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(r) = unshare_sandbox_setup_failure_from_child_stderr(from_unshare, &mut child) {
+            return r;
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = from_unshare;
     let Some(actual) = status.code().map(i64::from) else {
         return ClaimResult::Fail(
             "ExecuteCommand: child terminated by signal (no host exit code)".to_string(),

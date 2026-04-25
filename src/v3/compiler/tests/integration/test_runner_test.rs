@@ -371,8 +371,11 @@ data suite: TestSuite = { name: "execute_command_spawn", claims: [claim] }
     assert!(
         msg.contains("spawn error")
             || msg.contains("exit code mismatch")
-            || (msg.contains("unshare(1)") && msg.contains("failed to start")),
-        "expected missing-binary triage (direct spawn, inner exit, or unshare start); got: {msg}"
+            || (msg.contains("unshare(1)")
+                && (msg.contains("failed to start")
+                    || msg.contains("did not set up a sandbox")
+                    || msg.contains("not a logical program exit code"))),
+        "expected missing-binary or sandbox triage; got: {msg}"
     );
 }
 
