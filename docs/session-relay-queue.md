@@ -10,6 +10,15 @@
 | #589 (parser staging / SG-2, session `quiet-owl-783`) | https://github.com/gunb-ai/gunbc/pull/589 |
 | #593 (SG-3f-prep / lower lane, session `nimble-bee-243`) | https://github.com/gunb-ai/gunbc/pull/593 |
 | #664 (compiler→std tranche 2 / `v3.std.parse_surface`, session `zesty-lark-436`) | https://github.com/gunb-ai/gunbc/pull/664 |
+| #792 (PB-Runtime / `ExecuteCommand` host runner, session `neat-swift-115`) | https://github.com/gunb-ai/gunbc/pull/792 |
+
+#### #792 relay index (dashboard ingest — pointers only)
+
+Full text stays on **GitHub**; this index is a stable handle for agents.
+
+| Source | Link |
+|:---|:---|
+| **`api-review`** (claude-opus-4-7) — **`3a2a9f64b…`** @ **2026-04-25T10:38:20Z** — **`<!-- [api-review] provider:claude model:claude-opus-4-7 sha:3a2a9f64 trigger:schedule -->`** — **Verdict:** **APPROVE** — P2 host-process **ExecuteCommand** work (typed `ExecuteCommandHostOutcome`, M1.5 vs `Other`, unshare/127/drain/implicit re-exec branches, shell `&` as tracked reject-only elision, brief/ROADMAP/cost-of-change) — **0** blocking; **observations (non-PR):** future invariant could ship before sole inhabitant; one more ad-hoc branch in `evaluate_execute_command_host_outcome` loop should force dissolution rewrite; elision on quoted `&` = UX to watch; **follow-up** (not #792): typed setup carrier to retire `UnshareDirectRerun` + elision | [PR #792](https://github.com/gunb-ai/gunbc/pull/792) (Conversation — authoritative text on GitHub) — **+N** in dashboard batch = other queued **dashboard** items, **not** a second distinct #792 event |
 
 #### #664 relay index (dashboard ingest — pointers only)
 
