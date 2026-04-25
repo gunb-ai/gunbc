@@ -729,7 +729,13 @@ def render_parse_surface_sum(name: str, variants: list[VariantDef]) -> str:
         if variant.kind == "unit":
             lines.append(f"    {variant.name},")
         elif variant.kind == "tuple":
-            lines.append(f"    {variant.name}({rust_type(variant.payload)}),")
+            # R2: int literal magnitude is i128; DAG payload type remains `Int`.
+            rust_tuple_ty = (
+                "i128"
+                if name == "SurfaceLiteral" and variant.name == "Int"
+                else rust_type(variant.payload)
+            )
+            lines.append(f"    {variant.name}({rust_tuple_ty}),")
         elif variant.kind == "record":
             lines.append(f"    {variant.name} {{")
             for label, ty in variant.fields or []:
@@ -779,6 +785,7 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
             "#[derive(Debug, Clone, PartialEq, Eq)]",
             output_name="LiteralBits",
             variant_name_overrides={"LitInt": "Int", "LitBool": "Bool", "LitString": "String"},
+            overrides={"Int": "i128"},
         ),
         render_sum(
             "AtomPayload",

@@ -24,7 +24,8 @@ type DagPort {
   produced_by: NodeId?
 }
 
-// Leaf structural types.
+// Leaf structural types. `LitInt(Int)` maps to i128 in the Rust mirror (R2) —
+// carries full signed magnitude; reconciliation narrows to target algebras.
 // 🟢 TERMINAL. Literal carrier split matches dag.rs's runtime enum
 // one-for-one and is expected to persist as the leaf literal surface.
 type LiteralBits

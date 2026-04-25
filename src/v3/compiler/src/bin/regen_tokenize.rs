@@ -256,7 +256,11 @@ fn emit_token_kind_enum(dag: &Dag) -> String {
             TypeConnective::Conj { children } if children.is_empty() => format!("    {},", v.label),
             TypeConnective::Conj { children } if children.len() == 1 => {
                 let field = &children[0];
-                let rust_ty = rust_type_for_decl_id(dag, field.ty);
+                let mut rust_ty = rust_type_for_decl_id(dag, field.ty);
+                // R2: pre-narrowed lexical int magnitude; DAG field type remains `Int`.
+                if v.label == "IntLit" {
+                    rust_ty = "i128".to_string();
+                }
                 let field_name = &field.label;
                 if field_name == "_0" {
                     format!("    {}({rust_ty}),", v.label)
@@ -741,7 +745,7 @@ fn emit_tokenize_fn(
     s.push_str("            }\n");
     s.push_str("            let literal = &source[start..end];\n");
     s.push_str(
-        "            let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n",
+        "            let value: i128 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n",
     );
     s.push_str(&format!(
         "                message: format!(\"{{}}{{}}{{}}\", {}, literal, {}),\n",
