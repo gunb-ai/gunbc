@@ -168,6 +168,12 @@ pub fn routing_key(p: &RustPrimitive) -> RoutingKey {
     }
 }
 
+// Mirrors `dsl/extdeps/languages/rust/primitives.dag` for the hand-authored
+// grounding pilot. Dissolution trigger matches the compiler census note:
+// once R2 T-Substrate's top-level aggregate `ValueBody` sub-lane makes
+// `rust_pilot_primitives` row values structurally walkable, this mirror's
+// integer ranges should be read from generated substrate accessors instead
+// of maintained as a third range list.
 pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
     // Signed integers — OrderedRing over machine-word carriers.
     RustPrimitive::IntegerPrimitive {
