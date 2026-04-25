@@ -677,17 +677,6 @@ fn unshare_empty_stderr_relaunch_authorized() -> bool {
             })
 }
 
-/// **127** = command not found, **126** = not executable — common POSIX `sh` / `exec` results when
-/// the `command` cannot be `exec`’d. Under [`UNSHARE_LOGICAL_BOOTSTRAP_SH`], `exec 2>/dev/null` hides
-/// the shell’s “not found” line from the **wrapper** merge, so a missing binary can look like
-/// `expect_exit_code` 127 on the unshare(1) path with **no** `unshare:` line — the narrow skip would
-/// then `Pass` even though a direct [`std::process::Command::spawn`] often **fails** (P2(c), PR
-/// #792). Never **skip** direct-`Child` host confirmation in that case; still confirm (second run).
-#[cfg(target_os = "linux")]
-fn unshare_nonzero_match_never_skip_direct_for_shell_no_exec_exits(expect_exit_code: i64) -> bool {
-    matches!(expect_exit_code, 126 | 127)
-}
-
 /// `unshare(1)` (and the thin `sh` bootstrap) may still write to the **parent** pipe before the
 /// logical `command` is `exec`’d with `stderr` off the pipe. Only when the observed **exit code
 /// already disagrees** with the claim may we treat the capture as a possible *wrapper* setup error
@@ -1208,48 +1197,27 @@ pub fn evaluate_execute_command_host_outcome(
                     && expect_exit_code != 0;
                 if is_nonzero_match {
                     // Non-zero + exit already matches: the unshare(1) path can (rarely) conflate
-                    // PID-1 or namespace semantics with a **direct** `Child` (see module docs). When
-                    // merged wrapper stderr shows **no** `unshare:` util-linux line, the wrapper did
-                    // not report setup failure — **skip** the direct confirmation run (P2(d); T-PB-B),
-                    // except 126/127: see `unshare_nonzero_match_never_skip_direct_for_shell_no_exec_exits`.
-                    // Read errors: conservative confirm (second `Child`).
-                    // **Regression locus** (subtle): keep retirements in lockstep with empty-stderr —
-                    // TODO(dissolution, P5): shared retirement with `unshare_sandbox_broken_relaunch`
-                    // and empty-stderr (test + GUNBC env) — see `unshare_sandbox_broken_relaunch_with_direct`
-                    // module doc **P5 (shared target)** (api-review 837d0e59).
-                    let merged =
+                    // PID-1 or namespace semantics with a **direct** `Child` (see module docs).
+                    // **Always** run one direct-`Child` “host confirmation” re-exec. A merged wrapper
+                    // `stderr` with no `unshare:` line (including **empty**) is *not* positive evidence
+                    // that `exec` reached the logical child — treating it as a skip was **fail-open**
+                    // (api-review codex 946a9918, PR #792). Merge `Err(())` (read / handle loss) is also
+                    // not authority for a different conclusion; we still re-run for confirmation.
+                    // **P5:** same retirement as post-start + empty-stderr — `UnshareDirectRerun` module doc.
+                    let _merged =
                         unshare_merged_wrapper_stderr_read(&mut child, &unshare_stderr_drain);
-                    let need_direct_host_confirm = match &merged {
-                        Err(()) => true,
-                        Ok(m) if unshare_stderr_indicates_sandbox_setup_failure(m) => true,
-                        Ok(m)
-                            if unshare_nonzero_match_never_skip_direct_for_shell_no_exec_exits(
-                                expect_exit_code,
-                            ) =>
-                        {
-                            true
+                    let reason = UnshareDirectRerun::NonzeroHostConfirm;
+                    child = match build_execute_command_process(command, args).spawn() {
+                        Ok(c) => c,
+                        Err(e2) => {
+                            return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(format!(
+                                "ExecuteCommand spawn error ({command}) after {}: {e2}",
+                                unshare_reexec_after_spawn_error_label(reason)
+                            )));
                         }
-                        Ok(m) if !unshare_stderr_indicates_sandbox_setup_failure(m) => false,
-                        // Defensive fail-closed: the `Ok` arms above should exhaust; keep `confirm`
-                        // on any new `Ok` pattern without an explicit `false` (PR #792, review 994fa40d).
-                        Ok(_) => true,
                     };
-                    if need_direct_host_confirm {
-                        let reason = UnshareDirectRerun::NonzeroHostConfirm;
-                        child = match build_execute_command_process(command, args).spawn() {
-                            Ok(c) => c,
-                            Err(e2) => {
-                                return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(
-                                    format!(
-                                        "ExecuteCommand spawn error ({command}) after {}: {e2}",
-                                        unshare_reexec_after_spawn_error_label(reason)
-                                    ),
-                                ));
-                            }
-                        };
-                        from_unshare = false;
-                        continue;
-                    }
+                    from_unshare = false;
+                    continue;
                 } else {
                     // P3/C-5: same fd as child stderr after exec; do not leave a piped `stderr` on
                     // paths that skip the merge+decision above.
