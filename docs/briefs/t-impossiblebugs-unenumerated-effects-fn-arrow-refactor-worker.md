@@ -149,7 +149,7 @@ Surface to Director.
 
 - Single PR. Title: `feat(v3): T-ImpossibleBugs Fn→Arrow refactor — SurfaceItem.Fn carries Arrow-shaped signature (pre-prereq for unenumerated-effects parser sub-lane)`.
 - PR body cites this brief + addresses each of the 6 reqs + documents structural-carrier rationale for `ArrowInput`.
-- On merge: signal Director; Director signals sibling parser sub-lane (`t-impossiblebugs-unenumerated-effects-parser-worker.md`) is now dispatchable. The parser sub-lane brief itself does NOT need editing — it already assumes `Arrow` is the load-bearing carrier; this PR makes that assumption true.
+- On merge: signal Director; Director signals sibling parser sub-lane (`t-impossiblebugs-unenumerated-effects-parser-worker.md`) is now dispatchable. The parser sub-lane brief was updated alongside this brief (same PR) to point at `FnSignature` + `SurfaceArrow` (post-refactor) and to mandate co-invariant placement of `declared_effects` on both carriers per req 3's carrier-distinction rationale.
 
 ## Cross-manager note
 

@@ -45,26 +45,27 @@ Today the parser silently accepts no effect declaration; after this PR, the surf
 
 ## Six consumer-side requirements
 
-1. **`declared_effects` field on `SurfaceType.Arrow`** (or `SurfaceItem.Fn` — worker picks + surfaces rationale; recommend `Arrow`). Element shape: `List<SurfaceType>` where each entry resolves to an `OperationEffect` declaration (Read/Upsert/Create/Append/Delete from `effects.dag`). **Coproduct dissolution receipt** for any new variant per `feedback_coproduct_dissolution` and the `LoopBound` precedent at `docs/design-mutual-recursion-lowering.md:117-134`.
+1. **`declared_effects` field on both `SurfaceArrow` and `FnSignature`** (post-refactor sub-carriers; not a worker placement choice — co-invariant per refactor-brief req 3). Element shape: `List<SurfaceType>` where each entry resolves to an `OperationEffect` declaration (Read/Upsert/Create/Append/Delete from `effects.dag`). No new variants (purely additive field on two existing carriers); structural-carrier rationale required in PR body explaining why this isn't `feedback_parallel_representation_debt` (answer: each sub-carrier names a different position — declaration vs. type — both genuinely require their own effect set).
 2. **Surface syntax** for the declared-effects clause. Worker picks (recommend post-arrow-output suffix); document choice + reasoning in PR description. The syntax is part of the function type signature, not an annotation (per `feedback_no_annotations`).
 3. **`looks_like_effects_clause` lookahead** at the relevant parse site (function type / item parsing); routes into a new `parse_effects_clause` body. Disambiguation must not break existing function syntax.
 4. **`parse_effects_clause` body parser** producing `List<SurfaceType>` (or equivalent) with the parsed effect-type references.
 5. **Lowerer extension** producing the post-parser substrate carrier on `Arrow` (or `Fn`-level) declarations. Resolves each surface effect-type to its `OperationEffect` declaration.
-6. **Exhaustive-match audit + updates.** Every `match` site over `SurfaceType.Arrow` / `SurfaceItem.Fn` updated for the new field. **No wildcard `_` swallowing**; per `feedback_missing_checks_review_heuristic`.
+6. **Exhaustive-match audit + updates.** Every `match` site over `SurfaceArrow` / `FnSignature` updated for the new `declared_effects` field. **No wildcard `_` swallowing**; per `feedback_missing_checks_review_heuristic`.
 
 ## Slice — parser extension
 
-1. Add `declared_effects` field to `SurfaceType.Arrow` (per req 1) in `parse_surface.dag`. Author coproduct dissolution receipt for any new variant.
-2. Edit `parse_parser_body.txt` (per reqs 2 + 3 + 4): add `looks_like_effects_clause` + `parse_effects_clause`; route from the function-type/item parse entry.
-3. Add lowerer extension (per req 5) producing the post-parser substrate carrier; resolve each surface effect to its `OperationEffect` declaration.
-4. Regen `parse_generated.rs` (per `feedback_no_generated_code_on_disk`).
-5. Exhaustive-match audit + updates (per req 6).
-6. Smoke test: parser accepts `fn read_user(id: String) -> User effects [Read]` and produces a function declaration with `declared_effects = [ReadEffect]`. **NOTE**: this PR does NOT consume the field via lens (sibling substrate sub-lane does that); after this PR the field is populated but unread. That's expected; the sibling sub-lane closes that path. Test should assert the parser-output shape, not end-to-end lens behavior.
+1. **Pre-flight check**: confirm the Fn→Arrow refactor brief has merged and `parse_surface.dag` carries `SurfaceArrow` + `FnSignature` + `NamedArrowInput`/`ArrowInput`. STOP if not — sequencing error.
+2. Add `declared_effects` field to **both** `SurfaceArrow` and `FnSignature` (per req 1) in `parse_surface.dag`. Add structural-carrier rationale (no new coproduct variants; field-level addition on two existing carriers).
+3. Edit `parse_parser_body.txt` (per reqs 2 + 3 + 4): add `looks_like_effects_clause` + `parse_effects_clause`; route from the function-type/item parse entry.
+4. Add lowerer extension (per req 5) producing the post-parser substrate carrier; resolve each surface effect to its `OperationEffect` declaration.
+5. Regen `parse_generated.rs` (per `feedback_no_generated_code_on_disk`).
+6. Exhaustive-match audit + updates (per req 6).
+7. Smoke test: parser accepts `fn read_user(id: String) -> User effects [Read]` and produces a function declaration whose `signature: FnSignature` carries `declared_effects = [ReadEffect]`. **NOTE**: this PR does NOT consume the field via lens (sibling substrate sub-lane does that); after this PR the field is populated but unread. That's expected; the sibling sub-lane closes that path. Test should assert the parser-output shape, not end-to-end lens behavior.
 
 ## Acceptance
 
 - [ ] All 6 consumer-side requirements satisfied + documented in PR body.
-- [ ] `declared_effects` field on `SurfaceType.Arrow` (or `SurfaceItem.Fn`); coproduct dissolution receipt landed.
+- [ ] `declared_effects` field on **both** `SurfaceArrow` and `FnSignature` (post-refactor sub-carriers); structural-carrier rationale documented in PR body.
 - [ ] `looks_like_effects_clause` + `parse_effects_clause` in `parse_parser_body.txt`.
 - [ ] Lowerer resolves surface effects to `OperationEffect` declarations.
 - [ ] `parse_generated.rs` regenerated; no hand edits.
@@ -95,7 +96,7 @@ Surface to Director.
 
 ## Reporting
 
-- Single PR. Title: `feat(v3): T-ImpossibleBugs parser-extension — declared_effects on SurfaceType.Arrow (prereq for unenumerated-effects substrate sub-lane)`.
+- Single PR. Title: `feat(v3): T-ImpossibleBugs parser-extension — declared_effects on FnSignature + SurfaceArrow (prereq for unenumerated-effects substrate sub-lane)`.
 - PR body cites this brief + addresses each of the 6 reqs + documents surface-syntax + Arrow-vs-Fn placement choices.
 - On merge: signal Director; Director signals sibling substrate sub-lane (`t-impossiblebugs-unenumerated-effects-worker.md`) is now dispatchable.
 
