@@ -114,6 +114,27 @@ or a successor). That PR's worker rewrites the affected row's
 above. The debt closes when every PB-Substrate row's rationale
 cell reflects post-pilot reality.
 
+**Tracked debt — generator doc-comment propagation gap** (surfaced by
+openai-pro auto-review on the PB-Substrate pilot v2 [#780](https://github.com/gunb-ai/gunbc/pull/780)).
+`scripts/regen_runtime_mirrors.py` does not propagate `//` comment
+blocks above `substrate.dag` type declarations into `///` doc comments
+on the rendered Rust enums/structs. For the operator-types slice
+landed in #780 the gap surfaced no information loss because
+`substrate.dag:130-160` already carries rich per-type `🟡 SCAFFOLD`
+annotations (M2+ desugarer trigger, BooleanAlgebra field-ref target).
+For future slices whose authoring rationale lives only in the retired
+hand-authored Rust block, the gap would lose context.
+
+*Dissolution trigger*: PB-Substrate proper execution, on the first
+migrating slice whose rationale lives only in the retired hand-Rust
+block (no upstream substrate annotation captures it). That PR either
+propagates the rationale into `substrate.dag` first OR extends
+`render_sum` / `render_record` in `regen_runtime_mirrors.py` to emit
+`///` doc-comments derived from leading `//` blocks above each type
+declaration. Whichever lands first carries the gap closure; once
+emitted, every substrate type's authoring rationale is reachable from
+the generated Rust mirror.
+
 ## Findings before the table
 
 Two files in the live census have no explicit lane home in the brief's
@@ -176,7 +197,7 @@ declares.
 
 | File | Why currently hand-authored | Migration path |
 |---|---|---|
-| `src/v3/compiler/src/dag.rs` | Core substrate types (Dag, Node, Port, Conj, Disj, Cardinality, Bit) hand-authored as Rust. `substrate.dag` exists and is non-trivially populated (398 LOC, TERMINAL-marked structural types matching the runtime enum surface) but is not yet the generation source. | Generate from `src/v3/std/substrate.dag`. |
+| `src/v3/compiler/src/dag.rs` | Hybrid: `include!()`s five `*_generated.rs` modules produced by `scripts/regen_runtime_mirrors.py` — three substrate-shape mirrors from `src/v3/std/substrate.dag` (`dag_scalar_generated`, `dag_branch_generated`, `dag_cluster_generated`), plus `dag_lookup_generated` from `src/v3/std/lookup.dag` and `dag_cost_generated` from `src/v3/std/algebra.dag`. See §"Substrate generation is already proven and shipping" for the broader pattern. The remaining hand-authored content is the core Dag/Node/Port/Conj/Disj wiring not yet covered by `render_dag_*_module` renderers. PB-Substrate pilot v2 (#780) extended the substrate-shape scalar module with `ArithmeticOp` / `ComparisonOp` / `LogicalOp` / `OperatorKind`; further slices follow the same pattern. | Continue extending `regen_runtime_mirrors.py` renderers until the residual hand-authored slice in `dag.rs` is empty. |
 | `src/v3/compiler/src/dag/ports.rs` | Port submodule of dag.rs; hand-authored alongside the parent. | Same emission pass as `dag.rs`. |
 | `src/v3/compiler/src/dag/effects.rs` | Effects submodule; hand-authored alongside dag.rs. | Same emission pass as `dag.rs`. |
 | `src/v3/compiler/src/diagnostics.rs` | Diagnostic enum + fail-closed `mark_unresolved` API. Header explicitly names "DEFERRED DISSOLUTION" pointing at v3-modeling-analysis §CompilerDiagnostic 5-field target. `src/v3/std/diagnostics.dag` exists (39 LOC) but is currently a stub relative to the target shape. | Extend `diagnostics.dag` to the 5-field shape; generate alongside `dag.rs`. Fail-closed API contract preserved per `feedback_fail_closed_is_boundary`. |
