@@ -828,17 +828,40 @@ pub fn evaluate_execute_command_exit_code(
     )
 }
 
-/// **Single authority** for the exit-mismatch `ClaimResult::Fail` string (M1.5 propositional read;
-/// [`evaluate_execute_command_m1_5`]). All other `ExecuteCommand` `Fail` messages are infrastructure
-/// or policy — not a boolean “predicate is false” (P3/DB-1, codex PR #792).
-//
-// TODO(dissolution, T-PB-B, M1.5): P2 [Host-process (a)](/INVARIANTS.md#p2-host-process-boundary) / C-5
-// — retire `msg.starts_with(EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX)` in
-// `evaluate_execute_command_m1_5` by carrying “exit ≠ expect” in **data** (e.g. a dedicated
-// `ClaimResult` variant, or a small return struct from a split “evaluate to typed outcome / to
-// claim string” API) so the propositional read `match`es a variant, not a free-form `Fail` prefix.
+/// String form for the exit-mismatch **reporting** edge; **not** used for M1.5 or other semantic
+/// classification (C-5, codex PR #792) — that uses [`ExecuteCommandHostOutcome::Mismatch`].
 pub const EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX: &str =
     "ExecuteCommand exit code mismatch: expected ";
+
+/// [`evaluate_execute_command_host_outcome`]: single authority **before** [`ClaimResult`]
+/// rendering — M1.5 and other consumers classify exit mismatch here as data, not
+/// `Fail(String)`-prefix probes (P2 [Host-process (a)](/INVARIANTS.md#p2-host-process-boundary), C-5,
+/// DB-1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecuteCommandHostOutcome {
+    /// Host exit code equaled the claim.
+    Matched,
+    /// Host exit code was observed and did not match the claim; M1.5 maps this alone to
+    /// propositional “false” for the exit predicate.
+    Mismatch { expected: i64, actual: i64 },
+    /// All other `ClaimResult` needs (always `Fail` or `NotYetImplemented` in practice) —
+    /// timeout, policy, signal, spawn error, etc.
+    Other(ClaimResult),
+}
+
+impl ExecuteCommandHostOutcome {
+    /// [`ClaimResult`] for [`TestRunner`] and `.dag` reporting; match on
+    /// [`ExecuteCommandHostOutcome`] before calling when you need typed discrimination.
+    pub fn into_claim_result(self) -> ClaimResult {
+        match self {
+            ExecuteCommandHostOutcome::Matched => ClaimResult::Pass,
+            ExecuteCommandHostOutcome::Mismatch { expected, actual } => ClaimResult::Fail(format!(
+                "{EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX}{expected}, got {actual}"
+            )),
+            ExecuteCommandHostOutcome::Other(c) => c,
+        }
+    }
+}
 
 /// M1.5 and other **boolean** predicate reads: only these outcomes map to propositional
 /// true/false; all other results are `Err(ClaimResult)` (not “`false`” for the claim).
@@ -853,31 +876,36 @@ pub enum ExecuteCommandM1_5Proposition {
 /// Distinguish “exit ≠ expect” from timeout, spawn error, `&` policy, signal, etc. `Err` is the
 /// full untyped `ClaimResult` (use [`TestRunner`] for strings); do not map `Err` to
 /// propositional `false` (P3/DB-1; codex PR #792).
-// Prefix arm: tracked string-shaped seam — see `EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX` TODO.
 pub fn evaluate_execute_command_m1_5(
     command: &str,
     args: &[String],
     expect_exit_code: i64,
 ) -> Result<ExecuteCommandM1_5Proposition, ClaimResult> {
-    match evaluate_execute_command_exit_code(command, args, expect_exit_code) {
-        ClaimResult::Pass => Ok(ExecuteCommandM1_5Proposition::Satisfied),
-        ClaimResult::Fail(msg)
-            if msg.starts_with(EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX) =>
-        {
+    match evaluate_execute_command_host_outcome(
+        command,
+        args,
+        expect_exit_code,
+        EXECUTE_COMMAND_WALL_TIMEOUT,
+    ) {
+        ExecuteCommandHostOutcome::Matched => Ok(ExecuteCommandM1_5Proposition::Satisfied),
+        ExecuteCommandHostOutcome::Mismatch { .. } => {
             Ok(ExecuteCommandM1_5Proposition::UnsatisfiedExitMismatch)
         }
-        other @ (ClaimResult::Fail(_) | ClaimResult::NotYetImplemented(_)) => Err(other),
+        ExecuteCommandHostOutcome::Other(c) => Err(c),
     }
 }
 
-fn evaluate_execute_command_exit_code_with_wall_time(
+/// Core host run: **typed** outcome. Map to [`ClaimResult`] with
+/// [`ExecuteCommandHostOutcome::into_claim_result`] for [`TestRunner`], or match directly from
+/// [`evaluate_execute_command_m1_5`].
+pub fn evaluate_execute_command_host_outcome(
     command: &str,
     args: &[String],
     expect_exit_code: i64,
     wall_time: Duration,
-) -> ClaimResult {
+) -> ExecuteCommandHostOutcome {
     if let Some(r) = reject_unbounded_shell_background(command, args) {
-        return r;
+        return ExecuteCommandHostOutcome::Other(r);
     }
     #[allow(unused_mut)]
     let (mut child, mut from_unshare) = {
@@ -891,11 +919,11 @@ fn evaluate_execute_command_exit_code_with_wall_time(
                 Err(e_unshare) => match build_execute_command_process(command, args).spawn() {
                     Ok(c) => (c, false),
                     Err(e2) => {
-                        return ClaimResult::Fail(format!(
+                        return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(format!(
                             "ExecuteCommand: could not run `{command}`: `unshare(1) -c -f -p` \
                              wrapper failed to spawn: {e_unshare}; direct spawn also failed: {e2} \
                              (P3/P4 — util-linux/namespace or host binary path)"
-                        ));
+                        )));
                     }
                 },
             }
@@ -905,9 +933,9 @@ fn evaluate_execute_command_exit_code_with_wall_time(
             match build_execute_command_process(command, args).spawn() {
                 Ok(c) => (c, false),
                 Err(err) => {
-                    return ClaimResult::Fail(format!(
+                    return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(format!(
                         "ExecuteCommand spawn error ({command}): {err}"
-                    ));
+                    )));
                 }
             }
         }
@@ -933,7 +961,7 @@ fn evaluate_execute_command_exit_code_with_wall_time(
             &mut unshare_stderr_drain,
         ) {
             Ok(s) => s,
-            Err(e) => return e,
+            Err(e) => return ExecuteCommandHostOutcome::Other(e),
         };
         #[cfg(target_os = "linux")]
         {
@@ -947,10 +975,10 @@ fn evaluate_execute_command_exit_code_with_wall_time(
                 child = match build_execute_command_process(command, args).spawn() {
                     Ok(c) => c,
                     Err(e2) => {
-                        return ClaimResult::Fail(format!(
+                        return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(format!(
                             "ExecuteCommand spawn error ({command}) after unshare(1) post-start \
                              fallback: {e2}"
-                        ));
+                        )));
                     }
                 };
                 from_unshare = false;
@@ -986,10 +1014,10 @@ fn evaluate_execute_command_exit_code_with_wall_time(
                 child = match build_execute_command_process(command, args).spawn() {
                     Ok(c) => c,
                     Err(e2) => {
-                        return ClaimResult::Fail(format!(
+                        return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(format!(
                             "ExecuteCommand spawn error ({command}) after unshare(1) host-exit \
                              confirmation: {e2}"
-                        ));
+                        )));
                     }
                 };
                 from_unshare = false;
@@ -1001,17 +1029,28 @@ fn evaluate_execute_command_exit_code_with_wall_time(
     #[cfg(not(target_os = "linux"))]
     let _ = from_unshare;
     let Some(actual) = status.code().map(i64::from) else {
-        return ClaimResult::Fail(
+        return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(
             "ExecuteCommand: child terminated by signal (no host exit code)".to_string(),
-        );
+        ));
     };
     if actual == expect_exit_code {
-        ClaimResult::Pass
+        ExecuteCommandHostOutcome::Matched
     } else {
-        ClaimResult::Fail(format!(
-            "{EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX}{expect_exit_code}, got {actual}"
-        ))
+        ExecuteCommandHostOutcome::Mismatch {
+            expected: expect_exit_code,
+            actual,
+        }
     }
+}
+
+fn evaluate_execute_command_exit_code_with_wall_time(
+    command: &str,
+    args: &[String],
+    expect_exit_code: i64,
+    wall_time: Duration,
+) -> ClaimResult {
+    evaluate_execute_command_host_outcome(command, args, expect_exit_code, wall_time)
+        .into_claim_result()
 }
 
 #[derive(Debug, Clone)]
