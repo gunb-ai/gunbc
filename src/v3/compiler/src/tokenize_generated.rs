@@ -20,7 +20,7 @@ pub enum TokenKind {
     KwTrue,
     KwFalse,
     Ident(String),
-    IntLit(i128),
+    IntLit(u128),
     StringLit(String),
     Eq,
     EqEq,
@@ -100,7 +100,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                 end += 1;
             }
             let literal = &source[start..end];
-            let value: i128 = literal.parse().map_err(|_| Diagnostic::TokenizerError {
+            let value: u128 = literal.parse().map_err(|_| Diagnostic::TokenizerError {
                 message: format!("{}{}{}", "invalid integer literal `", literal, "`"),
                 span: SourceSpan::new(file, start as u32, end as u32),
                 fixes: Vec::new(),

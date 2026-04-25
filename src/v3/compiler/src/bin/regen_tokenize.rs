@@ -256,7 +256,16 @@ fn emit_token_kind_enum(dag: &Dag) -> String {
             TypeConnective::Conj { children } if children.is_empty() => format!("    {},", v.label),
             TypeConnective::Conj { children } if children.len() == 1 => {
                 let field = &children[0];
-                let rust_ty = rust_type_for_decl_id(dag, field.ty);
+                // The DAG names the payload `IntLiteralMagnitude`, but the tokenizer
+                // lexes an **unsigned** digit run. Using `i128` here breaks the signed
+                // lower bound: `|i128::MIN| = 2^127` is not representable as positive
+                // `i128` before unary `-` is applied in `parse_parser_body.txt` — the
+                // run must be carried as `u128` (see P1 R2, substrate `IntLiteralMagnitude` bridge).
+                let rust_ty = if v.label == "IntLit" {
+                    "u128".to_string()
+                } else {
+                    rust_type_for_decl_id(dag, field.ty)
+                };
                 let field_name = &field.label;
                 if field_name == "_0" {
                     format!("    {}({rust_ty}),", v.label)
@@ -745,7 +754,7 @@ fn emit_tokenize_fn(
     s.push_str("            }\n");
     s.push_str("            let literal = &source[start..end];\n");
     s.push_str(
-        "            let value: i128 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n",
+        "            let value: u128 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n",
     );
     s.push_str(&format!(
         "                message: format!(\"{{}}{{}}{{}}\", {}, literal, {}),\n",

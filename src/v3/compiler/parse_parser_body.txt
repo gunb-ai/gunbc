@@ -1099,11 +1099,70 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// The tokenizer records each integer as an **unsigned** decimal magnitude
+    /// (`u128`); the signed i128 value is only fixed here, after unary `-`.
+    /// This keeps `|i128::MIN|` in range (2^127 is not representable as a positive
+    /// `i128` token, but fits in `u128` until negation).
+    fn i128_from_int_literal_magnitude(
+        &self,
+        mag: u128,
+        is_negative: bool,
+        err_span: SourceSpan,
+    ) -> Result<i128, Diagnostic> {
+        const I128_MAX_U: u128 = i128::MAX as u128;
+        const I128_MIN_ABS: u128 = 1u128 << 127;
+        if is_negative {
+            if mag == I128_MIN_ABS {
+                return Ok(i128::MIN);
+            }
+            if mag > I128_MAX_U {
+                return Err(Diagnostic::ParseError {
+                    message: "this integer literal cannot be negated without overflow".to_string(),
+                    span: err_span,
+                    fixes: Vec::new(),
+                });
+            }
+            return (mag as i128).checked_neg().ok_or_else(|| Diagnostic::ParseError {
+                message: "this integer literal cannot be negated (overflow)".to_string(),
+                span: err_span,
+                fixes: Vec::new(),
+            });
+        }
+        if mag > I128_MAX_U {
+            return Err(Diagnostic::ParseError {
+                message: if mag == I128_MIN_ABS {
+                    "this unsigned literal is out of range for i128; write the minimum with \
+                     unary `-` and the same digits"
+                        .to_string()
+                } else {
+                    "this integer literal is out of range for i128".to_string()
+                },
+                span: err_span,
+                fixes: Vec::new(),
+            });
+        }
+        Ok(mag as i128)
+    }
+
     fn parse_primary(&mut self) -> Result<SurfaceExpr, Diagnostic> {
         // Unary minus for integer magnitudes: lives in *this* file; `regen_parse`
         // splices the fragment into `parse_generated.rs` (do not edit only the .rs).
         if matches!(self.peek().kind, TokenKind::Minus) {
             let minus = self.bump().clone();
+            if let TokenKind::IntLit(mag) = &self.peek().kind {
+                let mag = *mag;
+                let int_tok = self.bump().clone();
+                let full = SourceSpan::new(
+                    self.file,
+                    minus.span.byte_start,
+                    int_tok.span.byte_end,
+                );
+                let v = self.i128_from_int_literal_magnitude(mag, true, full.clone())?;
+                return Ok(SurfaceExpr::Literal {
+                    value: SurfaceLiteral::Int(v),
+                    span: full,
+                });
+            }
             let inner = self.parse_primary()?;
             return match inner {
                 SurfaceExpr::Literal {
@@ -1150,10 +1209,13 @@ impl<'a> Parser<'a> {
             fixes: Vec::new(),
         })?;
         match (cls, token.kind) {
-            (PrimaryAtomClass::IntLiteral, TokenKind::IntLit(value)) => Ok(SurfaceExpr::Literal {
-                value: SurfaceLiteral::Int(value),
-                span: token.span,
-            }),
+            (PrimaryAtomClass::IntLiteral, TokenKind::IntLit(mag)) => {
+                let v = self.i128_from_int_literal_magnitude(mag, false, token.span.clone())?;
+                Ok(SurfaceExpr::Literal {
+                    value: SurfaceLiteral::Int(v),
+                    span: token.span,
+                })
+            }
             (PrimaryAtomClass::True, TokenKind::KwTrue) => Ok(SurfaceExpr::Literal {
                 value: SurfaceLiteral::Bool(true),
                 span: token.span,
