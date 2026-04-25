@@ -1096,8 +1096,9 @@ pub fn evaluate_execute_command_m1_5(
 /// [`evaluate_execute_command_m1_5`].
 ///
 /// **P2(d) (implicit re-execution):** On Linux, the `loop` may spawn a **second** `Child` once
-/// for (1) unshare post-start setup failure, (2) non-zero-`expect_exit_code` “host confirmation”
-/// when the unshare(1) path is ambiguous, or (3) empty piped wrapper stderr on exit **mismatch**
+/// for (1) unshare post-start setup failure, (2) non-zero-`expect_exit_code` with a matching
+/// unshare(1) exit (always one direct-`Child` host confirmation; fail-closed: empty / no-`unshare:`
+/// merge is not proof of logical `exec`), or (3) empty piped wrapper stderr on exit **mismatch**
 /// with `unshare_empty_stderr_relaunch_authorized`. The authority is
 /// `UnshareDirectRerun`; all single-retry, documented in [`unshare_sandbox_broken_relaunch_with_direct`]
 /// and the **P3 (empty buffer)** / **P5 (dissolution — shared target)** block. The P5 “typed setup
