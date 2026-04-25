@@ -1,5 +1,7 @@
 ### Self-inspection: the substrate is its own subject
 
+> Related: [epistemic-stacking.md](epistemic-stacking.md), [the-substrate-two-coordinated-shapes.md](the-substrate-two-coordinated-shapes.md), [compiler-std-consolidation.md](compiler-std-consolidation.md), [two-groundings-static-validation-vs-efficient-realization.md](two-groundings-static-validation-vs-efficient-realization.md)
+
 The substrate's structural type layer is now declared inside the
 substrate itself. `src/v3/std/substrate.dag` names `Dag`,
 `Declaration`, `Behavior`, `TypeConnective`, the identity handles,
