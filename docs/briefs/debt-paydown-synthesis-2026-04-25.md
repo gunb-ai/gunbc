@@ -187,6 +187,15 @@ Window: 2026-04-18T00:00 → 2026-04-25T23:59 (commit dates).
 
 **Ratio: ~1.6:1 introduction : dissolution.**
 
+> **Calibration footnote.** This count uses a PR-title heuristic
+> (`retire`/`dissolve`/`delete`/`remove`/`collapse`). It **undercounts
+> dissolution work that ships *inside* feature PRs** — e.g., a T-LensAPI
+> PR that adds a lens and retires three legacy paths in the same diff.
+> The 1.6:1 reading is therefore a lower-bound on dissolution velocity.
+> The §4 tripwire mechanism reflects this: before a ≥3:1 reading
+> triggers Director review, the cadence pass does a manual sweep for
+> dissolution-bearing feature PRs to avoid false positives.
+
 ### Dissolution-shaped PRs in window (verified)
 
 `#787` PB-1-e retire `bootstrap_all_runtime` · `#729` retire lower
@@ -251,25 +260,44 @@ dispatch in parallel. Each PR is small.
 ### Tier 1 — class-of-pattern (single program, M-scope)
 
 4. **Identity-carrier substrate pass** (§0 class). Eight surface
-   instances; one upstream cause. Director-level brief recommended:
-   "Lowering carries structural identity references end-to-end:
-   `DeclarationRef` for declaration identity, structural template-formal
-   edges for fold-step identity, explicit input-value carriers for
-   `LensOutputEquals.input_ref`, structural emit-helper carriers in place
-   of `bind.span.file`-keyed dispatch." Dispatching this is what makes
-   #1.1, #1.2, the `lower.rs:836` bridge, the `emit.rs:3181/3206` cases,
-   the file-preference rank, and `PROGRAM_INPUT_SENTINEL` collapse
-   together. **This is the highest-leverage paydown in the entire
-   inventory.**
+   instances; one upstream cause. Director-level brief recommended.
+   **Frame (per `feedback_groundedness_gates_lenses.md`, 2026-04-25):
+   open surface, closed kernel.** The compiler tracks whether each
+   construct grounds in the kernel; grounded constructs get all lenses
+   for free via compositional opacity; ungrounded subtrees are labelled
+   "ungrounded, no claim" and the label propagates compositionally —
+   not silent failure, not fabrication. **Deliverable shape:**
+   `DeclarationRef` / structural template-formal edge / explicit input-
+   value carriers for `LensOutputEquals.input_ref` / structural emit-
+   helper carriers ARE the **grounded identity carriers**; remaining
+   `span.file` / sentinel-string fallbacks become the **ungrounded
+   fallback that lenses label and propagate**, not raw failure. Same
+   eight dissolution sites (#1.1, #1.2, `lower.rs:836`,
+   `emit.rs:3181/3206`, file-preference rank, `PROGRAM_INPUT_SENTINEL`,
+   `EXTDEPS_BOOTSTRAP_FIXTURES`, `include_str!` lens side-channels);
+   sharper structural mechanism — the lens contract becomes "report
+   ungrounded for ungrounded inputs," which is what makes the open
+   surface safe. The brief MUST specify ungrounded-label propagation as
+   part of the deliverable, not just the grounded carrier. **This is
+   the highest-leverage paydown in the entire inventory.**
 
 ### Tier 2 — risk-shaped + R2-coupled (S-scope each, dispatch with R2 lanes)
 
-5. **Loop emission semantic invariant** (PR #809 entry). Either
-   structural `LoopKind` lowering marker OR integration test gating
-   "every Loop reaching Python/Go emission is recursive-function loop."
-   Currently comment-level; degrades silently if any future PR adds
-   another Loop source. R2 demos depend on Python/Go emission, so this
-   is R2-coupled.
+5. **Loop emission semantic invariant** (PR #809 entry). Currently
+   comment-level; degrades silently if any future PR adds another Loop
+   source. R2 demos depend on Python/Go emission, so this is R2-coupled.
+   **Brief MUST start with a construction-closure audit, NOT with a
+   marker design.** Step 1: enumerate every `Behavior::Loop`
+   construction site in `lower.rs` (and anywhere else); confirm or
+   refute that all paths route through recursive-function lowering.
+   Step 2 (conditional on the audit): if construction-closure holds, the
+   brief becomes "document the closure invariant as a structural
+   integration test; retire the speculative `LoopKind` marker idea" —
+   no new substrate. If it does NOT hold, the marker/test framing
+   applies and the brief turns into a `LoopKind` lowering-marker spec.
+   Both proposed paths in the original PR #809 row are bridges; do not
+   author the marker brief blind. Per `feedback_construction_over_ratchets`,
+   prefer the structural-closure outcome.
 6. **`src/v3/std` vs `dsl/std` checklist undercount fix** (PR #809
    entry). One-line fix to `dag.rs:2735-2764` + mirror in `lower.rs`.
    Or surface as "explain why these three modules are exempt." Belongs
@@ -336,7 +364,7 @@ dispatch in parallel. Each PR is small.
   programs (R2 close + Zero-Floor self-hosting). Debt manager would
   duplicate the standing roles.
 
-### Recommendation: **hybrid (b) + (c)-lite**
+### Recommendation: **hybrid (b) + per-PR gate + (c)-lite**
 
 **Primary mechanism — Paired-dispatch discipline at brief authoring time.**
 
@@ -358,7 +386,22 @@ debt review, which is where the 2026-04-22 → 2026-04-25 window
 accumulated. The cost is brief-authoring discipline (Director +
 worker-brief authors), not capacity.
 
-**Secondary mechanism — Velocity tripwire (not stop-the-line).**
+**Secondary mechanism — Per-PR gate (the early warning).**
+
+Paired-dispatch lives at brief-authoring time and depends on author
+discipline; it can be bypassed in a hurry. Add a **per-PR gate** that
+makes P5 (Progress Is Dissolution) into a reviewable line on every PR
+description: **no new hand-Rust file in `v3/` lands without the PR
+description naming the file or scaffold it deletes.** Forms accepted:
+"deletes X" · "shrinks census line Y" · "explicit deferral to lane Z
+with named row." If none of these are present, reviewer requests one.
+
+Cheap to enforce (PR template line + reviewer check); no capacity
+tradeoff; catches drift even when ad-hoc dispatch skips paired
+discipline. This converts P5 from invariant-text into a per-PR
+review-item.
+
+**Tertiary mechanism — Velocity tripwire (not stop-the-line).**
 
 Reflective + Exploratory analysis cadence is already a practice
 (ROADMAP `:418`). Add: each cadence pass reports introduction:dissolution
@@ -370,7 +413,15 @@ input, not blocker.
 
 This is (c) softened so it doesn't trigger on a normal week. The 3:1
 threshold is calibrated: the current 1.6:1 already concerned the user;
-2:1 would be borderline; ≥3:1 is the regression signal.
+2:1 would be borderline; ≥3:1 is the regression signal. **Calibration
+caveat — see §2 footnote**: dissolution-shaped PR-title heuristic
+undercounts dissolution work that ships *inside* feature PRs (e.g., a
+T-LensAPI PR that adds a lens and retires three legacy paths in the
+same diff). Before the tripwire triggers a Director review, the
+cadence pass MUST do a manual sweep for dissolution-bearing feature
+PRs in the window to avoid false positives. The gate is the early
+warning; the tripwire is the late warning; the per-PR gate is the
+finest grain.
 
 **What does NOT change.**
 
@@ -407,16 +458,20 @@ managers consume the discipline as part of their normal lane intake.
    Go `UnknownVariant`, `lower_fn_body` Arrow re-derive, lens fold
    ambiguous fallback. Each S-scope, independent. **Expect:** 1 cycle.
 3. **Author the Identity-Carrier Substrate Pass program brief**
-   (Tier 1, item #4). Treats the §0 class as ONE M-scope program: name
-   the substrate carriers (`DeclarationRef`, structural fold-step edge,
-   explicit `LensOutputEquals` input-value carrier, structural
-   emit-helper carriers); enumerate the 8 surface dissolution sites;
-   sequence substrate work before site-by-site dissolution. **This is
-   the synthesis's primary recommendation. Expect:** 2-3 cycles for the
-   program; sites collapse rapidly once substrate lands.
-4. **Adopt the paired-dispatch + velocity-tripwire discipline (§4)** as
-   a one-line addition to Director ad-hoc dispatch checklist. Cost:
-   brief-authoring discipline.
+   (Tier 1, item #4). Treats the §0 class as ONE M-scope program in
+   the **groundedness frame**: grounded carriers (`DeclarationRef`,
+   structural fold-step edge, explicit `LensOutputEquals` input-value
+   carrier, structural emit-helper carriers) PLUS ungrounded-label
+   propagation (lenses report "ungrounded, no claim" rather than
+   failing or fabricating on remaining `span.file`/sentinel fallbacks);
+   enumerate the 8 surface dissolution sites; sequence substrate work
+   before site-by-site dissolution. **This is the synthesis's primary
+   recommendation. Expect:** 2-3 cycles for the program; sites collapse
+   rapidly once substrate lands.
+4. **Adopt the paired-dispatch + per-PR gate + velocity-tripwire
+   discipline (§4)** as a checklist-line addition to Director ad-hoc
+   dispatch + a PR-template-line addition for `v3/` hand-Rust files.
+   Cost: brief-authoring discipline + one reviewer line-item.
 5. **Dispatch Tier 2 risk-shaped items in parallel with R2 lanes**:
    Loop-emission marker (S, R2-coupled), checklist undercount fix (S,
    trivial), `patch_lower_helpers_*` retirement (S, on PB-Tier1-Sweep
@@ -430,21 +485,25 @@ adoption. R2 close not impacted. Pure Bootstrap to Zero lane sequencing
 not changed (one priority hint to PB-Tier1-Sweep).
 
 **What changes if scaffolding introduction outpaces dissolution again.**
-The §4 velocity tripwire (≥3:1 ratio in a 7-day window) puts ad-hoc
-lane dispatch under Director review until the ratio recovers. The
-current 1.6:1 ratio is acceptable but warns that the next imbalance is
-likely; tripwire is the early-warning, not a blocker.
+Three layers, finest grain to coarsest. **Per-PR gate** (every `v3/`
+hand-Rust PR names what it deletes or explicitly defers) catches drift
+at the PR-review layer. **Paired-dispatch discipline** at brief authoring
+time catches it at the dispatch layer. **Velocity tripwire** (≥3:1
+introduction:dissolution ratio in a 7-day window, after manual sweep
+for dissolution-bearing feature PRs per §2 footnote) puts ad-hoc lane
+dispatch under Director review until the ratio recovers. The current
+1.6:1 ratio is acceptable but warns the next imbalance is likely.
 
 ### Briefs recommended for Director authoring (post-framework approval)
 
 - **B1.** Tier 0a: Go `UnknownVariant` → `EmitError::VariantParentNotFound` (S).
 - **B2.** Tier 0b: `lower_fn_body_into_existing_decl` defensive fallback → diagnostic + seed-phase root cause (S).
 - **B3.** Tier 0c: Lens fold ambiguous unique-candidate fallback → require structural template-formal edge (S).
-- **B4.** **Tier 1 program brief: Identity-Carrier Substrate Pass (M, primary recommendation).** Class-of-pattern dissolution covering 8 surface sites.
-- **B5.** Tier 2a: Loop-emission `LoopKind` marker OR structural integration test (S, R2-coupled).
+- **B4.** **Tier 1 program brief: Identity-Carrier Substrate Pass (M, primary recommendation).** Class-of-pattern dissolution covering 8 surface sites; framed per `feedback_groundedness_gates_lenses.md` (grounded carriers + ungrounded-label propagation, NOT silent failure).
+- **B5.** Tier 2a: Loop-emission construction-closure audit FIRST; reframe to "document construction-closure invariant as structural test" if closure holds, marker brief only if audit refutes closure (S, R2-coupled).
 - **B6.** Tier 2b: file-preference rank checklist completion (`computation`/`induction`/`termination`) (S, trivial).
 - **B7.** Priority hint to Zero-Floor Manager: lift `patch_lower_helpers_*` retirement to PB-Tier1-Sweep priority.
-- **Checklist edit.** Director ad-hoc dispatch checklist gains paired-dispatch + velocity-tripwire bullets per §4.
+- **Checklist + PR-template edit.** Director ad-hoc dispatch checklist gains paired-dispatch line; `v3/` PR template gains "names file/scaffold deleted (or defers)" line; velocity-tripwire reporting added to integration-reflection cadence.
 
 ---
 
