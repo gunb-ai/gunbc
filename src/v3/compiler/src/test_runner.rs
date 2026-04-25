@@ -373,7 +373,9 @@ fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<C
 
 /// Strips a few *non-background* `&` patterns from a `-c` string, then returns `true` only if
 /// a bare `&` (likely background) may remain. Not a sh grammar; conservative only where
-/// we would otherwise false-positive `true && true` and `2>&1`.
+/// we would otherwise false-positive `true && true` and `2>&1`. **Quoted** `&` (e.g. `echo \"&\"`)
+/// is not modeled and may be fail-closed as if it were a background `&` — an acceptable
+/// false-reject; user should rephrase without relying on a literal `&` in the `-c` string.
 fn shell_dash_c_may_start_background_after_eliding_artifacts(script: &str) -> bool {
     let mut t = script.to_string();
     while t.contains("&&") {

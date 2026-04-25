@@ -342,8 +342,13 @@ data suite_mismatch: TestSuite = { name: "execute_command_mismatch", claims: [cl
     );
 }
 
+/// Missing-host-binary triage: on some hosts the failure is a **spawn** `Err` from
+/// `std::process::Command`; on **Linux** the runner usually prefixes with `unshare(1)`,
+/// so `unshare` may spawn successfully while the inner `exec` fails, surfacing as **exit
+/// code mismatch** (e.g. 127) instead; or `unshare` itself may fail to start. All remain
+/// typed `Fail` and distinguishable from other ExecuteCommand outcomes (PR #792 / claude review).
 #[test]
-fn test_runner_execute_command_spawn_error_is_distinguishable() {
+fn test_runner_execute_command_missing_binary_is_distinguishable_fail() {
     let source = r#"
 data claim: TestClaim = {
   name: "no such binary",
@@ -364,8 +369,10 @@ data suite: TestSuite = { name: "execute_command_spawn", claims: [claim] }
         panic!("expected Fail, got {result:?}");
     };
     assert!(
-        msg.contains("spawn error"),
-        "expected spawn-error classification, got: {msg}"
+        msg.contains("spawn error")
+            || msg.contains("exit code mismatch")
+            || (msg.contains("unshare(1)") && msg.contains("failed to start")),
+        "expected missing-binary triage (direct spawn, inner exit, or unshare start); got: {msg}"
     );
 }
 
