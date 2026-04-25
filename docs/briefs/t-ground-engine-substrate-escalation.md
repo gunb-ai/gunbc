@@ -84,7 +84,7 @@ Bundle Gap 1 close with `.dag` walker authoring; schedule Gap 2 closure as Engin
 - **Pros**: project-thesis-aligned in one motion. No transitional bridge.
 - **Cons**: scope inflates substantially. Engine-Phase-1 becomes an XL+ program by absorbing list-body emission + sum-variant pattern matching scope. Probably parks Engine for quarters.
 
-### Route 3 (manager-sharpened, recommended) — route Gap 1 close through Pure Bootstrap to Zero program
+### Route 3 (manager-sharpened, **originally recommended — overruled**) — route Gap 1 close through Pure Bootstrap to Zero program
 
 Same destination as Route 1, but the substrate work doesn't dispatch as a discrete sub-lane — it gets sequenced inside [Pure Bootstrap to Zero Manager](pure-bootstrap-zero-manager.md)'s scope.
 
@@ -115,12 +115,14 @@ No substrate ask. Wait for PB-1 to land naturally, including extdeps-load if it 
 
 ## What unblocks on each routing decision
 
+> The labels in the table below ("recommended", "fallback") were the manager's pre-routing analysis. Director chose **Route 1**; ignore the labels for live state.
+
 | Route | Engine re-dispatches | Full-reference re-dispatches | Tests/Dissolve dispatch |
 |---|---|---|---|
-| Route 3 (recommended) | After PB-1 sub-lane closes — likely weeks if sequenced early | After DB-11 + cardinality close (independent) | After Engine + at least one full-reference |
-| Route 1 (fallback) | After discrete substrate sub-lane closes — likely similar timeline if Director-prioritized | Same as Route 3 | Same as Route 3 |
-| Route 2 | After XL+ Engine-Phase-1 ships — likely quarters | Same as Route 3 | Same as Route 3 |
-| Route 4 | After PB-1 ships full scope — if scope naturally includes extdeps-load | Same as Route 3 | Same as Route 3 |
+| Route 3 (originally recommended) | After PB-1 sub-lane closes — likely weeks if sequenced early | After DB-11 + cardinality close (independent) | After Engine + at least one full-reference |
+| **Route 1 (Director chose)** | After discrete substrate sub-lane (loader-close PR) closes — Director-dispatched ad-hoc | After DB-11 + cardinality close (independent) | After Engine + at least one full-reference |
+| Route 2 (originally analyzed) | After XL+ Engine-Phase-1 ships — likely quarters | After DB-11 + cardinality close (independent) | After Engine + at least one full-reference |
+| Route 4 (originally analyzed) | After PB-1 ships full scope — if scope naturally includes extdeps-load | After DB-11 + cardinality close (independent) | After Engine + at least one full-reference |
 
 Note that Routes 1, 3, and 4 converge on the same Engine shape (sibling crate, structural Declaration walker, mirroring eliminated). They differ only in **how** the substrate ask is routed and **when** the dependency closes.
 

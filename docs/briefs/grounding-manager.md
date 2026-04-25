@@ -313,13 +313,17 @@ Decisions log (append as they happen):
 - **2026-04-25** — Pilot's `RustPrimitive` partition (`IntegerPrimitive | NonIntegerPrimitive`) locked as full-reference precedent shape via codex P2 adjudication. Future widening to flat record is out of scope.
 - **2026-04-25** — Engine-Phase-1 brief landed (PR #767, `t-ground-engine-phase-1.md`). Audit-first discipline; no Rust-constant mirroring; variant-aware walker; SG-0 untouched.
 - **2026-04-25** — Engine-Phase-1 Phase 0 audit landed (PR #768, `t-ground-engine-substrate-audit.md`). Conclusion: both options (a) and (b) block on the same substrate gaps; escalation-class. Engine implementation parked.
-- **2026-04-25** — Engine substrate ask escalated to Director via [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md). Manager recommends Route 3: route Gap 1 close through Pure Bootstrap to Zero program (PB-1 / PB-Bootstrap-Process scope overlap).
+- **2026-04-25** — Engine substrate ask escalated to Director via [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md). Manager recommended Route 3: route Gap 1 close through Pure Bootstrap to Zero program (PB-1 / PB-Bootstrap-Process scope overlap). *(Past tense — overruled in next entry.)*
 - **2026-04-25** — Director chose **Route 1** (small loader-close, ad-hoc Director dispatch). Manager recommendation overruled with substantive reasoning: PB-1 migrates *existing* fixture sets; deciding the bootstrap shape includes a new fifth set is upstream of PB-1's pattern. Faster unblock: sharpened (b) Engine within days vs quarters for full Pure Bootstrap to Zero scope. Manager internalized the upstream-vs-pattern distinction for future cross-manager flagging.
 
 Open questions for director:
 
 - ~~**Engine substrate routing**~~ — RESOLVED 2026-04-25. Route 1 chosen by Director.
-- **R2 promotion timing** — formally still PROPOSAL pending R1 all-gates-green closure. R1 Census Close landed (PR #763) but Director-discretionary dispatch has been used for Pilot + Engine-Phase-1-audit. Consider formalizing the promotion or making the discretionary mode explicit in `r2-structure.md`.
+- **R2 promotion timing** — formally still PROPOSAL pending R1 all-gates-green closure. R1 Census Close landed (PR #763) but Director-discretionary dispatch has been used for Pilot + Engine-Phase-1-audit. Consider formalizing the promotion or making the discretionary mode explicit in `r2-structure.md`. **See Tracked debt below.**
+
+Tracked debt (manager surfaces, Director resolves):
+
+- **Dual-status convention (`PROPOSAL` formal / `ACTIVE` discretionary).** Currently load-bearing for two dispatched lanes (Pilot, Engine-Phase-1 audit) and likely a third (loader-close → Engine re-dispatch). **Owner**: Director. **Forcing function**: if this convention survives one more dispatch (i.e., loader-close lands and Engine re-dispatches under it), manager surfaces as escalation rather than queued open-question — the cost of dual-authority dispatch state grows non-linearly past three live dispatches per `feedback_state_space_vs_behavioral_invariants` (status as an enum-with-implicit-modes admits illegal combinations like "PROPOSAL but ACTIVE"). **Resolution paths** (Director picks one): (a) formalize R2 promotion explicitly via `r2-structure.md` amendment; (b) add a "Director-discretionary dispatch" mode to `r2-structure.md` as a first-class status alongside PROPOSAL/ACTIVE; (c) defer formalization with explicit "do not let this accumulate" sunset commitment.
 
 Cross-manager notifications queued:
 
