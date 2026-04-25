@@ -6,11 +6,21 @@
 //
 // PURPOSE: Each declaration says "Rust target type T is a target primitive
 // inhabiting algebra A over carrier C." Selection by algebra-homomorphism
-// match — the toy engine in src/v3/compiler/src/pilot/grounding_pilot.rs
-// consumes these declarations and reproduces today's name-keyed
-// table-lookup routing on the pilot set, validating the
-// target-grounding-proposal.md thesis that "the mapping should fall out
-// from the algebra, not from a hand-maintained table."
+// match — the toy engine in src/v3/grounding_pilot/src/lib.rs reproduces
+// today's name-keyed table-lookup routing on the pilot set, validating
+// the target-grounding-proposal.md thesis that "the mapping should fall
+// out from the algebra, not from a hand-maintained table."
+//
+// CONSUMER BOUNDARY (HONEST STATE): the engine does NOT yet read this
+// .dag file directly. It mirrors the structural facts authored here as
+// Rust constants, with this file as the documented authority. Wiring the
+// engine to consume .dag declarations as parsed-data is T-Ground-Engine's
+// production-walker job; until then the mirror in
+// src/v3/grounding_pilot/src/lib.rs must be kept in sync by hand when
+// declarations here change. The duplication is bounded — pilot scope is
+// 10 primitives, parallel-existence, deletable as a unit when
+// T-Ground-Engine lands and removes both this file's parallel-existence
+// status and the pilot crate together.
 //
 // LANES:
 //   This file is parallel-existence. Dissolution of
