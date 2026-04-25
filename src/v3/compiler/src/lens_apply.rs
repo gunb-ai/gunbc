@@ -1085,8 +1085,7 @@ fn sum(xs: List<Int>) -> Int =
         let callable_arg_index = arguments
             .iter()
             .position(|arg| {
-                let resolved =
-                    resolve_template_argument_value(&depth_budget, arguments, arg.value);
+                let resolved = resolve_template_argument_value(&depth_budget, arguments, arg.value);
                 super::monomorph_callable_bind_root(&dag, resolved).is_some()
                     && formals.contains(&arg.parameter)
             })
