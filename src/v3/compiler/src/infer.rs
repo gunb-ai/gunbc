@@ -1040,21 +1040,23 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                 );
             }
             PortState::Resolved(actual) => {
-                if !type_shapes_equivalent(dag, actual, expected_ty) {
-                    if is_retryable_generic_decl(dag, actual.declaration)
-                        || is_retryable_generic_decl(dag, expected_ty.declaration)
-                    {
-                        return Decision::Retry;
-                    }
-                    if let Some(diag) = phantom_unit_mismatch(
-                        dag,
-                        transform_target_display_name(dag, &t.target),
-                        expected_ty,
-                        actual,
-                        &t.span,
-                    ) {
-                        return Decision::Fail(t.output, diag);
-                    }
+                let types_equivalent = type_shapes_equivalent(dag, actual, expected_ty);
+                if !types_equivalent
+                    && (is_retryable_generic_decl(dag, actual.declaration)
+                        || is_retryable_generic_decl(dag, expected_ty.declaration))
+                {
+                    return Decision::Retry;
+                }
+                if let Some(diag) = phantom_unit_mismatch(
+                    dag,
+                    transform_target_display_name(dag, &t.target),
+                    expected_ty,
+                    actual,
+                    &t.span,
+                ) {
+                    return Decision::Fail(t.output, diag);
+                }
+                if !types_equivalent {
                     return Decision::Fail(
                         t.output,
                         Diagnostic::TypeMismatch {
@@ -4849,6 +4851,26 @@ mod bool_logical_operator_arrow_tests {
             refinement: None,
             span: span.clone(),
         });
+        let money_c = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: money_c,
+            name: Some("MoneyC".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: money,
+                arguments: vec![TemplateArgument {
+                    parameter: c_param,
+                    value: c_param,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
 
         let lhs = dag.alloc_port_with_shape(TypeShape::new(money_usd));
         let rhs_same = dag.alloc_port_with_shape(TypeShape::new(money_usd));
@@ -5100,6 +5122,30 @@ mod bool_logical_operator_arrow_tests {
             vec![callable_lhs],
             SourceSpan::new("<money-unit-test>", 3, 4),
         );
+        let generic_accept_money = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: generic_accept_money,
+            name: Some("accept_money".to_string()),
+            connective: TypeConnective::Arrow {
+                inputs: vec![money_c],
+                output: money_c,
+                body: ArrowBody::NoBody,
+            },
+            type_params: vec![c_param],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 4, 5),
+        });
+        let generic_callable_lhs = dag.alloc_port_with_shape(TypeShape::new(money_usd));
+        let generic_callable_output = dag.push_transform(
+            TransformTarget::Callable(generic_accept_money),
+            vec![generic_callable_lhs],
+            SourceSpan::new("<money-unit-test>", 4, 5),
+        );
         let untracked_param = dag.alloc_declaration_id();
         dag.push_declaration(Declaration {
             id: untracked_param,
@@ -5259,6 +5305,20 @@ mod bool_logical_operator_arrow_tests {
                     && actual.declaration == usd
             ),
             "unexpected diagnostic: {callable_diag:?}"
+        );
+        assert!(
+            matches!(
+                dag.port(generic_callable_output).state(),
+                PortState::Resolved(_)
+            ),
+            "generic callable should not fail phantom unit checking before C can bind"
+        );
+        assert!(
+            !matches!(
+                dag.diagnostics().get(generic_callable_output),
+                Some(Diagnostic::UnitMismatch { .. })
+            ),
+            "generic callable must not emit UnitMismatch before C can bind"
         );
         let untracked_callable_diag = dag
             .diagnostics()
