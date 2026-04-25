@@ -8,18 +8,16 @@ use v3_compiler::diagnostics::Diagnostic;
 use v3_compiler::{compile_to_dag, CompileError};
 
 fn first_magnitude_out_of_range(dag: &Dag) -> Option<(i128, i128, i128, String)> {
-    dag.diagnostics()
-        .iter()
-        .find_map(|(_, d)| match d {
-            Diagnostic::MagnitudeOutOfRange {
-                value,
-                min,
-                max,
-                target,
-                ..
-            } => Some((*value, *min, *max, target.clone())),
-            _ => None,
-        })
+    dag.diagnostics().iter().find_map(|(_, d)| match d {
+        Diagnostic::MagnitudeOutOfRange {
+            value,
+            min,
+            max,
+            target,
+            ..
+        } => Some((*value, *min, *max, target.clone())),
+        _ => None,
+    })
 }
 
 #[test]
@@ -57,7 +55,11 @@ fn data_uint8_256_is_magnitude_out_of_range() {
 fn let_annotated_uint8_in_range_passes() {
     let src = "let x: UInt8 = 5\n";
     let dag = compile_to_dag(src, "u8_let.v3").expect("compile");
-    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics().iter().collect::<Vec<_>>());
+    assert!(
+        dag.diagnostics().is_empty(),
+        "{:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
 }
 
 #[test]

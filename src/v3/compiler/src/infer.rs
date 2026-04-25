@@ -706,30 +706,29 @@ enum Decision {
 
 fn decide(dag: &Dag, index: usize) -> Decision {
     match &dag.nodes()[index] {
-        Behavior::Value(v) => {
-            match &v.data {
-                LiteralBits::Int(lit) => {
-                    let Some(int_shape) = dag.int_shape() else {
-                        return Decision::Fail(
-                            v.output,
-                            Diagnostic::ResolveError {
-                                name: "primitive `Int` missing from declaration table — bootstrap failed"
+        Behavior::Value(v) => match &v.data {
+            LiteralBits::Int(lit) => {
+                let Some(int_shape) = dag.int_shape() else {
+                    return Decision::Fail(
+                        v.output,
+                        Diagnostic::ResolveError {
+                            name:
+                                "primitive `Int` missing from declaration table — bootstrap failed"
                                     .to_string(),
-                                span: v.span.clone(),
-                                fixes: Vec::new(),
-                            },
-                        );
-                    };
-                    match &dag.port(v.output).state() {
-                        PortState::Uninferred => Decision::Set(v.output, int_shape),
-                        PortState::Unresolved => Decision::Retry,
-                        PortState::Resolved(ty) => {
-                            if let Some((lo, hi)) = crate::integer_range::i128_range_for_integer_decl(
-                                dag,
-                                ty.declaration,
-                            ) {
-                                if *lit < lo || *lit > hi {
-                                    return Decision::Fail(
+                            span: v.span.clone(),
+                            fixes: Vec::new(),
+                        },
+                    );
+                };
+                match &dag.port(v.output).state() {
+                    PortState::Uninferred => Decision::Set(v.output, int_shape),
+                    PortState::Unresolved => Decision::Retry,
+                    PortState::Resolved(ty) => {
+                        if let Some((lo, hi)) =
+                            crate::integer_range::i128_range_for_integer_decl(dag, ty.declaration)
+                        {
+                            if *lit < lo || *lit > hi {
+                                return Decision::Fail(
                                         v.output,
                                         Diagnostic::MagnitudeOutOfRange {
                                             value: *lit,
@@ -749,53 +748,52 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                                             .collect(),
                                         },
                                     );
-                                }
-                                return Decision::Retry;
                             }
-                            if type_shapes_equivalent(dag, ty, &int_shape) {
-                                return Decision::Retry;
-                            }
-                            if is_retryable_generic_decl(dag, ty.declaration) {
-                                return Decision::Set(v.output, int_shape);
-                            }
-                            Decision::Set(v.output, int_shape)
+                            return Decision::Retry;
                         }
+                        if type_shapes_equivalent(dag, ty, &int_shape) {
+                            return Decision::Retry;
+                        }
+                        if is_retryable_generic_decl(dag, ty.declaration) {
+                            return Decision::Set(v.output, int_shape);
+                        }
+                        Decision::Set(v.output, int_shape)
                     }
                 }
-                LiteralBits::Bool(_) => {
-                    let name = "Bool";
-                    let Some(ty) = dag.bool_shape() else {
-                        return Decision::Fail(
-                            v.output,
-                            Diagnostic::ResolveError {
-                                name: format!(
-                                    "primitive `{name}` missing from declaration table — bootstrap failed"
-                                ),
-                                span: v.span.clone(),
-                                fixes: Vec::new(),
-                            },
-                        );
-                    };
-                    Decision::Set(v.output, ty)
-                }
-                LiteralBits::String(_) => {
-                    let name = "String";
-                    let Some(ty) = dag.string_shape() else {
-                        return Decision::Fail(
-                            v.output,
-                            Diagnostic::ResolveError {
-                                name: format!(
-                                    "primitive `{name}` missing from declaration table — bootstrap failed"
-                                ),
-                                span: v.span.clone(),
-                                fixes: Vec::new(),
-                            },
-                        );
-                    };
-                    Decision::Set(v.output, ty)
-                }
             }
-        }
+            LiteralBits::Bool(_) => {
+                let name = "Bool";
+                let Some(ty) = dag.bool_shape() else {
+                    return Decision::Fail(
+                            v.output,
+                            Diagnostic::ResolveError {
+                                name: format!(
+                                    "primitive `{name}` missing from declaration table — bootstrap failed"
+                                ),
+                                span: v.span.clone(),
+                                fixes: Vec::new(),
+                            },
+                        );
+                };
+                Decision::Set(v.output, ty)
+            }
+            LiteralBits::String(_) => {
+                let name = "String";
+                let Some(ty) = dag.string_shape() else {
+                    return Decision::Fail(
+                            v.output,
+                            Diagnostic::ResolveError {
+                                name: format!(
+                                    "primitive `{name}` missing from declaration table — bootstrap failed"
+                                ),
+                                span: v.span.clone(),
+                                fixes: Vec::new(),
+                            },
+                        );
+                };
+                Decision::Set(v.output, ty)
+            }
+        },
         Behavior::Transform(t) => decide_transform(dag, t),
         Behavior::Branch(b) => {
             // Branch dispatches on a sum type. Its input must
