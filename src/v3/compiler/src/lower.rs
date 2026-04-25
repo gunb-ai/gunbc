@@ -864,9 +864,9 @@ fn lower_type_alias_refinements_phase(
 /// whose declared type now carries a lowered predicate refinement. A raw
 /// scalar literal is base-type evidence, not predicate evidence; callers
 /// must introduce a narrowing branch or another refinement-bearing
-/// source. Deferred authority-file placeholders are skipped because they
-/// intentionally carry no lowered predicate to discharge until their
-/// PB-1 dissolution trigger lands.
+/// source. Deferred placeholders are skipped because they intentionally
+/// carry no lowered predicate to discharge until their PB-1 dissolution
+/// trigger lands.
 fn validate_scalar_data_refinements_phase(
     dag: &mut Dag,
     module: &SurfaceModule,
@@ -883,9 +883,6 @@ fn validate_scalar_data_refinements_phase(
         else {
             continue;
         };
-        if is_bootstrap_authority_file(&body_span.file) {
-            continue;
-        }
         let Some(&decl_id) = symbols.get(name) else {
             continue;
         };
@@ -896,7 +893,7 @@ fn validate_scalar_data_refinements_phase(
         let Some(expected) = decl.meta_tag else {
             continue;
         };
-        if !scalar_literal_requires_refinement_discharge(dag, expected, body_span) {
+        if !scalar_literal_requires_refinement_discharge(dag, expected) {
             continue;
         }
         dag.declaration_mut(decl_id).value_body = None;
@@ -923,18 +920,7 @@ fn is_deferred_refinement_placeholder(dag: &Dag, refinement: DeclarationId) -> b
         })
 }
 
-fn is_bootstrap_authority_file(file: &str) -> bool {
-    file.starts_with("dsl/") || file.starts_with("src/v3/")
-}
-
-fn scalar_literal_requires_refinement_discharge(
-    dag: &Dag,
-    expected_type: DeclarationId,
-    span: &SourceSpan,
-) -> bool {
-    if is_bootstrap_authority_file(&span.file) {
-        return false;
-    }
+fn scalar_literal_requires_refinement_discharge(dag: &Dag, expected_type: DeclarationId) -> bool {
     let Some(refinement) = dag.declaration(expected_type).refinement else {
         return false;
     };
@@ -3291,7 +3277,7 @@ fn lower_scalar_literal_for_type(
     };
     if type_ok {
         let span = expr_span(expr);
-        if scalar_literal_requires_refinement_discharge(dag, expected_type, &span) {
+        if scalar_literal_requires_refinement_discharge(dag, expected_type) {
             return LowerScalarLiteralOutcome::Reject(Diagnostic::ResolveError {
                 name: "scalar literal does not satisfy the expected `where` refinement — no narrowing branch in scope".to_string(),
                 span,
