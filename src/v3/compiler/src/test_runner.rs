@@ -33,7 +33,8 @@ pub const R1_CANONICAL_COMPLEXITY_LENS: &str = include_str!(concat!(
 /// Bind whose `value` port receives structural `cost_of` for `LensOutputEquals` / `DifferentialEquals`.
 ///
 /// Today the runner keys this on `TestClaim.file_name` until `DeclarationRef` can name the bind
-/// directly (M1(2.8) — same story as `r1_lens_output_input_from_program`).
+/// directly (M1(2.8) — same story as `r1_lens_output_input_from_program`). **Process ratchet:** do
+/// not extend this `match` without a linked issue toward that dissolution (api-review #764).
 fn cost_bind_for_claim_file(file_name: &str) -> Option<&'static str> {
     match file_name {
         "r1_merge_sort_pair.v3" => Some("merge_sort_out"),
@@ -62,6 +63,8 @@ fn lane_e_host_forward_cost_of(dag: &Dag, port: &PortId) -> CostLookup {
 }
 
 fn lane_e_host_compute_costs(nodes: &[Behavior]) -> LaneEHostCostAcc {
+    // O(n²) work from `Vec::insert(0, …)` matches `lens_cost_generated` prepend order; rewriting for
+    // asymptotics risks drifting from emit — delete this whole receipt once D1 runs canonical `cost_of`.
     let mut acc = lane_e_host_seed_bind_params(nodes);
     for behavior in nodes {
         let entry = lane_e_host_entry_for(&acc, behavior);
@@ -934,6 +937,9 @@ impl<'a> TestRunner<'a> {
         }
     }
 
+    /// R1 path: compile `claim.source`, then `apply_lens_declaration` for subject (0-arity) and
+    /// invariant (1-arity) — hermetic, no mock transport. `MockBackedInvariant` is the schema-stable
+    /// `TestPredicate` label; DB-15 mock semantics belong on `TestClaim.requires` when wired.
     fn eval_mock_backed_invariant(
         &self,
         claim: &TestClaimValue,
