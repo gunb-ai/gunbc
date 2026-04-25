@@ -424,7 +424,9 @@ fn shell_dash_c_script_string(args: &[String]) -> Option<&str> {
 /// `ExecuteCommand`’s `command`+`args` are narrow enough to forbid ambiguous `sh -c` (schema gate),
 /// or a **typed** hermetic host runner supersedes the shell escape hatch, or a real `sh` subset
 /// parser is shared with CI policy — *input* heuristics are a smell on the same seam as P2(a) on
-/// outcomes, but this path only **rejects** (no accept-on-text-match for claim truth).
+/// outcomes, but this path only **rejects** (no accept-on-text-match for claim truth). **Do not**
+/// grow the elision list ad hoc — that deepens the bridge; link new work to a dissolution (Claude
+/// e99b53e7).
 fn shell_dash_c_may_start_background_after_eliding_artifacts(script: &str) -> bool {
     let mut t = script.to_string();
     while t.contains("&&") {
@@ -574,7 +576,9 @@ enum UnshareDirectRerun {
     /// exit mismatch, merged empty, `#[cfg(test)]` **or** this env; see
     /// [`GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH`].
     ExitMismatchEmptyWrapperStderr,
-    /// non-zero `expect` + code match: one host-confirmation `Child`.
+    /// non-zero `expect` + code match: one host-confirmation `Child` (unshare PID-1 / namespace
+    /// quirk). **Non-idempotent** workloads can differ across the two runs — the highest-risk of the
+    /// three re-execs; same P5 retirement as post-start + empty-stderr (Claude e99b53e7).
     NonzeroHostConfirm,
 }
 
@@ -972,7 +976,8 @@ pub enum ExecuteCommandHostOutcome {
     /// reserve [`ClaimResult`] for the final reported edge only — the current `Other` is a **partial**
     /// carrier (PR #792; api-review 994fa40d). Until then, do **not** add consumers that
     /// pattern-match on `Other(Fail(_))` text; use [`evaluate_execute_command_m1_5`] (or this full
-    /// `enum` without string probes) for classification (api-review 837d0e59).
+    /// `enum` without string probes) for classification (api-review 837d0e59). Temptation to
+    /// string-probe `Other` in new code is a future C-5 / DB-1 foot-gun (e99b53e7).
     Other(ClaimResult),
 }
 
