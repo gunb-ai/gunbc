@@ -145,7 +145,7 @@ a parallel proof system.
 |---|---|
 | force-unwrap on None | Already done — partial form not in std/. |
 | Out-of-bounds indexing | **Partial form reachable today** — `dsl/std/algebra.dag:305` declares `index: fn(Int) -> T` on FreeMonoid (returns bare `T`). Closure: retype to `index: fn(Int) -> T?` (or `Result<T, IndexOutOfBounds>`). Map's `get: fn(K) -> V?` at `:340` is already total and is the model shape. |
-| Division by zero | Provide only `divide(a: Int, b: Int) -> Result<Int, DivideByZero>` (or `Option<Int>`); remove `/` returning `Int`, OR retype `/` so its denominator must be a `NonZeroInt` constructed via a total `Int -> Option<NonZeroInt>` smart constructor. Either form closes the class without proof system. |
+| Division by zero | Two shapes, with different substrate cost: **(i) Result/Option-returning `/`** — change Field's `quotient` return_type from `ReceiverSelf` to `Result<Self, DivideByZero>` (or `Option<Self>`) at `dsl/std/algebra.dag:478`. Operator stays symmetric `param_types: [ReceiverSelf, ReceiverSelf]`; only return shape changes. Expressible in today's substrate. **(ii) NonZeroInt-typed denominator** — `(Int, NonZeroInt) -> Int` is asymmetric per-operand and is **NOT** expressible as the `/` operator today: every algebra-operator-decl in `dsl/std/algebra.dag:471-479+` uses symmetric `[ReceiverSelf, ReceiverSelf]`. To make `/` accept a `NonZeroInt` denominator the `AlgebraOperatorDecl` shape needs per-operand type variance (substrate work). The shape *is* expressible today as a **non-operator** function — `fn divide_nz(a: Int, b: NonZeroInt) -> Int` — but that's a different surface (function call, not operator). Either-form-(i) closes the class without substrate; form-(ii) is either substrate work or a non-operator-shape concession. |
 | Integer overflow | Two valid totalities: (i) wrap-by-design with explicit `WrappingInt` carrier (totality via documented modular arithmetic, no failure case), or (ii) checked ops returning `Result<Int, IntOverflow>`. Either, not both, on the same operator. |
 
 Each entry above closes its bug class by *making the partial form
@@ -178,17 +178,24 @@ without entailment substrate:
   by `match` / `unwrap_or_else`. No entailment check needed; the type
   carries the discharge.
 - Pattern-match destructuring against a checked constructor — e.g.
-  `match NonZeroInt::new(b) { Some(nz) => a / nz, None => ... }` where
-  `NonZeroInt::new: fn(Int) -> Option<NonZeroInt>` is the smart
-  constructor that *checks* `b != 0` and returns `None` otherwise. The
-  `nz` binding is structurally `NonZeroInt`, not a wrapped raw `Int`,
-  so the type carries the proof. (A generic `Option::from(b)` wrapper
-  would NOT close the bug class — it can produce `Some(0)` and the
-  `Some` arm still admits division by zero. The constructor must be
-  checked.) Same closure as the smart-constructor path above.
+  `match NonZeroInt::new(b) { Some(nz) => divide_nz(a, nz), None =>
+  ... }` where `NonZeroInt::new: fn(Int) -> Option<NonZeroInt>` is
+  the smart constructor that *checks* `b != 0` and returns `None`
+  otherwise, and `divide_nz: fn(Int, NonZeroInt) -> Int` is a
+  non-operator total function. The `nz` binding is structurally
+  `NonZeroInt`, not a wrapped raw `Int`, so the type carries the
+  proof. (A generic `Option::from(b)` wrapper would NOT close the
+  bug class — it can produce `Some(0)` and the `Some` arm still
+  admits division by zero. The constructor must be checked.)
+  **Caveat**: writing this as `a / nz` instead of `divide_nz(a, nz)`
+  would require asymmetric per-operand operator signatures (see §3
+  Division-by-zero row); not expressible today without substrate
+  extension to `AlgebraOperatorDecl`.
 
 Neither requires DB-11 entailment. Both are pure
-algebra/sum-totality work in `dsl/std/`.
+algebra/sum-totality work in `dsl/std/`. The non-operator function
+form (`divide_nz`) sidesteps the asymmetric-operator-signature
+question entirely.
 
 ## 4. Director-actionable recommendation
 
@@ -204,9 +211,20 @@ Reasoning:
 - gunbc already uses totality-by-omission for `force_unwrap`. Following
   the existing convention is cheaper than inventing a parallel
   enforcement system.
-- For `/` specifically, two equally-clean shapes exist (Result-returning
-  divide; NonZeroInt-typed denominator). Both are expressible in
-  today's substrate.
+- For `/` specifically, **the Result/Option-returning shape is
+  expressible today** (Field's `quotient` return_type swap at
+  `dsl/std/algebra.dag:478`; param_types stay symmetric
+  `[ReceiverSelf, ReceiverSelf]`). The **NonZeroInt-typed-denominator
+  shape is NOT expressible as the `/` operator today** because every
+  `AlgebraOperatorDecl` in `algebra.dag:471-479+` uses symmetric
+  per-operand types; an asymmetric `(Int, NonZeroInt) -> Int` `/`
+  requires extending `AlgebraOperatorDecl` to admit per-operand type
+  variance (substrate work). The same shape *is* expressible today
+  as a non-operator function `fn divide_nz(a: Int, b: NonZeroInt) ->
+  Int`, at the cost of dropping operator syntax for that path. The
+  follow-on lane should default to (i) Result/Option-returning `/`
+  for the `/` removal sub-lane and reserve any per-operator
+  asymmetric-signature work as a separate substrate brief.
 - The proof-mode ergonomic concern is handled by smart-constructor /
   match patterns, not by predicate-entailment.
 
