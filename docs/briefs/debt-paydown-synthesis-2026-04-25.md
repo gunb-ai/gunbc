@@ -484,9 +484,12 @@ managers consume the discipline as part of their normal lane intake.
    dispatch + a PR-template-line addition for `v3/` hand-Rust files.
    Cost: brief-authoring discipline + one reviewer line-item.
 5. **Dispatch Tier 2 risk-shaped items in parallel with R2 lanes**:
-   Loop-emission marker (S, R2-coupled), checklist undercount fix (S,
-   trivial), `patch_lower_helpers_*` retirement (S, on PB-Tier1-Sweep
-   priority hint to Zero-Floor Manager).
+   Loop-emission **construction-closure audit first** (S, R2-coupled —
+   the marker brief is conditional on the audit refuting closure per
+   Tier 2 #5; if closure holds, deliverable is a structural integration
+   test, not a marker), checklist undercount fix (S, trivial),
+   `patch_lower_helpers_*` retirement (S, on PB-Tier1-Sweep priority
+   hint to Zero-Floor Manager).
 6. **Tier 3 items defer behind Tier 1.** Re-prioritize after Tier 1
    program lands; several Tier 3 items (lossy lens reflection;
    declaration walkers) likely simplify or compose with Tier 1 outputs.
