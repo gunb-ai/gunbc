@@ -120,7 +120,12 @@ All three hand-Rust construction sites (`lower.rs:1949`, `lower.rs:2044`, `infer
 
 `bootstrap_std_generated.rs` sites are regenerated from `dsl/std/` declarations; `dsl/std/` does not author user-surface `T??`, so those sites are not at risk *today*, but the regen path should also call the helper as a defense-in-depth measure (the regen emitter sits in `regen_bootstrap_emit.rs` — implementer audits whether the helper-call needs to be wired through codegen). If the helper lives in a module that codegen can import, the regen output naturally inherits the invariant.
 
-The `:2044` arm is `type_to_connective`, which returns `TypeConnective` directly (not a `DeclarationId`). The helper's contract returns `DeclarationId`; for `:2044`, the implementer either (a) restructures the caller to use the helper-then-resolve-to-connective path, or (b) extracts a sibling helper `cardinality_connective(dag, element, bound) -> TypeConnective` that applies the same predicate inline. Either is acceptable; both must converge on the same idempotence rule.
+The `:2044` arm is `type_to_connective`, which returns `TypeConnective` directly (not a `DeclarationId`). To preserve single-authority enforcement, factor the idempotence rule into **one shared predicate** (e.g. `cardinality_idempotent_target(dag, element, bound) -> Option<DeclarationId>` returning `Some(inner)` when the rule fires and `None` otherwise). Both call sites consume this predicate:
+
+- `alloc_cardinality_decl` (the `DeclarationId`-returning helper) calls the predicate and short-circuits to the inner declaration when it fires; otherwise allocates a fresh declaration.
+- The `:2044` `type_to_connective` caller calls the predicate too: when it fires, the caller's enclosing context (`type_to_declaration_id` allocates a declaration around the connective the arm returns) gets the inner declaration's connective by reading `dag.declaration(inner).connective`; when it doesn't fire, the caller emits the literal `TypeConnective::Cardinality { element, bound: AtMostOne }`.
+
+**Single-authority requirement (per PR #798 Codex review):** the rule MUST be implemented in exactly one place — the predicate. No sibling helper that re-applies the predicate inline. A second authority for the same substrate invariant violates INVARIANTS.md P2 Boundary Discipline. The implementer's task is to factor the predicate so both call sites are pure consumers; if `type_to_connective`'s return type makes a clean factoring awkward, restructure the caller (lower.rs:2044's caller wraps the result in a fresh declaration anyway — route that wrap-and-allocate path through `alloc_cardinality_decl` instead).
 
 The guard is **specific to AtMostOne ∧ AtMostOne**. The other shapes are not idempotent and stay distinct:
 
@@ -144,7 +149,7 @@ The guard predicate is exactly: outer bound `AtMostOne` *and* inner bound `AtMos
 **Reqs:**
 
 1. **Substrate-level idempotence helper.** Add `alloc_cardinality_decl` (or equivalent) in `src/v3/compiler/src/dag/builder.rs` enforcing `AtMostOne ∧ AtMostOne = AtMostOne` at allocation time. When `bound == AtMostOne` and `element`'s connective is `Cardinality { bound: AtMostOne, .. }`, return `element` directly without allocating a fresh outer wrap. Specific to `AtMostOne ∧ AtMostOne`; `Unbounded`, `Exact(n)`, and mixed-bound combinations untouched. **Do NOT** peel to `element`-as-element (would collapse `T??` to `T` instead of `T?` and contradict acceptance below) — the helper returns the existing inner *declaration* (its connective is already `Cardinality<T, AtMostOne>`), not its element-of-element.
-2. **Route all hand-Rust construction sites through the helper.** `lower.rs:1949` and `infer.rs:2902` call the new helper instead of constructing `TypeConnective::Cardinality { ... }` and pushing a declaration directly. `lower.rs:2044` (`type_to_connective` returns `TypeConnective` not `DeclarationId`) gets a sibling helper or restructured caller per §Q3.
+2. **Route all hand-Rust construction sites through one shared predicate.** `lower.rs:1949` and `infer.rs:2902` call `alloc_cardinality_decl`. `lower.rs:2044` (`type_to_connective`) consumes the same `cardinality_idempotent_target` predicate per §Q3 — **no sibling helper** that re-applies the rule inline. Single authority for the substrate invariant; both call sites are pure consumers of the predicate.
 3. **Span policy.** When flatten triggers, reuse the inner declaration's span (the user wrote `T??`; the type they got is the inner `T?`'s declaration). No info-level "flattened to" hint — *"impossible by construction"* per discipline; the second `?` is silently absorbed at the substrate constructor. Verify no diagnostic / hover / error-printer round-trips `T??` back to the user as `T?` confusingly (per gpt-5-5-pro non-blocking observation on PR #798).
 4. **Test fixtures.**
    - `T??` and `T?` produce the same `DeclarationId` after lowering (test).
@@ -161,7 +166,7 @@ The guard predicate is exactly: outer bound `AtMostOne` *and* inner bound `AtMos
 - **`OptionalOf<OptionalOf<X>>` in std-method authoring** is a separate brief (algebra-template lint), not in scope here. STOP if the implementer is tempted to fold it in.
 - **DB-8 fixed-point drifts** — STOP immediately.
 
-**Dispatch profile:** S (revised from XS post-#798 review). Single PR, single worker. ~30-line code diff (helper + 2-3 routed call sites + sibling for `:2044` arm) + 3 test fixtures + PR-body doc. Not gated on any other lane. Independent of the other two T-ImpossibleBugs classes.
+**Dispatch profile:** S (revised from XS post-#798 review). Single PR, single worker. ~30-line code diff (one predicate + `alloc_cardinality_decl` helper + 3 routed call sites consuming the predicate) + 3 test fixtures + PR-body doc. Not gated on any other lane. Independent of the other two T-ImpossibleBugs classes.
 
 **Acceptance:**
 
