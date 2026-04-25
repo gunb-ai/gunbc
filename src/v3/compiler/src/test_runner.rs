@@ -435,6 +435,15 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(script: &str) -> bo
 /// shell-interpolated), so the **logical** process is `exec`’d with `stderr` → `/dev/null` while
 /// the parent’s piped `stderr` remains for util-linux and bootstrap output only (codex PR #792: split
 /// setup authority from the claim).
+//
+// **Not the same stream:** The logical child does **not** use the `Stdio::piped` read end for its
+// stderr. `UNSHARE_LOGICAL_BOOTSTRAP_SH` runs `exec 2>/dev/null` **before** `exec` of
+// `command`+`args`, so the final process replaces the bootstrap with inherited fd2=`/dev/null` — not
+// the wrapper pipe. Only util-linux / pre-reexec `sh` may write to that pipe. If the logical
+// process still shared the pipe, an exit-only claim that prints heavily to `stderr` would fill
+// the pipe and stall; **receipt:** Linux unit
+// `unshare_path_drains_piped_stderr_so_huge_logical_stderr_does_not_stall` (large `>&2` loop) passes
+// in CI (PR #792, inline review 2026-04-25).
 #[cfg(target_os = "linux")]
 const UNSHARE_LOGICAL_BOOTSTRAP_SH: &str = "exec 2>/dev/null; exec \"$0\" \"$@\"";
 
@@ -2273,8 +2282,10 @@ mod execute_command_timebound_tests {
     }
 
     /// Linux: the unshare bootstrap re-`exec`s the user `command` with logical `stderr` to
-    /// `/dev/null` (and `child_wait` still drains the wrapper pipe). This must **Pass** (exit 0) and
-    /// not wall-timeout even if the logical command would be very chatty on `stderr` (PR #792).
+    /// `/dev/null` (and `child_wait` still drains the **wrapper** pipe for util-linux/bootstrap only).
+    /// If logical `>&2` were still the piped handle, the loop below would fill the pipe and stall
+    /// until the wall cap — this test passing is the receipt that they are **not** the same
+    /// authority (PR #792; c.f. `UNSHARE_LOGICAL_BOOTSTRAP_SH` module doc).
     #[test]
     #[cfg(target_os = "linux")]
     fn unshare_path_drains_piped_stderr_so_huge_logical_stderr_does_not_stall() {
