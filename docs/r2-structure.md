@@ -116,7 +116,7 @@ T-PerMethodMetadata: §6a pick (any worker; independent)
  separate dependency-DAG node; see Demo discipline section.)
 ```
 
-Parallel-capable work at any time: Grounding has 2 fill slots (Python, Go) alongside its critical path; Director dispatch has 3 T-Substrate sub-lanes + 3 T-Modeling items (each pair-blocked) + 3 T-ImpossibleBugs classes + 1 T-PerMethodMetadata pick, for roughly 7–10 slots depending on T-Substrate unblock timing.
+Parallel-capable work at any time: Grounding has 2 fill slots (Python, Go) alongside its critical path; Director dispatch has 4 T-Substrate sub-lanes (3 T-Modeling unblocks + 1 tokenizer-charclass unblock) + 3 T-Modeling items (each pair-blocked) + 1 tokenizer-charclass deliverable (pair-blocked on the 4th T-Substrate sub-lane) + 3 T-ImpossibleBugs classes + 1 T-PerMethodMetadata pick, for roughly 8–12 slots depending on T-Substrate unblock timing.
 
 ## R1 closure criteria
 
