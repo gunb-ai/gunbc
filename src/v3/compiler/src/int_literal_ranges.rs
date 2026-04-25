@@ -29,12 +29,17 @@ impl IntegerRange {
 
 pub(crate) fn integer_range_for_decl(dag: &Dag, decl: DeclarationId) -> Option<IntegerRange> {
     let key = integer_routing_key_for_decl(dag, decl, 0)?;
-    dag.declarations()
+    let mut matches = dag
+        .declarations()
         .iter()
         .filter(|decl| is_integer_range_fact(dag, decl.meta_tag))
         .filter_map(|decl| integer_range_fact(dag, decl.value_body.as_ref()?))
-        .find(|fact| fact.key == key)
-        .map(|fact| fact.range)
+        .filter(|fact| fact.key == key);
+    let first = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    Some(first.range)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

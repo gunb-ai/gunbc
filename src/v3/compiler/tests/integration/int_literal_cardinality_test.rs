@@ -168,6 +168,36 @@ fn int_literal_ranges_follow_type_aliases() {
 }
 
 #[test]
+fn duplicate_integer_range_fact_fails_closed() {
+    let err = compile_to_dag(
+        "data duplicate_u8_range: IntegerRangeFact = {\n\
+           target_name: \"u8-duplicate\",\n\
+           algebra: SemiringAlgebra,\n\
+           carrier: ByteCarrier,\n\
+           range_min_inclusive: \"0\",\n\
+           range_max_inclusive: \"255\"\n\
+         }\n\
+         data x: UInt8 = 255",
+        "int_literal_duplicate_range_fact.v3",
+    )
+    .expect_err("duplicate range facts for a routing key must fail closed");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic diagnostic, got {err:?}");
+    };
+    let messages: Vec<String> = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, diagnostic)| diagnostic.message())
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("scalar literal does not match declared type")),
+        "duplicate range key should make narrowing unavailable, got {messages:?}"
+    );
+}
+
+#[test]
 fn int_literal_range_narrowing_does_not_bypass_refinement_discharge() {
     let err = compile_to_dag(
         "type PositiveInt = Int where PositiveInt > 0\n\
