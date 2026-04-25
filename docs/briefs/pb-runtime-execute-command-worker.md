@@ -78,17 +78,17 @@ Default expectation: accept the narrowing (the property is already implicit in t
 
 ## Acceptance
 
-- [ ] Surface 1: `ExecuteCommand` match arm in `test_runner.rs`; spawns the command; compares exit code to `expect_exit_code`; distinguishable Pass/Fail/spawn-error results.
-- [ ] Surface 2: `shell_exit_matches_allowlisted` (or its successor) generalizes from tautological-only to arbitrary; fail-closed panic at `:394-398` retired.
-- [ ] Both surfaces share execution mechanism (per manager lean (a)) OR PR description justifies parallel evaluators.
-- [ ] **Smoke test**: a TestClaim with `ExecuteCommand { command: "true", args: [], expect_exit_code: 0 }` still passes (preserves the existing behavior at the new allowlist boundary).
-- [ ] **Capability test**: a TestClaim with arbitrary command (suggest `ExecuteCommand { command: "echo", args: ["hi"], expect_exit_code: 0 }` and the negative case `expect_exit_code: 1`) demonstrates pass + fail paths.
-- [ ] **Boundary-test migration smoke**: at least one existing Rust-side boundary test (e.g., a rustc/python/go invocation) ports to a `TestClaim` ExecuteCommand declaration **end-to-end** — the cascade's claim becomes empirically exercised, not just structurally expressible. PR description names which boundary test ported.
-- [ ] `TESTING.md:195` capability-state callout updated to reflect the new state (foundation-only → arbitrary command).
-- [ ] `cargo test --workspace --exclude v2-compiler-tests` passes.
-- [ ] `cargo clippy --all-targets -- -D warnings` clean.
-- [ ] `cargo fmt --all --check` clean.
-- [ ] DB-8 `self_host_fixed_point` converges bit-identically.
+- [x] Surface 1: `ExecuteCommand` match arm in `test_runner.rs`; spawns the command; compares exit code to `expect_exit_code`; distinguishable Pass/Fail/spawn-error results.
+- [x] Surface 2: `shell_exit_matches_allowlisted` (or its successor) generalizes from tautological-only to arbitrary; fail-closed panic at `:394-398` retired.
+- [x] Both surfaces share execution mechanism (per manager lean (a)) OR PR description justifies parallel evaluators.
+- [x] **Smoke test**: a TestClaim with `ExecuteCommand { command: "true", args: [], expect_exit_code: 0 }` still passes (preserves the existing behavior at the new allowlist boundary).
+- [x] **Capability test**: a TestClaim with arbitrary command (suggest `ExecuteCommand { command: "echo", args: ["hi"], expect_exit_code: 0 }` and the negative case `expect_exit_code: 1`) demonstrates pass + fail paths.
+- [x] **Boundary-test migration smoke**: at least one existing Rust-side boundary test (e.g., a rustc/python/go invocation) ports to a `TestClaim` ExecuteCommand declaration **end-to-end** — the cascade's claim becomes empirically exercised, not just structurally expressible. PR description names which boundary test ported.
+- [x] `TESTING.md:195` capability-state callout updated to reflect the new state (foundation-only → arbitrary command).
+- [x] `cargo test --workspace --exclude v2-compiler-tests` passes.
+- [x] `cargo clippy --all-targets -- -D warnings` clean.
+- [x] `cargo fmt --all --check` clean.
+- [x] DB-8 `self_host_fixed_point` converges bit-identically.
 
 ## STOP-AND-ESCALATE
 
