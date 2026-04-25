@@ -33,6 +33,8 @@ module lenses.cost
 import std.list { List, empty, fold, cons }
 import std.substrate { Dag, Behavior, BranchPath, LoopNode, NodeId, PortId, node }
 import std.algebra {
+  MethodContract,
+  CostShape,
   SymbolicCost,
   SizeVariable,
   sequential,
@@ -50,6 +52,12 @@ type SymbolicCostEntry {
 
 fn symbolic_cost_of(d: Dag, port_id: PortId) -> Lookup<SymbolicCost> =
   lookup_cost(compute_symbolic_costs(d), port_id)
+
+// §6a Option 3 demo consumer: cost analysis reads per-method metadata from
+// the unified carrier keyed by `(algebra_id, method_id)`, keeping the
+// cost/size/callback facts co-located for later live call-site wiring.
+fn method_contract_cost_shape(contract: MethodContract) -> CostShape? =
+  contract.cost_shape
 
 fn compute_symbolic_costs(d: Dag) -> List<SymbolicCostEntry> =
   fold(d.nodes, seed_bind_params(d.nodes), |acc, behavior|
