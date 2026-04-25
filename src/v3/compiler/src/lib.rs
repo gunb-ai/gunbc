@@ -1162,11 +1162,11 @@ pub fn patch_lower_helpers_generated_type_alias_refinement(src: &str) -> String 
     out
 }
 
-/// PB-1 scaffold helper: re-run the pre-snapshot std bootstrap path for
-/// `regen_bootstrap` and the PB-1 drift tests only. This is NOT a second
-/// production bootstrap authority; `Dag::new()` seeds from the committed
-/// generated snapshot. Dissolution trigger: same as
-/// `bootstrap::bootstrap_std_fixtures_only`.
+/// PB-1-e scaffold helper: fresh-parse the std fixtures so `regen_bootstrap`
+/// can produce `bootstrap_std_generated.rs` from authority. Not a production
+/// bootstrap path — `Dag::new()` seeds from the committed snapshot. Sole
+/// in-tree consumer is `regen_bootstrap`; CI's `regen_bootstrap` + `git diff`
+/// step is the cross-check that the snapshot matches a fresh compile.
 pub fn compile_std_bootstrap_dag() -> Dag {
     let mut dag = Dag::empty();
     bootstrap::bootstrap_std_fixtures_only(&mut dag);
@@ -1179,10 +1179,10 @@ pub fn generated_std_bootstrap_dag() -> Dag {
     Dag::std_fixture_bootstrap_snapshot()
 }
 
-/// PB-1 closure scaffold helper for `regen_bootstrap`: layer the staged/spec/
-/// compiler bootstrap authorities onto an explicitly supplied std seed so all
-/// generated outputs in one regen pass derive from the same `dsl/std/*.dag`
-/// authority. This is not a production bootstrap entry point.
+/// PB-1-e regen-only scaffold helper: layer the staged/spec/compiler bootstrap
+/// authorities onto an explicitly supplied std seed so all generated outputs in
+/// one regen pass derive from the same `dsl/std/*.dag` authority. Sole consumer
+/// is `regen_bootstrap`; not a production bootstrap entry point.
 pub fn compile_full_bootstrap_dag_from_std_seed(std_seed: Dag) -> Dag {
     let mut dag = std_seed;
     bootstrap::bootstrap_runtime_authorities_on(&mut dag, &[], &[]);
@@ -1195,18 +1195,6 @@ pub fn compile_full_bootstrap_dag_from_std_seed(std_seed: Dag) -> Dag {
 pub fn compile_full_bootstrap_without_parse_surface_dag_from_std_seed(std_seed: Dag) -> Dag {
     let mut dag = std_seed;
     bootstrap::bootstrap_runtime_authorities_on(&mut dag, &["src/v3/std/parse_surface.dag"], &[]);
-    dag
-}
-
-pub fn compile_full_bootstrap_dag() -> Dag {
-    let mut dag = Dag::empty();
-    bootstrap::bootstrap_all_runtime(&mut dag, &[], &[]);
-    dag
-}
-
-pub fn compile_full_bootstrap_without_parse_surface_dag() -> Dag {
-    let mut dag = Dag::empty();
-    bootstrap::bootstrap_all_runtime(&mut dag, &["src/v3/std/parse_surface.dag"], &[]);
     dag
 }
 
