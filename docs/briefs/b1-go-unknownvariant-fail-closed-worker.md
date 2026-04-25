@@ -54,7 +54,6 @@ The fix is one-site, structural, and parallels existing `variant_parent_info` ca
 
 ## Non-goals
 
-- Not touching the sibling fallback in `declaration(variant_id).name` (the inner `unwrap_or_else`) unless the worker concludes it's part of the same fail-open class. Surface in PR description if so.
 - Not refactoring `variant_parent_info`'s shape.
 - Not addressing the file-suffix special case in `lens_apply.rs` (that's the §0 identity-carrier class — B4).
 
