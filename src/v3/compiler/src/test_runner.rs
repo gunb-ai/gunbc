@@ -967,7 +967,9 @@ pub enum ExecuteCommandHostOutcome {
     /// **TODO(dissolution, T-PB-B, C-5):** if call sites need to *branch* on host-failure *kind* without
     /// string authority, expand this into a dedicated `enum` (e.g. timeout / spawn / policy) and
     /// reserve [`ClaimResult`] for the final reported edge only — the current `Other` is a **partial**
-    /// carrier (PR #792; api-review 994fa40d).
+    /// carrier (PR #792; api-review 994fa40d). Until then, do **not** add consumers that
+    /// pattern-match on `Other(Fail(_))` text; use [`evaluate_execute_command_m1_5`] (or this full
+    /// `enum` without string probes) for classification (api-review 837d0e59).
     Other(ClaimResult),
 }
 
@@ -997,7 +999,8 @@ pub enum ExecuteCommandM1_5Proposition {
 
 /// Distinguish “exit ≠ expect” from timeout, spawn error, `&` policy, signal, etc. `Err` is the
 /// full untyped `ClaimResult` (use [`TestRunner`] for strings); do not map `Err` to
-/// propositional `false` (P3/DB-1; codex PR #792).
+/// propositional `false` (P3/DB-1; codex PR #792). This is the supported boolean exit predicate
+/// path while [`ExecuteCommandHostOutcome::Other`] remains a **partial** carrier (837d0e59).
 pub fn evaluate_execute_command_m1_5(
     command: &str,
     args: &[String],
@@ -1128,9 +1131,10 @@ pub fn evaluate_execute_command_host_outcome(
                     // not report setup failure — **skip** the direct confirmation run (P2(d); T-PB-B),
                     // except 126/127: see `unshare_nonzero_match_never_skip_direct_for_shell_no_exec_exits`.
                     // Read errors: conservative confirm (second `Child`).
+                    // **Regression locus** (subtle): keep retirements in lockstep with empty-stderr —
                     // TODO(dissolution, P5): shared retirement with `unshare_sandbox_broken_relaunch`
                     // and empty-stderr (test + GUNBC env) — see `unshare_sandbox_broken_relaunch_with_direct`
-                    // module doc **P5 (shared target)**.
+                    // module doc **P5 (shared target)** (api-review 837d0e59).
                     let merged =
                         unshare_merged_wrapper_stderr_read(&mut child, &unshare_stderr_drain);
                     let need_direct_host_confirm = match &merged {
@@ -1859,6 +1863,9 @@ impl<'a> TestRunner<'a> {
         }
     }
 
+    /// Same pattern as other arms: `compile_to_dag(claim.source)` is a **clean-claim** gate; host
+    /// `command` / `args` / `expect_exit_code` come only from the predicate `payload` (the compiled
+    /// `Dag` is not an input to `std::process::Command` here — PR #792, 837d0e59).
     fn eval_execute_command(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
         match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(_) => {}
