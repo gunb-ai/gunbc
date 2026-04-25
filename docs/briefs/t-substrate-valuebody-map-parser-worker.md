@@ -29,7 +29,7 @@ The substrate `ValueBody::Map` extension cannot land standalone — the parser m
 
 This sub-lane lands the parser side. Output:
 
-1. New `SurfaceExpr::Map { entries: List<SurfaceMapEntry> }` (or equivalent — element shape worker's call; recommend `SurfaceMapEntry { key: SurfaceExpr, value: SurfaceExpr }` for symmetric key-value handling).
+1. New `SurfaceExpr::Map { entries: List<SurfaceMapEntry> }`. **Element shape MUST structurally restrict the key to a string-literal carrier** (per non-goal "String-key maps only for this PR" — making non-string keys representable would force behavioral enforcement and violates illegal-states-unrepresentable). Specified shape: `SurfaceMapEntry { key: <surface-string-literal-carrier>, value: SurfaceExpr }` (worker confirms exact carrier name from `parse_surface.dag` — likely a sibling of `SurfaceLiteral::String` or similar). When non-string-key support lands as a future sibling extension, *that* PR widens the entry's key type — not this one.
 2. Parser disambiguation (`looks_like_map_literal` sibling to `looks_like_record_literal`); body parser (`parse_map_literal`).
 3. Regen `parse_generated.rs` from `parse_surface.dag` + `parse_parser_body.txt`.
 4. Exhaustive-match audit: every `match SurfaceExpr` site in v3 substrate handles the new variant (with sensible fall-through where map literals aren't structurally expected — the substrate-side `lower_data_item` is the only site that meaningfully consumes; everything else either errors or carries through).
@@ -40,7 +40,7 @@ Today the parser falls into `skip_brace_balanced` for non-record `{...}` bodies;
 
 ## Five consumer-side requirements
 
-1. **`SurfaceExpr::Map` variant in `parse_surface.dag`.** New variant expressing *"map literal with key-value entries"*. Element shape: `SurfaceMapEntry { key: SurfaceExpr, value: SurfaceExpr }` (recommended) or alternative — worker picks + surfaces in PR description. **Coproduct dissolution receipt** for the new variant per `feedback_coproduct_dissolution` and the `LoopBound` precedent at `docs/design-mutual-recursion-lowering.md:117-134`. No silent stamp.
+1. **`SurfaceExpr::Map` variant in `parse_surface.dag`.** New variant expressing *"map literal with key-value entries"*. **Element shape: `SurfaceMapEntry { key: <surface-string-literal-carrier>, value: SurfaceExpr }`** — key is structurally restricted to a string-literal carrier per the string-key-only non-goal (illegal-states-unrepresentable: making non-string keys representable forces behavioral enforcement instead of structural). Worker confirms the exact string-literal carrier name from `parse_surface.dag`. **Coproduct dissolution receipt** for the new `SurfaceExpr::Map` variant per `feedback_coproduct_dissolution` and the `LoopBound` precedent at `docs/design-mutual-recursion-lowering.md:117-134`. No silent stamp.
 2. **`looks_like_map_literal` lookahead** (`{ String :` shape) sibling to `looks_like_record_literal` (`{ Ident :` shape). Disambiguation at the brace-body entry; routes into `parse_map_literal` instead of `skip_brace_balanced`.
 3. **`parse_map_literal` body parser** producing `SurfaceExpr::Map` with the parsed entries. Handles trailing-comma + multi-entry; rejects empty `{}` (which would be ambiguous with empty record) — worker picks empty-map syntax (suggest `{:}` or similar) and surfaces in PR description.
 4. **Regen flowed through.** `parse_generated.rs` regenerated from authority; **no hand edits to `parse_generated.rs`** per `feedback_no_generated_code_on_disk`.
@@ -49,7 +49,7 @@ Today the parser falls into `skip_brace_balanced` for non-record `{...}` bodies;
 ## Slice — parser extension
 
 1. Add `SurfaceExpr::Map { entries: List<SurfaceMapEntry> }` to `parse_surface.dag` (per req 1). Author coproduct dissolution receipt.
-2. Add `SurfaceMapEntry { key: SurfaceExpr, value: SurfaceExpr }` (or alternate element shape) to `parse_surface.dag`.
+2. Add `SurfaceMapEntry { key: <surface-string-literal-carrier>, value: SurfaceExpr }` to `parse_surface.dag` per req 1's structural-restriction requirement.
 3. Edit `parse_parser_body.txt` (per reqs 2 + 3): add `looks_like_map_literal` + `parse_map_literal`; route from the existing brace-body entry.
 4. Regen `parse_generated.rs` (per req 4).
 5. Exhaustive-match audit + updates across consumers (per req 5).
