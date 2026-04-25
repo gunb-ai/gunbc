@@ -1938,6 +1938,8 @@ pub(crate) struct StdlibTypeCache {
 pub(crate) struct EmitAnchorCache {
     /// `OrderedRing` algebra Conj — canonical fallback for operator fields.
     pub ordered_ring: Option<DeclarationId>,
+    /// `AbelianGroup` algebra Conj — canonical authority for phantom-unit closure.
+    pub abelian_group: Option<DeclarationId>,
     /// `SubstrateAccessorBinding` meta-type for substrate accessor data items.
     pub substrate_accessor_binding: Option<DeclarationId>,
     /// `Dag` graph type (`src/v3/std/substrate.dag`).
@@ -2534,6 +2536,11 @@ impl Dag {
         self.emit_anchors.ordered_ring
     }
 
+    /// Typed accessor for the canonical `AbelianGroup` algebra declaration.
+    pub fn abelian_group_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.abelian_group
+    }
+
     /// Meta-type declaration id for `SubstrateAccessorBinding` data items.
     pub fn substrate_accessor_binding_meta(&self) -> Option<DeclarationId> {
         self.emit_anchors.substrate_accessor_binding
@@ -3088,6 +3095,7 @@ impl Dag {
             self.declaration_by_name("PartialFunction").map(|d| d.id);
 
         self.emit_anchors.ordered_ring = self.declaration_by_name("OrderedRing").map(|d| d.id);
+        self.emit_anchors.abelian_group = self.declaration_by_name("AbelianGroup").map(|d| d.id);
         self.emit_anchors.substrate_accessor_binding = self
             .declaration_by_name("SubstrateAccessorBinding")
             .map(|d| d.id);

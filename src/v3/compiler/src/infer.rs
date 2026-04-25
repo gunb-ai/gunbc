@@ -1209,10 +1209,15 @@ fn require_abelian_group_phantom_algebra(
     parameter: DeclarationId,
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
+    let Some(canonical_abelian_group) = dag.abelian_group_decl() else {
+        return Err(unsupported_phantom_algebra_diagnostic(
+            dag, algebra, parameter, span,
+        ));
+    };
     let mut current = algebra;
     for _ in 0..WALK_DEPTH_LIMIT {
         let decl = dag.declaration(current);
-        if decl.name.as_deref() == Some("AbelianGroup") {
+        if current == canonical_abelian_group {
             return Ok(());
         }
         match &decl.connective {
@@ -4966,6 +4971,69 @@ mod bool_logical_operator_arrow_tests {
             vec![unsupported_lhs, unsupported_rhs],
             SourceSpan::new("<money-unit-test>", 2, 3),
         );
+        let fake_abelian_group = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: fake_abelian_group,
+            name: Some("AbelianGroup".to_string()),
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 3, 4),
+        });
+        let fake_algebra_money = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: fake_algebra_money,
+            name: Some("FakeAlgebraMoney".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "amount".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: vec![c_param],
+            phantom_params: vec![PhantomParameter {
+                parameter: c_param,
+                algebra: fake_abelian_group,
+            }],
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 3, 4),
+        });
+        let fake_algebra_money_usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: fake_algebra_money_usd,
+            name: Some("FakeAlgebraMoneyUSD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: fake_algebra_money,
+                arguments: vec![TemplateArgument {
+                    parameter: c_param,
+                    value: usd,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: SourceSpan::new("<money-unit-test>", 3, 4),
+        });
+        let fake_lhs = dag.alloc_port_with_shape(TypeShape::new(fake_algebra_money_usd));
+        let fake_rhs = dag.alloc_port_with_shape(TypeShape::new(fake_algebra_money_usd));
+        let fake_output = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![fake_lhs, fake_rhs],
+            SourceSpan::new("<money-unit-test>", 3, 4),
+        );
         let accept_eur = dag.alloc_declaration_id();
         dag.push_declaration(Declaration {
             id: accept_eur,
@@ -5050,6 +5118,18 @@ mod bool_logical_operator_arrow_tests {
                     if name.contains("unsupported phantom algebra CurrencyMonoid")
             ),
             "unexpected diagnostic: {unsupported_diag:?}"
+        );
+        let fake_diag = dag
+            .diagnostics()
+            .get(fake_output)
+            .expect("non-canonical declaration named AbelianGroup should fail closed");
+        assert!(
+            matches!(
+                fake_diag,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("unsupported phantom algebra AbelianGroup")
+            ),
+            "unexpected diagnostic: {fake_diag:?}"
         );
         let callable_diag = dag
             .diagnostics()
