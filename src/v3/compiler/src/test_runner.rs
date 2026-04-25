@@ -340,30 +340,54 @@ pub const EXECUTE_COMMAND_WALL_TIMEOUT: Duration = Duration::from_secs(30);
 
 const EXECUTE_COMMAND_WAIT_POLL: Duration = Duration::from_millis(20);
 
+const SHELL_DASH_C_BACKGROUND_STEMS: [&str; 5] = ["sh", "bash", "dash", "ksh", "zsh"];
+const SHELL_C_BACKGROUND_UNBOUNDED_FAIL: &str = "ExecuteCommand: shell `-c` script has a `&` that may be an unmodelled **background** \
+         job (after eliding `&&` and `n>&m` / `&>`-style fd spellings) — a direct `Child` wait is not \
+         a full process boundary. Rephrase (e.g. a direct tool, or a `-c` string that does not rely on \
+         shell `&` background) — P3/P4.";
+
 /// Heuristic: on POSIX shells with `-c`, a *shell background* `&` (not part of `&&` / fd
 /// redirect spellings) means the child may exit 0 while other work still runs. We are not a full
 /// sh parser: strip a few *common* `&` spellings, then if `&` remains, fail-closed (P3/P4). See
 /// `shell_dash_c_may_start_background_after_eliding_artifacts` tests in this module.
+///
+/// The top-level `command` need not be a shell (e.g. `env(1)` with `["sh", "-c", "…&"]`); a shell
+/// **anywhere** in `args` (path stem) with a following `-c` in the same tail is checked (api-review
+/// 994fa40d).
 fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<ClaimResult> {
-    const SHELL_STEMS: [&str; 5] = ["sh", "bash", "dash", "ksh", "zsh"];
+    fn path_stem_is_shell(arg: &str) -> bool {
+        let s = std::path::Path::new(arg)
+            .file_name()
+            .and_then(|x| x.to_str())
+            .unwrap_or(arg);
+        SHELL_DASH_C_BACKGROUND_STEMS.contains(&s)
+    }
+
+    let fail = || ClaimResult::Fail(SHELL_C_BACKGROUND_UNBOUNDED_FAIL.to_string());
+
     let stem = std::path::Path::new(command)
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(command);
-    if !SHELL_STEMS.contains(&stem) {
-        return None;
+    if SHELL_DASH_C_BACKGROUND_STEMS.contains(&stem) {
+        if let Some(script) = shell_dash_c_script_string(args) {
+            if shell_dash_c_may_start_background_after_eliding_artifacts(script) {
+                return Some(fail());
+            }
+        }
     }
-    let script = shell_dash_c_script_string(args)?;
-    if !shell_dash_c_may_start_background_after_eliding_artifacts(script) {
-        return None;
+    for j in 0..args.len() {
+        if !path_stem_is_shell(&args[j]) {
+            continue;
+        }
+        let Some(script) = shell_dash_c_script_string(&args[j..]) else {
+            continue;
+        };
+        if shell_dash_c_may_start_background_after_eliding_artifacts(script) {
+            return Some(fail());
+        }
     }
-    Some(ClaimResult::Fail(
-        "ExecuteCommand: shell `-c` script has a `&` that may be an unmodelled **background** job (\
-         after eliding `&&` and `n>&m` / `&>`-style fd spellings) — a direct `Child` wait is not a \
-         full process boundary. Rephrase (e.g. a direct tool, or a `-c` string that does not rely on \
-         shell `&` background) — P3/P4."
-            .to_string(),
-    ))
+    None
 }
 
 /// `sh`/`bash`/… with `-c` in **any** common spelling: standalone `"-c"`, or combined single-dash
@@ -2364,6 +2388,28 @@ mod execute_command_timebound_tests {
                 || m.contains("P3")
                 || m.contains("descendants")
                 || m.contains("shell `-c`"),
+            "expected policy message, got: {m}"
+        );
+    }
+
+    /// `env(1)` + `sh -c` indirection: top-level stem is not a shell; must still reject the same
+    /// background `&` (api-review 994fa40d).
+    #[test]
+    fn env_sh_dash_c_background_ampersand_is_rejected() {
+        let r = evaluate_execute_command_exit_code(
+            "env",
+            &[
+                String::from("sh"),
+                String::from("-c"),
+                String::from("sleep 600 &"),
+            ],
+            0,
+        );
+        let ClaimResult::Fail(m) = r else {
+            panic!("expected fail-closed for env sh -c background, got {r:?}");
+        };
+        assert!(
+            m.contains("background") || m.contains("P3") || m.contains("shell `-c`"),
             "expected policy message, got: {m}"
         );
     }
