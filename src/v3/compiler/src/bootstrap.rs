@@ -1,26 +1,40 @@
 // Dag::new() bootstrap.
 //
 // PB-1 closure: `Dag::new()` no longer tokenizes/parses/lowers any
-// bootstrap authority at runtime. All four bootstrap authority sets
+// bootstrap authority at runtime. Five bootstrap authority sets
 // are loaded from committed generated snapshots:
 //
-// - `std_fixtures`   (`dsl/std/*.dag`)
-// - `STAGED_FILES`   (`src/v3/std/*.dag`)
-// - `V3_SPECS`       (`src/v3/spec/*.dag`)
-// - `COMPILER_FILES` (`src/v3/compiler/*.dag`, minus `tokenize.dag`)
+// - `std_fixtures`                 (`dsl/std/*.dag`)
+// - `STAGED_FILES`                 (`src/v3/std/*.dag`)
+// - `V3_SPECS`                     (`src/v3/spec/*.dag`)
+// - `COMPILER_FILES`               (`src/v3/compiler/*.dag`, minus `tokenize.dag`)
+// - `EXTDEPS_BOOTSTRAP_FIXTURES`   (scoped subset of `dsl/extdeps/languages/*/*.dag`)
 //
 // `compile_parse_surface_std_authority_dag` uses the companion snapshot
 // that omits `src/v3/std/parse_surface.dag`, so a fresh parse+lower of
 // that authority still stays first-of-name.
 //
-// **Production bootstrap does not inject target-language
-// realizations.** Realization facts for emitted languages live in
-// `dsl/extdeps/languages/*` per the thesis; compiler code does not
-// manufacture those. L1.5 adds one narrow exception: the staged
-// `src/v3/compiler/pipeline.dag` declarations are upgraded in-place to
-// `ArrowBody::ExternalRealization` so the compiler's own pipeline
-// authority lives in the bootstrap Dag with the intended stage-body
-// shape.
+// **Target-language realization facts stay out of bootstrap.** Realization
+// facts for emitted languages live in `dsl/extdeps/languages/*` per the
+// thesis and are consumed by the per-target emitters at emission time via
+// `SubstrateAccessorBinding` records — compiler code does not manufacture
+// those. The L1.5 exception remains: `src/v3/compiler/pipeline.dag` stage
+// declarations are upgraded in-place to `ArrowBody::ExternalRealization`
+// so the compiler's own pipeline authority lives in the bootstrap Dag with
+// the intended stage-body shape.
+//
+// `EXTDEPS_BOOTSTRAP_FIXTURES` is a narrow, bounded extension of that
+// boundary: only extdeps authorities whose content is pure structural
+// **data** (target-primitive declarations consumed symbolically by the
+// target-grounding engine as `Declaration`-shaped values; see
+// `dsl/extdeps/languages/rust/primitives.dag`) are loaded. Arrow/realization
+// files (`rust/emit.dag`, `rust/types.dag`, etc.) are deliberately excluded
+// — their bodies stay per-target emitter-side, not in the bootstrap Dag.
+// Coverage is currently `rust/primitives.dag` only (T-Ground-Engine pilot
+// unblock, Director-dispatched); expansion to python/go primitives is a
+// file-system extension once those targets reach the same pilot stage.
+// Transitional shape: PB-1's eventual extension to cover extdeps as a fifth
+// snapshot set absorbs this list cleanly with no `bootstrap.rs` edit.
 //
 // Bootstrap failures (tokenize/parse/lower errors on std/ files,
 // unresolved cross-file references) attach to the Dag's diagnostic
@@ -45,6 +59,23 @@ const INTEGER_DAG: &str = include_str!("../../../../dsl/std/integer.dag");
 const FLOAT_DAG: &str = include_str!("../../../../dsl/std/float.dag");
 const STRING_TYPE_DAG: &str = include_str!("../../../../dsl/std/string_type.dag");
 const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
+
+// Scoped extdeps bootstrap authorities. See the `EXTDEPS_BOOTSTRAP_FIXTURES`
+// commentary in the file header: only pure structural-data extdeps authorities
+// are in scope, and expansion is a file-system edit to this array.
+const EXTDEPS_RUST_PRIMITIVES_DAG: &str =
+    include_str!("../../../../dsl/extdeps/languages/rust/primitives.dag");
+
+const EXTDEPS_BOOTSTRAP_FIXTURES: &[(&str, &str)] = &[(
+    "dsl/extdeps/languages/rust/primitives.dag",
+    EXTDEPS_RUST_PRIMITIVES_DAG,
+)];
+
+/// Name of the `rust_pilot_primitives` top-level `data` declaration in
+/// `dsl/extdeps/languages/rust/primitives.dag`. Single string literal —
+/// `Dag::rust_pilot_primitives()` and tests read this constant rather than
+/// duplicating the identifier.
+pub(crate) const RUST_PILOT_PRIMITIVES_NAME: &str = "rust_pilot_primitives";
 
 // M1(3) PR-B-unwind R1 — the v3-only staged files are enumerated
 // by `build.rs` at compile time and exposed via generated statics:
@@ -144,6 +175,7 @@ fn load_runtime_bootstrap_authorities(
     let fixtures: Vec<(&str, &str)> = staged_iter
         .chain(V3_SPECS.iter().copied())
         .chain(compiler_iter)
+        .chain(EXTDEPS_BOOTSTRAP_FIXTURES.iter().copied())
         .collect();
     load_fixtures(dag, &fixtures);
     materialize_pipeline_realizations(dag);
