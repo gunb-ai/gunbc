@@ -457,7 +457,10 @@ fn is_unshare_permission_error(err: &std::io::Error) -> bool {
 /// [`unshare_post_start_stderr_may_authorize_relaunch`] is true. After a successful `exec(2)`,
 /// stderr is the logical program’s stream, so a matching host exit must **not** be re-run on a
 /// `unshare:` line — that was the double-execution / authority leak the sentinel would otherwise
-/// create.
+/// create. Separately, the empty-stderr and host-exit-confirmation relaunches (still only under
+/// exit-mismatch or non-zero match disambiguation) can run the logical command **twice** on a
+/// `Fail` path; `ExecuteCommand` is treated as idempotent for boundary tests, so a side-effecting
+/// binary that is not idempotent is out of scope here (PR #792 review).
 #[cfg(target_os = "linux")]
 const UNSHARE_STDERR_SCAN_CAP: u64 = 8 * 1024;
 
