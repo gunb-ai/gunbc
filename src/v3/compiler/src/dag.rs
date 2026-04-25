@@ -1316,7 +1316,9 @@ fn arithmetic_descent_relation(
 
 // Lens / arithmetic-descent: keep `i64` for legacy shrink-factor plumbing. Values outside
 // `i64` are **intentionally** omitted (`None`) — not silent wrap/truncate of a value the
-// tokenizer could represent; a full i128 path here is follow-up (api-review, non-blocking).
+// tokenizer could represent. Named dissolution: **T-Lens-LiteralIntAtI128** — re-thread
+// `literal_int_at` and shrink factors for full i128 (or align with reflected induction
+// witnesses) when lens arithmetic descent must use the same signed span as `LiteralBits::Int`.
 fn literal_int_at(dag: &Dag, port: PortId) -> Option<i64> {
     match dag.resolve_producer_opt(&port)? {
         Behavior::Value(value) => match &value.data {
