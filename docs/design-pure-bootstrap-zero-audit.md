@@ -38,6 +38,71 @@ Zero-Floor program's lane taxonomy
 ([brief §Slice](briefs/pure-bootstrap-zero-manager.md), [design doc
 §Subsumed lanes / §New lanes](design-pure-bootstrap-zero.md)).
 
+## Substrate generation is already proven and shipping (load-bearing reframe)
+
+> **Added 2026-04-25 post-merge.** The original audit (and the design
+> doc's PROPOSAL framing) treated substrate generation as a **future
+> pattern that needed proof**. Direct verification triggered by a
+> codex BLOCKING finding on the withdrawn pilot brief #772 establishes
+> that the pattern is **already proven and shipping**.
+
+**Evidence (verified at `4d2423da8`):**
+
+- **23 `*_generated.rs` files** under `src/v3/compiler/src/` (matches
+  `build.rs` `REGEN_OUTPUTS` enumeration) covering substrate
+  (5: scalar/branch/cluster/cost/lookup), bootstrap (2), parse
+  (3: parse/surface/tables), lens (5), helpers (2: infer/lower),
+  diagnostics, operators, serialize, tokenize, types, variant_payload.
+- `src/v3/compiler/src/dag.rs` is a **hybrid**: at `:497`, `:1678`,
+  `:1699`, `:1710` it `include!()`s four substrate-shape generated
+  files (`dag_scalar_generated`, `dag_branch_generated`,
+  `dag_cluster_generated`, `dag_lookup_generated`).
+- `build.rs` `REGEN_OUTPUTS` registers each generated file; emission
+  runs at compile time without manual invocation.
+- **Substrate.dag coverage survey** (38 declared `type` names vs
+  `^pub enum X` / `^pub struct X` matches in `*_generated.rs`):
+  - **11 already generated**: `BranchPattern`, `CardinalityBound`,
+    `Cluster`, `IntraClusterCall`, `LiteralBits`, `LoopBound`,
+    `MemberDescent`, `PayloadBinding`, `PortState`,
+    `TemplateArgument`, `TypeShape`.
+  - **27 not yet generated** by the survey heuristic (some may be
+    covered indirectly): `ArithmeticOp`, `ArrowBody`, `AtomPayload`,
+    `Behavior`, `BindNode`, `BranchNode`, `BranchPath`,
+    `ComparisonOp`, `ConjField`, `Dag`, `DagPort`, `Declaration`,
+    `ElementRef`, `FieldEntry`, `FieldValue`, `LogicalOp`, `LoopNode`,
+    `OperatorKind`, `ParamRef`, `SubstrateAccessorBinding`,
+    `SubstrateAccessorRealization`, `TransformNode`, `TransformRef`,
+    `TransformTarget`, `TypeConnective`, `ValueBody`, `ValueNode`.
+  - Concrete uncovered hand-authored example: `ArithmeticOp` /
+    `ComparisonOp` / `LogicalOp` / `OperatorKind` declared in
+    `substrate.dag` AND hand-authored in `dag.rs:694-725` AND not
+    generated.
+
+**Implication for the cascade evidence framing:**
+
+- The 0-floor target is **further along than the design doc claimed**.
+  The "irreducible tier" (`dag.rs`, `dag/ports.rs`, `dag/effects.rs`)
+  isn't future-irreducible *and* isn't structurally hand-authored
+  in full — `dag.rs` is hybrid today.
+- **Pre-promotion Deliverable 4** reframes from "prove the pattern
+  via a new pilot" to "**characterize the existing pattern** as the
+  cascade's primary evidence; optional small (a)-style pilot on a
+  surveyed-uncovered substrate type for incremental coverage." This
+  is Director-signed-off as the remediation path post-escalation
+  on [#766](https://github.com/gunb-ai/gunbc/pull/766).
+- **PB-Substrate as a lane** narrows from "build the pattern" to
+  "extend the existing pattern to the 27 uncovered substrate types
+  + retire the residual orchestration-kernel hand-authoring in
+  `dag.rs`."
+
+**Honest accounting**: the original audit's PB-Substrate "why
+hand-authored" rationale is **wrong for substrate-shape rows**.
+Those files are hybrid (kernel hand-authored, mirrored types
+generated). The lane assignments in the file-by-file table remain
+correct as migration targets; the rationale column understates
+existing progress. A future audit-discipline pass should rewrite
+those rationale cells against the verified state above.
+
 ## Findings before the table
 
 Two files in the live census have no explicit lane home in the brief's
