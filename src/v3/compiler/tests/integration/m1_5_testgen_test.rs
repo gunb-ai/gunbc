@@ -8,8 +8,8 @@ use v3_compiler::dag::{
 use v3_compiler::lens_cost::cost_of;
 use v3_compiler::lens_testgen::{GeneratedClaim, TestgenLens};
 use v3_compiler::test_runner::{
-    eval_algebraic_law_for_claim_program, evaluate_execute_command_exit_code,
-    parse_execute_command_fields, AlgebraicLawProgramError, ClaimResult,
+    eval_algebraic_law_for_claim_program, evaluate_execute_command_m1_5,
+    parse_execute_command_fields, AlgebraicLawProgramError, ExecuteCommandM1_5Proposition,
 };
 use v3_compiler::Diagnostic;
 
@@ -242,21 +242,25 @@ fn runner_deferred_panic(label: &str) -> ! {
 
 /// `ExecuteCommand` is the **declared** host-process spawn boundary: everything else in this
 /// harness stays data-only; arbitrary `command` + `args` use the same `std::process` path as
-/// [`v3_compiler::test_runner::evaluate_execute_command_exit_code`].
+/// [`v3_compiler::test_runner::evaluate_execute_command_m1_5`].
 ///
-/// The harness is **only a boolean** (`Pass` / any `Fail` / policy reject → not-holds for the
-/// lens); it does not surface the distinct `ClaimResult::Fail` substrings. Use
-/// [`v3_compiler::test_runner::TestRunner`] and `TESTING.md` for triage-oriented semantics.
+/// Propositional **true** / **false** is **only** pass vs exit-code mismatch. Spawn errors,
+/// timeouts, policy (`&` background), and other `Fail` or `NotYetImplemented` are **not** the
+/// boolean “claim does not hold” — the harness **panics** and surfaces the full
+/// `ClaimResult` (P3/DB-1: [`v3_compiler::test_runner::TestRunner`], `TESTING.md`).
 fn execute_command_m1_5_holds(payload: &[FieldValue]) -> bool {
     let Some((command, args, expect_exit)) = parse_execute_command_fields(payload) else {
         panic!(
             "m1_5 testgen harness: ExecuteCommand payload malformed (cannot parse command/args/expect_exit_code) — do not treat as ordinary false"
         );
     };
-    matches!(
-        evaluate_execute_command_exit_code(&command, &args, expect_exit),
-        ClaimResult::Pass
-    )
+    match evaluate_execute_command_m1_5(&command, &args, expect_exit) {
+        Ok(ExecuteCommandM1_5Proposition::Satisfied) => true,
+        Ok(ExecuteCommandM1_5Proposition::UnsatisfiedExitMismatch) => false,
+        Err(r) => panic!(
+            "m1_5 testgen harness: ExecuteCommand runner/claim outcome is not propositional (not exit mismatch): {r:?} — not ordinary false; see TestRunner / TESTING.md"
+        ),
+    }
 }
 
 fn claim_holds(claim: &CachedGeneratedClaim) -> bool {

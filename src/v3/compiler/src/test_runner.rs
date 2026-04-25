@@ -660,6 +660,39 @@ pub fn evaluate_execute_command_exit_code(
     )
 }
 
+/// **Single authority** for the exit-mismatch `ClaimResult::Fail` string (M1.5 propositional read;
+/// [`evaluate_execute_command_m1_5`]). All other `ExecuteCommand` `Fail` messages are infrastructure
+/// or policy — not a boolean “predicate is false” (P3/DB-1, codex PR #792).
+pub const EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX: &str =
+    "ExecuteCommand exit code mismatch: expected ";
+
+/// M1.5 and other **boolean** predicate reads: only these outcomes map to propositional
+/// true/false; all other results are `Err(ClaimResult)` (not “`false`” for the claim).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecuteCommandM1_5Proposition {
+    /// Observed exit satisfied `expect_exit_code`.
+    Satisfied,
+    /// The process completed with a host exit code that did not match the claim.
+    UnsatisfiedExitMismatch,
+}
+
+/// Distinguish “exit ≠ expect” from timeout, spawn error, `&` policy, signal, etc. `Err` is the
+/// full untyped `ClaimResult` (use [`TestRunner`] for strings); do not map `Err` to
+/// propositional `false` (P3/DB-1; codex PR #792).
+pub fn evaluate_execute_command_m1_5(
+    command: &str,
+    args: &[String],
+    expect_exit_code: i64,
+) -> Result<ExecuteCommandM1_5Proposition, ClaimResult> {
+    match evaluate_execute_command_exit_code(command, args, expect_exit_code) {
+        ClaimResult::Pass => Ok(ExecuteCommandM1_5Proposition::Satisfied),
+        ClaimResult::Fail(msg) if msg.starts_with(EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX) => {
+            Ok(ExecuteCommandM1_5Proposition::UnsatisfiedExitMismatch)
+        }
+        other @ (ClaimResult::Fail(_) | ClaimResult::NotYetImplemented(_)) => Err(other),
+    }
+}
+
 fn evaluate_execute_command_exit_code_with_wall_time(
     command: &str,
     args: &[String],
@@ -784,7 +817,7 @@ fn evaluate_execute_command_exit_code_with_wall_time(
         ClaimResult::Pass
     } else {
         ClaimResult::Fail(format!(
-            "ExecuteCommand exit code mismatch: expected {expect_exit_code}, got {actual}"
+            "{EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX}{expect_exit_code}, got {actual}"
         ))
     }
 }
@@ -1936,6 +1969,8 @@ fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, Algebra
 mod execute_command_timebound_tests {
     use super::evaluate_execute_command_exit_code;
     use super::evaluate_execute_command_exit_code_with_wall_time;
+    use super::evaluate_execute_command_m1_5;
+    use super::ExecuteCommandM1_5Proposition;
     use super::shell_dash_c_may_start_background_after_eliding_artifacts;
     use super::ClaimResult;
     use std::time::Duration;
@@ -1977,6 +2012,29 @@ mod execute_command_timebound_tests {
                 || m.contains("shell `-c`"),
             "expected policy message, got: {m}"
         );
+    }
+
+    /// M1.5: policy `Fail` is `Err(ClaimResult)`, not propositional `false` (P3/DB-1, PR #792).
+    #[test]
+    fn m1_5_rejects_policy_fail_as_propositional() {
+        let p = evaluate_execute_command_m1_5(
+            "sh",
+            &[String::from("-c"), String::from("sleep 600 &")],
+            0,
+        );
+        assert!(p.is_err(), "expected Err(Fail) for background &, got {p:?}");
+    }
+
+    /// M1.5: exit code mismatch is the only propositional `false` path.
+    #[test]
+    #[cfg(unix)]
+    fn m1_5_exit_mismatch_is_unsatisfied() {
+        let p = evaluate_execute_command_m1_5(
+            "sh",
+            &[String::from("-c"), String::from("exit 1")],
+            0,
+        );
+        assert_eq!(p, Ok(ExecuteCommandM1_5Proposition::UnsatisfiedExitMismatch));
     }
 
     #[test]
