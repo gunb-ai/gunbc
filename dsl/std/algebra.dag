@@ -456,6 +456,18 @@ type AlgebraFieldTemplate {
   callback_element_position: Int?
 }
 
+// Unified per-method metadata carrier for v3 lens consumers. This is the
+// §6a Option 3 shape: one lookup key `(algebra_id, method_id)` with the
+// method contract facts cost/complexity need co-located. It deliberately
+// does not extend substrate declarations or create one carrier per algebra.
+type MethodContract {
+  algebra_id: String
+  method_id: String
+  size_effect: CollectionSizeEffect?
+  cost_shape: CostShape?
+  callback_element_position: Int?
+}
+
 data kernel_algebra_profile: Map<String, AlgebraProfile> = {
   "Int": OrderedRingProfile,
   "Float": ApproximateFieldProfile,
@@ -618,4 +630,3 @@ fn algebra_type_param_names(profile: AlgebraProfile) -> List<String> {
     PartialFunctionProfile => ["K", "V"]
   }
 }
-
