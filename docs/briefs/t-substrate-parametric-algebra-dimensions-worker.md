@@ -55,25 +55,31 @@ R2 acceptance is the **subset that lights up `Dimension<Unit>` end-to-end**, not
    If (2b) is deferred per the (2)-STOP route, document the deferral in PR description with the sibling-sub-lane name.
 5. **No regression on existing `Dimension<Carrier>` behavioral framework.** DB-3's `analyze_symbolic_cost_dimension` (`src/v3/compiler/src/dimension.rs:50`) and the `SymbolicCost` proof-dimension consumer continue to work. The behavioral-framework `Dimension<Carrier>` and the value-wrapper `Dimension<Unit>` are different consumers of the same parametric machinery; both must coexist after this PR.
 
-## Slice — phantom parameters + abelian-group attachment + dispatch check
+## Slice — phantom parameters + (2a) same-phantom + (2b) composition + dispatch check
 
 1. Add phantom-parameter substrate (per req 1) to v3 `Declaration` shape. Round-trip through serializer / cementer / DB-8.
-2. Add abelian-group algebra attachment (per req 2). Worker picks shape (parametric algebra-tag declaration vs new carrier).
-3. Extend operator dispatch (per req 3) at `infer.rs:3688-3767`. New diagnostic variant.
-4. Author `Money<C>` (or `Duration<Unit>` — worker discretion) demo type per req 4. Add to `dsl/std/` or fixture location.
-5. Smoke + integration tests for reqs 4 + 5. Verify DB-3 behavioral-framework still works.
+2. Add **(2a) same-phantom equality attachment** per req 2(2a) — algebra-tag declaration or carrier shape (worker picks; surface in PR description).
+3. Add **(2b) phantom-composition-rule attachment** per req 2(2b) — substrate carries which composition rule attaches to which operator on which algebra (e.g., `Distance / Time → Speed` declared rule). Worker picks shape (typed compose-rule registry, parametric algebra-tag extension, etc.). **If (2b) execution surfaces unanticipated complexity** (e.g., requires substrate beyond what algebra-tag declarations carry), STOP-AND-ESCALATE — narrow demo to (2a) only with (2b) routed to a sibling sub-lane; document deferral in PR body with sibling-sub-lane name.
+4. Extend operator dispatch (per req 3) at `infer.rs:3688-3767`. **Two distinct diagnostic forms** (or one variant with a tag): (2a) `ParameterEquality` violation; (2b) `CompositionRuleAbsent` violation. Do NOT conflate as "abelian-group-closure violation".
+5. Author **(2a) demo**: `Money<C>` (or `Duration<Unit>` — worker discretion) per req 4(2a). Add to `dsl/std/` or fixture location.
+6. Author **(2b) demo**: `Distance<U> / Time<U> = Speed<U>` (or worker-equivalent multiplicative/derived shape) per req 4(2b). Add the composition-rule declarations for Meter/Second→MeterPerSecond.
+7. Smoke + integration tests for **both (2a) and (2b)** demos per req 4. Verify DB-3 behavioral-framework still works (req 5).
 
 ## Acceptance
 
 - [ ] All 5 consumer-side requirements satisfied + documented in PR body.
 - [ ] Phantom-parameter substrate lands; round-trips through DB-8.
-- [ ] Abelian-group algebra attachment shape documented; worker rationale in PR body.
-- [ ] Operator dispatch checks phantom parameters; unit-mismatch diagnostic structured.
-- [ ] `Dimension<Unit>` end-to-end demo (`Money<USD>` or equivalent) compiles + tests pass.
+- [ ] **(2a) same-phantom equality attachment** lands; shape documented + worker rationale in PR body.
+- [ ] **(2b) phantom-composition-rule attachment** lands OR explicitly deferred-with-rationale per the STOP route (sibling-sub-lane name documented in PR body if deferred).
+- [ ] Operator dispatch checks phantom parameters; **two distinct diagnostic forms (or one tagged variant)** for (2a) `ParameterEquality` + (2b) `CompositionRuleAbsent`.
+- [ ] **(2a) end-to-end demo**: `Money<USD> + Money<USD>` works; `Money<USD> + Money<EUR>` produces `ParameterEquality` diagnostic.
+- [ ] **(2b) end-to-end demo** (OR explicit deferral receipt): `Distance<Meter> / Time<Second> = Speed<MeterPerSecond>` compiles + types correctly; mismatched-unit composition (e.g., `d / Time<Hour>`) produces `CompositionRuleAbsent` diagnostic.
 - [ ] DB-3 behavioral-framework (`analyze_symbolic_cost_dimension` etc.) regression-free.
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` / `clippy --all-targets -- -D warnings` / `fmt --all --check` clean.
 - [ ] DB-8 fixed-point converges bit-identically.
 - [ ] SG-0 census deltas as needed.
+
+**Acceptance gate**: a Money-only additive implementation does **NOT** meet acceptance unless (2b) is explicitly deferred via the STOP route with sibling-sub-lane name documented. Default expectation is both (2a) AND (2b) demos land; deferral is the exception, not the rule.
 
 ## STOP-AND-ESCALATE
 
