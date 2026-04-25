@@ -3,11 +3,15 @@ For all PRs:
   - Replace this preamble with a short summary of WHAT changed and WHY.
   - Reference any relevant ROADMAP entries, INVARIANTS, briefs, or prior PRs.
 
-If this PR adds, modifies, or expands a hand-Rust file under `src/v3/`,
-fill in the "Per-PR dissolution gate" section below per
-INVARIANTS.md §P5 "Dispatch-Discipline Mechanisms" (b).
-PRs that touch only `.dag` source, generated Rust, docs, tests, or
-non-`v3/` Rust may delete the gate section.
+If this PR adds, modifies, or expands a hand-Rust file under `src/v3/`
+— including Rust tests under `src/v3/compiler/tests/` and any other
+hand-authored `.rs` in the v3 tree, since they are part of the SG-0
+census (T-PB-A non-test subset OR T-PB-B test subset) — fill in the
+"Per-PR dissolution gate" section below per INVARIANTS.md §P5
+"Dispatch-Discipline Mechanisms" (b).
+PRs that touch only `.dag` source, generated Rust, docs, non-Rust
+test fixtures, or hand-Rust outside `src/v3/` may delete the gate
+section.
 -->
 
 ## Summary
