@@ -36,32 +36,34 @@ Sub-lane closes the magnitude carrier + reconciliation narrowing. **Scope is suf
 4. **DEFERRED — `i64::MIN` smoke test moves to sibling sub-lane.** Per req 1's re-scope, this lane retains the existing `i64`-bounded carrier; `i64::MIN` as a single token still requires the additive-inverse workaround. The sibling sub-lane (Int128/UInt128/Word128Carrier substrate work) closes this gap. **Do not implement req 4 in this PR**; document its deferral in PR body with the sibling-sub-lane reference.
 5. **Out-of-range literal emits structured diagnostic.** Smoke test: `data x: u8 = 256` produces a diagnostic naming the literal's magnitude + the target's range + a fix-hint suggesting a wider target. No silent truncation.
 
-## Slice — magnitude carrier + reconciliation narrowing
+## Slice — range facts + reconciliation narrowing (against existing i64 carrier)
 
-1. Replace `LiteralBits::Int(i64)` with `LiteralBits::Int(<canonical-unbounded>)` per req 1's specified shape (single canonical payload — no parallel field, no coexisting variant). Update `dag_scalar_generated.rs` regen path; update tokenize to populate the canonical magnitude (replacing `i64` pre-narrowing, not paralleling it).
-2. Add range facts to integer algebras (per req 2) in `dsl/extdeps/languages/rust/primitives.dag` (and Python/Go siblings if they declare integer primitives). Pilot mirror at `src/v3/grounding_pilot/src/lib.rs` updates accordingly.
-3. Extend `infer.rs:704-725` decide arm with magnitude-aware narrowing (per req 3). Keep the default-when-unconstrained policy explicit.
-4. Diagnostic for out-of-range literals (per req 5) — add a new `Diagnostic::MagnitudeOutOfRange` variant or equivalent at the appropriate location.
-5. Smoke tests for reqs 4 + 5; integration test for end-to-end narrowing across multiple target algebras.
+**Note (post-2026-04-25 re-scope)**: per req 1, the `LiteralBits::Int(i64)` carrier is **NOT widened** in this lane; carrier-widening defers to a sibling Int128/Word128 sub-lane. This slice operates against the existing `i64` carrier.
+
+1. **(NOT in scope — deferred)** Carrier widening from `LiteralBits::Int(i64)` to a wider canonical form. This is the deferred req 1 work; sibling sub-lane handles. Worker should NOT touch `LiteralBits::Int` shape, `dag_scalar_generated.rs` regen for that variant, or tokenize's i64 parse path.
+2. Add range facts to integer algebras (per req 2) in `dsl/extdeps/languages/rust/primitives.dag` (and Python/Go siblings if they declare integer primitives). Range bounds use `i64`-representable magnitudes (consistent with the unwidened carrier). Pilot mirror at `src/v3/grounding_pilot/src/lib.rs` updates accordingly.
+3. Extend `infer.rs:704-725` decide arm with magnitude-aware narrowing (per req 3). Use the existing `i64`-bounded literal payload + the new substrate-declared range facts. Keep the default-when-unconstrained policy explicit.
+4. Diagnostic for out-of-range literals (per req 5) — add a new `Diagnostic::MagnitudeOutOfRange` variant or equivalent at the appropriate location. Triggered when an `i64`-representable literal exceeds the call-site's target-algebra range (e.g., `data x: u8 = 256`).
+5. Smoke tests for req 5 only; **req 4 (`i64::MIN`) is deferred** — no smoke test for it in this PR; document deferral in PR body. Integration test for end-to-end narrowing across multiple target algebras (i8, i16, i32, i64, u8, u16, u32, u64) using `i64`-representable literals.
 
 ## Acceptance
 
-- [ ] All 5 consumer-side requirements satisfied + documented in PR body.
-- [ ] Magnitude carrier shape lands; doc-comment explains the dissolution path (eventually `std.natural` once Class 5 substrate lifts further).
+- [ ] Reqs 2, 3, 5 satisfied + documented in PR body. Req 1 explicitly noted as RE-SCOPED (carrier-widening deferred to sibling sub-lane). Req 4 explicitly noted as DEFERRED (depends on sibling sub-lane).
+- [ ] `LiteralBits::Int(i64)` carrier untouched (no widening; no parallel; no `dag_scalar_generated.rs` shape change for this variant).
 - [ ] Range facts on integer algebras (substrate-declared, not Rust-mirrored).
-- [ ] Reconciliation narrows magnitude-aware; default-when-unconstrained policy documented.
-- [ ] `data x: Int = -9223372036854775808` works end-to-end (`i64::MIN` smoke).
+- [ ] Reconciliation narrows magnitude-aware against existing `i64` carrier; default-when-unconstrained policy documented.
+- [ ] **DEFERRED**: `data x: Int = -9223372036854775808` (`i64::MIN` smoke; sibling sub-lane will implement).
 - [ ] `data x: u8 = 256` emits structured `MagnitudeOutOfRange` diagnostic.
 - [ ] Existing int-literal tests pass without modification (no silent regressions).
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` passes; `clippy --all-targets -- -D warnings` clean; `fmt --all --check` clean.
 - [ ] **DB-8 `self_host_fixed_point` converges bit-identically.**
-- [ ] SG-0 census + regen-output deltas: this lane is **adding** substrate (magnitude carrier + range facts), not retiring hand-Rust files; expected census movement is **the pilot's Rust-mirror range constants becoming substrate-declared** (so the corresponding pilot Rust code that previously hard-coded ranges either retires or shrinks). Any regen snapshot updates land in REGEN_OUTPUTS partition.
+- [ ] SG-0 census + regen-output deltas: this lane is **adding** substrate (range facts only — carrier untouched), not retiring hand-Rust files; expected census movement is **the pilot's Rust-mirror range constants becoming substrate-declared** (so the corresponding pilot Rust code that previously hard-coded ranges either retires or shrinks). Any regen snapshot updates land in REGEN_OUTPUTS partition.
 
 ## STOP-AND-ESCALATE
 
 Surface to Director.
 
-- **Canonical-payload type choice is consumer-visible** — if the chosen `LiteralBits::Int(<T>)` payload type (e.g., `i128` M2-bridge vs a typed unbounded magnitude) leaks into lens producers / serializer / cementer in ways that need cross-consumer redesign, STOP. (Note: per req 1, the choice is *which canonical type*, not *whether to add a parallel carrier* — that's already locked.)
+- **Pressure to widen the carrier** — req 1's re-scope explicitly defers carrier-widening to a sibling sub-lane. If execution surfaces that range-fact narrowing requires touching `LiteralBits::Int(i64)` shape (e.g., narrowing logic needs a wider literal payload to represent magnitudes that the user wrote), STOP. That's the boundary the re-scope drew; carrier-widening belongs in the sibling Int128/Word128 sub-lane.
 - **Range-fact substrate touches `dsl/std/substrate.dag` (NOT `dsl/extdeps/languages/*/primitives.dag`)** — extdeps language files are in-scope for this lane; only edits to `dsl/std/substrate.dag` itself trigger the STOP for cross-program coordination with PB-Substrate (Zero-Floor). Range facts on `IntegerPrimitive` in `dsl/extdeps/languages/rust/primitives.dag` (req 2) are NOT substrate.dag changes and do NOT require Zero-Floor coordination.
 - **Default-when-unconstrained policy** — if changing it (e.g., dropping the `Int64` default in favor of "unconstrained → diagnostic") is the cleaner shape, STOP. Director call.
 - **DB-8 fixed-point drifts** — STOP immediately.
