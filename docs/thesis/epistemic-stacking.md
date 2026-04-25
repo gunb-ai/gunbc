@@ -137,6 +137,18 @@ masquerading as a primitive. The modeling discipline rejects them
 not for style but because they break the epistemic chain codegen
 walks.
 
+**Positive corollary: a different stack is case 1, not case 3.**
+"No escape" is not "no alternatives." A user who wants different
+primitives — a stack rooted in something other than Classical + Conj +
+Disj — is choosing case 1 with a different floor, not violating the
+discipline. Their compiler is an adjacent compiler that bottoms out at
+its own primitives; gunbc's lenses don't apply to its outputs (lenses
+are folds over *our* primitives, by construction), and that's fine.
+What's not available is a halfway state: declaring opaque concepts
+inside gunbc that the compiler treats as primitive without their
+chain. The epistemic chain has to bottom out somewhere; the discipline
+is that "somewhere" is named, not hidden.
+
 **The substrate test.** For any candidate Declaration shape in the
 compiler, the check is: *can it host `dsl/std/algebra.dag` as-is?*
 — `Magma<T>`, `Monoid<T>`, `Ring<T>`, the parameterization over
