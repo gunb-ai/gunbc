@@ -103,9 +103,6 @@ jobs:
     # Full suite is capped at 1200s, plus clippy + lens gates + cold compile — 15m
     # can cancel the job before the final steps finish.
     timeout-minutes: 25
-    # PR #792: unshare(1)+empty stderr relaunch is opt-in (P3) — enable for in-repo `cargo test`.
-    env:
-      GUNBC_V3_RELAUNCH_UNSHARE_ON_EMPTY_STDERR: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4

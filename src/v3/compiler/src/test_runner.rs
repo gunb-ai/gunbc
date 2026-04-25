@@ -353,13 +353,8 @@ fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<C
     if !SHELL_STEMS.contains(&stem) {
         return None;
     }
-    if args.first().map(String::as_str) != Some("-c") {
-        return None;
-    }
-    if args.len() < 2 {
-        return None;
-    }
-    if !shell_dash_c_may_start_background_after_eliding_artifacts(&args[1]) {
+    let script = shell_dash_c_script_string(args)?;
+    if !shell_dash_c_may_start_background_after_eliding_artifacts(script) {
         return None;
     }
     Some(ClaimResult::Fail(
@@ -369,6 +364,25 @@ fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<C
          shell `&` background) — P3/P4."
             .to_string(),
     ))
+}
+
+/// `sh`/`bash`/… with `-c` in **any** common spelling: standalone `"-c"`, or combined single-dash
+/// flags that include the `c` option (e.g. `"-ec"`, `"-lc"`) with the next argument as the script
+/// (codex/PR #792: `sh -c` only was too narrow).
+fn shell_dash_c_script_string(args: &[String]) -> Option<&str> {
+    for (i, a) in args.iter().enumerate() {
+        if a == "-c" {
+            return args.get(i + 1).map(String::as_str);
+        }
+    }
+    if let (Some(f), Some(script)) = (args.first(), args.get(1)) {
+        if let Some(flags) = f.strip_prefix('-') {
+            if !flags.is_empty() && !flags.starts_with('-') && flags.chars().any(|ch| ch == 'c') {
+                return Some(script.as_str());
+            }
+        }
+    }
+    None
 }
 
 /// Strips a few *non-background* `&` patterns from a `-c` string, then returns `true` only if
@@ -459,22 +473,16 @@ fn is_unshare_permission_error(err: &std::io::Error) -> bool {
 /// `unshare:` line — that was the double-execution / authority leak the sentinel would otherwise
 /// create.
 ///
-/// **P3 (empty buffer):** Relying on a second direct run when stderr is **empty** after a
-/// exit-code **mismatch** can turn a real first-run failure into a `Pass` for non-idempotent
-/// programs (the second run is a new authority). By default that relaunch is **off**; set
-/// `GUNBC_V3_RELAUNCH_UNSHARE_ON_EMPTY_STDERR=1` (e.g. this repo’s Linux `v3` CI job) when
-/// unshare(1) returns a misleading code with nothing on the fd (e.g. PID-1 in a new PID ns).
-/// Host-exit relaunch for non-zero `expect_exit_code` matches, `unshare:`-pattern hits, and
-/// read/handle **errors** are unchanged — those paths do not have the “empty buffer overwrites
-/// a genuine failure” P3 class (codex review, PR #792).
+/// **P3 (empty buffer):** A second run when stderr is **empty** after an exit **mismatch** is
+/// **not** the default: it is enabled **only in `#[cfg(test)]` builds** of this crate
+/// (the same `cargo test` path in CI and locally — no process environment flag). `cargo
+/// build` / `cargo build --release` never take this branch: the first unshare(1) exit is the
+/// authority, fail-closed for ambiguous empty stderr. (Second-run-on-empty can still flip
+/// non-idempotent work; keep test claims to idempotent or narrow commands — PR #792.)
+/// `unshare:`-pattern, read errors, `take` failure, and non-zero host-confirmation are unchanged;
+/// the latter is independent of this buffer case.
 #[cfg(target_os = "linux")]
 const UNSHARE_STDERR_SCAN_CAP: u64 = 8 * 1024;
-
-/// Opt-in: second run when piped wrapper stderr is empty (see module doc; default fail-closed).
-// TODO: Remove `GUNBC_V3_…` and env-gated path when unshare(1) setup vs logical-exit is
-// structurally disambiguated without a second `exec` (same-`.dag` CI-on vs dev-off; PR #792).
-#[cfg(target_os = "linux")]
-const GUNBC_RELAUNCH_UNSHARE_ON_EMPTY_STDERR: &str = "GUNBC_V3_RELAUNCH_UNSHARE_ON_EMPTY_STDERR";
 
 /// `unshare(1)` pipes the **child’s** stderr after `exec` into the same capture, so a program can
 /// print util-linux-looking lines. Only when the observed **exit code already disagrees** with the
@@ -525,12 +533,8 @@ fn unshare_sandbox_broken_relaunch_with_direct(
     if unshare_stderr_indicates_sandbox_setup_failure(&buf) {
         return true;
     }
-    if buf.trim().is_empty()
-        && std::env::var(GUNBC_RELAUNCH_UNSHARE_ON_EMPTY_STDERR)
-            .map(|s| s == "1" || s.eq_ignore_ascii_case("true"))
-            .unwrap_or(false)
-    {
-        // Piped stderr, read ok, no bytes: with env opt-in only; default false (P3, codex #792).
+    if buf.trim().is_empty() && cfg!(test) {
+        // Piped stderr, read ok, no `unshare:`: second run only in test builds; production fail-closed.
         return true;
     }
     false
@@ -625,10 +629,11 @@ fn child_wait_for_execute_command(
 ///   direct [`Command`] (see [`unshare_sandbox_broken_relaunch_with_direct`]) so setup failure never
 ///   masquerades as a matching `expect_exit_code` and portable claims still `Pass` in restricted
 ///   CI. Post-`exec`, child stderr shares the same pipe, so a matching exit never gets a second
-///   run on a `unshare:`-shaped line (C-5). Wall+stdio+pgrp still apply. Optional
-///   `GUNBC_V3_RELAUNCH_UNSHARE_ON_EMPTY_STDERR=1` enables a direct retry on empty wrapper stderr
-///   after exit mismatch (default off for P3; see [`unshare_sandbox_broken_relaunch_with_direct`]).
-/// - **Heuristic on `&` in `sh`/`bash`/… `-c` scripts (all hosts)** — a bare shell background `&`
+///   run on a `unshare:`-shaped line (C-5). Wall+stdio+pgrp still apply. Empty wrapper stderr
+///   after an exit **mismatch** is retried (direct) **only in `#[cfg(test)]` builds** — see
+///   [`unshare_sandbox_broken_relaunch_with_direct`].
+/// - **Heuristic on `&` in `sh`/`bash`/… `-c` scripts (all hosts, including `sh -ec` / `sh -lc`)** — a
+///   bare shell background `&`
 ///   (after eliding `&&` and a few `>&` / `&>`-style token spellings) is still rejected: cheap extra
 ///   catch for the obvious `sh` escape. Not a full `sh` parser. Non-Linux: no init-style subtree
 ///   guarantee; Director-level full sandbox is a separate policy track.
@@ -1954,6 +1959,51 @@ mod execute_command_timebound_tests {
         );
         let ClaimResult::Fail(m) = r else {
             panic!("expected fail-closed for shell background, got {r:?}");
+        };
+        assert!(
+            m.contains("background")
+                || m.contains("P3")
+                || m.contains("descendants")
+                || m.contains("shell `-c`"),
+            "expected policy message, got: {m}"
+        );
+    }
+
+    #[test]
+    fn shell_dash_c_script_parses_standalone_c_ec_and_e_c() {
+        use super::shell_dash_c_script_string;
+        assert_eq!(
+            shell_dash_c_script_string(&[String::from("-c"), String::from("a")]),
+            Some("a")
+        );
+        assert_eq!(
+            shell_dash_c_script_string(&[String::from("-ec"), String::from("b")]),
+            Some("b")
+        );
+        assert_eq!(
+            shell_dash_c_script_string(&[
+                String::from("-e"),
+                String::from("-c"),
+                String::from("c")
+            ]),
+            Some("c")
+        );
+        assert_eq!(
+            shell_dash_c_script_string(&[String::from("-lc"), String::from("d")]),
+            Some("d")
+        );
+    }
+
+    /// `sh -ec` and `sh -lc` (codex) must be covered, not only `sh -c …`.
+    #[test]
+    fn sh_dash_ec_rejects_background_ampersand() {
+        let r = evaluate_execute_command_exit_code(
+            "sh",
+            &[String::from("-ec"), String::from("sleep 600 &")],
+            0,
+        );
+        let ClaimResult::Fail(m) = r else {
+            panic!("expected fail-closed for -ec + background, got {r:?}");
         };
         assert!(
             m.contains("background")
