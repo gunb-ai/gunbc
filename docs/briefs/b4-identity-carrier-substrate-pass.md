@@ -60,7 +60,7 @@ This program is **not** "go fix eight files." That ordering would patch the symp
 
 ### Phase 1 — substrate carriers (M-scope, sequential)
 
-Land the typed carriers into `src/v3/std/` and lower them end-to-end:
+For each carrier: **first audit existing authorities in `src/v3/std/` + `src/v3/spec/`**; consume what's already landed; only design + land net-new substrate where the audit shows a real gap. Lower end-to-end so Phase 2 sites can dissolve mechanically.
 
 1. **Consume the existing `DeclarationRef`** at `src/v3/spec/v3_l1.dag:69` — already-landed substrate authority. The work is **not** to design or land the carrier; it's to (a) audit which §0 sites can route through `DeclarationRef` directly and (b) extend lowering/resolution where consumers need additional structural data (e.g., role-tagged references, input-binding refs) on top of the base sentinel meta-type. Consumers: §0.1, §0.2, §0.3, §0.5, §0.7. Likely the largest sub-deliverable; the work is consumer migration + any role-extension layer the audit reveals.
 2. **Structural fold-shape carrier** (template-formal edge) — *new*: typed carrier on fold-template instantiation that records which formal binds the step. Consumers: §0.4 + B3's underlying invariant. Verify against current substrate before designing — search `src/v3/std/` for any existing fold-template-formal authority.
