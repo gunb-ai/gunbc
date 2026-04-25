@@ -675,9 +675,6 @@ impl LinuxPipedChildStderrNonblockGuard {
         if !must_drain {
             return None;
         }
-        if child.stderr.is_none() {
-            return None;
-        }
         use std::os::unix::io::AsRawFd;
         let fd = child.stderr.as_ref()?.as_raw_fd();
         if linux_piped_child_stderr_set_nonblock(fd, true).is_err() {
