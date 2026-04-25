@@ -457,12 +457,22 @@ fn is_unshare_permission_error(err: &std::io::Error) -> bool {
 /// [`unshare_post_start_stderr_may_authorize_relaunch`] is true. After a successful `exec(2)`,
 /// stderr is the logical program’s stream, so a matching host exit must **not** be re-run on a
 /// `unshare:` line — that was the double-execution / authority leak the sentinel would otherwise
-/// create. Separately, the empty-stderr and host-exit-confirmation relaunches (still only under
-/// exit-mismatch or non-zero match disambiguation) can run the logical command **twice** on a
-/// `Fail` path; `ExecuteCommand` is treated as idempotent for boundary tests, so a side-effecting
-/// binary that is not idempotent is out of scope here (PR #792 review).
+/// create.
+///
+/// **P3 (empty buffer):** Relying on a second direct run when stderr is **empty** after a
+/// exit-code **mismatch** can turn a real first-run failure into a `Pass` for non-idempotent
+/// programs (the second run is a new authority). By default that relaunch is **off**; set
+/// `GUNBC_V3_RELAUNCH_UNSHARE_ON_EMPTY_STDERR=1` (e.g. this repo’s Linux `v3` CI job) when
+/// unshare(1) returns a misleading code with nothing on the fd (e.g. PID-1 in a new PID ns).
+/// Host-exit relaunch for non-zero `expect_exit_code` matches, `unshare:`-pattern hits, and
+/// read/handle **errors** are unchanged — those paths do not have the “empty buffer overwrites
+/// a genuine failure” P3 class (codex review, PR #792).
 #[cfg(target_os = "linux")]
 const UNSHARE_STDERR_SCAN_CAP: u64 = 8 * 1024;
+
+/// Opt-in: second run when piped wrapper stderr is empty (see module doc; default fail-closed).
+#[cfg(target_os = "linux")]
+const GUNBC_RELAUNCH_UNSHARE_ON_EMPTY_STDERR: &str = "GUNBC_V3_RELAUNCH_UNSHARE_ON_EMPTY_STDERR";
 
 /// `unshare(1)` pipes the **child’s** stderr after `exec` into the same capture, so a program can
 /// print util-linux-looking lines. Only when the observed **exit code already disagrees** with the
@@ -514,12 +524,13 @@ fn unshare_sandbox_broken_relaunch_with_direct(
         return true;
     }
     if buf.trim().is_empty() {
-        // Piped stderr, read ok, **no** util-linux `unshare:` line and no other bytes: the host
-        // may have torn down the unshare(1) path in a way that does not print (e.g. `sh` as init in
-        // a new PID namespace exiting non-zero with nothing on this fd — see PR #792 / Linux CI).
-        // Only invoked when the exit code already failed the claim (C-5 gate); one direct-retry
-        // matches the "cannot inspect" `take()`-is-`None` path.
-        return true;
+        if std::env::var(GUNBC_RELAUNCH_UNSHARE_ON_EMPTY_STDERR)
+            .map(|s| s == "1" || s.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
+            // Piped stderr, read ok, no bytes: with env opt-in only; default false (P3, codex #792).
+            return true;
+        }
     }
     false
 }
@@ -613,7 +624,9 @@ fn child_wait_for_execute_command(
 ///   direct [`Command`] (see [`unshare_sandbox_broken_relaunch_with_direct`]) so setup failure never
 ///   masquerades as a matching `expect_exit_code` and portable claims still `Pass` in restricted
 ///   CI. Post-`exec`, child stderr shares the same pipe, so a matching exit never gets a second
-///   run on a `unshare:`-shaped line (C-5). Wall+stdio+pgrp still apply.
+///   run on a `unshare:`-shaped line (C-5). Wall+stdio+pgrp still apply. Optional
+///   `GUNBC_V3_RELAUNCH_UNSHARE_ON_EMPTY_STDERR=1` enables a direct retry on empty wrapper stderr
+///   after exit mismatch (default off for P3; see [`unshare_sandbox_broken_relaunch_with_direct`]).
 /// - **Heuristic on `&` in `sh`/`bash`/… `-c` scripts (all hosts)** — a bare shell background `&`
 ///   (after eliding `&&` and a few `>&` / `&>`-style token spellings) is still rejected: cheap extra
 ///   catch for the obvious `sh` escape. Not a full `sh` parser. Non-Linux: no init-style subtree
