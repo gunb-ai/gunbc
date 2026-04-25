@@ -210,25 +210,21 @@ jobs:
           fi
           scripts/check-test-timeout.sh /tmp/v3-test-timings.log
 
-      # PB-1-e — DB-8 fresh-compile gate at regen time. Replaces the in-tree
-      # `compile_full_bootstrap_dag()` vs committed-snapshot drift tests with a
-      # CI-side check: regen the bootstrap snapshot from authority, then assert
-      # the committed `bootstrap_*_generated.rs` files are byte-identical to a
-      # fresh compile. Any drift (hand-edit, stale regen, substrate change) fails
-      # CI here. See `docs/briefs/pb-1-e-residual-scaffold-retirement-worker.md`.
-      - name: v3 bootstrap snapshot fresh-compile gate
-        run: |
-          cargo run -p v3-compiler --bin regen_bootstrap
-          if ! git diff --exit-code -- \
-            src/v3/compiler/src/bootstrap_std_generated.rs \
-            src/v3/compiler/src/bootstrap_generated.rs \
-            src/v3/compiler/src/bootstrap_generated_without_parse_surface.rs; then
-            echo "::error::Committed bootstrap snapshot drifted from a fresh compile. Run \`cargo run -p v3-compiler --bin regen_bootstrap\` and commit the result."
-            exit 1
-          fi
-
-      - name: v3 Compiler Clippy
+      # Default graph (no regen feature): locks in `cfg_attr(dead_code)` hygiene and
+      # ensures production targets stay clean without relying on the feature build alone.
+      - name: v3 Compiler Clippy (default features)
         run: cargo clippy -p v3-compiler --all-targets -- -D warnings
+
+      - name: v3 Compiler Clippy (bootstrap-regen-fresh)
+        run: cargo clippy -p v3-compiler --all-targets --features bootstrap-regen-fresh -- -D warnings
+
+      # Type-check lib + default integration harness with the regen feature on
+      # (clippy already checks targets; this ensures `cargo test` linkage too).
+      - name: v3 test targets compile with bootstrap-regen-fresh
+        run: cargo test -p v3-compiler --no-run --features bootstrap-regen-fresh
+
+      - name: v3 regen_bootstrap snapshot gate (--verify)
+        run: cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
 
       - name: L-7 Substrate accessor reconstruction gate
         run: |

@@ -2,6 +2,30 @@
 // Regenerate instead of hand-editing.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CollectionSizeEffect {
+    ShrinkEffect,
+    ProjectionEffect,
+    IdentityEffect,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CostShape {
+    ShapeConstant,
+    ShapeLinearScan,
+    ShapeIterateBody,
+    ShapeSortBody,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MethodContract {
+    pub algebra_id: DeclarationId,
+    pub method_id: DeclarationId,
+    pub size_effect: Option<CollectionSizeEffect>,
+    pub cost_shape: Option<CostShape>,
+    pub callback_element_position: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DegreeAtLeastTwo {
     DegreeTwo,
     DegreeSuccessor { previous: Box<DegreeAtLeastTwo> },

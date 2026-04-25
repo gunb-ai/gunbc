@@ -7,7 +7,10 @@ use v3_compiler::dag::{
 };
 use v3_compiler::lens_cost::cost_of;
 use v3_compiler::lens_testgen::{GeneratedClaim, TestgenLens};
-use v3_compiler::test_runner::{eval_algebraic_law_for_claim_program, AlgebraicLawProgramError};
+use v3_compiler::test_runner::{
+    eval_algebraic_law_for_claim_program, evaluate_execute_command_m1_5,
+    parse_execute_command_fields, AlgebraicLawProgramError, ExecuteCommandM1_5Proposition,
+};
 use v3_compiler::Diagnostic;
 
 use crate::common::{cached_compile_any, cached_compile_outcome, CachedCompileOutcome};
@@ -231,66 +234,33 @@ fn claim_name(claim: &CachedGeneratedClaim) -> String {
     string_field(claim.fields(), "name")
 }
 
-/// Extract `(command, argv, expect_exit_code)` from `ExecuteCommand` lowered payloads
-/// (positional `Conj` fields or a single `Record`). `ForAllTargets` shares this shape
-/// in the schema, but the M1.5 harness does not evaluate it — defer to the release runner.
-fn parse_shell_predicate_payload(payload: &[FieldValue]) -> Option<(String, Vec<String>, i64)> {
-    match payload {
-        [FieldValue::Record(fields)] => {
-            let command = string_field(fields, "command");
-            let expect_exit_code = fields
-                .iter()
-                .find(|(label, _)| label == "expect_exit_code")
-                .and_then(|(_, value)| match value {
-                    FieldValue::Literal(LiteralBits::Int(n)) => Some(*n),
-                    _ => None,
-                })?;
-            let args = fields
-                .iter()
-                .find(|(label, _)| label == "args")
-                .and_then(|(_, value)| list_string_literals(value))?;
-            Some((command, args, expect_exit_code))
-        }
-        [cmd, args, code] => {
-            let FieldValue::Literal(LiteralBits::String(command)) = cmd else {
-                return None;
-            };
-            let argv = list_string_literals(args)?;
-            let FieldValue::Literal(LiteralBits::Int(expect_exit_code)) = code else {
-                return None;
-            };
-            Some((command.clone(), argv, *expect_exit_code))
-        }
-        _ => None,
-    }
-}
-
-fn list_string_literals(value: &FieldValue) -> Option<Vec<String>> {
-    let FieldValue::List(items) = value else {
-        return None;
-    };
-    let mut out = Vec::with_capacity(items.len());
-    for item in items {
-        let FieldValue::Literal(LiteralBits::String(s)) = item else {
-            return None;
-        };
-        out.push(s.clone());
-    }
-    Some(out)
-}
-
 fn runner_deferred_panic(label: &str) -> ! {
     panic!(
         "m1_5 testgen harness: TestPredicate::{label} is runner-deferred (not evaluable in this interpreter — do not treat as ordinary false)"
     )
 }
 
-/// Test harness boundary for shell-shaped predicates: only the tautological
-/// `true` + empty argv + exit `0` shape is accepted; everything else is unsupported
-/// here (runner-owned). Hermetic: we do not spawn a host process — the allowlist
-/// encodes the only exit semantics this interpreter models.
-fn shell_exit_matches_allowlisted(command: &str, args: &[String], expect_exit: i64) -> bool {
-    command == "true" && args.is_empty() && expect_exit == 0
+/// `ExecuteCommand` is the **declared** host-process spawn boundary: everything else in this
+/// harness stays data-only; arbitrary `command` + `args` use the same `std::process` path as
+/// [`v3_compiler::test_runner::evaluate_execute_command_m1_5`].
+///
+/// Propositional **true** / **false** is **only** pass vs exit-code mismatch. Spawn errors,
+/// timeouts, policy (`&` background), and other `Fail` or `NotYetImplemented` are **not** the
+/// boolean “claim does not hold” — the harness **panics** and surfaces the full
+/// `ClaimResult` (P3/DB-1: [`v3_compiler::test_runner::TestRunner`], `TESTING.md`).
+fn execute_command_m1_5_holds(payload: &[FieldValue]) -> bool {
+    let Some((command, args, expect_exit)) = parse_execute_command_fields(payload) else {
+        panic!(
+            "m1_5 testgen harness: ExecuteCommand payload malformed (cannot parse command/args/expect_exit_code) — do not treat as ordinary false"
+        );
+    };
+    match evaluate_execute_command_m1_5(&command, &args, expect_exit) {
+        Ok(ExecuteCommandM1_5Proposition::Satisfied) => true,
+        Ok(ExecuteCommandM1_5Proposition::UnsatisfiedExitMismatch) => false,
+        Err(r) => panic!(
+            "m1_5 testgen harness: ExecuteCommand runner/claim outcome is not propositional (not exit mismatch): {r:?} — not ordinary false; see TestRunner / TESTING.md"
+        ),
+    }
 }
 
 fn claim_holds(claim: &CachedGeneratedClaim) -> bool {
@@ -383,20 +353,10 @@ fn predicate_holds(
             }
         }
         "ExecuteCommand" => {
-            let Some((command, args, expect_exit)) = parse_shell_predicate_payload(payload) else {
-                panic!(
-                    "m1_5 testgen harness: ExecuteCommand payload malformed (cannot parse command/args/expect_exit_code) — do not treat as ordinary false"
-                );
-            };
             if !cached_compile_outcome(source, file_name).is_clean() {
                 return false;
             }
-            if !shell_exit_matches_allowlisted(&command, &args, expect_exit) {
-                panic!(
-                    "m1_5 testgen harness: ExecuteCommand shell shape is not supported here (runner-owned — do not treat as ordinary false): command={command:?} args={args:?} expect_exit_code={expect_exit}"
-                );
-            }
-            true
+            execute_command_m1_5_holds(payload)
         }
         "ForAllTargets" => runner_deferred_panic("ForAllTargets"),
         other => panic!("unsupported TestPredicate variant {other}"),
@@ -848,7 +808,37 @@ fn extension_predicates_reach_interpreter_boundary() {
         ),
         "allowlisted ExecuteCommand should hold when the claim program compiles"
     );
+    let echo_ok = sum_variant(
+        &dag,
+        "TestPredicate",
+        "ExecuteCommand",
+        vec![
+            FieldValue::Literal(LiteralBits::String(String::from("echo"))),
+            FieldValue::List(vec![FieldValue::Literal(LiteralBits::String(
+                String::from("hi"),
+            ))]),
+            FieldValue::Literal(LiteralBits::Int(0)),
+        ],
+    );
+    assert!(
+        predicate_holds(&dag, positive_source, file, &echo_ok),
+        "ExecuteCommand(echo, [\"hi\"], 0) should hold when the claim program compiles"
+    );
     let disallowed_execute = sum_variant(
+        &dag,
+        "TestPredicate",
+        "ExecuteCommand",
+        vec![
+            FieldValue::Literal(LiteralBits::String(String::from("true"))),
+            FieldValue::List(Vec::new()),
+            FieldValue::Literal(LiteralBits::Int(1)),
+        ],
+    );
+    assert!(
+        !predicate_holds(&dag, positive_source, file, &disallowed_execute),
+        "exit-code mismatch: `true` exits 0, expected 1 — should not hold (bool false, not panic)"
+    );
+    let false_expects_zero = sum_variant(
         &dag,
         "TestPredicate",
         "ExecuteCommand",
@@ -858,12 +848,9 @@ fn extension_predicates_reach_interpreter_boundary() {
             FieldValue::Literal(LiteralBits::Int(0)),
         ],
     );
-    let unsupported_msg =
-        catch_predicate_holds_panic_message(&dag, positive_source, file, &disallowed_execute);
     assert!(
-        unsupported_msg.contains("ExecuteCommand")
-            && unsupported_msg.contains("not supported here"),
-        "disallowed shell should panic fail-closed, not return false: {unsupported_msg}"
+        !predicate_holds(&dag, positive_source, file, &false_expects_zero),
+        "`false` exits non-zero: predicate should not hold when expect_exit is 0"
     );
     assert_runner_deferred_panics(
         &dag,

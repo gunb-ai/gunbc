@@ -2198,6 +2198,7 @@ fn report_declaration_error(dag: &mut Dag, diag: Diagnostic) {
 /// `algebra.dag` with no defining `.dag` file among the seven loaded),
 /// and those are not bootstrap errors. User-facing code uses the
 /// strict variant below.
+#[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
 pub(crate) fn resolve_pending_identifiers(dag: &mut Dag) {
     run_identifier_sweep(dag, /*strict_from=*/ usize::MAX);
 }
