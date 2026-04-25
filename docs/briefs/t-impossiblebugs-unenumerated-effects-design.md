@@ -128,6 +128,44 @@ What's needed:
 6. **Transactional-pattern lens** — derived structural fact from Bind composition + typed transaction primitives (`Transaction → Transaction'`). Lens walks the Bind chain and recognizes the begin-modify-commit shape structurally. Same closed-system fold.
 7. **No parser surface, no `effects [...]` clause, no annotation, no per-primitive tag declaration.** Effects are the structural fact (operation type-signature shape).
 
+## Q4.5 — Pre-conditions (load-bearing for the closed-system claim)
+
+The closed-system claim *"effects derive structurally from the composition of typed primitive operations"* is **honest only when typed primitives ARE the path**. Today, two structural holes exist where bypasses bypass the typed-primitive substrate. Both are pre-conditions for the lens to deliver on its closed-system claim — without them, the lens has structural holes wherever the foundation isn't yet closed.
+
+### P1 — Extdeps typed-primitive consumption is structurally enforced
+
+The substrate must make it impossible for a service definition to declare `messages: Json` instead of `messages: List<LlmMessage>`. Typed protocol carriers must be the ONLY path; raw Json / string-path extraction must have no structural home in service definitions.
+
+**Today's tracked debt** (per ROADMAP.md:153-154):
+- `dsl/extdeps/llm/openai.dag:92-110` — `messages: Json` + string-path output extraction (bypass: typed `LlmMessage` + `ContentBlock` carriers exist but not consumed).
+- `dsl/extdeps/llm/anthropic.dag:104-124` — same pattern.
+- `dsl/extdeps/github/auth.dag:13-24` — `github_token() → { token: Secret }` discards modeled scopes + `expires_at` from `GitHubAuthToken`.
+
+**Why load-bearing**: until typed-primitive consumption is structurally enforced (impossible to bypass), service-definition surfaces can still declare effects via raw Json paths. The lens walking those declarations would have nothing structural to read; the closed-system claim has a hole exactly there. Required prereq under reqs 2 + 3 (audit catches; substrate-discipline closes).
+
+**Sequencing**: prereq for the lens's *coverage* claim. The lens itself can land first (Q6 implementation brief); it just won't cover the bypassed extdeps surfaces until P1 closes. The lens's acceptance must surface structural-coverage-gap diagnostics on those surfaces (i.e., the lens itself reports "this surface has a structural hole; effect-derivation can't proceed structurally"). That's how the gap becomes load-bearing visible rather than silent.
+
+### P2 — `ExecuteCommand` fully materialized as a typed runner primitive
+
+Subprocess invocations need a typed primitive that derives "external-toolchain effect" structurally — analog of how `derive_op_effect` derives effects from HTTP method. Today the M1.5 testgen harness allowlists only `command == "true" && args.is_empty() && expect_exit == 0` and panics fail-closed on anything else; the Rust `TestRunner` returns `NotYetImplemented` for `ExecuteCommand` (see `TESTING.md:195` capability state callout).
+
+**Why load-bearing**: TESTING.md (post-#782 cascade) committed to `0-residual` framing — boundary tests migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations. **Until `ExecuteCommand` can execute equivalent `.dag` TestClaims, deleting Rust boundary tests creates a verification gap.** Same closed-system shape applied to test execution: the typed runner primitive IS the path; subprocess invocations have nowhere structural to live until then.
+
+**Sequencing**: pre-requisite for *any* Rust boundary-test deletion. Already named under PB-Runtime in Zero-Floor Manager's program scope; Director-signaled twice. Should be priority once Zero-Floor's authoring queue clears.
+
+### Why these belong in this design doc
+
+Both prereqs are load-bearing for the closed-system claim this doc commits to. Naming them in-doc surfaces the dependencies upfront rather than letting the implementation brief discover them as STOP-AND-ESCALATEs at dispatch time. Workers reading this doc see correctly that:
+- The lens at Q6 can land independently (worth the empirical receipt of structural-coverage diagnostics).
+- The closed-system claim's *full coverage* requires P1 + P2 closure.
+- Without P1: bypass surfaces visible only via the lens's own gap diagnostics (lens lands; reports holes).
+- Without P2: TESTING.md `0-residual` claim cannot be acted on (no Rust boundary-test deletion).
+
+Worker-discretion-vs-Director-call:
+- Lens implementation worker: dispatchable now; lens reports gaps as findings.
+- P1 closure: substantive substrate work touching extdeps; tracked debt at ROADMAP.md:153-154; should land via dedicated lane.
+- P2 closure: PB-Runtime in Zero-Floor; signal pending.
+
 ## Q5 — Asymmetric tightening (the only declaration-value exception)
 
 The closed-system framing does NOT preclude callers from constraining what callees they're willing to invoke. Two exception cases retain declaration value:
