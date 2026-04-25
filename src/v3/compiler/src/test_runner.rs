@@ -404,9 +404,12 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(script: &str) -> bo
 /// boundary). Other Unix and Windows: no unprivileged one-shot equivalent; wall bound + pgrp
 /// signal on timeout + the `sh -c` `&` heuristic only—documented, not a full process-tree
 /// guarantee.
-/// If `unshare(1)` returns `EPERM` (locked-down or default Docker, some CI agents), the runner
-/// **falls back** to [`build_execute_command_process`] (direct `Child`). Wall+null stdio+pgrp still
-/// hold; the PID-namespace **init**-style subtree teardown is skipped on that path.
+/// If `unshare(1)` **spawn** returns `EPERM` / `PermissionDenied`, *or* a **started** `unshare(1)`
+/// process prints util-linux `unshare:` lines on the captured **wrapper** stderr (namespace setup
+/// before `exec` to the logical `command` — the common `Operation not permitted` / EPERM class),
+/// the runner **falls back** to [`build_execute_command_process`] (direct `Child`); see
+/// [`unshare_sandbox_broken_relaunch_with_direct`]. Wall+null stdio+pgrp still hold; the
+/// PID-namespace **init**-style subtree teardown is skipped on that path.
 #[cfg(target_os = "linux")]
 fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
     let mut c = Command::new("unshare");
