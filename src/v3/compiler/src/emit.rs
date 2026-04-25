@@ -2610,7 +2610,8 @@ pub(crate) fn callable_parameter_slot_i128_to_usize(
     if slot_int > usize::MAX as i128 {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "CallableParameter.slot is too large to use as a machine index (exceeds usize::MAX)",
+            detail:
+                "CallableParameter.slot is too large to use as a machine index (exceeds usize::MAX)",
         });
     }
     Ok(slot_int as usize)

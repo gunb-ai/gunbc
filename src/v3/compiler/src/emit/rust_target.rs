@@ -46,9 +46,9 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    algebra_field_for_operator_shared, callable_parameter_slot_i128_to_usize, parse_pattern_strategy,
-    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
-    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    algebra_field_for_operator_shared, callable_parameter_slot_i128_to_usize,
+    parse_pattern_strategy, primitive_type_id_for_port_shared, walk_to_disj, EmitMode,
+    PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
     VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
