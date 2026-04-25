@@ -80,7 +80,7 @@ since 2026-04-18.
 | `PROGRAM_INPUT_SENTINEL` (5 sites) | `:1594, 1617, 1642, 1709, 1855` | ✅ — comment at `:1594-1620` names `DeclarationRef` substrate work | PR #809 "Filename / sentinel bridges" |
 | Fixture-filename → bind-name routing | `:47-48` | ✅ — same row | PR #809 |
 | `include_str!` of canonical lens | `:23-43` | ✅ — `:20-22` names `DeclarationRef` substrate dependency | PR #809 |
-| `LensOutputEquals` fixture-name special-case | `:264, 1438` | partial — folded into `DeclarationRef` migration | PR #809 |
+| `LensOutputEquals` lens-name `Some("named_function_count")` parallel-authority arm | `:1683-1716, :1763-1766` | partial — folded into `DeclarationRef` migration; comment at `:1611-1618` names the upstream fix | PR #809 |
 
 All have triggers. Class belongs in §0 identity-carrier pass.
 
