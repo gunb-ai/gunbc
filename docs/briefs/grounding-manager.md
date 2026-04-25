@@ -280,9 +280,9 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [ ] Array, slice, map, struct, pointer
 - [ ] Function, interface, channel
 
-**T-Ground-Engine:** ⏸️ PARKED — Phase 0 substrate audit complete (PR #768 merged 2026-04-25 commit `4afc0d794`); implementation parked pending Director routing of substrate ask. See [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md).
+**T-Ground-Engine:** ⏸️ PARKED — Phase 0 substrate audit complete (PR #768 merged 2026-04-25 commit `4afc0d794`); Director routed Route 1 (small loader-close, ad-hoc Director dispatch). Engine re-dispatches in sharpened-(b) form once the loader-close PR merges. See [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md).
 - [x] Phase 0 substrate audit (concluded escalation-class)
-- [ ] Inhabitance-search walker (Phase 1, blocked on substrate routing)
+- [ ] Inhabitance-search walker (Phase 1, blocked on loader-close PR)
 - [ ] Minimum-satisfier selection (Phase 1)
 - [ ] Fail-closed tie-breaking with structured diagnostic (Phase 1; pilot established the contract baseline)
 - [ ] Cross-type coercion paths (e.g., UTF-8 `Char ↔ u8`) (Phase 2; blocks on full-reference)

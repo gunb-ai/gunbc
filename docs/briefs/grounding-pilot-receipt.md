@@ -96,7 +96,7 @@ These are the carry-forwards. Each cites its empirical source (the PR commit or 
 
 - **Pure Bootstrap to Zero program.** The extdeps-loader gap (Lesson 2 forward routing) overlaps directly with PB-1 / PB-Bootstrap-Process scope (`bootstrap.rs` data-driven loader). See substrate-escalation doc for concrete coordination ask.
 - **R1 Substrate Manager (archived on R1 close).** The pilot's lessons about state-space discipline, fail-closed contract, and structural over conventional are general-purpose and should inform DB-11 + cardinality-substrate design decisions if those sub-lanes haven't yet finalized their type shapes. The lessons are framework-level, not Grounding-specific.
-- **R2 Grounding Manager working state.** Lane checklist updated in `grounding-manager.md`. Pilot lane ✅. Engine-Phase-1 audit complete + parked pending substrate routing.
+- **R2 Grounding Manager working state.** Lane checklist updated in `grounding-manager.md`. Pilot lane ✅. Engine-Phase-1 audit complete + parked pending loader-close PR (Director routed Route 1; substrate ask is in flight as ad-hoc Director dispatch).
 
 ---
 

@@ -67,6 +67,8 @@ Each gap independently rules out option (a). Gap 1 alone rules out pure (b).
 
 ## Three routes (audit's two + sharpened middle path)
 
+> **Decision-history section.** The labels below ("recommended", "fallback", route ordering) reflect the manager's pre-routing analysis. **Director chose Route 1** — see the "Decision" section at the top of this doc for the live state. The route descriptions are preserved as decision history; their present-tense framing should be read as past-tense in light of the routing.
+
 ### Route 1 (audit's first option) — close Gap 1 only; sibling-crate Engine
 
 Substrate work: bootstrap loads `dsl/extdeps/languages/rust/primitives.dag` plus a stable accessor returning `Declaration`/`Node` for `rust_pilot_primitives`. Engine becomes a sibling crate that walks the parsed `Declaration` structurally.
@@ -157,9 +159,10 @@ These are consumer-side requirements, not implementation prescriptions. Manager 
 
 ## What manager does in parallel (no Director input needed)
 
-- Working state in `grounding-manager.md` updated: Pilot ✅, Engine-Phase-1 audit ✅ + parked, escalation queued.
+- Working state in `grounding-manager.md` updated: Pilot ✅, Engine-Phase-1 audit ✅ + parked pending loader-close PR, Route 1 decision recorded.
 - Pilot receipt landed at [`grounding-pilot-receipt.md`](grounding-pilot-receipt.md).
-- Cross-manager notification queued: surface to Pure Bootstrap to Zero Manager once Director chooses Route 3 (or directly if Director endorses pre-coordination).
+- ~~Cross-manager notification queued~~: cancelled. Director chose Route 1 over Route 3; Director handles Pure Bootstrap to Zero Manager heads-up directly per cross-program coordination. No manager-side notification needed.
+- Engine re-dispatch readiness: when loader-close PR is ready-for-review or merged, manager authors the sharpened-(b) Engine-Phase-1 re-dispatch brief against the actual public-accessor shape and dispatches a worker.
 
 ---
 
