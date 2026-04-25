@@ -33,6 +33,8 @@ type DiagnosticKind
   | UnitMismatch
   | ArityMismatch
   | ResolveError
+  | BranchConditionNotBool
+  | MagnitudeOutOfRange
 
 // **🟡 Scaffold — DiagnosticDetailExpectation.** Bootstrap-local bridge
 // for kind-only vs detail-narrowed diagnostic matching while

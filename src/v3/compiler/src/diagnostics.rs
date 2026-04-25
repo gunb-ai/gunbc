@@ -15,8 +15,10 @@
 // ────────────────────────────────────────────────────────────────
 // DEFERRED DISSOLUTION: Diagnostic enum is a scaffold.
 //
-// Current variants (M0.5): TokenizerError, ParseError, TypeMismatch,
-// ArityMismatch, ResolveError. The v3 target shape per
+// Current variants: TokenizerError, ParseError, TypeMismatch, ArityMismatch,
+// ResolveError, BranchConditionNotBool, MagnitudeOutOfRange — mirrored on
+// `CompilerDiagnosticKind` / `std.verification.DiagnosticKind` in
+// `src/v3/std/diagnostics.dag` and `src/v3/std/verification.dag`. The v3 target shape per
 // docs/v3-modeling-analysis.md §CompilerDiagnostic is a 5-field
 // record:
 //
