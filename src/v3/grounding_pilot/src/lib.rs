@@ -35,12 +35,13 @@
 //   upstream consumers, no tests outside this file.
 //
 // SUBSTRATE-GAP FLAGS (carried forward from primitives.dag):
-//   1. Two's-complement-wrap is a closed-enum field rather than a
-//      where-clause refinement on the algebra carrier (DB-11).
-//   2. TargetAlgebra/TargetCarrier are tag enums standing in for
-//      first-class algebra/type references-as-data (T-Ground-Dissolve).
-//   3. Unit modeled with TerminalAlgebra/TerminalCarrier sentinels;
-//      DB-11 makes this Cardinality<T, Exactly(1)>.
+//   1. Two's-complement-wrap is a closed-enum field on IntegerPrimitive
+//      rather than a where-clause refinement on the algebra carrier (DB-11).
+//   2. IntegerAlgebra/NonIntegerAlgebra/TargetCarrier are tag enums
+//      standing in for first-class algebra/type references-as-data
+//      (T-Ground-Dissolve).
+//   3. Unit modeled with Terminal sentinels; DB-11 makes this
+//      Cardinality<T, Exactly(1)>.
 //
 // ESCALATION (per brief, do not absorb in lane):
 //   - Any pilot-set type can't be structurally declared without inventing
@@ -60,12 +61,23 @@
 // values is the .dag file; the duplication here is a probe-scoped
 // convenience until the production walker reads .dag declarations
 // directly.
+//
+// State-space discipline: algebra tags are partitioned into
+// integer-bearing (IntegerAlgebra) and non-integer-bearing
+// (NonIntegerAlgebra). RustPrimitive is sum-typed so that overflow lives
+// only on IntegerPrimitive — making `bool: Some(TwoComplementWrap)` and
+// `i64: None` structurally unrepresentable rather than ruled out by
+// convention.
 // =============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TargetAlgebra {
+pub enum IntegerAlgebra {
     OrderedRing,
     Semiring,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NonIntegerAlgebra {
     BooleanAlgebra,
     Terminal,
 }
@@ -88,90 +100,144 @@ pub enum IntegerOverflow {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RustPrimitive {
-    pub target_name: &'static str,
-    pub algebra: TargetAlgebra,
-    pub carrier: TargetCarrier,
-    pub is_copy: bool,
-    pub overflow: Option<IntegerOverflow>,
+pub enum RustPrimitive {
+    IntegerPrimitive {
+        target_name: &'static str,
+        algebra: IntegerAlgebra,
+        carrier: TargetCarrier,
+        is_copy: bool,
+        overflow: IntegerOverflow,
+    },
+    NonIntegerPrimitive {
+        target_name: &'static str,
+        algebra: NonIntegerAlgebra,
+        carrier: TargetCarrier,
+        is_copy: bool,
+    },
 }
 
-const WRAP: Option<IntegerOverflow> = Some(IntegerOverflow::TwoComplementWrap);
+/// Free-function accessor for the shared `target_name` field across both
+/// `RustPrimitive` variants. CODING.md prefers data + free functions over
+/// trait/impl method dispatch.
+pub fn target_name(p: &RustPrimitive) -> &'static str {
+    match p {
+        RustPrimitive::IntegerPrimitive { target_name, .. } => target_name,
+        RustPrimitive::NonIntegerPrimitive { target_name, .. } => target_name,
+    }
+}
+
+pub fn is_copy(p: &RustPrimitive) -> bool {
+    match p {
+        RustPrimitive::IntegerPrimitive { is_copy, .. } => *is_copy,
+        RustPrimitive::NonIntegerPrimitive { is_copy, .. } => *is_copy,
+    }
+}
+
+/// Routing key — `(algebra, carrier)` pair flattened across the
+/// integer/non-integer partition. The key is what `find_inhabitant`
+/// matches on; the partition stays load-bearing in the data declaration
+/// so overflow can attach only on the integer side.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoutingKey {
+    Integer {
+        algebra: IntegerAlgebra,
+        carrier: TargetCarrier,
+    },
+    NonInteger {
+        algebra: NonIntegerAlgebra,
+        carrier: TargetCarrier,
+    },
+}
+
+pub fn routing_key(p: &RustPrimitive) -> RoutingKey {
+    match p {
+        RustPrimitive::IntegerPrimitive {
+            algebra, carrier, ..
+        } => RoutingKey::Integer {
+            algebra: *algebra,
+            carrier: *carrier,
+        },
+        RustPrimitive::NonIntegerPrimitive {
+            algebra, carrier, ..
+        } => RoutingKey::NonInteger {
+            algebra: *algebra,
+            carrier: *carrier,
+        },
+    }
+}
 
 pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
     // Signed integers — OrderedRing over machine-word carriers.
-    RustPrimitive {
+    RustPrimitive::IntegerPrimitive {
         target_name: "i8",
-        algebra: TargetAlgebra::OrderedRing,
+        algebra: IntegerAlgebra::OrderedRing,
         carrier: TargetCarrier::Byte,
         is_copy: true,
-        overflow: WRAP,
+        overflow: IntegerOverflow::TwoComplementWrap,
     },
-    RustPrimitive {
+    RustPrimitive::IntegerPrimitive {
         target_name: "i16",
-        algebra: TargetAlgebra::OrderedRing,
+        algebra: IntegerAlgebra::OrderedRing,
         carrier: TargetCarrier::Word16,
         is_copy: true,
-        overflow: WRAP,
+        overflow: IntegerOverflow::TwoComplementWrap,
     },
-    RustPrimitive {
+    RustPrimitive::IntegerPrimitive {
         target_name: "i32",
-        algebra: TargetAlgebra::OrderedRing,
+        algebra: IntegerAlgebra::OrderedRing,
         carrier: TargetCarrier::Word32,
         is_copy: true,
-        overflow: WRAP,
+        overflow: IntegerOverflow::TwoComplementWrap,
     },
-    RustPrimitive {
+    RustPrimitive::IntegerPrimitive {
         target_name: "i64",
-        algebra: TargetAlgebra::OrderedRing,
+        algebra: IntegerAlgebra::OrderedRing,
         carrier: TargetCarrier::Word64,
         is_copy: true,
-        overflow: WRAP,
+        overflow: IntegerOverflow::TwoComplementWrap,
     },
     // Unsigned integers — Semiring over machine-word carriers.
-    RustPrimitive {
+    RustPrimitive::IntegerPrimitive {
         target_name: "u8",
-        algebra: TargetAlgebra::Semiring,
+        algebra: IntegerAlgebra::Semiring,
         carrier: TargetCarrier::Byte,
         is_copy: true,
-        overflow: WRAP,
+        overflow: IntegerOverflow::TwoComplementWrap,
     },
-    RustPrimitive {
+    RustPrimitive::IntegerPrimitive {
         target_name: "u16",
-        algebra: TargetAlgebra::Semiring,
+        algebra: IntegerAlgebra::Semiring,
         carrier: TargetCarrier::Word16,
         is_copy: true,
-        overflow: WRAP,
+        overflow: IntegerOverflow::TwoComplementWrap,
     },
-    RustPrimitive {
+    RustPrimitive::IntegerPrimitive {
         target_name: "u32",
-        algebra: TargetAlgebra::Semiring,
+        algebra: IntegerAlgebra::Semiring,
         carrier: TargetCarrier::Word32,
         is_copy: true,
-        overflow: WRAP,
+        overflow: IntegerOverflow::TwoComplementWrap,
     },
-    RustPrimitive {
+    RustPrimitive::IntegerPrimitive {
         target_name: "u64",
-        algebra: TargetAlgebra::Semiring,
+        algebra: IntegerAlgebra::Semiring,
         carrier: TargetCarrier::Word64,
         is_copy: true,
-        overflow: WRAP,
+        overflow: IntegerOverflow::TwoComplementWrap,
     },
     // Bool — BooleanAlgebra over Bit.
-    RustPrimitive {
+    RustPrimitive::NonIntegerPrimitive {
         target_name: "bool",
-        algebra: TargetAlgebra::BooleanAlgebra,
+        algebra: NonIntegerAlgebra::BooleanAlgebra,
         carrier: TargetCarrier::Bit,
         is_copy: true,
-        overflow: None,
     },
     // Unit — terminal object.
-    RustPrimitive {
+    RustPrimitive::NonIntegerPrimitive {
         target_name: "()",
-        algebra: TargetAlgebra::Terminal,
+        algebra: NonIntegerAlgebra::Terminal,
         carrier: TargetCarrier::Terminal,
         is_copy: true,
-        overflow: None,
     },
 ];
 
@@ -180,8 +246,8 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
 //
 // Mirrors dsl/std/integer.dag (Int8..Int64, UInt8..UInt64) and the
 // std-side declarations of Bool and Unit. Each .dag-side type unfolds
-// to an (algebra, carrier) pair; production resolution will read the
-// real type-alias chain via the v3 substrate's resolve_item_types.
+// to a RoutingKey; production resolution will read the real type-alias
+// chain via the v3 substrate's resolve_item_types.
 // =============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -211,76 +277,98 @@ pub const DAG_PILOT_TYPES: &[DagType] = &[
     DagType::Unit,
 ];
 
-/// Unfold a pilot .dag-side type to its structural (algebra, carrier) facts.
+/// Unfold a pilot .dag-side type to its routing-key facts.
 ///
 /// Authority: dsl/std/integer.dag (Int8..Int64, UInt8..UInt64), plus the
 /// canonical std modeling of Bool as BooleanAlgebra<Bit> and Unit as the
 /// terminal object.
-pub fn dag_type_facts(t: DagType) -> (TargetAlgebra, TargetCarrier) {
+pub fn dag_type_facts(t: DagType) -> RoutingKey {
     match t {
-        DagType::Int8 => (TargetAlgebra::OrderedRing, TargetCarrier::Byte),
-        DagType::Int16 => (TargetAlgebra::OrderedRing, TargetCarrier::Word16),
-        DagType::Int32 => (TargetAlgebra::OrderedRing, TargetCarrier::Word32),
-        DagType::Int64 => (TargetAlgebra::OrderedRing, TargetCarrier::Word64),
-        DagType::UInt8 => (TargetAlgebra::Semiring, TargetCarrier::Byte),
-        DagType::UInt16 => (TargetAlgebra::Semiring, TargetCarrier::Word16),
-        DagType::UInt32 => (TargetAlgebra::Semiring, TargetCarrier::Word32),
-        DagType::UInt64 => (TargetAlgebra::Semiring, TargetCarrier::Word64),
-        DagType::Bool => (TargetAlgebra::BooleanAlgebra, TargetCarrier::Bit),
-        DagType::Unit => (TargetAlgebra::Terminal, TargetCarrier::Terminal),
+        DagType::Int8 => RoutingKey::Integer {
+            algebra: IntegerAlgebra::OrderedRing,
+            carrier: TargetCarrier::Byte,
+        },
+        DagType::Int16 => RoutingKey::Integer {
+            algebra: IntegerAlgebra::OrderedRing,
+            carrier: TargetCarrier::Word16,
+        },
+        DagType::Int32 => RoutingKey::Integer {
+            algebra: IntegerAlgebra::OrderedRing,
+            carrier: TargetCarrier::Word32,
+        },
+        DagType::Int64 => RoutingKey::Integer {
+            algebra: IntegerAlgebra::OrderedRing,
+            carrier: TargetCarrier::Word64,
+        },
+        DagType::UInt8 => RoutingKey::Integer {
+            algebra: IntegerAlgebra::Semiring,
+            carrier: TargetCarrier::Byte,
+        },
+        DagType::UInt16 => RoutingKey::Integer {
+            algebra: IntegerAlgebra::Semiring,
+            carrier: TargetCarrier::Word16,
+        },
+        DagType::UInt32 => RoutingKey::Integer {
+            algebra: IntegerAlgebra::Semiring,
+            carrier: TargetCarrier::Word32,
+        },
+        DagType::UInt64 => RoutingKey::Integer {
+            algebra: IntegerAlgebra::Semiring,
+            carrier: TargetCarrier::Word64,
+        },
+        DagType::Bool => RoutingKey::NonInteger {
+            algebra: NonIntegerAlgebra::BooleanAlgebra,
+            carrier: TargetCarrier::Bit,
+        },
+        DagType::Unit => RoutingKey::NonInteger {
+            algebra: NonIntegerAlgebra::Terminal,
+            carrier: TargetCarrier::Terminal,
+        },
     }
 }
 
 // =============================================================================
 // The toy inhabitance-search engine.
 //
-// Selection is by structural agreement on (algebra, carrier). Pilot scope
-// per brief: single-satisfier match is acceptable; minimum-satisfier
-// discipline and fail-closed tie-breaking with structured diagnostics are
+// Selection is by RoutingKey agreement. Pilot scope per brief:
+// single-satisfier match is acceptable; minimum-satisfier discipline and
+// fail-closed tie-breaking with structured diagnostics are
 // T-Ground-Engine, not Pilot.
 //
-// The pilot set is constructed so each (algebra, carrier) pair has exactly
-// one satisfying primitive. If a future extension introduces ambiguity,
-// the engine surfaces GroundingError::Ambiguous so callers can't silently
+// The pilot set is constructed so each RoutingKey has exactly one
+// satisfying primitive. If a future extension introduces ambiguity, the
+// engine surfaces GroundingError::Ambiguous so callers can't silently
 // pick — fail-closed by construction even at pilot scope.
 // =============================================================================
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GroundingError {
-    /// No declared primitive inhabits the requested (algebra, carrier).
-    NoInhabitant {
-        algebra: TargetAlgebra,
-        carrier: TargetCarrier,
-    },
-    /// More than one declared primitive inhabits the requested
-    /// (algebra, carrier). Pilot fails closed; T-Ground-Engine will
-    /// produce a structured diagnostic naming candidates.
+    /// No declared primitive inhabits the requested routing key.
+    NoInhabitant { key: RoutingKey },
+    /// More than one declared primitive inhabits the requested routing
+    /// key. Pilot fails closed; T-Ground-Engine will produce a
+    /// structured diagnostic naming candidates.
     Ambiguous {
-        algebra: TargetAlgebra,
-        carrier: TargetCarrier,
+        key: RoutingKey,
         candidates: Vec<&'static str>,
     },
 }
 
-/// Search RUST_PILOT_PRIMITIVES for the unique primitive inhabiting
-/// (algebra, carrier). This is the algebra-homomorphism match the
-/// proposal calls "the mapping should fall out from the algebra, not
-/// from a hand-maintained table."
-pub fn find_inhabitant(
-    algebra: TargetAlgebra,
-    carrier: TargetCarrier,
-) -> Result<&'static RustPrimitive, GroundingError> {
+/// Search RUST_PILOT_PRIMITIVES for the unique primitive whose routing
+/// key matches. This is the algebra-homomorphism match the proposal
+/// calls "the mapping should fall out from the algebra, not from a
+/// hand-maintained table."
+pub fn find_inhabitant(key: RoutingKey) -> Result<&'static RustPrimitive, GroundingError> {
     let matches: Vec<&'static RustPrimitive> = RUST_PILOT_PRIMITIVES
         .iter()
-        .filter(|p| p.algebra == algebra && p.carrier == carrier)
+        .filter(|p| routing_key(p) == key)
         .collect();
     match matches.as_slice() {
-        [] => Err(GroundingError::NoInhabitant { algebra, carrier }),
+        [] => Err(GroundingError::NoInhabitant { key }),
         [only] => Ok(*only),
         many => Err(GroundingError::Ambiguous {
-            algebra,
-            carrier,
-            candidates: many.iter().map(|p| p.target_name).collect(),
+            key,
+            candidates: many.iter().map(|p| target_name(p)).collect(),
         }),
     }
 }
@@ -289,8 +377,7 @@ pub fn find_inhabitant(
 /// by algebra-homomorphism search. This is the routing the production
 /// walker will replace.
 pub fn ground(t: DagType) -> Result<&'static RustPrimitive, GroundingError> {
-    let (algebra, carrier) = dag_type_facts(t);
-    find_inhabitant(algebra, carrier)
+    find_inhabitant(dag_type_facts(t))
 }
 
 // =============================================================================
@@ -325,24 +412,24 @@ mod tests {
     #[test]
     fn stratum_a_int_routes_to_i64() {
         let p = ground(DagType::Int64).expect("Int64 must ground");
-        assert_eq!(p.target_name, "i64");
-        assert!(p.is_copy);
+        assert_eq!(target_name(p), "i64");
+        assert!(is_copy(p));
     }
 
     /// Stratum A.2 — Bool routes to "bool".
     #[test]
     fn stratum_a_bool_routes_to_bool() {
         let p = ground(DagType::Bool).expect("Bool must ground");
-        assert_eq!(p.target_name, "bool");
-        assert!(p.is_copy);
+        assert_eq!(target_name(p), "bool");
+        assert!(is_copy(p));
     }
 
     /// Stratum A.3 — Unit routes to "()".
     #[test]
     fn stratum_a_unit_routes_to_unit_tuple() {
         let p = ground(DagType::Unit).expect("Unit must ground");
-        assert_eq!(p.target_name, "()");
-        assert!(p.is_copy);
+        assert_eq!(target_name(p), "()");
+        assert!(is_copy(p));
     }
 
     /// Stratum B — width-distinct signed integers route to width-correct
@@ -358,8 +445,14 @@ mod tests {
             (DagType::Int64, "i64"),
         ] {
             let p = ground(dag).unwrap_or_else(|e| panic!("{dag:?} must ground: {e:?}"));
-            assert_eq!(p.target_name, expected, "routing for {dag:?}");
-            assert_eq!(p.algebra, TargetAlgebra::OrderedRing);
+            assert_eq!(target_name(p), expected, "routing for {dag:?}");
+            assert!(matches!(
+                p,
+                RustPrimitive::IntegerPrimitive {
+                    algebra: IntegerAlgebra::OrderedRing,
+                    ..
+                }
+            ));
         }
     }
 
@@ -376,8 +469,14 @@ mod tests {
             (DagType::UInt64, "u64"),
         ] {
             let p = ground(dag).unwrap_or_else(|e| panic!("{dag:?} must ground: {e:?}"));
-            assert_eq!(p.target_name, expected, "routing for {dag:?}");
-            assert_eq!(p.algebra, TargetAlgebra::Semiring);
+            assert_eq!(target_name(p), expected, "routing for {dag:?}");
+            assert!(matches!(
+                p,
+                RustPrimitive::IntegerPrimitive {
+                    algebra: IntegerAlgebra::Semiring,
+                    ..
+                }
+            ));
         }
     }
 
@@ -408,52 +507,78 @@ mod tests {
             (DagType::Unit, "()"),
         ];
         for &(dag, want) in expected {
-            let got = ground(dag).unwrap().target_name;
+            let got = target_name(ground(dag).unwrap());
             assert_eq!(got, want, "routing parity for {dag:?}");
         }
     }
 
-    /// Selection happens by structural (algebra, carrier) agreement —
-    /// not by .dag-side name. Verified by routing through find_inhabitant
-    /// directly with synthetic facts and observing the same primitive
-    /// selection as the matching DagType produces.
+    /// Selection happens by RoutingKey agreement — not by .dag-side name.
+    /// Verified by routing through find_inhabitant directly with synthetic
+    /// facts and observing the same primitive selection as the matching
+    /// DagType produces.
     #[test]
     fn selection_is_by_algebra_homomorphism_not_name() {
-        // Synthetic fact set equivalent to UInt32 (Semiring over Word32).
-        let direct = find_inhabitant(TargetAlgebra::Semiring, TargetCarrier::Word32)
-            .expect("Semiring × Word32 must have an inhabitant");
+        // Synthetic key equivalent to UInt32 (Semiring over Word32).
+        let key = RoutingKey::Integer {
+            algebra: IntegerAlgebra::Semiring,
+            carrier: TargetCarrier::Word32,
+        };
+        let direct = find_inhabitant(key).expect("Semiring × Word32 must have an inhabitant");
         let via_dag = ground(DagType::UInt32).expect("UInt32 must ground");
-        assert_eq!(direct.target_name, via_dag.target_name);
-        assert_eq!(direct.target_name, "u32");
+        assert_eq!(target_name(direct), target_name(via_dag));
+        assert_eq!(target_name(direct), "u32");
     }
 
-    /// Pilot is constructed so each (algebra, carrier) is uniquely
-    /// inhabited. Confirms no two primitive declarations collide on the
-    /// same structural key.
+    /// Pilot is constructed so each RoutingKey is uniquely inhabited.
+    /// Confirms no two primitive declarations collide on the same key.
     #[test]
-    fn pilot_primitives_have_unique_algebra_carrier_keys() {
-        let mut seen: Vec<(TargetAlgebra, TargetCarrier)> = Vec::new();
+    fn pilot_primitives_have_unique_routing_keys() {
+        let mut seen: Vec<RoutingKey> = Vec::new();
         for p in RUST_PILOT_PRIMITIVES {
-            let key = (p.algebra, p.carrier);
+            let key = routing_key(p);
             assert!(
                 !seen.contains(&key),
-                "duplicate (algebra, carrier) key for {}: {:?}",
-                p.target_name,
+                "duplicate routing key for {}: {:?}",
+                target_name(p),
                 key
             );
             seen.push(key);
         }
     }
 
-    /// Fail-closed shape — a structural key with no declared inhabitant
-    /// returns NoInhabitant rather than silently picking. (Word128 is
-    /// out-of-pilot-scope; using it here as a probe for fail-closed
-    /// behavior.)
+    /// Fail-closed shape — a routing key with no declared inhabitant
+    /// returns NoInhabitant rather than silently picking. (BooleanAlgebra
+    /// over Word64 is out-of-pilot-scope; using it here as a probe.)
     #[test]
     fn missing_inhabitant_fails_closed() {
-        // BooleanAlgebra over Word64 is not a declared primitive in the
-        // pilot set; fail-closed contract requires NoInhabitant.
-        let r = find_inhabitant(TargetAlgebra::BooleanAlgebra, TargetCarrier::Word64);
+        let key = RoutingKey::NonInteger {
+            algebra: NonIntegerAlgebra::BooleanAlgebra,
+            carrier: TargetCarrier::Word64,
+        };
+        let r = find_inhabitant(key);
         assert!(matches!(r, Err(GroundingError::NoInhabitant { .. })));
+    }
+
+    /// State-space discipline — overflow is a field on IntegerPrimitive
+    /// only; NonIntegerPrimitive structurally cannot carry an overflow.
+    /// This test exists to lock the partition into the contract: if a
+    /// future change collapses the variants back into a single record
+    /// with `Option<IntegerOverflow>`, this test breaks. The match is
+    /// exhaustive by sum-type construction.
+    #[test]
+    fn overflow_lives_only_on_integer_variant() {
+        for p in RUST_PILOT_PRIMITIVES {
+            match p {
+                RustPrimitive::IntegerPrimitive { overflow, .. } => {
+                    // Pilot population: every integer primitive uses
+                    // two's-complement wrap (Rust release-mode arithmetic).
+                    assert_eq!(*overflow, IntegerOverflow::TwoComplementWrap);
+                }
+                RustPrimitive::NonIntegerPrimitive { .. } => {
+                    // No overflow field exists on this variant — the
+                    // exhaustive match is the structural assertion.
+                }
+            }
+        }
     }
 }

@@ -38,16 +38,25 @@
 //
 // SUBSTRATE-GAP FLAGS (DB-11 will sharpen):
 //   1. `IntegerOverflow` carries two's-complement-wrap as a closed-enum
-//      value field. Post-DB-11 this becomes a where-clause refinement on
-//      the algebra carrier (e.g. OrderedRing<Word64> where overflow =
-//      TwoComplementWrap). Today the language doesn't yet support
-//      first-class refinement qualifiers on type aliases, so the cleanest
-//      structural shape is a carried enum.
-//   2. `TargetAlgebra` / `TargetCarrier` enums identify std/algebra.dag
-//      and std/bit.dag concepts by structural tag rather than as
-//      first-class type-references-as-data. The .dag substrate doesn't
-//      yet expose type expressions as data values (data-table fields
-//      can't be `algebra: OrderedRing` with OrderedRing referenced as a
+//      value field on the `IntegerPrimitive` variant. Post-DB-11 this
+//      becomes a where-clause refinement on the algebra carrier (e.g.
+//      OrderedRing<Word64> where overflow = TwoComplementWrap), and
+//      under T-Ground-Engine refinement is per-operator (debug vs
+//      release for +/-/*; `/` and `%` panic on int::MIN/-1 regardless;
+//      `wrapping_*`/`checked_*`/`saturating_*` are explicit operator
+//      selections per Rust Reference §"overflow"). Today the language
+//      doesn't yet support first-class refinement qualifiers on type
+//      aliases, so the cleanest structural shape is a per-variant
+//      carried enum, with the integer/non-integer split handled by
+//      sum-typing `RustPrimitive` so overflow is structurally absent
+//      where it would be nonsensical (no `bool: Some(TwoComplementWrap)`,
+//      no `i64: None`).
+//   2. `IntegerAlgebra` / `NonIntegerAlgebra` / `TargetCarrier` enums
+//      identify std/algebra.dag and std/bit.dag concepts by structural
+//      tag rather than as first-class type-references-as-data. The .dag
+//      substrate doesn't yet expose type expressions as data values
+//      (data-table fields can't be `algebra: OrderedRing` with OrderedRing
+//      referenced as a
 //      type identity). When that closes — co-temporally with the
 //      types.dag/coercion.dag dissolution under T-Ground-Dissolve — these
 //      tag enums collapse into direct algebra-and-carrier references and
