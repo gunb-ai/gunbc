@@ -98,7 +98,7 @@ the residual orchestration with a `bootstrap.dag`-driven trampoline.
 
 | File | Why currently hand-authored | Migration path |
 |---|---|---|
-| `src/v3/compiler/src/bootstrap.rs` (~470 LOC) | Hand-Rust `Dag::new()` runs full compile pipeline on `include_str!`'d `.dag` source at every construction. Chicken-egg per design doc §"Bootstrap as data": `Dag::new()` needs the compiler pipeline. | PB-1 a-e migrates std/staged/specs/compiler authorities to generated constructors (already-scoped per [`pb-1-data-driven-bootstrap.md`](briefs/pb-1-data-driven-bootstrap.md), non-goals revised under 0-floor). PB-Bootstrap-Process then replaces residual orchestration with a `bootstrap.dag`-driven trampoline. |
+| `src/v3/compiler/src/bootstrap.rs` | Hand-Rust `Dag::new()` runs full compile pipeline on `include_str!`'d `.dag` source at every construction. Chicken-egg per design doc §"Bootstrap as data": `Dag::new()` needs the compiler pipeline. | PB-1 a-e migrates std/staged/specs/compiler authorities to generated constructors (already-scoped per [`pb-1-data-driven-bootstrap.md`](briefs/pb-1-data-driven-bootstrap.md), non-goals revised under 0-floor). PB-Bootstrap-Process then replaces residual orchestration with a `bootstrap.dag`-driven trampoline. |
 | `src/v3/compiler/src/pipeline_authority.rs` | Reads `PipelineStageBinding` declarations from the bootstrapped Dag; Rust shim between bootstrap-data and pipeline execution. | Subsumed by `bootstrap.dag` workflow declaration: pipeline ordering reads structurally from the bootstrap data, not from a Rust accessor. |
 
 ### PB-4 / PB-5 / PB-6 — compiler pipeline in `.dag` (6 files)
