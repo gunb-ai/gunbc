@@ -86,7 +86,7 @@ The algebraic property: `AtMostOne ∧ AtMostOne = AtMostOne`. In partial-functi
 **Two arms to edit** (`src/v3/compiler/src/lower.rs`):
 
 1. `:1949-1968` — `type_to_declaration_id` `SurfaceType::Optional` arm: after lowering `inner`, check if `dag.declaration(element).connective` matches `TypeConnective::Cardinality { bound: CardinalityBound::AtMostOne, .. }`. If yes, return `element` directly without wrapping.
-2. `:2044-2047` — `type_to_connective` `SurfaceType::Optional` arm: same guard; if inner already AtMostOne-wrapped, return the inner's connective (or its element-as-connective) instead of constructing a fresh wrap.
+2. `:2044-2047` — `type_to_connective` `SurfaceType::Optional` arm: same guard. If the lowered inner declaration's connective is `TypeConnective::Cardinality { element, bound: AtMostOne }`, return/clone that connective verbatim — i.e. `TypeConnective::Cardinality { element, bound: AtMostOne }` reusing the *inner's* `element` (which is the underlying `T`'s declaration). **Do NOT** peel to `element`-as-connective, which would collapse `T??` to `T` instead of `T?` and contradict acceptance below.
 
 The guard is **specific to AtMostOne ∧ AtMostOne**. The other shapes are not idempotent and stay distinct:
 
