@@ -605,4 +605,71 @@ mod tests {
             }
         }
     }
+
+    /// Drift-catcher for the cardinality-int-lit lane's three-source
+    /// range mirror: substrate fact (`primitives.dag`), pilot mirror
+    /// (this file's `RUST_PILOT_PRIMITIVES`), and the in-compiler
+    /// narrowing map (`lower.rs::integer_target_range`).
+    ///
+    /// We can't reach the in-compiler map from this crate (sibling, no
+    /// dep), but we can pin the pilot's String-decimal bounds against
+    /// the same i128 constants the compiler uses, indexed by Rust
+    /// target name (the substrate-fact key). If the substrate fact
+    /// drifts from these constants, this test fires; the in-compiler
+    /// map then needs the matching update. All three sources dissolve
+    /// together when `ValueBody::List` + the std↔target correspondence
+    /// land and the production walker reads bounds from
+    /// `IntegerPrimitive` directly.
+    #[test]
+    fn pilot_range_strings_parse_to_canonical_i128_bounds() {
+        let canonical: &[(&str, i128, i128)] = &[
+            ("i8", -128, 127),
+            ("i16", -32_768, 32_767),
+            ("i32", -2_147_483_648, 2_147_483_647),
+            ("i64", -9_223_372_036_854_775_808, 9_223_372_036_854_775_807),
+            ("u8", 0, 255),
+            ("u16", 0, 65_535),
+            ("u32", 0, 4_294_967_295),
+            ("u64", 0, 18_446_744_073_709_551_615_i128),
+        ];
+        for p in RUST_PILOT_PRIMITIVES {
+            let RustPrimitive::IntegerPrimitive {
+                target_name,
+                range_min_inclusive,
+                range_max_inclusive,
+                ..
+            } = p
+            else {
+                continue;
+            };
+            let (_, expected_min, expected_max) = canonical
+                .iter()
+                .find(|(name, _, _)| name == target_name)
+                .unwrap_or_else(|| panic!("no canonical bounds for {target_name}"));
+            let parsed_min: i128 = range_min_inclusive
+                .parse()
+                .unwrap_or_else(|e| panic!("{target_name} range_min parse: {e}"));
+            let parsed_max: i128 = range_max_inclusive
+                .parse()
+                .unwrap_or_else(|e| panic!("{target_name} range_max parse: {e}"));
+            assert_eq!(
+                parsed_min, *expected_min,
+                "{target_name}: pilot range_min_inclusive drift",
+            );
+            assert_eq!(
+                parsed_max, *expected_max,
+                "{target_name}: pilot range_max_inclusive drift",
+            );
+            assert_eq!(
+                parsed_min.to_string(),
+                *range_min_inclusive,
+                "{target_name}: range_min_inclusive must roundtrip exactly",
+            );
+            assert_eq!(
+                parsed_max.to_string(),
+                *range_max_inclusive,
+                "{target_name}: range_max_inclusive must roundtrip exactly",
+            );
+        }
+    }
 }

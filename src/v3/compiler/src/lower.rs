@@ -3214,6 +3214,21 @@ fn lower_structural_field_value(
 /// fields. Both the grounding-pilot Rust mirror in
 /// `src/v3/grounding_pilot/src/lib.rs` and this map dissolve together.
 ///
+/// **Second substrate fact required at dissolution.** `ValueBody::List`
+/// alone is necessary but not sufficient. The pilot's range facts are
+/// keyed by the *Rust target name* (`"i8"`/`"u8"`/…) on
+/// `IntegerPrimitive`, but this narrowing keys by the *std-side*
+/// declaration name (`"Int8"`/`"UInt8"`/…) the user wrote. A
+/// substrate-walking helper still needs the std↔target correspondence
+/// (e.g. `Int8 = OrderedRing<Byte>` ↔ `IntegerPrimitive { algebra:
+/// OrderedRingAlgebra, carrier: ByteCarrier, target_name: "i8" }`).
+/// That correspondence today lives in the grounding-pilot's
+/// `dag_type_facts` mapping; the production-walker version reads it
+/// from the algebra/carrier match (the homomorphism the pilot probe
+/// validated). Future reader: do not assume `ValueBody::List` alone
+/// unblocks dissolution — the routing fact must also be substrate-
+/// read.
+///
 /// **Default-when-unconstrained.** `Int` (alias to `Int64`) and `UInt`
 /// (alias to `UInt64`) are deliberately omitted: literals declared at
 /// those alias names accept any tokenizer-parseable `i64`, matching
