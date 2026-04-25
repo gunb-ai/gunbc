@@ -346,6 +346,75 @@ const SHELL_C_BACKGROUND_UNBOUNDED_FAIL: &str = "ExecuteCommand: shell `-c` scri
          a full process boundary. Rephrase (e.g. a direct tool, or a `-c` string that does not rely on \
          shell `&` background) — P3/P4.";
 
+/// Path stem in [`SHELL_DASH_C_BACKGROUND_STEMS`] (helper for shell `-c` / background guard).
+fn shell_dash_c_background_stem_is_shell(arg: &str) -> bool {
+    let s = std::path::Path::new(arg)
+        .file_name()
+        .and_then(|x| x.to_str())
+        .unwrap_or(arg);
+    SHELL_DASH_C_BACKGROUND_STEMS.contains(&s)
+}
+
+/// `true` if a bare `&` may be shell background, scanning **all** `"-c"` and combined `-?c?` invocations
+/// in `args`, and **recursing** when a `-c` (or combined) **script** value is a shell path stem and
+/// more argv follow — e.g. `sh -c sh -ec "sleep&"` (POSIX: `-c` takes one script word, then
+/// `argv` continues) would otherwise be mis-read as a script of `sh` only (PR #792 inline; P4).
+fn shell_argv_may_start_unbounded_background(args: &[String]) -> bool {
+    const MAX_NEST: u32 = 32;
+
+    fn is_combined_c_not_exact(a: &str) -> bool {
+        if a == "-c" || a.starts_with("--") {
+            return false;
+        }
+        a.strip_prefix('-')
+            .is_some_and(|f| !f.is_empty() && !f.starts_with('-') && f.chars().any(|ch| ch == 'c'))
+    }
+
+    fn check_slice(args: &[String], depth: u32) -> bool {
+        if depth > MAX_NEST {
+            return false;
+        }
+        for i in 0..args.len() {
+            if &args[i] == "-c" {
+                if let Some(s) = args.get(i + 1) {
+                    if shell_dash_c_may_start_background_after_eliding_artifacts(s) {
+                        return true;
+                    }
+                    if i + 2 < args.len() && shell_dash_c_background_stem_is_shell(s) {
+                        let mut inner = vec![s.to_string()];
+                        inner.extend_from_slice(&args[i + 2..]);
+                        if check_slice(&inner, depth + 1) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        for i in 0..args.len() {
+            let a = &args[i];
+            if a.starts_with("--") || a == "-c" {
+                continue;
+            }
+            if is_combined_c_not_exact(a) {
+                if let Some(s) = args.get(i + 1) {
+                    if shell_dash_c_may_start_background_after_eliding_artifacts(s) {
+                        return true;
+                    }
+                    if i + 2 < args.len() && shell_dash_c_background_stem_is_shell(s) {
+                        let mut inner = vec![s.to_string()];
+                        inner.extend_from_slice(&args[i + 2..]);
+                        if check_slice(&inner, depth + 1) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+    check_slice(args, 0)
+}
+
 /// Heuristic: on POSIX shells with `-c`, a *shell background* `&` (not part of `&&` / fd
 /// redirect spellings) means the child may exit 0 while other work still runs. We are not a full
 /// sh parser: strip a few *common* `&` spellings, then if `&` remains, fail-closed (P3/P4). See
@@ -353,37 +422,25 @@ const SHELL_C_BACKGROUND_UNBOUNDED_FAIL: &str = "ExecuteCommand: shell `-c` scri
 ///
 /// The top-level `command` need not be a shell (e.g. `env(1)` with `["sh", "-c", "…&"]`); a shell
 /// **anywhere** in `args` (path stem) with a following `-c` in the same tail is checked (api-review
-/// 994fa40d).
+/// 994fa40d). Nested re-exec (script token is `sh`/`bash`/…, rest is another `-c`/`-ec`) is handled by
+/// [`shell_argv_may_start_unbounded_background`].
 fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<ClaimResult> {
-    fn path_stem_is_shell(arg: &str) -> bool {
-        let s = std::path::Path::new(arg)
-            .file_name()
-            .and_then(|x| x.to_str())
-            .unwrap_or(arg);
-        SHELL_DASH_C_BACKGROUND_STEMS.contains(&s)
-    }
-
     let fail = || ClaimResult::Fail(SHELL_C_BACKGROUND_UNBOUNDED_FAIL.to_string());
 
     let stem = std::path::Path::new(command)
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(command);
-    if SHELL_DASH_C_BACKGROUND_STEMS.contains(&stem) {
-        if let Some(script) = shell_dash_c_script_string(args) {
-            if shell_dash_c_may_start_background_after_eliding_artifacts(script) {
-                return Some(fail());
-            }
-        }
+    if SHELL_DASH_C_BACKGROUND_STEMS.contains(&stem)
+        && shell_argv_may_start_unbounded_background(args)
+    {
+        return Some(fail());
     }
     for j in 0..args.len() {
-        if !path_stem_is_shell(&args[j]) {
+        if !shell_dash_c_background_stem_is_shell(&args[j]) {
             continue;
         }
-        let Some(script) = shell_dash_c_script_string(&args[j..]) else {
-            continue;
-        };
-        if shell_dash_c_may_start_background_after_eliding_artifacts(script) {
+        if shell_argv_may_start_unbounded_background(&args[j..]) {
             return Some(fail());
         }
     }
@@ -394,7 +451,9 @@ fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<C
 /// flags that include the `c` option (e.g. `"-ec"`, `"-lc"`) with the next argument as the script.
 /// The `-c` / combined-flag token may appear **anywhere** in the slice (e.g. `["sh", "-ec", "cmd"]` or
 /// `["-ec", "cmd"]`); codex PR #792, api-review e99b53e7: first-arg-only special case missed
-/// `env sh -ec "…&"`.
+/// `env sh -ec "…&"`. Production guard uses [`shell_argv_may_start_unbounded_background`];
+/// this helper is kept for **unit** tests and doc parity.
+#[cfg(test)]
 fn shell_dash_c_script_string(args: &[String]) -> Option<&str> {
     for (i, a) in args.iter().enumerate() {
         if a == "-c" {
@@ -2453,6 +2512,49 @@ mod execute_command_timebound_tests {
                 "expected policy message, got: {m}"
             );
         }
+    }
+
+    /// `-c` with script token `sh` and a **following** `-ec "…&"` in argv: flat `sh -ec` only looked at
+    /// the first "script" word; nested scan must see the `&` (PR #792 blocking inline, P3/P4).
+    #[test]
+    fn sh_c_sh_dash_ec_nested_background_ampersand_is_rejected() {
+        use super::shell_argv_may_start_unbounded_background;
+        let v = vec![
+            String::from("sh"),
+            String::from("-c"),
+            String::from("sh"),
+            String::from("-ec"),
+            String::from("sleep 600 &"),
+        ];
+        assert!(shell_argv_may_start_unbounded_background(&v));
+        let r = evaluate_execute_command_exit_code(
+            "sh",
+            &v,
+            0,
+        );
+        let ClaimResult::Fail(m) = r else {
+            panic!("expected fail-closed for sh -c sh -ec + &, got {r:?}");
+        };
+        assert!(
+            m.contains("background") || m.contains("P3") || m.contains("shell `-c`"),
+            "expected policy message, got: {m}"
+        );
+    }
+
+    #[test]
+    fn env_sh_c_sh_dash_ec_nested_background_ampersand_is_rejected() {
+        let v = vec![
+            String::from("sh"),
+            String::from("-c"),
+            String::from("sh"),
+            String::from("-ec"),
+            String::from("sleep 600 &"),
+        ];
+        let r = evaluate_execute_command_exit_code("env", &v, 0);
+        let ClaimResult::Fail(m) = r else {
+            panic!("expected fail-closed for env sh -c sh -ec + &, got {r:?}");
+        };
+        assert!(m.contains("background") || m.contains("P3") || m.contains("shell `-c`"));
     }
 
     /// M1.5: policy `Fail` is `Err(ClaimResult)`, not propositional `false` (P3/DB-1, PR #792).
