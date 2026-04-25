@@ -70,7 +70,7 @@ Implement a walker that consumes the loader's accessor to extract the `RustPrimi
 - `NonIntegerPrimitive` has fields `target_name: String`, `algebra: NonIntegerAlgebra`, `carrier: TargetCarrier`, `is_copy: Bool` (no overflow).
 - `IntegerAlgebra = OrderedRingAlgebra | SemiringAlgebra`.
 - `NonIntegerAlgebra = BooleanAlgebraAlgebra | TerminalAlgebra`.
-- `TargetCarrier` has six variants per `primitives.dag` (Bit, Byte, Word16, Word32, Word64, Terminal).
+- `TargetCarrier` has six variants per `primitives.dag` (`BitCarrier`, `ByteCarrier`, `Word16Carrier`, `Word32Carrier`, `Word64Carrier`, `TerminalCarrier`).
 - `IntegerOverflow` has three variants (TwoComplementWrap, Saturating, Trap).
 
 Each validation produces either an `Ok(())` or a structured `StructureMismatch` diagnostic naming the expected vs actual shape.
