@@ -652,6 +652,20 @@ fn render_diagnostic(diagnostic: &Diagnostic) -> String {
             render_source_span(span),
             render_corrections(fixes),
         ),
+        Diagnostic::MagnitudeOutOfRange {
+            literal,
+            target,
+            range_min_inclusive,
+            range_max_inclusive,
+            expected,
+            span,
+            fixes,
+        } => format!(
+            "Diagnostic::MagnitudeOutOfRange {{ literal: {literal:?}.to_string(), target: {target:?}.to_string(), range_min_inclusive: {range_min_inclusive:?}.to_string(), range_max_inclusive: {range_max_inclusive:?}.to_string(), expected: TypeShape::new({}), span: {}, fixes: {} }}",
+            render_declaration_id(expected.declaration),
+            render_source_span(span),
+            render_corrections(fixes),
+        ),
     }
 }
 

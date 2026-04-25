@@ -34,6 +34,9 @@ use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
 };
 use crate::infer::{concretize_decl_with_subst, SubstStack};
+use crate::int_literal_ranges::{
+    int_literal_fits_expected_type, integer_range_for_decl, magnitude_out_of_range,
+};
 use crate::lower_helpers::{expr_span, item_span, pattern_binding_names};
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
 use crate::parse::{
@@ -2425,23 +2428,23 @@ fn lower_data_item(
         Some(SurfaceExpr::Record { fields, .. }) => {
             lower_record_to_structural(name, fields, ty_decl_id, body_span, symbols, dag)
         }
-        Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
-            lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag)
-                .map(crate::dag::ValueBody::Scalar)
-                .or_else(|| {
-                    report_declaration_error(
-                        dag,
-                        Diagnostic::ResolveError {
-                            name: format!(
-                                "data `{name}`'s scalar body does not match declared type",
-                            ),
-                            span: body_span.clone(),
-                            fixes: Vec::new(),
-                        },
-                    );
-                    None
-                })
-        }
+        Some(lit_expr @ SurfaceExpr::Literal { .. }) => match lower_scalar_literal_for_type(
+            lit_expr, ty_decl_id, dag,
+        ) {
+            Ok(bits) => Some(crate::dag::ValueBody::Scalar(bits)),
+            Err(diag) => {
+                report_declaration_error(dag, diag);
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!("data `{name}`'s scalar body does not match declared type",),
+                        span: body_span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+                None
+            }
+        },
         _ => None,
     };
     let final_body =

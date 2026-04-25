@@ -185,6 +185,15 @@ pub enum Diagnostic {
         span: SourceSpan,
         fixes: Vec<Correction>,
     },
+    MagnitudeOutOfRange {
+        literal: String,
+        target: String,
+        range_min_inclusive: String,
+        range_max_inclusive: String,
+        expected: TypeShape,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
+    },
 }
 
 impl Diagnostic {
@@ -196,7 +205,8 @@ impl Diagnostic {
             | Diagnostic::ArityMismatch { span, .. }
             | Diagnostic::ResolveError { span, .. }
             | Diagnostic::UnitMismatch { span, .. }
-            | Diagnostic::BranchConditionNotBool { span, .. } => span,
+            | Diagnostic::BranchConditionNotBool { span, .. }
+            | Diagnostic::MagnitudeOutOfRange { span, .. } => span,
         }
     }
 
@@ -208,7 +218,8 @@ impl Diagnostic {
             | Diagnostic::ArityMismatch { fixes, .. }
             | Diagnostic::ResolveError { fixes, .. }
             | Diagnostic::UnitMismatch { fixes, .. }
-            | Diagnostic::BranchConditionNotBool { fixes, .. } => fixes,
+            | Diagnostic::BranchConditionNotBool { fixes, .. }
+            | Diagnostic::MagnitudeOutOfRange { fixes, .. } => fixes,
         }
     }
 
@@ -240,6 +251,15 @@ impl Diagnostic {
                 Some(ty) => format!("branch condition port is not Bool (got {ty:?})"),
                 None => "branch condition port is not Bool (type not resolved)".to_string(),
             },
+            Diagnostic::MagnitudeOutOfRange {
+                literal,
+                target,
+                range_min_inclusive,
+                range_max_inclusive,
+                ..
+            } => format!(
+                "integer literal `{literal}` is out of range for `{target}` (expected {range_min_inclusive}..={range_max_inclusive}); use a wider target"
+            ),
         }
     }
 }
