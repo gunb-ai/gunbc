@@ -449,13 +449,13 @@ fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
     .args(args)
     .stdin(Stdio::null())
     .stdout(Stdio::null())
-        // stderr: capture for util-linux + **pre-`exec`** child setup lines only; the **logical**
-        // process is re-exec’d with `stderr` → `/dev/null` (see
-        // [`UNSHARE_LOGICAL_BOOTSTRAP_SH`]) so exit-code-only claims are not entangled with logical
-        // `stderr` volume, pipe fill, or heuristics. [`child_wait_for_execute_command`] still
-        // **drains** this pipe during `try_wait` (O_NONBLOCK) in case a util-linux or bootstrap
-        // `sh` path is unexpectedly chatty.
-        .stderr(Stdio::piped());
+    // stderr: capture for util-linux + **pre-`exec`** child setup lines only; the **logical**
+    // process is re-exec’d with `stderr` → `/dev/null` (see
+    // [`UNSHARE_LOGICAL_BOOTSTRAP_SH`]) so exit-code-only claims are not entangled with logical
+    // `stderr` volume, pipe fill, or heuristics. [`child_wait_for_execute_command`] still
+    // **drains** this pipe during `try_wait` (O_NONBLOCK) in case a util-linux or bootstrap
+    // `sh` path is unexpectedly chatty.
+    .stderr(Stdio::piped());
     {
         use std::os::unix::process::CommandExt;
         unsafe {
@@ -615,7 +615,10 @@ fn kill_process_group_on_timeout(child: &mut std::process::Child) {
 /// [`linux_drain_piped_child_stderr_nonblocking_once`] discards *all* post-exec bytes (not a claim
 /// surface).
 #[cfg(target_os = "linux")]
-fn linux_piped_child_stderr_set_nonblock(fd: std::os::fd::RawFd, nonblock: bool) -> std::io::Result<()> {
+fn linux_piped_child_stderr_set_nonblock(
+    fd: std::os::fd::RawFd,
+    nonblock: bool,
+) -> std::io::Result<()> {
     // Same pattern as `std` net/uds: F_GETFL / F_SETFL with O_NONBLOCK.
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
     if flags < 0 {
@@ -695,10 +698,8 @@ fn child_wait_for_execute_command(
     must_drain_piped_child_stderr: bool,
 ) -> Result<std::process::ExitStatus, ClaimResult> {
     #[cfg(target_os = "linux")]
-    let _stder_nonblock = LinuxPipedChildStderrNonblockGuard::try_new(
-        must_drain_piped_child_stderr,
-        child,
-    );
+    let _stder_nonblock =
+        LinuxPipedChildStderrNonblockGuard::try_new(must_drain_piped_child_stderr, child);
     // If we could not set nonblock, do not `read` in blocking mode (would block on an idle pipe).
     #[cfg(target_os = "linux")]
     let can_drain_nonblocking = _stder_nonblock.is_some();
