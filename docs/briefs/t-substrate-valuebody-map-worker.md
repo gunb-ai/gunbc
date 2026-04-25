@@ -40,7 +40,7 @@ Sibling to the `ValueBody::List` sub-lane. `Map<K, V>` top-level data declaratio
 
 ## Slice — `ValueBody::Map` extension
 
-1. Extend parser per req 3 (or STOP if scope balloons).
+1. **Pre-flight check (NOT a parser-extension step)**: confirm the parser sub-lane PR has merged and `SurfaceExpr::Map` is on `main`. If not, STOP per req 3 — that's a sequencing error.
 2. Add `ValueBody::Map(Vec<(String, FieldValue)>)` per req 1; `FieldValue::Map(...)` per req 2.
 3. Add lowerer arm per req 4.
 4. R14 diagnostic message narrows.
@@ -91,4 +91,4 @@ Surface to Director.
 
 - **Zero-Floor Manager**: heads-up. Substrate.dag-adjacent; `kernel_algebra_profile` mirror retirement is a ratchet-relevant change.
 - **Grounding Manager**: no current overlap.
-- **Surface Manager / parser owners**: heads-up — req 3 parser extension overlaps surface-syntax authority. Coordinate at dispatch if parser changes are non-trivial.
+- **Surface Manager / parser owners**: parser-extension work for this lane lives in the sibling [`t-substrate-valuebody-map-parser-worker.md`](t-substrate-valuebody-map-parser-worker.md) sub-lane (lands first); this substrate sub-lane does NOT touch parser surface-syntax authority. No coordination needed unless the post-parser substrate work surprises the parser-side semantics.
