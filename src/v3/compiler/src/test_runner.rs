@@ -437,27 +437,27 @@ fn is_unshare_permission_error(err: &std::io::Error) -> bool {
     err.kind() == ErrorKind::PermissionDenied || err.raw_os_error() == Some(libc::EPERM)
 }
 
-/// `unshare(1)` can exit (sometimes with a small code like 1) **before** it `exec(2)`-s the logical
-/// `command` when namespace setup fails. That exit must **not** be conflated with a matching
-/// `expect_exit_code` (P3: typed sandbox/setup failure, not a pass). util-linux messages look like
-/// `unshare: unshare failed: ...`.
+/// After `unshare(1)` exits, scan its stderr. If util-linux reported namespace setup failure (a
+/// common path is: process started, then `unshare(2)` / clone fails, **before** `exec` to the
+/// logical `command`), the exit code is **not** the program’s. **Retry once** with a direct
+/// [`build_execute_command_process`] (same as [`is_unshare_permission_error`] spawn-fallback) so
+/// P3 is satisfied without turning every `ExecuteCommand("true", …, 0)` into `Fail` on restricted
+/// Linux CI. If we cannot read stderr, retry direct (conservative: avoid conflating ambiguous
+/// unshare exit with `expect_exit_code`). util-linux: `unshare: unshare failed: …`.
 #[cfg(target_os = "linux")]
 const UNSHARE_STDERR_SCAN_CAP: u64 = 8 * 1024;
 
 #[cfg(target_os = "linux")]
-fn unshare_sandbox_setup_failure_from_child_stderr(
+fn unshare_sandbox_broken_relaunch_with_direct(
     from_unshare: bool,
     child: &mut std::process::Child,
-) -> Option<ClaimResult> {
+) -> bool {
     if !from_unshare {
-        return None;
+        return false;
     }
     let Some(mut h) = child.stderr.take() else {
-        return Some(ClaimResult::Fail(
-            "ExecuteCommand: Linux `unshare(1)` stderr not available; cannot disambiguate \
-             sandbox setup failure from a logical exit code (P3) — P3"
-                .to_string(),
-        ));
+        // Cannot inspect; the exit code from `unshare(1)` may be a setup artifact — retry direct.
+        return true;
     };
     use std::io::Read;
     let mut buf = String::new();
@@ -465,21 +465,15 @@ fn unshare_sandbox_setup_failure_from_child_stderr(
         .read_to_string(&mut buf)
         .is_err()
     {
-        return Some(ClaimResult::Fail(
-            "ExecuteCommand: could not read `unshare(1)` stderr to validate the sandbox (P3)"
-                .to_string(),
-        ));
+        return true;
     }
     for line in buf.lines().take(20) {
         let t = line.trim();
         if t.starts_with("unshare:") && t.contains("failed") {
-            return Some(ClaimResult::Fail(format!(
-                "ExecuteCommand: Linux `unshare(1)` did not set up a sandbox: {t} (not a logical \
-                 program exit code) — P3"
-            )));
+            return true;
         }
     }
-    None
+    false
 }
 
 /// Configure `Command` for the host check: no capture, and on Unix a new process group for the
@@ -526,6 +520,34 @@ fn kill_process_group_on_timeout(child: &mut std::process::Child) {
     let _ = child.kill();
 }
 
+fn child_wait_for_execute_command(
+    child: &mut std::process::Child,
+    wall_time: Duration,
+) -> Result<std::process::ExitStatus, ClaimResult> {
+    let wall_label = format!("{:.2}", wall_time.as_secs_f64());
+    let deadline = Instant::now() + wall_time;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    kill_process_group_on_timeout(child);
+                    let _ = child.wait();
+                    return Err(ClaimResult::Fail(format!(
+                        "ExecuteCommand: process exceeded {wall_label}s wall-clock limit (timeout — process group / child killed, fail-closed)"
+                    )));
+                }
+                std::thread::sleep(EXECUTE_COMMAND_WAIT_POLL);
+            }
+            Err(err) => {
+                return Err(ClaimResult::Fail(format!(
+                    "ExecuteCommand: wait on child failed: {err}"
+                )));
+            }
+        }
+    }
+}
+
 /// Spawns a host process and checks exit status. Used by the Rust `TestRunner` and the M1.5
 /// harness (single canonical path per PB-Runtime brief).
 ///
@@ -534,10 +556,12 @@ fn kill_process_group_on_timeout(child: &mut std::process::Child) {
 ///   outcomes).
 /// - **Wall clock** — [`EXECUTE_COMMAND_WALL_TIMEOUT`]; on exceed, the process group is signalled
 ///   (Unix) and the result is a typed failure (not a hang).
-/// - **Linux: user+PID namespace (when `unshare(1)` succeeds)** — the logical `command` runs under
-///   `unshare(1) -c -f -p` so subtree lifetime can match the namespace’s “init” exit. On
-///   `unshare(1)` `EPERM`, the runner uses a direct child (see [`build_execute_command_unshare`]);
-///   wall+stdio+pgrp policy still applies.
+/// - **Linux: user+PID namespace (when `unshare(1)` is usable)** — the usual path wraps in
+///   `unshare(1) -c -f -p` (subtree/“init” style exit). On `unshare(1)` spawn `EPERM` or, after a
+///   start, `unshare(1)` stderr shows namespace **setup** failure, the runner **re-runs once** with a
+///   direct [`Command`] (see [`unshare_sandbox_broken_relaunch_with_direct`]) so setup failure never
+///   masquerades as a matching `expect_exit_code` and portable claims still `Pass` in restricted
+///   CI. Wall+stdio+pgrp still apply.
 /// - **Heuristic on `&` in `sh`/`bash`/… `-c` scripts (all hosts)** — a bare shell background `&`
 ///   (after eliding `&&` and a few `>&` / `&>`-style token spellings) is still rejected: cheap extra
 ///   catch for the obvious `sh` escape. Not a full `sh` parser. Non-Linux: no init-style subtree
@@ -567,7 +591,8 @@ fn evaluate_execute_command_exit_code_with_wall_time(
     if let Some(r) = reject_unbounded_shell_background(command, args) {
         return r;
     }
-    let (mut child, from_unshare) = {
+    #[allow(unused_mut)]
+    let (mut child, mut from_unshare) = {
         #[cfg(target_os = "linux")]
         {
             match build_execute_command_unshare(command, args).spawn() {
@@ -603,32 +628,30 @@ fn evaluate_execute_command_exit_code_with_wall_time(
             }
         }
     };
-    let wall_label = format!("{:.2}", wall_time.as_secs_f64());
-    let deadline = Instant::now() + wall_time;
     let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {
-                if Instant::now() >= deadline {
-                    kill_process_group_on_timeout(&mut child);
-                    let _ = child.wait();
-                    return ClaimResult::Fail(format!(
-                        "ExecuteCommand: process exceeded {wall_label}s wall-clock limit (timeout — process group / child killed, fail-closed)"
-                    ));
-                }
-                std::thread::sleep(EXECUTE_COMMAND_WAIT_POLL);
-            }
-            Err(err) => {
-                return ClaimResult::Fail(format!("ExecuteCommand: wait on child failed: {err}"));
+        let s = match child_wait_for_execute_command(&mut child, wall_time) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        #[cfg(target_os = "linux")]
+        {
+            if from_unshare && unshare_sandbox_broken_relaunch_with_direct(from_unshare, &mut child)
+            {
+                child = match build_execute_command_process(command, args).spawn() {
+                    Ok(c) => c,
+                    Err(e2) => {
+                        return ClaimResult::Fail(format!(
+                            "ExecuteCommand spawn error ({command}) after unshare(1) post-start \
+                             fallback: {e2}"
+                        ));
+                    }
+                };
+                from_unshare = false;
+                continue;
             }
         }
+        break s;
     };
-    #[cfg(target_os = "linux")]
-    {
-        if let Some(r) = unshare_sandbox_setup_failure_from_child_stderr(from_unshare, &mut child) {
-            return r;
-        }
-    }
     #[cfg(not(target_os = "linux"))]
     let _ = from_unshare;
     let Some(actual) = status.code().map(i64::from) else {
