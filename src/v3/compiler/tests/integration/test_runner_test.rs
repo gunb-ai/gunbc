@@ -301,6 +301,72 @@ data suite: TestSuite = {
 }
 
 #[test]
+fn test_runner_evaluates_execute_command_pass_and_fail() {
+    let pass = r#"
+data claim_true: TestClaim = {
+  name: "true exits 0",
+  source: "let x: Int = 0",
+  file_name: "runner_exec_pass.v3",
+  predicate: ExecuteCommand("true", [], 0),
+  requires: []
+}
+data suite_pass: TestSuite = { name: "execute_command_pass", claims: [claim_true] }
+"#;
+    let dag = compile_clean(pass, "test_runner_exec_pass.dag");
+    let results = TestRunner::new(&dag).run_suite("suite_pass");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].result, ClaimResult::Pass);
+
+    let mismatch = r#"
+data claim_mismatch: TestClaim = {
+  name: "expect 1, true exits 0",
+  source: "let x: Int = 0",
+  file_name: "runner_exec_mismatch.v3",
+  predicate: ExecuteCommand("true", [], 1),
+  requires: []
+}
+data suite_mismatch: TestSuite = { name: "execute_command_mismatch", claims: [claim_mismatch] }
+"#;
+    let dag = compile_clean(mismatch, "test_runner_exec_mismatch.dag");
+    let results = TestRunner::new(&dag).run_suite("suite_mismatch");
+    assert_eq!(results.len(), 1);
+    let ClaimResult::Fail(msg) = &results[0].result else {
+        panic!("expected Fail on exit mismatch, got {:?}", results[0].result);
+    };
+    assert!(
+        msg.contains("exit code mismatch") && msg.contains("expected 1") && msg.contains("got 0"),
+        "unexpected fail message: {msg}"
+    );
+}
+
+#[test]
+fn test_runner_execute_command_spawn_error_is_distinguishable() {
+    let source = r#"
+data claim: TestClaim = {
+  name: "no such binary",
+  source: "let x: Int = 0",
+  file_name: "runner_exec_spawn.v3",
+  predicate: ExecuteCommand(
+    "no_such_v3_test_binary_a7f2c1",
+    [],
+    0
+  ),
+  requires: []
+}
+data suite: TestSuite = { name: "execute_command_spawn", claims: [claim] }
+"#;
+    let dag = compile_clean(source, "test_runner_exec_spawn.dag");
+    let result = &TestRunner::new(&dag).run_suite("suite")[0].result;
+    let ClaimResult::Fail(msg) = result else {
+        panic!("expected Fail, got {result:?}");
+    };
+    assert!(
+        msg.contains("spawn error"),
+        "expected spawn-error classification, got: {msg}"
+    );
+}
+
+#[test]
 fn test_runner_scopes_bind_lookup_to_claim_source_file() {
     let source = r#"
 data claim_state: TestClaim = {

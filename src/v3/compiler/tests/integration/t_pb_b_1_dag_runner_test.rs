@@ -88,3 +88,15 @@ fn t_pb_b_1_contract_port_cost_suite_passes_through_runner() {
     );
     run_suite_all_pass(&dag, "suite_contract_port_and_cost");
 }
+
+/// `ExecuteCommand` through the same `tests/dag` path as T-PB-B-1 (PB-Runtime extension).
+/// Boundary migration: `m1_4_emit_python_test::python_stdout` pattern → declarative
+/// `ExecuteCommand` (this suite uses `sh`/`echo` / `true` so CI need not install CPython).
+#[test]
+fn t_pb_b_1_execute_command_boundary_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../dag/t_pb_b_1_execute_command_boundary.dag"),
+        "src/v3/compiler/tests/dag/t_pb_b_1_execute_command_boundary.dag",
+    );
+    run_suite_all_pass(&dag, "suite_execute_command_boundary");
+}

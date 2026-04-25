@@ -1,0 +1,40 @@
+// PB-Runtime — `ExecuteCommand` end-to-end through the landed `.dag` harness.
+// Migration receipt: the class-5 boundary pattern in
+// `m1_4_emit_python_test::python_stdout` (host spawn + success via process exit) is
+// structurally the same as `TestPredicate::ExecuteCommand`; this module uses `sh` instead of
+// `python3` so default CI does not need CPython. (Stdout/stderr are out of scope for the schema.)
+//
+// See also: `m1_5_testgen_test::extension_predicates_reach_interpreter_boundary`.
+
+module v3.compiler.tests.t_pb_b_1.execute_command_boundary
+
+import std.verification { TestClaim, TestSuite }
+
+data claim_tautology_true: TestClaim = {
+  name: "ExecuteCommand true (smoke)",
+  source: "let marker: Int = 1",
+  file_name: "t_pb_b_1_execute_cmd_marker.v3",
+  predicate: ExecuteCommand("true", [], 0),
+  requires: []
+}
+
+data claim_shell_exit_ok: TestClaim = {
+  name: "ExecuteCommand sh -c exit 0 (shell boundary migration)",
+  source: "let marker: Int = 1",
+  file_name: "t_pb_b_1_execute_cmd_marker.v3",
+  predicate: ExecuteCommand("sh", ["-c", "exit 0"], 0),
+  requires: []
+}
+
+data claim_echo_hi: TestClaim = {
+  name: "ExecuteCommand echo hi (non-tautological argv)",
+  source: "let marker: Int = 1",
+  file_name: "t_pb_b_1_execute_cmd_marker.v3",
+  predicate: ExecuteCommand("echo", ["hi"], 0),
+  requires: []
+}
+
+data suite_execute_command_boundary: TestSuite = {
+  name: "t-pb-b-1/execute_command/boundary",
+  claims: [claim_tautology_true, claim_shell_exit_ok, claim_echo_hi]
+}
