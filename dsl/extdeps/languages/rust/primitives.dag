@@ -89,13 +89,23 @@ type TargetAlgebra
 // Target carrier tag.
 //
 // Closed enumeration identifying which std/bit.dag carrier (or terminal)
-// the target primitive's underlying machine representation corresponds to:
-//   BitCarrier     <-> std.bit.Bit         (1-bit truth value)
-//   ByteCarrier    <-> std.bit.Byte        (8 bits)
-//   Word16Carrier  <-> std.bit.Word16      (16 bits)
-//   Word32Carrier  <-> std.bit.Word32      (32 bits)
-//   Word64Carrier  <-> std.bit.Word64      (64 bits)
+// the target primitive's **algebra value-domain witness** corresponds to,
+// per the std convention declared in `dsl/std/integer.dag:4` ("Int is a
+// CARRIER (Word64) with EVIDENCE that it inhabits OrderedRing"):
+//   BitCarrier     <-> std.bit.Bit         (BooleanAlgebra value-domain: 2-element set)
+//   ByteCarrier    <-> std.bit.Byte        (Ring/Semiring value-domain over 2^8)
+//   Word16Carrier  <-> std.bit.Word16      (Ring/Semiring value-domain over 2^16)
+//   Word32Carrier  <-> std.bit.Word32      (Ring/Semiring value-domain over 2^32)
+//   Word64Carrier  <-> std.bit.Word64      (Ring/Semiring value-domain over 2^64)
 //   TerminalCarrier<-> single inhabitant   (Unit; DB-11 -> Cardinality 1)
+//
+// NOT target storage layout. Rust's `bool` storage is 1 byte with only
+// 0x00 and 0x01 valid (Rust Reference §3.5), but its algebra value-domain
+// is the 2-element {⊤, ⊥} carried by Bit. Storage layout, ABI, and
+// validity bytes are a distinct axis the pilot deliberately doesn't
+// model — they're target-codegen concerns scoped to T-Ground-Engine /
+// emit-pipeline, not to the structural target-grounding routing the
+// pilot probes.
 //
 // Substrate-gap flag #2: these tags are bridges to type references.
 // =========================================================================
