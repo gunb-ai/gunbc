@@ -1192,3 +1192,105 @@ fn test_3a4_refined_generic_substrate_integrity_behavior_still_five_variants() {
 // =================================================================
 // 3a.1 — Mutual recursion (TODO: unimplemented)
 // =================================================================
+
+// =================================================================
+// R2 T-Substrate sub-lane 1 — cardinality-for-int-lit
+// =================================================================
+//
+// Brief: docs/briefs/t-substrate-cardinality-int-lit-worker.md
+// (post-2026-04-25 re-scope). Validates req 5 (`data x: UInt8 = 256`
+// → structured `MagnitudeOutOfRange` diagnostic) and req 3 acceptance
+// behavior (in-range narrows quietly; default-when-unconstrained for
+// the `Int` alias accepts any tokenizer-parseable i64). Req 4
+// (`i64::MIN` smoke) is DEFERRED to the sibling Int128/Word128
+// sub-lane per the brief's re-scope — not exercised here.
+
+#[test]
+fn cardinality_int_lit_uint8_256_emits_magnitude_out_of_range() {
+    let dag = compile_any("data x: UInt8 = 256", "uint8_overflow.v3");
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| d)
+        .find(|d| matches!(d, Diagnostic::MagnitudeOutOfRange { .. }))
+        .unwrap_or_else(|| {
+            panic!(
+                "expected MagnitudeOutOfRange, got: {:?}",
+                dag.diagnostics()
+            )
+        });
+    let Diagnostic::MagnitudeOutOfRange {
+        target_name,
+        magnitude,
+        target_min,
+        target_max,
+        ..
+    } = diag
+    else {
+        unreachable!()
+    };
+    assert_eq!(target_name, "UInt8");
+    assert_eq!(*magnitude, 256_i128);
+    assert_eq!(*target_min, 0_i128);
+    assert_eq!(*target_max, 255_i128);
+    let msg = diag.message();
+    assert!(
+        msg.contains("UInt8") && msg.contains("256") && msg.contains("[0, 255]"),
+        "diagnostic message must name target, magnitude, range; got: {msg}"
+    );
+}
+
+#[test]
+fn cardinality_int_lit_uint8_in_range_narrows_quietly() {
+    let dag = compile_any("data x: UInt8 = 200", "uint8_ok.v3");
+    let any_magnitude = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| d)
+        .any(|d| matches!(d, Diagnostic::MagnitudeOutOfRange { .. }));
+    assert!(
+        !any_magnitude,
+        "in-range literal must not emit MagnitudeOutOfRange; got: {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn cardinality_int_lit_int_alias_default_accepts_large_literal() {
+    // Default-when-unconstrained: `Int` (alias to `Int64`) accepts any
+    // tokenizer-parseable i64 magnitude. This default is itself a
+    // host-narrowing heuristic the lane otherwise dissolves; full
+    // dissolution belongs to the sibling typed-unbounded-magnitude
+    // sub-lane (deferred).
+    let dag = compile_any("data x: Int = 1000000", "int_alias_default.v3");
+    let any_magnitude = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| d)
+        .any(|d| matches!(d, Diagnostic::MagnitudeOutOfRange { .. }));
+    assert!(
+        !any_magnitude,
+        "Int alias must not narrow (default-when-unconstrained); got: {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn cardinality_int_lit_int8_above_range_emits_magnitude_out_of_range() {
+    // Negative-literal narrowing is not exercised: unary minus is not
+    // part of the literal token surface today (it desugars via
+    // OrderedRing's additive inverse — the brief calls this out as
+    // the deferred i64::MIN smoke). Positive overflow exercises the
+    // same Int8 range bound from the upper side.
+    let dag = compile_any("data x: Int8 = 200", "int8_overflow.v3");
+    let any_magnitude = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| d)
+        .any(|d| matches!(d, Diagnostic::MagnitudeOutOfRange { .. }));
+    assert!(
+        any_magnitude,
+        "Int8 literal 200 must emit MagnitudeOutOfRange ([-128, 127]); got: {:?}",
+        dag.diagnostics()
+    );
+}

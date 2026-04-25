@@ -652,6 +652,18 @@ fn render_diagnostic(diagnostic: &Diagnostic) -> String {
             render_source_span(span),
             render_corrections(fixes),
         ),
+        Diagnostic::MagnitudeOutOfRange {
+            target_name,
+            magnitude,
+            target_min,
+            target_max,
+            span,
+            fixes,
+        } => format!(
+            "Diagnostic::MagnitudeOutOfRange {{ target_name: {target_name:?}.to_string(), magnitude: {magnitude}_i128, target_min: {target_min}_i128, target_max: {target_max}_i128, span: {}, fixes: {} }}",
+            render_source_span(span),
+            render_corrections(fixes),
+        ),
     }
 }
 

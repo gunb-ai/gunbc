@@ -2426,21 +2426,63 @@ fn lower_data_item(
             lower_record_to_structural(name, fields, ty_decl_id, body_span, symbols, dag)
         }
         Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
-            lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag)
-                .map(crate::dag::ValueBody::Scalar)
-                .or_else(|| {
+            // Magnitude-aware narrowing for integer literals at the
+            // data-binding boundary. If the declared type walks to a
+            // narrower integer std type than `Int` (Int8/Int16/Int32/
+            // UInt8/UInt16/UInt32/UInt64), check the literal magnitude
+            // against the substrate-declared inclusive range and emit a
+            // structured `MagnitudeOutOfRange` diagnostic if the literal
+            // does not fit. Default-when-unconstrained: a literal with
+            // declared type `Int` (= Int64 = OrderedRing<Word64>)
+            // continues to accept any i64 — that default is itself a
+            // host-narrowing heuristic this lane otherwise dissolves;
+            // its own dissolution belongs to the typed unbounded
+            // magnitude carrier sub-lane (deferred).
+            let int_lit_magnitude: Option<i64> = match lit_expr {
+                SurfaceExpr::Literal {
+                    value: SurfaceLiteral::Int(m),
+                    ..
+                } => Some(*m),
+                _ => None,
+            };
+            let narrowing = int_lit_magnitude
+                .and_then(|m| integer_target_range(dag, ty_decl_id).map(|r| (m, r)));
+            if let Some((magnitude, (target_name, target_min, target_max))) = narrowing {
+                let m: i128 = i128::from(magnitude);
+                if m < target_min || m > target_max {
                     report_declaration_error(
                         dag,
-                        Diagnostic::ResolveError {
-                            name: format!(
-                                "data `{name}`'s scalar body does not match declared type",
-                            ),
+                        Diagnostic::MagnitudeOutOfRange {
+                            target_name,
+                            magnitude: m,
+                            target_min,
+                            target_max,
                             span: body_span.clone(),
                             fixes: Vec::new(),
                         },
                     );
                     None
-                })
+                } else {
+                    lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag)
+                        .map(crate::dag::ValueBody::Scalar)
+                }
+            } else {
+                lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag)
+                    .map(crate::dag::ValueBody::Scalar)
+                    .or_else(|| {
+                        report_declaration_error(
+                            dag,
+                            Diagnostic::ResolveError {
+                                name: format!(
+                                    "data `{name}`'s scalar body does not match declared type",
+                                ),
+                                span: body_span.clone(),
+                                fixes: Vec::new(),
+                            },
+                        );
+                        None
+                    })
+            }
         }
         _ => None,
     };
@@ -3146,6 +3188,65 @@ fn lower_structural_field_value(
         fixes: Vec::new(),
         },
     );
+    None
+}
+
+/// In-compiler mirror of the `range_min_inclusive` /
+/// `range_max_inclusive` substrate facts authored on `IntegerPrimitive`
+/// in `dsl/extdeps/languages/rust/primitives.dag`. Keyed by std-side
+/// integer-type declaration name (Int8..UInt64) — the names that
+/// appear in user type annotations like `data x: UInt8 = 256`.
+///
+/// **Why a mirror, not a substrate read.** The production compiler does
+/// load `primitives.dag` (via `EXTDEPS_BOOTSTRAP_FIXTURES`), but the
+/// `rust_pilot_primitives` data declaration's `value_body` is
+/// `ValueBody::Unparsed` because v3 lacks a top-level
+/// `ValueBody::List`/aggregate variant — the same gap flagged on
+/// `dag.rust_pilot_primitives()` (`dag.rs:2825-2848`). Until the
+/// R2 T-Substrate top-level `ValueBody::List` sub-lane lands, no
+/// production walker can read the declared field values, so the
+/// compiler mirrors them in Rust here.
+///
+/// **Dissolution trigger.** When `ValueBody::List` lands and a walker
+/// can read the 10-element pilot enumeration, this map is replaced by
+/// a substrate-walking helper that returns ranges directly from the
+/// `IntegerPrimitive` `range_min_inclusive` / `range_max_inclusive`
+/// fields. Both the grounding-pilot Rust mirror in
+/// `src/v3/grounding_pilot/src/lib.rs` and this map dissolve together.
+///
+/// **Default-when-unconstrained.** `Int` (alias to `Int64`) and `UInt`
+/// (alias to `UInt64`) are deliberately omitted: literals declared at
+/// those alias names accept any tokenizer-parseable `i64`, matching
+/// pre-narrowing behavior (the lane's tracked-follow-up is to dissolve
+/// that default once the typed unbounded magnitude carrier sub-lane
+/// lifts the literal payload above i64).
+fn integer_target_range(dag: &Dag, expected_type: DeclarationId) -> Option<(String, i128, i128)> {
+    let mut current = expected_type;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        if let Some(name) = &decl.name {
+            let bounds: Option<(i128, i128)> = match name.as_str() {
+                "Int8" => Some((-128, 127)),
+                "Int16" => Some((-32_768, 32_767)),
+                "Int32" => Some((-2_147_483_648, 2_147_483_647)),
+                "UInt8" => Some((0, 255)),
+                "UInt16" => Some((0, 65_535)),
+                "UInt32" => Some((0, 4_294_967_295)),
+                "UInt64" => Some((0, 18_446_744_073_709_551_615_i128)),
+                _ => None,
+            };
+            if let Some((min, max)) = bounds {
+                return Some((name.clone(), min, max));
+            }
+        }
+        match &decl.connective {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                current = *next;
+            }
+            _ => return None,
+        }
+    }
     None
 }
 

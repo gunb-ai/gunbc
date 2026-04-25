@@ -72,8 +72,19 @@ fn dag_new_exposes_rust_pilot_primitives_type_structure() {
     };
     assert_eq!(
         integer_field_labels,
-        vec!["target_name", "algebra", "carrier", "is_copy", "overflow"],
-        "IntegerPrimitive field order is load-bearing for T-Ground L4-(C) witness consumption"
+        vec![
+            "target_name",
+            "algebra",
+            "carrier",
+            "is_copy",
+            "overflow",
+            "range_min_inclusive",
+            "range_max_inclusive",
+        ],
+        "IntegerPrimitive field order is load-bearing for T-Ground L4-(C) witness \
+         consumption; range_{{min,max}}_inclusive added by R2 T-Substrate cardinality- \
+         for-int-lit sub-lane (String-decimal width-independence bridge — dissolves to a \
+         typed unbounded magnitude carrier when std.natural / Int128 sub-lane lands)"
     );
 
     let non_integer_variant = dag.declaration(variants[1].ty);

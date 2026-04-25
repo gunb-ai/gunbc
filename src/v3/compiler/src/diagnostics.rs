@@ -185,6 +185,31 @@ pub enum Diagnostic {
         span: SourceSpan,
         fixes: Vec<Correction>,
     },
+    /// An integer literal's magnitude does not fit the call-site's
+    /// expected target algebra range. Emitted at lowering time when a
+    /// `data x: T = N` (or equivalent binding-context literal) is
+    /// recognized as an integer-target primitive whose declared
+    /// inclusive range excludes the literal.
+    ///
+    /// `target_name` is the std-side declaration name (e.g. `UInt8`);
+    /// `target_min` / `target_max` are the substrate-declared inclusive
+    /// bounds (decimal-encoded in primitives.dag, parsed and re-rendered
+    /// for the user). `magnitude` is the literal value as authored.
+    ///
+    /// Bridge note: bounds are mirrored into the compiler from
+    /// `dsl/extdeps/languages/rust/primitives.dag` (read by the pilot,
+    /// not yet by the production walker — `value_body` for the data
+    /// declaration is `Unparsed` until the top-level `ValueBody::List`
+    /// substrate sub-lane lands). Once the walker reads the .dag value
+    /// directly, the in-compiler mirror in `lower.rs` dissolves.
+    MagnitudeOutOfRange {
+        target_name: String,
+        magnitude: i128,
+        target_min: i128,
+        target_max: i128,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
+    },
 }
 
 impl Diagnostic {
@@ -196,7 +221,8 @@ impl Diagnostic {
             | Diagnostic::ArityMismatch { span, .. }
             | Diagnostic::ResolveError { span, .. }
             | Diagnostic::UnitMismatch { span, .. }
-            | Diagnostic::BranchConditionNotBool { span, .. } => span,
+            | Diagnostic::BranchConditionNotBool { span, .. }
+            | Diagnostic::MagnitudeOutOfRange { span, .. } => span,
         }
     }
 
@@ -208,7 +234,8 @@ impl Diagnostic {
             | Diagnostic::ArityMismatch { fixes, .. }
             | Diagnostic::ResolveError { fixes, .. }
             | Diagnostic::UnitMismatch { fixes, .. }
-            | Diagnostic::BranchConditionNotBool { fixes, .. } => fixes,
+            | Diagnostic::BranchConditionNotBool { fixes, .. }
+            | Diagnostic::MagnitudeOutOfRange { fixes, .. } => fixes,
         }
     }
 
@@ -240,6 +267,15 @@ impl Diagnostic {
                 Some(ty) => format!("branch condition port is not Bool (got {ty:?})"),
                 None => "branch condition port is not Bool (type not resolved)".to_string(),
             },
+            Diagnostic::MagnitudeOutOfRange {
+                target_name,
+                magnitude,
+                target_min,
+                target_max,
+                ..
+            } => format!(
+                "literal magnitude {magnitude} is out of range for `{target_name}` (inclusive range [{target_min}, {target_max}]); use a wider integer type"
+            ),
         }
     }
 }
