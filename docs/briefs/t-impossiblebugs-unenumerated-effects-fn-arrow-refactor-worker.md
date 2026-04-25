@@ -17,8 +17,10 @@
 >
 > This brief reshapes `SurfaceItem.Fn` to carry an `Arrow`-shaped
 > signature so that the downstream parser sub-lane can land
-> `declared_effects` on `Arrow` once and have it apply uniformly to
-> top-level functions and higher-order function types. Reports back to
+> `declared_effects` on the two arrow-shape sub-carriers (`FnSignature`
+> for declaration position; `SurfaceArrow` for type position) as a
+> co-invariant — both genuinely require their own effect set per the
+> carrier-distinction rationale (req 3). Reports back to
 > Director (`zesty-bear-812`); Surface Manager territory overlap
 > (parser surface-syntax authority).
 >
@@ -139,7 +141,7 @@ Surface to Director.
 
 ## Non-goals
 
-- **Not adding `declared_effects`.** That's the sibling parser-effects sub-lane; this PR makes `Arrow` the load-bearing site so that the *next* PR can add the field once and have it apply uniformly.
+- **Not adding `declared_effects`.** That's the sibling parser-effects sub-lane; this PR establishes the two arrow-shape sub-carriers (`FnSignature` + `SurfaceArrow`) so the next PR can land `declared_effects` on each as a co-invariant per req 3's carrier-distinction rationale.
 - **Not refactoring `SurfaceExpr::Lambda`.** Lambdas don't have explicit type signatures today; they're out of scope.
 - **Not refactoring substrate-side `Declaration` / `Arrow`.** Surface-side only.
 - **Not changing surface syntax.** The user-visible function-declaration syntax is unchanged; this is a pure construction-site refactor.
