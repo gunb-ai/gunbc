@@ -600,4 +600,32 @@ mod tests {
             }
         }
     }
+
+    /// R2 scaffold complement: `.dag` refines range text to base-10
+    /// numerals (`PilotIntegerRangeBound`); the mirror must still close
+    /// the interval witness (`min <= max`, i128-parsable) until
+    /// **T-Ground-PilotRangePairWitness** lands in substrate.
+    #[test]
+    fn integer_primitive_range_text_parses_as_i128_and_orders() {
+        for p in RUST_PILOT_PRIMITIVES {
+            if let RustPrimitive::IntegerPrimitive {
+                target_name,
+                range_min_inclusive: lo,
+                range_max_inclusive: hi,
+                ..
+            } = p
+            {
+                let a: i128 = lo
+                    .parse()
+                    .unwrap_or_else(|e| panic!("{target_name} min {lo:?} must parse: {e}"));
+                let b: i128 = hi
+                    .parse()
+                    .unwrap_or_else(|e| panic!("{target_name} max {hi:?} must parse: {e}"));
+                assert!(
+                    a <= b,
+                    "{target_name}: range min {a} must be <= max {b} (literals {lo:?} ..= {hi:?})"
+                );
+            }
+        }
+    }
 }

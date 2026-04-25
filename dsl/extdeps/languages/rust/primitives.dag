@@ -66,11 +66,22 @@
 //      object is the canonical inhabitant. Pilot uses the sentinel pair
 //      because cardinality-substrate is not yet available (out-of-scope
 //      per brief: "Container types — block on cardinality-substrate.").
+//   4. `range_min_inclusive` / `range_max_inclusive` use
+//      `std.types.PilotIntegerRangeBound` (refined `String`, base-10 numerals
+//      only) so arbitrary text is not silently admissible. The refinement
+//      does not yet express `min <= max` or i128 witnessability of the
+//      closed interval — those illegal states are excluded by **host
+//      invariants** (`v3_grounding_pilot` unit test) until the engine walks
+//      `data` with full predicate discharge. **Named dissolution:**
+//      **T-Ground-PilotRangePairWitness** — closed interval + ordering as
+//      substrate-first-class facts (carrier-native or std.natural once
+//      modeled), per Illegal-States-Unrepresentable at the graph boundary.
 
 module extdeps.languages.rust.primitives
 
 import std.algebra { OrderedRing, Semiring, BooleanAlgebra }
 import std.bit { Bit, Byte, Word16, Word32, Word64 }
+import std.types { PilotIntegerRangeBound }
 
 
 // =========================================================================
@@ -177,9 +188,10 @@ type RustPrimitive
       carrier: TargetCarrier
       is_copy: Bool
       overflow: IntegerOverflow
-      // Decimal string bounds, substrate authority for magnitude narrowing (R2).
-      range_min_inclusive: String
-      range_max_inclusive: String
+      // Inclusive range endpoints (R2). `PilotIntegerRangeBound` rejects
+      // non-numerals; pair ordering + i128 fitness: T-Ground-PilotRangePairWitness.
+      range_min_inclusive: PilotIntegerRangeBound
+      range_max_inclusive: PilotIntegerRangeBound
     }
   | NonIntegerPrimitive {
       target_name: String          // Rust syntactic token: "bool", "()"

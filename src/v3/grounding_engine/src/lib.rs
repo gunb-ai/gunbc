@@ -94,6 +94,8 @@ pub fn validate_rust_primitive_type_structure(
             ("carrier", "TargetCarrier"),
             ("is_copy", "Bool"),
             ("overflow", "IntegerOverflow"),
+            ("range_min_inclusive", "PilotIntegerRangeBound"),
+            ("range_max_inclusive", "PilotIntegerRangeBound"),
         ],
     )?;
     let non_integer = expect_variant_shape(
@@ -332,6 +334,8 @@ fn expected_mirror_shape() -> RustPrimitiveTypeShape {
                     field("carrier", "TargetCarrier"),
                     field("is_copy", "Bool"),
                     field("overflow", "IntegerOverflow"),
+                    field("range_min_inclusive", "PilotIntegerRangeBound"),
+                    field("range_max_inclusive", "PilotIntegerRangeBound"),
                 ],
             },
             VariantShape {
