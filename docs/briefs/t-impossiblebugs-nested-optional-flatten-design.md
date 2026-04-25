@@ -152,8 +152,8 @@ The guard predicate is exactly: outer bound `AtMostOne` *and* inner bound `AtMos
 2. **Route all hand-Rust construction sites through one shared predicate.** `lower.rs:1949` and `infer.rs:2902` call `alloc_cardinality_decl`. `lower.rs:2044` (`type_to_connective`) consumes the same `cardinality_idempotent_target` predicate per §Q3 — **no sibling helper** that re-applies the rule inline. Single authority for the substrate invariant; both call sites are pure consumers of the predicate.
 3. **Span policy.** When flatten triggers, reuse the inner declaration's span (the user wrote `T??`; the type they got is the inner `T?`'s declaration). No info-level "flattened to" hint — *"impossible by construction"* per discipline; the second `?` is silently absorbed at the substrate constructor. Verify no diagnostic / hover / error-printer round-trips `T??` back to the user as `T?` confusingly (per gpt-5-5-pro non-blocking observation on PR #798).
 4. **Test fixtures.**
-   - `T??` and `T?` produce the same `DeclarationId` after lowering (test).
-   - Generic-instantiation case: `fn foo<T>(x: T?) -> T?` instantiated with `T = Int?` produces a `Cardinality<Int, AtMostOne>` return type, **not** `Cardinality<Cardinality<Int, AtMostOne>, AtMostOne>` (test that exercises `concretize_decl_with_subst`; this is the path the original lower-only design missed).
+   - **Shape assertion (not identity).** `T??` lowered shape contains no nested `Cardinality { bound: AtMostOne, .. }` whose `element`'s connective is also `Cardinality { bound: AtMostOne, .. }` — i.e. a single `AtMostOne` wrap around the underlying type, equivalent to `T?`'s shape. Assert via structural walk over the resulting declaration, **not** raw `DeclarationId` equality with an independently lowered `T?` (declaration identity is an interning concern; the invariant is shape, per `TESTING.md` behavior-driven discipline).
+   - Generic-instantiation case: `fn foo<T>(x: T?) -> T?` instantiated with `T = Int?` produces a return-type shape with one `AtMostOne` wrap around `Int`, **not** two nested `AtMostOne` wraps (test that exercises `concretize_decl_with_subst`; this is the path the original lower-only design missed). Same shape-level assertion, not `DeclarationId`-level.
    - `List<T>?`, `T?[]`, `[T; 3]?` preserve their distinct shapes (test).
    - Place under `src/v3/compiler/tests/integration/`.
 
@@ -170,7 +170,7 @@ The guard predicate is exactly: outer bound `AtMostOne` *and* inner bound `AtMos
 
 **Acceptance:**
 
-- `T??` and `T?` produce the same lowered shape (test).
+- `T??` lowers to a shape with no nested `Cardinality<_, AtMostOne>` (test; structural walk, not `DeclarationId` equality).
 - `List<T>?`, `T?[]`, `[T; 3]?` all preserve their distinct shapes (test).
 - `cargo test --workspace --exclude v2-compiler-tests` clean.
 - `cargo test -p v2-compiler-tests` clean.
