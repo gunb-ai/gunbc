@@ -198,14 +198,13 @@ data complexity_merge_sort_v3_matches_v2_oracle_gate: TestClaim = {
   requires: []
 }
 
-// Differential witness: `match` + `fold` over a short list (`r1_lane_e_differential_witness.v3`) so
-// `DifferentialEquals` compares host fold vs emit on **branch/list/fold** structure, not addition
-// alone. Merge-sort parity is `complexity_merge_sort_v3_matches_v2_oracle`; scalar `cost_of`
-// depth is `complexity_merge_sort_is_nlogn`. D1 `apply_lens_declaration(cost_of)` stays deferred
-// (`Loop` / `UnimplementedLoopBound` in the lens graph).
-data complexity_v3_matches_v2_oracle_gate: TestClaim = {
-  name: "complexity_v3_matches_v2_oracle",
-  source: "// T-LaneE differential witness for `complexity_v3_matches_v2_oracle`.\n// Uses `match`, list construction, and `fold` so host forward-fold and emit `lens_cost::cost_of`\n// both walk branch / list / fold structure — not a single-addition shortcut (PR #764).\n\nimport std.list { List, cons, empty, fold }\n\nlet lane_e_diff_pick: Bool = true\n\nlet lane_e_diff_xs: List<Int> = cons(1, cons(2, empty()))\n\nlet lane_e_diff_out: Int =\n  match lane_e_diff_pick {\n    True => fold(lane_e_diff_xs, 0, |acc, x| acc + x)\n    False => 0\n  }\n",
+// Bundled differential witness (`lane_e_diff_out` in `r1_lane_e_differential_witness.v3`): `match` +
+// `fold` over a short list — host fold vs emit on branch/list/fold structure. **Not** the lane-wide
+// “v3 oracle vs v2 oracle” receipt; merge-sort / `merge_sort_out` parity is
+// `complexity_merge_sort_v3_matches_v2_oracle` (PR #764 api-review rename).
+data lane_e_bundled_witness_host_emit_parity_gate: TestClaim = {
+  name: "lane_e_bundled_witness_host_emit_parity",
+  source: "// T-LaneE differential witness for `lane_e_bundled_witness_host_emit_parity` (bundled `lane_e_diff_out` program).\n// Uses `match`, list construction, and `fold` so host forward-fold and emit `lens_cost::cost_of`\n// both walk branch / list / fold structure — not a single-addition shortcut (PR #764).\n\nimport std.list { List, cons, empty, fold }\n\nlet lane_e_diff_pick: Bool = true\n\nlet lane_e_diff_xs: List<Int> = cons(1, cons(2, empty()))\n\nlet lane_e_diff_out: Int =\n  match lane_e_diff_pick {\n    True => fold(lane_e_diff_xs, 0, |acc, x| acc + x)\n    False => 0\n  }\n",
   file_name: "r1_lane_e_differential_witness.v3",
   predicate: DifferentialEquals(
     v3_program_cost,
@@ -220,6 +219,6 @@ data r1_lane_e_suite: TestSuite = {
   claims: [
     complexity_merge_sort_is_nlogn_gate,
     complexity_merge_sort_v3_matches_v2_oracle_gate,
-    complexity_v3_matches_v2_oracle_gate
+    lane_e_bundled_witness_host_emit_parity_gate
   ]
 }

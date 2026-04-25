@@ -198,13 +198,12 @@ data complexity_merge_sort_v3_matches_v2_oracle_gate: TestClaim = {
   requires: []
 }
 
-// Differential witness: `match` + `fold` over a short list (`r1_lane_e_differential_witness.v3`) so
-// `DifferentialEquals` compares host fold vs emit on **branch/list/fold** structure, not addition
-// alone. Merge-sort parity is `complexity_merge_sort_v3_matches_v2_oracle`; scalar `cost_of`
-// depth is `complexity_merge_sort_is_nlogn`. D1 `apply_lens_declaration(cost_of)` stays deferred
-// (`Loop` / `UnimplementedLoopBound` in the lens graph).
-data complexity_v3_matches_v2_oracle_gate: TestClaim = {
-  name: "complexity_v3_matches_v2_oracle",
+// Bundled differential witness (`lane_e_diff_out` in `r1_lane_e_differential_witness.v3`): `match` +
+// `fold` over a short list — host fold vs emit on branch/list/fold structure. **Not** the lane-wide
+// “v3 oracle vs v2 oracle” receipt; merge-sort / `merge_sort_out` parity is
+// `complexity_merge_sort_v3_matches_v2_oracle` (PR #764 api-review rename).
+data lane_e_bundled_witness_host_emit_parity_gate: TestClaim = {
+  name: "lane_e_bundled_witness_host_emit_parity",
   source: "R1_LANE_E_DIFFERENTIAL_WITNESS_V3_SPLICE_V1",
   file_name: "r1_lane_e_differential_witness.v3",
   predicate: DifferentialEquals(
@@ -220,6 +219,6 @@ data r1_lane_e_suite: TestSuite = {
   claims: [
     complexity_merge_sort_is_nlogn_gate,
     complexity_merge_sort_v3_matches_v2_oracle_gate,
-    complexity_v3_matches_v2_oracle_gate
+    lane_e_bundled_witness_host_emit_parity_gate
   ]
 }

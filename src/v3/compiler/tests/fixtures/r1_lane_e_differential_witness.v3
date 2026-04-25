@@ -1,4 +1,4 @@
-// T-LaneE differential witness for `complexity_v3_matches_v2_oracle`.
+// T-LaneE differential witness for `lane_e_bundled_witness_host_emit_parity` (bundled `lane_e_diff_out` program).
 // Uses `match`, list construction, and `fold` so host forward-fold and emit `lens_cost::cost_of`
 // both walk branch / list / fold structure — not a single-addition shortcut (PR #764).
 

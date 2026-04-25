@@ -229,7 +229,7 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [x] `LensOutputEquals` predicate (Substrate T-LaneE consumer
       — `complexity_merge_sort_is_nlogn`) — landed PR #678
 - [x] `DifferentialEquals` predicate (Substrate T-LaneE consumer
-      — `complexity_v3_matches_v2_oracle`) — landed PR #678
+      — `lane_e_bundled_witness_host_emit_parity`) — landed PR #678
 
 Decisions log (append as they happen):
 
