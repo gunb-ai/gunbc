@@ -248,7 +248,10 @@ type NonNegativeInt  = Int where range(min: 0)
 // (`dsl/extdeps/languages/rust/primitives.dag`). Rejects non-numeral garbage.
 // Does not prove `min <= max` or i128-closed intervals — that pair witness
 // stays host-tested until **T-Ground-PilotRangePairWitness** dissolves it into
-// carrier-native bounds (see extdeps file Substrate-gap flag #4).
+// carrier-native bounds (see extdeps file Substrate-gap flag #4). The `where
+// pattern(...)` text itself: **T-Ground-PilotRangeBoundPredicateLower** in
+// generated `bootstrap_*.rs` (placeholder: predicate not lowered until
+// that trigger lands; host mirrors close `rust_pilot_primitives` today).
 type PilotIntegerRangeBound = String where pattern("^[-+]?[0-9]+$")
 
 // Path modeling (EX-2):

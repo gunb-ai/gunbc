@@ -7,6 +7,14 @@
 //! 4th sub-lane lands the top-level `ValueBody::List`/aggregate extension;
 //! this test pins the currently-available type-structure access and
 //! explicitly records the `ValueBody::Unparsed` boundary.
+//!
+//! **R2 range field typing:** `IntegerPrimitive` range fields are
+//! `PilotIntegerRangeBound` in `primitives.dag` — a refined `String` alias
+//! in `dsl/std/types.dag` with `where pattern("…")` — *not* unrefined
+//! `String`. Lowering that refinement in generated bootstrap is the named
+//! scaffold `T-Ground-PilotRangeBoundPredicateLower` (per `std/types.dag` +
+//! `v3_grounding_pilot`); closed-interval witness is
+//! `T-Ground-PilotRangePairWitness`.
 
 use v3_compiler::dag::{Dag, TypeConnective, ValueBody};
 
@@ -63,13 +71,15 @@ fn dag_new_exposes_rust_pilot_primitives_type_structure() {
     );
 
     let integer_variant = dag.declaration(variants[0].ty);
-    let integer_field_labels: Vec<&str> = match &integer_variant.connective {
-        TypeConnective::Conj { children } => children.iter().map(|f| f.label.as_str()).collect(),
+    let integer_children = match &integer_variant.connective {
+        TypeConnective::Conj { children } => children,
         other => panic!(
             "IntegerPrimitive payload must be a Conj record, got {:?}",
             other
         ),
     };
+    let integer_field_labels: Vec<&str> =
+        integer_children.iter().map(|f| f.label.as_str()).collect();
     assert_eq!(
         integer_field_labels,
         vec![
@@ -83,6 +93,20 @@ fn dag_new_exposes_rust_pilot_primitives_type_structure() {
         ],
         "IntegerPrimitive field order is load-bearing for T-Ground L4-(C) witness consumption"
     );
+
+    let pilot_bound = dag
+        .declaration_by_name("PilotIntegerRangeBound")
+        .expect("std/types.dag `PilotIntegerRangeBound` in bootstrap");
+    for label in ["range_min_inclusive", "range_max_inclusive"] {
+        let field = integer_children
+            .iter()
+            .find(|c| c.label == label)
+            .unwrap_or_else(|| panic!("missing {label} on IntegerPrimitive"));
+        assert_eq!(
+            field.ty, pilot_bound.id,
+            "expected `{label}` field type to be `PilotIntegerRangeBound`, not unrefined `String`"
+        );
+    }
 
     let non_integer_variant = dag.declaration(variants[1].ty);
     let non_integer_field_labels: Vec<&str> = match &non_integer_variant.connective {
