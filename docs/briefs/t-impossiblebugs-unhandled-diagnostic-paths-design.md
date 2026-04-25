@@ -134,12 +134,18 @@ not by parallel surface.
 
 ### Evidence: force_unwrap is closed today by not existing
 
-`grep -rn "force_unwrap" src/v3/std/ dsl/std/` returns nothing.
-`dsl/std/languages.dag:322,325,1026` shows the language ships
-`unwrap_or_else` (total: `Option<T> -> (() -> T) -> T`) and provides
-no partial counterpart. The bug class *force-unwrap on None* is closed
-by the partial form simply not being expressible in the surface
-language. No proof obligation, no entailment, no asymmetric dispatch.
+`grep -rn "force_unwrap" src/v3/std/ dsl/std/` returns nothing —
+the partial form is simply absent from the gunbc surface. Closure
+is by absence, not by a typed std Option API. (`dsl/std/languages.dag:322,325,1026`
+declares `NullCoalesceStrategy` emit-time templates for how each
+target language renders null-coalescing — Rust uses
+`{lhs}.unwrap_or_else(|| {rhs})`, Python uses a ternary, etc. —
+but those are per-target rendering carriers, not a gunbc-level
+total Option API; any typed std Option API for the total form is
+itself follow-on work.) The bug class *force-unwrap on None* is
+closed because the partial form is unexpressible at the gunbc
+surface, not because a paired total replacement ships. No proof
+obligation, no entailment, no asymmetric dispatch.
 
 This is the load-bearing pattern. It's already the gunbc convention;
 the unhandled-diagnostic-paths lane should follow it rather than invent
@@ -342,9 +348,13 @@ prerequisite for the bug-class closure THESIS:175 / THESIS:374 promises.
   `src/v3/std/verification.dag:137-141`,
   `src/v3/compiler/tests/t_demo/t_demo_fixtures.dag:87-97`,
   `src/v3/compiler/src/test_runner.rs:1425,1555`.
-- Totality-by-omission precedent (force_unwrap not in std/):
-  `dsl/std/languages.dag:322,325,1026` (only `unwrap_or_else`
-  present).
+- Totality-by-omission precedent: `force_unwrap` is absent from
+  the gunbc surface (`grep -rn "force_unwrap" src/v3/std/ dsl/std/`
+  returns nothing). `dsl/std/languages.dag:322,325,1026` shows
+  per-target `NullCoalesceStrategy` emit templates (Rust:
+  `unwrap_or_else`, Python: ternary, etc.) — those are
+  rendering-time carriers, not a typed gunbc Option API; any
+  total Option surface is itself follow-on work.
 - DiagnosticKind taxonomy:
   `src/v3/std/verification.dag:29-35`.
 - Operator declaration surface: `dsl/std/algebra.dag:196,305,379`.
