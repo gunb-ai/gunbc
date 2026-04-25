@@ -346,7 +346,7 @@ prerequisite for the bug-class closure THESIS:175 / THESIS:374 promises.
   `dsl/std/languages.dag:322,325,1026` (only `unwrap_or_else`
   present).
 - DiagnosticKind taxonomy:
-  `src/v3/std/verification.dag:29-34`.
+  `src/v3/std/verification.dag:29-35`.
 - Operator declaration surface: `dsl/std/algebra.dag:196,305,379`.
 - Partial-form audit at HEAD: `dsl/std/algebra.dag:305` (FreeMonoid.index — partial), `:340` (Map.get — total via `V?`).
 - `/` dispatch path at HEAD: `src/v3/compiler/operators.dag:53` maps `Div => "div"`; `dsl/std/algebra.dag:182` declares `OrderedRing.div: fn(T, T) -> T` (added in a sibling lane since the original brief was authored); the alias chain `dsl/std/integer.dag:43` (`type Int = Int64`) → `:34` (`type Int64 = OrderedRing<Word64>`) is consumed by the dispatch walk at `src/v3/compiler/src/infer.rs:3975-3977` (`TypeConnective::Atom(ResolvedBy*)` traversal), so `Int / Int` dispatches through the algebra-Conj walk to `OrderedRing.div`. The Rust-side primitive scaffold at `src/v3/compiler/src/infer.rs:4003-4015` remains as a fallback for types whose walk doesn't terminate at an algebra Conj declaring the requested field. Closure of bare `/` for `Int` requires both the algebra retype at `algebra.dag:182` AND migration of the per-target `OperatorRealization` carriers keyed on `OrderedRing.div` (`src/v3/spec/rust.dag:816`, `go.dag:742` render bare `({lhs} / {rhs})`; `src/v3/spec/python.dag:486` renders `(__v3_idiv({lhs}, {rhs}))` via the helper at `python_target.rs:680` pinned by `m1_4_emit_python_test.rs:108-109`) — under a total return shape, every carrier (including the Python helper) needs migration to construct the new return shape.
