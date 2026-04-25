@@ -187,6 +187,84 @@ type RustPrimitive
       is_copy: Bool
     }
 
+// Structurally walkable range facts for integer-literal reconciliation.
+// `rust_pilot_primitives` remains a top-level list/sum body and therefore
+// lowers as `ValueBody::Unparsed` until the R2 top-level aggregate sub-lane
+// lands. These record data declarations expose the same integer range facts
+// through today's structural `ValueBody::Structural` path so consumers do
+// not mirror bounds in Rust.
+type IntegerRangeFact {
+  target_name: String
+  algebra: IntegerAlgebra
+  carrier: TargetCarrier
+  range_min_inclusive: String
+  range_max_inclusive: String
+}
+
+data rust_i8_integer_range: IntegerRangeFact = {
+  target_name: "i8",
+  algebra: OrderedRingAlgebra,
+  carrier: ByteCarrier,
+  range_min_inclusive: "-128",
+  range_max_inclusive: "127"
+}
+
+data rust_i16_integer_range: IntegerRangeFact = {
+  target_name: "i16",
+  algebra: OrderedRingAlgebra,
+  carrier: Word16Carrier,
+  range_min_inclusive: "-32768",
+  range_max_inclusive: "32767"
+}
+
+data rust_i32_integer_range: IntegerRangeFact = {
+  target_name: "i32",
+  algebra: OrderedRingAlgebra,
+  carrier: Word32Carrier,
+  range_min_inclusive: "-2147483648",
+  range_max_inclusive: "2147483647"
+}
+
+data rust_i64_integer_range: IntegerRangeFact = {
+  target_name: "i64",
+  algebra: OrderedRingAlgebra,
+  carrier: Word64Carrier,
+  range_min_inclusive: "-9223372036854775808",
+  range_max_inclusive: "9223372036854775807"
+}
+
+data rust_u8_integer_range: IntegerRangeFact = {
+  target_name: "u8",
+  algebra: SemiringAlgebra,
+  carrier: ByteCarrier,
+  range_min_inclusive: "0",
+  range_max_inclusive: "255"
+}
+
+data rust_u16_integer_range: IntegerRangeFact = {
+  target_name: "u16",
+  algebra: SemiringAlgebra,
+  carrier: Word16Carrier,
+  range_min_inclusive: "0",
+  range_max_inclusive: "65535"
+}
+
+data rust_u32_integer_range: IntegerRangeFact = {
+  target_name: "u32",
+  algebra: SemiringAlgebra,
+  carrier: Word32Carrier,
+  range_min_inclusive: "0",
+  range_max_inclusive: "4294967295"
+}
+
+data rust_u64_integer_range: IntegerRangeFact = {
+  target_name: "u64",
+  algebra: SemiringAlgebra,
+  carrier: Word64Carrier,
+  range_min_inclusive: "0",
+  range_max_inclusive: "18446744073709551615"
+}
+
 
 // =========================================================================
 // Pilot-set declarations.

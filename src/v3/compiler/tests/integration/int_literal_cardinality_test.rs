@@ -69,10 +69,20 @@ fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
     assert!(
         messages.iter().any(|message| {
             message.contains("integer literal `256`")
-                && message.contains("UInt8")
+                && message.contains("u8")
                 && message.contains("0..=255")
                 && message.contains("wider target")
         }),
         "expected MagnitudeOutOfRange details, got {messages:?}"
+    );
+    assert!(
+        dag.diagnostics().iter().any(|(_, diagnostic)| {
+            matches!(
+                diagnostic,
+                v3_compiler::diagnostics::Diagnostic::MagnitudeOutOfRange { fixes, .. }
+                    if fixes.is_empty()
+            )
+        }),
+        "MagnitudeOutOfRange must not fabricate an empty synthetic correction"
     );
 }

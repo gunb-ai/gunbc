@@ -1,98 +1,156 @@
-use crate::dag::{AtomPayload, Behavior, Dag, DeclarationId, LiteralBits, PortId, TypeConnective};
-use crate::diagnostics::{Correction, Diagnostic, SourceSpan};
+use crate::dag::{
+    AtomPayload, Behavior, Dag, DeclarationId, FieldValue, LiteralBits, PortId, TypeConnective,
+    ValueBody,
+};
+use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::types::TypeShape;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct IntegerRange {
-    pub(crate) target_name: &'static str,
-    pub(crate) min_decimal: &'static str,
-    pub(crate) max_decimal: &'static str,
+    pub(crate) target_name: String,
+    pub(crate) min_decimal: String,
+    pub(crate) max_decimal: String,
 }
 
 impl IntegerRange {
-    fn min(self) -> i128 {
+    fn min(&self) -> i128 {
         self.min_decimal
             .parse()
-            .expect("checked-in integer range minimum must parse as i128")
+            .expect("declared integer range minimum must parse as i128")
     }
 
-    fn max(self) -> i128 {
+    fn max(&self) -> i128 {
         self.max_decimal
             .parse()
-            .expect("checked-in integer range maximum must parse as i128")
+            .expect("declared integer range maximum must parse as i128")
     }
 
-    pub(crate) fn contains_i64(self, value: i64) -> bool {
+    pub(crate) fn contains_i64(&self, value: i64) -> bool {
         let value = i128::from(value);
         self.min() <= value && value <= self.max()
     }
 }
 
 pub(crate) fn integer_range_for_decl(dag: &Dag, decl: DeclarationId) -> Option<IntegerRange> {
-    let name = integer_decl_name(dag, decl, 0)?;
-    match name {
-        "Int8" => Some(IntegerRange {
-            target_name: "Int8",
-            min_decimal: "-128",
-            max_decimal: "127",
-        }),
-        "Int16" => Some(IntegerRange {
-            target_name: "Int16",
-            min_decimal: "-32768",
-            max_decimal: "32767",
-        }),
-        "Int32" => Some(IntegerRange {
-            target_name: "Int32",
-            min_decimal: "-2147483648",
-            max_decimal: "2147483647",
-        }),
-        "Int" | "Int64" => Some(IntegerRange {
-            target_name: "Int64",
-            min_decimal: "-9223372036854775808",
-            max_decimal: "9223372036854775807",
-        }),
-        "UInt8" => Some(IntegerRange {
-            target_name: "UInt8",
-            min_decimal: "0",
-            max_decimal: "255",
-        }),
-        "UInt16" => Some(IntegerRange {
-            target_name: "UInt16",
-            min_decimal: "0",
-            max_decimal: "65535",
-        }),
-        "UInt32" => Some(IntegerRange {
-            target_name: "UInt32",
-            min_decimal: "0",
-            max_decimal: "4294967295",
-        }),
-        "UInt" | "UInt64" => Some(IntegerRange {
-            target_name: "UInt64",
-            min_decimal: "0",
-            max_decimal: "18446744073709551615",
-        }),
-        _ => None,
-    }
+    let key = integer_routing_key_for_decl(dag, decl, 0)?;
+    dag.declarations()
+        .iter()
+        .filter(|decl| is_integer_range_fact(dag, decl.meta_tag))
+        .filter_map(|decl| integer_range_fact(dag, decl.value_body.as_ref()?))
+        .find(|fact| fact.key == key)
+        .map(|fact| fact.range)
 }
 
-fn integer_decl_name(dag: &Dag, decl: DeclarationId, depth: usize) -> Option<&str> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct IntegerRoutingKey {
+    algebra: String,
+    carrier: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct IntegerRangeFact {
+    key: IntegerRoutingKey,
+    range: IntegerRange,
+}
+
+fn integer_routing_key_for_decl(
+    dag: &Dag,
+    decl: DeclarationId,
+    depth: usize,
+) -> Option<IntegerRoutingKey> {
     if depth >= 32 {
         return None;
     }
     let declaration = dag.declaration(decl);
-    if let Some(name) = declaration.name.as_deref() {
-        return Some(name);
-    }
     match &declaration.connective {
         TypeConnective::Atom(AtomPayload::ResolvedByName(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByStructure(next)) => {
-            integer_decl_name(dag, *next, depth + 1)
+            integer_routing_key_for_decl(dag, *next, depth + 1)
         }
-        TypeConnective::Instantiation { template, .. } => {
-            integer_decl_name(dag, *template, depth + 1)
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            let template_name = dag.declaration(*template).name.as_deref()?;
+            let algebra = match template_name {
+                "OrderedRing" => "OrderedRingAlgebra",
+                "Semiring" => "SemiringAlgebra",
+                _ => return None,
+            };
+            let carrier = arguments
+                .first()
+                .and_then(|arg| dag.declaration(arg.value).name.as_deref())
+                .and_then(carrier_tag_for_std_type)?;
+            Some(IntegerRoutingKey {
+                algebra: algebra.to_string(),
+                carrier: carrier.to_string(),
+            })
         }
         _ => None,
     }
+}
+
+fn carrier_tag_for_std_type(name: &str) -> Option<&'static str> {
+    match name {
+        "Byte" => Some("ByteCarrier"),
+        "Word16" => Some("Word16Carrier"),
+        "Word32" => Some("Word32Carrier"),
+        "Word64" => Some("Word64Carrier"),
+        _ => None,
+    }
+}
+
+fn is_integer_range_fact(dag: &Dag, meta_tag: Option<DeclarationId>) -> bool {
+    let Some(meta_tag) = meta_tag else {
+        return false;
+    };
+    dag.declaration(meta_tag).name.as_deref() == Some("IntegerRangeFact")
+}
+
+fn integer_range_fact(dag: &Dag, value_body: &ValueBody) -> Option<IntegerRangeFact> {
+    let ValueBody::Structural { fields } = value_body else {
+        return None;
+    };
+    Some(IntegerRangeFact {
+        key: IntegerRoutingKey {
+            algebra: variant_label_for_value(dag, require_field(fields, "algebra")?)?,
+            carrier: variant_label_for_value(dag, require_field(fields, "carrier")?)?,
+        },
+        range: IntegerRange {
+            target_name: literal_string(require_field(fields, "target_name")?)?,
+            min_decimal: literal_string(require_field(fields, "range_min_inclusive")?)?,
+            max_decimal: literal_string(require_field(fields, "range_max_inclusive")?)?,
+        },
+    })
+}
+
+fn require_field<'a>(fields: &'a [(String, FieldValue)], name: &str) -> Option<&'a FieldValue> {
+    fields
+        .iter()
+        .find(|(field_name, _)| field_name == name)
+        .map(|(_, value)| value)
+}
+
+fn literal_string(value: &FieldValue) -> Option<String> {
+    match value {
+        FieldValue::Literal(LiteralBits::String(value)) => Some(value.clone()),
+        _ => None,
+    }
+}
+
+fn variant_label_for_value(dag: &Dag, value: &FieldValue) -> Option<String> {
+    let FieldValue::Variant { constructor, .. } = value else {
+        return None;
+    };
+    dag.declarations()
+        .iter()
+        .find_map(|decl| match &decl.connective {
+            TypeConnective::Disj { variants } => variants
+                .iter()
+                .find(|variant| variant.ty == *constructor)
+                .map(|variant| variant.label.clone()),
+            _ => None,
+        })
 }
 
 pub(crate) fn literal_int_at(dag: &Dag, port: PortId) -> Option<i64> {
@@ -119,11 +177,6 @@ pub(crate) fn magnitude_out_of_range(
     range: IntegerRange,
     span: SourceSpan,
 ) -> Diagnostic {
-    let wider = wider_integer_target(literal);
-    let hint = format!(
-        "use a wider integer target such as `{wider}` or choose a literal in {}..={}",
-        range.min_decimal, range.max_decimal
-    );
     Diagnostic::MagnitudeOutOfRange {
         literal: literal.to_string(),
         target: range.target_name.to_string(),
@@ -131,28 +184,6 @@ pub(crate) fn magnitude_out_of_range(
         range_max_inclusive: range.max_decimal.to_string(),
         expected,
         span,
-        fixes: vec![Correction {
-            description: hint,
-            span: SourceSpan::new("<int-literal-range-hint>", 0, 0),
-            new_source: String::new(),
-        }],
-    }
-}
-
-fn wider_integer_target(literal: i64) -> &'static str {
-    if literal < 0 {
-        if i16::MIN as i64 <= literal && literal <= i16::MAX as i64 {
-            "Int16"
-        } else if i32::MIN as i64 <= literal && literal <= i32::MAX as i64 {
-            "Int32"
-        } else {
-            "Int64"
-        }
-    } else if literal <= u16::MAX as i64 {
-        "UInt16"
-    } else if literal <= u32::MAX as i64 {
-        "UInt32"
-    } else {
-        "UInt64"
+        fixes: Vec::new(),
     }
 }
