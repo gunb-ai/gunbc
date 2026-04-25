@@ -16,8 +16,8 @@ That framing directly contradicts the design DB-11 already shipped.
 
 ### Evidence at HEAD
 
-`src/v3/compiler/src/infer.rs:3688-3769` — `resolve_operator_arrow` is the
-operator dispatch site. Lines 3693-3703 carry an explicit comment block:
+`src/v3/compiler/src/infer.rs:3935-` (function start; ~80 lines) — `resolve_operator_arrow` is the
+operator dispatch site. Lines 3940-3950 carry an explicit comment block:
 
 ```rust
 // DB-11 (3a.3) operand normalization. Primitive operators (`+`,
@@ -60,7 +60,7 @@ To make `a / b` require `b: Int where b != 0`, three things must
 simultaneously be true that are not true today:
 
 1. **Operator dispatch must read refinements on the precondition operand**,
-   contradicting the strip at line 3703.
+   contradicting the strip at line 3950.
 2. **The contradiction must be asymmetric** — `>` continues to strip
    refinements (or `d > 10` regresses), while `/` does not strip on the
    denominator slot. Per-operator per-operand refinement-honoring
@@ -258,7 +258,7 @@ prerequisite for the bug-class closure THESIS:350 promises.
 
 ## Receipts
 
-- DB-11 strip site: `src/v3/compiler/src/infer.rs:3693-3703`
+- DB-11 strip site: `src/v3/compiler/src/infer.rs:3940-3950`
   (and `strip_refinement_to_base` at `:4032`).
 - DB-11 test surface: `src/v3/compiler/tests/integration/m2_feature_parity_test.rs:331-700`.
 - ownership_lens precedent (cited in original brief, ruled shape-only
