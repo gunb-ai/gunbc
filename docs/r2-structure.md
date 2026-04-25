@@ -83,7 +83,7 @@ Continues `docs/briefs/grounding-manager.md` (refreshed for R2 scope on promotio
 |---|---|---|---|
 | T-Ground | XL | Grounding | Full T-Ground-* sub-program (Goal 1) |
 | T-Modeling | M | Director (ad-hoc) | int-lit / Secret<T> / Dimensions (Goal 2) |
-| T-Substrate | M | Director (ad-hoc) | Four scoped-subset sub-lanes (Goal 3): cardinality-for-int-lit; nominal-opaque-for-Secret; parametric-algebra-attachment-for-Dimensions; top-level-ValueBody-list/sum + std.unicode-bootstrap-for-tokenizer-charclass — each scoped to its paired R2 consumer (T-Modeling × 3 + tokenizer × 1), not full substrate-capability |
+| T-Substrate | M | Director (ad-hoc) | Four scoped-subset sub-lanes (Goal 3): cardinality-for-int-lit; nominal-opaque-for-Secret; parametric-algebra-attachment-for-Dimensions; top-level-ValueBody-list/sum + std.unicode-bootstrap (3 named consumers: tokenizer charclass phase-2 + Engine sharpened-(b) pilot enumeration + kernel_algebra_profile mirror dissolution — single substrate work unblocks all three) — each sub-lane scoped to its paired R2 consumer set (T-Modeling × 3 + multi-consumer × 1), not full substrate-capability |
 | T-ImpossibleBugs | S | Director (ad-hoc) | nested-optional flatten / unhandled-diagnostic-paths / unenumerated-effects (Goal 4) |
 | T-PerMethodMetadata | S | Director (ad-hoc) | §6a per-method-metadata carrier pick (Goal 5) — design-call close, not substrate-capability work |
 
@@ -108,20 +108,24 @@ T-Ground:         Pilot → Rust → Engine → Tests → Dissolve   (critical p
 T-Substrate:      cardinality-for-int-lit (subset) ──→ unblocks T-Modeling int-lit
                   nominal-opaque-for-Secret (subset) ─→ unblocks T-Modeling Secret<T>
                   parametric-algebra-for-Dimensions (subset) ─→ unblocks T-Modeling Dimensions
-                  ValueBody-list/sum + std.unicode-bootstrap (subset) ─→ unblocks tokenizer charclass phase-2
+                  ValueBody-list/sum + std.unicode-bootstrap (subset) ─→ unblocks 3 consumers (single substrate work):
+                                                                       (i) tokenizer charclass phase-2
+                                                                       (ii) Engine sharpened-(b) pilot enumeration
+                                                                       (iii) kernel_algebra_profile mirror dissolution
 T-Modeling:       int-lit      ← T-Substrate cardinality-for-int-lit
                   Secret<T>    ← T-Substrate nominal-opaque-for-Secret
                   Dimensions   ← T-Substrate parametric-algebra-for-Dimensions
-Tokenizer charclass phase-2 (consumer of T-Substrate's 4th subset; not a peer lane —
-                  consumed inside T-Substrate scope, deliverable owned by tokenizer code):
-                  retype to Char / List<Char> / CharClass ← T-Substrate ValueBody-list/sum + std.unicode-bootstrap
+Multi-consumer of T-Substrate's 4th subset (none are peer lanes — all consumed inside T-Substrate scope):
+                  (i)   Tokenizer charclass phase-2: retype to Char / List<Char> / CharClass
+                  (ii)  Engine sharpened-(b): full pilot enumeration via symbolic walk of rust_pilot_primitives
+                  (iii) kernel_algebra_profile: retire dag.rs:1530 hand-Rust mirror
 T-ImpossibleBugs: 3 independent classes (any worker)
 T-PerMethodMetadata: §6a pick (any worker; independent)
 (Goal 6 demo artifacts ship with each lane's closure PR — not a
  separate dependency-DAG node; see Demo discipline section.)
 ```
 
-Parallel-capable work at any time: Grounding has 2 fill slots (Python, Go) alongside its critical path; Director dispatch has 4 T-Substrate sub-lanes (3 T-Modeling unblocks + 1 tokenizer-charclass unblock) + 3 T-Modeling items (each pair-blocked) + 1 tokenizer-charclass deliverable (pair-blocked on the 4th T-Substrate sub-lane) + 3 T-ImpossibleBugs classes + 1 T-PerMethodMetadata pick, for roughly 8–12 slots depending on T-Substrate unblock timing.
+Parallel-capable work at any time: Grounding has 2 fill slots (Python, Go) alongside its critical path; Director dispatch has 4 T-Substrate sub-lanes (3 T-Modeling unblocks + 1 multi-consumer unblock covering 3 consumers) + 3 T-Modeling items (each pair-blocked) + 3 deliverables pair-blocked on the 4th T-Substrate sub-lane (tokenizer charclass, Engine sharpened-(b), kernel_algebra_profile mirror dissolution) + 3 T-ImpossibleBugs classes + 1 T-PerMethodMetadata pick, for roughly 10–14 slots depending on T-Substrate unblock timing.
 
 ## R1 closure criteria
 
