@@ -9,8 +9,7 @@ mod generated {
         unused_parens,
         unused_variables,
         clippy::clone_on_copy,
-        clippy::collapsible_else_if,
-        clippy::enum_variant_names
+        clippy::collapsible_else_if
     )]
 
     use crate::dag::*;

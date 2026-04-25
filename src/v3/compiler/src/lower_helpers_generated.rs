@@ -1,47 +1,6 @@
 // AUTO-GENERATED from `src/v3/lenses/lower_helpers.dag` via
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
-#[derive(Clone, Debug)]
-pub enum IntegerAlgebra {
-    OrderedRingAlgebra,
-    SemiringAlgebra,
-}
-#[derive(Clone, Debug)]
-pub enum NonIntegerAlgebra {
-    BooleanAlgebraAlgebra,
-    TerminalAlgebra,
-}
-#[derive(Clone, Debug)]
-pub enum TargetCarrier {
-    BitCarrier,
-    ByteCarrier,
-    Word16Carrier,
-    Word32Carrier,
-    Word64Carrier,
-    TerminalCarrier,
-}
-#[derive(Clone, Debug)]
-pub enum IntegerOverflow {
-    TwoComplementWrap,
-    Saturating,
-    Trap,
-}
-#[derive(Clone, Debug)]
-pub enum RustPrimitive {
-    IntegerPrimitive {
-        target_name: String,
-        algebra: IntegerAlgebra,
-        carrier: TargetCarrier,
-        is_copy: bool,
-        overflow: IntegerOverflow,
-    },
-    NonIntegerPrimitive {
-        target_name: String,
-        algebra: NonIntegerAlgebra,
-        carrier: TargetCarrier,
-        is_copy: bool,
-    },
-}
 pub fn expr_span(p0: &parse_surface::SurfaceExpr) -> SourceSpan {
     match p0 {
         SurfaceExpr::Literal {

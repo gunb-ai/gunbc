@@ -209,6 +209,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/common/mod.rs",
     "src/v3/compiler/tests/integration/common/substrate_receipts.rs",
     "src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs",
+    // T-Ground-Engine Phase-1 loader-close (PR #776, Director-approved
+    // Path 2): hand-Rust integration test pinning
+    // `Dag::rust_pilot_primitives()` type-structure walk + the
+    // `ValueBody::Unparsed` boundary that flips when R2 T-Substrate's
+    // 4th sub-lane lands top-level `ValueBody::List`/aggregate.
+    // Dissolves into testgen authority when the testgen path covers
+    // the dsl/extdeps loader surface.
+    "src/v3/compiler/tests/integration/extdeps_rust_primitives_loader_test.rs",
     "src/v3/compiler/tests/integration/four_fixture_regression_test.rs",
     "src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs",
     "src/v3/compiler/tests/integration/lane2_stage_2a_effects_smoke.rs",
