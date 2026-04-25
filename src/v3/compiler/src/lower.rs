@@ -862,7 +862,8 @@ fn lower_type_alias_refinements_phase(
 /// `lower_scalar_literal_for_type` can only check base scalar
 /// cardinality in the data pre-pass. After alias refinements land, this
 /// validation pass rejects any already-scalar-lowered data declaration
-/// whose declared type now carries a lowered predicate refinement. A raw
+/// whose declared type now carries a lowered predicate refinement,
+/// including scalar literals nested inside structural data bodies. A raw
 /// scalar literal is base-type evidence, not predicate evidence; callers
 /// must introduce a narrowing branch or another refinement-bearing
 /// source. Deferred placeholders are skipped because they intentionally
@@ -888,13 +889,13 @@ fn validate_scalar_data_refinements_phase(
             continue;
         };
         let decl = dag.declaration(decl_id);
-        if !matches!(decl.value_body, Some(crate::dag::ValueBody::Scalar(_))) {
-            continue;
-        }
         let Some(expected) = decl.meta_tag else {
             continue;
         };
-        if !scalar_literal_requires_refinement_discharge(dag, expected) {
+        let Some(value_body) = decl.value_body.as_ref() else {
+            continue;
+        };
+        if !value_body_contains_undischarged_scalar_literal(dag, expected, value_body) {
             continue;
         }
         dag.declaration_mut(decl_id).value_body = None;
@@ -909,6 +910,75 @@ fn validate_scalar_data_refinements_phase(
                 fixes: Vec::new(),
             },
         );
+    }
+}
+
+fn value_body_contains_undischarged_scalar_literal(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    value_body: &crate::dag::ValueBody,
+) -> bool {
+    match value_body {
+        crate::dag::ValueBody::Scalar(_) => {
+            scalar_literal_requires_refinement_discharge(dag, expected_type)
+        }
+        crate::dag::ValueBody::Structural { fields } => {
+            structural_fields_contain_undischarged_scalar_literal(dag, expected_type, fields)
+        }
+        crate::dag::ValueBody::Unparsed(_) => false,
+    }
+}
+
+fn structural_fields_contain_undischarged_scalar_literal(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    fields: &[(String, crate::dag::FieldValue)],
+) -> bool {
+    let Some(conj_id) = walk_to_conj_decl(dag, expected_type) else {
+        return false;
+    };
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return false;
+    };
+    fields.iter().any(|(label, value)| {
+        let Some(field) = children.iter().find(|field| field.label == *label) else {
+            return false;
+        };
+        field_value_contains_undischarged_scalar_literal(dag, field.ty, value)
+    })
+}
+
+fn field_value_contains_undischarged_scalar_literal(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    value: &crate::dag::FieldValue,
+) -> bool {
+    match value {
+        crate::dag::FieldValue::Literal(_) => {
+            scalar_literal_requires_refinement_discharge(dag, expected_type)
+        }
+        crate::dag::FieldValue::Reference(_) => false,
+        crate::dag::FieldValue::Record(fields) => {
+            structural_fields_contain_undischarged_scalar_literal(dag, expected_type, fields)
+        }
+        crate::dag::FieldValue::List(values) => {
+            list_element_type(dag, expected_type).is_some_and(|element_type| {
+                values.iter().any(|element| {
+                    field_value_contains_undischarged_scalar_literal(dag, element_type, element)
+                })
+            })
+        }
+        crate::dag::FieldValue::Variant {
+            constructor,
+            payload,
+        } => variant_payload_fields_for_lowering(dag, *constructor).is_some_and(|fields| {
+            payload
+                .iter()
+                .zip(fields.iter())
+                .any(|(value, (_, field_type))| {
+                    field_value_contains_undischarged_scalar_literal(dag, *field_type, value)
+                })
+        }),
     }
 }
 

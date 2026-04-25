@@ -335,3 +335,28 @@ fn data_bool_string_scalar_literals_do_not_bypass_refinement() {
         );
     }
 }
+
+#[test]
+fn structural_data_scalar_fields_do_not_bypass_refinement() {
+    let err = compile_to_dag(
+        "type PositiveInt = Int where PositiveInt > 0\n\
+         type Box { value: PositiveInt }\n\
+         data x: Box = { value: 1 }",
+        "structural_data_refined_scalar_field.v3",
+    )
+    .expect_err("structural scalar field must fail missing refinement evidence");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic diagnostic, got {err:?}");
+    };
+    let messages: Vec<String> = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, diagnostic)| diagnostic.message())
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("refinement") || message.contains("no narrowing")),
+        "expected refinement failure, got {messages:?}"
+    );
+}
