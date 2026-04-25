@@ -15,6 +15,7 @@
 
 use std::env;
 use std::fs;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use v3_compiler::{
@@ -30,7 +31,20 @@ const GENERATED_NO_PARSE_SURFACE_FILE: &str =
     "src/v3/compiler/src/bootstrap_generated_without_parse_surface.rs";
 
 fn main() {
-    let verify_only = env::args().skip(1).any(|a| a == "--verify");
+    let args: Vec<String> = env::args().skip(1).collect();
+    let verify_only = match args.as_slice() {
+        [] => false,
+        [flag] if flag == "--verify" => true,
+        unexpected => {
+            let _ = writeln!(
+                io::stderr(),
+                "regen_bootstrap: unexpected arguments: {unexpected:?}\n\
+                 Usage: regen_bootstrap [--verify]\n\
+                 Omit flags to write snapshots; pass exactly `--verify` to check without writing."
+            );
+            std::process::exit(2);
+        }
+    };
 
     for generated_file in [
         GENERATED_STD_FILE,

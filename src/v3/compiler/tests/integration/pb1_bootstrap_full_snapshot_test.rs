@@ -23,7 +23,7 @@ fn full_bootstrap_extends_std_snapshot() {
 }
 
 #[test]
-fn generated_full_bootstrap_snapshots_are_clean() {
+fn generated_full_bootstrap_snapshots_have_no_diagnostics() {
     for (label, dag) in [
         ("full", generated_full_bootstrap_dag()),
         (
@@ -36,6 +36,18 @@ fn generated_full_bootstrap_snapshots_are_clean() {
             "{label}: expected clean generated bootstrap, got {:?}",
             dag.diagnostics()
         );
+    }
+}
+
+#[test]
+fn generated_full_bootstrap_snapshots_include_parse_stage() {
+    for (label, dag) in [
+        ("full", generated_full_bootstrap_dag()),
+        (
+            "without_parse_surface",
+            generated_full_bootstrap_without_parse_surface_dag(),
+        ),
+    ] {
         assert!(
             dag.declaration_by_name("parse").is_some(),
             "{label}: expected pipeline `parse` stage in bootstrap Dag"
