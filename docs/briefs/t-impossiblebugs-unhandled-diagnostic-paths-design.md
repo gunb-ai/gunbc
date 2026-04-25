@@ -72,7 +72,7 @@ simultaneously be true that are not true today:
 
 That's the load on the original framing. The "ownership_lens" cited as
 precedent does not bear it: `src/v3/lenses/named_function_count.dag:10-25`
-+ `src/v3/std/verification.dag:137-141` + `src/v3/compiler/src/test_runner.rs:487-520`
++ `src/v3/std/verification.dag:137-141` + `src/v3/compiler/src/test_runner.rs:1425,1555`
 show ownership_lens is a post-hoc observability lens that consumes a
 lowered DAG and asserts a count via `LensOutputEquals`. It does not
 gate type-checking, and it carries no proof obligation. The shape (decl
@@ -271,7 +271,7 @@ prerequisite for the bug-class closure THESIS:350 promises.
   here): `src/v3/lenses/named_function_count.dag:10-25`,
   `src/v3/std/verification.dag:137-141`,
   `src/v3/compiler/tests/t_demo/t_demo_fixtures.dag:87-97`,
-  `src/v3/compiler/src/test_runner.rs:487-520`.
+  `src/v3/compiler/src/test_runner.rs:1425,1555`.
 - Totality-by-omission precedent (force_unwrap not in std/):
   `dsl/std/languages.dag:322,325,1026` (only `unwrap_or_else`
   present).
