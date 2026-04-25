@@ -757,6 +757,12 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
             variant_name_overrides={"LitInt": "Int", "LitBool": "Bool", "LitString": "String"},
         ),
         render_sum(
+            "AtomPayload",
+            sums["AtomPayload"],
+            "#[derive(Debug, Clone)]",
+            output_name="AtomPayload",
+        ),
+        render_sum(
             "CardinalityBound",
             sums["CardinalityBound"],
             "#[derive(Debug, Clone, PartialEq, Eq)]",

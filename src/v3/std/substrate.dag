@@ -32,6 +32,41 @@ type LiteralBits
   | LitBool(Bool)
   | LitString(String)
 
+// Dissolution ledger — AtomPayload (substrate authority; was dag.rs hand-Rust).
+//
+// 🟢 TERMINAL at M1(2.6). Five variants covering the user-input kinds at the
+// type-atom level:
+//
+//   - Literal(LiteralBits) — a literal bit pattern carried at the type level
+//     (e.g. the `3` in Cardinality::Exact(3)).
+//   - UnresolvedIdentifier(String) — a name reference not yet resolved against
+//     the declaration table. Produced during lowering; eliminated at
+//     resolve_pending_identifiers time.
+//   - ResolvedByStructure(DeclarationId) — resolved by structural walk.
+//   - ResolvedByName(DeclarationId) — resolved by name-keyed fallback.
+//   - TypeParam(String) — a type parameter declaration slot, shared across
+//     references inside a parameterized declaration.
+//
+// 4-pattern check:
+// - Pattern 1 (fact placement): fails. Each variant has distinct downstream
+//   consumers (literal constant folding, identifier resolution via
+//   declaration_by_name, SubstStack lookup).
+// - Pattern 2 (variant-is-data): fails. Different payload types per variant.
+// - Pattern 3 (algebraic form): fails. Each variant is a terminal fact from a
+//   distinct user-input boundary.
+// - Pattern 4 (dimensional): fails.
+//
+// Pre/post-sweep phase is structural. Before M1(2.6) review round 7 the shape
+// was Identifier { name: String, resolved: Option<DeclarationId> }, which hid a
+// phase coproduct inside the Option. The split into UnresolvedIdentifier,
+// ResolvedByStructure, and ResolvedByName makes that distinction visible to the
+// type system: unresolved stubs, structural references, and name-fallback
+// references are separate variants rather than hidden behind Some/None.
+//
+// Verdict: terminal. Future extensions (Span-backed metadata atoms for
+// diagnostic-only uses, Char / Float literals) go through §8.10's
+// substrate-extension audit.
+//
 // 🟢 TERMINAL at current substrate scope. This is the durable atom
 // connective surface the lowered declaration graph carries.
 type AtomPayload
