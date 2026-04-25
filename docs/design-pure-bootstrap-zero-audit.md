@@ -56,6 +56,21 @@ during cascade review.
   pipeline-ordering reader is the runtime-side consumer of the
   `bootstrap.dag` workflow declaration; it dissolves into the bootstrap-
   data substrate when PB-Bootstrap-Process lands.
+- **Five regen-tool entries in PB-Tier1-Sweep** (`regen_parse.rs`,
+  `regen_parse_tables.rs`, `regen_tokenize.rs`, `regen_parse_emit.rs`,
+  `regen_parse_tables_emit.rs`). Brief lane taxonomy enumerates PB-1,
+  PB-4 (lower), PB-5 (infer), PB-6 (emit) but **not** PB-Parse /
+  PB-Tokenize as separate sub-lanes. Codex auto-review on c7c864d0
+  flagged the original wildcard placeholders as scaffold-without-
+  trigger (P5 violation). **Proposed homes (subject to Director
+  sign-off):** the three `bin/regen_*` parse/tokenize binaries retire
+  under **PB-1** (their backing authorities — parse tables, tokenizer
+  output — are exactly what PB-1 generated constructors replace); the
+  two `regen_*_emit.rs` files retire under **PB-Bootstrap-Process**
+  (the emit-side of the regen cycle dissolves with bootstrap-as-data).
+  If Director prefers PB-Parse / PB-Tokenize as explicitly named
+  sub-lanes, the brief lane taxonomy needs an amendment in the
+  cascade PR rather than the audit.
 
 ## Lane-distribution summary
 
@@ -151,17 +166,17 @@ migration design — each retires when its producer is generated.
 |---|---|
 | `src/v3/compiler/src/bin/regen_bootstrap.rs` | PB-Bootstrap-Process |
 | `src/v3/compiler/src/bin/regen_lens.rs` | PB-Runtime |
-| `src/v3/compiler/src/bin/regen_parse.rs` | PB-* parse migration |
-| `src/v3/compiler/src/bin/regen_parse_tables.rs` | PB-* parse migration |
-| `src/v3/compiler/src/bin/regen_tokenize.rs` | PB-* tokenize migration |
+| `src/v3/compiler/src/bin/regen_parse.rs` | PB-1 (regen tool for parse-authority subsumed by PB-1 generated constructors) *(proposed — see Findings)* |
+| `src/v3/compiler/src/bin/regen_parse_tables.rs` | PB-1 (parse-table authority subsumed by PB-1) *(proposed — see Findings)* |
+| `src/v3/compiler/src/bin/regen_tokenize.rs` | PB-1 (tokenize-authority subsumed by PB-1 generated constructors) *(proposed — see Findings)* |
 | `src/v3/compiler/src/bin/regen_v3.rs` | PB-Bootstrap-Process |
 | `src/v3/compiler/src/bin/self_host_fixed_point.rs` | PB-Bootstrap-Process (DB-8 gate harness) |
 | `src/v3/compiler/src/dag/builder.rs` | PB-Substrate (builder API regenerates with substrate types) |
 | `src/v3/compiler/src/dimension.rs` | PB-Substrate / std modeling |
 | `src/v3/compiler/src/lens_unused_parameters.rs` | Lens generalization (PB-Runtime adjacent) |
 | `src/v3/compiler/src/regen_bootstrap_emit.rs` | PB-Bootstrap-Process |
-| `src/v3/compiler/src/regen_parse_emit.rs` | PB-* parse migration |
-| `src/v3/compiler/src/regen_parse_tables_emit.rs` | PB-* parse migration |
+| `src/v3/compiler/src/regen_parse_emit.rs` | PB-Bootstrap-Process (emit-side of regen cycle dissolves with bootstrap-as-data) *(proposed — see Findings)* |
+| `src/v3/compiler/src/regen_parse_tables_emit.rs` | PB-Bootstrap-Process (same shape as `regen_parse_emit.rs`) *(proposed — see Findings)* |
 | `src/v3/compiler/src/tokenize_char_class.rs` | R1 T-Sub `sub_charclass_in_std_unicode`. Retirement closes Class 5 Gap 3 → unblocks R2 T-Substrate 4th sub-lane (Director-coordinated per brief Hand-off points). |
 
 ## Manager note: first prototyped lane pick
