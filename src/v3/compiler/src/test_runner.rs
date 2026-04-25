@@ -703,11 +703,11 @@ fn child_wait_for_execute_command(
     must_drain_piped_child_stderr: bool,
 ) -> Result<std::process::ExitStatus, ClaimResult> {
     #[cfg(target_os = "linux")]
-    let _stder_nonblock =
+    let _stderr_nonblock =
         LinuxPipedChildStderrNonblockGuard::try_new(must_drain_piped_child_stderr, child);
     // If we could not set nonblock, do not `read` in blocking mode (would block on an idle pipe).
     #[cfg(target_os = "linux")]
-    let can_drain_nonblocking = _stder_nonblock.is_some();
+    let can_drain_nonblocking = _stderr_nonblock.is_some();
 
     let wall_label = format!("{:.2}", wall_time.as_secs_f64());
     let deadline = Instant::now() + wall_time;
