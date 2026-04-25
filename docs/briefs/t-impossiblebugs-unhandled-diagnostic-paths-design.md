@@ -302,5 +302,6 @@ prerequisite for the bug-class closure THESIS:350 promises.
   `src/v3/std/verification.dag:29-34`.
 - Operator declaration surface: `dsl/std/algebra.dag:196,305,379`.
 - Partial-form audit at HEAD: `dsl/std/algebra.dag:305` (FreeMonoid.index — partial), `:340` (Map.get — total via `V?`).
+- `/` dispatch path at HEAD: `src/v3/compiler/operators.dag:53` maps `Div => "div"`; no algebra declares a `div` field (Field has `reciprocal:490`; OrderedRing has `quotient:477` for Euclidean integer-division); `Int / Int` falls through to the Rust-side primitive scaffold at `src/v3/compiler/src/infer.rs:4003-4015` returning `(Int, Int) -> Int`.
 - THESIS gate: `THESIS.md:348-350`.
 - DB-11 history: `docs/db-history/db-11.md`.
