@@ -281,12 +281,22 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [ ] Array, slice, map, struct, pointer
 - [ ] Function, interface, channel
 
-**T-Ground-Engine:** ⏸️ PARKED — Phase 0 substrate audit complete (PR #768 merged 2026-04-25 commit `4afc0d794`); Director routed Route 1 (small loader-close, ad-hoc Director dispatch). Engine re-dispatches in sharpened-(b) form once the loader-close PR merges. See [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md).
-- [x] Phase 0 substrate audit (concluded escalation-class)
-- [ ] Inhabitance-search walker (Phase 1, blocked on loader-close PR)
-- [ ] Minimum-satisfier selection (Phase 1)
-- [ ] Fail-closed tie-breaking with structured diagnostic (Phase 1; pilot established the contract baseline)
-- [ ] Cross-type coercion paths (e.g., UTF-8 `Char ↔ u8`) (Phase 2; blocks on full-reference)
+**T-Ground-Engine:** ⏸️ PARKED — Phase 0 audit ✅ (PR #768); Director routed Route 1 + Path 2 (loader-close ships type-structure-only accessor; pilot-list enumeration deferred). Engine split into two phases per Director signal on [PR #768 (2026-04-25T03:27:15Z)](https://github.com/gunb-ai/gunbc/pull/768) — see [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md).
+- [x] Phase 0 substrate audit (concluded escalation-class; PR #768 merged commit `4afc0d794`)
+- **Phase 1 — type-structure validation** (sharpened-(b)): brief at [`t-ground-engine-phase-1-typestructure.md`](t-ground-engine-phase-1-typestructure.md). Dispatchable when [PR #776](https://github.com/gunb-ai/gunbc/pull/776) loader-close merges.
+  - [ ] Engine sibling crate scaffold (`src/v3/grounding_engine/` or worker-discretion)
+  - [ ] Type-structure walker against loader-close `Declaration` accessor
+  - [ ] Variant-aware structural validation (`IntegerPrimitive | NonIntegerPrimitive`)
+  - [ ] Mirror-consistency assertion (links walker output to pilot's `RUST_PILOT_PRIMITIVES`)
+  - [ ] Type-structure-parity / mirror-consistency / state-space-discipline / diagnostic-quality tests
+- **Phase 2 — full pilot enumeration + mirror retirement**: blocked on R2 T-Substrate 4th sub-lane (top-level `ValueBody::List` extension specifically). Brief forward-planned at [`t-ground-engine-phase-2-enumeration.md`](t-ground-engine-phase-2-enumeration.md) (not yet authored). **Two substrate consumers** converge on this sub-lane (both list-of-sum shaped): tokenizer charclass phase-2 + Engine Phase 2. `kernel_algebra_profile` is `Map<String, AlgebraProfile>` — map-shaped, not list-of-sum; needs distinct `ValueBody::Map` substrate work and is tracked as a sibling future T-Substrate sub-lane (per [PR #782](https://github.com/gunb-ai/gunbc/pull/782) re-scoping after codex caught the substrate-shape conflation).
+  - [ ] Walker graduates to walking `rust_pilot_primitives` symbolically
+  - [ ] Pilot `RUST_PILOT_PRIMITIVES` mirror retires
+  - [ ] Pilot crate deprecation note added (deferred from Phase 1 because mirror still load-bearing)
+  - [ ] Full mirror-elimination claim satisfied (Engine consumes `.dag` declarations directly, no Rust-constant mirror remaining)
+- **Phase 3 (later) — minimum-satisfier + cross-type coercion**:
+  - [ ] Minimum-satisfier selection (when ambiguity becomes possible — full-reference scope)
+  - [ ] Cross-type coercion paths (e.g., UTF-8 `Char ↔ u8`) — blocks on full-reference
 
 **T-Ground-Tests:**
 - [ ] Routing-stability TestClaim variant declared
@@ -316,6 +326,7 @@ Decisions log (append as they happen):
 - **2026-04-25** — Engine-Phase-1 Phase 0 audit landed (PR #768, `t-ground-engine-substrate-audit.md`). Conclusion: both options (a) and (b) block on the same substrate gaps; escalation-class. Engine implementation parked.
 - **2026-04-25** — Engine substrate ask escalated to Director via [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md). Manager recommended Route 3: route Gap 1 close through Pure Bootstrap to Zero program (PB-1 / PB-Bootstrap-Process scope overlap). *(Past tense — overruled in next entry.)*
 - **2026-04-25** — Director chose **Route 1** (small loader-close, ad-hoc Director dispatch). Manager recommendation overruled with substantive reasoning: PB-1 migrates *existing* fixture sets; deciding the bootstrap shape includes a new fifth set is upstream of PB-1's pattern. Faster unblock: sharpened (b) Engine within days vs quarters for full Pure Bootstrap to Zero scope. Manager internalized the upstream-vs-pattern distinction for future cross-manager flagging.
+- **2026-04-25** — Loader-close worker (`clever-owl-123`, [PR #776](https://github.com/gunb-ai/gunbc/pull/776)) discovered second substrate gap: top-level `rust_pilot_primitives` data declaration lowers as `ValueBody::Unparsed(SourceSpan)` — v3's `ValueBody` enum lacks a top-level list/aggregate variant. Worker STOP-AND-ESCALATE'd correctly. Director chose **Path 2** (in-flight sub-decision under Route 1): re-scope loader-close to ship type-structure-only accessor; defer pilot-list enumeration to a subsequent phase. Engine split into Phase 1 (type-structure validation, dispatchable post-#776 merge) + Phase 2 (full enumeration + mirror retirement, blocks on R2 T-Substrate 4th sub-lane). **Two substrate consumers** converge on the 4th sub-lane (both list-of-sum shaped): tokenizer charclass phase-2 + Engine Phase 2. `kernel_algebra_profile` (`Map<String, AlgebraProfile>`) is map-shaped, requires distinct `ValueBody::Map` substrate work, and is tracked separately as a sibling future T-Substrate sub-lane per [PR #782](https://github.com/gunb-ai/gunbc/pull/782) (which re-scoped after codex caught the substrate-shape conflation in an earlier 3-consumer framing). Phase 1 brief authored at [`t-ground-engine-phase-1-typestructure.md`](t-ground-engine-phase-1-typestructure.md), supersedes [`t-ground-engine-phase-1.md`](t-ground-engine-phase-1.md) for live dispatch (original brief preserved as decision-history anchor for structural contracts).
 
 Open questions for director:
 
