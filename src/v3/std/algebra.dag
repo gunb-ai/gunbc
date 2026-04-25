@@ -77,7 +77,16 @@ import std.list { List, empty, fold, cons, singleton, filter }
 import std.substrate { NonSingletonList, PortId }
 import v3.std.lookup { Lookup }
 
-// Complexity analysis reads this as a single authority for descent proofs.
+// 🟡 SCAFFOLD coproduct. These are v2 per-method output-size effect facts
+// staged in v3 as the MethodContract metadata vocabulary. Pattern 1 fails
+// for the §6a pick: cost/complexity need the facts co-located per method,
+// not scattered into lens-local tables. Pattern 2 partially fits the unit
+// variants but would erase the closed semantic partition that consumers
+// dispatch on. Pattern 3 is the intended dissolution: once live call-site
+// MethodContract producers read structural return-type / collection-shape
+// facts, this carrier either narrows to those structural facts or remains as
+// their named projection. Trigger: the bulk MethodContract producer/consumer
+// migration replaces template-row seeding with structural method contracts.
 type CollectionSizeEffect
   = ShrinkEffect
   | ProjectionEffect
@@ -86,6 +95,15 @@ type CollectionSizeEffect
 // Operation cost shape — structural contract on a method's algorithmic cost.
 // Declared per method on `MethodContract`; cost/complexity lenses read this
 // to compute cost expressions without string-dispatching on method names.
+//
+// 🟡 SCAFFOLD coproduct. Pattern 1 fails because cost shape belongs beside the
+// same method identity as size/callback metadata. Pattern 2 fails because the
+// variants name distinct closed asymptotic classes, not one labeled record
+// shape with free data. Pattern 3 is the dissolution path: live cost analysis
+// should derive these classes from `CostBound` / call-pattern structure when
+// MethodContract lookup is wired at call sites. Trigger: the post-§6a bulk
+// migration makes MethodContract construction consume E-C/E-I/E-P facts
+// directly instead of copying template metadata.
 type CostShape
   = ShapeConstant
   | ShapeLinearScan
