@@ -155,6 +155,7 @@ data python_target: TargetExecutionModel = {
 data python_source_filtering: SourceFiltering = {
   excluded_prefixes: [
     "dsl/std/",
+    "dsl/extdeps/",
     "src/v3/std/",
     "src/v3/spec/",
   ]
