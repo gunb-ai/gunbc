@@ -422,8 +422,10 @@ fn shell_argv_may_start_unbounded_background(args: &[String]) -> bool {
 ///
 /// The top-level `command` need not be a shell (e.g. `env(1)` with `["sh", "-c", "…&"]`); a shell
 /// **anywhere** in `args` (path stem) with a following `-c` in the same tail is checked (api-review
-/// 994fa40d). Nested re-exec (script token is `sh`/`bash`/…, rest is another `-c`/`-ec`) is handled by
-/// [`shell_argv_may_start_unbounded_background`].
+/// 994fa40d). For each such index `j`, the guard runs on **`args[j + 1..]`** (the **argv tail after
+/// the shell executable**), not `args[j..]`, so we do not double-count the shell token as if it were
+/// part of the combined-flag script (api-review e99b53e7, codex). Nested re-exec (script token is
+/// `sh`/`bash`/…, rest is another `-c`/`-ec`) is handled by [`shell_argv_may_start_unbounded_background`].
 fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<ClaimResult> {
     let fail = || ClaimResult::Fail(SHELL_C_BACKGROUND_UNBOUNDED_FAIL.to_string());
 
@@ -440,7 +442,7 @@ fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<C
         if !shell_dash_c_background_stem_is_shell(&args[j]) {
             continue;
         }
-        if shell_argv_may_start_unbounded_background(&args[j..]) {
+        if shell_argv_may_start_unbounded_background(&args[j + 1..]) {
             return Some(fail());
         }
     }
@@ -2489,6 +2491,7 @@ mod execute_command_timebound_tests {
     }
 
     /// Combined `-ec` / `-lc` after the shell token: must not bypass the guard (api-review e99b53e7).
+    /// Also `env bash -lc` (argv tail after a non-`sh` shell stem) — same policy, pre-spawn.
     #[test]
     fn env_sh_dash_ec_and_dash_lc_background_ampersand_are_rejected() {
         for (flag, label) in [("-ec", "ec"), ("-lc", "lc")] {
@@ -2512,6 +2515,23 @@ mod execute_command_timebound_tests {
                 "expected policy message, got: {m}"
             );
         }
+    }
+
+    #[test]
+    fn env_bash_dash_lc_background_ampersand_is_rejected() {
+        let r = evaluate_execute_command_exit_code(
+            "env",
+            &[
+                String::from("bash"),
+                String::from("-lc"),
+                String::from("sleep 600 &"),
+            ],
+            0,
+        );
+        let ClaimResult::Fail(m) = r else {
+            panic!("expected fail-closed for env bash -lc + background, got {r:?}");
+        };
+        assert!(m.contains("background") || m.contains("P3") || m.contains("shell `-c`"));
     }
 
     /// `-c` with script token `sh` and a **following** `-ec "…&"` in argv: flat `sh -ec` only looked at
