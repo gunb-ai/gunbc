@@ -155,8 +155,9 @@ impl ClusterId {
 /// - `phantom_params`: the subset of `type_params` that must be preserved for
 ///   type checking but do not correspond to runtime fields. Each entry also
 ///   names the algebra that governs closure for that phantom value. The initial
-///   R2 Dimensions consumer needs only abelian-group closure: matching phantom
-///   values compose, mismatched values fail closed as a unit mismatch.
+///   R2 Dimensions consumer needs only abelian-group closure, carried as a
+///   typed edge to the substrate algebra declaration: matching phantom values
+///   compose, mismatched values fail closed as a unit mismatch.
 /// - `meta_tag`: "this Conj's shape is constrained by the linked meta-type
 ///   declaration." Used for value construction (records, services,
 ///   transports) per M1_DESIGN.md §Q0. Empty across the M1(2.5) bootstrap
@@ -215,12 +216,7 @@ pub struct Declaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PhantomParameter {
     pub parameter: DeclarationId,
-    pub algebra: PhantomParameterAlgebra,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PhantomParameterAlgebra {
-    AbelianGroup,
+    pub algebra: DeclarationId,
 }
 
 /// Value-body shape for `data foo: T = { body }` declarations. Two

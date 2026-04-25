@@ -1096,6 +1096,9 @@ fn phantom_unit_mismatch(
     }
     let template = dag.declaration(expected_inst.template);
     for phantom in &template.phantom_params {
+        if !is_abelian_group_phantom_algebra(dag, phantom.algebra) {
+            continue;
+        }
         let expected_arg = expected_inst
             .arguments
             .iter()
@@ -1116,6 +1119,27 @@ fn phantom_unit_mismatch(
         }
     }
     None
+}
+
+fn is_abelian_group_phantom_algebra(dag: &Dag, algebra: DeclarationId) -> bool {
+    let mut current = algebra;
+    for _ in 0..WALK_DEPTH_LIMIT {
+        let decl = dag.declaration(current);
+        if decl.name.as_deref() == Some("AbelianGroup") {
+            return true;
+        }
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => {
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                current = *next;
+            }
+            _ => return false,
+        }
+    }
+    false
 }
 
 struct InstantiationParts<'a> {
@@ -4443,7 +4467,7 @@ fn declaration_shapes_equivalent(
 #[cfg(test)]
 mod bool_logical_operator_arrow_tests {
     use super::*;
-    use crate::dag::{PhantomParameter, PhantomParameterAlgebra};
+    use crate::dag::PhantomParameter;
     use crate::infer_helpers::filter_non_self_template_arguments;
     use crate::operators::ArithmeticOp;
 
@@ -4486,6 +4510,10 @@ mod bool_logical_operator_arrow_tests {
         let mut dag = Dag::new();
         let span = SourceSpan::new("<money-unit-test>", 0, 1);
         let int = dag.int_shape().expect("bootstrap Int").declaration;
+        let abelian_group = dag
+            .declaration_by_name("AbelianGroup")
+            .expect("bootstrap AbelianGroup")
+            .id;
 
         let currency = dag.alloc_declaration_id();
         dag.push_declaration(Declaration {
@@ -4535,6 +4563,32 @@ mod bool_logical_operator_arrow_tests {
             refinement: None,
             span: span.clone(),
         });
+        let currency_abelian_group = dag.alloc_declaration_id();
+        let abelian_receiver = dag
+            .declaration(abelian_group)
+            .type_params
+            .first()
+            .copied()
+            .expect("AbelianGroup receiver type parameter");
+        dag.push_declaration(Declaration {
+            id: currency_abelian_group,
+            name: Some("CurrencyAbelianGroup".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: abelian_group,
+                arguments: vec![TemplateArgument {
+                    parameter: abelian_receiver,
+                    value: currency,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
         let money = dag.alloc_declaration_id();
         let c_param = dag.alloc_declaration_id();
         dag.push_declaration(Declaration {
@@ -4549,7 +4603,7 @@ mod bool_logical_operator_arrow_tests {
             type_params: vec![c_param],
             phantom_params: vec![PhantomParameter {
                 parameter: c_param,
-                algebra: PhantomParameterAlgebra::AbelianGroup,
+                algebra: currency_abelian_group,
             }],
             meta_tag: None,
             specialization_parent: None,

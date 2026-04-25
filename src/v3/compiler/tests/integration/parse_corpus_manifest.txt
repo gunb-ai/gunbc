@@ -34,7 +34,7 @@ src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
 src/v3/std/lookup.dag	5	4734	f97d4e536b675b1b
 src/v3/std/parse_surface.dag	17	94961	9b9d42b7673f21d3
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
-src/v3/std/substrate.dag	52	112450	f9781ac598569a68
+src/v3/std/substrate.dag	51	111880	3551f4090e47b391
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	18	36478	d010232f0373dc99
 src/v3/std/tokenize.dag	8	38819	2e158a74f33c18cc

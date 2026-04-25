@@ -7,8 +7,8 @@ use crate::dag::{
     CardinalityBound, Cluster, ClusterId, ComparisonOp, Dag, Declaration, DeclarationId, Field,
     FieldValue, IntraClusterCall, LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent,
     NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PhantomParameter,
-    PhantomParameterAlgebra, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
-    TypeConnective, ValueBody, ValueNode,
+    PortId, PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueBody,
+    ValueNode,
 };
 use crate::diagnostics::Diagnostic;
 
@@ -141,17 +141,11 @@ fn render_phantom_params(params: &[PhantomParameter]) -> String {
             format!(
                 "PhantomParameter {{ parameter: {}, algebra: {} }}",
                 render_declaration_id(param.parameter),
-                render_phantom_parameter_algebra(param.algebra)
+                render_declaration_id(param.algebra)
             )
         })
         .collect();
     format!("vec![{}]", rendered.join(", "))
-}
-
-fn render_phantom_parameter_algebra(algebra: PhantomParameterAlgebra) -> &'static str {
-    match algebra {
-        PhantomParameterAlgebra::AbelianGroup => "PhantomParameterAlgebra::AbelianGroup",
-    }
 }
 
 fn render_type_connective(connective: &TypeConnective) -> String {
