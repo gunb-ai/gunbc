@@ -194,26 +194,36 @@ fn int_literal_range_narrowing_does_not_bypass_refinement_discharge() {
 
 #[test]
 fn data_int_literal_range_narrowing_does_not_bypass_refinement() {
-    let err = compile_to_dag(
-        "type PositiveInt = Int where PositiveInt > 0\n\
-         data x: PositiveInt = 1",
-        "data_int_literal_refinement_discharge.v3",
-    )
-    .expect_err("range-compatible data literal must still fail missing refinement evidence");
-    let CompileError::Semantic(dag) = err else {
-        panic!("expected semantic diagnostic, got {err:?}");
-    };
-    let messages: Vec<String> = dag
-        .diagnostics()
-        .iter()
-        .map(|(_, diagnostic)| diagnostic.message())
-        .collect();
-    assert!(
-        messages
+    for (source, file) in [
+        (
+            "type PositiveInt = Int where PositiveInt > 0\n\
+             data x: PositiveInt = 1",
+            "data_int_literal_refinement_discharge.v3",
+        ),
+        (
+            "type PositiveInt = Int where PositiveInt > 0\n\
+             type LocalPositive = PositiveInt\n\
+             data x: LocalPositive = 1",
+            "data_int_literal_refined_alias_discharge.v3",
+        ),
+    ] {
+        let err = compile_to_dag(source, file)
+            .expect_err("range-compatible data literal must still fail missing refinement evidence");
+        let CompileError::Semantic(dag) = err else {
+            panic!("expected semantic diagnostic, got {err:?}");
+        };
+        let messages: Vec<String> = dag
+            .diagnostics()
             .iter()
-            .any(|message| message.contains("refinement") || message.contains("no narrowing")),
-        "expected refinement failure, got {messages:?}"
-    );
+            .map(|(_, diagnostic)| diagnostic.message())
+            .collect();
+        assert!(
+            messages
+                .iter()
+                .any(|message| message.contains("refinement") || message.contains("no narrowing")),
+            "expected refinement failure for {file}, got {messages:?}"
+        );
+    }
 }
 
 #[test]

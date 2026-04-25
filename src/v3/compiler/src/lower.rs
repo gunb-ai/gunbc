@@ -921,10 +921,20 @@ fn is_deferred_refinement_placeholder(dag: &Dag, refinement: DeclarationId) -> b
 }
 
 fn scalar_literal_requires_refinement_discharge(dag: &Dag, expected_type: DeclarationId) -> bool {
-    let Some(refinement) = dag.declaration(expected_type).refinement else {
-        return false;
-    };
-    !is_deferred_refinement_placeholder(dag, refinement)
+    let mut current = expected_type;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        if let Some(refinement) = decl.refinement {
+            return !is_deferred_refinement_placeholder(dag, refinement);
+        }
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            _ => return false,
+        }
+    }
+    false
 }
 
 /// DB-11 (3a.3) fragment gate. Walks a `where`-predicate
