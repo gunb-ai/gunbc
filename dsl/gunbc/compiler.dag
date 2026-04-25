@@ -89,7 +89,6 @@ data stage0: GeneratedCrate = {
     "python_target.rs",
     "rust_target.rs",
     "infer.rs",
-    "lens_depth.rs",
     "lens_testgen.rs",
     "lens_unused_parameters.rs",
     "lib.rs",

@@ -54,9 +54,9 @@ public fn in a lens wrapper file:
 grep -nE "pub fn .*-> (usize|bool|i64)" src/v3/compiler/src/lens_*.rs
 ```
 
-Scope excludes `lens_depth.rs` (hand-written legacy lens, not
-migrated from `.dag`; out of L-8 scope). Zero matches required.
-Lens wrappers return typed carriers.
+Zero matches required. Lens wrappers return typed carriers. (The
+retired `lens_depth.rs` observational helper is deleted — no
+remaining `.dag` migration carve-out.)
 
 **Origin:** Half A review feedback (2026-04-17) + round 1a.3
 prose/ratchet alignment. Full design:
