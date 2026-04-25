@@ -213,28 +213,31 @@ mod t_demo_fixture_test {
         let source = fixture_source();
         let dag = compile_fixture(&source);
         let results = TestRunner::new(&dag).run_suite("impossible_bug_class_suite_r1");
-        assert_eq!(results.len(), 3);
-        for result in &results {
-            if result.claim_name == "impossible_bug_class_suite_r1.suboptimal_complexity" {
-                let ClaimResult::Fail(msg) = &result.result else {
-                    panic!(
-                        "suboptimal_complexity should fail CostBounded (structural cost exceeds bound), got {:?}",
-                        result.result
-                    );
-                };
-                assert!(
-                    msg.contains("cost") && msg.contains("did not satisfy"),
-                    "unexpected CostBounded failure message: {msg}"
-                );
-            } else {
-                assert_eq!(
-                    result.result,
-                    ClaimResult::Pass,
-                    "claim `{}` should Pass (diagnostic receipt)",
-                    result.claim_name
-                );
-            }
-        }
+        assert_eq!(results.len(), 2);
+        assert!(
+            results
+                .iter()
+                .all(|result| result.result == ClaimResult::Pass),
+            "impossible-bug suite claims should all Pass (FailsWithDiagnostic receipts only), got {results:?}"
+        );
+    }
+
+    #[test]
+    fn t_demo_structural_cost_obligation_suite_observes_cost_bound_fail() {
+        let source = fixture_source();
+        let dag = compile_fixture(&source);
+        let results = TestRunner::new(&dag).run_suite("t_demo_structural_cost_obligation_suite");
+        assert_eq!(results.len(), 1);
+        let ClaimResult::Fail(msg) = &results[0].result else {
+            panic!(
+                "structural cost obligation gate should Fail CostBounded (cost exceeds bound), got {:?}",
+                results[0].result
+            );
+        };
+        assert!(
+            msg.contains("cost") && msg.contains("did not satisfy"),
+            "unexpected CostBounded failure message: {msg}"
+        );
     }
 }
 

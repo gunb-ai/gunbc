@@ -410,7 +410,15 @@ fn test_runner_dispatches_mock_backed_invariant_claim() {
         results[0].claim_name,
         "testgen_mock_backed_integration_safe"
     );
-    assert_eq!(results[0].result, ClaimResult::Pass);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::NotYetImplemented(msg)
+                if msg.contains("MockBackedInvariant") && msg.contains("requires")
+        ),
+        "expected NYI for empty `requires` mock-backed receipt, got {:?}",
+        results[0].result
+    );
 }
 
 #[test]

@@ -356,7 +356,24 @@ impl<'a> TestRunner<'a> {
                     "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
                     "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
                     "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
-                    "MockBackedInvariant" => self.eval_mock_backed_invariant(claim, &payload),
+                    "MockBackedInvariant" => {
+                        let inner = self.eval_mock_backed_invariant(claim, &payload);
+                        if claim.requires.is_empty() {
+                            match inner {
+                                ClaimResult::Pass => ClaimResult::NotYetImplemented(
+                                    "MockBackedInvariant: `TestClaim.requires` is empty — DB-15 mock \
+                                     obligations attach only on `requires` as `ResourceReference` edges; \
+                                     hermetic subject/invariant application succeeded but is not a mock-backed \
+                                     receipt until at least one obligation is declared (M1(2.8): list bodies \
+                                     in fixture `TestClaim` data are not expressible yet)."
+                                        .to_string(),
+                                ),
+                                other => other,
+                            }
+                        } else {
+                            inner
+                        }
+                    }
                     other => ClaimResult::NotYetImplemented(format!(
                         "TestPredicate::{other} is not wired in the Rust runner yet"
                     )),
@@ -938,9 +955,10 @@ impl<'a> TestRunner<'a> {
         }
     }
 
-    /// R1 path: compile `claim.source`, then `apply_lens_declaration` for subject (0-arity) and
-    /// invariant (1-arity) — hermetic, no mock transport. `MockBackedInvariant` is the schema-stable
-    /// `TestPredicate` label; DB-15 mock semantics belong on `TestClaim.requires` when wired.
+    /// Hermetic path: compile `claim.source`, then `apply_lens_declaration` for subject (0-arity)
+    /// and invariant (1-arity). `run_claim` wraps a bare `Pass` in `NotYetImplemented` when
+    /// `requires` is empty so we do not fabricate a mock-backed receipt without a DB-15 obligation
+    /// surface (see `MockBackedInvariant` arm in `run_claim`).
     fn eval_mock_backed_invariant(
         &self,
         claim: &TestClaimValue,

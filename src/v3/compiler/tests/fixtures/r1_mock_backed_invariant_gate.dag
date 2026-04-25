@@ -1,6 +1,7 @@
 // R1 gate for `testgen_mock_backed_integration_safe` (ROADMAP). `MockBackedInvariant` names the
-// `TestPredicate` variant only; the runner path is hermetic subject+invariant application on
-// compiled `source`, not external mock simulation (empty `requires` until obligation materialization).
+// `TestPredicate` variant; `requires` stays `[]` until M1(2.8) can express `List<ResourceReference>`
+// bodies in fixture `.dag`. The runner performs hermetic subject+invariant application but does
+// not emit a mock-backed Pass when `requires` is empty (see `TestRunner::run_claim`).
 // Lives under tests/fixtures/ — not auto-staged into bootstrap.
 
 module std.r1_mock_backed_invariant_gate
