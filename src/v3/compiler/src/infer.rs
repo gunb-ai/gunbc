@@ -4647,7 +4647,6 @@ fn phantom_arguments_preserved_from_template(
     target_arguments: &[TemplateArgument],
 ) -> bool {
     let source_decl = dag.declaration(source_template);
-    let target_decl = dag.declaration(target_template);
     for phantom in &source_decl.phantom_params {
         if require_abelian_group_phantom_algebra(
             dag,
@@ -4659,21 +4658,22 @@ fn phantom_arguments_preserved_from_template(
         {
             return false;
         }
-        let Some(source_index) = source_decl
-            .type_params
-            .iter()
-            .position(|parameter| *parameter == phantom.parameter)
+        let Some(target_phantom) =
+            mapped_phantom_parameter(dag, source_template, phantom, target_template)
         else {
             return false;
         };
-        let Some(target_parameter) = target_decl.type_params.get(source_index).copied() else {
-            return false;
-        };
-        if !target_decl
-            .phantom_params
-            .iter()
-            .any(|target_phantom| target_phantom.parameter == target_parameter)
+        if require_abelian_group_phantom_algebra(
+            dag,
+            target_phantom.algebra,
+            target_phantom.parameter,
+            &synthetic_span(),
+        )
+        .is_err()
         {
+            return false;
+        }
+        if !phantom_algebras_equivalent(dag, phantom.algebra, target_phantom.algebra) {
             return false;
         }
         let Some(source_arg) = source_arguments
@@ -4684,7 +4684,7 @@ fn phantom_arguments_preserved_from_template(
         };
         let Some(target_arg) = target_arguments
             .iter()
-            .find(|arg| arg.parameter == target_parameter)
+            .find(|arg| arg.parameter == target_phantom.parameter)
         else {
             return false;
         };
@@ -4820,6 +4820,26 @@ mod bool_logical_operator_arrow_tests {
             refinement: None,
             span: span.clone(),
         });
+        let int_abelian_group = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: int_abelian_group,
+            name: Some("IntAbelianGroup".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: abelian_group,
+                arguments: vec![TemplateArgument {
+                    parameter: abelian_receiver,
+                    value: int,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
         let money = dag.alloc_declaration_id();
         let c_param = dag.alloc_declaration_id();
         dag.push_declaration(Declaration {
@@ -4917,10 +4937,129 @@ mod bool_logical_operator_arrow_tests {
             refinement: None,
             span: span.clone(),
         });
+        let alt_c_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: alt_c_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("AltC".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let alt_money = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: alt_money,
+            name: Some("AltMoney".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "amount".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: vec![alt_c_param],
+            phantom_params: vec![PhantomParameter {
+                parameter: alt_c_param,
+                algebra: currency_abelian_group,
+            }],
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let alt_money_usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: alt_money_usd,
+            name: Some("AltMoneyUSD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: alt_money,
+                arguments: vec![TemplateArgument {
+                    parameter: alt_c_param,
+                    value: usd,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let alt_money_eur = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: alt_money_eur,
+            name: Some("AltMoneyEUR".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: alt_money,
+                arguments: vec![TemplateArgument {
+                    parameter: alt_c_param,
+                    value: eur,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let other_algebra_money = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: other_algebra_money,
+            name: Some("OtherAlgebraMoney".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "amount".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: vec![alt_c_param],
+            phantom_params: vec![PhantomParameter {
+                parameter: alt_c_param,
+                algebra: int_abelian_group,
+            }],
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
+        let other_algebra_money_usd = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: other_algebra_money_usd,
+            name: Some("OtherAlgebraMoneyUSD".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: other_algebra_money,
+                arguments: vec![TemplateArgument {
+                    parameter: alt_c_param,
+                    value: usd,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: span.clone(),
+        });
 
         let lhs = dag.alloc_port_with_shape(TypeShape::new(money_usd));
         let rhs_same = dag.alloc_port_with_shape(TypeShape::new(money_usd));
         let rhs_other = dag.alloc_port_with_shape(TypeShape::new(money_eur));
+        let cross_template_rhs_other = dag.alloc_port_with_shape(TypeShape::new(alt_money_eur));
         let ok_output = dag.push_transform(
             TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
             vec![lhs, rhs_same],
@@ -4930,6 +5069,27 @@ mod bool_logical_operator_arrow_tests {
             TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
             vec![lhs, rhs_other],
             span.clone(),
+        );
+        let cross_template_bad_output = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![lhs, cross_template_rhs_other],
+            span.clone(),
+        );
+        assert!(
+            type_shapes_equivalent(
+                &dag,
+                &TypeShape::new(money_usd),
+                &TypeShape::new(alt_money_usd)
+            ),
+            "structural equivalence should map phantom axes across equivalent templates"
+        );
+        assert!(
+            !type_shapes_equivalent(
+                &dag,
+                &TypeShape::new(money_usd),
+                &TypeShape::new(other_algebra_money_usd),
+            ),
+            "structural equivalence must compare mapped phantom algebra authority"
         );
         let money_missing_arg = dag.alloc_declaration_id();
         dag.push_declaration(Declaration {
@@ -5283,6 +5443,24 @@ mod bool_logical_operator_arrow_tests {
                     && actual.declaration == eur
             ),
             "unexpected diagnostic: {bad_diag:?}"
+        );
+        let cross_template_bad_diag = dag
+            .diagnostics()
+            .get(cross_template_bad_output)
+            .expect("mapped phantom units should fail across structurally equivalent templates");
+        assert!(
+            matches!(
+                cross_template_bad_diag,
+                Diagnostic::UnitMismatch {
+                    parameter,
+                    expected,
+                    actual,
+                    ..
+                } if parameter == "C"
+                    && expected.declaration == usd
+                    && actual.declaration == eur
+            ),
+            "unexpected diagnostic: {cross_template_bad_diag:?}"
         );
         let malformed_diag = dag
             .diagnostics()
