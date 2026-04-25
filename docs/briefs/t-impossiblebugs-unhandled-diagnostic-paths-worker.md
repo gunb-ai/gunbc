@@ -1,77 +1,97 @@
-# T-ImpossibleBugs — unhandled diagnostic paths `(S, R2)`
+# T-ImpossibleBugs — unhandled diagnostic paths **(DESIGN/SCOPING brief, S — produces substrate proposal, NOT implementation)**
 
 > **Director ad-hoc dispatch.** R2 T-ImpossibleBugs class 2 of 3 per
 > [`docs/r2-structure.md`](../r2-structure.md) §"Goal 4". Independent
-> of the other two impossible-bug classes — any worker can dispatch
-> in parallel. Reports to Director (`zesty-bear-812`).
+> of the other two impossible-bug classes. Reports to Director
+> (`zesty-bear-812`).
+>
+> **🔄 REFRAMED 2026-04-25 (post-`sunny-deer-629` STOP-AND-ESCALATE).**
+> Original brief framed this as an implementation lane against an
+> "ownership_lens" precedent that was shape-only, not mechanism. Worker
+> verified at HEAD: (a) **DB-11 deliberately strips refinements at
+> operator dispatch** at `src/v3/compiler/src/infer.rs:3693-3703` as a
+> designed-in fix for a prior failure mode (refinement-as-proof-obligation
+> breaks symmetric operators like `>`); (b) the brief's framing of
+> *"attach `where b != 0` as a proof for `a / b`"* directly contradicts
+> this design choice — operator dispatch is engineered to *ignore*
+> refinements on operands; (c) ownership_lens is a post-hoc
+> observability lens (consumes lowered DAG and asserts a count), NOT
+> a proof carrier that gates type-checking; the precedent is
+> shape-only, not mechanism. Worker correctly STOP-and-escalated with
+> recommendation to redirect to design/scoping. **Director picked
+> redirect.** This brief now produces a substrate proposal +
+> bypass-or-substrate-or-park decision, NOT implementation.
 
 ## Read first
 
-- **[`THESIS.md` §"Tier 2 — Runtime safety" + §"Enumerable impossible-bug classes" lines 348-350](../../THESIS.md)** — class definition: *"Division by zero, integer overflow, out-of-bounds, force-unwrap, partial functions — either proven safe at compile time or made total. No partial functions in the runtime."* THESIS.md:350: *"Gated on Tier 2 substrate (post-R1)."*
-- **[`docs/r2-structure.md` §"Goal 4"](../r2-structure.md)** — sub-lane scoping; `[R2+]` per ROADMAP T-Demo row.
-- **[`src/v3/std/verification.dag`](../../src/v3/std/verification.dag)** — current `DiagnosticKind` (tokenizer / parse / type / arity / resolve). Extend (or sibling carrier) for runtime-safety diagnostic paths.
-- **[`src/v3/compiler/src/infer.rs`](../../src/v3/compiler/src/infer.rs)** — type inference site; proof-obligation generation for partial ops would attach here. File:line for the operator-resolution site already known via T-Substrate parametric-algebra brief: `:3688-3767` `resolve_operator_arrow`.
-- **[`docs/thesis/what-falls-out.md`](../thesis/what-falls-out.md)** — Tier 2 model framing. May need extension into a sibling doc if this brief authors the carrier-evidence shape.
-- **Existing precedent — ownership proofs.** Per ROADMAP §Tier 2 ("ownership: the compiler proves no aliased mutation"), v3 has a partial-ops-style proof carrier already. Search for `OwnershipProof` / `ownership_lens` / similar to find the precedent shape; the new diagnostic-path proof carrier follows the same pattern.
-- **[`MODELING.md`](../../MODELING.md)** — M9 + closed-system framing.
-- **[`INVARIANTS.md`](../../INVARIANTS.md)** — `feedback_construction_over_ratchets`: model first, violations dissolve.
+- **[`THESIS.md` §"Tier 2 — Runtime safety" + §"Enumerable impossible-bug classes" lines 348-350](../../THESIS.md)** — class definition + the *"Gated on Tier 2 substrate (post-R1)"* gate.
+- **[`docs/r2-structure.md` §"Goal 4"](../r2-structure.md)** — sub-lane scoping; tagged `[R2+]`.
+- **[`src/v3/compiler/src/infer.rs:3688-3767`](../../src/v3/compiler/src/infer.rs)** — `resolve_operator_arrow`. **Critical: DB-11 refinement-strip at `:3693-3703`** is the design conflict. Read the comment block in full; it documents *why* refinements are stripped at operator dispatch (mirror-refinement failure on symmetric operators).
+- **[`docs/db-history/db-11.md`](../db-history/db-11.md)** + **[`docs/design-m2-feature-parity.md`](../design-m2-feature-parity.md)** — DB-11 alias-RHS `where` (PR #703) + its discharge semantics. **DB-11 does structural identity of refined types, NOT logical entailment.** Predicate-entailment (does user's `b != 0` entail operator's `denominator != 0`?) is materially different and is **not** in v3 substrate today.
+- **[`src/v3/compiler/tests/m2_feature_parity_test.rs:331-700`](../../src/v3/compiler/tests/m2_feature_parity_test.rs)** — DB-11 test_3a3_* suite locks the strip-and-discharge semantics. The user-defined-total-wrapper path (`fn divide_safe(a: Int, b: Int where b != 0) -> ...`) already works today via standard refinement-on-parameter; that's the existing surface this lane could either build on or sidestep.
+- **[`MODELING.md`](../../MODELING.md)** + **[`INVARIANTS.md`](../../INVARIANTS.md)**.
 
-## Frame
+## Frame — design-scoping, not implementation
 
-Tier 2 obligates that **every partial operation** (divide, index, force-unwrap, integer-overflow, OOB) is either (a) **proven safe** via a structural proof carried alongside the operation, or (b) **made total** via a return-type lift (`Result<T, E>` / `T | DivisionFailed` / etc.). Neither is enforced today; partial operations type-check unconditionally.
+Output of this lane is a **scoping document** (lands as `docs/briefs/t-impossiblebugs-unhandled-diagnostic-paths-design.md` — worker picks placement), **NOT** code change. The doc answers four questions:
 
-This brief introduces the **substrate to track partiality + proof-or-totality requirement** and the **diagnostic that fires when neither is provided**. The bug class becomes impossible-by-construction once the type system refuses to type-check `a / b` without either `b ≠ 0` proof or a total-Int signature.
+1. **DB-11 interaction analysis** — exact characterization of the refinement-strip at `infer.rs:3693-3703`, with file:line and the comment-block reasoning. Worker has already done this work; the design doc consolidates it.
+2. **Substrate proposal for proof-or-totality enforcement.** What new substrate is needed to make `a / b` require `b: Int where b != 0` (or equivalent) without conflicting with DB-11? Three load-bearing components surface from the worker's investigation:
+   - **Per-operator partiality fact** (which operand carries the precondition + what predicate is the precondition).
+   - **Predicate-entailment check** (logical entailment, not structural identity — DB-11 does the latter only).
+   - **Asymmetric per-operand refinement-honoring** at dispatch (in tension with DB-11's symmetric strip rule).
+3. **Bypass-vs-park decision.** Three feasible outcomes, each with a concrete shape:
+   - **(a) Bypass-feasible**: there's a narrower mechanism that closes the bug class without conflicting with DB-11 (e.g., a typed sum-totality that shifts the burden to return-type lift `Result<T, DivideByZero>` rather than precondition-attachment). If the worker finds a clean bypass, name the implementation-brief shape.
+   - **(b) Substrate-design upstream**: the work is genuinely Tier 2 substrate (predicate-entailment + per-operator partiality + asymmetric refinement-honoring), and that substrate doesn't exist yet. Recommend parking this lane behind a Tier 2 substrate brief that authors the substrate first.
+   - **(c) Narrow-demo theatre**: brief req 3 already names the user-defined-total-wrapper path (`divide_safe`) which works today via DB-11 refinement-on-parameter. This is a valid demo but is **not** the impossible-bug class closure THESIS:350 promises — it demonstrates total-variant ergonomics, not proof-or-totality enforcement. Worker should explicitly flag this as acceptance-theatre risk.
+4. **Director-actionable recommendation.** Pick one of (a/b/c) with concrete reasoning citing DB-11 evidence + substrate-shape questions. If (a), name implementation brief shape. If (b), name the substrate-design brief shape. If (c), name what the demo proves vs doesn't.
 
-Sub-lane scope: enough Tier 2 substrate to close at least one partial-op class end-to-end (likely `divide` as the demo). Other partial-op classes follow the same pattern; demonstrate the substrate, scope to one consumer.
+This lane is sized **S** because it's design-scoping. Output is a doc PR.
 
 ## Three consumer-side requirements
 
-1. **Partiality fact on operations.** Each partial op carries a substrate fact marking it as partial + the precondition shape it expects (e.g., `divide` → `denominator != 0` precondition; `index` → `0 <= idx < length` precondition; `force_unwrap` → `is_some` precondition). Substrate-declared, not Rust-mirrored.
-2. **Proof-or-totality check at type-checking.** When a partial op is used, the type-checker requires either: (a) a structurally-attached proof-term satisfying the precondition (e.g., a `where b != 0` refinement on `b`), or (b) the call-site uses a total signature variant returning `Result<T, E>`. Otherwise emit `Diagnostic::UnhandledDiagnosticPath { op, missing_proof, fix_hints }`.
-3. **End-to-end demo: divide.** Smoke + integration test: `let x = a / b` where `b: Int` (no proof) compile-errors with the new diagnostic; `let x = a / b` where `b: Int where b != 0` (proof attached) compiles; `let x = divide_safe(a, b)` returning `Result<Int, DivideByZero>` compiles. Other partial ops out of scope; demo proves the substrate.
+1. **DB-11 interaction analysis documented** with file:line citations from `infer.rs:3693-3703` + the `m2_feature_parity_test.rs` test suite. Worker has done this; doc consolidates.
+2. **Substrate proposal OR park-decision documented.** Section walking through the three load-bearing substrate components (per-operator partiality, predicate-entailment, asymmetric refinement-honoring) with cited substrate facts. No invented vocabulary.
+3. **Director-actionable recommendation** picking one of (a) bypass-feasible / (b) substrate-design-upstream / (c) narrow-demo-theatre, with concrete reasoning + named follow-on brief shape.
 
-## Slice — partiality fact + proof-or-totality check + divide demo
+## Slice — design-scoping doc
 
-1. Add partiality fact to operation declarations. Likely a new field on the relevant declaration carrier (probably operator declarations in `dsl/std/algebra.dag` or per-target `primitives.dag`).
-2. Extend type-checker (in `infer.rs`) to enforce proof-or-totality at use sites of partial ops. New diagnostic variant.
-3. Annotate `divide` (or whichever partial op the worker picks for the demo) with the partiality fact.
-4. Smoke + integration tests per req 3.
-5. Doc updates — likely a new `docs/thesis/tier-2-runtime-safety-proofs.md` or extension to `docs/thesis/what-falls-out.md`.
+1. Document the DB-11 conflict in detail (worker's `infer.rs:3693-3703` find consolidated).
+2. Substrate proposal section walking the three components.
+3. Bypass investigation: is there a sum-totality-only path that sidesteps DB-11?
+4. Author the scoping doc (location worker's call).
+5. PR description: cite this brief + the scoping-doc receipt + the recommendation.
 
 ## Acceptance
 
-- [ ] All 3 consumer-side requirements satisfied + documented in PR body.
-- [ ] Partiality fact substrate lands; round-trips through DB-8.
-- [ ] Type-checker rejects un-proven partial-op uses with structured diagnostic.
-- [ ] `divide` (or chosen demo) end-to-end: bare use rejected; proof-attached use accepted; total-variant use accepted.
-- [ ] No regression on existing operator resolution.
-- [ ] `cargo test --workspace --exclude v2-compiler-tests` / `clippy --all-targets -- -D warnings` / `fmt --all --check` clean.
-- [ ] DB-8 fixed-point converges bit-identically.
+- [ ] Scoping doc landed with all 3 consumer-side requirements addressed.
+- [ ] Director-actionable recommendation: bypass-feasible / substrate-design-upstream / narrow-demo-theatre — pick one, cite reasoning.
+- [ ] Acceptance-theatre risk explicitly flagged if recommendation is (c) or if (a)'s bypass turns out to be sum-totality-only (which is ergonomic, not impossible-bug-class-closure).
+- [ ] No code changes to v3 substrate.
+- [ ] `cargo fmt --all --check` clean.
 
 ## STOP-AND-ESCALATE
 
 Surface to Director.
 
-- **Tier 2 substrate dependency** — if proof-term carrier requires inventing fundamental new substrate (predicate-as-fact distinct from DB-11's value-refinement), STOP. May indicate the sub-lane is mis-scoped as S; could be M+.
-- **Proof-attachment syntax interaction with DB-11** — if `where` clause reuse for proof-attachment conflicts with DB-11's value-refinement semantics, STOP.
-- **Other partial-op classes generalize differently** — if the chosen demo (divide) reveals that index / force-unwrap / overflow need divergent substrate, STOP. Director-call on demo choice + scope.
-- **Existing ownership-proof precedent doesn't generalize** — if reusing the ownership-proof shape doesn't fit, STOP.
-- **DB-8 fixed-point drifts** — STOP immediately.
+- **DB-11 conflict turns out illusory** (e.g., the refinement-strip can be made asymmetric per-operand without breaking the symmetric-operators-fix DB-11 protects against) — this is the "good outcome" for bypass-feasibility. NOT a STOP, but worker should flag explicitly with reasoning.
+- **Substrate proposal requires inventing fundamental new substrate vocabulary** beyond what predicate-entailment + per-operator partiality already name — STOP. May indicate scope is even larger than M+.
+- **Bypass investigation reveals a clean total-variant-only path** that closes the bug class for SOME partial ops but not others (e.g., works for divide via `Result<Int, DivideByZero>` but not for force-unwrap or OOB indexing) — STOP. Director-call on whether to scope this lane to one demo op.
 
 ## Non-goals
 
-- **Not closing all partial-op classes.** One demo-end-to-end is sufficient evidence for the substrate; bulk migration of remaining classes is post-cascade work.
-- **Not building Tier 2's full proof system** — scoped to enough substrate for the demo.
-- **Not implementing the other two T-ImpossibleBugs classes** — independent briefs.
-- **Not lifting all integer ops to `Result<T, Overflow>`** — only the chosen demo path.
+- **Not implementing the proof-or-totality check.** This is scoping, not implementation.
+- **Not modifying v3 substrate.** Doc-only output.
+- **Not closing other T-ImpossibleBugs classes** — independent briefs.
+- **Not re-authoring DB-11.** That's settled R1 work.
 
 ## Reporting
 
-- Single PR. Title: `feat(v3): T-ImpossibleBugs — partiality fact + proof-or-totality check (closes unhandled-diagnostic-paths class via divide demo)`.
-- PR body cites this brief + addresses the 3 reqs + documents which demo op was picked + the precedent (ownership-proof) reuse.
-- On merge: signal Director; bulk migration of other partial-op classes is post-cascade work.
+- Single PR. Title: `docs(briefs): T-ImpossibleBugs unhandled-diagnostic-paths — design/scoping doc (post-sunny-deer-629 redirect)`.
+- PR body cites this brief + the scoping-doc receipt + the chosen recommendation.
+- On merge: signal Director with the recommendation; Director either authors the bypass implementation brief, the Tier 2 substrate brief, or parks the lane.
 
 ## Cross-manager note
 
-- **Zero-Floor Manager**: heads-up if substrate.dag-adjacent.
+- **Zero-Floor Manager**: heads-up if recommendation lands on substrate-design-upstream — that's substrate-territory potentially.
 - **Grounding Manager**: no current overlap.
