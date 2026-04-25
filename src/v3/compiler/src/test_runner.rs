@@ -1,6 +1,6 @@
 use crate::dag::{
-    Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective,
-    ValueBody,
+    Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, PortId, PortState,
+    TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
 use crate::lens_apply::{
@@ -40,6 +40,93 @@ fn cost_bind_for_claim_file(file_name: &str) -> Option<&'static str> {
         "fixture_compiler_nerd_canonical_complexity.v3" => Some("complexity_demo_out"),
         "fixture_compiler_nerd_canonical_parallelism.v3" => Some("total"),
         _ => None,
+    }
+}
+
+fn compile_r1_canonical_complexity_lens_dag() -> Result<Dag, String> {
+    match compile_to_dag(R1_CANONICAL_COMPLEXITY_LENS, "src/v3/lenses/complexity.dag") {
+        Ok(dag) if dag.diagnostics().is_empty() => Ok(dag),
+        Ok(dag) => Err(format!(
+            "canonical `complexity.dag` has diagnostics: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        )),
+        Err(CompileError::Semantic(dag)) => Err(format!(
+            "canonical `complexity.dag` failed inference: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        )),
+        Err(err) => Err(format!("canonical `complexity.dag` did not compile: {err:?}")),
+    }
+}
+
+/// Lower a `Lookup<Int>` `FieldValue` from the D1 lens interpreter into [`CostLookup`].
+///
+/// Constructor ids are resolved against `lens_dag` (the canonical `complexity.dag` compile).
+fn cost_lookup_from_int_lookup_field_value(
+    lens_dag: &Dag,
+    value: &FieldValue,
+) -> Result<CostLookup, String> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err(format!(
+            "expected `Lookup<Int>` variant from D1 `cost_of`, got {value:?}"
+        ));
+    };
+    let label = variant_label(lens_dag, *constructor).ok_or_else(|| {
+        format!(
+            "unknown `Lookup<Int>` constructor id {}",
+            constructor.raw()
+        )
+    })?;
+    match label.as_str() {
+        "Miss" => {
+            if !payload.is_empty() {
+                return Err("`Miss` should be payload-free".to_string());
+            }
+            Ok(CostLookup::Miss)
+        }
+        "Hit" => match payload.as_slice() {
+            [FieldValue::Literal(LiteralBits::Int(i))] => Ok(CostLookup::Hit(*i)),
+            _ => Err("`Hit` should carry a single Int payload".to_string()),
+        },
+        other => Err(format!(
+            "expected `Miss` or `Hit` for `Lookup<Int>`, got `{other}`"
+        )),
+    }
+}
+
+/// T-LaneE `DifferentialEquals` cost lineage: **v3** = D1 `apply_lens_declaration` on the canonical
+/// `.dag` `cost_of`; **v2** = Rust-generated [`cost_of`] (`lens_cost_generated`). These are
+/// independent producers — the equality check can fail if they diverge (P3 / api-review #764).
+fn eval_lane_e_differential_cost_lineage(
+    lineage_name: &str,
+    program_dag: &Dag,
+    claim_file_name: &str,
+    bind_port: PortId,
+    lens_dag: &Dag,
+) -> Result<CostLookup, String> {
+    match lineage_name {
+        "v3_program_cost" => {
+            let Some(cost_decl) = lens_dag.declaration_by_name("cost_of") else {
+                return Err("canonical complexity lens missing `cost_of` declaration".to_string());
+            };
+            let reflected = reflect_program_dag_nodes_in_file(
+                program_dag,
+                claim_file_name,
+                lens_dag,
+            )
+            .map_err(|e| format!("reflect claim program for v3 lineage: {e:?}"))?;
+            let port_arg = FieldValue::Literal(LiteralBits::Int(i64::from(bind_port.raw())));
+            let fv = apply_lens_declaration(lens_dag, cost_decl.id, &[reflected, port_arg])
+                .map_err(|e| format!("D1 apply of canonical `cost_of` (v3 lineage): {e:?}"))?;
+            cost_lookup_from_int_lookup_field_value(lens_dag, &fv)
+        }
+        "v2_oracle_cost" => Ok(cost_of(program_dag, &bind_port)),
+        _ => Err(format!(
+            "unsupported lineage `{lineage_name}` for T-LaneE `DifferentialEquals` cost (expected `v3_program_cost` or `v2_oracle_cost`)"
+        )),
     }
 }
 
@@ -603,8 +690,8 @@ impl<'a> TestRunner<'a> {
         let oracle_decl = self.dag.declaration(oracle_id);
         let input_decl = self.dag.declaration(input_id);
 
-        let _subject_lineage = decl_display_name(subject_id, subject_decl);
-        let _oracle_lineage = decl_display_name(oracle_id, oracle_decl);
+        let subject_lineage = decl_display_name(subject_id, subject_decl);
+        let oracle_lineage = decl_display_name(oracle_id, oracle_decl);
         let input_name = decl_display_name(input_id, input_decl);
 
         const PROGRAM_INPUT_SENTINEL: &str = "r1_lens_output_input_from_program";
@@ -644,17 +731,54 @@ impl<'a> TestRunner<'a> {
             ));
         };
 
-        // T-LaneE oracle receipt: both lineage names invoke the same Rust-generated `cost_of`
-        // on the claim program (`E-P` producer authority). A future split can route `oracle_ref`
-        // through a second implementation without changing the predicate shape.
-        let subject_out = cost_of(&program_dag, &bind.value);
-        let oracle_out = cost_of(&program_dag, &bind.value);
+        if subject_lineage == oracle_lineage {
+            return ClaimResult::Fail(
+                "DifferentialEquals: subject_ref and oracle_ref must name distinct lineages"
+                    .to_string(),
+            );
+        }
+
+        let pairing_ok = (subject_lineage.as_str() == "v3_program_cost"
+            && oracle_lineage.as_str() == "v2_oracle_cost")
+            || (subject_lineage.as_str() == "v2_oracle_cost"
+                && oracle_lineage.as_str() == "v3_program_cost");
+        if !pairing_ok {
+            return ClaimResult::NotYetImplemented(format!(
+                "DifferentialEquals(cost): only the (v3_program_cost, v2_oracle_cost) lineage pairing is implemented; got ({subject_lineage}, {oracle_lineage})"
+            ));
+        }
+
+        let lens_dag = match compile_r1_canonical_complexity_lens_dag() {
+            Ok(d) => d,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+
+        let subject_out = match eval_lane_e_differential_cost_lineage(
+            subject_lineage.as_str(),
+            &program_dag,
+            &claim.file_name,
+            bind.value,
+            &lens_dag,
+        ) {
+            Ok(v) => v,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let oracle_out = match eval_lane_e_differential_cost_lineage(
+            oracle_lineage.as_str(),
+            &program_dag,
+            &claim.file_name,
+            bind.value,
+            &lens_dag,
+        ) {
+            Ok(v) => v,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+
         if subject_out == oracle_out {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!(
-                "DifferentialEquals: subject `{}` output {subject_out:?} != oracle `{}` output {oracle_out:?}",
-                _subject_lineage, _oracle_lineage
+                "DifferentialEquals: subject `{subject_lineage}` output {subject_out:?} != oracle `{oracle_lineage}` output {oracle_out:?} (v3 .dag D1 vs v2 Rust oracle)"
             ))
         }
     }
