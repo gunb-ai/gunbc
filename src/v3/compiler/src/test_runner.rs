@@ -340,9 +340,10 @@ pub const EXECUTE_COMMAND_WALL_TIMEOUT: Duration = Duration::from_secs(30);
 
 const EXECUTE_COMMAND_WAIT_POLL: Duration = Duration::from_millis(20);
 
-/// Shells that interpret `-c <script>` the way POSIX `sh` does. If the script text contains `&`
-/// (background), the direct `Child` can exit with the expected code while unbounded work continues
-/// — not trackable with a single direct wait. Fail-closed with a typed message (P3/P4).
+/// Heuristic: on POSIX shells with `-c`, a *shell background* `&` (not part of `&&` / fd
+/// redirect spellings) means the child may exit 0 while other work still runs. We are not a full
+/// sh parser: strip a few *common* `&` spellings, then if `&` remains, fail-closed (P3/P4). See
+/// `shell_dash_c_may_start_background_after_eliding_artifacts` tests in this module.
 fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<ClaimResult> {
     const SHELL_STEMS: [&str; 5] = ["sh", "bash", "dash", "ksh", "zsh"];
     let stem = std::path::Path::new(command)
@@ -358,19 +359,78 @@ fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<C
     if args.len() < 2 {
         return None;
     }
-    if !args[1].contains('&') {
+    if !shell_dash_c_may_start_background_after_eliding_artifacts(&args[1]) {
         return None;
     }
     Some(ClaimResult::Fail(
-        "ExecuteCommand: shell `-c` script contains `&` (background) — the direct process can \
-         exit while descendants keep running; not a supported host boundary. Remove `&` or use a \
-         direct executable (P3/P4 fail-closed)."
+        "ExecuteCommand: shell `-c` script has a `&` that may be an unmodelled **background** job (\
+         after eliding `&&` and `n>&m` / `&>`-style fd spellings) — a direct `Child` wait is not a \
+         full process boundary. Rephrase (e.g. a direct tool, or a `-c` string that does not rely on \
+         shell `&` background) — P3/P4."
             .to_string(),
     ))
 }
 
+/// Strips a few *non-background* `&` patterns from a `-c` string, then returns `true` only if
+/// a bare `&` (likely background) may remain. Not a sh grammar; conservative only where
+/// we would otherwise false-positive `true && true` and `2>&1`.
+fn shell_dash_c_may_start_background_after_eliding_artifacts(script: &str) -> bool {
+    let mut t = script.to_string();
+    while t.contains("&&") {
+        t = t.replace("&&", "  ");
+    }
+    t = t.replace("2>&1", "");
+    t = t.replace("1>&2", "");
+    t = t.replace("2>&2", "");
+    t = t.replace("1>&1", "");
+    t = t.replace("0>&1", "");
+    t = t.replace("&>>", " ");
+    t = t.replace("&>", " ");
+    for a in 0u8..=9 {
+        for b in 0u8..=9 {
+            t = t.replace(&format!("{a}>&{b}"), "");
+        }
+    }
+    t.contains('&')
+}
+
+/// On Linux, wrap the logical `command` + `args` in a **user + PID namespace** (util-linux
+/// `unshare(1)` with `-c` = map current user, `-f` fork, `-p` new PID namespace) so the first exec’d
+/// process in the new namespace is PID 1 (init rôle for that namespace): when it exits, the
+/// kernel tears down the contained subtree, closing the “direct child matched exit, grandchildren
+/// still run” host escape **for this path** (Codex/PR #792: P3/P4 on the `ExecuteCommand`
+/// boundary). Other Unix and Windows: no unprivileged one-shot equivalent; wall bound + pgrp
+/// signal on timeout + the `sh -c` `&` heuristic only—documented, not a full process-tree
+/// guarantee.
+/// **Containers:** a default `docker run` (no user namespaces) often makes `unshare(1)` return
+/// `EPERM` and fail closed. Typical GitHub `ubuntu-*` *VM* jobs and bare hosts work; in Docker, try
+/// `--privileged` or user-namespace settings if you need `ExecuteCommand` tests to run.
+#[cfg(target_os = "linux")]
+fn build_execute_command_process(command: &str, args: &[String]) -> Command {
+    let mut c = Command::new("unshare");
+    c.args(["-c", "-f", "-p", "--", command])
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            c.pre_exec(|| {
+                if libc::setpgid(0, 0) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+    c
+}
+
 /// Configure `Command` for the host check: no capture, and on Unix a new process group for the
-/// child so a timeout can `kill(2)` the whole process group.
+/// child so a timeout can `kill(2)` the whole process group. See [`build_execute_command_process`]
+/// on Linux for the PID-namespace wrapper.
+#[cfg(not(target_os = "linux"))]
 fn build_execute_command_process(command: &str, args: &[String]) -> Command {
     let mut c = Command::new(command);
     c.args(args)
@@ -420,9 +480,13 @@ fn kill_process_group_on_timeout(child: &mut std::process::Child) {
 ///   outcomes).
 /// - **Wall clock** — [`EXECUTE_COMMAND_WALL_TIMEOUT`]; on exceed, the process group is signalled
 ///   (Unix) and the result is a typed failure (not a hang).
-/// - **No shell `&` in `sh`/`bash`/… `-c` scripts** — a background `&` lets the direct child exit
-///   with a matching code while unbounded work continues; such claims are rejected with
-///   `ClaimResult::Fail` (P3/P4). General process-tree / sandbox control is a separate policy track.
+/// - **Linux: user+PID namespace** — the logical `command` runs under `unshare(1) -c -f -p` so
+///   subtree lifetime matches the process namespace’s “init” exit, not just the outer `std::Child`
+///   (P3/P4; see `build_execute_command_process`).
+/// - **Heuristic on `&` in `sh`/`bash`/… `-c` scripts (all hosts)** — a bare shell background `&`
+///   (after eliding `&&` and a few `>&` / `&>`-style token spellings) is still rejected: cheap extra
+///   catch for the obvious `sh` escape. Not a full `sh` parser. Non-Linux: no init-style subtree
+///   guarantee; Director-level full sandbox is a separate policy track.
 ///
 /// Fail messages distinguish spawn error, policy reject, timeout, missing exit code (signal), and
 /// exit-code mismatch.
@@ -452,7 +516,14 @@ fn evaluate_execute_command_exit_code_with_wall_time(
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(err) => {
-            return ClaimResult::Fail(format!("ExecuteCommand spawn error ({command}): {err}"));
+            return ClaimResult::Fail(if cfg!(target_os = "linux") {
+                format!(
+                    "ExecuteCommand: failed to start Linux `unshare(1) -c -f -p` sandbox before \
+                     `{command}`: {err} (util-linux, user namespaces — P3/P4)"
+                )
+            } else {
+                format!("ExecuteCommand spawn error ({command}): {err}")
+            });
         }
     };
     let wall_label = format!("{:.2}", wall_time.as_secs_f64());
@@ -1636,8 +1707,29 @@ fn declaration_ref_name(dag: &Dag, value: &FieldValue) -> Result<String, Algebra
 mod execute_command_timebound_tests {
     use super::evaluate_execute_command_exit_code;
     use super::evaluate_execute_command_exit_code_with_wall_time;
+    use super::shell_dash_c_may_start_background_after_eliding_artifacts;
     use super::ClaimResult;
     use std::time::Duration;
+
+    #[test]
+    fn elision_allows_and_chain_and_fd_redirects_without_fabricating_bare_ampersand() {
+        assert!(!shell_dash_c_may_start_background_after_eliding_artifacts(
+            "true && true"
+        ));
+        assert!(!shell_dash_c_may_start_background_after_eliding_artifacts(
+            "true 2>&1"
+        ));
+        assert!(!shell_dash_c_may_start_background_after_eliding_artifacts(
+            "cmd 3>&4"
+        ));
+    }
+
+    #[test]
+    fn elision_still_fails_on_shell_background() {
+        assert!(shell_dash_c_may_start_background_after_eliding_artifacts(
+            "sleep 600 &"
+        ));
+    }
 
     #[test]
     fn sh_dash_c_background_ampersand_is_rejected() {
@@ -1650,8 +1742,52 @@ mod execute_command_timebound_tests {
             panic!("expected fail-closed for shell background, got {r:?}");
         };
         assert!(
-            m.contains("background") || m.contains("descendants") || m.contains("shell `-c`"),
+            m.contains("background")
+                || m.contains("P3")
+                || m.contains("descendants")
+                || m.contains("shell `-c`"),
             "expected policy message, got: {m}"
+        );
+    }
+
+    /// `&&` is logical AND, not background; must not be rejected (PR #792 review).
+    #[test]
+    #[cfg(unix)]
+    fn sh_dash_c_and_chain_runs() {
+        let r = evaluate_execute_command_exit_code(
+            "sh",
+            &[String::from("-c"), String::from("true && true")],
+            0,
+        );
+        assert_eq!(r, ClaimResult::Pass);
+    }
+
+    /// On Linux the workload runs in a fresh PID namespace; the `sh` that runs `-c` is init (PID 1),
+    /// which is the receipt that `unshare(1) -c -f -p` is in effect (Codex/PR #792, P3/P4).
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn linux_sandbox_makes_dash_c_shell_pid1() {
+        let r = evaluate_execute_command_exit_code(
+            "sh",
+            &[String::from("-c"), String::from("test \"$$\" -eq 1")],
+            0,
+        );
+        assert_eq!(r, ClaimResult::Pass);
+    }
+
+    /// `2>&1` and similar are not a shell background `&` (elided before the heuristic).
+    #[test]
+    #[cfg(unix)]
+    fn sh_dash_c_2_redir_is_not_treated_as_background() {
+        let r = evaluate_execute_command_exit_code(
+            "sh",
+            &[String::from("-c"), String::from("true 2>&1")],
+            0,
+        );
+        assert_eq!(
+            r,
+            ClaimResult::Pass,
+            "2>&1 should not be confused with sh background &"
         );
     }
 
