@@ -63,8 +63,9 @@ fn lane_e_host_forward_cost_of(dag: &Dag, port: &PortId) -> CostLookup {
 }
 
 fn lane_e_host_compute_costs(nodes: &[Behavior]) -> LaneEHostCostAcc {
-    // O(n²) work from `Vec::insert(0, …)` matches `lens_cost_generated` prepend order; rewriting for
-    // asymptotics risks drifting from emit — delete this whole receipt once D1 runs canonical `cost_of`.
+    // Prepend via `insert(0, …)` matches `lens_cost_generated` cons order so `lane_e_host_lookup_cost`
+    // agrees with emit (first match wins; order only matters if duplicate ports shadow). Do not
+    // reorder without a parity check — delete this receipt once D1 runs canonical `cost_of`.
     let mut acc = lane_e_host_seed_bind_params(nodes);
     for behavior in nodes {
         let entry = lane_e_host_entry_for(&acc, behavior);
