@@ -29,10 +29,16 @@ const EXTDEPS_BOOTSTRAP_FIXTURES: &[(&str, &str)] = &[(
     EXTDEPS_RUST_PRIMITIVES_DAG,
 )];
 
+// Same `OUT_DIR` fixture arrays `build.rs` emits for staged/spec/compiler sources;
+// this module is their only remaining fresh-parse consumer.
 include!(concat!(env!("OUT_DIR"), "/v3_staged_files.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_specs.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_compiler_files.rs"));
 
+// Single authority for staged-vs-`dsl/` name collision resolution during regen.
+// The committed `bootstrap_generated.rs` snapshot was baked with this policy; any
+// future runtime path that re-parses the same fixture set must keep this logic
+// in lockstep (cost of change: one module — extend here only).
 fn declaration_name_preference_rank(file: &str) -> usize {
     if file.starts_with("src/v3/") {
         2
