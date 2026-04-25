@@ -1,0 +1,276 @@
+# T-ImpossibleBugs — unhandled diagnostic paths (DESIGN/SCOPING doc)
+
+> Output of [`t-impossiblebugs-unhandled-diagnostic-paths-worker.md`](t-impossiblebugs-unhandled-diagnostic-paths-worker.md)
+> per the 2026-04-25 reframe (post-`sunny-deer-629` STOP-AND-ESCALATE).
+> Doc-only artifact. No v3 substrate change in this PR.
+>
+> **Recommendation: (a) bypass-feasible — totality-by-omission, the
+> pattern gunbc already uses for `force_unwrap`. Reasoning + sequencing
+> below.**
+
+## 1. DB-11 interaction analysis
+
+The original brief framed proof-or-totality as *"attach a `where b != 0`
+refinement on `b` and the type-checker honors it as a proof for `a / b`."*
+That framing directly contradicts the design DB-11 already shipped.
+
+### Evidence at HEAD
+
+`src/v3/compiler/src/infer.rs:3688-3769` — `resolve_operator_arrow` is the
+operator dispatch site. Lines 3693-3703 carry an explicit comment block:
+
+```rust
+// DB-11 (3a.3) operand normalization. Primitive operators (`+`,
+// `>`, `!=`, etc.) are structurally over BASE types — refinements
+// are surface-level facts about values, not part of the operator's
+// arrow contract. Mirroring a refined lhs like `Int where d != 0`
+// onto both operand positions (as the old fallback did) made the
+// call-site refinement-discharge pass treat the refinement as a
+// real requirement on every operand — so a literal `10` in
+// `d > 10` failed discharge because literals carry no refinement.
+// Strip refinements once up front; algebra-Conj walks and the
+// primitive fallback both operate on the base.
+let source_id = strip_refinement_to_base(dag, lhs_type.declaration);
+```
+
+The strip is *deliberate*. It is the designed-in fix for a prior failure
+mode where mirrored refinements broke symmetric operators (`d > 10`
+rejected the literal `10`). DB-11's discharge pass operates downstream of
+the strip, which is why the comment lands here.
+
+DB-11's discharge semantics are **structural identity** of refined types,
+not **logical entailment**. The locked test surface
+(`src/v3/compiler/tests/integration/m2_feature_parity_test.rs:331-700`,
+sixteen `test_3a3_*` cases) validates:
+
+- refined parameter ↔ refined argument structural-identity match (line 603);
+- distinct refinements do *not* auto-unify (line 619);
+- if-arm narrowing produces arm-local refined declarations matched
+  structurally (line 655);
+- literal `0` in `div(10, 0)` is rejected because literals carry no
+  refinement (line 578).
+
+None of that is logical entailment. Asking *"does `b != 0` entail
+`denominator != 0`?"* is a different operation against a different
+substrate, not present today.
+
+### Why the brief's original framing fights DB-11
+
+To make `a / b` require `b: Int where b != 0`, three things must
+simultaneously be true that are not true today:
+
+1. **Operator dispatch must read refinements on the precondition operand**,
+   contradicting the strip at line 3703.
+2. **The contradiction must be asymmetric** — `>` continues to strip
+   refinements (or `d > 10` regresses), while `/` does not strip on the
+   denominator slot. Per-operator per-operand refinement-honoring
+   policy.
+3. **The check must compare predicates by entailment** — the user's
+   refinement predicate must logically imply the operator-declared
+   precondition predicate, not just match it structurally. DB-11 only
+   does structural match.
+
+That's the load on the original framing. The "ownership_lens" cited as
+precedent does not bear it: `src/v3/lenses/named_function_count.dag:10-25`
++ `src/v3/std/verification.dag:137-141` + `src/v3/compiler/src/test_runner.rs:487-520`
+show ownership_lens is a post-hoc observability lens that consumes a
+lowered DAG and asserts a count via `LensOutputEquals`. It does not
+gate type-checking, and it carries no proof obligation. The shape (decl
+ref + input ref + expected ref) does not generalize to a type-time
+proof carrier.
+
+## 2. Substrate proposal — what the in-place-proof path would actually cost
+
+If Director chooses to enforce proof-or-totality *in place* (i.e., keep
+bare `a / b` as written by the user, but reject it when `b` is an
+unrefined `Int`), the substrate work is:
+
+1. **Per-operator partiality fact** — for each partial operator, name
+   which operand carries the precondition and the precondition predicate
+   itself. Attaches to operator declarations in `dsl/std/algebra.dag`
+   (Field.divide / FreeMonoid.index / etc.) or a sibling registry. New
+   carrier; no current home.
+
+2. **Predicate-entailment check** — given the user's refinement
+   predicate on the precondition operand and the operator's declared
+   precondition predicate, decide whether the former entails the latter.
+   For `b != 0` ⊨ `denominator != 0` that's a syntactic alpha-rename;
+   for arbitrary user predicates it's general first-order entailment.
+   No existing infrastructure. DB-11's structural-identity check is
+   strictly weaker.
+
+3. **Asymmetric per-operand refinement-honoring at dispatch** — modify
+   `resolve_operator_arrow` so the strip-to-base happens per-operand,
+   driven by the partiality fact. The denominator slot of `/` retains
+   its refinement; the operand slots of `>` continue to strip. This
+   directly reopens the failure mode the strip was added to close, so
+   the per-operand policy must encode *why* `/` is asymmetric and `>`
+   is not. That encoding is the partiality fact from item 1.
+
+Items 1 and 3 are mutually entangled — the partiality fact is what
+drives the asymmetric strip — but they are still distinct work. Item 2
+is the largest and is independent: any proof-or-totality system that
+tries to honor user-attached refinements as proofs needs an entailment
+checker, and gunbc has none.
+
+This is the work behind THESIS:350's *"Gated on Tier 2 substrate
+(post-R1)."* The gate is real.
+
+## 3. Bypass investigation — is there a totality-only path?
+
+THESIS:350 reads: *"Division by zero, integer overflow, out-of-bounds,
+force-unwrap, partial functions — either proven safe at compile time
+**or made total**. No partial functions in the runtime."*
+
+The "or made total" branch closes the bug class without any of the
+section-2 substrate. And gunbc already uses this branch — by omission,
+not by parallel surface.
+
+### Evidence: force_unwrap is closed today by not existing
+
+`grep -rn "force_unwrap" src/v3/std/ dsl/std/` returns nothing.
+`dsl/std/languages.dag:322,325,1026` shows the language ships
+`unwrap_or_else` (total: `Option<T> -> (() -> T) -> T`) and provides
+no partial counterpart. The bug class *force-unwrap on None* is closed
+by the partial form simply not being expressible in the surface
+language. No proof obligation, no entailment, no asymmetric dispatch.
+
+This is the load-bearing pattern. It's already the gunbc convention;
+the unhandled-diagnostic-paths lane should follow it rather than invent
+a parallel proof system.
+
+### Applied to the THESIS:350 enumeration
+
+| Bug class | Totality-by-omission shape |
+|---|---|
+| force-unwrap on None | Already done — partial form not in std/. |
+| Out-of-bounds indexing | Provide only `at(i: Int) -> Option<T>`; do not provide `[i]` returning `T`. (Audit: today's std/ does not appear to provide a partial indexer; verify before relying on this in implementation.) |
+| Division by zero | Provide only `divide(a: Int, b: Int) -> Result<Int, DivideByZero>` (or `Option<Int>`); remove `/` returning `Int`, OR retype `/` so its denominator must be a `NonZeroInt` constructed via a total `Int -> Option<NonZeroInt>` smart constructor. Either form closes the class without proof system. |
+| Integer overflow | Two valid totalities: (i) wrap-by-design with explicit `WrappingInt` carrier (totality via documented modular arithmetic, no failure case), or (ii) checked ops returning `Result<Int, IntOverflow>`. Either, not both, on the same operator. |
+
+Each entry above closes its bug class by *making the partial form
+unwriteable*, not by adding a proof obligation alongside it. That's the
+"or made total" branch literally.
+
+### Acceptance-theatre risk explicitly flagged
+
+The risk in the brief's req 3 is real: writing a `divide_safe(a, b) ->
+Result<Int, DivideByZero>` wrapper *alongside* an unchanged `/`
+operator does **not** close the bug class. Both forms remain
+expressible; the partial one continues to type-check. This is theatre.
+
+The bug class is closed only when the partial form becomes
+unexpressible — i.e., the surface-language change is *removal* of `/`
+in its `(Int, Int) -> Int` shape, not *addition* of a Result-returning
+sibling. That's a language-design decision Director owns, not a
+substrate decision.
+
+### What about *proof-mode* uses?
+
+For programmers who can statically prove `b != 0` (e.g., `b = denom *
+denom + 1`), the totality-shifted form is ergonomic noise — a Result
+they always discard. Two existing-language patterns address this
+without entailment substrate:
+
+- `NonZeroInt` smart constructor — programmer constructs once at the
+  proof site, uses the proof token thereafter. Same shape as Rust's
+  `NonZeroU32`. The "proof" is the *constructor call site*, dischargeable
+  by `match` / `unwrap_or_else`. No entailment check needed; the type
+  carries the discharge.
+- Pattern-match destructuring — `match Option::from(b) { Some(nz) => a /
+  nz, None => ... }` makes the discharge syntactically explicit at the
+  call site. Same closure as the smart-constructor path.
+
+Neither requires DB-11 entailment. Both are pure
+algebra/sum-totality work in `dsl/std/`.
+
+## 4. Director-actionable recommendation
+
+**(a) Bypass-feasible — totality-by-omission, sequenced per partial-op
+class.**
+
+Reasoning:
+
+- The "made total" branch of THESIS:350 closes the bug class without
+  the section-2 substrate. The substrate work in section 2 is genuine
+  M+ (predicate-entailment is a major addition; the asymmetric strip
+  reopens an explicitly-closed DB-11 design).
+- gunbc already uses totality-by-omission for `force_unwrap`. Following
+  the existing convention is cheaper than inventing a parallel
+  enforcement system.
+- For `/` specifically, two equally-clean shapes exist (Result-returning
+  divide; NonZeroInt-typed denominator). Both are expressible in
+  today's substrate.
+- The proof-mode ergonomic concern is handled by smart-constructor /
+  match patterns, not by predicate-entailment.
+
+This recommendation is **not** the same as the narrow-demo theatre. The
+distinguishing factor is whether the partial form is *removed* from the
+surface (real closure) or merely *paired with a total alternative*
+(theatre). Removal closes; coexistence does not.
+
+### Follow-on brief shape
+
+**Implementation brief: T-ImpossibleBugs — totality-by-omission for
+THESIS:350 partial-ops (per-class sub-lanes).**
+
+Slice:
+
+1. **Audit**: enumerate every partial operator/function currently
+   reachable from user code (does `[i]` exist? does `force_unwrap`
+   exist? does `Int -> Int` `/` exist?). Output: a table with one
+   row per partial form on each std collection / numeric type +
+   current totality status.
+2. **Per-row decision**: for each partial form still reachable, pick
+   either Result-shape, Option-shape, or NonZero-typed-input shape.
+   Director-callable on shape choice; worker proposes default.
+3. **Removal sub-lane(s)**: one PR per partial-op class with
+   - the partial-form removal (or retype),
+   - the total replacement (if a new shape is needed),
+   - regression tests demonstrating the partial form no longer parses
+     or no longer dispatches,
+   - migration of any in-tree callers to the total form.
+4. **Acceptance**: for each closed class, a test asserting the partial
+   form produces a `ResolveError` (or parse error) at the surface, and
+   the total form compiles.
+
+This sequencing avoids:
+
+- net-new substrate (no partiality fact carrier, no entailment check,
+  no asymmetric strip);
+- any DB-11 conflict (operator dispatch unchanged; refinements
+  continue to strip);
+- acceptance theatre (the partial form is removed, not paired).
+
+It is **not** a single-PR demo. Each partial-op class is its own
+removal sub-lane, sized by the migration cost of in-tree callers. `/`
+is likely the largest because integer division is widespread; force-
+unwrap is already done.
+
+### When to revisit section-2 substrate
+
+If a future feature demands *in-place proof acceptance* — e.g., a
+verified-arithmetic mode where `b * b + 1` should let `a / (b*b+1)`
+compile because the denominator is provably nonzero — that's the
+right time to author the predicate-entailment + per-operator partiality
++ asymmetric-strip substrate. It is a Tier 2 R2+ extension, not a
+prerequisite for the bug-class closure THESIS:350 promises.
+
+## Receipts
+
+- DB-11 strip site: `src/v3/compiler/src/infer.rs:3693-3703`
+  (and `strip_refinement_to_base` at `:4032`).
+- DB-11 test surface: `src/v3/compiler/tests/integration/m2_feature_parity_test.rs:331-700`.
+- ownership_lens precedent (cited in original brief, ruled shape-only
+  here): `src/v3/lenses/named_function_count.dag:10-25`,
+  `src/v3/std/verification.dag:137-141`,
+  `src/v3/compiler/tests/t_demo/t_demo_fixtures.dag:87-97`,
+  `src/v3/compiler/src/test_runner.rs:487-520`.
+- Totality-by-omission precedent (force_unwrap not in std/):
+  `dsl/std/languages.dag:322,325,1026` (only `unwrap_or_else`
+  present).
+- DiagnosticKind taxonomy:
+  `src/v3/std/verification.dag:29-34`.
+- Operator declaration surface: `dsl/std/algebra.dag:196,305,379`.
+- THESIS gate: `THESIS.md:348-350`.
+- DB-11 history: `docs/db-history/db-11.md`.
