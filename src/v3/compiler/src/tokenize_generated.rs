@@ -20,7 +20,7 @@ pub enum TokenKind {
     KwTrue,
     KwFalse,
     Ident(String),
-    IntLit(i128),
+    IntLit(u128),
     StringLit(String),
     Eq,
     EqEq,
