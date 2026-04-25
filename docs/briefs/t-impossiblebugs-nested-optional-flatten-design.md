@@ -6,7 +6,7 @@
 
 ## TL;DR
 
-**Recommendation: bypass-feasible.** v3 substrate already has `TypeConnective::Cardinality { element, bound: CardinalityBound }` as a first-class connective (`src/v3/compiler/src/dag.rs:395`); the cardinality-substrate gate THESIS:343 names is the **v2** state described in `docs/architecture.md:109`, and v3 is past it. `T??` parses today, lowers to nested `Cardinality { bound: AtMostOne, .. }`, and is structurally distinct from `T?` only because nothing collapses the outer wrap. A two-line guard in `lower.rs` closes the bug class without touching substrate. Implementation lane is **XS**.
+**Recommendation: bypass-feasible.** v3 substrate already has `TypeConnective::Cardinality { element, bound: CardinalityBound }` as a first-class connective (`src/v3/compiler/src/dag.rs:395`); the cardinality-substrate gate THESIS:343 names is the **v2** state described in `docs/architecture.md:109`, and v3 is past it. `T??` parses today, lowers to nested `Cardinality { bound: AtMostOne, .. }`, and is structurally distinct from `T?` only because nothing collapses the outer wrap. A single substrate-level helper enforcing `AtMostOne ∧ AtMostOne = AtMostOne` at every `Cardinality` construction site (3 hand-Rust sites: `lower.rs` ×2, `infer.rs` ×1) closes the bug class without touching substrate shape. Implementation lane is **S**. (Original draft proposed lower-only XS; revised post-PR #798 review — see §Q3 *Revision*.)
 
 ## Q1 — Surface-upstream check: does `T??` parse?
 
@@ -77,16 +77,50 @@ No collapse step exists. The matching code path (`infer.rs:1918-1965`, `bind_exp
 
 Flattening user-surface nested-optional therefore does not touch `OptionalOf`. (If `OptionalOf<OptionalOf<X>>` ever appears in std method declarations as an authoring mistake, that's a separate issue scoped to `dsl/std/algebra.dag`; out of scope here.)
 
-## Q3 — Bypass feasibility: per-construction-site flatten
+## Q3 — Bypass feasibility: substrate-constructor invariant
 
-**Yes — clean two-line guard at `SurfaceType::Optional` lowering arms.**
+**Yes — single helper enforced at every `TypeConnective::Cardinality` construction site.**
 
 The algebraic property: `AtMostOne ∧ AtMostOne = AtMostOne`. In partial-function terms: `Option<Option<T>>` is observationally equivalent to `Option<T>` because the cardinality semantics of `AtMostOne` is idempotent under self-composition (`min(1, min(1, n)) = min(1, n)`). This is the math of `AtMostOne`, not invented vocabulary.
 
-**Two arms to edit** (`src/v3/compiler/src/lower.rs`):
+### Revision per PR #798 review (2026-04-25)
 
-1. `:1949-1968` — `type_to_declaration_id` `SurfaceType::Optional` arm: after lowering `inner`, check if `dag.declaration(element).connective` matches `TypeConnective::Cardinality { bound: CardinalityBound::AtMostOne, .. }`. If yes, return `element` directly without wrapping.
-2. `:2044-2047` — `type_to_connective` `SurfaceType::Optional` arm: same guard. If the lowered inner declaration's connective is `TypeConnective::Cardinality { element, bound: AtMostOne }`, return/clone that connective verbatim — i.e. `TypeConnective::Cardinality { element, bound: AtMostOne }` reusing the *inner's* `element` (which is the underlying `T`'s declaration). **Do NOT** peel to `element`-as-connective, which would collapse `T??` to `T` instead of `T?` and contradict acceptance below.
+The initial framing of this section proposed a lower-only guard at the two `SurfaceType::Optional` arms. **A reviewer (gpt-5-5-pro, blocking) correctly flagged that this leaves the illegal state representable through other DAG construction paths**, violating "illegal states unrepresentable" and reducing the rule to API-level enforcement.
+
+Audit of all hand-Rust `TypeConnective::Cardinality` construction sites confirms multiple paths:
+
+| File:line | Path | Hand-Rust? |
+|---|---|---|
+| `src/v3/compiler/src/lower.rs:1949-1968` | `type_to_declaration_id` `SurfaceType::Optional` arm | yes |
+| `src/v3/compiler/src/lower.rs:2044-2047` | `type_to_connective` `SurfaceType::Optional` arm | yes |
+| `src/v3/compiler/src/infer.rs:2902-2916` | `concretize_decl_with_subst` substitutes through Cardinality | **yes — killer case** |
+| `src/v3/compiler/src/dag/builder.rs:920` | `push_test_declaration` (test scaffolding) | test-only |
+| `src/v3/compiler/src/bootstrap_std_generated.rs` (~22 sites) | regenerated from std/ declarations | generated |
+
+The `infer.rs:2902` path is the substantive blocker: when `fn foo<T>(x: T?) -> T?` is instantiated with `T = Int?`, substitution produces `Cardinality<Cardinality<Int, AtMostOne>, AtMostOne>` *here*, never passing through `lower.rs`. A lower-only guard misses every generic-instantiation case.
+
+### Corrected design: single substrate-level helper
+
+Introduce one helper in `src/v3/compiler/src/dag/builder.rs` (or adjacent — implementer's call) with this contract:
+
+```rust
+/// Allocate a Cardinality declaration enforcing the AtMostOne∧AtMostOne
+/// idempotence invariant. If `bound == AtMostOne` and `element`'s
+/// connective is `Cardinality { bound: AtMostOne, .. }`, return `element`
+/// directly without allocating a fresh outer wrap.
+fn alloc_cardinality_decl(
+    dag: &mut Dag,
+    element: DeclarationId,
+    bound: CardinalityBound,
+    span: SourceSpan,
+) -> DeclarationId
+```
+
+All three hand-Rust construction sites (`lower.rs:1949`, `lower.rs:2044`, `infer.rs:2902`) route through this helper. The helper is the **single point of enforcement**; nested `AtMostOne ∧ AtMostOne` literally cannot be constructed, satisfying "illegal states unrepresentable" structurally rather than by-convention.
+
+`bootstrap_std_generated.rs` sites are regenerated from `dsl/std/` declarations; `dsl/std/` does not author user-surface `T??`, so those sites are not at risk *today*, but the regen path should also call the helper as a defense-in-depth measure (the regen emitter sits in `regen_bootstrap_emit.rs` — implementer audits whether the helper-call needs to be wired through codegen). If the helper lives in a module that codegen can import, the regen output naturally inherits the invariant.
+
+The `:2044` arm is `type_to_connective`, which returns `TypeConnective` directly (not a `DeclarationId`). The helper's contract returns `DeclarationId`; for `:2044`, the implementer either (a) restructures the caller to use the helper-then-resolve-to-connective path, or (b) extracts a sibling helper `cardinality_connective(dag, element, bound) -> TypeConnective` that applies the same predicate inline. Either is acceptable; both must converge on the same idempotence rule.
 
 The guard is **specific to AtMostOne ∧ AtMostOne**. The other shapes are not idempotent and stay distinct:
 
@@ -105,22 +139,29 @@ The guard predicate is exactly: outer bound `AtMostOne` *and* inner bound `AtMos
 
 ### Implementation-brief shape
 
-**Title:** `feat(v3): T-ImpossibleBugs — `T??` flattens to `T?` at lower (closes nested-optional flatten class)`
+**Title:** `feat(v3): T-ImpossibleBugs — `T??` flattens to `T?` via Cardinality-constructor invariant (closes nested-optional flatten class)`
 
 **Reqs:**
 
-1. **Idempotent flatten in lower.** `SurfaceType::Optional` lowering arms in `src/v3/compiler/src/lower.rs:1949` and `:2044` add a guard: when the lowered inner element's connective is `TypeConnective::Cardinality { bound: AtMostOne, .. }`, return the inner element directly without constructing an outer wrap. Specific to `AtMostOne ∧ AtMostOne`; other bound combinations untouched.
-2. **Span policy.** The flattened declaration uses the inner declaration's existing span (the user wrote `T??` syntactically; the type they got is structurally the inner `T?`'s declaration). No info-level "flattened to" hint — *"impossible by construction"* per discipline; the second `?` is silently absorbed at lower. Document this in PR body.
-3. **Test fixture.** A v3 compiler test asserting `T??` and `T?` produce the same `DeclarationId` (or the same `TypeConnective` shape modulo declaration identity); pattern-matching against `T??` requires only one level of unwrap. Place under `src/v3/compiler/tests/integration/`.
+1. **Substrate-level idempotence helper.** Add `alloc_cardinality_decl` (or equivalent) in `src/v3/compiler/src/dag/builder.rs` enforcing `AtMostOne ∧ AtMostOne = AtMostOne` at allocation time. When `bound == AtMostOne` and `element`'s connective is `Cardinality { bound: AtMostOne, .. }`, return `element` directly without allocating a fresh outer wrap. Specific to `AtMostOne ∧ AtMostOne`; `Unbounded`, `Exact(n)`, and mixed-bound combinations untouched. **Do NOT** peel to `element`-as-element (would collapse `T??` to `T` instead of `T?` and contradict acceptance below) — the helper returns the existing inner *declaration* (its connective is already `Cardinality<T, AtMostOne>`), not its element-of-element.
+2. **Route all hand-Rust construction sites through the helper.** `lower.rs:1949` and `infer.rs:2902` call the new helper instead of constructing `TypeConnective::Cardinality { ... }` and pushing a declaration directly. `lower.rs:2044` (`type_to_connective` returns `TypeConnective` not `DeclarationId`) gets a sibling helper or restructured caller per §Q3.
+3. **Span policy.** When flatten triggers, reuse the inner declaration's span (the user wrote `T??`; the type they got is the inner `T?`'s declaration). No info-level "flattened to" hint — *"impossible by construction"* per discipline; the second `?` is silently absorbed at the substrate constructor. Verify no diagnostic / hover / error-printer round-trips `T??` back to the user as `T?` confusingly (per gpt-5-5-pro non-blocking observation on PR #798).
+4. **Test fixtures.**
+   - `T??` and `T?` produce the same `DeclarationId` after lowering (test).
+   - Generic-instantiation case: `fn foo<T>(x: T?) -> T?` instantiated with `T = Int?` produces a `Cardinality<Int, AtMostOne>` return type, **not** `Cardinality<Cardinality<Int, AtMostOne>, AtMostOne>` (test that exercises `concretize_decl_with_subst`; this is the path the original lower-only design missed).
+   - `List<T>?`, `T?[]`, `[T; 3]?` preserve their distinct shapes (test).
+   - Place under `src/v3/compiler/tests/integration/`.
 
 **STOPs:**
 
 - **Any consumer matches on outer-`AtMostOne` over inner-`AtMostOne` as a meaningful distinct type** (audit `infer.rs` `Cardinality` arms before editing) — if so, that consumer carries a hidden assumption that flatten breaks. STOP and surface.
-- **Lowering arm has a hidden caller path that needs the outer wrap for span/identity reasons** — STOP.
-- **Generalization pressure to flatten `List<List<T>>` or `Set<Set<T>>` falls out of the same guard** — it does not (those are `Unbounded ∧ Unbounded`, not idempotent in the same algebraic sense; they're legitimately distinct). STOP if the implementer is tempted.
+- **A construction path was missed in the audit** — if `cargo test` reveals nested `Cardinality<_, AtMostOne>` produced by a path other than the three hand-Rust sites named, STOP and audit before extending the helper rollout.
+- **Diagnostic/hover/error-printer surface confuses the user** — if any user-facing surface re-prints types and round-trips `T??` ambiguously, STOP and surface (per gpt-5-5-pro observation).
+- **Generalization pressure to flatten `List<List<T>>` or `Set<Set<T>>` falls out of the same helper** — it does not (those are `Unbounded ∧ Unbounded`, not idempotent in the same algebraic sense; they're legitimately distinct). The helper's predicate is exactly `outer == AtMostOne && inner == AtMostOne`. STOP if the implementer is tempted to widen.
+- **`OptionalOf<OptionalOf<X>>` in std-method authoring** is a separate brief (algebra-template lint), not in scope here. STOP if the implementer is tempted to fold it in.
 - **DB-8 fixed-point drifts** — STOP immediately.
 
-**Dispatch profile:** XS, single PR, single worker. ~10-line code diff + 1 test fixture + PR-body doc. Not gated on any other lane. Independent of the other two T-ImpossibleBugs classes.
+**Dispatch profile:** S (revised from XS post-#798 review). Single PR, single worker. ~30-line code diff (helper + 2-3 routed call sites + sibling for `:2044` arm) + 3 test fixtures + PR-body doc. Not gated on any other lane. Independent of the other two T-ImpossibleBugs classes.
 
 **Acceptance:**
 
