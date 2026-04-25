@@ -88,7 +88,9 @@ fn integer_decl_name(dag: &Dag, decl: DeclarationId, depth: usize) -> Option<&st
         | TypeConnective::Atom(AtomPayload::ResolvedByStructure(next)) => {
             integer_decl_name(dag, *next, depth + 1)
         }
-        TypeConnective::Instantiation { template, .. } => integer_decl_name(dag, *template, depth + 1),
+        TypeConnective::Instantiation { template, .. } => {
+            integer_decl_name(dag, *template, depth + 1)
+        }
         _ => None,
     }
 }

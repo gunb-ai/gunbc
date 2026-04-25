@@ -2428,23 +2428,25 @@ fn lower_data_item(
         Some(SurfaceExpr::Record { fields, .. }) => {
             lower_record_to_structural(name, fields, ty_decl_id, body_span, symbols, dag)
         }
-        Some(lit_expr @ SurfaceExpr::Literal { .. }) => match lower_scalar_literal_for_type(
-            lit_expr, ty_decl_id, dag,
-        ) {
-            Ok(bits) => Some(crate::dag::ValueBody::Scalar(bits)),
-            Err(diag) => {
-                report_declaration_error(dag, diag);
-                report_declaration_error(
-                    dag,
-                    Diagnostic::ResolveError {
-                        name: format!("data `{name}`'s scalar body does not match declared type",),
-                        span: body_span.clone(),
-                        fixes: Vec::new(),
-                    },
-                );
-                None
+        Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
+            match lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag) {
+                Ok(bits) => Some(crate::dag::ValueBody::Scalar(bits)),
+                Err(diag) => {
+                    report_declaration_error(dag, diag);
+                    report_declaration_error(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "data `{name}`'s scalar body does not match declared type",
+                            ),
+                            span: body_span.clone(),
+                            fixes: Vec::new(),
+                        },
+                    );
+                    None
+                }
             }
-        },
+        }
         _ => None,
     };
     let final_body =
