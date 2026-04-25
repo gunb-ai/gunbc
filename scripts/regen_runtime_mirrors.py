@@ -87,6 +87,30 @@ pub fn hit_int_lookup(n: i64) -> Lookup<i64> {
 
 
 DAG_COST_TEMPLATE = """#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CollectionSizeEffect {
+    ShrinkEffect,
+    ProjectionEffect,
+    IdentityEffect,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CostShape {
+    ShapeConstant,
+    ShapeLinearScan,
+    ShapeIterateBody,
+    ShapeSortBody,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MethodContract {
+    pub algebra_id: String,
+    pub method_id: String,
+    pub size_effect: Option<CollectionSizeEffect>,
+    pub cost_shape: Option<CostShape>,
+    pub callback_element_position: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DegreeAtLeastTwo {
     DegreeTwo,
     DegreeSuccessor { previous: Box<DegreeAtLeastTwo> },
