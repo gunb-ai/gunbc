@@ -3265,6 +3265,12 @@ fn integer_target_range(dag: &Dag, expected_type: DeclarationId) -> Option<(Stri
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
+            // Type aliases (`type Tiny = UInt8`) lower through
+            // Instantiation; follow the template so aliased forms
+            // narrow consistently with direct ones.
+            TypeConnective::Instantiation { template, .. } => {
+                current = *template;
+            }
             _ => return None,
         }
     }

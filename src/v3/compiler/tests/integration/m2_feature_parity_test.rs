@@ -1292,6 +1292,50 @@ fn cardinality_int_lit_int_alias_default_accepts_large_literal() {
 }
 
 #[test]
+fn cardinality_int_lit_alias_narrows_consistently_with_direct() {
+    // Codex P2: type aliases lower through TypeConnective::Instantiation;
+    // integer_target_range must follow Instantiation edges so aliased
+    // forms (`type Tiny = UInt8; data x: Tiny = 256`) narrow with the
+    // same MagnitudeOutOfRange diagnostic the direct form (`data x:
+    // UInt8 = 256`) produces. Inconsistency between direct and aliased
+    // forms would surprise users and undermine the substrate-declared
+    // range facts.
+    let dag = compile_any(
+        "type Tiny = UInt8\n\
+         data x: Tiny = 256",
+        "alias_overflow.v3",
+    );
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| d)
+        .find(|d| matches!(d, Diagnostic::MagnitudeOutOfRange { .. }))
+        .unwrap_or_else(|| {
+            panic!(
+                "aliased form must emit MagnitudeOutOfRange like the direct form; got: {:?}",
+                dag.diagnostics()
+            )
+        });
+    let Diagnostic::MagnitudeOutOfRange {
+        target_name,
+        magnitude,
+        target_min,
+        target_max,
+        ..
+    } = diag
+    else {
+        unreachable!()
+    };
+    assert_eq!(
+        target_name, "UInt8",
+        "diagnostic must name the underlying primitive, not the alias"
+    );
+    assert_eq!(*magnitude, 256_i128);
+    assert_eq!(*target_min, 0_i128);
+    assert_eq!(*target_max, 255_i128);
+}
+
+#[test]
 fn cardinality_int_lit_int8_above_range_emits_magnitude_out_of_range() {
     // Negative-literal narrowing is not exercised: unary minus is not
     // part of the literal token surface today (it desugars via
