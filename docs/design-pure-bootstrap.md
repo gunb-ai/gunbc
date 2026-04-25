@@ -1,6 +1,8 @@
 # Pure Bootstrap (PB program)
 
-> **🔄 SUPERSEDED 2026-04-25 by [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md)** (now LIVE per cascade promotion). The ≤5-floor framing throughout this doc is **retracted**. The 2-3 principled-floor framing introduced via [PR #756](https://github.com/gunb-ai/gunbc/pull/756) is also retracted. Both are superseded by the **0-floor target** under the Pure Bootstrap to Zero program.
+> **🔄 SUPERSEDED 2026-04-25 by [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md)** (now LIVE per cascade promotion [PR #782](https://github.com/gunb-ai/gunbc/pull/782)). The ≤5-floor framing throughout this doc is **retracted**. The 2-3 principled-floor framing introduced via [PR #756](https://github.com/gunb-ai/gunbc/pull/756) is also retracted. Both are superseded by the **0-floor target** under the Pure Bootstrap to Zero program.
+>
+> **Treat all numeric floors below as retracted.** Specific lines that quote in isolation (e.g., the table row at the `Post-PB-8 | ≤5 non-test + TESTING residual | graduation` row, body prose at lines `:105`, `:208`, `:226`, `:257-291`, `:351`, etc.) all reflect the pre-cascade framing. Do not quote any numeric shim-floor or `Post-R2 shape` residual reference from this doc as live authority — the live authority is `design-pure-bootstrap-zero.md` (target 0; residual carve-out retracted; tests migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations per `TESTING.md`).
 >
 > This doc remains in-tree as historical context for the trajectory that led to the 0-floor framing. Cross-refs migrated to `design-pure-bootstrap-zero.md`. Do not author new work against the ≤5 or 2-3 framings; route new work to the 0-floor program per Zero-Floor Manager brief at [`docs/briefs/pure-bootstrap-zero-manager.md`](briefs/pure-bootstrap-zero-manager.md).
 

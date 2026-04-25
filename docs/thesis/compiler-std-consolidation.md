@@ -2,7 +2,7 @@
 
 > Parent: [THESIS.md](../../THESIS.md)
 > Related: [epistemic-stacking.md](epistemic-stacking.md), [structural-decompression.md](structural-decompression.md), [what-else-falls-out.md](what-else-falls-out.md)
-> Operational: [Pure Bootstrap design](../design-pure-bootstrap.md), [lens capability register](../v3-lens-capability-register.md)
+> Operational: [Pure Bootstrap to Zero design](../design-pure-bootstrap-zero.md) (LIVE 2026-04-25 — live authority; supersedes the [≤5-floor design doc](../design-pure-bootstrap.md) now marked SUPERSEDED), [lens capability register](../v3-lens-capability-register.md)
 
 ## Claim
 
@@ -28,7 +28,7 @@ A small set of concepts genuinely belong to the compiler because they describe t
 - **Code-generation registry** — `src/v3/compiler/regen.dag`. The map from `.dag` declarations to generated Rust output paths. `LensRegistryEntry`. Compiler-specific because only the compiler is generating code for itself.
 - **Lens bodies** — the analyses the compiler ships with, under `src/v3/lenses/*.dag`. Users can write similar analyses, but the compiler's *bundled set* is its API surface.
 - **Substrate reflection accessors** — `declaration_by_id`, `port`, `node`, `resolve_producer`, `lane2_workflow_at`. Reads over the Dag the compiler is currently operating on. Users can access *their own Dags* the same way, but the compiler's runtime accessor set is its API.
-- **Bootstrap shim** — `src/v3/compiler/src/` at minimal steady state (target: ≤5 hand-maintained Rust files). The irreducible entry point.
+- **Bootstrap shim** — `src/v3/compiler/src/` at the **0-floor target per [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md)** (LIVE 2026-04-25; supersedes the prior ≤5-floor framing). The entry point dissolves under cascade promotion via the PB-Bootstrap-Process lane (bootstrap workflow declared as `.dag` data; `bootstrap.rs` becomes a generated trampoline or vanishes).
 
 Everything else moves to `std/`: Token, File, Path, SourceSpan, Diagnostic, Identifier, Behavior, TypeConnective, Declaration, DagPort, CardinalityBound, ArrowBody (when stable), and any future concept that can be used by both the compiler and user programs.
 
@@ -84,7 +84,7 @@ Every file under `src/v3/std/*.dag` is a migration candidate once the bootstrap 
 
 ### Rust hand-written files (bootstrap shim target)
 
-The Pure Bootstrap design doc targets ≤5 hand-maintained Rust files. Current state has ~5-10 substantial hand-Rust files (parser body algorithm, lower algorithm body, infer algorithm body, emit backbone, bootstrap.rs). Each has a named capability-gap reason; each dissolves when its gap closes.
+The Pure Bootstrap to Zero design doc ([`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md), LIVE 2026-04-25; supersedes the prior ≤5-floor framing in `docs/design-pure-bootstrap.md`) targets **0** hand-maintained Rust files. Current state has ~5-10 substantial hand-Rust files (parser body algorithm, lower algorithm body, infer algorithm body, emit backbone, bootstrap.rs). Each has a named capability-gap reason; each dissolves when its gap closes — including `bootstrap.rs` itself, via the PB-Bootstrap-Process lane (Zero-Floor Manager) that declares the bootstrap workflow as `.dag` data.
 
 ### Upcoming-lane alignment check
 
@@ -163,7 +163,7 @@ The exemption dissolves at SG-2c-proper completion; both thesis doc and ROADMAP 
 
 **Secondary ratchet — v3-std tree consolidation.** Count of `type` declarations in `src/v3/std/*.dag`. Baseline: 162 types across 15 files after adding `src/v3/std/parse_surface.dag` (the post-tokenize 148 plus 14 migrated surface-schema types). These collapse to `dsl/std/*.dag` wholesale when the file-preference scaffold dissolves (ROADMAP: v2 retirement gate). This ratchet is gated by that dissolution, not per-lane moves.
 
-**Tertiary ratchet — hand-Rust surface.** This doc does not duplicate the Pure Bootstrap ratchet; it anchors to it. The authoritative measure is **SG-0's** `(EXPECTED_HAND_AUTHORED_NON_TEST ∪ EXPECTED_HAND_AUTHORED_TEST ∪ EXPECTED_HAND_AUTHORED_FRAGMENTS) ∖ GENERATED_FILES` (live in `src/v3/compiler/tests/integration/sg0_census_test.rs`); [docs/design-pure-bootstrap.md](../design-pure-bootstrap.md)'s PB-0 ratchet is the tracking program. **The count is whatever the live ratchet test reads today** — any number in prose drifts stale. For a current snapshot, run the SG-0 census test directly; do not approximate via `grep` on the expected lists alone, because the ratchet subtracts `GENERATED_FILES` at runtime and splits non-test vs test paths — grep counts the pre-subtraction set, not the authoritative post-subtraction set. Target: **≤5** on the **non-test** subset per Pure Bootstrap's irreducible-shim goal. Concrete hand-Rust that still needs to dissolve: parse algorithm, lower algorithm body, infer algorithm body, emit backbone, bootstrap shim, and lens-adjacent Rust files (some of which are Band-C-STUB backs per the lens capability register — dissolving when substrate carriers and emit `match` capabilities land).
+**Tertiary ratchet — hand-Rust surface.** This doc does not duplicate the Pure Bootstrap ratchet; it anchors to it. The authoritative measure is **SG-0's** `(EXPECTED_HAND_AUTHORED_NON_TEST ∪ EXPECTED_HAND_AUTHORED_TEST ∪ EXPECTED_HAND_AUTHORED_FRAGMENTS) ∖ GENERATED_FILES` (live in `src/v3/compiler/tests/integration/sg0_census_test.rs`); [docs/design-pure-bootstrap-zero.md](../design-pure-bootstrap-zero.md) (LIVE 2026-04-25; supersedes [docs/design-pure-bootstrap.md](../design-pure-bootstrap.md))'s PB-* ratchet is the tracking program. **The count is whatever the live ratchet test reads today** — any number in prose drifts stale. For a current snapshot, run the SG-0 census test directly; do not approximate via `grep` on the expected lists alone, because the ratchet subtracts `GENERATED_FILES` at runtime and splits non-test vs test paths — grep counts the pre-subtraction set, not the authoritative post-subtraction set. Target: **0** on both non-test and test subsets per the Pure Bootstrap to Zero 0-floor goal (cascade-promoted 2026-04-25). Concrete hand-Rust that still needs to dissolve: parse algorithm, lower algorithm body, infer algorithm body, emit backbone, bootstrap shim (via PB-Bootstrap-Process), and lens-adjacent Rust files (some of which are Band-C-STUB backs per the lens capability register — dissolving when substrate carriers and emit `match` capabilities land).
 
 ## How this claim composes with existing tracked work
 
@@ -182,7 +182,7 @@ The exemption dissolves at SG-2c-proper completion; both thesis doc and ROADMAP 
 ## Related docs
 
 - [THESIS.md](../../THESIS.md) — parent thesis; this doc is a claim elaboration
-- [docs/design-pure-bootstrap.md](../design-pure-bootstrap.md) — the algorithmic-emission side of the bootstrap program
+- [docs/design-pure-bootstrap-zero.md](../design-pure-bootstrap-zero.md) — LIVE 2026-04-25; the live authority on the 0-floor target. Supersedes [docs/design-pure-bootstrap.md](../design-pure-bootstrap.md) (now SUPERSEDED) on the algorithmic-emission side of the bootstrap program.
 - [docs/v3-lens-capability-register.md](../v3-lens-capability-register.md) — analysis-side honesty register (parallel discipline, different axis)
 - [INVARIANTS.md](../../INVARIANTS.md) §P1, §P2, §P5 — the invariants this claim extends
 - [epistemic-stacking.md](epistemic-stacking.md) — every concept grounds in primitives via an ontological DAG (the in-repo long-form of the grounding claim this doc extends to the compiler/user boundary)

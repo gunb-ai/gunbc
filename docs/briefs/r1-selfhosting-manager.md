@@ -1,5 +1,7 @@
 # R1 Self-hosting Manager Brief
 
+> **🔄 Cascade-promotion update (2026-04-25)** — R1 self-hosting acceptance reframed under the 0-floor target per [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md) (LIVE 2026-04-25 via cascade promotion PR #782; supersedes the prior ≤5-floor framing in `docs/design-pure-bootstrap.md`, now SUPERSEDED). T-PB-A's non-test target is **0** (not ≤5). T-PB-B's prior `TESTING.md §"Post-R2 shape"` two-residual carve-out is **retracted**: helper unit tests vanish naturally, boundary tests migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations (per `TESTING.md` rewrite in cascade promotion). Operationally R1 closure may still ship before the 0-floor is reached — the ratchet ensures the trajectory; the gate's *acceptance number* is what shifts. Below is updated for cascade-coherent prose; predicate names retained for housekeeping. Original brief content below this banner reflects pre-cascade framing where not yet inline-updated; treat the cascade-promoted authorities (`design-pure-bootstrap-zero.md`, ROADMAP T-PB-A/T-PB-B rows + Goals bullet, `TESTING.md`) as the source of truth on any wording divergence.
+
 ## Orient before reading
 
 - Product direction: [PR #672](https://github.com/gunb-ai/gunbc/pull/672)
@@ -19,39 +21,45 @@
 This manager owns two lanes:
 
 - **`T-PB-A`** (`ROADMAP.md:53`) — compiler self-emits (fixed-
-  point); **non-test** hand-Rust surface reaches the ≤5 irreducible-
-  shim floor per [`docs/design-pure-bootstrap.md`](../design-pure-bootstrap.md).
-  Generated escape hatch OK. Live baseline is the non-test subset
-  of the SG-0 census (`EXPECTED_HAND_AUTHORED_NON_TEST` file-level +
+  point); **non-test** hand-Rust surface reaches the **0-floor target**
+  per [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md)
+  (LIVE 2026-04-25; supersedes the prior ≤5-floor framing in
+  `docs/design-pure-bootstrap.md`). Generated escape hatch OK. Live
+  baseline is the non-test subset of the SG-0 census
+  (`EXPECTED_HAND_AUTHORED_NON_TEST` file-level +
   `EXPECTED_HAND_AUTHORED_FRAGMENTS` crate-root scaffolds) in
   `src/v3/compiler/tests/integration/sg0_census_test.rs`. This
   brief does not freeze the count.
-- **`T-PB-B`** (`ROADMAP.md:54`) — tests-as-data. Pipeline and
-  contract tests port to `.dag`. The two `TESTING.md §Post-R2 shape`
-  residual categories (compiler-internal unit tests for Rust-only
-  helpers; external-toolchain boundary tests invoking
-  rustc/go/python) remain Rust-authored. Size **M**.
+- **`T-PB-B`** (`ROADMAP.md:54`) — tests-as-data. All pipeline and
+  contract tests port to `.dag`. The prior `TESTING.md §"Post-R2 shape"`
+  two-residual carve-out (compiler-internal unit tests for Rust-only
+  helpers; external-toolchain boundary tests invoking rustc/go/python)
+  is **retracted** under cascade promotion 2026-04-25: helper unit tests
+  dissolve with their hand-Rust subjects; boundary tests migrate to
+  `ExecuteCommand`-based `.dag` `TestClaim` declarations. Size **M**.
 
 ## Framing question this manager answers
 
-**Does gunbc compile itself from a named minimal Rust shim, with
-the residual Rust floor structurally bounded and mechanically
-checkable, including tests-as-data?**
+**Does gunbc compile itself from `.dag` data with a 0-floor hand-Rust
+surface, mechanically checkable, including all tests-as-data?**
 
 Today:
-- Residual Rust count is tracked by the SG-0 census with a **mechanical**
+- Hand-Rust count is tracked by the SG-0 census with a **mechanical**
   non-test vs test split: `EXPECTED_HAND_AUTHORED_NON_TEST` +
   `EXPECTED_HAND_AUTHORED_FRAGMENTS` (T-PB-A) and `EXPECTED_HAND_AUTHORED_TEST`
   (T-PB-B) in `sg0_census_test.rs` (landed on `main` via PR #683).
 - `pb_hand_rust_at_shim_floor` and `pb_rust_tests_outside_residual_zero`
   still need to **compile and evaluate** against that partition once
-  T-TestGen extensions support them (`[ext]` predicates).
+  T-TestGen extensions support them (`[ext]` predicates). Predicate names
+  retained for housekeeping; semantically both target 0 under cascade
+  promotion (the residual carve-out is empty, so "outside residual" = "all").
 - Pipeline / contract tests largely remain Rust-authored until the
   testgen runner lands; T-PB-B owns draft `.dag` claims in the interim.
 
-The ask: close both halves. Non-test ≤5 irreducible-shim floor.
-Tests live as `.dag` data evaluated by the testgen runner, except
-the two acknowledged residuals.
+The ask: close both halves. Non-test reaches the 0-floor target.
+All tests live as `.dag` data evaluated by the testgen runner (boundary
+tests migrate to `ExecuteCommand`-based `.dag` declarations per the
+cascade-promoted TESTING.md).
 
 ## Sequence + dispatch
 
@@ -60,12 +68,13 @@ the two acknowledged residuals.
   `sg0_census_test.rs`) are mechanically checked on `main` (PR #683).
 - **T-PB-A — ongoing.** Dispatch non-test hand-Rust reduction (PB program),
   compiler–`std/` consolidation, and cementing per sections below.
-- **Day 1 — T-PB-B pipeline porting, Rust-side.** Identify which
-  pipeline / contract tests are candidates for `.dag` conversion
-  (vs. the two TESTING.md residuals). Draft `TestClaim`
-  declarations in conversational `.dag` so they're ready when
-  Testgen's runner closes. Don't land the conversion yet — the
-  runner needs to exist to evaluate them.
+- **Day 1 — T-PB-B pipeline porting, Rust-side.** All
+  pipeline / contract tests are candidates for `.dag` conversion under
+  cascade promotion (the prior TESTING.md two-residual carve-out is
+  retracted; boundary tests use `ExecuteCommand` `.dag` declarations).
+  Draft `TestClaim` declarations in conversational `.dag` so they're
+  ready when Testgen's runner closes. Don't land the conversion yet —
+  the runner needs to exist to evaluate them.
 - **Gated on Testgen Manager.** T-PB-B's landing gate
   (`pb_test_file_generated_from_dag` + `pb_rust_tests_outside_residual_zero`,
   both `[ext]` on testgen extensions per `ROADMAP.md:68`) unblocks
@@ -93,10 +102,13 @@ the two acknowledged residuals.
   only in **`docs/briefs/r1-testgen-manager.md`** (*Hand-off points* →
   **Sideways to Self-hosting Manager**) — keep that list single-source
   until Testgen replies.
-- **Up to director.** Any proposal to adjust the two TESTING.md
-  residual categories (what counts as compiler-internal unit test,
-  what counts as external-toolchain boundary test). These are
-  scope decisions that live in ROADMAP / TESTING.md.
+- **Up to director.** Any proposal to revisit the cascade-promoted
+  retraction of the prior `TESTING.md §"Post-R2 shape"` two-residual
+  carve-out (compiler-internal unit tests, external-toolchain boundary
+  tests). Under cascade promotion 2026-04-25 these dissolve under 0-floor
+  (helpers vanish, boundary tests migrate to `ExecuteCommand`-based
+  `.dag` `TestClaim` declarations). Any proposal to re-introduce a
+  carve-out is a scope-reversal decision living in ROADMAP / TESTING.md.
 - **Up to director.** If the SG-0 census partition implementation
   needs a broader refactor than expected, flag for director before
   proceeding — the ratchet is load-bearing.
@@ -108,7 +120,7 @@ Lane-owner dispatch status (update as sub-deliverables close):
 **T-PB-A:**
 - [x] Non-test SG-0 census partition (`EXPECTED_HAND_AUTHORED_NON_TEST`
       / `EXPECTED_HAND_AUTHORED_TEST` split in `sg0_census_test.rs`)
-- [ ] Hand-Rust non-test reduction toward ≤5 irreducible-shim floor
+- [ ] Hand-Rust non-test reduction toward **0** (cascade-promoted 0-floor target per `docs/design-pure-bootstrap-zero.md`; supersedes prior ≤5 framing)
 - [ ] `pb_hand_rust_at_shim_floor` predicate compiles once T-TestGen
       extensions land
 - [ ] `pb_self_compile_fixed_point` predicate compiles once T-TestGen
@@ -161,7 +173,7 @@ Decisions log (append as they happen):
   (#729), infer payload span shim (#730), plus T-PB-A-E (#731) and
   T-PB-A-F (#732). SG-0 census + SG-6 ratchets shrunk accordingly. Live
   floor read from `src/v3/compiler/tests/integration/sg0_census_test.rs`;
-  the ≤5 irreducible-shim target not yet reached.
+  the 0-floor target not yet reached (target updated under cascade promotion 2026-04-25; prior framing was ≤5 irreducible-shim).
 - 2026-04-24: **T-PB-B-1** — landed `src/v3/compiler/tests/dag/*.dag` (`data` `TestClaim` /
   `TestSuite` per `std.verification`); redundant compile-smoke file later
   retired. Further Rust deletions / `pb_*` coordination: `docs/briefs/t-pb-b-1.md`.
