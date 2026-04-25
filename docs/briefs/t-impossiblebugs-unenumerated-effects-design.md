@@ -136,7 +136,7 @@ The closed-system claim *"effects derive structurally from the composition of ty
 
 The substrate must make it impossible for a service definition to declare `messages: Json` instead of `messages: List<LlmMessage>`. Typed protocol carriers must be the ONLY path; raw Json / string-path extraction must have no structural home in service definitions.
 
-**Today's tracked debt** (per ROADMAP.md:153-154):
+**Today's tracked debt** (per ROADMAP.md:348-349):
 - `dsl/extdeps/llm/openai.dag:92-110` — `messages: Json` + string-path output extraction (bypass: typed `LlmMessage` + `ContentBlock` carriers exist but not consumed).
 - `dsl/extdeps/llm/anthropic.dag:104-124` — same pattern.
 - `dsl/extdeps/github/auth.dag:13-24` — `github_token() → { token: Secret }` discards modeled scopes + `expires_at` from `GitHubAuthToken`.
@@ -170,7 +170,7 @@ Both prereqs are load-bearing for the closed-system claim this doc commits to. N
 
 Worker-discretion-vs-Director-call:
 - Lens implementation worker: dispatchable now; lens reports gaps as findings.
-- P1 closure: substantive substrate work touching extdeps; tracked debt at ROADMAP.md:153-154; should land via dedicated lane.
+- P1 closure: substantive substrate work touching extdeps; tracked debt at ROADMAP.md:348-349; should land via dedicated lane.
 - P2: runner primitive landed via PR #792. Only consumer-side bulk migration remains; tracked as ROADMAP residual, independent of the lens.
 
 ## Q5 — Asymmetric tightening (the only declaration-value exception)
