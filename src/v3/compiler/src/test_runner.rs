@@ -524,6 +524,17 @@ fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
 #[cfg(target_os = "linux")]
 const UNSHARE_STDERR_SCAN_CAP: u64 = 8 * 1024;
 
+/// **127** = command not found, **126** = not executable — common POSIX `sh` / `exec` results when
+/// the `command` cannot be `exec`’d. Under [`UNSHARE_LOGICAL_BOOTSTRAP_SH`], `exec 2>/dev/null` hides
+/// the shell’s “not found” line from the **wrapper** merge, so a missing binary can look like
+/// `expect_exit_code` 127 on the unshare(1) path with **no** `unshare:` line — the narrow skip would
+/// then `Pass` even though a direct [`std::process::Command::spawn`] often **fails** (P2(c), PR
+/// #792). Never **skip** direct-`Child` host confirmation in that case; still confirm (second run).
+#[cfg(target_os = "linux")]
+fn unshare_nonzero_match_never_skip_direct_for_shell_no_exec_exits(expect_exit_code: i64) -> bool {
+    matches!(expect_exit_code, 126 | 127)
+}
+
 /// `unshare(1)` (and the thin `sh` bootstrap) may still write to the **parent** pipe before the
 /// logical `command` is `exec`’d with `stderr` off the pipe. Only when the observed **exit code
 /// already disagrees** with the claim may we treat the capture as a possible *wrapper* setup error
@@ -978,88 +989,96 @@ pub fn evaluate_execute_command_host_outcome(
         not(target_os = "linux"),
         allow(clippy::never_loop) // the only `continue` is under `#[cfg(target_os = "linux")]`
     )]
-    let status = loop {
-        // Fresh capture for this `Child` (each `continue` spins up a new process; stale bytes would
-        // poison the unshare: merge — codex PR #792).
-        #[cfg(target_os = "linux")]
-        unshare_stderr_drain.clear();
-        let s = match child_wait_for_execute_command(
-            &mut child,
-            wall_time,
-            from_unshare,
+    let status =
+        loop {
+            // Fresh capture for this `Child` (each `continue` spins up a new process; stale bytes would
+            // poison the unshare: merge — codex PR #792).
             #[cfg(target_os = "linux")]
-            &mut unshare_stderr_drain,
-        ) {
-            Ok(s) => s,
-            Err(e) => return ExecuteCommandHostOutcome::Other(e),
-        };
-        #[cfg(target_os = "linux")]
-        {
-            if unshare_post_start_stderr_may_authorize_relaunch(from_unshare, &s, expect_exit_code)
-                && unshare_sandbox_broken_relaunch_with_direct(
+            unshare_stderr_drain.clear();
+            let s = match child_wait_for_execute_command(
+                &mut child,
+                wall_time,
+                from_unshare,
+                #[cfg(target_os = "linux")]
+                &mut unshare_stderr_drain,
+            ) {
+                Ok(s) => s,
+                Err(e) => return ExecuteCommandHostOutcome::Other(e),
+            };
+            #[cfg(target_os = "linux")]
+            {
+                if unshare_post_start_stderr_may_authorize_relaunch(
+                    from_unshare,
+                    &s,
+                    expect_exit_code,
+                ) && unshare_sandbox_broken_relaunch_with_direct(
                     from_unshare,
                     &mut child,
                     &unshare_stderr_drain,
-                )
-            {
-                child = match build_execute_command_process(command, args).spawn() {
-                    Ok(c) => c,
-                    Err(e2) => {
-                        return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(format!(
+                ) {
+                    child = match build_execute_command_process(command, args).spawn() {
+                        Ok(c) => c,
+                        Err(e2) => {
+                            return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(format!(
                             "ExecuteCommand spawn error ({command}) after unshare(1) post-start \
                              fallback: {e2}"
                         )));
-                    }
-                };
-                from_unshare = false;
-                continue;
-            }
-            if from_unshare {
-                let is_nonzero_match = s
-                    .code()
-                    .map(i64::from)
-                    .is_some_and(|c| c == expect_exit_code)
-                    && expect_exit_code != 0;
-                if is_nonzero_match {
-                    // Non-zero + exit already matches: the unshare(1) path can (rarely) conflate
-                    // PID-1 or namespace semantics with a **direct** `Child` (see module docs). When
-                    // merged wrapper stderr shows **no** `unshare:` util-linux line, the wrapper did
-                    // not report setup failure — **skip** the direct confirmation run (P2(d); T-PB-B).
-                    // Read errors: conservative confirm (second `Child`).
-                    // TODO(dissolution, P5): shared retirement with `unshare_sandbox_broken_relaunch`
-                    // and `#[cfg(test)]` empty-stderr — see `unshare_sandbox_broken_relaunch_with_direct`
-                    // module doc **P5 (shared target)**.
-                    let merged =
-                        unshare_merged_wrapper_stderr_read(&mut child, &unshare_stderr_drain);
-                    match merged {
-                        Ok(m) if !unshare_stderr_indicates_sandbox_setup_failure(&m) => {
-                            // `break` below: trust the unshare(1) exit; `stderr` already read.
                         }
-                        Ok(_) | Err(()) => {
+                    };
+                    from_unshare = false;
+                    continue;
+                }
+                if from_unshare {
+                    let is_nonzero_match = s
+                        .code()
+                        .map(i64::from)
+                        .is_some_and(|c| c == expect_exit_code)
+                        && expect_exit_code != 0;
+                    if is_nonzero_match {
+                        // Non-zero + exit already matches: the unshare(1) path can (rarely) conflate
+                        // PID-1 or namespace semantics with a **direct** `Child` (see module docs). When
+                        // merged wrapper stderr shows **no** `unshare:` util-linux line, the wrapper did
+                        // not report setup failure — **skip** the direct confirmation run (P2(d); T-PB-B),
+                        // except 126/127: see `unshare_nonzero_match_never_skip_direct_for_shell_no_exec_exits`.
+                        // Read errors: conservative confirm (second `Child`).
+                        // TODO(dissolution, P5): shared retirement with `unshare_sandbox_broken_relaunch`
+                        // and `#[cfg(test)]` empty-stderr — see `unshare_sandbox_broken_relaunch_with_direct`
+                        // module doc **P5 (shared target)**.
+                        let merged =
+                            unshare_merged_wrapper_stderr_read(&mut child, &unshare_stderr_drain);
+                        let need_direct_host_confirm = match &merged {
+                        Err(()) => true,
+                        Ok(m) if unshare_stderr_indicates_sandbox_setup_failure(m) => true,
+                        Ok(m) if unshare_nonzero_match_never_skip_direct_for_shell_no_exec_exits(
+                            expect_exit_code,
+                        ) => true,
+                        Ok(m) if !unshare_stderr_indicates_sandbox_setup_failure(m) => false,
+                        Ok(_) => true,
+                    };
+                        if need_direct_host_confirm {
                             child = match build_execute_command_process(command, args).spawn() {
                                 Ok(c) => c,
                                 Err(e2) => {
                                     return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(
                                         format!(
-                                            "ExecuteCommand spawn error ({command}) after \
-                                             unshare(1) host-exit confirmation: {e2}"
-                                        ),
+                                        "ExecuteCommand spawn error ({command}) after unshare(1) \
+                                         host-exit confirmation: {e2}"
+                                    ),
                                     ));
                                 }
                             };
                             from_unshare = false;
                             continue;
                         }
+                    } else {
+                        // P3/C-5: same fd as child stderr after exec; do not leave a piped `stderr` on
+                        // paths that skip the merge+decision above.
+                        let _ = child.stderr.take();
                     }
-                } else {
-                    // P3/C-5: same fd as child stderr after exec; do not leave a piped `stderr` on
-                    // paths that skip the merge+decision above.
-                    let _ = child.stderr.take();
                 }
             }
-        }
-        break s;
-    };
+            break s;
+        };
     #[cfg(not(target_os = "linux"))]
     let _ = from_unshare;
     let Some(actual) = status.code().map(i64::from) else {
@@ -2299,6 +2318,30 @@ mod execute_command_timebound_tests {
         assert_eq!(
             p,
             Ok(ExecuteCommandM1_5Proposition::UnsatisfiedExitMismatch)
+        );
+    }
+
+    /// P2(c): a missing `command` can return **127** on the unshare shell path with stderr nulled
+    /// and no `unshare:` in the merge. Direct `std::process::Command` typically **fails to spawn**;
+    /// a claim that expects 127 must not `Match` the unrun-only result (PR #792 codex).
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn unshare_expect_127_missing_command_does_not_pass_without_direct_spawn() {
+        use super::evaluate_execute_command_host_outcome;
+        use super::ExecuteCommandHostOutcome;
+        let r = evaluate_execute_command_host_outcome(
+            "definitely_not_a_real_binary_gunbc_792",
+            &[],
+            127,
+            Duration::from_secs(5),
+        );
+        let ExecuteCommandHostOutcome::Other(ClaimResult::Fail(msg)) = r else {
+            panic!("expected spawn/execute fail for missing command, not {r:?}");
+        };
+        assert!(
+            msg.contains("ExecuteCommand")
+                && (msg.contains("spawn") || msg.contains("error") || msg.contains("No such file")),
+            "expected spawn-fail phrasing, got: {msg}"
         );
     }
 
