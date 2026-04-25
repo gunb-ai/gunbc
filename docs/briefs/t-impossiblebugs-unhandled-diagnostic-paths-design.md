@@ -145,7 +145,7 @@ a parallel proof system.
 |---|---|
 | force-unwrap on None | Already done — partial form not in std/. |
 | Out-of-bounds indexing | **Partial form reachable today** — `dsl/std/algebra.dag:305` declares `index: fn(Int) -> T` on FreeMonoid (returns bare `T`). Closure: retype to `index: fn(Int) -> T?` (or `Result<T, IndexOutOfBounds>`). Map's `get: fn(K) -> V?` at `:340` is already total and is the model shape. |
-| Division by zero | Two shapes, with different substrate cost: **(i) Result/Option-returning `/`** — change Field's `quotient` return_type from `ReceiverSelf` to `Result<Self, DivideByZero>` (or `Option<Self>`) at `dsl/std/algebra.dag:478`. Operator stays symmetric `param_types: [ReceiverSelf, ReceiverSelf]`; only return shape changes. Expressible in today's substrate. **(ii) NonZeroInt-typed denominator** — `(Int, NonZeroInt) -> Int` is asymmetric per-operand and is **NOT** expressible as the `/` operator today: every algebra-operator-decl in `dsl/std/algebra.dag:471-479+` uses symmetric `[ReceiverSelf, ReceiverSelf]`. To make `/` accept a `NonZeroInt` denominator the `AlgebraOperatorDecl` shape needs per-operand type variance (substrate work). The shape *is* expressible today as a **non-operator** function — `fn divide_nz(a: Int, b: NonZeroInt) -> Int` — but that's a different surface (function call, not operator). Either-form-(i) closes the class without substrate; form-(ii) is either substrate work or a non-operator-shape concession. |
+| Division by zero | **Closure of bare `Int / Int` is harder than initially claimed**, because for Int operands the `/` arrow is NOT produced by any algebra-Conj field — it falls through to a Rust-side primitive scaffold at `src/v3/compiler/src/infer.rs:4003-4015` returning `(Int, Int) -> Int`. The algebra side has no `div` field at all: `dsl/std/algebra.dag:477` declares `quotient` on OrderedRing (Euclidean integer division with separate `remainder`), `:490` declares `reciprocal` on Field; neither is what `Arithmetic(Div)` resolves to. `src/v3/compiler/operators.dag:53` maps `Div => "div"`, but the algebra walk fails to find a `div` field and falls through. Three closure shapes, each with explicit cost: **(i) Hand-Rust retype of the Arithmetic(Div) primitive fallback** at `infer.rs:4004` to return `Result<Self, DivideByZero>` instead of `Self`. Compiler change, not algebra change; touches the documented class-5 scaffold gap. **(ii) Wire `div` through algebra-Conj** by adding a `div` field to Field with `return_type: Result<ReceiverSelf, DivideByZero>`, ensuring Int's `inhabits` chain terminates at that Field, and removing the primitive fallback for `Arithmetic(Div)`. Substrate-and-wiring work. **(iii) Non-operator total function** `fn divide_safe(a: Int, b: Int) -> Result<Int, DivideByZero>` — expressible today with no compiler or substrate change, but bare `a / b` still type-checks. Closure of the bug class requires (i) or (ii); (iii) alone is paired-not-closed (the acceptance-theatre trap). The NonZeroInt-typed-denominator shape is a separate concern: `(Int, NonZeroInt) -> Int` is asymmetric per-operand and not expressible as the `/` operator today (every `AlgebraOperatorDecl` at `algebra.dag:471-479+` uses symmetric `[ReceiverSelf, ReceiverSelf]`); it requires either extending `AlgebraOperatorDecl` for per-operand type variance or accepting a non-operator function shape `fn divide_nz(a: Int, b: NonZeroInt) -> Int`. |
 | Integer overflow | Two valid totalities: (i) wrap-by-design with explicit `WrappingInt` carrier (totality via documented modular arithmetic, no failure case), or (ii) checked ops returning `Result<Int, IntOverflow>`. Either, not both, on the same operator. |
 
 Each entry above closes its bug class by *making the partial form
@@ -211,20 +211,25 @@ Reasoning:
 - gunbc already uses totality-by-omission for `force_unwrap`. Following
   the existing convention is cheaper than inventing a parallel
   enforcement system.
-- For `/` specifically, **the Result/Option-returning shape is
-  expressible today** (Field's `quotient` return_type swap at
-  `dsl/std/algebra.dag:478`; param_types stay symmetric
-  `[ReceiverSelf, ReceiverSelf]`). The **NonZeroInt-typed-denominator
-  shape is NOT expressible as the `/` operator today** because every
-  `AlgebraOperatorDecl` in `algebra.dag:471-479+` uses symmetric
-  per-operand types; an asymmetric `(Int, NonZeroInt) -> Int` `/`
-  requires extending `AlgebraOperatorDecl` to admit per-operand type
-  variance (substrate work). The same shape *is* expressible today
-  as a non-operator function `fn divide_nz(a: Int, b: NonZeroInt) ->
-  Int`, at the cost of dropping operator syntax for that path. The
-  follow-on lane should default to (i) Result/Option-returning `/`
-  for the `/` removal sub-lane and reserve any per-operator
-  asymmetric-signature work as a separate substrate brief.
+- For `/` specifically, the closure cost is **larger than for
+  force-unwrap / OOB**. Today `Int / Int` does NOT dispatch through
+  any algebra-Conj field — `dsl/std/algebra.dag` has no `div` field
+  on Field (only `reciprocal`), and `quotient` on OrderedRing is
+  Euclidean integer-quotient (paired with `remainder`), not the `/`
+  operator. `src/v3/compiler/operators.dag:53` maps `Div => "div"`
+  but the walk fails and falls through to the Rust-side primitive
+  scaffold at `infer.rs:4003-4015`. So the `/` removal sub-lane has
+  three concrete options, each with named cost: **(i) hand-Rust
+  retype** of the `Arithmetic(Div)` fallback to `Result<Self,
+  DivideByZero>`; **(ii) substrate wiring** — add `div` to Field
+  with the total return type, terminate Int's walk there, and
+  delete the primitive fallback for Div; **(iii) non-operator
+  function** (`divide_safe`) only, which is expressible today but
+  is paired-not-closed (the acceptance-theatre trap). The follow-on
+  lane should pick (i) or (ii) for genuine closure; (iii) alone is
+  insufficient. The asymmetric NonZeroInt-typed-denominator shape
+  is a separate substrate question (per-operand type variance in
+  `AlgebraOperatorDecl`) and should be deferred to its own brief.
 - The proof-mode ergonomic concern is handled by smart-constructor /
   match patterns, not by predicate-entailment.
 
