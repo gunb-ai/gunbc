@@ -11,10 +11,11 @@
 
 ## What this document is
 
-v3 already has three reader lenses working: `lens_provenance`,
-`lens_depth`, and `lens_cost` (the first three added in M0 and
-PR-B). Each is a pure function over `Dag` returning a structural
-answer. This document specifies a **lens library** — a growing
+v3 has reader lenses in active use: `lens_provenance`, `lens_cost`,
+and `lens_unused_parameters` (M0, M1, and PR #445). An early M0
+`lens_depth` experiment is **retired** (no in-tree consumer; removed
+in the pure-bootstrap paydown). Each remaining lens is a pure function
+over `Dag` returning a structural answer. This document specifies a **lens library** — a growing
 set of reader lenses that enforce thesis-level invariants over
 arbitrary DAG segments.
 
@@ -99,19 +100,18 @@ Lenses written as Rust modules are a **bootstrap shortcut**,
 not the endgame.
 
 **The canonical shape is "pure reader with lens-specific
-output," not "pure reader returning violations."** The four
-lenses shipping today demonstrate the range:
+output," not "pure reader returning violations."** The three
+lenses in use demonstrate the range:
 
 - `lens_provenance` returns per-port origin information.
-- `lens_depth` returns per-port depth.
 - `lens_cost` returns per-node cost.
 - `lens_unused_parameters` returns a list of violations.
 
-Three of the four are analyses; one is a violation list. The
+Two of the three are analyses; one is a violation list. The
 common shape is **pure function, `Dag` in, structured output
 out**. "Violation list" is one instantiation. The canonical
 form must not bake "violation" into the signature, or else
-analyses like cost and depth don't fit the template.
+analyses like cost and provenance don't fit the template.
 
 **Why `.dag` form is canonical:**
 
@@ -158,7 +158,7 @@ that execution path lands, lenses still ship as Rust bootstrap modules.
 [`docs/substrate-reflection-design.md`](substrate-reflection-design.md)**
 (merged into this branch in commit 700dba6). That design doc
 specifies substrate types as `.dag` declarations, a query
-primitive set, and the migration path for the four existing
+primitive set, and the migration path for the remaining Rust
 lenses. When the reflection primitive lands, the §1.5 "thin
 wrapper" gate becomes a **structural invariant** enforced by
 two ratchets:
@@ -180,7 +180,7 @@ reflection design doc remains the design history and migration plan.
 remaining scope.** Reflection and field-binding realization are now in
 place, so the remaining blocker is not "the substrate is invisible";
 it is "compiled `.dag` lenses are not yet invocable on a runtime
-Dag value." `lens_provenance`, `lens_depth`, `lens_cost`, and
+Dag value." `lens_provenance`, `lens_cost`, and
 `lens_unused_parameters` therefore remain bootstrap scaffolds, but
 their migration target is now mechanically clearer: the substrate
 surface and Rust realization bridge they need already exist.
@@ -1001,18 +1001,17 @@ wrapper, not a deepening Rust-lens scaffold) before landing.
 
 ## §7. Relationship to the existing lens infrastructure
 
-v3 already has four reader lenses:
+v3 has three reader lens modules in the tree, plus generated lens outputs:
 
 - `lens_provenance.rs` (M0) — reads `produced_by` edges,
   returns the origin of each port.
-- `lens_depth.rs` (post-M0) — reads the substrate walker,
-  returns port depth.
 - `lens_cost.rs` (M1) — reads substrate + language spec,
   returns per-node cost.
 - `lens_unused_parameters.rs` (M1, PR #445) — walks function
   body sub-DAGs and reports parameter ports the body never
   references. First library lens to ship; same reader-lens
-  template as the three above.
+  template as the modules above.
+- *Retired:* `lens_depth.rs` (M0 experiment; per-port depth) — removed as unused observational code.
 
 The new lenses in this document follow the same shape: pure
 function over `Dag` + configuration, returns structured output.

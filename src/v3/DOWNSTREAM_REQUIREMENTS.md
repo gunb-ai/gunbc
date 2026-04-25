@@ -124,7 +124,7 @@ PR-B-unwind R1 closed this gap via `build.rs` + the generated
 file in `src/v3/spec/`, run `cargo build`, and the loader picks
 it up. **Status**: closed at PR-B-unwind R1.
 
-**Scope.** Covers both the read side (`infer.rs`, `lens_depth.rs`,
+**Scope.** Covers both the read side (`infer.rs`,
 `lens_provenance.rs`) and the write side (`parse.rs` →
 `lower.rs` boundary). The write side was added in a second pass
 after a reviewer surfaced five write-pipeline gaps; the lesson is
@@ -420,7 +420,7 @@ full gap list visible.
 
 This enumeration covers both halves of the pipeline:
 
-- **Read side** (Consumers 1–3): `infer.rs`, `lens_depth.rs`,
+- **Read side** (Consumers 1–3): `infer.rs`,
   `lens_provenance.rs` — readers of the substrate.
 - **Write side** (Consumer 4): `lower.rs` viewed as a consumer of
   `parse.rs` output, with its `SurfaceItem` → declaration /

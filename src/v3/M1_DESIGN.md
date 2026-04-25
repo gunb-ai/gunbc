@@ -93,7 +93,7 @@ This design note executes on the Open items only.
 **Unaffected:**
 
 - Tokenizer (`src/v3/compiler/src/tokenize.rs`) — minor updates only.
-- Lens architecture (`lens_depth.rs`, `lens_provenance.rs`) — read
+- Lens architecture (`lens_provenance.rs`, `lens_cost`, etc.) — read
   interfaces will need light updates to walk connectives instead of
   `DeclKind` variants, but the lens-as-read-only-observer pattern stands.
 
