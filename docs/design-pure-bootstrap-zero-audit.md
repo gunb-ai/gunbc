@@ -102,8 +102,17 @@ hand-authored" rationale is **wrong for substrate-shape rows**.
 Those files are hybrid (kernel hand-authored, mirrored types
 generated). The lane assignments in the file-by-file table remain
 correct as migration targets; the rationale column understates
-existing progress. A future audit-discipline pass should rewrite
-those rationale cells against the verified state above.
+existing progress.
+
+**Tracked-debt dissolution trigger** (per `INVARIANTS.md` scaffold/
+debt rule): the rationale-column rewrite lands as part of
+**PB-Substrate proper execution**, on the first PR that retires a
+substrate-shape row's hand-authored kernel content (e.g., the
+operator-types pilot in [#778](https://github.com/gunb-ai/gunbc/pull/778)
+or a successor). That PR's worker rewrites the affected row's
+"why currently hand-authored" cell against the verified state
+above. The debt closes when every PB-Substrate row's rationale
+cell reflects post-pilot reality.
 
 ## Findings before the table
 
