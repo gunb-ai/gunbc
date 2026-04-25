@@ -71,6 +71,9 @@ fn integer_routing_key_for_decl(
             template,
             arguments,
         } => {
+            if arguments.is_empty() {
+                return integer_routing_key_for_decl(dag, *template, depth + 1);
+            }
             let template_name = dag.declaration(*template).name.as_deref()?;
             let algebra = match template_name {
                 "OrderedRing" => "OrderedRingAlgebra",

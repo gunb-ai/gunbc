@@ -10,6 +10,8 @@ data i8_max: Int8 = 127
 data i16_max: Int16 = 32767
 data i32_max: Int32 = 2147483647
 data i64_max: Int64 = 9223372036854775807
+type ByteAlias = UInt8
+data alias_u8_max: ByteAlias = 255
 data u8_max: UInt8 = 255
 data u16_max: UInt16 = 65535
 data u32_max: UInt32 = 4294967295
@@ -17,7 +19,14 @@ data u32_max: UInt32 = 4294967295
 
     let dag = compile_to_dag(source, "int_literal_ranges.v3").expect("range literals compile");
     for name in [
-        "i8_max", "i16_max", "i32_max", "i64_max", "u8_max", "u16_max", "u32_max",
+        "i8_max",
+        "i16_max",
+        "i32_max",
+        "i64_max",
+        "alias_u8_max",
+        "u8_max",
+        "u16_max",
+        "u32_max",
     ] {
         assert!(
             matches!(
@@ -89,5 +98,35 @@ fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
             )
         }),
         "MagnitudeOutOfRange must not fabricate an empty synthetic correction"
+    );
+}
+
+#[test]
+fn int_literal_ranges_follow_type_aliases() {
+    let err = compile_to_dag(
+        "type ByteAlias = UInt8\ndata x: ByteAlias = 256",
+        "int_literal_alias_u8_oob.v3",
+    )
+    .expect_err("UInt8 alias overflow must fail closed through the alias chain");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic diagnostic, got {err:?}");
+    };
+    let messages: Vec<String> = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, diagnostic)| diagnostic.message())
+        .collect();
+    assert_eq!(
+        messages.len(),
+        1,
+        "aliased out-of-range integer literal should emit one root-cause diagnostic, got {messages:?}"
+    );
+    assert!(
+        messages.iter().any(|message| {
+            message.contains("integer literal `256`")
+                && message.contains("u8")
+                && message.contains("0..=255")
+        }),
+        "expected aliased MagnitudeOutOfRange details, got {messages:?}"
     );
 }
