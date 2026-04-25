@@ -90,23 +90,23 @@ This sub-lane introduces two arrow-shape sub-carriers — `SurfaceArrow` (type p
 
 ## Slice — `Fn`→`Arrow` refactor
 
-1. Add `NamedArrowInput` + `ArrowInput` (per req 1) to `parse_surface.dag` with coproduct dissolution receipt for `ArrowInput`.
-2. Add `SurfaceArrow` typed sub-carrier (per req 2; type position; `inputs: List<ArrowInput>`); refactor `SurfaceType.Arrow` to wrap it as a single positional payload.
+1. Add `NamedArrowInput` (per req 1) to `parse_surface.dag` with structural-carrier rationale (no coproduct, no dissolution receipt — single carrier).
+2. Add `SurfaceArrow` typed sub-carrier (per req 2; type position; `inputs: List<SurfaceType>`); refactor `SurfaceType.Arrow` to wrap it as a single positional payload (no separate span on the variant).
 3. Add `FnSignature` typed sub-carrier (per req 3; declaration position; `inputs: List<NamedArrowInput>`); refactor `SurfaceItem.Fn` + `FnExternalBody`: drop `params` + `return_type`, add `signature: FnSignature`. Retire `SurfaceParam`.
-4. Edit `parse_parser_body.txt` (per req 4): update function-item construction (→ `NamedArrowInput` → `FnSignature`) + higher-order-type construction (→ `ArrowInput::Anonymous` or `Named` → `SurfaceArrow`).
+4. Edit `parse_parser_body.txt` (per req 4): update function-item construction (→ `NamedArrowInput` → `FnSignature`) + higher-order-type construction (→ `SurfaceArrow` with `List<SurfaceType>` inputs, no per-input variant).
 5. Regen `parse_generated.rs` (per `feedback_no_generated_code_on_disk`).
-6. Lowerer extension (per req 5): update every `Fn` / `Arrow` consumer in `src/v3/compiler/src/lower.rs` + sibling consumer files. Declaration-position consumers read `NamedArrowInput` directly (no variant branching). Type-position consumers branch on `Anonymous` vs `Named`.
+6. Lowerer extension (per req 5): update every `Fn` / `Arrow` consumer in `src/v3/compiler/src/lower.rs` + sibling consumer files. Declaration-position consumers read `NamedArrowInput` directly. Type-position consumers read `SurfaceType` directly. No variant branching anywhere.
 7. Exhaustive-match audit + updates (per req 6) across every consumer.
 8. Smoke + regression tests (note: v3 surface requires `fn(...)` prefix for higher-order types per `parse_atom_type`'s `TokenKind::KwFn` gate — examples below use that form):
    - Parser accepts `fn foo(x: Int, y: Bool) -> String { ... }` and produces `Fn { signature: FnSignature { inputs: [NamedArrowInput { name: "x", ty: Int, refinement: None }, NamedArrowInput { name: "y", ty: Bool, refinement: None }], output: String, .. }, .. }`.
-   - Parser accepts `fn higher_order(f: fn(Int, Bool) -> String) -> Int { ... }` and produces a `NamedArrowInput` for `f` whose `ty` is `SurfaceType::Arrow(SurfaceArrow { inputs: [ArrowInput::Anonymous { ty: Int }, ArrowInput::Anonymous { ty: Bool }], output: String, .. })`.
+   - Parser accepts `fn higher_order(f: fn(Int, Bool) -> String) -> Int { ... }` and produces a `NamedArrowInput` for `f` whose `ty` is `SurfaceType::Arrow(SurfaceArrow { inputs: [Int, Bool], output: String, .. })`.
    - Existing v3 compiler tests pass unchanged (refactor is structurally equivalent on the surface; no surface-syntax change).
 
 ## Acceptance
 
 - [ ] All 6 consumer-side requirements satisfied + documented in PR body.
-- [ ] `NamedArrowInput` + `ArrowInput` (coproduct: `Anonymous` | `Named(NamedArrowInput)`) in `parse_surface.dag` with coproduct dissolution receipt for `ArrowInput`.
-- [ ] `SurfaceArrow` typed sub-carrier (`inputs: List<ArrowInput>`) in `parse_surface.dag`; `SurfaceType.Arrow(SurfaceArrow)` wraps it.
+- [ ] `NamedArrowInput` carrier in `parse_surface.dag` with structural-carrier rationale (no coproduct introduced — type-position binders aren't surfaced today).
+- [ ] `SurfaceArrow` typed sub-carrier (`inputs: List<SurfaceType>`) in `parse_surface.dag`; `SurfaceType.Arrow(SurfaceArrow)` wraps it (no separate span on the wrapper variant — `SurfaceArrow.span` is source-of-truth).
 - [ ] `FnSignature` typed sub-carrier (`inputs: List<NamedArrowInput>`) in `parse_surface.dag`; `SurfaceItem.Fn` + `FnExternalBody` carry `signature: FnSignature` (binderless params structurally unrepresentable in declaration position).
 - [ ] PR description includes carrier-distinction rationale for `FnSignature` vs `SurfaceArrow` (both arrow-shape; different invariants per req 3).
 - [ ] `SurfaceParam` retired (zero references post-refactor).
@@ -125,14 +125,14 @@ This sub-lane introduces two arrow-shape sub-carriers — `SurfaceArrow` (type p
 Surface to Director.
 
 - **Higher-order-type surface syntax accepts named params today** — if `(x: A, y: B) -> C` is already a valid surface form (i.e., `SurfaceType::Arrow.inputs` already carries names somewhere the snapshot grep missed), STOP. The refactor is then a *renaming* not a *promotion*; the structural-carrier rationale needs to reflect that.
-- **`SurfaceParam` has consumers beyond `Fn` / `FnExternalBody`** — req 3 retires `SurfaceParam`. If grep surfaces consumers in (e.g.) `Lambda`, `Match`, or other carriers, STOP. Either keep `SurfaceParam` as a live carrier (and have `ArrowInput` be a sibling) or scope a coupled retirement.
-- **Higher-order types appear in positions that today silently drop refinements** — if existing `Arrow.inputs: List<SurfaceType>` consumers somewhere assume the type carries no refinement (and the new `ArrowInput.refinement: Some` would surface a previously-impossible state), STOP. Fail-closed at the point of inspection, not silent fall-through.
+- **`SurfaceParam` has consumers beyond `Fn` / `FnExternalBody`** — req 3 retires `SurfaceParam`. If grep surfaces consumers in (e.g.) `Lambda`, `Match`, or other carriers, STOP. Either keep `SurfaceParam` as a live carrier (and have `NamedArrowInput` be a sibling) or scope a coupled retirement.
+- **Type-position higher-order surface accepts named binders** — req 1 + req 2 assume type-position inputs are anonymous-only (verified at HEAD `parse_atom_type:864-877`). If grep / re-verification at dispatch surfaces a parse path that does accept `fn(x: A) -> B`, STOP. The simplification (no `ArrowInput` coproduct) is invalidated; brief needs updating to introduce the coproduct + dissolution receipt.
 - **`parse_parser_body.txt` edits cascade beyond function-item / higher-order-type construction** — STOP. Cross-cutting parser changes need Surface Manager coordination.
 - **Exhaustive-match audit reveals consumer using wildcard `_`** — STOP. Surface a fix decision (this PR vs follow-up).
 - **Substrate-side `Arrow` shape needs a parallel refactor** — if the lowerer can't translate `Fn.signature: FnSignature` into the substrate `Declaration` / `Arrow` shape without also reshaping the substrate side, STOP. That's a separate sub-lane.
 - **`SurfaceArrow` / `FnSignature` introduction cascades into substrate authority** — reqs 2 + 3 introduce two top-level `parse_surface.dag` carriers. If grep surfaces consumers that expect `SurfaceType::Arrow { inputs, output, span }` as record-style fields (rather than `Arrow(SurfaceArrow)` positional payload) and updating them cascades beyond `lower.rs` + immediate parse consumers, STOP. May indicate a smaller-blast-radius shape (e.g., keeping `Arrow` as record-style and instead defining the sub-carriers as type aliases / typed views rather than wrapping payloads) is preferable.
 - **Type-position higher-order syntax accepts named binders today** (`fn(x: A) -> B`) — req 1 / `ArrowInput::Named(NamedArrowInput)` is the path. If the parser doesn't currently accept that form (i.e., type-position is anonymous-only on the surface today), worker may simplify `ArrowInput` to a single non-coproduct shape (just `Anonymous { ty }`-equivalent) and surface that simplification with rationale. STOP if the simplification would conflict with downstream effect-on-Arrow consumer expectations.
-- **DB-11 / refinement-strip interaction surfaces** (`infer.rs:3693-3703`) — if refinements on `ArrowInput` interact with DB-11's refinement strip in a non-obvious way, STOP.
+- **DB-11 / refinement-strip interaction surfaces** (`infer.rs:3693-3703`) — if refinements on `NamedArrowInput` interact with DB-11's refinement strip in a non-obvious way, STOP.
 - **DB-8 fixed-point drifts** — STOP immediately.
 
 ## Non-goals
@@ -146,7 +146,7 @@ Surface to Director.
 ## Reporting
 
 - Single PR. Title: `feat(v3): T-ImpossibleBugs Fn→Arrow refactor — SurfaceItem.Fn carries Arrow-shaped signature (pre-prereq for unenumerated-effects parser sub-lane)`.
-- PR body cites this brief + addresses each of the 6 reqs + documents structural-carrier rationale for `ArrowInput`.
+- PR body cites this brief + addresses each of the 6 reqs + documents structural-carrier rationale for `NamedArrowInput` and the `FnSignature` vs `SurfaceArrow` carrier-distinction rationale.
 - On merge: signal Director; Director signals sibling parser sub-lane (`t-impossiblebugs-unenumerated-effects-parser-worker.md`) is now dispatchable. The parser sub-lane brief was updated alongside this brief (same PR) to point at `FnSignature` + `SurfaceArrow` (post-refactor) and to mandate co-invariant placement of `declared_effects` on both carriers per req 3's carrier-distinction rationale.
 
 ## Cross-manager note
