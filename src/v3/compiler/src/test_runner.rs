@@ -355,11 +355,59 @@ fn shell_dash_c_background_stem_is_shell(arg: &str) -> bool {
     SHELL_DASH_C_BACKGROUND_STEMS.contains(&s)
 }
 
+/// `sh` and `dash` do not treat `&>` as a single bash-style redirect token — the same bytes can
+/// be `&` (background) + `>` (api-review openai-pro gpt-5-5-pro, PR #792: P3/P4).
+fn shell_stem_is_posix_sh_or_dash(shell_path: &str) -> bool {
+    let s = std::path::Path::new(shell_path)
+        .file_name()
+        .and_then(|x| x.to_str())
+        .unwrap_or(shell_path);
+    matches!(s, "sh" | "dash")
+}
+
+/// Whether `&>` / `&>>` may be elided as non-background `&` spellings (bash/ksh/zsh). For
+/// `sh`/`dash` and unknown interpreter, we **do not** elide — see
+/// [`shell_dash_c_may_start_background_after_eliding_artifacts`].
+fn shell_interpreter_allows_bash_style_ampersand_gt_redirect(interpreter: Option<&str>) -> bool {
+    match interpreter {
+        None => false,
+        Some(s) if shell_stem_is_posix_sh_or_dash(s) => false,
+        Some(_) => true,
+    }
+}
+
+/// The `-c` (or combined `-?c?`) at `c_flag_index` is run by the nearest preceding shell in
+/// `args`, or by `leading_hint` when the slice is `["-c", "script"]` / `["-ec", "script"]` only
+/// (e.g. `env(1)` + `sh -c` — the shell is not `args[0]` of the tail).
+fn shell_interpreter_for_c_flag(
+    args: &[String],
+    c_flag_index: usize,
+    leading_hint: Option<&str>,
+) -> Option<&str> {
+    if c_flag_index > 0 && shell_dash_c_background_stem_is_shell(&args[c_flag_index - 1]) {
+        return Some(args[c_flag_index - 1].as_str());
+    }
+    if c_flag_index == 0 {
+        return leading_hint;
+    }
+    None
+}
+
 /// `true` if a bare `&` may be shell background, scanning **all** `"-c"` and combined `-?c?` invocations
 /// in `args`, and **recursing** when a `-c` (or combined) **script** value is a shell path stem and
 /// more argv follow — e.g. `sh -c sh -ec "sleep&"` (POSIX: `-c` takes one script word, then
 /// `argv` continues) would otherwise be mis-read as a script of `sh` only (PR #792 inline; P4).
 fn shell_argv_may_start_unbounded_background(args: &[String]) -> bool {
+    shell_argv_may_start_unbounded_background_with_hint(args, None)
+}
+
+/// Like [`shell_argv_may_start_unbounded_background`], but when `args` is only the **tail** after a
+/// known shell (e.g. `["-c", "…"]` for `env sh -c …`), pass that shell as `leading_hint` so `&>` /
+/// POSIX elision is correct (openai-pro PR #792).
+fn shell_argv_may_start_unbounded_background_with_hint(
+    args: &[String],
+    leading_hint: Option<&str>,
+) -> bool {
     const MAX_NEST: u32 = 32;
 
     fn is_combined_c_not_exact(a: &str) -> bool {
@@ -370,7 +418,7 @@ fn shell_argv_may_start_unbounded_background(args: &[String]) -> bool {
             .is_some_and(|f| !f.is_empty() && !f.starts_with('-') && f.chars().any(|ch| ch == 'c'))
     }
 
-    fn check_slice(args: &[String], depth: u32) -> bool {
+    fn check_slice(args: &[String], depth: u32, leading_hint: Option<&str>) -> bool {
         // P3 / P4: if we cannot finish scanning, fail closed — a depth escape must not be taken as
         // "no unbounded background" and allow a spawn past the policy guard (api-review codex 3a2a9f64).
         if depth > MAX_NEST {
@@ -379,13 +427,18 @@ fn shell_argv_may_start_unbounded_background(args: &[String]) -> bool {
         for i in 0..args.len() {
             if &args[i] == "-c" {
                 if let Some(s) = args.get(i + 1) {
-                    if shell_dash_c_may_start_background_after_eliding_artifacts(s) {
+                    let intr = shell_interpreter_for_c_flag(args, i, leading_hint);
+                    if shell_dash_c_may_start_background_after_eliding_artifacts(s, intr) {
                         return true;
                     }
                     if i + 2 < args.len() && shell_dash_c_background_stem_is_shell(s) {
                         let mut inner = vec![s.to_string()];
                         inner.extend_from_slice(&args[i + 2..]);
-                        if check_slice(&inner, depth + 1) {
+                        let inner_leading = inner
+                            .first()
+                            .filter(|a| shell_dash_c_background_stem_is_shell(a))
+                            .map(|a| a.as_str());
+                        if check_slice(&inner, depth + 1, inner_leading) {
                             return true;
                         }
                     }
@@ -399,13 +452,18 @@ fn shell_argv_may_start_unbounded_background(args: &[String]) -> bool {
             }
             if is_combined_c_not_exact(a) {
                 if let Some(s) = args.get(i + 1) {
-                    if shell_dash_c_may_start_background_after_eliding_artifacts(s) {
+                    let intr = shell_interpreter_for_c_flag(args, i, leading_hint);
+                    if shell_dash_c_may_start_background_after_eliding_artifacts(s, intr) {
                         return true;
                     }
                     if i + 2 < args.len() && shell_dash_c_background_stem_is_shell(s) {
                         let mut inner = vec![s.to_string()];
                         inner.extend_from_slice(&args[i + 2..]);
-                        if check_slice(&inner, depth + 1) {
+                        let inner_leading = inner
+                            .first()
+                            .filter(|a| shell_dash_c_background_stem_is_shell(a))
+                            .map(|a| a.as_str());
+                        if check_slice(&inner, depth + 1, inner_leading) {
                             return true;
                         }
                     }
@@ -414,7 +472,12 @@ fn shell_argv_may_start_unbounded_background(args: &[String]) -> bool {
         }
         false
     }
-    check_slice(args, 0)
+    let inner_leading = args
+        .first()
+        .filter(|a| shell_dash_c_background_stem_is_shell(a))
+        .map(|a| a.as_str());
+    let hint = leading_hint.or(inner_leading);
+    check_slice(args, 0, hint)
 }
 
 /// Heuristic: on POSIX shells with `-c`, a *shell background* `&` (not part of `&&` / fd
@@ -436,7 +499,7 @@ fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<C
         .and_then(|s| s.to_str())
         .unwrap_or(command);
     if SHELL_DASH_C_BACKGROUND_STEMS.contains(&stem)
-        && shell_argv_may_start_unbounded_background(args)
+        && shell_argv_may_start_unbounded_background_with_hint(args, Some(command))
     {
         return Some(fail());
     }
@@ -444,7 +507,7 @@ fn reject_unbounded_shell_background(command: &str, args: &[String]) -> Option<C
         if !shell_dash_c_background_stem_is_shell(&args[j]) {
             continue;
         }
-        if shell_argv_may_start_unbounded_background(&args[j + 1..]) {
+        if shell_argv_may_start_unbounded_background_with_hint(&args[j + 1..], Some(&args[j])) {
             return Some(fail());
         }
     }
@@ -491,6 +554,12 @@ fn shell_dash_c_script_string(args: &[String]) -> Option<&str> {
 /// false-reject; user should rephrase without relying on a literal `&` in the `-c` string. This is
 /// the likeliest UX foot-gun for hand-authored `.dag` claims (api-review 994fa40d).
 ///
+/// `interpreter` is the path or stem of the shell that will run this `-c` script. On POSIX
+/// `sh`/`dash`, `&>` is **not** a single redirect token — the same bytes can background a command
+/// before `>` — so we **fail closed** if the script contains `&>` / `&>>` and do not elide (openai-pro
+/// gpt-5-5-pro, PR #792). For `bash`/`ksh`/`zsh` we elide `&>` as a non-background spelling. If the
+/// interpreter is unknown, we do not elide `&>` (fail closed on any `&>` in the script).
+///
 /// **TODO(dissolution, T-PB-B, input shaping):** retire literal `String::replace` here when
 /// `ExecuteCommand`’s `command`+`args` are narrow enough to forbid ambiguous `sh -c` (schema gate),
 /// or a **typed** hermetic host runner supersedes the shell escape hatch, or a real `sh` subset
@@ -498,7 +567,15 @@ fn shell_dash_c_script_string(args: &[String]) -> Option<&str> {
 /// outcomes, but this path only **rejects** (no accept-on-text-match for claim truth). **Do not**
 /// grow the elision list ad hoc — that deepens the bridge; link new work to a dissolution (Claude
 /// e99b53e7).
-fn shell_dash_c_may_start_background_after_eliding_artifacts(script: &str) -> bool {
+fn shell_dash_c_may_start_background_after_eliding_artifacts(
+    script: &str,
+    interpreter: Option<&str>,
+) -> bool {
+    if !shell_interpreter_allows_bash_style_ampersand_gt_redirect(interpreter)
+        && (script.contains("&>>") || script.contains("&>"))
+    {
+        return true;
+    }
     let mut t = script.to_string();
     while t.contains("&&") {
         t = t.replace("&&", "  ");
@@ -508,8 +585,10 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(script: &str) -> bo
     t = t.replace("2>&2", "");
     t = t.replace("1>&1", "");
     t = t.replace("0>&1", "");
-    t = t.replace("&>>", " ");
-    t = t.replace("&>", " ");
+    if shell_interpreter_allows_bash_style_ampersand_gt_redirect(interpreter) {
+        t = t.replace("&>>", " ");
+        t = t.replace("&>", " ");
+    }
     for a in 0u8..=9 {
         for b in 0u8..=9 {
             t = t.replace(&format!("{a}>&{b}"), "");
