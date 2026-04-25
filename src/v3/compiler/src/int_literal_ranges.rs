@@ -33,13 +33,13 @@ pub(crate) fn integer_range_for_decl(dag: &Dag, decl: DeclarationId) -> Option<I
         .declarations()
         .iter()
         .filter(|decl| is_integer_range_fact(dag, decl.meta_tag))
-        .filter_map(|decl| integer_range_fact(dag, decl.value_body.as_ref()?))
+        .filter_map(|decl| integer_range_fact(dag, decl.value_body.as_ref()?).ok())
         .filter(|fact| fact.key == key);
     let first = matches.next()?;
     if matches.next().is_some() {
         return None;
     }
-    Some(first.range)
+    first.range
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,7 +51,7 @@ struct IntegerRoutingKey {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct IntegerRangeFact {
     key: IntegerRoutingKey,
-    range: IntegerRange,
+    range: Option<IntegerRange>,
 }
 
 fn integer_routing_key_for_decl(
@@ -114,31 +114,35 @@ fn is_integer_range_fact(dag: &Dag, meta_tag: Option<DeclarationId>) -> bool {
     dag.declaration(meta_tag).name.as_deref() == Some("IntegerRangeFact")
 }
 
-fn integer_range_fact(dag: &Dag, value_body: &ValueBody) -> Option<IntegerRangeFact> {
+fn integer_range_fact(dag: &Dag, value_body: &ValueBody) -> Result<IntegerRangeFact, ()> {
     let ValueBody::Structural { fields } = value_body else {
-        return None;
+        return Err(());
     };
-    let min_decimal = literal_string(require_field(fields, "range_min_inclusive")?)?;
-    let max_decimal = literal_string(require_field(fields, "range_max_inclusive")?)?;
-    let min = min_decimal.parse().ok()?;
-    let max = max_decimal.parse().ok()?;
-    if min > max {
-        return None;
-    }
+    let key = IntegerRoutingKey {
+        algebra: variant_label_for_value(dag, require_field(fields, "algebra").ok_or(())?)
+            .ok_or(())?,
+        carrier: variant_label_for_value(dag, require_field(fields, "carrier").ok_or(())?)
+            .ok_or(())?,
+    };
 
-    Some(IntegerRangeFact {
-        key: IntegerRoutingKey {
-            algebra: variant_label_for_value(dag, require_field(fields, "algebra")?)?,
-            carrier: variant_label_for_value(dag, require_field(fields, "carrier")?)?,
-        },
-        range: IntegerRange {
+    let range = (|| {
+        let min_decimal = literal_string(require_field(fields, "range_min_inclusive")?)?;
+        let max_decimal = literal_string(require_field(fields, "range_max_inclusive")?)?;
+        let min = min_decimal.parse().ok()?;
+        let max = max_decimal.parse().ok()?;
+        if min > max {
+            return None;
+        }
+        Some(IntegerRange {
             target_name: literal_string(require_field(fields, "target_name")?)?,
             min_decimal,
             max_decimal,
             min,
             max,
-        },
-    })
+        })
+    })();
+
+    Ok(IntegerRangeFact { key, range })
 }
 
 fn require_field<'a>(fields: &'a [(String, FieldValue)], name: &str) -> Option<&'a FieldValue> {

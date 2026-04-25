@@ -198,6 +198,36 @@ fn duplicate_integer_range_fact_fails_closed() {
 }
 
 #[test]
+fn malformed_integer_range_fact_fails_closed() {
+    let err = compile_to_dag(
+        "data malformed_u8_range: IntegerRangeFact = {\n\
+           target_name: \"u8-malformed\",\n\
+           algebra: SemiringAlgebra,\n\
+           carrier: ByteCarrier,\n\
+           range_min_inclusive: \"0\",\n\
+           range_max_inclusive: \"not-a-number\"\n\
+         }\n\
+         data x: UInt8 = 255",
+        "int_literal_malformed_range_fact.v3",
+    )
+    .expect_err("malformed range fact for a routing key must fail closed");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic diagnostic, got {err:?}");
+    };
+    let messages: Vec<String> = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, diagnostic)| diagnostic.message())
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("scalar literal does not match declared type")),
+        "malformed range key should make narrowing unavailable, got {messages:?}"
+    );
+}
+
+#[test]
 fn int_literal_range_narrowing_does_not_bypass_refinement_discharge() {
     let err = compile_to_dag(
         "type PositiveInt = Int where PositiveInt > 0\n\
