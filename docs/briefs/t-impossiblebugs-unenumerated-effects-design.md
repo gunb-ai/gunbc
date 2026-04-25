@@ -109,12 +109,14 @@ A redundancy lens walks the Bind sequence:
 
 ## Q4 — What needs to land (revised per Q5.5)
 
-The closed-system foundation already exists at the substrate level:
+The closed-system foundation exists at the substrate level — but with substantive coverage gaps the audit must close:
 
-- ✅ `Behavior` enum with the 5 primitives in `substrate.dag`.
-- ✅ Service primitives in `dsl/std/` + `dsl/extdeps/` carry **typed type-signature shapes** that structurally express read-vs-write (return derived value with resource unchanged → read; return modified resource → write). See Q5.5 for the deeper framing.
+- ✅ `Behavior` enum with the 5 primitives in `substrate.dag`. Live; complete.
+- ⚠️ **Service primitives in `dsl/std/` + `dsl/extdeps/`: signature-shape coverage is INCOMPLETE today.** Some HTTP-derived primitives carry implicit effect signatures (via `derive_op_effect`'s method-table); many other effectful primitives (logging that returns Unit; mutation primitives that don't thread their target resource; etc.) do NOT carry the signature shape that would structurally express read-vs-write. Achieving full coverage is **required audit + substrate-work** under req 2 + req 3 below — NOT a current substrate fact. See Q5.5 for the deeper framing.
 - ⚠️ `OperationEffect` taxonomy in `effects.dag:262-506` (Read/Upsert/Create/Append/Delete) — **status pending Q5.5 audit-as-existence-check** (see below). Either retained as a normalized view derived from signature shape, or retired as parallel-representation.
-- ⚠️ `derive_op_effect` at `effects.dag:722-755` — same status; today derives from HTTP method + path, which IS the structural fact.
+- ⚠️ `derive_op_effect` at `effects.dag:722-755` — same status; today derives from HTTP method + path. HTTP method IS a structural fact; whether the rest of the primitive surface aligns is the audit's existence-check.
+
+**Honest live-state:** the closed-system FOUNDATION (5 behaviors + DAG substrate + the principle that operations should carry signature-shape) is live. The IMPLEMENTATION COVERAGE across all effectful primitives is partial. Req 2 + req 3 are the work that closes the gap.
 
 What's needed:
 
