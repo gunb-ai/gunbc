@@ -452,8 +452,27 @@ fn is_unshare_permission_error(err: &std::io::Error) -> bool {
 /// contain the word `failed` (e.g. `unshare: Operation not permitted`). Treat any such line in the
 /// first 20 lines as a setup error so we don’t conflate a permission/setup failure with the
 /// logical program’s exit (PR #792).
+///
+/// **C-5 / P3:** This scan is only applied when
+/// [`unshare_post_start_stderr_may_authorize_relaunch`] is true. After a successful `exec(2)`,
+/// stderr is the logical program’s stream, so a matching host exit must **not** be re-run on a
+/// `unshare:` line — that was the double-execution / authority leak the sentinel would otherwise
+/// create.
 #[cfg(target_os = "linux")]
 const UNSHARE_STDERR_SCAN_CAP: u64 = 8 * 1024;
+
+/// `unshare(1)` pipes the **child’s** stderr after `exec` into the same capture, so a program can
+/// print util-linux-looking lines. Only when the observed **exit code already disagrees** with the
+/// claim may we treat the capture as a possible *wrapper* setup error and scan for `unshare:` to
+/// authorize a single direct-`Child` re-run.
+#[cfg(target_os = "linux")]
+fn unshare_post_start_stderr_may_authorize_relaunch(
+    from_unshare: bool,
+    status: &std::process::ExitStatus,
+    expect_exit_code: i64,
+) -> bool {
+    from_unshare && status.code().map(i64::from) != Some(expect_exit_code)
+}
 
 /// Returns true if captured stderr from the `unshare(1)` wrapper process looks like util-linux’s
 /// own error output (as opposed to post-`exec` content from the logical `command` — the usual
@@ -575,10 +594,12 @@ fn child_wait_for_execute_command(
 ///   (Unix) and the result is a typed failure (not a hang).
 /// - **Linux: user+PID namespace (when `unshare(1)` is usable)** — the usual path wraps in
 ///   `unshare(1) -c -f -p` (subtree/“init” style exit). On `unshare(1)` spawn `EPERM` or, after a
-///   start, `unshare(1)` stderr shows namespace **setup** failure, the runner **re-runs once** with a
+///   start, (only when the observed exit does **not** already match the claim) `unshare(1)` stderr
+///   may be scanned for namespace **setup** failure, then the runner **re-runs once** with a
 ///   direct [`Command`] (see [`unshare_sandbox_broken_relaunch_with_direct`]) so setup failure never
 ///   masquerades as a matching `expect_exit_code` and portable claims still `Pass` in restricted
-///   CI. Wall+stdio+pgrp still apply.
+///   CI. Post-`exec`, child stderr shares the same pipe, so a matching exit never gets a second
+///   run on a `unshare:`-shaped line (C-5). Wall+stdio+pgrp still apply.
 /// - **Heuristic on `&` in `sh`/`bash`/… `-c` scripts (all hosts)** — a bare shell background `&`
 ///   (after eliding `&&` and a few `>&` / `&>`-style token spellings) is still rejected: cheap extra
 ///   catch for the obvious `sh` escape. Not a full `sh` parser. Non-Linux: no init-style subtree
@@ -658,7 +679,8 @@ fn evaluate_execute_command_exit_code_with_wall_time(
         };
         #[cfg(target_os = "linux")]
         {
-            if from_unshare && unshare_sandbox_broken_relaunch_with_direct(from_unshare, &mut child)
+            if unshare_post_start_stderr_may_authorize_relaunch(from_unshare, &s, expect_exit_code)
+                && unshare_sandbox_broken_relaunch_with_direct(from_unshare, &mut child)
             {
                 child = match build_execute_command_process(command, args).spawn() {
                     Ok(c) => c,
@@ -671,6 +693,11 @@ fn evaluate_execute_command_exit_code_with_wall_time(
                 };
                 from_unshare = false;
                 continue;
+            }
+            if from_unshare {
+                // P3/C-5: same fd as child stderr after exec; do not leave a piped `stderr` on a
+                // path that intentionally skips string-based setup detection.
+                let _ = child.stderr.take();
             }
         }
         break s;
@@ -1952,6 +1979,43 @@ mod unshare_stderr_scan_tests {
         assert!(!unshare_stderr_indicates_sandbox_setup_failure(""));
         assert!(!unshare_stderr_indicates_sandbox_setup_failure(
             "hello from program\n"
+        ));
+    }
+}
+
+// P3/C-5: do not use stderr as setup authority when the exit code already matches the claim.
+#[cfg(all(test, target_os = "linux"))]
+mod unshare_post_start_stderr_relaunch_authority_tests {
+    use super::unshare_post_start_stderr_may_authorize_relaunch;
+    use std::process::Command;
+
+    #[test]
+    fn matching_exit_does_not_authorize_stderr_relaunch() {
+        let s = Command::new("true").status().expect("true");
+        assert!(!unshare_post_start_stderr_may_authorize_relaunch(
+            true, &s, 0
+        ));
+    }
+
+    #[test]
+    fn exit_mismatch_authorizes() {
+        let s = Command::new("sh")
+            .args(["-c", "exit 1"])
+            .status()
+            .expect("sh");
+        assert!(unshare_post_start_stderr_may_authorize_relaunch(
+            true, &s, 0
+        ));
+    }
+
+    #[test]
+    fn not_unshare_path_does_not_authorize() {
+        let s = Command::new("sh")
+            .args(["-c", "exit 1"])
+            .status()
+            .expect("sh");
+        assert!(!unshare_post_start_stderr_may_authorize_relaunch(
+            false, &s, 0
         ));
     }
 }
