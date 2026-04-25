@@ -418,6 +418,7 @@ data rust_declaration: TypeRealization = {
     { dag_name: "name", access: DirectField("name"), borrowed_read: false },
     { dag_name: "connective", access: DirectField("connective"), borrowed_read: false },
     { dag_name: "type_params", access: DirectField("type_params"), borrowed_read: false },
+    { dag_name: "phantom_params", access: DirectField("phantom_params"), borrowed_read: false },
     { dag_name: "meta_tag", access: DirectField("meta_tag"), borrowed_read: false },
     { dag_name: "inhabits", access: DirectField("inhabits"), borrowed_read: false },
     { dag_name: "value_body", access: DirectField("value_body"), borrowed_read: false },

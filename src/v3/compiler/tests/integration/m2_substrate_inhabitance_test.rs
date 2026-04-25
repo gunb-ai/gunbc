@@ -187,6 +187,7 @@ fn substrate_declares_expected_reflection_surface() {
             "name",
             "connective",
             "type_params",
+            "phantom_params",
             "meta_tag",
             "inhabits",
             "value_body",
