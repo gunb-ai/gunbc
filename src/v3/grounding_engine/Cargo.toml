@@ -1,0 +1,13 @@
+[package]
+name = "v3-grounding-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# T-Ground-Engine Phase 1 validates the RustPrimitive type structure
+# through v3-compiler's loader accessor. Pilot-list enumeration remains
+# in v3-grounding-pilot until Phase 2 grows structured list bodies.
+
+[dependencies]
+v3-compiler = { path = "../compiler" }
+v3-grounding-pilot = { path = "../grounding_pilot" }
