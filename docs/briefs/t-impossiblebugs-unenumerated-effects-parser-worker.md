@@ -19,8 +19,8 @@
 ## Read first
 
 - **[`docs/briefs/t-impossiblebugs-unenumerated-effects-worker.md`](t-impossiblebugs-unenumerated-effects-worker.md)** — sibling substrate sub-lane brief (post-this-PR-narrowed). The substrate side blocks on this PR landing.
-- **[`src/v3/std/parse_surface.dag:71-75`](../../src/v3/std/parse_surface.dag)** — `SurfaceType.Arrow` declaration; today carries `inputs: List<SurfaceType>` + `output: SurfaceType` + `span: SourceSpan`. **No `declared_effects` field**. New surface-syntax + carrier extension lands here.
-- **[`src/v3/std/parse_surface.dag:185-199`](../../src/v3/std/parse_surface.dag)** — `SurfaceItem.Fn` declaration. Worker decides whether to put the declared-effects field on `Arrow` (cleaner, type-signature-level) or `Fn` (item-level only); surface choice in PR description. Recommend `Arrow` since effect-as-part-of-type-signature is the discipline anchor (per `feedback_no_annotations`).
+- **[`docs/briefs/t-impossiblebugs-unenumerated-effects-fn-arrow-refactor-worker.md`](t-impossiblebugs-unenumerated-effects-fn-arrow-refactor-worker.md)** — pre-prereq refactor brief. Lands `SurfaceArrow` (type-position arrow-shape carrier) + `FnSignature` (declaration-position arrow-shape carrier) + `NamedArrowInput` / `ArrowInput` input-element shapes. **This brief depends on that refactor having landed**; pre-flight check + STOP if it hasn't.
+- **`SurfaceArrow` + `FnSignature` in `parse_surface.dag` (post-refactor)** — both arrow-shape sub-carriers. Today (pre-refactor) carries no `declared_effects` field on either. New surface-syntax + carrier extension lands on **both** sub-carriers per the refactor brief's carrier-distinction rationale (req 3): both are type-signature shapes per `feedback_no_annotations`, so effects must appear on each as a co-invariant — declaration-position effects (on `FnSignature`) and type-position effects (on `SurfaceArrow`) are real co-invariants, not bookkeeping duplication.
 - **[`src/v3/compiler/parse_parser_body.txt`](../../src/v3/compiler/parse_parser_body.txt)** — parse-body algorithm authority. The function-type / function-item parsing paths produce the `Arrow` / `Fn` surface shapes; new declared-effects syntax lands here. Worker picks syntax (recommend post-arrow-output suffix: `fn foo() -> T effects [Read, Write]` or similar; surface choice in PR description).
 - **[`src/v3/compiler/src/parse_generated.rs`](../../src/v3/compiler/src/parse_generated.rs)** — auto-generated from `parse_surface.dag` + `parse_parser_body.txt`. Per `feedback_no_generated_code_on_disk`, edits flow through `.dag` + `.txt` authority then regen. **No hand edits to `parse_generated.rs`**.
 - **[`src/v3/std/substrate.dag:154-163`](../../src/v3/std/substrate.dag)** — `Declaration` and `Arrow` connectives have **zero** effect slots today; adding `declared_effects: List<OperationEffect>` to `Arrow` is purely additive on the substrate side.
@@ -33,7 +33,7 @@ The substrate `declared_effects` carrier cannot land standalone — the parser m
 
 This sub-lane lands the parser side. Output:
 
-1. New `declared_effects: List<SurfaceType>` (or equivalent — element shape worker's call) on `SurfaceType.Arrow` (or `SurfaceItem.Fn` — worker picks; recommend `Arrow`).
+1. New `declared_effects: List<SurfaceType>` (or equivalent — element shape worker's call) on **both** `SurfaceArrow` (type position) and `FnSignature` (declaration position) — per refactor-brief carrier-distinction rationale (req 3), effects are a co-invariant on both arrow-shape sub-carriers, not a single placement choice.
 2. Surface syntax: post-arrow-output suffix expressing the declared effect set (recommended `fn foo() -> T effects [Read, Write]` or worker-equivalent; surface in PR description).
 3. Lowering: surface `declared_effects` lowers to `Declaration.connective` (or sibling `Arrow` substrate field) carrying the resolved `List<OperationEffect>`.
 4. Regen `parse_generated.rs` from authority.
