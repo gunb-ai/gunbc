@@ -41,6 +41,10 @@ use crate::infer_helpers::{
     template_argument_value as generated_template_argument_value, NormalizedInstantiationArgs,
     TemplateArgumentBinding, TemplateArgumentsMatch,
 };
+use crate::int_literal_ranges::{
+    int_literal_fits_expected_type, integer_range_for_decl, literal_int_at,
+    magnitude_out_of_range,
+};
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
 use crate::types::TypeShape;
@@ -708,6 +712,9 @@ fn decide(dag: &Dag, index: usize) -> Decision {
     match &dag.nodes()[index] {
         Behavior::Value(v) => {
             let shape_and_name = match &v.data {
+                // Unconstrained integer literals keep the existing explicit
+                // default to Int64. Expected-type narrowing happens at
+                // reconciliation sites below, against range facts.
                 LiteralBits::Int(_) => (dag.int_shape(), "Int"),
                 LiteralBits::Bool(_) => (dag.bool_shape(), "Bool"),
                 LiteralBits::String(_) => (dag.string_shape(), "String"),
@@ -1057,6 +1064,24 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                     return Decision::Fail(t.output, diag);
                 }
                 if !types_equivalent {
+                    if let Some(literal) = literal_int_at(dag, *input_port) {
+                        if int_literal_fits_expected_type(dag, literal, expected_ty.declaration)
+                            == Some(true)
+                        {
+                            continue;
+                        }
+                        if let Some(range) = integer_range_for_decl(dag, expected_ty.declaration) {
+                            return Decision::Fail(
+                                *input_port,
+                                magnitude_out_of_range(
+                                    literal,
+                                    *expected_ty,
+                                    range,
+                                    t.span.clone(),
+                                ),
+                            );
+                        }
+                    }
                     return Decision::Fail(
                         t.output,
                         Diagnostic::TypeMismatch {

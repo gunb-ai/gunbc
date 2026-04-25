@@ -175,6 +175,8 @@ type RustPrimitive
       target_name: String          // Rust syntactic token: "i8".."i64", "u8".."u64"
       algebra: IntegerAlgebra
       carrier: TargetCarrier
+      range_min_inclusive: String
+      range_max_inclusive: String
       is_copy: Bool
       overflow: IntegerOverflow
     }
@@ -199,15 +201,19 @@ data rust_pilot_primitives: List<RustPrimitive> = [
   // OrderedRing). Wrap is the release-mode semantics.
 
   IntegerPrimitive { target_name: "i8",  algebra: OrderedRingAlgebra, carrier: ByteCarrier,
+    range_min_inclusive: "-128", range_max_inclusive: "127",
     is_copy: true, overflow: TwoComplementWrap },
 
   IntegerPrimitive { target_name: "i16", algebra: OrderedRingAlgebra, carrier: Word16Carrier,
+    range_min_inclusive: "-32768", range_max_inclusive: "32767",
     is_copy: true, overflow: TwoComplementWrap },
 
   IntegerPrimitive { target_name: "i32", algebra: OrderedRingAlgebra, carrier: Word32Carrier,
+    range_min_inclusive: "-2147483648", range_max_inclusive: "2147483647",
     is_copy: true, overflow: TwoComplementWrap },
 
   IntegerPrimitive { target_name: "i64", algebra: OrderedRingAlgebra, carrier: Word64Carrier,
+    range_min_inclusive: "-9223372036854775808", range_max_inclusive: "9223372036854775807",
     is_copy: true, overflow: TwoComplementWrap },
 
 
@@ -216,15 +222,19 @@ data rust_pilot_primitives: List<RustPrimitive> = [
   // Semiring). Distinguished from signed by algebra tag, not by carrier.
 
   IntegerPrimitive { target_name: "u8",  algebra: SemiringAlgebra, carrier: ByteCarrier,
+    range_min_inclusive: "0", range_max_inclusive: "255",
     is_copy: true, overflow: TwoComplementWrap },
 
   IntegerPrimitive { target_name: "u16", algebra: SemiringAlgebra, carrier: Word16Carrier,
+    range_min_inclusive: "0", range_max_inclusive: "65535",
     is_copy: true, overflow: TwoComplementWrap },
 
   IntegerPrimitive { target_name: "u32", algebra: SemiringAlgebra, carrier: Word32Carrier,
+    range_min_inclusive: "0", range_max_inclusive: "4294967295",
     is_copy: true, overflow: TwoComplementWrap },
 
   IntegerPrimitive { target_name: "u64", algebra: SemiringAlgebra, carrier: Word64Carrier,
+    range_min_inclusive: "0", range_max_inclusive: "18446744073709551615",
     is_copy: true, overflow: TwoComplementWrap },
 
 

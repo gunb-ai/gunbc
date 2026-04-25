@@ -3158,9 +3158,13 @@ fn lower_scalar_literal_for_type(
     expr: &SurfaceExpr,
     expected_type: DeclarationId,
     dag: &Dag,
-) -> Option<LiteralBits> {
+) -> Result<LiteralBits, Diagnostic> {
     let SurfaceExpr::Literal { value, .. } = expr else {
-        return None;
+        return Err(Diagnostic::ResolveError {
+            name: "expected scalar literal".to_string(),
+            span: expr_span(expr),
+            fixes: Vec::new(),
+        });
     };
     let literal_bits = match value {
         SurfaceLiteral::Int(v) => LiteralBits::Int(*v),
@@ -3171,9 +3175,10 @@ fn lower_scalar_literal_for_type(
     let bool_decl_id = dag.declaration_by_name("Bool").map(|d| d.id);
     let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
     let type_ok = match &literal_bits {
-        LiteralBits::Int(_) => int_decl_id
+        LiteralBits::Int(value) => int_decl_id
             .map(|id| walks_to(dag, expected_type, id))
-            .unwrap_or(false),
+            .unwrap_or(false)
+            || int_literal_fits_expected_type(dag, *value, expected_type).unwrap_or(false),
         LiteralBits::Bool(_) => bool_decl_id
             .map(|id| walks_to(dag, expected_type, id))
             .unwrap_or(false),
@@ -3181,7 +3186,24 @@ fn lower_scalar_literal_for_type(
             .map(|id| walks_to(dag, expected_type, id))
             .unwrap_or(false),
     };
-    type_ok.then_some(literal_bits)
+    if type_ok {
+        return Ok(literal_bits);
+    }
+    if let LiteralBits::Int(value) = literal_bits {
+        if let Some(range) = integer_range_for_decl(dag, expected_type) {
+            return Err(magnitude_out_of_range(
+                value,
+                TypeShape::new(expected_type),
+                range,
+                expr_span(expr),
+            ));
+        }
+    }
+    Err(Diagnostic::ResolveError {
+        name: "scalar literal does not match declared type".to_string(),
+        span: expr_span(expr),
+        fixes: Vec::new(),
+    })
 }
 
 fn list_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<DeclarationId> {
