@@ -63,7 +63,7 @@ Before implementation, audit where Engine lives. Three options, ordered by proje
 
 The PR description must lead with the audit result and the resulting choice. **Do not skip the audit** — defaulting to (b) without auditing (a) is the missing-modeling pattern called out in `feedback_model_before_fixing.md`.
 
-Audit deliverable: write up findings in `docs/r2-grounding/engine-substrate-audit.md` (≤ 300 lines, create the directory if it doesn't exist). Conclude with (a) or (b), with substrate-gap flags if (b).
+Audit deliverable: write up findings in `docs/briefs/t-ground-engine-substrate-audit.md` (≤ 300 lines). Conclude with (a) or (b), with substrate-gap flags if (b). The `docs/briefs/` location matches existing convention for manager/worker work-product docs (audits, receipts) — see siblings like `ci-ratchet-architecture-audit.md` and `complexity-v2-v3-comparison-receipt.md`.
 
 If (b), the substrate gaps surfaced are escalation-class — flag to manager, do not invent workarounds.
 
@@ -121,7 +121,7 @@ Per `feedback_root_causes_over_quick_fixes.md`: no quick fixes. If Engine is blo
 
 PR lands with:
 
-- `docs/r2-grounding/engine-substrate-audit.md` documenting the (a) vs (b) decision and any substrate-gap flags.
+- `docs/briefs/t-ground-engine-substrate-audit.md` documenting the (a) vs (b) decision and any substrate-gap flags.
 - Production walker in the chosen location, consuming `.dag` directly, no Rust-constant mirror.
 - Variant-aware routing across `IntegerPrimitive | NonIntegerPrimitive`.
 - 10/10 routing-parity tests passing against the production walker.
