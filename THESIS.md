@@ -368,9 +368,26 @@ empty set per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-
   - **[R2+]** Nested-optional flatten: `Option<Option<T>>` accessor patterns
     that normal languages require hand-unwrapping. Gated on cardinality
     refinement substrate work.
-  - **[R2+]** Unenumerated effects: a function's actual effect set must match
-    its declared effect set; silent effect leakage is rejected. Gated on
-    deeper effect-system work beyond R1's Sub-A scope.
+  - **[R2+]** Unenumerated effects: operations are intrinsically read-shaped
+    or write-shaped via their type-signature shape (returned-modified-resource
+    indicates write; returns-derived-value-only indicates read). Consumers
+    walk the signatures directly; there is no parallel taxonomy or annotation
+    layer to declare or maintain. Tracking effects as a separate enumerated
+    concept IS the bug pattern, dissolved by construction. Every external
+    mutable resource (file handles, sockets, db connections) is modeled as a
+    typed parameter that's returned modified — same pattern as IO-monad
+    World-threading without the monad. Redundant operations (reads of the
+    same key with no intervening write-effect on that resource) are
+    structurally provable as identical via referential transparency, and
+    rejected at compile time; legitimate re-read uses an explicit `reread()`
+    primitive that structurally tags the intent. Transactional grouping is a
+    derived structural fact from Bind composition + typed transaction
+    primitives (`Transaction → Transaction'`), not a separate concept. Tier 1
+    (impossible by construction), not Tier 2 (lens-detected). See
+    [`docs/briefs/t-impossiblebugs-unenumerated-effects-design.md`](docs/briefs/t-impossiblebugs-unenumerated-effects-design.md)
+    §Q5.5 for the OperationEffect-taxonomy retirement rationale + audit-as-
+    existence-check; §Q1-Q3 for the 5-behavior compositional-fold mechanism +
+    worked examples.
   - **[R2+]** Unhandled diagnostic paths: Tier 2 runtime-safety proofs make
     division-by-zero, OOB, and force-unwrap either proven safe or made
     total — never partial. Gated on Tier 2 substrate (post-R1).
