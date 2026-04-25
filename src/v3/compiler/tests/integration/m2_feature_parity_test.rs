@@ -1248,6 +1248,27 @@ fn cardinality_int_lit_uint8_in_range_narrows_quietly() {
         "in-range literal must not emit MagnitudeOutOfRange; got: {:?}",
         dag.diagnostics()
     );
+    // Facts-flow-forward: the narrowed literal must reach
+    // ValueBody::Scalar(LiteralBits::Int(200)). An earlier revision of
+    // this lane routed in-range narrowing through
+    // lower_scalar_literal_for_type whose walks_to(Int) check rejects
+    // narrow types (UInt8 walks to Semiring, not Int) — silently
+    // dropping the body to Unparsed. Assert the structured fact lands.
+    let decl = dag
+        .declaration_by_name("x")
+        .expect("`x` declaration must exist");
+    let body = decl
+        .value_body
+        .as_ref()
+        .expect("data declaration must carry a value_body");
+    let bits = match body {
+        v3_compiler::dag::ValueBody::Scalar(bits) => bits,
+        other => panic!("in-range narrowed literal must produce ValueBody::Scalar, got {other:?}"),
+    };
+    assert!(
+        matches!(bits, v3_compiler::dag::LiteralBits::Int(200)),
+        "narrowed scalar must carry the literal magnitude, got {bits:?}",
+    );
 }
 
 #[test]

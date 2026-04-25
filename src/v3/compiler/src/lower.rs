@@ -2463,8 +2463,14 @@ fn lower_data_item(
                     );
                     None
                 } else {
-                    lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag)
-                        .map(crate::dag::ValueBody::Scalar)
+                    // Narrow types (Int8..UInt64) do NOT walk to `Int`, so
+                    // `lower_scalar_literal_for_type`'s walks_to(Int) check
+                    // would reject them and silently drop the body to
+                    // Unparsed. Construct the carrier directly: magnitude
+                    // already fits per the bound check above, and the
+                    // narrow target type is exactly what `integer_target_range`
+                    // identified by name.
+                    Some(crate::dag::ValueBody::Scalar(LiteralBits::Int(magnitude)))
                 }
             } else {
                 lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag)
