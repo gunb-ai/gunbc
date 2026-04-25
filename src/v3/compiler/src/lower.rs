@@ -854,7 +854,7 @@ fn lower_type_alias_refinements_phase(
     }
 }
 
-/// DB-11 / T-Substrate int-literal cardinality boundary.
+/// DB-11 / T-Substrate scalar-literal refinement boundary.
 ///
 /// Top-level `data` bodies lower before alias refinements are attached
 /// so refinement predicates can reference data constants. That means
@@ -862,7 +862,7 @@ fn lower_type_alias_refinements_phase(
 /// cardinality in the data pre-pass. After alias refinements land, this
 /// validation pass rejects any already-scalar-lowered data declaration
 /// whose declared type now carries a refinement. A raw scalar literal is
-/// range evidence, not predicate evidence; callers must introduce a
+/// base-type evidence, not predicate evidence; callers must introduce a
 /// narrowing branch or another refinement-bearing source.
 fn validate_scalar_data_refinements_phase(
     dag: &mut Dag,
@@ -884,10 +884,7 @@ fn validate_scalar_data_refinements_phase(
             continue;
         };
         let decl = dag.declaration(decl_id);
-        if !matches!(
-            decl.value_body,
-            Some(crate::dag::ValueBody::Scalar(LiteralBits::Int(_)))
-        ) {
+        if !matches!(decl.value_body, Some(crate::dag::ValueBody::Scalar(_))) {
             continue;
         }
         let Some(expected) = decl.meta_tag else {

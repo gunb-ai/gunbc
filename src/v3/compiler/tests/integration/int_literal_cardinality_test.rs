@@ -215,3 +215,36 @@ fn data_int_literal_range_narrowing_does_not_bypass_refinement() {
         "expected refinement failure, got {messages:?}"
     );
 }
+
+#[test]
+fn data_bool_string_scalar_literals_do_not_bypass_refinement() {
+    for (source, file) in [
+        (
+            "type TrueAlias = Bool where TrueAlias == true\n\
+             data x: TrueAlias = true",
+            "data_bool_literal_refinement_discharge.v3",
+        ),
+        (
+            "type NamedString = String where NamedString != \"\"\n\
+             data x: NamedString = \"gunbc\"",
+            "data_string_literal_refinement_discharge.v3",
+        ),
+    ] {
+        let err = compile_to_dag(source, file)
+            .expect_err("scalar data literal must fail missing refinement evidence");
+        let CompileError::Semantic(dag) = err else {
+            panic!("expected semantic diagnostic, got {err:?}");
+        };
+        let messages: Vec<String> = dag
+            .diagnostics()
+            .iter()
+            .map(|(_, diagnostic)| diagnostic.message())
+            .collect();
+        assert!(
+            messages
+                .iter()
+                .any(|message| message.contains("refinement") || message.contains("no narrowing")),
+            "expected refinement failure for {file}, got {messages:?}"
+        );
+    }
+}
