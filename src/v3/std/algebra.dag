@@ -74,8 +74,63 @@
 module v3.std.algebra
 
 import std.list { List, empty, fold, cons, singleton, filter }
-import std.substrate { NonSingletonList, PortId }
+import std.substrate { NonSingletonList, PortId, DeclarationId }
 import v3.std.lookup { Lookup }
+
+// 🟡 SCAFFOLD coproduct. These are v2 per-method output-size effect facts
+// staged in v3 as the MethodContract metadata vocabulary. Pattern 1 fails
+// for the §6a pick: cost/complexity need the facts co-located per method,
+// not scattered into lens-local tables. Pattern 2 partially fits the unit
+// variants but would erase the closed semantic partition that consumers
+// dispatch on. Pattern 3 is the intended dissolution: once live call-site
+// MethodContract producers read structural return-type / collection-shape
+// facts, this carrier either narrows to those structural facts or remains as
+// their named projection. Trigger: the bulk MethodContract producer/consumer
+// migration replaces template-row seeding with structural method contracts.
+type CollectionSizeEffect
+  = ShrinkEffect
+  | ProjectionEffect
+  | IdentityEffect
+
+// Operation cost shape — structural contract on a method's algorithmic cost.
+// Declared per method on `MethodContract`; cost/complexity lenses read this
+// to compute cost expressions without string-dispatching on method names.
+//
+// 🟡 SCAFFOLD coproduct. Pattern 1 fails because cost shape belongs beside the
+// same method identity as size/callback metadata. Pattern 2 fails because the
+// variants name distinct closed asymptotic classes, not one labeled record
+// shape with free data. Pattern 3 is the dissolution path: live cost analysis
+// should derive these classes from `CostBound` / call-pattern structure when
+// MethodContract lookup is wired at call sites. Trigger: the post-§6a bulk
+// migration makes MethodContract construction consume E-C/E-I/E-P facts
+// directly instead of copying template metadata.
+type CostShape
+  = ShapeConstant
+  | ShapeLinearScan
+  | ShapeIterateBody
+  | ShapeSortBody
+
+// Unified per-method metadata carrier for v3 lens consumers. This is the
+// §6a Option 3 shape: one lookup key `(algebra_id, method_id)` using existing
+// `DeclarationId` identity, with the method contract facts cost/complexity
+// need co-located. It deliberately does not extend substrate declarations or
+// create one carrier per algebra.
+//
+// 🟡 TRANSITIONAL. This carrier centralizes facts that two lenses need today,
+// but it is not the endpoint. Field-level dissolution:
+// - `size_effect` dissolves into collection-cardinality-refined method
+//   signatures.
+// - `cost_shape` dissolves into a typed cost surface / structural cost
+//   derivation.
+// - `callback_element_position` dissolves into typed higher-order callback
+//   parameter shape.
+type MethodContract {
+  algebra_id: DeclarationId
+  method_id: DeclarationId
+  size_effect: CollectionSizeEffect?
+  cost_shape: CostShape?
+  callback_element_position: Int?
+}
 
 // 🟢 TERMINAL. `SizeVariable` names the runtime size of a DAG
 // port's value. Two cost expressions correlate structurally via

@@ -9,6 +9,9 @@ pub struct SymbolicCostEntry {
 pub fn symbolic_cost_of(p0: &Dag, p1: &PortId) -> Lookup<SymbolicCost> {
     lookup_cost(&(compute_symbolic_costs(p0)), p1)
 }
+pub fn method_contract_cost_shape(p0: &MethodContract) -> Option<CostShape> {
+    ((p0).cost_shape).clone()
+}
 pub fn compute_symbolic_costs(p0: &Dag) -> Vec<SymbolicCostEntry> {
     ((p0).nodes())
         .iter()
