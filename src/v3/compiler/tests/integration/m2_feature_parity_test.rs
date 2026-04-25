@@ -1213,12 +1213,7 @@ fn cardinality_int_lit_uint8_256_emits_magnitude_out_of_range() {
         .iter()
         .map(|(_, d)| d)
         .find(|d| matches!(d, Diagnostic::MagnitudeOutOfRange { .. }))
-        .unwrap_or_else(|| {
-            panic!(
-                "expected MagnitudeOutOfRange, got: {:?}",
-                dag.diagnostics()
-            )
-        });
+        .unwrap_or_else(|| panic!("expected MagnitudeOutOfRange, got: {:?}", dag.diagnostics()));
     let Diagnostic::MagnitudeOutOfRange {
         target_name,
         magnitude,
