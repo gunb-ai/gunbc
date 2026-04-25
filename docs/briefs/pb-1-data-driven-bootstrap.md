@@ -39,6 +39,27 @@ PB-1 must cover **all four**. The design doc spells out staged variants (PB-1a t
 - `src/v3/compiler/src/serialize_generated.rs` — current serialization (used for fixed-point snapshots, not bootstrap). Useful for understanding the Dag's serializable shape. Note: there is no hand-authored `serialize.rs` on main; the generated file is the full surface.
 - `src/v3/compiler/src/bin/regen_v3.rs` — the existing regen binary pattern; PB-1's bootstrap generator follows this template.
 
+## Working state (verified 2026-04-25)
+
+> **PB-1-a as shipped already covers all four authorities** — not just
+> `std_fixtures` as the staged-sub-lane structure below originally framed.
+> Surfaced by `warm-raven-373` worker STOP-AND-ESCALATE on the dispatched
+> PB-1-b brief; verified at HEAD.
+
+Direct evidence:
+- `src/v3/compiler/src/bootstrap_generated.rs` (1.0M LOC, full snapshot) covers `std_fixtures` + `STAGED_FILES` + `V3_SPECS` + `COMPILER_FILES`.
+- `src/v3/compiler/src/bootstrap_std_generated.rs` (340K LOC, std-only snapshot) is retained for the regen seed path, not as the production runtime authority.
+- `Dag::new()` at `dag.rs:2215` calls `bootstrap_generated::bootstrapped_fixture_dag()` directly — the full snapshot, no runtime tokenize/parse/lower of the four authorities.
+- `load_runtime_bootstrap_authorities` at `bootstrap.rs:131` is reached only via `compile_full_bootstrap_dag_from_std_seed` (and the `_without_parse_surface` sibling) — both are regen-scaffold + drift-harness paths, not production `Dag::new()` consumers.
+
+**Sub-lane re-baseline:**
+
+- **PB-1-a — landed (broader than originally scoped).** Marked complete; brief's framing of "one authority migrated" understated what shipped. The actual landing was the full four-authority snapshot.
+- **PB-1-b / PB-1-c / PB-1-d — folded into PB-1-a as shipped.** No remaining production-runtime work; these sub-lanes are not separable dispatch units.
+- **PB-1-e — retains residual scope, reframed.** Original PB-1-e ("runtime-path retirement + measurement after b/c/d land") collapses to: retire `load_runtime_bootstrap_authorities` + the regen-scaffold path that depends on it; re-ground DB-8's "fresh parse vs snapshot" cross-check on a different mechanism (per-authority bit-identical composition, or a separate fresh-compile-once gate at regen time). The dissolution-trigger comment at `bootstrap.rs:96-99` already names the closure condition. PB-1-e remains the program's residual hand-Rust retirement work; gets a fresh worker brief grounded in this verified state.
+
+The original sub-lane structure below is retained as historical context for the trajectory; do not author new dispatch against PB-1-b/c/d.
+
 ## Work
 
 Staged sub-lanes so an XXL scope stays dispatchable. Worker proposes the final split in first PR's body; example structure:
