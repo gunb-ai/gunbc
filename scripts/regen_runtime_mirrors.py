@@ -774,6 +774,30 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
             "#[derive(Debug, Clone, PartialEq, Eq)]",
             output_name="PortState",
         ),
+        render_sum(
+            "ArithmeticOp",
+            sums["ArithmeticOp"],
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]",
+            output_name="ArithmeticOp",
+        ),
+        render_sum(
+            "ComparisonOp",
+            sums["ComparisonOp"],
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]",
+            output_name="ComparisonOp",
+        ),
+        render_sum(
+            "LogicalOp",
+            sums["LogicalOp"],
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]",
+            output_name="LogicalOp",
+        ),
+        render_sum(
+            "OperatorKind",
+            sums["OperatorKind"],
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]",
+            output_name="OperatorKind",
+        ),
     ]
     return "\n\n".join(parts)
 
