@@ -331,7 +331,10 @@ data suite_mismatch: TestSuite = { name: "execute_command_mismatch", claims: [cl
     let results = TestRunner::new(&dag).run_suite("suite_mismatch");
     assert_eq!(results.len(), 1);
     let ClaimResult::Fail(msg) = &results[0].result else {
-        panic!("expected Fail on exit mismatch, got {:?}", results[0].result);
+        panic!(
+            "expected Fail on exit mismatch, got {:?}",
+            results[0].result
+        );
     };
     assert!(
         msg.contains("exit code mismatch") && msg.contains("expected 1") && msg.contains("got 0"),

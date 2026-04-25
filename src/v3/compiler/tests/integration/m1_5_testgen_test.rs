@@ -804,7 +804,9 @@ fn extension_predicates_reach_interpreter_boundary() {
         "ExecuteCommand",
         vec![
             FieldValue::Literal(LiteralBits::String(String::from("echo"))),
-            FieldValue::List(vec![FieldValue::Literal(LiteralBits::String(String::from("hi")))]),
+            FieldValue::List(vec![FieldValue::Literal(LiteralBits::String(
+                String::from("hi"),
+            ))]),
             FieldValue::Literal(LiteralBits::Int(0)),
         ],
     );
