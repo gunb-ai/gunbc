@@ -214,12 +214,27 @@ mod t_demo_fixture_test {
         let dag = compile_fixture(&source);
         let results = TestRunner::new(&dag).run_suite("impossible_bug_class_suite_r1");
         assert_eq!(results.len(), 3);
-        assert!(
-            results
-                .iter()
-                .all(|result| result.result == ClaimResult::Pass),
-            "impossible-bug demos should observe diagnostics / token failures, got {results:?}"
-        );
+        for result in &results {
+            if result.claim_name == "impossible_bug_class_suite_r1.suboptimal_complexity" {
+                let ClaimResult::Fail(msg) = &result.result else {
+                    panic!(
+                        "suboptimal_complexity should fail CostBounded (structural cost exceeds bound), got {:?}",
+                        result.result
+                    );
+                };
+                assert!(
+                    msg.contains("cost") && msg.contains("did not satisfy"),
+                    "unexpected CostBounded failure message: {msg}"
+                );
+            } else {
+                assert_eq!(
+                    result.result,
+                    ClaimResult::Pass,
+                    "claim `{}` should Pass (diagnostic receipt)",
+                    result.claim_name
+                );
+            }
+        }
     }
 }
 
