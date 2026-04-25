@@ -387,7 +387,8 @@ fn shell_dash_c_script_string(args: &[String]) -> Option<&str> {
 
 /// Strips a few *non-background* `&` patterns from a `-c` string, then returns `true` only if
 /// a bare `&` (likely background) may remain. Not a sh grammar; conservative only where
-/// we would otherwise false-positive `true && true` and `2>&1`. **Quoted** `&` (e.g. `echo \"&\"`)
+/// we would otherwise false-positive `true && true`, `2>&1`, `n>&m`, and the default-fd shorthand
+/// `>&d` (e.g. `>&2` in `command >&2`). **Quoted** `&` (e.g. `echo \"&\"`)
 /// is not modeled and may be fail-closed as if it were a background `&` — an acceptable
 /// false-reject; user should rephrase without relying on a literal `&` in the `-c` string.
 fn shell_dash_c_may_start_background_after_eliding_artifacts(script: &str) -> bool {
@@ -406,6 +407,10 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(script: &str) -> bo
         for b in 0u8..=9 {
             t = t.replace(&format!("{a}>&{b}"), "");
         }
+    }
+    // `>&d` = default stdout to fd d (e.g. `>&2` in `done >&2`); not a background `&`.
+    for d in 0u8..=9 {
+        t = t.replace(&format!(">&{d}"), "");
     }
     t.contains('&')
 }
@@ -2255,6 +2260,15 @@ mod execute_command_timebound_tests {
             ClaimResult::Pass,
             "2>&1 should not be confused with sh background &"
         );
+    }
+
+    /// `>&2` (default-fd to stderr) is not a background `&` — e.g. `unshare_path_drains_…` uses
+    /// a loop with `>&2` on Linux; without eliding, `ExecuteCommand` rejects the `-c` script.
+    #[test]
+    fn sh_dash_c_greater_redir_to_fd2_is_not_background() {
+        assert!(!shell_dash_c_may_start_background_after_eliding_artifacts(
+            "i=0; while [ $i -lt 1 ]; do i=$((i+1)); done >&2; exit 0"
+        ));
     }
 
     #[test]
