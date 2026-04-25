@@ -34,7 +34,7 @@ Sub-lane closes the magnitude carrier + reconciliation narrowing. **Scope is suf
 
 ## Slice — magnitude carrier + reconciliation narrowing
 
-1. Add the magnitude carrier shape (per req 1) to `LiteralBits` or as a parallel `IntLitMagnitude` carrier. Update `dag_scalar_generated.rs` regen path; update tokenize to populate the magnitude alongside (or instead of) `i64` pre-narrowing.
+1. Replace `LiteralBits::Int(i64)` with `LiteralBits::Int(<canonical-unbounded>)` per req 1's specified shape (single canonical payload — no parallel field, no coexisting variant). Update `dag_scalar_generated.rs` regen path; update tokenize to populate the canonical magnitude (replacing `i64` pre-narrowing, not paralleling it).
 2. Add range facts to integer algebras (per req 2) in `dsl/extdeps/languages/rust/primitives.dag` (and Python/Go siblings if they declare integer primitives). Pilot mirror at `src/v3/grounding_pilot/src/lib.rs` updates accordingly.
 3. Extend `infer.rs:704-725` decide arm with magnitude-aware narrowing (per req 3). Keep the default-when-unconstrained policy explicit.
 4. Diagnostic for out-of-range literals (per req 5) — add a new `Diagnostic::MagnitudeOutOfRange` variant or equivalent at the appropriate location.
@@ -57,7 +57,7 @@ Sub-lane closes the magnitude carrier + reconciliation narrowing. **Scope is suf
 
 Surface to Director.
 
-- **Magnitude carrier shape is consumer-visible** — if the chosen carrier (e.g., a new `LiteralBits` variant vs a parallel field) leaks into lens producers / serializer / cementer in ways that need cross-consumer redesign, STOP.
+- **Canonical-payload type choice is consumer-visible** — if the chosen `LiteralBits::Int(<T>)` payload type (e.g., `i128` M2-bridge vs a typed unbounded magnitude) leaks into lens producers / serializer / cementer in ways that need cross-consumer redesign, STOP. (Note: per req 1, the choice is *which canonical type*, not *whether to add a parallel carrier* — that's already locked.)
 - **Range-fact substrate touches `dsl/std/substrate.dag` (NOT `dsl/extdeps/languages/*/primitives.dag`)** — extdeps language files are in-scope for this lane; only edits to `dsl/std/substrate.dag` itself trigger the STOP for cross-program coordination with PB-Substrate (Zero-Floor). Range facts on `IntegerPrimitive` in `dsl/extdeps/languages/rust/primitives.dag` (req 2) are NOT substrate.dag changes and do NOT require Zero-Floor coordination.
 - **Default-when-unconstrained policy** — if changing it (e.g., dropping the `Int64` default in favor of "unconstrained → diagnostic") is the cleaner shape, STOP. Director call.
 - **DB-8 fixed-point drifts** — STOP immediately.
