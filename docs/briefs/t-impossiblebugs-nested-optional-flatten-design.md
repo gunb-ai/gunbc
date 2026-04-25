@@ -239,7 +239,7 @@ The cardinality substrate THESIS:343 names as the gate is the **v2** state (`ret
 
 ### Why not "park"
 
-The bypass is small (S; see §Dispatch profile), well-scoped (specific to `AtMostOne ∧ AtMostOne`), structurally grounded (algebraic idempotence of `AtMostOne`), and the substrate prerequisite is already met. Parking would be conservative beyond what the evidence supports.
+The bypass is bounded (M; see §Dispatch profile), well-scoped (specific to `AtMostOne ∧ AtMostOne`), structurally grounded (algebraic idempotence of `AtMostOne`), and the substrate prerequisite is already met. Parking would be conservative beyond what the evidence supports.
 
 ## Cross-manager note
 
