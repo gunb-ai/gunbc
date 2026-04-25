@@ -1351,6 +1351,7 @@ fn rust_dag_realizes_reflected_substrate_types() {
         "Dag",
         "Declaration",
         "TemplateArgument",
+        "PhantomParameter",
         "FieldValue",
         "ValueBody",
         "TransformTarget",
