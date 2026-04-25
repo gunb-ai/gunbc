@@ -114,6 +114,27 @@ or a successor). That PR's worker rewrites the affected row's
 above. The debt closes when every PB-Substrate row's rationale
 cell reflects post-pilot reality.
 
+**Tracked debt — generator doc-comment propagation gap** (surfaced by
+openai-pro auto-review on the PB-Substrate pilot v2 [#780](https://github.com/gunb-ai/gunbc/pull/780)).
+`scripts/regen_runtime_mirrors.py` does not propagate `//` comment
+blocks above `substrate.dag` type declarations into `///` doc comments
+on the rendered Rust enums/structs. For the operator-types slice
+landed in #780 the gap surfaced no information loss because
+`substrate.dag:130-160` already carries rich per-type `🟡 SCAFFOLD`
+annotations (M2+ desugarer trigger, BooleanAlgebra field-ref target).
+For future slices whose authoring rationale lives only in the retired
+hand-authored Rust block, the gap would lose context.
+
+*Dissolution trigger*: PB-Substrate proper execution, on the first
+migrating slice whose rationale lives only in the retired hand-Rust
+block (no upstream substrate annotation captures it). That PR either
+propagates the rationale into `substrate.dag` first OR extends
+`render_sum` / `render_record` in `regen_runtime_mirrors.py` to emit
+`///` doc-comments derived from leading `//` blocks above each type
+declaration. Whichever lands first carries the gap closure; once
+emitted, every substrate type's authoring rationale is reachable from
+the generated Rust mirror.
+
 ## Findings before the table
 
 Two files in the live census have no explicit lane home in the brief's
