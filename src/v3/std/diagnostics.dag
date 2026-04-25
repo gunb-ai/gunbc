@@ -16,6 +16,7 @@ type CompilerDiagnosticKind
   | UnitMismatch
   | ArityMismatch
   | ResolveError
+  | MagnitudeOutOfRange
 
 // 🟢 TERMINAL for DB-1's source-level correction carrier. Corrections
 // replace a span in user-authored `.dag` source with new `.dag`
