@@ -76,6 +76,131 @@ use crate::pipeline_authority::{ordered_pipeline_stages, PIPELINE_AUTHORITY_FILE
 #[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
 const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
 
+<<<<<<< HEAD
+=======
+fn declaration_name_preference_rank(file: &str) -> usize {
+    if file.starts_with("src/v3/") {
+        2
+    } else if file.starts_with("dsl/") {
+        0
+    } else {
+        1
+    }
+}
+
+// PB-1-e scaffold boundary: the runtime-parse helpers below exist solely so
+// `regen_bootstrap` can produce the committed snapshot files
+// (`bootstrap_*_generated.rs`) from the canonical `.dag` authorities.
+// Production bootstrap MUST seed from `Dag::std_fixture_bootstrap_snapshot()`
+// or `Dag::new()` directly; neither calls these helpers.
+//
+// In-tree DB-8 cross-check is "the committed snapshot is internally
+// consistent" (see `tests/integration/pb1_bootstrap_full_snapshot_test.rs`).
+// The fresh-parse-vs-snapshot acid test runs at regen time: CI invokes
+// `cargo run --bin regen_bootstrap` and asserts `git diff --exit-code` on
+// `src/v3/compiler/src/bootstrap_*_generated.rs` — drift between the
+// committed bytes and a fresh compile fails CI.
+//
+// Named dissolution trigger: delete these helpers once `regen_bootstrap`
+// itself is generated from a `.dag` regen-authority spec (so the fresh-parse
+// step is no longer hand-Rust). At that point the std snapshot can be
+// derived from the same authority that drives the rest of the regen registry.
+pub(crate) fn bootstrap_std_fixtures_only(dag: &mut Dag) {
+    *dag = Dag::empty();
+    load_fixtures(dag, std_fixtures());
+    dag.populate_primitive_cache();
+}
+
+pub(crate) fn bootstrap_runtime_authorities_on(
+    dag: &mut Dag,
+    excluded_staged_paths: &[&str],
+    excluded_compiler_paths: &[&str],
+) {
+    load_runtime_bootstrap_authorities(dag, excluded_staged_paths, excluded_compiler_paths);
+}
+
+fn load_runtime_bootstrap_authorities(
+    dag: &mut Dag,
+    excluded_staged_paths: &[&str],
+    excluded_compiler_paths: &[&str],
+) {
+    let staged_iter = STAGED_FILES
+        .iter()
+        .copied()
+        .filter(|(path, _)| !excluded_staged_paths.contains(path));
+    let compiler_iter = COMPILER_FILES
+        .iter()
+        .copied()
+        .filter(|(path, _)| !excluded_compiler_paths.contains(path));
+    let fixtures: Vec<(&str, &str)> = staged_iter
+        .chain(V3_SPECS.iter().copied())
+        .chain(compiler_iter)
+        .chain(EXTDEPS_BOOTSTRAP_FIXTURES.iter().copied())
+        .collect();
+    load_fixtures(dag, &fixtures);
+    materialize_pipeline_realizations(dag);
+    dag.populate_primitive_cache();
+}
+
+fn std_fixtures() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("dsl/std/logic.dag", LOGIC_DAG),
+        ("dsl/std/bit.dag", BIT_DAG),
+        ("dsl/std/algebra.dag", ALGEBRA_DAG),
+        ("dsl/std/integer.dag", INTEGER_DAG),
+        ("dsl/std/float.dag", FLOAT_DAG),
+        ("dsl/std/types.dag", TYPES_DAG),
+        ("dsl/std/string_type.dag", STRING_TYPE_DAG),
+    ]
+}
+
+fn load_fixtures(dag: &mut Dag, fixtures: &[(&str, &str)]) {
+    let mut parsed: Vec<(SurfaceModule, Vec<bool>)> = Vec::with_capacity(fixtures.len());
+    for (file, source) in fixtures.iter() {
+        let Some(module) = parse_fixture(dag, source, file) else {
+            continue;
+        };
+        let (_stale_symbols, is_first) = collect_symbols_phase(dag, &module.items);
+        parsed.push((module, is_first));
+    }
+
+    // Rebuild the symbols map from the shared declaration table. By
+    // now every top-level declaration across all fixtures is present
+    // with its type_params slot populated, so Phase 2 can resolve
+    // every cross-file template reference at construction time.
+    // Use the same staged-v3-over-dsl preference policy as
+    // `collect_symbols`, otherwise Phase 1 can register the staged
+    // shadowing declaration but Phase 2 will still lower bodies
+    // against the legacy `dsl/` declaration.
+    let mut shared_symbols: HashMap<String, DeclarationId> = HashMap::new();
+    for d in dag.declarations() {
+        if let Some(name) = &d.name {
+            match shared_symbols.get(name).copied() {
+                None => {
+                    shared_symbols.insert(name.clone(), d.id);
+                }
+                Some(existing_id) => {
+                    let existing = dag.declaration(existing_id);
+                    let new_rank = declaration_name_preference_rank(&d.span.file);
+                    let existing_rank = declaration_name_preference_rank(&existing.span.file);
+                    if new_rank > existing_rank {
+                        shared_symbols.insert(name.clone(), d.id);
+                    }
+                }
+            }
+        }
+    }
+
+    // Phase 2: lower bodies using the shared symbols map.
+    for (module, is_first) in parsed.iter() {
+        lower_bodies_phase(dag, module, &shared_symbols, is_first);
+    }
+
+    resolve_pending_identifiers(dag);
+    patch_kernel_bool_boolean_algebra_inhabits(dag);
+}
+
+>>>>>>> origin/main
 /// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).
 ///
 /// `dsl/std/types.dag` must stay free of `inhabits` so v2 can parse every
