@@ -710,6 +710,29 @@ fn evaluate_execute_command_exit_code_with_wall_time(
                 // path that intentionally skips string-based setup detection.
                 let _ = child.stderr.take();
             }
+            if from_unshare
+                && s.code()
+                    .map(i64::from)
+                    .is_some_and(|c| c == expect_exit_code)
+                && expect_exit_code != 0
+            {
+                // The unshare(1) path can produce an exit that **matches** a non-zero
+                // `expect_exit_code` even when the host `exec` result would not (e.g. PID-1
+                // semantics in a new PID namespace) — so C-5 must not be read as "never re-run
+                // when the code already matches" without a direct `Child` confirmation for **non-
+                // zero** expected codes (PR #792 integration: `true` is 0, not 1, on the host).
+                child = match build_execute_command_process(command, args).spawn() {
+                    Ok(c) => c,
+                    Err(e2) => {
+                        return ClaimResult::Fail(format!(
+                            "ExecuteCommand spawn error ({command}) after unshare(1) host-exit \
+                             confirmation: {e2}"
+                        ));
+                    }
+                };
+                from_unshare = false;
+                continue;
+            }
         }
         break s;
     };
