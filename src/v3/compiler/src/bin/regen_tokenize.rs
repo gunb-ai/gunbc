@@ -256,16 +256,7 @@ fn emit_token_kind_enum(dag: &Dag) -> String {
             TypeConnective::Conj { children } if children.is_empty() => format!("    {},", v.label),
             TypeConnective::Conj { children } if children.len() == 1 => {
                 let field = &children[0];
-                // The DAG names the payload `IntLiteralMagnitude`, but the tokenizer
-                // lexes an **unsigned** digit run. Using `i128` here breaks the signed
-                // lower bound: `|i128::MIN| = 2^127` is not representable as positive
-                // `i128` before unary `-` is applied in `parse_parser_body.txt` — the
-                // run must be carried as `u128` (see P1 R2, substrate `IntLiteralMagnitude` bridge).
-                let rust_ty = if v.label == "IntLit" {
-                    "u128".to_string()
-                } else {
-                    rust_type_for_decl_id(dag, field.ty)
-                };
+                let rust_ty = rust_type_for_decl_id(dag, field.ty);
                 let field_name = &field.label;
                 if field_name == "_0" {
                     format!("    {}({rust_ty}),", v.label)
@@ -309,6 +300,7 @@ fn rust_type_for_decl_id(dag: &Dag, id: DeclarationId) -> String {
             "String" => return "String".to_string(),
             "Int" | "Int64" => return "i64".to_string(),
             "IntLiteralMagnitude" => return "i128".to_string(),
+            "UnsignedLiteralDigitMagnitude" => return "u128".to_string(),
             _ => {}
         }
     }
@@ -325,6 +317,7 @@ fn rust_type_for_decl_id(dag: &Dag, id: DeclarationId) -> String {
                 Some("String") => "String".to_string(),
                 Some("Int") | Some("Int64") => "i64".to_string(),
                 Some("IntLiteralMagnitude") => "i128".to_string(),
+                Some("UnsignedLiteralDigitMagnitude") => "u128".to_string(),
                 other => panic!("unsupported instantiated type {other:?}"),
             }
         }

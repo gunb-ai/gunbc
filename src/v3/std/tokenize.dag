@@ -7,7 +7,7 @@
 
 module v3.std.tokenize
 
-import v3.std.substrate { SourceSpan, IntLiteralMagnitude }
+import v3.std.substrate { SourceSpan, UnsignedLiteralDigitMagnitude }
 
 // 🟢 TERMINAL at the shared token-taxonomy scope. The token-kind split is the
 // durable surface any `.dag` consumer shares: compiler tokenizer, parser,
@@ -27,7 +27,7 @@ type TokenKind
   | KwTrue
   | KwFalse
   | Ident(String)
-  | IntLit(IntLiteralMagnitude)
+  | IntLit(UnsignedLiteralDigitMagnitude)
   | StringLit(String)
   | Eq
   | EqEq

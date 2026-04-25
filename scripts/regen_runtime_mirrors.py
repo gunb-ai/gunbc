@@ -615,6 +615,7 @@ def rust_type(source: str, overrides: dict[str, str] | None = None) -> str:
         "Bool": "bool",
         "Int": "i64",
         "IntLiteralMagnitude": "i128",
+        "UnsignedLiteralDigitMagnitude": "u128",
         "NodeId": "NodeId",
         "PortId": "PortId",
         "ClusterId": "ClusterId",

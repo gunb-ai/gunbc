@@ -31,14 +31,23 @@ type DagPort {
 // in-graph (empty record); the signed span is a **bridge** in regen, not
 // an extra data edge:
 //
-//   **Named bridge / dissolution: T-Substrate-IntLiteralMagnitudeRustI128** — regen
-//   (`regen_runtime_mirrors` / `regen_tokenize` `rust_type` name-keyed table)
-//   maps declaration `IntLiteralMagnitude` → `i128` for Rust, until a width
-//   (or `std.natural`) lives on the carrier in the graph. Keep one table per
-//   regen, not a second ad-hoc `Int` → `i128` override.
+//   **Named bridge / dissolution: T-Substrate-IntLiteralMagnitudeRustI128** —
+//   `regen_runtime_mirrors` `rust_type` maps `IntLiteralMagnitude` → `i128` for
+//   Rust, until a width (or `std.natural`) lives on the carrier in the graph.
+//   Keep one table per regen, not a second ad-hoc `Int` → `i128` override.
 //
 // 🟢 TERMINAL. LiteralBits matches `crate::LiteralBits` one-for-one.
 type IntLiteralMagnitude {
+}
+
+// T-Tokenizer-UnsignedLiteralDigitMagnitudeU128 — **lexical** payload for
+// `v3.std.tokenize::TokenKind::IntLit` only: the unsigned decimal digit run
+// **before** unary `-` is fixed in the surface parser. `regen_tokenize` maps
+// this declaration → `u128` (one name-keyed row). **Not** the same substrate
+// fact as `IntLiteralMagnitude` above (signed reconciled `i128` in
+// `LiteralBits` / `regen_runtime_mirrors`); P2: one name → one Rust type per
+// emit path, no label-keyed special cases.
+type UnsignedLiteralDigitMagnitude {
 }
 
 // Leaf structural types. `LitInt` carries `IntLiteralMagnitude` (above), not

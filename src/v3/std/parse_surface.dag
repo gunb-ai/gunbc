@@ -112,8 +112,9 @@ type SurfacePattern
 // `Bool` / `String` — the same names as the historical handwritten parser — so generated Rust
 // matches `lower.rs` and every `SurfaceLiteral::…` constructor site. Do not rename to
 // `IntLit` / `BoolLit` / `StringLit` (tokenizer token kinds, not surface literals). The `Int`
-// branch payload is `IntLiteralMagnitude` (same substrate leaf as `LiteralBits.LitInt` and
-// `TokenKind::IntLit`), not `std.integer::Int` / default Int64.
+// branch payload is `IntLiteralMagnitude` (same substrate leaf as `LiteralBits.LitInt`); the
+// tokenizer’s `TokenKind::IntLit` uses `UnsignedLiteralDigitMagnitude` (lexical digit run). Not
+// `std.integer::Int` / default Int64.
 type SurfaceLiteral
   = Int(IntLiteralMagnitude)
   | Bool(Bool)
