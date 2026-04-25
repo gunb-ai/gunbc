@@ -1,0 +1,26 @@
+[package]
+name = "v3-grounding-pilot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# T-Ground-Pilot — bounded probe validating that algebra-homomorphism
+# inhabitance search reproduces today's name-keyed table-lookup routing
+# on a 10-element Rust pilot set ({i8..i64, u8..u64, bool, ()}).
+#
+# Scope: src/v3/grounding_pilot/src/lib.rs. Authority for the structural
+# target-side facts: dsl/extdeps/languages/rust/primitives.dag.
+#
+# Lives as a sibling crate (not a module of v3-compiler) so the probe's
+# lifecycle is fully isolated:
+#   - zero compiler-internal dependencies; nothing in here couples to the
+#     production pipeline
+#   - SG-0 ratchet on src/v3/compiler is untouched; admission of new
+#     hand-Rust into the pilot probe doesn't drift that ratchet
+#   - "deletable as a unit" is literal: when T-Ground-Engine produces the
+#     production walker, this entire crate disappears alongside removal
+#     from workspace members
+#
+# No dependencies — the probe is pure structural data + free functions.
+
+[dependencies]
