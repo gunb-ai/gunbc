@@ -18,7 +18,7 @@
 4. **[`docs/thesis/target-grounding-proposal.md`](../thesis/target-grounding-proposal.md).** Minimum-satisfier discipline, fail-closed tie-breaking with structured diagnostics, the three-way L4 split.
 5. **[`docs/single-emitter-design.md`](../single-emitter-design.md).** The architectural design Engine operationalizes: "the mapping should fall out from the algebra, not from a hand-maintained table."
 6. **[`MODELING.md`](../../MODELING.md)** (especially M9: DFS the concept DAG) and **[`INVARIANTS.md`](../../INVARIANTS.md).** Same governing rules as pilot.
-7. **Pilot receipt** (manager-authored, in flight at the time of dispatch — check `docs/briefs/grounding-pilot-receipt.md` or successor) — captures the four headline lessons Engine inherits.
+7. **Pilot receipt.** Manager-authored synthesis of the four headline lessons Engine inherits. **Primary source**: `docs/briefs/grounding-pilot-receipt.md` once authored. **Fallback if not yet on main at the time you read this**: the same lessons are captured in [PR #765's merged body](https://github.com/gunb-ai/gunbc/pull/765) and the LGTM comment thread ([`comment 4317308089`](https://github.com/gunb-ai/gunbc/pull/765#issuecomment-4317308089) for the four-lesson enumeration; [`comment 4317414841`](https://github.com/gunb-ai/gunbc/pull/765#issuecomment-4317414841) for the state-space-discipline lesson from the codex P2 adjudication). Read both — receipt is synthesis, the PR thread is the empirical record.
 
 ---
 
