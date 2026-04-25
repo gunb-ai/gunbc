@@ -10,24 +10,14 @@ pub(crate) struct IntegerRange {
     pub(crate) target_name: String,
     pub(crate) min_decimal: String,
     pub(crate) max_decimal: String,
+    min: i128,
+    max: i128,
 }
 
 impl IntegerRange {
-    fn min(&self) -> i128 {
-        self.min_decimal
-            .parse()
-            .expect("declared integer range minimum must parse as i128")
-    }
-
-    fn max(&self) -> i128 {
-        self.max_decimal
-            .parse()
-            .expect("declared integer range maximum must parse as i128")
-    }
-
     pub(crate) fn contains_i64(&self, value: i64) -> bool {
         let value = i128::from(value);
-        self.min() <= value && value <= self.max()
+        self.min <= value && value <= self.max
     }
 }
 
@@ -114,6 +104,14 @@ fn integer_range_fact(dag: &Dag, value_body: &ValueBody) -> Option<IntegerRangeF
     let ValueBody::Structural { fields } = value_body else {
         return None;
     };
+    let min_decimal = literal_string(require_field(fields, "range_min_inclusive")?)?;
+    let max_decimal = literal_string(require_field(fields, "range_max_inclusive")?)?;
+    let min = min_decimal.parse().ok()?;
+    let max = max_decimal.parse().ok()?;
+    if min > max {
+        return None;
+    }
+
     Some(IntegerRangeFact {
         key: IntegerRoutingKey {
             algebra: variant_label_for_value(dag, require_field(fields, "algebra")?)?,
@@ -121,8 +119,10 @@ fn integer_range_fact(dag: &Dag, value_body: &ValueBody) -> Option<IntegerRangeF
         },
         range: IntegerRange {
             target_name: literal_string(require_field(fields, "target_name")?)?,
-            min_decimal: literal_string(require_field(fields, "range_min_inclusive")?)?,
-            max_decimal: literal_string(require_field(fields, "range_max_inclusive")?)?,
+            min_decimal,
+            max_decimal,
+            min,
+            max,
         },
     })
 }

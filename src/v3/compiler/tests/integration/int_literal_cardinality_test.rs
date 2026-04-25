@@ -93,11 +93,21 @@ fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
         dag.diagnostics().iter().any(|(_, diagnostic)| {
             matches!(
                 diagnostic,
-                v3_compiler::diagnostics::Diagnostic::MagnitudeOutOfRange { fixes, .. }
-                    if fixes.is_empty()
+                v3_compiler::diagnostics::Diagnostic::MagnitudeOutOfRange {
+                    literal,
+                    target,
+                    range_min_inclusive,
+                    range_max_inclusive,
+                    fixes,
+                    ..
+                } if literal == "256"
+                    && target == "u8"
+                    && range_min_inclusive == "0"
+                    && range_max_inclusive == "255"
+                    && fixes.is_empty()
             )
         }),
-        "MagnitudeOutOfRange must not fabricate an empty synthetic correction"
+        "MagnitudeOutOfRange should carry typed bounds and no fabricated correction"
     );
 }
 
@@ -122,10 +132,20 @@ fn int_literal_ranges_follow_type_aliases() {
         "aliased out-of-range integer literal should emit one root-cause diagnostic, got {messages:?}"
     );
     assert!(
-        messages.iter().any(|message| {
-            message.contains("integer literal `256`")
-                && message.contains("u8")
-                && message.contains("0..=255")
+        dag.diagnostics().iter().any(|(_, diagnostic)| {
+            matches!(
+                diagnostic,
+                v3_compiler::diagnostics::Diagnostic::MagnitudeOutOfRange {
+                    literal,
+                    target,
+                    range_min_inclusive,
+                    range_max_inclusive,
+                    ..
+                } if literal == "256"
+                    && target == "u8"
+                    && range_min_inclusive == "0"
+                    && range_max_inclusive == "255"
+            )
         }),
         "expected aliased MagnitudeOutOfRange details, got {messages:?}"
     );
