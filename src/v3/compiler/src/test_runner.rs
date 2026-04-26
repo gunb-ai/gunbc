@@ -1355,6 +1355,10 @@ impl ProgramInputRole {
             Self::ProgramOutputBind { output_bind_name } => Some(output_bind_name),
         }
     }
+
+    fn is_program_input(&self) -> bool {
+        matches!(self, Self::ProgramInput)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1705,8 +1709,18 @@ impl<'a> TestRunner<'a> {
             None
         };
 
-        let reflects_claim_program =
-            program_input.is_some() || input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL);
+        if matches!(
+            program_input,
+            Some(ProgramInputRole::ProgramOutputBind { .. })
+        ) {
+            return ClaimResult::Fail(format!(
+                "LensOutputEquals: input_ref `{input_name}` inhabits ProgramOutputBind but lens `{lens_name}` does not consume an output bind"
+            ));
+        }
+        let reflects_claim_program = program_input
+            .as_ref()
+            .is_some_and(ProgramInputRole::is_program_input)
+            || input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL);
         let input_field = if reflects_claim_program {
             // P2: `id_space` must be the same `Dag` `apply_lens_declaration` will use for the lens
             // (canonical compile, claim `program_dag`, or merged fixture `self.dag`) so reflected
