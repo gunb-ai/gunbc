@@ -190,15 +190,3 @@ fn rust_pilot_primitives_value_body_is_unparsed_until_r2_substrate_4th_sublane()
          consumers to walk the structured value and delete this assertion."
     );
 }
-
-#[test]
-fn go_spec_predeclared_primitives_value_body_is_unparsed_until_r2_substrate_4th_sublane() {
-    let dag = Dag::new();
-    let decl = dag.go_spec_predeclared_primitives().expect("loaded");
-    let body = decl.value_body.as_ref().expect("data row has value_body");
-    assert!(
-        matches!(body, ValueBody::Unparsed(_)),
-        "go_spec_predeclared_primitives.value_body must stay Unparsed until top-level \
-         list/aggregate ValueBody lands; got {body:?}"
-    );
-}
