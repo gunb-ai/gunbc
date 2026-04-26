@@ -313,9 +313,11 @@ dispatch in parallel. Each PR is small.
    author the marker brief blind. Per `feedback_construction_over_ratchets`,
    prefer the structural-closure outcome.
 6. **`src/v3/std` vs `dsl/std` checklist undercount fix** (PR #809
-   entry). One-line fix to `dag.rs:2735-2764` + mirror in `lower.rs`.
-   Or surface as "explain why these three modules are exempt." Belongs
-   to whoever owns the file-preference rank scaffold; trivial dispatch.
+   entry). **RESOLVED (2026-04-26):** convergence checklist in
+   `dag.rs::declaration_name_preference_rank` + `lower.rs::collect_symbols`
+   extended with `std.computation` / `std.induction` / `std.termination`
+   duplicate pairs; ROADMAP exploratory row updated. (Prior line-cite
+   `2735-2764` drifted as `main` moved — read the live doc comments.)
 7. **`patch_lower_helpers_generated_type_alias_refinement` retirement**
    (PR #809 entry). Belongs to Zero-Floor Manager PB-Tier1 work; the
    "first PB cleanup target" framing is already in the row.

@@ -1607,8 +1607,10 @@ fn collect_symbols(
     // point name lookup must resolve against the single surviving authority
     // or fail closed on multiple matches. Convergence checklist
     // (ROADMAP.md "Post-merge debt"): `module std.effects`,
-    // `module std.verification`, and the embedded `http_path` mirror inside
-    // `src/v3/std/effects.dag`.
+    // `module std.verification`, embedded `http_path` mirror inside
+    // `src/v3/std/effects.dag`, `module std.computation`,
+    // `module std.induction`, `module std.termination` (each `dsl/std/*`
+    // ↔ `src/v3/std/*` duplicate pair — same rank scaffold as effects).
     let mut symbols: HashMap<String, DeclarationId> = HashMap::new();
     for d in dag.declarations() {
         if let Some(name) = &d.name {

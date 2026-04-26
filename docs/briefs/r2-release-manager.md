@@ -17,7 +17,7 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 | §6a per-method-metadata follow-through (Goal 5) | `docs/design-substrate-carrier-port-program.md §6a` (decision locked at `:171`; live receipt at `:173`; dissolution trigger at `:175`) | DECISION LOCKED — Option 3 unified `MethodContract` carrier; live receipt landed (`src/v3/std/algebra.dag` declares `MethodContract`; `src/v3/lenses/cost.dag` imports via `method_contract_cost_shape` minimal demo consumer). Remaining R2 work: bulk migration of `cost.dag` / `complexity.dag` to live call-site lookup + dissolution-trigger tracking (`size_effect` / `cost_shape` / `callback_element_position` field-by-field retirement). |
 | R2 closure demo coordination (Goal 6) | `docs/r2-structure.md` Goal 6 + Demo discipline section | LIVE on spawn (no separate brief; see Demo discipline) |
 | B-wave Tier 0 through-merge | #810 §5 dispatch ordering | IN FLIGHT (B1 #820, B2 #817, B3 #821 — implementation iteration) |
-| B-wave Tier 2 brief authoring | #810 §5 (B5 Loop construction-closure audit; B6 file-preference rank checklist; B7 priority hint to Pure Bootstrap Manager) | NOT YET AUTHORED — PM portion per inbox #828 |
+| B-wave Tier 2 brief authoring | #810 §5 (B5 Loop construction-closure audit; B6 file-preference rank checklist; B7 priority hint to Pure Bootstrap Manager) | **AUTHORED** — `r2-release-b5-*.md`, `r2-release-b6-*.md`, `r2-release-b7-*.md` (PM portion per inbox #828); B6 checklist fix landed on main via Release dispatch |
 | Discipline framework central reporting | INVARIANTS.md §P5 "Dispatch-Discipline Mechanisms" (c) + ROADMAP.md "Integration-reflection cadence" velocity-tripwire | LIVE on spawn (mechanism wired via PRs #810 + #812) |
 | Thesis-claim coverage mapping | `docs/r2-structure.md` Open call 1 | NOT YET AUTHORED (lands as part of R1→R2 transition step 4) |
 | R2 closure ledger | `docs/r2-structure.md` Manager structure section 6 | LIVE on spawn (tracks lane-close green status across all 5 other managers) |
@@ -77,14 +77,16 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 
 ## Sub-briefs (authored / pending)
 
-Authored: none (this is a NEW manager).
+Authored (pre-spawn PM portion, inbox #828):
+- [`r2-release-6a-follow-through-worker.md`](r2-release-6a-follow-through-worker.md) — §6a bulk migration + dissolution-trigger tracking
+- [`r2-release-b5-loop-construction-closure-audit-worker.md`](r2-release-b5-loop-construction-closure-audit-worker.md)
+- [`r2-release-b6-file-preference-rank-checklist-worker.md`](r2-release-b6-file-preference-rank-checklist-worker.md)
+- [`r2-release-b7-priority-hint-relay-to-pure-bootstrap.md`](r2-release-b7-priority-hint-relay-to-pure-bootstrap.md) — cross-manager signal brief
 
-Pending — pre-spawn PM-authored per inbox #828 coordination split (R2 Release Manager portion); post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
-- §6a per-method-metadata follow-through brief (decision locked Option 3; bulk migration + dissolution-trigger tracking remain)
-- B5 Loop construction-closure audit brief
-- B6 file-preference rank checklist completion brief
-- B7 priority-hint relay (cross-manager signal, not a worker brief)
-- Thesis-claim coverage mapping table (lands at R1 close → R2 promotion)
+Still pending at R1→R2 transition (not pre-spawn worker briefs):
+- Thesis-claim coverage mapping table (Open call 1; lands at R1 close → R2 promotion)
+
+Post-spawn: manager-authored worker briefs autonomously per "Pre-spawn vs post-spawn authority" above.
 
 ## Working state (fill on spawn)
 
