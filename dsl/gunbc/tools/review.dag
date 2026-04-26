@@ -19,11 +19,11 @@ import extdeps.shell
 
 data default_model: String = "claude-sonnet-4-6-20250929"
 data cron_schedule: String = "*/10 * * * *"
-// BRIDGE: messages should be [{ role: "user", content: "..." }] (Json array),
-// but emit_simple_expr cannot render list/record literals in transport bodies.
-// Passed as a JSON-encoded string; the emitter coerces via serde_json::from_str.
-// Dissolves when emit_simple_expr handles ExprListLit/ExprRecordLit.
-data review_messages: String = "[{\"role\": \"user\", \"content\": \"Review the PR described in the system prompt.\"}]"
+data review_messages: List<AnthropicChatMessage> = [
+  UserMessage {
+    content: [UserTextBlock { text: "Review the PR described in the system prompt." }]
+  }
+]
 
 // -- Pure functions ---------------------------------------------------
 

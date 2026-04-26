@@ -2404,7 +2404,7 @@ impl TestClaimValue {
 fn structural_fields(decl: &Declaration) -> Option<&[(String, FieldValue)]> {
     match decl.value_body.as_ref()? {
         ValueBody::Structural { fields } => Some(fields),
-        ValueBody::Unparsed(_) | ValueBody::Scalar(_) => None,
+        ValueBody::Unparsed(_) | ValueBody::Scalar(_) | ValueBody::List(_) => None,
     }
 }
 
@@ -2478,6 +2478,14 @@ fn render_value_body(dag: &Dag, value: &ValueBody) -> String {
     match value {
         ValueBody::Scalar(bits) => render_literal(bits),
         ValueBody::Structural { fields } => render_record(dag, fields),
+        ValueBody::List(values) => format!(
+            "[{}]",
+            values
+                .iter()
+                .map(|value| render_field_value(dag, value))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         ValueBody::Unparsed(span) => format!("<unparsed:{}:{}>", span.file, span.byte_start),
     }
 }
