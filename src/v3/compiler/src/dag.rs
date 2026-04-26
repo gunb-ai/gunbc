@@ -211,6 +211,12 @@ pub struct Declaration {
     /// refined declarations for arm-local narrowing when an `if`
     /// cond is a single-parameter predicate.
     pub refinement: Option<DeclarationId>,
+    /// Nominal-opacity carrier for the Secret<T> consumer
+    /// (T-Substrate nominal-opaque-for-Secret subset). When `Some`,
+    /// generic structural walks must hard-stop at this declaration
+    /// unless they descend through a `permitted_accessors` entry.
+    /// See `check_nominal_opacity_descent` for the walker consumer.
+    pub nominal_opacity: Option<NominalOpacity>,
     pub span: SourceSpan,
 }
 
@@ -218,6 +224,16 @@ pub struct Declaration {
 pub struct PhantomParameter {
     pub parameter: DeclarationId,
     pub algebra: DeclarationId,
+}
+
+/// Sealed-accessor carrier that gates structural descent through a
+/// nominal-opaque declaration. Accessor `DeclarationId`s listed here
+/// are the only nodes through which a generic structural walk may
+/// reach the declaration's interior; any other walk is rejected by
+/// `check_nominal_opacity_descent` with a fail-closed Diagnostic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NominalOpacity {
+    pub permitted_accessors: Vec<DeclarationId>,
 }
 
 /// Value-body shape for `data foo: T = { body }` declarations. Two

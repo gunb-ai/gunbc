@@ -199,6 +199,16 @@ pub enum Diagnostic {
         span: SourceSpan,
         fixes: Vec<Correction>,
     },
+    /// T-Substrate nominal-opaque-for-Secret: emitted by
+    /// `check_nominal_opacity_descent` when a generic structural walk
+    /// attempts to descend through a nominal-opaque declaration
+    /// without resolving via a permitted accessor.
+    NominalOpacityViolation {
+        declaration: DeclarationId,
+        accessor: Option<DeclarationId>,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
+    },
 }
 
 impl Diagnostic {
@@ -212,7 +222,8 @@ impl Diagnostic {
             | Diagnostic::UnitMismatch { span, .. }
             | Diagnostic::BranchConditionNotBool { span, .. }
             | Diagnostic::MagnitudeOutOfRange { span, .. }
-            | Diagnostic::MalformedIntegerRangeFact { span, .. } => span,
+            | Diagnostic::MalformedIntegerRangeFact { span, .. }
+            | Diagnostic::NominalOpacityViolation { span, .. } => span,
         }
     }
 

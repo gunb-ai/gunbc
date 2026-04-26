@@ -160,6 +160,7 @@ type Declaration {
   meta_tag: DeclarationId?
   inhabits: DeclarationId?
   value_body: ValueBody?
+  nominal_opacity: NominalOpacity?
   span: SourceSpan
 }
 
@@ -173,6 +174,17 @@ type Declaration {
 type PhantomParameter {
   parameter: DeclarationId
   algebra: DeclarationId
+}
+
+// Nominal-opaque carrier for the Secret<T> consumer (T-Substrate
+// nominal-opaque-for-Secret subset). Declarations carrying
+// `nominal_opacity = Some(NominalOpacity { permitted_accessors })`
+// are sealed to generic structural walks: descent through the
+// declaration is permitted only via one of the listed accessor
+// declarations. See `check_nominal_opacity_descent` in dag.rs for
+// the fail-closed walker consumer.
+type NominalOpacity {
+  permitted_accessors: List<DeclarationRef>
 }
 
 // 🟡 SCAFFOLD. Arithmetic operators inherit the operator-shim
