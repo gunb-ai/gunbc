@@ -742,13 +742,53 @@ fn decide(dag: &Dag, index: usize) -> Decision {
         Behavior::Value(v) => {
             // `let x: UInt8 = 5` seeds the value port to `UInt8` after lowering;
             // the Int literal Value node would otherwise re-stamp `Int64` here and
-            // clobber host narrowing. If the port is already a non-`Int` type that
-            // fits, defer (Retry) and leave the lower/infer call-site pass alone.
-            if let LiteralBits::Int(_) = &v.data {
+            // clobber host narrowing. If the port is already a non-`Int` type, only
+            // defer (Retry) when range facts prove the literal fits that type.
+            // Otherwise fail closed with `MagnitudeOutOfRange` (same contract as
+            // call-site narrowing) or fall through so normal mismatch handling
+            // applies when there is no range-backed check.
+            if let LiteralBits::Int(literal) = &v.data {
                 if let PortState::Resolved(existing) = dag.port(v.output).state() {
                     if let Some(int_sh) = dag.int_shape() {
-                        if !type_shapes_equivalent(dag, &existing, &int_sh) {
-                            return Decision::Retry;
+                        if !type_shapes_equivalent(dag, existing, &int_sh) {
+                            match int_literal_fits_expected_type(
+                                dag,
+                                *literal,
+                                existing.declaration,
+                            ) {
+                                Ok(Some(true)) => return Decision::Retry,
+                                Ok(Some(false)) => {
+                                    match integer_range_for_decl(dag, existing.declaration) {
+                                        IntegerRangeLookup::Found(range) => {
+                                            return Decision::Fail(
+                                                v.output,
+                                                magnitude_out_of_range(
+                                                    *literal,
+                                                    existing.clone(),
+                                                    range,
+                                                    v.span.clone(),
+                                                ),
+                                            );
+                                        }
+                                        IntegerRangeLookup::Invalid(diag) => {
+                                            return Decision::Fail(v.output, diag);
+                                        }
+                                        IntegerRangeLookup::Missing => {
+                                            return Decision::Fail(
+                                                v.output,
+                                                Diagnostic::ResolveError {
+                                                    name: "(internal: integer literal out of range but no range fact)"
+                                                        .to_string(),
+                                                    span: v.span.clone(),
+                                                    fixes: Vec::new(),
+                                                },
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(diag) => return Decision::Fail(v.output, diag),
+                                Ok(None) => {}
+                            }
                         }
                     }
                 }
