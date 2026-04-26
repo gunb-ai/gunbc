@@ -35,6 +35,11 @@ pub const R1_CANONICAL_COMPLEXITY_LENS: &str = include_str!(concat!(
     "/../lenses/complexity.dag"
 ));
 
+// Compatibility bridge for whole-program lenses until `ProgramInput {}` can be
+// authored in user fixtures (empty record data bodies currently lower opaque).
+// Dissolution trigger: `LensOutputEquals.input_ref` becomes a typed input-role
+// coproduct, so the runner receives `ProgramInput` / `ProgramOutputBind` directly
+// instead of name-detecting either this declaration or role carrier types.
 const PROGRAM_INPUT_SENTINEL: &str = "r1_lens_output_input_from_program";
 
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
@@ -1856,6 +1861,10 @@ impl<'a> TestRunner<'a> {
     }
 
     fn decl_inhabits_named_role(&self, decl: &Declaration, role_name: &str) -> bool {
+        // Narrow bridge: role declarations are still found by type name because
+        // `input_ref` is statically `DeclarationRef`. Dissolve with the
+        // `TestPredicate` input-role coproduct described near
+        // `PROGRAM_INPUT_SENTINEL`.
         let Some(role_id) = self.dag.declaration_by_name(role_name).map(|d| d.id) else {
             return false;
         };
