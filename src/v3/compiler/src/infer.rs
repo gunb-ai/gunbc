@@ -77,6 +77,11 @@ pub fn infer(dag: &mut Dag) {
                         PortState::Resolved(existing)
                             if type_shapes_equivalent(dag, &existing, &ty) => {}
                         PortState::Resolved(existing) => {
+                            if int_literal_magnitude_narrow_merge(dag, port, &existing, &ty) {
+                                dag.set_port_type(port, ty);
+                                changed = true;
+                                continue;
+                            }
                             if is_retryable_generic_decl(dag, existing.declaration)
                                 || is_retryable_generic_decl(dag, ty.declaration)
                             {
@@ -702,6 +707,30 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
     changed
 }
 
+/// T-Modeling int-lit / PR #806 consumer: allow `i64` default-typed int
+/// literal output ports to refine to a range-backed fixed-width `IntegerPrimitive`
+/// when the magnitude fits, without treating it as a conflicting resolution.
+fn int_literal_magnitude_narrow_merge(
+    dag: &Dag,
+    port: PortId,
+    from: &TypeShape,
+    to: &TypeShape,
+) -> bool {
+    let Some(lit) = literal_int_at(dag, port) else {
+        return false;
+    };
+    let Some(int_shape) = dag.int_shape() else {
+        return false;
+    };
+    if !type_shapes_equivalent(dag, from, &int_shape) {
+        return false;
+    }
+    matches!(
+        int_literal_fits_expected_type(dag, lit, to.declaration),
+        Ok(Some(true))
+    )
+}
+
 enum Decision {
     Set(PortId, TypeShape),
     Fail(PortId, Diagnostic),
@@ -711,6 +740,19 @@ enum Decision {
 fn decide(dag: &Dag, index: usize) -> Decision {
     match &dag.nodes()[index] {
         Behavior::Value(v) => {
+            // `let x: UInt8 = 5` seeds the value port to `UInt8` after lowering;
+            // the Int literal Value node would otherwise re-stamp `Int64` here and
+            // clobber host narrowing. If the port is already a non-`Int` type that
+            // fits, defer (Retry) and leave the lower/infer call-site pass alone.
+            if let LiteralBits::Int(_) = &v.data {
+                if let PortState::Resolved(existing) = dag.port(v.output).state() {
+                    if let Some(int_sh) = dag.int_shape() {
+                        if !type_shapes_equivalent(dag, &existing, &int_sh) {
+                            return Decision::Retry;
+                        }
+                    }
+                }
+            }
             let shape_and_name = match &v.data {
                 // Unconstrained integer literals keep the existing explicit
                 // default to Int64. Expected-type narrowing happens at
