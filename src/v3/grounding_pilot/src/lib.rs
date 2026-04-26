@@ -670,7 +670,10 @@ mod tests {
         let mut out = Vec::new();
         while let Some(rel) = list_inner[at..].find(needle) {
             let start = at + rel;
-            let open = start + list_inner[start..].find('{').expect("open brace in variant");
+            let open = start
+                + list_inner[start..]
+                    .find('{')
+                    .expect("open brace in variant");
             let mut d = 0i32;
             for (k, c) in list_inner[open..].char_indices() {
                 match c {
@@ -742,10 +745,18 @@ mod tests {
                 max: quoted_field(block, "range_max_inclusive"),
             })
             .collect();
-        assert_eq!(fact_vec.len(), 8, "expected 8 width-known GoIntegerRangeFact rows");
+        assert_eq!(
+            fact_vec.len(),
+            8,
+            "expected 8 width-known GoIntegerRangeFact rows"
+        );
         let facts: BTreeMap<&str, &RangeFact<'_>> =
             fact_vec.iter().map(|f| (f.target_name, f)).collect();
-        assert_eq!(facts.len(), 8, "GoIntegerRangeFact target_name keys must be unique");
+        assert_eq!(
+            facts.len(),
+            8,
+            "GoIntegerRangeFact target_name keys must be unique"
+        );
 
         let list = go_spec_predeclared_list_inner(source);
         let prims = go_list_variant_blocks(list, "GoIntegerPrimitive {");
@@ -757,8 +768,16 @@ mod tests {
                 .unwrap_or_else(|| panic!("GoIntegerRangeFact row missing for `{name}`"));
             assert_eq!(bare_field(block, "algebra"), exp.algebra, "{name} algebra");
             assert_eq!(bare_field(block, "carrier"), exp.carrier, "{name} carrier");
-            assert_eq!(quoted_field(block, "range_min_inclusive"), exp.min, "{name} min");
-            assert_eq!(quoted_field(block, "range_max_inclusive"), exp.max, "{name} max");
+            assert_eq!(
+                quoted_field(block, "range_min_inclusive"),
+                exp.min,
+                "{name} min"
+            );
+            assert_eq!(
+                quoted_field(block, "range_max_inclusive"),
+                exp.max,
+                "{name} max"
+            );
         }
         let aliases = go_list_variant_blocks(list, "GoIntegerAliasPrimitive {");
         assert_eq!(aliases.len(), 2, "expected byte and rune alias rows");
@@ -767,7 +786,11 @@ mod tests {
             let exp = facts
                 .get(canon)
                 .unwrap_or_else(|| panic!("GoIntegerRangeFact row for canon `{canon}` (alias)"));
-            assert_eq!(bare_field(block, "algebra"), exp.algebra, "alias vs {canon}");
+            assert_eq!(
+                bare_field(block, "algebra"),
+                exp.algebra,
+                "alias vs {canon}"
+            );
             assert_eq!(bare_field(block, "carrier"), exp.carrier);
             assert_eq!(quoted_field(block, "range_min_inclusive"), exp.min);
             assert_eq!(quoted_field(block, "range_max_inclusive"), exp.max);
