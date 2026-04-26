@@ -4147,7 +4147,7 @@ pub(crate) fn strip_refinement_to_base(dag: &Dag, decl_id: DeclarationId) -> Dec
 /// references with `source_id`; non-receiver positions walk to
 /// their named anchor via the same walk `walk_to_type_shape` does.
 fn read_algebra_field(
-    dag: &Dag,
+    dag: &mut Dag,
     algebra_decl: &crate::dag::Declaration,
     field_ty: DeclarationId,
     source_id: DeclarationId,
@@ -4175,9 +4175,12 @@ fn read_algebra_field(
     // receiver-substitution rule.
     let input_shapes: Vec<TypeShape> = arrow_inputs
         .iter()
-        .map(|id| substitute_receiver(dag, *id, receiver_param, source_id))
+        .map(|id| {
+            substitute_receiver(dag, *id, receiver_param, source_id).map(TypeShape::new)
+        })
         .collect::<Option<_>>()?;
-    let output_shape = substitute_receiver(dag, arrow_output, receiver_param, source_id)?;
+    let output_shape = substitute_receiver(dag, arrow_output, receiver_param, source_id)
+        .map(TypeShape::new)?;
     // Sanity check: the arity is always 2 for binary operators.
     // If algebra.dag ever declares a field under one of our
     // operator names with a different arity, the check downstream
@@ -4200,39 +4203,69 @@ fn read_algebra_field(
 /// declaration (same model as `walk_to_type_shape` but with the
 /// receiver case short-circuited).
 fn substitute_receiver(
-    dag: &Dag,
+    dag: &mut Dag,
     current: DeclarationId,
     receiver_param: Option<DeclarationId>,
     source_id: DeclarationId,
-) -> Option<TypeShape> {
+) -> Option<DeclarationId> {
     if Some(current) == receiver_param {
-        return Some(TypeShape::new(source_id));
+        return Some(source_id);
     }
-    let decl = dag.declaration(current);
-    // Named top-level declaration (Bool, Ordering, etc.) is the
-    // anchor.
-    if decl.name.is_some() {
-        return Some(TypeShape::new(current));
-    }
+    let decl = dag.declaration(current).clone();
     match &decl.connective {
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             substitute_receiver(dag, *next, receiver_param, source_id)
         }
-        TypeConnective::Instantiation { template, .. } => {
-            substitute_receiver(dag, *template, receiver_param, source_id)
+        TypeConnective::Instantiation { template, arguments } => {
+            let mut new_args: Vec<TemplateArgument> = Vec::with_capacity(arguments.len());
+            let mut any_change = false;
+            for arg in arguments {
+                let new_val = substitute_receiver(dag, arg.value, receiver_param, source_id)
+                    .unwrap_or(arg.value);
+                if new_val != arg.value {
+                    any_change = true;
+                }
+                new_args.push(TemplateArgument {
+                    parameter: arg.parameter,
+                    value: new_val,
+                });
+            }
+            if !any_change {
+                return Some(current);
+            }
+            if let Some(existing) =
+                find_equivalent_anonymous_instantiation(dag, *template, &new_args)
+            {
+                return Some(existing);
+            }
+            let id = dag.alloc_declaration_id();
+            let span = decl.span.clone();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Instantiation {
+                    template: *template,
+                    arguments: new_args,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                span,
+            });
+            Some(id)
         }
-        // Non-receiver TypeParam in an algebra field (e.g., a
-        // second generic parameter) isn't resolvable at M1(2.7).
-        // Multi-parameter algebra operator dispatch is a class-5
-        // gap; M2 will refine `substitute_receiver` to cover it.
-        TypeConnective::Atom(AtomPayload::TypeParam(_)) => None,
-        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_)) => None,
-        TypeConnective::Atom(AtomPayload::Literal(_)) => None,
-        TypeConnective::Conj { .. } => None,
-        TypeConnective::Disj { .. } => None,
-        TypeConnective::Arrow { .. } => None,
-        TypeConnective::Cardinality { .. } => None,
+        _ => {
+            if decl.name.is_some() {
+                Some(current)
+            } else {
+                None
+            }
+        }
     }
 }
 
@@ -4793,10 +4826,14 @@ mod bool_logical_operator_arrow_tests {
 
     #[test]
     fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {
-        let dag = Dag::new();
+        let mut dag = Dag::new();
         let bool_shape = dag.bool_shape().expect("bootstrap Bool");
-        let sig = resolve_operator_arrow(&dag, OperatorKind::Logical(LogicalOp::And), &bool_shape)
-            .expect("&& should resolve on Bool");
+        let sig = resolve_operator_arrow(
+            &mut dag,
+            OperatorKind::Logical(LogicalOp::And),
+            &bool_shape,
+        )
+        .expect("&& should resolve on Bool");
         assert!(
             !matches!(sig.body, ArrowBody::Pending),
             "expected Bool && via inhabits → BooleanAlgebra.meet, not Pending scaffold; got {:?}",
@@ -4810,10 +4847,14 @@ mod bool_logical_operator_arrow_tests {
 
     #[test]
     fn bool_logical_or_resolves_via_boolean_algebra_join_not_pending_fallback() {
-        let dag = Dag::new();
+        let mut dag = Dag::new();
         let bool_shape = dag.bool_shape().expect("bootstrap Bool");
-        let sig = resolve_operator_arrow(&dag, OperatorKind::Logical(LogicalOp::Or), &bool_shape)
-            .expect("|| should resolve on Bool");
+        let sig = resolve_operator_arrow(
+            &mut dag,
+            OperatorKind::Logical(LogicalOp::Or),
+            &bool_shape,
+        )
+        .expect("|| should resolve on Bool");
         assert!(
             !matches!(sig.body, ArrowBody::Pending),
             "expected Bool || via inhabits → BooleanAlgebra.join, not Pending scaffold; got {:?}",
