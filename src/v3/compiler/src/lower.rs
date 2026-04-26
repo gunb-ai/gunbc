@@ -3825,36 +3825,25 @@ fn lower_fn_item_expr_body(
     //    overwrite the fn's Arrow inputs to point at the duplicates
     //    — the seeded ones would stay in the DAG, orphaned. Read
     //    the seeded inputs directly instead.
-    let (param_decl_inputs, return_decl_id) = match &dag.declaration(fn_decl_id).connective {
-        TypeConnective::Arrow { inputs, output, .. } => (inputs.clone(), *output),
-        _ => {
-            // Defensive fallback — should not occur because
-            // `seed_function_signatures_phase` runs unconditionally
-            // on every `Fn` item before bodies are lowered. If the
-            // connective is not an Arrow here, the seed phase was
-            // skipped or the declaration was clobbered; re-derive
-            // to keep the body-lowering pass going and surface the
-            // real issue upstream.
-            let local_fallback = local_scope_from_parent(dag, fn_decl_id);
-            let inputs: Vec<DeclarationId> = params
-                .iter()
-                .map(|p| {
-                    let base = type_to_declaration_id(&p.ty, symbols, &local_fallback, dag);
-                    match &p.refinement {
-                        Some(predicate) => lower_parameter_refinement(
-                            base,
-                            predicate,
-                            &p.name,
-                            symbols,
-                            dag,
-                            p.ty.span().clone(),
-                        ),
-                        None => base,
-                    }
-                })
-                .collect();
-            let output = type_to_declaration_id(return_type, symbols, &local_fallback, dag);
-            (inputs, output)
+    let (param_decl_inputs, return_decl_id) = match dag.declaration(fn_decl_id).connective.clone() {
+        TypeConnective::Arrow { inputs, output, .. } => (inputs, output),
+        observed => {
+            let fn_decl = dag.declaration(fn_decl_id);
+            let fn_decl_name = fn_decl.name.as_deref().unwrap_or(name).to_string();
+            let span = fn_decl.span.clone();
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "function declaration `{fn_decl_name}` ({fn_decl_id:?}) violated \
+                         lowering invariant: seed_function_signatures_phase did not produce \
+                         an Arrow connective for this Fn; observed connective: {observed:?}"
+                    ),
+                    fixes: Vec::new(),
+                    span,
+                },
+            );
+            return outer_scope;
         }
     };
     let mut param_ports: Vec<PortId> = Vec::with_capacity(params.len());
@@ -7000,6 +6989,57 @@ mod tests {
                 TypeConnective::Atom(AtomPayload::ResolvedByName(_))
             ),
             "strict identifier sweep must preserve name-fallback provenance on repaired stubs"
+        );
+    }
+
+    #[test]
+    fn fn_body_lowering_reports_non_arrow_seed_invariant_violation() {
+        let span = test_span();
+        let return_type = SurfaceType::Named {
+            name: "Int".to_string(),
+            span: span.clone(),
+        };
+        let body = SurfaceExpr::Literal {
+            value: SurfaceLiteral::Int(1),
+            span: span.clone(),
+        };
+        let module = SurfaceModule {
+            items: vec![SurfaceItem::Fn {
+                name: "bad_seed".to_string(),
+                type_params: Vec::new(),
+                params: Vec::new(),
+                return_type: return_type.clone(),
+                body: body.clone(),
+                span: span.clone(),
+            }],
+        };
+        let mut dag = Dag::new();
+        let (symbols, _is_first) = collect_symbols_phase(&mut dag, &module.items);
+        let mut mutual_state = MutualRecursionState::default();
+
+        lower_fn_item_expr_body(
+            "bad_seed",
+            &[],
+            &return_type,
+            &body,
+            &mut dag,
+            HashMap::new(),
+            &symbols,
+            &MutualRecursionPlans::default(),
+            &mut mutual_state,
+        );
+
+        assert!(
+            dag.diagnostics().iter().any(|(_, diagnostic)| {
+                matches!(
+                    diagnostic,
+                    Diagnostic::ResolveError { name, .. }
+                        if name.contains("function declaration `bad_seed`")
+                            && name.contains("seed_function_signatures_phase did not produce an Arrow connective")
+                            && name.contains("observed connective")
+                )
+            }),
+            "non-Arrow fn declarations at body lowering must fail closed with a diagnostic"
         );
     }
 
