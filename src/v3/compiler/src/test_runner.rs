@@ -35,13 +35,6 @@ pub const R1_CANONICAL_COMPLEXITY_LENS: &str = include_str!(concat!(
     "/../lenses/complexity.dag"
 ));
 
-// Compatibility bridge for whole-program lenses until `ProgramInput {}` can be
-// authored in user fixtures (empty record data bodies currently lower opaque).
-// Dissolution trigger: `LensOutputEquals.input_ref` becomes a typed input-role
-// coproduct, so the runner receives `ProgramInput` / `ProgramOutputBind` directly
-// instead of name-detecting either this declaration or role carrier types.
-const PROGRAM_INPUT_SENTINEL: &str = "r1_lens_output_input_from_program";
-
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
 /// T-LaneE `DifferentialEquals` compares this receipt to [`crate::lens_cost::cost_of`] (emit output
@@ -1719,8 +1712,7 @@ impl<'a> TestRunner<'a> {
         }
         let reflects_claim_program = program_input
             .as_ref()
-            .is_some_and(ProgramInputRole::is_program_input)
-            || input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL);
+            .is_some_and(ProgramInputRole::is_program_input);
         let input_field = if reflects_claim_program {
             // P2: `id_space` must be the same `Dag` `apply_lens_declaration` will use for the lens
             // (canonical compile, claim `program_dag`, or merged fixture `self.dag`) so reflected
@@ -1885,9 +1877,8 @@ impl<'a> TestRunner<'a> {
         role_name: &str,
     ) -> Result<bool, String> {
         // Narrow bridge: role declarations are still found by type name because
-        // `input_ref` is statically `DeclarationRef`. Dissolve with the
-        // `TestPredicate` input-role coproduct described near
-        // `PROGRAM_INPUT_SENTINEL`.
+        // `input_ref` is statically `DeclarationRef`. Dissolve with a structured
+        // `TestPredicate` input-role coproduct when the schema carries it.
         let Some(role_id) = self.dag.declaration_by_name(role_name).map(|d| d.id) else {
             return Err(format!(
                 "verification role type `{role_name}` is missing from the fixture Dag"
