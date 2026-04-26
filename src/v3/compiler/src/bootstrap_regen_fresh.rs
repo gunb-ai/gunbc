@@ -29,19 +29,19 @@ const FLOAT_DAG: &str = include_str!("../../../../dsl/std/float.dag");
 const STRING_TYPE_DAG: &str = include_str!("../../../../dsl/std/string_type.dag");
 const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
 
-const EXTDEPS_RUST_PRIMITIVES_DAG: &str =
-    include_str!("../../../../dsl/extdeps/languages/rust/primitives.dag");
-
-const EXTDEPS_BOOTSTRAP_FIXTURES: &[(&str, &str)] = &[(
-    "dsl/extdeps/languages/rust/primitives.dag",
-    EXTDEPS_RUST_PRIMITIVES_DAG,
-)];
-
-// Same `OUT_DIR` fixture arrays `build.rs` emits for staged/spec/compiler sources;
+// Same `OUT_DIR` fixture arrays `build.rs` emits for staged/spec/compiler/extdeps sources;
 // this module is their only remaining fresh-parse consumer.
 include!(concat!(env!("OUT_DIR"), "/v3_staged_files.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_specs.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_compiler_files.rs"));
+include!(concat!(env!("OUT_DIR"), "/v3_extdeps_files.rs"));
+
+fn extdeps_bootstrap_fixtures() -> impl Iterator<Item = (&'static str, &'static str)> {
+    EXTDEPS_FILES
+        .iter()
+        .copied()
+        .filter(|(path, _)| crate::bootstrap::EXTDEPS_BOOTSTRAP_PATH_KEYS.contains(path))
+}
 
 // Single authority for staged-vs-`dsl/` name collision resolution during regen.
 // The committed `bootstrap_generated.rs` snapshot was baked with this policy; any
@@ -89,14 +89,27 @@ fn load_runtime_bootstrap_authorities(
         .iter()
         .copied()
         .filter(|(path, _)| !excluded_compiler_paths.contains(path));
+    assert_extdeps_bootstrap_keys_resolve_against_extdeps_files();
     let fixtures: Vec<(&str, &str)> = staged_iter
         .chain(V3_SPECS.iter().copied())
         .chain(compiler_iter)
-        .chain(EXTDEPS_BOOTSTRAP_FIXTURES.iter().copied())
+        .chain(extdeps_bootstrap_fixtures())
         .collect();
     load_fixtures(dag, &fixtures);
     crate::bootstrap::materialize_pipeline_realizations(dag);
     dag.populate_primitive_cache();
+}
+
+fn assert_extdeps_bootstrap_keys_resolve_against_extdeps_files() {
+    let missing: Vec<&str> = crate::bootstrap::EXTDEPS_BOOTSTRAP_PATH_KEYS
+        .iter()
+        .copied()
+        .filter(|key| !EXTDEPS_FILES.iter().any(|(path, _)| *path == *key))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "EXTDEPS_BOOTSTRAP_PATH_KEYS must each appear in EXTDEPS_FILES (from build.rs): {missing:?}"
+    );
 }
 
 fn std_fixtures() -> &'static [(&'static str, &'static str)] {

@@ -1,0 +1,30 @@
+module v3.std.extdeps_bootstrap_fixtures
+
+// B4.4 — Structural extdeps-bootstrap fixture-set carrier.
+//
+// Single substrate authority for *which* `dsl/extdeps/**/*.dag` files are
+// loaded into the PB-1-e bootstrap Dag as structural primitive data (Path 2
+// pilot). Arrow/realization authorities stay emitter-side; this set is the
+// bounded exception documented in `bootstrap.rs`.
+//
+// The regen host (`bootstrap_regen_fresh`) filters `EXTDEPS_FILES` (emitted by
+// `build.rs`) through the `virtual_path` strings recorded here. At runtime the
+// committed bootstrap snapshot load compares those paths to
+// `EXTDEPS_BOOTSTRAP_PATH_KEYS` in `bootstrap.rs` (see `dag.rs`).
+
+// One extdeps file authorized for bootstrap loading.
+type ExtdepsBootstrapFixture {
+  virtual_path: String
+}
+
+// Named product of every pilot fixture row (extend with new fields when adding
+// targets; cost of change stays this file + the parallel `const` filter).
+type ExtdepsBootstrapFixtureSet {
+  rust_pilot_primitives: ExtdepsBootstrapFixture
+}
+
+data extdeps_bootstrap_fixture_authority: ExtdepsBootstrapFixtureSet = {
+  rust_pilot_primitives: {
+    virtual_path: "dsl/extdeps/languages/rust/primitives.dag"
+  }
+}
