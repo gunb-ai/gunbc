@@ -30,46 +30,46 @@ Per Q5.5: the existing `OperationEffect` taxonomy (`Read | Upsert | Create | App
 
 Per design doc default: retire (path ii).
 
-## Slice
+## Slice (per design doc Q6 — 8 reqs)
 
-1. **Audit-as-existence-check.** Walk every effectful primitive in `dsl/std/` + `dsl/extdeps/`:
-   - Operations that return modified-resource → write-shaped → effect derived structurally.
-   - Operations that return derived-value-only → read-shaped → effect derived structurally.
-   - Operations that return Unit but mutate external state (e.g., logging that hides the file-write) — this is the existence-proof for path (ii) failure mode. **Resource-threading discipline:** `log.info(msg, log: LogFile) → LogFile'` makes the effect structural; existing primitives that violate this need migration.
-2. **Decide retain vs retire** based on audit:
-   - Path (i): every primitive's type signature derives effect structurally; OperationEffect stays as normalized view computed from structure.
-   - Path (ii): one or more primitives need migration (e.g., logging that returns Unit needs to thread a LogFile parameter). The taxonomy is structurally derivable post-migration; retire as parallel-representation.
-3. **Implement the lens.** A structural lens that walks composition and reports effect set. Per design doc §Q1-Q3: the lens IS a compositional fold over the 5 behaviors; the same shape complexity/idempotency lenses already use.
-4. **Implement redundancy detection** (Director's aggressive reading per design doc §Q3): redundant operations (reads of the same key with no intervening write-effect on that resource) are structurally provable as identical via referential transparency, and **rejected at compile time**. Legitimate re-read uses an explicit `reread()` primitive.
-5. **Transactional grouping.** Per design doc: derived structural fact from Bind composition + typed transaction primitives (`Transaction → Transaction'`). The lens walks the Bind chain and recognizes the begin-modify-commit shape.
-6. **Lens output** integrates into existing v3 lens infrastructure; consumers can query "what effects does this function compose?".
-7. **Regression tests:**
-   - Function with read-only signature composes only read-shaped operations → lens reports `{Read}`.
-   - Function with write-signature returning modified resource → lens reports `{Write}` or equivalent.
+1. **Effects lens at `src/v3/lenses/effect_enumeration.dag`** — parallel to `cost.dag`. Walks the 5-behavior structure (Value / Transform / Branch / Loop / Bind); **anchors on operation type-signature shape**, not on hand-declared OperationEffect tags; composes effect classification per the design doc Q2 table; surfaces structural-fact output (no annotation comparison, no parallel-taxonomy lookup).
+2. **Audit-as-existence-check** — verify every effectful primitive in `dsl/std/` + `dsl/extdeps/` has a type signature that structurally derives the right effect classification (returned-modified-resource → write-shaped; returns-derived-value-only → read-shaped). **NOT "tag every primitive."** Per design doc Q5.5: any primitive requiring a hand-declared `OperationEffect` tag because its signature doesn't structurally reveal the effect IS the existence-proof for path (ii) — taxonomy retirement.
+3. **Resource-threading discipline applied to existing primitives** — primitives that violate the discipline today (e.g., logging that returns Unit instead of `log.info(msg, log: LogFile) → LogFile'`) get reshaped per the audit's findings. Foundation step toward signature-shape coverage.
+4. **Redundancy lens** — referential-transparency proof for repeated identical reads with no intervening write. Emits compile-time `RedundantReadError` (Tier 1, not Tier 3). Per design doc Director's aggressive reading.
+5. **`reread(key)` primitive in std/** — for legitimate re-read cases. Structurally tagged. Single authority for re-read intent (per design doc + #808 closing comment: extend `reread` rather than adding parallel primitives if cache-invalidation / transactional-refresh ever need similar affordance).
+6. **Transactional-pattern lens** — derived structural fact from Bind composition + typed transaction primitives (`Transaction → Transaction'`). The lens walks the Bind chain and recognizes the begin-modify-commit shape.
+7. **Asymmetric-tightening worked example** in PR body — concrete demonstration that caller-side constraint via structural type matching rejects a callee whose body composes write-shaped operations beyond the caller's pinned set. Per design doc + claude review observation: the one place declaration-shaped surface re-enters deserves a worked example.
+8. **Smoke + integration tests:**
+   - Function with multiple typed-effect operations produces correct effect-set structural fact (derived from signature shape, not from tag lookup).
    - Function with redundant read of same key without intervening write → compile error.
-   - Function with `reread()` on the same key → compiles cleanly (legitimate re-read tagged).
-   - Transactional-pattern function compiles + lens recognizes the begin-modify-commit shape.
+   - Function with `reread()` on the same key → compiles cleanly (legitimate re-read structurally tagged).
+   - Transactional-pattern function compiles + lens recognizes begin-modify-commit shape.
+   - Caller pinning effect-set ⊆ {read-shaped} rejects callee composing write-shaped operations.
+
+**Path (i) vs (ii) decision** — falls out of Slice §2 audit; surface receipt in PR body. **Default per design doc: path (ii) retire.** If audit produces existence-proof for path (i) (every primitive's signature derives cleanly), surface for Director re-decision per design doc Q5.5 STOP.
 
 ## Acceptance
 
-- [ ] Audit-as-existence-check completed; receipt recorded in PR body (which primitives audited, retain or retire decision, with structural-justification).
-- [ ] Path (i) or path (ii) decision landed:
-  - **(i):** OperationEffect retained as normalized view; no primitive declares a tag, all derive structurally.
-  - **(ii):** OperationEffect retired; consumers walk type signatures directly; primitives that needed migration (e.g., logging) migrated to thread typed resources.
-- [ ] Effects lens implemented as compositional fold over 5 behaviors per design doc.
-- [ ] Redundancy detection rejects same-key re-read without intervening write or `reread()` primitive.
-- [ ] Transactional pattern recognized structurally.
-- [ ] Regression tests cover read / write / redundancy compile-error / `reread()` / transactional patterns.
+- [ ] Effects lens at `src/v3/lenses/effect_enumeration.dag` (req 1); lens output observable via standard lens-output infrastructure.
+- [ ] Audit-as-existence-check (req 2) completed; receipt recorded in PR body (which primitives audited; path (i) or (ii) verdict with structural justification).
+- [ ] Resource-threading discipline (req 3) applied to existing primitives where audit found violations.
+- [ ] Redundancy lens (req 4) emits compile-time `RedundantReadError` for same-key re-read without intervening write.
+- [ ] `reread(key)` primitive (req 5) authored in std/.
+- [ ] Transactional-pattern lens (req 6) recognizes begin-modify-commit shape via Bind composition.
+- [ ] Asymmetric-tightening worked example (req 7) in PR body.
+- [ ] Smoke + integration tests (req 8) cover read / write / redundancy compile-error / `reread()` / transactional / asymmetric-tightening rejection.
+- [ ] Lens reports structural-coverage-gap diagnostics on Q4.5 P1 bypass surfaces (gap becomes visible, not silent).
 - [ ] DB-8 fixed-point converges bit-identically.
 - [ ] Cross-program signal: Impossible-Bugs Manager → R2 Release Manager (Goal 4 unenumerated-effects class).
 - [ ] `cargo test` / clippy / fmt clean.
 
-## STOP-AND-ESCALATE
+## STOP-AND-ESCALATE (per design doc Q6 STOPs)
 
-- **Audit reveals a primitive whose effect can't be derived from type signature even after resource-threading migration** — surface; the closed-system claim has a leak. Re-read design doc Q5.5 audit framing.
-- **`reread()` primitive's ergonomics surface real legitimate-re-read patterns it doesn't cover cleanly** — per #808 closing comment, extend the primitive (or add sibling `refresh()`) rather than soften the compile-error stance.
-- **Transactional pattern recognition requires substrate work beyond Bind composition + typed transaction primitives** — surface; design doc may need extension.
-- **Redundancy detection produces false positives on legitimate code** — per #808 disposition, this is the load-bearing aggressive reading; surface for design-call review, don't soften unilaterally.
+- **OperationEffect retirement decision (path (i) vs (ii))** — if Slice §2 audit produces the existence-proof for path (ii) (any primitive whose signature doesn't structurally reveal its effect after resource-threading migration), STOP and surface retirement scope to Director. Substrate retirement (`OperationEffect` enum + `derive_op_effect` + `idempotency.dag` re-anchor) is its own dedicated sub-lane; this lane should not absorb it. If audit confirms path (i) (all primitives derive cleanly from signature shape), surface that finding for re-decision.
+- **Redundancy proof needs a `pure: Bool` carrier** — if the lens can't distinguish pure from impure Transforms inline, STOP. May need a sibling carrier on Transform targets. (Note: the deeper closed-system framing is that "pure" should also be derivable from signature shape — pure functions don't return modified resources — so this STOP may itself dissolve under further design.)
+- **Asymmetric-tightening structural gap** — if caller can't actually pin effect-set constraints structurally today (i.e., the type system doesn't yet express "I require callee body's signature-shape composition ⊆ {read-shaped}"), STOP — that's its own substrate sub-lane.
+- **Q4.5 P1 (extdeps typed-primitive bypass) — surfaced via lens findings**: lens reports structural-coverage-gap on `dsl/extdeps/llm/openai.dag:92-110`, `anthropic.dag:104-124`, `github/auth.dag:13-24` (and any others the audit finds). **NOT a STOP**; this is the lens delivering its closed-system-foundation-gap-visibility value. Director routes P1 closure to a dedicated extdeps-typed-primitive-consumption lane. Surface findings in PR body.
+- **`reread()` ergonomics surface real legitimate-re-read patterns it doesn't cover cleanly** — per #808 closing comment, extend the primitive (or add a structurally-tagged sibling) rather than soften the compile-error stance.
 - **DB-8 drifts** — STOP immediately.
 
 ## Non-goals
