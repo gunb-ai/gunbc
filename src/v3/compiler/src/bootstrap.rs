@@ -41,8 +41,7 @@
 // files (`rust/emit.dag`, `rust/types.dag`, etc.) are deliberately excluded
 // — their bodies stay per-target emitter-side, not in the bootstrap Dag.
 // Expansion adds a field to the carrier + a key in `EXTDEPS_BOOTSTRAP_PATH_KEYS`
-// for each additional extdeps structural fixture (Rust pilot + Go spec tranche 1
-// as of T-Ground-Go; Python follows the same pattern when its slice lands).
+// once python/go primitives reach the same pilot stage.
 //
 // **Type-structure-only load (Path 2 scoping).** The top-level
 // `rust_pilot_primitives: List<RustPrimitive> = [...]` data declaration
@@ -92,10 +91,7 @@ const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
 /// `extdeps_bootstrap_fixture_authority` in `src/v3/std/extdeps_bootstrap_fixtures.dag`.
 /// `Dag::extdeps_bootstrap_fixture_virtual_paths` is compared to this slice when the
 /// committed bootstrap snapshots initialize (`dag.rs` LazyLock).
-pub const EXTDEPS_BOOTSTRAP_PATH_KEYS: &[&str] = &[
-    "dsl/extdeps/languages/rust/primitives.dag",
-    "dsl/extdeps/languages/go/primitives.dag",
-];
+pub const EXTDEPS_BOOTSTRAP_PATH_KEYS: &[&str] = &["dsl/extdeps/languages/rust/primitives.dag"];
 
 /// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).
 ///

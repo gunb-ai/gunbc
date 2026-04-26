@@ -1,3 +1,0 @@
-#!/bin/sh
-# rustfmt passes input on stdin, formatted output on stdout; identity fall-back.
-cat

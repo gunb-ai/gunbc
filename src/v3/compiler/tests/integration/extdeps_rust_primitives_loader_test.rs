@@ -1,12 +1,12 @@
 //! **Layer:** integration
 //!
-//! T-Ground-Engine Phase-1 unblock (Path 2): B4.4 extdeps-bootstrap fixtures
-//! (`rust/primitives.dag`, `go/primitives.dag`) load into the bootstrap Dag;
-//! `Dag::rust_pilot_primitives` / `Dag::go_spec_predeclared_primitives` return
-//! walkable type-structure declarations. Top-level `data … = […]` list bodies
-//! stay `ValueBody::Unparsed` until R2 T-Substrate's 4th sub-lane lands the
-//! top-level list/aggregate extension; these tests pin type-structure access
-//! and the `Unparsed` boundary.
+//! T-Ground-Engine Phase-1 unblock (Path 2): `dsl/extdeps/languages/rust/
+//! primitives.dag` is loaded into the bootstrap Dag; `Dag::rust_pilot_primitives`
+//! returns a walkable type-structure declaration. The 10-element pilot
+//! enumeration is NOT walkable as structured records until R2 T-Substrate's
+//! 4th sub-lane lands the top-level `ValueBody::List`/aggregate extension;
+//! this test pins the currently-available type-structure access and
+//! explicitly records the `ValueBody::Unparsed` boundary.
 
 use v3_compiler::dag::{Dag, TypeConnective, ValueBody};
 
