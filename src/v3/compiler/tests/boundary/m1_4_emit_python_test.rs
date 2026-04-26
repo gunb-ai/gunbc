@@ -609,11 +609,11 @@ fn serialize_bind_node(node: &BindNode) -> String {
             .collect::<Vec<_>>()
             .join(", "),
         serialize_span(&node.span),
-        serialize_opt_bind_emit_participation(&node.emit_participation)
+        serialize_opt_bind_emit_participation(node.emit_participation())
     )
 }
 
-fn serialize_opt_bind_emit_participation(p: &Option<BindEmitParticipation>) -> String {
+fn serialize_opt_bind_emit_participation(p: Option<BindEmitParticipation>) -> String {
     match p {
         None => "None".to_string(),
         Some(BindEmitParticipation::UserCallable) => {

@@ -1664,8 +1664,10 @@ pub struct BindNode {
     /// [`Dag::try_register_lane2_workflow_effect`] or lowering).
     pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
     /// B4.3: set for user `fn` / lambda bodies that participate in named-type-alias
-    /// emission; `None` for refinement, `let`, and synthetic Binds.
-    pub emit_participation: Option<BindEmitParticipation>,
+    /// emission; `None` for refinement, `let`, and synthetic Binds. Same visibility
+    /// contract as [`Self::lane2_workflow`]: crate-private storage; reads go through
+    /// [`Self::emit_participation`].
+    pub(crate) emit_participation: Option<BindEmitParticipation>,
 }
 
 impl BindNode {
@@ -1684,6 +1686,13 @@ impl BindNode {
     /// [`ValueNode::lane2_workflow`].
     pub fn lane2_workflow(&self) -> Option<&WorkflowEffect> {
         self.lane2_workflow.as_deref()
+    }
+
+    /// B4.3 emit authority: `Some(UserCallable)` iff this bind participates in the
+    /// named-type-alias emission path. Reflected in `src/v3/std/substrate.dag`;
+    /// writers are lowering / inference / `dag::builder` only.
+    pub fn emit_participation(&self) -> Option<BindEmitParticipation> {
+        self.emit_participation
     }
 }
 

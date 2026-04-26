@@ -394,7 +394,7 @@ fn render_bind_node(node: &BindNode) -> String {
         render_port_id_vec(&node.params),
         render_source_span(&node.span),
         render_lane2_workflow("BindNode", node.id, node.lane2_workflow()),
-        render_opt_bind_emit_participation(node.emit_participation),
+        render_opt_bind_emit_participation(node.emit_participation()),
     )
 }
 
