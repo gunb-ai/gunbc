@@ -102,6 +102,10 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // snapshot. Dissolution trigger: the same structural fact is covered by a
 // `.dag`-native or testgen-only harness without needing this host-side probe.
 //
+// T-PB-A Slice 1: `lens_unused_parameters.rs` folded into inline
+// `pub mod lens_unused_parameters` in `lib.rs` (peer to `lens_cost`); one
+// non-test census line retired.
+//
 // Phase 1 Dag builder surface — PR #570 adds one narrow host-side
 // helper file, `src/dag/builder.rs`, to keep the test-facing graph
 // constructors scoped away from the main `dag.rs` body while the
@@ -189,7 +193,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/lens_apply.rs",
     // T-PB-A: `lens_depth.rs` retired — unused observational lens (no in-tree consumer).
     "src/v3/compiler/src/lens_testgen.rs",
-    "src/v3/compiler/src/lens_unused_parameters.rs",
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
