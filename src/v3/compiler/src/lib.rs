@@ -101,7 +101,9 @@ pub mod lens_unused_parameters {
     #[cfg(test)]
     mod tests {
         use super::{UnusedParametersConfig, UnusedParametersLens};
-        use crate::dag::{BranchPattern, Dag, LiteralBits, LoopBound, Path, PortId, TransformTarget};
+        use crate::dag::{
+            BranchPattern, Dag, LiteralBits, LoopBound, Path, PortId, TransformTarget,
+        };
         use crate::diagnostics::SourceSpan;
         use crate::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
 
