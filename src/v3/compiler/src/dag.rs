@@ -3752,7 +3752,6 @@ mod tests {
             nominal_opacity: Some(NominalOpacity {
                 permitted_accessors: vec![accessor_a_id],
             }),
-            nominal_opacity: None,
             span: SourceSpan::new("nominal_opacity_test.v3", 0, 1),
         });
 
