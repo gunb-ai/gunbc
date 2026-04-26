@@ -16,7 +16,7 @@
 
 - **[`docs/briefs/t-impossiblebugs-unenumerated-effects-design.md`](t-impossiblebugs-unenumerated-effects-design.md)** — design doc (merged #808). The 5-behavior compositional-fold mechanism + worked examples + Q5.5 OperationEffect retain-vs-retire framing. Read in full.
 - **[`THESIS.md`](../../THESIS.md)** R2+ unenumerated-effects bullet — Tier 1 commitment ("dissolved by construction"); type-signature shape IS the effect.
-- **[`feedback_closed_system_effects.md`](../../../.claude/projects/-Users-briansrls-gunbc/memory/feedback_closed_system_effects.md)** — closed-system effects discipline; 5-behavior fold table.
+- **Closed-system effects discipline** — 5-behavior compositional-fold table; the lens IS the same shape complexity/idempotency/termination lenses already use. The discipline is captured in the design doc (`t-impossiblebugs-unenumerated-effects-design.md`) §Q1-Q3; consult that as canonical authority.
 - **[`src/v3/std/effects.dag`](../../src/v3/std/effects.dag)** — `OperationEffect` enum; live-state authority for the Q5.5 retain-vs-retire decision.
 - **[`docs/briefs/t-impossiblebugs-effects-lens-implementation-audit.md`](t-impossiblebugs-effects-lens-implementation-audit.md)** (if authored per #810 SHIP_WITH_DEBT recommendation) — implementation/audit follow-up brief; if not authored, this brief subsumes its scope.
 
