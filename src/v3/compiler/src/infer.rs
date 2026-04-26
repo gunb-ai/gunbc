@@ -764,7 +764,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                                                 v.output,
                                                 magnitude_out_of_range(
                                                     *literal,
-                                                    existing.clone(),
+                                                    *existing,
                                                     range,
                                                     v.span.clone(),
                                                 ),
