@@ -128,6 +128,10 @@ fn bootstrap_loads_verification_authority_types() {
                 vec![String::from("bind_name"), String::from("state")],
             ),
             (
+                String::from("DeclarationHasRefinement"),
+                vec![String::from("declaration_name")],
+            ),
+            (
                 String::from("CostBounded"),
                 vec![
                     String::from("bind_name"),
@@ -198,6 +202,7 @@ let pred_fails_kind: TestPredicate = FailsWithDiagnostic({ kind: TypeMismatch, d
 let pred_output: TestPredicate = OutputEquals("let x: Int = 1")
 let pred_port_resolved: TestPredicate = PortHasState("answer", Resolved)
 let pred_port_unresolved: TestPredicate = PortHasState("missing", Unresolved)
+let pred_decl_refine: TestPredicate = DeclarationHasRefinement({ declaration_name: "PositiveInt" })
 let pred_cost_eq: TestPredicate = CostBounded("answer", Eq, 8)
 let pred_cost_above: TestPredicate = CostBounded("answer", Gt, 3)
 let pred_exec: TestPredicate = ExecuteCommand("true", empty(), 0)
@@ -219,9 +224,17 @@ let claim_fails: TestClaim = {
   requires: empty()
 }
 
+let claim_alias_refine: TestClaim = {
+  name: "alias_where_refine",
+  source: "type PositiveInt = Int where PositiveInt > 0",
+  file_name: "alias_refine.v3",
+  predicate: pred_decl_refine,
+  requires: empty()
+}
+
 let suite: TestSuite = {
   name: "verification_smoke",
-  claims: [claim_compiles, claim_fails]
+  claims: [claim_compiles, claim_fails, claim_alias_refine]
 }
 "#;
 
@@ -240,6 +253,7 @@ let suite: TestSuite = {
         "pred_output",
         "pred_port_resolved",
         "pred_port_unresolved",
+        "pred_decl_refine",
         "pred_cost_eq",
         "pred_cost_above",
         "pred_exec",
@@ -253,6 +267,10 @@ let suite: TestSuite = {
     );
     assert_eq!(
         bind_value_type_decl(&dag, "claim_fails"),
+        find_named(&dag, "TestClaim")
+    );
+    assert_eq!(
+        bind_value_type_decl(&dag, "claim_alias_refine"),
         find_named(&dag, "TestClaim")
     );
     assert_eq!(

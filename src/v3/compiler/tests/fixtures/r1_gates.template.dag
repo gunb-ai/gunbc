@@ -52,11 +52,12 @@ data sub_match_over_user_sum_gate: TestSuite = {
 
 // R1C-C / T-Sub — type-alias RHS `where` parse + lower (PR #703; DB-11:
 // `test_db11_type_alias_where_survives_parse_and_lower`). Same surface as integration receipt.
+// Predicate: `DeclarationHasRefinement` — fail-closed on silent refinement drop (not `Compiles` alone).
 data sub_type_alias_where_lowers: TestClaim = {
   name: "sub_type_alias_where_lowers",
   source: "type PositiveInt = Int where PositiveInt > 0\n",
   file_name: "r1_sub_type_alias_where_lowers.v3",
-  predicate: Compiles,
+  predicate: DeclarationHasRefinement({ declaration_name: "PositiveInt" }),
   requires: []
 }
 
