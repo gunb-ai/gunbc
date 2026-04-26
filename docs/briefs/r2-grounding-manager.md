@@ -20,7 +20,7 @@ The one true critical path in R2: `Pilot → Rust → Engine → Tests → Disso
 | Lane | Size | Status (at brief authoring) | Description |
 |---|---|---|---|
 | T-Ground-Pilot | S | DONE (PR #765 merged 2026-04-25) | Toy inhabitance-search engine for Rust integer family + bool + Unit; routing-stability tests demonstrating parity with current table lookup. |
-| T-Ground-Rust | M | DISPATCHED (Engine implementation parked pending loader-close) | Rust target-spec primitive declarations end-to-end. Critical path because Engine blocks on layers 1–3 populated. |
+| T-Ground-Rust | M | NOT YET AUTHORED — listed under Sub-briefs Pending below; gated on pre-spawn Director scope refinement per inbox #828. (Pilot PR #765 + Engine Phase 1 typestructure PR #788 are separate dispatched lanes — see those rows; the prior "DISPATCHED" status here was a parenthetical leak from the Engine row's loader-close parking note.) | Rust target-spec primitive declarations end-to-end. Critical path because Engine blocks on layers 1–3 populated. |
 | T-Ground-Engine | M | DISPATCHED (Phase 1 typestructure landed PR #788; Phase 2 implementation pending substrate) | Engine that consumes target-spec primitives + does inhabitance-search; dependent on `ValueBody::List` substrate (Substrate Manager dependency). |
 | T-Ground-Tests | M | NOT YET AUTHORED | L4 verification of routing correctness via routing-stability tests + algebra-satisfaction certification. |
 | T-Ground-Dissolve | M | NOT YET AUTHORED | Track-13 dissolution: delete `TypeCheckpoint` / `InhabitantDecl` / `carrier: String` once Engine carries the load. Final critical-path step. |
