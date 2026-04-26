@@ -112,7 +112,7 @@ service llm.Anthropic {
     input {
       api_key: Secret
       model: String
-      messages: Json
+      messages: List<AnthropicChatMessage>
       max_tokens: Int = 4096
       temperature: Float?
       system: String?

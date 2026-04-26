@@ -6254,7 +6254,12 @@ fn anthropic_live_e2e() {
 
 import extdeps.llm.anthropic
 
-data test_messages: String = "[{\"role\": \"user\", \"content\": \"Say hello in exactly 3 words.\"}]"
+data test_messages: List<AnthropicChatMessage> = [
+  {
+    role: User,
+    content: [TextBlock { type: "text", text: "Say hello in exactly 3 words." }]
+  }
+]
 
 func ask_claude(
   model: String = "claude-haiku-4-5-20251001",
