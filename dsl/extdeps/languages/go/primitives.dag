@@ -3,10 +3,13 @@
 //
 // TRANCHE 1 (this file): Go spec predeclared types with fixed machine
 // representations — booleans, fixed-width integers, floats, complex, string,
-// empty struct, uintptr, and the byte/rune aliases (go.dev/ref/spec §Types).
-// Implementation-sized int/uint are intentionally omitted from the data table
-// until a GOARCH-tagged width story closes under DB-11 / cardinality substrate
-// (same “no lying about width” discipline as the Rust pilot’s u64 note).
+// empty struct, and the byte/rune aliases (go.dev/ref/spec §Types).
+// Implementation-sized int, uint, and uintptr are intentionally omitted from the
+// data table: their width / value set is implementation-defined (spec §Numeric
+// types, https://go.dev/ref/spec#Numeric_types), so a fixed Word* carrier +
+// numeric range would violate the same no-lying-about-width discipline as the
+// Rust pilot’s u64 note — close under a GOARCH-tagged width story with DB-11 /
+// cardinality substrate.
 //
 // TWO-AUTHORITY DISCIPLINE (ROADMAP §Post-R1 Grounding lanes):
 //   (a) THIS FILE — Go language specification (go.dev/ref/spec).
@@ -199,18 +202,10 @@ data go_uint64_integer_range: GoIntegerRangeFact = {
   range_max_inclusive: "18446744073709551615"
 }
 
-data go_uintptr_integer_range: GoIntegerRangeFact = {
-  target_name: "uintptr",
-  algebra: GoSemiringAlgebra,
-  carrier: GoWord64Carrier,
-  range_min_inclusive: "0",
-  range_max_inclusive: "18446744073709551615"
-}
-
 
 // Predeclared fixed-width numerics + aliases + floats + complex + bool + string
-// + empty struct (struct{}). Order: signed ints, unsigned ints, uintptr, aliases,
-// floats, complex, bool, string, unit.
+// + empty struct (struct{}). Order: signed ints, unsigned ints, aliases, floats,
+// complex, bool, string, unit. (int/uint/uintptr omitted — implementation width.)
 data go_spec_predeclared_primitives: List<GoPrimitive> = [
   GoIntegerPrimitive { target_name: "int8", algebra: GoOrderedRingAlgebra, carrier: GoByteCarrier,
     range_min_inclusive: "-128", range_max_inclusive: "127", overflow: GoTwoComplementWrap },
@@ -229,9 +224,6 @@ data go_spec_predeclared_primitives: List<GoPrimitive> = [
   GoIntegerPrimitive { target_name: "uint32", algebra: GoSemiringAlgebra, carrier: GoWord32Carrier,
     range_min_inclusive: "0", range_max_inclusive: "4294967295", overflow: GoTwoComplementWrap },
   GoIntegerPrimitive { target_name: "uint64", algebra: GoSemiringAlgebra, carrier: GoWord64Carrier,
-    range_min_inclusive: "0", range_max_inclusive: "18446744073709551615", overflow: GoTwoComplementWrap },
-
-  GoIntegerPrimitive { target_name: "uintptr", algebra: GoSemiringAlgebra, carrier: GoWord64Carrier,
     range_min_inclusive: "0", range_max_inclusive: "18446744073709551615", overflow: GoTwoComplementWrap },
 
   GoIntegerAliasPrimitive { target_name: "byte", canon_name: "uint8", algebra: GoSemiringAlgebra,
