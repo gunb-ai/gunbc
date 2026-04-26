@@ -160,6 +160,16 @@ type TestPredicate
       lens_ref: DeclarationRef
     }
 
+// Structural runner input role for predicates whose input is the compiled
+// `TestClaim.source` program.
+type ProgramInput {}
+
+// Structural output-bind selector for predicates that compare a lens result
+// against one bind in the compiled `TestClaim.source` program.
+type ProgramOutputBind {
+  output_ref: DeclarationRef
+}
+
 // `requires` is the **only** place `ResourceReference` edges attach for a claim
 // (including mock backends when `predicate` is `MockBackedInvariant`). No parallel
 // resource slots on predicate variants — `obligation_for_claim` / materialization

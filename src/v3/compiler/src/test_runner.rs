@@ -35,20 +35,12 @@ pub const R1_CANONICAL_COMPLEXITY_LENS: &str = include_str!(concat!(
     "/../lenses/complexity.dag"
 ));
 
-/// Bind whose `value` port receives structural `cost_of` for `LensOutputEquals` / `DifferentialEquals`.
-///
-/// Today the runner keys this on `TestClaim.file_name` until `DeclarationRef` can name the bind
-/// directly (M1(2.8) — same story as `r1_lens_output_input_from_program`). **Process ratchet:** do
-/// not extend this `match` without a linked issue toward that dissolution (api-review #764).
-fn cost_bind_for_claim_file(file_name: &str) -> Option<&'static str> {
-    match file_name {
-        "r1_merge_sort_pair.v3" => Some("merge_sort_out"),
-        "r1_lane_e_differential_witness.v3" => Some("lane_e_diff_out"),
-        "fixture_compiler_nerd_canonical_complexity.v3" => Some("complexity_demo_out"),
-        "fixture_compiler_nerd_canonical_parallelism.v3" => Some("total"),
-        _ => None,
-    }
-}
+// Compatibility bridge for whole-program lenses until `ProgramInput {}` can be
+// authored in user fixtures (empty record data bodies currently lower opaque).
+// Dissolution trigger: `LensOutputEquals.input_ref` becomes a typed input-role
+// coproduct, so the runner receives `ProgramInput` / `ProgramOutputBind` directly
+// instead of name-detecting either this declaration or role carrier types.
+const PROGRAM_INPUT_SENTINEL: &str = "r1_lens_output_input_from_program";
 
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
@@ -1351,6 +1343,24 @@ pub struct TestRunner<'a> {
     dag: &'a Dag,
 }
 
+enum ProgramInputRole {
+    ProgramInput,
+    ProgramOutputBind { output_bind_name: String },
+}
+
+impl ProgramInputRole {
+    fn output_bind_name(&self) -> Option<&str> {
+        match self {
+            Self::ProgramInput => None,
+            Self::ProgramOutputBind { output_bind_name } => Some(output_bind_name),
+        }
+    }
+
+    fn is_program_input(&self) -> bool {
+        matches!(self, Self::ProgramInput)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum DiagnosticDetailFilter {
     Any,
@@ -1585,15 +1595,12 @@ impl<'a> TestRunner<'a> {
         let input_name = decl_display_name(input_id, input_decl);
         let expected_name = decl_display_name(expected_id, expected_decl);
 
-        // R1 gate sentinel: `Dag` inputs are not yet expressible as structural `data` bodies in the
-        // fixture DSL; `r1_lens_output_input_from_program` names a typed placeholder while the
-        // runner reflects `Dag.nodes` from `TestClaim.source` / `file_name`.
-        // **Dissolution trigger (ROADMAP / INVARIANTS P2):** replace string matching on this name
-        // with a structural `TestClaim` / `std.verification` coproduct arm (reflection input vs
-        // literal body) so runners do not key behavior on declaration spellings.
-        const PROGRAM_INPUT_SENTINEL: &str = "r1_lens_output_input_from_program";
+        let program_input = match self.program_input_role(input_decl) {
+            Ok(role) => role,
+            Err(msg) => return ClaimResult::Fail(format!("LensOutputEquals: {msg}")),
+        };
 
-        if input_decl.value_body.is_none() {
+        if input_decl.value_body.is_none() && program_input.is_none() {
             return ClaimResult::Fail(format!(
                 "LensOutputEquals: input_ref `{input_name}` has no value body"
             ));
@@ -1614,8 +1621,7 @@ impl<'a> TestRunner<'a> {
         // **Dissolution trigger (name-keyed bridge):** delete the `lens_decl.name ==
         // Some("named_function_count")` arm and this entire parallel authority when
         // `DeclarationRef` resolves lens executable identity from `program_dag` (or structured
-        // `TestClaim` metadata) without fixture-local stub bodies — same upstream fix as retiring
-        // `PROGRAM_INPUT_SENTINEL` string dispatch above.
+        // `TestClaim` metadata) without fixture-local stub bodies.
         // INVARIANTS P3 / TESTING: `TestClaim.source` must lower cleanly — never ignore
         // tokenize/parse failures and fall back to the fixture graph (that would let malformed
         // programs `Pass` when inputs/lens resolve only from the fixture).
@@ -1639,15 +1645,12 @@ impl<'a> TestRunner<'a> {
         // T-LaneE (`cost_of`): structural `Lookup<Int>` from the Rust-generated lens on the claim
         // program's `merge_sort_out` bind vs a fixture `Lookup<Int>` expected value.
         if lens_decl.name.as_deref() == Some("cost_of") {
-            if input_decl.name.as_deref() != Some(PROGRAM_INPUT_SENTINEL) {
+            let Some(cost_bind) = program_input
+                .as_ref()
+                .and_then(ProgramInputRole::output_bind_name)
+            else {
                 return ClaimResult::Fail(format!(
-                    "LensOutputEquals(cost_of): input_ref must be `{PROGRAM_INPUT_SENTINEL}` sentinel, got `{input_name}`"
-                ));
-            }
-            let Some(cost_bind) = cost_bind_for_claim_file(&claim.file_name) else {
-                return ClaimResult::Fail(format!(
-                    "LensOutputEquals(cost_of): no structural-cost bind mapping for file `{}`",
-                    claim.file_name
+                    "LensOutputEquals(cost_of): input_ref `{input_name}` must inhabit ProgramOutputBind"
                 ));
             };
             let Some(bind) = find_bind(&program_dag, cost_bind, &claim.file_name) else {
@@ -1706,7 +1709,19 @@ impl<'a> TestRunner<'a> {
             None
         };
 
-        let input_field = if input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL) {
+        if matches!(
+            program_input,
+            Some(ProgramInputRole::ProgramOutputBind { .. })
+        ) {
+            return ClaimResult::Fail(format!(
+                "LensOutputEquals: input_ref `{input_name}` inhabits ProgramOutputBind but lens `{lens_name}` does not consume an output bind"
+            ));
+        }
+        let reflects_claim_program = program_input
+            .as_ref()
+            .is_some_and(ProgramInputRole::is_program_input)
+            || input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL);
+        let input_field = if reflects_claim_program {
             // P2: `id_space` must be the same `Dag` `apply_lens_declaration` will use for the lens
             // (canonical compile, claim `program_dag`, or merged fixture `self.dag`) so reflected
             // `List` / `Behavior` variant `DeclarationId`s are not mixed across graphs.
@@ -1741,7 +1756,7 @@ impl<'a> TestRunner<'a> {
                 },
                 None => {
                     return ClaimResult::Fail(format!(
-                        "LensOutputEquals: input_ref `{input_name}` has no value body (use `{PROGRAM_INPUT_SENTINEL}` sentinel when the input `Dag` is only available via `TestClaim.source`)"
+                        "LensOutputEquals: input_ref `{input_name}` has no value body (use ProgramInput when the input `Dag` is only available via `TestClaim.source`)"
                     ));
                 }
             }
@@ -1819,6 +1834,73 @@ impl<'a> TestRunner<'a> {
         }
     }
 
+    fn program_input_role(&self, decl: &Declaration) -> Result<Option<ProgramInputRole>, String> {
+        if self.decl_inhabits_named_role(decl, "ProgramInput")? {
+            return Ok(Some(ProgramInputRole::ProgramInput));
+        }
+        if !self.decl_inhabits_named_role(decl, "ProgramOutputBind")? {
+            return Ok(None);
+        }
+        let Some(ValueBody::Structural { fields }) = decl.value_body.as_ref() else {
+            return Err(format!(
+                "ProgramOutputBind `{}` must have a structural data body",
+                decl_display_name(decl.id, decl)
+            ));
+        };
+        let Some(output_ref) = field(fields, "output_ref") else {
+            return Err(format!(
+                "ProgramOutputBind `{}` is missing `output_ref`",
+                decl_display_name(decl.id, decl)
+            ));
+        };
+        let output_ref = match output_ref {
+            FieldValue::Reference(id) => *id,
+            other => {
+                return Err(format!(
+                    "ProgramOutputBind `{}` output_ref must be a DeclarationRef edge, got {other:?}",
+                    decl_display_name(decl.id, decl)
+                ));
+            }
+        };
+        let output_decl = self.dag.declaration(output_ref);
+        let Some(output_bind_name) = output_decl.name.clone() else {
+            return Err(format!(
+                "ProgramOutputBind `{}` output_ref must name a declaration",
+                decl_display_name(decl.id, decl)
+            ));
+        };
+        // Cross-Dag bridge: `output_ref` is a structural edge in the fixture DAG, but
+        // the compiled `TestClaim.source` program is a separate Dag, so the runner
+        // still carries the referenced declaration name into `find_bind`.
+        // Dissolution trigger: authored claims carry an output-bind identity that
+        // resolves inside the compiled program Dag instead of through fixture stubs.
+        Ok(Some(ProgramInputRole::ProgramOutputBind {
+            output_bind_name,
+        }))
+    }
+
+    fn decl_inhabits_named_role(
+        &self,
+        decl: &Declaration,
+        role_name: &str,
+    ) -> Result<bool, String> {
+        // Narrow bridge: role declarations are still found by type name because
+        // `input_ref` is statically `DeclarationRef`. Dissolve with the
+        // `TestPredicate` input-role coproduct described near
+        // `PROGRAM_INPUT_SENTINEL`.
+        let Some(role_id) = self.dag.declaration_by_name(role_name).map(|d| d.id) else {
+            return Err(format!(
+                "verification role type `{role_name}` is missing from the fixture Dag"
+            ));
+        };
+        Ok(decl.inhabits == Some(role_id)
+            || decl.meta_tag == Some(role_id)
+            || matches!(
+                &decl.connective,
+                TypeConnective::Instantiation { template, .. } if *template == role_id
+            ))
+    }
+
     fn eval_differential_equals(
         &self,
         claim: &TestClaimValue,
@@ -1852,12 +1934,15 @@ impl<'a> TestRunner<'a> {
         let oracle_lineage = decl_display_name(oracle_id, oracle_decl);
         let input_name = decl_display_name(input_id, input_decl);
 
-        const PROGRAM_INPUT_SENTINEL: &str = "r1_lens_output_input_from_program";
-        if input_decl.name.as_deref() != Some(PROGRAM_INPUT_SENTINEL) {
-            return ClaimResult::Fail(format!(
-                "DifferentialEquals: input_ref must be `{PROGRAM_INPUT_SENTINEL}` sentinel, got `{input_name}`"
-            ));
-        }
+        let program_input = match self.program_input_role(input_decl) {
+            Ok(Some(role)) => role,
+            Ok(None) => {
+                return ClaimResult::Fail(format!(
+                    "DifferentialEquals: input_ref `{input_name}` must inhabit ProgramOutputBind"
+                ));
+            }
+            Err(msg) => return ClaimResult::Fail(format!("DifferentialEquals: {msg}")),
+        };
 
         let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
             Ok(dag) => dag,
@@ -1876,10 +1961,9 @@ impl<'a> TestRunner<'a> {
             }
         };
 
-        let Some(cost_bind) = cost_bind_for_claim_file(&claim.file_name) else {
+        let Some(cost_bind) = program_input.output_bind_name() else {
             return ClaimResult::Fail(format!(
-                "DifferentialEquals: no structural-cost bind mapping for file `{}`",
-                claim.file_name
+                "DifferentialEquals: input_ref `{input_name}` must inhabit ProgramOutputBind"
             ));
         };
         let Some(bind) = find_bind(&program_dag, cost_bind, &claim.file_name) else {
