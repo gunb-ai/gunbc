@@ -27,6 +27,12 @@
 // only on GoFloatPrimitive; complex component width only on GoComplexPrimitive;
 // alias linkage only on GoIntegerAliasPrimitive (byte/rune).
 //
+// STRING (spec §String types, https://go.dev/ref/spec#String_types): a string
+// value is an immutable sequence of bytes — not UTF-8 text as the primary
+// authority. UTF-8 is a source-literal / conversion refinement layered on
+// that byte sequence; it is modeled as a separate algebra+carrier arm from the
+// spec-faithful byte-sequence witness used in `go_spec_predeclared_primitives`.
+//
 // SUBSTRATE-GAP FLAGS: IntegerOverflow / terminal / text carriers mirror the
 // Rust pilot’s bridge pattern (algebra.dag + bit.dag by tag); post-DB-11 these
 // become refinements on carriers / algebras.
@@ -47,12 +53,23 @@ type GoFloatAlgebra
   = GoApproximateField32Algebra
   | GoApproximateField64Algebra
 
-// Bool, empty struct, and UTF-8 string share one closed algebra-tag sum so each
-// tag is introduced here (mirrors rust `NonIntegerAlgebra` grouping bool + unit).
+// Bool + empty struct share one closed algebra-tag sum (mirrors rust
+// `NonIntegerAlgebra` grouping for non-integer scalars). String is separate —
+// spec value domain is byte sequence, not UTF-8 monoid (see header note).
 type GoSpecDiscreteAlgebra
   = GoCanonicalTwoElementBooleanAlgebra
   | GoTerminalAlgebra
-  | GoUtf8FreeMonoidAlgebra
+
+// Primary arm: immutable byte sequence (Go spec string value). Second arm:
+// UTF-8 as an explicit refinement / alternate view — not asserted as the spec
+// authority for the `string` predeclared type itself (M3 / extdeps fidelity).
+type GoStringAlgebra
+  = GoImmutableByteSequenceMonoidAlgebra
+  | GoUtf8EncodingRefinementAlgebra
+
+type GoStringCarrier
+  = GoImmutableByteSequenceCarrier
+  | GoUtf8CodeUnitSequenceViewCarrier
 
 
 // --- Target carrier tags (value-domain witnesses; not ABI / GC shape). ---
@@ -64,7 +81,6 @@ type GoTargetCarrier
   | GoWord32Carrier
   | GoWord64Carrier
   | GoTerminalCarrier
-  | GoUtf8TextCarrier
 
 
 type GoFloatCarrier
@@ -114,8 +130,8 @@ type GoPrimitive
     }
   | GoStringPrimitive {
       target_name: String
-      algebra: GoSpecDiscreteAlgebra
-      carrier: GoTargetCarrier
+      algebra: GoStringAlgebra
+      carrier: GoStringCarrier
     }
   | GoBooleanPrimitive {
       target_name: String
