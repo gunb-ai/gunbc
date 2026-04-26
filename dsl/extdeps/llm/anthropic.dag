@@ -48,6 +48,14 @@ type AnthropicContentBlock
   | ToolUseBlock { id: String, name: String, input: Json }
   | ToolResultBlock { tool_use_id: String, content: String, is_error: Bool? }
 
+type AnthropicUserContentBlock
+  = UserTextBlock { text: String }
+  | UserToolResultBlock { tool_use_id: String, content: String, is_error: Bool? }
+
+type AnthropicAssistantContentBlock
+  = AssistantTextBlock { text: String }
+  | AssistantToolUseBlock { id: String, name: String, input: Json }
+
 // -- System prompt -------------------------------------------------
 
 // Anthropic API cache control: wire shape requires {"type": "ephemeral"}.
@@ -98,12 +106,13 @@ data current_api_version: AnthropicApiVersion = {
 // gap-carried by `structural_coverage_gap_anthropic_messages_request_wire`.
 type AnthropicMessagesRole = User | Assistant
 
-// Messages API conversation row: `content` is a typed block list (not Json).
+// Messages API conversation row: the outer variant is the role discriminator,
+// so role-specific content legality is structural. User rows can carry text or
+// tool results; assistant rows can carry text or tool-use requests.
 // Q4.5 P1 closure (#808 / #856 Substrate escalation).
-type AnthropicChatMessage {
-  role: AnthropicMessagesRole
-  content: List<AnthropicContentBlock>
-}
+type AnthropicChatMessage
+  = UserMessage { content: List<AnthropicUserContentBlock> }
+  | AssistantMessage { content: List<AnthropicAssistantContentBlock> }
 
 // Outputs still JSON-path-project; same downstream closure as OpenAI slice.
 data structural_coverage_gap_anthropic_messages_outputs: List<String> = [
@@ -115,8 +124,11 @@ data structural_coverage_gap_anthropic_messages_outputs: List<String> = [
 // caller-authored model state on `TextBlock`; the future
 // `rest_request_wire_serde_alignment` closure must emit it from the variant.
 data structural_coverage_gap_anthropic_messages_request_wire: List<String> = [
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicMessagesRole|residue:unit_enum_role_must_serialize_as_string_user_assistant",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicContentBlock.TextBlock|residue:variant_must_emit_flat_type_text_wire_key"
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicChatMessage|residue:message_variant_must_emit_role_string_user_assistant",
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserTextBlock|residue:variant_must_emit_flat_type_text_wire_key",
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock.AssistantTextBlock|residue:variant_must_emit_flat_type_text_wire_key",
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock.AssistantToolUseBlock|residue:variant_must_emit_flat_type_tool_use_wire_key",
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserToolResultBlock|residue:variant_must_emit_flat_type_tool_result_wire_key"
 ]
 
 // -- Service: REST transport wiring ------------------------------

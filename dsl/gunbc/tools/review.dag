@@ -20,9 +20,8 @@ import extdeps.shell
 data default_model: String = "claude-sonnet-4-6-20250929"
 data cron_schedule: String = "*/10 * * * *"
 data review_messages: List<AnthropicChatMessage> = [
-  {
-    role: User,
-    content: [TextBlock { text: "Review the PR described in the system prompt." }]
+  UserMessage {
+    content: [UserTextBlock { text: "Review the PR described in the system prompt." }]
   }
 ]
 

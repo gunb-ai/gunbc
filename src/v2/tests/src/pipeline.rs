@@ -6255,9 +6255,8 @@ fn anthropic_live_e2e() {
 import extdeps.llm.anthropic
 
 data test_messages: List<AnthropicChatMessage> = [
-  {
-    role: User,
-    content: [TextBlock { text: "Say hello in exactly 3 words." }]
+  UserMessage {
+    content: [UserTextBlock { text: "Say hello in exactly 3 words." }]
   }
 ]
 
