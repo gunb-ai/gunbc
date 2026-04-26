@@ -313,6 +313,16 @@ fn predicate_holds(
                 expected_state,
             )
         }
+        "DeclarationHasRefinement" => {
+            let name = match payload {
+                [FieldValue::Literal(LiteralBits::String(name))] => name.clone(),
+                [FieldValue::Record(fields)] => string_field(fields, "declaration_name"),
+                _ => panic!("DeclarationHasRefinement payload should be String or record"),
+            };
+            let dag = compile_any(source, file_name);
+            dag.declaration_by_name(&name)
+                .is_some_and(|decl| decl.refinement.is_some())
+        }
         "CostBounded" => {
             let [FieldValue::Literal(LiteralBits::String(bind_name)), comparator, FieldValue::Literal(LiteralBits::Int(bound))] =
                 payload

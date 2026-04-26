@@ -75,6 +75,10 @@ Pending: none. The R1 Closure Manager lane queue is fully authored — manager d
 
 Lane status table refreshes here as work lands. Initial state: all 6 lane worker briefs authored; dispatch sequence: R1C-A first (critical-path enabler), then R1C-D after R1C-A Sub-deliverable B lands; R1C-B/C/E/F parallel-dispatchable Day-1.
 
+| Lane | Gates (strict `.dag` receipts) | Status |
+| --- | --- | --- |
+| R1C-C | `sub_type_alias_where_lowers` (`DeclarationHasRefinement("PositiveInt")` on the DB-11 witness; `sub_type_alias_where_lowers_gate` in `r1_gates.template.dag` + `test_runner_runs_sub_type_alias_where_lowers_gate`) | **Proposed receipt — PR #879** (pre-merge; not main-truth until squash-merge lands — then set lane-closed here per matrix hygiene) |
+
 ## Cross-refs
 
 - Parent: [`ROADMAP.md §"Release R1 Program"`](../../ROADMAP.md) — R1 lane structure + acceptance authority.
