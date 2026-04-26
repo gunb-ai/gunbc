@@ -44,16 +44,17 @@ Per design doc §4: the bug class closes by **removing the partial form**. For `
    - `force_unwrap` — already total; verify and confirm no regression.
    - `OrderedRing.quotient` / `OrderedRing.remainder` at `dsl/std/algebra.dag:477-478` — separate sub-lane rows. **Verify user-reachability** distinct from `/`; if so, queue separately.
    - Any other partial form per audit. Output: one-row-per-partial-form table in PR body.
-2. **Per-row decision** — for `Int / Int`: pick Result-shape (`Result<T, DivideByZero>`) OR Option-shape (`Option<T>`). **STOP-AND-ESCALATE for NonZero-typed-input shape** (e.g., `a / nz` rather than `divide_nz(a, nz)`) — that's a per-operand type-variance question deferred to a separate substrate brief.
-3. **Algebra retype**: one-line change at `algebra.dag:182` to the total return type.
-4. **Per-target realization migration:**
-   - `rust.dag:816` — `rust_int_div` reshapes from bare `{lhs} / {rhs}` to construct Result/Option idiomatically (`{lhs}.checked_div({rhs}).ok_or(DivideByZero)?` or equivalent).
-   - `go.dag:742` — `go_int_div` reshapes to Go-idiomatic Result.
-   - `python.dag:486` + `python_target.rs:680` helper — reshape `__v3_idiv` to return Result/Option; update test pin at `m1_4_emit_python_test.rs:108-109`.
+2. **Per-row decision** — for `Int / Int`: pick Result-shape `Result<T, DivError>` where `DivError = DivideByZero | Overflow` (or worker-equivalent typed split that preserves distinct failure modes). **NOT a single-error `Result<T, DivideByZero>`** — signed integer division has two structurally distinct failure modes (zero divisor + signed overflow on `MIN / -1`), and collapsing them violates fail-closed C-8 (per `feedback_fail_closed_discipline`: each detectable problem is its own typed Diagnostic). **Option-shape (`Option<T>`) also rejected** for the same reason — `None` carries no failure-mode information. **STOP-AND-ESCALATE for NonZero-typed-input shape** (e.g., `a / nz` rather than `divide_nz(a, nz)`) — that's a per-operand type-variance question deferred to a separate substrate brief.
+3. **Algebra retype**: one-line change at `algebra.dag:182` to the total return type. **The total return type carries a typed-split error carrier** (e.g., `DivError`) per Slice §2 — surface the carrier declaration's location (likely `dsl/std/errors.dag` or a sibling under `dsl/std/algebra.dag`).
+4. **Per-target realization migration** — each target reshapes from bare division to construct the typed-split Result idiomatically; **must distinguish divide-by-zero from overflow** (do NOT collapse to a single error variant):
+   - `rust.dag:816` — `rust_int_div` reshapes to explicit branching: `if rhs == 0 { Err(DivError::DivideByZero) } else if /* overflow check */ { Err(DivError::Overflow) } else { Ok(lhs / rhs) }`. Note: `i64::checked_div` collapses both failures to `None`, so it's NOT a one-line `ok_or` — the realization must split the cases. Worker authors the exact Rust idiom; surface in PR.
+   - `go.dag:742` — `go_int_div` reshapes to Go-idiomatic typed-split Result; same case-split discipline.
+   - `python.dag:486` + `python_target.rs:680` helper — reshape `__v3_idiv` to return typed-split Result; update test pin at `m1_4_emit_python_test.rs:108-109`. (Python's overflow semantics differ from Rust's — surface the per-target equivalence in PR body.)
 5. **Audit fallback path** — `infer.rs:4003-4015` Rust-side primitive scaffold (general fallback for types whose `inhabits` chain doesn't reach an algebra Conj). Slice §1 audit confirms whether any types still resolve `Arithmetic(Div)` through that fallback; close those paths separately if so.
 6. **Regression tests:**
-   - `Int / Int` returns `Result<Int, DivideByZero>` (or `Option<Int>` per choice).
-   - `let result = a / b; match result { Ok(v) => ..., Err(_) => ... }` compiles.
+   - `Int / Int` returns `Result<Int, DivError>` with both `DivideByZero` and `Overflow` variants reachable.
+   - **Distinct typed-split coverage:** `1 / 0` produces `Err(DivideByZero)`; `i64::MIN / -1` produces `Err(Overflow)`. Each failure mode tests independently — collapsing them is a discipline violation per `feedback_fail_closed_discipline` C-8.
+   - `let result = a / b; match result { Ok(v) => ..., Err(DivError::DivideByZero) => ..., Err(DivError::Overflow) => ... }` compiles (full match coverage).
    - Existing safe `/` code migrated.
    - Spoofing test: any other partial form (per Slice §1 audit) does NOT accidentally inherit the new total shape.
 7. **DB-8 fixed-point bit-identical** for emit output post-realization-migration.
