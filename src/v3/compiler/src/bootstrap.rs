@@ -41,7 +41,8 @@
 // files (`rust/emit.dag`, `rust/types.dag`, etc.) are deliberately excluded
 // — their bodies stay per-target emitter-side, not in the bootstrap Dag.
 // Expansion adds a field to the carrier + a key in `EXTDEPS_BOOTSTRAP_PATH_KEYS`
-// once python/go primitives reach the same pilot stage.
+// for each additional extdeps structural fixture (Rust pilot + Go spec tranche 1
+// as of T-Ground-Go; Python follows the same pattern when its slice lands).
 //
 // **Type-structure-only load (Path 2 scoping).** The top-level
 // `rust_pilot_primitives: List<RustPrimitive> = [...]` data declaration
