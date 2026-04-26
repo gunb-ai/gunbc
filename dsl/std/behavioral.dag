@@ -3,16 +3,26 @@
 // Canonical operation behavior schema ported from the-gunbai Understanding
 // model and used by Lane 4 extdeps + interface contracts.
 //
-// 🟡 NOT THE CLOSED-SYSTEM EFFECT AUTHORITY. This module declares
-// **extdeps / interface contract metadata** authored alongside extdeps
-// service operations. Per the R2 Substrate-inbox escalation #856
-// (forwarded from Impossible-Bugs #857) and design doc #808, the
-// closed-system effect authority is the type-signature-shape lens
-// over the 5 substrate behaviors — `side_effects: SideEffects` and
-// the `SideEffects = ReadOnly | WritesState | WritesExternal`
-// taxonomy below are **declared** (parallel-representation) facts,
-// not derived structural facts, and reviewers/consumers must NOT
-// read them as effect-proof.
+// 🟡 DECLARED PARALLEL TAXONOMY — RETAINED ONLY TEMPORARILY. The
+// authority rule (T-Modeling reply on substrate-inbox #856; design
+// doc #808 Q1-Q3): taxonomy *naming* is not the issue, **authority
+// is**. A named effect taxonomy is acceptable only as a mechanically
+// derived normalized view over structural signature facts. If a
+// primitive must *declare* the tag because signature shape cannot
+// derive it, that tag is **parallel authority** and must retire — or
+// become a structural-coverage-gap diagnostic — once the
+// signature-shape lens lands.
+//
+// `side_effects: SideEffects` and the
+// `SideEffects = ReadOnly | WritesState | WritesExternal` taxonomy
+// below fail that rule today: they are **hand-declared**, NOT derived
+// from signature shape, with no current downstream consumer reading
+// them as a derived projection. They are therefore declared parallel
+// authority. They are retained here ONLY temporarily — as
+// extdeps/interface contract metadata authored alongside service
+// operations — pending the signature-shape effects lens (#808 Slice
+// §1). Reviewers/consumers must NOT read this taxonomy as
+// effect-proof under any circumstance.
 //
 // **No extension.** Per the dispatch (substrate-inbox #856 reply) and
 // T-Modeling discipline, this taxonomy must not grow to cover P1
