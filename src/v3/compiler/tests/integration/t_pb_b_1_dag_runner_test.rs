@@ -134,12 +134,3 @@ fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
     );
     run_suite_all_pass(&dag, "testgen_structural_coverage_suite");
 }
-
-#[test]
-fn t_pb_b_1_thesis_smoke_batch_1_suite_passes_through_runner() {
-    let dag = lower(
-        include_str!("../dag/t_pb_b_1_thesis_smoke_batch_1.dag"),
-        "src/v3/compiler/tests/dag/t_pb_b_1_thesis_smoke_batch_1.dag",
-    );
-    run_suite_all_pass(&dag, "suite_thesis_smoke_batch_1");
-}

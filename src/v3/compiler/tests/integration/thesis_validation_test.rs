@@ -15,6 +15,14 @@ use crate::common::cached_compile_to_dag;
 use v3_compiler::types::TypeShape;
 use v3_compiler::{CompileError, Diagnostic};
 
+fn compile_any(src: &str, file: &str) -> Dag {
+    match compile_to_dag(src, file) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => dag,
+        Err(other) => panic!("unexpected structural error: {other:?}"),
+    }
+}
+
 // Tests are allowed to name declarations directly so the expected
 // shapes remain legible. This is test-only infrastructure, not a
 // precedent for emitter dispatch, which is separately gated against
@@ -244,6 +252,20 @@ fn read(x: AB) -> Int = match x {}
 }
 
 #[test]
+fn t1_3_exhaustive_match_compiles_cleanly() {
+    let src = "\
+type AB = A | B
+fn read(x: AB) -> Int = match x { A => 1, B => 2 }
+";
+    let dag = cached_compile_to_dag(src, "t1_3_exhaustive.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "no diagnostics expected for exhaustive match, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn t1_4_type_mismatch_produces_a_typemismatch_diagnostic() {
     let dag = match compile_to_dag("let x: Bool = 1", "t1_4_type_mismatch.v3") {
         Err(CompileError::Semantic(dag)) => dag,
@@ -275,6 +297,21 @@ fn t1_4_type_mismatch_produces_a_typemismatch_diagnostic() {
         }
         other => panic!("expected TypeMismatch, got {other:?}"),
     }
+}
+
+#[test]
+fn t1_4_type_mismatch_does_not_cascade_fabricated_diagnostics() {
+    let dag = compile_any("let x: Bool = 1\nlet y: Int = 2", "t1_4_no_cascade.v3");
+    let bind = bind_named(&dag, "y");
+    assert!(
+        matches!(dag.port(bind.value).state(), PortState::Resolved(_)),
+        "well-typed binding after an unrelated type error should still resolve; got {:?}",
+        dag.port(bind.value).state()
+    );
+    assert!(
+        !dag.diagnostics().contains(bind.value),
+        "well-typed downstream binding should not receive a fabricated diagnostic"
+    );
 }
 
 #[test]
@@ -357,6 +394,131 @@ fn countdown(n: Int) -> Int =
 }
 
 #[test]
+fn t1_5_structural_list_descent_is_accepted() {
+    let src = "\
+fn count(list: List<Int>) -> Int =
+  match list { Empty => 0, Cons(p) => 1 + count(p.tail) }
+";
+    cached_compile_to_dag(src, "t1_5_list_descent.v3");
+}
+
+#[test]
+fn t1_5_missing_descent_is_rejected() {
+    let dag = match compile_to_dag(
+        "fn diverge(x: Int) -> Int = diverge(x)",
+        "t1_5_no_descent.v3",
+    ) {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let bind = bind_named(&dag, "diverge");
+    assert!(
+        matches!(dag.port(bind.value).state(), PortState::Unresolved),
+        "non-decreasing recursion must fail closed"
+    );
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("cannot prove recursion in `diverge` terminates") =>
+            {
+                Some(diag)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected descent-proof diagnostic, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        !diag.fixes().is_empty(),
+        "termination diagnostic should carry at least one correction"
+    );
+}
+
+#[test]
+fn t2_4_option_like_values_require_a_match() {
+    let src = "\
+type Maybe<T> = Some(T) | None
+fn unwrap_or_zero(m: Maybe<Int>) -> Int = match m { Some(value) => value, None => 0 }
+";
+    cached_compile_to_dag(src, "t2_4_match_required.v3");
+}
+
+#[test]
+fn t2_4_option_like_values_without_match_are_rejected() {
+    let src = "\
+type Maybe<T> = Some(T) | None
+fn bad(m: Maybe<Int>) -> Int = m
+";
+    let dag = match compile_to_dag(src, "t2_4_missing_match.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let bind = bind_named(&dag, "bad");
+    assert!(
+        matches!(dag.port(bind.value).state(), PortState::Unresolved),
+        "using an option-like value without matching must fail closed"
+    );
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. } if name.contains("declared signature") => {
+                Some(diag)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a declared-signature diagnostic, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        !diag.fixes().is_empty(),
+        "declared-signature diagnostic should carry at least one correction"
+    );
+}
+
+#[test]
+fn t2_4_no_force_unwrap_primitive_exists() {
+    let src = "\
+type Maybe<T> = Some(T) | None
+fn bad(m: Maybe<Int>) -> Int = unwrap(m)
+";
+    let dag = match compile_to_dag(src, "t2_4_no_unwrap.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let bind = bind_named(&dag, "bad");
+    assert!(
+        matches!(dag.port(bind.value).state(), PortState::Unresolved),
+        "unknown unwrap primitive must fail closed"
+    );
+    let diag = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. } if name == "unwrap" => Some(diag),
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "expected unresolved callable diagnostic for `unwrap`, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        !diag.fixes().is_empty(),
+        "unresolved callable diagnostic should carry at least one correction"
+    );
+}
+
+#[test]
 fn t2_4_unresolved_calls_still_lower_argument_diagnostics() {
     let src = "\
 type Maybe<T> = Some(T) | None
@@ -378,6 +540,36 @@ fn bad(m: Maybe<Int>) -> Int = unknown(unwrap(m))
             .iter()
             .any(|diag| matches!(diag, Diagnostic::ResolveError { name, .. } if name == "unwrap")),
         "argument diagnostics must still lower under unresolved calls; got {diagnostics:?}"
+    );
+}
+
+#[test]
+fn kf_5_bounded_fold_compiles_on_supported_primitives() {
+    let src = "\
+let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)
+";
+    cached_compile_to_dag(src, "kf_5_fold.v3");
+}
+
+#[test]
+fn kf_5_unbounded_zero_arg_recursion_is_rejected() {
+    let dag = match compile_to_dag("fn endless() -> Int = endless()", "kf_5_unbounded.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let bind = bind_named(&dag, "endless");
+    assert!(
+        matches!(dag.port(bind.value).state(), PortState::Unresolved),
+        "zero-arg recursion must fail closed"
+    );
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| matches!(
+            diag,
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("recursive but has no parameters")
+        )),
+        "expected zero-arg recursion diagnostic, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
     );
 }
 
