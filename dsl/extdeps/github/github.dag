@@ -45,13 +45,6 @@ type GitHubAuthToken {
   expires_at: Timestamp?
 }
 
-// Secret Manager materializes secret bytes only — no GitHub-issued scope or
-// expiry metadata on the wire (P3: do not fabricate empty scopes / absent
-// expiry as if observed). Use `GitHubAuthToken` only when those facts exist.
-type GitHubSecretManagerPat {
-  token: Secret
-}
-
 type GitHubScope
   = ScopeRepo
   | ScopeGist
