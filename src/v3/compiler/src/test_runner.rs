@@ -35,6 +35,8 @@ pub const R1_CANONICAL_COMPLEXITY_LENS: &str = include_str!(concat!(
     "/../lenses/complexity.dag"
 ));
 
+const PROGRAM_INPUT_SENTINEL: &str = "r1_lens_output_input_from_program";
+
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
 /// T-LaneE `DifferentialEquals` compares this receipt to [`crate::lens_cost::cost_of`] (emit output
@@ -1698,7 +1700,9 @@ impl<'a> TestRunner<'a> {
             None
         };
 
-        let input_field = if program_input.is_some() {
+        let reflects_claim_program = program_input.is_some()
+            || input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL);
+        let input_field = if reflects_claim_program {
             // P2: `id_space` must be the same `Dag` `apply_lens_declaration` will use for the lens
             // (canonical compile, claim `program_dag`, or merged fixture `self.dag`) so reflected
             // `List` / `Behavior` variant `DeclarationId`s are not mixed across graphs.

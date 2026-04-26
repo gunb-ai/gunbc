@@ -16,7 +16,6 @@ import std.verification {
   FailsWithDiagnostic,
   LensOutputEquals,
   PortHasState,
-  ProgramInput,
   ProgramOutputBind,
   Resolved,
   TestClaim,
@@ -48,7 +47,7 @@ data total: Int = 0
 
 data upsert_effect: Int = 0
 
-data r1_lens_output_input_from_program: ProgramInput = {}
+data r1_lens_output_input_from_program: Int = 0
 
 data t_demo_complexity_program_input: ProgramOutputBind = {
   output_ref: complexity_demo_out
