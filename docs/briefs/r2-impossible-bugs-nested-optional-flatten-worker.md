@@ -8,7 +8,7 @@
 > [`docs/briefs/t-impossiblebugs-nested-optional-flatten-design.md`](t-impossiblebugs-nested-optional-flatten-design.md)
 > §Q2: v3 substrate is past the cardinality bridge —
 > `TypeConnective::Cardinality { element, bound }` is first-class
-> (`src/v3/compiler/src/dag.rs:395-398`); `CardinalityBound::AtMostOne`
+> (`src/v3/compiler/src/dag.rs:408-411`); `CardinalityBound::AtMostOne`
 > is the carrier for `Option`. The dissolution is a substrate-constructor
 > invariant, not new substrate work. Dispatch immediately.
 
@@ -16,7 +16,7 @@
 
 - **[`docs/briefs/t-impossiblebugs-nested-optional-flatten-design.md`](t-impossiblebugs-nested-optional-flatten-design.md)** — design doc with full Q1-Q4 audit, construction-site enumeration, and canonical implementation sketch. **Read in full before slicing.**
 - **[`THESIS.md` lines 342-344](../../THESIS.md)** — class definition.
-- **[`src/v3/compiler/src/dag.rs:395-398`](../../src/v3/compiler/src/dag.rs)** — `TypeConnective::Cardinality { element, bound }` first-class.
+- **[`src/v3/compiler/src/dag.rs:408-411`](../../src/v3/compiler/src/dag.rs)** — `TypeConnective::Cardinality { element, bound }` first-class.
 - **[`src/v3/compiler/src/dag_scalar_generated.rs:21-25`](../../src/v3/compiler/src/dag_scalar_generated.rs)** — `CardinalityBound::AtMostOne` (the carrier for `Option`).
 - **[`src/v3/compiler/src/lower.rs:1949-1968, :2044-2047`](../../src/v3/compiler/src/lower.rs)** — `SurfaceType::Optional` lowering arms (call sites).
 - **[`src/v3/compiler/src/infer.rs:2902-2916`](../../src/v3/compiler/src/infer.rs)** — `concretize_decl_with_subst` (the **killer construction site** per design doc — substitution path that bypasses `lower.rs`).
