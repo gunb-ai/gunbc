@@ -302,6 +302,7 @@ fn ensure_optional_match_disj(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span,
     });
     dag.set_optional_match_disj(cardinality_decl_id, disj_id);
@@ -5240,6 +5241,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span,
         });
         let invalid_lhs = dag.alloc_port_with_shape(TypeShape::new(bad_money_usd));

@@ -363,6 +363,7 @@ mod tests {
 
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span,
         });
 
