@@ -8,7 +8,7 @@
 
 ## Summary
 
-R2 is the **close-everything** release — where "everything" means *every remaining Tier-1 thesis claim that R1's gate set does not already own*. R1 closes under all-R1-gates-green (see R1 closure criteria below), and that closure carries lens purity, self-hosting shim-floor close, E-family carrier closure, and tests-as-data closure out of R2's scope entirely. R2 is what's left: **Grounding Completeness** (the single co-anchor thesis claim), joined by modeling-faithfulness dissolution, scoped substrate prereqs for that, remaining R2+ impossible-bug classes, and the §6a per-method-metadata design-call residual.
+R2 is the **close-everything** release — where "everything" means *every remaining Tier-1 thesis claim that R1's gate set does not already own*. R1 closes under all-R1-gates-green (see R1 closure criteria below), and that closure carries lens purity, self-hosting shim-floor close, E-family carrier closure, and tests-as-data closure out of R2's scope entirely. R2 is what's left: **Grounding Completeness** (the single co-anchor thesis claim), joined by modeling-faithfulness dissolution, scoped substrate prereqs for that, remaining R2+ impossible-bug classes, and §6a per-method-metadata **follow-through** (the carrier **pick** is **closed** at HEAD — Option 3 `MethodContract` per `docs/design-substrate-carrier-port-program.md` §6a; bulk lens migration remains).
 
 Two framing decisions drive scope + coordination:
 
@@ -54,7 +54,7 @@ Under that discipline, R2's goals are the Tier-1 thesis claims that are *not* ga
    - Unhandled diagnostic paths
    - Unenumerated effects
 
-5. **§6a per-method-metadata pick** — per `docs/design-substrate-carrier-port-program.md §6a`, a deferred design call on where per-method metadata (`size_effect`, `cost_shape`, `callback_element_position` on `ordered_ring_templates()` et al.) lives. Four options in the design doc: (0) keep lens-local lookup tables; (1) substrate field-level refinements; (2) per-algebra metadata carriers; (3) unified `MethodContract` carrier. E-I pre-flight evidence has landed in R1, so the "defer until E-I evidence" trigger has fired; this is the R2 residual after T-LaneE (E-family carrier port) closes in R1. S-sized design-call close, not substrate-capability work.
+5. **§6a per-method-metadata** — **Design call closed** for R2 program purposes per [`docs/design-substrate-carrier-port-program.md` §6a](design-substrate-carrier-port-program.md): **Option 3, unified `MethodContract` carrier**, with dissolution trigger and live receipt recorded there. Options (0)–(3) remain in §6a for audit context only. **Receipt:** `src/v3/std/algebra.dag` declares `MethodContract`; `src/v3/lenses/cost.dag` imports it and defines `method_contract_cost_shape` as the minimal demo consumer (matches §6a **Live receipt** at design-doc HEAD). **R2 remainder** is **follow-through** only — bulk migration of `cost.dag` / `complexity.dag` to live call-site `MethodContract` lookup plus dissolution-trigger tracking — owned by R2 Release Manager per [`docs/briefs/r2-release-6a-follow-through-worker.md`](briefs/r2-release-6a-follow-through-worker.md), not a second open **pick**. If work blurs into parametric-algebra / substrate producer vs consumer-migration reframes, coordinate with Substrate Manager (see GitHub #856). The **pick** itself is not substrate-capability work; §6a explicitly rejects Option 1 for this lane.
 
 6. **R2 closure demo** — simple "it runs" artifact per lane close. **R2 Release Manager-coordinated** (was Director-coordinated under prior 1-manager structure; reassigned under 2026-04-26 rework — single authority per `feedback_node_not_god_struct`). Not a lane — see Demo discipline below.
 
@@ -137,7 +137,7 @@ Owns the **post-R1 work** of the Pure Bootstrap to Zero program (per `docs/desig
 Owns release coordination + the smallest cross-cutting deliverables (Goal 5, Goal 6, the #810 discipline framework, B-wave Tier 0 dispatch coordination, R2 demo).
 
 - **Owned deliverables:**
-  - **Goal 5:** §6a per-method-metadata pick (S-sized design call; carrier choice from the 4 options in `docs/design-substrate-carrier-port-program.md §6a`).
+  - **Goal 5:** §6a per-method-metadata — **pick closed** (Option 3 + receipt per `docs/design-substrate-carrier-port-program.md` §6a); **follow-through** is bulk migration + dissolution tracking per `docs/briefs/r2-release-6a-follow-through-worker.md`.
   - **Goal 6:** R2 closure demo coordination — surface "it runs" artifacts at each lane close per Demo discipline section.
   - **B-wave Tier 0 coordination:** B1 (#820) / B2 (#817) / B3 (#821) implementation through-merge, including any audit-narrative iteration. Dispatch B5 (Loop construction-closure audit) + B6 (file-preference rank checklist fix) + B7 (priority-hint relay to Pure Bootstrap Manager).
   - **Discipline framework enforcement:** owns the **central reporting** layer of P5 (per INVARIANTS.md §P5 "Dispatch-Discipline Mechanisms" — paired-dispatch + per-PR gate + velocity tripwire). Tracks velocity-tripwire ratio per integration-reflection cadence and surfaces ≥3:1 readings to Director. **Per-brief paired-dispatch and per-PR gate enforcement happens at each manager's authoring point** (see "P5 dispatch-discipline applies to all manager-authored briefs" in Manager structure above) — Release Manager is not the choke point for those, but is responsible for surfacing systemic violations through the closure ledger when patterns emerge across managers.
@@ -162,19 +162,19 @@ Owns release coordination + the smallest cross-cutting deliverables (Goal 5, Goa
 | T-Modeling | M | **Modeling Manager** | int-lit magnitude / `Secret<T>` graduation / `Dimension<Carrier>` (Goal 2) **plus tokenizer charclass phase-2** (consumer of T-Substrate ValueBody-list/sum sub-lane). Each item dispatches as its T-Substrate dependency lands. |
 | T-ImpossibleBugs | S | **Impossible-Bugs Manager** | nested-optional flatten / unhandled-diagnostic-paths / unenumerated-effects (Goal 4). Substrate-gap discoveries escalate to Substrate Manager. |
 | T-PB | M | **Pure Bootstrap Manager** | **Post-R1 PB program work** that survives R1 close per ROADMAP gate authority. Covers Tier 2 `patch_lower_helpers_*` retirement (if it survives R1) + termination/computation/induction/effect-carrier mirror dissolutions (Tier 3 #10 + #12 from #810; `ValueBody::Map` substrate-gated for `kernel_algebra_profile`) + post-R1 emergent dissolutions. **Does NOT duplicate R1 T-PB-A / T-PB-B census-reduction work** — that's R1 lane work per ROADMAP single authority on gate semantics. |
-| T-Release | M | **R2 Release Manager** | §6a per-method-metadata pick (Goal 5) + R2 demo coordination (Goal 6) + B-wave Tier 0/2 dispatch (B1/B2/B3 through-merge, B5/B6/B7 authoring) + #810 discipline framework enforcement (velocity tripwire reporting) + thesis-claim coverage mapping (Open call 1) + R2 closure ledger + v2 retirement coordination. |
+| T-Release | M | **R2 Release Manager** | §6a follow-through after closed pick (Goal 5) + R2 demo coordination (Goal 6) + B-wave Tier 0/2 dispatch (B1/B2/B3 through-merge, B5/B6/B7 authoring) + #810 discipline framework enforcement (velocity tripwire reporting) + thesis-claim coverage mapping (Open call 1) + R2 closure ledger + v2 retirement coordination. |
 
 **Goal 6 (R2 closure demo) is not a lane.** It is a cross-lane closure discipline (see "Demo discipline" below): each lane's closure PR ships its own simple "it runs" artifact; **R2 Release Manager coordinates surfacing** (single authority per the 2026-04-26 rework). No separate T-Demo lane owner, no separate demo-authoring critical path.
 
 **Lanes deliberately absent (R1 gates, closed by R1 lane acceptance):**
 - T-LensMigration / `lens_producer_files_remaining` — R1 T-PB-A gate per PR #752. **Cascade-promotion update 2026-04-25:** Pure Bootstrap to Zero program (LIVE per `docs/design-pure-bootstrap-zero.md`) target is 0; R1 closes the gate per ROADMAP authority (single authority on gate semantics). Lens-producer file-by-file migration work runs as R1 T-PB-A lane work. Not in R2.
 - ~~T-ShimFloor / `pb_hand_rust_at_shim_floor` / `pb_compiler_std_ratchet_zero` / `pb_rust_tests_outside_residual_zero` — R1 T-PB-A + T-PB-B gates.~~ **Cascade-promotion update 2026-04-25:** Pure Bootstrap to Zero program (LIVE) owns all shim-floor work; the program target is 0 per `docs/design-pure-bootstrap-zero.md`. R1's PB gates close per ROADMAP authority. Not in R2 — R1 owns the census-reduction work via T-PB-A / T-PB-B lanes per ROADMAP single authority on gate semantics. **R2 Pure Bootstrap Manager exists for post-R1 PB program work that survives R1 close** (mirror dissolutions, Tier 2 patch retirement, post-R1 emergent dissolutions); see Pure Bootstrap Manager section above.
-- T-EFamilyClose — R1 T-LaneE's critical-path carrier work (E-T, E-C, E-I, E-P, E-M sub-lanes), enabling the R1 `complexity_merge_sort_is_nlogn` + `complexity_merge_sort_v3_matches_v2_oracle` + `lane_e_bundled_witness_host_emit_parity` gates. All E-family carrier-port work closes in R1; only the §6a metadata-pick residual inherits to R2 (Goal 5).
+- T-EFamilyClose — R1 T-LaneE's critical-path carrier work (E-T, E-C, E-I, E-P, E-M sub-lanes), enabling the R1 `complexity_merge_sort_is_nlogn` + `complexity_merge_sort_v3_matches_v2_oracle` + `lane_e_bundled_witness_host_emit_parity` gates. All E-family carrier-port work closes in R1; the §6a **carrier pick** is closed at HEAD (Option 3), and R2 inherits **§6a follow-through** only (Goal 5 — migration + dissolution tracking per `docs/briefs/r2-release-6a-follow-through-worker.md`).
 - T-TestGen-tail (`testgen_mock_backed_integration_safe` / `MockBackedInvariant` wiring) — R1 T-TestGen gate per `ROADMAP.md §"Lane acceptance — .dag gates"`. Closes in R1.
 
 R2 does not re-own R1 gate close authority; under all-R1-gates-green criterion, those gates ARE the close conditions per ROADMAP single authority. R2 inherits two named exceptions:
 
-1. **Goal 5's §6a per-method-metadata pick** — was not an R1 gate; deferred design call inherits to R2.
+1. **Goal 5's §6a per-method-metadata** — was not an R1 gate; the **pick** is closed in-tree (Option 3 + receipt). **Follow-through** (bulk lens migration + dissolution tracking) inherits to R2 T-Release per `docs/briefs/r2-release-6a-follow-through-worker.md`, not as a reopened design call.
 2. **`sub_charclass_in_std_unicode` phase-2** — was an R1 T-Sub gate, but reclassified to R2 substrate-capability per ROADMAP amendment (2026-04-24) following Surface Manager's handoff that the remaining work is Class 5 Gap 3 substrate-capability scope, not T-Sub-only surface fix. Now a 4th sub-lane under R2 T-Substrate (Goal 3); see lane row above.
 
 Plus **post-R1 PB program work that survives R1 close** owned by R2 Pure Bootstrap Manager (per Pure Bootstrap Manager section above): mirror dissolutions, Tier 2 patch retirement, post-R1 emergent PB work. Not a duplicate of R1's PB census-reduction work — that's R1 lane scope per ROADMAP single authority on gate semantics.
@@ -225,7 +225,7 @@ Pure Bootstrap Manager (T-PB) — POST-R1 only (R1 owns census-reduction lanes p
 
 R2 Release Manager (T-Release):
     Cross-cutting (parallel-dispatchable):
-        §6a per-method-metadata pick    (Goal 5; design-call close)
+        §6a follow-through              (Goal 5; pick closed — migration + dissolution tracking)
         B-wave Tier 0 through-merge     (B1/B2/B3 implementation iteration)
         B-wave Tier 2 brief authoring   (B5 Loop construction-closure audit; B6 checklist fix; B7 priority hint)
         Discipline-framework enforcement (velocity tripwire reporting per cadence)
@@ -320,7 +320,7 @@ THESIS authority (`THESIS.md:155-182`) lists:
 ## Cross-refs
 
 - Parent: `ROADMAP.md` (sections: `## Release R1 Program`; `## Post-R1 Program — Grounding Completeness`; `## Tracked debts — 2026-04 analyses`).
-- Substrate design: `docs/design-substrate-carrier-port-program.md` (E-family lanes + §6a per-method-metadata).
+- Substrate design: `docs/design-substrate-carrier-port-program.md` (E-family lanes + §6a per-method-metadata — **Decision:** Option 3 `MethodContract`; **receipt:** `src/v3/std/algebra.dag` + `src/v3/lenses/cost.dag`).
 - Self-hosting anchor: [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md) (LIVE 2026-04-25; 0-floor target + SG census). Supersedes [`docs/design-pure-bootstrap.md`](design-pure-bootstrap.md) (now SUPERSEDED; ≤5-floor framing retracted).
 - Thesis: `THESIS.md §"Enumerable impossible-bug classes"` (R2+ tags authority); `THESIS.md §"Thesis claims — complete list"` (Tier-1 claim lineage).
 - Lens capability: `docs/v3-lens-capability-register.md` (per-lens capability tracking).
