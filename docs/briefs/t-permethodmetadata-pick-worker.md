@@ -22,7 +22,7 @@
   - **Option 1**: extend type declarations with field-level refinements. Largest substrate change (needs DB-11 annotation support).
   - **Option 2**: separate metadata carriers per algebra (`OrderedRingMetadata`, etc.). No substrate change; per-algebra carrier proliferation.
   - **Option 3**: unified `MethodContract` carrier — generic `(algebra_id, method_id)` indexed lookup. No substrate change; minimal std surface (one carrier total). Closest to `TemplateArgumentBinding` shape.
-- **E-family R1 closure context:** E-T (PR #682), E-C, E-I, E-P (partial via PR #742), E-M (closed via M-b structural subsumption) all landed in R1. §6a is the **only E-family design call that didn't land in R1**; this brief closes it.
+- **E-family R1 closure context:** E-T (PR #682), E-C, E-I, E-P (partial via PR #742), E-M (closed via M-b structural subsumption) all landed in R1. §6a pick was the residual E-family **metadata-placement** call; **closed** by PR #794 + §6a doc lock.
 - **[`src/v3/lenses/cost.dag`](../../src/v3/lenses/cost.dag)** + **[`src/v3/lenses/complexity.dag`](../../src/v3/lenses/complexity.dag)** — the consumer lenses. Their consumption pattern is what evidence-narrows the option choice. Read to see how metadata is currently looked up + what shape the lens code naturally consumes.
 - **[`MODELING.md`](../../MODELING.md)** + **[`INVARIANTS.md`](../../INVARIANTS.md)** + **[`CODING.md`](../../CODING.md)**.
 
