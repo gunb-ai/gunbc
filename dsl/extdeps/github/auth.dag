@@ -6,7 +6,7 @@
 
 module extdeps.github.auth
 
-import extdeps.github.github { GitHubAuthToken }
+import extdeps.github.github { GitHubSecretManagerPat }
 import gunbc.auth.credentials { gcp_secret_credential }
 import std.resources { Network }
 import std.types { NonEmptyStr }
@@ -14,19 +14,12 @@ import std.types { NonEmptyStr }
 func github_token(
   project_id: NonEmptyStr = "gunbai-secrets",
   secret_name: NonEmptyStr = "github-token"
-) -> GitHubAuthToken
+) -> GitHubSecretManagerPat
   uses net: Network
 {
   cred = gcp_secret_credential(
     project_id: project_id,
     secret_name: secret_name
   )
-  // Secret Manager returns the PAT only; scopes and expiry live on GitHub's
-  // token metadata when obtained via OAuth/app flows — absent here, modeled
-  // as empty / none so the declared `GitHubAuthToken` carrier stays honest.
-  return {
-    token: cred.token,
-    scopes: [],
-    expires_at: none
-  }
+  return { token: cred.token }
 }

@@ -8,7 +8,7 @@
 //
 module extdeps.llm.openai
 
-import extdeps.llm.llm { Role, StopReason, TokenUsage, llm_snake_wire_contract }
+import extdeps.llm.llm { StopReason, TokenUsage, llm_snake_wire_contract }
 import std.errors { OpenAiErrorShape }
 import std.serialization { VariantEncoding }
 import std.types { HttpMethod, AuthScheme }
