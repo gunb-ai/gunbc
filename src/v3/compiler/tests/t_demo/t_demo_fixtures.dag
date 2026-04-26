@@ -180,7 +180,8 @@ data integration_type_drift_lens_output: TestClaim = {
   file_name: "fixture_integration_canonical_type_drift_lens.v3",
   predicate: FailsWithDiagnostic({
     kind: TypeMismatch,
-    detail_contains: AnyDetail
+    detail_contains: AnyDetail,
+    expect_at_least_one_correction: true
   }),
   requires: []
 }
@@ -222,7 +223,8 @@ data impossible_bug_type_drift: TestClaim = {
   file_name: "impossible_bug_type_drift.v3",
   predicate: FailsWithDiagnostic({
     kind: TypeMismatch,
-    detail_contains: AnyDetail
+    detail_contains: AnyDetail,
+    expect_at_least_one_correction: true
   }),
   requires: []
 }
@@ -233,7 +235,8 @@ data impossible_bug_idempotency_violation: TestClaim = {
   file_name: "impossible_bug_idempotency.v3",
   predicate: FailsWithDiagnostic({
     kind: ResolveError,
-    detail_contains: Contains("named constructor `AppendEffect` is not a variant of the expected sum type")
+    detail_contains: Contains("named constructor `AppendEffect` is not a variant of the expected sum type"),
+    expect_at_least_one_correction: false
   }),
   requires: []
 }

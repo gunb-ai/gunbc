@@ -106,7 +106,8 @@ data manual_negative_claim_gate: TestClaim = {
   file_name: "manual_claim_fixture.v3",
   predicate: FailsWithDiagnostic({
     kind: ResolveError,
-    detail_contains: AnyDetail
+    detail_contains: AnyDetail,
+    expect_at_least_one_correction: false
   }),
   requires: []
 }

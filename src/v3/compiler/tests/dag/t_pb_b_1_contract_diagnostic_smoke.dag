@@ -11,7 +11,11 @@ data claim_bool_int_rejected: TestClaim = {
   name: "Bool annotation rejects Int literal",
   source: "let x: Bool = 1",
   file_name: "t1_4_type_mismatch.v3",
-  predicate: FailsWithDiagnostic({ kind: TypeMismatch, detail_contains: AnyDetail }),
+  predicate: FailsWithDiagnostic({
+    kind: TypeMismatch,
+    detail_contains: AnyDetail,
+    expect_at_least_one_correction: true
+  }),
   requires: []
 }
 

@@ -1355,6 +1355,13 @@ impl ProgramInputRole {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct DiagnosticReferenceFilter {
+    kind: String,
+    detail: DiagnosticDetailFilter,
+    expect_at_least_one_correction: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum DiagnosticDetailFilter {
     Any,
     Contains(String),
@@ -1424,6 +1431,9 @@ impl<'a> TestRunner<'a> {
                     "FailsWithDiagnostic" => self.eval_fails_with_diagnostic(claim, &payload),
                     "OutputEquals" => self.eval_output_equals(claim, &payload),
                     "PortHasState" => self.eval_port_has_state(claim, &payload),
+                    "ValuePortLacksDiagnostic" => {
+                        self.eval_value_port_lacks_diagnostic(claim, &payload)
+                    }
                     "CostBounded" => self.eval_cost_bounded(claim, &payload),
                     "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
                     "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
@@ -1552,6 +1562,38 @@ impl<'a> TestRunner<'a> {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!("bind `{bind_name}` state did not match `{label}`"))
+        }
+    }
+
+    /// `bind.value` must not be a key in the diagnostic table (no diagnostic attached
+    /// to the value port) — the thesis "no cascade" receipt alongside
+    /// [`Self::eval_port_has_state`].
+    fn eval_value_port_lacks_diagnostic(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [FieldValue::Literal(LiteralBits::String(bind_name))] = payload else {
+            return ClaimResult::Fail(
+                "ValuePortLacksDiagnostic payload should be a single `bind_name` String"
+                    .to_string(),
+            );
+        };
+        let dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(dag)) => dag,
+            Err(err) => return ClaimResult::Fail(format!("source did not lower: {err:?}")),
+        };
+        let Some(bind) = find_bind(&dag, bind_name, &claim.file_name) else {
+            return ClaimResult::Fail(format!("bind `{bind_name}` not found"));
+        };
+        if dag.diagnostics().contains(bind.value) {
+            ClaimResult::Fail(format!(
+                "bind `{bind_name}` value port has a diagnostic; expected no fabricated/cascade \
+                 attachment"
+            ))
+        } else {
+            ClaimResult::Pass
         }
     }
 
@@ -2229,11 +2271,11 @@ impl<'a> TestRunner<'a> {
     }
 
     fn diagnostic_matches(&self, actual_dag: &Dag, reference: &FieldValue) -> Result<bool, String> {
-        let reference = self.diagnostic_reference(reference)?;
+        let filter = self.diagnostic_reference_filter(reference)?;
         Ok(actual_dag
             .diagnostics()
             .iter()
-            .any(|(_, diagnostic)| diagnostic_matches_reference(diagnostic, &reference)))
+            .any(|(_, diagnostic)| diagnostic_matches_reference(diagnostic, &filter)))
     }
 
     fn diagnostic_matches_single(
@@ -2241,14 +2283,14 @@ impl<'a> TestRunner<'a> {
         diagnostic: &Diagnostic,
         reference: &FieldValue,
     ) -> Result<bool, String> {
-        let reference = self.diagnostic_reference(reference)?;
-        Ok(diagnostic_matches_reference(diagnostic, &reference))
+        let filter = self.diagnostic_reference_filter(reference)?;
+        Ok(diagnostic_matches_reference(diagnostic, &filter))
     }
 
-    fn diagnostic_reference(
+    fn diagnostic_reference_filter(
         &self,
         reference: &FieldValue,
-    ) -> Result<(String, DiagnosticDetailFilter), String> {
+    ) -> Result<DiagnosticReferenceFilter, String> {
         let Some(fields) = record_fields(reference) else {
             return Err("DiagnosticReference payload should be a record".to_string());
         };
@@ -2264,7 +2306,26 @@ impl<'a> TestRunner<'a> {
         if !kind_payload.is_empty() {
             return Err("DiagnosticReference `kind` should not carry payload".to_string());
         }
-        Ok((kind_label, self.detail_filter(detail_contains)?))
+        let expect_at_least_one_correction = match field(fields, "expect_at_least_one_correction")
+        {
+            Some(FieldValue::Literal(LiteralBits::Bool(b))) => *b,
+            Some(other) => {
+                return Err(format!(
+                    "DiagnosticReference `expect_at_least_one_correction` should be Bool, got {other:?}"
+                ));
+            }
+            None => {
+                return Err(
+                    "DiagnosticReference is missing `expect_at_least_one_correction` (required Bool)"
+                        .to_string(),
+                );
+            }
+        };
+        Ok(DiagnosticReferenceFilter {
+            kind: kind_label,
+            detail: self.detail_filter(detail_contains)?,
+            expect_at_least_one_correction,
+        })
     }
 
     fn detail_filter(&self, value: &FieldValue) -> Result<DiagnosticDetailFilter, String> {
@@ -2409,13 +2470,22 @@ fn diagnostic_kind(diagnostic: &Diagnostic) -> &'static str {
 
 fn diagnostic_matches_reference(
     diagnostic: &Diagnostic,
-    reference: &(String, DiagnosticDetailFilter),
+    filter: &DiagnosticReferenceFilter,
 ) -> bool {
-    diagnostic_kind(diagnostic) == reference.0
-        && match &reference.1 {
-            DiagnosticDetailFilter::Any => true,
-            DiagnosticDetailFilter::Contains(text) => diagnostic.message().contains(text),
-        }
+    if diagnostic_kind(diagnostic) != filter.kind {
+        return false;
+    }
+    let detail_ok = match &filter.detail {
+        DiagnosticDetailFilter::Any => true,
+        DiagnosticDetailFilter::Contains(text) => diagnostic.message().contains(text),
+    };
+    if !detail_ok {
+        return false;
+    }
+    if filter.expect_at_least_one_correction && diagnostic.fixes().is_empty() {
+        return false;
+    }
+    true
 }
 
 fn render_value_body(dag: &Dag, value: &ValueBody) -> String {

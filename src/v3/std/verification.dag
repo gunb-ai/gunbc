@@ -46,9 +46,15 @@ type DiagnosticDetailExpectation
 
 // Diagnostic reference used by generated negative claims. `kind` is
 // structural and `detail_contains` narrows the match only when present.
+// **DB-1 / thesis receipt:** `expect_at_least_one_correction` pins the
+// "show the correct code" correction-carrier witness when `true` — the
+// matching diagnostic must carry a non-empty `Correction` list; when
+// `false` (default for legacy / negative-only shape checks), only kind +
+// message detail are asserted.
 type DiagnosticReference {
   kind: DiagnosticKind
   detail_contains: DiagnosticDetailExpectation
+  expect_at_least_one_correction: Bool
 }
 
 // **🟡 Scaffold — PortStateExpectation.** This is the coarse projection
@@ -86,6 +92,11 @@ type TestPredicate
   | PortHasState {
       bind_name: String
       state: PortStateExpectation
+    }
+  // Downstream value port is not a diagnostic key — receipt for
+  // "no fabricated diagnostic on this port" (thesis: non-cascade).
+  | ValuePortLacksDiagnostic {
+      bind_name: String
     }
   | CostBounded {
       bind_name: String
