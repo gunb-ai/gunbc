@@ -174,7 +174,7 @@ Owns release coordination + the smallest cross-cutting deliverables (Goal 5, Goa
 
 R2 does not re-own R1 gate close authority; under all-R1-gates-green criterion, those gates ARE the close conditions per ROADMAP single authority. R2 inherits two named exceptions:
 
-1. **Goal 5's §6a per-method-metadata pick** — was not an R1 gate; deferred design call inherits to R2.
+1. **Goal 5's §6a per-method-metadata** — was not an R1 gate; the **pick** is closed in-tree (Option 3 + receipt). **Follow-through** (bulk lens migration + dissolution tracking) inherits to R2 T-Release per `docs/briefs/r2-release-6a-follow-through-worker.md`, not as a reopened design call.
 2. **`sub_charclass_in_std_unicode` phase-2** — was an R1 T-Sub gate, but reclassified to R2 substrate-capability per ROADMAP amendment (2026-04-24) following Surface Manager's handoff that the remaining work is Class 5 Gap 3 substrate-capability scope, not T-Sub-only surface fix. Now a 4th sub-lane under R2 T-Substrate (Goal 3); see lane row above.
 
 Plus **post-R1 PB program work that survives R1 close** owned by R2 Pure Bootstrap Manager (per Pure Bootstrap Manager section above): mirror dissolutions, Tier 2 patch retirement, post-R1 emergent PB work. Not a duplicate of R1's PB census-reduction work — that's R1 lane scope per ROADMAP single authority on gate semantics.
@@ -225,7 +225,7 @@ Pure Bootstrap Manager (T-PB) — POST-R1 only (R1 owns census-reduction lanes p
 
 R2 Release Manager (T-Release):
     Cross-cutting (parallel-dispatchable):
-        §6a per-method-metadata pick    (Goal 5; design-call close)
+        §6a follow-through              (Goal 5; pick closed — migration + dissolution tracking)
         B-wave Tier 0 through-merge     (B1/B2/B3 implementation iteration)
         B-wave Tier 2 brief authoring   (B5 Loop construction-closure audit; B6 checklist fix; B7 priority hint)
         Discipline-framework enforcement (velocity tripwire reporting per cadence)
@@ -320,7 +320,7 @@ THESIS authority (`THESIS.md:155-182`) lists:
 ## Cross-refs
 
 - Parent: `ROADMAP.md` (sections: `## Release R1 Program`; `## Post-R1 Program — Grounding Completeness`; `## Tracked debts — 2026-04 analyses`).
-- Substrate design: `docs/design-substrate-carrier-port-program.md` (E-family lanes + §6a per-method-metadata).
+- Substrate design: `docs/design-substrate-carrier-port-program.md` (E-family lanes + §6a per-method-metadata — **Decision:** Option 3 `MethodContract`; **receipt:** `src/v3/std/algebra.dag` + `src/v3/lenses/cost.dag`).
 - Self-hosting anchor: [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md) (LIVE 2026-04-25; 0-floor target + SG census). Supersedes [`docs/design-pure-bootstrap.md`](design-pure-bootstrap.md) (now SUPERSEDED; ≤5-floor framing retracted).
 - Thesis: `THESIS.md §"Enumerable impossible-bug classes"` (R2+ tags authority); `THESIS.md §"Thesis claims — complete list"` (Tier-1 claim lineage).
 - Lens capability: `docs/v3-lens-capability-register.md` (per-lens capability tracking).
