@@ -22,7 +22,7 @@ data cron_schedule: String = "*/10 * * * *"
 data review_messages: List<AnthropicChatMessage> = [
   {
     role: User,
-    content: [TextBlock { type: "text", text: "Review the PR described in the system prompt." }]
+    content: [TextBlock { text: "Review the PR described in the system prompt." }]
   }
 ]
 

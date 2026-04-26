@@ -6257,7 +6257,7 @@ import extdeps.llm.anthropic
 data test_messages: List<AnthropicChatMessage> = [
   {
     role: User,
-    content: [TextBlock { type: "text", text: "Say hello in exactly 3 words." }]
+    content: [TextBlock { text: "Say hello in exactly 3 words." }]
   }
 ]
 
