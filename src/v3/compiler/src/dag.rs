@@ -49,6 +49,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
+use crate::bootstrap::EXTDEPS_BOOTSTRAP_PATH_KEYS;
 use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
 use crate::types::TypeShape;
 
@@ -2157,6 +2158,7 @@ pub struct Dag {
 
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_generated::bootstrapped_fixture_dag();
+    assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     dag
 });
@@ -2173,6 +2175,7 @@ static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
 static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag =
         bootstrap_generated_without_parse_surface::bootstrapped_fixture_without_parse_surface_dag();
+    assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     dag
 });
@@ -2857,7 +2860,8 @@ impl Dag {
     /// appear on the lowered `ValueBody::Structural` body.
     ///
     /// Used to keep the regen host's `EXTDEPS_BOOTSTRAP_PATH_KEYS` filter
-    /// aligned with the substrate declaration (integration parity test).
+    /// aligned with the substrate declaration (compared in this module's bootstrap
+    /// `LazyLock` initializers).
     pub fn extdeps_bootstrap_fixture_virtual_paths(&self) -> Option<Vec<String>> {
         let decl = self.declaration_by_name("extdeps_bootstrap_fixture_authority")?;
         let body = decl.value_body.as_ref()?;
@@ -3393,6 +3397,31 @@ impl Dag {
 impl Default for Dag {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// PB-1-e B4.4: the substrate `extdeps_bootstrap_fixture_authority` carrier and
+/// [`EXTDEPS_BOOTSTRAP_PATH_KEYS`](crate::bootstrap::EXTDEPS_BOOTSTRAP_PATH_KEYS)
+/// must list the same virtual paths in the same order — the const is the regen
+/// filter; the `.dag` declaration is runtime authority.
+fn assert_extdeps_bootstrap_fixture_paths_match_regen_keys(dag: &Dag) {
+    let Some(paths) = dag.extdeps_bootstrap_fixture_virtual_paths() else {
+        panic!(
+            "bootstrap snapshot must include `extdeps_bootstrap_fixture_authority` with a \
+             structural body (regenerate via `regen_bootstrap` after editing \
+             `src/v3/std/extdeps_bootstrap_fixtures.dag`)"
+        );
+    };
+    if paths.len() != EXTDEPS_BOOTSTRAP_PATH_KEYS.len()
+        || paths
+            .iter()
+            .zip(EXTDEPS_BOOTSTRAP_PATH_KEYS.iter())
+            .any(|(a, b)| a != *b)
+    {
+        panic!(
+            "`EXTDEPS_BOOTSTRAP_PATH_KEYS` must match `extdeps_bootstrap_fixture_authority` \
+             virtual_path fields in order.\n  substrate: {paths:?}\n  regen keys: {EXTDEPS_BOOTSTRAP_PATH_KEYS:?}"
+        );
     }
 }
 
