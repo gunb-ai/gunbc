@@ -4047,14 +4047,7 @@ fn resolve_operator_arrow(
                 // name.
                 let field_name = crate::operators::algebra_field_name(op_kind);
                 if let Some(field) = children.iter().find(|f| f.label == field_name) {
-                    return read_algebra_field(
-                        dag,
-                        decl,
-                        field.ty,
-                        source_id,
-                        op_kind,
-                        &base_lhs,
-                    );
+                    return read_algebra_field(dag, decl, field.ty, source_id, op_kind, &base_lhs);
                 }
                 // Algebra doesn't declare this operator's field —
                 // fall back to the Rust-side scaffold bridge below.
