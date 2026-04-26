@@ -1082,14 +1082,11 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
         .filter(|decl| {
-            !decl
-                .name
-                .as_deref()
-                .is_some_and(|n| {
-                    n == "Result"
-                        && (decl.span.file.ends_with("errors.dag")
-                            || decl.span.file.ends_with("error_primitives.dag"))
-                })
+            !decl.name.as_deref().is_some_and(|n| {
+                n == "Result"
+                    && (decl.span.file.ends_with("errors.dag")
+                        || decl.span.file.ends_with("error_primitives.dag"))
+            })
         })
         .filter(|decl| {
             matches!(
