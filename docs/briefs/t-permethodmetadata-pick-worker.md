@@ -28,9 +28,9 @@
 
 ## Frame
 
-§6a was deferred at design-doc time pending E-P consumer wiring + E-I preflight evidence. Both have landed; the evidence to narrow options 0/1/2/3 is now available. This brief is the close-out PR: read the §6a options, read the consumer lenses, gather evidence on which carrier shape consumers naturally want, make the call, lock it.
+**Receipt (closed):** Option 3 chosen; rationale + live receipt in §6a at HEAD. Bulk lens migration is explicitly **out of scope** of the original pick PR — see `r2-release-6a-follow-through-worker.md`.
 
-The pick is **not** an extension of substrate capability — all four options are achievable with existing substrate. The call is purely **where** the metadata structurally lives + **which coupling story** is cleanest given E-family evidence.
+The pick is **not** an extension of substrate capability — all four options are achievable with existing substrate. The call was **where** the metadata structurally lives + **which coupling story** is cleanest given E-family evidence.
 
 ## Three consumer-side requirements
 
@@ -48,13 +48,12 @@ The pick is **not** an extension of substrate capability — all four options ar
 
 ## Acceptance
 
-- [ ] All 3 consumer-side requirements satisfied + documented in PR body.
-- [ ] §6a design doc updated; "(deferred)" language replaced with picked option + rationale.
-- [ ] If Option 1/2/3: minimal carrier lands; one consumer lens migrated to demonstrate.
-- [ ] If Option 0: rationale for keeping lens-local tables documented; no further changes.
-- [ ] No regression on existing consumers (cost.dag / complexity.dag).
-- [ ] `cargo test --workspace --exclude v2-compiler-tests` / `clippy --all-targets -- -D warnings` / `fmt --all --check` clean.
-- [ ] DB-8 fixed-point converges bit-identically.
+- [x] All 3 consumer-side requirements satisfied + documented in PR #794 body.
+- [x] §6a design doc updated; decision + live receipt + dissolution trigger at §6a HEAD.
+- [x] Option 3: minimal carrier lands; `cost.dag` demo consumer (`method_contract_cost_shape`).
+- [x] No regression on existing consumers (cost.dag / complexity.dag) per PR #794 gate.
+- [x] `cargo test --workspace --exclude v2-compiler-tests` / `clippy --all-targets -- -D warnings` / `fmt --all --check` clean (PR #794).
+- [x] DB-8 fixed-point converges bit-identically (PR #794).
 
 ## STOP-AND-ESCALATE
 
