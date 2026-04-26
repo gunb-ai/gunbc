@@ -1072,7 +1072,7 @@ data rust_list_instantiation: TypeInstantiationRealization = {
 }
 
 // `type Result<ok, err> = Ok { value: ok } | Err { value: err }` in
-// `dsl/std/errors.dag` is a type-checking authority; Rust materializes
+// `dsl/std/error_primitives.dag` / `dsl/std/errors.dag` is a type-checking authority; Rust materializes
 // it as the standard `::core::result::Result<…>` (see
 // `emit_rust_with_mode` which skips generic `Result` in type_defs).
 data rust_result_instantiation: TypeInstantiationRealization = {
