@@ -114,8 +114,8 @@ data suite: TestSuite = {
 fn test_runner_data_bodies_reject_requires_empty_call_today() {
     // Checklist item (2) in `docs/briefs/r1-testgen-manager.md` — `requires: []`
     // vs `requires: empty()`: in a `data` body, only the `[]` list literal lowers
-    // today. `empty()` trips the M1(2.8) class-5 gap ("data bodies cannot yet use
-    // record / list / map literals inside data bodies"), so the runner path on
+    // today. `empty()` trips the M1(2.8) class-5 gap (the data body cannot be
+    // structurally validated), so the runner path on
     // `src/v3/compiler/tests/dag/*.dag` **must** stay with `[]`. `empty()` remains
     // valid in `let` bindings (Brief D `.v3` fixtures under
     // `tests/fixtures/t_pb_b_brief_d/` use it), but those bindings are not

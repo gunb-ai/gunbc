@@ -271,8 +271,9 @@ pub struct PhantomParameter {
 #[derive(Debug, Clone)]
 pub enum ValueBody {
     /// The body exists in source at the given span but is not yet
-    /// lowered to a value sub-DAG. The body's shape (record / map /
-    /// list / variant literal) awaits M2+ parser extension.
+    /// lowered to a value sub-DAG. Map-shaped bodies still await the
+    /// sibling `kernel_algebra_profile` substrate lane; records and
+    /// lists lower structurally.
     Unparsed(SourceSpan),
     /// The body parsed as a record literal and was inhabitance-
     /// checked against the declared type. Each field holds a
@@ -298,6 +299,25 @@ pub enum ValueBody {
     /// scalar constants; previously the parser rejected non-
     /// `{`-shaped RHS, so scalar `data` declarations could not exist.
     Scalar(LiteralBits),
+    /// Top-level structural list value: `data xs: List<T> = [...]`.
+    ///
+    /// 4-pattern check for `List`:
+    /// - Pattern 1 (fact placement): fails. The ordered element sequence
+    ///   is the data declaration's value fact, not a property of the
+    ///   declaration's type edge or meta tag.
+    /// - Pattern 2 (variant-is-data): fails. `Vec<FieldValue>` is a
+    ///   distinct structural payload from source spans, record fields, and
+    ///   scalar bits.
+    /// - Pattern 3 (algebraic form): fails. List bodies are not points in
+    ///   the same algebra as records/scalars; they carry ordered
+    ///   homogeneous element facts needed by Engine/tokenizer consumers.
+    /// - Pattern 4 (dimensional): fails. No shared coordinate space with
+    ///   `Structural` record labels or `Scalar` primitive constants.
+    ///
+    /// Verdict: terminal at the current top-level data-body layer. Elements
+    /// deliberately reuse `FieldValue`, matching nested structural list
+    /// values and preserving sum-constructor identity for list-of-sum data.
+    List(Vec<FieldValue>),
 }
 
 /// Per-field value payload inside a `ValueBody::Structural`.
@@ -2870,18 +2890,11 @@ impl Dag {
     /// IntegerPrimitive | NonIntegerPrimitive {target_name, algebra,
     /// carrier, is_copy[, overflow]}`).
     ///
-    /// **Path 2 partial Req-1 satisfaction.** The returned declaration's
-    /// `value_body` is `ValueBody::Unparsed(SourceSpan)` — v3's
-    /// `ValueBody` enum does not yet carry a top-level list/aggregate
-    /// variant, so the 10-element pilot enumeration is not yet walkable
-    /// as structured records. Consumers that only need the type shape
-    /// (sum variants, variant fields, tag enums) can walk through
-    /// `connective` immediately; consumers that need to enumerate the
-    /// concrete pilot primitives must wait for R2 T-Substrate's 4th
-    /// sub-lane to land the top-level `ValueBody::List`/aggregate
-    /// extension (same substrate gap as `kernel_algebra_profile` at
-    /// `dag.rs:1530` and tokenizer `sub_charclass_in_std_unicode`
-    /// phase-2).
+    /// **Path 2 satisfaction.** The returned declaration's `value_body`
+    /// is `ValueBody::List(_)`, so both the sum type shape and the
+    /// 10-element pilot enumeration are structurally walkable. Map-shaped
+    /// bootstrap data remains future debt for the map-shaped T-Substrate
+    /// sibling lane; today it still lowers to `ValueBody::Unparsed`.
     ///
     /// Returns `None` only when bootstrap failed to load
     /// `rust/primitives.dag`, in which case a diagnostic is already on
