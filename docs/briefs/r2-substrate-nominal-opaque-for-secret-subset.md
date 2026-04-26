@@ -40,11 +40,11 @@
 
 ## Open design questions (worker / Substrate Manager resolves at dispatch)
 
-1. **Carrier shape.** Possible options:
-   - **Boolean flag on Declaration** (`is_nominal_opaque: Bool`) — simplest; the compiler reads it during structural-walk and refuses to descend.
-   - **New TypeConnective variant** — e.g., `Opaque(T)` — explicit at type-construction. More discipline-aligned per `feedback_state_space_vs_behavioral_invariants` (illegal access is unrepresentable, not flag-checked).
+1. **Carrier shape.** Worker-autonomous options (do NOT add a seventh `TypeConnective` variant — that's a C1 stop signal per THESIS substrate-shape lock; the 6 connectives `Atom | Conj | Disj | Arrow | Cardinality | Instantiation` are canonical and a 7th requires failed-dissolution evidence + Director substrate-design call, not autonomous worker pick):
+   - **Boolean flag on Declaration** (`is_nominal_opaque: Bool`) — the compiler reads it during structural-walk and refuses to descend.
    - **Sealed-accessor pattern** — declaration carries a list of permitted-accessor `DeclarationRef`s; structural walks for any other purpose fail.
-   Worker picks; surface choice + reasoning in PR.
+   - **`inhabits`-edge-shape carrier** — declarations participate in opacity by their algebra-attachment shape rather than a separate flag (audit-time check whether the existing `inhabits` machinery admits this without new substrate).
+   Worker picks among these; surface choice + reasoning in PR. **STOP-AND-ESCALATE if all three options fail dissolution checks** — that's the precondition for proposing a 7th connective via Director substrate-design call, NOT a worker autonomous path.
 
 2. **Generic-walk discipline.** When a structural lens walks a Dag containing `Secret<T>`, what happens at the opacity boundary? Options:
    - Hard stop (lens emits opacity diagnostic, refuses to descend).
