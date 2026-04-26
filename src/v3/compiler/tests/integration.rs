@@ -360,11 +360,21 @@ mod lane2_stage_2f_dimension_test {
         );
 
         let abelian_group = named_decl(&dag, "AbelianGroup");
-        let algebra = dimension.phantom_params[0].algebra;
-        if algebra != abelian_group {
-            let (algebra_template, algebra_args) = instantiation_parts(&dag, algebra);
-            assert_eq!(algebra_template, abelian_group);
-            assert_eq!(algebra_args, vec![dimension.type_params[0]]);
+        let (algebra_template, algebra_args) =
+            instantiation_parts(&dag, dimension.phantom_params[0].algebra);
+        assert_eq!(algebra_template, abelian_group);
+        assert_eq!(algebra_args, vec![dimension.type_params[0]]);
+
+        for unit in [
+            "Meters",
+            "Seconds",
+            "Kilograms",
+            "Amperes",
+            "Kelvin",
+            "Moles",
+            "Candela",
+        ] {
+            named_decl(&dag, unit);
         }
     }
 
