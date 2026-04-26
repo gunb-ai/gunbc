@@ -62,13 +62,18 @@
 
 ## Slice (worker fills at dispatch)
 
+**Same-PR consumer proof required** per `INVARIANTS.md` P2 boundary discipline (no landed boundary without a real consumer). Two acceptable shapes — worker picks; surface choice:
+
+- **Shape A (preferred): bundle with the T-Modeling `Secret<T>` consumer.** This brief and `r2-modeling-secret-graduation-worker.md` land in the same PR; substrate carrier + `Secret<T>` declaration + gated accessors + opacity diagnostic all together. Eliminates the producer-without-consumer window.
+- **Shape B (fallback): bundle with a minimal structural-walk consumer proof.** If T-Modeling consumer is too large to land same-PR, this PR includes a minimal lens / structural-walk consumer that **reads the carrier and fails closed** when an opaque type is structurally walked outside gated accessors. The minimal consumer is the boundary proof; T-Modeling `Secret<T>` consumes the same carrier in a follow-up.
+
 1. **Audit existing nominal-opaque substrate** (per audit section).
 2. **Land minimal substrate carrier** in `src/v3/std/` per design choice.
 3. **Lower the carrier** — declarations marked nominal-opaque get the substrate fact attached at lowering / parsing.
 4. **Coproduct dissolution receipt** for any new TypeConnective variant.
 5. **Document generic-walk discipline** in INVARIANTS.md or feedback memory — what does opacity mean for lens consumers?
-6. **No consumer migration in this PR** — that's T-Modeling Secret<T>'s job.
-7. **Cross-program signal:** on merge, signal Modeling Manager that Secret<T> is dispatchable.
+6. **Same-PR consumer proof** per Shape A or B above. Surface the choice in PR body.
+7. **Cross-program signal:** on merge, signal Modeling Manager that Secret<T> is dispatchable (Shape A: jointly authored; Shape B: follow-up consumer).
 
 ## Acceptance
 
@@ -77,6 +82,7 @@
 - [ ] Coproduct dissolution receipt for any new variant.
 - [ ] Generic-walk discipline documented (INVARIANTS.md or feedback memory).
 - [ ] Accessor-gating mechanism documented in PR body.
+- [ ] **Same-PR consumer proof** lands per Shape A (`Secret<T>` consumer bundled) or Shape B (minimal structural-walk consumer with fail-closed opacity check). Choice surfaced in PR body.
 - [ ] DB-8 fixed-point converges bit-identically.
 - [ ] Cross-program readiness signal posted to Modeling Manager.
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` / `cargo clippy --all-targets -- -D warnings` / `cargo fmt --all --check` clean.

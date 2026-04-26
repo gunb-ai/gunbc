@@ -28,7 +28,7 @@
 
 ## Frame
 
-Per design doc §4: the bug class closes by **removing the partial form**. For `/`, this means changing `OrderedRing.div`'s return type from `T` to `Result<T, DivideByZero>` (or `Option<T>` — worker picks; surface choice + reasoning in PR). All per-target realizations migrate to construct the new return shape idiomatically.
+Per design doc §4: the bug class closes by **removing the partial form**. For `/`, this means changing `OrderedRing.div`'s return type from `T` to a typed-split `Result<T, DivError>` carrier where `DivError = DivideByZero | Overflow` preserves the two distinct failure modes (per Slice §2 below). All per-target realizations migrate to construct the typed-split return shape idiomatically.
 
 **Why not pair total + partial?** Coexistence is the **theatre trap** the design doc warns against. Adding `divide_safe` as a separate function alongside an unchanged `div: fn(T,T) -> T` leaves the partial form reachable; closure requires removal.
 
@@ -63,7 +63,7 @@ Per design doc §4: the bug class closes by **removing the partial form**. For `
 
 - [ ] Audit table in PR body enumerating all partial forms reachable from user code.
 - [ ] For `Int / Int`: algebra retype to total return; 3 per-target realizations migrated; test pin updated.
-- [ ] Decision (Result vs Option vs NonZero-input) recorded with reasoning.
+- [ ] Typed-split error carrier shape (e.g., `DivError = DivideByZero | Overflow`) recorded with placement (declaration location) and per-target realization rationale. NonZero-typed-input was a STOP, not a worker autonomous path.
 - [ ] Fallback path (`infer.rs:4003-4015`) audited; any open paths closed or queued.
 - [ ] Regression tests cover positive (`/` returns total) + spoofing + existing-program migration.
 - [ ] DB-8 fixed-point bit-identical.
