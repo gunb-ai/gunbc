@@ -15,14 +15,6 @@ use crate::common::cached_compile_to_dag;
 use v3_compiler::types::TypeShape;
 use v3_compiler::{CompileError, Diagnostic};
 
-fn compile_any(src: &str, file: &str) -> Dag {
-    match compile_to_dag(src, file) {
-        Ok(dag) => dag,
-        Err(CompileError::Semantic(dag)) => dag,
-        Err(other) => panic!("unexpected structural error: {other:?}"),
-    }
-}
-
 // Tests are allowed to name declarations directly so the expected
 // shapes remain legible. This is test-only infrastructure, not a
 // precedent for emitter dispatch, which is separately gated against
