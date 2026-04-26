@@ -19,10 +19,10 @@
 
 | Lane | Size | Status (at brief authoring) | Description |
 |---|---|---|---|
-| Tier 3 mirror dissolutions: termination | M | NOT YET AUTHORED | `DescentEvidence`, `PositiveDescentAmount`, `ProportionalDivisor`, `ShrinkFactor`, `evidence_rank`, `merge_evidence` Rust mirror at `dag.rs:628-790` dissolves as v3 lowers + evaluates `.dag` runtime values. Tier 3 #10 from #810. |
-| Tier 3 mirror dissolutions: computation | M | NOT YET AUTHORED | `SizeBound`, `RecursionShape`-related Rust mirror at `dag.rs:839-915` dissolves with same substrate dependency. |
-| Tier 3 mirror dissolutions: induction | M | NOT YET AUTHORED | `RecursionShape`, `InductiveField`, `SubValueRelation` Rust mirror at `dag.rs:916-980` dissolves with same substrate dependency. |
-| Tier 3 mirror dissolutions: effect-carrier | S | NOT YET AUTHORED | `src/v3/compiler/src/dag/effects.rs` (216 LOC) + `compose_operation_effects` in `workflow_idempotency.rs` (105 LOC). Mechanical PB dissolution once self-hosting reaches it. Tier 3 #12 from #810. |
+| Tier 3 mirror dissolutions: termination | M | AUTHORED in `r2-pb-tier3-mirror-dissolution-workers.md` | `DescentEvidence`, `PositiveDescentAmount`, `ProportionalDivisor`, `ShrinkFactor`, `evidence_rank`, `merge_evidence` Rust mirror at `dag.rs:628-790` dissolves as v3 lowers + evaluates `.dag` runtime values. Tier 3 #10 from #810. |
+| Tier 3 mirror dissolutions: computation | M | AUTHORED in `r2-pb-tier3-mirror-dissolution-workers.md` | `SizeBound`, `RecursionShape`-related Rust mirror at `dag.rs:839-915` dissolves with same substrate dependency. |
+| Tier 3 mirror dissolutions: induction | M | AUTHORED in `r2-pb-tier3-mirror-dissolution-workers.md` | `RecursionShape`, `InductiveField`, `SubValueRelation` Rust mirror at `dag.rs:916-980` dissolves with same substrate dependency. |
+| Tier 3 mirror dissolutions: effect-carrier | S | AUTHORED in `r2-pb-tier3-mirror-dissolution-workers.md` | `src/v3/compiler/src/dag/effects.rs` (216 LOC) + `compose_operation_effects` in `workflow_idempotency.rs` (105 LOC). Mechanical PB dissolution once self-hosting reaches it. Tier 3 #12 from #810. |
 | `kernel_algebra_profile` mirror dissolution | M | GATED (waiting on Substrate Manager `ValueBody::Map` carrier; future T-Substrate sub-lane) | Map-shaped (not list/sum); requires `ValueBody::Map` substrate work. Substrate Manager future sub-lane. |
 | Tier 2 `patch_lower_helpers_*` retirement | S | NOT YET AUTHORED (queued for PB-Tier1 priority hint per #810 §5) | If survives R1, PB Manager retires `patch_lower_helpers_generated_type_alias_refinement` once generated `lower_helpers` can emit refinement field natively. |
 | Post-R1 emergent dissolutions | varies | NOT YET MATERIALIZED | Catch-all for new PB work that surfaces post-R1 (new mirror dissolutions discovered during R2; new Rust scaffolds inadvertently introduced and needing dissolution). |
@@ -58,9 +58,10 @@
 
 Authored:
 - Pre-R1 PB program briefs (in `pure-bootstrap-zero-manager.md`, archives on R2 promotion); content migration here covers post-R1 deliverables only.
+- Tier 3 mirror dissolution worker pack (termination, computation, induction,
+  effect-carrier): `r2-pb-tier3-mirror-dissolution-workers.md`.
 
 Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
-- Tier 3 mirror dissolution worker briefs (4: termination, computation, induction, effect-carrier)
 - `kernel_algebra_profile` worker brief (gated on Substrate Manager `ValueBody::Map`)
 - Tier 2 `patch_lower_helpers_*` retirement worker brief (if survives R1)
 

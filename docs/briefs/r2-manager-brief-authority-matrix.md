@@ -148,7 +148,7 @@ Each deliverable owned by an R2 manager belongs to exactly one of categories 1-5
 | Deliverable | Category | Notes |
 |---|---|---|
 | The manager brief itself | 5 (placeholder) | Graduates on R2 spawn |
-| Tier 3 mirror dissolutions (termination/computation/induction/effect-carrier) | 1 (worker brief; 4+ sub-briefs) | Pending; mirror-by-mirror |
+| Tier 3 mirror dissolutions (termination/computation/induction/effect-carrier) | 1 (worker brief; 4-sub-brief pack) | Authored in `r2-pb-tier3-mirror-dissolution-workers.md`; mirror-by-mirror |
 | Tier 2 patch_lower_helpers_* retirement | 1 (worker brief) | Pending; if survives R1; B7 priority hint received |
 | `kernel_algebra_profile` mirror dissolution | 1 (worker brief) | Pending; gated on `ValueBody::Map` substrate |
 | Post-R1 emergent dissolutions | 1 (worker brief; ad-hoc) | Pending; emerge during R2 |
