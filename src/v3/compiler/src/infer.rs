@@ -1975,15 +1975,6 @@ fn resolve_arrow_decl_walk(
     }
 }
 
-fn literal_decl_id(dag: &Dag, literal: &LiteralBits) -> Option<DeclarationId> {
-    let name = match literal {
-        LiteralBits::Int(_) => "Int",
-        LiteralBits::Bool(_) => "Bool",
-        LiteralBits::String(_) => "String",
-    };
-    dag.declaration_by_name(name).map(|decl| decl.id)
-}
-
 fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
     let resolved_decl = match dag.port(port).state() {
         PortState::Resolved(ty) => ty.declaration,
@@ -1996,8 +1987,14 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
         });
     };
     match dag.node(produced_by) {
-        Behavior::Value(v) => Some(PortTypeContext {
-            decl: literal_decl_id(dag, &v.data)?,
+        // Use the port's resolved declaration, not the literal's default
+        // substrate type (`Int` for all int literals). After range narrowing the
+        // literal port may already be `UInt8` / etc.; `literal_decl_id`-style
+        // `Int` here makes `resolve_callable_target` think the argument is still
+        // the default `Int`, producing spurious implicit-template conflicts against
+        // a `UInt8` parameter (e.g. `id_u8(7)`).
+        Behavior::Value(_) => Some(PortTypeContext {
+            decl: resolved_decl,
             subst: SubstStack::new(),
         }),
         Behavior::Transform(t) => match &t.target {
