@@ -28,16 +28,20 @@
 // so the compiler's own pipeline authority lives in the bootstrap Dag with
 // the intended stage-body shape.
 //
-// `EXTDEPS_BOOTSTRAP_FIXTURES` is a narrow, bounded extension of that
-// boundary: only extdeps authorities whose content is pure structural
-// **data** (target-primitive declarations consumed symbolically by the
+// **B4.4 extdeps-bootstrap fixture set.** The structural carrier
+// `extdeps_bootstrap_fixture_authority` in
+// `src/v3/std/extdeps_bootstrap_fixtures.dag` is the substrate authority for
+// *which* extdeps files participate. The PB-1-e regen host filters
+// `build.rs`-emitted `EXTDEPS_FILES` through [`EXTDEPS_BOOTSTRAP_PATH_KEYS`]
+// (must stay in lockstep with that declaration's `virtual_path` fields).
+// Only extdeps authorities whose content is pure structural **data**
+// (target-primitive declarations consumed symbolically by the
 // target-grounding engine as `Declaration`-shaped values; see
 // `dsl/extdeps/languages/rust/primitives.dag`) are loaded. Arrow/realization
 // files (`rust/emit.dag`, `rust/types.dag`, etc.) are deliberately excluded
 // — their bodies stay per-target emitter-side, not in the bootstrap Dag.
-// Coverage is currently `rust/primitives.dag` only (T-Ground-Engine pilot
-// unblock, Director-dispatched); expansion to python/go primitives is a
-// file-system extension once those targets reach the same pilot stage.
+// Expansion adds a field to the carrier + a key in `EXTDEPS_BOOTSTRAP_PATH_KEYS`
+// once python/go primitives reach the same pilot stage.
 //
 // **Type-structure-only load (Path 2 scoping).** The top-level
 // `rust_pilot_primitives: List<RustPrimitive> = [...]` data declaration
@@ -80,6 +84,13 @@ use crate::pipeline_authority::{ordered_pipeline_stages, PIPELINE_AUTHORITY_FILE
 // `bootstrap-regen-fresh` is off, that path is cfg-dead in non-test lib builds.
 #[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
 const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
+
+/// Virtual paths selecting extdeps `.dag` sources for PB-1-e bootstrap regen.
+///
+/// **Lockstep:** each entry must match a `virtual_path` on
+/// `extdeps_bootstrap_fixture_authority` in `src/v3/std/extdeps_bootstrap_fixtures.dag`.
+/// `Dag::extdeps_bootstrap_fixture_virtual_paths` + integration tests enforce parity.
+pub const EXTDEPS_BOOTSTRAP_PATH_KEYS: &[&str] = &["dsl/extdeps/languages/rust/primitives.dag"];
 
 /// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).
 ///

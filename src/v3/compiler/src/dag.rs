@@ -2823,8 +2823,9 @@ impl Dag {
     }
 
     /// Typed accessor for the `rust_pilot_primitives` data declaration
-    /// from `dsl/extdeps/languages/rust/primitives.dag` (loaded via
-    /// `EXTDEPS_BOOTSTRAP_FIXTURES` in `bootstrap.rs`). Returns the
+    /// from `dsl/extdeps/languages/rust/primitives.dag` (path authorized by
+    /// B4.4 `extdeps_bootstrap_fixture_authority` and the regen host's
+    /// `EXTDEPS_BOOTSTRAP_PATH_KEYS` filter over `EXTDEPS_FILES`). Returns the
     /// top-level `List<RustPrimitive>` declaration whose *type* the
     /// target-grounding engine walks structurally (`RustPrimitive =
     /// IntegerPrimitive | NonIntegerPrimitive {target_name, algebra,
@@ -2848,6 +2849,26 @@ impl Dag {
     /// `Dag.diagnostics`.
     pub fn rust_pilot_primitives(&self) -> Option<&Declaration> {
         self.declaration_by_name("rust_pilot_primitives")
+    }
+
+    /// Virtual paths from the B4.4 extdeps-bootstrap fixture carrier
+    /// (`extdeps_bootstrap_fixture_authority` in
+    /// `src/v3/std/extdeps_bootstrap_fixtures.dag`), in the order fields
+    /// appear on the lowered `ValueBody::Structural` body.
+    ///
+    /// Used to keep the regen host's `EXTDEPS_BOOTSTRAP_PATH_KEYS` filter
+    /// aligned with the substrate declaration (integration parity test).
+    pub fn extdeps_bootstrap_fixture_virtual_paths(&self) -> Option<Vec<String>> {
+        let decl = self.declaration_by_name("extdeps_bootstrap_fixture_authority")?;
+        let body = decl.value_body.as_ref()?;
+        let ValueBody::Structural { fields } = body else {
+            return None;
+        };
+        let mut out = Vec::with_capacity(fields.len());
+        for (_slot, fv) in fields {
+            out.push(extdeps_fixture_entry_virtual_path(fv)?);
+        }
+        (!out.is_empty()).then_some(out)
     }
 
     /// DB-10 (3a.2): read the compile-time value body attached to a
@@ -3372,6 +3393,17 @@ impl Dag {
 impl Default for Dag {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn extdeps_fixture_entry_virtual_path(fv: &FieldValue) -> Option<String> {
+    let FieldValue::Record(fields) = fv else {
+        return None;
+    };
+    let (_, vp) = fields.iter().find(|(l, _)| l == "virtual_path")?;
+    match vp {
+        FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
+        _ => None,
     }
 }
 
