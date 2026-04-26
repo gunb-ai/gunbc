@@ -2,6 +2,30 @@
 //
 // Canonical operation behavior schema ported from the-gunbai Understanding
 // model and used by Lane 4 extdeps + interface contracts.
+//
+// 🟡 NOT THE CLOSED-SYSTEM EFFECT AUTHORITY. This module declares
+// **extdeps / interface contract metadata** authored alongside extdeps
+// service operations. Per the R2 Substrate-inbox escalation #856
+// (forwarded from Impossible-Bugs #857) and design doc #808, the
+// closed-system effect authority is the type-signature-shape lens
+// over the 5 substrate behaviors — `side_effects: SideEffects` and
+// the `SideEffects = ReadOnly | WritesState | WritesExternal`
+// taxonomy below are **declared** (parallel-representation) facts,
+// not derived structural facts, and reviewers/consumers must NOT
+// read them as effect-proof.
+//
+// **No extension.** Per the dispatch (substrate-inbox #856 reply) and
+// T-Modeling discipline, this taxonomy must not grow to cover P1
+// bypasses — non-derivable primitives surface as structural-coverage-gap
+// diagnostics from the future signature-shape lens, not as new
+// variants here.
+//
+// **Dissolution trigger.** When the signature-shape effects lens lands
+// (#808 Slice §1 at `src/v3/lenses/effect_enumeration.dag`) and
+// extdeps primitives are reshaped onto resource-threading discipline
+// (returned-modified-resource), `side_effects` retires together with
+// the declared `idempotent` / `readonly` modifiers
+// `src/v3/std/effects.dag::check_modifier_vs_derivation` cross-checks.
 
 module std.behavioral
 

@@ -3,6 +3,18 @@
 // Status: STRUCTURALLY TERMINAL; BEHAVIORALLY COMPLETE.
 // See docs/v3-lens-capability-register.md.
 //
+// 🟡 NORMALIZED-VIEW CONSUMER (post-#808 / #856 escalation). This lens
+// consumes `WorkflowEffect` / `OperationEffect` from `std.effects`,
+// which is a method+path **normalized compatibility view**, not the
+// closed-system effects authority. Re-anchor onto the signature-shape
+// effects lens (#808 Slice §1, `src/v3/lenses/effect_enumeration.dag`)
+// is its own dedicated worker scope — see
+// `docs/briefs/r2-impossible-bugs-unenumerated-effects-worker.md`
+// (worker brief STOP path (ii)) and substrate-inbox #856.
+// Dissolution trigger: signature-shape effects lens lands and the
+// idempotency dispatch reads its structural fact instead of (or in
+// addition to) `lane2_workflow_at`.
+//
 // Reads `lane2_workflow` through the substrate accessor `lane2_workflow_at`
 // (reflected on `ValueNode` / `BindNode` in `v3.std.substrate`) and dispatches
 // to `std.effects::lane2_workflow_idempotency_report`, whose `match` on
