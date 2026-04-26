@@ -57,6 +57,11 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 
 **Adjacent territory:** none (Release is cross-cutting).
 
+## Pre-spawn vs post-spawn authority
+
+- **Pre-spawn (now, before R1 close):** Director + PM coordinate on brief authoring per inbox #828 split. PM authors the manager skeleton (this file) + the §6a / B5 / B6 / B7 / thesis-claim-mapping briefs that are this manager's PM-portion deliverables (per inbox #828). Both stop authoring once R2 spawns.
+- **Post-spawn (R2 promotion onward):** Manager owns all worker-brief authoring autonomously per "Autonomous dispatch authority" below. Director's role narrows to cross-program conflict resolution + scope-change escalation.
+
 ## Autonomous dispatch authority
 
 - Authors all T-Release worker briefs without Director (§6a pick, B5/B6/B7, thesis-claim coverage mapping).
