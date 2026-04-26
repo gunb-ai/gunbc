@@ -1,41 +1,5 @@
 // std.effects — effect algebra for operation composition.
 //
-// 🟡 NORMALIZED COMPATIBILITY VIEW (post-#808 closed-system framing).
-// This whole module is a method/path-anchored normalized view over
-// HTTP-shaped service operations. It is **not** the closed-system
-// effects authority. Per
-// `docs/briefs/t-impossiblebugs-unenumerated-effects-design.md` (#808)
-// Q1-Q3 + Q5.5 and the R2 Substrate-inbox escalation #856 (forwarded
-// from R2 Impossible-Bugs #857), the closed-system effect lens is a
-// compositional fold over the 5 substrate behaviors anchored on
-// **type-signature shape** (returned-modified-resource → write-shaped;
-// returns-derived-value-only → read-shaped). That lens does not exist
-// yet; `dsl/extdeps/llm/openai.dag:92-110`,
-// `dsl/extdeps/llm/anthropic.dag:104-124`, and
-// `dsl/extdeps/github/auth.dag:13-24` are the live receipts that full
-// signature-shape coverage is not true today (path (ii) per the worker
-// brief STOP at `docs/briefs/r2-impossible-bugs-unenumerated-effects-worker.md`).
-//
-// **Authority discipline.** Until the signature-shape lens lands, the
-// idempotency / parallelism / workflow consumers below
-// (`compose_effects`, `lane2_workflow_idempotency_report`,
-// `analyze_parallelism`) consume `OperationEffect` / `WorkflowEffect`
-// as a *normalized projection* of method+path facts, not as a parallel
-// authoring authority. **No new variants. No hand-authored taxonomy
-// extensions.** Coverage gaps (extdeps JSON-bypass, non-REST
-// primitives) are the existence-proof for the lens; they must surface
-// as structural-coverage-gap diagnostics from the future lens, not be
-// papered over by extending this enum set.
-//
-// **Dissolution trigger.** When the signature-shape effects lens lands
-// at `src/v3/lenses/effect_enumeration.dag` (per #808 Slice §1) and
-// idempotency / workflow / parallelism consumers re-anchor onto its
-// structural fact, this module collapses to whatever normalized view
-// (if any) the consumers still need from method+path transport — and
-// the modifier-falsification path (`check_modifier_vs_derivation`)
-// retires together with the declared `idempotent` / `readonly`
-// modifiers it cross-checks.
-//
 // **Status: bootstrap-staged std file.** The declarations in this
 // file are loaded by `Dag::new()` from `src/v3/std/`. The function
 // signatures are authoritative and available to downstream code
@@ -297,20 +261,11 @@ fn last_path_param(template: PathTemplate) -> String? {
 
 // ── Effect shapes ───────────────────────────────────────────────
 //
-// 🟡 NORMALIZED VIEW (not closed-system authority). At the staged
-// effect-algebra scope these variants are the irreducible classes the
-// HTTP method+path normalization derives — read, keyed overwrite,
-// keyed delete, create, append. Per the module-banner discipline, this
-// is **not** the lens domain for closed-system effects: the future
-// signature-shape lens may project through this view OR render it
-// obsolete entirely. Do **not** extend the variant set to "cover"
-// non-REST or JSON-bypass primitives (extdeps openai/anthropic/github
-// auth) — those gaps are the existence-proof for the signature-shape
-// lens (#808 path (ii)) and must surface as structural-coverage-gap
-// diagnostics from that lens, not as new variants here.
-//
-// Dissolution trigger: signature-shape effect lens lands and consumers
-// re-anchor (see module banner).
+// 🟢 TERMINAL at the staged effect-algebra scope. These variants are
+// the irreducible operation-effect classes later lanes compose:
+// read, keyed overwrite, keyed delete, create, append. Richer
+// transport facts refine *which* variant a given operation derives,
+// not the variant set itself.
 //
 // The fundamental classification of an operation's effect. Each
 // shape corresponds to an algebraic structure on the state space:
@@ -462,15 +417,7 @@ fn derive_idempotency_evidence(shape: EffectShape) -> IdempotencyEvidence {
 //   meet_a ∘ append_b applied twice ≠ applied once
 //   (the append duplicates on the second application)
 
-// 🟡 NORMALIZED VIEW carrier. Per-operation entry in a workflow as
-// projected from method+path transport. **Not** an authoring surface
-// for closed-system effect proof — see module banner. Consumers
-// (`compose_effects`, `lane2_workflow_idempotency_report`,
-// `analyze_parallelism`, native Rust mirrors in
-// `workflow_idempotency.rs` / `workflow_parallelism.rs`) read this as
-// a normalized projection pending the signature-shape lens (#808).
-// Dissolution trigger: signature-shape effect lens lands; consumers
-// re-anchor onto its structural fact.
+// Per-operation effect entry in a workflow.
 type OperationEffect {
   operation_name: String
   shape: EffectShape
@@ -699,18 +646,7 @@ fn lane2_workflow_idempotency_report(wf: WorkflowEffect) -> WorkflowIdempotencyR
 // Rust authority `v3_compiler::analyze_parallelism` (emit can now lower `match`
 // on `WorkflowEffect` in lens modules; port the walk here when ready).
 
-// ── Effect derivation from transport facts (normalized view) ────
-//
-// 🟡 NORMALIZED VIEW. `derive_op_effect` / `derive_effect_shape` are
-// the method+path normalization, NOT the closed-system effect lens.
-// Path (ii) receipt: extdeps with `messages: Json` JSON-path bypass
-// (`dsl/extdeps/llm/openai.dag:92-110`,
-// `dsl/extdeps/llm/anthropic.dag:104-124`) and modeled-fact-discarding
-// returns (`dsl/extdeps/github/auth.dag:13-24`) cannot be derived from
-// method+path alone — they are the existence-proof that this view
-// does not give signature-shape coverage today. Future signature-shape
-// lens (#808 Slice §1) may consume this view or supersede it; do not
-// extend the variant set to absorb non-REST primitives.
+// ── Effect derivation from transport facts ──────────────────────
 //
 // The compiler derives `EffectShape` from facts it already has on
 // the service operation:

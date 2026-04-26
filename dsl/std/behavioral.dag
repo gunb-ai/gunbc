@@ -2,48 +2,6 @@
 //
 // Canonical operation behavior schema ported from the-gunbai Understanding
 // model and used by Lane 4 extdeps + interface contracts.
-//
-// 🟡 DECLARED PARALLEL TAXONOMY — RETAINED ONLY TEMPORARILY. The
-// authority rule (T-Modeling reply on substrate-inbox #856; design
-// doc #808 Q1-Q3): taxonomy *naming* is not the issue, **authority
-// is**. A named effect taxonomy is acceptable only as a mechanically
-// derived normalized view over structural signature facts. If a
-// primitive must *declare* the tag because signature shape cannot
-// derive it, that tag is **parallel authority** and must retire — or
-// become a structural-coverage-gap diagnostic — once the
-// signature-shape lens lands.
-//
-// `side_effects: SideEffects` and the
-// `SideEffects = ReadOnly | WritesState | WritesExternal` taxonomy
-// below fail that rule today: they are **hand-declared**, NOT derived
-// from signature shape, with no current downstream consumer reading
-// them as a derived projection. They are therefore declared parallel
-// authority. They are retained here ONLY temporarily — as
-// extdeps/interface contract metadata authored alongside service
-// operations — pending the signature-shape effects lens (#808 Slice
-// §1). Reviewers/consumers must NOT read this taxonomy as
-// effect-proof under any circumstance.
-//
-// **No extension.** Per the dispatch (substrate-inbox #856 reply) and
-// T-Modeling discipline, this taxonomy must not grow to cover P1
-// bypasses — non-derivable primitives surface as structural-coverage-gap
-// diagnostics from the future signature-shape lens, not as new
-// variants here.
-//
-// **Dissolution trigger (cross-surface).** When the signature-shape
-// effects lens lands (#808 Slice §1 at
-// `src/v3/lenses/effect_enumeration.dag`) and extdeps primitives are
-// reshaped onto resource-threading discipline
-// (returned-modified-resource), `side_effects` retires. This is a
-// **cross-surface** retirement, not a local-schema retirement: the
-// `idempotent` / `readonly` modifiers it pairs with are NOT declared
-// in this file — they live in extdeps service operations and are
-// cross-checked by
-// `src/v3/std/effects.dag::check_modifier_vs_derivation` against the
-// method+path normalization. All three (this `side_effects` taxonomy,
-// the extdeps modifier declarations, the cross-check) retire together
-// when the lens lands; no fact stored locally in `behavioral.dag`
-// retires by itself.
 
 module std.behavioral
 
