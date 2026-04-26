@@ -1,78 +1,101 @@
-# T-ImpossibleBugs — Unhandled diagnostic paths implementation worker brief `(M; consumer of Tier 2 substrate)`
+# T-ImpossibleBugs — Unhandled diagnostic paths via totality-by-omission `(M; per design doc Director-recommendation)`
 
 > **Worker brief.** Reports through Impossible-Bugs Manager (post-R2
 > spin-up) / Director (pre-spin-up). T-ImpossibleBugs Goal 4 class 2
 > of 3.
 >
-> **Gated on:** Tier 2 substrate (post-R1 deeper-substrate work; per
-> THESIS.md gate). Coordinate with Substrate Manager — Tier 2 substrate
-> is **not** in any of the four Wave 2 sub-lanes; this gate is
-> distinct from the int-lit / Secret / Dimensions producer set.
-> **Do not dispatch until Tier 2 substrate gate clears.**
+> **Path: totality-by-omission per partial-op class** — the
+> Director-actionable recommendation in
+> [`docs/briefs/t-impossiblebugs-unhandled-diagnostic-paths-design.md`](t-impossiblebugs-unhandled-diagnostic-paths-design.md)
+> §4. NOT predicate-entailment substrate (that's M+, reopens DB-11
+> explicitly-closed design). The work is per-class algebra retype +
+> per-target realization migration, not new substrate.
 
 ## Read first
 
-- **[`docs/briefs/t-impossiblebugs-unhandled-diagnostic-paths-design.md`](t-impossiblebugs-unhandled-diagnostic-paths-design.md)** — design/scoping brief (post-`sunny-deer-629` STOP-AND-ESCALATE redirect). Read in full.
-- **[`THESIS.md` §"Tier 2 — Runtime safety" + lines 348-350](../../THESIS.md)** — class definition + Tier 2 gate.
-- **[`src/v3/compiler/src/infer.rs:3688-3767`](../../src/v3/compiler/src/infer.rs)** — `resolve_operator_arrow`; **DB-11 refinement-strip at `:3693-3703`** is the design-conflict anchor. Refinements are deliberately stripped at operator dispatch.
-- **[`docs/db-history/db-11.md`](../db-history/db-11.md)** + **[`docs/design-m2-feature-parity.md`](../design-m2-feature-parity.md)** — DB-11 structural identity vs predicate entailment distinction.
+- **[`docs/briefs/t-impossiblebugs-unhandled-diagnostic-paths-design.md`](t-impossiblebugs-unhandled-diagnostic-paths-design.md)** — design doc; **read §4 Director-actionable recommendation in full** before slicing. Key facts:
+  - gunbc already uses totality-by-omission for `force_unwrap` — convention precedent.
+  - Predicate-entailment (the "section 2" substrate path) is M+ scope and reopens DB-11's explicitly-closed asymmetric-strip design. **Not the recommended path.**
+  - For `/` specifically: closure cost has dropped since original framing — `OrderedRing.div: fn(T, T) -> T` at `dsl/std/algebra.dag:182` is consumed via algebra-Conj dispatch (`infer.rs:3975-3977`); closure is **algebra retype + per-target realization migration**.
+- **[`THESIS.md` lines 175, 348-350, 391](../../THESIS.md)** — class definition + the "made total" branch the design doc closes against.
+- **[`dsl/std/algebra.dag:182`](../../dsl/std/algebra.dag)** — `OrderedRing.div: fn(T, T) -> T` (the line to retype to total form).
+- **[`src/v3/compiler/src/infer.rs:3975-3977`](../../src/v3/compiler/src/infer.rs)** — algebra-Conj dispatch site for `Int / Int`.
+- **[`src/v3/spec/rust.dag:816`](../../src/v3/spec/rust.dag)** — `rust_int_div` realization (renders bare `{lhs} / {rhs}`).
+- **[`src/v3/spec/go.dag:742`](../../src/v3/spec/go.dag)** — `go_int_div` realization (same shape).
+- **[`src/v3/spec/python.dag:486`](../../src/v3/spec/python.dag)** — `python_int_div` realization (renders via `__v3_idiv` helper at `python_target.rs:680`; pinned by `m1_4_emit_python_test.rs:108-109`).
+- **[`dsl/std/algebra.dag:477-478`](../../dsl/std/algebra.dag)** — `OrderedRing.quotient` / `OrderedRing.remainder` (separate per-class sub-lane candidates per design doc audit).
+- **`feedback_totality_by_omission`** — discipline anchor: partial-op classes close by removing the partial form; coexistence-with-paired-total is the trap.
 
 ## Frame
 
-Tier 2 runtime-safety proofs make division-by-zero, OOB, and force-unwrap either proven safe at compile time or made total — never partial at runtime. Per THESIS Tier 2 framing.
+Per design doc §4: the bug class closes by **removing the partial form**. For `/`, this means changing `OrderedRing.div`'s return type from `T` to `Result<T, DivideByZero>` (or `Option<T>` — worker picks; surface choice + reasoning in PR). All per-target realizations migrate to construct the new return shape idiomatically.
 
-The design brief surfaced the substrate conflict: DB-11 deliberately strips refinements at operator dispatch (the brief's original framing of "attach `where b != 0` as proof for `a / b`" directly contradicts that design). Predicate entailment (does user's `b != 0` entail operator's `denominator != 0`?) is **not in v3 substrate today**.
+**Why not pair total + partial?** Coexistence is the **theatre trap** the design doc warns against. Adding `divide_safe` as a separate function alongside an unchanged `div: fn(T,T) -> T` leaves the partial form reachable; closure requires removal.
 
-Per design brief: the resolution is one of (a) build predicate-entailment substrate (Tier 2 deeper substrate work — out of scope for this brief), (b) make partial operations total via design (force-unwrap dissolved per `feedback_totality_by_omission`), or (c) park until Tier 2 substrate lands.
+**Why not predicate-entailment substrate?** Per design doc: M+ scope, reopens DB-11's asymmetric-strip design. Discarded.
 
-This implementation brief assumes (a) — Tier 2 predicate-entailment substrate has landed. If (b) or (c) is the path, this brief reframes accordingly.
+**Why not park?** The closure is now small (algebra retype + 3 realizations) and satisfies `feedback_totality_by_omission` directly.
 
-## Slice (assume Tier 2 substrate landed)
+## Slice (per design doc §4 follow-on brief shape)
 
-1. **Confirm Tier 2 substrate readiness.** Predicate entailment infrastructure available; operator dispatch consumes it.
-2. **Migrate operator dispatch consumers** — division, indexing, force-unwrap call sites — to consume predicate entailment instead of raw operand types.
-3. **Diagnostic for unproven safety.** When entailment fails (user calls `a / b` without proving `b != 0`), emit typed diagnostic at compile time. Per C-8.
-4. **Make legitimate partial paths explicit.** Operations that genuinely admit partial-failure receive an explicit primitive (`checked_div`, `try_index`) returning a sum type — per `feedback_totality_by_omission`.
-5. **Regression tests:**
-   - `a / b` with `b != 0` proven entails compiles cleanly.
-   - `a / b` without proof produces typed diagnostic.
-   - Existing safe code stays bit-identical.
-6. **DB-8 fixed-point bit-identical.**
+1. **Audit** every partial operator/function currently reachable from user code:
+   - `Int / Int` — primary target (this PR).
+   - `[i]` indexing — separate sub-lane row.
+   - `force_unwrap` — already total; verify and confirm no regression.
+   - `OrderedRing.quotient` / `OrderedRing.remainder` at `dsl/std/algebra.dag:477-478` — separate sub-lane rows. **Verify user-reachability** distinct from `/`; if so, queue separately.
+   - Any other partial form per audit. Output: one-row-per-partial-form table in PR body.
+2. **Per-row decision** — for `Int / Int`: pick Result-shape (`Result<T, DivideByZero>`) OR Option-shape (`Option<T>`). **STOP-AND-ESCALATE for NonZero-typed-input shape** (e.g., `a / nz` rather than `divide_nz(a, nz)`) — that's a per-operand type-variance question deferred to a separate substrate brief.
+3. **Algebra retype**: one-line change at `algebra.dag:182` to the total return type.
+4. **Per-target realization migration:**
+   - `rust.dag:816` — `rust_int_div` reshapes from bare `{lhs} / {rhs}` to construct Result/Option idiomatically (`{lhs}.checked_div({rhs}).ok_or(DivideByZero)?` or equivalent).
+   - `go.dag:742` — `go_int_div` reshapes to Go-idiomatic Result.
+   - `python.dag:486` + `python_target.rs:680` helper — reshape `__v3_idiv` to return Result/Option; update test pin at `m1_4_emit_python_test.rs:108-109`.
+5. **Audit fallback path** — `infer.rs:4003-4015` Rust-side primitive scaffold (general fallback for types whose `inhabits` chain doesn't reach an algebra Conj). Slice §1 audit confirms whether any types still resolve `Arithmetic(Div)` through that fallback; close those paths separately if so.
+6. **Regression tests:**
+   - `Int / Int` returns `Result<Int, DivideByZero>` (or `Option<Int>` per choice).
+   - `let result = a / b; match result { Ok(v) => ..., Err(_) => ... }` compiles.
+   - Existing safe `/` code migrated.
+   - Spoofing test: any other partial form (per Slice §1 audit) does NOT accidentally inherit the new total shape.
+7. **DB-8 fixed-point bit-identical** for emit output post-realization-migration.
 
 ## Acceptance
 
-- [ ] Tier 2 substrate readiness confirmed.
-- [ ] Operator dispatch consumes predicate entailment.
-- [ ] Typed diagnostic for unproven safety (C-8).
-- [ ] Partial paths explicit via dedicated primitives.
-- [ ] Regression tests cover proven / unproven / bit-identity.
-- [ ] DB-8 converges bit-identically.
-- [ ] Cross-program signal: Impossible-Bugs Manager → R2 Release Manager (Goal 4 unhandled-diagnostic class).
-- [ ] `cargo test` / clippy / fmt clean.
+- [ ] Audit table in PR body enumerating all partial forms reachable from user code.
+- [ ] For `Int / Int`: algebra retype to total return; 3 per-target realizations migrated; test pin updated.
+- [ ] Decision (Result vs Option vs NonZero-input) recorded with reasoning.
+- [ ] Fallback path (`infer.rs:4003-4015`) audited; any open paths closed or queued.
+- [ ] Regression tests cover positive (`/` returns total) + spoofing + existing-program migration.
+- [ ] DB-8 fixed-point bit-identical.
+- [ ] Cross-program signal: lane close → Impossible-Bugs Manager → R2 Release Manager. **Note:** this PR closes only `Int / Int`; `[i]` indexing, `quotient`/`remainder`, etc. are sibling per-class sub-lanes. Surface remaining sub-lanes in PR body for follow-up dispatch.
+- [ ] `cargo test --workspace --exclude v2-compiler-tests` / `cargo clippy --all-targets -- -D warnings` / `cargo fmt --all --check` clean.
+- [ ] No `--no-verify` push without explicit cargo-unavailable note.
 
 ## STOP-AND-ESCALATE
 
-- **Tier 2 substrate readiness signal exists but doesn't cover predicate entailment** — verify before slicing. Substrate-deeper work needed.
-- **Path (b) `feedback_totality_by_omission` lands instead of substrate path (a).** Reframe brief: dissolve partial primitives by removing them; the brief becomes a primitive-set-narrowing task, not a predicate-entailment-consumer task.
-- **Path (c) park** — surface to Director / R2 Release Manager that this class doesn't close in R2.
-- **Symmetric-operator interaction (the original DB-11 strip rationale).** If Tier 2 substrate covers asymmetric operators only, surface — symmetric `>` etc. still strip refinements.
+- **NonZero-typed-input shape chosen** (`a / nz` operator-syntax rather than `divide_nz(a, nz)` function syntax) — STOP. Per-operand type variance in algebra-operator carrier is a separate substrate brief.
+- **Audit reveals additional partial forms not enumerated in design doc** — surface; queue as sibling sub-lanes; do not subsume in this PR.
+- **Realization migration breaks emission for an existing target idiom** — surface; this is a target-realization design call, not a worker call.
+- **`Result<T, DivideByZero>` requires authoring `DivideByZero` declaration** — verify it doesn't exist via audit; if not, surface placement decision (`std.errors.dag`?).
+- **Asymmetric-operator interaction** — if the totality migration affects symmetric operators (`>`, `<`, etc.) that DB-11 explicitly strips refinements from, surface — the design doc treats those as separate; this PR shouldn't broaden.
 - **DB-8 drifts** — STOP immediately.
 
 ## Non-goals
 
-- Not authoring Tier 2 substrate itself (Substrate Manager territory).
-- Not extending refinement-checking to non-operator dispatch (separate substrate work).
+- **Not predicate-entailment substrate.** Per design doc, M+ scope, reopens DB-11. Worker DOES NOT author predicate-entailment paths.
+- Not authoring all sibling sub-lanes (indexing, quotient, remainder) in one PR — per-class sub-lanes per design doc §4.
+- Not extending refinement-checking — orthogonal to this brief.
 - Not addressing other T-ImpossibleBugs classes.
 
 ## Cross-program note
 
-- **Producer prerequisite:** Substrate Manager → Tier 2 substrate (predicate entailment infrastructure).
-- **Consumer:** this brief.
-- **Downstream signal:** R2 Release Manager (Goal 4 close).
-- **Adjacent path (b):** if `feedback_totality_by_omission` is the chosen route, coordinate with Modeling Manager (primitive-set narrowing may touch their territory).
+- **No producer prerequisite** — totality-by-omission needs no new substrate.
+- **Producer:** this brief.
+- **Consumer:** existing v3 type-checker / per-target emitters.
+- **Downstream signal:** R2 Release Manager (Goal 4 partial close — `Int / Int` only; sibling sub-lanes queued separately).
+- **Adjacent:** Modeling Manager — `Result<T, E>` shape if not yet first-class in std/. Audit-time check.
 
 ## Reporting
 
-Single PR. Title: `feat(v3): T-ImpossibleBugs unhandled diagnostic paths — operator dispatch consumes Tier 2 predicate entailment OR partial-primitive dissolution`. Body cites this brief + design brief + substrate signal-receipt + path (a/b/c) decision + DB-8 disposition.
+Single PR, narrow scope (`Int / Int` totalization). Title: `feat(v3): T-ImpossibleBugs unhandled diagnostic paths — Int/Int totality via OrderedRing.div algebra retype + per-target realization migration`. Body cites this brief + design doc §4 + audit table + algebra retype + 3 realization migrations + DB-8 disposition.
 
-On merge: signal R2 Release Manager.
+On merge: signal R2 Release Manager (partial Goal 4 close); surface remaining per-class sub-lanes for follow-up dispatch.
