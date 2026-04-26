@@ -57,8 +57,8 @@ ROADMAP gate authority.
   evidence.
 - Every implementation PR must report SG-0 deltas from
   `src/v3/compiler/tests/integration/sg0_census_test.rs` and run the narrow
-  test receipt plus `make fmt` / `make v3` unless the worker explains why those
-  commands are unavailable.
+  test receipt plus `make fmt` / `make verify` unless the worker explains why
+  those commands are unavailable.
 
 ## Worker 1 - Termination Mirror Audit / Dissolution Plan
 
