@@ -1125,6 +1125,36 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
     entries
 }
 
+/// T-Substrate nominal-opaque-for-Secret walker consumer.
+///
+/// Returns `Some(Diagnostic)` when `decl_id` is nominal-opaque AND
+/// `accessor` is not in `permitted_accessors` — this is the
+/// hard-stop fail-closed boundary that gates generic structural
+/// descent through Secret<T> and other sealed nominal-opaque
+/// declarations. Returns `None` when the declaration is not
+/// nominal-opaque, or when `accessor` is one of its permitted
+/// accessors. Designed to be called from generic structural-walk
+/// lenses at the descent boundary.
+pub fn check_nominal_opacity_descent(
+    dag: &Dag,
+    decl_id: DeclarationId,
+    accessor: Option<DeclarationId>,
+) -> Option<crate::diagnostics::Diagnostic> {
+    let decl = dag.declaration(decl_id);
+    let opacity = decl.nominal_opacity.as_ref()?;
+    if let Some(acc) = accessor {
+        if opacity.permitted_accessors.contains(&acc) {
+            return None;
+        }
+    }
+    Some(crate::diagnostics::Diagnostic::NominalOpacityViolation {
+        declaration: decl_id,
+        accessor,
+        span: decl.span.clone(),
+        fixes: Vec::new(),
+    })
+}
+
 fn declaration_body_bind<'a>(dag: &'a Dag, decl: &Declaration) -> Option<&'a BindNode> {
     // Use the lowered structural authority: function declarations point at
     // their owning body bind through `ArrowBody::UserDefined`.
@@ -3668,6 +3698,7 @@ mod tests {
             inhabits: None,
             value_body: Some(binding_fields(rust_language, go_clean_emission)),
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("duplicate_binding_test.v3", 0, 1),
         });
 
@@ -3691,6 +3722,57 @@ mod tests {
             )),
             "expected duplicate TargetCleanEmissionBinding diagnostic, got {:?}",
             dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
+
+    /// T-Substrate nominal-opaque-for-Secret consumer proof. The
+    /// minimal walker `check_nominal_opacity_descent` is the
+    /// fail-closed boundary: descent through a sealed declaration
+    /// must succeed only via a permitted accessor. This test
+    /// exercises all three branches: permitted accessor (None),
+    /// no accessor (Some(Diagnostic)), and a non-permitted accessor
+    /// (Some(Diagnostic)).
+    #[test]
+    fn nominal_opacity_descent_fails_closed_outside_permitted_accessor() {
+        let mut dag = Dag::new();
+        let accessor_a_id = dag.alloc_declaration_id();
+        let other_id = dag.alloc_declaration_id();
+        let opaque_id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: opaque_id,
+            name: Some("opaque_under_test".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: Some(NominalOpacity {
+                permitted_accessors: vec![accessor_a_id],
+            }),
+            nominal_opacity: None,
+            span: SourceSpan::new("nominal_opacity_test.v3", 0, 1),
+        });
+
+        assert!(
+            check_nominal_opacity_descent(&dag, opaque_id, Some(accessor_a_id)).is_none(),
+            "permitted accessor must descend without diagnostic"
+        );
+        assert!(
+            matches!(
+                check_nominal_opacity_descent(&dag, opaque_id, None),
+                Some(Diagnostic::NominalOpacityViolation { .. })
+            ),
+            "missing accessor must fail closed with NominalOpacityViolation"
+        );
+        assert!(
+            matches!(
+                check_nominal_opacity_descent(&dag, opaque_id, Some(other_id)),
+                Some(Diagnostic::NominalOpacityViolation { .. })
+            ),
+            "non-permitted accessor must fail closed with NominalOpacityViolation"
         );
     }
 }

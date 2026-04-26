@@ -574,6 +574,7 @@ pub mod lens_structural_resolution {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: span(),
             });
             id
@@ -599,6 +600,7 @@ pub mod lens_structural_resolution {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: span(),
             });
             id
@@ -617,6 +619,7 @@ pub mod lens_structural_resolution {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: span(),
             });
             id

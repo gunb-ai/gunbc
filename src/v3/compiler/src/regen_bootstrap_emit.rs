@@ -7,7 +7,8 @@ use crate::dag::{
     BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, ClusterId,
     ComparisonOp, Dag, Declaration, DeclarationId, Field, FieldValue, IntraClusterCall,
     LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent, NodeId, NonEmptyList,
-    NonSingletonList, OperatorKind, Path, PayloadBinding, PhantomParameter, PortId, PortState,
+    NominalOpacity, NonSingletonList, OperatorKind, Path, PayloadBinding, PhantomParameter,
+    PortId, PortState,
     TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueBody, ValueNode,
 };
 use crate::diagnostics::Diagnostic;
@@ -116,7 +117,7 @@ fn render_declarations(declarations: &[Declaration]) -> String {
 
 fn render_declaration(declaration: &Declaration) -> String {
     format!(
-        "Declaration {{ id: {}, name: {}, connective: {}, type_params: {}, phantom_params: {}, meta_tag: {}, specialization_parent: {}, inhabits: {}, value_body: {}, refinement: {}, span: {} }}",
+        "Declaration {{ id: {}, name: {}, connective: {}, type_params: {}, phantom_params: {}, meta_tag: {}, specialization_parent: {}, inhabits: {}, value_body: {}, refinement: {}, nominal_opacity: {}, span: {} }}",
         render_declaration_id(declaration.id),
         render_opt_string(declaration.name.as_deref()),
         render_type_connective(&declaration.connective),
@@ -127,8 +128,26 @@ fn render_declaration(declaration: &Declaration) -> String {
         render_opt_declaration_id(declaration.inhabits),
         render_opt_value_body(declaration.value_body.as_ref()),
         render_opt_declaration_id(declaration.refinement),
+        render_opt_nominal_opacity(declaration.nominal_opacity.as_ref()),
         render_source_span(&declaration.span),
     )
+}
+
+fn render_opt_nominal_opacity(opacity: Option<&NominalOpacity>) -> String {
+    match opacity {
+        None => "None".to_string(),
+        Some(o) => {
+            let ids: Vec<String> = o
+                .permitted_accessors
+                .iter()
+                .map(|id| render_declaration_id(*id))
+                .collect();
+            format!(
+                "Some(NominalOpacity {{ permitted_accessors: vec![{}] }})",
+                ids.join(", ")
+            )
+        }
+    }
 }
 
 fn render_phantom_params(params: &[PhantomParameter]) -> String {
@@ -692,6 +711,18 @@ fn render_diagnostic(diagnostic: &Diagnostic) -> String {
             fixes,
         } => format!(
             "Diagnostic::MalformedIntegerRangeFact {{ message: {message:?}.to_string(), span: {}, fixes: {} }}",
+            render_source_span(span),
+            render_corrections(fixes),
+        ),
+        Diagnostic::NominalOpacityViolation {
+            declaration,
+            accessor,
+            span,
+            fixes,
+        } => format!(
+            "Diagnostic::NominalOpacityViolation {{ declaration: {}, accessor: {}, span: {}, fixes: {} }}",
+            render_declaration_id(*declaration),
+            render_opt_declaration_id(*accessor),
             render_source_span(span),
             render_corrections(fixes),
         ),

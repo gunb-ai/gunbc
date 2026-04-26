@@ -173,6 +173,7 @@ pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: span_for_inst,
     });
     dag.declaration_mut(bool_id).inhabits = Some(inst_id);
@@ -299,6 +300,7 @@ mod tests {
 
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
 
@@ -317,6 +319,7 @@ mod tests {
 
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
 
