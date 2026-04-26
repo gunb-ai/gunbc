@@ -189,10 +189,20 @@ Verifying that each manager brief on PR #835 sha `3260d710` categorizes its deli
 When authoring or reviewing an R2 manager brief, every `Owned deliverables`, `Pre-spawn vs post-spawn authority`, `Autonomous dispatch authority`, and `Sub-briefs (authored / pending)` section must agree on:
 - **Owner** (pre-spawn AND post-spawn) per the deliverable's category in this matrix.
 - **Artifact type** (which of categories 1-5).
+- **Status.** A single deliverable cannot be both `DISPATCHED` / `AUTHORED` in the deliverables table AND `Pending` / `NOT YET AUTHORED` in the Sub-briefs section. If a lane is partially landed (e.g., Pilot done; full implementation pending), the table status must scope the partial state explicitly (e.g., `PARTIAL — Pilot PR #X done; full implementation pending`), not generic `DISPATCHED` with a parenthetical that contradicts the Sub-briefs Pending list. The §"Sub-briefs (authored / pending)" section is the single authority for which sub-briefs are authored vs pending; the deliverables table cites that authority and does not duplicate it ambiguously. Surfaced by openai-pro APPROVE_WITH_COMMENTS finding on PR #835 sha `3260d710` (T-Ground-Rust dual-status: row said `DISPATCHED`, Pending list said `T-Ground-Rust full implementation`); fixed in `3ef1509dc`.
 
 A deliverable that doesn't cleanly fit one of the 5 categories is **a category bug**, not a sixth category — surface for matrix amendment rather than authoring an ambiguous brief.
 
-This does not need a new top-level INVARIANTS.md P-rule; `INVARIANTS.md §P2` (single-authority) and `§P5` (dispatch-discipline) already cover it. This is the **local invariant** for the manager-brief family.
+### Pre-author verification invariant
+
+Before authoring a brief that references substrate state, gate condition, existing brief, or upstream design-doc disposition: **grep the source-of-truth before slicing**. Specifically:
+- `src/v3/std/`, `src/v3/spec/`, `src/v3/compiler/src/` for substrate / runtime / compiler state cited in the brief.
+- `docs/briefs/` for existing briefs that may already cover the scope (canonical authority + scope-closure clauses).
+- The cited design doc's §Director-actionable / §Q-recommendation / §Decision sections **in full**, not just the section title.
+
+Cite specific `file:line` / brief filename / `§ref` in the brief's `Read first` section. State the audit receipt before slicing. The 7-reframe pattern on PR #836 (`feedback_verify_thesis_claims` violations: nested-optional gating, unhandled-diagnostic predicate-entailment default, unenumerated-effects 8-req elision, parametric-algebra producer redundancy, cardinality-for-int-lit redundancy, nominal-opaque 7th-connective option, int-lit consumer scope mismatch with `wise-pike-578`) demonstrates the failure mode this invariant prevents. This is the operationalization of `feedback_verify_thesis_claims` for the brief-authoring family.
+
+These do not need new top-level INVARIANTS.md P-rules; `INVARIANTS.md §P2` (single-authority), `§P5` (dispatch-discipline), and the existing `feedback_verify_thesis_claims` discipline already cover them. These are the **local invariants** for the manager-brief family — collected here so brief authoring can cite this matrix as a single review checkpoint.
 
 ## Refresh discipline
 
