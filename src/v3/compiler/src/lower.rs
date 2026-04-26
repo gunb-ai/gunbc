@@ -7058,6 +7058,18 @@ mod tests {
         }
     }
 
+    fn dimension_alias_module(file: &str) -> SurfaceModule {
+        SurfaceModule {
+            items: vec![SurfaceItem::TypeAlias {
+                name: "Dimension".to_string(),
+                type_params: vec!["Unit".to_string(), "Carrier".to_string()],
+                target: surface_named_type("Carrier"),
+                refinement: None,
+                span: SourceSpan::new(file, 0, 1),
+            }],
+        }
+    }
+
     #[test]
     fn non_std_dimension_record_does_not_receive_unit_phantom_bridge() {
         let mut dag = Dag::empty();
@@ -7103,6 +7115,26 @@ mod tests {
                 )
             }),
             "malformed std Dimension must emit a fail-closed diagnostic: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn non_record_std_dimension_bridge_fails_closed() {
+        let mut dag = Dag::empty();
+        let module = dimension_alias_module(DIMENSION_STD_AUTHORITY_FILE);
+
+        lower_into(&mut dag, &module);
+
+        assert!(
+            dag.diagnostics().iter().any(|(_, diagnostic)| {
+                matches!(
+                    diagnostic,
+                    Diagnostic::ResolveError { name, .. }
+                        if name.contains("must be a record declaration")
+                )
+            }),
+            "std Dimension as a non-record type form must fail closed: {:?}",
             dag.diagnostics().iter().collect::<Vec<_>>()
         );
     }

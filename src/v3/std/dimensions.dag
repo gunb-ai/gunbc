@@ -18,6 +18,7 @@ module v3.std.dimensions
 
 import std.list { List }
 import std.substrate { Dag, Behavior }
+import std.algebra { OrderedRing }
 import v3.std.diagnostics { Diagnostic }
 
 // 🟢 TERMINAL at the structural-witness scope. `Witness<Carrier>`
@@ -88,21 +89,25 @@ type Moles
 type Candela
 
 fn add_dimension<Unit, Carrier>(
+  carrier_algebra: OrderedRing<Carrier>,
   left: Dimension<Unit, Carrier>,
   right: Dimension<Unit, Carrier>
 ) -> Dimension<Unit, Carrier> { host dimension_add }
 
 fn sub_dimension<Unit, Carrier>(
+  carrier_algebra: OrderedRing<Carrier>,
   left: Dimension<Unit, Carrier>,
   right: Dimension<Unit, Carrier>
 ) -> Dimension<Unit, Carrier> { host dimension_sub }
 
 fn mul_dimension_scalar<Unit, Carrier>(
+  carrier_algebra: OrderedRing<Carrier>,
   value: Dimension<Unit, Carrier>,
   scalar: Carrier
 ) -> Dimension<Unit, Carrier> { host dimension_mul_scalar }
 
 fn div_dimension_scalar<Unit, Carrier>(
+  carrier_algebra: OrderedRing<Carrier>,
   value: Dimension<Unit, Carrier>,
   scalar: Carrier
 ) -> Dimension<Unit, Carrier> { host dimension_div_scalar }
