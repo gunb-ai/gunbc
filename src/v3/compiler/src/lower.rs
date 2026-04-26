@@ -251,6 +251,7 @@ pub(crate) fn lower_bodies_phase(
                 | SurfaceItem::TypeAlias { .. }
                 | SurfaceItem::TypeAtom { .. }
         ) {
+            validate_dimension_phantom_surface_item(dag, item);
             scope = lower_item(
                 item,
                 dag,
@@ -1928,6 +1929,29 @@ fn lower_item(
             lower_type_alias(dag, symbols, name, type_params, target);
             scope
         }
+    }
+}
+
+fn validate_dimension_phantom_surface_item(dag: &mut Dag, item: &SurfaceItem) {
+    match item {
+        SurfaceItem::TypeRecord { name, span, .. } => {
+            if name == "Dimension" && span.file == DIMENSION_STD_AUTHORITY_FILE {
+                // The record case is validated after field lowering so the
+                // bridge can check the resolved `value: Carrier` payload.
+            }
+        }
+        SurfaceItem::TypeAtom { name, span, .. }
+        | SurfaceItem::TypeSum { name, span, .. }
+        | SurfaceItem::TypeAlias { name, span, .. }
+            if name == "Dimension" && span.file == DIMENSION_STD_AUTHORITY_FILE =>
+        {
+            report_dimension_phantom_error(
+                dag,
+                span.clone(),
+                "std `Dimension<Unit, Carrier>` must be a record declaration, not another type form",
+            );
+        }
+        _ => {}
     }
 }
 
