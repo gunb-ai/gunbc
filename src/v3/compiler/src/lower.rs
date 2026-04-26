@@ -3153,6 +3153,43 @@ fn lower_record_to_structural(
     })
 }
 
+fn lower_list_to_value_body(
+    data_name: &str,
+    elements: &[SurfaceExpr],
+    ty_decl_id: DeclarationId,
+    body_span: &SourceSpan,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+) -> Option<crate::dag::ValueBody> {
+    let Some(element_type) = list_element_type(dag, ty_decl_id) else {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{data_name}`'s type annotation does not resolve to List<_>; cannot lower list body structurally"
+                ),
+                span: body_span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+        return None;
+    };
+    let mut lowered = Vec::with_capacity(elements.len());
+    for element in elements {
+        lowered.push(lower_structural_field_value(
+            data_name,
+            "$element",
+            element,
+            element_type,
+            symbols,
+            dag,
+            None,
+            &expr_span(element),
+        )?);
+    }
+    Some(crate::dag::ValueBody::List(lowered))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn lower_structural_field_value(
     data_name: &str,
