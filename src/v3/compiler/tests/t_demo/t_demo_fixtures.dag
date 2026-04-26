@@ -17,6 +17,7 @@ import std.verification {
   LensOutputEquals,
   PortHasState,
   ProgramInput,
+  ProgramOutputBind,
   Resolved,
   TestClaim,
   TestSuite,
@@ -45,23 +46,19 @@ data complexity_demo_out: Int = 0
 
 data total: Int = 0
 
-data combine_payload: Int = 0
-
 data upsert_effect: Int = 0
 
-data r1_lens_output_input_from_program: ProgramInput = {
-  output_ref: combine_payload
-}
+data r1_lens_output_input_from_program: ProgramInput = {}
 
-data t_demo_complexity_program_input: ProgramInput = {
+data t_demo_complexity_program_input: ProgramOutputBind = {
   output_ref: complexity_demo_out
 }
 
-data t_demo_parallelism_program_input: ProgramInput = {
+data t_demo_parallelism_program_input: ProgramOutputBind = {
   output_ref: total
 }
 
-data t_demo_effects_program_input: ProgramInput = {
+data t_demo_effects_program_input: ProgramOutputBind = {
   output_ref: upsert_effect
 }
 

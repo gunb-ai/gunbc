@@ -1634,12 +1634,14 @@ impl<'a> TestRunner<'a> {
         // T-LaneE (`cost_of`): structural `Lookup<Int>` from the Rust-generated lens on the claim
         // program's `merge_sort_out` bind vs a fixture `Lookup<Int>` expected value.
         if lens_decl.name.as_deref() == Some("cost_of") {
-            let Some(program_input) = program_input.as_ref() else {
+            let Some(cost_bind) = program_input
+                .as_ref()
+                .and_then(ProgramInputRole::output_bind_name)
+            else {
                 return ClaimResult::Fail(format!(
-                    "LensOutputEquals(cost_of): input_ref `{input_name}` must inhabit ProgramInput"
+                    "LensOutputEquals(cost_of): input_ref `{input_name}` must inhabit ProgramOutputBind"
                 ));
             };
-            let cost_bind = program_input.output_bind_name.as_str();
             let Some(bind) = find_bind(&program_dag, cost_bind, &claim.file_name) else {
                 return ClaimResult::Fail(format!(
                     "LensOutputEquals(cost_of): bind `{cost_bind}` not found in `{}`",
@@ -1810,28 +1812,21 @@ impl<'a> TestRunner<'a> {
     }
 
     fn program_input_role(&self, decl: &Declaration) -> Result<Option<ProgramInputRole>, String> {
-        let Some(program_input_id) = self.dag.declaration_by_name("ProgramInput").map(|d| d.id)
-        else {
-            return Ok(None);
-        };
-        if decl.inhabits != Some(program_input_id)
-            && decl.meta_tag != Some(program_input_id)
-            && !matches!(
-                &decl.connective,
-                TypeConnective::Instantiation { template, .. } if *template == program_input_id
-            )
-        {
+        if self.decl_inhabits_named_role(decl, "ProgramInput") {
+            return Ok(Some(ProgramInputRole::ProgramInput));
+        }
+        if !self.decl_inhabits_named_role(decl, "ProgramOutputBind") {
             return Ok(None);
         }
         let Some(ValueBody::Structural { fields }) = decl.value_body.as_ref() else {
             return Err(format!(
-                "ProgramInput `{}` must have a structural data body",
+                "ProgramOutputBind `{}` must have a structural data body",
                 decl_display_name(decl.id, decl)
             ));
         };
         let Some(output_ref) = field(fields, "output_ref") else {
             return Err(format!(
-                "ProgramInput `{}` is missing `output_ref`",
+                "ProgramOutputBind `{}` is missing `output_ref`",
                 decl_display_name(decl.id, decl)
             ));
         };
@@ -1839,7 +1834,7 @@ impl<'a> TestRunner<'a> {
             FieldValue::Reference(id) => *id,
             other => {
                 return Err(format!(
-                    "ProgramInput `{}` output_ref must be a DeclarationRef edge, got {other:?}",
+                    "ProgramOutputBind `{}` output_ref must be a DeclarationRef edge, got {other:?}",
                     decl_display_name(decl.id, decl)
                 ));
             }
@@ -1847,11 +1842,25 @@ impl<'a> TestRunner<'a> {
         let output_decl = self.dag.declaration(output_ref);
         let Some(output_bind_name) = output_decl.name.clone() else {
             return Err(format!(
-                "ProgramInput `{}` output_ref must name a declaration",
+                "ProgramOutputBind `{}` output_ref must name a declaration",
                 decl_display_name(decl.id, decl)
             ));
         };
-        Ok(Some(ProgramInputRole { output_bind_name }))
+        Ok(Some(ProgramInputRole::ProgramOutputBind {
+            output_bind_name,
+        }))
+    }
+
+    fn decl_inhabits_named_role(&self, decl: &Declaration, role_name: &str) -> bool {
+        let Some(role_id) = self.dag.declaration_by_name(role_name).map(|d| d.id) else {
+            return false;
+        };
+        decl.inhabits == Some(role_id)
+            || decl.meta_tag == Some(role_id)
+            || matches!(
+                &decl.connective,
+                TypeConnective::Instantiation { template, .. } if *template == role_id
+            )
     }
 
     fn eval_differential_equals(
@@ -1891,7 +1900,7 @@ impl<'a> TestRunner<'a> {
             Ok(Some(role)) => role,
             Ok(None) => {
                 return ClaimResult::Fail(format!(
-                    "DifferentialEquals: input_ref `{input_name}` must inhabit ProgramInput"
+                    "DifferentialEquals: input_ref `{input_name}` must inhabit ProgramOutputBind"
                 ));
             }
             Err(msg) => return ClaimResult::Fail(format!("DifferentialEquals: {msg}")),
@@ -1914,7 +1923,11 @@ impl<'a> TestRunner<'a> {
             }
         };
 
-        let cost_bind = program_input.output_bind_name.as_str();
+        let Some(cost_bind) = program_input.output_bind_name() else {
+            return ClaimResult::Fail(format!(
+                "DifferentialEquals: input_ref `{input_name}` must inhabit ProgramOutputBind"
+            ));
+        };
         let Some(bind) = find_bind(&program_dag, cost_bind, &claim.file_name) else {
             return ClaimResult::Fail(format!(
                 "DifferentialEquals: bind `{cost_bind}` not found in `{}`",
