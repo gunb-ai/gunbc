@@ -14,9 +14,9 @@
 Pre-author grep against main HEAD `407a8bcb1` established:
 
 - **`MockBackedInvariant` runner** lives at `src/v3/compiler/src/test_runner.rs:1432-1448`. Currently returns `NotYetImplemented` when `claim.requires.is_empty()`. Reason: *"`TestClaim.requires` is empty — DB-15 mock obligations attach only on `requires` as `ResourceReference` edges; hermetic subject/invariant application succeeded but is not a mock-backed receipt until at least one obligation is declared (M1(2.8): list bodies in fixture `TestClaim` data are not expressible yet)."* The runner expects `requires: List<ResourceReference>` populated; blocker is two-part — (a) M1(2.8) data-body shape + (b) downstream materialization once non-empty.
-- **`ResourceReference` schema** already exists at `src/v3/std/resources.dag:25-27` (`type ResourceReference { target: DeclarationRef }`); `TestClaim.requires: List<ResourceReference>` is already declared in the DB-15 schema at `src/v3/std/test_infrastructure.dag:187` (or analogous). No new schema required for `MockBackedInvariant` itself.
+- **`ResourceReference` schema** already exists at `src/v3/std/resources.dag:25-26` (`type ResourceReference { target: DeclarationRef }`); `TestClaim.requires: List<ResourceReference>` is already declared in the DB-15 schema at `src/v3/std/verification.dag:187`. No new schema required for `MockBackedInvariant` itself.
 - **M1(2.8) data-body restriction** at `src/v3/compiler/src/lower.rs:2446` rejects list-literal data bodies as `ValueBody::Unparsed` and routes to `reject_user_unparsed_scaffolds` at `:2404-2453`. Diagnostic message: *"data `{name}` has an opaque body — M1(2.8) user code cannot yet use record / list / map literals inside data bodies (see DOWNSTREAM_REQUIREMENTS.md class-5 gap #3)."* This is a compiler-side limitation, not a substrate gap; lowering must learn to handle list literals in data bodies. Per ROADMAP T-Substrate row, the broader `ValueBody::List` substrate work is owned by T-Substrate ValueBody-list/sum (PR #790; R2 sub-lane); R1C-A's narrower scope is **the data-body lowering path that consumes the substrate's list-shape**.
-- **Predicate dispatch inventory** at `test_runner.rs:1423-1431` has all 10 predicates wired (Compiles / FailsWithDiagnostic / OutputEquals / PortHasState / CostBounded / LensOutputEquals / DifferentialEquals / AlgebraicLaw / ExecuteCommand / MockBackedInvariant). None are stubs except `MockBackedInvariant` which is ext-gated on `requires`.
+- **Predicate dispatch inventory** in the match block at `test_runner.rs:1424-1448` has all 10 predicates wired (Compiles / FailsWithDiagnostic / OutputEquals / PortHasState / CostBounded / LensOutputEquals / DifferentialEquals / AlgebraicLaw / ExecuteCommand wired across `:1424-1431`; `MockBackedInvariant` arm at `:1432-1448`). None are stubs except `MockBackedInvariant` which is ext-gated on `requires`.
 - **Census authority** at `src/v3/compiler/tests/integration/sg0_census_test.rs:166-297`:
   - `EXPECTED_HAND_AUTHORED_NON_TEST` (lines 166-206) — 41 file paths.
   - `EXPECTED_HAND_AUTHORED_TEST` (lines 213-288) — 77 test file paths.
@@ -58,12 +58,12 @@ T-TestGen owns scoping the predicate shape per ROADMAP line 65: *"T-TestGen also
 | `pb_test_file_generated_from_dag` | `GeneratedFromDag { authority: DeclarationRef, generated_paths: List<Path> }` | test-file partition matches generated set |
 | `pb_rust_tests_outside_residual_zero` | `CensusBoundCheck { authority: DeclarationRef, list_constant: Symbol, bound: Int }` | `EXPECTED_HAND_AUTHORED_TEST.len() = 0` (per cascade promotion) |
 
-The above shapes are **proposals** — finalize by reading each gate's definition + finding the minimal shape that closes it without over-generalizing. **Audit before authoring** (per matrix's pre-author verification invariant): grep `dsl/std/test_infrastructure.dag` for existing predicate variant patterns; mirror the existing schema discipline.
+The above shapes are **proposals** — finalize by reading each gate's definition + finding the minimal shape that closes it without over-generalizing. **Audit before authoring** (per matrix's pre-author verification invariant): grep `dsl/std/verification.dag` for existing predicate variant patterns; mirror the existing schema discipline.
 
 **Scope rule:** keep predicate shapes minimal + closed-form. A predicate that needs general-purpose computation is a sign the gate is mis-scoped; escalate per STOP discipline below.
 
 **Acceptance:**
-- 6 predicate variants authored in `dsl/std/test_infrastructure.dag` (or sibling) following the existing predicate-variant pattern.
+- 6 predicate variants authored in `dsl/std/verification.dag` (or sibling) following the existing predicate-variant pattern.
 - Each variant has a runner-dispatch arm in `src/v3/compiler/src/test_runner.rs` (alongside the existing 10).
 - Variants compile cleanly; no `[ext]` blocker remains for the 6 census gates' predicate-shape requirement.
 
@@ -84,7 +84,7 @@ Once Sub-deliverable A lands, `testgen_mock_backed_integration_safe` is unblocke
 A blocks B (predicate shapes have a `data ... = [list, of, things]` body for census-list references) AND blocks C (MockBackedInvariant fixture has a `requires: List<ResourceReference>` body). B blocks R1C-D (R1C-D's gate fixtures use B's predicate shapes).
 
 1. **PR-A (Sub-deliverable A):** lower.rs list-body lowering. Standalone deliverable; gate verification: `cargo test --workspace --exclude v2-compiler-tests` clean; DB-8 converges; `reject_user_unparsed_scaffolds` regression passes.
-2. **PR-B (Sub-deliverable B):** predicate variants in test_infrastructure.dag + runner dispatch arms. Depends on PR-A landing (predicate variants reference list-shaped data).
+2. **PR-B (Sub-deliverable B):** predicate variants in `dsl/std/verification.dag` (mirrored to `src/v3/std/verification.dag`) + runner dispatch arms. Depends on PR-A landing (predicate variants reference list-shaped data).
 3. **PR-C (Sub-deliverable C):** `MockBackedInvariant` minimal-demo fixture. Depends on PR-A (fixture body uses list literal). Closes `testgen_mock_backed_integration_safe`.
 
 3 PRs, sequential. Bundle PR-B + PR-C if PR-A lands cleanly + the worker has bandwidth (reduces review cycles).
@@ -116,7 +116,7 @@ Per [`docs/escalation-paths.md`](../escalation-paths.md):
 - Parent: [`docs/briefs/r1-closure-manager.md`](r1-closure-manager.md) lane R1C-A.
 - Authority matrix categorization: Category 1 (worker brief) per [`docs/briefs/r2-manager-brief-authority-matrix.md`](r2-manager-brief-authority-matrix.md).
 - Runner authority: `src/v3/compiler/src/test_runner.rs:1423-1448` (predicate dispatch + `MockBackedInvariant` `NotYetImplemented` reason).
-- Schema authority: `src/v3/std/resources.dag:25-27` (`ResourceReference`); `src/v3/std/test_infrastructure.dag:187` (`TestClaim.requires` field) — verify exact line at brief-dispatch time.
+- Schema authority: `src/v3/std/resources.dag:25-26` (`ResourceReference`); `src/v3/std/verification.dag:187` (`TestClaim.requires` field); `dsl/std/verification.dag:36` (`TestClaim` type declaration; DSL-side authority).
 - Lowering authority: `src/v3/compiler/src/lower.rs:2446` (`ValueBody::Unparsed` rejection); `:2404-2453` (`reject_user_unparsed_scaffolds`).
 - Census authority: `src/v3/compiler/tests/integration/sg0_census_test.rs:166-297` (`EXPECTED_HAND_AUTHORED_*` constants); `:387-451` (drift test).
 - Gate authority: [`ROADMAP.md` lines 65-68](../../ROADMAP.md) (T-TestGen + T-PB-A + T-PB-B `[ext]` predicate names).
