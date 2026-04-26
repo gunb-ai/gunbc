@@ -28,7 +28,7 @@ use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode, BranchEmitParticipation,
     BranchNode, BranchPattern, CardinalityBound, Cluster, Dag, Declaration, DeclarationId, Field,
     IntraClusterCall, LiteralBits, LoopBound, LoopNode, MemberDescent, NodeId, NonEmptyList,
-    NonSingletonList, Path, PayloadBinding, PortId, TemplateArgument, TransformNode,
+    NonSingletonList, Path, PayloadBinding, PhantomParameter, PortId, TemplateArgument, TransformNode,
     TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{
@@ -1983,6 +1983,49 @@ fn lower_type_record(
         });
     }
     dag.declaration_mut(decl_id).connective = TypeConnective::Conj { children };
+    attach_dimension_phantom_parameter(dag, decl_id, name);
+}
+
+fn attach_dimension_phantom_parameter(dag: &mut Dag, decl_id: DeclarationId, name: &str) {
+    if name != "Dimension" || !dag.declaration(decl_id).phantom_params.is_empty() {
+        return;
+    }
+    let Some(unit_param) = dag.declaration(decl_id).type_params.first().copied() else {
+        return;
+    };
+    let Some(abelian_group) = dag.abelian_group_decl() else {
+        return;
+    };
+    let Some(abelian_receiver) = dag.declaration(abelian_group).type_params.first().copied() else {
+        return;
+    };
+    let span = dag.declaration(decl_id).span.clone();
+    let unit_abelian_group = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: unit_abelian_group,
+        name: Some("DimensionUnitAbelianGroup".to_string()),
+        connective: TypeConnective::Instantiation {
+            template: abelian_group,
+            arguments: vec![TemplateArgument {
+                parameter: abelian_receiver,
+                value: unit_param,
+            }],
+        },
+        type_params: Vec::new(),
+        phantom_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span,
+    });
+    dag.declaration_mut(decl_id)
+        .phantom_params
+        .push(PhantomParameter {
+            parameter: unit_param,
+            algebra: unit_abelian_group,
+        });
 }
 
 fn lower_type_sum(
