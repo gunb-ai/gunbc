@@ -2011,11 +2011,12 @@ fn top_level_list_data_body_requires_list_declared_type() {
         "data xs: Int = [1, 2, 3]",
         "data_list_body_non_list_type.v3",
     );
+    let expected = "data `xs` has a list body but its declared type is not a List<_>";
     assert!(
         dag.diagnostics().iter().any(|(_, diag)| matches!(
             diag,
             v3_compiler::diagnostics::Diagnostic::ResolveError { name, .. }
-                if name.contains("data `xs` has a list body but its declared type is not a List<_>")
+                if name == expected
         )),
         "expected fail-closed non-List diagnostic, got {:?}",
         dag.diagnostics()
