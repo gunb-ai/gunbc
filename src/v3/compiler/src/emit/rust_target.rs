@@ -2669,6 +2669,12 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         .iter()
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
+        // `type Result<ok, err> = ...` in `errors.dag` is type-checking authority; Rust
+        // materializes it as `::core::result::Result<…>`. Generic `Result` is not
+        // emitted as a Rust `enum` (and would collide with the prelude if it were).
+        .filter(|decl| {
+            !decl.name.as_deref().is_some_and(|n| n == "Result" && decl.span.file.ends_with("errors.dag"))
+        })
         .filter(|decl| {
             matches!(
                 decl.connective,
@@ -2748,12 +2754,26 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         .map(|decl| ctx.render_function_declaration(decl))
         .collect::<Result<Vec<_>, _>>()?;
 
+    // After user `type`/`enum` items (e.g. `DivError` from `errors.dag`); `rust_int_div`
+    // uses this in emitted expressions.
+    const RUST_V3_INT_DIV_PRELUDE: &str = r#"fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
+    if r == 0 {
+        return ::core::result::Result::Err(DivError::DivideByZero);
+    }
+    if l == i64::MIN && r == -1 {
+        return ::core::result::Result::Err(DivError::Overflow);
+    }
+    ::core::result::Result::Ok(l / r)
+}
+"#;
+
     let type_defs = join_rendered(&rendered_types, " ");
     let function_defs = join_rendered(&rendered_functions, " ");
-    let mut sections = Vec::new();
+    let mut sections: Vec<String> = Vec::new();
     if !type_defs.is_empty() {
         sections.push(type_defs);
     }
+    sections.push(RUST_V3_INT_DIV_PRELUDE.to_string());
     if !function_defs.is_empty() {
         sections.push(function_defs);
     }
