@@ -1562,7 +1562,7 @@ impl TransformNode {
 }
 
 /// B4.3 — authority at lowering: user `match` Branch nodes, not `if` on Bool.
-/// See [`BindEmitParticipation`] and `INVARIANTS.md` P2 (no `span.file` as contract).
+/// See [`BranchEmitParticipation`] and `INVARIANTS.md` P2 (no `span.file` as contract).
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum BranchEmitParticipation {
     UserMatch,
