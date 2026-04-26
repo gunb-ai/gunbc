@@ -190,7 +190,9 @@ needed by the runner, then migrate the consumers.
 - [ ] Fixtures use `DeclarationRef` plus the new structural role layer;
       no replacement sentinel string is introduced.
 - [ ] Regression test proves name-only spoofing of the old sentinel
-      does not select the program-input path.
+      does not select the program-input path (**structural proof:** the
+      historical name on a non-`ProgramInput` carrier — e.g. `Int` — must
+      not trigger reflection of `TestClaim.source`; see addendum below).
 - [ ] Regression test proves filename-only spoofing does not select an
       output bind without the structural output-bind reference.
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` passes.
@@ -233,3 +235,54 @@ PR body must cite this brief, include the existing-authority audit
 above, and record whether canonical lens identity stayed in B4.1a or
 was split to B4.1a-lens-registry. Director must queue B4.1b and B4.1c
 before closing the parent B4.1 DeclarationRef migration.
+
+## Cross-cutting discipline (residual completion)
+
+These sharpen discipline that is already implicit in the slices above; they are
+**not** a parallel authority (no sibling “discipline” doc — fold here only).
+
+- **Audit adjacent authority first (`feedback_audit_adjacent_authority_first`).**
+  Before designing runner or fixture edits, `grep` the tree for the retiring
+  bridge (`PROGRAM_INPUT_SENTINEL`, legacy declaration names, predicate
+  call sites), then read `src/v3/std/verification.dag` and this brief so work
+  attaches to the existing `ProgramInput` / `ProgramOutputBind` carriers, not a
+  new parallel representation (#796 shape).
+
+- **No textual enforcement bridges (`feedback_no_textual_enforcement_bridges`).**
+  Dissolution is **typed roles** (`decl_inhabits_named_role`, fixture
+  `meta_tag` / `ProgramInput {}`), not a renamed string or `name ==` substitute
+  for the old sentinel.
+
+- **Structural-not-textual proof (acceptance emphasis).** Regression must show
+  that the **historical sentinel *name* on an ordinary non-carrier declaration**
+  (e.g. `Int`) does **not** select the program-input reflection path — that is
+  the receipt that enforcement is structural, not spelling.
+
+- **Coproduct / new variants (`feedback_coproduct_dissolution`).** If anything
+  beyond consuming the existing verification carriers were required (new
+  `TestPredicate` variant, new role type), STOP and record a brief/receipt;
+  residual completion should stay “consumer + fixtures on the existing
+  carrier.”
+
+- **DB-8 fixed-point.** After edits, converge with the normal `cargo test` /
+  `cargo clippy` / `cargo fmt` fixed point from `CLAUDE.md`; no assumed
+  convergence.
+
+- **SG-0 census.** Do not assume “no hand-Rust change ⇒ no census delta.” If
+  deleting constants or moving logic changes what the census enumerates (or
+  which paths are hand-authored), run the SG-0 census test and inspect the diff
+  before landing the PR.
+
+- **Fixture bundling (Slice §6).** **Same PR as consumer migration:** any
+  `test_runner.rs` change that expects structural `ProgramInput` must land with
+  **every** fixture that integration tests load for those predicates in this PR
+  (`r1_gates.dag`, `r1_gates.template.dag`, `t_demo_fixtures.dag` rewrites
+  together). Partial fixture migration was the failure mode in #823’s CI;
+  stacking consumer-only ahead of fixtures is out of scope for this brief.
+
+- **Push hygiene.** No `--no-verify` push without an explicit “cargo
+  unavailable” note in the PR body when that exception applies.
+
+**Cold-worker risk:** Without audit-first + “no second authority,” it is easy to
+introduce a string- or name-keyed parallel to `ProgramInput`. First artifacts
+from parallel workers should be checked for that shape early.

@@ -619,6 +619,63 @@ fn test_runner_dispatches_r1_gates_lens_output_equals_claim() {
     assert_eq!(results[0].result, ClaimResult::Pass);
 }
 
+/// Retired string-keyed program-input bridge: only `ProgramInput {}` selects reflection of
+/// `TestClaim.source`. The historical declaration *name* on a non-carrier type must not spoof
+/// the structural path (B4.1 residual / brief addendum).
+#[test]
+fn lens_output_equals_retired_sentinel_name_on_int_is_not_program_input() {
+    let source = r#"
+module test.lens_output_equals_sentinel_name_spoof
+
+import std.list { fold }
+import std.substrate { Dag, Behavior }
+import std.types { Int }
+import std.verification { LensOutputEquals, TestClaim, TestSuite }
+
+fn count_named_bind(behavior: Behavior) -> Int =
+  match behavior {
+    Value(v) => 0
+    Transform(t) => 0
+    Branch(b) => 0
+    Loop(l) => 0
+    Bind(bind) => if bind.name == "" then 0 else 1
+  }
+
+fn named_function_count(d: Dag) -> Int =
+  fold(d.nodes, 0, |acc, behavior| acc + count_named_bind(behavior))
+
+// Name collides with the pre–B4.1 string sentinel only; type is ordinary `Int`, not `ProgramInput`.
+data r1_lens_output_input_from_program: Int = 0
+
+data spoof_expected: Int = 1
+
+data spoof_claim: TestClaim = {
+  name: "sentinel_name_spoof",
+  source: "let x: Int = 1\n",
+  file_name: "lens_output_equals_sentinel_spoof.v3",
+  predicate: LensOutputEquals(
+    named_function_count,
+    r1_lens_output_input_from_program,
+    spoof_expected
+  ),
+  requires: []
+}
+
+data spoof_suite: TestSuite = {
+  name: "spoof_suite",
+  claims: [spoof_claim]
+}
+"#;
+    let dag = compile_clean(source, "lens_output_equals_sentinel_spoof_harness.dag");
+    let results = TestRunner::new(&dag).run_suite("spoof_suite");
+    assert_eq!(results.len(), 1);
+    assert_ne!(
+        results[0].result,
+        ClaimResult::Pass,
+        "expected Fail: name-only collision must not select claim-program reflection (structural `ProgramInput` only)"
+    );
+}
+
 #[test]
 fn test_runner_algebraic_law_commutativity_returns_not_yet_implemented() {
     let source = r#"
