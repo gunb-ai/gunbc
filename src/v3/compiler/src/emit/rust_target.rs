@@ -2677,7 +2677,11 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
             !decl
                 .name
                 .as_deref()
-                .is_some_and(|n| n == "Result" && decl.span.file.ends_with("errors.dag"))
+                .is_some_and(|n| {
+                    n == "Result"
+                        && (decl.span.file.ends_with("errors.dag")
+                            || decl.span.file.ends_with("error_primitives.dag"))
+                })
         })
         .filter(|decl| {
             matches!(
