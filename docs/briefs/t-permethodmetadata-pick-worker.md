@@ -1,5 +1,7 @@
 # T-PerMethodMetadata — §6a per-method-metadata carrier pick `(S, R2)`
 
+> **CLOSED — historical brief.** The pick landed (**Option 3** unified `MethodContract`) with minimal demo consumer; see PR #794 and [`docs/design-substrate-carrier-port-program.md` §6a](../design-substrate-carrier-port-program.md) (**Decision** / **Live receipt** / **Dissolution trigger**). **Do not dispatch** this file as open work. R2 remainder is [`r2-release-6a-follow-through-worker.md`](r2-release-6a-follow-through-worker.md) (bulk migration + dissolution tracking). [`docs/r2-structure.md` §Goals](../r2-structure.md) Goal 5 records pick-closed + follow-through for program ledger.
+
 > **Director ad-hoc dispatch.** R2 T-PerMethodMetadata per
 > [`docs/r2-structure.md`](../r2-structure.md) §"Goal 5". *"Design-call
 > close, not substrate-capability work"* per the lane row. Reports to
@@ -11,8 +13,8 @@
 
 ## Read first
 
-- **[`docs/design-substrate-carrier-port-program.md` §6a lines 156-175](../design-substrate-carrier-port-program.md)** — the full design call. Four options (0/1/2/3) with trade-offs. Currently *"(deferred)"* — the worker's job is to pick + lock the choice.
-- **[`docs/r2-structure.md` §"Goal 5" + lane row](../r2-structure.md)** — sub-lane scoping. Note the lane is "design-call close, not substrate-capability work" — small PR; pick-and-document.
+- **[`docs/design-substrate-carrier-port-program.md` §6a](../design-substrate-carrier-port-program.md)** — authority: four options (0/1/2/3) for audit; **Decision** locks Option 3; **Live receipt** cites `algebra.dag` + `cost.dag`.
+- **[`docs/r2-structure.md` §"Goal 5" + lane row](../r2-structure.md)** — program ledger: pick closed; follow-through named.
 - **[`dsl/std/algebra.dag` lines 447-457, 469-569](../../dsl/std/algebra.dag)** — current v2 metadata authority: `AlgebraFieldTemplate` type + 69 `*_templates()` functions (population). The metadata being scoped: `size_effect`, `cost_shape`, `callback_element_position`.
 - **[`src/v3/compiler/src/bootstrap_generated.rs:56`](../../src/v3/compiler/src/bootstrap_generated.rs)** — v3 transitive bootstrap reference; v3 has no native carrier yet.
 - **The four options (verbatim from §6a):**
