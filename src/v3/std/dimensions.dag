@@ -67,11 +67,14 @@ type AnalysisDimension<Carrier> {
 }
 
 // R2 T-Modeling unit wrapper. `Unit` is a compile-time-only phantom
-// parameter; `Carrier` is the runtime value. The lowerer attaches the
-// canonical `PhantomParameter { parameter: Unit, algebra: AbelianGroup<Unit> }`
-// carrier for this declaration so same-unit arithmetic composes and
-// mismatched-unit arithmetic fails with `UnitMismatch` before ordinary
-// structural type mismatch.
+// parameter; `Carrier` is the runtime value. Until `.dag` can declare
+// `phantom_params` directly, the lowerer has one bounded bridge for this
+// exact std authority (`src/v3/std/dimensions.dag` + `Dimension<Unit, Carrier>
+// { value: Carrier }`): it attaches
+// `PhantomParameter { parameter: Unit, algebra: AbelianGroup<Unit> }` and
+// fails closed if the declaration shape or algebra witness drifts. Dissolution
+// trigger: when phantom parameters become source-declared substrate facts,
+// delete the lowerer bridge and move this fact onto the declaration itself.
 type Dimension<Unit, Carrier> {
   value: Carrier
 }

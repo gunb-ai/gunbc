@@ -48,6 +48,7 @@ use crate::parse::{
 use crate::types::TypeShape;
 
 type CallableScope = HashMap<String, DeclarationId>;
+const DIMENSION_STD_AUTHORITY_FILE: &str = "src/v3/std/dimensions.dag";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct RecursiveEdge {
@@ -1987,19 +1988,55 @@ fn lower_type_record(
 }
 
 fn attach_dimension_phantom_parameter(dag: &mut Dag, decl_id: DeclarationId, name: &str) {
-    if name != "Dimension" || !dag.declaration(decl_id).phantom_params.is_empty() {
+    if name != "Dimension" {
         return;
     }
-    let Some(unit_param) = dag.declaration(decl_id).type_params.first().copied() else {
+    let span = dag.declaration(decl_id).span.clone();
+    if span.file != DIMENSION_STD_AUTHORITY_FILE {
         return;
-    };
+    }
+    if !dag.declaration(decl_id).phantom_params.is_empty() {
+        return;
+    }
+
+    let type_params = dag.declaration(decl_id).type_params.clone();
+    if type_params.len() != 2
+        || !type_param_is_named(dag, type_params[0], "Unit")
+        || !type_param_is_named(dag, type_params[1], "Carrier")
+    {
+        report_dimension_phantom_error(
+            dag,
+            span,
+            "std `Dimension` must declare exactly `Dimension<Unit, Carrier>`",
+        );
+        return;
+    }
+    let unit_param = type_params[0];
+    let carrier_param = type_params[1];
+    if !dimension_record_payload_is_carrier(dag, decl_id, carrier_param) {
+        report_dimension_phantom_error(
+            dag,
+            span,
+            "std `Dimension<Unit, Carrier>` must contain exactly `value: Carrier`",
+        );
+        return;
+    }
     let Some(abelian_group) = dag.abelian_group_decl() else {
+        report_dimension_phantom_error(
+            dag,
+            span,
+            "std `Dimension<Unit, Carrier>` requires `AbelianGroup` to attach its unit phantom algebra",
+        );
         return;
     };
     let Some(abelian_receiver) = dag.declaration(abelian_group).type_params.first().copied() else {
+        report_dimension_phantom_error(
+            dag,
+            span,
+            "`AbelianGroup` must expose its receiver type parameter for `Dimension` phantom algebra",
+        );
         return;
     };
-    let span = dag.declaration(decl_id).span.clone();
     let unit_abelian_group = dag.alloc_declaration_id();
     dag.push_declaration(Declaration {
         id: unit_abelian_group,
@@ -2026,6 +2063,40 @@ fn attach_dimension_phantom_parameter(dag: &mut Dag, decl_id: DeclarationId, nam
             parameter: unit_param,
             algebra: unit_abelian_group,
         });
+}
+
+fn type_param_is_named(dag: &Dag, decl_id: DeclarationId, expected: &str) -> bool {
+    matches!(
+        &dag.declaration(decl_id).connective,
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == expected
+    )
+}
+
+fn dimension_record_payload_is_carrier(
+    dag: &Dag,
+    decl_id: DeclarationId,
+    carrier_param: DeclarationId,
+) -> bool {
+    matches!(
+        &dag.declaration(decl_id).connective,
+        TypeConnective::Conj { children }
+            if children.len() == 1
+                && children[0].label == "value"
+                && children[0].ty == carrier_param
+    )
+}
+
+fn report_dimension_phantom_error(dag: &mut Dag, span: SourceSpan, detail: &str) {
+    report_declaration_error(
+        dag,
+        Diagnostic::ResolveError {
+            name: format!(
+                "invalid std `Dimension<Unit, Carrier>` phantom bridge: {detail}"
+            ),
+            fixes: Vec::new(),
+            span,
+        },
+    );
 }
 
 fn lower_type_sum(
@@ -6939,6 +7010,76 @@ mod tests {
             span: test_span(),
         });
         id
+    }
+
+    fn surface_named_type(name: &str) -> SurfaceType {
+        SurfaceType::Named {
+            name: name.to_string(),
+            span: test_span(),
+        }
+    }
+
+    fn dimension_record_module(file: &str, type_params: &[&str]) -> SurfaceModule {
+        SurfaceModule {
+            items: vec![SurfaceItem::TypeRecord {
+                name: "Dimension".to_string(),
+                type_params: type_params.iter().map(|param| (*param).to_string()).collect(),
+                fields: vec![SurfaceField {
+                    name: "value".to_string(),
+                    ty: surface_named_type("Carrier"),
+                }],
+                span: SourceSpan::new(file, 0, 1),
+            }],
+        }
+    }
+
+    #[test]
+    fn non_std_dimension_record_does_not_receive_unit_phantom_bridge() {
+        let mut dag = Dag::empty();
+        let module = dimension_record_module("user_dimension.dag", &["Unit", "Carrier"]);
+
+        lower_into(&mut dag, &module);
+
+        let dimension = dag
+            .declarations()
+            .iter()
+            .find(|decl| decl.name.as_deref() == Some("Dimension"))
+            .expect("test Dimension declaration allocated");
+        assert!(
+            dimension.phantom_params.is_empty(),
+            "non-std Dimension declarations must not receive the std unit phantom convention"
+        );
+        assert!(
+            dag.diagnostics().is_empty(),
+            "non-std Dimension should lower as an ordinary record without bridge diagnostics: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn malformed_std_dimension_bridge_fails_closed() {
+        let mut dag = Dag::empty();
+        let module = dimension_record_module(DIMENSION_STD_AUTHORITY_FILE, &["Carrier"]);
+
+        lower_into(&mut dag, &module);
+
+        let dimension = dag
+            .declarations()
+            .iter()
+            .find(|decl| decl.name.as_deref() == Some("Dimension"))
+            .expect("test Dimension declaration allocated");
+        assert!(dimension.phantom_params.is_empty());
+        assert!(
+            dag.diagnostics().iter().any(|(_, diagnostic)| {
+                matches!(
+                    diagnostic,
+                    Diagnostic::ResolveError { name, .. }
+                        if name.contains("invalid std `Dimension<Unit, Carrier>` phantom bridge")
+                )
+            }),
+            "malformed std Dimension must emit a fail-closed diagnostic: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
     }
 
     #[test]
