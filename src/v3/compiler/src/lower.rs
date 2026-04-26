@@ -2590,7 +2590,7 @@ fn reject_user_unparsed_scaffolds(dag: &mut Dag, strict_from: usize) {
             dag,
             Diagnostic::ResolveError {
                 name: format!(
-                    "data `{name}` has an opaque body — M1(2.8) user code cannot yet use map literals inside data bodies (see DOWNSTREAM_REQUIREMENTS.md class-5 gap #3)"
+                    "data `{name}` has an opaque body — M1(2.8) user code cannot ship a data body the compiler could not structurally validate (see DOWNSTREAM_REQUIREMENTS.md class-5 gap #3)"
                 ),
                 fixes: Vec::new(),
                 span,
