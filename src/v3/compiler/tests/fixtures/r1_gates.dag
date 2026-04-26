@@ -17,7 +17,7 @@
 // the rustc boundary receipt, so the named T-Sub gate has one program witness.
 //
 // merge-conflicts: union with `origin/main` — keep every `data` gate from main
-// (`sub_match_*`, `manual_*`, `testgen_structural_coverage*`) plus this file's
+// (`sub_match_*`, `sub_type_alias_where_*`, `manual_*`, `testgen_structural_coverage*`) plus this file's
 // `user_authored_lens_compiles_gate`; do not resolve conflicts by keeping only the lens gate.
 
 module std.r1_gates
@@ -28,6 +28,7 @@ import std.types { Int }
 import std.verification {
   AlgebraicLaw,
   Compiles,
+  DeclarationHasRefinement,
   DifferentialEquals,
   LensOutputEquals,
   ProgramInput,
@@ -50,12 +51,14 @@ data sub_match_over_user_sum_gate: TestSuite = {
   claims: [sub_match_over_user_sum]
 }
 
-// T-Sub (PR #703): `type N = T where N …` — refinement lowers on the alias subject (m2 DB-11 receipts).
+// R1C-C / T-Sub — type-alias RHS `where` parse + lower (PR #703; DB-11:
+// `test_db11_type_alias_where_survives_parse_and_lower`). Same surface as integration receipt.
+// Predicate: `DeclarationHasRefinement` — fail-closed on silent refinement drop (not `Compiles` alone).
 data sub_type_alias_where_lowers: TestClaim = {
   name: "sub_type_alias_where_lowers",
-  source: "type PositiveInt = Int where PositiveInt > 0",
-  file_name: "r1_sub_type_alias_where.v3",
-  predicate: Compiles,
+  source: "type PositiveInt = Int where PositiveInt > 0\n",
+  file_name: "r1_sub_type_alias_where_lowers.v3",
+  predicate: DeclarationHasRefinement("PositiveInt"),
   requires: []
 }
 
