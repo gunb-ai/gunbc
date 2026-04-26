@@ -2306,8 +2306,7 @@ impl<'a> TestRunner<'a> {
         if !kind_payload.is_empty() {
             return Err("DiagnosticReference `kind` should not carry payload".to_string());
         }
-        let expect_at_least_one_correction = match field(fields, "expect_at_least_one_correction")
-        {
+        let expect_at_least_one_correction = match field(fields, "expect_at_least_one_correction") {
             Some(FieldValue::Literal(LiteralBits::Bool(b))) => *b,
             Some(other) => {
                 return Err(format!(
