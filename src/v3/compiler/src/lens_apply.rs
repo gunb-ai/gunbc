@@ -129,7 +129,6 @@ fn find_fold_step_bind_via_instantiation(
     let formals = fold_template_callable_formals(dag, *template);
     let depth_budget = LENS_APPLY_TYPE_WALK_DEPTH as i64;
 
-    let mut ambiguous_fallback: Vec<&BindNode> = Vec::new();
     for arg in arguments {
         let resolved = resolve_template_argument_value(&depth_budget, arguments, arg.value);
         let Some(b) = monomorph_callable_bind_root(dag, resolved) else {
@@ -138,14 +137,8 @@ fn find_fold_step_bind_via_instantiation(
         if formals.contains(&arg.parameter) {
             return Some(b);
         }
-        if !ambiguous_fallback
-            .iter()
-            .any(|existing| existing.id == b.id)
-        {
-            ambiguous_fallback.push(b);
-        }
     }
-    (ambiguous_fallback.len() == 1).then(|| ambiguous_fallback[0])
+    None
 }
 
 /// Apply a named lens (`Arrow` + `UserDefined` body) from `lens_program` to positional
@@ -1056,6 +1049,64 @@ fn sum(xs: List<Int>) -> Int =
             unreachable!();
         };
         super::find_fold_step_bind_via_instantiation(&dag, *callee).expect("fold step bind");
+    }
+
+    #[test]
+    fn fold_step_lookup_requires_template_formal_edge() {
+        let src = r#"module m
+import std.list { List, fold }
+
+fn sum(xs: List<Int>) -> Int =
+  fold(xs, 99, |acc, x| acc + x)
+"#;
+        let mut dag = compile_to_dag(src, "mono_fold_bind_no_formal_edge.v3").expect("compiles");
+        let fold_callable = dag
+            .nodes()
+            .iter()
+            .find_map(|n| {
+                let Behavior::Transform(t) = n else {
+                    return None;
+                };
+                let TransformTarget::Callable(callee) = &t.target else {
+                    return None;
+                };
+                super::is_fold_instantiation(&dag, dag.declaration(*callee)).then_some(*callee)
+            })
+            .expect("monomorphized fold transform");
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &dag.declaration(fold_callable).connective
+        else {
+            panic!("fold callable should be an Instantiation");
+        };
+        let formals = super::fold_template_callable_formals(&dag, *template);
+        let depth_budget = LENS_APPLY_TYPE_WALK_DEPTH as i64;
+        let callable_arg_index = arguments
+            .iter()
+            .position(|arg| {
+                let resolved = resolve_template_argument_value(&depth_budget, arguments, arg.value);
+                super::monomorph_callable_bind_root(&dag, resolved).is_some()
+                    && formals.contains(&arg.parameter)
+            })
+            .expect("callable fold argument");
+        let non_formal_parameter = arguments
+            .iter()
+            .map(|arg| arg.parameter)
+            .find(|parameter| !formals.contains(parameter))
+            .expect("non-callable fold formal parameter");
+
+        let TypeConnective::Instantiation { arguments, .. } =
+            &mut dag.declaration_mut(fold_callable).connective
+        else {
+            panic!("fold callable should remain an Instantiation");
+        };
+        arguments[callable_arg_index].parameter = non_formal_parameter;
+
+        assert!(
+            super::find_fold_step_bind_via_instantiation(&dag, fold_callable).is_none(),
+            "unique callable candidates must not be accepted without the template-formal edge"
+        );
     }
 
     #[test]
