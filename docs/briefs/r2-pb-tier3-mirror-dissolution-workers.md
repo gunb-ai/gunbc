@@ -93,7 +93,9 @@ delta, and any new direct `.dag` evaluation receipt.
 
 **Scope:** `src/v3/compiler/src/dag.rs` computation mirror block:
 `SizeBound`, `CallPattern`, `ShrinkFactor`, `IterationPrimitive`,
-`LoweringTarget`, `lower_call_pattern`, and bound/profile helper functions.
+`LoweringTarget`, `IterationDimension`, `lower_call_pattern`,
+`algebra_profile_to_dimension`, `type_iteration_dimension`, and bound/profile
+helper functions.
 
 **Authority:** `src/v3/std/computation.dag`, with termination Peano carriers from
 `src/v3/std/termination.dag`.
@@ -106,8 +108,11 @@ delta, and any new direct `.dag` evaluation receipt.
    `size_bound_param`, `is_constant_bound`, `constant_bound_value`, and
    related helpers.
 3. Keep `kernel_algebra_profile` out of this slice unless the required
-   map-shaped carrier already exists; that mirror is separately gated on a
-   future `ValueBody::Map` substrate lane.
+   map-shaped carrier already exists; that mirror and the
+   `type_iteration_dimension` path that reads it are separately gated on a
+   future `ValueBody::Map` substrate lane. The audit must still classify
+   `IterationDimension` and `algebra_profile_to_dimension`, so the computation
+   mirror cannot close while those Rust mirrors remain unaccounted for.
 
 **STOP-AND-ESCALATE:**
 
@@ -118,7 +123,9 @@ delta, and any new direct `.dag` evaluation receipt.
 - The path requires changing termination mirror behavior first.
 
 **Receipts:** computation rows in `m2_substrate_inhabitance_test`, any
-cost/computation helper tests touched, SG-0 census delta.
+cost/computation helper tests touched, `kernel_algebra_profile` /
+`type_iteration_dimension` ratchet rows if the profile path is widened, SG-0
+census delta.
 
 ## Worker 3 - Induction Mirror Audit / Dissolution Plan
 
