@@ -28,6 +28,7 @@ import std.types { Int }
 import std.verification {
   AlgebraicLaw,
   Compiles,
+  DeclarationHasRefinement,
   DifferentialEquals,
   LensOutputEquals,
   ProgramInput,
