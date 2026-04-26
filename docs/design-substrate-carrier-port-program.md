@@ -176,7 +176,7 @@ This is the same shape as the core port program at a different layer: **per-meth
 
 **Cross-reference:** see PR #654's investigation receipt for the full Lane G findings that surfaced this question.
 
-**Does not block the core four-carrier port program.** Queued as a design follow-up; **E-I carrier surface is landed** — this subsection is about per-method *metadata* placement, not about whether `SubValueRelation` exists in v3 std.
+**Does not block the core four-carrier port program.** The §6a **pick** is **locked** (Option 3 above); bulk `cost.dag` / `complexity.dag` migration to keyed `MethodContract` consumption remains tracked work, not a reopened options call. **E-I carrier surface is landed** — this subsection is about per-method *metadata* placement, not about whether `SubValueRelation` exists in v3 std.
 
 ## 7. What this program explicitly does NOT touch
 
