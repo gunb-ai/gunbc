@@ -41,7 +41,7 @@ From [`docs/briefs/b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-s
 
 ## Owned deliverables (through R2 close)
 
-| Sub-lane | Size | Status (at brief authoring) | Carrier shape |
+| Sub-lane | Size | Current status | Carrier shape |
 |---|---|---|---|
 | T-Substrate cardinality-for-int-lit | M | BRIEF LANDED (`t-substrate-cardinality-int-lit-worker.md`, PR #806 merged 2026-04-25); duplicate R2 routing doc closed as redundant (`r2-substrate-cardinality-for-int-lit-subset.md`). | range facts + reconciliation narrowing; Int128/Word128 carrier deferred to sibling sub-lane |
 | T-Substrate nominal-opaque-for-Secret | M | BRIEF AUTHORED (`r2-substrate-nominal-opaque-for-secret-subset.md`; PR #836 merged 2026-04-26) | nominal-type construction/access restriction |
