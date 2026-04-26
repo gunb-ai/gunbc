@@ -3174,7 +3174,9 @@ mod tests {
             .iter()
             .find_map(|node| match node {
                 Behavior::Bind(bind)
-                    if bind.emit_participation() == Some(BindEmitParticipation::UserCallable) =>
+                    if bind.name == "id"
+                        && bind.emit_participation()
+                            == Some(BindEmitParticipation::UserCallable) =>
                 {
                     bind.params.first().copied()
                 }
@@ -3196,12 +3198,28 @@ mod tests {
             "match_test.v3",
         )
         .expect("compiles");
+        let classify_output = dag
+            .nodes()
+            .iter()
+            .find_map(|node| match node {
+                Behavior::Bind(bind)
+                    if bind.name == "classify"
+                        && bind.emit_participation()
+                            == Some(BindEmitParticipation::UserCallable) =>
+                {
+                    Some(bind.value)
+                }
+                _ => None,
+            })
+            .expect("classify user function output");
         let branch_input = dag
             .nodes()
             .iter()
             .find_map(|node| match node {
                 Behavior::Branch(branch)
-                    if branch.emit_participation() == Some(BranchEmitParticipation::UserMatch) =>
+                    if branch.output == classify_output
+                        && branch.emit_participation()
+                            == Some(BranchEmitParticipation::UserMatch) =>
                 {
                     Some(branch.input)
                 }
