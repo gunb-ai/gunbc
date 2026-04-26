@@ -185,7 +185,7 @@ type PhantomParameter {
 // either gain a real walker consumer or be removed before T-Modeling
 // Secret<T> graduation can dispatch.
 type NominalOpacity {
-  permitted_accessors: List<DeclarationRef>
+  permitted_accessors: List<DeclarationId>
 }
 
 // 🟡 SCAFFOLD. Arithmetic operators inherit the operator-shim
