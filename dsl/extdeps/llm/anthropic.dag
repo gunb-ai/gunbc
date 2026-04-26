@@ -106,10 +106,14 @@ data structural_coverage_gap_anthropic_messages_outputs: List<String> = [
   "closure:rest_typed_response_body|llm.Anthropic.Messages|residue:output_fields_use_json_path_projection"
 ]
 
-// Request `messages[].content[]`: Anthropic expects `type`-keyed objects; enum
-// JSON encoding is compiler-owned — track alignment vs wire, do not fabricate.
-data structural_coverage_gap_anthropic_content_block_request_wire: List<String> = [
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicContentBlock|verify:serde_json_encoding_matches_messages_content_array"
+// Request wire: Messages API expects string `role` + flat `content[]` objects
+// keyed by `type` (https://docs.anthropic.com/en/api/messages). Today’s Rust
+// emitter still serde-tags unit enums / sum variants (e.g. externally tagged
+// shapes), so typed `messages` may not byte-match wire until
+// `rest_request_wire_serde_alignment` closes — do not assume live 200s.
+data structural_coverage_gap_anthropic_messages_request_wire: List<String> = [
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicMessagesRole|residue:unit_enum_role_must_serialize_as_string_user_assistant",
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicContentBlock|residue:content_blocks_must_serialize_as_flat_type_keyed_objects"
 ]
 
 // -- Service: REST transport wiring ------------------------------
