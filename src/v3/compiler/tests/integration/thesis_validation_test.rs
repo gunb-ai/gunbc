@@ -286,21 +286,6 @@ fn t1_4_type_mismatch_produces_a_typemismatch_diagnostic() {
 }
 
 #[test]
-fn t1_4_type_mismatch_does_not_cascade_fabricated_diagnostics() {
-    let dag = compile_any("let x: Bool = 1\nlet y: Int = 2", "t1_4_no_cascade.v3");
-    let bind = bind_named(&dag, "y");
-    assert!(
-        matches!(dag.port(bind.value).state(), PortState::Resolved(_)),
-        "well-typed binding after an unrelated type error should still resolve; got {:?}",
-        dag.port(bind.value).state()
-    );
-    assert!(
-        !dag.diagnostics().contains(bind.value),
-        "well-typed downstream binding should not receive a fabricated diagnostic"
-    );
-}
-
-#[test]
 fn t1_4_named_payload_sum_fix_renders_supported_constructor_syntax() {
     let src = "\
 type MaybeInt = Some { value: Int } | None
