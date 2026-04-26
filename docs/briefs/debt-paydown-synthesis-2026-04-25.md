@@ -151,7 +151,7 @@ to PB-* lane.
 
 Summary citations to existing tracking:
 
-- File-preference rank (`dag.rs:2735-2764` + `lower.rs:119-127`) — ROADMAP `:368`. Trigger: convergence of every duplicated `src/v3/std/` ↔ `dsl/std/` module. **PR #809 row catches checklist undercount (computation + induction + termination not in checklist).**
+- File-preference rank (`dag.rs::declaration_name_preference_rank` + `lower.rs::collect_symbols` — line cites drift on `main`) — ROADMAP `:368`. Trigger: convergence of every duplicated `src/v3/std/` ↔ `dsl/std/` module listed in those doc comments. **PR #809 undercount (computation + induction + termination) closed 2026-04-26** — checklist extended in source + ROADMAP exploratory row.
 - Loop emission semantic invariant (Python/Go) — PR #809 row. **Risk-shaped:** comment-level invariant, not structural.
 - `bootstrap.rs::patch_kernel_bool_boolean_algebra_inhabits` Rust patching (`bootstrap.rs:211-291`) — ROADMAP `:364` (Class 5 Gap 1). Trigger: structural `inhabits` edge.
 - `EXTDEPS_BOOTSTRAP_FIXTURES` manual list — ROADMAP `:365` (Class 5 Gap 3 `std.unicode` bootstrap/load-set decision is the parent).
@@ -175,9 +175,9 @@ The two qualitative concerns:
   it just isn't named as ONE program. Director should consider whether
   the §0 class warrants its own program-level brief (M scope) parallel
   to PB-Tier1-Sweep.
-- **Checklist drift:** PR #809 catches one instance (file-preference
-  rank checklist undercount). The pattern likely recurs across other
-  ratcheted scaffolds. Worth a sweep; not synthesis-doc scope.
+- **Checklist drift:** PR #809's file-preference undercount instance is
+  **closed** (2026-04-26). The pattern may still recur across other
+  ratcheted scaffolds — worth a sweep; not synthesis-doc scope.
 
 ---
 
@@ -313,9 +313,11 @@ dispatch in parallel. Each PR is small.
    author the marker brief blind. Per `feedback_construction_over_ratchets`,
    prefer the structural-closure outcome.
 6. **`src/v3/std` vs `dsl/std` checklist undercount fix** (PR #809
-   entry). One-line fix to `dag.rs:2735-2764` + mirror in `lower.rs`.
-   Or surface as "explain why these three modules are exempt." Belongs
-   to whoever owns the file-preference rank scaffold; trivial dispatch.
+   entry). **RESOLVED (2026-04-26):** convergence checklist in
+   `dag.rs::declaration_name_preference_rank` + `lower.rs::collect_symbols`
+   extended with `std.computation` / `std.induction` / `std.termination`
+   duplicate pairs; ROADMAP exploratory row updated. (Prior line-cite
+   `2735-2764` drifted as `main` moved — read the live doc comments.)
 7. **`patch_lower_helpers_generated_type_alias_refinement` retirement**
    (PR #809 entry). Belongs to Zero-Floor Manager PB-Tier1 work; the
    "first PB cleanup target" framing is already in the row.
