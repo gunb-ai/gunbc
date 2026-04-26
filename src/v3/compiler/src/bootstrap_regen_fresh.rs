@@ -37,9 +37,10 @@ include!(concat!(env!("OUT_DIR"), "/v3_compiler_files.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_extdeps_files.rs"));
 
 fn extdeps_bootstrap_fixtures() -> impl Iterator<Item = (&'static str, &'static str)> {
-    EXTDEPS_FILES.iter().copied().filter(|(path, _)| {
-        crate::bootstrap::EXTDEPS_BOOTSTRAP_PATH_KEYS.contains(path)
-    })
+    EXTDEPS_FILES
+        .iter()
+        .copied()
+        .filter(|(path, _)| crate::bootstrap::EXTDEPS_BOOTSTRAP_PATH_KEYS.contains(path))
 }
 
 // Single authority for staged-vs-`dsl/` name collision resolution during regen.
