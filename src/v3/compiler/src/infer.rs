@@ -4175,12 +4175,10 @@ fn read_algebra_field(
     // receiver-substitution rule.
     let input_shapes: Vec<TypeShape> = arrow_inputs
         .iter()
-        .map(|id| {
-            substitute_receiver(dag, *id, receiver_param, source_id).map(TypeShape::new)
-        })
+        .map(|id| substitute_receiver(dag, *id, receiver_param, source_id).map(TypeShape::new))
         .collect::<Option<_>>()?;
-    let output_shape = substitute_receiver(dag, arrow_output, receiver_param, source_id)
-        .map(TypeShape::new)?;
+    let output_shape =
+        substitute_receiver(dag, arrow_output, receiver_param, source_id).map(TypeShape::new)?;
     // Sanity check: the arity is always 2 for binary operators.
     // If algebra.dag ever declares a field under one of our
     // operator names with a different arity, the check downstream
@@ -4217,7 +4215,10 @@ fn substitute_receiver(
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             substitute_receiver(dag, *next, receiver_param, source_id)
         }
-        TypeConnective::Instantiation { template, arguments } => {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
             let mut new_args: Vec<TemplateArgument> = Vec::with_capacity(arguments.len());
             let mut any_change = false;
             for arg in arguments {
@@ -4828,12 +4829,9 @@ mod bool_logical_operator_arrow_tests {
     fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {
         let mut dag = Dag::new();
         let bool_shape = dag.bool_shape().expect("bootstrap Bool");
-        let sig = resolve_operator_arrow(
-            &mut dag,
-            OperatorKind::Logical(LogicalOp::And),
-            &bool_shape,
-        )
-        .expect("&& should resolve on Bool");
+        let sig =
+            resolve_operator_arrow(&mut dag, OperatorKind::Logical(LogicalOp::And), &bool_shape)
+                .expect("&& should resolve on Bool");
         assert!(
             !matches!(sig.body, ArrowBody::Pending),
             "expected Bool && via inhabits → BooleanAlgebra.meet, not Pending scaffold; got {:?}",
@@ -4849,12 +4847,9 @@ mod bool_logical_operator_arrow_tests {
     fn bool_logical_or_resolves_via_boolean_algebra_join_not_pending_fallback() {
         let mut dag = Dag::new();
         let bool_shape = dag.bool_shape().expect("bootstrap Bool");
-        let sig = resolve_operator_arrow(
-            &mut dag,
-            OperatorKind::Logical(LogicalOp::Or),
-            &bool_shape,
-        )
-        .expect("|| should resolve on Bool");
+        let sig =
+            resolve_operator_arrow(&mut dag, OperatorKind::Logical(LogicalOp::Or), &bool_shape)
+                .expect("|| should resolve on Bool");
         assert!(
             !matches!(sig.body, ArrowBody::Pending),
             "expected Bool || via inhabits → BooleanAlgebra.join, not Pending scaffold; got {:?}",
