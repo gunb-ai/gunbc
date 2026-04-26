@@ -1336,8 +1336,20 @@ pub struct TestRunner<'a> {
     dag: &'a Dag,
 }
 
-struct ProgramInputRole {
-    output_bind_name: String,
+enum ProgramInputRole {
+    ProgramInput,
+    ProgramOutputBind {
+        output_bind_name: String,
+    },
+}
+
+impl ProgramInputRole {
+    fn output_bind_name(&self) -> Option<&str> {
+        match self {
+            Self::ProgramInput => None,
+            Self::ProgramOutputBind { output_bind_name } => Some(output_bind_name),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

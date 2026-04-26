@@ -161,9 +161,12 @@ type TestPredicate
     }
 
 // Structural runner input role for predicates whose input is the compiled
-// `TestClaim.source` program. `output_ref` names the bind declaration in that
-// program whose value port is the assertion target for cost/differential lenses.
-type ProgramInput {
+// `TestClaim.source` program.
+type ProgramInput {}
+
+// Structural output-bind selector for predicates that compare a lens result
+// against one bind in the compiled `TestClaim.source` program.
+type ProgramOutputBind {
   output_ref: DeclarationRef
 }
 
