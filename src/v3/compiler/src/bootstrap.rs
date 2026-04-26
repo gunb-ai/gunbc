@@ -48,7 +48,8 @@
 // lowers with `value_body = ValueBody::List(_)`: both the type structure and
 // the 10-element pilot enumeration are walkable by downstream grounding
 // consumers. Map-shaped bootstrap data such as `kernel_algebra_profile`
-// remains on the sibling `ValueBody::Map` lane.
+// remains future debt for the map-shaped T-Substrate sibling lane; today it
+// still lowers to `ValueBody::Unparsed`.
 //
 // Transitional shape: PB-Bootstrap-Process lane (Zero-Floor program;
 // tracked in `docs/design-pure-bootstrap-zero.md` §"New lanes") absorbs
