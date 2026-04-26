@@ -14,23 +14,23 @@
 
 PR #703 landed type-alias `where` lowering with `test_db11_type_alias_where_*` integration tests as the behavioral receipt. The `.dag` TestClaim wrapper just needs to author against that landed feature with the appropriate predicate.
 
-The `[ext]` tag in ROADMAP suggests a new predicate may be needed, but the simplest predicate (`Compiles` on a fixture program that exercises type-alias `where` lowering) is DB-15 schema and dispatchable Day-1. **Verify at brief authoring** which predicate the gate evaluates.
+The `[ext]` tag in ROADMAP originally allowed a new predicate. **`Compiles` alone is insufficient** for this gate name: it does not assert `Declaration.refinement` survives lowering. The landed receipt uses **`DeclarationHasRefinement("…")`** on the same witness program as `test_db11_type_alias_where_survives_parse_and_lower` (plus `test_runner` / M1.5 harness wiring).
 
 ## Single deliverable
 
-Author `sub_type_alias_where_lowers` TestClaim in `r1_gates.dag` (or sibling). Predicate: most likely `Compiles` on a fixture program declaring a type alias with a `where` clause that lowers correctly per PR #703 receipts. Wire runner dispatch in `test_runner.rs`.
+Author `sub_type_alias_where_lowers` TestClaim in `r1_gates.dag` (or sibling). Predicate: **`DeclarationHasRefinement`** on the alias identifier so the gate fails closed if alias-`where` lowering silently drops the refinement edge. Wire runner dispatch in `test_runner.rs`.
 
 ## Slice — single PR
 
 1. Read `test_db11_type_alias_where_*` integration tests for the canonical input/output pair.
 2. Author the `.dag` fixture program that exercises type-alias `where` lowering.
-3. Author the `sub_type_alias_where_lowers` TestClaim referencing the fixture; pick predicate (`Compiles` likely).
-4. Wire runner dispatch.
+3. Author the `sub_type_alias_where_lowers` TestClaim referencing the fixture; predicate **`DeclarationHasRefinement`** (not `Compiles` alone).
+4. Wire runner dispatch (`DeclarationHasRefinement` arm in `TestRunner::run_claim`).
 5. Verify gate evaluates `Pass`.
 
 ## Acceptance
 
-- [ ] `sub_type_alias_where_lowers` `.dag` TestClaim authored + runner dispatch + gate evaluates `Pass`.
+- [x] `sub_type_alias_where_lowers` `.dag` TestClaim authored + runner dispatch + gate evaluates `Pass`.
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` clean.
 - [ ] DB-8 fixed-point converges bit-identically.
 - [ ] R1 Closure Manager lane status table updated to "R1C-C: 1/1 gates green."
