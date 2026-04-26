@@ -64,7 +64,7 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 
 ## Autonomous dispatch authority
 
-- Authors all T-Release worker briefs without Director (§6a pick, B5/B6/B7, thesis-claim coverage mapping).
+- Authors all T-Release owned deliverables without Director: worker briefs (§6a pick, B5, B6, thesis-claim coverage mapping) and cross-manager signals (B7 priority-hint relay).
 - Dispatches workers against owned deliverables.
 - Owns the **central reporting** layer of P5 dispatch-discipline (per `docs/r2-structure.md`); per-brief paired-dispatch and per-PR gate enforcement happens at each manager's authoring point, not at Release.
 - Resolves Release-internal scope refinements; escalates blockers and scope changes to Director.

@@ -59,7 +59,7 @@ Authored:
 - T-Ground-Pilot (PR #765, merged)
 - T-Ground-Engine Phase 1 typestructure (PR #788, merged)
 
-Pending — Director scope refinement may absorb these into one bundled R2 worker brief or split per lane:
+Pending — pre-spawn Director scope refinement per inbox #828 coordination split (may absorb these into one bundled R2 worker brief or split per lane); post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
 - T-Ground-Rust full implementation
 - T-Ground-Engine Phase 2 implementation (gated on substrate)
 - T-Ground-Tests
