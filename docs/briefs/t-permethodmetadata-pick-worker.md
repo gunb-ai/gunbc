@@ -1,5 +1,7 @@
 # T-PerMethodMetadata — §6a per-method-metadata carrier pick `(S, R2)`
 
+> **CLOSED — historical brief.** The pick landed (**Option 3** unified `MethodContract`) with minimal demo consumer; see PR #794 and [`docs/design-substrate-carrier-port-program.md` §6a](../design-substrate-carrier-port-program.md) (**Decision** / **Live receipt** / **Dissolution trigger**). **Do not dispatch** this file as open work. R2 remainder is [`r2-release-6a-follow-through-worker.md`](r2-release-6a-follow-through-worker.md) (bulk migration + dissolution tracking). [`docs/r2-structure.md` §Goals](../r2-structure.md) Goal 5 records pick-closed + follow-through for program ledger.
+
 > **Director ad-hoc dispatch.** R2 T-PerMethodMetadata per
 > [`docs/r2-structure.md`](../r2-structure.md) §"Goal 5". *"Design-call
 > close, not substrate-capability work"* per the lane row. Reports to
@@ -11,8 +13,8 @@
 
 ## Read first
 
-- **[`docs/design-substrate-carrier-port-program.md` §6a lines 156-175](../design-substrate-carrier-port-program.md)** — the full design call. Four options (0/1/2/3) with trade-offs. Currently *"(deferred)"* — the worker's job is to pick + lock the choice.
-- **[`docs/r2-structure.md` §"Goal 5" + lane row](../r2-structure.md)** — sub-lane scoping. Note the lane is "design-call close, not substrate-capability work" — small PR; pick-and-document.
+- **[`docs/design-substrate-carrier-port-program.md` §6a](../design-substrate-carrier-port-program.md)** — authority: four options (0/1/2/3) for audit; **Decision** locks Option 3; **Live receipt** cites `algebra.dag` + `cost.dag`.
+- **[`docs/r2-structure.md` §"Goal 5" + lane row](../r2-structure.md)** — program ledger: pick closed; follow-through named.
 - **[`dsl/std/algebra.dag` lines 447-457, 469-569](../../dsl/std/algebra.dag)** — current v2 metadata authority: `AlgebraFieldTemplate` type + 69 `*_templates()` functions (population). The metadata being scoped: `size_effect`, `cost_shape`, `callback_element_position`.
 - **[`src/v3/compiler/src/bootstrap_generated.rs:56`](../../src/v3/compiler/src/bootstrap_generated.rs)** — v3 transitive bootstrap reference; v3 has no native carrier yet.
 - **The four options (verbatim from §6a):**
@@ -20,15 +22,15 @@
   - **Option 1**: extend type declarations with field-level refinements. Largest substrate change (needs DB-11 annotation support).
   - **Option 2**: separate metadata carriers per algebra (`OrderedRingMetadata`, etc.). No substrate change; per-algebra carrier proliferation.
   - **Option 3**: unified `MethodContract` carrier — generic `(algebra_id, method_id)` indexed lookup. No substrate change; minimal std surface (one carrier total). Closest to `TemplateArgumentBinding` shape.
-- **E-family R1 closure context:** E-T (PR #682), E-C, E-I, E-P (partial via PR #742), E-M (closed via M-b structural subsumption) all landed in R1. §6a is the **only E-family design call that didn't land in R1**; this brief closes it.
+- **E-family R1 closure context:** E-T (PR #682), E-C, E-I, E-P (partial via PR #742), E-M (closed via M-b structural subsumption) all landed in R1. §6a pick was the residual E-family **metadata-placement** call; **closed** by PR #794 + §6a doc lock.
 - **[`src/v3/lenses/cost.dag`](../../src/v3/lenses/cost.dag)** + **[`src/v3/lenses/complexity.dag`](../../src/v3/lenses/complexity.dag)** — the consumer lenses. Their consumption pattern is what evidence-narrows the option choice. Read to see how metadata is currently looked up + what shape the lens code naturally consumes.
 - **[`MODELING.md`](../../MODELING.md)** + **[`INVARIANTS.md`](../../INVARIANTS.md)** + **[`CODING.md`](../../CODING.md)**.
 
 ## Frame
 
-§6a was deferred at design-doc time pending E-P consumer wiring + E-I preflight evidence. Both have landed; the evidence to narrow options 0/1/2/3 is now available. This brief is the close-out PR: read the §6a options, read the consumer lenses, gather evidence on which carrier shape consumers naturally want, make the call, lock it.
+**Receipt (closed):** Option 3 chosen; rationale + live receipt in §6a at HEAD. Bulk lens migration is explicitly **out of scope** of the original pick PR — see `r2-release-6a-follow-through-worker.md`.
 
-The pick is **not** an extension of substrate capability — all four options are achievable with existing substrate. The call is purely **where** the metadata structurally lives + **which coupling story** is cleanest given E-family evidence.
+The pick is **not** an extension of substrate capability — all four options are achievable with existing substrate. The call was **where** the metadata structurally lives + **which coupling story** is cleanest given E-family evidence.
 
 ## Three consumer-side requirements
 
@@ -46,13 +48,12 @@ The pick is **not** an extension of substrate capability — all four options ar
 
 ## Acceptance
 
-- [ ] All 3 consumer-side requirements satisfied + documented in PR body.
-- [ ] §6a design doc updated; "(deferred)" language replaced with picked option + rationale.
-- [ ] If Option 1/2/3: minimal carrier lands; one consumer lens migrated to demonstrate.
-- [ ] If Option 0: rationale for keeping lens-local tables documented; no further changes.
-- [ ] No regression on existing consumers (cost.dag / complexity.dag).
-- [ ] `cargo test --workspace --exclude v2-compiler-tests` / `clippy --all-targets -- -D warnings` / `fmt --all --check` clean.
-- [ ] DB-8 fixed-point converges bit-identically.
+- [x] All 3 consumer-side requirements satisfied + documented in PR #794 body.
+- [x] §6a design doc updated; decision + live receipt + dissolution trigger at §6a HEAD.
+- [x] Option 3: minimal carrier lands; `cost.dag` demo consumer (`method_contract_cost_shape`).
+- [x] No regression on existing consumers (cost.dag / complexity.dag) per PR #794 gate.
+- [x] `cargo test --workspace --exclude v2-compiler-tests` / `clippy --all-targets -- -D warnings` / `fmt --all --check` clean (PR #794).
+- [x] DB-8 fixed-point converges bit-identically (PR #794).
 
 ## STOP-AND-ESCALATE
 
