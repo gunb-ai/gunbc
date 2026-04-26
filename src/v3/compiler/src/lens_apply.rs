@@ -1,14 +1,13 @@
 //! Bounded lens application (T-LensAPI / D1): interpret `ArrowBody::UserDefined` graphs
 //! over substrate-shaped [`FieldValue`] — no whole-claim operator recognizers.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, Dag, Declaration,
     DeclarationId, FieldValue, LiteralBits, OperatorKind, PortId, TransformNode, TransformTarget,
     TypeConnective, ValueBody,
 };
-use crate::diagnostics::SourceSpan;
 use crate::infer_helpers::resolve_template_argument_value;
 
 fn is_fold_instantiation(dag: &Dag, decl: &Declaration) -> bool {
@@ -19,26 +18,131 @@ fn is_fold_instantiation(dag: &Dag, decl: &Declaration) -> bool {
     )
 }
 
-/// Skip the monomorphized `std.list.fold` → [`eval_fold_step`] fast path for transforms whose
-/// source site lives in `v3.std.algebra` (staged mirror: `dsl/std/algebra.dag`).
+const LENS_APPLY_TYPE_WALK_DEPTH: usize = 32;
+
+/// Structural eligibility for the monomorphized `std.list.fold` → [`eval_fold_step`] fast path.
 ///
-/// That module lowers `fold` over `List<SymbolicCost>` — including list-shaped accumulators —
-/// with step bodies threading dominance / `normalize`. The bounded R1 interpreter only certifies
-/// the small `named_function_count` fragment (e.g. `Int` acc, `Behavior` elements). Using the
-/// fast path on algebra folds risks silent divergence from substrate semantics; skipping routes
-/// through [`LensInterpreter::eval_callable`], which rejects monomorphized `Instantiation {{
-/// template: fold }}` until a fuller interpreter lands (fail-closed vs wrong answers).
+/// `eval_fold_step` / `eval_std_fold` are type-erased over accumulator and element shape: they
+/// bind acc/elt as opaque [`FieldValue`] to the step `Bind`'s last two params and walk the step
+/// body via [`EvalCtx::eval_port`]. The interpretability constraint therefore lives on the step
+/// body's transitive [`Behavior`] reachability, not on the resolved type arguments. A step body
+/// is eligible iff every reachable producer is one the bounded interpreter can evaluate:
+/// [`Behavior::Loop`], non-`UserDefined` [`ArrowBody`], parameterized `Bind` producers, and
+/// logical operators are all rejected as fail-closed (matching the interpreter's own
+/// [`LensApplyError::UnimplementedLoopBound`] / [`LensApplyError::UnsupportedConstruct`] paths).
 ///
-/// **Dissolution trigger:** replace this filter with a structural predicate on lowering facts
-/// (R1-certified step shape, or third `Transform` operand for the step so arity matches
-/// [`eval_std_fold`]) and delete this helper.
-fn fold_site_skips_d1_monomorph_list_fold_path(span: &SourceSpan) -> bool {
-    // `SourceSpan.file` is normalized to forward slashes in the lowering paths we exercise;
-    // do not guess Windows separators until a span fact proves backslashes appear here.
-    span.file.as_str().ends_with("std/algebra.dag")
+/// **Dissolution trigger:** delete this predicate when `eval_loop` and the rejected
+/// `Behavior::Bind` / `Logical` paths gain bounded semantics — at that point every fold step
+/// body is interpretable and the eligibility gate is vacuous.
+fn step_body_eligible_for_bounded_eval(dag: &Dag, step_bind: &BindNode) -> bool {
+    let mut visited: HashSet<DeclarationId> = HashSet::new();
+    eligibility_walk_port(dag, step_bind.value, &mut visited, 0)
 }
 
-const LENS_APPLY_TYPE_WALK_DEPTH: usize = 32;
+fn eligibility_walk_port(
+    dag: &Dag,
+    port: PortId,
+    visited: &mut HashSet<DeclarationId>,
+    depth: usize,
+) -> bool {
+    if depth >= LENS_APPLY_TYPE_WALK_DEPTH {
+        return false;
+    }
+    let Some(producer) = dag.resolve_producer_opt(&port) else {
+        return false;
+    };
+    match producer {
+        Behavior::Value(_) => true,
+        Behavior::Transform(t) => eligibility_walk_transform(dag, t, visited, depth + 1),
+        Behavior::Branch(b) => eligibility_walk_branch(dag, b, visited, depth + 1),
+        Behavior::Loop(_) => false,
+        Behavior::Bind(b) => {
+            if !b.params.is_empty() {
+                return false;
+            }
+            eligibility_walk_port(dag, b.value, visited, depth + 1)
+        }
+    }
+}
+
+fn eligibility_walk_transform(
+    dag: &Dag,
+    t: &TransformNode,
+    visited: &mut HashSet<DeclarationId>,
+    depth: usize,
+) -> bool {
+    for input in &t.inputs {
+        if !eligibility_walk_port(dag, *input, visited, depth + 1) {
+            return false;
+        }
+    }
+    match &t.target {
+        TransformTarget::Operator(OperatorKind::Logical(_)) => false,
+        TransformTarget::Operator(_) | TransformTarget::FieldProject { .. } => true,
+        TransformTarget::Callable(callee) => {
+            eligibility_walk_callable(dag, *callee, visited, depth + 1)
+        }
+    }
+}
+
+fn eligibility_walk_branch(
+    dag: &Dag,
+    b: &BranchNode,
+    visited: &mut HashSet<DeclarationId>,
+    depth: usize,
+) -> bool {
+    if !eligibility_walk_port(dag, b.input, visited, depth + 1) {
+        return false;
+    }
+    for path in &b.paths {
+        match &path.pattern {
+            BranchPattern::ResolvedVariant(_) => {}
+            BranchPattern::UnresolvedVariant { .. } => return false,
+        }
+        if !eligibility_walk_port(dag, path.output, visited, depth + 1) {
+            return false;
+        }
+    }
+    true
+}
+
+fn eligibility_walk_callable(
+    dag: &Dag,
+    callee: DeclarationId,
+    visited: &mut HashSet<DeclarationId>,
+    depth: usize,
+) -> bool {
+    if depth >= LENS_APPLY_TYPE_WALK_DEPTH {
+        return false;
+    }
+    if !visited.insert(callee) {
+        return true;
+    }
+    let decl = dag.declaration(callee);
+    match &decl.connective {
+        TypeConnective::Instantiation { template, .. } => {
+            // Nested `std.list.fold` instantiations: the interpreter dispatches the same
+            // bounded path recursively, so eligibility is conditional on the inner step body.
+            // For now any nested fold is treated as ineligible — its step body would need to
+            // be located via `find_fold_step_bind_via_instantiation`, which is the same shape
+            // recursion this predicate already walks at the outer call site.
+            if dag.std_list_fold_decl() == Some(*template) {
+                return false;
+            }
+            eligibility_walk_callable(dag, *template, visited, depth + 1)
+        }
+        TypeConnective::Arrow { body, .. } => {
+            let ArrowBody::UserDefined(root) = body else {
+                return false;
+            };
+            let Behavior::Bind(b) = dag.node(*root) else {
+                return false;
+            };
+            eligibility_walk_port(dag, b.value, visited, depth + 1)
+        }
+        _ => false,
+    }
+}
 
 fn declaration_is_callable_type(dag: &Dag, current: DeclarationId, depth: usize) -> bool {
     if depth >= LENS_APPLY_TYPE_WALK_DEPTH {
@@ -366,18 +470,16 @@ impl<'a> EvalCtx<'a> {
         match &t.target {
             TransformTarget::Callable(callee) => {
                 let decl = self.dag.declaration(*callee);
-                if is_fold_instantiation(self.dag, decl)
-                    && t.inputs.len() == 2
-                    && !fold_site_skips_d1_monomorph_list_fold_path(&t.span)
-                {
-                    let list = self.eval_port(t.inputs[0])?;
-                    let init = self.eval_port(t.inputs[1])?;
-                    let step_bind = find_fold_step_bind_via_instantiation(self.dag, *callee)
-                        .ok_or(LensApplyError::UnsupportedConstruct(
-                            "monomorphized fold: could not locate step closure Bind via \
-                             Instantiation arguments (no span overlap fallback)",
-                        ))?;
-                    return self.eval_fold_step(list, init, step_bind);
+                if is_fold_instantiation(self.dag, decl) && t.inputs.len() == 2 {
+                    if let Some(step_bind) =
+                        find_fold_step_bind_via_instantiation(self.dag, *callee)
+                    {
+                        if step_body_eligible_for_bounded_eval(self.dag, step_bind) {
+                            let list = self.eval_port(t.inputs[0])?;
+                            let init = self.eval_port(t.inputs[1])?;
+                            return self.eval_fold_step(list, init, step_bind);
+                        }
+                    }
                 }
                 self.eval_callable(*callee, &t.inputs)
             }
