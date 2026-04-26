@@ -508,7 +508,8 @@ data go_branch_node: TypeRealization = {
     { dag_name: "input", access: DirectField("input"), borrowed_read: false },
     { dag_name: "paths", access: DirectField("paths"), borrowed_read: false },
     { dag_name: "result_port", access: DirectField("result_port"), borrowed_read: false },
-    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false },
+    { dag_name: "emit_participation", access: DirectField("emit_participation"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -540,7 +541,8 @@ data go_bind_node: TypeRealization = {
     { dag_name: "name", access: DirectField("name"), borrowed_read: false },
     { dag_name: "result_port", access: DirectField("result_port"), borrowed_read: false },
     { dag_name: "params", access: DirectField("params"), borrowed_read: false },
-    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false },
+    { dag_name: "emit_participation", access: DirectField("emit_participation"), borrowed_read: false }
   ]
   cost: 1
 }

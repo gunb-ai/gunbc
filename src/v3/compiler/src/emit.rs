@@ -3120,7 +3120,7 @@ fn algebra_field_for_operator(
 mod tests {
     use super::*;
     use crate::compile_to_dag;
-    use crate::dag::TransformTarget;
+    use crate::dag::{BindEmitParticipation, BranchEmitParticipation, TransformTarget};
     use crate::diagnostics::SourceSpan;
 
     // DELETED: go_gc_targets_skip_rendering_model_loading
@@ -3166,14 +3166,18 @@ mod tests {
     fn shared_primitive_type_lookup_preserves_named_aliases() {
         let dag = compile_to_dag(
             "type MyInt = Int\nfn id(x: MyInt) -> MyInt = x",
-            "named_alias_emit_helper.v3",
+            "named_alias_test.v3",
         )
         .expect("compiles");
         let param_port = dag
             .nodes()
             .iter()
             .find_map(|node| match node {
-                Behavior::Bind(bind) if bind.span.file == "named_alias_emit_helper.v3" => {
+                Behavior::Bind(bind)
+                    if bind.name == "id"
+                        && bind.emit_participation()
+                            == Some(BindEmitParticipation::UserCallable) =>
+                {
                     bind.params.first().copied()
                 }
                 _ => None,
@@ -3191,14 +3195,32 @@ mod tests {
     fn shared_walk_to_disj_finds_match_scrutinee_sum_type() {
         let dag = compile_to_dag(
             "type Sign = Plus | Minus\nfn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
-            "match_emit_helper.v3",
+            "match_test.v3",
         )
         .expect("compiles");
+        let classify_output = dag
+            .nodes()
+            .iter()
+            .find_map(|node| match node {
+                Behavior::Bind(bind)
+                    if bind.name == "classify"
+                        && bind.emit_participation()
+                            == Some(BindEmitParticipation::UserCallable) =>
+                {
+                    Some(bind.value)
+                }
+                _ => None,
+            })
+            .expect("classify user function output");
         let branch_input = dag
             .nodes()
             .iter()
             .find_map(|node| match node {
-                Behavior::Branch(branch) if branch.span.file == "match_emit_helper.v3" => {
+                Behavior::Branch(branch)
+                    if branch.output == classify_output
+                        && branch.emit_participation()
+                            == Some(BranchEmitParticipation::UserMatch) =>
+                {
                     Some(branch.input)
                 }
                 _ => None,

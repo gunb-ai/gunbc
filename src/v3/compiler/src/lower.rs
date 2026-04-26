@@ -25,10 +25,11 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, CardinalityBound,
-    Cluster, Dag, Declaration, DeclarationId, Field, IntraClusterCall, LiteralBits, LoopBound,
-    LoopNode, MemberDescent, NodeId, NonEmptyList, NonSingletonList, Path, PayloadBinding, PortId,
-    TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
+    ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode, BranchEmitParticipation,
+    BranchNode, BranchPattern, CardinalityBound, Cluster, Dag, Declaration, DeclarationId, Field,
+    IntraClusterCall, LiteralBits, LoopBound, LoopNode, MemberDescent, NodeId, NonEmptyList,
+    NonSingletonList, Path, PayloadBinding, PortId, TemplateArgument, TransformNode,
+    TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
@@ -527,6 +528,7 @@ fn build_refinement_predicate_declaration(
         params: vec![pred_param_port],
         span: pred_span.clone(),
         lane2_workflow: None,
+        emit_participation: None,
     }));
 
     let pred_decl_id = dag.alloc_declaration_id();
@@ -1243,6 +1245,7 @@ fn build_narrowed_refinement(
         params: vec![composite_param_port],
         span: pred_span.clone(),
         lane2_workflow: None,
+        emit_participation: None,
     }));
 
     // Predicate declaration with Arrow body, same shape as
@@ -1831,6 +1834,7 @@ fn lower_item(
                 params: Vec::new(),
                 span: bind_span,
                 lane2_workflow: None,
+                emit_participation: None,
             }));
             scope.values.insert(name.clone(), value_port);
             if let Some(lambda_decl_id) = lambda_callable {
@@ -3922,6 +3926,7 @@ fn lower_fn_item_expr_body(
             params: param_ports,
             span: body_span,
             lane2_workflow: None,
+            emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
         dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
             inputs: param_decl_inputs,
@@ -4056,6 +4061,7 @@ fn lower_fn_item_expr_body(
         params: param_ports,
         span: body_span,
         lane2_workflow: None,
+        emit_participation: Some(BindEmitParticipation::UserCallable),
     }));
 
     if let Some(cluster_index) = mutual_recursion.by_member.get(&fn_decl_id).copied() {
@@ -4393,6 +4399,7 @@ fn lower_lambda_expr(
         params: bind_params,
         span: span.clone(),
         lane2_workflow: None,
+        emit_participation: Some(BindEmitParticipation::UserCallable),
     }));
 
     let lambda_decl_id = ctx.dag.alloc_declaration_id();
@@ -5495,6 +5502,7 @@ fn lower_expr(
                 ],
                 output: branch_output,
                 span: span.clone(),
+                emit_participation: None,
             }));
             branch_output
         }
@@ -5609,6 +5617,7 @@ fn lower_expr(
                 paths,
                 output: branch_output,
                 span: span.clone(),
+                emit_participation: Some(BranchEmitParticipation::UserMatch),
             }));
             branch_output
         }
