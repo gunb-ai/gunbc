@@ -31,7 +31,8 @@
 //      The triple-ratchet below catches any divergence loudly, but
 //      the path still lives in two places.
 //
-//   2. `src/v3/compiler/src/lib.rs` (and `lens_unused_parameters.rs`)
+//   2. `src/v3/compiler/src/lib.rs` (inline lens host modules, e.g.
+//      `lens_unused_parameters`, `lens_cost`)
 //      embeds each `lens_<name>_generated.rs` via `include_str!`. That
 //      call is compile-time and so is not a natural fit for a
 //      runtime registry walk, but it still duplicates the
