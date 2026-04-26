@@ -416,6 +416,11 @@ pub enum TypeConnective {
     Instantiation {
         template: DeclarationId,
         arguments: Vec<TemplateArgument>,
+        /// When `template` is `std.list.fold`, `Some(p)` names the template `Arrow`
+        /// input declaration that binds the step closure (substrate authority for
+        /// D1 / lens consumers). `None` for non-fold instantiations or when the
+        /// fold is ineligible for the bounded D1 fast path.
+        fold_step_formal: Option<DeclarationId>,
     },
 }
 

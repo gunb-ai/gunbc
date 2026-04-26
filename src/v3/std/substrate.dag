@@ -146,9 +146,16 @@ type TypeConnective
       element: DeclarationId
       bound: CardinalityBound
     }
+  // `fold_step_formal` is `Some(p)` when `template` is `std.list.fold` and the
+  // template Arrow input `p` (a callable formal) structurally binds the step
+  // closure — the D1 lens fast path and consumers query this edge instead of
+  // span/file heuristics. `None` on fold instantiations means the step witness
+  // is absent or the fold is not eligible for the bounded D1 interpreter (e.g.
+  // `SymbolicCost`-typed algebra folds); see `infer::list_fold_fold_step_formal_carrier`.
   | Instantiation {
       template: DeclarationId
       arguments: List<TemplateArgument>
+      fold_step_formal: DeclarationId?
     }
 
 type Declaration {

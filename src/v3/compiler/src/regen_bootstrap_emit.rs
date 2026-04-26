@@ -183,10 +183,14 @@ fn render_type_connective(connective: &TypeConnective) -> String {
         TypeConnective::Instantiation {
             template,
             arguments,
+            fold_step_formal,
         } => format!(
-            "TypeConnective::Instantiation {{ template: {}, arguments: {} }}",
+            "TypeConnective::Instantiation {{ template: {}, arguments: {}, fold_step_formal: {} }}",
             render_declaration_id(*template),
             render_template_arguments(arguments),
+            fold_step_formal
+                .map(|id| format!("Some({})", render_declaration_id(id)))
+                .unwrap_or_else(|| "None".to_string()),
         ),
     }
 }
