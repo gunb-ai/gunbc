@@ -607,6 +607,12 @@ pub(crate) fn emit_python_with_mode(
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
         .filter(|decl| {
+            !decl
+                .name
+                .as_deref()
+                .is_some_and(|n| n == "Result" && decl.span.file.ends_with("errors.dag"))
+        })
+        .filter(|decl| {
             matches!(
                 decl.connective,
                 TypeConnective::Conj { .. } | TypeConnective::Disj { .. }
@@ -665,6 +671,7 @@ pub(crate) fn emit_python_with_mode(
     let mut sections = vec![
         "from __future__ import annotations".to_string(),
         "from dataclasses import dataclass".to_string(),
+        "import enum".to_string(),
         "import types".to_string(),
         "import typing".to_string(),
         format!(
@@ -674,16 +681,20 @@ pub(crate) fn emit_python_with_mode(
         "__T = typing.TypeVar(\"__T\")".to_string(),
         "__U = typing.TypeVar(\"__U\")".to_string(),
         "def __v3_fold(items: list[typing.Any], init: typing.Any, fn: typing.Callable[[typing.Any, typing.Any], typing.Any]) -> typing.Any:\n    acc = init\n    for item in items:\n        acc = fn(acc, item)\n    return acc".to_string(),
-        // Python `//` is floor division; `OrderedRing.div` requires truncation toward zero.
-        // `divmod` adjusts the floor quotient by +1 when the remainder is non-zero and
-        // operand signs differ — restoring C-style truncation without floating-point.
-        "def __v3_idiv(a: int, b: int) -> int:\n    q, r = divmod(a, b)\n    return q + (1 if r != 0 and (a < 0) != (b < 0) else 0)".to_string(),
         "def __v3_unreachable(label: str) -> typing.NoReturn:\n    raise ValueError(label)".to_string(),
     ];
 
     for decl in type_decls {
         sections.push(ctx.render_type_declaration(decl)?);
     }
+    // `std/errors` is filtered out of `type_decls`; v3 `DivError` + checked `/` are prelude-only
+    // (names align with `std.errors` for `Result<…, DivError>` and `__v3_idiv` in `python.dag`).
+    sections.push(
+        "class DivError(enum.IntEnum):\n    DivideByZero = 0\n    Overflow = 1".to_string(),
+    );
+    sections.push(
+        "def __v3_idiv(a: int, b: int) -> typing.Union[typing.Tuple[typing.Literal['Ok'], int], typing.Tuple[typing.Literal['Err'], DivError]]:\n    if b == 0:\n        return ('Err', DivError.DivideByZero)\n    if a == -2 ** 63 and b == -1:\n        return ('Err', DivError.Overflow)\n    q, r = divmod(a, b)\n    w = q + (1 if r != 0 and (a < 0) != (b < 0) else 0)\n    return ('Ok', w)".to_string(),
+    );
     for decl in function_decls {
         sections.push(ctx.render_function_declaration(decl)?);
     }
