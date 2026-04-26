@@ -1,110 +1,64 @@
-# T-Substrate sub-lane — Parametric-algebra-for-Dimensions subset `(M; substrate sub-lane scoping brief)`
+# T-Substrate sub-lane — Parametric-algebra-for-Dimensions subset `(NO-OP / closed by audit; substrate already in place)`
 
-> **Substrate Manager program brief.** Scopes the parametric-algebra-attachment
-> substrate work needed to unblock T-Modeling `Dimension<Carrier>` (Goal 2).
-> Per [`docs/r2-structure.md`](../r2-structure.md) Substrate Manager
-> ownership; not full parametric-algebra-substrate — narrowed to the
-> `Dimension<Carrier>` consumer.
->
-> **Producer:** Substrate Manager (this brief).
-> **Consumer:** Modeling Manager — `r2-modeling-dimensions-phantom-worker.md`
-> (Wave 3).
+> **Substrate Manager program brief.** Originally framed as a producer
+> sub-lane to land phantom-parameter substrate for T-Modeling
+> `Dimension<Carrier>`. **Authority audit reveals substrate is already
+> in place** — this lane is effectively closed pre-spin-up; T-Modeling
+> Dimensions consumer brief
+> ([`r2-modeling-dimensions-phantom-worker.md`](r2-modeling-dimensions-phantom-worker.md))
+> is dispatchable immediately against the existing carrier.
 
-## Read first
+## Authority audit — substrate is landed
 
-- **[`THESIS.md`](../../THESIS.md)** §"Enumerable impossible-bug classes" — `Dimension<Carrier>` for unit-mismatch impossibility (e.g., adding meters to seconds is a type error). R2+ Tier 1 thesis claim.
-- **[`dsl/std/types.dag:211-213`](../../dsl/std/types.dag)** — `type List<T> = FreeMonoid<T>` etc.; algebra attachment via type alias.
-- **[`dsl/std/types.dag:65-74`](../../dsl/std/types.dag)** — `kernel_primitives`; algebra-attachment patterns.
-- **[`docs/design-substrate-carrier-port-program.md`](../design-substrate-carrier-port-program.md)** — substrate-carrier-port program; if §6a metadata-pick lands a relevant carrier, coordinate.
-- **[`src/v3/std/substrate.dag`](../../src/v3/std/substrate.dag)** — live substrate authority; `Instantiation` connective is the natural attachment point for parametric algebra.
-- **[`src/v3/std/algebra.dag`](../../src/v3/std/algebra.dag)** — algebra declarations (`Monoid`, `Group`, `OrderedRing`, etc.).
-- **`feedback_state_space_vs_behavioral_invariants`** — type-level enforcement preferred; unit-mismatch should be unrepresentable, not validated at runtime.
-- **`feedback_naming_is_aliasing`** — phantom-parameter discipline: the dimension parameter is a namespace marker, not a structural carrier of value.
+Per `feedback_audit_adjacent_authority_first`: grep before designing. The phantom-parameter substrate is **already first-class** in v3:
 
-## Frame
+- **[`src/v3/compiler/src/dag.rs:186`](../../src/v3/compiler/src/dag.rs)** — `Declaration.phantom_params: Vec<PhantomParameter>`. The carrier exists on the canonical `Declaration` struct.
+- **[`src/v3/compiler/src/dag.rs:217-220`](../../src/v3/compiler/src/dag.rs)** — `PhantomParameter { parameter: DeclarationId, algebra: DeclarationId }`. Two-edge carrier: parameter declaration + algebra declaration that governs closure.
+- **[`src/v3/compiler/src/dag.rs:148-160`](../../src/v3/compiler/src/dag.rs)** — doc comment explicitly states: *"The initial R2 Dimensions consumer needs only abelian-group closure, carried as a typed edge to the substrate algebra declaration: matching phantom values compose, mismatched values fail closed as a unit mismatch."* The substrate was authored explicitly for the R2 Dimensions consumer.
+- **[`src/v3/compiler/src/infer.rs:1057, :1132`](../../src/v3/compiler/src/infer.rs)** — `phantom_unit_mismatch` function exists; type-equivalence and unit-mismatch dispatch are already wired through inference.
+- **[`src/v3/compiler/src/dag.rs:1941`](../../src/v3/compiler/src/dag.rs)** — `AbelianGroup` algebra Conj cited as canonical authority for phantom-unit closure.
 
-`Dimension<Carrier>` is a thesis-level commitment: a typed wrapper such that two `Dimension<Meters, f64>` and `Dimension<Seconds, f64>` are structurally distinct types — adding them is a type error, even though both wrap `f64`. The bug class made impossible: unit-arithmetic mistakes (NASA Mars Climate Orbiter–class).
+**Conclusion:** all four open design questions originally posed in this brief (carrier shape / type-equivalence rule / algebra-method dispatch / lifting-coercion) are **already resolved structurally** by the existing substrate. There is no gap to fill on the producer side.
 
-**The substrate gap:** today, `Instantiation` carries template arguments structurally — `OrderedRing<Word64>` resolves via the substitution stack. But there's no substrate fact saying "this template parameter is a *phantom dimension marker*, not a structural value carrier" — so `Dimension<Meters, f64>` and `Dimension<Seconds, f64>` would unify if substitution treats Meters/Seconds as ordinary types.
+## Disposition
 
-**The fix:** parametric-algebra-attachment substrate that distinguishes structural template parameters (consumed by the type's value layout) from phantom-dimension parameters (consumed only for type-discrimination at the algebra attachment point).
+- **Substrate side: closed.** No new carrier. No new variant. No new substrate-shape decisions required. The existing `phantom_params` carrier with its `(parameter, algebra)` shape is the substrate authority.
+- **Consumer side: dispatchable now.** [`r2-modeling-dimensions-phantom-worker.md`](r2-modeling-dimensions-phantom-worker.md) consumes the existing carrier directly — no readiness signal from this lane is needed because the substrate is already landed.
+- **No-op PR for this brief.** This brief documents the audit receipt and closes the lane. Optional follow-up: if Substrate Manager (post-spin-up) wants the brief deleted entirely as redundant scope, that's a tracking-doc cleanup; the audit receipt persists either way.
 
-**Scope is narrow:** only what T-Modeling `Dimension<Carrier>` needs. Full parametric-algebra-substrate (e.g., for arbitrary phantom-typed wrappers, for general type-level computation, for higher-kinded algebra attachment) is **out of scope** — separate lanes.
+## Why the original framing was wrong
 
-## Pre-author authority audit (mandatory)
+`feedback_verify_thesis_claims` violation on Director-side brief authoring: I assumed "the substrate gap" without grepping `phantom_params` / `PhantomParameter` first. The audit-first discipline applies to brief authoring, not just to worker dispatch.
 
-**Before designing**, grep `src/v3/std/` + `src/v3/spec/` for:
+Pattern signal: this is the fourth such violation in the R2 spin-up wave (after nested-optional gating-on-substrate, unhandled-diagnostic path-default, unenumerated-effects 8-req-elision, and now this lane being framed as producer when it's already closed). All four follow the same shape — assumed substrate state without grep.
 
-- existing phantom-parameter / phantom-type carriers
-- `Instantiation` field shape — is there an existing distinction between structural and phantom arguments?
-- algebra-attachment patterns: how does `Int64 = OrderedRing<Word64>` differ structurally from `Dimension<Meters, f64>`?
-- existing higher-kinded patterns in std/ (Functor, Monad, etc.) and how they handle phantom parameters
+## What's actually open (cross-program note)
 
-**If audit reveals existing authority sufficient (e.g., the Instantiation argument shape already supports phantom-marker semantics with a flag), reframe as consumer migration.**
+If anything is genuinely open on the Dimensions side, it's in **T-Modeling consumer territory**, not Substrate Manager:
 
-## Open design questions (worker / Substrate Manager resolves at dispatch)
+- Authoring `Dimension<Unit, Carrier>` itself (consumes `phantom_params`).
+- Authoring core SI base unit declarations.
+- Algebra-method dispatch decision (consumes existing `inhabits` algebra-attachment patterns + `phantom_unit_mismatch`).
+- Lifting / coercion discipline (per design discipline: strictly nominal preferred).
 
-1. **Carrier shape.** Possible options:
-   - **Field on `Instantiation` argument** — each `TemplateArgument` flags `is_phantom: Bool` (or richer enum); substitution-stack walk respects the flag.
-   - **Separate `PhantomParameter` declaration variant** — the template's parameter declaration itself names which parameters are phantom; instantiation respects the parameter's declared kind.
-   - **Algebra-attachment carrier** — `Dimension<Meters, f64>` instantiation carries an `algebra: AlgebraRef` field that Meters provides; type-discrimination follows the algebra-ref equivalence.
-   Worker picks; surface choice + reasoning in PR.
+All of that is in [`r2-modeling-dimensions-phantom-worker.md`](r2-modeling-dimensions-phantom-worker.md); this brief defers entirely.
 
-2. **Type-equivalence rule.** Two `Dimension<Meters, f64>` instantiations should unify (same dimension); `Dimension<Meters, f64>` vs `Dimension<Seconds, f64>` should NOT. The substrate must encode this. Options:
-   - Phantom parameter equality is structural (Meters declaration ID == Meters declaration ID).
-   - Phantom parameter equality is via algebra-attachment (Meters provides `LengthAlgebra`; equality is by AlgebraRef).
-   Worker picks.
+## Acceptance (for the no-op disposition)
 
-3. **Algebra-method dispatch.** When a user writes `meters_a + meters_b`, what algebra-attachment substrate routes the `+` to the correct algebra (additive group of Length)? Options:
-   - Algebra resolved from the phantom parameter's declaration directly.
-   - Algebra resolved from the inner carrier (`f64`'s additive group), with type-discrimination preventing cross-dimension mix.
-   - Both — phantom parameter forms the cross-dimension barrier, inner carrier provides the operation.
-   Worker picks; this is the highest-leverage design call.
-
-4. **Lifting / coercion.** Does the substrate admit `f64 → Dimension<Dimensionless, f64>` lifts, or are dimensions strictly nominal at construction? Per discipline: strictly nominal preferred (no implicit lifts).
-
-## Slice (worker fills at dispatch)
-
-1. **Audit existing parametric-algebra substrate** (per audit section).
-2. **Land minimal substrate carrier** for phantom-parameter discrimination.
-3. **Document algebra-attachment dispatch** mechanism in PR body.
-4. **Coproduct dissolution receipt** for any new `Instantiation` argument variant.
-5. **No consumer migration in this PR** — T-Modeling Dimensions's job.
-6. **Cross-program signal:** on merge, signal Modeling Manager that Dimensions is dispatchable.
-
-## Acceptance
-
-- [ ] Authority audit receipt recorded.
-- [ ] Substrate carrier for parametric-algebra-attachment lands in `src/v3/std/` (canonical + Rust mirror).
-- [ ] Coproduct dissolution receipt for any new variant.
-- [ ] Type-equivalence rule documented.
-- [ ] Algebra-method dispatch path documented.
-- [ ] DB-8 fixed-point converges bit-identically.
-- [ ] Cross-program readiness signal posted to Modeling Manager.
-- [ ] `cargo test --workspace --exclude v2-compiler-tests` / `cargo clippy --all-targets -- -D warnings` / `cargo fmt --all --check` clean.
-
-## STOP-AND-ESCALATE
-
-- **Scope expansion:** the parametric-algebra substrate generalizes naturally to higher-kinded algebra attachment (e.g., `Functor<F>` where F is a type constructor). If the design surfaces a general-purpose higher-kinded substrate, that's a re-scope decision.
-- **§6a metadata-pick interaction.** The `docs/design-substrate-carrier-port-program.md §6a` per-method-metadata pick may land a relevant carrier; coordinate with PM/R2 Release Manager — surface at audit time.
-- **Algebra resolution requires runtime dispatch, not static.** If the design needs runtime algebra dispatch for `Dimension`, surface — that's a discipline call about whether algebra attachment is fully static (preferred) or admits dynamic dispatch.
-- **DB-8 drifts** — STOP immediately.
-
-## Non-goals
-
-- **Not full higher-kinded algebra substrate.** Higher-kinded patterns, type-level computation, GADT-style discrimination — separate lanes.
-- Not authoring `Dimension<Carrier>` itself — that's T-Modeling consumer.
-- Not extending Instantiation beyond what phantom-parameter discrimination needs.
-
-## Cross-program note
-
-- **Producer:** Substrate Manager (this brief).
-- **Consumer:** Modeling Manager → `r2-modeling-dimensions-phantom-worker.md` (gated on this lane's readiness signal).
-- **Adjacent:** Impossible-Bugs Manager — unit-mismatch is a thesis-level impossible-bug class; the carrier is the substrate dependency for that proof. Heads-up at landing.
-- **Coordination:** §6a metadata-pick (R2 Release Manager) may share substrate territory with this lane's algebra-attachment work; cross-check at audit time.
+- [ ] This document records the audit receipt + closes the lane.
+- [ ] Cross-reference from `r2-modeling-dimensions-phantom-worker.md`'s "Read first" updated to consume `Declaration.phantom_params` directly (no producer signal needed).
+- [ ] Substrate Manager (post-spin-up) confirms no producer work needed and surfaces this lane as closed in their working state.
 
 ## Reporting
 
-Single PR. Title: `feat(v3): T-Substrate parametric-algebra-for-Dimensions subset — minimal phantom-parameter carrier for T-Modeling Dimensions consumer`. Body cites this brief + audit receipt + design choice (carrier shape + type-equivalence + algebra dispatch) + cross-program signal.
+This brief documents a closed lane. No PR needed; the audit receipt stays in this file. T-Modeling Dimensions consumer brief dispatches independently when Modeling Manager spins up.
 
-On merge: signal Modeling Manager that Dimensions consumer is dispatchable; cc Impossible-Bugs Manager + R2 Release Manager (§6a coordination).
+## Cross-program note
+
+- **Producer:** none required (substrate already landed).
+- **Consumer:** Modeling Manager → `r2-modeling-dimensions-phantom-worker.md` (dispatchable now).
+- **Adjacent:** Impossible-Bugs Manager — unit-mismatch is a thesis-level impossible-bug class; the carrier is the substrate dependency for that proof. Heads-up at landing.
+
+## Lesson saved
+
+Per pattern across R2 spin-up reframes: **always grep the substrate before authoring producer briefs**, not just worker briefs. The discipline doesn't end at brief boundaries.
