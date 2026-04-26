@@ -148,11 +148,12 @@ Owns release coordination + the smallest cross-cutting deliverables (Goal 5, Goa
 
 | Lane | Size | Manager | Covers |
 |---|---|---|---|
-| T-Ground | XL | Grounding | Full T-Ground-* sub-program (Goal 1) |
-| T-Modeling | M | Director (ad-hoc) | int-lit / Secret<T> / Dimensions (Goal 2) |
-| T-Substrate | M | Director (ad-hoc) | Four scoped-subset sub-lanes (Goal 3): cardinality-for-int-lit; nominal-opaque-for-Secret; parametric-algebra-attachment-for-Dimensions; top-level-ValueBody-list/sum + std.unicode-bootstrap (2 named consumers: tokenizer charclass phase-2 + Engine sharpened-(b) pilot enumeration — both share list-of-sum substrate work) — each sub-lane scoped to its paired R2 consumer set (T-Modeling × 3 + dual-consumer × 1), not full substrate-capability. Note: `kernel_algebra_profile` mirror dissolution is map-shaped (not list/sum) — tracked separately as a future T-Substrate sub-lane requiring distinct `ValueBody::Map` substrate work. |
-| T-ImpossibleBugs | S | Director (ad-hoc) | nested-optional flatten / unhandled-diagnostic-paths / unenumerated-effects (Goal 4) |
-| T-PerMethodMetadata | S | Director (ad-hoc) | §6a per-method-metadata carrier pick (Goal 5) — design-call close, not substrate-capability work |
+| T-Ground | XL | **Grounding Manager** | Full T-Ground-* sub-program (Goal 1) — Pilot/Rust/Engine/Tests/Dissolve critical path + Python/Go fill |
+| T-Substrate | XL | **Substrate Manager** | Four T-Substrate scoped-subset sub-lanes (Goal 3) **plus the B4 Identity-Carrier Substrate Pass program** (4 Phase 1 carriers + 8 Phase 2 site dissolutions, sub-briefs B4.1–B4.12, per `docs/briefs/b4-identity-carrier-substrate-pass.md`). Largest single program in R2; produces carriers consumed by Modeling Manager (3 sub-lanes) + Grounding Manager (Engine sharpened-(b)). Note: `kernel_algebra_profile` mirror dissolution is map-shaped — tracked separately as a future T-Substrate sub-lane requiring `ValueBody::Map` substrate work. |
+| T-Modeling | M | **Modeling Manager** | int-lit magnitude / `Secret<T>` graduation / `Dimension<Carrier>` (Goal 2) **plus tokenizer charclass phase-2** (consumer of T-Substrate ValueBody-list/sum sub-lane). Each item dispatches as its T-Substrate dependency lands. |
+| T-ImpossibleBugs | S | **Impossible-Bugs Manager** | nested-optional flatten / unhandled-diagnostic-paths / unenumerated-effects (Goal 4). Substrate-gap discoveries escalate to Substrate Manager. |
+| T-PB | XL | **Pure Bootstrap Manager** | T-PB-A (non-test hand-Rust → 0; SG-0 census + lens-producer priority slice) + T-PB-B (Rust-authored tests → 0 via ExecuteCommand `.dag` `TestClaim` migration) + Tier 2 `patch_lower_helpers_*` retirement + termination/computation/induction/effect-carrier mirror dissolutions (Tier 3 #10 + #12 from #810). |
+| T-Release | M | **R2 Release Manager** | §6a per-method-metadata pick (Goal 5) + R2 demo coordination (Goal 6) + B-wave Tier 0/2 dispatch (B1/B2/B3 through-merge, B5/B6/B7 authoring) + #810 discipline framework enforcement (velocity tripwire reporting) + thesis-claim coverage mapping (Open call 1) + R2 closure ledger + v2 retirement coordination. |
 
 **Goal 6 (R2 closure demo) is not a lane.** It is a cross-lane closure discipline (see "Demo discipline" below): each lane's closure PR ships its own simple "it runs" artifact; Director coordinates surfacing. No separate T-Demo lane owner, no separate demo-authoring critical path.
 
@@ -170,29 +171,63 @@ R2 does not re-own any of the above; under all-R1-gates-green R1 closure, those 
 ## Dependency DAG
 
 ```
-T-Ground:         Pilot → Rust → Engine → Tests → Dissolve   (critical path)
-                  Python, Go run parallel after Pilot (fill queue; not Engine-blocking)
-T-Substrate:      cardinality-for-int-lit (subset) ──→ unblocks T-Modeling int-lit
-                  nominal-opaque-for-Secret (subset) ─→ unblocks T-Modeling Secret<T>
-                  parametric-algebra-for-Dimensions (subset) ─→ unblocks T-Modeling Dimensions
-                  ValueBody-list/sum + std.unicode-bootstrap (subset) ─→ unblocks 2 consumers (shared list-of-sum substrate):
-                                                                       (i) tokenizer charclass phase-2
-                                                                       (ii) Engine sharpened-(b) pilot enumeration
-                  (kernel_algebra_profile mirror dissolution is map-shaped, NOT list/sum;
-                   tracked separately as a future T-Substrate sub-lane requiring ValueBody::Map extension)
-T-Modeling:       int-lit      ← T-Substrate cardinality-for-int-lit
-                  Secret<T>    ← T-Substrate nominal-opaque-for-Secret
-                  Dimensions   ← T-Substrate parametric-algebra-for-Dimensions
-Dual-consumer of T-Substrate's 4th subset (neither is a peer lane — both consumed inside T-Substrate scope):
-                  (i)   Tokenizer charclass phase-2: retype to Char / List<Char> / CharClass
-                  (ii)  Engine sharpened-(b): full pilot enumeration via symbolic walk of rust_pilot_primitives
-T-ImpossibleBugs: 3 independent classes (any worker)
-T-PerMethodMetadata: §6a pick (any worker; independent)
-(Goal 6 demo artifacts ship with each lane's closure PR — not a
- separate dependency-DAG node; see Demo discipline section.)
+Grounding Manager (T-Ground):
+    Pilot → Rust → Engine → Tests → Dissolve     (critical path)
+    Python, Go run parallel after Pilot          (fill queue)
+    Engine sharpened-(b) ← Substrate Manager: ValueBody-list/sum carrier
+
+Substrate Manager (T-Substrate + B4):
+    T-Substrate sub-lanes (independent of each other; all dispatchable in parallel):
+        cardinality-for-int-lit                  → unblocks Modeling Manager: int-lit
+        nominal-opaque-for-Secret                → unblocks Modeling Manager: Secret<T>
+        parametric-algebra-for-Dimensions        → unblocks Modeling Manager: Dimensions
+        ValueBody-list/sum + std.unicode bootstrap → unblocks Modeling Manager: tokenizer charclass
+                                                  → unblocks Grounding Manager: Engine sharpened-(b)
+    B4 Identity-Carrier Substrate Pass program (sub-briefs B4.1–B4.12):
+        Phase 1 carriers (parallel after audits):
+            B4.1 DeclarationRef consumer migration  (existing carrier; no landing; consumer migration only)
+            B4.2 fold-shape carrier
+            B4.3 emit-helper carrier
+            B4.4 extdeps-fixture-set carrier
+        Phase 2 site dissolutions (mechanical; dispatched as Phase 1 carriers land):
+            B4.5–B4.12 (8 sites; consumer migration of new substrate)
+
+Modeling Manager (T-Modeling):
+    int-lit       ← Substrate Manager: cardinality-for-int-lit
+    Secret<T>     ← Substrate Manager: nominal-opaque-for-Secret
+    Dimensions    ← Substrate Manager: parametric-algebra-for-Dimensions
+    Charclass-2   ← Substrate Manager: ValueBody-list/sum
+
+Impossible-Bugs Manager (T-ImpossibleBugs):
+    3 independent classes (parallel-dispatchable):
+        Nested-optional flatten      (may surface cardinality substrate work — escalate to Substrate Manager)
+        Unhandled diagnostic paths   (Tier 2 substrate; may escalate)
+        Unenumerated effects         (closed-system effects model per #808)
+
+Pure Bootstrap Manager (T-PB):
+    T-PB-A (parallel slot per file): SG-0 census → 0
+        Lens-producer priority slice    (`lens_producer_files_remaining` gate)
+        Tier 2 patch_lower_helpers_* retirement
+        Mirror dissolutions: termination/computation/induction/effect-carrier
+    T-PB-B (parallel slot per test class): Rust-authored tests → 0
+        ExecuteCommand-based .dag TestClaim migration (PB-Runtime / PR #792 enabler landed)
+    Cross-program: B4's §0.7 file-preference rank carrier touches PB territory; coordinate with Substrate Manager.
+
+R2 Release Manager (T-Release):
+    Cross-cutting (parallel-dispatchable):
+        §6a per-method-metadata pick    (Goal 5; design-call close)
+        B-wave Tier 0 through-merge     (B1/B2/B3 implementation iteration)
+        B-wave Tier 2 brief authoring   (B5 Loop construction-closure audit; B6 checklist fix; B7 priority hint)
+        Discipline-framework enforcement (velocity tripwire reporting per cadence)
+        Thesis-claim coverage mapping   (Open call 1; on R1 close → R2 promotion)
+        R2 demo coordination            (Goal 6; surface artifacts at each lane close)
+        v2-retirement coordination      (post-R2; tracked but not gated)
+
+Director (cross-program coordinator):
+    Conflict resolution + scope-change escalation only — no brief authoring.
 ```
 
-Parallel-capable work at any time: Grounding has 2 fill slots (Python, Go) alongside its critical path; Director dispatch has 4 T-Substrate sub-lanes (3 T-Modeling unblocks + 1 dual-consumer unblock covering 2 consumers) + 3 T-Modeling items (each pair-blocked) + 2 deliverables pair-blocked on the 4th T-Substrate sub-lane (tokenizer charclass, Engine sharpened-(b)) + 3 T-ImpossibleBugs classes + 1 T-PerMethodMetadata pick, for roughly 9–13 slots depending on T-Substrate unblock timing.
+**Parallel-capable work at steady state:** Grounding (1 critical-path slot + 2 fill) + Substrate (4 T-Substrate sub-lanes + 4 Phase 1 B4 carriers; up to 8 parallel) + Modeling (4 items, each pair-blocked on Substrate readiness) + ImpossibleBugs (3 independent classes) + PB (parallel per file/test) + Release (cross-cutting, 5+ parallel cross-cutting items). **Total dispatch capacity: 20+ concurrent worker slots across 6 programs**, vs. ~9–13 under the prior 1-manager structure where Director was the brief-authoring bottleneck.
 
 ## R1 closure criteria
 
@@ -204,8 +239,9 @@ Rationale: consistent with anti-deferral stance — tail-shaped work closes befo
 
 1. **R1 gates green** → Director declares R1 closed.
 2. **R1 residual sweep** — every open R1 ledger row gets an R1-or-R2 assignment. No orphaning. Done in the R1 closure PR. Expected to be short under all-gates-green criterion.
-3. **Manager dissolution** — all R1 standing managers (Surface, Substrate, Testgen, Self-hosting) archive with closure banners. Their scopes are fully absorbed by R1's gate acceptance; no inheritance into R2 managers. Grounding Manager remains, refreshed for R2 scope.
-4. **R2 open** — this doc promotes to `ROADMAP.md` as `## Release R2 Program` section. `docs/briefs/grounding-manager.md` refreshed for R2 scope. No new manager briefs authored (Director dispatches T-Modeling / T-Substrate / T-ImpossibleBugs / T-PerMethodMetadata directly; no Structural Close Manager).
+3. **R1 manager dissolution** — all R1 standing managers (Surface, Substrate, Testgen, Self-hosting, Release) archive with closure banners. Their scopes are fully absorbed by R1's gate acceptance; no inheritance into R2 managers.
+4. **R2 manager spin-up** — six standing managers initialized per the revised manager structure above. Each manager gets a dedicated brief (`docs/briefs/r2-grounding-manager.md`, `docs/briefs/r2-substrate-manager.md`, `docs/briefs/r2-modeling-manager.md`, `docs/briefs/r2-impossible-bugs-manager.md`, `docs/briefs/r2-pure-bootstrap-manager.md`, `docs/briefs/r2-release-manager.md`) authored by Director on R2 promotion, naming program scope + owned deliverables + cross-program dependencies + autonomous dispatch authority + reporting cadence. Existing `docs/briefs/grounding-manager.md` migrates content into `r2-grounding-manager.md` and archives. Existing `docs/briefs/pure-bootstrap-zero-manager.md` migrates content into `r2-pure-bootstrap-manager.md` and archives.
+5. **R2 open** — this doc promotes to `ROADMAP.md` as `## Release R2 Program` section.
 
 **v2 retirement (explicit non-scoping note):** The v2 compiler at `src/v2/` persists as test oracle into R2 and is NOT on the R2 ledger. Its retirement is external post-R2 operational cleanup — no thesis claim depends on v2 being absent. Differential-test-oracle retirement is bounded by adoption/documentation concerns, not release-gate discipline.
 
@@ -227,7 +263,8 @@ Purpose: proof-of-work visibility at director cadence. Without it, program slips
 - **R1 closure criteria = all-gates-green**. Same anti-deferral principle applied to omni-emit. **This decision is load-bearing for R2 scope**: by closing all R1 gates in R1 (including T-PB-A / T-PB-B self-hosting gates + T-LaneE complexity-lens gates), R2 is released from owning those concerns. R2 is what's left after R1's full close.
 - **Gate-ownership single authority = ROADMAP `§"Lane acceptance — .dag gates"`**. R2 does not re-own gates assigned to R1 lanes. If a concern is R1-gated, it closes in R1. (Release-authority blocking review on sha `6fdd8341` / `24bc0027e` surfaced this; the rewrite landed in sha `0847b4796` removed goals that duplicated R1 gate ownership.)
 - **Demo cadence = gate-close natural rhythm**. Simple artifact per close; no time-based schedule.
-- **Manager count = 1 + Director.** One standing manager (Grounding) matches R2's single critical path. T-Modeling / T-Substrate / T-ImpossibleBugs are parallel-capable with no critical-path coordination pressure; Director dispatches directly. Adjustable upward if parallel fill-queue depth becomes unmanageable in practice.
+- ~~**Manager count = 1 + Director.** One standing manager (Grounding) matches R2's single critical path. T-Modeling / T-Substrate / T-ImpossibleBugs are parallel-capable with no critical-path coordination pressure; Director dispatches directly. Adjustable upward if parallel fill-queue depth becomes unmanageable in practice.~~ **🔄 RETRACTED 2026-04-26.** Empirically wrong: standing managers without owned deliverables sat idle while Director became the dispatch bottleneck for every other lane, starving 3 of 4 non-Grounding lanes. R1's program-manager pattern restored — see "Manager structure" above for the 6-manager structure (each owning a complete program with autonomous brief-authoring + dispatch authority through R2 close). Lesson saved as `feedback_standing_managers_need_owned_deliverables`.
+- **Manager count = 6 standing managers + Director coordinator.** Grounding / Substrate / Modeling / Impossible-Bugs / Pure Bootstrap / R2 Release. Each owns a mutually-exclusive program; cross-program dependencies handled via R1 `Cross-manager notifications queued` brief pattern. Director's role is cross-program conflict resolution + scope-change escalation, not brief authoring. (Locked 2026-04-26 amendment per user direction; supersedes prior 1-manager decision.)
 - **R2 includes substrate prereqs explicitly** per user's (i)-over-(ii) preference (honest scope over tight scope), with **scoped acceptance criteria** per Director refinement (each sub-lane closes on unblock of its paired Goal 2 item; full substrate-capability lanes are not R2-committed).
 - **Anti-deferral principle is the frame, not velocity numbers.** Per Director observation: 16-hour R1 execution was a peak-day sample, not a baseline. The principle "if dissolution direction is clear and named, deferral is problem-finding not problem-solving" is what survives cadence shifts.
 - **`sub_charclass_in_std_unicode` phase-2 reclassified R1 → R2** (2026-04-24, ROADMAP amendment paired with this revision). Surface Manager handoff (sub-child `quiet-gull-882` triage) confirmed the remaining work is Class 5 Gap 3 substrate-capability scope, not T-Sub-only surface fix; reclassifying lets R1 close on T-Sub Day-1 + DB-11 without waiting on substrate-capability work. Phase-2 lands in R2 as a 4th T-Substrate scoped sub-lane (consumer: tokenizer). Reclassification scope is bounded — full Class 5 Gap 3 substrate-capability close remains outside R2 unless additional R2 items demand it; only the tokenizer-charclass-unblock subset is R2-committed.
