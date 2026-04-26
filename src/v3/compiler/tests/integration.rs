@@ -280,7 +280,7 @@ mod t_demo_fixture_test {
 mod lane2_stage_2f_dimension_test {
     use v3_compiler::analyze_symbolic_cost_dimension;
     use v3_compiler::compile_to_dag;
-    use v3_compiler::dag::{Behavior, Dag, PortId, TypeConnective};
+    use v3_compiler::dag::{Behavior, Dag, DeclarationId, PortId, TypeConnective};
     use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
     fn find_bind_port(dag: &Dag, name: &str) -> PortId {
@@ -306,11 +306,11 @@ mod lane2_stage_2f_dimension_test {
     }
 
     #[test]
-    fn no_authored_dimension_carrier_constants_in_bootstrap_stdlib() {
+    fn no_authored_analysis_dimension_carrier_constants_in_bootstrap_stdlib() {
         let dag = Dag::new();
         let dimension_template = dag
-            .declaration_by_name("Dimension")
-            .expect("bootstrap loads Dimension")
+            .declaration_by_name("AnalysisDimension")
+            .expect("bootstrap loads AnalysisDimension")
             .id;
         let count = dag
             .declarations()
@@ -326,8 +326,89 @@ mod lane2_stage_2f_dimension_test {
             .count();
         assert_eq!(
             count, 0,
-            "no `data _: Dimension<_> = ...` values ship until class-5 bodies unlock the receipt"
+            "no `data _: AnalysisDimension<_> = ...` values ship until class-5 bodies unlock the receipt"
         );
+    }
+
+    fn named_decl(dag: &Dag, name: &str) -> DeclarationId {
+        dag.declaration_by_name(name)
+            .unwrap_or_else(|| panic!("bootstrap loads {name}"))
+            .id
+    }
+
+    fn instantiation_parts(dag: &Dag, id: DeclarationId) -> (DeclarationId, Vec<DeclarationId>) {
+        match &dag.declaration(id).connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => (*template, arguments.iter().map(|arg| arg.value).collect()),
+            other => panic!("expected instantiation for {id:?}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dimension_value_wrapper_carries_unit_phantom_axis() {
+        let dag = Dag::new();
+        let dimension = dag
+            .declaration_by_name("Dimension")
+            .expect("bootstrap loads Dimension");
+        assert_eq!(dimension.type_params.len(), 2);
+        assert_eq!(dimension.phantom_params.len(), 1);
+        assert_eq!(dimension.phantom_params[0].parameter, dimension.type_params[0]);
+
+        let abelian_group = named_decl(&dag, "AbelianGroup");
+        let (algebra_template, algebra_args) =
+            instantiation_parts(&dag, dimension.phantom_params[0].algebra);
+        assert_eq!(algebra_template, abelian_group);
+        assert_eq!(algebra_args, vec![dimension.type_params[0]]);
+
+        for unit in [
+            "Meters",
+            "Seconds",
+            "Kilograms",
+            "Amperes",
+            "Kelvin",
+            "Moles",
+            "Candela",
+        ] {
+            named_decl(&dag, unit);
+        }
+    }
+
+    #[test]
+    fn dimension_operations_preserve_same_unit_and_carrier() {
+        let dag = Dag::new();
+        let dimension = named_decl(&dag, "Dimension");
+        let dimension_decl = dag.declaration(dimension);
+        let unit = dimension_decl.type_params[0];
+        let carrier = dimension_decl.type_params[1];
+
+        for name in ["add_dimension", "sub_dimension"] {
+            let op = dag.declaration(named_decl(&dag, name));
+            let TypeConnective::Arrow { inputs, output, .. } = &op.connective else {
+                panic!("{name} should be an arrow");
+            };
+            assert_eq!(inputs.len(), 2);
+            for ty in [inputs[0], inputs[1], *output] {
+                let (template, args) = instantiation_parts(&dag, ty);
+                assert_eq!(template, dimension);
+                assert_eq!(args, vec![unit, carrier]);
+            }
+        }
+
+        for name in ["mul_dimension_scalar", "div_dimension_scalar"] {
+            let op = dag.declaration(named_decl(&dag, name));
+            let TypeConnective::Arrow { inputs, output, .. } = &op.connective else {
+                panic!("{name} should be an arrow");
+            };
+            assert_eq!(inputs.len(), 2);
+            assert_eq!(inputs[1], carrier);
+            for ty in [inputs[0], *output] {
+                let (template, args) = instantiation_parts(&dag, ty);
+                assert_eq!(template, dimension);
+                assert_eq!(args, vec![unit, carrier]);
+            }
+        }
     }
 
     #[test]
