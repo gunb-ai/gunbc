@@ -1331,8 +1331,7 @@ fn sum(xs: List<Int>) -> Int =
             constructor: cons_id,
             payload: vec![FieldValue::Literal(LiteralBits::Int(1)), empty],
         };
-        let err =
-            apply_lens_declaration(&dag, sum_id, &[one]).expect_err("ineligible step body");
+        let err = apply_lens_declaration(&dag, sum_id, &[one]).expect_err("ineligible step body");
         assert!(
             matches!(err, LensApplyError::UnimplementedCallable(_)),
             "{err:?}"
