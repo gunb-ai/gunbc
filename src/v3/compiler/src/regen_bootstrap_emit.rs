@@ -283,6 +283,7 @@ fn render_value_body(value_body: &ValueBody) -> String {
             )
         }
         ValueBody::Scalar(bits) => format!("ValueBody::Scalar({})", render_literal_bits(bits)),
+        ValueBody::List(values) => format!("ValueBody::List({})", render_field_values(values)),
     }
 }
 

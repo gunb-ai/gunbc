@@ -271,8 +271,9 @@ pub struct PhantomParameter {
 #[derive(Debug, Clone)]
 pub enum ValueBody {
     /// The body exists in source at the given span but is not yet
-    /// lowered to a value sub-DAG. The body's shape (record / map /
-    /// list / variant literal) awaits M2+ parser extension.
+    /// lowered to a value sub-DAG. Map-shaped bodies still await the
+    /// sibling `kernel_algebra_profile` substrate lane; records and
+    /// lists lower structurally.
     Unparsed(SourceSpan),
     /// The body parsed as a record literal and was inhabitance-
     /// checked against the declared type. Each field holds a
@@ -298,6 +299,25 @@ pub enum ValueBody {
     /// scalar constants; previously the parser rejected non-
     /// `{`-shaped RHS, so scalar `data` declarations could not exist.
     Scalar(LiteralBits),
+    /// Top-level structural list value: `data xs: List<T> = [...]`.
+    ///
+    /// 4-pattern check for `List`:
+    /// - Pattern 1 (fact placement): fails. The ordered element sequence
+    ///   is the data declaration's value fact, not a property of the
+    ///   declaration's type edge or meta tag.
+    /// - Pattern 2 (variant-is-data): fails. `Vec<FieldValue>` is a
+    ///   distinct structural payload from source spans, record fields, and
+    ///   scalar bits.
+    /// - Pattern 3 (algebraic form): fails. List bodies are not points in
+    ///   the same algebra as records/scalars; they carry ordered
+    ///   homogeneous element facts needed by Engine/tokenizer consumers.
+    /// - Pattern 4 (dimensional): fails. No shared coordinate space with
+    ///   `Structural` record labels or `Scalar` primitive constants.
+    ///
+    /// Verdict: terminal at the current top-level data-body layer. Elements
+    /// deliberately reuse `FieldValue`, matching nested structural list
+    /// values and preserving sum-constructor identity for list-of-sum data.
+    List(Vec<FieldValue>),
 }
 
 /// Per-field value payload inside a `ValueBody::Structural`.
