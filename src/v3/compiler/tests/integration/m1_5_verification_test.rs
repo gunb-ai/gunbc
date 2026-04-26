@@ -202,7 +202,7 @@ let pred_fails_kind: TestPredicate = FailsWithDiagnostic({ kind: TypeMismatch, d
 let pred_output: TestPredicate = OutputEquals("let x: Int = 1")
 let pred_port_resolved: TestPredicate = PortHasState("answer", Resolved)
 let pred_port_unresolved: TestPredicate = PortHasState("missing", Unresolved)
-let pred_decl_refine: TestPredicate = DeclarationHasRefinement({ declaration_name: "PositiveInt" })
+let pred_decl_refine: TestPredicate = DeclarationHasRefinement("PositiveInt")
 let pred_cost_eq: TestPredicate = CostBounded("answer", Eq, 8)
 let pred_cost_above: TestPredicate = CostBounded("answer", Gt, 3)
 let pred_exec: TestPredicate = ExecuteCommand("true", empty(), 0)

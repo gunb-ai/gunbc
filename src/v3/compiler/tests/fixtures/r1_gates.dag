@@ -57,7 +57,7 @@ data sub_type_alias_where_lowers: TestClaim = {
   name: "sub_type_alias_where_lowers",
   source: "type PositiveInt = Int where PositiveInt > 0\n",
   file_name: "r1_sub_type_alias_where_lowers.v3",
-  predicate: DeclarationHasRefinement({ declaration_name: "PositiveInt" }),
+  predicate: DeclarationHasRefinement("PositiveInt"),
   requires: []
 }
 
