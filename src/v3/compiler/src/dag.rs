@@ -2832,6 +2832,9 @@ impl Dag {
     ///   - `module std.effects` (`dsl/std/effects.dag` ↔ `src/v3/std/effects.dag`)
     ///   - `module std.verification` (`dsl/std/verification.dag` ↔ `src/v3/std/verification.dag`)
     ///   - embedded `http_path` mirror inside `src/v3/std/effects.dag:118-260`
+    ///   - `module std.computation` (`dsl/std/computation.dag` ↔ `src/v3/std/computation.dag`)
+    ///   - `module std.induction` (`dsl/std/induction.dag` ↔ `src/v3/std/induction.dag`)
+    ///   - `module std.termination` (`dsl/std/termination.dag` ↔ `src/v3/std/termination.dag`)
     fn declaration_name_preference_rank(file: &str) -> usize {
         if file.starts_with("src/v3/") {
             2
