@@ -848,6 +848,7 @@ mod tests {
             connective: TypeConnective::Instantiation {
                 template: list_decl,
                 arguments: Vec::new(),
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),

@@ -119,6 +119,7 @@ fn find_fold_step_bind_via_instantiation(
     let TypeConnective::Instantiation {
         template,
         arguments,
+        fold_step_formal: None,
     } = &decl.connective
     else {
         return None;
@@ -1076,6 +1077,7 @@ fn sum(xs: List<Int>) -> Int =
         let TypeConnective::Instantiation {
             template,
             arguments,
+            fold_step_formal: None,
         } = &dag.declaration(fold_callable).connective
         else {
             panic!("fold callable should be an Instantiation");

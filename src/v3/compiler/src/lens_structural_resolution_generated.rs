@@ -37,6 +37,7 @@ pub fn check_declaration(p0: &Declaration) -> Vec<UnresolvedArrowBody> {
         TypeConnective::Instantiation {
             template: _,
             arguments: _,
+            ..
         } => Vec::new(),
     }
 }
@@ -106,6 +107,7 @@ pub fn check_name_keyed_declaration(p0: &Declaration) -> Vec<NameKeyedReference>
         TypeConnective::Instantiation {
             template: _,
             arguments: _,
+            ..
         } => Vec::new(),
     }
 }

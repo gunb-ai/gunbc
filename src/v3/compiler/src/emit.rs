@@ -2088,6 +2088,7 @@ impl<'a> Ctx<'a> {
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                ..
             } => {
                 let Some(binding) = self.indexes.instantiations.get(template) else {
                     return Err(EmitError::MissingTypeRealization { target: *template });
@@ -2144,6 +2145,7 @@ impl<'a> Ctx<'a> {
         let TypeConnective::Instantiation {
             template,
             arguments,
+            fold_step_formal: None,
         } = &self.dag.declaration(ty.declaration).connective
         else {
             return Err(EmitError::UnsupportedBehavior(
@@ -2999,6 +3001,7 @@ fn callable_template(target: DeclarationId, dag: &Dag) -> (DeclarationId, Vec<Te
         TypeConnective::Instantiation {
             template,
             arguments,
+            ..
         } => (*template, arguments.clone()),
         _ => (target, Vec::new()),
     }
@@ -3069,6 +3072,7 @@ pub(crate) fn operator_realization_lookup_type(
         let TypeConnective::Instantiation {
             template,
             arguments,
+            fold_step_formal: None,
         } = &decl.connective
         else {
             break;

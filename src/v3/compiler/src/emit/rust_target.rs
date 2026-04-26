@@ -4894,6 +4894,7 @@ impl<'a> Ctx<'a> {
                 TypeConnective::Instantiation {
                     template,
                     arguments,
+                    fold_step_formal: None,
                 } if arguments.is_empty() => {
                     declaration = *template;
                 }
@@ -4968,6 +4969,7 @@ impl<'a> Ctx<'a> {
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                ..
             } => {
                 let from_args = arguments
                     .iter()
@@ -5001,6 +5003,7 @@ impl<'a> Ctx<'a> {
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                ..
             } => {
                 if self.is_list_template(*template) {
                     let [element] = arguments.as_slice() else {
@@ -5104,12 +5107,14 @@ impl<'a> Ctx<'a> {
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                fold_step_formal: None,
             } if arguments.is_empty() => {
                 self.rust_type_name_for_decl_with_policy(*template, depth + 1, arrow_policy)
             }
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                ..
             } => self.render_instantiated_type(*template, arguments, depth + 1, arrow_policy),
             TypeConnective::Cardinality {
                 element,
@@ -5331,6 +5336,7 @@ impl<'a> Ctx<'a> {
         let TypeConnective::Instantiation {
             template,
             arguments,
+            fold_step_formal: None,
         } = &self.dag.declaration(ty.declaration).connective
         else {
             return Err(EmitError::UnsupportedBehavior(
@@ -5419,6 +5425,7 @@ fn callable_template(target: DeclarationId, dag: &Dag) -> (DeclarationId, Vec<Te
         TypeConnective::Instantiation {
             template,
             arguments,
+            ..
         } => (*template, arguments.clone()),
         _ => (target, Vec::new()),
     }

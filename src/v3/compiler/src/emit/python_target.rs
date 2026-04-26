@@ -1483,6 +1483,7 @@ impl<'a> Ctx<'a> {
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                ..
             } => {
                 let carrier = self
                     .indexes
@@ -1990,6 +1991,7 @@ fn callable_template(target: DeclarationId, dag: &Dag) -> (DeclarationId, Vec<Te
         TypeConnective::Instantiation {
             template,
             arguments,
+            ..
         } => (*template, arguments.clone()),
         _ => (target, Vec::new()),
     }

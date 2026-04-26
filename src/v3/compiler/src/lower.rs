@@ -2109,6 +2109,7 @@ fn type_to_declaration_id(
                 connective: TypeConnective::Instantiation {
                     template: template_id,
                     arguments,
+                    fold_step_formal: None,
                 },
                 type_params: Vec::new(),
                 phantom_params: Vec::new(),
@@ -2204,6 +2205,7 @@ fn type_to_connective(
             TypeConnective::Instantiation {
                 template,
                 arguments: Vec::new(),
+                fold_step_formal: None,
             }
         }
         SurfaceType::Parameterized { name, args, span } => {
@@ -2217,6 +2219,7 @@ fn type_to_connective(
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                fold_step_formal: None,
             }
         }
         SurfaceType::Optional { inner, .. } => TypeConnective::Cardinality {
@@ -2704,6 +2707,7 @@ fn find_equivalent_decl_instantiation_lower(
         let TypeConnective::Instantiation {
             template: existing_template,
             arguments: existing_arguments,
+            fold_step_formal: None,
         } = &decl.connective
         else {
             return None;
@@ -2739,6 +2743,7 @@ fn resolve_decl_with_subst_lower(
         TypeConnective::Instantiation {
             template,
             arguments,
+            ..
         } => {
             let specialized_arguments: Vec<TemplateArgument> = arguments
                 .iter()
@@ -2780,6 +2785,7 @@ fn walk_to_conj_decl_with_subst_lower(
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                ..
             } => {
                 subst.push(arguments.clone());
                 current = *template;
@@ -3418,6 +3424,7 @@ fn list_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<Declarat
         TypeConnective::Instantiation {
             template,
             arguments,
+            fold_step_formal: None,
         } if *template == list_id && arguments.len() == 1 => Some(arguments[0].value),
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => list_element_type(dag, *next),
@@ -3508,6 +3515,7 @@ fn declaration_ref_types_equivalent(
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                fold_step_formal: None,
             },
             _,
         ) if arguments.is_empty() => {
@@ -3518,6 +3526,7 @@ fn declaration_ref_types_equivalent(
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                fold_step_formal: None,
             },
         ) if arguments.is_empty() => {
             declaration_ref_types_equivalent(dag, lhs, *template, depth + 1)
@@ -3526,10 +3535,12 @@ fn declaration_ref_types_equivalent(
             TypeConnective::Instantiation {
                 template: lhs_template,
                 arguments: lhs_arguments,
+                fold_step_formal: None,
             },
             TypeConnective::Instantiation {
                 template: rhs_template,
                 arguments: rhs_arguments,
+                fold_step_formal: None,
             },
         ) => {
             declaration_ref_types_equivalent(dag, *lhs_template, *rhs_template, depth + 1)
@@ -4568,6 +4579,7 @@ fn bind_expected_type_to_actual(
         TypeConnective::Instantiation {
             template,
             arguments: expected_arguments,
+            ..
         } => {
             let actual_decl = dag.declaration(actual_id);
             match &actual_decl.connective {
@@ -4578,6 +4590,7 @@ fn bind_expected_type_to_actual(
                 TypeConnective::Instantiation {
                     template: actual_template,
                     arguments: actual_arguments,
+                    ..
                 } => {
                     if *actual_template == expected_id
                         && expected_arguments.len() == actual_arguments.len()
@@ -4720,6 +4733,7 @@ fn specialize_decl_for_lowering(
         TypeConnective::Instantiation {
             template,
             arguments: inner_arguments,
+            ..
         } => {
             let specialized_arguments: Vec<TemplateArgument> = inner_arguments
                 .iter()
@@ -4748,6 +4762,7 @@ fn specialize_decl_for_lowering(
                 connective: TypeConnective::Instantiation {
                     template,
                     arguments: specialized_arguments,
+                    fold_step_formal: None,
                 },
                 type_params: Vec::new(),
                 phantom_params: Vec::new(),
@@ -5357,6 +5372,7 @@ fn lower_expr(
                     connective: TypeConnective::Instantiation {
                         template: base_target_decl,
                         arguments: retained_arguments,
+                        fold_step_formal: None,
                     },
                     type_params: Vec::new(),
                     phantom_params: Vec::new(),
@@ -5981,6 +5997,7 @@ fn resolve_expected_variant_constructor(
                 connective: TypeConnective::Instantiation {
                     template: variant_decl,
                     arguments,
+                    fold_step_formal: None,
                 },
                 type_params: Vec::new(),
                 phantom_params: Vec::new(),
@@ -6907,6 +6924,7 @@ mod tests {
             TypeConnective::Instantiation {
                 template: style_type,
                 arguments: Vec::new(),
+                fold_step_formal: None,
             },
             None,
         );
@@ -6916,6 +6934,7 @@ mod tests {
             TypeConnective::Instantiation {
                 template: style_type,
                 arguments: Vec::new(),
+                fold_step_formal: None,
             },
             Some(style_type),
         );

@@ -281,6 +281,7 @@ impl Dag {
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                ..
             } => (*template, arguments.clone()),
             _ => (target, Vec::new()),
         }
@@ -363,6 +364,7 @@ impl Dag {
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                ..
             } => {
                 subst.push(arguments.clone());
                 let result = self.resolve_arrow_decl_inputs(*template, subst, depth + 1);
@@ -401,6 +403,7 @@ impl Dag {
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                ..
             } => {
                 subst.push(arguments.clone());
                 let result = self.callable_output_shape_with_subst(*template, subst, depth + 1);
@@ -528,6 +531,7 @@ impl Dag {
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                ..
             } => {
                 let specialized_arguments: Vec<TemplateArgument> = arguments
                     .iter()
@@ -632,6 +636,7 @@ impl Dag {
             let TypeConnective::Instantiation {
                 template: existing_template,
                 arguments: existing_arguments,
+                fold_step_formal: None,
             } = &decl.connective
             else {
                 return None;
@@ -887,6 +892,7 @@ mod tests {
                     parameter: type_param,
                     value: int_decl,
                 }],
+                fold_step_formal: None,
             },
             Vec::new(),
         );
@@ -935,6 +941,7 @@ mod tests {
                     parameter: type_param,
                     value: type_param,
                 }],
+                fold_step_formal: None,
             },
             Vec::new(),
         );
@@ -947,6 +954,7 @@ mod tests {
                     parameter: type_param,
                     value: int_decl,
                 }],
+                fold_step_formal: None,
             },
             Vec::new(),
         );
@@ -969,6 +977,7 @@ mod tests {
                     parameter: type_param,
                     value: int_decl,
                 }],
+                fold_step_formal: None,
             },
             Vec::new(),
         );
@@ -1046,6 +1055,7 @@ mod tests {
                     parameter: type_param,
                     value: int_decl,
                 }],
+                fold_step_formal: None,
             },
             Vec::new(),
         );

@@ -153,6 +153,7 @@ pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
                 parameter: param_id,
                 value: bool_id,
             }],
+            fold_step_formal: None,
         },
         type_params: Vec::new(),
         phantom_params: Vec::new(),

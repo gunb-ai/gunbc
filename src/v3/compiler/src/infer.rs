@@ -1341,6 +1341,7 @@ fn instantiation_parts(dag: &Dag, declaration: DeclarationId) -> Option<Instanti
         TypeConnective::Instantiation {
             template,
             arguments,
+            ..
         } => Some(InstantiationParts {
             template: *template,
             arguments,
@@ -1761,6 +1762,7 @@ fn callable_template_arguments(
         TypeConnective::Instantiation {
             template,
             arguments,
+            ..
         } => (*template, arguments.clone()),
         _ => (target, Vec::new()),
     }
@@ -1871,6 +1873,7 @@ fn resolve_arrow_decl_walk(
         TypeConnective::Instantiation {
             template,
             arguments,
+            ..
         } => {
             subst.push(arguments.clone());
             let result = resolve_arrow_decl_walk(dag, *template, subst, depth + 1);
@@ -2124,6 +2127,7 @@ fn bind_expected_decl_to_actual_context(
         TypeConnective::Instantiation {
             template,
             arguments: expected_args,
+            ..
         } => {
             let actual_decl = match &dag.declaration(actual.decl).connective {
                 TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
@@ -2159,6 +2163,7 @@ fn bind_expected_decl_to_actual_context(
             let TypeConnective::Instantiation {
                 template: actual_template,
                 arguments: actual_args,
+                fold_step_formal: None,
             } = &dag.declaration(actual_decl).connective
             else {
                 return false;
@@ -2590,6 +2595,7 @@ fn resolve_callable_targets(dag: &mut Dag) -> bool {
                 connective: TypeConnective::Instantiation {
                     template: rewrite.template,
                     arguments: rewrite.arguments,
+                    fold_step_formal: None,
                 },
                 type_params: Vec::new(),
                 phantom_params: Vec::new(),
@@ -2977,6 +2983,7 @@ fn walk_to_conj_decl_with_subst(
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                ..
             } => {
                 subst.push(arguments.clone());
                 current = *template;
@@ -3011,6 +3018,7 @@ fn walk_to_disj_decl_with_subst(
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                ..
             } => {
                 subst.push(arguments.clone());
                 current = *template;
@@ -3154,6 +3162,7 @@ pub(crate) fn concretize_decl_with_subst(
         TypeConnective::Instantiation {
             template,
             arguments,
+            ..
         } => {
             let specialized_arguments: Vec<TemplateArgument> = arguments
                 .into_iter()
@@ -3174,6 +3183,7 @@ pub(crate) fn concretize_decl_with_subst(
                 connective: TypeConnective::Instantiation {
                     template,
                     arguments: specialized_arguments,
+                    fold_step_formal: None,
                 },
                 type_params: Vec::new(),
                 phantom_params: Vec::new(),
@@ -3740,6 +3750,7 @@ fn find_equivalent_anonymous_instantiation(
         let TypeConnective::Instantiation {
             template: existing_template,
             arguments: existing_arguments,
+            fold_step_formal: None,
         } = &decl.connective
         else {
             return None;
@@ -4254,6 +4265,7 @@ fn resolve_arrow_walk(
         TypeConnective::Instantiation {
             template,
             arguments,
+            ..
         } => {
             subst.push(arguments.clone());
             let result = resolve_arrow_walk(dag, *template, subst, depth + 1);
@@ -4431,6 +4443,7 @@ fn resolve_decl_with_subst(
         TypeConnective::Instantiation {
             template,
             arguments,
+            ..
         } => {
             let specialized_arguments: Vec<TemplateArgument> = arguments
                 .iter()
@@ -4471,6 +4484,7 @@ fn find_equivalent_decl_instantiation(
         let TypeConnective::Instantiation {
             template: existing_template,
             arguments: existing_arguments,
+            fold_step_formal: None,
         } = &decl.connective
         else {
             return None;
@@ -4577,10 +4591,12 @@ fn declaration_shapes_equivalent(
             TypeConnective::Instantiation {
                 template: lhs_template,
                 arguments: lhs_arguments,
+                fold_step_formal: None,
             },
             TypeConnective::Instantiation {
                 template: rhs_template,
                 arguments: rhs_arguments,
+                fold_step_formal: None,
             },
         ) => {
             declaration_shapes_equivalent(dag, *lhs_template, *rhs_template, depth + 1)
@@ -4810,6 +4826,7 @@ mod bool_logical_operator_arrow_tests {
             connective: TypeConnective::Instantiation {
                 template: currency,
                 arguments: vec![],
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -4827,6 +4844,7 @@ mod bool_logical_operator_arrow_tests {
             connective: TypeConnective::Instantiation {
                 template: currency,
                 arguments: vec![],
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -4853,6 +4871,7 @@ mod bool_logical_operator_arrow_tests {
                     parameter: abelian_receiver,
                     value: currency,
                 }],
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -4873,6 +4892,7 @@ mod bool_logical_operator_arrow_tests {
                     parameter: abelian_receiver,
                     value: int,
                 }],
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -4930,6 +4950,7 @@ mod bool_logical_operator_arrow_tests {
                     parameter: c_param,
                     value: usd,
                 }],
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -4950,6 +4971,7 @@ mod bool_logical_operator_arrow_tests {
                     parameter: c_param,
                     value: eur,
                 }],
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -4970,6 +4992,7 @@ mod bool_logical_operator_arrow_tests {
                     parameter: c_param,
                     value: c_param,
                 }],
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -5026,6 +5049,7 @@ mod bool_logical_operator_arrow_tests {
                     parameter: alt_c_param,
                     value: usd,
                 }],
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -5046,6 +5070,7 @@ mod bool_logical_operator_arrow_tests {
                     parameter: alt_c_param,
                     value: eur,
                 }],
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -5088,6 +5113,7 @@ mod bool_logical_operator_arrow_tests {
                     parameter: alt_c_param,
                     value: usd,
                 }],
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -5141,6 +5167,7 @@ mod bool_logical_operator_arrow_tests {
             connective: TypeConnective::Instantiation {
                 template: money,
                 arguments: Vec::new(),
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -5204,6 +5231,7 @@ mod bool_logical_operator_arrow_tests {
                     parameter: rogue_param,
                     value: usd,
                 }],
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -5267,6 +5295,7 @@ mod bool_logical_operator_arrow_tests {
                     parameter: c_param,
                     value: usd,
                 }],
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -5330,6 +5359,7 @@ mod bool_logical_operator_arrow_tests {
                     parameter: c_param,
                     value: usd,
                 }],
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -5438,6 +5468,7 @@ mod bool_logical_operator_arrow_tests {
                     parameter: untracked_param,
                     value: usd,
                 }],
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),
@@ -5727,6 +5758,7 @@ mod bool_logical_operator_arrow_tests {
             connective: TypeConnective::Instantiation {
                 template,
                 arguments: args.clone(),
+                fold_step_formal: None,
             },
             type_params: Vec::new(),
             phantom_params: Vec::new(),

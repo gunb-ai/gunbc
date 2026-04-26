@@ -110,6 +110,7 @@ fn integer_routing_key_for_decl(
         TypeConnective::Instantiation {
             template,
             arguments,
+            ..
         } => {
             if arguments.is_empty() {
                 return integer_routing_key_for_decl(dag, *template, depth + 1);

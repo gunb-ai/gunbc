@@ -568,6 +568,7 @@ impl<'a> TestgenLens<'a> {
             TypeConnective::Instantiation {
                 template,
                 arguments,
+                ..
             } => {
                 let template_decl = self.dag.declaration(*template);
                 let template_name = template_decl.name.as_ref()?;
@@ -610,6 +611,7 @@ impl<'a> TestgenLens<'a> {
                 TypeConnective::Instantiation {
                     template,
                     arguments,
+                    ..
                 } => {
                     let mut specialized = subst.clone();
                     for arg in arguments {

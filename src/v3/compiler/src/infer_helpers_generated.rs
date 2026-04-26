@@ -196,6 +196,7 @@ pub fn normalize_instantiation_arguments(p0: &TypeConnective) -> NormalizedInsta
         TypeConnective::Instantiation {
             template: __payload_template,
             arguments: __payload_arguments,
+            ..
         } => NormalizedInstantiationArgs::Normalized {
             template: (*(__payload_template)),
             args: filter_non_self_template_arguments(__payload_arguments),

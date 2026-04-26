@@ -57,6 +57,7 @@ fn e_i_lane_costbound_carries_list_of_costbound_in_bootstrap() {
         TypeConnective::Instantiation {
             template,
             arguments,
+            ..
         } => {
             let template_decl = dag.declaration(*template);
             assert_eq!(
