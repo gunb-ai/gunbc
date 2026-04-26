@@ -67,6 +67,11 @@ From [`docs/briefs/b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-s
 - B4's §0.7 file-preference rank carrier touches Pure Bootstrap territory. Coordinate with Pure Bootstrap Manager.
 - `kernel_algebra_profile` mirror dissolution is map-shaped (not list/sum) — tracked as future T-Substrate sub-lane requiring `ValueBody::Map` substrate work; PB Manager consumes when it lands.
 
+## Pre-spawn vs post-spawn authority
+
+- **Pre-spawn (now, before R1 close):** Director + PM coordinate on brief authoring per inbox #828 split. PM authors the manager skeleton (this file); Director authors any worker-level briefs not yet existing per the manager's "Pending" sub-briefs list. Both stop authoring once R2 spawns.
+- **Post-spawn (R2 promotion onward):** Manager owns all worker-brief authoring autonomously per "Autonomous dispatch authority" below. Director's role narrows to cross-program conflict resolution + scope-change escalation.
+
 ## Autonomous dispatch authority
 
 - Authors all T-Substrate + B4 sub-briefs without Director.

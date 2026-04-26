@@ -44,6 +44,11 @@ For each class:
 
 **Escalation rule:** if a class turns out to need substrate work outside what's already scoped in T-Substrate sub-lanes, **STOP and escalate to Substrate Manager** rather than expanding T-ImpossibleBugs scope. Substrate Manager re-scopes; T-ImpossibleBugs class waits on substrate.
 
+## Pre-spawn vs post-spawn authority
+
+- **Pre-spawn (now, before R1 close):** Director + PM coordinate on brief authoring per inbox #828 split. PM authors the manager skeleton (this file); Director authors any worker-level briefs not yet existing per the manager's "Pending" sub-briefs list. Both stop authoring once R2 spawns.
+- **Post-spawn (R2 promotion onward):** Manager owns all worker-brief authoring autonomously per "Autonomous dispatch authority" below. Director's role narrows to cross-program conflict resolution + scope-change escalation.
+
 ## Autonomous dispatch authority
 
 - Authors all T-ImpossibleBugs worker briefs without Director.

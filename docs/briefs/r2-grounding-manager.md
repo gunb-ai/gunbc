@@ -34,6 +34,11 @@ The one true critical path in R2: `Pilot → Rust → Engine → Tests → Disso
 **Consumes:**
 - **Substrate Manager — ValueBody-list/sum + std.unicode bootstrap carrier**: Engine sharpened-(b) full pilot enumeration via symbolic walk of `rust_pilot_primitives: List<RustPrimitive>` is gated on this. Substrate Manager signals readiness via cross-manager queue; Grounding Manager dispatches Engine sharpened-(b) consumer migration on receipt.
 
+## Pre-spawn vs post-spawn authority
+
+- **Pre-spawn (now, before R1 close):** Director + PM coordinate on brief authoring per inbox #828 split. PM authors the manager skeleton (this file); Director authors any worker-level briefs not yet existing per the manager's "Pending" sub-briefs list. Both stop authoring once R2 spawns.
+- **Post-spawn (R2 promotion onward):** Manager owns all worker-brief authoring autonomously per "Autonomous dispatch authority" below. Director's role narrows to cross-program conflict resolution + scope-change escalation.
+
 ## Autonomous dispatch authority
 
 - Authors all T-Ground sub-briefs without Director.

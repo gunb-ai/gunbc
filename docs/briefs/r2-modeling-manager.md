@@ -41,6 +41,11 @@ For each item:
 **Adjacent territory:**
 - Tokenizer charclass phase-2 historically R1 T-Sub work; reclassified to R2 per Surface Manager handoff 2026-04-24. R1 retains the charclass phase-1 close; R2 Modeling Manager owns phase-2 (the substrate-capability-gated portion).
 
+## Pre-spawn vs post-spawn authority
+
+- **Pre-spawn (now, before R1 close):** Director + PM coordinate on brief authoring per inbox #828 split. PM authors the manager skeleton (this file); Director authors any worker-level briefs not yet existing per the manager's "Pending" sub-briefs list. Both stop authoring once R2 spawns.
+- **Post-spawn (R2 promotion onward):** Manager owns all worker-brief authoring autonomously per "Autonomous dispatch authority" below. Director's role narrows to cross-program conflict resolution + scope-change escalation.
+
 ## Autonomous dispatch authority
 
 - Authors all T-Modeling worker briefs without Director.
