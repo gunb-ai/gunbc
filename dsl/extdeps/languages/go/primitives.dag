@@ -30,6 +30,18 @@
 
 module extdeps.languages.go.primitives
 
+// Unary RHS `type Foo = Bar` (no `|`) parses as a type alias to `Bar`, not a
+// one-arm sum. These empty products are the named targets of the Go*Algebra
+// aliases below (same bridge idea as rust/primitives.dag variant tags).
+
+type GoApproximateFieldAlgebra
+
+type GoCanonicalTwoElementBooleanAlgebra
+
+type GoTerminalAlgebra
+
+type GoUtf8FreeMonoidAlgebra
+
 // --- Algebra tags (Go-prefixed names; avoid colliding with rust/primitives.dag
 // in the shared bootstrap Dag). ---
 
