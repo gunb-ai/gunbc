@@ -87,6 +87,11 @@ type TestPredicate
       bind_name: String
       state: PortStateExpectation
     }
+  // Structural lowering receipt: named declaration must carry `refinement` after
+  // `compile_to_dag` on the claim program (DB-11 alias-RHS `where` survival).
+  | DeclarationHasRefinement {
+      declaration_name: String
+    }
   | CostBounded {
       bind_name: String
       comparator: ComparisonOp
