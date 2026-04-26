@@ -482,6 +482,9 @@ data test_local_item: LocalMeta = { target_name: \"Int\", cost: 1 }
         v3_compiler::dag::ValueBody::Scalar(_) => panic!(
             "expected Structural value_body, got Scalar — record-shape expected"
         ),
+        v3_compiler::dag::ValueBody::List(_) => {
+            panic!("expected Structural value_body, got List — record-shape expected")
+        }
     };
     // Fields are emitted in the type's declared order. PR-B
     // unwind: each field value is a `FieldValue::Literal` (since
@@ -667,6 +670,9 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
         v3_compiler::dag::ValueBody::Scalar(_) => {
             panic!("rust_int_add's value_body must be Structural, not Scalar")
         }
+        v3_compiler::dag::ValueBody::List(_) => {
+            panic!("rust_int_add's value_body must be Structural, not List")
+        }
     };
     // Fields appear in OperatorRealization's declared order:
     // language, target, op, carrier, cost.
@@ -847,6 +853,10 @@ fn m17_r9_data_item_has_unparsed_value_body_scaffold() {
         Some(v3_compiler::dag::ValueBody::Scalar(_)) => panic!(
             "`{{ 42 }}` has leading `{{` and so must take the brace-skip path, \
              not the scalar-expression path; landed as Scalar unexpectedly"
+        ),
+        Some(v3_compiler::dag::ValueBody::List(_)) => panic!(
+            "`{{ 42 }}` has leading `{{` and so must take the brace-skip path, \
+             not the list-expression path; landed as List unexpectedly"
         ),
         None => panic!(
             "data item must have value_body = Some(Unparsed), got None — \
@@ -1963,6 +1973,52 @@ fn prereq4_list_literal_in_expression_position_lowers_through_std_list_construct
     assert!(
         callable_names.iter().filter(|name| *name == "cons").count() >= 2,
         "list literal should lower through repeated `cons`, got {callable_names:?}"
+    );
+}
+
+#[test]
+fn top_level_list_data_body_lowers_to_value_body_list() {
+    let dag = cached_compile_to_dag("data xs: List<Int> = [1, 2, 3]", "data_list_body.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "top-level List<Int> data body should lower structurally, got {:?}",
+        dag.diagnostics()
+    );
+    let decl = dag
+        .declaration_by_name("xs")
+        .expect("data declaration should exist");
+    let Some(v3_compiler::dag::ValueBody::List(elements)) = &decl.value_body else {
+        panic!(
+            "data xs should lower to ValueBody::List, got {:?}",
+            decl.value_body
+        );
+    };
+    let values: Vec<i64> = elements
+        .iter()
+        .map(|element| match element {
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(value)) => {
+                *value
+            }
+            other => panic!("expected literal int list element, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(values, vec![1, 2, 3]);
+}
+
+#[test]
+fn top_level_list_data_body_requires_list_declared_type() {
+    let dag = compile_any(
+        "data xs: Int = [1, 2, 3]",
+        "data_list_body_non_list_type.v3",
+    );
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| matches!(
+            diag,
+            v3_compiler::diagnostics::Diagnostic::ResolveError { name, .. }
+                if name.contains("data `xs` has a list body but its declared type is not a List<_>")
+        )),
+        "expected fail-closed non-List diagnostic, got {:?}",
+        dag.diagnostics()
     );
 }
 

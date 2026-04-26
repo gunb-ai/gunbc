@@ -283,6 +283,10 @@ fn render_value_body(value_body: &ValueBody) -> String {
             )
         }
         ValueBody::Scalar(bits) => format!("ValueBody::Scalar({})", render_literal_bits(bits)),
+        ValueBody::List(values) => {
+            let rendered: Vec<String> = values.iter().map(render_field_value).collect();
+            format!("ValueBody::List({})", render_vec(&rendered))
+        }
     }
 }
 
