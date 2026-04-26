@@ -156,7 +156,7 @@ for a principal engineer to verify in one evening.
 | Item | Impl | Gate (`.dag` TestClaim) | Owner |
 |---|---|---|---|
 | `sub_match_over_user_sum` (Day-1) | [x] PR #702 | [x] `TestClaim` + suite in `r1_gates.dag` runs through `TestRunner` | gate evaluates; closed |
-| `sub_type_alias_where_lowers` (`[ext]`) | [x] PR #703 (DB-11 parse+lower) | [ ] `[ext]` predicate path TestClaim **not yet authored** | R1C-C (#879 in flight) |
+| `sub_type_alias_where_lowers` (`[ext]`) | [x] PR #703 (DB-11 parse+lower) | [x] `DeclarationHasRefinement("PositiveInt")` on DB-11 witness; `sub_type_alias_where_lowers_gate` in `r1_gates.dag` + `test_runner_runs_sub_type_alias_where_lowers_gate` (#879) | R1C-C (closed) |
 | `sub_charclass_in_std_unicode` phase-2 | [x partial] PR #693 (phase-1 tokenizer half) | [ ] reclassified to **R2 T-Substrate** per 2026-04-24 amendment (Class 5 Gap 3) — no longer an R1 gate | R2 Substrate Manager |
 
 **T-Emit — implementation in flight; all three `.dag` gates owned by R1 Closure R1C-E:**
@@ -169,6 +169,10 @@ for a principal engineer to verify in one evening.
 
 Decisions log (append as they happen):
 
+- `2026-04-26` — T-Sub strict `.dag` gate for `sub_type_alias_where_lowers`
+  closed via PR #879 (`adda0eac`): `DeclarationHasRefinement("PositiveInt")`
+  on the same witness as `test_db11_type_alias_where_survives_parse_and_lower`;
+  `sub_type_alias_where_lowers_gate` green under `TestRunner`.
 - `2026-04-24` — T-Sub wave landed. `sub_match_over_user_sum` Day-1 gate
   closed via #702 (with #690 prior receipt). DB-11 parse+lower substrate
   landed via #703 (type-alias RHS `where`); the `.dag` gate itself awaits
