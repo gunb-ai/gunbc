@@ -2859,6 +2859,11 @@ impl Dag {
     /// `src/v3/std/extdeps_bootstrap_fixtures.dag`), in the order fields
     /// appear on the lowered `ValueBody::Structural` body.
     ///
+    /// Returns `None` if the declaration is missing, has no structural body, or
+    /// any fixture slot fails shape checks. Returns `Some` even when the product
+    /// has zero fields (degenerate); callers that require a non-empty set should
+    /// assert separately.
+    ///
     /// Used to keep the regen host's `EXTDEPS_BOOTSTRAP_PATH_KEYS` filter
     /// aligned with the substrate declaration (compared in this module's bootstrap
     /// `LazyLock` initializers).
@@ -2872,7 +2877,7 @@ impl Dag {
         for (_slot, fv) in fields {
             out.push(extdeps_fixture_entry_virtual_path(fv)?);
         }
-        (!out.is_empty()).then_some(out)
+        Some(out)
     }
 
     /// DB-10 (3a.2): read the compile-time value body attached to a
@@ -3407,16 +3412,17 @@ impl Default for Dag {
 fn assert_extdeps_bootstrap_fixture_paths_match_regen_keys(dag: &Dag) {
     let Some(paths) = dag.extdeps_bootstrap_fixture_virtual_paths() else {
         panic!(
-            "bootstrap snapshot must include `extdeps_bootstrap_fixture_authority` with a \
-             structural body (regenerate via `regen_bootstrap` after editing \
-             `src/v3/std/extdeps_bootstrap_fixtures.dag`)"
+            "bootstrap snapshot must expose `extdeps_bootstrap_fixture_authority` as a \
+             structural `ValueBody` with well-formed `virtual_path` fields on each fixture \
+             slot (missing declaration, non-structural body, or malformed fixture records). \
+             Regenerate via `regen_bootstrap` after editing \
+             `src/v3/std/extdeps_bootstrap_fixtures.dag`."
         );
     };
-    if paths.len() != EXTDEPS_BOOTSTRAP_PATH_KEYS.len()
-        || paths
-            .iter()
-            .zip(EXTDEPS_BOOTSTRAP_PATH_KEYS.iter())
-            .any(|(a, b)| a != *b)
+    if !paths
+        .iter()
+        .map(String::as_str)
+        .eq(EXTDEPS_BOOTSTRAP_PATH_KEYS.iter().copied())
     {
         panic!(
             "`EXTDEPS_BOOTSTRAP_PATH_KEYS` must match `extdeps_bootstrap_fixture_authority` \
