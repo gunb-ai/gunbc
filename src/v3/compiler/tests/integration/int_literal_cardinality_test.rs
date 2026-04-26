@@ -64,6 +64,58 @@ fn unconstrained_int_literal_still_defaults_to_int64() {
 }
 
 #[test]
+fn let_annotated_uint8_literal_resolves_to_narrow_type() {
+    let dag = compile_to_dag("let x: UInt8 = 5\n", "let_u8_narrow.v3").expect("compiles");
+    let value = dag
+        .nodes()
+        .iter()
+        .find_map(|node| match node {
+            v3_compiler::dag::Behavior::Value(v) if v.data == LiteralBits::Int(5) => Some(v),
+            _ => None,
+        })
+        .expect("literal");
+    let ty = match dag.port(value.output).state() {
+        v3_compiler::dag::PortState::Resolved(ty) => ty,
+        other => panic!("expected resolved port, got {other:?}"),
+    };
+    assert_eq!(
+        dag.declaration(ty.declaration).name.as_deref(),
+        Some("UInt8"),
+        "annotated u8-typed `let` should keep range-backed narrow type at the literal port"
+    );
+}
+
+#[test]
+fn call_site_uint8_literal_narrows() {
+    let source = "fn id_u8(p: UInt8) -> UInt8 = p\nlet y: UInt8 = id_u8(7)\n";
+    let dag = compile_to_dag(source, "call_u8_narrow.v3").expect("compiles");
+    let value = dag
+        .nodes()
+        .iter()
+        .find_map(|node| match node {
+            v3_compiler::dag::Behavior::Value(v) if v.data == LiteralBits::Int(7) => Some(v),
+            _ => None,
+        })
+        .expect("call literal 7");
+    let ty = match dag.port(value.output).state() {
+        v3_compiler::dag::PortState::Resolved(ty) => ty,
+        other => panic!("expected resolved port, got {other:?}"),
+    };
+    assert_eq!(dag.declaration(ty.declaration).name.as_deref(), Some("UInt8"));
+}
+
+#[test]
+fn emit_let_uint8_uses_narrow_rust_type() {
+    use v3_compiler::emit_rust::emit_rust;
+    let dag = compile_to_dag("let x: UInt8 = 5\n", "emit_let_u8.v3").expect("compiles");
+    let out = emit_rust(&dag).expect("emits");
+    assert!(
+        out.contains("u8") && out.contains("x") && out.contains("5"),
+        "expected u8-annotated let in Rust text, got: {out}"
+    );
+}
+
+#[test]
 fn uint64_upper_half_literals_are_tracked_carrier_limitation() {
     let err = compile_to_dag(
         "data x: UInt64 = 9223372036854775808",

@@ -1119,7 +1119,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                                 ) {
                                     return Decision::Fail(t.output, diag);
                                 }
-                                continue;
+                                return Decision::Set(*input_port, *expected_ty);
                             }
                             Ok(Some(false)) | Ok(None) => {}
                             Err(diag) => return Decision::Fail(t.output, diag),
