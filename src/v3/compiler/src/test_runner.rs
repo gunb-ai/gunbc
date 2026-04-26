@@ -2422,7 +2422,14 @@ fn render_value_body(dag: &Dag, value: &ValueBody) -> String {
     match value {
         ValueBody::Scalar(bits) => render_literal(bits),
         ValueBody::Structural { fields } => render_record(dag, fields),
-        ValueBody::List(values) => render_list(dag, values),
+        ValueBody::List(values) => format!(
+            "[{}]",
+            values
+                .iter()
+                .map(|value| render_field_value(dag, value))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         ValueBody::Unparsed(span) => format!("<unparsed:{}:{}>", span.file, span.byte_start),
     }
 }
