@@ -1,0 +1,260 @@
+// extdeps/languages/go/primitives.dag — Structural target-primitive declarations
+// for the Go target (T-Ground-Go / spec authority).
+//
+// TRANCHE 1 (this file): Go spec predeclared types with fixed machine
+// representations — booleans, fixed-width integers, floats, complex, string,
+// empty struct, uintptr, and the byte/rune aliases (go.dev/ref/spec §Types).
+// Implementation-sized int/uint are intentionally omitted from the data table
+// until a GOARCH-tagged width story closes under DB-11 / cardinality substrate
+// (same “no lying about width” discipline as the Rust pilot’s u64 note).
+//
+// TWO-AUTHORITY DISCIPLINE (ROADMAP §Post-R1 Grounding lanes):
+//   (a) THIS FILE — Go language specification (go.dev/ref/spec).
+//   (b) stdlib carriers and product-specific rows (e.g. []byte for Bytes,
+//       interface{} for Json) stay in go/types.dag + emit tables until a
+//       dedicated stdlib-authority slice lands; do not cite stdlib paths here.
+//
+// CONSUMER BOUNDARY: same Path-2 honest state as rust/primitives.dag — the
+// top-level `go_spec_predeclared_primitives` list lowers as ValueBody::Unparsed
+// until R2 T-Substrate’s top-level aggregate sub-lane lands; type-structure
+// (GoPrimitive = …) is walkable for Engine / future loaders.
+//
+// LESSON 5 (grounding-pilot-receipt.md): subset-only axes are structurally
+// partitioned — integer overflow lives only on integer variants; float width
+// only on GoFloatPrimitive; complex component width only on GoComplexPrimitive;
+// alias linkage only on GoIntegerAliasPrimitive (byte/rune).
+//
+// SUBSTRATE-GAP FLAGS: IntegerOverflow / terminal / text carriers mirror the
+// Rust pilot’s bridge pattern (algebra.dag + bit.dag by tag); post-DB-11 these
+// become refinements on carriers / algebras.
+
+module extdeps.languages.go.primitives
+
+import std.bit { Bit, Byte, Word16, Word32, Word64 }
+
+
+// --- Algebra tags (Go-prefixed names; avoid colliding with rust/primitives.dag
+// in the shared bootstrap Dag). ---
+
+type GoIntegerAlgebra
+  = GoOrderedRingAlgebra
+  | GoSemiringAlgebra
+
+type GoFloatAlgebra
+  = GoApproximateFieldAlgebra
+
+// Bool: single variant mirrors rust’s BooleanAlgebraAlgebra slot without reusing
+// rust’s declaration names on this module’s type graph.
+type GoBoolAlgebra
+  = GoCanonicalTwoElementBooleanAlgebra
+
+type GoUnitAlgebra
+  = GoTerminalAlgebra
+
+type GoTextAlgebra
+  = GoUtf8FreeMonoidAlgebra
+
+
+// --- Target carrier tags (value-domain witnesses; not ABI / GC shape). ---
+
+type GoTargetCarrier
+  = GoBitCarrier
+  | GoByteCarrier
+  | GoWord16Carrier
+  | GoWord32Carrier
+  | GoWord64Carrier
+  | GoTerminalCarrier
+  | GoUtf8TextCarrier
+
+
+type GoFloatCarrier
+  = GoFloat32BitsCarrier
+  | GoFloat64BitsCarrier
+
+
+type GoIntegerOverflow
+  = GoTwoComplementWrap
+  | GoSaturating
+  | GoTrap
+
+
+type GoComplexComponentWidth
+  = GoComplex64Components
+  | GoComplex128Components
+
+
+// --- Sum-typed Go spec primitive (Lesson 5 partition). ---
+
+type GoPrimitive
+  = GoIntegerPrimitive {
+      target_name: String
+      algebra: GoIntegerAlgebra
+      carrier: GoTargetCarrier
+      range_min_inclusive: String
+      range_max_inclusive: String
+      overflow: GoIntegerOverflow
+    }
+  | GoIntegerAliasPrimitive {
+      target_name: String
+      canon_name: String
+      algebra: GoIntegerAlgebra
+      carrier: GoTargetCarrier
+      range_min_inclusive: String
+      range_max_inclusive: String
+      overflow: GoIntegerOverflow
+    }
+  | GoFloatPrimitive {
+      target_name: String
+      algebra: GoFloatAlgebra
+      carrier: GoFloatCarrier
+    }
+  | GoComplexPrimitive {
+      target_name: String
+      component_width: GoComplexComponentWidth
+    }
+  | GoStringPrimitive {
+      target_name: String
+      algebra: GoTextAlgebra
+      carrier: GoTargetCarrier
+    }
+  | GoBooleanPrimitive {
+      target_name: String
+      algebra: GoBooleanAlgebra
+      carrier: GoTargetCarrier
+    }
+  | GoUnitPrimitive {
+      target_name: String
+      algebra: GoUnitAlgebra
+      carrier: GoTargetCarrier
+    }
+
+
+// Structurally walkable integer range facts (mirrors rust IntegerRangeFact pattern).
+type GoIntegerRangeFact {
+  target_name: String
+  algebra: GoIntegerAlgebra
+  carrier: GoTargetCarrier
+  range_min_inclusive: String
+  range_max_inclusive: String
+}
+
+data go_int8_integer_range: GoIntegerRangeFact = {
+  target_name: "int8",
+  algebra: GoOrderedRingAlgebra,
+  carrier: GoByteCarrier,
+  range_min_inclusive: "-128",
+  range_max_inclusive: "127"
+}
+
+data go_int16_integer_range: GoIntegerRangeFact = {
+  target_name: "int16",
+  algebra: GoOrderedRingAlgebra,
+  carrier: GoWord16Carrier,
+  range_min_inclusive: "-32768",
+  range_max_inclusive: "32767"
+}
+
+data go_int32_integer_range: GoIntegerRangeFact = {
+  target_name: "int32",
+  algebra: GoOrderedRingAlgebra,
+  carrier: GoWord32Carrier,
+  range_min_inclusive: "-2147483648",
+  range_max_inclusive: "2147483647"
+}
+
+data go_int64_integer_range: GoIntegerRangeFact = {
+  target_name: "int64",
+  algebra: GoOrderedRingAlgebra,
+  carrier: GoWord64Carrier,
+  range_min_inclusive: "-9223372036854775808",
+  range_max_inclusive: "9223372036854775807"
+}
+
+data go_uint8_integer_range: GoIntegerRangeFact = {
+  target_name: "uint8",
+  algebra: GoSemiringAlgebra,
+  carrier: GoByteCarrier,
+  range_min_inclusive: "0",
+  range_max_inclusive: "255"
+}
+
+data go_uint16_integer_range: GoIntegerRangeFact = {
+  target_name: "uint16",
+  algebra: GoSemiringAlgebra,
+  carrier: GoWord16Carrier,
+  range_min_inclusive: "0",
+  range_max_inclusive: "65535"
+}
+
+data go_uint32_integer_range: GoIntegerRangeFact = {
+  target_name: "uint32",
+  algebra: GoSemiringAlgebra,
+  carrier: GoWord32Carrier,
+  range_min_inclusive: "0",
+  range_max_inclusive: "4294967295"
+}
+
+data go_uint64_integer_range: GoIntegerRangeFact = {
+  target_name: "uint64",
+  algebra: GoSemiringAlgebra,
+  carrier: GoWord64Carrier,
+  range_min_inclusive: "0",
+  range_max_inclusive: "18446744073709551615"
+}
+
+data go_uintptr_integer_range: GoIntegerRangeFact = {
+  target_name: "uintptr",
+  algebra: GoSemiringAlgebra,
+  carrier: GoWord64Carrier,
+  range_min_inclusive: "0",
+  range_max_inclusive: "18446744073709551615"
+}
+
+
+// Predeclared fixed-width numerics + aliases + floats + complex + bool + string
+// + empty struct (struct{}). Order: signed ints, unsigned ints, uintptr, aliases,
+// floats, complex, bool, string, unit.
+data go_spec_predeclared_primitives: List<GoPrimitive> = [
+  GoIntegerPrimitive { target_name: "int8", algebra: GoOrderedRingAlgebra, carrier: GoByteCarrier,
+    range_min_inclusive: "-128", range_max_inclusive: "127", overflow: GoTwoComplementWrap },
+  GoIntegerPrimitive { target_name: "int16", algebra: GoOrderedRingAlgebra, carrier: GoWord16Carrier,
+    range_min_inclusive: "-32768", range_max_inclusive: "32767", overflow: GoTwoComplementWrap },
+  GoIntegerPrimitive { target_name: "int32", algebra: GoOrderedRingAlgebra, carrier: GoWord32Carrier,
+    range_min_inclusive: "-2147483648", range_max_inclusive: "2147483647", overflow: GoTwoComplementWrap },
+  GoIntegerPrimitive { target_name: "int64", algebra: GoOrderedRingAlgebra, carrier: GoWord64Carrier,
+    range_min_inclusive: "-9223372036854775808", range_max_inclusive: "9223372036854775807",
+    overflow: GoTwoComplementWrap },
+
+  GoIntegerPrimitive { target_name: "uint8", algebra: GoSemiringAlgebra, carrier: GoByteCarrier,
+    range_min_inclusive: "0", range_max_inclusive: "255", overflow: GoTwoComplementWrap },
+  GoIntegerPrimitive { target_name: "uint16", algebra: GoSemiringAlgebra, carrier: GoWord16Carrier,
+    range_min_inclusive: "0", range_max_inclusive: "65535", overflow: GoTwoComplementWrap },
+  GoIntegerPrimitive { target_name: "uint32", algebra: GoSemiringAlgebra, carrier: GoWord32Carrier,
+    range_min_inclusive: "0", range_max_inclusive: "4294967295", overflow: GoTwoComplementWrap },
+  GoIntegerPrimitive { target_name: "uint64", algebra: GoSemiringAlgebra, carrier: GoWord64Carrier,
+    range_min_inclusive: "0", range_max_inclusive: "18446744073709551615", overflow: GoTwoComplementWrap },
+
+  GoIntegerPrimitive { target_name: "uintptr", algebra: GoSemiringAlgebra, carrier: GoWord64Carrier,
+    range_min_inclusive: "0", range_max_inclusive: "18446744073709551615", overflow: GoTwoComplementWrap },
+
+  GoIntegerAliasPrimitive { target_name: "byte", canon_name: "uint8", algebra: GoSemiringAlgebra,
+    carrier: GoByteCarrier, range_min_inclusive: "0", range_max_inclusive: "255",
+    overflow: GoTwoComplementWrap },
+  GoIntegerAliasPrimitive { target_name: "rune", canon_name: "int32", algebra: GoOrderedRingAlgebra,
+    carrier: GoWord32Carrier, range_min_inclusive: "-2147483648", range_max_inclusive: "2147483647",
+    overflow: GoTwoComplementWrap },
+
+  GoFloatPrimitive { target_name: "float32", algebra: GoApproximateFieldAlgebra,
+    carrier: GoFloat32BitsCarrier },
+  GoFloatPrimitive { target_name: "float64", algebra: GoApproximateFieldAlgebra,
+    carrier: GoFloat64BitsCarrier },
+
+  GoComplexPrimitive { target_name: "complex64", component_width: GoComplex64Components },
+  GoComplexPrimitive { target_name: "complex128", component_width: GoComplex128Components },
+
+  GoBooleanPrimitive { target_name: "bool", algebra: GoBooleanAlgebraAlgebra, carrier: GoBitCarrier },
+
+  GoStringPrimitive { target_name: "string", algebra: GoUtf8FreeMonoidAlgebra, carrier: GoUtf8TextCarrier },
+
+  GoUnitPrimitive { target_name: "struct{}", algebra: GoTerminalAlgebra, carrier: GoTerminalCarrier }
+]
