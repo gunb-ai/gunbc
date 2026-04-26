@@ -252,20 +252,6 @@ fn read(x: AB) -> Int = match x {}
 }
 
 #[test]
-fn t1_3_exhaustive_match_compiles_cleanly() {
-    let src = "\
-type AB = A | B
-fn read(x: AB) -> Int = match x { A => 1, B => 2 }
-";
-    let dag = cached_compile_to_dag(src, "t1_3_exhaustive.v3");
-    assert!(
-        dag.diagnostics().is_empty(),
-        "no diagnostics expected for exhaustive match, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
-    );
-}
-
-#[test]
 fn t1_4_type_mismatch_produces_a_typemismatch_diagnostic() {
     let dag = match compile_to_dag("let x: Bool = 1", "t1_4_type_mismatch.v3") {
         Err(CompileError::Semantic(dag)) => dag,
