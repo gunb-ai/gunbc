@@ -6,7 +6,7 @@
 
 - **R2 structure authority:** [`docs/r2-structure.md`](../r2-structure.md). Names this manager one of 6 standing R2 managers.
 - **Program scope source:** [`docs/r2-structure.md` §"Goals" item 2 (modeling-faithfulness)](../r2-structure.md) + 4th item the rework added (tokenizer charclass phase-2 consumer).
-- **Cross-program consumer:** all 4 items consume Substrate Manager carriers; each item dispatches as its T-Substrate dependency lands.
+- **Cross-program consumer:** all 4 items consume Substrate Manager carriers. Three dispatch as their T-Substrate dependency lands; Dimensions is dispatchable immediately because the producer audit found the needed phantom-parameter substrate already present.
 - **Demo coordination:** signal item-close to R2 Release Manager (closure ledger + demo coordination).
 
 ## Program scope (T-Modeling)
@@ -15,16 +15,16 @@ R2's Goal 2 — **Modeling-faithfulness dissolution**. Three Tier-1 type-refinem
 
 | Item | Consumer of | Status (at brief authoring) |
 |---|---|---|
-| Surface int-literal magnitude at concept layer | T-Substrate cardinality subset | NOT YET AUTHORED (gated) |
-| `Secret<T>` nominal-opaque graduation | T-Substrate nominal-opaque subset | NOT YET AUTHORED (gated) |
-| `Dimension<Carrier>` typed value wrapper with phantom-parameter unit-mismatch enforcement | T-Substrate parametric-algebra subset | NOT YET AUTHORED (gated) |
-| Tokenizer charclass phase-2 | T-Substrate ValueBody-list/sum subset | NOT YET AUTHORED (gated) — reclassified R1→R2 per Surface Manager handoff 2026-04-24 |
+| Surface int-literal magnitude at concept layer | T-Substrate cardinality subset | AUTHORED — gated on producer readiness / scoped to range-facts consumer work |
+| `Secret<T>` nominal-opaque graduation | T-Substrate nominal-opaque subset | AUTHORED — gated on producer readiness |
+| `Dimension<Carrier>` typed value wrapper with phantom-parameter unit-mismatch enforcement | T-Substrate parametric-algebra subset | AUTHORED — dispatchable immediately; producer audit closed substrate-side |
+| Tokenizer charclass phase-2 | T-Substrate ValueBody-list/sum subset | AUTHORED — gated on producer readiness; reclassified R1→R2 per Surface Manager handoff 2026-04-24 |
 
 ## Owned deliverables (through R2 close)
 
 For each item:
 - Worker brief authored (one per item; size S–M).
-- Worker dispatched as the corresponding T-Substrate sub-lane lands.
+- Worker dispatched as the corresponding T-Substrate sub-lane lands, except Dimensions which is already dispatchable per its producer audit.
 - Migration into the new substrate carrier; structural test demonstrating the impossible-bug class (e.g., int magnitude overflow → compile error; `Secret<T>` no `Show` instance; `Dimension<m>` + `Dimension<s>` → unit-mismatch error).
 - Item-close signal to R2 Release Manager (closure ledger + R2 demo).
 
@@ -43,7 +43,7 @@ For each item:
 
 ## Pre-spawn vs post-spawn authority
 
-- **Pre-spawn (now, before R1 close):** Director + PM coordinate on brief authoring per inbox #828 split. PM authors the manager skeleton (this file); Director authors any worker-level briefs not yet existing per the manager's "Pending" sub-briefs list. Both stop authoring once R2 spawns.
+- **Pre-spawn (now, before R1 close):** Director + PM coordinate on brief authoring per inbox #828 split. PM authors the manager skeleton (this file); Director authored the worker-level briefs listed below. Both stop authoring once R2 spawns.
 - **Post-spawn (R2 promotion onward):** Manager owns all worker-brief authoring autonomously per "Autonomous dispatch authority" below. Director's role narrows to cross-program conflict resolution + scope-change escalation.
 
 ## Autonomous dispatch authority
@@ -61,13 +61,13 @@ For each item:
 
 ## Sub-briefs (authored / pending)
 
-Authored: none (all gated on Substrate Manager).
+Authored — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager owns dispatch / refresh per "Pre-spawn vs post-spawn authority" subsection above:
+- [`r2-modeling-int-lit-magnitude-worker.md`](r2-modeling-int-lit-magnitude-worker.md) — gated on T-Substrate cardinality readiness; scoped to range-facts consumer work.
+- [`r2-modeling-secret-graduation-worker.md`](r2-modeling-secret-graduation-worker.md) — gated on T-Substrate nominal-opaque readiness.
+- [`r2-modeling-dimensions-phantom-worker.md`](r2-modeling-dimensions-phantom-worker.md) — dispatchable immediately; consumes already-present phantom-parameter substrate.
+- [`r2-modeling-tokenizer-charclass-phase2-worker.md`](r2-modeling-tokenizer-charclass-phase2-worker.md) — gated on T-Substrate ValueBody-list/sum readiness.
 
-Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
-- int-lit magnitude worker brief (gated on T-Substrate cardinality)
-- `Secret<T>` graduation worker brief (gated on T-Substrate nominal-opaque)
-- `Dimension<Carrier>` worker brief (gated on T-Substrate parametric-algebra)
-- Tokenizer charclass phase-2 worker brief (gated on T-Substrate ValueBody-list/sum)
+Pending: none at manager-brief authoring time.
 
 ## Working state (fill on spawn)
 

@@ -112,12 +112,17 @@ compose. When this closes, the R1 release gates themselves
   `t_pb_b_1_contract_port_cost.dag`; standalone
   `data _: TestPredicate = …` bodies remain NYI under the same
   class-5 restriction. Receipt paragraph in `docs/briefs/t-pb-b-1.md`.
-  (4) **First Rust deletion batch — partial sign-off (2026-04-24).** The
+  (4) **First Rust deletion batch — partial sign-off (2026-04-24); R1 gate
+  shims follow-on (2026-04-26, see *Decisions log*).** The
   three `#[test]` functions in the former `t_pb_b_1_tests_dag_smoke_test.rs`
   (redundant compile-only coverage for the landed `tests/dag/*.dag` modules)
   are **deleted**; replacement coverage and the `#[test]` → `TestClaim`
-  mapping are recorded in the *Decisions log* below. **Still open** for the
-  remainder of the inventory until a follow-on sign-off entry lands
+  mapping are recorded in the *Decisions log* below. The **R1 T-TestGen
+  / T-LensAPI gate integration shims** (`r1_manual_claim_gate_test`,
+  `testgen_structural_coverage_gate_test`) are covered by a 2026-04-26 log
+  entry; **still open** for the
+  remaining inventory (e.g. `thesis_validation_test.rs` subset) until a
+  follow-on sign-off entry lands
   (same four-point guard). Target shape for the **next** slice: one thin
   `Compiles`-only duplicate (or `thesis_validation_test.rs` subset) whose
   claim is already covered by a landed `.dag` suite evaluated under
@@ -240,6 +245,24 @@ Lane-owner dispatch status (update as sub-deliverables close):
 
 Decisions log (append as they happen):
 
+- 2026-04-26 (R1 shims / PR #899): **Deletion-guard — retired per-gate `#[test]`
+  files and structural claim-name receipt.** The integration modules
+  `r1_manual_claim_gate_test.rs` and `testgen_structural_coverage_gate_test.rs`
+  (three `#[test]` functions) are **replaced** by
+  `t_pb_b_1_dag_runner_test` cases that `lower` the same
+  `src/v3/compiler/tests/fixtures/r1_gates.dag` authority and assert **exactly**
+  the suite’s claim `name` list in runner order, every `ClaimResult::Pass` — same
+  cardinality and identity checks as the deleted shims, not a bare
+  `run_suite_all_pass` only. Mapping:
+  - `testgen_manual_claim_is_first_class_gate_passes` →
+    `r1_gates_manual_claim_suite_passes_through_runner` / suite
+    `manual_claim_suite` / `TestClaim.name` **`testgen_manual_claim_is_first_class`**
+  - `lens_composition_associative_gate_passes` →
+    `r1_gates_lens_composition_associative_suite_passes_through_runner` / suite
+    `lens_composition_associative_suite` / **`lens_composition_associative`**
+  - `testgen_structural_coverage_gate_passes` →
+    `r1_gates_testgen_structural_coverage_suite_passes_through_runner` / suite
+    `testgen_structural_coverage_suite` / **`testgen_structural_coverage`**
 - 2026-04-24 (Lane B / #763): **Pre–Rust-deletion checklist item (4) — first slice signed
   off (redundant T-PB-B-1 compile-smoke).** Receipts (1)–(3) re-verified
   green (`cargo test -p v3-compiler t_pb_b_1_dag_runner_test`,
