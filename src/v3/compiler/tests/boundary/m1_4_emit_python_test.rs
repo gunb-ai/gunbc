@@ -102,7 +102,8 @@ fn emit_python_int_operators_use_correct_expression_templates() {
         "mul carrier must emit `*`; got:\n{out}"
     );
 
-    let src = "fn f(a: Int, b: Int) -> Int = a / b\n";
+    let src = "import std.error_primitives { DivError, Result }\n\
+fn f(a: Int, b: Int) -> Result<Int, DivError> = a / b\n";
     let out = emit_python_module_from_source(src, "int_div_py.v3");
     assert!(
         out.contains("__v3_idiv("),
