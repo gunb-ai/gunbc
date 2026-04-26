@@ -5,7 +5,7 @@
 > [`docs/r2-structure.md`](../r2-structure.md).
 >
 > **Gated on:** Substrate Manager readiness signal for
-> [`r2-substrate-cardinality-for-int-lit-subset.md`](r2-substrate-cardinality-for-int-lit-subset.md).
+> [`t-substrate-cardinality-int-lit-worker.md`](t-substrate-cardinality-int-lit-worker.md).
 > **Do not dispatch until that signal posts.**
 
 ## Read first
