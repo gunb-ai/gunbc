@@ -354,7 +354,10 @@ mod lane2_stage_2f_dimension_test {
             .expect("bootstrap loads Dimension");
         assert_eq!(dimension.type_params.len(), 2);
         assert_eq!(dimension.phantom_params.len(), 1);
-        assert_eq!(dimension.phantom_params[0].parameter, dimension.type_params[0]);
+        assert_eq!(
+            dimension.phantom_params[0].parameter,
+            dimension.type_params[0]
+        );
 
         let abelian_group = named_decl(&dag, "AbelianGroup");
         let (algebra_template, algebra_args) =
