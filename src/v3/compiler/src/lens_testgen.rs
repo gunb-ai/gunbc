@@ -387,10 +387,6 @@ impl<'a> TestgenLens<'a> {
                 "detail_contains".to_string(),
                 self.diagnostic_detail_expectation(detail_contains),
             ),
-            (
-                "expect_at_least_one_correction".to_string(),
-                FieldValue::Literal(LiteralBits::Bool(false)),
-            ),
         ])
     }
 
