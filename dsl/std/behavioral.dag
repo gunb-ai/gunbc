@@ -20,12 +20,20 @@
 // diagnostics from the future signature-shape lens, not as new
 // variants here.
 //
-// **Dissolution trigger.** When the signature-shape effects lens lands
-// (#808 Slice §1 at `src/v3/lenses/effect_enumeration.dag`) and
-// extdeps primitives are reshaped onto resource-threading discipline
-// (returned-modified-resource), `side_effects` retires together with
-// the declared `idempotent` / `readonly` modifiers
-// `src/v3/std/effects.dag::check_modifier_vs_derivation` cross-checks.
+// **Dissolution trigger (cross-surface).** When the signature-shape
+// effects lens lands (#808 Slice §1 at
+// `src/v3/lenses/effect_enumeration.dag`) and extdeps primitives are
+// reshaped onto resource-threading discipline
+// (returned-modified-resource), `side_effects` retires. This is a
+// **cross-surface** retirement, not a local-schema retirement: the
+// `idempotent` / `readonly` modifiers it pairs with are NOT declared
+// in this file — they live in extdeps service operations and are
+// cross-checked by
+// `src/v3/std/effects.dag::check_modifier_vs_derivation` against the
+// method+path normalization. All three (this `side_effects` taxonomy,
+// the extdeps modifier declarations, the cross-check) retire together
+// when the lens lands; no fact stored locally in `behavioral.dag`
+// retires by itself.
 
 module std.behavioral
 
