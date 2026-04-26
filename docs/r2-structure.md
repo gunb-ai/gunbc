@@ -116,16 +116,17 @@ Owns **T-ImpossibleBugs** lane (Goal 4 — remaining R2+ impossible-bug classes 
 
 ### 5. Pure Bootstrap Manager
 
-Owns the **post-R1 work** of the Pure Bootstrap to Zero program (per `docs/design-pure-bootstrap-zero.md` LIVE 2026-04-25), continuing the multi-release dissolution toward 0-floor that the cascade promotion established. Replaces the prior idle Zero-Floor Manager with a manager that has owned deliverables and pull-not-push intake.
+Owns the **post-R1 work** of the Pure Bootstrap to Zero program (per `docs/design-pure-bootstrap-zero.md` LIVE 2026-04-25). Replaces the prior idle Zero-Floor Manager with a manager that has owned deliverables and pull-not-push intake.
 
-- **R1 vs R2 split (resolves the gate-vs-program ambiguity codex flagged):** R1's PB gate predicates (`pb_hand_rust_at_shim_floor`, `pb_compiler_std_ratchet_zero`, `pb_rust_tests_outside_residual_zero`, `lens_producer_files_remaining`) are `[ext]` — their thresholds read from the `sg0_census_test.rs` baseline at R1 close, **not** frozen at 0. R1 closes when those gates are green at the census-baked threshold (whatever it is at R1 close). The full 0-floor target is the Pure Bootstrap program's multi-release dissolution scope, which continues into R2 here. **R1 owns the gate close at the current threshold; R2 owns continued census reduction toward 0.** This matches what the cascade promotion did de facto when it promoted PB to LIVE (a standing program, not a one-time R1 gate).
-- **R2 lanes:**
-  - **Continued T-PB-A census reduction** post-R1: SG-0 census shrinks toward 0 (file-level + fragments), including the lens-producer priority slice. Each PR shrinks `EXPECTED_HAND_AUTHORED_NON_TEST` or `EXPECTED_HAND_AUTHORED_FRAGMENTS` by ≥1.
-  - **Continued T-PB-B census reduction** post-R1: Rust-authored test census shrinks toward 0 via `ExecuteCommand`-based `.dag` `TestClaim` migration. PB-Runtime enabler landed (PR #792).
-  - **Tier 2 carry-from-#810:** `patch_lower_helpers_generated_type_alias_refinement` retirement (PB-Tier1 priority hint per #810 §5).
-  - **Mirror dissolutions:** termination/computation/induction/effect-carrier Rust mirrors (Tier 3 #10 + #12 from #810; dissolve as v3 lowers/evaluates `.dag` runtime values).
+- **R1 vs R2 boundary — defers to ROADMAP gate authority.** R1's PB gates (`pb_hand_rust_at_shim_floor`, `pb_compiler_std_ratchet_zero`, `pb_rust_tests_outside_residual_zero`, `lens_producer_files_remaining`) are owned by R1 per `ROADMAP.md §"Lane acceptance — .dag gates"` and the T-PB-A / T-PB-B lane rows. Their target per the cascade promotion is **0** (non-test hand-Rust + Rust-authored tests both → 0 via SG-0 census). r2-structure.md does not reinterpret those gate semantics — ROADMAP is single authority on gate close, and R1 closure criterion (all-gates-green) governs when the census-driven dissolution work is "done" for R1's purposes.
+- **R2 PB Manager scope = work that survives R1 close**, not a duplicate of R1 PB lanes. Specifically:
+  - **Mirror dissolutions** (Tier 3 #10 + #12 from #810): termination / computation / induction / effect-carrier Rust mirrors of std `.dag` carriers. These dissolve as v3 lowers + evaluates `.dag` runtime values; not a hand-Rust-census concern, so not gated by R1's PB gates.
+  - **Tier 2 carry-from-#810:** `patch_lower_helpers_generated_type_alias_refinement` retirement (PB-Tier1 priority hint per #810 §5). Currently a known-fragile bridge with explicit dissolution trigger; survives R1 if R1 closes before this lands.
+  - **Post-R1 PB program emergence:** any new dissolution work surfaced post-R1 (e.g., new mirror dissolutions discovered during R2, new Rust scaffolds inadvertently introduced) — owned here so the PB program has a standing home rather than going through Director ad-hoc dispatch.
+  - **kernel_algebra_profile mirror dissolution** (map-shaped `ValueBody::Map` substrate work — see Substrate Manager's note about this being tracked as a future T-Substrate sub-lane; PB Manager consumes the carrier when it lands).
+- **What R2 PB Manager does NOT own:** the R1 PB census-reduction work itself. That's R1 lane work driven by R1 dispatchers under R1's all-gates-green close criterion (per ROADMAP single authority).
 - **Cross-program coordination:** B4's §0.7 file-preference rank carrier touches PB territory; coordinate with Substrate Manager on shared substrate dependencies.
-- **Authority:** authors all PB-* sub-briefs autonomously; dispatches workers; reports SG-0 census deltas to Director and to R2 Release Manager (for closure ledger).
+- **Authority:** authors all post-R1 PB sub-briefs autonomously; dispatches workers; signals lane-close to R2 Release Manager (for closure ledger); escalates blockers and scope changes to Director.
 
 ### 6. R2 Release Manager
 
@@ -156,23 +157,23 @@ Owns release coordination + the smallest cross-cutting deliverables (Goal 5, Goa
 | T-Substrate | XL | **Substrate Manager** | Four T-Substrate scoped-subset sub-lanes (Goal 3) **plus the B4 Identity-Carrier Substrate Pass program** (4 Phase 1 carriers + 8 Phase 2 site dissolutions, sub-briefs B4.1–B4.12, per `docs/briefs/b4-identity-carrier-substrate-pass.md`). Largest single program in R2; produces carriers consumed by Modeling Manager (3 sub-lanes) + Grounding Manager (Engine sharpened-(b)). Note: `kernel_algebra_profile` mirror dissolution is map-shaped — tracked separately as a future T-Substrate sub-lane requiring `ValueBody::Map` substrate work. |
 | T-Modeling | M | **Modeling Manager** | int-lit magnitude / `Secret<T>` graduation / `Dimension<Carrier>` (Goal 2) **plus tokenizer charclass phase-2** (consumer of T-Substrate ValueBody-list/sum sub-lane). Each item dispatches as its T-Substrate dependency lands. |
 | T-ImpossibleBugs | S | **Impossible-Bugs Manager** | nested-optional flatten / unhandled-diagnostic-paths / unenumerated-effects (Goal 4). Substrate-gap discoveries escalate to Substrate Manager. |
-| T-PB | XL | **Pure Bootstrap Manager** | **Post-R1 continuation** of Pure Bootstrap to Zero program (R1 closes PB gates at `[ext]` `sg0_census_test.rs` thresholds; R2 continues SG-0 census reduction toward 0-floor target). Covers continued T-PB-A non-test hand-Rust reduction + lens-producer priority slice + continued T-PB-B Rust-authored test reduction + Tier 2 `patch_lower_helpers_*` retirement + termination/computation/induction/effect-carrier mirror dissolutions (Tier 3 #10 + #12 from #810). See R1 closure criteria for the gate-vs-program split. |
+| T-PB | M | **Pure Bootstrap Manager** | **Post-R1 PB program work** that survives R1 close per ROADMAP gate authority. Covers Tier 2 `patch_lower_helpers_*` retirement (if it survives R1) + termination/computation/induction/effect-carrier mirror dissolutions (Tier 3 #10 + #12 from #810; `ValueBody::Map` substrate-gated for `kernel_algebra_profile`) + post-R1 emergent dissolutions. **Does NOT duplicate R1 T-PB-A / T-PB-B census-reduction work** — that's R1 lane work per ROADMAP single authority on gate semantics. |
 | T-Release | M | **R2 Release Manager** | §6a per-method-metadata pick (Goal 5) + R2 demo coordination (Goal 6) + B-wave Tier 0/2 dispatch (B1/B2/B3 through-merge, B5/B6/B7 authoring) + #810 discipline framework enforcement (velocity tripwire reporting) + thesis-claim coverage mapping (Open call 1) + R2 closure ledger + v2 retirement coordination. |
 
 **Goal 6 (R2 closure demo) is not a lane.** It is a cross-lane closure discipline (see "Demo discipline" below): each lane's closure PR ships its own simple "it runs" artifact; **R2 Release Manager coordinates surfacing** (single authority per the 2026-04-26 rework). No separate T-Demo lane owner, no separate demo-authoring critical path.
 
 **Lanes deliberately absent (R1 gates, closed by R1 lane acceptance):**
-- T-LensMigration / `lens_producer_files_remaining` — R1 T-PB-A gate per PR #752. **Cascade-promotion update 2026-04-25 + R2-rework 2026-04-26:** Pure Bootstrap to Zero program (LIVE per `docs/design-pure-bootstrap-zero.md`) owns the lens-producer migration as part of its PB-* lane structure. R1 retains the gate at its `[ext]` threshold; **R2 Pure Bootstrap Manager owns the post-R1 continued reduction toward 0**. Not absent from R2 — the gate closes in R1, the program work continues in R2.
-- ~~T-ShimFloor / `pb_hand_rust_at_shim_floor` / `pb_compiler_std_ratchet_zero` / `pb_rust_tests_outside_residual_zero` — R1 T-PB-A + T-PB-B gates.~~ **Cascade-promotion update 2026-04-25 + R2-rework 2026-04-26:** Pure Bootstrap to Zero program owns all shim-floor work; the program target is 0 (per ROADMAP T-PB-A row amendment in cascade promotion PR). R1's PB gate predicates close at their `[ext]` `sg0_census_test.rs` thresholds; **R2 Pure Bootstrap Manager owns continued census reduction post-R1**. Not absent from R2 — gates green in R1, dissolution work continues in R2 toward 0.
+- T-LensMigration / `lens_producer_files_remaining` — R1 T-PB-A gate per PR #752. **Cascade-promotion update 2026-04-25:** Pure Bootstrap to Zero program (LIVE per `docs/design-pure-bootstrap-zero.md`) target is 0; R1 closes the gate per ROADMAP authority (single authority on gate semantics). Lens-producer file-by-file migration work runs as R1 T-PB-A lane work. Not in R2.
+- ~~T-ShimFloor / `pb_hand_rust_at_shim_floor` / `pb_compiler_std_ratchet_zero` / `pb_rust_tests_outside_residual_zero` — R1 T-PB-A + T-PB-B gates.~~ **Cascade-promotion update 2026-04-25:** Pure Bootstrap to Zero program (LIVE) owns all shim-floor work; the program target is 0 per `docs/design-pure-bootstrap-zero.md`. R1's PB gates close per ROADMAP authority. Not in R2 — R1 owns the census-reduction work via T-PB-A / T-PB-B lanes per ROADMAP single authority on gate semantics. **R2 Pure Bootstrap Manager exists for post-R1 PB program work that survives R1 close** (mirror dissolutions, Tier 2 patch retirement, post-R1 emergent dissolutions); see Pure Bootstrap Manager section above.
 - T-EFamilyClose — R1 T-LaneE's critical-path carrier work (E-T, E-C, E-I, E-P, E-M sub-lanes), enabling the R1 `complexity_merge_sort_is_nlogn` + `complexity_merge_sort_v3_matches_v2_oracle` + `lane_e_bundled_witness_host_emit_parity` gates. All E-family carrier-port work closes in R1; only the §6a metadata-pick residual inherits to R2 (Goal 5).
 - T-TestGen-tail (`testgen_mock_backed_integration_safe` / `MockBackedInvariant` wiring) — R1 T-TestGen gate per `ROADMAP.md §"Lane acceptance — .dag gates"`. Closes in R1.
 
-R2 does not re-own R1 gate close authority; under all-R1-gates-green criterion, those gates ARE the close conditions. R2 inherits **post-gate program continuation** for two of the above (PB lens-producer + PB-A/PB-B census reduction), plus two named exceptions for non-PB scope:
+R2 does not re-own R1 gate close authority; under all-R1-gates-green criterion, those gates ARE the close conditions per ROADMAP single authority. R2 inherits two named exceptions:
 
 1. **Goal 5's §6a per-method-metadata pick** — was not an R1 gate; deferred design call inherits to R2.
 2. **`sub_charclass_in_std_unicode` phase-2** — was an R1 T-Sub gate, but reclassified to R2 substrate-capability per ROADMAP amendment (2026-04-24) following Surface Manager's handoff that the remaining work is Class 5 Gap 3 substrate-capability scope, not T-Sub-only surface fix. Now a 4th sub-lane under R2 T-Substrate (Goal 3); see lane row above.
 
-Plus the **post-R1 PB program continuation** owned by R2 Pure Bootstrap Manager (per the gate-vs-program resolution in R1 closure criteria above): R1's PB gates close at their `[ext]` thresholds, R2 continues SG-0 census reduction toward the cascade-promoted 0-floor target.
+Plus **post-R1 PB program work that survives R1 close** owned by R2 Pure Bootstrap Manager (per Pure Bootstrap Manager section above): mirror dissolutions, Tier 2 patch retirement, post-R1 emergent PB work. Not a duplicate of R1's PB census-reduction work — that's R1 lane scope per ROADMAP single authority on gate semantics.
 
 ## Dependency DAG
 
@@ -210,13 +211,12 @@ Impossible-Bugs Manager (T-ImpossibleBugs):
         Unhandled diagnostic paths   (Tier 2 substrate; may escalate)
         Unenumerated effects         (closed-system effects model per #808)
 
-Pure Bootstrap Manager (T-PB):
-    T-PB-A (parallel slot per file): SG-0 census → 0
-        Lens-producer priority slice    (`lens_producer_files_remaining` gate)
-        Tier 2 patch_lower_helpers_* retirement
-        Mirror dissolutions: termination/computation/induction/effect-carrier
-    T-PB-B (parallel slot per test class): Rust-authored tests → 0
-        ExecuteCommand-based .dag TestClaim migration (PB-Runtime / PR #792 enabler landed)
+Pure Bootstrap Manager (T-PB) — POST-R1 only (R1 owns census-reduction lanes per ROADMAP):
+    Tier 3 mirror dissolutions (parallel-dispatchable):
+        termination / computation / induction / effect-carrier Rust mirrors
+        kernel_algebra_profile (gated on Substrate Manager: ValueBody::Map carrier; future T-Substrate sub-lane)
+    Tier 2 patch_lower_helpers_* retirement (if survives R1)
+    Post-R1 emergent dissolutions
     Cross-program: B4's §0.7 file-preference rank carrier touches PB territory; coordinate with Substrate Manager.
 
 R2 Release Manager (T-Release):
@@ -237,9 +237,9 @@ Director (cross-program coordinator):
 
 ## R1 closure criteria
 
-**All R1 gates green at their `[ext]` thresholds.** R1 closes when all 9 lane gates named in `ROADMAP.md §"Lane acceptance — .dag gates"` evaluate green, including omni-emit (`emit_omni_demo_fixtures_green`), the T-PB-A self-hosting gates (including `lens_producer_files_remaining` added via PR #752), the T-PB-B tests-as-data gates, and the T-LaneE complexity-lens gates (which ride on the E-family carrier-port chain). No director-defined subset-close.
+**All R1 gates green per ROADMAP authority.** R1 closes when all 9 lane gates named in `ROADMAP.md §"Lane acceptance — .dag gates"` evaluate green per ROADMAP gate authority, including omni-emit (`emit_omni_demo_fixtures_green`), the T-PB-A self-hosting gates (including `lens_producer_files_remaining` added via PR #752), the T-PB-B tests-as-data gates, and the T-LaneE complexity-lens gates (which ride on the E-family carrier-port chain). No director-defined subset-close.
 
-**PB gates are `[ext]` — threshold reads from authority, not frozen at 0 in this doc.** The PB-A / PB-B / `lens_producer_files_remaining` predicates pull thresholds from `src/v3/compiler/tests/integration/sg0_census_test.rs` at evaluation time. R1 closes on those gates green at their **then-current** `sg0_census_test.rs` baseline. The full 0-floor target (per cascade-promoted `docs/design-pure-bootstrap-zero.md`) is the multi-release dissolution scope owned by **Pure Bootstrap Manager** in R2 — R1 owns the gate close at threshold; R2 owns continued census reduction toward 0. This is the structural resolution of the gate-vs-program ambiguity (codex P2 inline on PR #827, sha `bf9a05c7`).
+**ROADMAP is single authority on PB gate semantics.** Per `ROADMAP.md` T-PB-A / T-PB-B lane rows, those gates target **0** (non-test hand-Rust + Rust-authored tests via SG-0 census, per `docs/design-pure-bootstrap-zero.md` LIVE). r2-structure.md does not reinterpret those gate semantics. R2 Pure Bootstrap Manager's scope (above) is the post-R1 PB program work that survives R1 close — mirror dissolutions, Tier 2 patch retirement, post-R1 emergent dissolutions — **not** a duplicate of R1's census-reduction work.
 
 Rationale: consistent with anti-deferral stance — tail-shaped work closes before R1 declares done; R2 doesn't inherit R1 residuals. Consequence: R2 scope does NOT include Lens Purity by Construction, self-hosting shim-floor close, or E-family carrier closure — those are all R1 gate concerns, closed by R1's own acceptance criterion. R2 is free to focus on the thesis claims R1's gates don't cover.
 
@@ -321,4 +321,6 @@ THESIS authority (`THESIS.md:155-182`) lists:
 - Thesis: `THESIS.md §"Enumerable impossible-bug classes"` (R2+ tags authority); `THESIS.md §"Thesis claims — complete list"` (Tier-1 claim lineage).
 - Lens capability: `docs/v3-lens-capability-register.md` (per-lens capability tracking).
 - DB history: `docs/db-history/db-18.md` (DB-18 Part-2 shipped: workflow-effect carrier + Rust reflection; Part-3 queued: Go accessor). Note: `ROADMAP.md §"Post-R1 Program — Grounding Completeness"` tags "DB-18 parametric algebra attachment" as a post-R1 blocker; that label is not obviously aligned with db-history's DB-18 scope — a pre-promotion rename or new DB number may be warranted for the R2 parametric-algebra prereq.
+- Related PRs: #745 (P4 int-literal row — substrate motivation for T-Modeling), #752 (T-PB-A lens-producer priority slice — R1 gate, not R2).
+bra prereq.
 - Related PRs: #745 (P4 int-literal row — substrate motivation for T-Modeling), #752 (T-PB-A lens-producer priority slice — R1 gate, not R2).
