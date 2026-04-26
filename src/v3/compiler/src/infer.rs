@@ -2367,6 +2367,32 @@ fn callable_instantiation_conflict(
     }
 }
 
+/// `resolve_callable_target` runs before `decide_transform`'s per-input narrowing
+/// pass can restamp a literal port. When the port is still the default `Int`
+/// literal type but the source literal is known to fit a range-backed expected
+/// parameter (via substrate range facts), treat the binding as compatible so
+/// callable resolution can proceed; narrowing + `MagnitudeOutOfRange` remain
+/// authoritative in the transform `decide_transform` path.
+fn range_compatible_default_int_literal_argument(
+    dag: &Dag,
+    input_port: PortId,
+    expected_param_decl: DeclarationId,
+) -> bool {
+    let Some(int_ty) = dag.int_shape() else {
+        return false;
+    };
+    if !matches!(dag.port(input_port).state(), PortState::Resolved(ty) if *ty == int_ty) {
+        return false;
+    }
+    let Some(lit) = literal_int_at(dag, input_port) else {
+        return false;
+    };
+    matches!(
+        int_literal_fits_expected_type(dag, lit, expected_param_decl),
+        Ok(Some(true))
+    )
+}
+
 fn resolve_callable_target(
     dag: &Dag,
     target: DeclarationId,
@@ -2457,13 +2483,18 @@ fn resolve_callable_target(
             let Some(actual_ctx) = port_type_context(dag, *input_port) else {
                 return CallableTargetResolution::Retry;
             };
-            if !bind_expected_decl_to_actual_context(
+            let binds = bind_expected_decl_to_actual_context(
                 dag,
                 expected_input,
                 &actual_ctx,
                 &mut arguments,
                 0,
-            ) {
+            ) || range_compatible_default_int_literal_argument(
+                dag,
+                *input_port,
+                expected_input,
+            );
+            if !binds {
                 return CallableTargetResolution::Fail(callable_instantiation_conflict(
                     dag,
                     target,
@@ -2527,13 +2558,18 @@ fn resolve_callable_target(
                 let Some(actual_ctx) = port_type_context(dag, *input_port) else {
                     return CallableTargetResolution::Retry;
                 };
-                if !bind_expected_decl_to_actual_context(
+                let binds = bind_expected_decl_to_actual_context(
                     dag,
                     expected_input.declaration,
                     &actual_ctx,
                     &mut arguments,
                     0,
-                ) {
+                ) || range_compatible_default_int_literal_argument(
+                    dag,
+                    *input_port,
+                    expected_input.declaration,
+                );
+                if !binds {
                     return CallableTargetResolution::Fail(callable_instantiation_conflict(
                         dag,
                         target,
