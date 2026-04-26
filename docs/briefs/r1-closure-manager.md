@@ -77,7 +77,7 @@ Lane status table refreshes here as work lands. Initial state: all 6 lane worker
 
 | Lane | Gates (strict `.dag` receipts) | Status |
 | --- | --- | --- |
-| R1C-C | `sub_type_alias_where_lowers` (`Compiles` on alias-RHS `where` witness; `sub_type_alias_where_lowers_gate` in `r1_gates.template.dag` + `test_runner_runs_sub_type_alias_where_lowers_gate`) | **1/1 green** |
+| R1C-C | `sub_type_alias_where_lowers` (`Compiles` on alias-RHS `where` witness; `sub_type_alias_where_lowers_gate` in `r1_gates.template.dag` + `test_runner_runs_sub_type_alias_where_lowers_gate`) | **Proposed receipt — PR #879** (pre-merge; not main-truth until squash-merge lands — then set lane-closed here per matrix hygiene) |
 
 ## Cross-refs
 
