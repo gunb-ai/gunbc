@@ -56,7 +56,7 @@ Under that discipline, R2's goals are the Tier-1 thesis claims that are *not* ga
 
 5. **§6a per-method-metadata pick** — per `docs/design-substrate-carrier-port-program.md §6a`, a deferred design call on where per-method metadata (`size_effect`, `cost_shape`, `callback_element_position` on `ordered_ring_templates()` et al.) lives. Four options in the design doc: (0) keep lens-local lookup tables; (1) substrate field-level refinements; (2) per-algebra metadata carriers; (3) unified `MethodContract` carrier. E-I pre-flight evidence has landed in R1, so the "defer until E-I evidence" trigger has fired; this is the R2 residual after T-LaneE (E-family carrier port) closes in R1. S-sized design-call close, not substrate-capability work.
 
-6. **R2 closure demo** — simple "it runs" artifact per lane close. Director-coordinated. Not a lane — see Demo discipline below.
+6. **R2 closure demo** — simple "it runs" artifact per lane close. **R2 Release Manager-coordinated** (was Director-coordinated under prior 1-manager structure; reassigned under 2026-04-26 rework — single authority per `feedback_node_not_god_struct`). Not a lane — see Demo discipline below.
 
 ## Manager structure
 
@@ -99,7 +99,7 @@ Owns **T-Modeling** lane (Goal 2 — modeling-faithfulness dissolution) and cons
   - `Dimension<Carrier>` typed value wrapper with phantom-parameter unit-mismatch enforcement (consumes T-Substrate parametric-algebra subset)
   - Tokenizer charclass phase-2 (consumes T-Substrate ValueBody-list/sum subset)
 - **Cross-program consumer:** waits on Substrate Manager's per-sub-lane readiness signals; each item dispatches as its substrate dependency lands.
-- **Authority:** authors all T-Modeling sub-briefs autonomously; dispatches workers; signals item-close to Director for R2 demo coordination.
+- **Authority:** authors all T-Modeling sub-briefs autonomously; dispatches workers; signals item-close to **R2 Release Manager** for R2 demo coordination.
 
 ### 4. Impossible-Bugs Manager
 
@@ -157,7 +157,7 @@ Owns release coordination + the smallest cross-cutting deliverables (Goal 5, Goa
 | T-PB | XL | **Pure Bootstrap Manager** | **Post-R1 continuation** of Pure Bootstrap to Zero program (R1 closes PB gates at `[ext]` `sg0_census_test.rs` thresholds; R2 continues SG-0 census reduction toward 0-floor target). Covers continued T-PB-A non-test hand-Rust reduction + lens-producer priority slice + continued T-PB-B Rust-authored test reduction + Tier 2 `patch_lower_helpers_*` retirement + termination/computation/induction/effect-carrier mirror dissolutions (Tier 3 #10 + #12 from #810). See R1 closure criteria for the gate-vs-program split. |
 | T-Release | M | **R2 Release Manager** | §6a per-method-metadata pick (Goal 5) + R2 demo coordination (Goal 6) + B-wave Tier 0/2 dispatch (B1/B2/B3 through-merge, B5/B6/B7 authoring) + #810 discipline framework enforcement (velocity tripwire reporting) + thesis-claim coverage mapping (Open call 1) + R2 closure ledger + v2 retirement coordination. |
 
-**Goal 6 (R2 closure demo) is not a lane.** It is a cross-lane closure discipline (see "Demo discipline" below): each lane's closure PR ships its own simple "it runs" artifact; Director coordinates surfacing. No separate T-Demo lane owner, no separate demo-authoring critical path.
+**Goal 6 (R2 closure demo) is not a lane.** It is a cross-lane closure discipline (see "Demo discipline" below): each lane's closure PR ships its own simple "it runs" artifact; **R2 Release Manager coordinates surfacing** (single authority per the 2026-04-26 rework). No separate T-Demo lane owner, no separate demo-authoring critical path.
 
 **Lanes deliberately absent (R1 gates, closed by R1 lane acceptance):**
 - T-LensMigration / `lens_producer_files_remaining` — R1 T-PB-A gate per PR #752. **Cascade-promotion update 2026-04-25 + R2-rework 2026-04-26:** Pure Bootstrap to Zero program (LIVE per `docs/design-pure-bootstrap-zero.md`) owns the lens-producer migration as part of its PB-* lane structure. R1 retains the gate at its `[ext]` threshold; **R2 Pure Bootstrap Manager owns the post-R1 continued reduction toward 0**. Not absent from R2 — the gate closes in R1, the program work continues in R2.
@@ -253,7 +253,7 @@ Rationale: consistent with anti-deferral stance — tail-shaped work closes befo
 
 ## Demo discipline — visibility as structural requirement
 
-Simple "look, it runs" or "before/after analysis" artifact ships with each lane closure PR. Director coordinates surfacing to user. No time-based cadence; the gate-close natural rhythm carries the visibility load directly — a demo lands whenever a lane closes, not on a schedule.
+Simple "look, it runs" or "before/after analysis" artifact ships with each lane closure PR. **R2 Release Manager coordinates surfacing to user** (single authority per the 2026-04-26 rework; was Director under the prior 1-manager structure — reassigned to keep release coordination concentrated in one role). No time-based cadence; the gate-close natural rhythm carries the visibility load directly — a demo lands whenever a lane closes, not on a schedule.
 
 Forms that qualify:
 - Running artifact + 1-paragraph "what this demonstrates"
