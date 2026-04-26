@@ -1835,10 +1835,10 @@ impl<'a> TestRunner<'a> {
     }
 
     fn program_input_role(&self, decl: &Declaration) -> Result<Option<ProgramInputRole>, String> {
-        if self.decl_inhabits_named_role(decl, "ProgramInput") {
+        if self.decl_inhabits_named_role(decl, "ProgramInput")? {
             return Ok(Some(ProgramInputRole::ProgramInput));
         }
-        if !self.decl_inhabits_named_role(decl, "ProgramOutputBind") {
+        if !self.decl_inhabits_named_role(decl, "ProgramOutputBind")? {
             return Ok(None);
         }
         let Some(ValueBody::Structural { fields }) = decl.value_body.as_ref() else {
@@ -1869,25 +1869,36 @@ impl<'a> TestRunner<'a> {
                 decl_display_name(decl.id, decl)
             ));
         };
+        // Cross-Dag bridge: `output_ref` is a structural edge in the fixture DAG, but
+        // the compiled `TestClaim.source` program is a separate Dag, so the runner
+        // still carries the referenced declaration name into `find_bind`.
+        // Dissolution trigger: authored claims carry an output-bind identity that
+        // resolves inside the compiled program Dag instead of through fixture stubs.
         Ok(Some(ProgramInputRole::ProgramOutputBind {
             output_bind_name,
         }))
     }
 
-    fn decl_inhabits_named_role(&self, decl: &Declaration, role_name: &str) -> bool {
+    fn decl_inhabits_named_role(
+        &self,
+        decl: &Declaration,
+        role_name: &str,
+    ) -> Result<bool, String> {
         // Narrow bridge: role declarations are still found by type name because
         // `input_ref` is statically `DeclarationRef`. Dissolve with the
         // `TestPredicate` input-role coproduct described near
         // `PROGRAM_INPUT_SENTINEL`.
         let Some(role_id) = self.dag.declaration_by_name(role_name).map(|d| d.id) else {
-            return false;
+            return Err(format!(
+                "verification role type `{role_name}` is missing from the fixture Dag"
+            ));
         };
-        decl.inhabits == Some(role_id)
+        Ok(decl.inhabits == Some(role_id)
             || decl.meta_tag == Some(role_id)
             || matches!(
                 &decl.connective,
                 TypeConnective::Instantiation { template, .. } if *template == role_id
-            )
+            ))
     }
 
     fn eval_differential_equals(
