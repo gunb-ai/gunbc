@@ -571,7 +571,8 @@ data rust_branch_node: TypeRealization = {
     { dag_name: "input", access: DirectField("input"), borrowed_read: false },
     { dag_name: "paths", access: DirectField("paths"), borrowed_read: false },
     { dag_name: "result_port", access: AccessorMethod("result_port"), borrowed_read: false },
-    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false },
+    { dag_name: "emit_participation", access: AccessorMethod("emit_participation"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -604,7 +605,8 @@ data rust_bind_node: TypeRealization = {
     { dag_name: "result_port", access: AccessorMethod("result_port"), borrowed_read: false },
     { dag_name: "params", access: DirectField("params"), borrowed_read: false },
     { dag_name: "span", access: DirectField("span"), borrowed_read: false },
-    { dag_name: "lane2_workflow", access: AccessorMethod("lane2_workflow"), borrowed_read: true }
+    { dag_name: "lane2_workflow", access: AccessorMethod("lane2_workflow"), borrowed_read: true },
+    { dag_name: "emit_participation", access: AccessorMethod("emit_participation"), borrowed_read: false }
   ]
   cost: 1
 }
