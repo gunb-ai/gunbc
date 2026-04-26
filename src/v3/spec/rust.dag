@@ -434,6 +434,7 @@ data rust_declaration: TypeRealization = {
     { dag_name: "meta_tag", access: DirectField("meta_tag"), borrowed_read: false },
     { dag_name: "inhabits", access: DirectField("inhabits"), borrowed_read: false },
     { dag_name: "value_body", access: DirectField("value_body"), borrowed_read: false },
+    { dag_name: "nominal_opacity", access: DirectField("nominal_opacity"), borrowed_read: false },
     { dag_name: "span", access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
