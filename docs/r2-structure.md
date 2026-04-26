@@ -60,23 +60,89 @@ Under that discipline, R2's goals are the Tier-1 thesis claims that are *not* ga
 
 ## Manager structure
 
-**1 standing manager + Director.** Count = concurrent critical paths. R2 has one: Grounding's `Pilot → Rust → Engine → Tests → Dissolve`. All other R2 work (Goals 2–5) is parallel modeling-faithfulness / substrate / impossible-bug / metadata-pick closure with no critical-path coordination pressure — Director dispatches workers directly against the shared fill queue.
+> **🔄 REVISED 2026-04-26.** The original "1 standing manager (Grounding) + Director ad-hoc" decision is **retracted.** Empirical signal: under that structure, Grounding Manager and (the prior) Zero-Floor Manager were idle while Director became the dispatch bottleneck for every other lane. Standing managers without owned deliverables degenerate into pass-through hops; concentrating brief-authoring on Director starved 3 of 4 non-Grounding lanes. Lesson saved as feedback (`feedback_standing_managers_need_owned_deliverables`). Restoring R1's program-manager pattern: **N managers, each owning a complete program with autonomous brief-authoring + dispatch authority through R2 close.** Director coordinates *across* programs but does not author every brief.
 
-**Cross-manager notifications convention.** The R1 brief pattern of `Cross-manager notifications queued` sections continues: Grounding Manager's brief carries one; Director surfaces any parallel-lane blockers or dependencies on the Grounding critical path through the same channel. With only one standing manager in R2, the convention degenerates in practice to "Grounding Manager → Director" and "Director → Grounding Manager" signals.
+**6 standing managers + Director coordinator.** Each manager owns a mutually-exclusive program with its own deliverables, sub-briefs, and worker dispatch through R2 completion. Director's role is cross-program coordination (handoffs, conflict resolution, scope-change escalation), not brief authoring.
 
-### Grounding Manager
+**Cross-manager dependency discipline.** Where one program produces a substrate carrier another program consumes (e.g., T-Substrate ValueBody-list/sum unblocks T-Modeling tokenizer charclass + T-Ground Engine sharpened-(b)), the producing manager owns the carrier landing; consuming managers own the migration. Cross-program handoffs land via the R1 `Cross-manager notifications queued` brief pattern — producing manager signals readiness; consuming managers ack and dispatch consumer-migration work.
 
-Continues `docs/briefs/grounding-manager.md` (refreshed for R2 scope on promotion). Owns T-Ground sub-program.
+### 1. Grounding Manager
 
-- **Critical path:** T-Ground-Pilot → T-Ground-Rust → T-Ground-Engine → T-Ground-Tests → T-Ground-Dissolve (per `ROADMAP.md §"Post-R1 Grounding lanes"` — Rust is on the critical path because Engine blocks on layers 1–3 populated and Rust is the first layer-populating target).
-- **Fill queue:** T-Ground-Python, T-Ground-Go (2-way parallel after Pilot validates; run alongside Rust but are not gated by Engine-blocking).
+Owns **T-Ground** sub-program (Goal 1 — Grounding Completeness, the program with R2's only true critical path).
 
-### Director (ad-hoc)
+- **Critical path:** T-Ground-Pilot → T-Ground-Rust → T-Ground-Engine → T-Ground-Tests → T-Ground-Dissolve (per `ROADMAP.md §"Post-R1 Grounding lanes"`).
+- **Fill queue:** T-Ground-Python, T-Ground-Go (2-way parallel after Pilot validates).
+- **Cross-program consumer:** Engine sharpened-(b) full pilot enumeration consumes T-Substrate ValueBody-list/sum carrier.
+- **Authority:** authors all T-Ground sub-briefs autonomously; dispatches workers; reports cross-program signals to Director.
 
-- R1 residual closure surveillance (none expected per all-R1-gates-green closure criterion).
-- **R2 non-Grounding lane dispatch:** T-Modeling (Goal 2), T-Substrate (Goal 3), T-ImpossibleBugs (Goal 4), T-PerMethodMetadata (Goal 5). All parallel-capable — no critical path among them and no critical-path relationship to Grounding — so no standing manager is justified. Director picks top-priority unblocked work for any idle worker.
-- R2 demo coordination: surfaces "it runs" artifacts at each lane close to user.
-- Weekly dependency health check: which lanes are within 1 step of unblocking? Which workers are on fill vs. ready?
+### 2. Substrate Manager
+
+Owns **T-Substrate** lane (Goal 3 — substrate prereqs) **and the B4 Identity-Carrier Substrate Pass program** (from #810 synthesis; see `docs/briefs/b4-identity-carrier-substrate-pass.md`). The largest single concentration of R2 work; also the program that unblocks the most consumers.
+
+- **T-Substrate sub-lanes:**
+  - Cardinality-substrate subset for int-literal magnitude (unblocks Modeling Manager's int-lit item)
+  - Nominal-opaque subset for `Secret<T>` (unblocks Modeling Manager's `Secret<T>` item)
+  - Parametric-algebra-attachment subset for `Dimension<Carrier>` (unblocks Modeling Manager's Dimensions item)
+  - Top-level `ValueBody` list/sum + `std.unicode` bootstrap (unblocks Modeling Manager's tokenizer charclass phase-2 + Grounding Manager's Engine sharpened-(b))
+- **B4 Identity-Carrier Substrate Pass:** the 4 Phase 1 carriers (`DeclarationRef` consumer migration, fold-shape carrier, emit-helper carrier, extdeps-fixture-set carrier) and the 8 Phase 2 site dissolutions. Sub-briefs B4.1 through B4.12.
+- **Cross-program producer:** all four T-Substrate sub-lanes produce carriers consumed by Modeling Manager + Grounding Manager.
+- **Authority:** authors all T-Substrate + B4 sub-briefs autonomously; dispatches workers; signals readiness to consuming managers via cross-manager queue.
+
+### 3. Modeling Manager
+
+Owns **T-Modeling** lane (Goal 2 — modeling-faithfulness dissolution) and consumer-side migrations of T-Substrate carriers.
+
+- **Items:**
+  - Surface int-literal magnitude at concept layer (consumes T-Substrate cardinality subset)
+  - `Secret<T>` nominal-opaque graduation (consumes T-Substrate nominal-opaque subset)
+  - `Dimension<Carrier>` typed value wrapper with phantom-parameter unit-mismatch enforcement (consumes T-Substrate parametric-algebra subset)
+  - Tokenizer charclass phase-2 (consumes T-Substrate ValueBody-list/sum subset)
+- **Cross-program consumer:** waits on Substrate Manager's per-sub-lane readiness signals; each item dispatches as its substrate dependency lands.
+- **Authority:** authors all T-Modeling sub-briefs autonomously; dispatches workers; signals item-close to Director for R2 demo coordination.
+
+### 4. Impossible-Bugs Manager
+
+Owns **T-ImpossibleBugs** lane (Goal 4 — remaining R2+ impossible-bug classes per `THESIS.md §"Enumerable impossible-bug classes"`).
+
+- **Classes:**
+  - Nested-optional flatten (gated on cardinality refinement; coordinate with Substrate Manager)
+  - Unhandled diagnostic paths (Tier 2 substrate; coordinate with Substrate Manager if substrate work surfaces)
+  - Unenumerated effects (post-effects-design-doc per #808; closed-system effects model is the canonical reference)
+- **Cross-program coordination:** classes that surface substrate gaps escalate to Substrate Manager rather than expanding T-ImpossibleBugs scope.
+- **Authority:** authors all T-ImpossibleBugs sub-briefs autonomously; dispatches workers; signals class-close to Director.
+
+### 5. Pure Bootstrap Manager
+
+Owns **T-PB program** (Pure Bootstrap to Zero, per `docs/design-pure-bootstrap-zero.md` LIVE) — replaces the prior Zero-Floor Manager standing role with a manager that has owned deliverables and pull-not-push intake. Concretely covers T-PB-A (non-test hand-Rust → 0) + T-PB-B (Rust-authored tests → 0) + the dissolution of host-Rust mirrors of std `.dag` carriers.
+
+- **Lanes:**
+  - T-PB-A: SG-0 census → 0 (file-level + fragments). Includes lens-producer priority slice (`lens_producer_files_remaining`).
+  - T-PB-B: Rust-authored tests → 0 via `ExecuteCommand`-based `.dag` `TestClaim` migration.
+  - **Tier 2 carry-from-#810:** `patch_lower_helpers_generated_type_alias_refinement` retirement (PB-Tier1 priority hint per #810 §5).
+  - **Mirror dissolutions:** termination/computation/induction/effect-carrier Rust mirrors (Tier 3 #10 + #12 from #810; dissolve as v3 lowers/evaluates `.dag` runtime values).
+- **Cross-program coordination:** B4's §0.7 file-preference rank carrier touches PB territory; coordinate with Substrate Manager on shared substrate dependencies.
+- **Authority:** authors all PB-* sub-briefs autonomously; dispatches workers; reports SG-0 census deltas to Director.
+
+### 6. R2 Release Manager
+
+Owns release coordination + the smallest cross-cutting deliverables (Goal 5, Goal 6, the #810 discipline framework, B-wave Tier 0 dispatch coordination, R2 demo).
+
+- **Owned deliverables:**
+  - **Goal 5:** §6a per-method-metadata pick (S-sized design call; carrier choice from the 4 options in `docs/design-substrate-carrier-port-program.md §6a`).
+  - **Goal 6:** R2 closure demo coordination — surface "it runs" artifacts at each lane close per Demo discipline section.
+  - **B-wave Tier 0 coordination:** B1 (#820) / B2 (#817) / B3 (#821) implementation through-merge, including any audit-narrative iteration. Dispatch B5 (Loop construction-closure audit) + B6 (file-preference rank checklist fix) + B7 (priority-hint relay to Pure Bootstrap Manager).
+  - **Discipline framework enforcement:** track velocity-tripwire ratio per integration-reflection cadence (per INVARIANTS.md §P5 "Dispatch-Discipline Mechanisms"); surface ≥3:1 readings to Director.
+  - **Thesis-claim coverage mapping** (Open call 1 below): authors the table on R1 closure → R2 promotion transition.
+  - **R2 closure ledger:** tracks lane-close green status; surfaces unblocked work to idle workers; coordinates v2-retirement post-R2.
+- **Authority:** authors briefs for owned deliverables autonomously; dispatches workers; coordinates demo cadence with all other managers.
+
+### Director (cross-program coordinator)
+
+- **Cross-program conflict resolution.** When Substrate Manager's carrier shape conflicts with Modeling Manager's consumer needs (or any analogous cross-program collision), Director arbitrates.
+- **Scope-change escalation.** If a manager discovers their program needs to expand (e.g., a class-of-pattern dissolution surfacing under what was a single-item brief), Director adjudicates whether to expand the program or split a new lane.
+- **R1 residual closure surveillance** (none expected per all-R1-gates-green closure criterion).
+- **Weekly dependency health check:** which lanes are within 1 step of unblocking? Which managers are blocked on cross-program signals? Surface to user when a program goes >7 days without lane-close.
+- **What Director no longer does:** authoring sub-briefs for individual lane work. That returns to the responsible manager. Director's bandwidth is conserved for cross-program coordination.
 
 ## Lane structure
 
