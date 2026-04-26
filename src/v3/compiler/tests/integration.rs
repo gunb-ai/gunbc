@@ -376,6 +376,19 @@ mod lane2_stage_2f_dimension_test {
         ] {
             named_decl(&dag, unit);
         }
+
+        for function in [
+            "add_dimension",
+            "sub_dimension",
+            "mul_dimension_scalar",
+            "div_dimension_scalar",
+        ] {
+            let decl = dag.declaration(named_decl(&dag, function));
+            assert!(
+                matches!(decl.connective, TypeConnective::Arrow { .. }),
+                "{function} should be present in bootstrap as a callable arrow"
+            );
+        }
     }
 
     #[test]
