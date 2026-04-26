@@ -14,7 +14,7 @@
 - **[`src/v3/std/tokenize.dag`](../../src/v3/std/tokenize.dag)** — tokenizer authority; phase-1 lands the structural shape, phase-2 retypes consumers to `Char` / `List<Char>` / `CharClass`.
 - **[#662](https://github.com/gunb-ai/gunbc/pull/662)** — "tokenize: reframe character-level scaffold as consumption gap" (merged); confirm phase-1 baseline.
 - **[`docs/thesis/the-substrate-two-coordinated-shapes.md`](../thesis/the-substrate-two-coordinated-shapes.md)** — connective vocabulary; `Cardinality` / `Disj` semantics for charclass sum-types.
-- **[`src/v3/std/unicode.dag`](../../src/v3/std/unicode.dag)** (if exists) — unicode authority; charclass dependency.
+- **[`dsl/std/unicode.dag`](../../dsl/std/unicode.dag)** — unicode authority; charclass dependency.
 
 ## Frame
 

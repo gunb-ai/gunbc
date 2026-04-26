@@ -76,7 +76,7 @@ Per design doc §4: the bug class closes by **removing the partial form**. For `
 - **NonZero-typed-input shape chosen** (`a / nz` operator-syntax rather than `divide_nz(a, nz)` function syntax) — STOP. Per-operand type variance in algebra-operator carrier is a separate substrate brief.
 - **Audit reveals additional partial forms not enumerated in design doc** — surface; queue as sibling sub-lanes; do not subsume in this PR.
 - **Realization migration breaks emission for an existing target idiom** — surface; this is a target-realization design call, not a worker call.
-- **`Result<T, DivideByZero>` requires authoring `DivideByZero` declaration** — verify it doesn't exist via audit; if not, surface placement decision (`std.errors.dag`?).
+- **`Result<T, DivError>` requires authoring `DivError` (with `DivideByZero | Overflow` variants) declaration** — verify the typed-split carrier doesn't exist via audit; if not, surface placement decision (`dsl/std/errors.dag`?). Single-error `Result<T, DivideByZero>` shape is explicitly rejected per Slice §2; STOP if any reading drifts back to a single-variant carrier.
 - **Asymmetric-operator interaction** — if the totality migration affects symmetric operators (`>`, `<`, etc.) that DB-11 explicitly strips refinements from, surface — the design doc treats those as separate; this PR shouldn't broaden.
 - **DB-8 drifts** — STOP immediately.
 
