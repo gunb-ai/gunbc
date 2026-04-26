@@ -416,10 +416,15 @@ pub enum TypeConnective {
     Instantiation {
         template: DeclarationId,
         arguments: Vec<TemplateArgument>,
-        /// When `template` is `std.list.fold`, `Some(p)` names the template `Arrow`
-        /// input declaration that binds the step closure (substrate authority for
-        /// D1 / lens consumers). `None` for non-fold instantiations or when the
-        /// fold is ineligible for the bounded D1 fast path.
+        /// Purely structural fold-step carrier. `Some(p)` exactly when
+        /// `template == std.list.fold` and template Arrow input `p` (the
+        /// callable formal whose argument resolves to a `Bind` of arity ≥ 2)
+        /// binds the step closure; `None` for non-fold instantiations and for
+        /// fold instantiations where no template argument resolves to a step
+        /// `Bind`. Populated post-construction by
+        /// [`Dag::populate_fold_step_formals`]. Lens / D1 fast-path eligibility
+        /// (e.g. accumulator type support) is a *separate* lens concern and is
+        /// not encoded in substrate.
         fold_step_formal: Option<DeclarationId>,
     },
 }
@@ -3238,6 +3243,69 @@ impl Dag {
             }
         }
         self.callable_strategy_variants = callable_strategy_variants;
+        self.populate_fold_step_formals();
+    }
+
+    /// Post-construction structural pass. For every `TypeConnective::Instantiation`
+    /// whose `template` is `std.list.fold`, scan template Arrow inputs to find the
+    /// callable formal whose argument resolves to a `Bind` root of arity ≥ 2 (the
+    /// step closure) and store it in `fold_step_formal`. Pure structural derivation
+    /// — no span / file / D1-eligibility input.
+    fn populate_fold_step_formals(&mut self) {
+        let Some(fold_template_id) = self.emit_anchors.std_list_fold else {
+            return;
+        };
+        // Step 1: collect the template's callable Arrow inputs (read-only).
+        let callable_formals: Vec<DeclarationId> = match &self
+            .declarations
+            .get(fold_template_id.0 as usize)
+            .map(|d| &d.connective)
+        {
+            Some(TypeConnective::Arrow { inputs, .. }) => inputs
+                .iter()
+                .copied()
+                .filter(|&i| declaration_is_callable_type(self, i, 0))
+                .collect(),
+            _ => return,
+        };
+        if callable_formals.is_empty() {
+            return;
+        }
+        // Step 2: walk every declaration; for each fold Instantiation compute the
+        // step formal. Two-phase: collect updates first to avoid borrow conflicts.
+        let mut updates: Vec<(usize, DeclarationId)> = Vec::new();
+        for (idx, decl) in self.declarations.iter().enumerate() {
+            let TypeConnective::Instantiation {
+                template,
+                arguments,
+                fold_step_formal,
+            } = &decl.connective
+            else {
+                continue;
+            };
+            if *template != fold_template_id || fold_step_formal.is_some() {
+                continue;
+            }
+            for arg in arguments {
+                if !callable_formals.contains(&arg.parameter) {
+                    continue;
+                }
+                let resolved =
+                    resolve_template_argument_value_local(arguments, arg.value, FOLD_WALK_DEPTH);
+                if monomorph_callable_bind_root_local(self, resolved, FOLD_WALK_DEPTH).is_some() {
+                    updates.push((idx, arg.parameter));
+                    break;
+                }
+            }
+        }
+        for (idx, formal) in updates {
+            if let TypeConnective::Instantiation {
+                fold_step_formal, ..
+            } = &mut self.declarations[idx].connective
+            {
+                *fold_step_formal = Some(formal);
+            }
+        }
     }
 
     fn populate_target_clean_emission_bindings(&mut self) {
@@ -3372,6 +3440,84 @@ impl Dag {
         self.node(node).as_transform()?;
         Some(TransformRef(node))
     }
+}
+
+const FOLD_WALK_DEPTH: usize = 32;
+
+/// Walk through `Atom::ResolvedByStructure | ResolvedByName` and `Instantiation`
+/// carriers to determine whether a declaration eventually exposes an `Arrow`.
+fn declaration_is_callable_type(dag: &Dag, current: DeclarationId, depth: usize) -> bool {
+    if depth >= FOLD_WALK_DEPTH {
+        return false;
+    }
+    let Some(decl) = dag.declarations.get(current.0 as usize) else {
+        return false;
+    };
+    match &decl.connective {
+        TypeConnective::Arrow { .. } => true,
+        TypeConnective::Instantiation { template, .. } => {
+            declaration_is_callable_type(dag, *template, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            declaration_is_callable_type(dag, *next, depth + 1)
+        }
+        _ => false,
+    }
+}
+
+/// Resolve a template argument value through any chain of forwarding template
+/// arguments (parameter -> value -> next-parameter ...). Bounded.
+fn resolve_template_argument_value_local(
+    arguments: &[TemplateArgument],
+    current: DeclarationId,
+    depth: usize,
+) -> DeclarationId {
+    if depth == 0 {
+        return current;
+    }
+    let Some(next) = arguments
+        .iter()
+        .find(|arg| arg.parameter == current)
+        .map(|arg| arg.value)
+    else {
+        return current;
+    };
+    if next == current {
+        return current;
+    }
+    resolve_template_argument_value_local(arguments, next, depth - 1)
+}
+
+/// Peel `Instantiation` carriers until an `Arrow` with `UserDefined` body; return
+/// the root `Bind` when it has ≥ 2 params (the step closure shape).
+fn monomorph_callable_bind_root_local(
+    dag: &Dag,
+    mut decl_id: DeclarationId,
+    budget: usize,
+) -> Option<()> {
+    for _ in 0..budget {
+        let decl = dag.declarations.get(decl_id.0 as usize)?;
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => {
+                if dag.emit_anchors.std_list_fold == Some(*template) {
+                    return None;
+                }
+                decl_id = *template;
+            }
+            TypeConnective::Arrow { body, .. } => {
+                let ArrowBody::UserDefined(root) = body else {
+                    return None;
+                };
+                return match dag.node(*root) {
+                    Behavior::Bind(b) if b.params.len() >= 2 => Some(()),
+                    _ => None,
+                };
+            }
+            _ => return None,
+        }
+    }
+    None
 }
 
 impl Default for Dag {

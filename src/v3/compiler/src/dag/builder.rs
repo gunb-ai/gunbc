@@ -636,7 +636,7 @@ impl Dag {
             let TypeConnective::Instantiation {
                 template: existing_template,
                 arguments: existing_arguments,
-                fold_step_formal: None,
+                fold_step_formal: _,
             } = &decl.connective
             else {
                 return None;

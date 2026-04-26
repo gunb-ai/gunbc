@@ -1295,7 +1295,7 @@ fn m17_template_argument_stub_branch_is_gone() {
         if let TypeConnective::Instantiation {
             template,
             arguments,
-            fold_step_formal: None,
+            fold_step_formal: _,
         } = &decl.connective
         {
             let template_is_stub = matches!(
@@ -1373,7 +1373,7 @@ let y = apply(3, step)
         let TypeConnective::Instantiation {
             template,
             arguments,
-            fold_step_formal: None,
+            fold_step_formal: _,
         } = &dag.declaration(target).connective
         else {
             continue;
@@ -1462,7 +1462,7 @@ let y = twice(3, step)
         let TypeConnective::Instantiation {
             template,
             arguments,
-            fold_step_formal: None,
+            fold_step_formal: _,
         } = &dag.declaration(target).connective
         else {
             continue;
@@ -1819,7 +1819,7 @@ let y = apply_to_three(|x| base + x)
         let TypeConnective::Instantiation {
             template,
             arguments,
-            fold_step_formal: None,
+            fold_step_formal: _,
         } = &dag.declaration(target).connective
         else {
             continue;
@@ -2672,7 +2672,7 @@ type MyList<T> = Empty | Cons { head: T, tail: MyList<T> }
     let TypeConnective::Instantiation {
         template,
         arguments,
-        fold_step_formal: None,
+        fold_step_formal: _,
     } = &dag.declaration(tail.ty).connective
     else {
         panic!(

@@ -63,7 +63,7 @@ pub fn variant_payload_shape(p0: &Dag, p1: &DeclarationId) -> VariantPayloadShap
             TypeConnective::Instantiation {
                 template: _,
                 arguments: _,
-                ..
+                fold_step_formal: _,
             } => VariantPayloadShapeLookup::NotPayloadProduct,
         },
     }

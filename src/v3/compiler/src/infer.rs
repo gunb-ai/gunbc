@@ -2163,7 +2163,7 @@ fn bind_expected_decl_to_actual_context(
             let TypeConnective::Instantiation {
                 template: actual_template,
                 arguments: actual_args,
-                fold_step_formal: None,
+                fold_step_formal: _,
             } = &dag.declaration(actual_decl).connective
             else {
                 return false;
@@ -3750,7 +3750,7 @@ fn find_equivalent_anonymous_instantiation(
         let TypeConnective::Instantiation {
             template: existing_template,
             arguments: existing_arguments,
-            fold_step_formal: None,
+            fold_step_formal: _,
         } = &decl.connective
         else {
             return None;
@@ -4484,7 +4484,7 @@ fn find_equivalent_decl_instantiation(
         let TypeConnective::Instantiation {
             template: existing_template,
             arguments: existing_arguments,
-            fold_step_formal: None,
+            fold_step_formal: _,
         } = &decl.connective
         else {
             return None;

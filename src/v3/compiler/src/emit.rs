@@ -2145,7 +2145,7 @@ impl<'a> Ctx<'a> {
         let TypeConnective::Instantiation {
             template,
             arguments,
-            fold_step_formal: None,
+            fold_step_formal: _,
         } = &self.dag.declaration(ty.declaration).connective
         else {
             return Err(EmitError::UnsupportedBehavior(
@@ -3072,7 +3072,7 @@ pub(crate) fn operator_realization_lookup_type(
         let TypeConnective::Instantiation {
             template,
             arguments,
-            fold_step_formal: None,
+            fold_step_formal: _,
         } = &decl.connective
         else {
             break;

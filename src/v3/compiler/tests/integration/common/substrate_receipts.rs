@@ -53,7 +53,7 @@ pub fn callable_instantiation_arguments(
             let TypeConnective::Instantiation {
                 template: inst_template,
                 arguments,
-                fold_step_formal: None,
+                fold_step_formal: _,
             } = &dag.declaration(target).connective
             else {
                 return None;

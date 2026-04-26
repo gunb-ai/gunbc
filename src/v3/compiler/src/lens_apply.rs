@@ -117,25 +117,24 @@ fn find_fold_step_bind_via_instantiation(
 ) -> Option<&BindNode> {
     let decl = dag.declaration(fold_callable_id);
     let TypeConnective::Instantiation {
-        template,
         arguments,
-        fold_step_formal: None,
+        fold_step_formal,
+        ..
     } = &decl.connective
     else {
         return None;
     };
-    if dag.std_list_fold_decl() != Some(*template) {
-        return None;
-    }
-    let formals = fold_template_callable_formals(dag, *template);
+    // Substrate carrier authority: `fold_step_formal` is populated structurally
+    // by `Dag::populate_fold_step_formals` on every fold instantiation whose
+    // arguments resolve to a step `Bind`. Read it directly — no formal walk.
+    let formal = (*fold_step_formal)?;
     let depth_budget = LENS_APPLY_TYPE_WALK_DEPTH as i64;
-
     for arg in arguments {
-        let resolved = resolve_template_argument_value(&depth_budget, arguments, arg.value);
-        let Some(b) = monomorph_callable_bind_root(dag, resolved) else {
+        if arg.parameter != formal {
             continue;
-        };
-        if formals.contains(&arg.parameter) {
+        }
+        let resolved = resolve_template_argument_value(&depth_budget, arguments, arg.value);
+        if let Some(b) = monomorph_callable_bind_root(dag, resolved) {
             return Some(b);
         }
     }
@@ -1077,7 +1076,7 @@ fn sum(xs: List<Int>) -> Int =
         let TypeConnective::Instantiation {
             template,
             arguments,
-            fold_step_formal: None,
+            fold_step_formal: _,
         } = &dag.declaration(fold_callable).connective
         else {
             panic!("fold callable should be an Instantiation");
