@@ -14,7 +14,7 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 
 | Deliverable | Source | Status (at brief authoring) |
 |---|---|---|
-| §6a per-method-metadata pick (Goal 5) | `docs/r2-structure.md` Goal 5 + `docs/design-substrate-carrier-port-program.md §6a` (4 named options) | DECISION BRIEF NOT YET AUTHORED — PM portion per inbox #828 |
+| §6a per-method-metadata follow-through (Goal 5) | `docs/design-substrate-carrier-port-program.md §6a` (decision locked at `:171`; live receipt at `:173`; dissolution trigger at `:175`) | DECISION LOCKED — Option 3 unified `MethodContract` carrier; live receipt landed (`src/v3/std/algebra.dag` declares `MethodContract`; `src/v3/lenses/cost.dag` imports via `method_contract_cost_shape` minimal demo consumer). Remaining R2 work: bulk migration of `cost.dag` / `complexity.dag` to live call-site lookup + dissolution-trigger tracking (`size_effect` / `cost_shape` / `callback_element_position` field-by-field retirement). |
 | R2 closure demo coordination (Goal 6) | `docs/r2-structure.md` Goal 6 + Demo discipline section | LIVE on spawn (no separate brief; see Demo discipline) |
 | B-wave Tier 0 through-merge | #810 §5 dispatch ordering | IN FLIGHT (B1 #820, B2 #817, B3 #821 — implementation iteration) |
 | B-wave Tier 2 brief authoring | #810 §5 (B5 Loop construction-closure audit; B6 file-preference rank checklist; B7 priority hint to Pure Bootstrap Manager) | NOT YET AUTHORED — PM portion per inbox #828 |
@@ -27,7 +27,7 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 
 ### Core deliverables (must complete by R2 close)
 
-1. **§6a per-method-metadata pick decision brief** — write up the 4 options from `docs/design-substrate-carrier-port-program.md §6a` (keep lens-local; substrate field-level refinements; per-algebra metadata carriers; unified `MethodContract` carrier); recommend one based on E-I evidence landed in R1; close as locked design call.
+1. **§6a per-method-metadata follow-through brief** — design-call decision is **already locked** as Option 3 unified `MethodContract` carrier (`docs/design-substrate-carrier-port-program.md §6a:171`, with live receipt at `:173`: `src/v3/std/algebra.dag` declares `MethodContract`; `src/v3/lenses/cost.dag` imports it via `method_contract_cost_shape` minimal demo consumer). R2 deliverables: (a) bulk migration of `cost.dag` / `complexity.dag` to live call-site `MethodContract` lookup; (b) track the field-by-field dissolution trigger from `:175` (`size_effect` → cardinality-refined signatures; `cost_shape` → typed cost surface; `callback_element_position` → typed higher-order callback parameter shape). The "pick decision brief" framing is stale per the merged §6a receipt.
 2. **B5 Loop construction-closure audit brief** — Tier 2 from #810 §5. **MUST start with construction-closure audit, NOT marker design.** If audit confirms Loop only reachable through recursive-function lowering, deliverable is structural integration test. If audit refutes, marker brief.
 3. **B6 file-preference rank checklist completion brief** — trivial S, one-line ROADMAP fix per #810 §5.
 4. **B7 priority-hint relay to Pure Bootstrap Manager** — lift `patch_lower_helpers_*` retirement to PB-Tier1 priority. Cross-manager signal, not a worker brief.
@@ -64,7 +64,7 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 
 ## Autonomous dispatch authority
 
-- Authors all T-Release owned deliverables without Director: worker briefs (§6a pick, B5, B6, thesis-claim coverage mapping) and cross-manager signals (B7 priority-hint relay).
+- Authors all T-Release owned deliverables without Director: worker briefs (§6a follow-through, B5, B6, thesis-claim coverage mapping) and cross-manager signals (B7 priority-hint relay).
 - Dispatches workers against owned deliverables.
 - Owns the **central reporting** layer of P5 dispatch-discipline (per `docs/r2-structure.md`); per-brief paired-dispatch and per-PR gate enforcement happens at each manager's authoring point, not at Release.
 - Resolves Release-internal scope refinements; escalates blockers and scope changes to Director.
@@ -80,7 +80,7 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 Authored: none (this is a NEW manager).
 
 Pending — pre-spawn PM-authored per inbox #828 coordination split (R2 Release Manager portion); post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
-- §6a per-method-metadata pick decision brief
+- §6a per-method-metadata follow-through brief (decision locked Option 3; bulk migration + dissolution-trigger tracking remain)
 - B5 Loop construction-closure audit brief
 - B6 file-preference rank checklist completion brief
 - B7 priority-hint relay (cross-manager signal, not a worker brief)
@@ -95,6 +95,6 @@ Closure ledger snapshot + velocity-tripwire ratio refreshes here at each integra
 - Parent: `docs/r2-structure.md` §"R2 Release Manager"
 - Discipline framework: INVARIANTS.md §P5 "Dispatch-Discipline Mechanisms" (a)/(b)/(c)
 - Cadence wiring: ROADMAP.md "Integration-reflection cadence" + velocity-tripwire reporting
-- §6a source: `docs/design-substrate-carrier-port-program.md §6a` (4 options)
+- §6a source: `docs/design-substrate-carrier-port-program.md §6a` (decision locked Option 3; live receipt landed)
 - Thesis-claim authority: `THESIS.md §"Thesis claims — complete list"`
 - B-wave source: `docs/briefs/debt-paydown-synthesis-2026-04-25.md` §5 (B1-B7 dispatch ordering)

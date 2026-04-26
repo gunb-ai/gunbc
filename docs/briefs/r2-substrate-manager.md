@@ -47,7 +47,7 @@ From [`docs/briefs/b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-s
 | T-Substrate nominal-opaque-for-Secret | M | NOT YET AUTHORED | nominal-type construction restriction |
 | T-Substrate parametric-algebra-for-Dimensions | M | NOT YET AUTHORED | parametric algebra attachment (DB-18 territory; tag mismatch with db-history flagged) |
 | T-Substrate ValueBody-list/sum + std.unicode | L | DISPATCHED (worker brief #790) | top-level list/sum literal lowering + bootstrap/load-set |
-| B4.1 DeclarationRef consumer migration | M | DRAFTED (with §0.2 BLOCKING outstanding — codex finding on PR #819) | existing carrier consumer migration |
+| B4.1 DeclarationRef consumer migration | M | BRIEF LANDED (PR #819, merged 2026-04-26 — §0.2 scope gap resolved in `6f564f54` before merge); B4.1a runner-migration follow-on brief landed same PR. Real residual: first-consumer migration #826 OPEN with regen drift (worker CI-fix, not brief authoring). | existing carrier consumer migration |
 | B4.2 fold-shape carrier | S | NOT YET AUTHORED | template-formal edge identification |
 | B4.3 emit-helper carrier | S | NOT YET AUTHORED | typed role marker on Bind/Branch nodes |
 | B4.4 extdeps-fixture-set carrier | S | NOT YET AUTHORED | typed extdeps-bootstrap-set declaration |
@@ -89,7 +89,7 @@ From [`docs/briefs/b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-s
 
 Authored:
 - B4 program brief (this document is the orchestrator; B4 program brief is in [`b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-substrate-pass.md))
-- B4.1 DeclarationRef consumer migration ([`b4-1-declarationref-consumer-migration-worker.md`](b4-1-declarationref-consumer-migration-worker.md)) — **with outstanding BLOCKING** (codex §0.2 scope gap on PR #819; resolution pending)
+- B4.1 DeclarationRef consumer migration ([`b4-1-declarationref-consumer-migration-worker.md`](b4-1-declarationref-consumer-migration-worker.md)) — **landed PR #819** (§0.2 scope gap resolved in `6f564f54` before merge per Director receipt on inbox #828); **B4.1a runner-migration brief landed same PR** as named follow-on residual; first-consumer migration #826 OPEN with regen drift (worker CI-fix, independent of brief authoring)
 - T-Substrate ValueBody-list/sum (PR #790 worker brief)
 
 Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
@@ -107,4 +107,4 @@ Sub-lane / Phase status table refreshes here as work lands. Pre-spawn placeholde
 - Program brief: `docs/briefs/b4-identity-carrier-substrate-pass.md`
 - Synthesis source: `docs/briefs/debt-paydown-synthesis-2026-04-25.md` §0
 - Substrate design: `docs/design-substrate-carrier-port-program.md`
-- Adjacent: `docs/briefs/b4-1-declarationref-consumer-migration-worker.md` (with BLOCKING)
+- Adjacent: `docs/briefs/b4-1-declarationref-consumer-migration-worker.md` (landed PR #819; first-consumer migration tracked at PR #826)
