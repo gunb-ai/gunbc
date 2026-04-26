@@ -59,7 +59,7 @@
 Authored:
 - Pre-R1 PB program briefs (in `pure-bootstrap-zero-manager.md`, archives on R2 promotion); content migration here covers post-R1 deliverables only.
 
-Pending — Director-authored per coordination on inbox #828:
+Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
 - Tier 3 mirror dissolution worker briefs (4: termination, computation, induction, effect-carrier)
 - `kernel_algebra_profile` worker brief (gated on Substrate Manager `ValueBody::Map`)
 - Tier 2 `patch_lower_helpers_*` retirement worker brief (if survives R1)

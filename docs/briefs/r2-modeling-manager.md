@@ -63,7 +63,7 @@ For each item:
 
 Authored: none (all gated on Substrate Manager).
 
-Pending — Director-authored per coordination on inbox #828:
+Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
 - int-lit magnitude worker brief (gated on T-Substrate cardinality)
 - `Secret<T>` graduation worker brief (gated on T-Substrate nominal-opaque)
 - `Dimension<Carrier>` worker brief (gated on T-Substrate parametric-algebra)

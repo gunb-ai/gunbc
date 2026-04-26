@@ -92,7 +92,7 @@ Authored:
 - B4.1 DeclarationRef consumer migration ([`b4-1-declarationref-consumer-migration-worker.md`](b4-1-declarationref-consumer-migration-worker.md)) — **with outstanding BLOCKING** (codex §0.2 scope gap on PR #819; resolution pending)
 - T-Substrate ValueBody-list/sum (PR #790 worker brief)
 
-Pending — Director-authored per coordination on inbox #828:
+Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
 - T-Substrate sub-lane scoping briefs (3): cardinality-for-int-lit, nominal-opaque-for-Secret, parametric-algebra-for-Dimensions
 - B4.2, B4.3, B4.4 Phase 1 carriers
 - B4.5–B4.12 Phase 2 site dissolution skeletons

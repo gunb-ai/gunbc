@@ -79,7 +79,7 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 
 Authored: none (this is a NEW manager).
 
-Pending — PM portion per coordination on inbox #828:
+Pending — pre-spawn PM-authored per inbox #828 coordination split (R2 Release Manager portion); post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
 - §6a per-method-metadata pick decision brief
 - B5 Loop construction-closure audit brief
 - B6 file-preference rank checklist completion brief
