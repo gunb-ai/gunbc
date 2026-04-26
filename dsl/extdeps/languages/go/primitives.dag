@@ -260,7 +260,8 @@ data go_spec_predeclared_primitives: List<GoPrimitive> = [
   GoBooleanPrimitive { target_name: "bool", algebra: GoCanonicalTwoElementBooleanAlgebra,
     carrier: GoBitCarrier },
 
-  GoStringPrimitive { target_name: "string", algebra: GoUtf8FreeMonoidAlgebra, carrier: GoUtf8TextCarrier },
+  GoStringPrimitive { target_name: "string", algebra: GoImmutableByteSequenceMonoidAlgebra,
+    carrier: GoImmutableByteSequenceCarrier },
 
   GoUnitPrimitive { target_name: "struct{}", algebra: GoTerminalAlgebra, carrier: GoTerminalCarrier }
 ]
