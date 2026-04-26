@@ -276,7 +276,6 @@ pub fn field_value_from_value_body(
             }
             Ok(FieldValue::Record(out))
         }
-        ValueBody::List(values) => Ok(FieldValue::List(values.clone())),
         ValueBody::Unparsed(_) => Err(LensApplyError::UnsupportedConstruct(
             "unparsed declaration value body",
         )),
