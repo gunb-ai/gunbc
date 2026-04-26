@@ -1,0 +1,14 @@
+// std/error_primitives.dag — minimal error carriers with **no** dependency on
+// `Int` / `String` / other `std.types` surface, so this module can load in the
+// v3 std bootstrap seed *before* `algebra.dag` (which needs `Result` / `DivError`
+// for `OrderedRing.div`).
+
+module std.error_primitives
+
+// Algebraic Result sum for fallible std operations (e.g. `OrderedRing.div` totality).
+type Result<ok, err> = Ok { value: ok } | Err { value: err }
+
+// Signed integer division (`Int / Int`): two structurally distinct failure modes
+// (C-8): zero divisor vs MIN / -1 signed overflow. Used as `Result<T, DivError>`
+// error half on `OrderedRing.div`.
+type DivError = DivideByZero | Overflow

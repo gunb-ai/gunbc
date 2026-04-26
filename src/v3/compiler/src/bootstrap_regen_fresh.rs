@@ -23,6 +23,7 @@ use std::collections::HashMap;
 
 const LOGIC_DAG: &str = include_str!("../../../../dsl/std/logic.dag");
 const BIT_DAG: &str = include_str!("../../../../dsl/std/bit.dag");
+const ERROR_PRIMITIVES_DAG: &str = include_str!("../../../../dsl/std/error_primitives.dag");
 const ALGEBRA_DAG: &str = include_str!("../../../../dsl/std/algebra.dag");
 const INTEGER_DAG: &str = include_str!("../../../../dsl/std/integer.dag");
 const FLOAT_DAG: &str = include_str!("../../../../dsl/std/float.dag");
@@ -116,6 +117,7 @@ fn std_fixtures() -> &'static [(&'static str, &'static str)] {
     &[
         ("dsl/std/logic.dag", LOGIC_DAG),
         ("dsl/std/bit.dag", BIT_DAG),
+        ("dsl/std/error_primitives.dag", ERROR_PRIMITIVES_DAG),
         ("dsl/std/algebra.dag", ALGEBRA_DAG),
         ("dsl/std/integer.dag", INTEGER_DAG),
         ("dsl/std/float.dag", FLOAT_DAG),

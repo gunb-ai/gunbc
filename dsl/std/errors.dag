@@ -2,6 +2,8 @@
 
 module std.errors
 
+import std.error_primitives { DivError, Result }
+
 type HttpErrorShape {
   status: Int
   error_type: String
@@ -10,15 +12,6 @@ type HttpErrorShape {
 }
 
 type AuthError = Expired | InvalidToken | MissingCredential | InsufficientScope | Forbidden
-
-// Algebraic Result sum for fallible std operations (e.g. `OrderedRing.div` totality).
-// Lives in `std.errors` (not `std.types`, which already imports `std.algebra`).
-type Result<ok, err> = Ok { value: ok } | Err { value: err }
-
-// Signed integer division (`Int / Int`): two structurally distinct failure modes
-// (C-8): zero divisor vs MIN / -1 signed overflow. Used as `Result<T, DivError>`
-// error half on `OrderedRing.div`.
-type DivError = DivideByZero | Overflow
 
 type RateLimitError {
   retry_after_seconds: Int?

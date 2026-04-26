@@ -2669,7 +2669,8 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         .iter()
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
-        // `type Result<ok, err> = ...` in `errors.dag` is type-checking authority; Rust
+        // `type Result<ok, err> = ...` in `error_primitives.dag` / `errors.dag` is
+        // type-checking authority; Rust
         // materializes it as `::core::result::Result<…>`. Generic `Result` is not
         // emitted as a Rust `enum` (and would collide with the prelude if it were).
         .filter(|decl| {
