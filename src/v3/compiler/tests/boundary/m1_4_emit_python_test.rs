@@ -551,7 +551,7 @@ fn serialize_transform_node(node: &TransformNode) -> String {
 
 fn serialize_branch_node(node: &BranchNode) -> String {
     format!(
-        "BranchNode(id={}, input={}, paths=[{}], result_port={}, span={})",
+        "BranchNode(id={}, input={}, paths=[{}], result_port={}, span={}, emit_participation={})",
         py_debug(&node.id),
         py_debug(&node.input),
         node.paths
@@ -560,7 +560,8 @@ fn serialize_branch_node(node: &BranchNode) -> String {
             .collect::<Vec<_>>()
             .join(", "),
         py_debug(&node.result_port()),
-        serialize_span(&node.span)
+        serialize_span(&node.span),
+        serialize_opt_branch_emit_participation(&node.emit_participation)
     )
 }
 

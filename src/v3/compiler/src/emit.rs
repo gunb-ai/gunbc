@@ -3174,8 +3174,7 @@ mod tests {
             .iter()
             .find_map(|node| match node {
                 Behavior::Bind(bind)
-                    if bind.emit_participation
-                        == Some(BindEmitParticipation::UserCallable) =>
+                    if bind.emit_participation == Some(BindEmitParticipation::UserCallable) =>
                 {
                     bind.params.first().copied()
                 }
@@ -3202,8 +3201,7 @@ mod tests {
             .iter()
             .find_map(|node| match node {
                 Behavior::Branch(branch)
-                    if branch.emit_participation
-                        == Some(BranchEmitParticipation::UserMatch) =>
+                    if branch.emit_participation == Some(BranchEmitParticipation::UserMatch) =>
                 {
                     Some(branch.input)
                 }
