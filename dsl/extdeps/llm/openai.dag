@@ -76,13 +76,24 @@ type ToolCall {
   function: FunctionCall
 }
 
+// Roles allowed on Chat Completions `messages[]` for this narrow text-only
+// carrier (system / user / assistant). Tool/developer rows are out of scope
+// until tool-call payload types land here — use a gap receipt if you need them.
+type OpenAiChatMessageRole = System | User | Assistant
+
 // Chat Completions API message row: wire accepts plain-string `content` for
 // text-only payloads (OpenAI docs). Typed here so callers cannot pass opaque
 // Json; multimodal rows extend this product when needed (Q4.5 P1 / #808).
 type OpenAiChatMessage {
-  role: Role
+  role: OpenAiChatMessageRole
   content: String
 }
+
+// Typed inputs close the Json bypass; outputs still JSON-path-project until
+// `response { 200 => Typed... }` lands. Queryable receipt for lenses/audits.
+data structural_coverage_gap_openai_chat_completion_outputs: List<String> = [
+  "closure:rest_typed_response_body|llm.OpenAI.ChatCompletion|residue:output_fields_use_json_path_projection"
+]
 
 // -- Service: REST transport wiring ------------------------------
 

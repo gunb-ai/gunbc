@@ -41,7 +41,7 @@ data models: List<AnthropicModelSpec> = [
 // Extends the shared ContentBlock (llm.dag) with tool-use blocks.
 
 type AnthropicContentBlock
-  = TextBlock { text: String }
+  = TextBlock { type: String, text: String }
   | ToolUseBlock { id: String, name: String, input: Json }
   | ToolResultBlock { tool_use_id: String, content: String, is_error: Bool? }
 
@@ -87,12 +87,21 @@ data current_api_version: AnthropicApiVersion = {
   header: "anthropic-version"
 }
 
+// Roles permitted in Messages API `messages[]` (system is the separate
+// `system` parameter, not a row here).
+type AnthropicMessagesRole = User | Assistant
+
 // Messages API conversation row: `content` is a typed block list (not Json).
-// Q4.5 P1 closure — pairs with shared `Role` from extdeps.llm.llm (#808).
+// Q4.5 P1 closure (#808 / #856 Substrate escalation).
 type AnthropicChatMessage {
-  role: Role
+  role: AnthropicMessagesRole
   content: List<AnthropicContentBlock>
 }
+
+// Outputs still JSON-path-project; same downstream closure as OpenAI slice.
+data structural_coverage_gap_anthropic_messages_outputs: List<String> = [
+  "closure:rest_typed_response_body|llm.Anthropic.Messages|residue:output_fields_use_json_path_projection"
+]
 
 // -- Service: REST transport wiring ------------------------------
 
