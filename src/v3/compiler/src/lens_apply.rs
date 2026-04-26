@@ -1281,6 +1281,65 @@ fn f(a: Int, b: Int) -> Int = a + b
     }
 
     #[test]
+    fn eligible_fold_runs_through_bounded_path() {
+        // Step body is `acc + x` — no Loop, no unsupported construct in transitive call graph.
+        // The structural eligibility predicate must approve and the bounded fast path must
+        // produce the sum.
+        let src = r#"module m
+import std.list { List, fold }
+
+fn sum(xs: List<Int>) -> Int =
+  fold(xs, 0, |acc, x| acc + x)
+"#;
+        let dag = compile_to_dag(src, "eligible_fold.v3").expect("compiles");
+        let sum_id = dag.declaration_by_name("sum").expect("sum").id;
+        let (empty_id, cons_id) = super::v3_list_empty_cons_ids(&dag).expect("list ids");
+        let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n));
+        let mut list = FieldValue::Variant {
+            constructor: empty_id,
+            payload: vec![],
+        };
+        for n in [3i64, 2, 1] {
+            list = FieldValue::Variant {
+                constructor: cons_id,
+                payload: vec![int(n), list],
+            };
+        }
+        let out = apply_lens_declaration(&dag, sum_id, &[list]).expect("eligible fold runs");
+        assert_eq!(out, int(6));
+    }
+
+    #[test]
+    fn ineligible_fold_with_recursive_step_skips_bounded_path() {
+        // `helper` is self-recursive → lowers to a `LoopNode` in the step body's transitive
+        // call graph. The structural eligibility predicate must reject; the bounded fast path
+        // is bypassed; `eval_callable` rejects the monomorphized `Instantiation { template:
+        // fold }` with `UnimplementedCallable` (fail-closed, vs running and hitting
+        // `UnimplementedLoopBound` deeper in).
+        let src = r#"module m
+import std.list { List, fold }
+
+fn helper(n: Int) -> Int = if n == 0 then 0 else helper(n - 1) + 1
+fn sum(xs: List<Int>) -> Int =
+  fold(xs, 0, |acc, x| acc + helper(x))
+"#;
+        let dag = compile_to_dag(src, "ineligible_fold.v3").expect("compiles");
+        let sum_id = dag.declaration_by_name("sum").expect("sum").id;
+        let (_, cons_id) = super::v3_list_empty_cons_ids(&dag).expect("list ids");
+        let empty = empty_substrate_list_value(&dag).expect("empty list");
+        let one = FieldValue::Variant {
+            constructor: cons_id,
+            payload: vec![FieldValue::Literal(LiteralBits::Int(1)), empty],
+        };
+        let err =
+            apply_lens_declaration(&dag, sum_id, &[one]).expect_err("ineligible step body");
+        assert!(
+            matches!(err, LensApplyError::UnimplementedCallable(_)),
+            "{err:?}"
+        );
+    }
+
+    #[test]
     fn branch_miss_when_scrutinee_matches_no_arm() {
         let src = r#"module m
 fn p(b: Bool) -> Int = match b { True => 1, False => 0 }
