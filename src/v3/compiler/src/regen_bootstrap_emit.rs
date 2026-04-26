@@ -3,12 +3,12 @@ use std::io::Write as IoWrite;
 use std::process::{Command, Stdio};
 
 use crate::dag::{
-    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode, BranchNode,
-    BranchEmitParticipation, BranchPattern, CardinalityBound, Cluster, ClusterId, ComparisonOp, Dag,
-    Declaration, DeclarationId, Field, FieldValue, IntraClusterCall, LiteralBits, LogicalOp,
-    LoopBound, LoopNode, MemberDescent, NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path,
-    PayloadBinding, PhantomParameter, PortId, PortState, TemplateArgument, TransformNode,
-    TransformTarget, TypeConnective, ValueBody, ValueNode,
+    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
+    BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, ClusterId,
+    ComparisonOp, Dag, Declaration, DeclarationId, Field, FieldValue, IntraClusterCall,
+    LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent, NodeId, NonEmptyList,
+    NonSingletonList, OperatorKind, Path, PayloadBinding, PhantomParameter, PortId, PortState,
+    TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueBody, ValueNode,
 };
 use crate::diagnostics::Diagnostic;
 
@@ -398,9 +398,7 @@ fn render_bind_node(node: &BindNode) -> String {
     )
 }
 
-fn render_opt_bind_emit_participation(
-    p: Option<BindEmitParticipation>,
-) -> String {
+fn render_opt_bind_emit_participation(p: Option<BindEmitParticipation>) -> String {
     match p {
         None => "None".to_string(),
         Some(BindEmitParticipation::UserCallable) => {
@@ -409,9 +407,7 @@ fn render_opt_bind_emit_participation(
     }
 }
 
-fn render_opt_branch_emit_participation(
-    p: Option<BranchEmitParticipation>,
-) -> String {
+fn render_opt_branch_emit_participation(p: Option<BranchEmitParticipation>) -> String {
     match p {
         None => "None".to_string(),
         Some(BranchEmitParticipation::UserMatch) => {
