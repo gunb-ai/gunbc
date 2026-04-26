@@ -245,6 +245,24 @@ mod t_demo_fixture_test {
         );
     }
 
+    /// R1C-F T-Demo gate: a user-authored lens (`lenses.named_function_count`, the same
+    /// GREEN T-LensAPI lens) detects 3 named bindings in the violating program; the
+    /// `LensOutputEquals` predicate matches and the gate Passes — proving the proof
+    /// surface is user-extensible (THESIS §"User-defined dimensions").
+    #[test]
+    fn t_demo_user_authored_lens_rejects_violating_program_passes() {
+        let source = fixture_source();
+        let dag = compile_fixture(&source);
+        let results = TestRunner::new(&dag)
+            .run_suite("demo_user_authored_lens_rejects_violating_program_suite");
+        assert_eq!(results.len(), 1);
+        assert!(
+            matches!(results[0].result, ClaimResult::Pass),
+            "user-authored lens demo gate should Pass (lens detected violations and matched expected count), got {:?}",
+            results[0].result
+        );
+    }
+
     #[test]
     fn t_demo_structural_cost_obligation_witness_compiles_cleanly() {
         compile_to_dag(
