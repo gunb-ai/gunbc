@@ -40,18 +40,16 @@ data models: List<AnthropicModelSpec> = [
 // -- Anthropic content blocks (provider-specific) ---------------------
 // Extends the shared ContentBlock (llm.dag) with tool-use blocks.
 
-// `TextBlock` is the structural discriminator for text content. The wire
-// `"type": "text"` key is an emitter/transport obligation, not caller-authored
-// model state; serde alignment remains gap-carried below.
-type AnthropicContentBlock
-  = TextBlock { text: String }
-  | ToolUseBlock { id: String, name: String, input: Json }
-  | ToolResultBlock { tool_use_id: String, content: String, is_error: Bool? }
-
+// 🟢 TERMINAL provider-domain coproduct for user-message content. `UserTextBlock`
+// and `UserToolResultBlock` are role-legal Anthropic Messages content rows; the
+// wire `type` keys are emitter/transport obligations, not caller-authored model
+// state.
 type AnthropicUserContentBlock
   = UserTextBlock { text: String }
   | UserToolResultBlock { tool_use_id: String, content: String, is_error: Bool? }
 
+// 🟢 TERMINAL provider-domain coproduct for assistant-message content.
+// Assistants can emit text or tool-use requests; tool results are user rows.
 type AnthropicAssistantContentBlock
   = AssistantTextBlock { text: String }
   | AssistantToolUseBlock { id: String, name: String, input: Json }
@@ -98,17 +96,10 @@ data current_api_version: AnthropicApiVersion = {
   header: "anthropic-version"
 }
 
-// Roles permitted in Messages API `messages[]` (system is the separate
-// `system` parameter, not a row here).
-// 🟢 TERMINAL provider-domain coproduct for this narrow Messages request
-// surface: Anthropic's conversation rows are user/assistant only. This does
-// not claim Rust request serialization is wire-faithful; that remains
-// gap-carried by `structural_coverage_gap_anthropic_messages_request_wire`.
-type AnthropicMessagesRole = User | Assistant
-
 // Messages API conversation row: the outer variant is the role discriminator,
 // so role-specific content legality is structural. User rows can carry text or
 // tool results; assistant rows can carry text or tool-use requests.
+// 🟢 TERMINAL provider-domain coproduct for the modeled Messages row roles.
 // Q4.5 P1 closure (#808 / #856 Substrate escalation).
 type AnthropicChatMessage
   = UserMessage { content: List<AnthropicUserContentBlock> }
