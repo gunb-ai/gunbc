@@ -709,7 +709,10 @@ enum Decision {
 }
 
 fn decide(dag: &mut Dag, index: usize) -> Decision {
-    match &dag.nodes()[index] {
+    // Clone before matching so `decide_transform` can take `&mut Dag` without
+    // holding an immutable borrow of `dag.nodes()` across the call.
+    let behavior = dag.nodes()[index].clone();
+    match &behavior {
         Behavior::Value(v) => {
             let shape_and_name = match &v.data {
                 // Unconstrained integer literals keep the existing explicit
@@ -3979,9 +3982,14 @@ const WALK_DEPTH_LIMIT: usize = 32;
 fn div_total_result_output_shape(dag: &mut Dag, base_lhs: TypeShape) -> Option<TypeShape> {
     let result_template = dag.declaration_by_name("Result")?.id;
     let div_error = dag.declaration_by_name("DivError")?.id;
-    let rdecl = dag.declaration(result_template);
-    let t_ok = rdecl.type_params.first().copied()?;
-    let t_err = rdecl.type_params.get(1).copied()?;
+    let (t_ok, t_err, span) = {
+        let rdecl = dag.declaration(result_template);
+        (
+            rdecl.type_params.first().copied()?,
+            rdecl.type_params.get(1).copied()?,
+            rdecl.span.clone(),
+        )
+    };
     let args = vec![
         TemplateArgument {
             parameter: t_ok,
@@ -3996,7 +4004,6 @@ fn div_total_result_output_shape(dag: &mut Dag, base_lhs: TypeShape) -> Option<T
         return Some(TypeShape::new(existing));
     }
     let id = dag.alloc_declaration_id();
-    let span = rdecl.span.clone();
     dag.push_declaration(Declaration {
         id,
         name: None,
@@ -4040,14 +4047,14 @@ fn resolve_operator_arrow(
     // comment.
     let mut current = source_id;
     for _ in 0..WALK_DEPTH_LIMIT {
-        let decl = dag.declaration(current);
+        let decl = dag.declaration(current).clone();
         match &decl.connective {
             TypeConnective::Conj { children } => {
                 // Found the algebra. Look up the operator's field by
                 // name.
                 let field_name = crate::operators::algebra_field_name(op_kind);
                 if let Some(field) = children.iter().find(|f| f.label == field_name) {
-                    return read_algebra_field(dag, decl, field.ty, source_id, op_kind, &base_lhs);
+                    return read_algebra_field(dag, &decl, field.ty, source_id, op_kind, &base_lhs);
                 }
                 // Algebra doesn't declare this operator's field —
                 // fall back to the Rust-side scaffold bridge below.
