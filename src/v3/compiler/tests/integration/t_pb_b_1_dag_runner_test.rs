@@ -104,3 +104,42 @@ fn t_pb_b_1_execute_command_boundary_suite_passes_through_runner() {
     );
     run_suite_all_pass(&dag, "suite_execute_command_boundary");
 }
+
+/// R1 gate suites from `tests/fixtures/r1_gates.dag` — same `TestClaim` authority as the
+/// retired `r1_manual_claim_gate_test` / `testgen_structural_coverage_gate_test` shims, now
+/// exercised only through the T-PB-B-1 `lower` + `run_suite_all_pass` path.
+#[test]
+fn r1_gates_manual_claim_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../fixtures/r1_gates.dag"),
+        "src/v3/compiler/tests/fixtures/r1_gates.dag",
+    );
+    run_suite_all_pass(&dag, "manual_claim_suite");
+}
+
+#[test]
+fn r1_gates_lens_composition_associative_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../fixtures/r1_gates.dag"),
+        "src/v3/compiler/tests/fixtures/r1_gates.dag",
+    );
+    run_suite_all_pass(&dag, "lens_composition_associative_suite");
+}
+
+#[test]
+fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../fixtures/r1_gates.dag"),
+        "src/v3/compiler/tests/fixtures/r1_gates.dag",
+    );
+    run_suite_all_pass(&dag, "testgen_structural_coverage_suite");
+}
+
+#[test]
+fn t_pb_b_1_thesis_smoke_batch_1_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../dag/t_pb_b_1_thesis_smoke_batch_1.dag"),
+        "src/v3/compiler/tests/dag/t_pb_b_1_thesis_smoke_batch_1.dag",
+    );
+    run_suite_all_pass(&dag, "suite_thesis_smoke_batch_1");
+}

@@ -1,0 +1,134 @@
+// T-PB-B-1 — thesis smoke batch 1 (`TestClaim` / `TestSuite` as `data`).
+//
+// Runner: `t_pb_b_1_dag_runner_test`. Keep embedded `source` / `file_name` pairs aligned
+// with `thesis_validation_test.rs` receipts this batch retires from Rust (same strings).
+
+module v3.compiler.tests.t_pb_b_1.thesis_smoke_batch_1
+
+import std.verification { TestClaim, TestSuite, TestPredicate }
+
+data claim_t1_3_exhaustive_compiles: TestClaim = {
+  name: "t1_3_exhaustive_match_compiles_cleanly",
+  source: "type AB = A | B\nfn read(x: AB) -> Int = match x { A => 1, B => 2 }\n",
+  file_name: "thesis_batch1_t1_3_exhaustive.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data claim_t1_5_list_descent_compiles: TestClaim = {
+  name: "t1_5_structural_list_descent_is_accepted",
+  source: "fn count(list: List<Int>) -> Int =\n  match list { Empty => 0, Cons(p) => 1 + count(p.tail) }\n",
+  file_name: "thesis_batch1_t1_5_list_descent.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data claim_t2_4_option_match_required_compiles: TestClaim = {
+  name: "t2_4_option_like_values_require_a_match",
+  source: "type Maybe<T> = Some(T) | None\nfn unwrap_or_zero(m: Maybe<Int>) -> Int = match m { Some(value) => value, None => 0 }\n",
+  file_name: "thesis_batch1_t2_4_match_required.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data claim_kf_5_fold_compiles: TestClaim = {
+  name: "kf_5_bounded_fold_compiles_on_supported_primitives",
+  source: "let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)\n",
+  file_name: "thesis_batch1_kf_5_fold.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data claim_t1_4_no_cascade_type_mismatch: TestClaim = {
+  name: "t1_4_type_mismatch_does_not_cascade_fabricated_diagnostics_diag",
+  source: "let x: Bool = 1\nlet y: Int = 2\n",
+  file_name: "thesis_batch1_t1_4_no_cascade.v3",
+  predicate: FailsWithDiagnostic({ kind: TypeMismatch, detail_contains: AnyDetail }),
+  requires: []
+}
+
+data claim_t1_4_no_cascade_y_resolved: TestClaim = {
+  name: "t1_4_type_mismatch_does_not_cascade_fabricated_diagnostics_y",
+  source: "let x: Bool = 1\nlet y: Int = 2\n",
+  file_name: "thesis_batch1_t1_4_no_cascade.v3",
+  predicate: PortHasState("y", Resolved),
+  requires: []
+}
+
+data claim_t2_4_missing_match_diag: TestClaim = {
+  name: "t2_4_option_like_values_without_match_are_rejected_diag",
+  source: "type Maybe<T> = Some(T) | None\nfn bad(m: Maybe<Int>) -> Int = m\n",
+  file_name: "thesis_batch1_t2_4_missing_match.v3",
+  predicate: FailsWithDiagnostic({
+    kind: ResolveError,
+    detail_contains: Contains("declared signature")
+  }),
+  requires: []
+}
+
+data claim_t2_4_missing_match_port: TestClaim = {
+  name: "t2_4_option_like_values_without_match_are_rejected_port",
+  source: "type Maybe<T> = Some(T) | None\nfn bad(m: Maybe<Int>) -> Int = m\n",
+  file_name: "thesis_batch1_t2_4_missing_match.v3",
+  predicate: PortHasState("bad", Unresolved),
+  requires: []
+}
+
+data claim_t2_4_no_unwrap_diag: TestClaim = {
+  name: "t2_4_no_force_unwrap_primitive_exists_diag",
+  source: "type Maybe<T> = Some(T) | None\nfn bad(m: Maybe<Int>) -> Int = unwrap(m)\n",
+  file_name: "thesis_batch1_t2_4_no_unwrap.v3",
+  predicate: FailsWithDiagnostic({
+    kind: ResolveError,
+    detail_contains: Contains("unwrap")
+  }),
+  requires: []
+}
+
+data claim_t2_4_no_unwrap_port: TestClaim = {
+  name: "t2_4_no_force_unwrap_primitive_exists_port",
+  source: "type Maybe<T> = Some(T) | None\nfn bad(m: Maybe<Int>) -> Int = unwrap(m)\n",
+  file_name: "thesis_batch1_t2_4_no_unwrap.v3",
+  predicate: PortHasState("bad", Unresolved),
+  requires: []
+}
+
+data claim_t1_5_missing_descent: TestClaim = {
+  name: "t1_5_missing_descent_is_rejected",
+  source: "fn diverge(x: Int) -> Int = diverge(x)\n",
+  file_name: "thesis_batch1_t1_5_no_descent.v3",
+  predicate: FailsWithDiagnostic({
+    kind: ResolveError,
+    detail_contains: Contains("cannot prove recursion")
+  }),
+  requires: []
+}
+
+data claim_kf_5_unbounded_recursion: TestClaim = {
+  name: "kf_5_unbounded_zero_arg_recursion_is_rejected",
+  source: "fn endless() -> Int = endless()\n",
+  file_name: "thesis_batch1_kf_5_unbounded.v3",
+  predicate: FailsWithDiagnostic({
+    kind: ResolveError,
+    detail_contains: Contains("recursive but has no parameters")
+  }),
+  requires: []
+}
+
+data suite_thesis_smoke_batch_1: TestSuite = {
+  name: "t-pb-b-1/thesis_smoke_batch_1",
+  claims: [
+    claim_t1_3_exhaustive_compiles,
+    claim_t1_5_list_descent_compiles,
+    claim_t2_4_option_match_required_compiles,
+    claim_kf_5_fold_compiles,
+    claim_t1_4_no_cascade_type_mismatch,
+    claim_t1_4_no_cascade_y_resolved,
+    claim_t2_4_missing_match_diag,
+    claim_t2_4_missing_match_port,
+    claim_t2_4_no_unwrap_diag,
+    claim_t2_4_no_unwrap_port,
+    claim_t1_5_missing_descent,
+    claim_kf_5_unbounded_recursion
+  ]
+}
