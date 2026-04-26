@@ -78,6 +78,7 @@ impl Dag {
             params,
             span,
             lane2_workflow: None,
+            emit_participation: None,
         }));
         node_id
     }
@@ -116,6 +117,7 @@ impl Dag {
             paths,
             output,
             span,
+            emit_participation: None,
         }));
         if let Some(shape) = output_shape {
             self.set_port_type(output, shape);

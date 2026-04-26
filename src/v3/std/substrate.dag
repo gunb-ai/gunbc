@@ -318,12 +318,18 @@ type TransformNode {
   span: SourceSpan
 }
 
+// B4.3 — participate in match emission: lowering attaches this on user `match`
+// Branch nodes, not `if`/Bool. Authority at lower time, not `SourceSpan::file`.
+type BranchEmitParticipation
+  = UserMatch
+
 type BranchNode {
   id: NodeId
   input: PortId
   paths: List<BranchPath>
   result_port: PortId
   span: SourceSpan
+  emit_participation: BranchEmitParticipation?
 }
 
 type LoopNode {
@@ -336,6 +342,12 @@ type LoopNode {
   span: SourceSpan
 }
 
+// B4.3 — participate in named-type-alias / shared `primitive_type_id_for_port_shared`
+// emission: lowering attaches on user `fn` and lambda Arrow bodies, not
+// `let`/`refinement` Binds. Authority at lower time, not `SourceSpan::file`.
+type BindEmitParticipation
+  = UserCallable
+
 type BindNode {
   id: NodeId
   name: String
@@ -343,6 +355,7 @@ type BindNode {
   params: List<PortId>
   span: SourceSpan
   lane2_workflow: WorkflowEffect?
+  emit_participation: BindEmitParticipation?
 }
 
 // 🟢 TERMINAL. Behavior is the core runtime computation coproduct.

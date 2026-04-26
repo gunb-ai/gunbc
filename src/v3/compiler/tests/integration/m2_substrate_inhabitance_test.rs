@@ -226,7 +226,7 @@ fn substrate_declares_expected_reflection_surface() {
     );
     assert_eq!(
         record_fields(&dag, "BranchNode"),
-        vec!["id", "input", "paths", "result_port", "span"]
+        vec!["id", "input", "paths", "result_port", "span", "emit_participation"]
     );
     assert_eq!(
         record_fields(&dag, "LoopNode"),
@@ -248,7 +248,8 @@ fn substrate_declares_expected_reflection_surface() {
             "result_port",
             "params",
             "span",
-            "lane2_workflow"
+            "lane2_workflow",
+            "emit_participation"
         ]
     );
     assert_eq!(

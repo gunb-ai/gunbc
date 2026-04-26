@@ -1561,6 +1561,13 @@ impl TransformNode {
     }
 }
 
+/// B4.3 — authority at lowering: user `match` Branch nodes, not `if` on Bool.
+/// See [`BindEmitParticipation`] and `INVARIANTS.md` P2 (no `span.file` as contract).
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum BranchEmitParticipation {
+    UserMatch,
+}
+
 #[derive(Debug, Clone)]
 pub struct BranchNode {
     pub id: NodeId,
@@ -1568,6 +1575,8 @@ pub struct BranchNode {
     pub paths: Vec<Path>,
     pub output: PortId,
     pub span: SourceSpan,
+    /// B4.3: `Some(UserMatch)` iff lowered from a surface `match` (not `if`).
+    pub emit_participation: Option<BranchEmitParticipation>,
 }
 
 impl BranchNode {
@@ -1631,6 +1640,14 @@ impl LoopNode {
     }
 }
 
+/// B4.3 — authority at lowering: user `fn` and lambda `Arrow` body binds; not
+/// refinement predicates, `let`, or builder-only Binds. See
+/// `primitive_type_id_for_port_shared` and `INVARIANTS.md` P2.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum BindEmitParticipation {
+    UserCallable,
+}
+
 #[derive(Debug, Clone)]
 pub struct BindNode {
     pub id: NodeId,
@@ -1647,6 +1664,9 @@ pub struct BindNode {
     /// substrate + `lane2_workflow_effect_at`, writers via
     /// [`Dag::try_register_lane2_workflow_effect`] or lowering).
     pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
+    /// B4.3: set for user `fn` / lambda bodies that participate in named-type-alias
+    /// emission; `None` for refinement, `let`, and synthetic Binds.
+    pub emit_participation: Option<BindEmitParticipation>,
 }
 
 impl BindNode {
