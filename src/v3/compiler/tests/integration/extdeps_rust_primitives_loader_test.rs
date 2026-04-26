@@ -101,6 +101,14 @@ fn dag_new_exposes_rust_pilot_primitives_type_structure() {
 fn rust_pilot_primitives_value_body_is_structural_list() {
     let dag = Dag::new();
     let decl = dag.rust_pilot_primitives().expect("loaded");
+    let rust_primitive_decl_id = match &decl.connective {
+        TypeConnective::Instantiation { arguments, .. } => arguments[0].value,
+        other => panic!("rust_pilot_primitives must be List<RustPrimitive>, got {other:?}"),
+    };
+    let TypeConnective::Disj { variants } = &dag.declaration(rust_primitive_decl_id).connective
+    else {
+        panic!("RustPrimitive must be a Disj");
+    };
     let body = decl
         .value_body
         .as_ref()
@@ -115,10 +123,11 @@ fn rust_pilot_primitives_value_body_is_structural_list() {
             let FieldValue::Variant { constructor, .. } = element else {
                 panic!("rust_pilot_primitives elements must be variants, got {element:?}");
             };
-            dag.declaration(*constructor)
-                .name
-                .as_deref()
-                .expect("variant constructor has a name")
+            variants
+                .iter()
+                .find(|variant| variant.ty == *constructor)
+                .map(|variant| variant.label.as_str())
+                .expect("variant constructor belongs to RustPrimitive")
         })
         .collect();
     assert_eq!(constructors.first().copied(), Some("IntegerPrimitive"));
