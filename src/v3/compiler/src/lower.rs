@@ -2090,9 +2090,7 @@ fn report_dimension_phantom_error(dag: &mut Dag, span: SourceSpan, detail: &str)
     report_declaration_error(
         dag,
         Diagnostic::ResolveError {
-            name: format!(
-                "invalid std `Dimension<Unit, Carrier>` phantom bridge: {detail}"
-            ),
+            name: format!("invalid std `Dimension<Unit, Carrier>` phantom bridge: {detail}"),
             fixes: Vec::new(),
             span,
         },
@@ -7023,7 +7021,10 @@ mod tests {
         SurfaceModule {
             items: vec![SurfaceItem::TypeRecord {
                 name: "Dimension".to_string(),
-                type_params: type_params.iter().map(|param| (*param).to_string()).collect(),
+                type_params: type_params
+                    .iter()
+                    .map(|param| (*param).to_string())
+                    .collect(),
                 fields: vec![SurfaceField {
                     name: "value".to_string(),
                     ty: surface_named_type("Carrier"),
