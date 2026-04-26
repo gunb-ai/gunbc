@@ -40,6 +40,9 @@ data models: List<AnthropicModelSpec> = [
 // -- Anthropic content blocks (provider-specific) ---------------------
 // Extends the shared ContentBlock (llm.dag) with tool-use blocks.
 
+// Wire: each `content[]` object is `type`-discriminated (Anthropic Messages API).
+// Rust serde shape emitted for this sum may not yet byte-match that wire;
+// do not assume transport fidelity without checking emitted `Serialize` — gap.
 type AnthropicContentBlock
   = TextBlock { type: String, text: String }
   | ToolUseBlock { id: String, name: String, input: Json }
@@ -101,6 +104,12 @@ type AnthropicChatMessage {
 // Outputs still JSON-path-project; same downstream closure as OpenAI slice.
 data structural_coverage_gap_anthropic_messages_outputs: List<String> = [
   "closure:rest_typed_response_body|llm.Anthropic.Messages|residue:output_fields_use_json_path_projection"
+]
+
+// Request `messages[].content[]`: Anthropic expects `type`-keyed objects; enum
+// JSON encoding is compiler-owned — track alignment vs wire, do not fabricate.
+data structural_coverage_gap_anthropic_content_block_request_wire: List<String> = [
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicContentBlock|verify:serde_json_encoding_matches_messages_content_array"
 ]
 
 // -- Service: REST transport wiring ------------------------------

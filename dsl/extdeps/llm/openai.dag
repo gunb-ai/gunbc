@@ -76,10 +76,11 @@ type ToolCall {
   function: FunctionCall
 }
 
-// Roles allowed on Chat Completions `messages[]` for this narrow text-only
-// carrier (system / user / assistant). Tool/developer rows are out of scope
-// until tool-call payload types land here — use a gap receipt if you need them.
-type OpenAiChatMessageRole = System | User | Assistant
+// Roles on Chat Completions `messages[]` for this **narrow string-content**
+// carrier: system / developer / user / assistant per OpenAI Chat Completions
+// (https://platform.openai.com/docs/api-reference/chat/create). Tool rows and
+// multimodal `content` arrays are not modeled here — gap-carried below.
+type OpenAiChatMessageRole = System | Developer | User | Assistant
 
 // Chat Completions API message row: wire accepts plain-string `content` for
 // text-only payloads (OpenAI docs). Typed here so callers cannot pass opaque
@@ -93,6 +94,12 @@ type OpenAiChatMessage {
 // `response { 200 => Typed... }` lands. Queryable receipt for lenses/audits.
 data structural_coverage_gap_openai_chat_completion_outputs: List<String> = [
   "closure:rest_typed_response_body|llm.OpenAI.ChatCompletion|residue:output_fields_use_json_path_projection"
+]
+
+// Full Chat Completions message coproduct (tool_call_id, tool role, function,
+// multimodal content parts) is not this row — downstream closure trigger.
+data structural_coverage_gap_openai_chat_message_full_api_surface: List<String> = [
+  "closure:openai_chat_message_full_coproduct|OpenAiChatMessage|missing:tool_role_with_tool_call_id|missing:function_role|missing:multimodal_content_array"
 ]
 
 // -- Service: REST transport wiring ------------------------------
