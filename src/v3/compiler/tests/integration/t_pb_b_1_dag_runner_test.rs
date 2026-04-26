@@ -62,6 +62,27 @@ fn run_suite_all_pass(dag: &Dag, suite_name: &str) {
     );
 }
 
+/// Deletion-guard: assert suite cardinality, **claim `name` order** (structural
+/// `TestClaim` identity, not `data` decl id), and all `Pass` — the receipt carried
+/// by the retired per-gate `#[test]` shims.
+fn run_suite_all_pass_with_expected_claim_names(
+    dag: &Dag,
+    suite_name: &str,
+    expected_claim_names: &[&str],
+) {
+    let results = TestRunner::new(dag).run_suite(suite_name);
+    let actual: Vec<&str> = results.iter().map(|e| e.claim_name.as_str()).collect();
+    let expected: Vec<&str> = expected_claim_names.to_vec();
+    assert_eq!(
+        actual, expected,
+        "suite `{suite_name}`: expected claim `name` list (structural order) to match"
+    );
+    assert!(
+        !results.is_empty() && results.iter().all(|r| r.result == ClaimResult::Pass),
+        "suite `{suite_name}`: expected every claim to pass, got {results:?}"
+    );
+}
+
 #[test]
 fn t_pb_b_1_pipeline_smoke_suite_passes_through_runner() {
     let dag = lower(
@@ -105,16 +126,20 @@ fn t_pb_b_1_execute_command_boundary_suite_passes_through_runner() {
     run_suite_all_pass(&dag, "suite_execute_command_boundary");
 }
 
-/// R1 gate suites from `tests/fixtures/r1_gates.dag` — same `TestClaim` authority as the
-/// retired `r1_manual_claim_gate_test` / `testgen_structural_coverage_gate_test` shims, now
-/// exercised only through the T-PB-B-1 `lower` + `run_suite_all_pass` path.
+/// R1 gate suites from `tests/fixtures/r1_gates.dag` — same `TestClaim` authority and
+/// exact `claim_name` receipt as the retired
+/// `r1_manual_claim_gate_test` / `testgen_structural_coverage_gate_test` shims.
 #[test]
 fn r1_gates_manual_claim_suite_passes_through_runner() {
     let dag = lower(
         include_str!("../fixtures/r1_gates.dag"),
         "src/v3/compiler/tests/fixtures/r1_gates.dag",
     );
-    run_suite_all_pass(&dag, "manual_claim_suite");
+    run_suite_all_pass_with_expected_claim_names(
+        &dag,
+        "manual_claim_suite",
+        &["testgen_manual_claim_is_first_class"],
+    );
 }
 
 #[test]
@@ -123,7 +148,11 @@ fn r1_gates_lens_composition_associative_suite_passes_through_runner() {
         include_str!("../fixtures/r1_gates.dag"),
         "src/v3/compiler/tests/fixtures/r1_gates.dag",
     );
-    run_suite_all_pass(&dag, "lens_composition_associative_suite");
+    run_suite_all_pass_with_expected_claim_names(
+        &dag,
+        "lens_composition_associative_suite",
+        &["lens_composition_associative"],
+    );
 }
 
 #[test]
@@ -132,5 +161,9 @@ fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
         include_str!("../fixtures/r1_gates.dag"),
         "src/v3/compiler/tests/fixtures/r1_gates.dag",
     );
-    run_suite_all_pass(&dag, "testgen_structural_coverage_suite");
+    run_suite_all_pass_with_expected_claim_names(
+        &dag,
+        "testgen_structural_coverage_suite",
+        &["testgen_structural_coverage"],
+    );
 }
