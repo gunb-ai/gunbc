@@ -77,6 +77,11 @@ pub fn infer(dag: &mut Dag) {
                         PortState::Resolved(existing)
                             if type_shapes_equivalent(dag, &existing, &ty) => {}
                         PortState::Resolved(existing) => {
+                            if int_literal_magnitude_narrow_merge(dag, port, &existing, &ty) {
+                                dag.set_port_type(port, ty);
+                                changed = true;
+                                continue;
+                            }
                             if is_retryable_generic_decl(dag, existing.declaration)
                                 || is_retryable_generic_decl(dag, ty.declaration)
                             {
@@ -705,6 +710,30 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
     changed
 }
 
+/// T-Modeling int-lit / PR #806 consumer: allow `i64` default-typed int
+/// literal output ports to refine to a range-backed fixed-width `IntegerPrimitive`
+/// when the magnitude fits, without treating it as a conflicting resolution.
+fn int_literal_magnitude_narrow_merge(
+    dag: &Dag,
+    port: PortId,
+    from: &TypeShape,
+    to: &TypeShape,
+) -> bool {
+    let Some(lit) = literal_int_at(dag, port) else {
+        return false;
+    };
+    let Some(int_shape) = dag.int_shape() else {
+        return false;
+    };
+    if !type_shapes_equivalent(dag, from, &int_shape) {
+        return false;
+    }
+    matches!(
+        int_literal_fits_expected_type(dag, lit, to.declaration),
+        Ok(Some(true))
+    )
+}
+
 enum Decision {
     Set(PortId, TypeShape),
     Fail(PortId, Diagnostic),
@@ -714,6 +743,59 @@ enum Decision {
 fn decide(dag: &Dag, index: usize) -> Decision {
     match &dag.nodes()[index] {
         Behavior::Value(v) => {
+            // `let x: UInt8 = 5` seeds the value port to `UInt8` after lowering;
+            // the Int literal Value node would otherwise re-stamp `Int64` here and
+            // clobber host narrowing. If the port is already a non-`Int` type, only
+            // defer (Retry) when range facts prove the literal fits that type.
+            // Otherwise fail closed with `MagnitudeOutOfRange` (same contract as
+            // call-site narrowing) or fall through so normal mismatch handling
+            // applies when there is no range-backed check.
+            if let LiteralBits::Int(literal) = &v.data {
+                if let PortState::Resolved(existing) = dag.port(v.output).state() {
+                    if let Some(int_sh) = dag.int_shape() {
+                        if !type_shapes_equivalent(dag, existing, &int_sh) {
+                            match int_literal_fits_expected_type(
+                                dag,
+                                *literal,
+                                existing.declaration,
+                            ) {
+                                Ok(Some(true)) => return Decision::Retry,
+                                Ok(Some(false)) => {
+                                    match integer_range_for_decl(dag, existing.declaration) {
+                                        IntegerRangeLookup::Found(range) => {
+                                            return Decision::Fail(
+                                                v.output,
+                                                magnitude_out_of_range(
+                                                    *literal,
+                                                    *existing,
+                                                    range,
+                                                    v.span.clone(),
+                                                ),
+                                            );
+                                        }
+                                        IntegerRangeLookup::Invalid(diag) => {
+                                            return Decision::Fail(v.output, diag);
+                                        }
+                                        IntegerRangeLookup::Missing => {
+                                            return Decision::Fail(
+                                                v.output,
+                                                Diagnostic::ResolveError {
+                                                    name: "(internal: integer literal out of range but no range fact)"
+                                                        .to_string(),
+                                                    span: v.span.clone(),
+                                                    fixes: Vec::new(),
+                                                },
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(diag) => return Decision::Fail(v.output, diag),
+                                Ok(None) => {}
+                            }
+                        }
+                    }
+                }
+            }
             let shape_and_name = match &v.data {
                 // Unconstrained integer literals keep the existing explicit
                 // default to Int64. Expected-type narrowing happens at
@@ -1080,7 +1162,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                                 ) {
                                     return Decision::Fail(t.output, diag);
                                 }
-                                continue;
+                                return Decision::Set(*input_port, *expected_ty);
                             }
                             Ok(Some(false)) | Ok(None) => {}
                             Err(diag) => return Decision::Fail(t.output, diag),
@@ -1896,15 +1978,6 @@ fn resolve_arrow_decl_walk(
     }
 }
 
-fn literal_decl_id(dag: &Dag, literal: &LiteralBits) -> Option<DeclarationId> {
-    let name = match literal {
-        LiteralBits::Int(_) => "Int",
-        LiteralBits::Bool(_) => "Bool",
-        LiteralBits::String(_) => "String",
-    };
-    dag.declaration_by_name(name).map(|decl| decl.id)
-}
-
 fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
     let resolved_decl = match dag.port(port).state() {
         PortState::Resolved(ty) => ty.declaration,
@@ -1917,8 +1990,14 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
         });
     };
     match dag.node(produced_by) {
-        Behavior::Value(v) => Some(PortTypeContext {
-            decl: literal_decl_id(dag, &v.data)?,
+        // Use the port's resolved declaration, not the literal's default
+        // substrate type (`Int` for all int literals). After range narrowing the
+        // literal port may already be `UInt8` / etc.; `literal_decl_id`-style
+        // `Int` here makes `resolve_callable_target` think the argument is still
+        // the default `Int`, producing spurious implicit-template conflicts against
+        // a `UInt8` parameter (e.g. `id_u8(7)`).
+        Behavior::Value(_) => Some(PortTypeContext {
+            decl: resolved_decl,
             subst: SubstStack::new(),
         }),
         Behavior::Transform(t) => match &t.target {
@@ -2291,6 +2370,32 @@ fn callable_instantiation_conflict(
     }
 }
 
+/// `resolve_callable_target` runs before `decide_transform`'s per-input narrowing
+/// pass can restamp a literal port. When the port is still the default `Int`
+/// literal type but the source literal is known to fit a range-backed expected
+/// parameter (via substrate range facts), treat the binding as compatible so
+/// callable resolution can proceed; narrowing + `MagnitudeOutOfRange` remain
+/// authoritative in the transform `decide_transform` path.
+fn range_compatible_default_int_literal_argument(
+    dag: &Dag,
+    input_port: PortId,
+    expected_param_decl: DeclarationId,
+) -> bool {
+    let Some(int_ty) = dag.int_shape() else {
+        return false;
+    };
+    if !matches!(dag.port(input_port).state(), PortState::Resolved(ty) if *ty == int_ty) {
+        return false;
+    }
+    let Some(lit) = literal_int_at(dag, input_port) else {
+        return false;
+    };
+    matches!(
+        int_literal_fits_expected_type(dag, lit, expected_param_decl),
+        Ok(Some(true))
+    )
+}
+
 fn resolve_callable_target(
     dag: &Dag,
     target: DeclarationId,
@@ -2381,13 +2486,18 @@ fn resolve_callable_target(
             let Some(actual_ctx) = port_type_context(dag, *input_port) else {
                 return CallableTargetResolution::Retry;
             };
-            if !bind_expected_decl_to_actual_context(
+            let binds = bind_expected_decl_to_actual_context(
                 dag,
                 expected_input,
                 &actual_ctx,
                 &mut arguments,
                 0,
-            ) {
+            ) || range_compatible_default_int_literal_argument(
+                dag,
+                *input_port,
+                expected_input,
+            );
+            if !binds {
                 return CallableTargetResolution::Fail(callable_instantiation_conflict(
                     dag,
                     target,
@@ -2451,13 +2561,18 @@ fn resolve_callable_target(
                 let Some(actual_ctx) = port_type_context(dag, *input_port) else {
                     return CallableTargetResolution::Retry;
                 };
-                if !bind_expected_decl_to_actual_context(
+                let binds = bind_expected_decl_to_actual_context(
                     dag,
                     expected_input.declaration,
                     &actual_ctx,
                     &mut arguments,
                     0,
-                ) {
+                ) || range_compatible_default_int_literal_argument(
+                    dag,
+                    *input_port,
+                    expected_input.declaration,
+                );
+                if !binds {
                     return CallableTargetResolution::Fail(callable_instantiation_conflict(
                         dag,
                         target,

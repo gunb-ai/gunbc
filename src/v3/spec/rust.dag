@@ -79,6 +79,7 @@ import v3.std.clean_emission {
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
 import std.algebra { BooleanAlgebra }
+import std.integer { UInt8 }
 import v3.std.lookup { Lookup }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
@@ -111,6 +112,15 @@ data rust_int: TypeRealization = {
   language: rust_language
   target: Int
   carrier: "i64"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data rust_uint8: TypeRealization = {
+  language: rust_language
+  target: UInt8
+  carrier: "u8"
   is_copy: true
   fields: []
   cost: 1
