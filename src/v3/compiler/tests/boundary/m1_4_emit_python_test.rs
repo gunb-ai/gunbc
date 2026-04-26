@@ -9,8 +9,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::common::determinism_fixtures::PROGRAM_FIXTURES;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    Behavior, BindNode, BranchNode, LoopBound, LoopNode, Path as DagPath, Port, TransformNode,
-    ValueNode,
+    Behavior, BindEmitParticipation, BindNode, BranchEmitParticipation, BranchNode, LoopBound,
+    LoopNode, Path as DagPath, Port, TransformNode, ValueNode,
 };
 use v3_compiler::emit::{
     emit as shared_emit, emit_module as shared_emit_module,
@@ -368,6 +368,7 @@ class BranchNode:
     paths: list[BranchPath]
     result_port: PortId
     span: SourceSpan
+    emit_participation: typing.Any
 
 @dataclass
 class LoopNode:
@@ -386,6 +387,7 @@ class BindNode:
     result_port: PortId
     params: list[PortId]
     span: SourceSpan
+    emit_participation: typing.Any
 
 class Behavior:
     pass
@@ -549,7 +551,7 @@ fn serialize_transform_node(node: &TransformNode) -> String {
 
 fn serialize_branch_node(node: &BranchNode) -> String {
     format!(
-        "BranchNode(id={}, input={}, paths=[{}], result_port={}, span={})",
+        "BranchNode(id={}, input={}, paths=[{}], result_port={}, span={}, emit_participation={})",
         py_debug(&node.id),
         py_debug(&node.input),
         node.paths
@@ -558,7 +560,8 @@ fn serialize_branch_node(node: &BranchNode) -> String {
             .collect::<Vec<_>>()
             .join(", "),
         py_debug(&node.result_port()),
-        serialize_span(&node.span)
+        serialize_span(&node.span),
+        serialize_opt_branch_emit_participation(node.emit_participation())
     )
 }
 
@@ -596,7 +599,7 @@ fn serialize_loop_bound(bound: &LoopBound) -> String {
 
 fn serialize_bind_node(node: &BindNode) -> String {
     format!(
-        "BindNode(id={}, name={:?}, result_port={}, params=[{}], span={})",
+        "BindNode(id={}, name={:?}, result_port={}, params=[{}], span={}, emit_participation={})",
         py_debug(&node.id),
         node.name,
         py_debug(&node.result_port()),
@@ -605,8 +608,24 @@ fn serialize_bind_node(node: &BindNode) -> String {
             .map(py_debug)
             .collect::<Vec<_>>()
             .join(", "),
-        serialize_span(&node.span)
+        serialize_span(&node.span),
+        serialize_opt_bind_emit_participation(node.emit_participation())
     )
+}
+
+fn serialize_opt_bind_emit_participation(p: Option<BindEmitParticipation>) -> String {
+    match p {
+        None => "None".to_string(),
+        // Valid Python expression embedded in `dag = Dag(...)` (not Rust `Some(Enum::Variant)` syntax).
+        Some(BindEmitParticipation::UserCallable) => "\"UserCallable\"".to_string(),
+    }
+}
+
+fn serialize_opt_branch_emit_participation(p: Option<BranchEmitParticipation>) -> String {
+    match p {
+        None => "None".to_string(),
+        Some(BranchEmitParticipation::UserMatch) => "\"UserMatch\"".to_string(),
+    }
 }
 
 fn serialize_port(port: &Port) -> String {
@@ -631,6 +650,34 @@ fn serialize_span(span: &v3_compiler::diagnostics::SourceSpan) -> String {
 fn py_debug<T: std::fmt::Debug>(value: &T) -> String {
     let inner = format!("{value:?}");
     format!("{inner:?}")
+}
+
+#[test]
+fn serialize_dag_embeds_valid_python_emit_participation_literals() {
+    let bind_src = "fn keep(a: Int, b: Int) -> Int = a";
+    let dag = compile_to_dag(bind_src, "serialize_emit_part_bind.v3").expect("compiles");
+    let s = serialize_dag(&dag);
+    assert!(
+        !s.contains("BindEmitParticipation::"),
+        "serialized DAG must not embed Rust enum paths (invalid Python): {s}"
+    );
+    assert!(
+        s.contains("\"UserCallable\""),
+        "expected Python str literal for user-callable bind participation: {s}"
+    );
+
+    let match_src = "type P = One(Int) | Zero
+fn f(p: P) -> Int = match p { One(_) => 1, Zero => 0 }";
+    let dag = compile_to_dag(match_src, "serialize_emit_part_match.v3").expect("compiles");
+    let s = serialize_dag(&dag);
+    assert!(
+        !s.contains("BranchEmitParticipation::"),
+        "serialized DAG must not embed Rust enum paths (invalid Python): {s}"
+    );
+    assert!(
+        s.contains("\"UserMatch\""),
+        "expected Python str literal for user-match branch participation: {s}"
+    );
 }
 
 // unused_parameters.dag contains recursive helpers (walk_steps etc.) that

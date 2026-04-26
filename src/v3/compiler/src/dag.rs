@@ -49,6 +49,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
+use crate::bootstrap::EXTDEPS_BOOTSTRAP_PATH_KEYS;
 use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
 use crate::types::TypeShape;
 
@@ -1560,6 +1561,13 @@ impl TransformNode {
     }
 }
 
+/// B4.3 — authority at lowering: user `match` Branch nodes, not `if` on Bool.
+/// See [`BranchEmitParticipation`] and `INVARIANTS.md` P2 (no `span.file` as contract).
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum BranchEmitParticipation {
+    UserMatch,
+}
+
 #[derive(Debug, Clone)]
 pub struct BranchNode {
     pub id: NodeId,
@@ -1567,11 +1575,17 @@ pub struct BranchNode {
     pub paths: Vec<Path>,
     pub output: PortId,
     pub span: SourceSpan,
+    /// B4.3: `Some(UserMatch)` iff lowered from a surface `match` (not `if`).
+    pub(crate) emit_participation: Option<BranchEmitParticipation>,
 }
 
 impl BranchNode {
     pub fn result_port(&self) -> PortId {
         self.output
+    }
+
+    pub fn emit_participation(&self) -> Option<BranchEmitParticipation> {
+        self.emit_participation
     }
 }
 
@@ -1630,6 +1644,14 @@ impl LoopNode {
     }
 }
 
+/// B4.3 — authority at lowering: user `fn` and lambda `Arrow` body binds; not
+/// refinement predicates, `let`, or builder-only Binds. See
+/// `primitive_type_id_for_port_shared` and `INVARIANTS.md` P2.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum BindEmitParticipation {
+    UserCallable,
+}
+
 #[derive(Debug, Clone)]
 pub struct BindNode {
     pub id: NodeId,
@@ -1646,6 +1668,11 @@ pub struct BindNode {
     /// substrate + `lane2_workflow_effect_at`, writers via
     /// [`Dag::try_register_lane2_workflow_effect`] or lowering).
     pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
+    /// B4.3: set for user `fn` / lambda bodies that participate in named-type-alias
+    /// emission; `None` for refinement, `let`, and synthetic Binds. Same visibility
+    /// contract as [`Self::lane2_workflow`]: crate-private storage; reads go through
+    /// [`Self::emit_participation`].
+    pub(crate) emit_participation: Option<BindEmitParticipation>,
 }
 
 impl BindNode {
@@ -1664,6 +1691,13 @@ impl BindNode {
     /// [`ValueNode::lane2_workflow`].
     pub fn lane2_workflow(&self) -> Option<&WorkflowEffect> {
         self.lane2_workflow.as_deref()
+    }
+
+    /// B4.3 emit authority: `Some(UserCallable)` iff this bind participates in the
+    /// named-type-alias emission path. Reflected in `src/v3/std/substrate.dag`;
+    /// writers are lowering / inference / `dag::builder` only.
+    pub fn emit_participation(&self) -> Option<BindEmitParticipation> {
+        self.emit_participation
     }
 }
 
@@ -2157,6 +2191,7 @@ pub struct Dag {
 
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_generated::bootstrapped_fixture_dag();
+    assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     dag
 });
@@ -2173,6 +2208,7 @@ static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
 static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag =
         bootstrap_generated_without_parse_surface::bootstrapped_fixture_without_parse_surface_dag();
+    assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     dag
 });
@@ -2823,8 +2859,9 @@ impl Dag {
     }
 
     /// Typed accessor for the `rust_pilot_primitives` data declaration
-    /// from `dsl/extdeps/languages/rust/primitives.dag` (loaded via
-    /// `EXTDEPS_BOOTSTRAP_FIXTURES` in `bootstrap.rs`). Returns the
+    /// from `dsl/extdeps/languages/rust/primitives.dag` (path authorized by
+    /// B4.4 `extdeps_bootstrap_fixture_authority` and the regen host's
+    /// `EXTDEPS_BOOTSTRAP_PATH_KEYS` filter over `EXTDEPS_FILES`). Returns the
     /// top-level `List<RustPrimitive>` declaration whose *type* the
     /// target-grounding engine walks structurally (`RustPrimitive =
     /// IntegerPrimitive | NonIntegerPrimitive {target_name, algebra,
@@ -2848,6 +2885,32 @@ impl Dag {
     /// `Dag.diagnostics`.
     pub fn rust_pilot_primitives(&self) -> Option<&Declaration> {
         self.declaration_by_name("rust_pilot_primitives")
+    }
+
+    /// Virtual paths from the B4.4 extdeps-bootstrap fixture carrier
+    /// (`extdeps_bootstrap_fixture_authority` in
+    /// `src/v3/std/extdeps_bootstrap_fixtures.dag`), in the order fields
+    /// appear on the lowered `ValueBody::Structural` body.
+    ///
+    /// Returns `None` if the declaration is missing, has no structural body, or
+    /// any fixture slot fails shape checks. Returns `Some` even when the product
+    /// has zero fields (degenerate); callers that require a non-empty set should
+    /// assert separately.
+    ///
+    /// Used to keep the regen host's `EXTDEPS_BOOTSTRAP_PATH_KEYS` filter
+    /// aligned with the substrate declaration (compared in this module's bootstrap
+    /// `LazyLock` initializers).
+    pub fn extdeps_bootstrap_fixture_virtual_paths(&self) -> Option<Vec<String>> {
+        let decl = self.declaration_by_name("extdeps_bootstrap_fixture_authority")?;
+        let body = decl.value_body.as_ref()?;
+        let ValueBody::Structural { fields } = body else {
+            return None;
+        };
+        let mut out = Vec::with_capacity(fields.len());
+        for (_slot, fv) in fields {
+            out.push(extdeps_fixture_entry_virtual_path(fv)?);
+        }
+        Some(out)
     }
 
     /// DB-10 (3a.2): read the compile-time value body attached to a
@@ -3372,6 +3435,43 @@ impl Dag {
 impl Default for Dag {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// PB-1-e B4.4: the substrate `extdeps_bootstrap_fixture_authority` carrier and
+/// [`EXTDEPS_BOOTSTRAP_PATH_KEYS`](crate::bootstrap::EXTDEPS_BOOTSTRAP_PATH_KEYS)
+/// must list the same virtual paths in the same order — the const is the regen
+/// filter; the `.dag` declaration is runtime authority.
+fn assert_extdeps_bootstrap_fixture_paths_match_regen_keys(dag: &Dag) {
+    let Some(paths) = dag.extdeps_bootstrap_fixture_virtual_paths() else {
+        panic!(
+            "bootstrap snapshot must expose `extdeps_bootstrap_fixture_authority` as a \
+             structural `ValueBody` with well-formed `virtual_path` fields on each fixture \
+             slot (missing declaration, non-structural body, or malformed fixture records). \
+             Regenerate via `regen_bootstrap` after editing \
+             `src/v3/std/extdeps_bootstrap_fixtures.dag`."
+        );
+    };
+    if !paths
+        .iter()
+        .map(String::as_str)
+        .eq(EXTDEPS_BOOTSTRAP_PATH_KEYS.iter().copied())
+    {
+        panic!(
+            "`EXTDEPS_BOOTSTRAP_PATH_KEYS` must match `extdeps_bootstrap_fixture_authority` \
+             virtual_path fields in order.\n  substrate: {paths:?}\n  regen keys: {EXTDEPS_BOOTSTRAP_PATH_KEYS:?}"
+        );
+    }
+}
+
+fn extdeps_fixture_entry_virtual_path(fv: &FieldValue) -> Option<String> {
+    let FieldValue::Record(fields) = fv else {
+        return None;
+    };
+    let (_, vp) = fields.iter().find(|(l, _)| l == "virtual_path")?;
+    match vp {
+        FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
+        _ => None,
     }
 }
 

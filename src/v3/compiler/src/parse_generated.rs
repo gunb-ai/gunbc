@@ -276,21 +276,32 @@ impl<'a> Parser<'a> {
     /// 3-token lookahead for the record-literal disambiguation in
     /// `parse_data_item`. Returns `true` when the next three tokens
     /// are `{`, then `Ident`, then `:` — the unambiguous start of a
-    /// record literal field. Any other shape (empty `{}`, `{` followed
-    /// by a non-identifier, or `{ ident` without a colon) returns
+    /// record literal field. Empty `{}` (LBrace immediately followed
+    /// by RBrace) also classifies as a record literal so zero-field
+    /// carriers like `data x: ProgramInput = {}` lower to
+    /// `ValueBody::Structural { fields: [] }` rather than falling
+    /// into the brace-skip / `Unparsed` path. `{` followed by a
+    /// non-identifier or `{ ident` without a colon still returns
     /// false and the caller falls back to the brace-skip path.
     fn looks_like_record_literal(&self) -> bool {
         let t0 = self.tokens.get(self.pos);
         let t1 = self.tokens.get(self.pos + 1);
         let t2 = self.tokens.get(self.pos + 2);
-        match (t0, t1, t2) {
-            (Some(a), Some(b), Some(c)) => {
-                matches!(a.kind, TokenKind::LBrace)
-                    && (matches!(b.kind, TokenKind::Ident(_))
-                        || soft_keyword_ident_spelling(&b.kind).is_some())
-                    && matches!(c.kind, TokenKind::Colon)
+        match (t0, t1) {
+            (Some(a), Some(b))
+                if matches!(a.kind, TokenKind::LBrace) && matches!(b.kind, TokenKind::RBrace) =>
+            {
+                true
             }
-            _ => false,
+            _ => match (t0, t1, t2) {
+                (Some(a), Some(b), Some(c)) => {
+                    matches!(a.kind, TokenKind::LBrace)
+                        && (matches!(b.kind, TokenKind::Ident(_))
+                            || soft_keyword_ident_spelling(&b.kind).is_some())
+                        && matches!(c.kind, TokenKind::Colon)
+                }
+                _ => false,
+            },
         }
     }
 

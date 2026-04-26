@@ -30,6 +30,7 @@ import std.verification {
   Compiles,
   DifferentialEquals,
   LensOutputEquals,
+  ProgramInput,
   ProgramOutputBind,
   TestClaim,
   TestSuite
@@ -144,13 +145,13 @@ data testgen_structural_coverage_suite: TestSuite = {
   claims: [testgen_structural_coverage_gate]
 }
 
-// `LensOutputEquals` R1 gate: input `Dag` is reflected from `TestClaim.source` using
-// this compatibility sentinel until empty record data bodies can express `ProgramInput`.
+// `LensOutputEquals` R1 gate: `input_ref` is `ProgramInput {}` — runner reflects the claim
+// program `Dag` from `TestClaim.source` (no name-based program-input bridge).
 data merge_sort_out: Int = 0
 
 data lane_e_diff_out: Int = 0
 
-data r1_lens_output_input_from_program: Int = 0
+data r1_lens_output_program_input: ProgramInput = {}
 
 data r1_merge_sort_program_input: ProgramOutputBind = {
   output_ref: merge_sort_out
@@ -168,7 +169,7 @@ data lens_output_equals_gate: TestClaim = {
   file_name: "r1_lens_output_program.v3",
   predicate: LensOutputEquals(
     named_function_count,
-    r1_lens_output_input_from_program,
+    r1_lens_output_program_input,
     lens_output_equals_expected
   ),
   requires: []
