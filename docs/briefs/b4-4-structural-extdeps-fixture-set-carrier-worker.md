@@ -36,19 +36,19 @@ The fixtures have `DeclarationId`s once loaded — the question is whether a typ
 
 1. **Land typed `extdeps_bootstrap_fixture_authority` (or worker-equivalent) declaration in `src/v3/std/extdeps_bootstrap_fixtures.dag`** (or appended to existing `src/v3/std/substrate.dag` — worker picks; surface choice). Element shape: typed entries naming each fixture's virtual path (e.g., `virtual_path: String` per row), with the path resolving to a `DeclarationRef` post-load. Coproduct dissolution receipt if any new variant lands.
 2. **Migrate `bootstrap.rs::std_fixtures()` to read from the typed declaration** instead of the hardcoded Rust list — at the latest possible point in the bootstrap sequence, so the substrate authority is loaded before its consumer fires.
-3. **Pre-promotion constraint disposition:** if the regen host (`bootstrap_regen_fresh.rs`) cannot read the substrate authority because it runs *before* the Dag is loadable, **the solution is NOT a parallel Rust-const filter alongside the substrate authority** — that's `feedback_parallel_representation_debt` exactly the discipline warns against. Two acceptable shapes:
-   - **(a) Single authority**: regen host reads the substrate authority directly via a minimal sub-loader that loads only the fixture-set declaration before the full bootstrap. If feasible without circularity, this is the dissolution shape.
-   - **(b) Authority + tracked debt**: if the regen host genuinely can't load the substrate authority pre-bootstrap, **add a ROADMAP debt row** for "regen-host loads substrate fixture authority directly" with named dissolution trigger (e.g., "post-promotion full-substrate-load lane"), and **explicitly cite the pre-promotion constraint** in the PR body. The Rust-const-plus-parity-assertion shape is acceptable ONLY as tracked debt with a named dissolution trigger, NOT as a parallel-rep silent acceptance.
-4. **Replace `EXTDEPS_BOOTSTRAP_FIXTURES` Rust constant** — delete or narrow to the regen-host-only filter case (b). Surface the disposition in PR body.
+3. **Pre-promotion constraint disposition.** Shape (a) is the only autonomous worker path; shape (b) is a cross-manager design escalation, NOT a worker call:
+   - **(a) Single authority (autonomous worker path)**: regen host reads the substrate authority directly via a minimal sub-loader that loads only the fixture-set declaration before the full bootstrap. **Worker authors this without further escalation if feasible.**
+   - **(b) Authority + tracked debt** — **NOT autonomous**: if the audit shows shape (a) is genuinely infeasible (e.g., circular dependency, build-time computation requirement), **STOP-AND-ESCALATE to Substrate Manager** for a regen-host-loader sub-lane decision. Per `feedback_construction_over_ratchets` + `feedback_parallel_representation_debt`, the parallel-Rust-const + substrate-authority shape is **only acceptable** with explicit Substrate Manager approval AND a named ROADMAP dissolution trigger. **Do not author shape (b) without that approval citation in the PR body.**
+4. **Replace `EXTDEPS_BOOTSTRAP_FIXTURES` Rust constant** — delete (shape a) or narrow to regen-host-only (shape b, only if Substrate Manager approval citation present). Surface the disposition in PR body.
 5. **Regression test:** bootstrap output is bit-identical (DB-8 must converge); SG-0 census deltas covered if any.
 
 ## Acceptance
 
-- [ ] `EXTDEPS_BOOTSTRAP_FIXTURES` Rust constant deleted **OR** narrowed to regen-host-only with named ROADMAP debt row tracking the dissolution trigger.
+- [ ] `EXTDEPS_BOOTSTRAP_FIXTURES` Rust constant deleted (shape a) **OR** narrowed to regen-host-only with **explicit Substrate Manager approval citation + named ROADMAP debt row** in PR body (shape b).
 - [ ] Typed `extdeps_bootstrap_fixture_authority` (or equivalent) declaration lives in `src/v3/std/`.
 - [ ] `bootstrap.rs::std_fixtures()` reads the typed authority.
 - [ ] Authority audit receipt recorded in PR body.
-- [ ] Pre-promotion constraint disposition recorded explicitly: shape (a) full dissolution or shape (b) authority + tracked debt with named trigger.
+- [ ] Pre-promotion constraint disposition recorded explicitly. Shape (a) is the autonomous default; shape (b) requires the Substrate Manager approval citation per Slice §3.
 - [ ] DB-8 fixed-point converges bit-identically.
 - [ ] SG-0 census deltas covered.
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` / `cargo clippy --all-targets -- -D warnings` / `cargo fmt --all --check` clean.
@@ -57,8 +57,8 @@ The fixtures have `DeclarationId`s once loaded — the question is whether a typ
 ## STOP-AND-ESCALATE
 
 - **The fixtures are non-trivially ordered, conditional, or require build-time computation** that doesn't lower cleanly — surface for design call.
-- **Shape (a) requires a pre-bootstrap minimal loader that introduces a new bootstrap stage** — that's substrate-bootstrap-design, not B4.4 implementation; surface to Substrate Manager.
-- **Shape (b)'s ROADMAP debt row would need to track an indefinite dissolution** (no clean post-promotion mechanism to read substrate from regen host) — surface; B4.4 may need to reframe as "structural authority + permanently-staged regen-host filter" (still better than today's hardcoded Rust list, but less than full dissolution).
+- **Shape (a) is genuinely infeasible** (circular dependency, build-time computation required, etc.) — STOP and escalate to Substrate Manager for a regen-host-loader sub-lane decision. **Do not author shape (b) without explicit Substrate Manager approval.** Per PM tightening on #836: shape (b) cannot be a worker autonomous-path call.
+- **Shape (b) approved by Substrate Manager but ROADMAP debt row would need to track an indefinite dissolution** — re-escalate; permanent parallel-representation is not acceptable even with manager approval.
 - **DB-8 drifts** — STOP immediately.
 
 ## Non-goals
