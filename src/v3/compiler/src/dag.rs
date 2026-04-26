@@ -224,10 +224,9 @@ pub struct PhantomParameter {
 /// variants at M1(3) PR-B-unwind:
 ///
 /// - **`Unparsed(SourceSpan)`** — the parser could not lower the
-///   body (it isn't a record literal shape the M1(3) parser
-///   recognizes). The body's source span is preserved so M2+
-///   parser extensions (list literals, nested records, variant
-///   constructors) can reach in later. User-range declarations
+///   body to a supported top-level value shape. The body's source
+///   span is preserved so sibling parser/substrate extensions (map
+///   literals and any remaining opaque forms) can reach in later. User-range declarations
 ///   carrying `Unparsed` are rejected by
 ///   `reject_user_unparsed_scaffolds`; bootstrap-range declarations
 ///   tolerate it so std/*.dag files whose data bodies still use
@@ -248,9 +247,10 @@ pub struct PhantomParameter {
 /// extensions close class-5 gap #3); `Structural` is the
 /// structurally-grounded form. When the M2+ parser catches up to
 /// nested records / list literals / map literals, those non-record
-/// shapes currently landing in `Unparsed` move to `Structural`
-/// (probably via an extended `FieldValue` payload — see below),
-/// and `Unparsed` is removed via a reverse substrate-extension PR.
+/// shapes currently landing in `Unparsed` move to structural variants
+/// (`ValueBody::List` landed for top-level lists; map bodies remain a
+/// sibling T-Substrate sub-lane), and `Unparsed` is removed via a
+/// reverse substrate-extension PR.
 ///
 /// 4-pattern check on `Structural`:
 /// - Pattern 1 (fact placement): fails. The inline `(label,
@@ -263,22 +263,40 @@ pub struct PhantomParameter {
 ///   scaffolded), not two points in a single algebra.
 /// - Pattern 4 (dimensional): fails. No shared coordinate space.
 ///
-/// Verdict: `Structural` is terminal-at-current-scope, with the
-/// `FieldValue` enum carrying the literal-vs-reference distinction
-/// internally. Future extensions (port-carried values, nested
-/// records) grow `FieldValue`, not `ValueBody`. Bounded by the
-/// Scaffold Boundaries invariant in `INVARIANTS.md`.
+/// Verdict: `Structural` is terminal-at-current-scope for top-level
+/// record bodies, with the `FieldValue` enum carrying nested structural
+/// distinctions internally. Top-level list bodies use `List` below
+/// because they are not records and must not be encoded as anonymous
+/// fields. Bounded by the Scaffold Boundaries invariant in
+/// `INVARIANTS.md`.
 #[derive(Debug, Clone)]
 pub enum ValueBody {
     /// The body exists in source at the given span but is not yet
-    /// lowered to a value sub-DAG. The body's shape (record / map /
-    /// list / variant literal) awaits M2+ parser extension.
+    /// lowered to a value sub-DAG. Map-shaped bodies are the named
+    /// remaining sibling sub-lane (`kernel_algebra_profile`).
     Unparsed(SourceSpan),
     /// The body parsed as a record literal and was inhabitance-
     /// checked against the declared type. Each field holds a
     /// recursively structural `FieldValue`; the label matches a
     /// field on the type's Conj children.
     Structural { fields: Vec<(String, FieldValue)> },
+    /// Top-level list-valued data declaration: `data xs: List<T> = [...]`.
+    /// Elements reuse `FieldValue` so literals, declaration references,
+    /// nested records/lists, and sum constructors carry the same structural
+    /// payloads they carry in record fields.
+    ///
+    /// Dissolution receipt:
+    /// - Pattern 1 (fact placement): fails. A top-level list body is the
+    ///   declaration value itself, not a labeled field of a record.
+    /// - Pattern 2 (variant-is-data): fails. `Vec<FieldValue>` is not a
+    ///   source span, record field list, or scalar payload.
+    /// - Pattern 3 (algebraic form): fails. List bodies and record bodies
+    ///   are different substrate shapes, not points in one algebra.
+    /// - Pattern 4 (dimensional): fails. No shared coordinate space.
+    ///
+    /// Verdict: terminal for top-level list bodies. Nested lists remain
+    /// `FieldValue::List`; map bodies require a future `ValueBody::Map`.
+    List(Vec<FieldValue>),
     /// Scalar-valued data declaration: `data answer: Int = 42`.
     /// Carries `LiteralBits` directly (Int / Bool / String) —
     /// NOT a full `FieldValue`. This is deliberate:
@@ -288,11 +306,10 @@ pub enum ValueBody {
     ///   allowing `ValueBody::Scalar(FieldValue::Record(..))` would
     ///   make illegal/overlapping states representable (two distinct
     ///   encodings of the same top-level record body). Rejected.
-    /// - `FieldValue::Reference`, `List`, `Variant` as top-level
-    ///   data bodies are out of scope for DB-10's acceptance
-    ///   (scalar + structural record only). When those shapes
-    ///   become parseable at the top level, grow `ValueBody` with
-    ///   a new variant — do not widen `Scalar` to swallow them.
+    /// - `FieldValue::Reference` and `Variant` as top-level data
+    ///   bodies are out of scope for DB-10's acceptance. Top-level
+    ///   lists use `ValueBody::List` above; do not widen `Scalar`
+    ///   to swallow non-scalar shapes.
     ///
     /// DB-10 (Lane 3 Stage 3a.2) — `compiler.dag` needs compile-time
     /// scalar constants; previously the parser rejected non-

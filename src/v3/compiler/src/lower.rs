@@ -927,6 +927,14 @@ fn value_body_contains_undischarged_scalar_literal(
         crate::dag::ValueBody::Structural { fields } => {
             structural_fields_contain_undischarged_scalar_literal(dag, expected_type, fields)
         }
+        crate::dag::ValueBody::List(values) => {
+            let Some(element_type) = list_element_type(dag, expected_type) else {
+                return false;
+            };
+            values.iter().any(|value| {
+                field_value_contains_undischarged_scalar_literal(dag, element_type, value)
+            })
+        }
         crate::dag::ValueBody::Unparsed(_) => false,
     }
 }
@@ -2447,7 +2455,7 @@ fn reject_user_unparsed_scaffolds(dag: &mut Dag, strict_from: usize) {
             dag,
             Diagnostic::ResolveError {
                 name: format!(
-                    "data `{name}` has an opaque body — M1(2.8) user code cannot yet use record / list / map literals inside data bodies (see DOWNSTREAM_REQUIREMENTS.md class-5 gap #3)"
+                    "data `{name}` has an opaque body — M1(2.8) user code cannot yet use map literals or opaque bodies inside data declarations (see DOWNSTREAM_REQUIREMENTS.md class-5 gap #3)"
                 ),
                 fixes: Vec::new(),
                 span,
@@ -2590,7 +2598,8 @@ fn lower_data_item(
     // user-facing code sees the error.
     // DB-10 (3a.2): `data x: T = v` bodies lower by shape:
     //   - Record literal → ValueBody::Structural (existing path).
-    //   - Scalar literal  → ValueBody::Scalar (new path, DB-10).
+    //   - List literal   → ValueBody::List (R2 T-Substrate).
+    //   - Scalar literal → ValueBody::Scalar (DB-10).
     //   - Map literal     → ValueBody::Unparsed (parser sub-lane: the
     //     parser emits `SurfaceExpr::Map`; the sibling substrate
     //     sub-lane converts this arm to `ValueBody::Map`).
@@ -2599,6 +2608,9 @@ fn lower_data_item(
     let value_body = match body {
         Some(SurfaceExpr::Record { fields, .. }) => {
             lower_record_to_structural(name, fields, ty_decl_id, body_span, symbols, dag)
+        }
+        Some(SurfaceExpr::List { elements, .. }) => {
+            lower_list_to_value_body(name, elements, ty_decl_id, body_span, symbols, dag)
         }
         Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
             match lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag) {
@@ -2969,6 +2981,43 @@ fn lower_record_to_structural(
     Some(crate::dag::ValueBody::Structural {
         fields: structural_fields,
     })
+}
+
+fn lower_list_to_value_body(
+    data_name: &str,
+    elements: &[SurfaceExpr],
+    ty_decl_id: DeclarationId,
+    body_span: &SourceSpan,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+) -> Option<crate::dag::ValueBody> {
+    let Some(element_type) = list_element_type(dag, ty_decl_id) else {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{data_name}`'s type annotation does not resolve to List<_>; cannot lower list body structurally"
+                ),
+                span: body_span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+        return None;
+    };
+    let mut lowered = Vec::with_capacity(elements.len());
+    for element in elements {
+        lowered.push(lower_structural_field_value(
+            data_name,
+            "$element",
+            element,
+            element_type,
+            symbols,
+            dag,
+            None,
+            &expr_span(element),
+        )?);
+    }
+    Some(crate::dag::ValueBody::List(lowered))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4990,6 +5039,7 @@ fn resolve_data_path(
         crate::dag::ValueBody::Structural { fields } => {
             resolve_structural_field_path(dag, fields, segments, span)
         }
+        crate::dag::ValueBody::List(_) => None,
     }
 }
 
