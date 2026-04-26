@@ -160,6 +160,13 @@ type TestPredicate
       lens_ref: DeclarationRef
     }
 
+// Structural runner input role for predicates whose input is the compiled
+// `TestClaim.source` program. `output_ref` names the bind declaration in that
+// program whose value port is the assertion target for cost/differential lenses.
+type ProgramInput {
+  output_ref: DeclarationRef
+}
+
 // `requires` is the **only** place `ResourceReference` edges attach for a claim
 // (including mock backends when `predicate` is `MockBackedInvariant`). No parallel
 // resource slots on predicate variants — `obligation_for_claim` / materialization
