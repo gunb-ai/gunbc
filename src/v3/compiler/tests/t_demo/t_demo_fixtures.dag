@@ -260,3 +260,35 @@ data t_demo_structural_cost_obligation_suite: TestSuite = {
   name: "t_demo_structural_cost_obligation_suite",
   claims: [t_demo_structural_cost_obligation_gate]
 }
+
+// T-Demo `demo_user_authored_lens_rejects_violating_program` — operationalizes
+// THESIS §"User-defined dimensions". The user-authored dimension under demo:
+// "no top-level named bindings in this program." The lens (`lenses.named_function_count`,
+// 13 lines `.dag` at `src/v3/lenses/named_function_count.dag` — the same GREEN T-LensAPI
+// `user_authored_lens_compiles` lens) walks the program substrate and counts every
+// `Bind` behavior with a non-empty name. The violating program below declares three
+// named bindings (`a`, `b`, `c`); the lens emits `3`; `LensOutputEquals` matches the
+// expected violation count and the gate Passes — the lens correctly rejected the
+// violating program by user-authored rules, not compiler-baked ones. Same predicate
+// surface as `compiler_nerd_ownership_lens_output`; same lens body as T-LensAPI
+// `user_authored_lens_compiles`. The thesis claim under demo is that the proof
+// surface is user-extensible (a new dimension is one `.dag` file); the runner
+// machinery is identical to the built-in dimension demos above.
+data demo_user_authored_lens_violation_count_expected: Int = 3
+
+data demo_user_authored_lens_rejects_violating_program_gate: TestClaim = {
+  name: "demo_user_authored_lens_rejects_violating_program",
+  source: "let a: Int = 1\nlet b: Int = 2\nlet c: Int = 3\n",
+  file_name: "demo_user_authored_lens_violating_program.v3",
+  predicate: LensOutputEquals(
+    named_function_count,
+    r1_lens_output_program_input,
+    demo_user_authored_lens_violation_count_expected
+  ),
+  requires: []
+}
+
+data demo_user_authored_lens_rejects_violating_program_suite: TestSuite = {
+  name: "demo_user_authored_lens_rejects_violating_program_suite",
+  claims: [demo_user_authored_lens_rejects_violating_program_gate]
+}
