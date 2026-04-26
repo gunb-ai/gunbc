@@ -30,6 +30,7 @@ import std.verification {
   Compiles,
   DifferentialEquals,
   LensOutputEquals,
+  ProgramInput,
   TestClaim,
   TestSuite
 }
@@ -143,9 +144,25 @@ data testgen_structural_coverage_suite: TestSuite = {
   claims: [testgen_structural_coverage_gate]
 }
 
-// `LensOutputEquals` R1 gate: input `Dag` is reflected from `TestClaim.source` using the
-// `r1_lens_output_input_from_program` sentinel (see `test_runner::eval_lens_output_equals`).
-data r1_lens_output_input_from_program: Int = 0
+// `LensOutputEquals` R1 gate: input `Dag` is reflected from `TestClaim.source` using
+// the structural `ProgramInput` role.
+data x: Int = 0
+
+data merge_sort_out: Int = 0
+
+data lane_e_diff_out: Int = 0
+
+data r1_lens_output_input_from_program: ProgramInput = {
+  output_ref: x
+}
+
+data r1_merge_sort_program_input: ProgramInput = {
+  output_ref: merge_sort_out
+}
+
+data r1_lane_e_program_input: ProgramInput = {
+  output_ref: lane_e_diff_out
+}
 
 data lens_output_equals_expected: Int = 1
 
@@ -178,7 +195,7 @@ data complexity_merge_sort_is_nlogn_gate: TestClaim = {
   file_name: "r1_merge_sort_pair.v3",
   predicate: LensOutputEquals(
     cost_of,
-    r1_lens_output_input_from_program,
+    r1_merge_sort_program_input,
     complexity_merge_sort_expected_cost
   ),
   requires: []
@@ -193,7 +210,7 @@ data complexity_merge_sort_v3_matches_v2_oracle_gate: TestClaim = {
   predicate: DifferentialEquals(
     v3_program_cost,
     v2_oracle_cost,
-    r1_lens_output_input_from_program
+    r1_merge_sort_program_input
   ),
   requires: []
 }
@@ -209,7 +226,7 @@ data lane_e_bundled_witness_host_emit_parity_gate: TestClaim = {
   predicate: DifferentialEquals(
     v3_program_cost,
     v2_oracle_cost,
-    r1_lens_output_input_from_program
+    r1_lane_e_program_input
   ),
   requires: []
 }
