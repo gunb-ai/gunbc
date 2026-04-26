@@ -74,6 +74,16 @@ This section lists gate names + schema-compilability tags; full `TestClaim` decl
 
 **T-Demo scoping note.** All lanes ship features whole (no compromise per §Goals). T-Demo curates the R1 *narrative* — fixtures and impossible-bug demos selected for visceral audience impact, not exhaustive feature coverage. Audience curation is demo-scoping; feature shipment is lane-scoping.
 
+### R1 Closure Manager
+
+Short-lived close-coordination authority. Per-HEAD audit against `### Lane acceptance — .dag gates` above surfaced 12+ unwired gates under strict reading of "the release gate IS a `.dag` program" per [`THESIS.md §"Tests are structural data"`](THESIS.md). Dedicated dispatch authority for closing those gates without re-owning the original lane scope.
+
+Six mutually-exclusive lanes at the fixture-file / runner-dispatch-arm level (R1C-A T-TestGen schema extensions; R1C-B T-P0 fixtures; R1C-C T-Sub fixture; R1C-D T-PB census-as-`.dag`; R1C-E T-Emit `.dag` wrappers; R1C-F T-Demo user-lens fixture). Critical path: R1C-A → R1C-D; other 4 lanes parallel-dispatchable Day-1.
+
+Manager dissolves on R1 all-gates-green; R2 standing managers spawn post-dissolution per [`docs/r2-structure.md` §"Transition mechanics"](docs/r2-structure.md). No overlap.
+
+Brief: [`docs/briefs/r1-closure-manager.md`](docs/briefs/r1-closure-manager.md).
+
 ### Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures
 
 Day-1 PR #717 landed explicit `LensOutputEquals` dispatch and fixtures with **no inline `TODO` in code**: the items below are the authoritative schedule (T-LensAPI / compiler lowering / schema), not drive-by debt comments.
