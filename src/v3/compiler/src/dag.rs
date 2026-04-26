@@ -3696,5 +3696,4 @@ mod tests {
             dag.diagnostics().iter().collect::<Vec<_>>()
         );
     }
-
 }
