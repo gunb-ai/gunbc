@@ -8,7 +8,7 @@
 - **Program scope sources:**
   - T-Substrate: [`docs/r2-structure.md` §"Goals" item 3](../r2-structure.md) (4 substrate prereq sub-lanes).
   - B4 Identity-Carrier Substrate Pass program: [`docs/briefs/b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-substrate-pass.md).
-- **Cross-program producer:** all four T-Substrate sub-lanes produce carriers consumed by Modeling Manager (3 sub-lanes) + Grounding Manager (Engine sharpened-(b) consumes ValueBody-list/sum).
+- **Cross-program producer/readiness owner:** T-Substrate sub-lanes either produce carriers or validate existing substrate readiness for Modeling Manager (3 sub-lanes) + Grounding Manager (Engine sharpened-(b) consumes ValueBody-list/sum). The Dimensions lane is already substrate-ready by audit, so it is a readiness signal rather than new carrier work.
 - **Watch condition:** if Substrate becomes the new bottleneck (workers idle >7 days waiting for Substrate-authored briefs), split B4 into a dedicated standing **B4 Identity-Carrier Manager** per `docs/r2-structure.md:88` watch trigger. R2 Release Manager surfaces this signal via velocity-tripwire reporting.
 
 ## Program scope
@@ -41,17 +41,17 @@ From [`docs/briefs/b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-s
 
 ## Owned deliverables (through R2 close)
 
-| Sub-lane | Size | Status (at brief authoring) | Carrier shape |
+| Sub-lane | Size | Current status | Carrier shape |
 |---|---|---|---|
-| T-Substrate cardinality-for-int-lit | M | NOT YET AUTHORED | cardinality refinement narrowing |
-| T-Substrate nominal-opaque-for-Secret | M | NOT YET AUTHORED | nominal-type construction restriction |
-| T-Substrate parametric-algebra-for-Dimensions | M | NOT YET AUTHORED | parametric algebra attachment (DB-18 territory; tag mismatch with db-history flagged) |
-| T-Substrate ValueBody-list/sum + std.unicode | L | DISPATCHED (worker brief #790) | top-level list/sum literal lowering + bootstrap/load-set |
-| B4.1 DeclarationRef consumer migration | M | BRIEF LANDED (PR #819, merged 2026-04-26 — §0.2 scope gap resolved in `6f564f54` before merge); B4.1a runner-migration follow-on brief landed same PR. Real residual: first-consumer migration #826 OPEN with regen drift (worker CI-fix, not brief authoring). | existing carrier consumer migration |
-| B4.2 fold-shape carrier | S | NOT YET AUTHORED | template-formal edge identification |
-| B4.3 emit-helper carrier | S | NOT YET AUTHORED | typed role marker on Bind/Branch nodes |
-| B4.4 extdeps-fixture-set carrier | S | NOT YET AUTHORED | typed extdeps-bootstrap-set declaration |
-| B4.5–B4.12 Phase 2 site dissolutions | S each | NOT YET AUTHORED (skeletons only — full content waits for Phase 1 carrier landing) | mechanical consumer migration per site |
+| T-Substrate cardinality-for-int-lit | M | BRIEF LANDED (`t-substrate-cardinality-int-lit-worker.md`, PR #806 merged 2026-04-25); duplicate R2 routing doc closed as redundant (`r2-substrate-cardinality-for-int-lit-subset.md`). | range facts + reconciliation narrowing; Int128/Word128 carrier deferred to sibling sub-lane |
+| T-Substrate nominal-opaque-for-Secret | M | BRIEF AUTHORED (`r2-substrate-nominal-opaque-for-secret-subset.md`; PR #836 merged 2026-04-26) | nominal-type construction/access restriction |
+| T-Substrate parametric-algebra-for-Dimensions | M | CLOSED BY AUDIT (`r2-substrate-parametric-algebra-for-dimensions-subset.md`; PR #836 merged 2026-04-26); substrate already exists, consumer dispatchable. | existing `Declaration.phantom_params` + `phantom_unit_mismatch` carrier |
+| T-Substrate ValueBody-list/sum + std.unicode | L | BRIEF LANDED (`t-substrate-valuebody-list-worker.md`, PR #790 merged 2026-04-25) | top-level list/sum literal lowering + bootstrap/load-set |
+| B4.1 DeclarationRef consumer migration | M | LANDED (PR #826 merged 2026-04-26; first consumer migration complete after prior B4.1/B4.1a brief landing). | existing carrier consumer migration |
+| B4.2 fold-shape carrier | S | BRIEF AUTHORED (`b4-2-structural-fold-shape-carrier-worker.md`; PR #836 merged 2026-04-26) | structural fold-eligibility query/carrier decision |
+| B4.3 emit-helper carrier | S | LANDED (PR #824 merged 2026-04-26) | typed role marker on Bind/Branch nodes |
+| B4.4 extdeps-fixture-set carrier | S | LANDED (PR #825 merged 2026-04-26) | typed extdeps-bootstrap-set declaration |
+| B4.5–B4.12 Phase 2 site dissolutions | S each | QUEUE AUTHORED (`b4-phase-2-site-dissolution-queue.md`); implementation briefs dispatch as Phase 1 carriers land. | mechanical consumer migration per site |
 
 ## Cross-program dependencies
 
@@ -89,17 +89,27 @@ From [`docs/briefs/b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-s
 
 Authored:
 - B4 program brief (this document is the orchestrator; B4 program brief is in [`b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-substrate-pass.md))
-- B4.1 DeclarationRef consumer migration ([`b4-1-declarationref-consumer-migration-worker.md`](b4-1-declarationref-consumer-migration-worker.md)) — **landed PR #819** (§0.2 scope gap resolved in `6f564f54` before merge per Director receipt on inbox #828); **B4.1a runner-migration brief landed same PR** as named follow-on residual; first-consumer migration #826 OPEN with regen drift (worker CI-fix, independent of brief authoring)
-- T-Substrate ValueBody-list/sum (PR #790 worker brief)
+- B4.1 DeclarationRef consumer migration ([`b4-1-declarationref-consumer-migration-worker.md`](b4-1-declarationref-consumer-migration-worker.md)) — brief landed PR #819; first-consumer migration landed PR #826.
+- B4.2 structural fold-shape (`b4-2-structural-fold-shape-carrier-worker.md`) — authored PR #836; not yet landed as implementation.
+- B4.3 structural emit-helper carrier (`b4-3-structural-emit-helper-carrier-worker.md`) — landed PR #824.
+- B4.4 structural extdeps-fixture-set carrier (`b4-4-structural-extdeps-fixture-set-carrier-worker.md`) — landed PR #825.
+- T-Substrate cardinality-for-int-lit (`t-substrate-cardinality-int-lit-worker.md`) — landed PR #806; `r2-substrate-cardinality-for-int-lit-subset.md` is a redundant routing/audit receipt, not a dispatch target.
+- T-Substrate nominal-opaque-for-Secret (`r2-substrate-nominal-opaque-for-secret-subset.md`) — authored PR #836.
+- T-Substrate parametric-algebra-for-Dimensions (`r2-substrate-parametric-algebra-for-dimensions-subset.md`) — closed by audit; producer work not needed.
+- T-Substrate ValueBody-list/sum (`t-substrate-valuebody-list-worker.md`) — brief landed PR #790.
 
-Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
-- T-Substrate sub-lane scoping briefs (3): cardinality-for-int-lit, nominal-opaque-for-Secret, parametric-algebra-for-Dimensions
-- B4.2, B4.3, B4.4 Phase 1 carriers
-- B4.5–B4.12 Phase 2 site dissolution skeletons
+Pending — post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
+- B4.2 implementation dispatch (brief exists; implementation not yet landed).
+- B4.5–B4.12 Phase 2 implementation briefs that become live as Phase 1 carriers land; queue skeleton exists in `b4-phase-2-site-dissolution-queue.md`.
+- Future T-Substrate sibling lanes explicitly excluded from the four R2 prereqs, including Int128/Word128 carrier widening and `ValueBody::Map`, when/if R2 scope admits them.
 
 ## Working state (fill on spawn)
 
-Sub-lane / Phase status table refreshes here as work lands. Pre-spawn placeholder.
+Spawn refresh, 2026-04-26:
+
+- T-Substrate: cardinality-for-int-lit producer landed (#806); nominal-opaque producer brief exists; parametric-algebra producer closed by audit because `phantom_params` already exists; ValueBody-list/sum brief landed (#790).
+- B4 Phase 1: B4.1, B4.3, B4.4 landed; B4.2 brief exists and remains the immediate unlanded Phase 1 implementation lane.
+- B4 Phase 2: queue exists; dispatch follows Phase 1 carrier disposition.
 
 ## Cross-refs
 
