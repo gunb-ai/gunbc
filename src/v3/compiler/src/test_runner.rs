@@ -1700,8 +1700,8 @@ impl<'a> TestRunner<'a> {
             None
         };
 
-        let reflects_claim_program = program_input.is_some()
-            || input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL);
+        let reflects_claim_program =
+            program_input.is_some() || input_decl.name.as_deref() == Some(PROGRAM_INPUT_SENTINEL);
         let input_field = if reflects_claim_program {
             // P2: `id_space` must be the same `Dag` `apply_lens_declaration` will use for the lens
             // (canonical compile, claim `program_dag`, or merged fixture `self.dag`) so reflected
