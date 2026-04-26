@@ -33,13 +33,13 @@ The fix is one-site, structural, and parallels existing `variant_parent_info` ca
    ```
    with the `let Some(..) = .. else { return Err(..) }` shape used at `emit.rs:1791` and `rust_target.rs:4325`. The outer function's signature already returns `Result<_, EmitError>`.
 3. Verify call-graph: every caller of the Go branch-emission path already propagates `Result`. No signature change needed.
-4. Add a regression test: construct a `Dag` with a variant declaration that has no `Disjunction` parent; assert the Go emitter returns `EmitError::VariantParentNotFound`, not a `Ok(_)` with a bogus identifier. Hermetic per `TESTING.md`.
+4. **Regression test — required.** Add a hermetic unit test in the existing `#[cfg(test)] mod tests` at `emit.rs:3124`. Precedent: the module has 12 tests, several using `compile_to_dag(source, filename)` as the harness (e.g., `go_struct_fields_render_with_separators` at `:3143`, `shared_walk_to_disj_finds_match_scrutinee_sum_type` at `:3195`). Construct a Dag whose Go-emit path hits a variant whose `variant_parent_info` returns `None` (worker's call on the cleanest construction — direct Dag manipulation, fixture source string, or `BranchPattern` exercise); assert the emit returns `EmitError::VariantParentNotFound`. Hermetic per `TESTING.md`. **Only if construction proves materially harder than the existing precedent suggests** (i.e., the failure case can't be reached through any reasonable `compile_to_dag`-shaped or direct-Dag construction), surface as STOP-AND-ESCALATE — that surfacing itself is then a `feedback_emitter_workaround_is_gap_symptom` substrate signal worth a ROADMAP debt row.
 
 ## Acceptance
 
 - [ ] `EmitError::VariantParentNotFound` (or equivalent) added; existing `EmitError` shape preserved.
 - [ ] `emit.rs:1456-1464` no longer falls back to a literal string; fails closed via `Result`.
-- [ ] Regression test asserts the new error variant is returned for the missing-parent case.
+- [ ] Regression test added to `emit.rs` `#[cfg(test)] mod tests` (precedent: `:3124` onwards) asserts `EmitError::VariantParentNotFound` for the missing-parent case.
 - [ ] `cargo test --workspace --exclude v2-compiler-tests` passes.
 - [ ] `cargo clippy --all-targets -- -D warnings` clean.
 - [ ] `cargo fmt --all --check` clean.
