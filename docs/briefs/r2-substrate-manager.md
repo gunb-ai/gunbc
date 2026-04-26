@@ -8,7 +8,7 @@
 - **Program scope sources:**
   - T-Substrate: [`docs/r2-structure.md` §"Goals" item 3](../r2-structure.md) (4 substrate prereq sub-lanes).
   - B4 Identity-Carrier Substrate Pass program: [`docs/briefs/b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-substrate-pass.md).
-- **Cross-program producer:** all four T-Substrate sub-lanes produce carriers consumed by Modeling Manager (3 sub-lanes) + Grounding Manager (Engine sharpened-(b) consumes ValueBody-list/sum).
+- **Cross-program producer/readiness owner:** T-Substrate sub-lanes either produce carriers or validate existing substrate readiness for Modeling Manager (3 sub-lanes) + Grounding Manager (Engine sharpened-(b) consumes ValueBody-list/sum). The Dimensions lane is already substrate-ready by audit, so it is a readiness signal rather than new carrier work.
 - **Watch condition:** if Substrate becomes the new bottleneck (workers idle >7 days waiting for Substrate-authored briefs), split B4 into a dedicated standing **B4 Identity-Carrier Manager** per `docs/r2-structure.md:88` watch trigger. R2 Release Manager surfaces this signal via velocity-tripwire reporting.
 
 ## Program scope
@@ -51,7 +51,7 @@ From [`docs/briefs/b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-s
 | B4.2 fold-shape carrier | S | BRIEF AUTHORED (`b4-2-structural-fold-shape-carrier-worker.md`; PR #836 merged 2026-04-26) | structural fold-eligibility query/carrier decision |
 | B4.3 emit-helper carrier | S | LANDED (PR #824 merged 2026-04-26) | typed role marker on Bind/Branch nodes |
 | B4.4 extdeps-fixture-set carrier | S | LANDED (PR #825 merged 2026-04-26) | typed extdeps-bootstrap-set declaration |
-| B4.5–B4.12 Phase 2 site dissolutions | S each | NOT YET AUTHORED (skeletons only — full content waits for Phase 1 carrier landing) | mechanical consumer migration per site |
+| B4.5–B4.12 Phase 2 site dissolutions | S each | QUEUE AUTHORED (`b4-phase-2-site-dissolution-queue.md`); implementation briefs dispatch as Phase 1 carriers land. | mechanical consumer migration per site |
 
 ## Cross-program dependencies
 
@@ -100,7 +100,7 @@ Authored:
 
 Pending — post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
 - B4.2 implementation dispatch (brief exists; implementation not yet landed).
-- B4.5–B4.12 Phase 2 site dissolution skeletons and any implementation briefs that become live as Phase 1 carriers land.
+- B4.5–B4.12 Phase 2 implementation briefs that become live as Phase 1 carriers land; queue skeleton exists in `b4-phase-2-site-dissolution-queue.md`.
 - Future T-Substrate sibling lanes explicitly excluded from the four R2 prereqs, including Int128/Word128 carrier widening and `ValueBody::Map`, when/if R2 scope admits them.
 
 ## Working state (fill on spawn)
