@@ -1,5 +1,18 @@
 # R1 Surface Manager Brief
 
+> **🔄 SUPERSEDED 2026-04-26 by [`r1-closure-manager.md`](r1-closure-manager.md).**
+> R1 gate-close authority now lives with the R1 Closure Manager (PR #847)
+> under strict-interpretation reading: every gate in `ROADMAP.md §"Lane
+> acceptance — .dag gates"` must be a `.dag` `TestClaim` that compiles AND
+> evaluates true. Implementation receipts are necessary but **not sufficient**.
+> The "Working state" section below was originally written under a more
+> permissive reading where receipt-landed counted as gate-closed; that
+> conflation is corrected in the table — implementation receipts and `.dag`
+> gate status are now tracked as separate columns. Gates remain owned by
+> R1 Closure Manager lanes (R1C-A through R1C-F) until they evaluate.
+> This brief stays in-tree as a historical receipt of the lane sequencing;
+> new R1 dispatch happens under R1 Closure Manager, not here.
+
 ## Orient before reading
 
 - Product direction: [PR #672](https://github.com/gunb-ai/gunbc/pull/672)
@@ -120,45 +133,39 @@ for a principal engineer to verify in one evening.
 
 ## Working state
 
-Lane-owner dispatch status (update as sub-deliverables close):
+> **Reading note (2026-04-26 SUPERSEDED amendment).** Implementation receipts
+> (`Impl` column) record that the underlying feature work is in-tree. `.dag`
+> gate status (`Gate` column) records whether the corresponding `TestClaim`
+> in `ROADMAP.md §"Lane acceptance — .dag gates"` exists, compiles, and
+> evaluates true under the strict-interpretation reading. Gate columns are
+> closed only when both halves are true; the implementation-only `[x]` markings
+> below are deliberately separated from gate close so the conflation that
+> existed before this amendment doesn't recur. Gate-close authority is
+> R1 Closure Manager (`docs/briefs/r1-closure-manager.md`).
 
-**T-P0 (closed on current ancestry):**
-- [x] `repeat_string` fix landed (brief: `p0-render-repeat-string.md`)
-- [x] `REST_OPS` drift resolved (brief: `p0-rest-ops-drift.md`)
-- [x] `no_profile_sentinel` audit completed (brief: `p0-bug-no-profile-sentinel.md`)
+**T-P0 — implementation closed on current ancestry; `.dag` gates owned by R1 Closure R1C-B:**
 
-**T-Sub:**
-- [x] `sub_match_over_user_sum` gate compiles + passes (Day-1)
-      (PR #702, merged 2026-04-24 — `TestClaim` + suite in
-      `src/v3/compiler/tests/fixtures/r1_gates.dag` run through
-      `TestRunner`; #690 prior receipt confirmed structural match)
-- [x] `sub_type_alias_where_lowers` parse + lower receipt landed
-      (DB-11 parse + lower substrate landed in PR #703, 2026-04-24 —
-      `SurfaceItem::TypeAlias` carries `refinement`; formal `.dag`
-      gate remains tied to the [ext] predicate path if release wants
-      a first-class `TestClaim` for this surface)
-- [ ] `sub_charclass_in_std_unicode` phase-2 handed off with concrete
-      substrate/load-set blockers
-      (phase-1 tokenizer half landed in PR #693 + ROADMAP row #706,
-      2026-04-24 — `CharClass` + `char_in_class` in `std.unicode`,
-      tokenizer calls `tokenize_char_class::byte_matches`; quiet-gull-882
-      confirmed structural `CharClass` consumption from lowered
-      `tokenize.dag` is blocked by top-level `ValueBody` list/sum support
-      plus a `std.unicode` bootstrap/load-set decision)
+| Item | Impl | Gate (`.dag` TestClaim) | Owner |
+|---|---|---|---|
+| `repeat_string` | [x] (brief: `p0-render-repeat-string.md`) | [ ] `p0_repeat_string_correct` `[Day 1]` | R1C-B |
+| `REST_OPS` drift | [x] (brief: `p0-rest-ops-drift.md`) | [ ] `p0_rest_ops_aligned` `[ext]` | R1C-B |
+| `no_profile_sentinel` | [x] (brief: `p0-bug-no-profile-sentinel.md`) | [ ] `p0_no_fabrication_sentinel` `[ext]` | R1C-B |
 
-**T-Emit:**
-- [x] Rust harden — `emit_rust_fixtures_rustc_green` gate test landed
-      (PR #694, merged 2026-04-24 — `#[ignore]`d named gate sweeps
-      9 program fixtures + 5 reflected-module fixtures through the
-      batched rustc roundtrip; baseline `rustc_roundtrip_*` tests all
-      green)
-- [ ] PR #650 generic-bound fidelity — `emit_generic_bounds_survive`
-      passes (PR #676 in review — session `vivid-cat-794`)
-- [ ] Python/Go reconcile — `emit_omni_demo_fixtures_green` passes
-      across all three targets (cross-target progress 2026-04-24:
-      `Behavior::Loop` emission for Python + Go in #692; Python
-      operator-realization parity for `*` / `!=` / int comparisons
-      in #691; omni gate still pending)
+**T-Sub — `.dag` gates: 1 closed, 1 receipt-only, 1 substrate-deferred:**
+
+| Item | Impl | Gate (`.dag` TestClaim) | Owner |
+|---|---|---|---|
+| `sub_match_over_user_sum` (Day-1) | [x] PR #702 | [x] `TestClaim` + suite in `r1_gates.dag` runs through `TestRunner` | gate evaluates; closed |
+| `sub_type_alias_where_lowers` (`[ext]`) | [x] PR #703 (DB-11 parse+lower) | [ ] `[ext]` predicate path TestClaim **not yet authored** | R1C-C (#879 in flight) |
+| `sub_charclass_in_std_unicode` phase-2 | [x partial] PR #693 (phase-1 tokenizer half) | [ ] reclassified to **R2 T-Substrate** per 2026-04-24 amendment (Class 5 Gap 3) — no longer an R1 gate | R2 Substrate Manager |
+
+**T-Emit — implementation in flight; all three `.dag` gates owned by R1 Closure R1C-E:**
+
+| Item | Impl | Gate (`.dag` TestClaim) | Owner |
+|---|---|---|---|
+| Rust harden | [x] PR #694 (host-harness gate test, `#[ignore]`-able sweep) | [ ] `emit_rust_fixtures_rustc_green` `[ext: ExecuteCommand]` — host harness is **not** the `.dag` gate; R1C-E wraps it | R1C-E |
+| Generic-bound fidelity | [partial] PR #676 in review | [ ] `emit_generic_bounds_survive` `[ext]` | R1C-E |
+| Python/Go reconcile | [partial] #691 (Python parity) + #692 (`Behavior::Loop`) | [ ] `emit_omni_demo_fixtures_green` `[ext: ForAllTargets + ExecuteCommand]` | R1C-E |
 
 Decisions log (append as they happen):
 
