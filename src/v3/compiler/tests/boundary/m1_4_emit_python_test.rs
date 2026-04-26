@@ -599,7 +599,7 @@ fn serialize_loop_bound(bound: &LoopBound) -> String {
 
 fn serialize_bind_node(node: &BindNode) -> String {
     format!(
-        "BindNode(id={}, name={:?}, result_port={}, params=[{}], span={})",
+        "BindNode(id={}, name={:?}, result_port={}, params=[{}], span={}, emit_participation={})",
         py_debug(&node.id),
         node.name,
         py_debug(&node.result_port()),
@@ -608,8 +608,25 @@ fn serialize_bind_node(node: &BindNode) -> String {
             .map(py_debug)
             .collect::<Vec<_>>()
             .join(", "),
-        serialize_span(&node.span)
+        serialize_span(&node.span),
+        serialize_opt_bind_emit_participation(&node.emit_participation)
     )
+}
+
+fn serialize_opt_bind_emit_participation(p: &Option<BindEmitParticipation>) -> String {
+    match p {
+        None => "None".to_string(),
+        Some(BindEmitParticipation::UserCallable) => "Some(BindEmitParticipation::UserCallable)"
+            .to_string(),
+    }
+}
+
+fn serialize_opt_branch_emit_participation(p: &Option<BranchEmitParticipation>) -> String {
+    match p {
+        None => "None".to_string(),
+        Some(BranchEmitParticipation::UserMatch) => "Some(BranchEmitParticipation::UserMatch)"
+            .to_string(),
+    }
 }
 
 fn serialize_port(port: &Port) -> String {
