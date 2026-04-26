@@ -16,6 +16,7 @@ import std.verification {
   FailsWithDiagnostic,
   LensOutputEquals,
   PortHasState,
+  ProgramOutputBind,
   Resolved,
   TestClaim,
   TestSuite,
@@ -40,7 +41,19 @@ fn named_function_count(d: Dag) -> Int =
 fn cost_of(d: Dag, port_id: PortId) -> Lookup<Int> =
   miss_int_lookup()
 
+data complexity_demo_out: Int = 0
+
+data total: Int = 0
+
 data r1_lens_output_input_from_program: Int = 0
+
+data t_demo_complexity_program_input: ProgramOutputBind = {
+  output_ref: complexity_demo_out
+}
+
+data t_demo_parallelism_program_input: ProgramOutputBind = {
+  output_ref: total
+}
 
 data t_demo_complexity_cost_expected: Int = 3
 
@@ -78,7 +91,7 @@ data compiler_nerd_complexity_lens_output: TestClaim = {
   file_name: "fixture_compiler_nerd_canonical_complexity.v3",
   predicate: LensOutputEquals(
     cost_of,
-    r1_lens_output_input_from_program,
+    t_demo_complexity_program_input,
     t_demo_complexity_cost_expected
   ),
   requires: []
@@ -102,7 +115,7 @@ data compiler_nerd_parallelism_lens_output: TestClaim = {
   file_name: "fixture_compiler_nerd_canonical_parallelism.v3",
   predicate: LensOutputEquals(
     cost_of,
-    r1_lens_output_input_from_program,
+    t_demo_parallelism_program_input,
     t_demo_parallelism_cost_expected
   ),
   requires: []
