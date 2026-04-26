@@ -759,7 +759,7 @@ data go_int_div: OperatorRealization = {
   language: go_language
   target: Int
   op: OrderedRing.div
-  carrier: "({lhs} / {rhs})"
+  carrier: "v3intdiv({lhs}, {rhs})"
   cost: 1
 }
 
@@ -950,6 +950,15 @@ data go_list_instantiation: TypeInstantiationRealization = {
   language: go_language
   target: List
   carrier: "[]{element}"
+  cost: 1
+}
+
+// v3 `type Result<ok, err> = ...` in `std/errors` — Go uses a pointer-or tagged struct.
+// `go_source_filtering` omits `dsl/std/`; `v3intdiv` + this carrier match `struct{ … }` prelude.
+data go_result_instantiation: TypeInstantiationRealization = {
+  language: go_language
+  target: Result
+  carrier: "struct{ Ok *{key}; Err *{value} }"
   cost: 1
 }
 

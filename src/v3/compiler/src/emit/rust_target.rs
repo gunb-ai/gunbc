@@ -2757,9 +2757,13 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         .map(|decl| ctx.render_function_declaration(decl))
         .collect::<Result<Vec<_>, _>>()?;
 
-    // After user `type`/`enum` items (e.g. `DivError` from `errors.dag`); `rust_int_div`
-    // uses this in emitted expressions.
-    const RUST_V3_INT_DIV_PRELUDE: &str = r#"fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
+    // `DivError` and other `dsl/std` types are excluded from `type_decls` (see
+    // `rust_source_filtering`); the division helper must still compile, so the
+    // v3 error enum + `__v3_int_div` are emitted as a small prelude. Names
+    // align with `std.errors.DivError` for `Result<…, DivError>` `rust_result_instantiation`.
+    const RUST_V3_INT_OP_PRELUDE: &str = r#"#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum DivError { DivideByZero, Overflow }
+fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
     if r == 0 {
         return ::core::result::Result::Err(DivError::DivideByZero);
     }
@@ -2772,11 +2776,10 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
 
     let type_defs = join_rendered(&rendered_types, " ");
     let function_defs = join_rendered(&rendered_functions, " ");
-    let mut sections: Vec<String> = Vec::new();
+    let mut sections: Vec<String> = vec![RUST_V3_INT_OP_PRELUDE.to_string()];
     if !type_defs.is_empty() {
         sections.push(type_defs);
     }
-    sections.push(RUST_V3_INT_DIV_PRELUDE.to_string());
     if !function_defs.is_empty() {
         sections.push(function_defs);
     }

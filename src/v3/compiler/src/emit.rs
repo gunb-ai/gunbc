@@ -1082,6 +1082,12 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
         .filter(|decl| {
+            !decl
+                .name
+                .as_deref()
+                .is_some_and(|n| n == "Result" && decl.span.file.ends_with("errors.dag"))
+        })
+        .filter(|decl| {
             matches!(
                 decl.connective,
                 TypeConnective::Conj { .. } | TypeConnective::Disj { .. }
@@ -1146,6 +1152,11 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     if mode == EmitMode::Program {
         sections.push("import \"fmt\"".to_string());
     }
+    // `DivError` / `Result` are under `dsl/std/`, which `go_source_filtering` omits. Emit
+    // minimal v3 hooks so `v3intdiv` and `struct{ Ok *T; Err *E }` compile.
+    sections.push(
+        "type DivError int\nconst (\n  Div0 DivError = iota\n  Div1\n)\n\nfunc v3intdiv(l, r int64) struct{ Ok *int64; Err *DivError } {\n  if r == 0 { e := Div0; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  if l == -9223372036854775808 && r == -1 { e := Div1; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  q := l / r; return struct{ Ok *int64; Err *DivError }{Ok: &q} }\n".to_string(),
+    );
 
     let rendered_types = type_decls
         .iter()
