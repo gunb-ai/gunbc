@@ -1,12 +1,12 @@
 //! **Layer:** integration
 //!
-//! T-Ground-Engine Phase-1 unblock (Path 2): `dsl/extdeps/languages/rust/
-//! primitives.dag` is loaded into the bootstrap Dag; `Dag::rust_pilot_primitives`
-//! returns a walkable type-structure declaration. The 10-element pilot
-//! enumeration is NOT walkable as structured records until R2 T-Substrate's
-//! 4th sub-lane lands the top-level `ValueBody::List`/aggregate extension;
-//! this test pins the currently-available type-structure access and
-//! explicitly records the `ValueBody::Unparsed` boundary.
+//! T-Ground-Engine Phase-1 unblock (Path 2): B4.4 extdeps-bootstrap fixtures
+//! (`rust/primitives.dag`, `go/primitives.dag`) load into the bootstrap Dag;
+//! `Dag::rust_pilot_primitives` / `Dag::go_spec_predeclared_primitives` return
+//! walkable type-structure declarations. Top-level `data … = […]` list bodies
+//! stay `ValueBody::Unparsed` until R2 T-Substrate's 4th sub-lane lands the
+//! top-level list/aggregate extension; these tests pin type-structure access
+//! and the `Unparsed` boundary.
 
 use v3_compiler::dag::{Dag, TypeConnective, ValueBody};
 
@@ -100,6 +100,74 @@ fn dag_new_exposes_rust_pilot_primitives_type_structure() {
 }
 
 #[test]
+fn go_spec_predeclared_primitives_type_structure_is_partitioned() {
+    let dag = Dag::new();
+    assert!(dag.diagnostics().is_empty(), "bootstrap diagnostics: {:?}", dag.diagnostics());
+
+    let decl = dag
+        .go_spec_predeclared_primitives()
+        .expect("go_spec_predeclared_primitives must load from EXTDEPS_BOOTSTRAP_FIXTURES");
+
+    assert_eq!(
+        decl.span.file,
+        "dsl/extdeps/languages/go/primitives.dag",
+        "go_spec_predeclared_primitives span must point at the authority file"
+    );
+
+    let go_primitive_decl_id = match &decl.connective {
+        TypeConnective::Instantiation { arguments, .. } => {
+            assert_eq!(arguments.len(), 1, "List<GoPrimitive> expects one arg");
+            arguments[0].value
+        }
+        other => panic!(
+            "go_spec_predeclared_primitives must be List<GoPrimitive> Instantiation, got {:?}",
+            other
+        ),
+    };
+
+    let go_primitive = dag.declaration(go_primitive_decl_id);
+    assert_eq!(go_primitive.name.as_deref(), Some("GoPrimitive"));
+    let variants = match &go_primitive.connective {
+        TypeConnective::Disj { variants } => variants,
+        other => panic!("GoPrimitive must be a Disj, got {:?}", other),
+    };
+    let labels: Vec<&str> = variants.iter().map(|f| f.label.as_str()).collect();
+    assert_eq!(
+        labels,
+        vec![
+            "GoIntegerPrimitive",
+            "GoIntegerAliasPrimitive",
+            "GoFloatPrimitive",
+            "GoComplexPrimitive",
+            "GoStringPrimitive",
+            "GoBooleanPrimitive",
+            "GoUnitPrimitive",
+        ],
+        "Lesson-5 partition: alias / float / complex axes are separate sum variants"
+    );
+
+    let int_payload = dag.declaration(variants[0].ty);
+    let int_fields: Vec<&str> = match &int_payload.connective {
+        TypeConnective::Conj { children } => children.iter().map(|f| f.label.as_str()).collect(),
+        other => panic!("GoIntegerPrimitive payload must be Conj, got {:?}", other),
+    };
+    assert!(
+        int_fields.contains(&"overflow"),
+        "overflow must live on GoIntegerPrimitive only"
+    );
+
+    let float_payload = dag.declaration(variants[2].ty);
+    let float_fields: Vec<&str> = match &float_payload.connective {
+        TypeConnective::Conj { children } => children.iter().map(|f| f.label.as_str()).collect(),
+        other => panic!("GoFloatPrimitive payload must be Conj, got {:?}", other),
+    );
+    assert!(
+        !float_fields.contains(&"overflow"),
+        "floats must not carry integer overflow (state-space discipline)"
+    );
+}
+
+#[test]
 fn rust_pilot_primitives_value_body_is_unparsed_until_r2_substrate_4th_sublane() {
     // Boundary pin: the 10-element pilot list stays unparsed at the
     // top-level `data ... = [...]` body because v3's `ValueBody` enum
@@ -120,5 +188,17 @@ fn rust_pilot_primitives_value_body_is_unparsed_until_r2_substrate_4th_sublane()
          top-level list/aggregate variant; got {body:?}. If this test flips to failing \
          because the body is now structured, update Engine sharpened-(b) Phase 2 \
          consumers to walk the structured value and delete this assertion."
+    );
+}
+
+#[test]
+fn go_spec_predeclared_primitives_value_body_is_unparsed_until_r2_substrate_4th_sublane() {
+    let dag = Dag::new();
+    let decl = dag.go_spec_predeclared_primitives().expect("loaded");
+    let body = decl.value_body.as_ref().expect("data row has value_body");
+    assert!(
+        matches!(body, ValueBody::Unparsed(_)),
+        "go_spec_predeclared_primitives.value_body must stay Unparsed until top-level \
+         list/aggregate ValueBody lands; got {body:?}"
     );
 }
