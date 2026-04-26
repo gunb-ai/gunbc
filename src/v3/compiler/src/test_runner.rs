@@ -1424,6 +1424,9 @@ impl<'a> TestRunner<'a> {
                     "FailsWithDiagnostic" => self.eval_fails_with_diagnostic(claim, &payload),
                     "OutputEquals" => self.eval_output_equals(claim, &payload),
                     "PortHasState" => self.eval_port_has_state(claim, &payload),
+                    "DeclarationHasRefinement" => {
+                        self.eval_declaration_has_refinement(claim, &payload)
+                    }
                     "CostBounded" => self.eval_cost_bounded(claim, &payload),
                     "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
                     "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
@@ -1552,6 +1555,59 @@ impl<'a> TestRunner<'a> {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!("bind `{bind_name}` state did not match `{label}`"))
+        }
+    }
+
+    fn eval_declaration_has_refinement(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let name = match payload {
+            [FieldValue::Literal(LiteralBits::String(name))] => name.clone(),
+            [single] => {
+                let Some(fields) = record_fields(single) else {
+                    return ClaimResult::Fail(
+                        "DeclarationHasRefinement: expected `{ declaration_name: String }` record \
+                         or a bare String payload"
+                            .to_string(),
+                    );
+                };
+                match string_field(fields, "declaration_name") {
+                    Ok(s) => s,
+                    Err(e) => return ClaimResult::Fail(e),
+                }
+            }
+            _ => {
+                return ClaimResult::Fail(format!(
+                    "DeclarationHasRefinement: expected one payload field, got {}",
+                    payload.len()
+                ));
+            }
+        };
+        let dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(_)) => {
+                return ClaimResult::Fail("compiled with diagnostics".to_string());
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "DeclarationHasRefinement: compile failed before structural check: {err:?}"
+                ));
+            }
+        };
+        let Some(decl) = dag.declaration_by_name(&name) else {
+            return ClaimResult::Fail(format!(
+                "DeclarationHasRefinement: declaration `{name}` not found in `{}`",
+                claim.file_name
+            ));
+        };
+        if decl.refinement.is_some() {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "DeclarationHasRefinement: declaration `{name}` has no lowered `refinement` edge"
+            ))
         }
     }
 
