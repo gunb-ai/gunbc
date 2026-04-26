@@ -616,18 +616,15 @@ fn serialize_bind_node(node: &BindNode) -> String {
 fn serialize_opt_bind_emit_participation(p: Option<BindEmitParticipation>) -> String {
     match p {
         None => "None".to_string(),
-        Some(BindEmitParticipation::UserCallable) => {
-            "Some(BindEmitParticipation::UserCallable)".to_string()
-        }
+        // Valid Python expression embedded in `dag = Dag(...)` (not Rust `Some(Enum::Variant)` syntax).
+        Some(BindEmitParticipation::UserCallable) => "\"UserCallable\"".to_string(),
     }
 }
 
 fn serialize_opt_branch_emit_participation(p: &Option<BranchEmitParticipation>) -> String {
     match p {
         None => "None".to_string(),
-        Some(BranchEmitParticipation::UserMatch) => {
-            "Some(BranchEmitParticipation::UserMatch)".to_string()
-        }
+        Some(BranchEmitParticipation::UserMatch) => "\"UserMatch\"".to_string(),
     }
 }
 
@@ -653,6 +650,34 @@ fn serialize_span(span: &v3_compiler::diagnostics::SourceSpan) -> String {
 fn py_debug<T: std::fmt::Debug>(value: &T) -> String {
     let inner = format!("{value:?}");
     format!("{inner:?}")
+}
+
+#[test]
+fn serialize_dag_embeds_valid_python_emit_participation_literals() {
+    let bind_src = "fn keep(a: Int, b: Int) -> Int = a";
+    let dag = compile_to_dag(bind_src, "serialize_emit_part_bind.v3").expect("compiles");
+    let s = serialize_dag(&dag);
+    assert!(
+        !s.contains("BindEmitParticipation::"),
+        "serialized DAG must not embed Rust enum paths (invalid Python): {s}"
+    );
+    assert!(
+        s.contains("\"UserCallable\""),
+        "expected Python str literal for user-callable bind participation: {s}"
+    );
+
+    let match_src = "type P = One(Int) | Zero
+fn f(p: P) -> Int = match p { One(_) => 1, Zero => 0 }";
+    let dag = compile_to_dag(match_src, "serialize_emit_part_match.v3").expect("compiles");
+    let s = serialize_dag(&dag);
+    assert!(
+        !s.contains("BranchEmitParticipation::"),
+        "serialized DAG must not embed Rust enum paths (invalid Python): {s}"
+    );
+    assert!(
+        s.contains("\"UserMatch\""),
+        "expected Python str literal for user-match branch participation: {s}"
+    );
 }
 
 // unused_parameters.dag contains recursive helpers (walk_steps etc.) that
