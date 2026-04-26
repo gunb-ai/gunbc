@@ -39,7 +39,7 @@ After this lane closes: tokenizer charclass is structurally typed end-to-end; le
 ## Acceptance
 
 - [ ] Tokenizer charclass consumers retyped to `Char` / `List<Char>` / `CharClass`.
-- [ ] Phase-1 host-string scaffolds dropped (or named explicitly as residual with ROADMAP debt row).
+- [ ] Phase-1 host-string scaffolds dropped (preferred), **OR** any residual scaffold has the full tracked-bridge triple: (1) **documented** in-line at the residual site explaining what's bridged + why; (2) **bounded** — explicit ROADMAP debt row with named owner / lane; (3) **named dissolution trigger** — concrete event/PR that closes it (not "TBD" or "future cleanup"). Per `INVARIANTS.md` P5; B4.4 shape (b) is the precedent for the triple. Residuals without all three are a STOP-AND-ESCALATE.
 - [ ] Regression tests pass; lens fixtures walk canonical types.
 - [ ] DB-8 converges bit-identically.
 - [ ] Cross-program signal: lane close → Modeling Manager → R2 Release Manager (Goal 2 charclass-phase-2 item).
