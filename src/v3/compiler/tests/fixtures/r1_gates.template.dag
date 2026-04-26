@@ -50,6 +50,20 @@ data sub_match_over_user_sum_gate: TestSuite = {
   claims: [sub_match_over_user_sum]
 }
 
+// T-Sub (PR #703): `type N = T where N …` — refinement lowers on the alias subject (m2 DB-11 receipts).
+data sub_type_alias_where_lowers: TestClaim = {
+  name: "sub_type_alias_where_lowers",
+  source: "type PositiveInt = Int where PositiveInt > 0",
+  file_name: "r1_sub_type_alias_where.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data sub_type_alias_where_lowers_gate: TestSuite = {
+  name: "sub_type_alias_where_lowers_gate",
+  claims: [sub_type_alias_where_lowers]
+}
+
 // Naming stub for `DeclarationRef` resolution on `AlgebraicLaw(Associativity, lens_composition_op)`.
 // The runner resolves `lens_ref` by name from this fixture DAG, then looks up the same name in
 // the compiled `program_dag` (`TestClaim.source`). The stub body is unused at evaluation time —
