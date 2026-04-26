@@ -2887,6 +2887,15 @@ impl Dag {
         self.declaration_by_name("rust_pilot_primitives")
     }
 
+    /// Typed accessor for the `go_spec_predeclared_primitives` data declaration
+    /// from `dsl/extdeps/languages/go/primitives.dag` (B4.4 fixture slot
+    /// `go_spec_primitives`). Same Path-2 contract as [`Self::rust_pilot_primitives`]:
+    /// type-structure is walkable; the top-level list body is `Unparsed` until the
+    /// aggregate `ValueBody` sub-lane lands.
+    pub fn go_spec_predeclared_primitives(&self) -> Option<&Declaration> {
+        self.declaration_by_name("go_spec_predeclared_primitives")
+    }
+
     /// Virtual paths from the B4.4 extdeps-bootstrap fixture carrier
     /// (`extdeps_bootstrap_fixture_authority` in
     /// `src/v3/std/extdeps_bootstrap_fixtures.dag`), in the order fields

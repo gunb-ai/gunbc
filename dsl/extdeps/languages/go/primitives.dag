@@ -119,7 +119,7 @@ type GoPrimitive
     }
   | GoBooleanPrimitive {
       target_name: String
-      algebra: GoBooleanAlgebra
+      algebra: GoBoolAlgebra
       carrier: GoTargetCarrier
     }
   | GoUnitPrimitive {
@@ -252,7 +252,8 @@ data go_spec_predeclared_primitives: List<GoPrimitive> = [
   GoComplexPrimitive { target_name: "complex64", component_width: GoComplex64Components },
   GoComplexPrimitive { target_name: "complex128", component_width: GoComplex128Components },
 
-  GoBooleanPrimitive { target_name: "bool", algebra: GoBooleanAlgebraAlgebra, carrier: GoBitCarrier },
+  GoBooleanPrimitive { target_name: "bool", algebra: GoCanonicalTwoElementBooleanAlgebra,
+    carrier: GoBitCarrier },
 
   GoStringPrimitive { target_name: "string", algebra: GoUtf8FreeMonoidAlgebra, carrier: GoUtf8TextCarrier },
 
