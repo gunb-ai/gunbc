@@ -1,6 +1,6 @@
 # Escalation Paths — gunbc Compiler
 
-**Status:** ACTIVE. Authoritative single source for "if X happens, escalate" clauses across briefs and authority docs.
+**Status:** ACTIVE. Authoritative **union receipt + conflict map** for "if X happens, escalate" clauses across briefs and authority docs. The source briefs remain authoritative on their own escalation clauses (per §"How to use" below); this doc owns the union view + cross-brief consistency surfacing.
 
 **Last refresh:** 2026-04-26 against main HEAD `407a8bcb1`. Sweep boundary, refresh discipline + 3 surgical fixes documented below.
 
