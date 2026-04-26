@@ -87,6 +87,13 @@ data current_api_version: AnthropicApiVersion = {
   header: "anthropic-version"
 }
 
+// Messages API conversation row: `content` is a typed block list (not Json).
+// Q4.5 P1 closure — pairs with shared `Role` from extdeps.llm.llm (#808).
+type AnthropicChatMessage {
+  role: Role
+  content: List<AnthropicContentBlock>
+}
+
 // -- Service: REST transport wiring ------------------------------
 
 service llm.Anthropic {

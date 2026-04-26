@@ -76,6 +76,14 @@ type ToolCall {
   function: FunctionCall
 }
 
+// Chat Completions API message row: wire accepts plain-string `content` for
+// text-only payloads (OpenAI docs). Typed here so callers cannot pass opaque
+// Json; multimodal rows extend this product when needed (Q4.5 P1 / #808).
+type OpenAiChatMessage {
+  role: Role
+  content: String
+}
+
 // -- Service: REST transport wiring ------------------------------
 
 service llm.OpenAI {
@@ -93,7 +101,7 @@ service llm.OpenAI {
     input {
       api_key: Secret
       model: String
-      messages: Json
+      messages: List<OpenAiChatMessage>
       temperature: Float?
       max_tokens: Int?
     }
