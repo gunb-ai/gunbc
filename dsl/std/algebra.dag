@@ -86,6 +86,9 @@
 
 module std.algebra
 
+import std.errors { DivError }
+import std.result { Result }
+
 // =========================================================================
 // Unary structures (single operation)
 // =========================================================================
@@ -179,7 +182,7 @@ type OrderedRing<T> {
   zero: T
   negate: fn(T) -> T
   mul: fn(T, T) -> T
-  div: fn(T, T) -> T
+  div: fn(T, T) -> Result<T, DivError>
   one: T
   compare: fn(T, T) -> Ordering
   quotient: fn(T, T) -> T

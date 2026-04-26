@@ -1,0 +1,10 @@
+// std/result.dag — canonical Result/Err carrier for totality (e.g. OrderedRing.div).
+//
+// Kept separate from `types.dag` to avoid an import cycle: `std.types` already
+// imports `std.algebra` for `kernel_algebra_profile`; `algebra` imports `Result`
+// for field signatures.
+
+module std.result
+
+// Sum-total form: every operation either succeeds (Ok) or returns a typed error.
+type Result<ok, err> = Ok { value: ok } | Err { value: err }

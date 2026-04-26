@@ -11,6 +11,11 @@ type HttpErrorShape {
 
 type AuthError = Expired | InvalidToken | MissingCredential | InsufficientScope | Forbidden
 
+// Signed integer division (`Int / Int`): two structurally distinct failure modes
+// (C-8): zero divisor vs MIN / -1 signed overflow. Used as `Result<T, DivError>`
+// error half on `OrderedRing.div`.
+type DivError = DivideByZero | Overflow
+
 type RateLimitError {
   retry_after_seconds: Int?
   scope: String
