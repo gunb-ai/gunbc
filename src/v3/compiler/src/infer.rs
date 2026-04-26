@@ -25,9 +25,9 @@
 use std::collections::HashSet;
 
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, Field,
-    LiteralBits, Lookup, PhantomParameter, PortId, PortState, TemplateArgument, TransformNode,
-    TransformTarget, TypeConnective,
+    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId,
+    Field, LiteralBits, Lookup, PhantomParameter, PortId, PortState, TemplateArgument,
+    TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -64,7 +64,7 @@ pub fn infer(dag: &mut Dag) {
         let mut changed = false;
         let node_count = dag.nodes().len();
         for i in 0..node_count {
-            match decide(dag, i) {
+            match decide(&mut *dag, i) {
                 Decision::Set(port, ty) => {
                     if matches!(dag.port(port).state(), PortState::Unresolved) {
                         continue;
@@ -708,7 +708,7 @@ enum Decision {
     Retry,
 }
 
-fn decide(dag: &Dag, index: usize) -> Decision {
+fn decide(dag: &mut Dag, index: usize) -> Decision {
     match &dag.nodes()[index] {
         Behavior::Value(v) => {
             let shape_and_name = match &v.data {
@@ -861,7 +861,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
     }
 }
 
-fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
+fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
     // Structural dispatch on `TransformTarget`. `Operator` carries the
     // resolved `OperatorKind` directly and produces its signature from
     // the LHS operand type (arithmetic returns operand type, comparison
@@ -3976,8 +3976,48 @@ const WALK_DEPTH_LIMIT: usize = 32;
 /// with a `(T, T) -> T` / `(T, T) -> Bool` signature. The fallback
 /// is explicit about being a scaffold (see OperatorKind's
 /// dissolution receipt).
+fn div_total_result_output_shape(dag: &mut Dag, base_lhs: TypeShape) -> Option<TypeShape> {
+    let result_template = dag.declaration_by_name("Result")?.id;
+    let div_error = dag.declaration_by_name("DivError")?.id;
+    let rdecl = dag.declaration(result_template);
+    let t_ok = rdecl.type_params.first().copied()?;
+    let t_err = rdecl.type_params.get(1).copied()?;
+    let args = vec![
+        TemplateArgument {
+            parameter: t_ok,
+            value: base_lhs.declaration,
+        },
+        TemplateArgument {
+            parameter: t_err,
+            value: div_error,
+        },
+    ];
+    if let Some(existing) = find_equivalent_anonymous_instantiation(dag, result_template, &args) {
+        return Some(TypeShape::new(existing));
+    }
+    let id = dag.alloc_declaration_id();
+    let span = rdecl.span.clone();
+    dag.push_declaration(Declaration {
+        id,
+        name: None,
+        connective: TypeConnective::Instantiation {
+            template: result_template,
+            arguments: args,
+        },
+        type_params: Vec::new(),
+        phantom_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span,
+    });
+    Some(TypeShape::new(id))
+}
+
 fn resolve_operator_arrow(
-    dag: &Dag,
+    dag: &mut Dag,
     op_kind: OperatorKind,
     lhs_type: &TypeShape,
 ) -> Option<ResolvedArrow> {
@@ -4007,7 +4047,14 @@ fn resolve_operator_arrow(
                 // name.
                 let field_name = crate::operators::algebra_field_name(op_kind);
                 if let Some(field) = children.iter().find(|f| f.label == field_name) {
-                    return read_algebra_field(dag, decl, field.ty, source_id, op_kind, &base_lhs);
+                    return read_algebra_field(
+                        dag,
+                        decl,
+                        field.ty,
+                        source_id,
+                        op_kind,
+                        &base_lhs,
+                    );
                 }
                 // Algebra doesn't declare this operator's field —
                 // fall back to the Rust-side scaffold bridge below.
@@ -4045,6 +4092,11 @@ fn resolve_operator_arrow(
     // on `&&` / `||` must surface a type mismatch, not propagate
     // through the operand slots the way Arithmetic / Comparison do.
     let (inputs, output) = match op_kind {
+        // Division leaves the class-5 scaffold: total shape matches algebra `div`.
+        OperatorKind::Arithmetic(ArithmeticOp::Div) => (
+            vec![base_lhs, base_lhs],
+            div_total_result_output_shape(dag, base_lhs)?,
+        ),
         OperatorKind::Arithmetic(_) => (vec![base_lhs, base_lhs], base_lhs),
         OperatorKind::Comparison(_) => (vec![base_lhs, base_lhs], dag.bool_shape()?),
         OperatorKind::Logical(_) => {
