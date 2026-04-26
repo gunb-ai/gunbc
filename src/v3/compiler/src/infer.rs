@@ -367,7 +367,6 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
     // output port.
     struct CoverageCheck {
         output_port: PortId,
-        nominal_opacity: None,
         span: SourceSpan,
         expected: Vec<(String, DeclarationId)>,
         // Parallel vec of (resolved_decl_id, arm_name_for_diagnostic)
