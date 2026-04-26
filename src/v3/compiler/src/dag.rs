@@ -2890,7 +2890,8 @@ impl Dag {
     /// **Path 2 satisfaction.** The returned declaration's `value_body`
     /// is `ValueBody::List(_)`, so both the sum type shape and the
     /// 10-element pilot enumeration are structurally walkable. Map-shaped
-    /// bootstrap data remains on the sibling `ValueBody::Map` lane.
+    /// bootstrap data remains future debt for the map-shaped T-Substrate
+    /// sibling lane; today it still lowers to `ValueBody::Unparsed`.
     ///
     /// Returns `None` only when bootstrap failed to load
     /// `rust/primitives.dag`, in which case a diagnostic is already on
