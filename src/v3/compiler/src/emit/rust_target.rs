@@ -163,6 +163,10 @@ pub enum EmitError {
     /// inference — either inference didn't run or the scrutinee's
     /// Disj has no matching variant.
     UnresolvedBranchPattern { variant_name: String },
+    /// A Branch arm resolved to a variant declaration that no longer
+    /// has a Disj parent. Emit must not fabricate a plausible target
+    /// identifier when the substrate cannot identify the parent enum.
+    VariantParentNotFound { variant_id: DeclarationId },
     /// A Branch's scrutinee resolved to a Disj that isn't the v3
     /// `Classical` (Bool) sum — PR-B only emits boolean branches.
     /// Carries the scrutinee's resolved variant ids so callers can
