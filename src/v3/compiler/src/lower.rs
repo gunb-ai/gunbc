@@ -2086,6 +2086,7 @@ fn attach_dimension_phantom_parameter(dag: &mut Dag, decl_id: DeclarationId, nam
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span,
     });
     dag.declaration_mut(decl_id)
