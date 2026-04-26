@@ -101,7 +101,10 @@ fn call_site_uint8_literal_narrows() {
         v3_compiler::dag::PortState::Resolved(ty) => ty,
         other => panic!("expected resolved port, got {other:?}"),
     };
-    assert_eq!(dag.declaration(ty.declaration).name.as_deref(), Some("UInt8"));
+    assert_eq!(
+        dag.declaration(ty.declaration).name.as_deref(),
+        Some("UInt8")
+    );
 }
 
 #[test]
