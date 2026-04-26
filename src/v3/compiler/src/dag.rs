@@ -2887,18 +2887,10 @@ impl Dag {
     /// IntegerPrimitive | NonIntegerPrimitive {target_name, algebra,
     /// carrier, is_copy[, overflow]}`).
     ///
-    /// **Path 2 partial Req-1 satisfaction.** The returned declaration's
-    /// `value_body` is `ValueBody::Unparsed(SourceSpan)` — v3's
-    /// `ValueBody` enum does not yet carry a top-level list/aggregate
-    /// variant, so the 10-element pilot enumeration is not yet walkable
-    /// as structured records. Consumers that only need the type shape
-    /// (sum variants, variant fields, tag enums) can walk through
-    /// `connective` immediately; consumers that need to enumerate the
-    /// concrete pilot primitives must wait for R2 T-Substrate's 4th
-    /// sub-lane to land the top-level `ValueBody::List`/aggregate
-    /// extension (same substrate gap as `kernel_algebra_profile` at
-    /// `dag.rs:1530` and tokenizer `sub_charclass_in_std_unicode`
-    /// phase-2).
+    /// **Path 2 satisfaction.** The returned declaration's `value_body`
+    /// is `ValueBody::List(_)`, so both the sum type shape and the
+    /// 10-element pilot enumeration are structurally walkable. Map-shaped
+    /// bootstrap data remains on the sibling `ValueBody::Map` lane.
     ///
     /// Returns `None` only when bootstrap failed to load
     /// `rust/primitives.dag`, in which case a diagnostic is already on
