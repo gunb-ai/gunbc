@@ -66,6 +66,8 @@ Under that discipline, R2's goals are the Tier-1 thesis claims that are *not* ga
 
 **Cross-manager dependency discipline.** Where one program produces a substrate carrier another program consumes (e.g., T-Substrate ValueBody-list/sum unblocks T-Modeling tokenizer charclass + T-Ground Engine sharpened-(b)), the producing manager owns the carrier landing; consuming managers own the migration. Cross-program handoffs land via the R1 `Cross-manager notifications queued` brief pattern — producing manager signals readiness; consuming managers ack and dispatch consumer-migration work.
 
+**P5 dispatch-discipline applies to all manager-authored briefs.** Per INVARIANTS.md §P5 "Dispatch-Discipline Mechanisms" (paired-dispatch + per-PR gate + velocity tripwire), the discipline applies uniformly across all 6 managers — not just Director's ad-hoc dispatches. **Each standing manager is responsible for enforcing P5 discipline on the briefs they author**: every brief that introduces a scaffold names its dissolution trigger + adjacent ROADMAP debt row + contributes-or-defers stance (paired-dispatch); every PR that introduces a hand-Rust file in `src/v3/` (including managers' worker dispatches) fills the per-PR gate naming what it deletes or explicitly defers. R2 Release Manager surfaces violations via the closure ledger + the velocity tripwire (≥3:1 ratio in any 7-day window across all managers), but the per-brief and per-PR enforcement happens at each manager's authoring point, not at a central choke. Codex P2 inline flagged this gap on PR #827 sha `d2bc1eca`; addressed by making P5 universally applicable here.
+
 ### 1. Grounding Manager
 
 Owns **T-Ground** sub-program (Goal 1 — Grounding Completeness, the program with R2's only true critical path).
