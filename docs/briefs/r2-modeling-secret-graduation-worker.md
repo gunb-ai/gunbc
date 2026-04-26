@@ -11,7 +11,7 @@
 
 - **[`docs/briefs/r2-substrate-nominal-opaque-for-secret-subset.md`](r2-substrate-nominal-opaque-for-secret-subset.md)** — producer brief; defines the nominal-opacity carrier this worker consumes.
 - **[`THESIS.md`](../../THESIS.md)** §"Enumerable impossible-bug classes" — `Secret<T>` is a Tier 1 thesis claim.
-- **[`src/v3/std/types.dag`](../../src/v3/std/types.dag)** — current type-aliasing patterns; the `Secret<T>` declaration lands here.
+- **[`dsl/std/types.dag`](../../dsl/std/types.dag)** — current type-aliasing patterns; the `Secret<T>` declaration lands here.
 - **`feedback_state_space_vs_behavioral_invariants`** — type-level enforcement preferred.
 
 ## Frame

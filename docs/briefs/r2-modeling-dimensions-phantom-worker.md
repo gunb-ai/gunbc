@@ -11,7 +11,7 @@
 
 - **[`docs/briefs/r2-substrate-parametric-algebra-for-dimensions-subset.md`](r2-substrate-parametric-algebra-for-dimensions-subset.md)** — producer brief; defines the phantom-parameter carrier this worker consumes.
 - **[`THESIS.md`](../../THESIS.md)** §"Enumerable impossible-bug classes" — unit-mismatch impossibility as Tier 1 thesis claim.
-- **[`src/v3/std/types.dag`](../../src/v3/std/types.dag)** + **[`src/v3/std/algebra.dag`](../../src/v3/std/algebra.dag)** — algebra-attachment patterns.
+- **[`dsl/std/types.dag`](../../dsl/std/types.dag)** + **[`src/v3/std/algebra.dag`](../../src/v3/std/algebra.dag)** — algebra-attachment patterns.
 - **`feedback_state_space_vs_behavioral_invariants`** — unit-mismatch unrepresentable, not validated.
 
 ## Frame

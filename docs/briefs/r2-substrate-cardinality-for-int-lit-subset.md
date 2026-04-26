@@ -15,7 +15,7 @@
 - **[`ROADMAP.md` §"Surface int-literals are concept-layer host-narrowed, not reconciliation-narrowed"](../../ROADMAP.md)** (`:355`) — the canonical statement of the gap. `IntLit(Int)` is already host-narrowed to `i64` at the tokenizer; magnitude bounds + cardinality refinement substrate is needed for unbounded literals.
 - **[`docs/db-history/db-11.md`](../db-history/db-11.md)** — alias-`where` refinement substrate; current state of cardinality refinement. T-Modeling int-lit's expected carrier may share substrate with DB-11.
 - **[PR #806](https://github.com/gunb-ai/gunbc/pull/806)** — "t-substrate cardinality int" (royal-badger-316, merged) — confirm the merged scope and what's residual; this brief authors only what #806 didn't cover.
-- **[`src/v3/std/types.dag`](../../src/v3/std/types.dag)** — `kernel_primitives` (`:65-74`), `container_arity` (`:79-91`); `Int = Int64 = OrderedRing<Word64>` definition.
+- **[`dsl/std/types.dag`](../../dsl/std/types.dag)** — `kernel_primitives` (`:65-74`), `container_arity` (`:79-91`); `Int = Int64 = OrderedRing<Word64>` definition.
 - **[`src/v3/std/tokenize.dag:30`](../../src/v3/std/tokenize.dag)** — `IntLit(Int)` declaration (host-narrowed).
 - **[`src/v3/std/substrate.dag`](../../src/v3/std/substrate.dag)** — live substrate authority.
 - **`feedback_audit_adjacent_authority_first`** — cardinality refinement substrate may already partially exist via DB-11 work; grep before designing.

@@ -13,7 +13,7 @@
 ## Read first
 
 - **[`THESIS.md`](../../THESIS.md)** §"Enumerable impossible-bug classes" — `Secret<T>` is one of the R2+ Tier 1 thesis claims; structural opacity is the impossible-bug-by-construction guarantee.
-- **[`src/v3/std/types.dag`](../../src/v3/std/types.dag)** — current type system; how named types are namespaces (`feedback_naming_is_aliasing`); how `inhabits` edges work for algebra attachment.
+- **[`dsl/std/types.dag`](../../dsl/std/types.dag)** — current type system; how named types are namespaces (`feedback_naming_is_aliasing`); how `inhabits` edges work for algebra attachment.
 - **[`src/v3/std/substrate.dag`](../../src/v3/std/substrate.dag)** — live substrate authority for `TypeConnective` + Declaration shape.
 - **[`src/v3/spec/v3_l1.dag`](../../src/v3/spec/v3_l1.dag)** — sentinel meta-types; precedent for cross-cutting substrate fields like `DeclarationRef`.
 - **`feedback_naming_is_aliasing`** — named types are namespaces; the compiler sees through. Nominal opacity is the deliberate exception — the brief's discipline anchor.

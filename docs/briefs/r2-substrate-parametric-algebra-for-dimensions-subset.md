@@ -13,8 +13,8 @@
 ## Read first
 
 - **[`THESIS.md`](../../THESIS.md)** §"Enumerable impossible-bug classes" — `Dimension<Carrier>` for unit-mismatch impossibility (e.g., adding meters to seconds is a type error). R2+ Tier 1 thesis claim.
-- **[`src/v3/std/types.dag:211-213`](../../src/v3/std/types.dag)** — `type List<T> = FreeMonoid<T>` etc.; algebra attachment via type alias.
-- **[`src/v3/std/types.dag:65-74`](../../src/v3/std/types.dag)** — `kernel_primitives`; algebra-attachment patterns.
+- **[`dsl/std/types.dag:211-213`](../../dsl/std/types.dag)** — `type List<T> = FreeMonoid<T>` etc.; algebra attachment via type alias.
+- **[`dsl/std/types.dag:65-74`](../../dsl/std/types.dag)** — `kernel_primitives`; algebra-attachment patterns.
 - **[`docs/design-substrate-carrier-port-program.md`](../design-substrate-carrier-port-program.md)** — substrate-carrier-port program; if §6a metadata-pick lands a relevant carrier, coordinate.
 - **[`src/v3/std/substrate.dag`](../../src/v3/std/substrate.dag)** — live substrate authority; `Instantiation` connective is the natural attachment point for parametric algebra.
 - **[`src/v3/std/algebra.dag`](../../src/v3/std/algebra.dag)** — algebra declarations (`Monoid`, `Group`, `OrderedRing`, etc.).
