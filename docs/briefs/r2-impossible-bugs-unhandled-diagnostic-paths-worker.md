@@ -20,9 +20,9 @@
 - **[`THESIS.md` lines 175, 348-350, 391](../../THESIS.md)** — class definition + the "made total" branch the design doc closes against.
 - **[`dsl/std/algebra.dag:182`](../../dsl/std/algebra.dag)** — `OrderedRing.div: fn(T, T) -> T` (the line to retype to total form).
 - **[`src/v3/compiler/src/infer.rs:3975-3977`](../../src/v3/compiler/src/infer.rs)** — algebra-Conj dispatch site for `Int / Int`.
-- **[`src/v3/spec/rust.dag:816`](../../src/v3/spec/rust.dag)** — `rust_int_div` realization (renders bare `{lhs} / {rhs}`).
-- **[`src/v3/spec/go.dag:742`](../../src/v3/spec/go.dag)** — `go_int_div` realization (same shape).
-- **[`src/v3/spec/python.dag:486`](../../src/v3/spec/python.dag)** — `python_int_div` realization (renders via `__v3_idiv` helper at `python_target.rs:680`; pinned by `m1_4_emit_python_test.rs:108-109`).
+- **[`src/v3/spec/rust.dag:832`](../../src/v3/spec/rust.dag)** — `rust_int_div` realization (renders bare `{lhs} / {rhs}`). (`:816` is `rust_int_sub` — verify by grep `rust_int_div` at HEAD.)
+- **[`src/v3/spec/go.dag:758`](../../src/v3/spec/go.dag)** — `go_int_div` realization (same shape). (`:742` is `go_int_sub`.)
+- **[`src/v3/spec/python.dag:500`](../../src/v3/spec/python.dag)** — `python_int_div` realization (renders via `__v3_idiv` helper at `src/v3/compiler/src/emit/python_target.rs:680`; pinned by `m1_4_emit_python_test.rs:108-109`). (`:486` is inside `python_int_sub`.)
 - **[`dsl/std/algebra.dag:477-478`](../../dsl/std/algebra.dag)** — `OrderedRing.quotient` / `OrderedRing.remainder` (separate per-class sub-lane candidates per design doc audit).
 - **`feedback_totality_by_omission`** — discipline anchor: partial-op classes close by removing the partial form; coexistence-with-paired-total is the trap.
 
@@ -47,9 +47,9 @@ Per design doc §4: the bug class closes by **removing the partial form**. For `
 2. **Per-row decision** — for `Int / Int`: pick Result-shape `Result<T, DivError>` where `DivError = DivideByZero | Overflow` (or worker-equivalent typed split that preserves distinct failure modes). **NOT a single-error `Result<T, DivideByZero>`** — signed integer division has two structurally distinct failure modes (zero divisor + signed overflow on `MIN / -1`), and collapsing them violates fail-closed C-8 (per `feedback_fail_closed_discipline`: each detectable problem is its own typed Diagnostic). **Option-shape (`Option<T>`) also rejected** for the same reason — `None` carries no failure-mode information. **STOP-AND-ESCALATE for NonZero-typed-input shape** (e.g., `a / nz` rather than `divide_nz(a, nz)`) — that's a per-operand type-variance question deferred to a separate substrate brief.
 3. **Algebra retype**: one-line change at `algebra.dag:182` to the total return type. **The total return type carries a typed-split error carrier** (e.g., `DivError`) per Slice §2 — surface the carrier declaration's location (likely `dsl/std/errors.dag` or a sibling under `dsl/std/algebra.dag`).
 4. **Per-target realization migration** — each target reshapes from bare division to construct the typed-split Result idiomatically; **must distinguish divide-by-zero from overflow** (do NOT collapse to a single error variant):
-   - `rust.dag:816` — `rust_int_div` reshapes to explicit branching: `if rhs == 0 { Err(DivError::DivideByZero) } else if /* overflow check */ { Err(DivError::Overflow) } else { Ok(lhs / rhs) }`. Note: `i64::checked_div` collapses both failures to `None`, so it's NOT a one-line `ok_or` — the realization must split the cases. Worker authors the exact Rust idiom; surface in PR.
-   - `go.dag:742` — `go_int_div` reshapes to Go-idiomatic typed-split Result; same case-split discipline.
-   - `python.dag:486` + `python_target.rs:680` helper — reshape `__v3_idiv` to return typed-split Result; update test pin at `m1_4_emit_python_test.rs:108-109`. (Python's overflow semantics differ from Rust's — surface the per-target equivalence in PR body.)
+   - `rust.dag:832` (`rust_int_div`) — reshapes to explicit branching: `if rhs == 0 { Err(DivError::DivideByZero) } else if /* overflow check */ { Err(DivError::Overflow) } else { Ok(lhs / rhs) }`. Note: `i64::checked_div` collapses both failures to `None`, so it's NOT a one-line `ok_or` — the realization must split the cases. Worker authors the exact Rust idiom; surface in PR.
+   - `go.dag:758` (`go_int_div`) — reshapes to Go-idiomatic typed-split Result; same case-split discipline.
+   - `python.dag:500` (`python_int_div`) + `src/v3/compiler/src/emit/python_target.rs:680` helper — reshape `__v3_idiv` to return typed-split Result; update test pin at `m1_4_emit_python_test.rs:108-109`. (Python's overflow semantics differ from Rust's — surface the per-target equivalence in PR body.)
 5. **Audit fallback path** — `infer.rs:4003-4015` Rust-side primitive scaffold (general fallback for types whose `inhabits` chain doesn't reach an algebra Conj). Slice §1 audit confirms whether any types still resolve `Arithmetic(Div)` through that fallback; close those paths separately if so.
 6. **Regression tests:**
    - `Int / Int` returns `Result<Int, DivError>` with both `DivideByZero` and `Overflow` variants reachable.
@@ -76,7 +76,7 @@ Per design doc §4: the bug class closes by **removing the partial form**. For `
 - **NonZero-typed-input shape chosen** (`a / nz` operator-syntax rather than `divide_nz(a, nz)` function syntax) — STOP. Per-operand type variance in algebra-operator carrier is a separate substrate brief.
 - **Audit reveals additional partial forms not enumerated in design doc** — surface; queue as sibling sub-lanes; do not subsume in this PR.
 - **Realization migration breaks emission for an existing target idiom** — surface; this is a target-realization design call, not a worker call.
-- **`Result<T, DivideByZero>` requires authoring `DivideByZero` declaration** — verify it doesn't exist via audit; if not, surface placement decision (`std.errors.dag`?).
+- **`Result<T, DivError>` requires authoring `DivError` (with `DivideByZero | Overflow` variants) declaration** — verify the typed-split carrier doesn't exist via audit; if not, surface placement decision (`dsl/std/errors.dag`?). Single-error `Result<T, DivideByZero>` shape is explicitly rejected per Slice §2; STOP if any reading drifts back to a single-variant carrier.
 - **Asymmetric-operator interaction** — if the totality migration affects symmetric operators (`>`, `<`, etc.) that DB-11 explicitly strips refinements from, surface — the design doc treats those as separate; this PR shouldn't broaden.
 - **DB-8 drifts** — STOP immediately.
 
