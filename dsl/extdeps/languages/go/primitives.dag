@@ -37,19 +37,19 @@ type GoIntegerAlgebra
   = GoOrderedRingAlgebra
   | GoSemiringAlgebra
 
+// Float algebra tags must be introduced in a multi-arm sum (same rule as
+// rust/primitives.dag: a single-arm `type X = Tag` leaves `Tag` unresolved).
+// Width-split tags keep float32 vs float64 structurally honest.
 type GoFloatAlgebra
-  = GoApproximateFieldAlgebra
+  = GoApproximateField32Algebra
+  | GoApproximateField64Algebra
 
-// Bool: single variant mirrors rust’s BooleanAlgebraAlgebra slot without reusing
-// rust’s declaration names on this module’s type graph.
-type GoBoolAlgebra
+// Bool, empty struct, and UTF-8 string share one closed algebra-tag sum so each
+// tag is introduced here (mirrors rust `NonIntegerAlgebra` grouping bool + unit).
+type GoSpecDiscreteAlgebra
   = GoCanonicalTwoElementBooleanAlgebra
-
-type GoUnitAlgebra
-  = GoTerminalAlgebra
-
-type GoTextAlgebra
-  = GoUtf8FreeMonoidAlgebra
+  | GoTerminalAlgebra
+  | GoUtf8FreeMonoidAlgebra
 
 
 // --- Target carrier tags (value-domain witnesses; not ABI / GC shape). ---
@@ -111,17 +111,17 @@ type GoPrimitive
     }
   | GoStringPrimitive {
       target_name: String
-      algebra: GoTextAlgebra
+      algebra: GoSpecDiscreteAlgebra
       carrier: GoTargetCarrier
     }
   | GoBooleanPrimitive {
       target_name: String
-      algebra: GoBoolAlgebra
+      algebra: GoSpecDiscreteAlgebra
       carrier: GoTargetCarrier
     }
   | GoUnitPrimitive {
       target_name: String
-      algebra: GoUnitAlgebra
+      algebra: GoSpecDiscreteAlgebra
       carrier: GoTargetCarrier
     }
 
@@ -241,9 +241,9 @@ data go_spec_predeclared_primitives: List<GoPrimitive> = [
     carrier: GoWord32Carrier, range_min_inclusive: "-2147483648", range_max_inclusive: "2147483647",
     overflow: GoTwoComplementWrap },
 
-  GoFloatPrimitive { target_name: "float32", algebra: GoApproximateFieldAlgebra,
+  GoFloatPrimitive { target_name: "float32", algebra: GoApproximateField32Algebra,
     carrier: GoFloat32BitsCarrier },
-  GoFloatPrimitive { target_name: "float64", algebra: GoApproximateFieldAlgebra,
+  GoFloatPrimitive { target_name: "float64", algebra: GoApproximateField64Algebra,
     carrier: GoFloat64BitsCarrier },
 
   GoComplexPrimitive { target_name: "complex64", component_width: GoComplex64Components },
