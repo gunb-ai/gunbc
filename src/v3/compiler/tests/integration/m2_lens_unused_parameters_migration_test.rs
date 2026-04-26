@@ -2,9 +2,8 @@
 //!
 //! Lens-semantic coverage (all-used / single-unused / all-unused /
 //! branch-arm reference / zero-param bind) lives as in-crate unit
-//! tests under
-//! `src/v3/compiler/src/lens_unused_parameters.rs::tests`, where the
-//! `pub(crate)` Dag builder is reachable. This suite is the
+//! tests under `v3_compiler::lens_unused_parameters` (colocated in
+//! `lib.rs`), where the `pub(crate)` Dag builder is reachable. This suite is the
 //! cross-process receipt: the `.dag` authority compiles cleanly, the
 //! checked-in generated module is in sync with
 //! `emit_rust_module(unused_parameters.dag)`, the clone-count ratchet
