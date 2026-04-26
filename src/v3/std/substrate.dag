@@ -176,13 +176,14 @@ type PhantomParameter {
   algebra: DeclarationId
 }
 
-// Nominal-opaque carrier for the Secret<T> consumer (T-Substrate
-// nominal-opaque-for-Secret subset). Declarations carrying
-// `nominal_opacity = Some(NominalOpacity { permitted_accessors })`
-// are sealed to generic structural walks: descent through the
-// declaration is permitted only via one of the listed accessor
-// declarations. See `check_nominal_opacity_descent` in dag.rs for
-// the fail-closed walker consumer.
+// Nominal-opaque carrier (T-Substrate nominal-opaque-for-Secret
+// subset, carrier-only staging). `permitted_accessors` lists the
+// declarations intended as the only sealed-accessor descent path.
+// The fail-closed walker consumer + std `Secret` marking + opacity
+// carry-forward through specialization are the named follow-up
+// enforcement work; this carrier is staging surface only and must
+// either gain a real walker consumer or be removed before T-Modeling
+// Secret<T> graduation can dispatch.
 type NominalOpacity {
   permitted_accessors: List<DeclarationRef>
 }

@@ -211,11 +211,14 @@ pub struct Declaration {
     /// refined declarations for arm-local narrowing when an `if`
     /// cond is a single-parameter predicate.
     pub refinement: Option<DeclarationId>,
-    /// Nominal-opacity carrier for the Secret<T> consumer
-    /// (T-Substrate nominal-opaque-for-Secret subset). When `Some`,
-    /// generic structural walks must hard-stop at this declaration
-    /// unless they descend through a `permitted_accessors` entry.
-    /// See `check_nominal_opacity_descent` for the walker consumer.
+    /// Nominal-opacity carrier (T-Substrate nominal-opaque-for-Secret
+    /// subset, carrier-only staging). When `Some`, the listed
+    /// `permitted_accessors` are the intended sealed-accessor boundary
+    /// for generic structural walks. The fail-closed walker consumer +
+    /// std `Secret` marking + carry-forward through specialization are
+    /// the named follow-up enforcement work; this field is staging
+    /// surface only and must either gain a real walker consumer or be
+    /// removed before T-Modeling Secret<T> graduation can dispatch.
     pub nominal_opacity: Option<NominalOpacity>,
     pub span: SourceSpan,
 }
@@ -226,11 +229,10 @@ pub struct PhantomParameter {
     pub algebra: DeclarationId,
 }
 
-/// Sealed-accessor carrier that gates structural descent through a
-/// nominal-opaque declaration. Accessor `DeclarationId`s listed here
-/// are the only nodes through which a generic structural walk may
-/// reach the declaration's interior; any other walk is rejected by
-/// `check_nominal_opacity_descent` with a fail-closed Diagnostic.
+/// Sealed-accessor carrier (carrier-only staging). Lists the
+/// `DeclarationId`s intended as the only permitted descent path into
+/// a nominal-opaque declaration's interior. The fail-closed walker
+/// consumer is the named follow-up enforcement work.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NominalOpacity {
     pub permitted_accessors: Vec<DeclarationId>,
@@ -1123,36 +1125,6 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
     }
 
     entries
-}
-
-/// T-Substrate nominal-opaque-for-Secret walker consumer.
-///
-/// Returns `Some(Diagnostic)` when `decl_id` is nominal-opaque AND
-/// `accessor` is not in `permitted_accessors` — this is the
-/// hard-stop fail-closed boundary that gates generic structural
-/// descent through Secret<T> and other sealed nominal-opaque
-/// declarations. Returns `None` when the declaration is not
-/// nominal-opaque, or when `accessor` is one of its permitted
-/// accessors. Designed to be called from generic structural-walk
-/// lenses at the descent boundary.
-pub fn check_nominal_opacity_descent(
-    dag: &Dag,
-    decl_id: DeclarationId,
-    accessor: Option<DeclarationId>,
-) -> Option<crate::diagnostics::Diagnostic> {
-    let decl = dag.declaration(decl_id);
-    let opacity = decl.nominal_opacity.as_ref()?;
-    if let Some(acc) = accessor {
-        if opacity.permitted_accessors.contains(&acc) {
-            return None;
-        }
-    }
-    Some(crate::diagnostics::Diagnostic::NominalOpacityViolation {
-        declaration: decl_id,
-        accessor,
-        span: decl.span.clone(),
-        fixes: Vec::new(),
-    })
 }
 
 fn declaration_body_bind<'a>(dag: &'a Dag, decl: &Declaration) -> Option<&'a BindNode> {
@@ -3725,70 +3697,4 @@ mod tests {
         );
     }
 
-    /// T-Substrate nominal-opaque-for-Secret consumer proof. The
-    /// minimal walker `check_nominal_opacity_descent` is the
-    /// fail-closed boundary: descent through a sealed declaration
-    /// must succeed only via a permitted accessor. This test
-    /// exercises all three branches: permitted accessor (None),
-    /// no accessor (Some(Diagnostic)), and a non-permitted accessor
-    /// (Some(Diagnostic)).
-    #[test]
-    fn nominal_opacity_descent_fails_closed_outside_permitted_accessor() {
-        let mut dag = Dag::new();
-        let span = SourceSpan::new("nominal_opacity_test.v3", 0, 1);
-        let placeholder = |id, name: &str| Declaration {
-            id,
-            name: Some(name.to_string()),
-            connective: TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
-            type_params: Vec::new(),
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: span.clone(),
-        };
-        let accessor_a_id = dag.alloc_declaration_id();
-        dag.push_declaration(placeholder(accessor_a_id, "accessor_a"));
-        let other_id = dag.alloc_declaration_id();
-        dag.push_declaration(placeholder(other_id, "other"));
-        let opaque_id = dag.alloc_declaration_id();
-        dag.push_declaration(Declaration {
-            id: opaque_id,
-            name: Some("opaque_under_test".to_string()),
-            connective: TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
-            type_params: Vec::new(),
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: Some(NominalOpacity {
-                permitted_accessors: vec![accessor_a_id],
-            }),
-            span: span.clone(),
-        });
-
-        assert!(
-            check_nominal_opacity_descent(&dag, opaque_id, Some(accessor_a_id)).is_none(),
-            "permitted accessor must descend without diagnostic"
-        );
-        assert!(
-            matches!(
-                check_nominal_opacity_descent(&dag, opaque_id, None),
-                Some(Diagnostic::NominalOpacityViolation { .. })
-            ),
-            "missing accessor must fail closed with NominalOpacityViolation"
-        );
-        assert!(
-            matches!(
-                check_nominal_opacity_descent(&dag, opaque_id, Some(other_id)),
-                Some(Diagnostic::NominalOpacityViolation { .. })
-            ),
-            "non-permitted accessor must fail closed with NominalOpacityViolation"
-        );
-    }
 }

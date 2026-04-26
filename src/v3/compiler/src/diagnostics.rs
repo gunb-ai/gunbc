@@ -199,16 +199,6 @@ pub enum Diagnostic {
         span: SourceSpan,
         fixes: Vec<Correction>,
     },
-    /// T-Substrate nominal-opaque-for-Secret: emitted by
-    /// `check_nominal_opacity_descent` when a generic structural walk
-    /// attempts to descend through a nominal-opaque declaration
-    /// without resolving via a permitted accessor.
-    NominalOpacityViolation {
-        declaration: DeclarationId,
-        accessor: Option<DeclarationId>,
-        span: SourceSpan,
-        fixes: Vec<Correction>,
-    },
 }
 
 impl Diagnostic {
@@ -222,8 +212,7 @@ impl Diagnostic {
             | Diagnostic::UnitMismatch { span, .. }
             | Diagnostic::BranchConditionNotBool { span, .. }
             | Diagnostic::MagnitudeOutOfRange { span, .. }
-            | Diagnostic::MalformedIntegerRangeFact { span, .. }
-            | Diagnostic::NominalOpacityViolation { span, .. } => span,
+            | Diagnostic::MalformedIntegerRangeFact { span, .. } => span,
         }
     }
 
@@ -237,8 +226,7 @@ impl Diagnostic {
             | Diagnostic::UnitMismatch { fixes, .. }
             | Diagnostic::BranchConditionNotBool { fixes, .. }
             | Diagnostic::MagnitudeOutOfRange { fixes, .. }
-            | Diagnostic::MalformedIntegerRangeFact { fixes, .. }
-            | Diagnostic::NominalOpacityViolation { fixes, .. } => fixes,
+            | Diagnostic::MalformedIntegerRangeFact { fixes, .. } => fixes,
         }
     }
 
@@ -281,18 +269,6 @@ impl Diagnostic {
                 "integer literal `{literal}` is out of range for `{target}` (expected {range_min_inclusive}..={range_max_inclusive}, declared type {expected:?}); use a wider target"
             ),
             Diagnostic::MalformedIntegerRangeFact { message, .. } => message.clone(),
-            Diagnostic::NominalOpacityViolation {
-                declaration,
-                accessor,
-                ..
-            } => match accessor {
-                Some(acc) => format!(
-                    "nominal-opaque declaration {declaration:?} cannot be structurally descended through accessor {acc:?} (not in permitted_accessors)"
-                ),
-                None => format!(
-                    "nominal-opaque declaration {declaration:?} cannot be structurally descended without a permitted accessor"
-                ),
-            },
         }
     }
 }

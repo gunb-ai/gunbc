@@ -225,6 +225,17 @@ data go_phantom_parameter: TypeRealization = {
   cost: 1
 }
 
+data go_nominal_opacity: TypeRealization = {
+  language: go_language
+  target: NominalOpacity
+  carrier: "NominalOpacity"
+  is_copy: false
+  fields: [
+    { dag_name: "permitted_accessors", access: DirectField("permitted_accessors"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
 data go_field_entry: TypeRealization = {
   language: go_language
   target: FieldEntry
