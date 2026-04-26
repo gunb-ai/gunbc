@@ -75,7 +75,7 @@ Owns **T-Ground** sub-program (Goal 1 — Grounding Completeness, the program wi
 - **Critical path:** T-Ground-Pilot → T-Ground-Rust → T-Ground-Engine → T-Ground-Tests → T-Ground-Dissolve (per `ROADMAP.md §"Post-R1 Grounding lanes"`).
 - **Fill queue:** T-Ground-Python, T-Ground-Go (2-way parallel after Pilot validates).
 - **Cross-program consumer:** Engine sharpened-(b) full pilot enumeration consumes T-Substrate ValueBody-list/sum carrier.
-- **Authority:** authors all T-Ground sub-briefs autonomously; dispatches workers; reports cross-program signals to Director.
+- **Authority:** authors all T-Ground sub-briefs autonomously; dispatches workers; **signals lane-close to R2 Release Manager** (for closure ledger); escalates blockers and scope changes to Director.
 
 ### 2. Substrate Manager
 
@@ -89,7 +89,7 @@ Owns **T-Substrate** lane (Goal 3 — substrate prereqs) **and the B4 Identity-C
 - **B4 Identity-Carrier Substrate Pass:** the 4 Phase 1 carriers (`DeclarationRef` consumer migration, fold-shape carrier, emit-helper carrier, extdeps-fixture-set carrier) and the 8 Phase 2 site dissolutions. Sub-briefs B4.1 through B4.12.
 - **Watch condition (split trigger):** Substrate Manager's combined T-Substrate + B4 scope is intentionally heavy (8+ parallel slots). If Substrate becomes the new bottleneck the way Director was — measured as workers idle waiting for Substrate-authored briefs >7 days — split B4 into a dedicated standing **B4 Identity-Carrier Manager**. R2 Release Manager surfaces this signal via the velocity-tripwire reporting if it fires.
 - **Cross-program producer:** all four T-Substrate sub-lanes produce carriers consumed by Modeling Manager + Grounding Manager.
-- **Authority:** authors all T-Substrate + B4 sub-briefs autonomously; dispatches workers; signals readiness to consuming managers via cross-manager queue.
+- **Authority:** authors all T-Substrate + B4 sub-briefs autonomously; dispatches workers; signals readiness to consuming managers via cross-manager queue; **signals sub-lane / Phase close to R2 Release Manager** (for closure ledger); escalates blockers and scope changes to Director.
 
 ### 3. Modeling Manager
 
@@ -101,7 +101,7 @@ Owns **T-Modeling** lane (Goal 2 — modeling-faithfulness dissolution) and cons
   - `Dimension<Carrier>` typed value wrapper with phantom-parameter unit-mismatch enforcement (consumes T-Substrate parametric-algebra subset)
   - Tokenizer charclass phase-2 (consumes T-Substrate ValueBody-list/sum subset)
 - **Cross-program consumer:** waits on Substrate Manager's per-sub-lane readiness signals; each item dispatches as its substrate dependency lands.
-- **Authority:** authors all T-Modeling sub-briefs autonomously; dispatches workers; signals item-close to **R2 Release Manager** for R2 demo coordination.
+- **Authority:** authors all T-Modeling sub-briefs autonomously; dispatches workers; **signals item-close to R2 Release Manager** (for closure ledger + demo coordination); escalates blockers and scope changes to Director.
 
 ### 4. Impossible-Bugs Manager
 
@@ -112,7 +112,7 @@ Owns **T-ImpossibleBugs** lane (Goal 4 — remaining R2+ impossible-bug classes 
   - Unhandled diagnostic paths (Tier 2 substrate; coordinate with Substrate Manager if substrate work surfaces)
   - Unenumerated effects (post-effects-design-doc per #808; closed-system effects model is the canonical reference)
 - **Cross-program coordination:** classes that surface substrate gaps escalate to Substrate Manager rather than expanding T-ImpossibleBugs scope.
-- **Authority:** authors all T-ImpossibleBugs sub-briefs autonomously; dispatches workers; signals class-close to Director.
+- **Authority:** authors all T-ImpossibleBugs sub-briefs autonomously; dispatches workers; **signals class-close to R2 Release Manager** (for closure ledger); escalates blockers and scope changes to Director.
 
 ### 5. Pure Bootstrap Manager
 
