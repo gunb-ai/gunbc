@@ -12,20 +12,21 @@
 
 R2's Goal 4 — **Remaining R2+ impossible-bug classes**. Three classes currently tagged `[R2+]` in `ROADMAP.md §"Lane acceptance — .dag gates"` (T-Demo row); THESIS §"Enumerable impossible-bug classes" is authority on scheduling tags.
 
-| Class | Status (at brief authoring) | Substrate gating |
-|---|---|---|
-| Nested-optional flatten | DESIGN/SCOPING DOC AUTHORED (PR #798 — bright-moth-390 redirect) | gated on cardinality refinement; coordinate with Substrate Manager |
-| Unhandled diagnostic paths | DESIGN/SCOPING DOC AUTHORED (PR #801 — sunny-deer-629 redirect) | Tier 2 substrate; may require coordination with Substrate Manager |
-| Unenumerated effects | DESIGN AUTHORED (PR #808 — closed-system effects model is canonical reference); Fn→Arrow refactor pre-prereq (PR #805) | post-effects-design; Fn→Arrow may be prereq |
+| Class | Authored briefs (canonical filenames) | Status (at brief authoring) | Substrate gating |
+|---|---|---|---|
+| Nested-optional flatten | `t-impossiblebugs-nested-optional-flatten-design.md` (PR #798) + `t-impossiblebugs-nested-optional-flatten-worker.md` (DESIGN/SCOPING shape — produces substrate proposal, not implementation) | Worker brief authored | gated on cardinality refinement; coordinate with Substrate Manager |
+| Unhandled diagnostic paths | `t-impossiblebugs-unhandled-diagnostic-paths-design.md` (PR #801) + `t-impossiblebugs-unhandled-diagnostic-paths-worker.md` (DESIGN/SCOPING shape — produces substrate proposal, not implementation) | Worker brief authored | Tier 2 substrate; may require coordination with Substrate Manager |
+| Unenumerated effects | `t-impossiblebugs-unenumerated-effects-design.md` (PR #808 — **canonical authority**, closed-system effects model + 5-behavior fold) | Both prior worker briefs (`t-impossiblebugs-unenumerated-effects-worker.md` + `t-impossiblebugs-unenumerated-effects-parser-worker.md`) are **SUPERSEDED 2026-04-25** by the design doc; route new work through the design doc, not the superseded workers | post-effects-design; Fn→Arrow refactor (PR #805) is independent prereq for vestigial `params + return_type` cleanup, not directly gating effects framing |
 
 Each class becomes an impossible-bug-by-construction at R2 close — not a runtime check, but a structural fact carried by the substrate that the lens / type checker reads.
 
 ## Owned deliverables (through R2 close)
 
 For each class:
-- Convert design/scoping doc to worker brief (Director-authored per coordination on inbox #828).
-- Worker dispatched (potentially gated on substrate work; coordinate with Substrate Manager).
-- Migration / implementation that makes the bug class structurally impossible to author.
+- Worker brief is **already authored** (see Program scope table above for canonical filenames). Note that nested-optional + unhandled-diagnostic-paths workers are DESIGN/SCOPING shape — they produce substrate proposals, not direct implementation. Effects worker is SUPERSEDED; route through the design doc.
+- Manager dispatches the existing worker (potentially gated on substrate work; coordinate with Substrate Manager).
+- Sub-substrate work surfaced by DESIGN/SCOPING workers becomes a Substrate Manager hand-off (escalate per cross-program rule below).
+- Implementation phase (post-substrate-proposal) that makes the bug class structurally impossible to author.
 - Structural test demonstrating the impossible-bug status (e.g., synthetic input → compile-time diagnostic, not runtime panic).
 - Class-close signal to R2 Release Manager.
 
@@ -58,15 +59,21 @@ For each class:
 
 ## Sub-briefs (authored / pending)
 
-Design/scoping (already authored):
-- Nested-optional flatten — `docs/briefs/t-impossiblebugs-nested-optional-flatten.md` (or similar; per PR #798)
-- Unhandled diagnostic paths — `docs/briefs/t-impossiblebugs-unhandled-diagnostic-paths.md` (or similar; per PR #801)
-- Unenumerated effects — `docs/briefs/t-impossiblebugs-unenumerated-effects-design.md` (per #808)
+**Already authored — canonical filenames:**
+- Design: `docs/briefs/t-impossiblebugs-nested-optional-flatten-design.md` (PR #798)
+- Worker (DESIGN/SCOPING shape): `docs/briefs/t-impossiblebugs-nested-optional-flatten-worker.md`
+- Design: `docs/briefs/t-impossiblebugs-unhandled-diagnostic-paths-design.md` (PR #801)
+- Worker (DESIGN/SCOPING shape): `docs/briefs/t-impossiblebugs-unhandled-diagnostic-paths-worker.md`
+- Design (canonical authority): `docs/briefs/t-impossiblebugs-unenumerated-effects-design.md` (PR #808)
 
-Pending — Director-authored worker briefs (convert design → worker):
-- Nested-optional flatten worker
-- Unhandled diagnostic paths worker
-- Unenumerated effects worker (with Fn→Arrow prereq sequencing per #805)
+**SUPERSEDED — do not author against, route through design doc:**
+- `docs/briefs/t-impossiblebugs-unenumerated-effects-worker.md` (SUPERSEDED 2026-04-25 by design doc)
+- `docs/briefs/t-impossiblebugs-unenumerated-effects-parser-worker.md` (SUPERSEDED 2026-04-25 by design doc; closed-system framing dissolves the proposed parser surface)
+
+**Pending — Manager dispatches existing workers + handles design-doc routing for effects:**
+- Dispatch nested-optional-flatten worker (DESIGN/SCOPING produces substrate proposal → escalate to Substrate Manager)
+- Dispatch unhandled-diagnostic-paths worker (DESIGN/SCOPING → escalate to Substrate Manager if Tier 2 substrate gap surfaces)
+- Author effects implementation worker against the canonical design doc (post-supersede; closed-system mechanism + 5-behavior fold). PR #805 Fn→Arrow refactor stays dispatchable as independent vestigial-syntax cleanup.
 
 ## Working state (fill on spawn)
 
