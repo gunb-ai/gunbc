@@ -88,6 +88,9 @@ type GoPrimitive
       target_name: String
       algebra: GoIntegerAlgebra
       carrier: GoTargetCarrier
+      // scaffold: R2 top-level aggregate `ValueBody` sub-lane makes
+      // `go_spec_predeclared_primitives` rows structurally walkable; until then,
+      // consumers read the duplicated `GoIntegerRangeFact` rows below.
       range_min_inclusive: String
       range_max_inclusive: String
       overflow: GoIntegerOverflow
@@ -97,6 +100,7 @@ type GoPrimitive
       canon_name: String
       algebra: GoIntegerAlgebra
       carrier: GoTargetCarrier
+      // Same scaffold as `GoIntegerPrimitive` (see `GoIntegerRangeFact`).
       range_min_inclusive: String
       range_max_inclusive: String
       overflow: GoIntegerOverflow
@@ -127,7 +131,15 @@ type GoPrimitive
     }
 
 
-// Structurally walkable integer range facts (mirrors rust IntegerRangeFact pattern).
+// Structurally walkable integer range facts (mirrors rust `IntegerRangeFact`).
+// `go_spec_predeclared_primitives` remains a top-level list/sum body and therefore
+// lowers as `ValueBody::Unparsed` until the R2 top-level aggregate sub-lane
+// lands. These record data declarations expose the same integer range facts
+// through today's structural `ValueBody::Structural` path so consumers do
+// not mirror bounds out-of-band. The list rows repeat algebra/carrier/range
+// for readable authoring of the full `GoPrimitive` sum; post-R2 walkability,
+// derive one shape from the other if the substrate supports it (exploratory;
+// same tradeoff as rust/primitives.dag).
 type GoIntegerRangeFact {
   target_name: String
   algebra: GoIntegerAlgebra
