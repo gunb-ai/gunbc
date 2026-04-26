@@ -1576,12 +1576,16 @@ pub struct BranchNode {
     pub output: PortId,
     pub span: SourceSpan,
     /// B4.3: `Some(UserMatch)` iff lowered from a surface `match` (not `if`).
-    pub emit_participation: Option<BranchEmitParticipation>,
+    pub(crate) emit_participation: Option<BranchEmitParticipation>,
 }
 
 impl BranchNode {
     pub fn result_port(&self) -> PortId {
         self.output
+    }
+
+    pub fn emit_participation(&self) -> Option<BranchEmitParticipation> {
+        self.emit_participation
     }
 }
 

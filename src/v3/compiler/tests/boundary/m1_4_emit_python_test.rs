@@ -561,7 +561,7 @@ fn serialize_branch_node(node: &BranchNode) -> String {
             .join(", "),
         py_debug(&node.result_port()),
         serialize_span(&node.span),
-        serialize_opt_branch_emit_participation(&node.emit_participation)
+        serialize_opt_branch_emit_participation(node.emit_participation())
     )
 }
 
@@ -621,7 +621,7 @@ fn serialize_opt_bind_emit_participation(p: Option<BindEmitParticipation>) -> St
     }
 }
 
-fn serialize_opt_branch_emit_participation(p: &Option<BranchEmitParticipation>) -> String {
+fn serialize_opt_branch_emit_participation(p: Option<BranchEmitParticipation>) -> String {
     match p {
         None => "None".to_string(),
         Some(BranchEmitParticipation::UserMatch) => "\"UserMatch\"".to_string(),

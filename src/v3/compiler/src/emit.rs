@@ -3201,7 +3201,7 @@ mod tests {
             .iter()
             .find_map(|node| match node {
                 Behavior::Branch(branch)
-                    if branch.emit_participation == Some(BranchEmitParticipation::UserMatch) =>
+                    if branch.emit_participation() == Some(BranchEmitParticipation::UserMatch) =>
                 {
                     Some(branch.input)
                 }

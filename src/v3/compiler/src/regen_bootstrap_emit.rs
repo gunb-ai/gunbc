@@ -368,7 +368,7 @@ fn render_branch_node(node: &BranchNode) -> String {
         render_paths(&node.paths),
         render_port_id(node.output),
         render_source_span(&node.span),
-        render_opt_branch_emit_participation(node.emit_participation),
+        render_opt_branch_emit_participation(node.emit_participation()),
     )
 }
 
