@@ -86,8 +86,7 @@
 
 module std.algebra
 
-import std.errors { DivError }
-import std.result { Result }
+import std.errors { DivError, Result }
 
 // =========================================================================
 // Unary structures (single operation)
