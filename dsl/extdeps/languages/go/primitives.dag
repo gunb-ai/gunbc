@@ -106,6 +106,9 @@ type GoPrimitive
       target_name: String
       algebra: GoIntegerAlgebra
       carrier: GoTargetCarrier
+      // scaffold: R2 top-level aggregate `ValueBody` sub-lane makes
+      // `go_spec_predeclared_primitives` rows structurally walkable; until then,
+      // consumers read the duplicated `GoIntegerRangeFact` rows below.
       range_min_inclusive: String
       range_max_inclusive: String
       overflow: GoIntegerOverflow
@@ -115,6 +118,7 @@ type GoPrimitive
       canon_name: String
       algebra: GoIntegerAlgebra
       carrier: GoTargetCarrier
+      // Same scaffold as `GoIntegerPrimitive` (see `GoIntegerRangeFact`).
       range_min_inclusive: String
       range_max_inclusive: String
       overflow: GoIntegerOverflow
