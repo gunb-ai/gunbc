@@ -48,8 +48,11 @@ fn eligibility_walk_port(
     if depth >= LENS_APPLY_TYPE_WALK_DEPTH {
         return false;
     }
+    // Parameter ports (acc/elt of the step `Bind`, formals of any callable we walk into)
+    // have no producer — they're bound by the interpreter at evaluation time. Treat as
+    // eligible; only producer-backed nodes contribute interpretability constraints.
     let Some(producer) = dag.resolve_producer_opt(&port) else {
-        return false;
+        return true;
     };
     match producer {
         Behavior::Value(_) => true,
