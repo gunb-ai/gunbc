@@ -121,12 +121,23 @@ producer.)
      `generated::check` (preserve public API used by integration tests
      and embedders).
 2. **Delete** `src/v3/compiler/src/lens_unused_parameters.rs`.
-3. **Tests** — The current file embeds `#[cfg(test)]` unit tests. Move
-   them to a **T-PB-B-owned** path under
-   `src/v3/compiler/tests/integration/` (or another existing test
-   module pattern consistent with `TESTING.md`), and add the new test
-   file path to `EXPECTED_HAND_AUTHORED_TEST` if it is new hand-Rust
-   test surface. Do **not** shrink T-PB-B coverage.
+3. **Tests (default — no new hand-authored test files).** The current
+   file embeds `#[cfg(test)]` unit tests. **Prefer:** keep them
+   **colocated** inside the new inline `pub mod lens_unused_parameters
+   { … }` in `lib.rs`, mirroring `pub mod lens_cost`’s existing
+   `#[cfg(test)] mod tests { … }` pattern. Those tests compile with the
+   library test target only; they do **not** add paths under
+   `src/v3/compiler/tests/` and do **not** touch
+   `EXPECTED_HAND_AUTHORED_TEST` — the T-PB-B ratchet must not grow as
+   collateral to a T-PB-A census retirement (census increases are
+   STOP per manager dispatch unless Director-approved).
+
+   **Alternatives** (only if colocation is genuinely infeasible): fold
+   the assertions into an **already-listed** integration test file
+   (no new `EXPECTED_HAND_AUTHORED_TEST` line), or port coverage to
+   runner-backed `.dag` `TestClaim`s if expressible without new
+   hand-Rust files. **Do not** treat “add a new Rust integration test
+   file + ratchet line” as the default path.
 4. **SG-0** — Remove the deleted `.rs` path from
    `EXPECTED_HAND_AUTHORED_NON_TEST`; keep counts consistent with
    `sg0_v3_hand_authored_census`.
@@ -138,7 +149,8 @@ producer.)
 
 - [ ] `lens_unused_parameters.rs` absent from repo; behavior unchanged
   for `UnusedParametersLens::query` callers.
-- [ ] All moved tests pass; no loss of unused-parameters coverage.
+- [ ] All preserved tests pass (colocated `#[cfg(test)]` or chosen
+  alternative); no loss of unused-parameters coverage.
 - [ ] `cargo test -p v3-compiler sg0_v3_` passes (full census + both
   sub-ratchets).
 - [ ] `cargo test -p v3-compiler` (or workspace hand-test command per
@@ -154,6 +166,10 @@ Surface to Pure Bootstrap manager / parent inbox **#884** when:
 - **Census ratchet:** implementing this slice would **add** a new
   non-test `.rs` or fragment (forbidden without director sign-off), or
   live census at HEAD disagrees with the counts in this brief.
+- **T-PB-B collateral:** this slice would add a new path to
+  `EXPECTED_HAND_AUTHORED_TEST` solely to host moved tests — **STOP**
+  (use colocated `#[cfg(test)]` in `lib.rs`, an already-counted test
+  file, or `.dag` claims instead).
 - **Duplicate authority:** another brief already lands the same
   file retirement — close as redundant; do not fight for scope.
 - **Substrate / carrier beyond thin shell:** if investigation shows
