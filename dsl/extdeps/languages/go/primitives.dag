@@ -30,9 +30,6 @@
 
 module extdeps.languages.go.primitives
 
-import std.bit { Bit, Byte, Word16, Word32, Word64 }
-
-
 // --- Algebra tags (Go-prefixed names; avoid colliding with rust/primitives.dag
 // in the shared bootstrap Dag). ---
 
