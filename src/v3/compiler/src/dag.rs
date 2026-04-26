@@ -385,6 +385,13 @@ pub enum FieldValue {
     },
 }
 
+// Terminal literal/cardinality/template/port-state mirrors are generated
+// from `std/substrate.dag`; keep the substrate authority there, not here.
+include!("dag_scalar_generated.rs");
+
+mod cardinality_payload;
+pub use cardinality_payload::CardinalityPayload;
+
 /// The six-variant type substrate. Terminal at M1(2.5).
 ///
 /// Dissolution ledger (4-pattern check per THESIS §"Structural decompression"):
@@ -426,10 +433,7 @@ pub enum TypeConnective {
     },
     /// Repetition over an element type with a bound. Unifies v2's Required/Optional
     /// with list cardinality.
-    Cardinality {
-        element: DeclarationId,
-        bound: CardinalityBound,
-    },
+    Cardinality(CardinalityPayload),
     /// Specialization of a parameterized template with concrete template arguments.
     /// For pure aliases like `Int = OrderedRing<Word64>`, Int's connective IS
     /// Instantiation directly — inhabitance collapses into this form. See
@@ -438,6 +442,34 @@ pub enum TypeConnective {
         template: DeclarationId,
         arguments: Vec<TemplateArgument>,
     },
+}
+
+/// `AtMostOne ∧ AtMostOne` idempotence: nested optional uses the inner declaration.
+///
+/// Single rule authority for T-ImpossibleBugs nested-optional flatten.
+pub(crate) fn cardinality_idempotent_target(
+    dag: &Dag,
+    element: DeclarationId,
+    bound: CardinalityBound,
+) -> Option<DeclarationId> {
+    if bound != CardinalityBound::AtMostOne {
+        return None;
+    }
+    match &dag.declaration(element).connective {
+        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => Some(element),
+        _ => None,
+    }
+}
+
+/// `TypeConnective::Cardinality` for contexts that do not allocate a declaration
+/// (e.g. type-alias connective). Caller must not introduce a nested `AtMostOne`
+/// stack; lowering routes declaration-carrying optionals through
+/// [`Dag::alloc_cardinality_decl`].
+pub(crate) fn type_connective_cardinality(
+    element: DeclarationId,
+    bound: CardinalityBound,
+) -> TypeConnective {
+    TypeConnective::Cardinality(CardinalityPayload::new_unchecked(element, bound))
 }
 
 #[derive(Debug, Clone)]
@@ -454,10 +486,6 @@ impl AtomPayload {
         }
     }
 }
-
-// Terminal literal/cardinality/template/port-state mirrors are generated
-// from `std/substrate.dag`; keep the substrate authority there, not here.
-include!("dag_scalar_generated.rs");
 
 /// Dissolution ledger (per M1_DESIGN.md §Q7 "ArrowBody dissolution ledger"):
 /// ArrowBody is a **mixed-lifecycle coproduct**. Terminal shape is 2

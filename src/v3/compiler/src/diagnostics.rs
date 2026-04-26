@@ -534,10 +534,9 @@ fn example_source_for_decl_inner(
         TypeConnective::Disj { variants } => variants
             .iter()
             .find_map(|variant| render_variant_witness(dag, variant, depth + 1)),
-        TypeConnective::Cardinality {
-            bound: CardinalityBound::AtMostOne,
-            ..
-        } => Some("None".to_string()),
+        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
+            Some("None".to_string())
+        }
         _ => None,
     }
 }

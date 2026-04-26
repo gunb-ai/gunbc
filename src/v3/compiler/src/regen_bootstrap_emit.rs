@@ -175,10 +175,10 @@ fn render_type_connective(connective: &TypeConnective) -> String {
             render_declaration_id(*output),
             render_arrow_body(body),
         ),
-        TypeConnective::Cardinality { element, bound } => format!(
-            "TypeConnective::Cardinality {{ element: {}, bound: {} }}",
-            render_declaration_id(*element),
-            render_cardinality_bound(bound),
+        TypeConnective::Cardinality(payload) => format!(
+            "TypeConnective::Cardinality(CardinalityPayload::new_unchecked({}, {}))",
+            render_declaration_id(payload.element()),
+            render_cardinality_bound(&payload.bound()),
         ),
         TypeConnective::Instantiation {
             template,

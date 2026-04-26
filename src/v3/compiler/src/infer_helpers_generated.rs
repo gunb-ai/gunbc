@@ -189,10 +189,7 @@ pub fn normalize_instantiation_arguments(p0: &TypeConnective) -> NormalizedInsta
             output: _,
             body: _,
         } => NormalizedInstantiationArgs::NotInstantiation,
-        TypeConnective::Cardinality {
-            element: _,
-            bound: _,
-        } => NormalizedInstantiationArgs::NotInstantiation,
+        TypeConnective::Cardinality(_) => NormalizedInstantiationArgs::NotInstantiation,
         TypeConnective::Instantiation {
             template: __payload_template,
             arguments: __payload_arguments,
