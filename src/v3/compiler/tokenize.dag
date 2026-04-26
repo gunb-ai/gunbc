@@ -55,26 +55,25 @@
 // authority). The ROADMAP lane also names `syntax.dag` retagging and
 // structural class rows in *this* file — those are **not** claimed here:
 // `dsl/std/syntax.dag` / `dag_keyword_set` / `OperatorSpec.symbol` are unchanged
-// in this tranche, and M1(2.8) still rejects list / sum-variant literals in
-// `data` bodies for this module (`class-5 gap #3`), so scanner classes cannot
-// yet be read structurally from lowered `tokenize.dag`. Instead `regen_tokenize`
-// emits calls into `tokenize_char_class.rs`, a handwritten Rust mirror of the
-// `.dag` ASCII predicates (ratcheted by unit tests in `tokenize_char_class.rs`).
+// in this tranche. Once this compiler authority authors scanner rows such as
+// `data ascii_scan_order: List<CharClass> = [...]`, `regen_tokenize` can consume
+// them structurally instead of routing through `tokenize_char_class.rs`, the
+// current handwritten Rust mirror of the `.dag` ASCII predicates (ratcheted by
+// unit tests in `tokenize_char_class.rs`).
 //
 // **Framing.** Phase 1 was a consumption gap: the character-level modeling was
 // already present, but tokenize.dag and syntax.dag encoded the same activity
 // (slicing the ASCII/Unicode space) in non-canonical forms (opaque strings,
 // hidden Rust predicates) instead of consuming the canonical `Char` /
-// `std.unicode` authorities. Phase 2 is now confirmed substrate/load-set work:
+// `std.unicode` authorities. Phase 2's substrate/load-set prerequisites are:
 // scanner rows such as `data ascii_scan_order: List<CharClass> = [...]` need
 // top-level structural `data` bodies for lists/sum constructors, and
-// `std.unicode` must enter the runtime bootstrap/load set before `CharClass`
+// `std.unicode` must be in the runtime bootstrap/load set before `CharClass`
 // resolves from this compiler authority. Named dissolution trigger (tracked in
-// ROADMAP as a follow-up lane): (a) add `CharClass` + predicates to
-// `std.unicode`; (b) grow top-level `ValueBody`/lowering support and retype the
-// opaque-string fields in this file and `syntax.dag` to consume `Char` /
-// `List<Char>`; (c) rewire `regen_tokenize` to read the class-predicate list
-// structurally rather than hardcoding host-stdlib method names. Goal is
+// ROADMAP as a follow-up lane): retype the opaque-string fields in this file and
+// `syntax.dag` to consume `Char` / `List<Char>`, author the scanner class list,
+// then rewire `regen_tokenize` to read it structurally rather than hardcoding
+// host-stdlib method names. Goal is
 // faithful consumption of an existing borrow, not re-implementing Unicode in
 // `.dag`.
 //
