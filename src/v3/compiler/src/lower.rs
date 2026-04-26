@@ -28,8 +28,8 @@ use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode, BranchEmitParticipation,
     BranchNode, BranchPattern, CardinalityBound, Cluster, Dag, Declaration, DeclarationId, Field,
     IntraClusterCall, LiteralBits, LoopBound, LoopNode, MemberDescent, NodeId, NonEmptyList,
-    NonSingletonList, Path, PayloadBinding, PortId, TemplateArgument, TransformNode,
-    TransformTarget, TypeConnective, ValueNode,
+    NonSingletonList, Path, PayloadBinding, PhantomParameter, PortId, TemplateArgument,
+    TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
@@ -48,6 +48,7 @@ use crate::parse::{
 use crate::types::TypeShape;
 
 type CallableScope = HashMap<String, DeclarationId>;
+const DIMENSION_STD_AUTHORITY_FILE: &str = "src/v3/std/dimensions.dag";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct RecursiveEdge {
@@ -250,6 +251,7 @@ pub(crate) fn lower_bodies_phase(
                 | SurfaceItem::TypeAlias { .. }
                 | SurfaceItem::TypeAtom { .. }
         ) {
+            validate_dimension_phantom_surface_item(dag, item);
             scope = lower_item(
                 item,
                 dag,
@@ -1937,6 +1939,29 @@ fn lower_item(
     }
 }
 
+fn validate_dimension_phantom_surface_item(dag: &mut Dag, item: &SurfaceItem) {
+    match item {
+        SurfaceItem::TypeRecord { name, span, .. } => {
+            if name == "Dimension" && span.file == DIMENSION_STD_AUTHORITY_FILE {
+                // The record case is validated after field lowering so the
+                // bridge can check the resolved `value: Carrier` payload.
+            }
+        }
+        SurfaceItem::TypeAtom { name, span, .. }
+        | SurfaceItem::TypeSum { name, span, .. }
+        | SurfaceItem::TypeAlias { name, span, .. }
+            if name == "Dimension" && span.file == DIMENSION_STD_AUTHORITY_FILE =>
+        {
+            report_dimension_phantom_error(
+                dag,
+                span.clone(),
+                "std `Dimension<Unit, Carrier>` must be a record declaration, not another type form",
+            );
+        }
+        _ => {}
+    }
+}
+
 /// Read a parent declaration's pre-populated `type_params` slot and
 /// build a `name → DeclarationId` local scope map for field-type and
 /// variant-payload lookups. The actual TypeParam declarations were
@@ -1990,6 +2015,117 @@ fn lower_type_record(
         });
     }
     dag.declaration_mut(decl_id).connective = TypeConnective::Conj { children };
+    attach_dimension_phantom_parameter(dag, decl_id, name);
+}
+
+fn attach_dimension_phantom_parameter(dag: &mut Dag, decl_id: DeclarationId, name: &str) {
+    if name != "Dimension" {
+        return;
+    }
+    let span = dag.declaration(decl_id).span.clone();
+    if span.file != DIMENSION_STD_AUTHORITY_FILE {
+        return;
+    }
+    if !dag.declaration(decl_id).phantom_params.is_empty() {
+        return;
+    }
+
+    let type_params = dag.declaration(decl_id).type_params.clone();
+    if type_params.len() != 2
+        || !type_param_is_named(dag, type_params[0], "Unit")
+        || !type_param_is_named(dag, type_params[1], "Carrier")
+    {
+        report_dimension_phantom_error(
+            dag,
+            span,
+            "std `Dimension` must declare exactly `Dimension<Unit, Carrier>`",
+        );
+        return;
+    }
+    let unit_param = type_params[0];
+    let carrier_param = type_params[1];
+    if !dimension_record_payload_is_carrier(dag, decl_id, carrier_param) {
+        report_dimension_phantom_error(
+            dag,
+            span,
+            "std `Dimension<Unit, Carrier>` must contain exactly `value: Carrier`",
+        );
+        return;
+    }
+    let Some(abelian_group) = dag.abelian_group_decl() else {
+        report_dimension_phantom_error(
+            dag,
+            span,
+            "std `Dimension<Unit, Carrier>` requires `AbelianGroup` to attach its unit phantom algebra",
+        );
+        return;
+    };
+    let Some(abelian_receiver) = dag.declaration(abelian_group).type_params.first().copied() else {
+        report_dimension_phantom_error(
+            dag,
+            span,
+            "`AbelianGroup` must expose its receiver type parameter for `Dimension` phantom algebra",
+        );
+        return;
+    };
+    let unit_abelian_group = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: unit_abelian_group,
+        name: Some("DimensionUnitAbelianGroup".to_string()),
+        connective: TypeConnective::Instantiation {
+            template: abelian_group,
+            arguments: vec![TemplateArgument {
+                parameter: abelian_receiver,
+                value: unit_param,
+            }],
+        },
+        type_params: Vec::new(),
+        phantom_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span,
+    });
+    dag.declaration_mut(decl_id)
+        .phantom_params
+        .push(PhantomParameter {
+            parameter: unit_param,
+            algebra: unit_abelian_group,
+        });
+}
+
+fn type_param_is_named(dag: &Dag, decl_id: DeclarationId, expected: &str) -> bool {
+    matches!(
+        &dag.declaration(decl_id).connective,
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == expected
+    )
+}
+
+fn dimension_record_payload_is_carrier(
+    dag: &Dag,
+    decl_id: DeclarationId,
+    carrier_param: DeclarationId,
+) -> bool {
+    matches!(
+        &dag.declaration(decl_id).connective,
+        TypeConnective::Conj { children }
+            if children.len() == 1
+                && children[0].label == "value"
+                && children[0].ty == carrier_param
+    )
+}
+
+fn report_dimension_phantom_error(dag: &mut Dag, span: SourceSpan, detail: &str) {
+    report_declaration_error(
+        dag,
+        Diagnostic::ResolveError {
+            name: format!("invalid std `Dimension<Unit, Carrier>` phantom bridge: {detail}"),
+            fixes: Vec::new(),
+            span,
+        },
+    );
 }
 
 fn lower_type_sum(
@@ -6916,6 +7052,111 @@ mod tests {
             span: test_span(),
         });
         id
+    }
+
+    fn surface_named_type(name: &str) -> SurfaceType {
+        SurfaceType::Named {
+            name: name.to_string(),
+            span: test_span(),
+        }
+    }
+
+    fn dimension_record_module(file: &str, type_params: &[&str]) -> SurfaceModule {
+        SurfaceModule {
+            items: vec![SurfaceItem::TypeRecord {
+                name: "Dimension".to_string(),
+                type_params: type_params
+                    .iter()
+                    .map(|param| (*param).to_string())
+                    .collect(),
+                fields: vec![SurfaceField {
+                    name: "value".to_string(),
+                    ty: surface_named_type("Carrier"),
+                }],
+                span: SourceSpan::new(file, 0, 1),
+            }],
+        }
+    }
+
+    fn dimension_alias_module(file: &str) -> SurfaceModule {
+        SurfaceModule {
+            items: vec![SurfaceItem::TypeAlias {
+                name: "Dimension".to_string(),
+                type_params: vec!["Unit".to_string(), "Carrier".to_string()],
+                target: surface_named_type("Carrier"),
+                refinement: None,
+                span: SourceSpan::new(file, 0, 1),
+            }],
+        }
+    }
+
+    #[test]
+    fn non_std_dimension_record_does_not_receive_unit_phantom_bridge() {
+        let mut dag = Dag::empty();
+        let module = dimension_record_module("user_dimension.dag", &["Unit", "Carrier"]);
+
+        lower_into(&mut dag, &module);
+
+        let dimension = dag
+            .declarations()
+            .iter()
+            .find(|decl| decl.name.as_deref() == Some("Dimension"))
+            .expect("test Dimension declaration allocated");
+        assert!(
+            dimension.phantom_params.is_empty(),
+            "non-std Dimension declarations must not receive the std unit phantom convention"
+        );
+        assert!(
+            dag.diagnostics().is_empty(),
+            "non-std Dimension should lower as an ordinary record without bridge diagnostics: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn malformed_std_dimension_bridge_fails_closed() {
+        let mut dag = Dag::empty();
+        let module = dimension_record_module(DIMENSION_STD_AUTHORITY_FILE, &["Carrier"]);
+
+        lower_into(&mut dag, &module);
+
+        let dimension = dag
+            .declarations()
+            .iter()
+            .find(|decl| decl.name.as_deref() == Some("Dimension"))
+            .expect("test Dimension declaration allocated");
+        assert!(dimension.phantom_params.is_empty());
+        assert!(
+            dag.diagnostics().iter().any(|(_, diagnostic)| {
+                matches!(
+                    diagnostic,
+                    Diagnostic::ResolveError { name, .. }
+                        if name.contains("invalid std `Dimension<Unit, Carrier>` phantom bridge")
+                )
+            }),
+            "malformed std Dimension must emit a fail-closed diagnostic: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn non_record_std_dimension_bridge_fails_closed() {
+        let mut dag = Dag::empty();
+        let module = dimension_alias_module(DIMENSION_STD_AUTHORITY_FILE);
+
+        lower_into(&mut dag, &module);
+
+        assert!(
+            dag.diagnostics().iter().any(|(_, diagnostic)| {
+                matches!(
+                    diagnostic,
+                    Diagnostic::ResolveError { name, .. }
+                        if name.contains("must be a record declaration")
+                )
+            }),
+            "std Dimension as a non-record type form must fail closed: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
     }
 
     #[test]
