@@ -616,16 +616,18 @@ fn serialize_bind_node(node: &BindNode) -> String {
 fn serialize_opt_bind_emit_participation(p: &Option<BindEmitParticipation>) -> String {
     match p {
         None => "None".to_string(),
-        Some(BindEmitParticipation::UserCallable) => "Some(BindEmitParticipation::UserCallable)"
-            .to_string(),
+        Some(BindEmitParticipation::UserCallable) => {
+            "Some(BindEmitParticipation::UserCallable)".to_string()
+        }
     }
 }
 
 fn serialize_opt_branch_emit_participation(p: &Option<BranchEmitParticipation>) -> String {
     match p {
         None => "None".to_string(),
-        Some(BranchEmitParticipation::UserMatch) => "Some(BranchEmitParticipation::UserMatch)"
-            .to_string(),
+        Some(BranchEmitParticipation::UserMatch) => {
+            "Some(BranchEmitParticipation::UserMatch)".to_string()
+        }
     }
 }
 
