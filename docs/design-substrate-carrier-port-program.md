@@ -117,7 +117,7 @@ Each placeholder below gets promoted to a full brief when dispatched. Stop-signa
 
 - **Work:** port `DescentEvidence`, `RankingDimension`, `DescentSource`, `TerminationProof`, `ProofEdge` + lattice fns into v3-reachable `std/termination.dag` (routing per file-preference-rank decision). Preserve `String` bootstrap-constraint fields; do not widen to structural refs.
 - **Acceptance:** carriers parse, lower, emit in v3. Lattice-fn tests ported. Port-progress receipt recorded in this doc's §5 table (not in the lens capability register — that register is lens-only per its own contract; carrier-port receipts stay here).
-- **STOP-AND-ESCALATE:** any carrier requires substrate connective not already present → C1 lane.
+- **STOP-AND-ESCALATE:** any carrier requires substrate connective not already present → escalate to Director (Director opens a C1 substrate-capability lane if escalation requires substrate work).
 
 ### Lane E-C — Port `CallPattern` + lowering `(S)`
 
@@ -145,7 +145,7 @@ Each placeholder below gets promoted to a full brief when dispatched. Stop-signa
 - **Decision gate:** pick one based on how `cost.dag` / `complexity.dag` want to consume the facts. Option (b) aligns with v3's "analyses are lenses" principle; option (a) aligns with v2's shape. Option (c) keeps the substrate minimal while giving the evidence a named home.
 - **Acceptance:** a v3 call in a test fixture produces per-call `SubValueRelation` readable by a lens, verified by a cementing test that compares against v2's `expr_call_descent_evidence` oracle on the same input. **Partial receipt:** `e_p_per_call_descent_evidence_side_table_reads_recursive_call` pins `countdown(n - 1)` as `ArithmeticDescent { param: "param_0", factor: ConstantShrink(OneStep) }`; `e_p_per_call_descent_evidence_fails_closed_for_non_self_call` pins unproven callable edges as `SubValueUnknown`; `e_p_runtime_mirror_matches_induction_carrier_shape` pins the runtime mirror against the `src/v3/std/induction.dag` carrier shape. The v2 oracle comparison and real `cost.dag` / `complexity.dag` consumption remain pending.
 - **Dependencies:** E-T, E-C, E-I (carriers must exist before a producer can emit them). The first producer slice has landed; full carrier-parity acceptance still waits on consumer wiring because `cost.dag` / `complexity.dag` do not yet read the side table.
-- **STOP-AND-ESCALATE:** option (a) requires new substrate connective → C1 lane; option (b) requires a lens capability v3 does not yet have → surface emit gap; any option reveals v3's `TransformTarget` distinctions collapse information v2's `ExprCall` preserved → modeling discovery, escalate.
+- **STOP-AND-ESCALATE:** option (a) requires new substrate connective → escalate to Director (Director opens a C1 substrate-capability lane if escalation requires substrate work); option (b) requires a lens capability v3 does not yet have → surface emit gap; any option reveals v3's `TransformTarget` distinctions collapse information v2's `ExprCall` preserved → modeling discovery, escalate.
 
 ### Lane E-M — `MethodSemantics` port-or-subsume `(S–M)`
 
