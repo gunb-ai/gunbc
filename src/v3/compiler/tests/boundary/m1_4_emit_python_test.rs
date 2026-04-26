@@ -9,8 +9,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::common::determinism_fixtures::PROGRAM_FIXTURES;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    Behavior, BindNode, BranchNode, LoopBound, LoopNode, Path as DagPath, Port, TransformNode,
-    ValueNode,
+    Behavior, BindEmitParticipation, BindNode, BranchEmitParticipation, BranchNode, LoopBound,
+    LoopNode, Path as DagPath, Port, TransformNode, ValueNode,
 };
 use v3_compiler::emit::{
     emit as shared_emit, emit_module as shared_emit_module,
@@ -368,6 +368,7 @@ class BranchNode:
     paths: list[BranchPath]
     result_port: PortId
     span: SourceSpan
+    emit_participation: typing.Any
 
 @dataclass
 class LoopNode:
@@ -386,6 +387,7 @@ class BindNode:
     result_port: PortId
     params: list[PortId]
     span: SourceSpan
+    emit_participation: typing.Any
 
 class Behavior:
     pass

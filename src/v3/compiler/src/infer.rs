@@ -3381,6 +3381,7 @@ fn materialize_substituted_refined_decl(
         params: vec![fresh_param_port],
         span: template_span.clone(),
         lane2_workflow: None,
+        emit_participation: None,
     }));
 
     // Step 5 (cont.): build the fresh predicate-Arrow Declaration.
