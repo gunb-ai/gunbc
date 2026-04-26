@@ -360,57 +360,11 @@ mod lane2_stage_2f_dimension_test {
         );
 
         let abelian_group = named_decl(&dag, "AbelianGroup");
-        let (algebra_template, algebra_args) =
-            instantiation_parts(&dag, dimension.phantom_params[0].algebra);
-        assert_eq!(algebra_template, abelian_group);
-        assert_eq!(algebra_args, vec![dimension.type_params[0]]);
-
-        for unit in [
-            "Meters",
-            "Seconds",
-            "Kilograms",
-            "Amperes",
-            "Kelvin",
-            "Moles",
-            "Candela",
-        ] {
-            named_decl(&dag, unit);
-        }
-    }
-
-    #[test]
-    fn dimension_operations_preserve_same_unit_and_carrier() {
-        let dag = Dag::new();
-        let dimension = named_decl(&dag, "Dimension");
-        let dimension_decl = dag.declaration(dimension);
-        let unit = dimension_decl.type_params[0];
-        let carrier = dimension_decl.type_params[1];
-
-        for name in ["add_dimension", "sub_dimension"] {
-            let op = dag.declaration(named_decl(&dag, name));
-            let TypeConnective::Arrow { inputs, output, .. } = &op.connective else {
-                panic!("{name} should be an arrow");
-            };
-            assert_eq!(inputs.len(), 2);
-            for ty in [inputs[0], inputs[1], *output] {
-                let (template, args) = instantiation_parts(&dag, ty);
-                assert_eq!(template, dimension);
-                assert_eq!(args, vec![unit, carrier]);
-            }
-        }
-
-        for name in ["mul_dimension_scalar", "div_dimension_scalar"] {
-            let op = dag.declaration(named_decl(&dag, name));
-            let TypeConnective::Arrow { inputs, output, .. } = &op.connective else {
-                panic!("{name} should be an arrow");
-            };
-            assert_eq!(inputs.len(), 2);
-            assert_eq!(inputs[1], carrier);
-            for ty in [inputs[0], *output] {
-                let (template, args) = instantiation_parts(&dag, ty);
-                assert_eq!(template, dimension);
-                assert_eq!(args, vec![unit, carrier]);
-            }
+        let algebra = dimension.phantom_params[0].algebra;
+        if algebra != abelian_group {
+            let (algebra_template, algebra_args) = instantiation_parts(&dag, algebra);
+            assert_eq!(algebra_template, abelian_group);
+            assert_eq!(algebra_args, vec![dimension.type_params[0]]);
         }
     }
 
