@@ -15,8 +15,10 @@
   live `DeclarationRef` authority. A record field typed as
   `DeclarationRef` lowers identifier/dotted-path field values to
   `FieldValue::Reference(DeclarationId)`.
-- **[`src/v3/compiler/src/lower.rs:2803`](../../src/v3/compiler/src/lower.rs)** —
-  lowerer support for the `DeclarationRef` sentinel.
+- **[`src/v3/compiler/src/lower.rs:2824`](../../src/v3/compiler/src/lower.rs)** —
+  lowerer support for the `DeclarationRef` sentinel; the
+  `FieldValue::Reference` returns are currently at `:2844` and
+  `:2854`.
 - **[`src/v3/std/verification.dag`](../../src/v3/std/verification.dag)** —
   existing verification consumers: `LensOutputEquals`,
   `DifferentialEquals`, `MockBackedInvariant`, etc. already carry
@@ -80,9 +82,9 @@ The remaining parent B4.1 sites are tracked as named follow-ups:
   path-equality check or replace this brief with a Director-approved
   substrate carrier if plain `DeclarationRef` is insufficient.
 - **B4.1c — structural declaration-source carrier for §0.7.** Owns
-  `declaration_name_preference_rank(&span.file)` in `dag.rs:2735-2764`
-  plus the lowerer call sites at `lower.rs:1451-1452` and
-  `lower.rs:1546-1547`. Trigger: author and dispatch after B4.1a or
+  `declaration_name_preference_rank(&span.file)` in `dag.rs:2781`
+  plus the lowerer call sites at `lower.rs:1460-1461` and
+  `lower.rs:1555-1556`. Trigger: author and dispatch after B4.1a or
   any time declaration collision/preference behavior is edited.
   Acceptance must dissolve the file-suffix preference table into a
   structural declaration-source fact, or explicitly STOP with
