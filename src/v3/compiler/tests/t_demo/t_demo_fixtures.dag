@@ -45,8 +45,6 @@ data complexity_demo_out: Int = 0
 
 data total: Int = 0
 
-data upsert_effect: Int = 0
-
 data r1_lens_output_input_from_program: Int = 0
 
 data t_demo_complexity_program_input: ProgramOutputBind = {
@@ -55,10 +53,6 @@ data t_demo_complexity_program_input: ProgramOutputBind = {
 
 data t_demo_parallelism_program_input: ProgramOutputBind = {
   output_ref: total
-}
-
-data t_demo_effects_program_input: ProgramOutputBind = {
-  output_ref: upsert_effect
 }
 
 data t_demo_complexity_cost_expected: Int = 3
@@ -171,7 +165,7 @@ data integration_effects_lens_output: TestClaim = {
   file_name: "fixture_integration_canonical_effects.v3",
   predicate: LensOutputEquals(
     named_function_count,
-    t_demo_effects_program_input,
+    r1_lens_output_input_from_program,
     t_demo_effects_bind_count_expected
   ),
   requires: []
