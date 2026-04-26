@@ -1,4 +1,4 @@
-// std.dimensions — DB-3 `Dimension` abstraction (compile-time proof dimensions).
+// std.dimensions — compile-time dimensions and unit-typed values.
 //
 // 🟢 TERMINAL for the structural surface (Lane 2 Stage 2f). Execution
 // authority for `analyze_symbolic_cost_dimension` lives in
@@ -7,7 +7,7 @@
 // can walk `Dag::declarations()` for `Dimension<Carrier>` values — no
 // separate compiler registry until a real consumer needs it.
 //
-// **Deferred:** `data symbolic_cost_dimension: Dimension<SymbolicCost> = { ... }`
+// **Deferred:** `data symbolic_cost_dimension: AnalysisDimension<SymbolicCost> = { ... }`
 // — class-5 gap #3 (`DOWNSTREAM_REQUIREMENTS.md`) blocks record bodies; the
 // symbolic-cost **analysis** path still dispatches through this module's
 // report shape + the cost lens algebra.
@@ -18,6 +18,7 @@ module v3.std.dimensions
 
 import std.list { List }
 import std.substrate { Dag, Behavior }
+import std.algebra { OrderedRing }
 import v3.std.diagnostics { Diagnostic }
 
 // 🟢 TERMINAL at the structural-witness scope. `Witness<Carrier>`
@@ -58,10 +59,55 @@ type DimensionReport<Carrier> {
 //                   monoid law is documented, not mechanically enforced)
 //   - `identity`  — fold unit / empty workflow value
 //   - `break_diagnostic` — optional diagnostic when composition breaks
-type Dimension<Carrier> {
+type AnalysisDimension<Carrier> {
   name: String
   witness_of: fn(Dag, Behavior) -> Witness<Carrier>
   compose: fn(Carrier, Carrier) -> Carrier
   identity: Carrier
   break_diagnostic: fn(Behavior, Carrier) -> OptionalDiagnostic
 }
+
+// R2 T-Modeling unit wrapper. `Unit` is a compile-time-only phantom
+// parameter; `Carrier` is the runtime value. Until `.dag` can declare
+// `phantom_params` directly, the lowerer has one bounded bridge for this
+// exact std authority (`src/v3/std/dimensions.dag` + `Dimension<Unit, Carrier>
+// { value: Carrier }`): it attaches
+// `PhantomParameter { parameter: Unit, algebra: AbelianGroup<Unit> }` and
+// fails closed if the declaration shape or algebra witness drifts. Dissolution
+// trigger: when phantom parameters become source-declared substrate facts,
+// delete the lowerer bridge and move this fact onto the declaration itself.
+type Dimension<Unit, Carrier> {
+  value: Carrier
+}
+
+type Meters
+type Seconds
+type Kilograms
+type Amperes
+type Kelvin
+type Moles
+type Candela
+
+fn add_dimension<Unit, Carrier>(
+  carrier_algebra: OrderedRing<Carrier>,
+  left: Dimension<Unit, Carrier>,
+  right: Dimension<Unit, Carrier>
+) -> Dimension<Unit, Carrier> { host dimension_add }
+
+fn sub_dimension<Unit, Carrier>(
+  carrier_algebra: OrderedRing<Carrier>,
+  left: Dimension<Unit, Carrier>,
+  right: Dimension<Unit, Carrier>
+) -> Dimension<Unit, Carrier> { host dimension_sub }
+
+fn mul_dimension_scalar<Unit, Carrier>(
+  carrier_algebra: OrderedRing<Carrier>,
+  value: Dimension<Unit, Carrier>,
+  scalar: Carrier
+) -> Dimension<Unit, Carrier> { host dimension_mul_scalar }
+
+fn div_dimension_scalar<Unit, Carrier>(
+  carrier_algebra: OrderedRing<Carrier>,
+  value: Dimension<Unit, Carrier>,
+  scalar: Carrier
+) -> Dimension<Unit, Carrier> { host dimension_div_scalar }
