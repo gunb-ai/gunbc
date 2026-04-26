@@ -3735,8 +3735,25 @@ mod tests {
     #[test]
     fn nominal_opacity_descent_fails_closed_outside_permitted_accessor() {
         let mut dag = Dag::new();
+        let span = SourceSpan::new("nominal_opacity_test.v3", 0, 1);
+        let placeholder = |id, name: &str| Declaration {
+            id,
+            name: Some(name.to_string()),
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        };
         let accessor_a_id = dag.alloc_declaration_id();
+        dag.push_declaration(placeholder(accessor_a_id, "accessor_a"));
         let other_id = dag.alloc_declaration_id();
+        dag.push_declaration(placeholder(other_id, "other"));
         let opaque_id = dag.alloc_declaration_id();
         dag.push_declaration(Declaration {
             id: opaque_id,
@@ -3752,7 +3769,7 @@ mod tests {
             nominal_opacity: Some(NominalOpacity {
                 permitted_accessors: vec![accessor_a_id],
             }),
-            span: SourceSpan::new("nominal_opacity_test.v3", 0, 1),
+            span: span.clone(),
         });
 
         assert!(
