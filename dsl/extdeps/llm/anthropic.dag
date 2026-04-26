@@ -92,6 +92,10 @@ data current_api_version: AnthropicApiVersion = {
 
 // Roles permitted in Messages API `messages[]` (system is the separate
 // `system` parameter, not a row here).
+// 🟢 TERMINAL provider-domain coproduct for this narrow Messages request
+// surface: Anthropic's conversation rows are user/assistant only. This does
+// not claim Rust request serialization is wire-faithful; that remains
+// gap-carried by `structural_coverage_gap_anthropic_messages_request_wire`.
 type AnthropicMessagesRole = User | Assistant
 
 // Messages API conversation row: `content` is a typed block list (not Json).

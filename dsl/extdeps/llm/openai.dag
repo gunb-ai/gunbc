@@ -80,6 +80,10 @@ type ToolCall {
 // carrier: system / developer / user / assistant per OpenAI Chat Completions
 // (https://platform.openai.com/docs/api-reference/chat/create). Tool rows and
 // multimodal `content` arrays are not modeled here — gap-carried below.
+// 🟢 TERMINAL provider-domain coproduct for the modeled narrow text-message
+// row. Full Chat Completions message variants remain gap-carried by
+// `structural_coverage_gap_openai_chat_message_full_api_surface`; request wire
+// role-string serialization remains gap-carried separately.
 type OpenAiChatMessageRole = System | Developer | User | Assistant
 
 // Chat Completions API message row: wire accepts plain-string `content` for
