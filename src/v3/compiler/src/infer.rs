@@ -2608,13 +2608,15 @@ fn resolve_callable_target(
                     ) {
                         Ok(true) => {}
                         Ok(false) => {
-                            return CallableTargetResolution::Fail(callable_instantiation_conflict(
-                                dag,
-                                target,
-                                expected_input.declaration,
-                                &actual_ctx,
-                                span,
-                            ));
+                            return CallableTargetResolution::Fail(
+                                callable_instantiation_conflict(
+                                    dag,
+                                    target,
+                                    expected_input.declaration,
+                                    &actual_ctx,
+                                    span,
+                                ),
+                            );
                         }
                         Err(diag) => return CallableTargetResolution::Fail(diag),
                     }
