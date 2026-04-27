@@ -758,7 +758,7 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
         "stage1 build failed:\n{}",
         String::from_utf8_lossy(&build1.stderr)
     );
-    let stage1_bin = stage1_target_dir.join("release/v2-compiler");
+    let stage1_bin = stage1_target_dir.join("release/v2_compiler");
 
     // Self-compile pass 2
     ci_timing("PASS2: start self-compile");
