@@ -52,8 +52,8 @@ use super::{
 };
 use crate::dag::{
     ArithmeticOp, ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId,
-    Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode,
-    TransformTarget, TypeConnective, ValueBody, ValueNode,
+    Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
+    TypeConnective, ValueBody, ValueNode,
 };
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
@@ -2759,12 +2759,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
             TypeConnective::Arrow {
                 body: ArrowBody::UserDefined(body),
                 ..
-            } => {
-                port_depends_on_rust_int_div(
-                    dag,
-                    super::behavior_result_port(dag.node(*body)),
-                )
-            }
+            } => port_depends_on_rust_int_div(dag, super::behavior_result_port(dag.node(*body))),
             _ => false,
         });
 

@@ -403,7 +403,7 @@ let x: R = 6 / 2",
 #[test]
 fn emit_rust_omits_div_prelude_without_division() {
     let out = emit(
-        "type DivError = LocalOnly\n\
+        "type DivError = Bad | Worse\n\
 let x: Int = 42",
     );
     assert!(
