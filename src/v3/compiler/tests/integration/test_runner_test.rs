@@ -477,7 +477,7 @@ data census_subset_claim: TestClaim = {
   name: "lens_producer_files_remaining",
   source: "let x: Int = 1",
   file_name: "lens_producer_files_remaining.v3",
-  predicate: CensusSubsetCount(census_authority, "EXPECTED_HAND_AUTHORED_NON_TEST", { name: "LensProducerFiles" }),
+  predicate: CensusSubsetCount(census_authority, "EXPECTED_HAND_AUTHORED_NON_TEST", lens_producer_files_subset_predicate),
   requires: []
 }
 
@@ -493,7 +493,7 @@ data ratchet_zero_claim: TestClaim = {
   name: "pb_compiler_std_ratchet_zero",
   source: "let x: Int = 1",
   file_name: "pb_compiler_std_ratchet_zero.v3",
-  predicate: RatchetZero(census_authority, { name: "CompilerStdPositiveSet" }),
+  predicate: RatchetZero(census_authority, compiler_std_positive_set_ratchet),
   requires: []
 }
 

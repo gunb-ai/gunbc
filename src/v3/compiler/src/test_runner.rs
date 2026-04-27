@@ -2236,21 +2236,20 @@ impl<'a> TestRunner<'a> {
             payload
         else {
             return ClaimResult::Fail(
-                "CensusSubsetCount payload should be (DeclarationRef, Symbol, CensusSubsetPredicate)"
+                "CensusSubsetCount payload should be (DeclarationRef, Symbol, DeclarationRef)"
                     .to_string(),
             );
         };
         if let Err(reason) = self.resolve_census_authority_ref(authority, "authority") {
             return ClaimResult::Fail(reason);
         }
-        let subset_name = match self.named_shape_value(subset_predicate, "CensusSubsetPredicate") {
-            Ok(name) => name,
-            Err(reason) => return ClaimResult::Fail(reason),
-        };
-        if subset_name != "LensProducerFiles" {
-            return ClaimResult::Fail(format!(
-                "CensusSubsetCount unsupported subset_predicate `{subset_name}`"
-            ));
+        if let Err(reason) = self.resolve_pb_marker_ref(
+            subset_predicate,
+            "subset_predicate",
+            "lens_producer_files_subset_predicate",
+            "LensProducerFilesSubsetPredicate",
+        ) {
+            return ClaimResult::Fail(reason);
         }
         self.nyi_external_pb_predicate(&claim.claim_name, "CensusSubsetCount", list_constant)
     }
@@ -2277,22 +2276,25 @@ impl<'a> TestRunner<'a> {
     ) -> ClaimResult {
         let [authority, ratchet_kind] = payload else {
             return ClaimResult::Fail(
-                "RatchetZero payload should be (DeclarationRef, ConsolidationRatchet)".to_string(),
+                "RatchetZero payload should be (DeclarationRef, DeclarationRef)".to_string(),
             );
         };
         if let Err(reason) = self.resolve_census_authority_ref(authority, "authority") {
             return ClaimResult::Fail(reason);
         }
-        let ratchet_name = match self.named_shape_value(ratchet_kind, "ConsolidationRatchet") {
-            Ok(name) => name,
-            Err(reason) => return ClaimResult::Fail(reason),
-        };
-        if ratchet_name != "CompilerStdPositiveSet" {
-            return ClaimResult::Fail(format!(
-                "RatchetZero unsupported ratchet_kind `{ratchet_name}`"
-            ));
+        if let Err(reason) = self.resolve_pb_marker_ref(
+            ratchet_kind,
+            "ratchet_kind",
+            "compiler_std_positive_set_ratchet",
+            "CompilerStdPositiveSetRatchet",
+        ) {
+            return ClaimResult::Fail(reason);
         }
-        self.nyi_external_pb_predicate(&claim.claim_name, "RatchetZero", &ratchet_name)
+        self.nyi_external_pb_predicate(
+            &claim.claim_name,
+            "RatchetZero",
+            "compiler_std_positive_set_ratchet",
+        )
     }
 
     fn eval_generated_from_dag_shape(
@@ -2332,11 +2334,32 @@ impl<'a> TestRunner<'a> {
         }
     }
 
-    fn named_shape_value(&self, value: &FieldValue, shape_name: &str) -> Result<String, String> {
-        let Some(fields) = record_fields(value) else {
-            return Err(format!("{shape_name} should be a structural record"));
+    fn resolve_pb_marker_ref(
+        &self,
+        value: &FieldValue,
+        field_label: &str,
+        expected_decl_name: &str,
+        expected_marker_type: &str,
+    ) -> Result<DeclarationId, String> {
+        let FieldValue::Reference(id) = value else {
+            return Err(format!(
+                "PB census predicate `{field_label}` should be a DeclarationRef edge to `{expected_decl_name}`, got {value:?}"
+            ));
         };
-        string_field(fields, "name")
+        let decl = self.dag.declaration(*id);
+        let actual_name = decl_display_name(*id, decl);
+        if decl.name.as_deref() != Some(expected_decl_name) {
+            return Err(format!(
+                "PB census predicate `{field_label}` expected `{expected_decl_name}`, got `{actual_name}`"
+            ));
+        }
+        match self.decl_inhabits_named_role(decl, expected_marker_type) {
+            Ok(true) => Ok(*id),
+            Ok(false) => Err(format!(
+                "PB census predicate `{field_label}` declaration `{actual_name}` must inhabit `{expected_marker_type}`"
+            )),
+            Err(reason) => Err(reason),
+        }
     }
 
     fn nyi_external_pb_predicate(

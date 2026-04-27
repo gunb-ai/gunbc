@@ -28,13 +28,16 @@ type Symbol = String
 type Path = String
 type SnapshotRef = String
 
-type CensusSubsetPredicate {
-  name: String
-}
+// Closed PB subset predicates are declared values, not string labels, so
+// fixtures can only point at typed vocabulary entries.
+type LensProducerFilesSubsetPredicate {}
 
-type ConsolidationRatchet {
-  name: String
-}
+data lens_producer_files_subset_predicate: LensProducerFilesSubsetPredicate = {}
+
+// Closed PB consolidation ratchets follow the same declaration-ref pattern.
+type CompilerStdPositiveSetRatchet {}
+
+data compiler_std_positive_set_ratchet: CompilerStdPositiveSetRatchet = {}
 
 // **🟡 Scaffold — DiagnosticKind.** This mirrors the compiler's native
 // diagnostic taxonomy until reflected substrate diagnostic facts can be
@@ -179,7 +182,7 @@ type TestPredicate
       law: AlgebraicLawKind
       lens_ref: DeclarationRef
     }
-  // R1C-A / T-TestGen schema extensions for the six PB census gates.
+  // R1C-A / T-TestGen schema extensions for the five PB census gates.
   // These variants scope the structural shape R1C-D fixtures consume; they
   // intentionally do not duplicate census lists into fixture text.
   | CensusBoundCheck {
@@ -190,7 +193,7 @@ type TestPredicate
   | CensusSubsetCount {
       authority: DeclarationRef
       list_constant: Symbol
-      subset_predicate: CensusSubsetPredicate
+      subset_predicate: DeclarationRef
     }
   | FixedPointConverges {
       compile_target: Path
@@ -198,7 +201,7 @@ type TestPredicate
     }
   | RatchetZero {
       authority: DeclarationRef
-      ratchet_kind: ConsolidationRatchet
+      ratchet_kind: DeclarationRef
     }
   | GeneratedFromDag {
       authority: DeclarationRef
