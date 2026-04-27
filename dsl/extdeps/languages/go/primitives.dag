@@ -23,7 +23,10 @@
 // LESSON 5 (grounding-pilot-receipt.md): subset-only axes are structurally
 // partitioned — integer overflow lives only on integer variants; float width
 // only on GoFloatPrimitive; complex component width only on GoComplexPrimitive;
-// alias linkage only on GoIntegerAliasPrimitive (byte/rune).
+// alias linkage only on GoIntegerAliasPrimitive (byte/rune); bool/string/unit
+// share `GoDiscreteScalarPrimitive` with a coproduct `GoDiscreteScalarKind`
+// so each arm pairs exactly one algebra tag with its carrier (no cross-wire
+// product of broad sums).
 //
 // SUBSTRATE-GAP FLAGS: `overflow` on integer variants / terminal / text carriers
 // follow the Rust pilot’s *placement* (per-variant bridge tags); Go’s witness is
@@ -45,14 +48,6 @@ type GoIntegerAlgebra
 type GoFloatAlgebra
   = GoApproximateField32Algebra
   | GoApproximateField64Algebra
-
-// Bool, empty struct, and UTF-8 string share one closed algebra-tag sum so each
-// tag is introduced here (mirrors rust `NonIntegerAlgebra` grouping bool + unit).
-type GoSpecDiscreteAlgebra
-  = GoCanonicalTwoElementBooleanAlgebra
-  | GoTerminalAlgebra
-  | GoUtf8FreeMonoidAlgebra
-
 
 // --- Target carrier tags (value-domain witnesses; not ABI / GC shape). ---
 
@@ -82,6 +77,24 @@ type GoIntegerOverflow
 type GoComplexComponentWidth
   = GoComplex64Components
   | GoComplex128Components
+
+
+// Bool, UTF-8 string, and empty struct — each arm fixes a legal (algebra,
+// carrier) pair so bool cannot carry `GoUtf8TextCarrier`, etc. (illegal states
+// unrepresentable). Algebra tags are introduced only inside these arms.
+type GoDiscreteScalarKind
+  = GoBoolScalar {
+      algebra: GoCanonicalTwoElementBooleanAlgebra
+      carrier: GoBitCarrier
+    }
+  | GoStringScalar {
+      algebra: GoUtf8FreeMonoidAlgebra
+      carrier: GoUtf8TextCarrier
+    }
+  | GoUnitScalar {
+      algebra: GoTerminalAlgebra
+      carrier: GoTerminalCarrier
+    }
 
 
 // --- Sum-typed Go spec primitive (Lesson 5 partition). ---
@@ -120,20 +133,9 @@ type GoPrimitive
       target_name: String
       component_width: GoComplexComponentWidth
     }
-  | GoStringPrimitive {
+  | GoDiscreteScalarPrimitive {
       target_name: String
-      algebra: GoSpecDiscreteAlgebra
-      carrier: GoTargetCarrier
-    }
-  | GoBooleanPrimitive {
-      target_name: String
-      algebra: GoSpecDiscreteAlgebra
-      carrier: GoTargetCarrier
-    }
-  | GoUnitPrimitive {
-      target_name: String
-      algebra: GoSpecDiscreteAlgebra
-      carrier: GoTargetCarrier
+      kind: GoDiscreteScalarKind
     }
 
 
@@ -262,10 +264,12 @@ data go_spec_predeclared_primitives: List<GoPrimitive> = [
   GoComplexPrimitive { target_name: "complex64", component_width: GoComplex64Components },
   GoComplexPrimitive { target_name: "complex128", component_width: GoComplex128Components },
 
-  GoBooleanPrimitive { target_name: "bool", algebra: GoCanonicalTwoElementBooleanAlgebra,
-    carrier: GoBitCarrier },
+  GoDiscreteScalarPrimitive { target_name: "bool",
+    kind: GoBoolScalar { algebra: GoCanonicalTwoElementBooleanAlgebra, carrier: GoBitCarrier } },
 
-  GoStringPrimitive { target_name: "string", algebra: GoUtf8FreeMonoidAlgebra, carrier: GoUtf8TextCarrier },
+  GoDiscreteScalarPrimitive { target_name: "string",
+    kind: GoStringScalar { algebra: GoUtf8FreeMonoidAlgebra, carrier: GoUtf8TextCarrier } },
 
-  GoUnitPrimitive { target_name: "struct{}", algebra: GoTerminalAlgebra, carrier: GoTerminalCarrier }
+  GoDiscreteScalarPrimitive { target_name: "struct{}",
+    kind: GoUnitScalar { algebra: GoTerminalAlgebra, carrier: GoTerminalCarrier } }
 ]
