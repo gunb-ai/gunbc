@@ -103,12 +103,11 @@ fn try_reconcile_int_literal_decision_set(
                 Some(IntLiteralSetReconciliation::SetNarrow)
             }
             Ok(Some(false)) => {
-                if let IntegerRangeLookup::Found(range) = integer_range_for_decl(dag, ty.declaration) {
+                if let IntegerRangeLookup::Found(range) =
+                    integer_range_for_decl(dag, ty.declaration)
+                {
                     let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
-                    dag.mark_unresolved(
-                        port,
-                        magnitude_out_of_range(literal, ty, range, span),
-                    );
+                    dag.mark_unresolved(port, magnitude_out_of_range(literal, ty, range, span));
                     Some(IntLiteralSetReconciliation::Marked)
                 } else {
                     None
