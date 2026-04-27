@@ -198,13 +198,28 @@ pub(crate) fn dag_needs_div_error_prelude(
     top_level_binds: &[&BindNode],
     function_decls: &[&Declaration],
 ) -> bool {
-    dag_uses_arithmetic_div(dag, top_level_binds, function_decls)
-        || top_level_binds
-            .iter()
-            .any(|bind| port_uses_substrate_result_or_div_error(dag, bind.value))
-        || function_decls
-            .iter()
-            .any(|decl| decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new()))
+    if dag_uses_arithmetic_div(dag, top_level_binds, function_decls) {
+        eprintln!("DEBUG div trigger");
+        return true;
+    }
+    if let Some(bind) = top_level_binds
+        .iter()
+        .find(|bind| port_uses_substrate_result_or_div_error(dag, bind.value))
+    {
+        eprintln!("DEBUG bind trigger {} {}", bind.name, bind.span.file);
+        return true;
+    }
+    if let Some(decl) = function_decls
+        .iter()
+        .find(|decl| decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new()))
+    {
+        eprintln!(
+            "DEBUG fn trigger {:?} {} {:?}",
+            decl.name, decl.span.file, decl.connective
+        );
+        return true;
+    }
+    false
 }
 
 fn substrate_result_variant_payload_is_value_of(
@@ -3125,7 +3140,7 @@ impl SourceFilteringBinding {
     pub(crate) fn excludes(&self, file: &str) -> bool {
         self.excluded_prefixes
             .iter()
-            .any(|prefix| file.starts_with(prefix))
+            .any(|prefix| file.starts_with(prefix) || file.contains(&format!("/{prefix}")))
     }
 }
 
