@@ -3156,7 +3156,7 @@ impl<'a> Ctx<'a> {
     ) -> Result<String, EmitError> {
         let Some(node_id) = self.dag.port(port).produced_by else {
             return Err(EmitError::UnsupportedBehavior(
-                "render reached a port with no producer (parameter?)".to_string(),
+                format!("render reached port {:?} with no producer (parameter?)", port),
             ));
         };
         match self.dag.node(node_id) {

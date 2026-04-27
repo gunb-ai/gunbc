@@ -41,8 +41,8 @@ import v3.std.substrate {
 // Classification: 🟡 workaround-shaped coproduct (§modeling-discipline Practice 4).
 // Dissolution trigger: when the tracked begin/commit witness and write/read
 // threading facts land as durable `std` substrate carriers, replace this enum with
-// a narrower structural `EffectShape` whose variants are all terminal in scope.
-type EffectShape
+// a narrower structural shape whose variants are all terminal in scope.
+type StructuralEffectShape
   = NoEffect
   | ReadShaped
   | WriteShaped
@@ -50,7 +50,7 @@ type EffectShape
 
 type EffectFact {
   port: PortId
-  shape: EffectShape
+  shape: StructuralEffectShape
 }
 
 // Coverage reasons are terminal at this scope and intentionally do not use a
@@ -112,7 +112,7 @@ fn effect_fact_for(
     Bind(bind) => { port: bind.result_port, shape: bind_effect(d, acc, bind) }
   }
 
-fn bind_effect(d: Dag, acc: List<EffectFact>, bind: BindNode) -> EffectShape =
+fn bind_effect(d: Dag, acc: List<EffectFact>, bind: BindNode) -> StructuralEffectShape =
   match resolve_producer(d, bind.result_port) {
     None => UnknownEffect { reason: "bind result producer missing from substrate" }
     Some(producer) =>
@@ -122,49 +122,53 @@ fn bind_effect(d: Dag, acc: List<EffectFact>, bind: BindNode) -> EffectShape =
         effect_at(acc, behavior_result_port(producer))
   }
 
-fn transform_effect(d: Dag, t: TransformNode) -> EffectShape =
+fn transform_effect(d: Dag, t: TransformNode) -> StructuralEffectShape =
   match t.target {
     Callable(id) => callable_signature_effect(d, id)
     FieldProject => NoEffect
     Operator => NoEffect
   }
 
-fn callable_signature_effect(d: Dag, id: DeclarationId) -> EffectShape =
+fn callable_signature_effect(d: Dag, id: DeclarationId) -> StructuralEffectShape =
   match declaration_by_id(d, id) {
     None => UnknownEffect { reason: "callable declaration missing from substrate" }
     Some(decl) =>
       match decl.connective {
-        Arrow { inputs, output, body } =>
-          if output_in_inputs(output, inputs) then
+        Arrow { inputs: inputs, output: output, body: body } =>
+          if output_in_inputs(inputs, output) then
             WriteShaped
           else
             match body {
-              ExternalRealization => ReadShaped
-              UserDefined => ReadShaped
+              ExternalRealization(_) => ReadShaped
+              UserDefined(_) => ReadShaped
               NoBody => UnknownEffect { reason: "callable has no body and no external realization" }
               Pending => UnknownEffect { reason: "callable body pending; signature coverage incomplete" }
-              Unparsed => UnknownEffect { reason: "callable body unparsed; signature coverage incomplete" }
+              Unparsed(_) => UnknownEffect { reason: "callable body unparsed; signature coverage incomplete" }
             }
-        _ => UnknownEffect { reason: "transform target is not an arrow declaration" }
+        Atom(_) => UnknownEffect { reason: "transform target is not an arrow declaration" }
+        Conj(_) => UnknownEffect { reason: "transform target is not an arrow declaration" }
+        Disj(_) => UnknownEffect { reason: "transform target is not an arrow declaration" }
+        Cardinality(_) => UnknownEffect { reason: "transform target is not an arrow declaration" }
+        Instantiation(_) => UnknownEffect { reason: "transform target is not an arrow declaration" }
       }
   }
 
-fn output_in_inputs(output: DeclarationId, inputs: List<DeclarationId>) -> Bool =
+fn output_in_inputs(inputs: List<DeclarationId>, output: DeclarationId) -> Bool =
   match inputs {
     Empty => false
     Cons(payload) =>
       if payload.head == output then
         true
       else
-        output_in_inputs(output, payload.tail)
+        output_in_inputs(payload.tail, output)
   }
 
-fn branch_effect(acc: List<EffectFact>, paths: List<BranchPath>) -> EffectShape =
+fn branch_effect(acc: List<EffectFact>, paths: List<BranchPath>) -> StructuralEffectShape =
   fold(paths, NoEffect, |running, path|
     combine_effects(running, effect_at(acc, path.result_port))
   )
 
-fn loop_effect(d: Dag, acc: List<EffectFact>, body: NodeId) -> EffectShape =
+fn loop_effect(d: Dag, acc: List<EffectFact>, body: NodeId) -> StructuralEffectShape =
   match node(d, body) {
     None => UnknownEffect { reason: "loop body node missing from substrate" }
     Some(behavior) => effect_at(acc, behavior_result_port(behavior))
@@ -179,13 +183,13 @@ fn behavior_result_port(b: Behavior) -> PortId =
     Bind(bind) => bind.result_port
   }
 
-fn combine_effects(a: EffectShape, b: EffectShape) -> EffectShape =
+fn combine_effects(a: StructuralEffectShape, b: StructuralEffectShape) -> StructuralEffectShape =
   match a {
-    UnknownEffect => a
+    UnknownEffect(_) => a
     WriteShaped => WriteShaped
     ReadShaped =>
       match b {
-        UnknownEffect => b
+        UnknownEffect(_) => b
         WriteShaped => WriteShaped
         ReadShaped => ReadShaped
         NoEffect => ReadShaped
@@ -193,7 +197,7 @@ fn combine_effects(a: EffectShape, b: EffectShape) -> EffectShape =
     NoEffect => b
   }
 
-fn effect_at(facts: List<EffectFact>, target: PortId) -> EffectShape =
+fn effect_at(facts: List<EffectFact>, target: PortId) -> StructuralEffectShape =
   match facts {
     Empty => UnknownEffect { reason: "effect fact missing for port" }
     Cons(payload) =>
@@ -204,34 +208,44 @@ fn effect_at(facts: List<EffectFact>, target: PortId) -> EffectShape =
   }
 
 fn compute_coverage_gaps(d: Dag) -> List<CoverageGap> =
-  let facts = compute_effect_facts(d) in
+  compute_coverage_gaps_from_facts(d, compute_effect_facts(d))
+
+fn compute_coverage_gaps_from_facts(d: Dag, facts: List<EffectFact>) -> List<CoverageGap> =
   fold(d.nodes, empty(), |acc, behavior|
     match behavior {
       Transform(t) =>
         match transform_effect(d, t) {
-          UnknownEffect { reason } =>
+          UnknownEffect { reason: reason } =>
             cons({ node: t.id, reason: reason }, acc)
-          _ => acc
+          NoEffect => acc
+          ReadShaped => acc
+          WriteShaped => acc
         }
       Branch(br) =>
         match branch_effect(facts, br.paths) {
-          UnknownEffect { reason } =>
+          UnknownEffect { reason: reason } =>
             cons({ node: br.id, reason: reason }, acc)
-          _ => acc
+          NoEffect => acc
+          ReadShaped => acc
+          WriteShaped => acc
         }
       Loop(l) =>
         match loop_effect(d, facts, l.body) {
-          UnknownEffect { reason } =>
+          UnknownEffect { reason: reason } =>
             cons({ node: l.id, reason: reason }, acc)
-          _ => acc
+          NoEffect => acc
+          ReadShaped => acc
+          WriteShaped => acc
         }
       Bind(bind) =>
         match effect_at(facts, bind.result_port) {
-          UnknownEffect { reason } =>
+          UnknownEffect { reason: reason } =>
             cons({ node: bind.id, reason: reason }, acc)
-          _ => acc
+          NoEffect => acc
+          ReadShaped => acc
+          WriteShaped => acc
         }
-      _ => acc
+      Value(_) => acc
     }
   )
 
