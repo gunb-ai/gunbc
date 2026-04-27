@@ -3233,6 +3233,7 @@ fn loop_output_is_a_bind_value(dag: &Dag, loop_node: &LoopNode) -> bool {
 
 #[test]
 fn every_loop_node_originates_from_recursive_function_lowering() {
+    let fixture_file = "loop_construction_closure_receipt.v3";
     let src = "\
 type IntList = Empty | Cons { head: Int, tail: IntList }
 
@@ -3251,47 +3252,69 @@ fn odd(list: IntList) -> Bool = match list {
     Cons(payload) => even(payload.tail),
 }
 ";
-    let dag = cached_compile_to_dag(src, "loop_construction_closure_receipt.v3");
+    let dag = cached_compile_to_dag(src, fixture_file);
     assert!(
         dag.diagnostics().is_empty(),
         "fixture should compile cleanly: {:?}",
         dag.diagnostics()
     );
 
-    let loop_nodes = loops_in(&dag);
+    // Global closure check: every Loop in the Dag — fixture and bootstrap alike
+    // — must satisfy the recursive-function-lowering signature (loop.output is
+    // the value port of some Bind). If a future PR adds a non-recursive Loop
+    // construction site anywhere, this fails.
+    let all_loops = loops_in(&dag);
     assert!(
-        !loop_nodes.is_empty(),
-        "fixture must produce at least one Behavior::Loop, otherwise the closure assertion is vacuous"
+        !all_loops.is_empty(),
+        "Dag must contain at least one Behavior::Loop (fixture defines three recursive functions)"
     );
-
-    let mut saw_cardinality = false;
-    let mut saw_descent = false;
-    for loop_node in &loop_nodes {
+    for loop_node in &all_loops {
         assert!(
             loop_output_is_a_bind_value(&dag, loop_node),
             "Behavior::Loop {:?} output port {:?} is not the value of any Behavior::Bind \
-             — would indicate a construction site outside recursive-function lowering",
+             — indicates a construction site outside recursive-function lowering",
             loop_node.id,
             loop_node.output
         );
+        if let LoopBound::Descent { cluster } = loop_node.bound {
+            assert!(
+                (cluster.raw() as usize) < dag.clusters().len(),
+                "LoopBound::Descent cluster id {:?} must reference a real cluster",
+                cluster
+            );
+        }
+    }
+
+    // Fixture-scoped variant coverage: filter to loops authored by *this*
+    // fixture's source file before claiming both bound variants are produced.
+    // Bootstrap loops (if any) live at different `span.file` values and are
+    // excluded from this check, so the variant claim is mechanically about
+    // what THIS fixture's recursive functions lower to.
+    let fixture_loops: Vec<&LoopNode> = all_loops
+        .iter()
+        .copied()
+        .filter(|l| l.span.file == fixture_file)
+        .collect();
+    assert!(
+        !fixture_loops.is_empty(),
+        "fixture {fixture_file} must produce at least one Behavior::Loop tagged with its own span"
+    );
+    let mut saw_cardinality = false;
+    let mut saw_descent = false;
+    for loop_node in &fixture_loops {
         match loop_node.bound {
             LoopBound::Cardinality { .. } => saw_cardinality = true,
-            LoopBound::Descent { cluster } => {
-                saw_descent = true;
-                assert!(
-                    (cluster.raw() as usize) < dag.clusters().len(),
-                    "LoopBound::Descent cluster id {:?} must reference a real cluster",
-                    cluster
-                );
-            }
+            LoopBound::Descent { .. } => saw_descent = true,
         }
     }
     assert!(
         saw_cardinality,
-        "fixture's single-recursive `count` should produce a LoopBound::Cardinality"
+        "fixture's single-recursive `count` should produce a LoopBound::Cardinality (fixture-scoped loops: {})",
+        fixture_loops.len()
     );
     assert!(
         saw_descent,
-        "fixture's mutual-recursive `even`/`odd` should produce a LoopBound::Descent"
+        "fixture's mutual-recursive `even`/`odd` should produce a LoopBound::Descent (fixture-scoped loops: {})",
+        fixture_loops.len()
     );
 }
