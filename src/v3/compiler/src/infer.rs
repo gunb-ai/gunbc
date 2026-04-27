@@ -4831,13 +4831,15 @@ fn resolve_decl_with_subst(
             let element = p.element();
             let bound = p.bound();
             let specialized_element = resolve_decl_with_subst(dag, element, subst, depth + 1)?;
+            if bound == crate::dag::CardinalityBound::AtMostOne {
+                if let Some(idem) =
+                    crate::dag::cardinality_idempotent_target(dag, specialized_element, bound)
+                {
+                    return Some(idem);
+                }
+            }
             if specialized_element == element {
                 return Some(current);
-            }
-            if let Some(idempotent) =
-                crate::dag::cardinality_idempotent_target(dag, specialized_element, bound)
-            {
-                return Some(idempotent);
             }
             find_equivalent_decl_cardinality(dag, specialized_element, &bound).or(Some(current))
         }
