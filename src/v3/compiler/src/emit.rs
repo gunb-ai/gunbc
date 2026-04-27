@@ -3121,7 +3121,13 @@ impl SourceFilteringBinding {
     pub(crate) fn excludes(&self, file: &str) -> bool {
         let normalized_file = normalize_source_filter_path(file);
         self.excluded_prefixes.iter().any(|prefix| {
-            normalized_file.starts_with(prefix) || normalized_file.contains(&format!("/{prefix}"))
+            if normalized_file.starts_with(prefix) {
+                return true;
+            }
+            if *prefix == "src/v3/compiler/" {
+                return false;
+            }
+            normalized_file.contains(&format!("/{prefix}"))
         })
     }
 }
