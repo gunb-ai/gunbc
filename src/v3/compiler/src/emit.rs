@@ -441,6 +441,8 @@ struct RealizationIndexes {
     patterns: HashMap<DeclarationId, PatternRealizationBinding>,
     syntax: GoLanguageSyntax,
     execution_model: TargetExecutionModelBinding,
+    /// Source exclusion policy loaded from
+    /// `data go_source_filtering: ShapeATargetSourceFiltering`.
     source_filtering: SourceFilteringBinding,
     /// The Go clean-emission contract loaded from `data
     /// go_clean_emission: CleanEmissionContract` (E-5 / Lane 1 Stage
@@ -2870,33 +2872,73 @@ fn require_scope_model(
     })
 }
 
+/// Reads `excluded_prefixes` from a `data …: SourceFiltering` value body.
+fn parse_source_filtering_excluded_prefixes(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<Vec<String>, EmitError> {
+    let fields = structural_fields_for_decl(dag, declaration)?;
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "excluded_prefixes")
+        .map(|(_, value)| value)
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "SourceFiltering is missing required `excluded_prefixes` field",
+        })?;
+    let FieldValue::List(entries) = value else {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "SourceFiltering.excluded_prefixes must be a list",
+        });
+    };
+    let mut excluded_prefixes = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let FieldValue::Literal(LiteralBits::String(prefix)) = entry else {
+            return Err(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "SourceFiltering.excluded_prefixes entries must be string literals",
+            });
+        };
+        excluded_prefixes.push(prefix.clone());
+    }
+    Ok(excluded_prefixes)
+}
+
 impl SourceFilteringBinding {
     pub(crate) fn build(dag: &Dag, declaration: DeclarationId) -> Result<Self, EmitError> {
         let fields = structural_fields_for_decl(dag, declaration)?;
-        let value = fields
-            .iter()
-            .find(|(label, _)| label == "excluded_prefixes")
-            .map(|(_, value)| value)
-            .ok_or(EmitError::MalformedTargetSyntax {
-                declaration,
-                detail: "SourceFiltering is missing required `excluded_prefixes` field",
-            })?;
-        let FieldValue::List(entries) = value else {
-            return Err(EmitError::MalformedTargetSyntax {
-                declaration,
-                detail: "SourceFiltering.excluded_prefixes must be a list",
-            });
-        };
-        let mut excluded_prefixes = Vec::with_capacity(entries.len());
-        for entry in entries {
-            let FieldValue::Literal(LiteralBits::String(prefix)) = entry else {
+        if fields.iter().any(|(label, _)| label == "internal") {
+            let internal = require_field_decl_ref(fields, "internal", declaration)?;
+            let mut excluded_prefixes = parse_source_filtering_excluded_prefixes(dag, internal)?;
+            let additional = fields
+                .iter()
+                .find(|(label, _)| label == "additional_excluded_prefixes")
+                .map(|(_, value)| value)
+                .ok_or(EmitError::MalformedTargetSyntax {
+                    declaration,
+                    detail: "ShapeATargetSourceFiltering is missing required `additional_excluded_prefixes` field",
+                })?;
+            let FieldValue::List(extra_entries) = additional else {
                 return Err(EmitError::MalformedTargetSyntax {
                     declaration,
-                    detail: "SourceFiltering.excluded_prefixes entries must be string literals",
+                    detail:
+                        "ShapeATargetSourceFiltering.additional_excluded_prefixes must be a list",
                 });
             };
-            excluded_prefixes.push(prefix.clone());
+            for entry in extra_entries {
+                let FieldValue::Literal(LiteralBits::String(prefix)) = entry else {
+                    return Err(EmitError::MalformedTargetSyntax {
+                        declaration,
+                        detail: "ShapeATargetSourceFiltering.additional_excluded_prefixes entries must be string literals",
+                    });
+                };
+                excluded_prefixes.push(prefix.clone());
+            }
+            return Ok(Self { excluded_prefixes });
         }
+
+        let excluded_prefixes = parse_source_filtering_excluded_prefixes(dag, declaration)?;
         Ok(Self { excluded_prefixes })
     }
 
