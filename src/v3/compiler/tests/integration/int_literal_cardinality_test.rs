@@ -4,7 +4,7 @@ use v3_compiler::dag::{Behavior, LiteralBits, PortState, ValueBody};
 use v3_compiler::emit_rust;
 use v3_compiler::{compile_to_dag, CompileError};
 
-fn assert_data_value_scalar_inhabits_u8(
+fn assert_data_value_scalar_typed_u8(
     dag: &v3_compiler::dag::Dag,
     name: &str,
     literal: i64,
@@ -18,13 +18,15 @@ fn assert_data_value_scalar_inhabits_u8(
         "{context}: {name} value should be int literal {literal}, got {:?}",
         decl.value_body
     );
-    let inhabits = decl
-        .inhabits
-        .unwrap_or_else(|| panic!("{context}: {name} missing `inhabits` type link"));
+    // `lower_data_item` stores the annotation on `connective` + a `meta_tag` edge; there is
+    // no `inhabits` link for scalar `data` items today.
+    let ty = decl
+        .meta_tag
+        .unwrap_or_else(|| panic!("{context}: {name} missing meta_tag to type decl"));
     assert_eq!(
-        dag.declaration(inhabits).name.as_deref(),
+        dag.declaration(ty).name.as_deref(),
         Some("UInt8"),
-        "{context}: data item should inhabit UInt8, not default Int"
+        "{context}: data `meta_tag` should point at the `UInt8` type declaration"
     );
 }
 
@@ -132,7 +134,7 @@ fn data_annotated_uint8_in_range_literal_narrows_against_preseed() {
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
     // Data bodies use declaration `value` nodes / `inhabits` edges — not always a
     // top-level `Behavior::Value` with the same wiring as `let`.
-    assert_data_value_scalar_inhabits_u8(&dag, "d", 5, "data u8 in-range");
+    assert_data_value_scalar_typed_u8(&dag, "d", 5, "data u8 in-range");
 }
 
 /// Call-site literal: `decide_transform` must narrow the argument `7` to `UInt8` when
