@@ -429,7 +429,10 @@ mod lane2_stage_2f_dimension_test {
         };
         assert_eq!(composed, lens);
         assert_eq!(dimension_name, "symbolic_cost");
-        assert_eq!(witnesses.len(), dag.nodes().len());
+        assert!(
+            witnesses.len() < dag.nodes().len(),
+            "dimension witnesses should be workflow-scoped, not materialized for every bootstrap behavior"
+        );
     }
 
     #[test]

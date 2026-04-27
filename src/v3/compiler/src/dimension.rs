@@ -7,6 +7,15 @@
 //! [`crate::lens_cost_symbolic::symbolic_cost_of`] for per-Behavior
 //! witnesses and reports the composed carrier at `workflow_root`'s result
 //! port (same query the cost lens answers today).
+//!
+//! Witnesses are collected only for behaviors **reachable backward** from
+//! `workflow_root`'s result port (plus `workflow_root` itself). The symbolic
+//! cost lens fold only resolves costs along producer chains in `Dag.nodes`
+//! construction order; bootstrap declarations outside the active workflow
+//! slice routinely carry `Lookup::Miss` on their result ports even though the
+//! user program is well-costed — whole-DAG iteration would false-fail.
+
+use std::collections::HashSet;
 
 use crate::dag::{Behavior, Dag, NodeId, PortId, SymbolicCost};
 use crate::diagnostics::{Diagnostic, SourceSpan};
@@ -60,19 +69,93 @@ pub fn behavior_spine_in_node_order(d: &Dag) -> &[Behavior] {
     d.nodes()
 }
 
+/// Behaviors on the backward dataflow slice from `workflow_root`'s result
+/// port, including `workflow_root` itself (the bind / root may not appear as
+/// the `produced_by` target of its own result port).
+fn workflow_reachable_behavior_ids(d: &Dag, workflow_root: NodeId) -> HashSet<NodeId> {
+    let mut visited_nodes = HashSet::new();
+    visited_nodes.insert(workflow_root);
+
+    let mut visited_ports: HashSet<PortId> = HashSet::new();
+    let mut frontier: Vec<PortId> = Vec::new();
+
+    let root_behavior = d.node(workflow_root);
+    frontier.push(behavior_result_port(root_behavior));
+
+    while let Some(port) = frontier.pop() {
+        if !visited_ports.insert(port) {
+            continue;
+        }
+        let Some(producer) = d.port_opt(&port).and_then(|p| p.produced_by) else {
+            continue;
+        };
+        expand_behavior_backward(d, producer, &mut frontier, &mut visited_nodes);
+    }
+
+    visited_nodes
+}
+
+fn expand_behavior_backward(
+    d: &Dag,
+    node: NodeId,
+    frontier: &mut Vec<PortId>,
+    visited_nodes: &mut HashSet<NodeId>,
+) {
+    if !visited_nodes.insert(node) {
+        return;
+    }
+    let Some(behavior) = d.node_opt(&node) else {
+        return;
+    };
+    match behavior {
+        Behavior::Value(_) => {}
+        Behavior::Transform(transform) => {
+            for input in &transform.inputs {
+                frontier.push(*input);
+            }
+        }
+        Behavior::Branch(branch) => {
+            frontier.push(branch.input);
+            for path in &branch.paths {
+                expand_behavior_backward(d, path.body, frontier, visited_nodes);
+                frontier.push(path.output);
+            }
+        }
+        Behavior::Loop(loop_node) => {
+            frontier.push(loop_node.source);
+            frontier.push(loop_node.init);
+            if let Some(count) = loop_node.bound.count_port() {
+                frontier.push(count);
+            }
+            expand_behavior_backward(d, loop_node.body, frontier, visited_nodes);
+        }
+        Behavior::Bind(bind) => {
+            for param in &bind.params {
+                frontier.push(*param);
+            }
+            frontier.push(bind.value);
+        }
+    }
+}
+
 /// Symbolic-cost dimension analysis — DB-3 dispatch over the cost lens algebra.
 ///
 /// On success ([`DimensionReport::DimensionOk`]), `composed` is the asymptotic
-/// bound at `workflow_root`'s result port. Witnesses walk every [`Behavior`]
-/// in node order (see [`behavior_spine_in_node_order`]). Failure is only
+/// bound at `workflow_root`'s result port. Witnesses walk every reachable
+/// [`Behavior`] in [`behavior_spine_in_node_order`] (construction order,
+/// filtered to the backward slice from the workflow root). Failure is only
 /// [`DimensionReport::DimensionFail`]: there is no fabricated carrier.
 pub fn analyze_symbolic_cost_dimension(
     d: &Dag,
     workflow_root: NodeId,
 ) -> DimensionReport<SymbolicCost> {
     const DIMENSION_NAME: &str = "symbolic_cost";
+    let scope = workflow_reachable_behavior_ids(d, workflow_root);
     let mut witnesses = Vec::new();
     for behavior in d.nodes() {
+        if !scope.contains(&behavior.id()) {
+            continue;
+        }
         let port = behavior_result_port(behavior);
         match symbolic_cost_of(d, &port) {
             SymbolicCostLookup::Miss => witnesses.push(Witness::Violates {
