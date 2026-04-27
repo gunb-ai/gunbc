@@ -167,20 +167,3 @@ fn r1_gates_testgen_structural_coverage_suite_passes_through_runner() {
         &["testgen_structural_coverage"],
     );
 }
-
-#[test]
-fn r1_gates_p0_suite_passes_through_runner() {
-    let dag = lower(
-        include_str!("../fixtures/r1_gates.dag"),
-        "src/v3/compiler/tests/fixtures/r1_gates.dag",
-    );
-    run_suite_all_pass_with_expected_claim_names(
-        &dag,
-        "r1_p0_suite",
-        &[
-            "p0_repeat_string_correct",
-            "p0_no_fabrication_sentinel",
-            "p0_rest_ops_aligned",
-        ],
-    );
-}

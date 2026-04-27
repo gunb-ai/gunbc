@@ -30,7 +30,6 @@ import std.verification {
   Compiles,
   DeclarationHasRefinement,
   DifferentialEquals,
-  ExecuteCommand,
   LensOutputEquals,
   ProgramInput,
   ProgramOutputBind,
@@ -66,55 +65,6 @@ data sub_type_alias_where_lowers: TestClaim = {
 data sub_type_alias_where_lowers_gate: TestSuite = {
   name: "sub_type_alias_where_lowers_gate",
   claims: [sub_type_alias_where_lowers]
-}
-
-// R1C-B / T-P0 — host-oracle receipts wrapped as `.dag` claims. The Day-1
-// `repeat_string` behavior is still the v2 interpreter oracle; the two `[ext]`
-// gates are structural host receipts expressible through the existing
-// `ExecuteCommand` DB-15 runner surface, so no new predicate shape is needed.
-data p0_repeat_string_correct: TestClaim = {
-  name: "p0_repeat_string_correct",
-  source: "let p0_repeat_string_correct_gate: Int = 0\n",
-  file_name: "r1_p0_repeat_string_correct.v3",
-  predicate: ExecuteCommand(
-    "cargo",
-    ["test", "-p", "v2-compiler-tests", "std_render_repeat_string_and_indent_text_match_interpreter", "--", "--exact"],
-    0
-  ),
-  requires: []
-}
-
-data p0_no_fabrication_sentinel: TestClaim = {
-  name: "p0_no_fabrication_sentinel",
-  source: "let p0_no_fabrication_sentinel_gate: Int = 0\n",
-  file_name: "r1_p0_no_fabrication_sentinel.v3",
-  predicate: ExecuteCommand(
-    "cargo",
-    ["test", "-p", "v2-compiler-tests", "no_bug_no_profile_sentinel_in_tracked_sources", "--", "--exact"],
-    0
-  ),
-  requires: []
-}
-
-data p0_rest_ops_aligned: TestClaim = {
-  name: "p0_rest_ops_aligned",
-  source: "let p0_rest_ops_aligned_gate: Int = 0\n",
-  file_name: "r1_p0_rest_ops_aligned.v3",
-  predicate: ExecuteCommand(
-    "cargo",
-    ["test", "-p", "v2-compiler-tests", "rest_ops_have_derived_effects", "--", "--exact"],
-    0
-  ),
-  requires: []
-}
-
-data r1_p0_suite: TestSuite = {
-  name: "r1_p0_suite",
-  claims: [
-    p0_repeat_string_correct,
-    p0_no_fabrication_sentinel,
-    p0_rest_ops_aligned
-  ]
 }
 
 // Naming stub for `DeclarationRef` resolution on `AlgebraicLaw(Associativity, lens_composition_op)`.
