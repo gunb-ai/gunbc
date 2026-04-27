@@ -297,7 +297,7 @@ mod lane2_stage_2f_dimension_test {
     use v3_compiler::analyze_symbolic_cost_dimension;
     use v3_compiler::compile_to_dag;
     use v3_compiler::dag::{Behavior, Dag, DeclarationId, PortId, TypeConnective};
-    use v3_compiler::dimension::DimensionReport;
+    use v3_compiler::DimensionReport;
     use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
     fn find_bind_port(dag: &Dag, name: &str) -> PortId {
