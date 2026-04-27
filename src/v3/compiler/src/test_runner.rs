@@ -44,6 +44,10 @@ const SG0_CENSUS_SOURCE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/integration/sg0_census_test.rs"
 ));
+const INFER_HELPERS_SOURCE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../lenses/infer_helpers.dag"
+));
 
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
@@ -2221,7 +2225,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_census_bound_check_shape(
         &self,
-        claim: &TestClaimValue,
+        _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [authority, list_constant, FieldValue::Literal(LiteralBits::Int(bound))] = payload
@@ -2253,7 +2257,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_census_subset_count_shape(
         &self,
-        claim: &TestClaimValue,
+        _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [authority, list_constant, subset_predicate] = payload else {
@@ -2295,7 +2299,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_fixed_point_converges_shape(
         &self,
-        claim: &TestClaimValue,
+        _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [FieldValue::Literal(LiteralBits::String(compile_target)), FieldValue::Literal(LiteralBits::String(expected))] =
@@ -2338,7 +2342,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_ratchet_zero_shape(
         &self,
-        claim: &TestClaimValue,
+        _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [authority, ratchet_kind] = payload else {
@@ -2369,7 +2373,7 @@ impl<'a> TestRunner<'a> {
 
     fn eval_generated_from_dag_shape(
         &self,
-        claim: &TestClaimValue,
+        _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [authority, FieldValue::List(generated_paths)] = payload else {
@@ -2466,14 +2470,6 @@ impl<'a> TestRunner<'a> {
             )),
             Err(reason) => Err(reason),
         }
-    }
-
-    fn census_authority_name(&self, id: DeclarationId) -> String {
-        self.dag
-            .declaration(id)
-            .name
-            .clone()
-            .unwrap_or_else(|| format!("Declaration#{}", id.raw()))
     }
 
     /// Hermetic path: compile `claim.source`, then `apply_lens_declaration` for subject (0-arity)
@@ -2781,6 +2777,66 @@ fn diagnostic_matches_reference(
             DiagnosticDetailFilter::Any => true,
             DiagnosticDetailFilter::Contains(text) => diagnostic.message().contains(text),
         }
+}
+
+fn sg0_census_list_count(list_constant_name: &str) -> Result<i64, String> {
+    Ok(sg0_census_list_entries(list_constant_name)?.len() as i64)
+}
+
+fn sg0_census_list_entries(list_constant_name: &str) -> Result<Vec<String>, String> {
+    let constant = match list_constant_name {
+        "expected_hand_authored_non_test" => "EXPECTED_HAND_AUTHORED_NON_TEST",
+        "expected_hand_authored_test" => "EXPECTED_HAND_AUTHORED_TEST",
+        "expected_hand_authored_fragments" => "EXPECTED_HAND_AUTHORED_FRAGMENTS",
+        other => return Err(format!("unknown SG-0 census list constant `{other}`")),
+    };
+    sg0_string_slice_constant_entries(constant)
+}
+
+fn sg0_string_slice_constant_entries(constant: &str) -> Result<Vec<String>, String> {
+    let marker = format!("const {constant}: &[&str] = &[");
+    let start = SG0_CENSUS_SOURCE
+        .find(&marker)
+        .ok_or_else(|| format!("SG-0 census source is missing `{constant}`"))?
+        + marker.len();
+    let rest = &SG0_CENSUS_SOURCE[start..];
+    let end = rest
+        .find("\n];")
+        .ok_or_else(|| format!("SG-0 census source has unterminated `{constant}`"))?;
+    Ok(rest[..end]
+        .lines()
+        .filter_map(sg0_quoted_path_from_line)
+        .collect())
+}
+
+fn sg0_quoted_path_from_line(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.starts_with("//") {
+        return None;
+    }
+    let start = trimmed.find('"')? + 1;
+    let end = trimmed[start..].find('"')? + start;
+    Some(trimmed[start..end].to_string())
+}
+
+fn is_lens_producer_census_path(path: &str) -> bool {
+    matches!(
+        path,
+        "src/v3/compiler/src/lens_apply.rs"
+            | "src/v3/compiler/src/lens_testgen.rs"
+            | "src/v3/compiler/src/bin/regen_lens.rs"
+    )
+}
+
+fn compiler_std_positive_set_ratchet_count() -> i64 {
+    [
+        "TemplateArgumentsMatch",
+        "TemplateArgumentCursor",
+        "NormalizedInstantiationArgs",
+    ]
+    .iter()
+    .filter(|name| INFER_HELPERS_SOURCE.contains(&format!("type {name}")))
+    .count() as i64
 }
 
 fn render_value_body(dag: &Dag, value: &ValueBody) -> String {
