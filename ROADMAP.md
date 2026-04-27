@@ -477,7 +477,7 @@ Three distinct reflective/exploratory analyses ran against `main@7f74f09` and `m
 
 - **B4 bridge-retirement queue: file/name bridge class (sequenced)** (NOVEL + consolidation): retire file/name bridge sites in a single identity-carrier queue under `docs/briefs/b4-identity-carrier-substrate-pass.md`:
   1. **`SourceSpan.file` participation checks** (`lens_apply.rs:340-344`, `lower.rs:848`, `lower.rs:1637-1738`, `lower.rs:1954+`, `emit.rs:1082-1094`, `dag.rs:2914`): dissolve via structural fold-shape / emit-helper carrier landing and migration.
-  2. **Canonical lens-name dispatch / fixture-name routing** (`test_runner.rs:23`, `:33`, `:47-48`, `:1594+`): consume `DeclarationRef` and existing claim-role carriers; delete sentinel/string routing.
+  2. **Canonical lens-name dispatch / fixture-name routing** (`test_runner.rs`): consume `DeclarationRef` and claim-role carriers for lens/input identity; delete `PROGRAM_INPUT_SENTINEL` and fixture-name bridges.
   3. **`include_str!` side channels** (`test_runner.rs:23`, `:33`): dissolve in favor of canonical declaration references once `apply_lens_declaration` uses same-id carriers.
   4. **Exact-string patching in generated helper code** (`lib.rs::patch_lower_helpers_generated_type_alias_refinement`): remove once generated helper output carries refinement fields natively and bridge-patch is no longer needed.
 
