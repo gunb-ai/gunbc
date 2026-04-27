@@ -10,12 +10,12 @@
 //! checked-in absolute path goes stale (R1 Closure decision on #973 —
 //! parallel to the `r1_gates.template.dag` splice discipline).
 //!
-//! `#[ignore]` until the bin's child operations (`rustc` / `python3` / `go`
-//! invocations for `rust-green` / `omni-*` subcommands) are present in CI.
-//! `generic-bounds` is structural-only and could run unignored, but the
-//! suite is one unit; the host `#[test]` for `emit_generic_bounds_survive`
-//! still runs unconditionally and shares the same `r1c_e_gates` body, so this
-//! gate is not unwitnessed in CI.
+//! Runs unignored: the only claim in the suite today (`generic-bounds`) is
+//! structural-only — no `rustc` / `python3` / `go` toolchain dependency — so
+//! the `.dag` wiring is exercised in normal CI. When `rust-green` / `omni-*`
+//! subcommands land, those new claims may need toolchain gating; revisit at
+//! that time (split into a separate `#[ignore]`d test if needed, rather than
+//! re-gating this one).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -36,10 +36,6 @@ fn substituted_dag_source() -> String {
 }
 
 #[test]
-#[ignore = "R1C-E partial slice — `generic-bounds` only; full suite gated until \
-            `rust-green` / `omni-*` subcommands land. Run locally: \
-            cargo test -p v3-compiler --test integration \
-            r1c_e_emit_gates_suite_passes_through_runner -- --ignored --nocapture"]
 fn r1c_e_emit_gates_suite_passes_through_runner() {
     let source = substituted_dag_source();
     let dag = match compile_to_dag(&source, TEMPLATE_PATH) {
