@@ -238,7 +238,7 @@ pub fn validate_first_rust_pilot_row_matches_mirror() -> StructureResult<()> {
                     actual: label.to_string(),
                 });
             }
-            assert_integer_primitive_payload_matches(dag, payload, mirror0)
+            assert_integer_primitive_payload_matches(&dag, payload, mirror0)
         }
         PilotRustPrimitive::NonIntegerPrimitive { .. } => {
             if label != "NonIntegerPrimitive" {
@@ -248,7 +248,7 @@ pub fn validate_first_rust_pilot_row_matches_mirror() -> StructureResult<()> {
                     actual: label.to_string(),
                 });
             }
-            assert_non_integer_primitive_payload_matches(dag, payload, mirror0)
+            assert_non_integer_primitive_payload_matches(&dag, payload, mirror0)
         }
     }
 }
@@ -410,7 +410,7 @@ fn connective_name(connective: &TypeConnective) -> &'static str {
         TypeConnective::Conj { .. } => "Conj",
         TypeConnective::Disj { .. } => "Disj",
         TypeConnective::Arrow { .. } => "Arrow",
-        TypeConnective::Cardinality(_) => "Cardinality",
+        TypeConnective::Cardinality { .. } => "Cardinality",
         TypeConnective::Instantiation { .. } => "Instantiation",
     }
 }
