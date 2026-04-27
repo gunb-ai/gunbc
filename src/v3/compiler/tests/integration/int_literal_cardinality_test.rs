@@ -539,8 +539,7 @@ fn nested_optional_flatten_via_generic_specialization() {
 fn unwrap_id<T>(x: T?) -> T? = x
 fn use_it(o: Int?) -> Int? = unwrap_id(o)
 ";
-    let dag =
-        compile_to_dag(src, "nested_optional_generic_specialization.v3").expect("compiles");
+    let dag = compile_to_dag(src, "nested_optional_generic_specialization.v3").expect("compiles");
     assert!(
         dag.diagnostics().is_empty(),
         "generic optional specialization should be diagnostic-free, got: {:?}",
