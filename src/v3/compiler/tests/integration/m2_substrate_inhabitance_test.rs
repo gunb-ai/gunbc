@@ -1570,6 +1570,64 @@ fn parse_type_inhabits_clause_rejects_non_sum_rhs() {
     }
 }
 
+#[test]
+fn parse_type_nominal_opaque_clause_marks_alias_surface() {
+    let source = "type Token nominal_opaque = String\n";
+    let tokens =
+        tokenize_for_test(source, "nominal_opaque_alias.v3").expect("tokenize nominal_opaque");
+    let parsed =
+        parse_for_test(&tokens, "nominal_opaque_alias.v3").expect("parse nominal_opaque alias");
+    let mirrored: &parse_surface::SurfaceModule = &parsed;
+    assert_eq!(mirrored.items.len(), 1);
+    match &mirrored.items[0] {
+        parse_surface::SurfaceItem::TypeAlias {
+            name,
+            nominal_opaque,
+            target,
+            ..
+        } => {
+            assert_eq!(name, "Token");
+            assert!(*nominal_opaque);
+            assert!(matches!(
+                target,
+                parse_surface::SurfaceType::Named { name, .. } if name == "String"
+            ));
+        }
+        other => panic!("expected TypeAlias with nominal_opaque, got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_type_nominal_opaque_rejects_sum_rhs() {
+    let source = "type Token nominal_opaque = Plain | Redacted\n";
+    let tokens =
+        tokenize_for_test(source, "nominal_opaque_sum_reject.v3").expect("tokenize nominal sum");
+    let err = parse_for_test(&tokens, "nominal_opaque_sum_reject.v3")
+        .expect_err("nominal_opaque sum RHS must be rejected");
+    match err {
+        Diagnostic::ParseError { message, .. } => {
+            assert!(
+                message.contains("nominal_opaque") && message.contains("alias"),
+                "unexpected parse diagnostic: {message}"
+            );
+        }
+        other => panic!("expected ParseError, got {other:?}"),
+    }
+}
+
+#[test]
+fn lower_type_nominal_opaque_clause_sets_declaration_carrier() {
+    let source = "type Token nominal_opaque = String\n";
+    let dag = compile_to_dag(source, "nominal_opaque_lower.v3").expect("compile nominal_opaque");
+    let token = dag
+        .declaration_by_name("Token")
+        .expect("Token declaration should lower");
+    assert!(
+        token.nominal_opacity.is_some(),
+        "nominal_opaque source marker must lower to Declaration.nominal_opacity"
+    );
+}
+
 /// `inhabits` is not in `dag_keyword_set` (shared syntax): it must tokenize as
 /// an ordinary identifier so it can spell a declared type name — distinct from
 /// the `type <Name> inhabits <Ty> = …` clause introducer.

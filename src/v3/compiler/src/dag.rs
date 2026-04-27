@@ -3745,7 +3745,7 @@ mod tests {
 
         assert!(
             secret.nominal_opacity.is_some(),
-            "Secret must retain its bootstrap nominal-opacity stamp until std owns the fact"
+            "Secret must carry nominal opacity from std source authority"
         );
     }
 
