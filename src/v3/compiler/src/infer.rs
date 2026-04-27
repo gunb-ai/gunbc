@@ -5169,6 +5169,7 @@ mod bool_logical_operator_arrow_tests {
         ));
     }
 
+    #[test]
     fn bootstrapped_secret_is_marked_nominal_opaque() {
         let dag = Dag::new();
         let secret = dag
