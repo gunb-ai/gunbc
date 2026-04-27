@@ -11935,7 +11935,8 @@ pub fn emit_from_key_extraction(
     {
         let rt = resolved_type(op_node.clone());
         let children = rt.children.clone();
-        let wire_opt = operation_response_200_resolved_type(op_node.clone(), source_indices.clone());
+        let wire_opt =
+            operation_response_200_resolved_type(op_node.clone(), source_indices.clone());
         let use_typed_wire = match wire_opt.clone() {
             Some(tn) => !is_json_wire_declaration_type(tn.clone(), source_indices.clone()),
             None => false,
