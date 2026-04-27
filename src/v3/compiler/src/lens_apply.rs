@@ -165,7 +165,7 @@ fn declaration_is_callable_type(dag: &Dag, current: DeclarationId, depth: usize)
         | TypeConnective::Atom(AtomPayload::TypeParam(_))
         | TypeConnective::Conj { .. }
         | TypeConnective::Disj { .. }
-        | TypeConnective::Cardinality { .. } => false,
+        | TypeConnective::Cardinality(_) => false,
     }
 }
 
