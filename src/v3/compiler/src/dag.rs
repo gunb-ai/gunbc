@@ -403,6 +403,13 @@ pub enum FieldValue {
     },
 }
 
+// Terminal literal/cardinality/template/port-state mirrors are generated
+// from `std/substrate.dag`; keep the substrate authority there, not here.
+include!("dag_scalar_generated.rs");
+
+mod cardinality_payload;
+pub use cardinality_payload::CardinalityPayload;
+
 /// The six-variant type substrate. Terminal at M1(2.5).
 ///
 /// Dissolution ledger (4-pattern check per THESIS §"Structural decompression"):
@@ -444,10 +451,7 @@ pub enum TypeConnective {
     },
     /// Repetition over an element type with a bound. Unifies v2's Required/Optional
     /// with list cardinality.
-    Cardinality {
-        element: DeclarationId,
-        bound: CardinalityBound,
-    },
+    Cardinality(CardinalityPayload),
     /// Specialization of a parameterized template with concrete template arguments.
     /// For pure aliases like `Int = OrderedRing<Word64>`, Int's connective IS
     /// Instantiation directly — inhabitance collapses into this form. See
@@ -456,6 +460,92 @@ pub enum TypeConnective {
         template: DeclarationId,
         arguments: Vec<TemplateArgument>,
     },
+}
+
+/// Maximum alias / resolution hops when peeling before cardinality idempotence.
+const CARDINALITY_IDEMPOTENCE_PEEL_DEPTH: usize = 64;
+
+/// Peel `ResolvedBy*` atoms and zero-argument `Instantiation` aliases (surface
+/// `type Alias = Target` lowering) to the denoted declaration. Stops at the
+/// first non-transparent connective or at [`CARDINALITY_IDEMPOTENCE_PEEL_DEPTH`].
+fn peel_alias_for_cardinality_idempotence(
+    dag: &Dag,
+    current: DeclarationId,
+    depth: usize,
+) -> DeclarationId {
+    if depth >= CARDINALITY_IDEMPOTENCE_PEEL_DEPTH {
+        return current;
+    }
+    match &dag.declaration(current).connective {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            peel_alias_for_cardinality_idempotence(dag, *next, depth + 1)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if arguments.is_empty() => {
+            peel_alias_for_cardinality_idempotence(dag, *template, depth + 1)
+        }
+        _ => current,
+    }
+}
+
+/// `AtMostOne ∧ AtMostOne` idempotence: nested optional uses the inner declaration.
+///
+/// Single rule authority for T-ImpossibleBugs nested-optional flatten. Applies
+/// after peeling zero-arg instantiation / resolved-atom indirection so
+/// `type Opt = Int?; type Alias = Opt; … Alias?` collapses like `Opt?`.
+pub(crate) fn cardinality_idempotent_target(
+    dag: &Dag,
+    element: DeclarationId,
+    bound: CardinalityBound,
+) -> Option<DeclarationId> {
+    if bound != CardinalityBound::AtMostOne {
+        return None;
+    }
+    let subject = peel_alias_for_cardinality_idempotence(dag, element, 0);
+    match &dag.declaration(subject).connective {
+        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => Some(subject),
+        _ => None,
+    }
+}
+
+/// `TypeConnective::Cardinality` for contexts that do not allocate a declaration
+/// (e.g. type-alias connective). Reuses the same
+/// [`cardinality_idempotent_target`] / nested-`AtMostOne` rule as
+/// [`Dag::alloc_cardinality_decl`]: if `element` is already
+/// `Cardinality(AtMostOne, …)` with matching `bound`, the existing connective is
+/// returned unchanged instead of minting `Cardinality(AtMostOne, that_decl)`.
+pub(crate) fn type_connective_cardinality(
+    dag: &Dag,
+    element: DeclarationId,
+    bound: CardinalityBound,
+) -> TypeConnective {
+    if let Some(keep) = cardinality_idempotent_target(dag, element, bound) {
+        return dag.declaration(keep).connective.clone();
+    }
+    TypeConnective::Cardinality(CardinalityPayload::new_unchecked(element, bound))
+}
+
+/// Canonical `(element, bound)` for bootstrap snapshot emission.
+///
+/// Applies the same nested-`AtMostOne` flatten as [`alloc_cardinality_decl`] at **regen**
+/// time so serialized `bootstrap_*_generated.rs` does not rely on structurally nested
+/// optional stacks that the live allocator would collapse.
+pub(crate) fn cardinality_payload_for_bootstrap_regen(
+    dag: &Dag,
+    element: DeclarationId,
+    bound: CardinalityBound,
+) -> CardinalityPayload {
+    if let Some(canonical_decl) = cardinality_idempotent_target(dag, element, bound) {
+        match &dag.declaration(canonical_decl).connective {
+            TypeConnective::Cardinality(p) => p.clone(),
+            _ => CardinalityPayload::new_unchecked(element, bound),
+        }
+    } else {
+        CardinalityPayload::new_unchecked(element, bound)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -472,10 +562,6 @@ impl AtomPayload {
         }
     }
 }
-
-// Terminal literal/cardinality/template/port-state mirrors are generated
-// from `std/substrate.dag`; keep the substrate authority there, not here.
-include!("dag_scalar_generated.rs");
 
 /// Dissolution ledger (per M1_DESIGN.md §Q7 "ArrowBody dissolution ledger"):
 /// ArrowBody is a **mixed-lifecycle coproduct**. Terminal shape is 2
@@ -2229,6 +2315,7 @@ pub struct Dag {
 
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_generated::bootstrapped_fixture_dag();
+    dag.mark_bootstrap_secret_nominal_opacity();
     assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     dag
@@ -2239,6 +2326,7 @@ static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
 // sole writer and the PB-1 equivalence tests ratchet generated == runtime.
 static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_std_generated::bootstrapped_std_fixture_dag();
+    dag.mark_bootstrap_secret_nominal_opacity();
     dag.populate_primitive_cache();
     dag
 });
@@ -2246,6 +2334,7 @@ static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
 static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag =
         bootstrap_generated_without_parse_surface::bootstrapped_fixture_without_parse_surface_dag();
+    dag.mark_bootstrap_secret_nominal_opacity();
     assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     dag
@@ -2284,6 +2373,21 @@ impl Dag {
 
     pub fn new() -> Self {
         (*BOOTSTRAPPED_DAG).clone()
+    }
+
+    fn mark_bootstrap_secret_nominal_opacity(&mut self) {
+        // Bridge until source-level nominal_opacity marking is lowered and
+        // regen_bootstrap carries std Secret through the generated fixtures.
+        // Delete this name-keyed stamp when Secret<T> graduation owns that
+        // fact in .dag authority.
+        let secret = self
+            .declarations
+            .iter()
+            .position(|decl| decl.name.as_deref() == Some("Secret"))
+            .expect("bootstrap fixture must contain std Secret for nominal-opacity seeding");
+        self.declarations[secret].nominal_opacity = Some(NominalOpacity {
+            permitted_accessors: Vec::new(),
+        });
     }
 
     /// Clone of the bootstrapped Dag used by [`crate::compile_parse_surface_std_authority_dag`]:
@@ -3632,6 +3736,19 @@ mod tests {
     }
 
     #[test]
+    fn bootstrap_secret_is_nominal_opaque() {
+        let dag = Dag::new();
+        let secret = dag
+            .declaration_by_name("Secret")
+            .expect("bootstrap fixture must include std Secret");
+
+        assert!(
+            secret.nominal_opacity.is_some(),
+            "Secret must retain its bootstrap nominal-opacity stamp until std owns the fact"
+        );
+    }
+
+    #[test]
     fn malformed_target_clean_emission_binding_fails_closed() {
         let mut dag = Dag::new();
         let binding = dag
@@ -3710,6 +3827,99 @@ mod tests {
             )),
             "expected duplicate TargetCleanEmissionBinding diagnostic, got {:?}",
             dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn cardinality_idempotent_target_peels_empty_instantiation_alias() {
+        let mut dag = Dag::new();
+        dag.populate_primitive_cache();
+        let int_decl = dag.int_shape().expect("bootstrap Int").declaration;
+        let opt_decl = dag.alloc_cardinality_decl(
+            int_decl,
+            CardinalityBound::AtMostOne,
+            SourceSpan::new("cardinality_alias_peel_test", 0, 0),
+        );
+        let alias_decl = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: alias_decl,
+            name: Some("Alias".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: opt_decl,
+                arguments: Vec::new(),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("cardinality_alias_peel_test", 0, 0),
+        });
+
+        assert_eq!(
+            cardinality_idempotent_target(&dag, alias_decl, CardinalityBound::AtMostOne),
+            Some(opt_decl),
+            "Alias = Opt (Instantiation with empty args) should peel to Opt before idempotence"
+        );
+    }
+
+    #[test]
+    fn cardinality_idempotent_target_peels_chained_instantiation_aliases() {
+        let mut dag = Dag::new();
+        dag.populate_primitive_cache();
+        let int_decl = dag.int_shape().expect("bootstrap Int").declaration;
+        let int_opt_decl = dag.alloc_cardinality_decl(
+            int_decl,
+            CardinalityBound::AtMostOne,
+            SourceSpan::new("cardinality_chain_peel_test", 0, 0),
+        );
+        // type Alias = Int?   →  empty-arg alias to the `Int?` declaration
+        let alias_decl = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: alias_decl,
+            name: Some("Alias".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: int_opt_decl,
+                arguments: Vec::new(),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("cardinality_chain_peel_test", 0, 0),
+        });
+        // type Wrap = Alias  →  second empty-arg alias
+        let wrap_decl = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: wrap_decl,
+            name: Some("Wrap".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: alias_decl,
+                arguments: Vec::new(),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("cardinality_chain_peel_test", 0, 0),
+        });
+
+        assert_eq!(
+            cardinality_idempotent_target(&dag, wrap_decl, CardinalityBound::AtMostOne),
+            Some(int_opt_decl),
+            "Wrap = Alias; Alias = Int? should peel through both Instantiations to the \
+             canonical `Int?` decl (recursive alias chain, not one step)"
         );
     }
 }

@@ -225,6 +225,59 @@ impl Dag {
         id
     }
 
+    /// Single constructor authority for cardinality declarations (`Option`, lists, …).
+    ///
+    /// Nested `AtMostOne` wraps collapse to the inner declaration (T-ImpossibleBugs
+    /// nested-optional flatten).
+    pub(crate) fn alloc_cardinality_decl(
+        &mut self,
+        element: DeclarationId,
+        bound: CardinalityBound,
+        span: SourceSpan,
+    ) -> DeclarationId {
+        if let Some(existing) = super::cardinality_idempotent_target(self, element, bound) {
+            self.debug_assert_alloc_cardinality_result_not_nested_at_most_one(existing);
+            return existing;
+        }
+        let id = self.alloc_declaration_id();
+        self.push_declaration(Declaration {
+            id,
+            name: None,
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+                element, bound,
+            )),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span,
+        });
+        self.debug_assert_alloc_cardinality_result_not_nested_at_most_one(id);
+        id
+    }
+
+    /// Debug-only: for a returned `AtMostOne` cardinal, the inner `element` must not
+    /// still pass `cardinality_idempotent_target` (else we would have `Option` of
+    /// `Option` without the allocator having collapsed it). The idempotent rule forbids
+    /// that shape; this rechecks it in debug builds.
+    fn debug_assert_alloc_cardinality_result_not_nested_at_most_one(&self, id: DeclarationId) {
+        if let TypeConnective::Cardinality(p) = &self.declaration(id).connective {
+            if p.bound() == CardinalityBound::AtMostOne {
+                let inner = p.element();
+                debug_assert!(
+                    super::cardinality_idempotent_target(self, inner, CardinalityBound::AtMostOne)
+                        .is_none(),
+                    "alloc_cardinality_decl: result {id:?} = AtMostOne(…, {inner:?}) but inner still \
+                     admits idempotent AtMostOne collapse (nested option stack)",
+                );
+            }
+        }
+    }
+
     fn literal_shape(&self, bits: &LiteralBits) -> TypeShape {
         match bits {
             LiteralBits::Int(_) => self
@@ -385,7 +438,7 @@ impl Dag {
             | TypeConnective::Atom(AtomPayload::Literal(_))
             | TypeConnective::Conj { .. }
             | TypeConnective::Disj { .. }
-            | TypeConnective::Cardinality { .. } => None,
+            | TypeConnective::Cardinality(_) => None,
         }
     }
 
@@ -420,7 +473,7 @@ impl Dag {
             | TypeConnective::Atom(AtomPayload::TypeParam(_))
             | TypeConnective::Conj { .. }
             | TypeConnective::Disj { .. }
-            | TypeConnective::Cardinality { .. } => None,
+            | TypeConnective::Cardinality(_) => None,
         }
     }
 
@@ -442,7 +495,7 @@ impl Dag {
             | TypeConnective::Atom(AtomPayload::Literal(_))
             | TypeConnective::Conj { .. }
             | TypeConnective::Disj { .. }
-            | TypeConnective::Cardinality { .. } => false,
+            | TypeConnective::Cardinality(_) => false,
         }
     }
 
@@ -501,7 +554,7 @@ impl Dag {
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 self.signature_type_shape(*next, subst, depth + 1)
             }
-            TypeConnective::Cardinality { .. } => Some(TypeShape::new(current)),
+            TypeConnective::Cardinality(_) => Some(TypeShape::new(current)),
             TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
             | TypeConnective::Atom(AtomPayload::Literal(_))
             | TypeConnective::Conj { .. }
@@ -552,13 +605,26 @@ impl Dag {
                 self.find_equivalent_decl_instantiation(*template, &specialized_arguments)
                     .or(Some(current))
             }
-            TypeConnective::Cardinality { element, bound } => {
+            TypeConnective::Cardinality(p) => {
+                let element = p.element();
+                let bound = p.bound();
                 let specialized_element =
-                    self.resolve_decl_with_subst(*element, subst, depth + 1)?;
-                if specialized_element == *element {
+                    self.resolve_decl_with_subst(element, subst, depth + 1)?;
+                // Before `specialized_element == element` (substitution was a no-op on the
+                // element id): if the element is already an optional, the canonical
+                // declaration matches `alloc_cardinality_decl` / `cardinality_idempotent_target`
+                // (e.g. T? with T = U? must not keep a stale outer `Cardinality` wrapper).
+                if bound == CardinalityBound::AtMostOne {
+                    if let Some(idem) =
+                        super::cardinality_idempotent_target(self, specialized_element, bound)
+                    {
+                        return Some(idem);
+                    }
+                }
+                if specialized_element == element {
                     return Some(current);
                 }
-                self.find_equivalent_decl_cardinality(specialized_element, bound.clone())
+                self.find_equivalent_decl_cardinality(specialized_element, bound)
                     .or(Some(current))
             }
             _ => Some(current),
@@ -620,8 +686,8 @@ impl Dag {
             TypeConnective::Instantiation { arguments, .. } => arguments
                 .iter()
                 .any(|arg| self.refinement_base_walk(arg.value, subst, depth + 1)),
-            TypeConnective::Cardinality { element, .. } => {
-                self.refinement_base_walk(*element, subst, depth + 1)
+            TypeConnective::Cardinality(p) => {
+                self.refinement_base_walk(p.element(), subst, depth + 1)
             }
             _ => false,
         }
@@ -656,14 +722,10 @@ impl Dag {
         bound: CardinalityBound,
     ) -> Option<DeclarationId> {
         self.declarations().iter().find_map(|decl| {
-            let TypeConnective::Cardinality {
-                element: existing_element,
-                bound: existing_bound,
-            } = &decl.connective
-            else {
+            let TypeConnective::Cardinality(existing) = &decl.connective else {
                 return None;
             };
-            (element == *existing_element && bound == *existing_bound).then_some(decl.id)
+            (element == existing.element() && bound == existing.bound()).then_some(decl.id)
         })
     }
 
@@ -925,10 +987,10 @@ mod tests {
         let list_template = push_test_declaration(
             &mut dag,
             Some("TestList"),
-            TypeConnective::Cardinality {
-                element: type_param,
-                bound: CardinalityBound::Unbounded,
-            },
+            TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+                type_param,
+                CardinalityBound::Unbounded,
+            )),
             vec![type_param],
         );
         let list_of_t = push_test_declaration(
@@ -1271,6 +1333,39 @@ mod tests {
             },
             vec![parent],
             span(),
+        );
+    }
+
+    /// If substitution leaves the `Cardinality` *element* id unchanged, we must still
+    /// apply the nested-`AtMostOne` idempotence rule (same as `alloc_cardinality_decl`)
+    /// *before* returning the outer declaration, or a redundant optional wrapper
+    /// persists through specialization.
+    #[test]
+    fn resolve_decl_with_subst_uses_idempotence_before_noop_subst() {
+        let mut dag = Dag::new();
+        let int_decl = dag.declaration_by_name("Int").expect("bootstrap Int").id;
+        let opt_int = push_test_declaration(
+            &mut dag,
+            None,
+            TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+                int_decl,
+                CardinalityBound::AtMostOne,
+            )),
+            Vec::new(),
+        );
+        let outer_stale = push_test_declaration(
+            &mut dag,
+            None,
+            TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+                opt_int,
+                CardinalityBound::AtMostOne,
+            )),
+            Vec::new(),
+        );
+        let no_subst: &[Vec<TemplateArgument>] = &[];
+        assert_eq!(
+            dag.resolve_decl_with_subst(outer_stale, no_subst, 0),
+            Some(opt_int)
         );
     }
 

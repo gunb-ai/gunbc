@@ -3,13 +3,13 @@ use std::io::Write as IoWrite;
 use std::process::{Command, Stdio};
 
 use crate::dag::{
-    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
-    BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, ClusterId,
-    ComparisonOp, Dag, Declaration, DeclarationId, Field, FieldValue, IntraClusterCall,
-    LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent, NodeId, NominalOpacity,
-    NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PhantomParameter, PortId,
-    PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueBody,
-    ValueNode,
+    cardinality_payload_for_bootstrap_regen, ArithmeticOp, ArrowBody, AtomPayload, Behavior,
+    BindEmitParticipation, BindNode, BranchEmitParticipation, BranchNode, BranchPattern,
+    CardinalityBound, Cluster, ClusterId, ComparisonOp, Dag, Declaration, DeclarationId, Field,
+    FieldValue, IntraClusterCall, LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent,
+    NodeId, NominalOpacity, NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding,
+    PhantomParameter, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
+    TypeConnective, ValueBody, ValueNode,
 };
 use crate::diagnostics::Diagnostic;
 
@@ -64,7 +64,7 @@ fn emit_bootstrap_module(dag: &Dag, function_name: &str) -> String {
     push_field(
         &mut out,
         "declarations",
-        &render_declarations(dag.declarations()),
+        &render_declarations(dag, dag.declarations()),
         2,
     );
     push_field(&mut out, "ports", &render_ports(dag), 2);
@@ -106,21 +106,21 @@ fn push_field(out: &mut String, name: &str, value: &str, indent: usize) {
     let _ = writeln!(out, "{padding}{name}: {value},");
 }
 
-fn render_declarations(declarations: &[Declaration]) -> String {
+fn render_declarations(dag: &Dag, declarations: &[Declaration]) -> String {
     let mut out = String::from("vec![\n");
     for declaration in declarations {
-        let _ = writeln!(out, "        {},", render_declaration(declaration));
+        let _ = writeln!(out, "        {},", render_declaration(dag, declaration));
     }
     out.push_str("    ]");
     out
 }
 
-fn render_declaration(declaration: &Declaration) -> String {
+fn render_declaration(dag: &Dag, declaration: &Declaration) -> String {
     format!(
         "Declaration {{ id: {}, name: {}, connective: {}, type_params: {}, phantom_params: {}, meta_tag: {}, specialization_parent: {}, inhabits: {}, value_body: {}, refinement: {}, nominal_opacity: {}, span: {} }}",
         render_declaration_id(declaration.id),
         render_opt_string(declaration.name.as_deref()),
-        render_type_connective(&declaration.connective),
+        render_type_connective(dag, &declaration.connective),
         render_declaration_id_vec(&declaration.type_params),
         render_phantom_params(&declaration.phantom_params),
         render_opt_declaration_id(declaration.meta_tag),
@@ -167,7 +167,7 @@ fn render_phantom_params(params: &[PhantomParameter]) -> String {
     format!("vec![{}]", rendered.join(", "))
 }
 
-fn render_type_connective(connective: &TypeConnective) -> String {
+fn render_type_connective(dag: &Dag, connective: &TypeConnective) -> String {
     match connective {
         TypeConnective::Atom(payload) => {
             format!("TypeConnective::Atom({})", render_atom_payload(payload))
@@ -194,11 +194,15 @@ fn render_type_connective(connective: &TypeConnective) -> String {
             render_declaration_id(*output),
             render_arrow_body(body),
         ),
-        TypeConnective::Cardinality { element, bound } => format!(
-            "TypeConnective::Cardinality {{ element: {}, bound: {} }}",
-            render_declaration_id(*element),
-            render_cardinality_bound(bound),
-        ),
+        TypeConnective::Cardinality(payload) => {
+            let canon =
+                cardinality_payload_for_bootstrap_regen(dag, payload.element(), payload.bound());
+            format!(
+                "TypeConnective::Cardinality(CardinalityPayload::new_unchecked({}, {}))",
+                render_declaration_id(canon.element()),
+                render_cardinality_bound(&canon.bound()),
+            )
+        }
         TypeConnective::Instantiation {
             template,
             arguments,
@@ -715,6 +719,18 @@ fn render_diagnostic(diagnostic: &Diagnostic) -> String {
             fixes,
         } => format!(
             "Diagnostic::MalformedIntegerRangeFact {{ message: {message:?}.to_string(), span: {}, fixes: {} }}",
+            render_source_span(span),
+            render_corrections(fixes),
+        ),
+        Diagnostic::NominalOpacityViolation {
+            declaration,
+            accessor,
+            span,
+            fixes,
+        } => format!(
+            "Diagnostic::NominalOpacityViolation {{ declaration: {}, accessor: {}, span: {}, fixes: {} }}",
+            render_declaration_id(*declaration),
+            render_opt_declaration_id(*accessor),
             render_source_span(span),
             render_corrections(fixes),
         ),

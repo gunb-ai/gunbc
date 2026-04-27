@@ -199,6 +199,12 @@ pub enum Diagnostic {
         span: SourceSpan,
         fixes: Vec<Correction>,
     },
+    NominalOpacityViolation {
+        declaration: DeclarationId,
+        accessor: Option<DeclarationId>,
+        span: SourceSpan,
+        fixes: Vec<Correction>,
+    },
 }
 
 impl Diagnostic {
@@ -212,7 +218,8 @@ impl Diagnostic {
             | Diagnostic::UnitMismatch { span, .. }
             | Diagnostic::BranchConditionNotBool { span, .. }
             | Diagnostic::MagnitudeOutOfRange { span, .. }
-            | Diagnostic::MalformedIntegerRangeFact { span, .. } => span,
+            | Diagnostic::MalformedIntegerRangeFact { span, .. }
+            | Diagnostic::NominalOpacityViolation { span, .. } => span,
         }
     }
 
@@ -226,7 +233,8 @@ impl Diagnostic {
             | Diagnostic::UnitMismatch { fixes, .. }
             | Diagnostic::BranchConditionNotBool { fixes, .. }
             | Diagnostic::MagnitudeOutOfRange { fixes, .. }
-            | Diagnostic::MalformedIntegerRangeFact { fixes, .. } => fixes,
+            | Diagnostic::MalformedIntegerRangeFact { fixes, .. }
+            | Diagnostic::NominalOpacityViolation { fixes, .. } => fixes,
         }
     }
 
@@ -269,6 +277,18 @@ impl Diagnostic {
                 "integer literal `{literal}` is out of range for `{target}` (expected {range_min_inclusive}..={range_max_inclusive}, declared type {expected:?}); use a wider target"
             ),
             Diagnostic::MalformedIntegerRangeFact { message, .. } => message.clone(),
+            Diagnostic::NominalOpacityViolation {
+                declaration,
+                accessor,
+                ..
+            } => match accessor {
+                Some(accessor) => format!(
+                    "nominal-opaque declaration `{declaration:?}` may only be structurally accessed through permitted accessor `{accessor:?}`"
+                ),
+                None => format!(
+                    "nominal-opaque declaration `{declaration:?}` cannot be structurally descended without a permitted accessor"
+                ),
+            },
         }
     }
 }
@@ -534,10 +554,9 @@ fn example_source_for_decl_inner(
         TypeConnective::Disj { variants } => variants
             .iter()
             .find_map(|variant| render_variant_witness(dag, variant, depth + 1)),
-        TypeConnective::Cardinality {
-            bound: CardinalityBound::AtMostOne,
-            ..
-        } => Some("None".to_string()),
+        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
+            Some("None".to_string())
+        }
         _ => None,
     }
 }
