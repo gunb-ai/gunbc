@@ -278,7 +278,7 @@ data go_spec_predeclared_primitives: List<GoPrimitive> = [
 // DAG Unit → Go: `struct{}` is the target spelling for DagName `Unit` in
 // `go/types.dag`; it is not a predeclared identifier, so it must not share the
 // `go_spec_predeclared_primitives` table with spec-predeclared types.
-data go_dag_unit_target_primitive: GoUnitPrimitive = {
+data go_dag_unit_target_primitive: GoPrimitive = GoUnitPrimitive {
   target_name: "struct{}",
   algebra: GoTerminalAlgebra,
   carrier: GoTerminalCarrier
