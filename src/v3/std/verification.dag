@@ -17,6 +17,7 @@
 module std.verification
 
 import std.list { List, map }
+import std.types { FilePath, NonEmptyStr }
 import v3.std.substrate { ComparisonOp }
 import v3.spec.v3_l1 { DeclarationRef }
 import v3.std.resources { ResourceReference }
@@ -24,9 +25,15 @@ import v3.std.resources { ResourceReference }
 // R1C-A / T-TestGen PB-census predicate shape vocabulary. These are narrow
 // bootstrap-local carriers for R1C-D's census-as-TestClaim fixtures; the Rust
 // runner still owns evaluation against the live census authorities.
-type Symbol = String
-type Path = String
-type SnapshotRef = String
+type Path = FilePath
+type SnapshotRef = NonEmptyStr
+
+// Closed PB census-list constants are declared vocabulary, not string labels,
+// so fixtures can only point at typed list identities.
+type CensusListConstant {}
+
+data expected_hand_authored_non_test: CensusListConstant = {}
+data expected_hand_authored_test: CensusListConstant = {}
 
 // Closed PB subset predicates are declared values, not string labels, so
 // fixtures can only point at typed vocabulary entries.
@@ -188,12 +195,12 @@ type TestPredicate
   // intentionally do not duplicate census lists into fixture text.
   | CensusBoundCheck {
       authority: DeclarationRef
-      list_constant: Symbol
+      list_constant: CensusListConstant
       bound: Int
     }
   | CensusSubsetCount {
       authority: DeclarationRef
-      list_constant: Symbol
+      list_constant: CensusListConstant
       subset_predicate: DeclarationRef
     }
   | FixedPointConverges {

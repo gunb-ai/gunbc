@@ -465,6 +465,7 @@ fn test_runner_dispatches_pb_census_predicate_shapes() {
     let source = r#"
 import std.verification {
   compiler_std_positive_set_ratchet,
+  expected_hand_authored_non_test,
   lens_producer_files_subset_predicate
 }
 
@@ -474,7 +475,7 @@ data census_bound_claim: TestClaim = {
   name: "pb_hand_rust_at_shim_floor",
   source: "let x: Int = 1",
   file_name: "pb_hand_rust_at_shim_floor.v3",
-  predicate: CensusBoundCheck(census_authority, "EXPECTED_HAND_AUTHORED_NON_TEST", 0),
+  predicate: CensusBoundCheck(census_authority, expected_hand_authored_non_test, 0),
   requires: []
 }
 
@@ -484,7 +485,7 @@ data census_subset_claim: TestClaim = {
   file_name: "lens_producer_files_remaining.v3",
   predicate: CensusSubsetCount {
     authority: census_authority,
-    list_constant: "EXPECTED_HAND_AUTHORED_NON_TEST",
+    list_constant: expected_hand_authored_non_test,
     subset_predicate: lens_producer_files_subset_predicate
   },
   requires: []

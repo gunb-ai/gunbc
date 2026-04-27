@@ -2214,17 +2214,21 @@ impl<'a> TestRunner<'a> {
         claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        let [authority, FieldValue::Literal(LiteralBits::String(list_constant)), FieldValue::Literal(LiteralBits::Int(_bound))] =
-            payload
+        let [authority, list_constant, FieldValue::Literal(LiteralBits::Int(_bound))] = payload
         else {
             return ClaimResult::Fail(
-                "CensusBoundCheck payload should be (DeclarationRef, Symbol, Int)".to_string(),
+                "CensusBoundCheck payload should be (DeclarationRef, CensusListConstant, Int)"
+                    .to_string(),
             );
         };
         if let Err(reason) = self.resolve_census_authority_ref(authority, "authority") {
             return ClaimResult::Fail(reason);
         }
-        self.nyi_external_pb_predicate(&claim.claim_name, "CensusBoundCheck", list_constant)
+        let list_constant_name = match self.resolve_census_list_constant_ref(list_constant) {
+            Ok(name) => name,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        self.nyi_external_pb_predicate(&claim.claim_name, "CensusBoundCheck", &list_constant_name)
     }
 
     fn eval_census_subset_count_shape(
@@ -2232,17 +2236,18 @@ impl<'a> TestRunner<'a> {
         claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        let [authority, FieldValue::Literal(LiteralBits::String(list_constant)), subset_predicate] =
-            payload
-        else {
+        let [authority, list_constant, subset_predicate] = payload else {
             return ClaimResult::Fail(
-                "CensusSubsetCount payload should be (DeclarationRef, Symbol, DeclarationRef)"
-                    .to_string(),
+                "CensusSubsetCount payload should be (DeclarationRef, CensusListConstant, DeclarationRef)".to_string(),
             );
         };
         if let Err(reason) = self.resolve_census_authority_ref(authority, "authority") {
             return ClaimResult::Fail(reason);
         }
+        let list_constant_name = match self.resolve_census_list_constant_ref(list_constant) {
+            Ok(name) => name,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
         if let Err(reason) = self.resolve_pb_marker_ref(
             subset_predicate,
             "subset_predicate",
@@ -2251,7 +2256,7 @@ impl<'a> TestRunner<'a> {
         ) {
             return ClaimResult::Fail(reason);
         }
-        self.nyi_external_pb_predicate(&claim.claim_name, "CensusSubsetCount", list_constant)
+        self.nyi_external_pb_predicate(&claim.claim_name, "CensusSubsetCount", &list_constant_name)
     }
 
     fn eval_fixed_point_converges_shape(
@@ -2357,6 +2362,23 @@ impl<'a> TestRunner<'a> {
             Ok(true) => Ok(*id),
             Ok(false) => Err(format!(
                 "PB census predicate `{field_label}` declaration `{actual_name}` must inhabit `{expected_marker_type}`"
+            )),
+            Err(reason) => Err(reason),
+        }
+    }
+
+    fn resolve_census_list_constant_ref(&self, value: &FieldValue) -> Result<String, String> {
+        let FieldValue::Reference(id) = value else {
+            return Err(format!(
+                "PB census predicate `list_constant` should be a CensusListConstant edge, got {value:?}"
+            ));
+        };
+        let decl = self.dag.declaration(*id);
+        let actual_name = decl_display_name(*id, decl);
+        match self.decl_inhabits_named_role(decl, "CensusListConstant") {
+            Ok(true) => Ok(actual_name),
+            Ok(false) => Err(format!(
+                "PB census predicate `list_constant` declaration `{actual_name}` must inhabit `CensusListConstant`"
             )),
             Err(reason) => Err(reason),
         }
