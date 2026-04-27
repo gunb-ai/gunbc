@@ -1772,12 +1772,21 @@ let note = \"ok\"\n";
 /// declaration parses into `SurfaceItem::Data` whose body is a
 /// `SurfaceExpr::Map` with the asserted entries. Routes through
 /// `parse_data_item` → `looks_like_map_literal` (`{ String :` lookahead)
-/// → `parse_map_literal`. Lowering of `SurfaceExpr::Map` to
-/// `ValueBody::Map` is the substrate sub-lane's deliverable; this test
-/// asserts the parser-output shape only.
+/// → `parse_map_literal`; lowering then carries the entries as
+/// `ValueBody::Map`.
 #[test]
-fn parse_data_item_with_map_body_emits_surface_expr_map() {
+fn map_body_data_item_parses_and_lowers_to_value_body_map() {
     let source = "data kernel_algebra_profile: Map<String, AlgebraProfile> = {\n  \"Int\": OrderedRingProfile,\n  \"Float\": ApproximateFieldProfile,\n  \"Bool\": BooleanAlgebraProfile,\n  \"String\": FreeMonoidScalarProfile,\n  \"List\": FreeMonoidCollectionProfile,\n  \"Set\": BooleanAlgebraCollectionProfile,\n  \"Map\": PartialFunctionProfile\n}\n";
+    let expected: Vec<(&str, &str)> = vec![
+        ("Int", "OrderedRingProfile"),
+        ("Float", "ApproximateFieldProfile"),
+        ("Bool", "BooleanAlgebraProfile"),
+        ("String", "FreeMonoidScalarProfile"),
+        ("List", "FreeMonoidCollectionProfile"),
+        ("Set", "BooleanAlgebraCollectionProfile"),
+        ("Map", "PartialFunctionProfile"),
+    ];
+
     let tokens = tokenize_for_test(source, "map_literal_data.v3").expect("tokenize");
     let parsed = parse_for_test(&tokens, "map_literal_data.v3").expect("parse map-literal data");
     assert_eq!(parsed.items.len(), 1);
@@ -1788,15 +1797,6 @@ fn parse_data_item_with_map_body_emits_surface_expr_map() {
             ..
         } => {
             assert_eq!(name, "kernel_algebra_profile");
-            let expected: Vec<(&str, &str)> = vec![
-                ("Int", "OrderedRingProfile"),
-                ("Float", "ApproximateFieldProfile"),
-                ("Bool", "BooleanAlgebraProfile"),
-                ("String", "FreeMonoidScalarProfile"),
-                ("List", "FreeMonoidCollectionProfile"),
-                ("Set", "BooleanAlgebraCollectionProfile"),
-                ("Map", "PartialFunctionProfile"),
-            ];
             assert_eq!(entries.len(), expected.len());
             for (entry, (expected_key, expected_value_var)) in entries.iter().zip(expected.iter()) {
                 assert_eq!(&entry.key, expected_key);
@@ -1811,6 +1811,28 @@ fn parse_data_item_with_map_body_emits_surface_expr_map() {
             }
         }
         other => panic!("expected SurfaceItem::Data with SurfaceExpr::Map body, got {other:?}"),
+    }
+
+    let dag = compile_to_dag(source, "map_literal_data.v3").expect("lower map-literal data");
+    let decl = dag
+        .declaration_by_name("kernel_algebra_profile")
+        .expect("kernel_algebra_profile declaration exists");
+    let Some(ValueBody::Map(entries)) = &decl.value_body else {
+        panic!(
+            "expected kernel_algebra_profile to lower to ValueBody::Map, got {:?}",
+            decl.value_body
+        );
+    };
+    assert_eq!(entries.len(), expected.len());
+    for ((key, value), (expected_key, expected_value_name)) in entries.iter().zip(expected.iter()) {
+        assert_eq!(key, expected_key);
+        let FieldValue::Reference(value_decl) = value else {
+            panic!("expected map value for {key} to lower as FieldValue::Reference, got {value:?}");
+        };
+        assert_eq!(
+            dag.declaration(*value_decl).name.as_deref(),
+            Some(*expected_value_name)
+        );
     }
 }
 

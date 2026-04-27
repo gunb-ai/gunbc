@@ -290,9 +290,8 @@ pub struct NominalOpacity {
 #[derive(Debug, Clone)]
 pub enum ValueBody {
     /// The body exists in source at the given span but is not yet
-    /// lowered to a value sub-DAG. Map-shaped bodies still await the
-    /// sibling `kernel_algebra_profile` substrate lane; records and
-    /// lists lower structurally.
+    /// lowered to a value sub-DAG. Records, lists, and string-keyed
+    /// maps lower structurally.
     Unparsed(SourceSpan),
     /// The body parsed as a record literal and was inhabitance-
     /// checked against the declared type. Each field holds a
@@ -353,6 +352,25 @@ pub enum ValueBody {
     /// deliberately reuse `FieldValue`, matching nested structural list
     /// values and preserving sum-constructor identity for list-of-sum data.
     List(Vec<FieldValue>),
+    /// Top-level structural string-keyed map value:
+    /// `data table: Map<String, T> = { "k": v }`.
+    ///
+    /// 4-pattern check for `Map`:
+    /// - Pattern 1 (fact placement): fails. The key/value table is the
+    ///   data declaration's value fact, not a type-edge or meta-tag fact.
+    /// - Pattern 2 (variant-is-data): fails. `Vec<(String, FieldValue)>`
+    ///   carries keyed entries, distinct from ordered lists, records,
+    ///   scalar bits, and source spans.
+    /// - Pattern 3 (algebraic form): fails. Map bodies are not points in
+    ///   the same algebra as records/scalars/lists; they carry string-keyed
+    ///   lookup facts needed by map-shaped bootstrap data.
+    /// - Pattern 4 (dimensional): fails. No shared coordinate space with
+    ///   record labels or ordered list positions.
+    ///
+    /// Verdict: terminal at the current top-level data-body layer. Values
+    /// deliberately reuse `FieldValue`, matching nested structural map
+    /// values. Non-string-key maps are a separate future carrier.
+    Map(Vec<(String, FieldValue)>),
 }
 
 /// Per-field value payload inside a `ValueBody::Structural`.
@@ -382,9 +400,9 @@ pub enum ValueBody {
 ///   downstream readers (the realization index, the cost lens, etc).
 /// - Pattern 2 (variant-is-data): fails. `Literal(LiteralBits)`,
 ///   `Reference(DeclarationId)`, `Record(Vec<...>)`,
-///   `List(Vec<...>)`, and `Variant { .. }` inhabit different
+///   `List(Vec<...>)`, `Map(Vec<...>)`, and `Variant { .. }` inhabit different
 ///   structural spaces.
-/// - Pattern 3 (algebraic form): fails. The five variants are not
+/// - Pattern 3 (algebraic form): fails. The six variants are not
 ///   points in one algebra; they are the minimal carrier set needed
 ///   for nested structural data bodies.
 /// - Pattern 4 (dimensional): fails.
@@ -410,6 +428,9 @@ pub enum FieldValue {
     /// Structural list value. Used by staged spec files whose
     /// structural data bodies contain list-valued fields.
     List(Vec<FieldValue>),
+    /// Structural string-keyed map value. Used by staged spec files whose
+    /// structural data bodies contain `Map<String, _>` fields.
+    Map(Vec<(String, FieldValue)>),
     /// Structural sum constructor with positional payload fields.
     /// The exact variant child declaration is preserved explicitly
     /// so downstream consumers can recover variant identity without
@@ -3013,7 +3034,7 @@ impl Dag {
     /// is `ValueBody::List(_)`, so both the sum type shape and the
     /// 10-element pilot enumeration are structurally walkable. Map-shaped
     /// bootstrap data remains future debt for the map-shaped T-Substrate
-    /// sibling lane; today it still lowers to `ValueBody::Unparsed`.
+    /// sibling lane.
     ///
     /// Returns `None` only when bootstrap failed to load
     /// `rust/primitives.dag`, in which case a diagnostic is already on
