@@ -3717,7 +3717,7 @@ mod tests {
             inhabits: None,
             value_body: Some(binding_fields(rust_language, go_clean_emission)),
             refinement: None,
-            nominal_opacity: Option::default(),
+            nominal_opacity: None,
             span: SourceSpan::new("duplicate_binding_test.v3", 0, 1),
         });
 
