@@ -6406,12 +6406,19 @@ mod bool_logical_operator_arrow_tests {
         let mut dag = Dag::new();
         let int = dag.int_shape().expect("bootstrap Int").declaration;
         let lhs = TypeShape::new(int);
-        let first = resolve_operator_arrow(&mut dag, OperatorKind::Arithmetic(ArithmeticOp::Div), &lhs)
+        let first = resolve_operator_arrow(
+            &mut dag,
+            OperatorKind::Arithmetic(ArithmeticOp::Div),
+            &lhs,
+        )
             .expect("division must resolve");
         let after_first = dag.declarations().len();
-        let second =
-            resolve_operator_arrow(&mut dag, OperatorKind::Arithmetic(ArithmeticOp::Div), &lhs)
-                .expect("division must resolve");
+        let second = resolve_operator_arrow(
+            &mut dag,
+            OperatorKind::Arithmetic(ArithmeticOp::Div),
+            &lhs,
+        )
+            .expect("division must resolve");
 
         assert_eq!(first.output.declaration, second.output.declaration);
         assert_eq!(after_first, dag.declarations().len(), "div resolution should dedup anonymous instantiation");
