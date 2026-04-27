@@ -10,7 +10,7 @@
 | #897 | T-Modeling int-literal magnitude consumer | `fd21feed685700a212f3740ab498af031506441f` |
 | #824 | B4.3 | `7111fbc399cb840d7dc9b340b79cf0dc5ef3a5bd` |
 
-**Runtime verification:** The audit environment did not have a Rust toolchain (`cargo` unavailable). Operators should still run the commands in §5 on a machine with `cargo` before treating CI as redundant.
+**Runtime verification:** The audit environment did not have a Rust toolchain (`cargo` unavailable). Operators should still run the commands in §4 on a machine with `cargo` before treating CI as redundant.
 
 ---
 
@@ -123,7 +123,7 @@ fn t1_4_type_mismatch_produces_a_typemismatch_diagnostic() {
     let dag = match compile_to_dag("let x: Bool = 1", "t1_4_type_mismatch.v3") {
 ```
 
-**Verdict:** No evidence in static review of a remaining gap; **confirm with `cargo test`** (§5).
+**Verdict:** No evidence in static review of a remaining gap; **confirm with `cargo test`** (§4).
 
 ---
 
@@ -168,7 +168,7 @@ Canonical substrate declarations include the fields (`src/v3/std/substrate.dag`)
 
 ### 2.2 Claude review: stale bootstrap snapshot (`emit_participation: None` on user binds)
 
-**Current code:** `bootstrap_generated.rs` / `bootstrap_generated_without_parse_surface.rs` wire `BindNode` for std `two_terms` with `emit_participation: Some(BindEmitParticipation::UserCallable)` (see grep hit on `bootstrap_generated.rs` line 6 in worktree).
+**Current code:** `bootstrap_generated.rs` / `bootstrap_generated_without_parse_surface.rs` wire `BindNode` for std `two_terms` with `emit_participation: Some(BindEmitParticipation::UserCallable)`. Those files are generated and largely one line per snapshot; cite them with search, not fragile line numbers, e.g. `rg 'emit_participation: Some\\(BindEmitParticipation::UserCallable\\)' src/v3/compiler/src/bootstrap_generated*.rs` (one hit per file at time of audit).
 
 **Verdict:** Bootstrap matches lowering intent for at least the cited binds; **regen drift** should still be caught by normal `regen_bootstrap --check` in CI if present.
 
@@ -227,7 +227,7 @@ fn serialize_dag_embeds_valid_python_emit_participation_literals() {
 
 ---
 
-## 5. Recommended verification commands (operator / CI)
+## 4. Recommended verification commands (operator / CI)
 
 Run on a checkout of `main` (or this branch) with Rust installed:
 
@@ -248,7 +248,7 @@ cargo test -p v3-compiler --test integration
 
 ---
 
-## 6. Traceability
+## 5. Traceability
 
 | Source | Review / thread | Disposition |
 | --- | --- | --- |
