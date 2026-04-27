@@ -146,6 +146,8 @@ struct PythonIndexes {
     patterns: HashMap<DeclarationId, PatternRealizationBinding>,
     syntax: PythonSyntax,
     target: PythonTarget,
+    /// Source exclusion policy loaded from
+    /// `data python_source_filtering: ShapeATargetSourceFiltering`.
     source_filtering: SourceFilteringBinding,
     /// The Python clean-emission contract loaded from `data
     /// python_clean_emission: CleanEmissionContract` (E-5 / Lane 1

@@ -12,7 +12,8 @@ import std.algebra { BooleanAlgebra, OrderedRing }
 import v3.std.computation_model {
   TargetExecutionModel, MemoryModel,
   GarbageCollected, LexicalScoping,
-  SourceFiltering, ExecutionModelRequirement
+  ShapeATargetSourceFiltering, ExecutionModelRequirement,
+  internal_source_filtering
 }
 import v3.std.emit_model {
   TypeRealization, OperatorRealization, CallableRealization,
@@ -152,13 +153,9 @@ data python_target: TargetExecutionModel = {
   scope: LexicalScoping
 }
 
-data python_source_filtering: SourceFiltering = {
-  excluded_prefixes: [
-    "dsl/std/",
-    "dsl/extdeps/",
-    "src/v3/std/",
-    "src/v3/spec/",
-  ]
+data python_source_filtering: ShapeATargetSourceFiltering = {
+  internal: internal_source_filtering
+  additional_excluded_prefixes: []
 }
 
 data python_execution_requirement: ExecutionModelRequirement = GarbageCollected

@@ -205,25 +205,28 @@ fn tokenize_local_punct_rows_are_structural_and_disjoint_from_shared_operator_au
 }
 
 #[test]
-fn shared_syntax_text_parsing_scaffold_is_only_allowed_while_keyword_and_operator_bodies_are_unparsed(
-) {
+fn shared_syntax_keyword_map_is_structural_while_operator_bridge_remains_bounded() {
     let lowered = match compile_to_dag(SHARED_SYNTAX_DAG, "dsl/extdeps/languages/dag/syntax.dag") {
         Ok(dag) => dag,
         Err(v3_compiler::CompileError::Semantic(dag)) => dag,
         Err(other) => panic!("shared syntax authority should still lower far enough to inspect scaffold state: {other:?}"),
     };
 
-    for name in ["dag_keyword_set", "dag_operators"] {
-        let decl = lowered
-            .declaration_by_name(name)
-            .unwrap_or_else(|| panic!("shared syntax authority is missing `{name}`"));
-        assert!(
-            matches!(decl.value_body, Some(ValueBody::Unparsed(_))),
-            "raw-source parsing in `regen_tokenize` is a tracked SG-1a scaffold only while \
-             `{name}` lowers as `ValueBody::Unparsed`; once it becomes structural, delete \
-             the text parser and derive from the lowered Dag directly"
-        );
-    }
+    let keywords = lowered
+        .declaration_by_name("dag_keyword_set")
+        .unwrap_or_else(|| panic!("shared syntax authority is missing `dag_keyword_set`"));
+    assert!(
+        matches!(keywords.value_body, Some(ValueBody::Map(_))),
+        "`dag_keyword_set` should lower structurally as ValueBody::Map so regen_tokenize derives from the lowered Dag"
+    );
+
+    let operators = lowered
+        .declaration_by_name("dag_operators")
+        .unwrap_or_else(|| panic!("shared syntax authority is missing `dag_operators`"));
+    assert!(
+        matches!(operators.value_body, Some(ValueBody::Unparsed(_))),
+        "`dag_operators` still uses the bounded SG-1a raw-source bridge; once it lowers structurally, derive shared operators from the lowered Dag and update this ratchet"
+    );
 }
 
 #[test]
