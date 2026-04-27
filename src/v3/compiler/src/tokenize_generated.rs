@@ -2,6 +2,7 @@
 // `regen_tokenize`. Regenerate instead of hand-editing.
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ScannerCharClass {
     Whitespace,
