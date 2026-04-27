@@ -2756,7 +2756,11 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
     let needs_int_div_prelude = dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls);
     if let (true, Some(name)) = (
         needs_int_div_prelude,
-        div_prelude_reserved_name_collision(type_decls.iter(), function_decls.iter(), "__v3_int_div"),
+        div_prelude_reserved_name_collision(
+            type_decls.iter(),
+            function_decls.iter(),
+            "__v3_int_div",
+        ),
     ) {
         return Err(EmitError::UnsupportedBehavior(format!(
             "Rust checked-division prelude would collide with user-defined `{name}`"
