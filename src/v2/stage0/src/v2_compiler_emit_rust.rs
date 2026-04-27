@@ -2228,27 +2228,28 @@ pub fn emit_enum_from_children(
                             v2_rt::concat(
                                 v2_rt::concat(
                                     v2_rt::concat(
-                                        v2_rt::concat(derives, "\n".to_string()),
-                                        tag_line,
+                                        v2_rt::concat(
+                                            v2_rt::concat(derives, "\n".to_string()),
+                                            tag_line,
+                                        ),
+                                        type_param_naming_allow,
                                     ),
-                                    type_param_naming_allow,
+                                    rust_visibility_prefix(),
                                 ),
-                                rust_visibility_prefix(),
+                                rust_items().enum_keyword.clone(),
                             ),
-                            rust_items().enum_keyword.clone(),
+                            " ".to_string(),
                         ),
-                        " ".to_string(),
+                        name.clone(),
                     ),
-                    name.clone(),
+                    type_params.clone(),
                 ),
-                type_params.clone(),
+                " {\n".to_string(),
             ),
-            " {\n".to_string(),
+            variants_str,
         ),
-        variants_str,
-    ),
-    "\n}".to_string(),
-);
+        "\n}".to_string(),
+    );
         let accessor_impl = emit_enum_shared_accessors(
             &name,
             &type_params,
