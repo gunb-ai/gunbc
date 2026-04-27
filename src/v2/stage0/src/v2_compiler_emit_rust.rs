@@ -297,20 +297,29 @@ pub fn resolve_wire_serde_tag_for_coproduct(
             if is_data_def_item(&wc) {
                 match wc.body.clone() {
                     None => rust_serde_tag_attr(),
-                    Some(init) => match init.inferred.clone() {
-                        None => resolve_wire_serde_tag(init.clone(), &source_indices),
-                        Some(inf) => match (*inf.clone()).clone() {
-                            InferredNode::Resolved { node, .. } => {
-                                resolve_wire_serde_tag(node.clone(), &source_indices)
+                    Some(init) => {
+                        if matches!(
+                            (*init.expr_data.clone()).clone(),
+                            ExprRecordLit { .. }
+                        ) {
+                            resolve_wire_serde_tag(init.clone(), &source_indices)
+                        } else {
+                            match init.inferred.clone() {
+                                None => resolve_wire_serde_tag(init.clone(), &source_indices),
+                                Some(inf) => match (*inf.clone()).clone() {
+                                    InferredNode::Resolved { node, .. } => {
+                                        resolve_wire_serde_tag(node.clone(), &source_indices)
+                                    }
+                                    InferredNode::CompilerError { .. } => {
+                                        resolve_wire_serde_tag(init.clone(), &source_indices)
+                                    }
+                                    InferredNode::TypeVariable { .. } => {
+                                        resolve_wire_serde_tag(init.clone(), &source_indices)
+                                    }
+                                },
                             }
-                            InferredNode::CompilerError { .. } => {
-                                resolve_wire_serde_tag(init.clone(), &source_indices)
-                            }
-                            InferredNode::TypeVariable { .. } => {
-                                resolve_wire_serde_tag(init.clone(), &source_indices)
-                            }
-                        },
-                    },
+                        }
+                    }
                 }
             } else {
                 resolve_wire_serde_tag(wc.clone(), &source_indices)
