@@ -735,12 +735,10 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       typed_module.items
         |> filter(i =>
              is_data_def_item(item: i)
-             && match i.body {
-               Some { value: body } =>
-                 match body.expr_data {
-                   ExprRecordLit { parent_enum: _ } => true
-                   _ => false
-                 }
+             && match i.type_annotation {
+               Some { value: ann } =>
+                 let t = authored_name(env: scope.type_env, node: ann)
+                 t == "VariantEncoding"
                None => false
              })
         |> first

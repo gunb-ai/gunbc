@@ -1223,15 +1223,18 @@ pub fn emit_module_full(
         .cloned()
         .or_else(|| {
             // `data wire_contract: VariantEncoding = …` can lose `ident_span` on the binding
-            // node, making `authored_name` empty. Fall back to the module's `data … = <record>`
-            // item whose initializer is a record literal (`StringVariant { naming: … }`, etc.).
+            // node, making `authored_name`/`name` matching unreliable. Fall back to the module's
+            // `data` item typed as `VariantEncoding` (alias or record initializer — unique in
+            // provider modules like `extdeps.llm.openai`).
             typed_module.items.clone().iter().cloned().find(|i| {
                 if (!is_data_def_item(&i)) {
                     return false;
                 }
-                match i.body.clone() {
-                    Some(body) => {
-                        matches!((*body.expr_data.clone()).clone(), ExprRecordLit { .. })
+                match i.type_annotation.clone() {
+                    Some(ann) => {
+                        let t = authored_name(scope.type_env.clone(), ann);
+                        (t.as_str() == "VariantEncoding".to_string().as_str())
+                            || t.ends_with(".VariantEncoding")
                     }
                     None => false,
                 }
