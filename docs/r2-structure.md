@@ -125,7 +125,7 @@ Owns the **post-R1 work** of the Pure Bootstrap to Zero program (per `docs/desig
 - **R1 vs R2 boundary — defers to ROADMAP gate authority.** R1's PB gates (`pb_hand_rust_at_shim_floor`, `pb_compiler_std_ratchet_zero`, `pb_rust_tests_outside_residual_zero`, `lens_producer_files_remaining`) are owned by R1 per `ROADMAP.md §"Lane acceptance — .dag gates"` and the T-PB-A / T-PB-B lane rows. Their target per the cascade promotion is **0** (non-test hand-Rust + Rust-authored tests both → 0 via SG-0 census). r2-structure.md does not reinterpret those gate semantics — ROADMAP is single authority on gate close, and R1 closure criterion (all-gates-green) governs when the census-driven dissolution work is "done" for R1's purposes.
 - **R2 PB Manager scope = work that survives R1 close**, not a duplicate of R1 PB lanes. Specifically:
   - **Mirror dissolutions** (Tier 3 #10 + #12 from #810): termination / computation / induction / effect-carrier Rust mirrors of std `.dag` carriers. These dissolve as v3 lowers + evaluates `.dag` runtime values; not a hand-Rust-census concern, so not gated by R1's PB gates.
-  - **Tier 2 carry-from-#810:** `patch_lower_helpers_generated_type_alias_refinement` retirement (PB-Tier1 priority hint per #810 §5). Currently a known-fragile bridge with explicit dissolution trigger; survives R1 if R1 closes before this lands.
+  - **Tier 2 carry-from-#810:** `patch_lower_helpers_generated_type_alias_refinement` retirement (PB-Tier1 priority hint per #810 §5) is **closed by PR #1014**. The known-fragile bridge no longer survives R1/R2; generated `lower_helpers` emits the refinement field natively.
   - **Post-R1 PB program emergence:** any new dissolution work surfaced post-R1 (e.g., new mirror dissolutions discovered during R2, new Rust scaffolds inadvertently introduced) — owned here so the PB program has a standing home rather than going through Director ad-hoc dispatch.
   - **kernel_algebra_profile mirror dissolution** (map-shaped `ValueBody::Map` substrate work — see Substrate Manager's note about this being tracked as a future T-Substrate sub-lane; PB Manager consumes the carrier when it lands).
 - **What R2 PB Manager does NOT own:** the R1 PB census-reduction work itself. That's R1 lane work driven by R1 dispatchers under R1's all-gates-green close criterion (per ROADMAP single authority).
@@ -219,7 +219,7 @@ Pure Bootstrap Manager (T-PB) — POST-R1 only (R1 owns census-reduction lanes p
     Tier 3 mirror dissolutions (parallel-dispatchable):
         termination / computation / induction / effect-carrier Rust mirrors
         kernel_algebra_profile (gated on Substrate Manager: ValueBody::Map carrier; future T-Substrate sub-lane)
-    Tier 2 patch_lower_helpers_* retirement (if survives R1)
+    Tier 2 patch_lower_helpers_* retirement (closed by PR #1014)
     Post-R1 emergent dissolutions
     Cross-program: B4's §0.7 file-preference rank carrier touches PB territory; coordinate with Substrate Manager.
 
