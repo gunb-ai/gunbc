@@ -3155,9 +3155,10 @@ impl<'a> Ctx<'a> {
         mode: RenderMode,
     ) -> Result<String, EmitError> {
         let Some(node_id) = self.dag.port(port).produced_by else {
-            return Err(EmitError::UnsupportedBehavior(
-                format!("render reached port {:?} with no producer (parameter?)", port),
-            ));
+            return Err(EmitError::UnsupportedBehavior(format!(
+                "render reached port {:?} with no producer (parameter?)",
+                port
+            )));
         };
         match self.dag.node(node_id) {
             Behavior::Value(v) => match mode {
