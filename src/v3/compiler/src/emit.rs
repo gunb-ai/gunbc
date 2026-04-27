@@ -76,16 +76,61 @@ pub(super) fn behavior_result_port(behavior: &Behavior) -> PortId {
     }
 }
 
-/// `Result<ok, err>` is declared in `dsl/std/errors.dag` and `dsl/std/error_primitives.dag`.
+/// `std.error_primitives` declares canonical `Result<ok, err> = Ok { value: ok } | Err { value: err }`.
 /// Emitters lower it to a target-native `Result` / `struct { Ok; Err }` carrier and must
 /// not also emit a second substrate `type Result`.
 ///
-/// Selection is keyed on `span.file` suffixes today (filename drift risk); routing on
-/// resolved declaration identity is the intended follow-up.
-pub(crate) fn substrate_result_type_decl_suppressed_for_emit(decl: &Declaration) -> bool {
-    decl.name.as_deref() == Some("Result")
-        && (decl.span.file.ends_with("errors.dag")
-            || decl.span.file.ends_with("error_primitives.dag"))
+/// Suppression keys off the **resolved structural fingerprint** of that declaration
+/// (name + type-parameter identities + `Ok`/`Err` payload wiring), not `span.file`
+/// suffixes — so unrelated modules named `errors.dag` cannot collide, and renaming
+/// the std file alone does not silently retarget suppression.
+pub(crate) fn substrate_result_type_decl_suppressed_for_emit(
+    dag: &Dag,
+    decl: &Declaration,
+) -> bool {
+    if decl.name.as_deref() != Some("Result") {
+        return false;
+    }
+    let [ok_param, err_param] = match decl.type_params.as_slice() {
+        [a, b] => [*a, *b],
+        _ => return false,
+    };
+    let ok_decl = dag.declaration(ok_param);
+    let err_decl = dag.declaration(err_param);
+    let ok_param_ok = matches!(
+        &ok_decl.connective,
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "ok"
+    );
+    let err_param_ok = matches!(
+        &err_decl.connective,
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "err"
+    );
+    if !ok_param_ok || !err_param_ok {
+        return false;
+    }
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        return false;
+    };
+    let Some(ok_field) = variants.iter().find(|v| v.label == "Ok") else {
+        return false;
+    };
+    let Some(err_field) = variants.iter().find(|v| v.label == "Err") else {
+        return false;
+    };
+    substrate_result_variant_payload_is_value_of(dag, ok_field.ty, ok_param)
+        && substrate_result_variant_payload_is_value_of(dag, err_field.ty, err_param)
+}
+
+fn substrate_result_variant_payload_is_value_of(
+    dag: &Dag,
+    payload_ty: DeclarationId,
+    type_param: DeclarationId,
+) -> bool {
+    let payload = dag.declaration(payload_ty);
+    let TypeConnective::Conj { children } = &payload.connective else {
+        return false;
+    };
+    children.len() == 1 && children[0].label == "value" && children[0].ty == type_param
 }
 
 /// Structural port-liveness walk. Returns true if `target` appears as any port
@@ -1093,7 +1138,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
         .iter()
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
-        .filter(|decl| !substrate_result_type_decl_suppressed_for_emit(decl))
+        .filter(|decl| !substrate_result_type_decl_suppressed_for_emit(dag, decl))
         .filter(|decl| {
             matches!(
                 decl.connective,

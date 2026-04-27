@@ -606,7 +606,7 @@ pub(crate) fn emit_python_with_mode(
         .iter()
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
-        .filter(|decl| !super::substrate_result_type_decl_suppressed_for_emit(decl))
+        .filter(|decl| !super::substrate_result_type_decl_suppressed_for_emit(dag, decl))
         .filter(|decl| {
             matches!(
                 decl.connective,

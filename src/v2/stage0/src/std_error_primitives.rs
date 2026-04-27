@@ -6,11 +6,12 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::HashMap;
 use std::rc::Rc;
-use DivError::*;
-use Result::*;
+use self::DivError::*;
+use self::Result::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
+#[allow(non_camel_case_types)]
 pub enum Result<ok, err> {
     Ok { value: Box<ok> },
     Err { value: Box<err> },

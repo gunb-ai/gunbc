@@ -1143,7 +1143,7 @@ pub fn emit_module_full(
             {
                 __result.push(v2_rt::concat(
                     v2_rt::concat(
-                        "use ".to_string(),
+                        "use self::".to_string(),
                         authored_name(scope.type_env.clone(), item.clone()),
                     ),
                     "::*;".to_string(),
