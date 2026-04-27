@@ -214,7 +214,7 @@ This doc is that audit. Every thesis claim in `THESIS.md §"Thesis claims — co
 
 ## Coverage anomalies
 
-Four claims with partial-status notes worth tracking (NOT pre-promotion blockers):
+Six notes worth tracking (NOT pre-promotion blockers):
 
 1. **Ownership (Tier 1, claim 9)** — marked R1-closed via E-family carrier port; full ownership-dimension infrastructure may have post-R1 tail. Within T-LaneE scope is R1-committed.
 2. **Shape A omni-emission (claim 37)** — R1 demonstrates 3 of 6+ Shape A targets (Rust/Python/Go). TypeScript/Swift/HDL targets explicitly listed in THESIS but not in R1 T-Emit scope ("Rust production-grade; Python/Go demonstrably working"). Full Shape A scope defers post-R1.
