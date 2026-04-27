@@ -289,6 +289,17 @@ data rust_phantom_parameter: TypeRealization = {
   cost: 1
 }
 
+data rust_nominal_opacity: TypeRealization = {
+  language: rust_language
+  target: NominalOpacity
+  carrier: "NominalOpacity"
+  is_copy: false
+  fields: [
+    { dag_name: "permitted_accessors", access: DirectField("permitted_accessors"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
 data rust_field_entry: TypeRealization = {
   language: rust_language
   target: FieldEntry
@@ -444,6 +455,7 @@ data rust_declaration: TypeRealization = {
     { dag_name: "meta_tag", access: DirectField("meta_tag"), borrowed_read: false },
     { dag_name: "inhabits", access: DirectField("inhabits"), borrowed_read: false },
     { dag_name: "value_body", access: DirectField("value_body"), borrowed_read: false },
+    { dag_name: "nominal_opacity", access: DirectField("nominal_opacity"), borrowed_read: false },
     { dag_name: "span", access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1

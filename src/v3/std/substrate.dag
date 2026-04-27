@@ -160,6 +160,7 @@ type Declaration {
   meta_tag: DeclarationId?
   inhabits: DeclarationId?
   value_body: ValueBody?
+  nominal_opacity: NominalOpacity?
   span: SourceSpan
 }
 
@@ -173,6 +174,18 @@ type Declaration {
 type PhantomParameter {
   parameter: DeclarationId
   algebra: DeclarationId
+}
+
+// Nominal-opaque carrier (T-Substrate nominal-opaque-for-Secret
+// subset, carrier-only staging). `permitted_accessors` lists the
+// declarations intended as the only sealed-accessor descent path.
+// The fail-closed walker consumer + std `Secret` marking + opacity
+// carry-forward through specialization are the named follow-up
+// enforcement work; this carrier is staging surface only and must
+// either gain a real walker consumer or be removed before T-Modeling
+// Secret<T> graduation can dispatch.
+type NominalOpacity {
+  permitted_accessors: List<DeclarationId>
 }
 
 // 🟡 SCAFFOLD. Arithmetic operators inherit the operator-shim
