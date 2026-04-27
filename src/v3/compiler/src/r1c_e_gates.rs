@@ -30,8 +30,8 @@ use crate::emit::emit;
 use crate::emit::EmitTarget;
 use crate::emit_rust::{emit_rust, emit_rust_module};
 use crate::emit_rust_roundtrip_fixtures::{
-    self as fixtures, ProgramFixture, ReflectedExpected, GO_EMIT_EXCLUDE, PROGRAM_FIXTURES,
-    PYTHON_EMIT_EXCLUDE, REFLECTED_FIXTURES,
+    ProgramFixture, ReflectedExpected, GO_EMIT_EXCLUDE, PROGRAM_FIXTURES, PYTHON_EMIT_EXCLUDE,
+    REFLECTED_FIXTURES,
 };
 
 /// `emit_generic_bounds_survive` (host receipt: `m1_3_emit_rust_test::emit_generic_bounds_survive`,
@@ -62,24 +62,17 @@ pub fn check_generic_bounds_survive() -> Result<(), String> {
 
 // === emit_rust_fixtures_rustc_green (batched rustc program + reflected harness) ===
 
-/// Directory containing `libv3_compiler-*.rlib` for the current build (either
-/// `…/target/debug/deps` when the running executable lives under `deps/`, or
-/// `…/target/debug/deps` when the executable is `…/target/debug/r1c_e_emit_gates`).
+/// Directory containing `libv3_compiler-*.rlib` for the current build. Test
+/// executables sit in `…/target/debug/deps/`; the `r1c_e_emit_gates` bin is in
+/// `…/target/debug/` and links against the same `dependency=…/deps` layout.
 fn rustc_deps_dir() -> PathBuf {
-    let exe = std::env::current_exe().map_err(|_| ())?;
-    let parent = exe.parent().ok_or(())?;
+    let exe = std::env::current_exe().expect("current exe");
+    let parent = exe.parent().expect("parent of current exe");
     if parent.file_name() == Some(std::ffi::OsStr::new("deps")) {
-        Ok(parent.to_path_buf())
+        parent.to_path_buf()
     } else {
-        Ok(parent.join("deps"))
+        parent.join("deps")
     }
-    .unwrap_or_else(|()| {
-        std::env::current_exe()
-            .expect("current exe")
-            .parent()
-            .expect("parent")
-            .to_path_buf()
-    })
 }
 
 fn find_current_rlib(crate_name: &str) -> PathBuf {
@@ -168,9 +161,6 @@ impl R1cERustcHarness {
             .stderr(Stdio::inherit())
             .status()
             .expect("invoke rustc — install a rust toolchain to run this gate");
-        if !status.success() {
-            return Err(()).ok(); // force compile error path
-        }
         assert!(status.success(), "rustc failed on harness source");
         bin_path
     }
@@ -358,7 +348,7 @@ fn omni_fixtures() -> Vec<&'static ProgramFixture> {
         .collect()
 }
 
-fn omni_rust_stdout(source: &str) -> String {
+fn omni_rust_stdout(source: &str) -> Result<String, String> {
     let id = OMNI_RUST_ID.fetch_add(1, Ordering::Relaxed) as u64;
     let dag =
         compile_to_dag(source, "omni_parity_r1c_e.v3").map_err(|e| format!("compile: {e:?}"))?;
@@ -468,6 +458,7 @@ pub fn check_omni_demo_fixtures_green() -> Result<(), String> {
     for fixture in fixtures {
         let rust = omni_rust_stdout(fixture.source)
             .map_err(|e| format!("omni rust `{}`: {e}", fixture.name))?;
+        // (map_err only — omni_rust_stdout already returns Result)
         let go = omni_go_stdout(fixture.name, fixture.source)?;
         if go != rust {
             return Err(format!(
