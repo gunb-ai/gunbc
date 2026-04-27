@@ -1232,9 +1232,12 @@ pub fn emit_module_full(
                 }
                 match i.type_annotation.clone() {
                     Some(ann) => {
-                        let t = authored_name(scope.type_env.clone(), ann);
+                        let t = authored_name(scope.type_env.clone(), ann.clone());
+                        let r = authored_name(scope.type_env.clone(), resolved_type(ann));
                         (t.as_str() == "VariantEncoding".to_string().as_str())
+                            || (r.as_str() == "VariantEncoding".to_string().as_str())
                             || t.ends_with(".VariantEncoding")
+                            || r.ends_with(".VariantEncoding")
                     }
                     None => false,
                 }
