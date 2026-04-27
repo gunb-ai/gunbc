@@ -541,11 +541,11 @@ data suite: TestSuite = {
             .result
     };
     assert!(matches!(
-        result_for("pb_hand_authored_non_test_bound"),
+        result_for("pb_hand_rust_at_shim_floor"),
         ClaimResult::Fail(_)
     ));
     assert!(matches!(
-        result_for("pb_lens_producer_subset_zero"),
+        result_for("lens_producer_files_remaining"),
         ClaimResult::Fail(_)
     ));
     assert_eq!(
