@@ -152,7 +152,7 @@ to PB-* lane.
 Summary citations to existing tracking:
 
 - File-preference rank (`dag.rs::declaration_name_preference_rank` + `lower.rs::collect_symbols` — line cites drift on `main`) — ROADMAP `:368`. Trigger: convergence of every duplicated `src/v3/std/` ↔ `dsl/std/` module listed in those doc comments. **PR #809 undercount (computation + induction + termination) closed 2026-04-26** — checklist extended in source + ROADMAP exploratory row.
-- Loop emission semantic invariant (Python/Go) — PR #809 row. **Risk-shaped:** comment-level invariant, not structural.
+- Loop emission semantic invariant (Python/Go) — PR #809 row. **RESOLVED 2026-04-27:** structural integration test landed (`loop_construction_closure_test.rs`); audit found closure already holds in production, marker retired. See Tier 2 §5.
 - `bootstrap.rs::patch_kernel_bool_boolean_algebra_inhabits` Rust patching (`bootstrap.rs:211-291`) — ROADMAP `:364` (Class 5 Gap 1). Trigger: structural `inhabits` edge.
 - `EXTDEPS_BOOTSTRAP_FIXTURES` manual list — ROADMAP `:365` (Class 5 Gap 3 `std.unicode` bootstrap/load-set decision is the parent).
 
@@ -297,21 +297,23 @@ dispatch in parallel. Each PR is small.
 
 ### Tier 2 — risk-shaped + R2-coupled (S-scope each, dispatch with R2 lanes)
 
-5. **Loop emission semantic invariant** (PR #809 entry). Currently
-   comment-level; degrades silently if any future PR adds another Loop
-   source. R2 demos depend on Python/Go emission, so this is R2-coupled.
-   **Brief MUST start with a construction-closure audit, NOT with a
-   marker design.** Step 1: enumerate every `Behavior::Loop`
-   construction site in `lower.rs` (and anywhere else); confirm or
-   refute that all paths route through recursive-function lowering.
-   Step 2 (conditional on the audit): if construction-closure holds, the
-   brief becomes "document the closure invariant as a structural
-   integration test; retire the speculative `LoopKind` marker idea" —
-   no new substrate. If it does NOT hold, the marker/test framing
-   applies and the brief turns into a `LoopKind` lowering-marker spec.
-   Both proposed paths in the original PR #809 row are bridges; do not
-   author the marker brief blind. Per `feedback_construction_over_ratchets`,
-   prefer the structural-closure outcome.
+5. **Loop emission semantic invariant** (PR #809 entry). **RESOLVED
+   (2026-04-27):** construction-closure audit by W-B5 (PR #953) found
+   exactly two production `Behavior::Loop` construction sites — both in
+   `src/v3/compiler/src/lower.rs`: `finalize_mutual_clusters` (line 391,
+   `LoopBound::Descent`, mutual-recursion cluster) and
+   `lower_fn_item_expr_body` (line 4236, `LoopBound::Cardinality`,
+   single recursive function). All other `push_loop` callers
+   (`lib.rs`, `emit.rs`, `dag/builder.rs`) are inside `#[test]` blocks.
+   **Closure holds**: every production Loop carries provenance traceable
+   to recursive-function lowering, structurally observable as
+   "loop.output is the value port of some Behavior::Bind". Receipt
+   landed as
+   `src/v3/compiler/tests/integration/loop_construction_closure_test.rs`
+   (`every_loop_node_originates_from_recursive_function_lowering`). The
+   speculative `LoopKind` lowering-marker idea is **retired** as a
+   ratchet-against-not-yet-real-violations per
+   `feedback_construction_over_ratchets`.
 6. **`src/v3/std` vs `dsl/std` checklist undercount fix** (PR #809
    entry). **RESOLVED (2026-04-26):** convergence checklist in
    `dag.rs::declaration_name_preference_rank` + `lower.rs::collect_symbols`
