@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod compiler_tests {
-    use std::collections::HashMap;
     use crate::v2_compiler_tokenize::tokenize;
+    use std::collections::HashMap;
 
     /// Find workspace root by walking up from the current directory looking for Cargo.toml + dsl/
     fn workspace_root() -> std::path::PathBuf {
@@ -92,9 +92,11 @@ mod compiler_tests {
                 crate::v2_std_core::diagnostic_to_message(err.diagnostic.clone())
             );
         }
-        parsed.result.module.clone().unwrap_or_else(|| {
-            panic!("{} produced no module while building source closure", path)
-        })
+        parsed
+            .result
+            .module
+            .clone()
+            .unwrap_or_else(|| panic!("{} produced no module while building source closure", path))
     }
 
     fn module_path_from_source(path: &str, content: &str) -> String {
@@ -109,9 +111,7 @@ mod compiler_tests {
             .collect()
     }
 
-    fn build_source_index(
-        roots: &[&str],
-    ) -> HashMap<String, (String, String)> {
+    fn build_source_index(roots: &[&str]) -> HashMap<String, (String, String)> {
         let mut index = HashMap::new();
         for root in roots {
             for (path, content) in discover_dag_files(root) {
@@ -119,9 +119,7 @@ mod compiler_tests {
                 if let Some((existing, _)) = index.get(&module_path) {
                     panic!(
                         "duplicate module path '{}': declared in both {} and {}",
-                        module_path,
-                        existing,
-                        path
+                        module_path, existing, path
                     );
                 }
                 index.insert(module_path, (path, content));
@@ -135,7 +133,8 @@ mod compiler_tests {
         roots: &[&str],
     ) -> Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> {
         let index = build_source_index(roots);
-        let mut seen = HashMap::<String, std::rc::Rc<crate::v2_compiler_compile::SourceFile>>::new();
+        let mut seen =
+            HashMap::<String, std::rc::Rc<crate::v2_compiler_compile::SourceFile>>::new();
         let mut queue = Vec::new();
 
         for (path, content) in entry_pairs {
@@ -214,7 +213,10 @@ mod compiler_tests {
 
     #[test]
     fn tokenize_produces_tokens() {
-        let tokens = tokenize(&"fn foo() -> Int { 42 }".to_string(), "test.dag".to_string());
+        let tokens = tokenize(
+            &"fn foo() -> Int { 42 }".to_string(),
+            "test.dag".to_string(),
+        );
         assert!(
             !tokens.is_empty(),
             "tokenize should produce at least one token"
@@ -266,7 +268,10 @@ mod compiler_tests {
             &"module test\ntype Foo { x: Int }\n".to_string(),
             "test.dag".to_string(),
         );
-        let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+        let result = crate::v2_compiler_parse::parse(
+            tokens,
+            std::rc::Rc::new(std::collections::HashMap::new()),
+        );
         assert!(
             result.module.is_some(),
             "valid module should parse successfully"
@@ -293,7 +298,10 @@ mod compiler_tests {
                     last.shape
                 );
 
-                let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                let result = crate::v2_compiler_parse::parse(
+                    tokens,
+                    std::rc::Rc::new(std::collections::HashMap::new()),
+                );
 
                 assert!(
                     result.module.is_some(),
@@ -370,7 +378,10 @@ mod compiler_tests {
                         "{} should end with Eof",
                         file
                     );
-                    let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                    let result = crate::v2_compiler_parse::parse(
+                        tokens,
+                        std::rc::Rc::new(std::collections::HashMap::new()),
+                    );
                     assert!(
                         result.module.is_some(),
                         "{} should parse successfully, error: {:?}",
@@ -641,80 +652,200 @@ mod compiler_tests {
     #[test]
     fn coercion_rust_checkpoint_resolves_primitives() {
         use crate::v2_compiler_coercion::*;
-        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Int".into()), "i64");
-        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Float".into()), "f64");
-        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Bool".into()), "bool");
-        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Unit".into()), "()");
-        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "String".into()), "String");
-        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Bytes".into()), "Vec<u8>");
-        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Secret".into()), "String");
-        assert_eq!(coerce_primitive_type(RenderTarget::Rust, "Json".into()), "serde_json::Value");
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Rust, "Int".into()),
+            "i64"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Rust, "Float".into()),
+            "f64"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Rust, "Bool".into()),
+            "bool"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Rust, "Unit".into()),
+            "()"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Rust, "String".into()),
+            "String"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Rust, "Bytes".into()),
+            "Vec<u8>"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Rust, "Secret".into()),
+            "String"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Rust, "Json".into()),
+            "serde_json::Value"
+        );
     }
-
 
     #[test]
     fn coercion_python_checkpoint_resolves_primitives() {
         use crate::v2_compiler_coercion::*;
-        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Int".into()), "int");
-        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Float".into()), "float");
-        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Bool".into()), "bool");
-        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Unit".into()), "None");
-        assert_eq!(coerce_primitive_type(RenderTarget::Python, "String".into()), "str");
-        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Bytes".into()), "bytes");
-        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Secret".into()), "str");
-        assert_eq!(coerce_primitive_type(RenderTarget::Python, "Json".into()), "dict");
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Python, "Int".into()),
+            "int"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Python, "Float".into()),
+            "float"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Python, "Bool".into()),
+            "bool"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Python, "Unit".into()),
+            "None"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Python, "String".into()),
+            "str"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Python, "Bytes".into()),
+            "bytes"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Python, "Secret".into()),
+            "str"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Python, "Json".into()),
+            "dict"
+        );
     }
-
 
     #[test]
     fn coercion_go_checkpoint_resolves_primitives() {
         use crate::v2_compiler_coercion::*;
-        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Int".into()), "int64");
-        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Float".into()), "float64");
-        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Bool".into()), "bool");
-        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Unit".into()), "struct{}");
-        assert_eq!(coerce_primitive_type(RenderTarget::Go, "String".into()), "string");
-        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Bytes".into()), "[]byte");
-        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Secret".into()), "string");
-        assert_eq!(coerce_primitive_type(RenderTarget::Go, "Json".into()), "interface{}");
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Go, "Int".into()),
+            "int64"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Go, "Float".into()),
+            "float64"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Go, "Bool".into()),
+            "bool"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Go, "Unit".into()),
+            "struct{}"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Go, "String".into()),
+            "string"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Go, "Bytes".into()),
+            "[]byte"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Go, "Secret".into()),
+            "string"
+        );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Go, "Json".into()),
+            "interface{}"
+        );
     }
-
 
     #[test]
     fn coercion_rust_inhabitant_resolves_containers() {
         use crate::v2_compiler_coercion::*;
-        assert_eq!(coerce_container_template(RenderTarget::Rust, "BooleanAlgebra".into()), Some("std::collections::BTreeSet<{0}>".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Rust, "FreeMonoid".into()), Some("Vec<{0}>".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Rust, "List".into()), Some("Vec<{0}>".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Rust, "Map".into()), Some("HashMap<{0}, {1}>".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Rust, "PartialFunction".into()), Some("HashMap<{0}, {1}>".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Rust, "Set".into()), Some("std::collections::BTreeSet<{0}>".to_string()));
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "BooleanAlgebra".into()),
+            Some("std::collections::BTreeSet<{0}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "FreeMonoid".into()),
+            Some("Vec<{0}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "List".into()),
+            Some("Vec<{0}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "Map".into()),
+            Some("HashMap<{0}, {1}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "PartialFunction".into()),
+            Some("HashMap<{0}, {1}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "Set".into()),
+            Some("std::collections::BTreeSet<{0}>".to_string())
+        );
     }
-
 
     #[test]
     fn coercion_python_inhabitant_resolves_containers() {
         use crate::v2_compiler_coercion::*;
-        assert_eq!(coerce_container_template(RenderTarget::Python, "BooleanAlgebra".into()), Some("set[{0}]".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Python, "FreeMonoid".into()), Some("list[{0}]".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Python, "List".into()), Some("list[{0}]".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Python, "Map".into()), Some("dict[{0}, {1}]".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Python, "PartialFunction".into()), Some("dict[{0}, {1}]".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Python, "Set".into()), Some("set[{0}]".to_string()));
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "BooleanAlgebra".into()),
+            Some("set[{0}]".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "FreeMonoid".into()),
+            Some("list[{0}]".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "List".into()),
+            Some("list[{0}]".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "Map".into()),
+            Some("dict[{0}, {1}]".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "PartialFunction".into()),
+            Some("dict[{0}, {1}]".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "Set".into()),
+            Some("set[{0}]".to_string())
+        );
     }
-
 
     #[test]
     fn coercion_go_inhabitant_resolves_containers() {
         use crate::v2_compiler_coercion::*;
-        assert_eq!(coerce_container_template(RenderTarget::Go, "BooleanAlgebra".into()), Some("map[{0}]struct{}".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Go, "FreeMonoid".into()), Some("[]{0}".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Go, "List".into()), Some("[]{0}".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Go, "Map".into()), Some("map[{0}]{1}".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Go, "PartialFunction".into()), Some("map[{0}]{1}".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Go, "Set".into()), Some("map[{0}]struct{}".to_string()));
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "BooleanAlgebra".into()),
+            Some("map[{0}]struct{}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "FreeMonoid".into()),
+            Some("[]{0}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "List".into()),
+            Some("[]{0}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "Map".into()),
+            Some("map[{0}]{1}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "PartialFunction".into()),
+            Some("map[{0}]{1}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "Set".into()),
+            Some("map[{0}]struct{}".to_string())
+        );
     }
-
 
     #[test]
     fn coercion_is_copy_from_checkpoint() {
@@ -729,19 +860,45 @@ mod compiler_tests {
         assert_eq!(is_copy(RenderTarget::Rust, "Json".into()), Some(false));
     }
 
-
     #[test]
     fn coercion_template_application() {
         use crate::v2_compiler_coercion::*;
-        assert_eq!(apply_inhabitant_template1("Vec<{0}>".into(), "i64".into()), "Vec<i64>");
-        assert_eq!(apply_inhabitant_template1("std::collections::BTreeSet<{0}>".into(), "i64".into()), "std::collections::BTreeSet<i64>");
-        assert_eq!(apply_inhabitant_template2("HashMap<{0}, {1}>".into(), "String".into(), "i64".into()), "HashMap<String, i64>");
-        assert_eq!(apply_inhabitant_template1("list[{0}]".into(), "int".into()), "list[int]");
-        assert_eq!(apply_inhabitant_template1("set[{0}]".into(), "int".into()), "set[int]");
-        assert_eq!(apply_inhabitant_template2("dict[{0}, {1}]".into(), "str".into(), "int".into()), "dict[str, int]");
-        assert_eq!(apply_inhabitant_template1("[]{0}".into(), "int64".into()), "[]int64");
-        assert_eq!(apply_inhabitant_template1("map[{0}]struct{}".into(), "int64".into()), "map[int64]struct{}");
-        assert_eq!(apply_inhabitant_template2("map[{0}]{1}".into(), "string".into(), "int64".into()), "map[string]int64");
+        assert_eq!(
+            apply_inhabitant_template1("Vec<{0}>".into(), "i64".into()),
+            "Vec<i64>"
+        );
+        assert_eq!(
+            apply_inhabitant_template1("std::collections::BTreeSet<{0}>".into(), "i64".into()),
+            "std::collections::BTreeSet<i64>"
+        );
+        assert_eq!(
+            apply_inhabitant_template2("HashMap<{0}, {1}>".into(), "String".into(), "i64".into()),
+            "HashMap<String, i64>"
+        );
+        assert_eq!(
+            apply_inhabitant_template1("list[{0}]".into(), "int".into()),
+            "list[int]"
+        );
+        assert_eq!(
+            apply_inhabitant_template1("set[{0}]".into(), "int".into()),
+            "set[int]"
+        );
+        assert_eq!(
+            apply_inhabitant_template2("dict[{0}, {1}]".into(), "str".into(), "int".into()),
+            "dict[str, int]"
+        );
+        assert_eq!(
+            apply_inhabitant_template1("[]{0}".into(), "int64".into()),
+            "[]int64"
+        );
+        assert_eq!(
+            apply_inhabitant_template1("map[{0}]struct{}".into(), "int64".into()),
+            "map[int64]struct{}"
+        );
+        assert_eq!(
+            apply_inhabitant_template2("map[{0}]{1}".into(), "string".into(), "int64".into()),
+            "map[string]int64"
+        );
     }
 
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).
@@ -854,7 +1011,10 @@ mod compiler_tests {
                     let parsed = crate::v2_compiler_parse::parse_with_table(
                         tokens,
                         crate::v2_rt::rc_map_insert(
-                            crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                            crate::v2_rt::rc_empty_map::<
+                                String,
+                                std::rc::Rc<crate::v2_std_core::NewlineIndex>,
+                            >(),
                             si.file.clone(),
                             si.clone(),
                         ),
@@ -868,7 +1028,9 @@ mod compiler_tests {
                         "  parse   {:>40}: {:>8.2?}  (ok={})",
                         sources[i].path, elapsed, ok
                     );
-                    let m = result.module.clone()
+                    let m = result
+                        .module
+                        .clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", sources[i].path));
                     modules.push(m);
                 }
@@ -877,10 +1039,25 @@ mod compiler_tests {
 
                 let t_stage = Instant::now();
                 let resolve_si = sources.iter().fold(
-                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
-                    |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
+                    crate::v2_rt::rc_empty_map::<
+                        String,
+                        std::rc::Rc<crate::v2_std_core::NewlineIndex>,
+                    >(),
+                    |acc, s| {
+                        crate::v2_rt::rc_map_insert(
+                            acc,
+                            s.path.clone(),
+                            crate::v2_std_core::build_newline_index(
+                                s.path.clone(),
+                                &s.content.clone(),
+                            ),
+                        )
+                    },
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), &resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(
+                    &std::rc::Rc::new(modules),
+                    &resolve_si,
+                );
                 let resolve_total = t_stage.elapsed();
                 let errors: Vec<_> = graph
                     .diagnostics
@@ -967,7 +1144,10 @@ mod compiler_tests {
                     let parsed = crate::v2_compiler_parse::parse_with_table(
                         tokens,
                         crate::v2_rt::rc_map_insert(
-                            crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                            crate::v2_rt::rc_empty_map::<
+                                String,
+                                std::rc::Rc<crate::v2_std_core::NewlineIndex>,
+                            >(),
                             si.file.clone(),
                             si.clone(),
                         ),
@@ -984,7 +1164,9 @@ mod compiler_tests {
                         "  parse   {:>40}: {:>8.2?}  (ok={})",
                         sources[i].path, elapsed, ok
                     );
-                    let m = result.module.clone()
+                    let m = result
+                        .module
+                        .clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", sources[i].path));
                     modules.push(m);
                 }
@@ -999,10 +1181,25 @@ mod compiler_tests {
 
                 let t_stage = Instant::now();
                 let resolve_si = sources.iter().fold(
-                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
-                    |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
+                    crate::v2_rt::rc_empty_map::<
+                        String,
+                        std::rc::Rc<crate::v2_std_core::NewlineIndex>,
+                    >(),
+                    |acc, s| {
+                        crate::v2_rt::rc_map_insert(
+                            acc,
+                            s.path.clone(),
+                            crate::v2_std_core::build_newline_index(
+                                s.path.clone(),
+                                &s.content.clone(),
+                            ),
+                        )
+                    },
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), &resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(
+                    &std::rc::Rc::new(modules),
+                    &resolve_si,
+                );
                 let resolve_total = t_stage.elapsed();
                 let phase3_diags: usize = graph
                     .diagnostics
@@ -1031,7 +1228,11 @@ mod compiler_tests {
                         acc
                     },
                 );
-                let typed = crate::v2_compiler_infer::reconcile(graph, std::rc::Rc::new(source_indices), intern_table_p.clone());
+                let typed = crate::v2_compiler_infer::reconcile(
+                    graph,
+                    std::rc::Rc::new(source_indices),
+                    intern_table_p.clone(),
+                );
                 let reconcile_total = t_stage.elapsed();
                 let phase4_diags: usize = typed
                     .diagnostics
@@ -1107,14 +1308,18 @@ mod compiler_tests {
                 let source_count = sources.len();
                 let total_chars: usize = sources.iter().map(|s| s.content.len()).sum();
 
-                eprintln!("\n=== FULL PIPELINE PROFILE ({} sources, {} chars) ===\n", source_count, total_chars);
+                eprintln!(
+                    "\n=== FULL PIPELINE PROFILE ({} sources, {} chars) ===\n",
+                    source_count, total_chars
+                );
 
                 // 1a. Tokenize + parse
                 let t = Instant::now();
                 let mut token_lists = Vec::new();
                 for source in &sources {
                     let tokens = crate::v2_compiler_tokenize::tokenize(
-                        &source.content.clone(), source.path.clone(),
+                        &source.content.clone(),
+                        source.path.clone(),
                     );
                     token_lists.push(tokens);
                 }
@@ -1131,7 +1336,10 @@ mod compiler_tests {
                     let parsed = crate::v2_compiler_parse::parse_with_table(
                         tokens,
                         crate::v2_rt::rc_map_insert(
-                            crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                            crate::v2_rt::rc_empty_map::<
+                                String,
+                                std::rc::Rc<crate::v2_std_core::NewlineIndex>,
+                            >(),
                             si.file.clone(),
                             si.clone(),
                         ),
@@ -1139,7 +1347,9 @@ mod compiler_tests {
                     );
                     let result = parsed.result.clone();
                     intern_table_fp = parsed.intern_table.clone();
-                    let m = result.module.clone()
+                    let m = result
+                        .module
+                        .clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", sources[i].path));
                     modules.push(m);
                 }
@@ -1147,91 +1357,200 @@ mod compiler_tests {
                 // 1b. Resolve
                 let t = Instant::now();
                 let resolve_si = sources.iter().fold(
-                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
-                    |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
+                    crate::v2_rt::rc_empty_map::<
+                        String,
+                        std::rc::Rc<crate::v2_std_core::NewlineIndex>,
+                    >(),
+                    |acc, s| {
+                        crate::v2_rt::rc_map_insert(
+                            acc,
+                            s.path.clone(),
+                            crate::v2_std_core::build_newline_index(
+                                s.path.clone(),
+                                &s.content.clone(),
+                            ),
+                        )
+                    },
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), &resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(
+                    &std::rc::Rc::new(modules),
+                    &resolve_si,
+                );
                 let resolve_elapsed = t.elapsed();
-                let resolve_errors: usize = graph.diagnostics.iter()
+                let resolve_errors: usize = graph
+                    .diagnostics
+                    .iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .count();
 
                 // 1c. Newline indices
                 let t = Instant::now();
-                let newline_indices: Vec<_> = sources.iter().map(|s| {
-                    crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())
-                }).collect();
+                let newline_indices: Vec<_> = sources
+                    .iter()
+                    .map(|s| {
+                        crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())
+                    })
+                    .collect();
                 let newline_elapsed = t.elapsed();
 
-                let frontend_elapsed = tokenize_elapsed + parse_elapsed + resolve_elapsed + newline_elapsed;
+                let frontend_elapsed =
+                    tokenize_elapsed + parse_elapsed + resolve_elapsed + newline_elapsed;
                 eprintln!("  Tokenize:                     {:>8.2?}", tokenize_elapsed);
                 eprintln!("  Parse:                        {:>8.2?}", parse_elapsed);
-                eprintln!("  Resolve:                      {:>8.2?}  ({} resolve errors)", resolve_elapsed, resolve_errors);
+                eprintln!(
+                    "  Resolve:                      {:>8.2?}  ({} resolve errors)",
+                    resolve_elapsed, resolve_errors
+                );
                 eprintln!("  Newline indices:               {:>8.2?}", newline_elapsed);
                 eprintln!("  Frontend total:               {:>8.2?}", frontend_elapsed);
 
                 // 2. Normalize
                 let t = Instant::now();
                 let source_indices = newline_indices.iter().cloned().fold(
-                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
-                    |acc, index| crate::v2_rt::rc_map_insert(acc, index.file.clone(), index.clone()),
+                    crate::v2_rt::rc_empty_map::<
+                        String,
+                        std::rc::Rc<crate::v2_std_core::NewlineIndex>,
+                    >(),
+                    |acc, index| {
+                        crate::v2_rt::rc_map_insert(acc, index.file.clone(), index.clone())
+                    },
                 );
-                let norm = crate::v2_compiler_normalize::normalize_graph(&graph, source_indices.clone());
+                let norm =
+                    crate::v2_compiler_normalize::normalize_graph(&graph, source_indices.clone());
                 let normalize_elapsed = t.elapsed();
-                eprintln!("  Normalize:                    {:>8.2?}", normalize_elapsed);
+                eprintln!(
+                    "  Normalize:                    {:>8.2?}",
+                    normalize_elapsed
+                );
 
                 // 3. Reconcile
                 let t = Instant::now();
-                let typed = crate::v2_compiler_infer::reconcile(norm.graph.clone(), source_indices.clone(), intern_table_fp.clone());
+                let typed = crate::v2_compiler_infer::reconcile(
+                    norm.graph.clone(),
+                    source_indices.clone(),
+                    intern_table_fp.clone(),
+                );
                 let reconcile_elapsed = t.elapsed();
-                let type_errors: usize = typed.diagnostics.iter()
+                let type_errors: usize = typed
+                    .diagnostics
+                    .iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .count();
-                eprintln!("  Reconcile:                    {:>8.2?}  ({} type errors)", reconcile_elapsed, type_errors);
+                eprintln!(
+                    "  Reconcile:                    {:>8.2?}  ({} type errors)",
+                    reconcile_elapsed, type_errors
+                );
 
                 // 4. Complexity
                 let t = Instant::now();
                 let func_entries = crate::v2_compiler_compile::extract_func_entries(typed.clone());
                 let func_count = func_entries.len();
-                let recursion_ctx = crate::v2_compiler_compile::build_recursion_context(typed.clone());
+                let recursion_ctx =
+                    crate::v2_compiler_compile::build_recursion_context(typed.clone());
                 let complexity = crate::v2_compiler_complexity::build_complexity_report(
-                    &func_entries, recursion_ctx, source_indices.clone(),
+                    &func_entries,
+                    recursion_ctx,
+                    source_indices.clone(),
                 );
                 let complexity_elapsed = t.elapsed();
-                let cx_diags = crate::v2_compiler_compile::complexity_diagnostics(complexity.clone());
-                eprintln!("  Complexity:                   {:>8.2?}  ({} funcs, {} diagnostics)", complexity_elapsed, func_count, cx_diags.len());
+                let cx_diags =
+                    crate::v2_compiler_compile::complexity_diagnostics(complexity.clone());
+                eprintln!(
+                    "  Complexity:                   {:>8.2?}  ({} funcs, {} diagnostics)",
+                    complexity_elapsed,
+                    func_count,
+                    cx_diags.len()
+                );
 
                 // 5. Ownership
                 let t = Instant::now();
                 let ownership = crate::v2_compiler_compile::extract_ownership_proofs(typed.clone());
                 let ownership_elapsed = t.elapsed();
-                let own_diags = crate::v2_compiler_compile::ownership_diagnostics(ownership.clone());
-                eprintln!("  Ownership:                    {:>8.2?}  ({} proofs, {} diagnostics)", ownership_elapsed, ownership.len(), own_diags.len());
+                let own_diags =
+                    crate::v2_compiler_compile::ownership_diagnostics(ownership.clone());
+                eprintln!(
+                    "  Ownership:                    {:>8.2?}  ({} proofs, {} diagnostics)",
+                    ownership_elapsed,
+                    ownership.len(),
+                    own_diags.len()
+                );
 
                 // 6. Emit
                 let artifact_plan = crate::v2_compiler_compile::default_artifact_plan(
-                    std::rc::Rc::new(typed.modules.iter().map(|m| m.module.clone().name.clone()).collect()),
+                    std::rc::Rc::new(
+                        typed
+                            .modules
+                            .iter()
+                            .map(|m| m.module.clone().name.clone())
+                            .collect(),
+                    ),
                     crate::v2_compiler_artifact::RenderTarget::Rust,
                 );
                 let t = Instant::now();
-                let emit_result = crate::v2_compiler_compile::emit_from_artifact_plan(typed.clone(), &artifact_plan);
+                let emit_result = crate::v2_compiler_compile::emit_from_artifact_plan(
+                    typed.clone(),
+                    &artifact_plan,
+                );
                 let emit_elapsed = t.elapsed();
                 let emitted_files = emit_result.files.len();
                 let emitted_bytes: usize = emit_result.files.iter().map(|f| f.content.len()).sum();
-                eprintln!("  Emit:                         {:>8.2?}  ({} files, {} bytes)", emit_elapsed, emitted_files, emitted_bytes);
+                eprintln!(
+                    "  Emit:                         {:>8.2?}  ({} files, {} bytes)",
+                    emit_elapsed, emitted_files, emitted_bytes
+                );
 
-                let total = frontend_elapsed + normalize_elapsed + reconcile_elapsed
-                    + complexity_elapsed + ownership_elapsed + emit_elapsed;
+                let total = frontend_elapsed
+                    + normalize_elapsed
+                    + reconcile_elapsed
+                    + complexity_elapsed
+                    + ownership_elapsed
+                    + emit_elapsed;
                 eprintln!("\n=== SUMMARY ===");
-                eprintln!("  Tokenize:   {:>8.2?}  ({:.0}%)", tokenize_elapsed, tokenize_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
-                eprintln!("  Parse:      {:>8.2?}  ({:.0}%)", parse_elapsed, parse_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
-                eprintln!("  Resolve:    {:>8.2?}  ({:.0}%)", resolve_elapsed, resolve_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
-                eprintln!("  Newline:    {:>8.2?}  ({:.0}%)", newline_elapsed, newline_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
-                eprintln!("  Normalize:  {:>8.2?}  ({:.0}%)", normalize_elapsed, normalize_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
-                eprintln!("  Reconcile:  {:>8.2?}  ({:.0}%)", reconcile_elapsed, reconcile_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
-                eprintln!("  Complexity: {:>8.2?}  ({:.0}%)", complexity_elapsed, complexity_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
-                eprintln!("  Ownership:  {:>8.2?}  ({:.0}%)", ownership_elapsed, ownership_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
-                eprintln!("  Emit:       {:>8.2?}  ({:.0}%)", emit_elapsed, emit_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0);
+                eprintln!(
+                    "  Tokenize:   {:>8.2?}  ({:.0}%)",
+                    tokenize_elapsed,
+                    tokenize_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0
+                );
+                eprintln!(
+                    "  Parse:      {:>8.2?}  ({:.0}%)",
+                    parse_elapsed,
+                    parse_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0
+                );
+                eprintln!(
+                    "  Resolve:    {:>8.2?}  ({:.0}%)",
+                    resolve_elapsed,
+                    resolve_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0
+                );
+                eprintln!(
+                    "  Newline:    {:>8.2?}  ({:.0}%)",
+                    newline_elapsed,
+                    newline_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0
+                );
+                eprintln!(
+                    "  Normalize:  {:>8.2?}  ({:.0}%)",
+                    normalize_elapsed,
+                    normalize_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0
+                );
+                eprintln!(
+                    "  Reconcile:  {:>8.2?}  ({:.0}%)",
+                    reconcile_elapsed,
+                    reconcile_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0
+                );
+                eprintln!(
+                    "  Complexity: {:>8.2?}  ({:.0}%)",
+                    complexity_elapsed,
+                    complexity_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0
+                );
+                eprintln!(
+                    "  Ownership:  {:>8.2?}  ({:.0}%)",
+                    ownership_elapsed,
+                    ownership_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0
+                );
+                eprintln!(
+                    "  Emit:       {:>8.2?}  ({:.0}%)",
+                    emit_elapsed,
+                    emit_elapsed.as_secs_f64() / total.as_secs_f64() * 100.0
+                );
                 eprintln!("  TOTAL:      {:>8.2?}", total);
             })
             .expect("failed to spawn thread")
@@ -1270,7 +1589,10 @@ mod compiler_tests {
                     let parsed = crate::v2_compiler_parse::parse_with_table(
                         &tokens,
                         crate::v2_rt::rc_map_insert(
-                            crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                            crate::v2_rt::rc_empty_map::<
+                                String,
+                                std::rc::Rc<crate::v2_std_core::NewlineIndex>,
+                            >(),
                             si.file.clone(),
                             si.clone(),
                         ),
@@ -1278,15 +1600,32 @@ mod compiler_tests {
                     );
                     let result = parsed.result.clone();
                     intern_table = parsed.intern_table.clone();
-                    let m = result.module.clone()
+                    let m = result
+                        .module
+                        .clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", source.path));
                     modules.push(m);
                 }
                 let resolve_si = sources.iter().fold(
-                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
-                    |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
+                    crate::v2_rt::rc_empty_map::<
+                        String,
+                        std::rc::Rc<crate::v2_std_core::NewlineIndex>,
+                    >(),
+                    |acc, s| {
+                        crate::v2_rt::rc_map_insert(
+                            acc,
+                            s.path.clone(),
+                            crate::v2_std_core::build_newline_index(
+                                s.path.clone(),
+                                &s.content.clone(),
+                            ),
+                        )
+                    },
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), &resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(
+                    &std::rc::Rc::new(modules),
+                    &resolve_si,
+                );
                 let setup_time = t0.elapsed();
                 let rss_baseline = get_rss_bytes();
                 eprintln!(
@@ -1437,5 +1776,4 @@ mod compiler_tests {
             .join();
         result.expect("profile_reconcile_per_module panicked");
     }
-
 }
