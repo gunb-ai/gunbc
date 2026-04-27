@@ -4883,17 +4883,16 @@ fn declaration_shapes_equivalent(
                     })
         }
         (
-            TypeConnective::Cardinality {
-                element: lhs_element,
-                bound: lhs_bound,
-            },
-            TypeConnective::Cardinality {
-                element: rhs_element,
-                bound: rhs_bound,
-            },
+            TypeConnective::Cardinality(lhs_payload),
+            TypeConnective::Cardinality(rhs_payload),
         ) => {
-            lhs_bound == rhs_bound
-                && declaration_shapes_equivalent(dag, *lhs_element, *rhs_element, depth + 1)
+            lhs_payload.bound() == rhs_payload.bound()
+                && declaration_shapes_equivalent(
+                    dag,
+                    lhs_payload.element(),
+                    rhs_payload.element(),
+                    depth + 1,
+                )
         }
         (
             TypeConnective::Conj {
