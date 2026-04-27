@@ -212,6 +212,13 @@ data go_uint64_integer_range: GoIntegerRangeFact = {
   range_max_inclusive: "18446744073709551615"
 }
 
+// Hand-edit invariant (until R2 makes one side derivable): every
+// `GoIntegerPrimitive` / `GoIntegerAliasPrimitive` in `go_spec_predeclared_primitives`
+// must keep algebra, carrier, range_min_inclusive, range_max_inclusive lockstep
+// with the matching `go_*_integer_range` row above (byte→uint8, rune→int32).
+// Cheap future insurance: an extdeps loader or unit test that pairs rows by
+// target_name and asserts equality on those four fields.
+
 
 // Predeclared fixed-width numerics + aliases + floats + complex + bool + string
 // + empty struct (struct{}). Order: signed ints, unsigned ints, aliases,
