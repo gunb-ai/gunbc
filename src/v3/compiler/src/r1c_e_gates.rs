@@ -22,12 +22,12 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::OnceLock;
 
 use crate::compile_to_dag;
-use crate::emit::EmitTarget;
 use crate::emit::emit;
+use crate::emit::EmitTarget;
 use crate::emit_rust::{emit_rust, emit_rust_module};
 use crate::emit_rust_roundtrip_fixtures::{
     self as fixtures, ProgramFixture, ReflectedExpected, GO_EMIT_EXCLUDE, PROGRAM_FIXTURES,
@@ -102,15 +102,12 @@ fn find_current_rlib(crate_name: &str) -> PathBuf {
             .and_then(|meta| meta.modified())
             .ok()
     });
-    matches
-        .into_iter()
-        .last()
-        .unwrap_or_else(|| {
-            panic!(
-                "no `{prefix}*.rlib` in {} (build `v3-compiler` for this target first)",
-                deps.display()
-            )
-        })
+    matches.into_iter().last().unwrap_or_else(|| {
+        panic!(
+            "no `{prefix}*.rlib` in {} (build `v3-compiler` for this target first)",
+            deps.display()
+        )
+    })
 }
 
 /// How the rustc harness should link: standalone programs vs `v3_compiler` rlib
@@ -276,11 +273,7 @@ fn build_reflected_harness() -> PathBuf {
          println!(\"{value}\"); \
          }\n",
     );
-    emit_rust_harness().compile(
-        &body,
-        "reflected_bin",
-        HarnessLinkMode::WithV3Compiler,
-    )
+    emit_rust_harness().compile(&body, "reflected_bin", HarnessLinkMode::WithV3Compiler)
 }
 
 fn reflected_harness_bin() -> &'static Path {
@@ -367,7 +360,8 @@ fn omni_fixtures() -> Vec<&'static ProgramFixture> {
 
 fn omni_rust_stdout(source: &str) -> String {
     let id = OMNI_RUST_ID.fetch_add(1, Ordering::Relaxed) as u64;
-    let dag = compile_to_dag(source, "omni_parity_r1c_e.v3").map_err(|e| format!("compile: {e:?}"))?;
+    let dag =
+        compile_to_dag(source, "omni_parity_r1c_e.v3").map_err(|e| format!("compile: {e:?}"))?;
     let rendered = emit_rust(&dag).map_err(|e| format!("Rust emit: {e:?}"))?;
     let tmp = OmniTmpDir::new(id);
     let src_path = tmp.path().join("main.rs");
