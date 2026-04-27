@@ -2799,7 +2799,17 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
         }
 
         let body_joined = join_rendered(&rendered_binds, " ");
-        let final_bind_name = top_level_binds.last().expect("guarded above").name.clone();
+        let final_bind = top_level_binds.last().expect("guarded above");
+        let final_bind_name = final_bind.name.clone();
+        let final_ty_name = ctx.rust_type_name_for_port(final_bind.value)?;
+        let final_display_expr = if final_ty_name.starts_with("::core::result::Result<") {
+            // `std.error_primitives.Result` lowers to Rust's core Result, which
+            // does not implement Display. Keep the substrate Main template
+            // unchanged and pass it a displayable String.
+            format!("format!(\"{{:?}}\", {final_bind_name})")
+        } else {
+            final_bind_name
+        };
 
         let main_template =
             indexes
@@ -2812,7 +2822,7 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
             main_template,
             &[
                 ("body", &body_joined),
-                ("final", &final_bind_name),
+                ("final", &final_display_expr),
                 ("quote", &indexes.syntax.literals.string_delimiter),
             ],
         );
