@@ -1164,28 +1164,26 @@ pub fn tok_is_ident(tok: Option<Rc<Token>>) -> bool {
     }
 }
 
-pub fn tok_is_ident_text(tok: Option<Rc<Token>>, text: String) -> bool {
+pub fn tok_is_ident_text(tok: Option<Rc<Token>>, text: &str) -> bool {
     match tok {
-        Some(t) => is_ident_shape(t.shape.clone()) && (t.text.clone().as_str() == text.as_str()),
+        Some(t) => is_ident_shape(t.shape.clone()) && (t.text.clone().as_str() == text),
         None => false,
     }
 }
 
 pub fn drop_leading_type_modifier(
     tokens: Rc<Vec<Rc<Token>>>,
-    modifier: String,
+    modifier: &str,
 ) -> Rc<Vec<Rc<Token>>> {
     if tok_is_ident_text(tokens.clone().first().cloned(), modifier) {
-        skip_newlines(Rc::new(
-            tokens.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
-        ))
+        skip_newlines(Rc::new(tokens.iter().cloned().skip(1).collect::<Vec<_>>()))
     } else {
         tokens
     }
 }
 
 pub fn type_body_tokens_after_modifiers(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>> {
-    drop_leading_type_modifier(tokens, "nominal_opaque".to_string())
+    drop_leading_type_modifier(tokens, "nominal_opaque")
 }
 
 pub fn tok_is_newline(tok: Option<Rc<Token>>) -> bool {
