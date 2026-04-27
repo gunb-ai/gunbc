@@ -30,5 +30,5 @@ Coordination: bright-wolf-465 owns deeper archaeology for #897/#824/#825. Rows b
 
 - Rows 1–3 (#900) are kept distinct because the dissolution triggers are independent (walker, `.dag` Diagnostic authoring, and the fixture compile-shadow bug). Folding them risks losing the fixture row, which is a concrete pre-merge BLOCKING that the env-failed re-review never re-checked.
 - Row 5 (#920) is now citation-closed by cleanup commit `d709f01bd`; the remaining bot-review-on-merge gap is process-only. If R1-process surfaces a recurring pattern, promote to ROADMAP rather than expanding rows here.
-- Rows 6–8 closed per bright-wolf-465 audit on inbox #945; row ids remain for audit continuity.
+- Rows 6–8 are `closed (bright-wolf-465)` per audit reported on inbox #945 (sha-cited evidence: #897 fixed by `923c3ccfb`/`f7e334824`/`936ac7cdd`; #824 by `37a8d2033`/`5a08f9e15`/`e0a623a63`/`fb03411df`; #825 by `7fab462e8`/`f035183be`/`9927c14ba`). Row ids remain for audit continuity.
 - This file is the W-C1 control surface. Future cleanup-lane harvest entries append below the existing rows; do not split into per-PR files.
