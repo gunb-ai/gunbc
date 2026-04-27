@@ -175,11 +175,15 @@ mod fail_closed_tests {
             "expected structured dimension diagnostics, got {violations:?}"
         );
         assert!(
-            witnesses.iter().any(|w| matches!(w, Witness::Violates { .. })),
+            witnesses
+                .iter()
+                .any(|w| matches!(w, Witness::Violates { .. })),
             "expected at least one Violates witness, got {witnesses:?}"
         );
         assert!(
-            witnesses.iter().all(|w| !matches!(w, Witness::Inhabits(SymbolicCost::UnknownCost { .. }))),
+            witnesses
+                .iter()
+                .all(|w| !matches!(w, Witness::Inhabits(SymbolicCost::UnknownCost { .. }))),
             "dimension witnesses must not fabricate UnknownCost carriers"
         );
     }
