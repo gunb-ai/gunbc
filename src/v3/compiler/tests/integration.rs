@@ -119,6 +119,8 @@ mod pb1_bootstrap_full_snapshot_test;
 mod pipe_desugar;
 #[path = "integration/r1c_e_emit_gates_dag_test.rs"]
 mod r1c_e_emit_gates_dag_test;
+#[path = "integration/r1c_e_emit_gates_omni_dag_test.rs"]
+mod r1c_e_emit_gates_omni_dag_test;
 #[path = "integration/r2_b5_loop_construction_closure_test.rs"]
 mod r2_b5_loop_construction_closure_test;
 #[path = "integration/sg0_census_test.rs"]
@@ -139,6 +141,8 @@ mod sg3_surface_reflection_consumer_test;
 mod sg6_hand_authored_census_test;
 #[path = "integration/sg7_prep_variant_payload_freshness_test.rs"]
 mod sg7_prep_variant_payload_freshness_test;
+#[path = "integration/t_impossiblebugs_unenumerated_effects_test.rs"]
+mod t_impossiblebugs_unenumerated_effects_test;
 #[path = "integration/t_pb_b_1_dag_runner_test.rs"]
 mod t_pb_b_1_dag_runner_test;
 #[path = "integration/t_pb_b_brief_d_fixture_smoke_test.rs"]

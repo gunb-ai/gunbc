@@ -40,6 +40,34 @@ mod int_literal_ranges;
 pub mod lens_apply;
 pub mod lens_testgen;
 
+/// Effect-enumeration lens. Authority lives in
+/// `src/v3/lenses/effect_enumeration.dag`; the Rust projection is
+/// auto-emitted into `src/v3/compiler/src/lens_effect_enumeration_generated.rs`
+/// and wrapped here so callers use `v3_compiler::lens_effect_enumeration`.
+/// Editing the lens means editing the `.dag` and regenerating the checked-in
+/// projection in the same change.
+pub mod lens_effect_enumeration {
+    #[allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        unused_variables,
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if
+    )]
+    mod generated {
+        use crate::dag::*;
+        use crate::diagnostics::*;
+
+        include!("lens_effect_enumeration_generated.rs");
+    }
+
+    pub use generated::{
+        enumerate_effects, CoverageGap, EffectEnumerationReport, EffectFact, RedundantReadError,
+        StructuralEffectShape, TransactionalPattern,
+    };
+}
+
 /// Unused-parameters lens. Authority lives in `src/v3/lenses/unused_parameters.dag`;
 /// the Rust projection is emitted into `lens_unused_parameters_generated.rs` and
 /// wrapped here inline (same host pattern as `lens_cost` / `lens_provenance`).
@@ -283,6 +311,8 @@ pub mod lens_unused_parameters {
     }
 }
 
+/// DB-8 / m1_3 / R1C-E: shared `PROGRAM_FIXTURES` + reflected harness table.
+pub mod emit_rust_roundtrip_fixtures;
 pub mod post_emit_verifier;
 pub mod r1c_e_gates;
 pub mod test_runner;

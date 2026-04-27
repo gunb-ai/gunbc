@@ -191,6 +191,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
+    // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
+    "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/int_literal_ranges.rs",
     "src/v3/compiler/src/lens_apply.rs",
@@ -281,6 +283,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `tests/dag/r1c_e_emit_gates.template.dag` source and runs the suite
     // through `TestRunner`. Scaffold until R1 close dissolves the wrappers.
     "src/v3/compiler/tests/integration/r1c_e_emit_gates_dag_test.rs",
+    "src/v3/compiler/tests/integration/r1c_e_emit_gates_omni_dag_test.rs",
     // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
     "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
@@ -292,6 +295,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/sg3_surface_reflection_consumer_test.rs",
     "src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs",
     "src/v3/compiler/tests/integration/sg7_prep_variant_payload_freshness_test.rs",
+    "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
     "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs",
     "src/v3/compiler/tests/integration/t_pb_b_brief_d_fixture_smoke_test.rs",
     "src/v3/compiler/tests/integration/test_runner_test.rs",
