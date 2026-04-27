@@ -29,13 +29,17 @@ fn spawn_bootstrap_with_sentinel_fd(
     }
     unsafe {
         cmd.pre_exec(move || {
+            // Close the child's read end **before** `dup2(write, 3)`. If `read_fd == 3` (common
+            // right after stdio), `dup2` reuses fd 3 for the write end — a later `close(read_fd)`
+            // would then close the sentinel channel the bootstrap writes on (exit 124 in the
+            // helper).
+            libc::close(read_fd);
             if libc::dup2(write_fd, 3) < 0 {
                 return Err(std::io::Error::last_os_error());
             }
             if write_fd != 3 {
                 libc::close(write_fd);
             }
-            libc::close(read_fd);
             Ok(())
         });
     }
