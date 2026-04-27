@@ -11976,12 +11976,10 @@ pub fn emit_from_key_extraction(
     {
         let rt = resolved_type(op_node.clone());
         let children = rt.children.clone();
-        let decl_name_opt = response_200_declared_type_name(op_node.clone(), source_indices.clone());
-        let wire_opt = operation_response_200_resolved_type(
-            op_node.clone(),
-            source_indices.clone(),
-            env,
-        );
+        let decl_name_opt =
+            response_200_declared_type_name(op_node.clone(), source_indices.clone());
+        let wire_opt =
+            operation_response_200_resolved_type(op_node.clone(), source_indices.clone(), env);
         if match decl_name_opt.clone() {
             Some(ref n) => declared_response_200_requires_typed_wire(n.as_str()),
             None => false,
@@ -11999,11 +11997,8 @@ pub fn emit_from_key_extraction(
                     Some(InferredNode::Resolved { node: rt, .. }) => rt,
                     _ => tn.clone(),
                 };
-                let rust_ty = render_rust_type(
-                    wire_ty,
-                    shared_types.clone(),
-                    source_indices.clone(),
-                );
+                let rust_ty =
+                    render_rust_type(wire_ty, shared_types.clone(), source_indices.clone());
                 v2_rt::concat(
                     v2_rt::concat("let __rest_wire: ".to_string(), rust_ty),
                     " = response.json().await?;\n".to_string(),
