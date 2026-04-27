@@ -12112,6 +12112,7 @@ pub fn emit_response_code_handling(
                             transport.clone(),
                             &source_indices,
                             shared_types.clone(),
+                            env,
                         ));
                     }
                     __result
@@ -12142,6 +12143,7 @@ pub fn emit_response_arm(
     transport: Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<HashMap<String, bool>>,
+    env: &Rc<TypeEnv>,
 ) -> String {
     {
         let name = field_init_node_name_at(prop, source_indices.clone());
@@ -12183,6 +12185,7 @@ pub fn emit_response_arm(
                             op_node,
                             source_indices.clone(),
                             shared_types.clone(),
+                            env,
                         ),
                     ),
                     " },".to_string(),
