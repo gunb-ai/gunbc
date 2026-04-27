@@ -297,21 +297,17 @@ dispatch in parallel. Each PR is small.
 
 ### Tier 2 — risk-shaped + R2-coupled (S-scope each, dispatch with R2 lanes)
 
-5. **Loop emission semantic invariant** (PR #809 entry). Currently
-   comment-level; degrades silently if any future PR adds another Loop
-   source. R2 demos depend on Python/Go emission, so this is R2-coupled.
-   **Brief MUST start with a construction-closure audit, NOT with a
-   marker design.** Step 1: enumerate every `Behavior::Loop`
-   construction site in `lower.rs` (and anywhere else); confirm or
-   refute that all paths route through recursive-function lowering.
-   Step 2 (conditional on the audit): if construction-closure holds, the
-   brief becomes "document the closure invariant as a structural
-   integration test; retire the speculative `LoopKind` marker idea" —
-   no new substrate. If it does NOT hold, the marker/test framing
-   applies and the brief turns into a `LoopKind` lowering-marker spec.
-   Both proposed paths in the original PR #809 row are bridges; do not
-   author the marker brief blind. Per `feedback_construction_over_ratchets`,
-   prefer the structural-closure outcome.
+5. **Loop emission semantic invariant** (PR #809 entry). **RESOLVED
+   (2026-04-27, B5 audit):** construction-closure holds — live lowering
+   materializes `Behavior::Loop` at exactly two `lower.rs` call sites
+   (single-fn `LoopBound::Cardinality` + mutual-cluster
+   `LoopBound::Descent`), both under `lower_bodies_phase`; `Dag::push_loop`
+   remains test-only (`dag/builder.rs`); bootstrap snapshots are regen
+   literals from the same pipeline, not a third algorithm. Structural
+   integration gate: `r2_b5_loop_construction_closure_test.rs` (substring
+   ratchet on `lower.rs` + DAG walk for bounds + provenance
+   `Accumulated`). Speculative `LoopKind` marker idea **retired** for
+   this risk item (per `feedback_construction_over_ratchets`).
 6. **`src/v3/std` vs `dsl/std` checklist undercount fix** (PR #809
    entry). **RESOLVED (2026-04-26):** convergence checklist in
    `dag.rs::declaration_name_preference_rank` + `lower.rs::collect_symbols`
