@@ -16,15 +16,10 @@ use v3_compiler::lens_provenance::{origin_of, Origin};
 
 use crate::common::cached_compile_to_dag;
 
-const LOWER_RS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/src/v3/compiler/src/lower.rs"
-));
+// `CARGO_MANIFEST_DIR` is the `v3-compiler` crate root (`src/v3/compiler/`).
+const LOWER_RS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lower.rs"));
 
-const BUILDER_RS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/src/v3/compiler/src/dag/builder.rs"
-));
+const BUILDER_RS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/dag/builder.rs"));
 
 /// Construction-closure holds only if production lowering continues to materialize
 /// `Behavior::Loop` at exactly these two call sites (single recursive fn + mutual cluster).
