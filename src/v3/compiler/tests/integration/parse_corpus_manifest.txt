@@ -11,7 +11,7 @@ dsl/std/types.dag	108	208752	1be49a78ce3e3ddd
 src/v3/compiler/operators.dag	5	47160	b75a91c65bf8a242
 src/v3/compiler/parse_tables.dag	43	92946	2364c4858f6b9e3d
 src/v3/compiler/pipeline.dag	26	47032	a13b41aa379fd167
-src/v3/compiler/regen.dag	11	30786	49f47c59c626d776
+src/v3/compiler/regen.dag	12	34377	2ea9e99e1b34fd0b
 src/v3/compiler/tests/four_fixture_pressure/drop.v3	2	2517	00953bc6b6d8c811
 src/v3/compiler/tests/four_fixture_pressure/id.v3	2	2452	ec8b40edc3d3c017
 src/v3/compiler/tests/four_fixture_pressure/is_empty.v3	3	6755	00117f14eb43dd20
@@ -34,10 +34,10 @@ src/v3/std/induction.dag	56	88794	546f74c63c189c50
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
 src/v3/std/lookup.dag	5	4734	f97d4e536b675b1b
 src/v3/std/parse_surface.dag	18	98962	c7e4e29300b66dbd
-src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
+src/v3/std/resources.dag	7	5918	e5e242fd13bf338a
 src/v3/std/substrate.dag	54	116421	438b971e40f25a6b
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	18	36478	d010232f0373dc99
 src/v3/std/tokenize.dag	8	38819	2e158a74f33c18cc
-src/v3/std/verification.dag	29	58941	d96f3dd31d258ce3
+src/v3/std/verification.dag	19	43253	8bc2b1db7983ebbc
 src/v3/std/workflows.dag	4	3135	bb6f9b042a02e8d6

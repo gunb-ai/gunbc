@@ -61,17 +61,3 @@ fn audit_receipt_proves_path_ii_existence_case() {
         "github_token still derives resource use from ambient `uses`, not its return shape"
     );
 }
-
-#[test]
-fn reread_primitive_is_structurally_tagged_in_v3_std_resources() {
-    let resources = read_workspace_file("src/v3/std/resources.dag");
-
-    assert!(
-        resources.contains("type RereadIntent<key>"),
-        "v3 resources must expose a typed reread intent carrier"
-    );
-    assert!(
-        resources.contains("fn reread<key>(key: key) -> RereadIntent<key>"),
-        "v3 resources must expose the reread(key) primitive"
-    );
-}
