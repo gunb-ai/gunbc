@@ -1515,11 +1515,10 @@ impl<'a> Ctx<'a> {
                     )),
                 }
             }
-            TypeConnective::Cardinality {
-                element,
-                bound: crate::dag::CardinalityBound::AtMostOne,
-            } => {
-                let inner = self.python_type_name_for_decl_at_depth(*element, depth + 1)?;
+            TypeConnective::Cardinality(p)
+                if p.bound() == crate::dag::CardinalityBound::AtMostOne =>
+            {
+                let inner = self.python_type_name_for_decl_at_depth(p.element(), depth + 1)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.optional,
                     &[("element", &inner)],

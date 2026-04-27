@@ -178,10 +178,9 @@ pub(super) fn walk_to_disj(dag: &Dag, start: DeclarationId) -> Option<Declaratio
     for _ in 0..32 {
         match &dag.declaration(current).connective {
             TypeConnective::Disj { .. } => return Some(current),
-            TypeConnective::Cardinality {
-                bound: CardinalityBound::AtMostOne,
-                ..
-            } => return dag.optional_match_disj(current),
+            TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
+                return dag.optional_match_disj(current);
+            }
             TypeConnective::Instantiation { template, .. } => current = *template,
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
@@ -1371,10 +1370,7 @@ impl<'a> Ctx<'a> {
         let scrutinee_type = primitive_type_id_for_port(self.dag, b.input)?;
         if matches!(
             self.dag.declaration(scrutinee_type).connective,
-            TypeConnective::Cardinality {
-                bound: CardinalityBound::AtMostOne,
-                ..
-            }
+            TypeConnective::Cardinality(ref p) if p.bound() == CardinalityBound::AtMostOne
         ) {
             return self.render_optional_branch(b, locals);
         }
@@ -2117,11 +2113,8 @@ impl<'a> Ctx<'a> {
                     )),
                 }
             }
-            TypeConnective::Cardinality {
-                element,
-                bound: CardinalityBound::AtMostOne,
-            } => {
-                let inner = self.go_type_name_for_decl_at_depth(*element, depth + 1)?;
+            TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
+                let inner = self.go_type_name_for_decl_at_depth(p.element(), depth + 1)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.type_applications.optional,
                     &[("element", &inner)],
