@@ -6545,17 +6545,15 @@ mod bool_logical_operator_arrow_tests {
 
         let before = dag.declarations().len();
         let algebra_decl = dag.declaration(algebra).clone();
-        assert_eq!(
-            read_algebra_field(
-                &mut dag,
-                &algebra_decl,
-                arithmetic_field,
-                int,
-                OperatorKind::Arithmetic(ArithmeticOp::Div),
-                &TypeShape::new(int),
-            ),
-            None
-        );
+        assert!(read_algebra_field(
+            &mut dag,
+            &algebra_decl,
+            arithmetic_field,
+            int,
+            OperatorKind::Arithmetic(ArithmeticOp::Div),
+            &TypeShape::new(int),
+        )
+        .is_none());
         assert_eq!(dag.declarations().len(), before);
     }
 }
