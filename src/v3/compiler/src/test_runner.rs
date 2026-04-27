@@ -614,9 +614,18 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(
 ///
 /// **Setup detection — bootstrap sentinel pipe (P2(c) realization, T-PB-B Worker 4).**
 /// The bootstrap `sh` writes one byte (`s`) to fd 3 as soon as it begins executing; then
-/// `command -v` probes that the user `command` is executable. If the probe fails, sh exits 126
-/// without writing the second byte. If it passes, sh writes a second byte (`e`) and `exec(2)`s
-/// the user command. After wait, the parent reads up to 2 bytes from the ready pipe:
+/// probes that the user `command` is executable using the **same lookup rule that `execvp(3)`
+/// uses**:
+///
+///   * `command` containing `/` (absolute or relative path) → `[ -x "$0" ]` direct file test.
+///     `execvp` does **not** consult `PATH` for these and exec's the literal path; `command -v`
+///     of a path string would conflate sh's resolution with the kernel's.
+///   * `command` with no `/` (bare name) → `command -v -- "$0"` for `PATH` lookup, matching
+///     `execvp`'s `PATH` search.
+///
+/// If the probe fails, sh exits 126 without writing the second byte. If it passes, sh writes
+/// a second byte (`e`) and `exec(2)`s the user command. After wait, the parent reads up to
+/// 2 bytes from the ready pipe:
 ///
 ///   * 0 bytes  → util-linux exited before sh ran → namespace setup failed.
 ///   * `"s"`    → sh ran but the user command was not executable.
@@ -630,7 +639,10 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(
 #[cfg(target_os = "linux")]
 const UNSHARE_LOGICAL_BOOTSTRAP_SH: &str = "\
 printf s >&3 2>/dev/null; \
-command -v -- \"$0\" >/dev/null 2>&1 || exit 126; \
+case \"$0\" in \
+  */*) [ -x \"$0\" ] || exit 126;; \
+  *) command -v -- \"$0\" >/dev/null 2>&1 || exit 126;; \
+esac; \
 printf e >&3 2>/dev/null; \
 exec 3>&-; \
 exec 2>/dev/null; \
@@ -3164,6 +3176,66 @@ mod execute_command_timebound_tests {
             r,
             ClaimResult::Pass,
             "expected Pass when logical stderr > pipe; got {r:?}"
+        );
+    }
+
+    /// Linux receipt: a `command` containing `/` (absolute path) reaches `execvp` with the
+    /// literal path — the bootstrap probe must NOT route it through `command -v`'s `PATH`
+    /// search. With the absolute-path branch (`[ -x "$0" ]`) the run completes and Matches.
+    /// (Review fix: split path-vs-bare-name in `UNSHARE_LOGICAL_BOOTSTRAP_SH`.)
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn unshare_absolute_path_command_runs_and_matches() {
+        // `/bin/true` exists on virtually all Linux systems; if not, fall back to `/usr/bin/true`.
+        let abs = if std::path::Path::new("/bin/true").exists() {
+            "/bin/true"
+        } else {
+            "/usr/bin/true"
+        };
+        let r = evaluate_execute_command_exit_code(abs, &[], 0);
+        assert_eq!(
+            r,
+            ClaimResult::Pass,
+            "absolute-path command must reach exec via the bootstrap path probe; got {r:?}"
+        );
+    }
+
+    /// Linux receipt: a `command` with no `/` (bare name) goes through the `PATH` branch of
+    /// the bootstrap probe (`command -v`), matching `execvp`'s `PATH` search. `true` is
+    /// always on `PATH` on every supported host.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn unshare_bare_name_command_runs_and_matches() {
+        let r = evaluate_execute_command_exit_code("true", &[], 0);
+        assert_eq!(
+            r,
+            ClaimResult::Pass,
+            "bare-name command must resolve via PATH probe; got {r:?}"
+        );
+    }
+
+    /// Linux receipt: a relative-path `command` containing `/` that does **not** exist must
+    /// surface as a non-`Matched` outcome (`SpawnFailed` or `SetupFailed`), never as a stray
+    /// `Matched` from `command -v`'s sh-relative resolution. Distinguishes path-mode probe
+    /// from PATH-mode probe.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn unshare_relative_path_missing_command_does_not_match() {
+        use super::evaluate_execute_command_host_outcome;
+        use super::ExecuteCommandHostOutcome;
+        let r = evaluate_execute_command_host_outcome(
+            "./definitely_not_here_gunbc_pb_runtime",
+            &[],
+            0,
+            Duration::from_secs(5),
+        );
+        assert!(
+            matches!(
+                r,
+                ExecuteCommandHostOutcome::SpawnFailed { .. }
+                    | ExecuteCommandHostOutcome::SetupFailed { .. }
+            ),
+            "missing relative-path command must NOT match; got {r:?}"
         );
     }
 
