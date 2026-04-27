@@ -829,10 +829,90 @@ fn emit_tokenize_fn(
     ));
     s.push_str("    while pos < bytes.len() {\n");
     s.push_str("        let byte = bytes[pos];\n\n");
-    s.push_str("        if byte_matches(byte, ScannerCharClass::Whitespace) {\n");
-    s.push_str("            pos += 1;\n");
-    s.push_str("            continue;\n");
-    s.push_str("        }\n\n");
+    s.push_str("        let start = pos;\n\n");
+    for class in ascii_scan_order {
+        match class.as_str() {
+            "Whitespace" => {
+                s.push_str("        if byte_matches(byte, ScannerCharClass::Whitespace) {\n");
+                s.push_str("            pos += 1;\n");
+                s.push_str("            continue;\n");
+                s.push_str("        }\n\n");
+            }
+            "Digit" => {
+                s.push_str("        if byte_matches(byte, ScannerCharClass::Digit) {\n");
+                s.push_str("            let mut end = pos;\n");
+                s.push_str(
+                    "            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::Digit) {\n",
+                );
+                s.push_str("                end += 1;\n");
+                s.push_str("            }\n");
+                s.push_str("            let literal = &source[start..end];\n");
+                s.push_str(
+                    "            let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n",
+                );
+                s.push_str(&format!(
+                    "                message: format!(\"{{}}{{}}{{}}\", {}, literal, {}),\n",
+                    int_pre, int_suf
+                ));
+                s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
+                s.push_str("                fixes: Vec::new(),\n");
+                s.push_str("            })?;\n");
+                s.push_str("            tokens.push(Token {\n");
+                s.push_str("                kind: TokenKind::IntLit(value),\n");
+                s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
+                s.push_str("            });\n");
+                s.push_str("            pos = end;\n");
+                s.push_str("            continue;\n");
+                s.push_str("        }\n\n");
+            }
+            "IdentStart" => {
+                s.push_str("        if byte_matches(byte, ScannerCharClass::IdentStart) {\n");
+                s.push_str("            let mut end = pos;\n");
+                s.push_str(
+                    "            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::IdentContinue) {\n",
+                );
+                s.push_str("                end += 1;\n");
+                s.push_str("            }\n");
+                s.push_str("            let text = &source[start..end];\n");
+                s.push_str("            let kind = match text {\n");
+                s.push_str(&arms);
+                s.push_str("                _ => TokenKind::Ident(text.to_string()),\n");
+                s.push_str("            };\n");
+                s.push_str("            tokens.push(Token {\n");
+                s.push_str("                kind,\n");
+                s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
+                s.push_str("            });\n");
+                s.push_str("            pos = end;\n");
+                s.push_str("            continue;\n");
+                s.push_str("        }\n\n");
+            }
+            "IdentContinue" => {
+                s.push_str("        if byte_matches(byte, ScannerCharClass::IdentContinue) {\n");
+                s.push_str("            let mut end = pos;\n");
+                s.push_str(
+                    "            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::IdentContinue) {\n",
+                );
+                s.push_str("                end += 1;\n");
+                s.push_str("            }\n");
+                s.push_str("            let text = &source[start..end];\n");
+                s.push_str("            let kind = match text {\n");
+                s.push_str(&arms);
+                s.push_str("                _ => TokenKind::Ident(text.to_string()),\n");
+                s.push_str("            };\n");
+                s.push_str("            tokens.push(Token {\n");
+                s.push_str("                kind,\n");
+                s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
+                s.push_str("            });\n");
+                s.push_str("            pos = end;\n");
+                s.push_str("            continue;\n");
+                s.push_str("        }\n\n");
+            }
+            _ => panic!(
+                "unsupported scanner class `{}` in `ascii_scan_order`",
+                class
+            ),
+        }
+    }
     s.push_str("        // Line comment prefix from `tokenize.dag` (`line_comment_prefix`).\n");
     s.push_str("        if bytes.len() >= pos + LINE_COMMENT_PREFIX.len()\n");
     s.push_str(
@@ -845,7 +925,6 @@ fn emit_tokenize_fn(
     s.push_str("            }\n");
     s.push_str("            continue;\n");
     s.push_str("        }\n\n");
-    s.push_str("        let start = pos;\n\n");
     s.push_str("        if let Some((kind, width)) = punctuation_token(bytes, pos) {\n");
     s.push_str("            tokens.push(Token {\n");
     s.push_str("                kind,\n");
@@ -854,50 +933,6 @@ fn emit_tokenize_fn(
     );
     s.push_str("            });\n");
     s.push_str("            pos += width;\n");
-    s.push_str("            continue;\n");
-    s.push_str("        }\n\n");
-    s.push_str("        if byte_matches(byte, ScannerCharClass::Digit) {\n");
-    s.push_str("            let mut end = pos;\n");
-    s.push_str(
-        "            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::Digit) {\n",
-    );
-    s.push_str("                end += 1;\n");
-    s.push_str("            }\n");
-    s.push_str("            let literal = &source[start..end];\n");
-    s.push_str(
-        "            let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n",
-    );
-    s.push_str(&format!(
-        "                message: format!(\"{{}}{{}}{{}}\", {}, literal, {}),\n",
-        int_pre, int_suf
-    ));
-    s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
-    s.push_str("                fixes: Vec::new(),\n");
-    s.push_str("            })?;\n");
-    s.push_str("            tokens.push(Token {\n");
-    s.push_str("                kind: TokenKind::IntLit(value),\n");
-    s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
-    s.push_str("            });\n");
-    s.push_str("            pos = end;\n");
-    s.push_str("            continue;\n");
-    s.push_str("        }\n\n");
-    s.push_str("        if byte_matches(byte, ScannerCharClass::IdentStart) {\n");
-    s.push_str("            let mut end = pos;\n");
-    s.push_str(
-        "            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::IdentContinue) {\n",
-    );
-    s.push_str("                end += 1;\n");
-    s.push_str("            }\n");
-    s.push_str("            let text = &source[start..end];\n");
-    s.push_str("            let kind = match text {\n");
-    s.push_str(&arms);
-    s.push_str("                _ => TokenKind::Ident(text.to_string()),\n");
-    s.push_str("            };\n");
-    s.push_str("            tokens.push(Token {\n");
-    s.push_str("                kind,\n");
-    s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
-    s.push_str("            });\n");
-    s.push_str("            pos = end;\n");
     s.push_str("            continue;\n");
     s.push_str("        }\n\n");
     s.push_str(

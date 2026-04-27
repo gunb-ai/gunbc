@@ -89,31 +89,10 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
     const LINE_COMMENT_PREFIX: &[u8] = b"//";
     while pos < bytes.len() {
         let byte = bytes[pos];
+        let start = pos;
 
         if byte_matches(byte, ScannerCharClass::Whitespace) {
             pos += 1;
-            continue;
-        }
-
-        // Line comment prefix from `tokenize.dag` (`line_comment_prefix`).
-        if bytes.len() >= pos + LINE_COMMENT_PREFIX.len()
-            && bytes[pos..pos + LINE_COMMENT_PREFIX.len()].eq(LINE_COMMENT_PREFIX)
-        {
-            pos += LINE_COMMENT_PREFIX.len();
-            while pos < bytes.len() && bytes[pos] != b'\n' {
-                pos += 1;
-            }
-            continue;
-        }
-
-        let start = pos;
-
-        if let Some((kind, width)) = punctuation_token(bytes, pos) {
-            tokens.push(Token {
-                kind,
-                span: SourceSpan::new(file, start as u32, (start + width) as u32),
-            });
-            pos += width;
             continue;
         }
 
@@ -163,6 +142,26 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                 span: SourceSpan::new(file, start as u32, end as u32),
             });
             pos = end;
+            continue;
+        }
+
+        // Line comment prefix from `tokenize.dag` (`line_comment_prefix`).
+        if bytes.len() >= pos + LINE_COMMENT_PREFIX.len()
+            && bytes[pos..pos + LINE_COMMENT_PREFIX.len()].eq(LINE_COMMENT_PREFIX)
+        {
+            pos += LINE_COMMENT_PREFIX.len();
+            while pos < bytes.len() && bytes[pos] != b'\n' {
+                pos += 1;
+            }
+            continue;
+        }
+
+        if let Some((kind, width)) = punctuation_token(bytes, pos) {
+            tokens.push(Token {
+                kind,
+                span: SourceSpan::new(file, start as u32, (start + width) as u32),
+            });
+            pos += width;
             continue;
         }
 
