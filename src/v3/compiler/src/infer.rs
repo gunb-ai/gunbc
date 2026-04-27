@@ -3282,9 +3282,12 @@ pub(crate) fn concretize_decl_with_subst(
                     value: concretize_decl_with_subst(dag, arg.value, subst, depth + 1),
                 })
                 .collect();
-            if let Some(existing) =
-                find_equivalent_anonymous_instantiation(dag, template, &specialized_arguments)
-            {
+            if let Some(existing) = find_equivalent_anonymous_instantiation(
+                dag,
+                template,
+                &specialized_arguments,
+                decl.nominal_opacity.as_ref(),
+            ) {
                 return existing;
             }
             let id = dag.alloc_declaration_id();
@@ -3857,6 +3860,7 @@ fn find_equivalent_anonymous_instantiation(
     dag: &Dag,
     template: DeclarationId,
     arguments: &[TemplateArgument],
+    nominal_opacity: Option<&NominalOpacity>,
 ) -> Option<DeclarationId> {
     dag.declarations().iter().find_map(|decl| {
         if decl.name.is_some() {
@@ -3870,6 +3874,7 @@ fn find_equivalent_anonymous_instantiation(
             return None;
         };
         (template == *existing_template
+            && decl.nominal_opacity.as_ref() == nominal_opacity
             && matches!(
                 generated_template_arguments_match(existing_arguments, arguments),
                 TemplateArgumentsMatch::Match,
