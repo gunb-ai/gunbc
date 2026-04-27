@@ -156,6 +156,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "execute-command-bootstrap"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
