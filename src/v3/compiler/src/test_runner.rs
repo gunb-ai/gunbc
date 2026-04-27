@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -6,12 +7,16 @@ use crate::dag::{
     TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
+use crate::generated_files::GENERATED_FILES;
 use crate::lens_apply::{
     apply_lens_declaration, field_value_from_value_body, int_associativity_holds_all_triples,
     reflect_program_dag_nodes_in_file, ASSOCIATIVITY_WITNESS_TRIPLES,
 };
 use crate::lens_cost::{cost_of, CostLookup};
-use crate::{compile_to_dag, CompileError};
+use crate::{
+    compare_stage_snapshots, compile_stage_snapshots, compile_to_dag, default_fixed_point_source,
+    CompileError,
+};
 
 /// Same on-disk lens as `v3-compiler/build.rs` splices into `user_authored_lens_compiles_gate`
 /// (`emit_r1_gates_fixture`). `LensOutputEquals` applies this program for `named_function_count`
@@ -33,6 +38,15 @@ pub const R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS: &str = include_str!(concat!(
 pub const R1_CANONICAL_COMPLEXITY_LENS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../lenses/complexity.dag"
+));
+
+const SG0_CENSUS_SOURCE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/integration/sg0_census_test.rs"
+));
+const INFER_HELPERS_SOURCE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../lenses/infer_helpers.dag"
 ));
 
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
@@ -2048,10 +2062,10 @@ impl<'a> TestRunner<'a> {
 
     fn eval_census_bound_check_shape(
         &self,
-        claim: &TestClaimValue,
+        _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        let [authority, list_constant, FieldValue::Literal(LiteralBits::Int(_bound))] = payload
+        let [authority, list_constant, FieldValue::Literal(LiteralBits::Int(bound))] = payload
         else {
             return ClaimResult::Fail(
                 "CensusBoundCheck payload should be (DeclarationRef, CensusListConstant, Int)"
@@ -2065,12 +2079,22 @@ impl<'a> TestRunner<'a> {
             Ok(name) => name,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        self.nyi_external_pb_predicate(&claim.claim_name, "CensusBoundCheck", &list_constant_name)
+        let count = match sg0_census_list_count(&list_constant_name) {
+            Ok(count) => count,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        if count <= *bound {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "CensusBoundCheck `{list_constant_name}` observed {count}, bound {bound}"
+            ))
+        }
     }
 
     fn eval_census_subset_count_shape(
         &self,
-        claim: &TestClaimValue,
+        _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [authority, list_constant, subset_predicate] = payload else {
@@ -2093,27 +2117,69 @@ impl<'a> TestRunner<'a> {
         ) {
             return ClaimResult::Fail(reason);
         }
-        self.nyi_external_pb_predicate(&claim.claim_name, "CensusSubsetCount", &list_constant_name)
+        let entries = match sg0_census_list_entries(&list_constant_name) {
+            Ok(entries) => entries,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        let count = entries
+            .iter()
+            .filter(|path| is_lens_producer_census_path(path))
+            .count() as i64;
+        if count == 0 {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "CensusSubsetCount `{list_constant_name}` lens-producer subset observed {count}"
+            ))
+        }
     }
 
     fn eval_fixed_point_converges_shape(
         &self,
-        claim: &TestClaimValue,
+        _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        let [FieldValue::Literal(LiteralBits::String(compile_target)), FieldValue::Literal(LiteralBits::String(_expected))] =
+        let [FieldValue::Literal(LiteralBits::String(compile_target)), FieldValue::Literal(LiteralBits::String(expected))] =
             payload
         else {
             return ClaimResult::Fail(
                 "FixedPointConverges payload should be (Path, SnapshotRef)".to_string(),
             );
         };
-        self.nyi_external_pb_predicate(&claim.claim_name, "FixedPointConverges", compile_target)
+        if compile_target != "default_fixed_point_source" {
+            return ClaimResult::Fail(format!(
+                "FixedPointConverges only supports `default_fixed_point_source` today, got `{compile_target}`"
+            ));
+        }
+        if expected != "pipeline_stage_snapshots" {
+            return ClaimResult::Fail(format!(
+                "FixedPointConverges only supports `pipeline_stage_snapshots` today, got `{expected}`"
+            ));
+        }
+        let pass1 = match compile_stage_snapshots(default_fixed_point_source(), compile_target) {
+            Ok(snapshots) => snapshots,
+            Err(err) => {
+                return ClaimResult::Fail(format!("FixedPointConverges pass1 failed: {err:?}"))
+            }
+        };
+        let pass2 = match compile_stage_snapshots(default_fixed_point_source(), compile_target) {
+            Ok(snapshots) => snapshots,
+            Err(err) => {
+                return ClaimResult::Fail(format!("FixedPointConverges pass2 failed: {err:?}"))
+            }
+        };
+        match compare_stage_snapshots(&pass1, &pass2) {
+            Ok(()) => ClaimResult::Pass,
+            Err(mismatch) => ClaimResult::Fail(format!(
+                "FixedPointConverges mismatch at `{}`: {}",
+                mismatch.stage, mismatch.detail
+            )),
+        }
     }
 
     fn eval_ratchet_zero_shape(
         &self,
-        claim: &TestClaimValue,
+        _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [authority, ratchet_kind] = payload else {
@@ -2132,16 +2198,19 @@ impl<'a> TestRunner<'a> {
         ) {
             return ClaimResult::Fail(reason);
         }
-        self.nyi_external_pb_predicate(
-            &claim.claim_name,
-            "RatchetZero",
-            "compiler_std_positive_set_ratchet",
-        )
+        let count = compiler_std_positive_set_ratchet_count();
+        if count == 0 {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "RatchetZero `compiler_std_positive_set_ratchet` observed {count}"
+            ))
+        }
     }
 
     fn eval_generated_from_dag_shape(
         &self,
-        claim: &TestClaimValue,
+        _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
         let [authority, FieldValue::List(generated_paths)] = payload else {
@@ -2152,15 +2221,34 @@ impl<'a> TestRunner<'a> {
         if let Err(reason) = self.resolve_census_authority_ref(authority, "authority") {
             return ClaimResult::Fail(reason);
         }
-        if let Some(other) = generated_paths
-            .iter()
-            .find(|value| !matches!(value, FieldValue::Literal(LiteralBits::String(_))))
-        {
+        let generated: BTreeSet<&str> = GENERATED_FILES.iter().copied().collect();
+        let mut named_paths = Vec::new();
+        for value in generated_paths {
+            match value {
+                FieldValue::Literal(LiteralBits::String(path)) => named_paths.push(path.as_str()),
+                other => {
+                    return ClaimResult::Fail(format!(
+                        "GeneratedFromDag generated_paths must contain only Path/String values, got {other:?}"
+                    ))
+                }
+            }
+        }
+        if let Some(path) = named_paths.iter().find(|path| !generated.contains(**path)) {
             return ClaimResult::Fail(format!(
-                "GeneratedFromDag generated_paths must contain only Path/String values, got {other:?}"
+                "GeneratedFromDag path `{path}` is not in the generated-file authority"
             ));
         }
-        self.nyi_external_pb_predicate(&claim.claim_name, "GeneratedFromDag", "generated_paths")
+        let test_count = match sg0_census_list_count("expected_hand_authored_test") {
+            Ok(count) => count,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        if test_count == 0 {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "GeneratedFromDag observed {test_count} hand-authored test file(s) outside generated paths"
+            ))
+        }
     }
 
     fn resolve_census_authority_ref(
@@ -2219,18 +2307,6 @@ impl<'a> TestRunner<'a> {
             )),
             Err(reason) => Err(reason),
         }
-    }
-
-    fn nyi_external_pb_predicate(
-        &self,
-        claim_name: &str,
-        predicate: &str,
-        authority_label: &str,
-    ) -> ClaimResult {
-        ClaimResult::NotYetImplemented(format!(
-            "{predicate}: R1C-A schema shape is wired for TestClaim `{claim_name}` ({authority_label}); \
-             R1C-D owns evaluation against the live PB census authority"
-        ))
     }
 
     /// Hermetic path: compile `claim.source`, then `apply_lens_declaration` for subject (0-arity)
@@ -2538,6 +2614,66 @@ fn diagnostic_matches_reference(
             DiagnosticDetailFilter::Any => true,
             DiagnosticDetailFilter::Contains(text) => diagnostic.message().contains(text),
         }
+}
+
+fn sg0_census_list_count(list_constant_name: &str) -> Result<i64, String> {
+    Ok(sg0_census_list_entries(list_constant_name)?.len() as i64)
+}
+
+fn sg0_census_list_entries(list_constant_name: &str) -> Result<Vec<String>, String> {
+    let constant = match list_constant_name {
+        "expected_hand_authored_non_test" => "EXPECTED_HAND_AUTHORED_NON_TEST",
+        "expected_hand_authored_test" => "EXPECTED_HAND_AUTHORED_TEST",
+        "expected_hand_authored_fragments" => "EXPECTED_HAND_AUTHORED_FRAGMENTS",
+        other => return Err(format!("unknown SG-0 census list constant `{other}`")),
+    };
+    sg0_string_slice_constant_entries(constant)
+}
+
+fn sg0_string_slice_constant_entries(constant: &str) -> Result<Vec<String>, String> {
+    let marker = format!("const {constant}: &[&str] = &[");
+    let start = SG0_CENSUS_SOURCE
+        .find(&marker)
+        .ok_or_else(|| format!("SG-0 census source is missing `{constant}`"))?
+        + marker.len();
+    let rest = &SG0_CENSUS_SOURCE[start..];
+    let end = rest
+        .find("\n];")
+        .ok_or_else(|| format!("SG-0 census source has unterminated `{constant}`"))?;
+    Ok(rest[..end]
+        .lines()
+        .filter_map(sg0_quoted_path_from_line)
+        .collect())
+}
+
+fn sg0_quoted_path_from_line(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.starts_with("//") {
+        return None;
+    }
+    let start = trimmed.find('"')? + 1;
+    let end = trimmed[start..].find('"')? + start;
+    Some(trimmed[start..end].to_string())
+}
+
+fn is_lens_producer_census_path(path: &str) -> bool {
+    matches!(
+        path,
+        "src/v3/compiler/src/lens_apply.rs"
+            | "src/v3/compiler/src/lens_testgen.rs"
+            | "src/v3/compiler/src/bin/regen_lens.rs"
+    )
+}
+
+fn compiler_std_positive_set_ratchet_count() -> i64 {
+    [
+        "TemplateArgumentsMatch",
+        "TemplateArgumentCursor",
+        "NormalizedInstantiationArgs",
+    ]
+    .iter()
+    .filter(|name| INFER_HELPERS_SOURCE.contains(&format!("type {name}")))
+    .count() as i64
 }
 
 fn render_value_body(dag: &Dag, value: &ValueBody) -> String {

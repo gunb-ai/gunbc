@@ -169,6 +169,7 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // generated substrate accessors.
 const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/build.rs",
+    "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
     "src/v3/compiler/src/bin/regen_parse.rs",
@@ -180,6 +181,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bootstrap_regen_fresh.rs",
     "src/v3/compiler/src/dag.rs",
     "src/v3/compiler/src/dag/builder.rs",
+    // Closed Cardinality payload + idempotent target shim (API closure).
+    "src/v3/compiler/src/dag/cardinality_payload.rs",
     "src/v3/compiler/src/dag/effects.rs",
     "src/v3/compiler/src/dag/ports.rs",
     "src/v3/compiler/src/diagnostics.rs",
@@ -197,13 +200,14 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/lower.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
+    // R1C-E (T-Emit `.dag` `TestClaim` wrappers): shared `check_*` API the host
+    // `#[test]` harness and `r1c_e_emit_gates` `bin` both call. Single source of
+    // truth for the emit-gate assertions; scaffold until R1 close dissolves it.
+    "src/v3/compiler/src/r1c_e_gates.rs",
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
     "src/v3/compiler/src/test_runner.rs",
-    // R1 T-Sub `sub_charclass_in_std_unicode`: Rust mirror of `std.unicode::CharClass`
-    // until M1(2.8) allows `CharClass` / `List<Char>` in `tokenize.dag` `data` bodies.
-    "src/v3/compiler/src/tokenize_char_class.rs",
     "src/v3/compiler/src/workflow_idempotency.rs",
     "src/v3/compiler/src/workflow_parallelism.rs",
 ];
@@ -272,6 +276,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
+    // R1C-E (T-Emit `.dag` `TestClaim` wrappers): integration-test driver
+    // that splices `env!("CARGO_BIN_EXE_r1c_e_emit_gates")` into the
+    // `tests/dag/r1c_e_emit_gates.template.dag` source and runs the suite
+    // through `TestRunner`. Scaffold until R1 close dissolves the wrappers.
+    "src/v3/compiler/tests/integration/r1c_e_emit_gates_dag_test.rs",
     // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
     "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
