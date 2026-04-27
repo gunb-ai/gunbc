@@ -305,7 +305,14 @@ pub fn resolve_wire_serde_tag_for_coproduct(
                                 None => resolve_wire_serde_tag(init.clone(), &source_indices),
                                 Some(inf) => match (*inf.clone()).clone() {
                                     InferredNode::Resolved { node, .. } => {
-                                        resolve_wire_serde_tag(node.clone(), &source_indices)
+                                        if is_data_def_item(&node) {
+                                            resolve_wire_serde_tag_for_coproduct(
+                                                Some(node.clone()),
+                                                source_indices.clone(),
+                                            )
+                                        } else {
+                                            resolve_wire_serde_tag(node.clone(), &source_indices)
+                                        }
                                     }
                                     InferredNode::CompilerError { .. } => {
                                         resolve_wire_serde_tag(init.clone(), &source_indices)

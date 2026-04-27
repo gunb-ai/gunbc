@@ -287,7 +287,14 @@ fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indice
                   Some { value: inf } =>
                     match inf {
                       Resolved { node } =>
-                        resolve_wire_serde_tag(wire_item: node, source_indices: source_indices)
+                        if is_data_def_item(item: node) {
+                          resolve_wire_serde_tag_for_coproduct(
+                            wire_contract_item: Some { value: node },
+                            source_indices: source_indices
+                          )
+                        } else {
+                          resolve_wire_serde_tag(wire_item: node, source_indices: source_indices)
+                        }
                       CompilerError { message: _, span: _ } =>
                         resolve_wire_serde_tag(wire_item: init, source_indices: source_indices)
                       TypeVariable { id: _ } =>
