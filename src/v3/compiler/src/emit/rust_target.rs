@@ -46,10 +46,10 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    algebra_field_for_operator_shared, dag_uses_arithmetic_div, parse_pattern_strategy,
-    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
-    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
-    VariantPayloadFieldAccessRuleBinding,
+    algebra_field_for_operator_shared, dag_uses_arithmetic_div,
+    div_prelude_reserved_name_collision, parse_pattern_strategy, primitive_type_id_for_port_shared,
+    walk_to_disj, EmitMode, PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding,
+    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
@@ -2754,14 +2754,13 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         .map(|decl| ctx.render_function_declaration(decl))
         .collect::<Result<Vec<_>, _>>()?;
     let needs_int_div_prelude = dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls);
-    if needs_int_div_prelude
-        && type_decls
-            .iter()
-            .any(|decl| decl.name.as_deref() == Some("DivError"))
-    {
-        return Err(EmitError::UnsupportedBehavior(
-            "Rust checked-division prelude would collide with user-defined `DivError`".to_string(),
-        ));
+    if let (true, Some(name)) = (
+        needs_int_div_prelude,
+        div_prelude_reserved_name_collision(type_decls.iter()),
+    ) {
+        return Err(EmitError::UnsupportedBehavior(format!(
+            "Rust checked-division prelude would collide with user-defined `{name}`"
+        )));
     }
 
     // `DivError` and other `dsl/std` types are excluded from `type_decls` (see

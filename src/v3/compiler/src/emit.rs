@@ -126,6 +126,15 @@ pub(crate) fn substrate_result_type_decl_suppressed_for_emit(
         && substrate_result_variant_payload_is_value_of(dag, err_field.ty, err_param)
 }
 
+pub(crate) fn div_prelude_reserved_name_collision<'a>(
+    type_decls: impl IntoIterator<Item = &'a &'a Declaration>,
+) -> Option<&'static str> {
+    type_decls
+        .into_iter()
+        .any(|decl| decl.name.as_deref() == Some("DivError"))
+        .then_some("DivError")
+}
+
 fn substrate_result_variant_payload_is_value_of(
     dag: &Dag,
     payload_ty: DeclarationId,
@@ -1208,7 +1217,16 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     if mode == EmitMode::Program {
         sections.push("import \"fmt\"".to_string());
     }
-    if dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls) {
+    let needs_int_div_prelude = dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls);
+    if let (true, Some(name)) = (
+        needs_int_div_prelude,
+        div_prelude_reserved_name_collision(type_decls.iter()),
+    ) {
+        return Err(EmitError::UnsupportedBehavior(format!(
+            "Go checked-division prelude would collide with user-defined `{name}`"
+        )));
+    }
+    if needs_int_div_prelude {
         // `DivError` / `Result` are under `dsl/std/`, which `go_source_filtering` omits. Emit
         // minimal v3 hooks so `v3intdiv` and `struct{ Ok *T; Err *E }` compile.
         //

@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
 use super::{
-    algebra_field_for_operator_shared, dag_uses_arithmetic_div, optional_match_variant_roles,
-    parse_pattern_strategy, primitive_type_id_for_port_shared, walk_to_disj, EmitMode,
-    PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    algebra_field_for_operator_shared, dag_uses_arithmetic_div,
+    div_prelude_reserved_name_collision, optional_match_variant_roles, parse_pattern_strategy,
+    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
+    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
     VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
@@ -679,10 +680,19 @@ pub(crate) fn emit_python_with_mode(
         "def __v3_unreachable(label: str) -> typing.NoReturn:\n    raise ValueError(label)".to_string(),
     ];
 
+    let needs_int_div_prelude = dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls);
+    if let (true, Some(name)) = (
+        needs_int_div_prelude,
+        div_prelude_reserved_name_collision(type_decls.iter()),
+    ) {
+        return Err(EmitPythonError::Unsupported(format!(
+            "Python checked-division prelude would collide with user-defined `{name}`"
+        )));
+    }
     for decl in type_decls {
         sections.push(ctx.render_type_declaration(decl)?);
     }
-    if dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls) {
+    if needs_int_div_prelude {
         // `std.error_primitives` is filtered out of `type_decls`; v3 `DivError` + checked `/` are
         // prelude-only (names align with `python.dag` / `python_int_div` carrier for `__v3_idiv`).
         //

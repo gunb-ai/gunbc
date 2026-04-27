@@ -369,3 +369,19 @@ fn double(x: Int) -> Int = x + x
         "emit_go_module wrapper drifted from emit::emit_module"
     );
 }
+
+#[test]
+fn emit_go_fails_closed_on_div_prelude_diverror_collision() {
+    let dag = compile_to_dag(
+        "type DivError = Bad | Worse\n\
+let x = 6 / 2",
+        "go_diverror_collision.v3",
+    )
+    .expect("compiles");
+    let err = emit_go(&dag).expect_err("Go emit must reject DivError prelude collision");
+    assert!(
+        matches!(err, v3_compiler::EmitError::UnsupportedBehavior(ref message)
+            if message.contains("DivError")),
+        "expected explicit DivError collision error, got {err:?}"
+    );
+}

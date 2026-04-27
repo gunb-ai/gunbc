@@ -156,6 +156,22 @@ fn double(x: Int) -> Int = x + x
 }
 
 #[test]
+fn emit_python_fails_closed_on_div_prelude_diverror_collision() {
+    let dag = compile_to_dag(
+        "type DivError = Bad | Worse\n\
+let x = 6 / 2",
+        "python_diverror_collision.v3",
+    )
+    .expect("compiles");
+    let err =
+        emit_python_text(&dag).expect_err("Python emit must reject DivError prelude collision");
+    assert!(
+        format!("{err:?}").contains("DivError"),
+        "expected explicit DivError collision error, got {err:?}"
+    );
+}
+
+#[test]
 fn emit_python_uses_only_shared_schema_surface() {
     const PYTHON_SPEC: &str = include_str!("../../../spec/python.dag");
     const PYTHON_EMITTER: &str = include_str!("../../src/emit/python_target.rs");
