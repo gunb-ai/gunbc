@@ -298,10 +298,7 @@ pub fn resolve_wire_serde_tag_for_coproduct(
                 match wc.body.clone() {
                     None => rust_serde_tag_attr(),
                     Some(init) => {
-                        if matches!(
-                            (*init.expr_data.clone()).clone(),
-                            ExprRecordLit { .. }
-                        ) {
+                        if matches!((*init.expr_data.clone()).clone(), ExprRecordLit { .. }) {
                             resolve_wire_serde_tag(init.clone(), &source_indices)
                         } else {
                             match init.inferred.clone() {
