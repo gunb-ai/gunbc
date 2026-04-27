@@ -88,7 +88,7 @@ pub(crate) fn integer_range_for_decl(dag: &Dag, decl: DeclarationId) -> IntegerR
         if *constructor != integer_primitive_ctor {
             continue;
         }
-        match pilot_integer_row(dag, witness, payload, pilot.span.clone()) {
+        match pilot_integer_row(witness, payload, pilot.span.clone()) {
             Ok(Some(m)) => matches.push(m),
             Ok(None) => {}
             Err(diag) => return IntegerRangeLookup::Invalid(diag),
@@ -226,7 +226,6 @@ fn rust_primitive_integer_variant_ty(dag: &Dag) -> Option<DeclarationId> {
 }
 
 fn pilot_integer_row(
-    dag: &Dag,
     witness: IntegerRoutingWitness,
     payload: &[FieldValue],
     default_span: SourceSpan,

@@ -1342,6 +1342,20 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     }
 }
 
+/// Structural witness for integer literal range narrowing: the
+/// `IntegerAlgebra` and `TargetCarrier` variant payload [`dag::DeclarationId`]s
+/// used to match rows in `rust_pilot_primitives`, derived from std
+/// `OrderedRing<C>` / `Semiring<C>` by declaration identity (no template-name
+/// string routing).
+pub fn integer_literal_routing_witness(
+    dag: &Dag,
+    declaration: dag::DeclarationId,
+) -> Option<(dag::DeclarationId, dag::DeclarationId)> {
+    int_literal_ranges::integer_routing_witness_for_decl(dag, declaration).map(|w| {
+        (w.algebra_variant_ty, w.carrier_variant_ty)
+    })
+}
+
 /// Lower `src/v3/std/parse_surface.dag` for codegen (`regen_parse`, SG-2 staging tests).
 ///
 /// Unlike [`compile_to_dag`], this starts from a bootstrap Dag that omits the embedded

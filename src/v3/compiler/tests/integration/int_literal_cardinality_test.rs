@@ -1,7 +1,9 @@
 //! **Layer:** integration
 
-use v3_compiler::dag::LiteralBits;
-use v3_compiler::{compile_to_dag, CompileError};
+use std::collections::HashSet;
+
+use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
+use v3_compiler::{compile_to_dag, integer_literal_routing_witness, CompileError};
 
 #[test]
 fn int_literals_fit_declared_integer_ranges() {
@@ -253,78 +255,116 @@ fn int_literal_ranges_follow_type_aliases() {
 }
 
 #[test]
-fn duplicate_integer_range_fact_fails_closed() {
-    let err = compile_to_dag(
-        "data duplicate_u8_range: IntegerRangeFact = {\n\
-           target_name: \"u8-duplicate\",\n\
-           algebra: SemiringAlgebra,\n\
-           carrier: ByteCarrier,\n\
-           range_min_inclusive: \"0\",\n\
-           range_max_inclusive: \"255\"\n\
-         }\n\
-         data x: UInt8 = 255",
-        "int_literal_duplicate_range_fact.v3",
-    )
-    .expect_err("duplicate range facts for a routing key must fail closed");
-    let CompileError::Semantic(dag) = err else {
-        panic!("expected semantic diagnostic, got {err:?}");
-    };
-    let messages: Vec<String> = dag
-        .diagnostics()
-        .iter()
-        .map(|(_, diagnostic)| diagnostic.message())
-        .collect();
+fn rust_pilot_primitives_integer_witnesses_are_unique() {
+    let dag = v3_compiler::Dag::new();
     assert!(
-        dag.diagnostics().iter().any(|(_, diagnostic)| {
-            matches!(
-                diagnostic,
-                v3_compiler::diagnostics::Diagnostic::MalformedIntegerRangeFact {
-                    message,
-                    fixes,
-                    ..
-                } if message.contains("duplicate IntegerRangeFact")
-                    && fixes.is_empty()
-            )
-        }),
-        "duplicate range key should emit malformed fact diagnostic, got {messages:?}"
+        dag.diagnostics().is_empty(),
+        "bootstrap diagnostics: {:?}",
+        dag.diagnostics()
+    );
+    let pilot = dag.rust_pilot_primitives().expect("rust_pilot_primitives");
+    let ValueBody::List(elements) = pilot.value_body.as_ref().expect("value body") else {
+        panic!("expected ValueBody::List");
+    };
+    let rust_primitive = dag
+        .declaration_by_name("RustPrimitive")
+        .expect("RustPrimitive type");
+    let TypeConnective::Disj { variants } = &rust_primitive.connective else {
+        panic!("RustPrimitive must be a sum");
+    };
+    let integer_primitive_ctor = variants
+        .iter()
+        .find(|v| v.label == "IntegerPrimitive")
+        .expect("IntegerPrimitive variant")
+        .ty;
+    let mut witnesses = HashSet::new();
+    for element in elements {
+        let FieldValue::Variant {
+            constructor,
+            payload,
+        } = element
+        else {
+            continue;
+        };
+        if *constructor != integer_primitive_ctor {
+            continue;
+        }
+        let FieldValue::Variant {
+            constructor: algebra_ctor,
+            ..
+        } = &payload[1]
+        else {
+            panic!("algebra field must be a variant");
+        };
+        let FieldValue::Variant {
+            constructor: carrier_ctor,
+            ..
+        } = &payload[2]
+        else {
+            panic!("carrier field must be a variant");
+        };
+        assert!(
+            witnesses.insert((*algebra_ctor, *carrier_ctor)),
+            "duplicate integer routing witness in pilot list: {:?}",
+            (*algebra_ctor, *carrier_ctor)
+        );
+    }
+    assert_eq!(
+        witnesses.len(),
+        8,
+        "pilot carries eight distinct integer primitive witnesses"
     );
 }
 
 #[test]
-fn malformed_integer_range_fact_fails_closed() {
-    let err = compile_to_dag(
-        "data malformed_u8_range: IntegerRangeFact = {\n\
-           target_name: \"u8-malformed\",\n\
-           algebra: SemiringAlgebra,\n\
-           carrier: ByteCarrier,\n\
-           range_min_inclusive: \"0\",\n\
-           range_max_inclusive: \"not-a-number\"\n\
-         }\n\
-         data x: UInt8 = 255",
-        "int_literal_malformed_range_fact.v3",
-    )
-    .expect_err("malformed range fact for a routing key must fail closed");
-    let CompileError::Semantic(dag) = err else {
-        panic!("expected semantic diagnostic, got {err:?}");
+fn int_literal_range_routing_matches_std_type_witness() {
+    let dag = compile_to_dag("data x: UInt8 = 5", "int_literal_witness_u8.v3").expect("compiles");
+    let uint8 = dag.declaration_by_name("UInt8").expect("UInt8").id;
+    let std_witness = integer_literal_routing_witness(&dag, uint8).expect("UInt8 routing witness");
+    let pilot = dag.rust_pilot_primitives().expect("pilot");
+    let ValueBody::List(elements) = pilot.value_body.as_ref().expect("list") else {
+        panic!("expected list");
     };
-    let messages: Vec<String> = dag
-        .diagnostics()
+    let rust_primitive = dag.declaration_by_name("RustPrimitive").expect("RustPrimitive");
+    let TypeConnective::Disj { variants } = &rust_primitive.connective else {
+        panic!("RustPrimitive sum");
+    };
+    let integer_primitive_ctor = variants
         .iter()
-        .map(|(_, diagnostic)| diagnostic.message())
-        .collect();
-    assert!(
-        dag.diagnostics().iter().any(|(_, diagnostic)| {
-            matches!(
-                diagnostic,
-                v3_compiler::diagnostics::Diagnostic::MalformedIntegerRangeFact {
-                    message,
-                    fixes,
-                    ..
-                } if message.contains("malformed IntegerRangeFact")
-                    && fixes.is_empty()
-            )
-        }),
-        "malformed range key should emit malformed fact diagnostic, got {messages:?}"
+        .find(|v| v.label == "IntegerPrimitive")
+        .unwrap()
+        .ty;
+    let mut matches = 0usize;
+    for element in elements {
+        let FieldValue::Variant {
+            constructor,
+            payload,
+        } = element
+        else {
+            continue;
+        };
+        if *constructor != integer_primitive_ctor {
+            continue;
+        }
+        let FieldValue::Variant {
+            constructor: a, ..
+        } = &payload[1]
+        else {
+            continue;
+        };
+        let FieldValue::Variant {
+            constructor: c, ..
+        } = &payload[2]
+        else {
+            continue;
+        };
+        if (*a, *c) == std_witness {
+            matches += 1;
+        }
+    }
+    assert_eq!(
+        matches, 1,
+        "exactly one IntegerPrimitive row matches UInt8's declaration-identity witness"
     );
 }
 
