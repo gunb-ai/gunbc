@@ -216,7 +216,7 @@ data go_uint64_integer_range: GoIntegerRangeFact = {
 // aliases, floats, complex, bool, string. (int/uint/uintptr omitted — implementation width.)
 data go_spec_predeclared_primitives: List<GoPrimitive> = [
   GoIntegerPrimitive { target_name: "int8", algebra: GoOrderedRingAlgebra, carrier: GoByteCarrier,
-    range_min_inclusive: "-128", range_max_inclusive: "127",     overflow: GoModularWrapOnFixedWidth },
+    range_min_inclusive: "-128", range_max_inclusive: "127", overflow: GoModularWrapOnFixedWidth },
   GoIntegerPrimitive { target_name: "int16", algebra: GoOrderedRingAlgebra, carrier: GoWord16Carrier,
     range_min_inclusive: "-32768", range_max_inclusive: "32767", overflow: GoModularWrapOnFixedWidth },
   GoIntegerPrimitive { target_name: "int32", algebra: GoOrderedRingAlgebra, carrier: GoWord32Carrier,
