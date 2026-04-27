@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use super::{
     algebra_field_for_operator_shared, dag_uses_arithmetic_div, optional_match_variant_roles,
-    parse_pattern_strategy, primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
-    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    parse_pattern_strategy, primitive_type_id_for_port_shared, walk_to_disj, EmitMode,
+    PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
     VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
