@@ -208,19 +208,19 @@ fn effect_at(facts: List<EffectFact>, target: PortId) -> StructuralEffectShape =
   }
 
 fn compute_coverage_gaps(d: Dag) -> List<CoverageGap> =
-  compute_coverage_gaps_from_facts(d, compute_effect_facts(d), d.nodes)
+  compute_coverage_gaps_from_facts(d.nodes, d, compute_effect_facts(d))
 
 fn compute_coverage_gaps_from_facts(
+  nodes: List<Behavior>,
   d: Dag,
-  facts: List<EffectFact>,
-  nodes: List<Behavior>
+  facts: List<EffectFact>
 ) -> List<CoverageGap> =
   match nodes {
     Empty => empty()
     Cons(payload) =>
       prepend_gap(
         coverage_gap_for(d, facts, payload.head),
-        compute_coverage_gaps_from_facts(d, facts, payload.tail)
+        compute_coverage_gaps_from_facts(payload.tail, d, facts)
       )
   }
 
