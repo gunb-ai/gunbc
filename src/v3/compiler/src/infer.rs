@@ -4496,20 +4496,6 @@ fn substitute_receiver(
                 None
             }
         }
-<<<<<<< HEAD
-=======
-        // Non-receiver TypeParam in an algebra field (e.g., a
-        // second generic parameter) isn't resolvable at M1(2.7).
-        // Multi-parameter algebra operator dispatch is a class-5
-        // gap; M2 will refine `substitute_receiver` to cover it.
-        TypeConnective::Atom(AtomPayload::TypeParam(_)) => None,
-        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_)) => None,
-        TypeConnective::Atom(AtomPayload::Literal(_)) => None,
-        TypeConnective::Conj { .. } => None,
-        TypeConnective::Disj { .. } => None,
-        TypeConnective::Arrow { .. } => None,
-        TypeConnective::Cardinality(_) => None,
->>>>>>> refs/remotes/origin/main
     }
 }
 
