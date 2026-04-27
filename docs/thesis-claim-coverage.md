@@ -15,8 +15,8 @@ This doc is that audit. Every thesis claim in `THESIS.md §"Thesis claims — co
 ## How to use
 
 - **R2 promotion gate:** Director reviews this doc before promoting `docs/r2-structure.md` to ROADMAP `## Release R2 Program` per Transition mechanics step 5. **Zero GAP rows** is the promotion bar; partial-status rows are notes, not blockers.
-- **R1 close declaration:** R1 Closure Manager cross-references this doc when declaring all-gates-green; the 52 R1-closed claims should map 1:1 to lane gate green status.
-- **R2 manager dispatch:** R2 managers reference this doc when scoping work; the 18 R2-gated claims should map to one of the 6 R2 manager programs.
+- **R1 close declaration:** R1 Closure Manager cross-references this doc when declaring all-gates-green; the 55 R1-closed claims should map 1:1 to lane gate green status.
+- **R2 manager dispatch:** R2 managers reference this doc when scoping work; the 13 R2-gated claims should map to one of the 6 R2 manager programs.
 - **Refresh:** at every release transition + on demand when THESIS claims author or change.
 
 ## Coverage statistics
@@ -201,7 +201,7 @@ This doc is that audit. Every thesis claim in `THESIS.md §"Thesis claims — co
 | 65 | (R1) Idempotency-contract violation: marked `@idempotent` function structure errors | R1-closed | T-Demo impossible-bugs suite (`compose_effects` + `AppendEffect` violation) | green |
 | 66 | (R1) Transport/type-drift: client/server cannot hold different types for same field | R1-closed | T-Demo impossible-bugs suite (`TypeMismatch` multi-target) | green |
 | 67 | (R2+) Nested-optional flatten: `Option<Option<T>>` patterns error at compile | R2-gated | `docs/r2-structure.md` Goal 4; gated on cardinality refinement; closed by PR #890 / `6562081e` | green |
-| 68 | (R2+) Unenumerated effects: operations intrinsically read/write via type signature | R2-gated | `docs/r2-structure.md` Goal 4; per `docs/briefs/t-impossiblebugs-unenumerated-effects-design.md`; substrate scoping unblocked by #893/#901 | in-flight (consumer/lens PR active) |
+| 68 | (R2+) Unenumerated effects: operations intrinsically read/write via type signature | R2-gated | `docs/r2-structure.md` Goal 4; `docs/briefs/t-impossiblebugs-unenumerated-effects-design.md` + `docs/briefs/r2-impossible-bugs-unenumerated-effects-worker.md` closed-system structural derivation path | in-flight (implementation worker dispatchable; consumer/lens PR active) |
 | 69 | (R2+) Unhandled diagnostic paths: Tier 2 runtime-safety proofs | R2-gated | `docs/r2-structure.md` Goal 4; Tier 2 substrate post-R1 | in-flight (Int division Result carrier tail active) |
 | 70 | Governance: classes added require thesis commitment; removal requires named dissolution | R1-closed | THESIS authority on scheduling tags `[R1]` vs `[R2+]` | green |
 
