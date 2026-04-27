@@ -180,6 +180,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bootstrap_regen_fresh.rs",
     "src/v3/compiler/src/dag.rs",
     "src/v3/compiler/src/dag/builder.rs",
+    // Closed Cardinality payload + idempotent target shim (API closure).
+    "src/v3/compiler/src/dag/cardinality_payload.rs",
     "src/v3/compiler/src/dag/effects.rs",
     "src/v3/compiler/src/dag/ports.rs",
     "src/v3/compiler/src/diagnostics.rs",
@@ -201,9 +203,6 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
     "src/v3/compiler/src/test_runner.rs",
-    // R1 T-Sub `sub_charclass_in_std_unicode`: Rust mirror of `std.unicode::CharClass`
-    // until M1(2.8) allows `CharClass` / `List<Char>` in `tokenize.dag` `data` bodies.
-    "src/v3/compiler/src/tokenize_char_class.rs",
     "src/v3/compiler/src/workflow_idempotency.rs",
     "src/v3/compiler/src/workflow_parallelism.rs",
 ];

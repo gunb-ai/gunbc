@@ -410,7 +410,7 @@ fn connective_name(connective: &TypeConnective) -> &'static str {
         TypeConnective::Conj { .. } => "Conj",
         TypeConnective::Disj { .. } => "Disj",
         TypeConnective::Arrow { .. } => "Arrow",
-        TypeConnective::Cardinality { .. } => "Cardinality",
+        TypeConnective::Cardinality(_) => "Cardinality",
         TypeConnective::Instantiation { .. } => "Instantiation",
     }
 }
