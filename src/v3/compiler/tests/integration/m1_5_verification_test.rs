@@ -86,6 +86,7 @@ fn bootstrap_loads_verification_authority_types() {
             (String::from("UnitMismatch"), Vec::new()),
             (String::from("ArityMismatch"), Vec::new()),
             (String::from("ResolveError"), Vec::new()),
+            (String::from("NominalOpacityViolation"), Vec::new()),
         ]
     );
     assert_eq!(
@@ -186,6 +187,34 @@ fn bootstrap_loads_verification_authority_types() {
             (
                 String::from("AlgebraicLaw"),
                 vec![String::from("law"), String::from("lens_ref")],
+            ),
+            (
+                String::from("CensusBoundCheck"),
+                vec![
+                    String::from("authority"),
+                    String::from("list_constant"),
+                    String::from("bound"),
+                ],
+            ),
+            (
+                String::from("CensusSubsetCount"),
+                vec![
+                    String::from("authority"),
+                    String::from("list_constant"),
+                    String::from("subset_predicate"),
+                ],
+            ),
+            (
+                String::from("FixedPointConverges"),
+                vec![String::from("compile_target"), String::from("expected")],
+            ),
+            (
+                String::from("RatchetZero"),
+                vec![String::from("authority"), String::from("ratchet_kind")],
+            ),
+            (
+                String::from("GeneratedFromDag"),
+                vec![String::from("authority"), String::from("generated_paths")],
             ),
         ]
     );

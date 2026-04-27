@@ -26,8 +26,8 @@ use std::collections::HashSet;
 
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, Field,
-    LiteralBits, Lookup, PhantomParameter, PortId, PortState, TemplateArgument, TransformNode,
-    TransformTarget, TypeConnective,
+    LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState, TemplateArgument,
+    TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -3122,11 +3122,35 @@ fn walk_to_conj_decl_with_subst(
     start: DeclarationId,
     subst: &mut SubstStack,
 ) -> Option<DeclarationId> {
+    match walk_to_conj_decl_with_subst_or_opacity(dag, start, subst, false) {
+        ConjWalkResult::Conj(id) => Some(id),
+        ConjWalkResult::NoConj => None,
+        ConjWalkResult::NominalOpaque(_) => {
+            unreachable!("opacity check is disabled for ordinary Conj walks")
+        }
+    }
+}
+
+enum ConjWalkResult {
+    Conj(DeclarationId),
+    NominalOpaque(DeclarationId),
+    NoConj,
+}
+
+fn walk_to_conj_decl_with_subst_or_opacity(
+    dag: &Dag,
+    start: DeclarationId,
+    subst: &mut SubstStack,
+    stop_at_nominal_opacity: bool,
+) -> ConjWalkResult {
     let mut current = start;
     for _ in 0..WALK_DEPTH_LIMIT {
         let decl = dag.declaration(current);
+        if stop_at_nominal_opacity && decl.nominal_opacity.is_some() {
+            return ConjWalkResult::NominalOpaque(current);
+        }
         match &decl.connective {
-            TypeConnective::Conj { .. } => return Some(current),
+            TypeConnective::Conj { .. } => return ConjWalkResult::Conj(current),
             TypeConnective::Instantiation {
                 template,
                 arguments,
@@ -3139,12 +3163,15 @@ fn walk_to_conj_decl_with_subst(
                 current = *next;
             }
             TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
-                current = subst.lookup(current)?;
+                let Some(next) = subst.lookup(current) else {
+                    return ConjWalkResult::NoConj;
+                };
+                current = next;
             }
-            _ => return None,
+            _ => return ConjWalkResult::NoConj,
         }
     }
-    None
+    ConjWalkResult::NoConj
 }
 
 fn walk_to_disj_decl_with_subst(
@@ -3317,9 +3344,12 @@ pub(crate) fn concretize_decl_with_subst(
                     value: concretize_decl_with_subst(dag, arg.value, subst, depth + 1),
                 })
                 .collect();
-            if let Some(existing) =
-                find_equivalent_anonymous_instantiation(dag, template, &specialized_arguments)
-            {
+            if let Some(existing) = find_equivalent_anonymous_instantiation(
+                dag,
+                template,
+                &specialized_arguments,
+                decl.nominal_opacity.as_ref(),
+            ) {
                 return existing;
             }
             let id = dag.alloc_declaration_id();
@@ -3337,7 +3367,7 @@ pub(crate) fn concretize_decl_with_subst(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                nominal_opacity: None,
+                nominal_opacity: decl.nominal_opacity.clone(),
                 span: decl.span,
             });
             id
@@ -3874,6 +3904,7 @@ fn find_equivalent_anonymous_instantiation(
     dag: &Dag,
     template: DeclarationId,
     arguments: &[TemplateArgument],
+    nominal_opacity: Option<&NominalOpacity>,
 ) -> Option<DeclarationId> {
     dag.declarations().iter().find_map(|decl| {
         if decl.name.is_some() {
@@ -3887,6 +3918,7 @@ fn find_equivalent_anonymous_instantiation(
             return None;
         };
         (template == *existing_template
+            && decl.nominal_opacity.as_ref() == nominal_opacity
             && matches!(
                 generated_template_arguments_match(existing_arguments, arguments),
                 TemplateArgumentsMatch::Match,
@@ -3948,6 +3980,15 @@ fn resolve_field_project(
     };
 
     let mut subst = SubstStack::new();
+    if let Some(opaque_decl) = first_nominal_opaque_on_conj_walk(dag, input_ty.declaration, &subst)
+    {
+        return FieldProjectResolution::Fail(Diagnostic::NominalOpacityViolation {
+            declaration: opaque_decl,
+            accessor: None,
+            span: t.span.clone(),
+            fixes: Vec::new(),
+        });
+    }
     let Some(actual_conj_id) = walk_to_conj_decl_with_subst(dag, input_ty.declaration, &mut subst)
     else {
         return FieldProjectResolution::Fail(Diagnostic::ResolveError {
@@ -4011,6 +4052,18 @@ fn resolve_field_project(
     FieldProjectResolution::Resolved {
         field_child: field_decl_id,
         output_ty,
+    }
+}
+
+fn first_nominal_opaque_on_conj_walk(
+    dag: &Dag,
+    start: DeclarationId,
+    subst: &SubstStack,
+) -> Option<DeclarationId> {
+    let mut subst = subst.clone();
+    match walk_to_conj_decl_with_subst_or_opacity(dag, start, &mut subst, true) {
+        ConjWalkResult::NominalOpaque(id) => Some(id),
+        ConjWalkResult::Conj(_) | ConjWalkResult::NoConj => None,
     }
 }
 
@@ -4871,6 +4924,255 @@ mod bool_logical_operator_arrow_tests {
     use crate::dag::PhantomParameter;
     use crate::infer_helpers::filter_non_self_template_arguments;
     use crate::operators::ArithmeticOp;
+
+    #[test]
+    fn nominal_opaque_field_project_fails_closed_before_structural_descent() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("<nominal-opacity-test>", 0, 1);
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+
+        let payload = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: payload,
+            name: Some("OpaquePayload".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let opaque = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: opaque,
+            name: Some("OpaqueWrapper".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(payload)),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: Some(NominalOpacity {
+                permitted_accessors: Vec::new(),
+            }),
+            span: span.clone(),
+        });
+
+        let input = dag.alloc_port_with_shape(TypeShape::new(opaque));
+        let output = dag.push_transform(
+            TransformTarget::FieldProject {
+                field_label: "value".to_string(),
+                field_child: None,
+            },
+            vec![input],
+            span,
+        );
+
+        infer(&mut dag);
+
+        assert!(matches!(
+            dag.diagnostics().get(output),
+            Some(Diagnostic::NominalOpacityViolation {
+                declaration,
+                accessor: None,
+                ..
+            }) if *declaration == opaque
+        ));
+        assert!(
+            matches!(dag.port(output).state(), PortState::Unresolved),
+            "opacity violation must leave the projected output unresolved"
+        );
+    }
+
+    #[test]
+    fn nominal_opaque_field_project_preserves_instantiation_substitution() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("<nominal-opacity-subst-test>", 0, 1);
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+
+        let payload = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: payload,
+            name: Some("SecretPayloadForSubst".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let secret = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: secret,
+            name: Some("SecretForSubst".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(payload)),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: Some(NominalOpacity {
+                permitted_accessors: Vec::new(),
+            }),
+            span: span.clone(),
+        });
+        let box_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: box_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let box_alias = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: box_alias,
+            name: Some("BoxAlias".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(box_param)),
+            type_params: vec![box_param],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let boxed_secret = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: boxed_secret,
+            name: Some("BoxedSecret".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: box_alias,
+                arguments: vec![TemplateArgument {
+                    parameter: box_param,
+                    value: secret,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let input = dag.alloc_port_with_shape(TypeShape::new(boxed_secret));
+        let output = dag.push_transform(
+            TransformTarget::FieldProject {
+                field_label: "value".to_string(),
+                field_child: None,
+            },
+            vec![input],
+            span,
+        );
+
+        infer(&mut dag);
+
+        assert!(matches!(
+            dag.diagnostics().get(output),
+            Some(Diagnostic::NominalOpacityViolation {
+                declaration,
+                accessor: None,
+                ..
+            }) if *declaration == secret
+        ));
+    }
+
+    #[test]
+    fn field_project_without_nominal_opacity_remains_structural() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("<nominal-opacity-absent-test>", 0, 1);
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+
+        let record = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: record,
+            name: Some("PlainPayload".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let input = dag.alloc_port_with_shape(TypeShape::new(record));
+        let output = dag.push_transform(
+            TransformTarget::FieldProject {
+                field_label: "value".to_string(),
+                field_child: None,
+            },
+            vec![input],
+            span,
+        );
+
+        infer(&mut dag);
+
+        assert!(
+            dag.diagnostics().get(output).is_none(),
+            "plain structural projection should not emit opacity diagnostics"
+        );
+        assert!(matches!(
+            dag.port(output).state(),
+            PortState::Resolved(shape) if shape.declaration == int
+        ));
+    }
+
+    #[test]
+    fn bootstrapped_secret_is_marked_nominal_opaque() {
+        let dag = Dag::new();
+        let secret = dag
+            .declaration_by_name("Secret")
+            .expect("bootstrap Secret declaration");
+        assert!(
+            secret.nominal_opacity.is_some(),
+            "Secret must consume the nominal-opacity carrier before Modeling dispatch"
+        );
+    }
 
     #[test]
     fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {
@@ -5899,7 +6201,7 @@ mod bool_logical_operator_arrow_tests {
 
         // Exact arguments match → dedup hit.
         assert_eq!(
-            find_equivalent_anonymous_instantiation(&dag, template, &args),
+            find_equivalent_anonymous_instantiation(&dag, template, &args, None),
             Some(anon_id),
         );
 
@@ -5907,14 +6209,59 @@ mod bool_logical_operator_arrow_tests {
         let mut value_diff = args.clone();
         value_diff[1].value = v0;
         assert_eq!(
-            find_equivalent_anonymous_instantiation(&dag, template, &value_diff),
+            find_equivalent_anonymous_instantiation(&dag, template, &value_diff, None),
             None,
         );
 
         // Length differs → no hit.
         assert_eq!(
-            find_equivalent_anonymous_instantiation(&dag, template, &args[..1]),
+            find_equivalent_anonymous_instantiation(&dag, template, &args[..1], None),
             None,
+        );
+
+        let opaque = NominalOpacity {
+            permitted_accessors: Vec::new(),
+        };
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(&dag, template, &args, Some(&opaque)),
+            None,
+            "anonymous instantiation interning must not collapse distinct nominal-opacity carriers"
+        );
+
+        let opaque_anon_id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: opaque_anon_id,
+            name: None,
+            connective: TypeConnective::Instantiation {
+                template,
+                arguments: args.clone(),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: Some(opaque.clone()),
+            span: synthetic_span(),
+        });
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(&dag, template, &args, Some(&opaque)),
+            Some(opaque_anon_id),
+        );
+        let opaque_with_accessor = NominalOpacity {
+            permitted_accessors: vec![p0],
+        };
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(
+                &dag,
+                template,
+                &args,
+                Some(&opaque_with_accessor),
+            ),
+            None,
+            "permitted-accessor changes are part of the nominal-opacity interning key"
         );
 
         // Self-binding normalization: a `parameter == value` entry is a
@@ -5930,7 +6277,7 @@ mod bool_logical_operator_arrow_tests {
             value: p0,
         });
         assert_eq!(
-            find_equivalent_anonymous_instantiation(&dag, template, &with_self),
+            find_equivalent_anonymous_instantiation(&dag, template, &with_self, None),
             None,
         );
     }

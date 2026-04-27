@@ -718,6 +718,18 @@ fn render_diagnostic(diagnostic: &Diagnostic) -> String {
             render_source_span(span),
             render_corrections(fixes),
         ),
+        Diagnostic::NominalOpacityViolation {
+            declaration,
+            accessor,
+            span,
+            fixes,
+        } => format!(
+            "Diagnostic::NominalOpacityViolation {{ declaration: {}, accessor: {}, span: {}, fixes: {} }}",
+            render_declaration_id(*declaration),
+            render_opt_declaration_id(*accessor),
+            render_source_span(span),
+            render_corrections(fixes),
+        ),
     }
 }
 

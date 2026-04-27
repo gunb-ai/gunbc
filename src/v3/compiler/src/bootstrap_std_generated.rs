@@ -4352,7 +4352,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 2874, 2938),
+                span: SourceSpan::new("dsl/std/unicode.dag", 3662, 3726),
             },
             Declaration {
                 id: DeclarationId(184),
@@ -4360,7 +4360,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![DeclarationId(88), DeclarationId(183)],
                     output: DeclarationId(84),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/unicode.dag", 2992, 3590)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/unicode.dag", 3780, 4378)),
                 },
                 type_params: vec![],
                 phantom_params: Vec::new(),
@@ -4370,7 +4370,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 2940, 3590),
+                span: SourceSpan::new("dsl/std/unicode.dag", 3728, 4378),
             },
             Declaration {
                 id: DeclarationId(185),
@@ -4399,7 +4399,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 3954, 3999),
+                span: SourceSpan::new("dsl/std/unicode.dag", 4742, 4787),
             },
             Declaration {
                 id: DeclarationId(186),
@@ -4407,7 +4407,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![DeclarationId(185)],
                     output: DeclarationId(67),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/unicode.dag", 4050, 4126)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/unicode.dag", 4838, 4914)),
                 },
                 type_params: vec![],
                 phantom_params: Vec::new(),
@@ -4417,7 +4417,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 4001, 4126),
+                span: SourceSpan::new("dsl/std/unicode.dag", 4789, 4914),
             },
             Declaration {
                 id: DeclarationId(187),
@@ -4450,7 +4450,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 4361, 4461),
+                span: SourceSpan::new("dsl/std/unicode.dag", 5149, 5249),
             },
             Declaration {
                 id: DeclarationId(188),
@@ -4609,7 +4609,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 ])),
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 4523, 5272),
+                span: SourceSpan::new("dsl/std/unicode.dag", 5311, 6060),
             },
             Declaration {
                 id: DeclarationId(189),
@@ -4634,7 +4634,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 ])),
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 5339, 5551),
+                span: SourceSpan::new("dsl/std/unicode.dag", 6127, 6339),
             },
             Declaration {
                 id: DeclarationId(190),
@@ -5015,7 +5015,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 ])),
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 5598, 7387),
+                span: SourceSpan::new("dsl/std/unicode.dag", 6386, 8175),
             },
             Declaration {
                 id: DeclarationId(191),
@@ -5023,7 +5023,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![DeclarationId(88)],
                     output: DeclarationId(67),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/unicode.dag", 7567, 7578)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/unicode.dag", 8355, 8366)),
                 },
                 type_params: vec![],
                 phantom_params: Vec::new(),
@@ -5033,7 +5033,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 7537, 7578),
+                span: SourceSpan::new("dsl/std/unicode.dag", 8325, 8366),
             },
             Declaration {
                 id: DeclarationId(192),
@@ -5041,7 +5041,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![DeclarationId(67), DeclarationId(187)],
                     output: DeclarationId(84),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/unicode.dag", 7630, 7682)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/unicode.dag", 8418, 8470)),
                 },
                 type_params: vec![],
                 phantom_params: Vec::new(),
@@ -5051,7 +5051,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 7580, 7682),
+                span: SourceSpan::new("dsl/std/unicode.dag", 8368, 8470),
             },
             Declaration {
                 id: DeclarationId(193),
@@ -5059,7 +5059,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![DeclarationId(88)],
                     output: DeclarationId(185),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/unicode.dag", 7731, 8034)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/unicode.dag", 8519, 8822)),
                 },
                 type_params: vec![],
                 phantom_params: Vec::new(),
@@ -5069,7 +5069,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 7684, 8034),
+                span: SourceSpan::new("dsl/std/unicode.dag", 8472, 8822),
             },
             Declaration {
                 id: DeclarationId(194),
@@ -5077,7 +5077,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![DeclarationId(88)],
                     output: DeclarationId(67),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/unicode.dag", 8066, 8122)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/unicode.dag", 8854, 8910)),
                 },
                 type_params: vec![],
                 phantom_params: Vec::new(),
@@ -5087,7 +5087,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 8036, 8122),
+                span: SourceSpan::new("dsl/std/unicode.dag", 8824, 8910),
             },
             Declaration {
                 id: DeclarationId(195),
@@ -5095,7 +5095,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 connective: TypeConnective::Arrow {
                     inputs: vec![DeclarationId(182)],
                     output: DeclarationId(67),
-                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/unicode.dag", 8166, 8304)),
+                    body: ArrowBody::Unparsed(SourceSpan::new("dsl/std/unicode.dag", 8954, 9092)),
                 },
                 type_params: vec![],
                 phantom_params: Vec::new(),
@@ -5105,7 +5105,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 8124, 8304),
+                span: SourceSpan::new("dsl/std/unicode.dag", 8912, 9092),
             },
             Declaration {
                 id: DeclarationId(196),
@@ -10473,7 +10473,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 2891, 2901),
+                span: SourceSpan::new("dsl/std/unicode.dag", 3679, 3689),
             },
             Declaration {
                 id: DeclarationId(509),
@@ -10487,7 +10487,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 2904, 2909),
+                span: SourceSpan::new("dsl/std/unicode.dag", 3692, 3697),
             },
             Declaration {
                 id: DeclarationId(510),
@@ -10501,7 +10501,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 2912, 2922),
+                span: SourceSpan::new("dsl/std/unicode.dag", 3700, 3710),
             },
             Declaration {
                 id: DeclarationId(511),
@@ -10515,7 +10515,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 2925, 2938),
+                span: SourceSpan::new("dsl/std/unicode.dag", 3713, 3726),
             },
             Declaration {
                 id: DeclarationId(512),
@@ -10529,7 +10529,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 3974, 3983),
+                span: SourceSpan::new("dsl/std/unicode.dag", 4762, 4771),
             },
             Declaration {
                 id: DeclarationId(513),
@@ -10543,7 +10543,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 3986, 3992),
+                span: SourceSpan::new("dsl/std/unicode.dag", 4774, 4780),
             },
             Declaration {
                 id: DeclarationId(514),
@@ -10557,7 +10557,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 3995, 3999),
+                span: SourceSpan::new("dsl/std/unicode.dag", 4783, 4787),
             },
             Declaration {
                 id: DeclarationId(515),
@@ -10577,7 +10577,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 4547, 4565),
+                span: SourceSpan::new("dsl/std/unicode.dag", 5335, 5353),
             },
             Declaration {
                 id: DeclarationId(516),
@@ -10597,7 +10597,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 5367, 5376),
+                span: SourceSpan::new("dsl/std/unicode.dag", 6155, 6164),
             },
             Declaration {
                 id: DeclarationId(517),
@@ -10617,7 +10617,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/unicode.dag", 5616, 5634),
+                span: SourceSpan::new("dsl/std/unicode.dag", 6404, 6422),
             },
             Declaration {
                 id: DeclarationId(518),
