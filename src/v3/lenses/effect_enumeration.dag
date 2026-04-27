@@ -28,7 +28,8 @@ import v3.std.substrate {
   NodeId,
   node,
   port,
-  declaration_by_id
+  declaration_by_id,
+  lane2_workflow_at
 }
 
 type EffectShape
@@ -87,8 +88,13 @@ fn effect_fact_for(
     Transform(t) => { port: t.result_port, shape: transform_effect(d, t) }
     Branch(b) => { port: b.result_port, shape: branch_effect(acc, b.paths) }
     Loop(l) => { port: l.result_port, shape: loop_effect(d, acc, l.body) }
-    Bind(bind) => { port: bind.result_port, shape: effect_at(acc, bind.result_port) }
+    Bind(bind) => { port: bind.result_port, shape: bind_effect(acc, bind.params) }
   }
+
+fn bind_effect(acc: List<EffectFact>, params: List<PortId>) -> EffectShape =
+  fold(params, NoEffect, |running, port|
+    combine_effects(running, effect_at(acc, port))
+  )
 
 fn transform_effect(d: Dag, t: TransformNode) -> EffectShape =
   match t.target {
@@ -204,17 +210,26 @@ fn compute_coverage_gaps(d: Dag) -> List<CoverageGap> =
   )
 
 fn transaction_pattern(d: Dag) -> TransactionalPattern =
-  match first_bind_root(d.nodes) {
+  match first_transaction_root(d, d.nodes) {
     None => NoTransaction
     Some(root) => BeginModifyCommit { root: root }
   }
 
-fn first_bind_root(nodes: List<Behavior>) -> NodeId? =
+fn first_transaction_root(d: Dag, nodes: List<Behavior>) -> NodeId? =
   match nodes {
     Empty => None
     Cons(payload) =>
-      match payload.head {
-        Bind(bind) => Some(bind.id)
-        _ => first_bind_root(payload.tail)
+      match lane2_workflow_at(d, behavior_node_id(payload.head)) {
+        None => first_transaction_root(d, payload.tail)
+        Some(_) => Some(behavior_node_id(payload.head))
       }
+  }
+
+fn behavior_node_id(behavior: Behavior) -> NodeId =
+  match behavior {
+    Value(v) => v.id
+    Transform(t) => t.id
+    Branch(b) => b.id
+    Loop(l) => l.id
+    Bind(bind) => bind.id
   }
