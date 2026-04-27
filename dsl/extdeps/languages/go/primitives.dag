@@ -25,8 +25,9 @@
 // only on GoFloatPrimitive; complex component width only on GoComplexPrimitive;
 // alias linkage only on GoIntegerAliasPrimitive (byte/rune).
 //
-// SUBSTRATE-GAP FLAGS: IntegerOverflow / terminal / text carriers mirror the
-// Rust pilot’s bridge pattern (algebra.dag + bit.dag by tag); post-DB-11 these
+// SUBSTRATE-GAP FLAGS: `overflow` on integer variants / terminal / text carriers
+// follow the Rust pilot’s *placement* (per-variant bridge tags); Go’s witness is
+// wrap-only for this spec slice (see `GoIntegerOverflow`). Post-DB-11 these
 // become refinements on carriers / algebras.
 
 module extdeps.languages.go.primitives
@@ -70,10 +71,17 @@ type GoFloatCarrier
   | GoFloat64BitsCarrier
 
 
+// Go spec fixed-width numerics (this tranche): overflow at the type witness is
+// two’s-complement wrap for ordinary non-constant operations (go.dev/ref/spec
+// §Overflow). Rust’s `IntegerOverflow` also lists Saturating/Trap because the
+// Rust Reference names those as explicit *operator* selections (`saturating_*`,
+// `checked_*`, etc.); Go does not attach saturating/trap as alternate inhabitants
+// of the same predeclared `int8`…`uint64` names — copying that three-way sum here
+// would invent ungrounded states (INVARIANTS P1). Single-variant sum introduces
+// `GoTwoComplementWrap`; post-DB-11, per-operator refinements can return if the
+// substrate carries a named Go authority for them.
 type GoIntegerOverflow
   = GoTwoComplementWrap
-  | GoSaturating
-  | GoTrap
 
 
 type GoComplexComponentWidth
