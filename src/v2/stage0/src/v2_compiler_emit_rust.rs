@@ -11134,6 +11134,7 @@ pub fn emit_operation_method(
             op_node.clone(),
             &env.source_indices.clone(),
             shared_types.clone(),
+            env,
         );
         let mock_props = Rc::new({
             let mut __result = Vec::new();
@@ -11300,6 +11301,7 @@ pub fn emit_transport_call(
     op_node: Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<HashMap<String, bool>>,
+    env: &Rc<TypeEnv>,
 ) -> String {
     if is_rest_transport(transport.clone(), source_indices.clone()) {
         emit_rest_call(
@@ -11311,6 +11313,7 @@ pub fn emit_transport_call(
             op_node,
             &source_indices,
             shared_types.clone(),
+            env,
         )
     } else {
         if is_shell_transport(transport.clone()) {
@@ -11342,6 +11345,7 @@ pub fn emit_rest_call(
     op_node: Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<HashMap<String, bool>>,
+    env: &Rc<TypeEnv>,
 ) -> String {
     {
         let client_init =
@@ -11383,6 +11387,7 @@ pub fn emit_rest_call(
             transport.clone(),
             &source_indices,
             shared_types.clone(),
+            env,
         );
         let all_lines = Rc::new({
             let mut __result = Vec::new();
@@ -11784,14 +11789,24 @@ pub fn has_from_key_fields(
 pub fn operation_response_200_resolved_type(
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: &Rc<TypeEnv>,
 ) -> Option<Rc<Node>> {
     for p in op_node.properties.iter().cloned() {
         if field_init_node_name_at(p.clone(), source_indices.clone()).as_str() == "response_200" {
             let v = field_init_node_value(&p);
-            return match v.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: tn, .. }) => Some(tn),
-                _ => None,
-            };
+            if let Some(InferredNode::Resolved { node: tn, .. }) =
+                v.inferred.clone().as_deref().cloned()
+            {
+                return Some(tn);
+            }
+            let type_name = authored_name_at(
+                source_indices.clone(),
+                &normalize_access_type_node(v.clone()),
+            );
+            if type_name.is_empty() {
+                return None;
+            }
+            return lookup_type_by_name(env, type_name);
         }
     }
     None
@@ -12060,6 +12075,7 @@ pub fn emit_response_code_handling(
     transport: Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<HashMap<String, bool>>,
+    env: &Rc<TypeEnv>,
 ) -> String {
     {
         let use_from_key = has_from_key_fields(op_node.clone(), source_indices.clone());
@@ -12079,6 +12095,7 @@ pub fn emit_response_code_handling(
                     op_node.clone(),
                     source_indices.clone(),
                     shared_types.clone(),
+                    env,
                 )
             } else {
                 emit_plain_response_body(op_node.clone(), transport.clone(), &source_indices)
