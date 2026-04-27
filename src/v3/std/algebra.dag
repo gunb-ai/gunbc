@@ -339,27 +339,16 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
         SumCost(_) => False
         UnknownCost(_) => False
       }
-    // Conservative fallback: the correct "dominant child summary"
-    // rule walks the composite's children and returns True iff any
-    // child dominates `b`. Expressing that walk in .dag requires
-    // mutual recursion between `dominates` (descending on
-    // `SymbolicCost`) and a list-iterating helper (descending on
-    // `List<SymbolicCost>`), which v3's termination analyzer
-    // cannot prove yet — cluster descent witnesses in #519 share
-    // a single type, and cross-type mutual recursion lands as a
-    // substrate extension (flagged as a Lane 1 / Stage 2d+
-    // follow-up in the ROADMAP). The Rust mirror in
-    // `src/v3/compiler/src/dag.rs::dominates` carries the
-    // recursive form; this .dag branch returns `False` as a
-    // conservative over-approximation — callers that ask "does a
-    // composite dominate `b`" get `False` (safe: composite stays
-    // in `drop_dominated`'s keep list, `max_path` preferring
-    // scalars), never a false True that could drop legitimate
-    // terms. The generated Rust projection of this lens is not
-    // affected because it reads through the Rust `dominates`
-    // function directly.
-    ProductCost(_) => False
-    SumCost(_) => False
+    // Single semantic definition (DB-7 / R2 dissolution): when `a`
+    // is a composite (`ProductCost` / `SumCost`), `a` dominates `b`
+    // iff **any child** dominates `b`. The list walk is delegated to
+    // `any_dominates` (same cluster as `drop_dominated` / #519 list
+    // descent); `dominates` and `any_dominates` are mutually recursive
+    // on strictly smaller `SymbolicCost` / list-tail measures. The
+    // generated Rust in `dag_cost_generated.rs` is emitted from this
+    // `fn dominates` and stays byte-aligned with the `.dag` authority.
+    ProductCost(terms) => any_dominates(nsl_to_list(terms), b)
+    SumCost(terms) => any_dominates(nsl_to_list(terms), b)
   }
 
 fn same_size_variable(a: SizeVariable, b: SizeVariable) -> Bool =

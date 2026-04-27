@@ -9,6 +9,7 @@
 //! port (same query the cost lens answers today).
 
 use crate::dag::{Behavior, Dag, NodeId, PortId, SymbolicCost};
+use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
 fn behavior_result_port(b: &Behavior) -> PortId {
@@ -21,6 +22,16 @@ fn behavior_result_port(b: &Behavior) -> PortId {
     }
 }
 
+fn behavior_span(at: &Behavior) -> SourceSpan {
+    match at {
+        Behavior::Value(v) => v.span.clone(),
+        Behavior::Transform(t) => t.span.clone(),
+        Behavior::Branch(b) => b.span.clone(),
+        Behavior::Loop(l) => l.span.clone(),
+        Behavior::Bind(bind) => bind.span.clone(),
+    }
+}
+
 /// Evidence partition — mirrors `Witness<Carrier>` in `std/dimensions.dag`.
 #[derive(Debug, Clone)]
 pub enum Witness<C> {
@@ -30,11 +41,17 @@ pub enum Witness<C> {
 
 /// Report carrier — mirrors `DimensionReport<Carrier>` in `std/dimensions.dag`.
 #[derive(Debug, Clone)]
-pub struct DimensionReport<C> {
-    pub dimension_name: String,
-    pub composed: C,
-    pub violations: Vec<crate::diagnostics::Diagnostic>,
-    pub witnesses: Vec<Witness<C>>,
+pub enum DimensionReport<C> {
+    DimensionOk {
+        dimension_name: String,
+        composed: C,
+        witnesses: Vec<Witness<C>>,
+    },
+    DimensionFail {
+        dimension_name: String,
+        violations: Vec<Diagnostic>,
+        witnesses: Vec<Witness<C>>,
+    },
 }
 
 /// Same `Dag.nodes` order as `lenses/cost.dag::compute_symbolic_costs` /
@@ -45,8 +62,10 @@ pub fn behavior_spine_in_node_order(d: &Dag) -> &[Behavior] {
 
 /// Symbolic-cost dimension analysis — DB-3 dispatch over the cost lens algebra.
 ///
-/// `composed` is the asymptotic bound at `workflow_root`'s result port. Witnesses
-/// walk every [`Behavior`] in node order (see [`behavior_spine_in_node_order`]).
+/// On success ([`DimensionReport::DimensionOk`]), `composed` is the asymptotic
+/// bound at `workflow_root`'s result port. Witnesses walk every [`Behavior`]
+/// in node order (see [`behavior_spine_in_node_order`]). Failure is only
+/// [`DimensionReport::DimensionFail`]: there is no fabricated carrier.
 pub fn analyze_symbolic_cost_dimension(
     d: &Dag,
     workflow_root: NodeId,
@@ -65,17 +84,52 @@ pub fn analyze_symbolic_cost_dimension(
     }
 
     let root = d.node(workflow_root);
-    let composed = match symbolic_cost_of(d, &behavior_result_port(root)) {
-        SymbolicCostLookup::Hit(cost) => cost,
-        SymbolicCostLookup::Miss => SymbolicCost::UnknownCost {
-            _0: "missing symbolic cost for workflow root result port".into(),
-        },
-    };
+    let root_lookup = symbolic_cost_of(d, &behavior_result_port(root));
 
-    DimensionReport {
+    let witness_failure = witnesses
+        .iter()
+        .any(|w| matches!(w, Witness::Violates { .. }));
+
+    if !witness_failure && matches!(root_lookup, SymbolicCostLookup::Hit(_)) {
+        let SymbolicCostLookup::Hit(composed) = root_lookup else {
+            unreachable!("root_lookup checked Hit above");
+        };
+        return DimensionReport::DimensionOk {
+            dimension_name: DIMENSION_NAME.to_string(),
+            composed,
+            witnesses,
+        };
+    }
+
+    let mut violations: Vec<Diagnostic> = witnesses
+        .iter()
+        .filter_map(|w| {
+            let Witness::Violates { reason, at } = w else {
+                return None;
+            };
+            Some(Diagnostic::ParseError {
+                message: format!("symbolic_cost dimension: {reason}"),
+                span: behavior_span(at),
+                fixes: vec![],
+            })
+        })
+        .collect();
+
+    // Root `Miss` normally duplicates a `Witness::Violates` on the workflow root
+    // (same port as `behavior_result_port(root)`). Only synthesize a diagnostic
+    // here if the witness spine and root lookup ever disagree (fail-closed).
+    if matches!(root_lookup, SymbolicCostLookup::Miss) && violations.is_empty() {
+        violations.push(Diagnostic::ParseError {
+            message: "symbolic_cost dimension: missing symbolic cost for workflow root result port"
+                .into(),
+            span: behavior_span(root),
+            fixes: vec![],
+        });
+    }
+
+    DimensionReport::DimensionFail {
         dimension_name: DIMENSION_NAME.to_string(),
-        composed,
-        violations: Vec::new(),
+        violations,
         witnesses,
     }
 }
