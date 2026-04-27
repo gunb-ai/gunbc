@@ -202,8 +202,8 @@ fn let_annotated_uint8_out_of_range_emits_magnitude_diagnostic() {
 /// `TypeConnective::Cardinality` + rust primitive bridge without a full `rustc` roundtrip.
 #[test]
 fn emit_rust_uint8_let_mentions_rust_u8() {
-    let dag = compile_to_dag("let x: UInt8 = 5", "emit_rust_u8_let.v3")
-        .expect("emit u8: let compiles");
+    let dag =
+        compile_to_dag("let x: UInt8 = 5", "emit_rust_u8_let.v3").expect("emit u8: let compiles");
     let out = emit_rust::emit_rust(&dag).expect("emit");
     assert!(
         out.contains("u8") || out.contains("UInt8"),
