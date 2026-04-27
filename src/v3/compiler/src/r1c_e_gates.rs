@@ -244,7 +244,7 @@ fn build_reflected_harness() -> PathBuf {
     let mut body = String::new();
     for fixture in REFLECTED_FIXTURES {
         let module = emit_rust_module(
-            &compile_to_dag(fixture.module_source, "reflected_fixture.v3").expect("compiles"),
+            &compile_to_dag(fixture.module.source, "reflected_fixture.v3").expect("compiles"),
         )
         .expect("emits");
         body.push_str(&format!(
@@ -255,7 +255,7 @@ fn build_reflected_harness() -> PathBuf {
                {module} \
                pub fn run() -> i64 {{ {wrapper} }} \
              }}\n",
-            name = fixture.name,
+            name = fixture.module.name,
             wrapper = fixture.wrapper_body,
         ));
     }
@@ -266,7 +266,7 @@ fn build_reflected_harness() -> PathBuf {
         ",
     );
     for fixture in REFLECTED_FIXTURES {
-        body.push_str(&format!("\"{0}\" => {0}::run(), ", fixture.name));
+        body.push_str(&format!("\"{0}\" => {0}::run(), ", fixture.module.name));
     }
     body.push_str(
         "other => panic!(\"unknown reflected harness test: {other}\"), \
@@ -302,7 +302,7 @@ pub fn check_emit_rust_fixtures_rustc_green() -> Result<(), String> {
         }
     }
     for fixture in REFLECTED_FIXTURES {
-        let stdout = run_rust_reflected_fixture(fixture.name);
+        let stdout = run_rust_reflected_fixture(fixture.module.name);
         let (ok, label) = match &fixture.expected_stdout {
             ReflectedExpected::Exact(expected) => (stdout == *expected, format!("{expected:?}")),
             ReflectedExpected::PositiveInt => (
@@ -313,7 +313,7 @@ pub fn check_emit_rust_fixtures_rustc_green() -> Result<(), String> {
         if !ok {
             failures.push(format!(
                 "reflected {:?}: expected {label}, got {stdout:?}",
-                fixture.name,
+                fixture.module.name,
             ));
         }
     }

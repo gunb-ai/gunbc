@@ -195,7 +195,7 @@ fn run_reflected(name: &str) -> String {
 fn reflected_expected(name: &str) -> &'static ReflectedExpected {
     &REFLECTED_FIXTURES
         .iter()
-        .find(|f| f.name == name)
+        .find(|f| f.module.name == name)
         .unwrap_or_else(|| panic!("no REFLECTED_FIXTURES entry for {name:?}"))
         .expected_stdout
 }
