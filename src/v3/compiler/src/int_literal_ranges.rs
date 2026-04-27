@@ -349,23 +349,41 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
     const EXPECTED_INTEGER_ROWS: usize = 8;
     const INTEGER_PRIMITIVE_FIELD_COUNT: usize = 7;
 
-    let Some(pilot) = dag.rust_pilot_primitives() else {
-        return;
+    enum PilotListSnapshot {
+        List(Vec<FieldValue>),
+        MissingBody,
+        NotList,
+    }
+
+    let (default_span, pilot_elements) = {
+        let Some(pilot) = dag.rust_pilot_primitives() else {
+            return;
+        };
+        let sp = pilot.span.clone();
+        let snap = match pilot.value_body.as_ref() {
+            None => PilotListSnapshot::MissingBody,
+            Some(ValueBody::List(els)) => PilotListSnapshot::List(els.clone()),
+            Some(_) => PilotListSnapshot::NotList,
+        };
+        (sp, snap)
     };
-    let default_span = pilot.span.clone();
-    let Some(body) = pilot.value_body.as_ref() else {
-        dag.attach_diagnostic(malformed_integer_range_fact(
-            "bootstrap: rust_pilot_primitives is missing a value body".to_string(),
-            default_span,
-        ));
-        return;
-    };
-    let ValueBody::List(elements) = body else {
-        dag.attach_diagnostic(malformed_integer_range_fact(
-            "bootstrap: rust_pilot_primitives must be ValueBody::List".to_string(),
-            default_span,
-        ));
-        return;
+
+    let elements: &[FieldValue] = match &pilot_elements {
+        PilotListSnapshot::List(els) => els,
+        PilotListSnapshot::MissingBody => {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "bootstrap: rust_pilot_primitives is missing a value body".to_string(),
+                default_span,
+            ));
+            return;
+        }
+        PilotListSnapshot::NotList => {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "bootstrap: rust_pilot_primitives must be ValueBody::List".to_string(),
+                default_span,
+            ));
+            return;
+        }
     };
 
     let Some(integer_ctor) = rust_primitive_integer_variant_ty(dag) else {
