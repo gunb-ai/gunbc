@@ -53,9 +53,9 @@ impl<T> VariantPayloadBinding<T> {
 use self::python_target::EmitPythonError;
 use self::rust_target::{EmitError, RealizationCategory, SubstrateMarkerRole};
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, CardinalityBound, Declaration,
-    DeclarationId, Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode,
-    TransformTarget, TypeConnective, ValueBody,
+    ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, CardinalityBound,
+    Declaration, DeclarationId, Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument,
+    TransformNode, TransformTarget, TypeConnective, ValueBody,
 };
 use crate::infer::strip_refinement_to_base;
 use crate::operators::OperatorKind;
@@ -1278,7 +1278,7 @@ pub(crate) fn dag_uses_arithmetic_div(
             TypeConnective::Arrow {
                 body: ArrowBody::UserDefined(body),
                 ..
-            } => port_depends_on_arithmetic_div(dag, super::behavior_result_port(dag.node(*body))),
+            } => port_depends_on_arithmetic_div(dag, behavior_result_port(dag.node(*body))),
             _ => false,
         })
 }
@@ -1313,7 +1313,7 @@ fn port_depends_on_arithmetic_div(dag: &Dag, root: PortId) -> bool {
             Behavior::Loop(l) => {
                 queue.push(l.source);
                 queue.push(l.init);
-                queue.push(super::behavior_result_port(dag.node(l.body)));
+                queue.push(behavior_result_port(dag.node(l.body)));
             }
             Behavior::Bind(b) => {
                 queue.push(b.value);

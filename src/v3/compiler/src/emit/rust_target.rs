@@ -52,8 +52,8 @@ use super::{
     VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
-    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId,
-    Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
+    ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
+    FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective, ValueBody, ValueNode,
 };
 use crate::operators::OperatorKind;
