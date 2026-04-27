@@ -89,6 +89,9 @@ lattice / Peano helpers.
 **Receipts:** `m2_substrate_inhabitance_test` termination rows, SG-0 census
 delta, and any new direct `.dag` evaluation receipt.
 
+**Completed audit:** `docs/briefs/r2-pb-tier3-worker1-termination-mirror-audit.md`
+(terminal vs scaffold classification, dissolution ordering, receipts).
+
 ## Worker 2 - Computation Mirror Audit / Dissolution Plan
 
 **Scope:** `src/v3/compiler/src/dag.rs` computation mirror block:
