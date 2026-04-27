@@ -783,8 +783,7 @@ fn locate_unshare_bootstrap_helper() -> Result<std::path::PathBuf, String> {
             ));
         }
     }
-    let exe = std::env::current_exe()
-        .map_err(|e| format!("current_exe() failed: {e}"))?;
+    let exe = std::env::current_exe().map_err(|e| format!("current_exe() failed: {e}"))?;
     let dir = exe
         .parent()
         .ok_or_else(|| "current_exe has no parent dir".to_string())?;
