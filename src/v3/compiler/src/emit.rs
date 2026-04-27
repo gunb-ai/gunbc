@@ -128,11 +128,19 @@ pub(crate) fn substrate_result_type_decl_suppressed_for_emit(
 
 pub(crate) fn div_prelude_reserved_name_collision<'a>(
     type_decls: impl IntoIterator<Item = &'a &'a Declaration>,
+    function_decls: impl IntoIterator<Item = &'a &'a Declaration>,
+    helper_name: &'static str,
 ) -> Option<&'static str> {
-    type_decls
+    if type_decls
         .into_iter()
         .any(|decl| decl.name.as_deref() == Some("DivError"))
-        .then_some("DivError")
+    {
+        return Some("DivError");
+    }
+    function_decls
+        .into_iter()
+        .any(|decl| decl.name.as_deref() == Some(helper_name))
+        .then_some(helper_name)
 }
 
 fn substrate_result_variant_payload_is_value_of(
@@ -1220,7 +1228,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     let needs_int_div_prelude = dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls);
     if let (true, Some(name)) = (
         needs_int_div_prelude,
-        div_prelude_reserved_name_collision(type_decls.iter()),
+        div_prelude_reserved_name_collision(type_decls.iter(), function_decls.iter(), "v3intdiv"),
     ) {
         return Err(EmitError::UnsupportedBehavior(format!(
             "Go checked-division prelude would collide with user-defined `{name}`"
