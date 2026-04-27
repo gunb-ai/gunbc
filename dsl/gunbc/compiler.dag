@@ -90,7 +90,6 @@ data stage0: GeneratedCrate = {
     "rust_target.rs",
     "infer.rs",
     "lens_testgen.rs",
-    "lens_unused_parameters.rs",
     "lib.rs",
     "lower.rs",
     "pipeline_authority.rs",

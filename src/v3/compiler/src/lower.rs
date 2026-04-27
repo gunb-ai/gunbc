@@ -28,8 +28,8 @@ use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode, BranchEmitParticipation,
     BranchNode, BranchPattern, CardinalityBound, Cluster, Dag, Declaration, DeclarationId, Field,
     IntraClusterCall, LiteralBits, LoopBound, LoopNode, MemberDescent, NodeId, NonEmptyList,
-    NonSingletonList, Path, PayloadBinding, PortId, TemplateArgument, TransformNode,
-    TransformTarget, TypeConnective, ValueNode,
+    NonSingletonList, Path, PayloadBinding, PhantomParameter, PortId, TemplateArgument,
+    TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
@@ -48,6 +48,7 @@ use crate::parse::{
 use crate::types::TypeShape;
 
 type CallableScope = HashMap<String, DeclarationId>;
+const DIMENSION_STD_AUTHORITY_FILE: &str = "src/v3/std/dimensions.dag";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct RecursiveEdge {
@@ -250,6 +251,7 @@ pub(crate) fn lower_bodies_phase(
                 | SurfaceItem::TypeAlias { .. }
                 | SurfaceItem::TypeAtom { .. }
         ) {
+            validate_dimension_phantom_surface_item(dag, item);
             scope = lower_item(
                 item,
                 dag,
@@ -547,6 +549,7 @@ fn build_refinement_predicate_declaration(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: pred_span,
     });
     pred_decl_id
@@ -579,6 +582,7 @@ fn alloc_deferred_types_dag_refinement_placeholder(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: span.clone(),
     });
     id
@@ -631,6 +635,7 @@ fn lower_parameter_refinement(
         inhabits: None,
         value_body: None,
         refinement: Some(pred_decl_id),
+        nominal_opacity: None,
         span: param_span,
     });
     refined_id
@@ -926,6 +931,13 @@ fn value_body_contains_undischarged_scalar_literal(
         }
         crate::dag::ValueBody::Structural { fields } => {
             structural_fields_contain_undischarged_scalar_literal(dag, expected_type, fields)
+        }
+        crate::dag::ValueBody::List(values) => {
+            list_element_type(dag, expected_type).is_some_and(|element_type| {
+                values.iter().any(|element| {
+                    field_value_contains_undischarged_scalar_literal(dag, element_type, element)
+                })
+            })
         }
         crate::dag::ValueBody::Unparsed(_) => false,
     }
@@ -1267,6 +1279,7 @@ fn build_narrowed_refinement(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: pred_span.clone(),
     });
 
@@ -1284,6 +1297,7 @@ fn build_narrowed_refinement(
         inhabits: None,
         value_body: None,
         refinement: Some(pred_decl_id),
+        nominal_opacity: None,
         span: pred_span,
     });
     Some(refined_id)
@@ -1607,8 +1621,10 @@ fn collect_symbols(
     // point name lookup must resolve against the single surviving authority
     // or fail closed on multiple matches. Convergence checklist
     // (ROADMAP.md "Post-merge debt"): `module std.effects`,
-    // `module std.verification`, and the embedded `http_path` mirror inside
-    // `src/v3/std/effects.dag`.
+    // `module std.verification`, embedded `http_path` mirror inside
+    // `src/v3/std/effects.dag`, `module std.computation`,
+    // `module std.induction`, `module std.termination` (each `dsl/std/*`
+    // ↔ `src/v3/std/*` duplicate pair — same rank scaffold as effects).
     let mut symbols: HashMap<String, DeclarationId> = HashMap::new();
     for d in dag.declarations() {
         if let Some(name) = &d.name {
@@ -1676,6 +1692,7 @@ fn collect_symbols(
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
 
@@ -1704,6 +1721,7 @@ fn collect_symbols(
 
                     value_body: None,
                     refinement: None,
+                    nominal_opacity: None,
                     span: span.clone(),
                 });
                 param_ids.push(param_id);
@@ -1930,6 +1948,29 @@ fn lower_item(
     }
 }
 
+fn validate_dimension_phantom_surface_item(dag: &mut Dag, item: &SurfaceItem) {
+    match item {
+        SurfaceItem::TypeRecord { name, span, .. } => {
+            if name == "Dimension" && span.file == DIMENSION_STD_AUTHORITY_FILE {
+                // The record case is validated after field lowering so the
+                // bridge can check the resolved `value: Carrier` payload.
+            }
+        }
+        SurfaceItem::TypeAtom { name, span, .. }
+        | SurfaceItem::TypeSum { name, span, .. }
+        | SurfaceItem::TypeAlias { name, span, .. }
+            if name == "Dimension" && span.file == DIMENSION_STD_AUTHORITY_FILE =>
+        {
+            report_dimension_phantom_error(
+                dag,
+                span.clone(),
+                "std `Dimension<Unit, Carrier>` must be a record declaration, not another type form",
+            );
+        }
+        _ => {}
+    }
+}
+
 /// Read a parent declaration's pre-populated `type_params` slot and
 /// build a `name → DeclarationId` local scope map for field-type and
 /// variant-payload lookups. The actual TypeParam declarations were
@@ -1983,6 +2024,118 @@ fn lower_type_record(
         });
     }
     dag.declaration_mut(decl_id).connective = TypeConnective::Conj { children };
+    attach_dimension_phantom_parameter(dag, decl_id, name);
+}
+
+fn attach_dimension_phantom_parameter(dag: &mut Dag, decl_id: DeclarationId, name: &str) {
+    if name != "Dimension" {
+        return;
+    }
+    let span = dag.declaration(decl_id).span.clone();
+    if span.file != DIMENSION_STD_AUTHORITY_FILE {
+        return;
+    }
+    if !dag.declaration(decl_id).phantom_params.is_empty() {
+        return;
+    }
+
+    let type_params = dag.declaration(decl_id).type_params.clone();
+    if type_params.len() != 2
+        || !type_param_is_named(dag, type_params[0], "Unit")
+        || !type_param_is_named(dag, type_params[1], "Carrier")
+    {
+        report_dimension_phantom_error(
+            dag,
+            span,
+            "std `Dimension` must declare exactly `Dimension<Unit, Carrier>`",
+        );
+        return;
+    }
+    let unit_param = type_params[0];
+    let carrier_param = type_params[1];
+    if !dimension_record_payload_is_carrier(dag, decl_id, carrier_param) {
+        report_dimension_phantom_error(
+            dag,
+            span,
+            "std `Dimension<Unit, Carrier>` must contain exactly `value: Carrier`",
+        );
+        return;
+    }
+    let Some(abelian_group) = dag.abelian_group_decl() else {
+        report_dimension_phantom_error(
+            dag,
+            span,
+            "std `Dimension<Unit, Carrier>` requires `AbelianGroup` to attach its unit phantom algebra",
+        );
+        return;
+    };
+    let Some(abelian_receiver) = dag.declaration(abelian_group).type_params.first().copied() else {
+        report_dimension_phantom_error(
+            dag,
+            span,
+            "`AbelianGroup` must expose its receiver type parameter for `Dimension` phantom algebra",
+        );
+        return;
+    };
+    let unit_abelian_group = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: unit_abelian_group,
+        name: Some("DimensionUnitAbelianGroup".to_string()),
+        connective: TypeConnective::Instantiation {
+            template: abelian_group,
+            arguments: vec![TemplateArgument {
+                parameter: abelian_receiver,
+                value: unit_param,
+            }],
+        },
+        type_params: Vec::new(),
+        phantom_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        nominal_opacity: None,
+        span,
+    });
+    dag.declaration_mut(decl_id)
+        .phantom_params
+        .push(PhantomParameter {
+            parameter: unit_param,
+            algebra: unit_abelian_group,
+        });
+}
+
+fn type_param_is_named(dag: &Dag, decl_id: DeclarationId, expected: &str) -> bool {
+    matches!(
+        &dag.declaration(decl_id).connective,
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == expected
+    )
+}
+
+fn dimension_record_payload_is_carrier(
+    dag: &Dag,
+    decl_id: DeclarationId,
+    carrier_param: DeclarationId,
+) -> bool {
+    matches!(
+        &dag.declaration(decl_id).connective,
+        TypeConnective::Conj { children }
+            if children.len() == 1
+                && children[0].label == "value"
+                && children[0].ty == carrier_param
+    )
+}
+
+fn report_dimension_phantom_error(dag: &mut Dag, span: SourceSpan, detail: &str) {
+    report_declaration_error(
+        dag,
+        Diagnostic::ResolveError {
+            name: format!("invalid std `Dimension<Unit, Carrier>` phantom bridge: {detail}"),
+            fixes: Vec::new(),
+            span,
+        },
+    );
 }
 
 fn lower_type_sum(
@@ -2047,6 +2200,7 @@ fn lower_type_sum(
 
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: variant.span.clone(),
         });
         variant_fields.push(Field {
@@ -2122,6 +2276,7 @@ fn type_to_declaration_id(
 
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: span.clone(),
             });
             id
@@ -2144,6 +2299,7 @@ fn type_to_declaration_id(
 
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: span.clone(),
             });
             id
@@ -2182,6 +2338,7 @@ fn type_to_declaration_id(
 
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: span.clone(),
             });
             id
@@ -2347,6 +2504,7 @@ fn alloc_identifier_stub(dag: &mut Dag, name: &str, span: &SourceSpan) -> Declar
 
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: span.clone(),
     });
     id
@@ -2447,7 +2605,7 @@ fn reject_user_unparsed_scaffolds(dag: &mut Dag, strict_from: usize) {
             dag,
             Diagnostic::ResolveError {
                 name: format!(
-                    "data `{name}` has an opaque body — M1(2.8) user code cannot yet use record / list / map literals inside data bodies (see DOWNSTREAM_REQUIREMENTS.md class-5 gap #3)"
+                    "data `{name}` has an opaque body — M1(2.8) user code cannot ship a data body the compiler could not structurally validate (see DOWNSTREAM_REQUIREMENTS.md class-5 gap #3)"
                 ),
                 fixes: Vec::new(),
                 span,
@@ -2590,6 +2748,7 @@ fn lower_data_item(
     // user-facing code sees the error.
     // DB-10 (3a.2): `data x: T = v` bodies lower by shape:
     //   - Record literal → ValueBody::Structural (existing path).
+    //   - List literal   → ValueBody::List (top-level aggregate path).
     //   - Scalar literal  → ValueBody::Scalar (new path, DB-10).
     //   - Map literal     → ValueBody::Unparsed (parser sub-lane: the
     //     parser emits `SurfaceExpr::Map`; the sibling substrate
@@ -2599,6 +2758,9 @@ fn lower_data_item(
     let value_body = match body {
         Some(SurfaceExpr::Record { fields, .. }) => {
             lower_record_to_structural(name, fields, ty_decl_id, body_span, symbols, dag)
+        }
+        Some(list_expr @ SurfaceExpr::List { .. }) => {
+            lower_list_to_structural(name, list_expr, ty_decl_id, symbols, dag)
         }
         Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
             match lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag) {
@@ -2629,6 +2791,45 @@ fn lower_data_item(
         None if suppress_unparsed_scaffold => None,
         None => Some(crate::dag::ValueBody::Unparsed(body_span.clone())),
     };
+}
+
+fn lower_list_to_structural(
+    name: &str,
+    expr: &SurfaceExpr,
+    ty_decl_id: DeclarationId,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+) -> Option<crate::dag::ValueBody> {
+    let Some(element_type) = list_element_type(dag, ty_decl_id) else {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{name}` has a list body but its declared type is not a List<_>"
+                ),
+                span: expr_span(expr),
+                fixes: Vec::new(),
+            },
+        );
+        return None;
+    };
+    let SurfaceExpr::List { elements, .. } = expr else {
+        unreachable!("lower_list_to_structural only accepts SurfaceExpr::List");
+    };
+    let mut lowered = Vec::with_capacity(elements.len());
+    for element in elements {
+        lowered.push(lower_structural_field_value(
+            name,
+            "<list element>",
+            element,
+            element_type,
+            symbols,
+            dag,
+            None,
+            &expr_span(element),
+        )?);
+    }
+    Some(crate::dag::ValueBody::List(lowered))
 }
 
 /// Walk a declaration through `Instantiation` / `ResolvedIdentifier`
@@ -4418,6 +4619,7 @@ fn lower_lambda_expr(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: span.clone(),
     });
     Ok(lambda_decl_id)
@@ -4763,6 +4965,7 @@ fn specialize_decl_for_lowering(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: decl.span,
             });
             id
@@ -4797,6 +5000,7 @@ fn specialize_decl_for_lowering(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: decl.span,
             });
             id
@@ -4837,6 +5041,7 @@ fn specialize_decl_for_lowering(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: decl.span,
             });
             id
@@ -4876,6 +5081,7 @@ fn specialize_decl_for_lowering(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: decl.span,
             });
             id
@@ -4990,6 +5196,7 @@ fn resolve_data_path(
         crate::dag::ValueBody::Structural { fields } => {
             resolve_structural_field_path(dag, fields, segments, span)
         }
+        crate::dag::ValueBody::List(_) => None,
     }
 }
 
@@ -5372,6 +5579,7 @@ fn lower_expr(
                     inhabits: None,
                     value_body: None,
                     refinement: None,
+                    nominal_opacity: None,
                     span: span.clone(),
                 });
                 instantiation_id
@@ -5998,6 +6206,7 @@ fn resolve_expected_variant_constructor(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: expected_span,
             });
             Some(instantiation_id)
@@ -6893,9 +7102,115 @@ mod tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: test_span(),
         });
         id
+    }
+
+    fn surface_named_type(name: &str) -> SurfaceType {
+        SurfaceType::Named {
+            name: name.to_string(),
+            span: test_span(),
+        }
+    }
+
+    fn dimension_record_module(file: &str, type_params: &[&str]) -> SurfaceModule {
+        SurfaceModule {
+            items: vec![SurfaceItem::TypeRecord {
+                name: "Dimension".to_string(),
+                type_params: type_params
+                    .iter()
+                    .map(|param| (*param).to_string())
+                    .collect(),
+                fields: vec![SurfaceField {
+                    name: "value".to_string(),
+                    ty: surface_named_type("Carrier"),
+                }],
+                span: SourceSpan::new(file, 0, 1),
+            }],
+        }
+    }
+
+    fn dimension_alias_module(file: &str) -> SurfaceModule {
+        SurfaceModule {
+            items: vec![SurfaceItem::TypeAlias {
+                name: "Dimension".to_string(),
+                type_params: vec!["Unit".to_string(), "Carrier".to_string()],
+                target: surface_named_type("Carrier"),
+                refinement: None,
+                span: SourceSpan::new(file, 0, 1),
+            }],
+        }
+    }
+
+    #[test]
+    fn non_std_dimension_record_does_not_receive_unit_phantom_bridge() {
+        let mut dag = Dag::empty();
+        let module = dimension_record_module("user_dimension.dag", &["Unit", "Carrier"]);
+
+        lower_into(&mut dag, &module);
+
+        let dimension = dag
+            .declarations()
+            .iter()
+            .find(|decl| decl.name.as_deref() == Some("Dimension"))
+            .expect("test Dimension declaration allocated");
+        assert!(
+            dimension.phantom_params.is_empty(),
+            "non-std Dimension declarations must not receive the std unit phantom convention"
+        );
+        assert!(
+            dag.diagnostics().is_empty(),
+            "non-std Dimension should lower as an ordinary record without bridge diagnostics: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn malformed_std_dimension_bridge_fails_closed() {
+        let mut dag = Dag::empty();
+        let module = dimension_record_module(DIMENSION_STD_AUTHORITY_FILE, &["Carrier"]);
+
+        lower_into(&mut dag, &module);
+
+        let dimension = dag
+            .declarations()
+            .iter()
+            .find(|decl| decl.name.as_deref() == Some("Dimension"))
+            .expect("test Dimension declaration allocated");
+        assert!(dimension.phantom_params.is_empty());
+        assert!(
+            dag.diagnostics().iter().any(|(_, diagnostic)| {
+                matches!(
+                    diagnostic,
+                    Diagnostic::ResolveError { name, .. }
+                        if name.contains("invalid std `Dimension<Unit, Carrier>` phantom bridge")
+                )
+            }),
+            "malformed std Dimension must emit a fail-closed diagnostic: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn non_record_std_dimension_bridge_fails_closed() {
+        let mut dag = Dag::empty();
+        let module = dimension_alias_module(DIMENSION_STD_AUTHORITY_FILE);
+
+        lower_into(&mut dag, &module);
+
+        assert!(
+            dag.diagnostics().iter().any(|(_, diagnostic)| {
+                matches!(
+                    diagnostic,
+                    Diagnostic::ResolveError { name, .. }
+                        if name.contains("must be a record declaration")
+                )
+            }),
+            "std Dimension as a non-record type form must fail closed: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -7069,6 +7384,7 @@ mod tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: test_span(),
         });
         let int_id = dag.int_shape().expect("bootstrap Int").declaration;

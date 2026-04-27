@@ -4,7 +4,7 @@
 // bootstrap authority at runtime. Five bootstrap authority sets
 // are loaded from committed generated snapshots:
 //
-// - `std_fixtures`                 (`dsl/std/*.dag`)
+// - `std_fixtures`                 (`dsl/std/*.dag`, including `std.unicode`)
 // - `STAGED_FILES` / `V3_SPECS` / `COMPILER_FILES` / extdeps primitives — fresh
 //   tokenize/parse/lower lives in `bootstrap_regen_fresh.rs` behind feature
 //   `bootstrap-regen-fresh` (`regen_bootstrap` only). `Dag::new()` does not load
@@ -43,17 +43,13 @@
 // Expansion adds a field to the carrier + a key in `EXTDEPS_BOOTSTRAP_PATH_KEYS`
 // once python/go primitives reach the same pilot stage.
 //
-// **Type-structure-only load (Path 2 scoping).** The top-level
-// `rust_pilot_primitives: List<RustPrimitive> = [...]` data declaration
-// lowers with `value_body = ValueBody::Unparsed(span)` because v3's
-// `ValueBody` enum does not yet carry a top-level list/aggregate variant
-// (`dag.rs:258-287`). Type-structure walking of `RustPrimitive =
-// IntegerPrimitive | NonIntegerPrimitive {...}` is fully available via the
-// loaded declarations; the 10-element pilot enumeration becomes walkable
-// only when R2 T-Substrate's 4th sub-lane lands the top-level
-// `ValueBody::List`/aggregate extension. Same substrate gap as
-// `kernel_algebra_profile`'s hand-Rust mirror (`dag.rs:1530`) and
-// tokenizer `sub_charclass_in_std_unicode` phase-2.
+// **Structural list load (Path 2 scoping).** The top-level
+// `rust_pilot_primitives: List<RustPrimitive> = [...]` data declaration now
+// lowers with `value_body = ValueBody::List(_)`: both the type structure and
+// the 10-element pilot enumeration are walkable by downstream grounding
+// consumers. Map-shaped bootstrap data such as `kernel_algebra_profile`
+// remains future debt for the map-shaped T-Substrate sibling lane; today it
+// still lowers to `ValueBody::Unparsed`.
 //
 // Transitional shape: PB-Bootstrap-Process lane (Zero-Floor program;
 // tracked in `docs/design-pure-bootstrap-zero.md` §"New lanes") absorbs
@@ -173,6 +169,7 @@ pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: span_for_inst,
     });
     dag.declaration_mut(bool_id).inhabits = Some(inst_id);
@@ -299,6 +296,7 @@ mod tests {
 
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
 
@@ -317,6 +315,7 @@ mod tests {
 
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
 
@@ -360,6 +359,7 @@ mod tests {
 
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span,
         });
 

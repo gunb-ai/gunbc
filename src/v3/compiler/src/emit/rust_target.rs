@@ -6227,6 +6227,7 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<test>", 0, 0),
         });
 

@@ -91,6 +91,9 @@ fn structural_fields(decl: &Declaration) -> &[(String, FieldValue)] {
         Some(ValueBody::Scalar(_)) => {
             panic!("generated claim should lower as Structural (record shape), got Scalar")
         }
+        Some(ValueBody::List(_)) => {
+            panic!("generated claim should lower as Structural (record shape), got List")
+        }
         None => panic!("generated claim declaration should carry a structural value body"),
     }
 }
@@ -312,6 +315,16 @@ fn predicate_holds(
                 dag.port(bind.value).state(),
                 expected_state,
             )
+        }
+        "DeclarationHasRefinement" => {
+            let name = match payload {
+                [FieldValue::Literal(LiteralBits::String(name))] => name.clone(),
+                [FieldValue::Record(fields)] => string_field(fields, "declaration_name"),
+                _ => panic!("DeclarationHasRefinement payload should be String or record"),
+            };
+            let dag = compile_any(source, file_name);
+            dag.declaration_by_name(&name)
+                .is_some_and(|decl| decl.refinement.is_some())
         }
         "CostBounded" => {
             let [FieldValue::Literal(LiteralBits::String(bind_name)), comparator, FieldValue::Literal(LiteralBits::Int(bound))] =

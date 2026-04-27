@@ -8,7 +8,7 @@
 //
 module extdeps.llm.openai
 
-import extdeps.llm.llm { Role, StopReason, TokenUsage, llm_snake_wire_contract }
+import extdeps.llm.llm { StopReason, TokenUsage, llm_snake_wire_contract }
 import std.errors { OpenAiErrorShape }
 import std.serialization { VariantEncoding }
 import std.types { HttpMethod, AuthScheme }
@@ -76,6 +76,43 @@ type ToolCall {
   function: FunctionCall
 }
 
+// Roles on Chat Completions `messages[]` for this **narrow string-content**
+// carrier: system / developer / user / assistant per OpenAI Chat Completions
+// (https://platform.openai.com/docs/api-reference/chat/create). Tool rows and
+// multimodal `content` arrays are not modeled here — gap-carried below.
+// 🟢 TERMINAL provider-domain coproduct for the modeled narrow text-message
+// row. Full Chat Completions message variants remain gap-carried by
+// `structural_coverage_gap_openai_chat_message_full_api_surface`; request wire
+// role-string serialization remains gap-carried separately.
+type OpenAiChatMessageRole = System | Developer | User | Assistant
+
+// Chat Completions API message row: wire accepts plain-string `content` for
+// text-only payloads (OpenAI docs). Typed here so callers cannot pass opaque
+// Json; multimodal rows extend this product when needed (Q4.5 P1 / #808).
+type OpenAiChatMessage {
+  role: OpenAiChatMessageRole
+  content: String
+}
+
+// Typed inputs close the Json bypass; outputs still JSON-path-project until
+// `response { 200 => Typed... }` lands. Queryable receipt for lenses/audits.
+data structural_coverage_gap_openai_chat_completion_outputs: List<String> = [
+  "closure:rest_typed_response_body|llm.OpenAI.ChatCompletion|residue:output_fields_use_json_path_projection"
+]
+
+// Full Chat Completions message coproduct (tool_call_id, tool role, function,
+// multimodal content parts) is not this row — downstream closure trigger.
+data structural_coverage_gap_openai_chat_message_full_api_surface: List<String> = [
+  "closure:openai_chat_message_full_coproduct|OpenAiChatMessage|missing:tool_role_with_tool_call_id|missing:function_role|missing:multimodal_content_array"
+]
+
+// Chat Completions `messages[].role` must be wire strings (system/developer/
+// user/assistant). Emitter serde for unit enums may not match; same closure
+// as Anthropic request wire — verify before relying on typed bodies for 200s.
+data structural_coverage_gap_openai_chat_request_messages_wire: List<String> = [
+  "closure:rest_request_wire_serde_alignment|llm.OpenAI.ChatCompletion|OpenAiChatMessageRole|residue:unit_enum_role_must_serialize_as_openai_role_strings"
+]
+
 // -- Service: REST transport wiring ------------------------------
 
 service llm.OpenAI {
@@ -93,7 +130,7 @@ service llm.OpenAI {
     input {
       api_key: Secret
       model: String
-      messages: Json
+      messages: List<OpenAiChatMessage>
       temperature: Float?
       max_tokens: Int?
     }
