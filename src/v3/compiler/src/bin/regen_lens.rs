@@ -20,9 +20,7 @@ use std::process::{Command, ExitCode, Stdio};
 use v3_compiler::dag::{Dag, FieldValue, LiteralBits, ValueBody};
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::generated_files::GENERATED_FILES;
-use v3_compiler::{
-    compile_to_dag, patch_lower_helpers_generated_type_alias_refinement, CompileError,
-};
+use v3_compiler::{compile_to_dag, CompileError};
 
 const LENS_REGISTRY_ENTRY_TYPE: &str = "LensRegistryEntry";
 
@@ -225,11 +223,7 @@ fn regen_entry(root: &Path, entry: &Entry) -> Result<(), String> {
         entry.lens_file
     );
     let combined = format!("{header}{raw}");
-    let mut formatted = rustfmt_stdin(&combined)?;
-    if entry.generated_file.ends_with("lower_helpers_generated.rs") {
-        formatted = patch_lower_helpers_generated_type_alias_refinement(&formatted);
-        formatted = rustfmt_stdin(&formatted)?;
-    }
+    let formatted = rustfmt_stdin(&combined)?;
     std::fs::write(&out_path, &formatted)
         .map_err(|e| format!("write {}: {e}", out_path.display()))?;
     println!("wrote {}", out_path.display());
