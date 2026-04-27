@@ -3650,6 +3650,19 @@ mod tests {
     }
 
     #[test]
+    fn bootstrap_secret_is_nominal_opaque() {
+        let dag = Dag::new();
+        let secret = dag
+            .declaration_by_name("Secret")
+            .expect("bootstrap fixture must include std Secret");
+
+        assert!(
+            secret.nominal_opacity.is_some(),
+            "Secret must retain its bootstrap nominal-opacity stamp until std owns the fact"
+        );
+    }
+
+    #[test]
     fn malformed_target_clean_emission_binding_fails_closed() {
         let mut dag = Dag::new();
         let binding = dag

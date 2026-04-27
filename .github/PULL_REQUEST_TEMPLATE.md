@@ -21,13 +21,29 @@ section.
 ## Per-PR dissolution gate (required for new/expanded hand-Rust under `v3/`)
 
 <!--
-Per INVARIANTS.md §P5 "Dispatch-Discipline Mechanisms" (b): no new
-hand-Rust file in `src/v3/` lands without naming the file or scaffold
-it deletes (or explicitly defers, with a named row). One of:
+Per INVARIANTS.md §P5 "Dispatch-Discipline Mechanisms" (b): no new or
+expanded hand-Rust under `src/v3/` without a single, checkable receipt.
+Fill the single bullet under the gate using **exactly one** of the
+three dispositions below — not a mix, not a vague umbrella phrase.
 
-- "Deletes <path>"
-- "Shrinks census line <name> in sg0_census_test.rs from N to M"
-- "Defers to lane <ID> with named ROADMAP row <link>"
+(1) Deletes: name the file or scaffold path that this PR removes or
+    fully retires (repo-relative path is enough).
+
+(2) SG-0 census shrink: name the ratchet slice in
+    `src/v3/compiler/tests/integration/sg0_census_test.rs`
+    (`EXPECTED_HAND_AUTHORED_NON_TEST`, `EXPECTED_HAND_AUTHORED_TEST`, or
+    the fragment lists) and give **before → after** entry counts (e.g.
+    "`EXPECTED_HAND_AUTHORED_TEST`: 71 → 70 paths").
+
+(3) Explicit deferral: name the **lane or workstream ID** (e.g. T-PB-B,
+    SG-2c) **and** cite a **concrete ROADMAP row** — path in-tree plus
+    stable heading or table row, or a permalink (GitHub line link,
+    `#fragment` that resolves in `ROADMAP.md`). A reviewer must open the
+    cited row in one hop.
+
+**Insufficient (do not use as the sole gate answer):** "see ROADMAP",
+"TBD", "tracked elsewhere", "follow-up PR", lane name alone, or any
+uncited narrative deferral without the row/link above.
 
 If the PR introduces a string/path/name identity bridge (sentinel,
 fixture-name routing, `span.file ==` check, `include_str!` side-channel),
@@ -35,7 +51,7 @@ it MUST be authored against the §0 identity-carrier pass program (see
 PR #810 §0); not as a one-off. Cite the program brief.
 -->
 
-- Deletes / shrinks / defers: ___
+- **Exactly one disposition** (delete path **or** census shrink with N→M **or** lane + cited ROADMAP row/link): ___
 
 ## Test plan
 
