@@ -53,6 +53,12 @@ data lens_cost_symbolic_entry: LensRegistryEntry = {
   generated_file: "src/v3/compiler/src/lens_cost_symbolic_generated.rs"
 }
 
+data lens_effect_enumeration_entry: LensRegistryEntry = {
+  name: "effect_enumeration"
+  lens_file: "src/v3/lenses/effect_enumeration.dag"
+  generated_file: "src/v3/compiler/src/lens_effect_enumeration_generated.rs"
+}
+
 data lens_provenance_entry: LensRegistryEntry = {
   name: "provenance"
   lens_file: "src/v3/lenses/provenance.dag"
