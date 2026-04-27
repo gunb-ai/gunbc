@@ -2330,6 +2330,8 @@ fn bind_expected_decl_to_actual_context(
             else {
                 return false;
             };
+            let bound = payload.bound();
+            let element = payload.element();
             if bound != actual_payload.bound() {
                 return false;
             }
