@@ -934,7 +934,9 @@ pub enum SetupFailReason {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WaitFail {
-    WallTimeout { wall_time: Duration },
+    WallTimeout {
+        wall_time: Duration,
+    },
     Io(String),
     /// Child terminated by signal — `ExitStatus::code()` returned `None`.
     TerminatedBySignal,
