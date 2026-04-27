@@ -248,8 +248,7 @@ fn ensure_optional_match_disj(
     }
     let (element, span) = match dag.declaration(cardinality_decl_id).connective.clone() {
         TypeConnective::Cardinality(payload)
-            if payload.bound() == crate::dag::CardinalityBound::AtMostOne =>
-        {
+            if payload.bound() == crate::dag::CardinalityBound::AtMostOne => {
             (payload.element(), dag.declaration(cardinality_decl_id).span.clone())
         }
         _ => return None,
@@ -2337,7 +2336,7 @@ fn bind_expected_decl_to_actual_context(
             }
             bind_expected_decl_to_actual_context(
                 dag,
-                *element,
+                element,
                 &PortTypeContext {
                     decl: actual_payload.element(),
                     subst: actual.subst.clone(),
@@ -3920,7 +3919,8 @@ fn find_equivalent_anonymous_cardinality(
         else {
             return None;
         };
-        (element == existing_payload.element() && existing_payload.bound() == *bound).then_some(decl.id)
+        (element == existing_payload.element() && existing_payload.bound() == *bound)
+            .then_some(decl.id)
     })
 }
 
@@ -6408,7 +6408,11 @@ mod bool_logical_operator_arrow_tests {
             .expect("division must resolve");
 
         assert_eq!(first.output.declaration, second.output.declaration);
-        assert_eq!(after_first, dag.declarations().len(), "div resolution should dedup anonymous instantiation");
+        assert_eq!(
+            after_first,
+            dag.declarations().len(),
+            "div resolution should dedup anonymous instantiation",
+        );
 
         let result_shape_decl = dag.declaration(first.output.declaration);
         let TypeConnective::Instantiation { template, arguments } = &result_shape_decl.connective else {
