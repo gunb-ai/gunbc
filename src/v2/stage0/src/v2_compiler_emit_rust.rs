@@ -1199,6 +1199,7 @@ pub fn emit_module_full(
             for i in typed_module.items.clone().iter().cloned() {
                 if (authored_name(scope.type_env.clone(), i.clone()).as_str()
                     == "wire_contract".to_string().as_str())
+                    || (i.name.clone().as_str() == "wire_contract".to_string().as_str())
                 {
                     __result.push(i);
                 }

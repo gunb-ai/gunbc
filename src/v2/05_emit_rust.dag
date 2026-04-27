@@ -713,7 +713,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
   // Wire contract: find the module's wire_contract data item (if any)
   // and pass it to each item for per-enum resolution. No collapse to string.
-  let wire_contract_item = typed_module.items |> filter(i => authored_name(env: scope.type_env, node: i) == "wire_contract") |> first
+  let wire_contract_item = typed_module.items
+    |> filter(i => authored_name(env: scope.type_env, node: i) == "wire_contract" || i.name == "wire_contract")
+    |> first
   let items_str = typed_module.items
     |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item))
     |> join(separator: "\n\n")
