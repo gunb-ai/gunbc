@@ -6074,28 +6074,35 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     let pos = content
         .find(enum_decl)
         .unwrap_or_else(|| panic!("expected {enum_decl} in emitted openai module"));
-    // `rename_all` is emitted on the line immediately above this enum (not within a fixed
-    // byte window — other `ToolCall` / tagged enums may appear earlier in the same file).
-    let prelude_to_enum = &content[..pos];
+    // Other coproducts in this module (e.g. `OpenAiFinishReason`) share the same
+    // `wire_contract` and also carry `#[serde(rename_all = "snake_case")]`. Scanning the
+    // whole prelude with `rfind` would attach the wrong enum; only the attribute block
+    // immediately above `OpenAiChatMessageRole` is authoritative.
+    let prelude = &content[..pos];
     let serde_snake = "#[serde(rename_all = \"snake_case\")]";
-    let attr_pos = prelude_to_enum.rfind(serde_snake).unwrap_or_else(|| {
-        panic!(
-            "expected {serde_snake} on OpenAiChatMessageRole in emitted openai module; tail before enum:\n{}",
-            &prelude_to_enum[prelude_to_enum.len().saturating_sub(1200)..]
-        )
-    });
-    let after_attr = &content[attr_pos..];
-    let enum_kw = "pub enum ";
-    let rel = after_attr.find(enum_kw).unwrap_or_else(|| {
-        panic!(
-            "expected `pub enum` after last {serde_snake}; got suffix:\n{}",
-            after_attr.chars().take(800).collect::<String>()
-        )
-    });
+    let mut attrs_above: Vec<&str> = Vec::new();
+    for line in prelude.lines().rev() {
+        let t = line.trim();
+        if t.is_empty() {
+            if attrs_above.is_empty() {
+                continue;
+            }
+            break;
+        }
+        if t.starts_with("#[") {
+            attrs_above.push(t);
+            continue;
+        }
+        if t.starts_with("//") {
+            continue;
+        }
+        break;
+    }
     assert!(
-        after_attr[rel..].starts_with(enum_decl),
-        "expected first `pub enum` after last snake_case attr to be {enum_decl}; got:\n{}",
-        after_attr[rel..rel + 120.min(after_attr.len() - rel)].trim_end()
+        attrs_above.iter().any(|a| *a == serde_snake),
+        "expected {serde_snake} immediately above {enum_decl}; attrs (bottom-up): {:?}\ntail prelude:\n{}",
+        attrs_above,
+        &prelude[prelude.len().saturating_sub(1200)..]
     );
 
     let open_brace = content[pos..]

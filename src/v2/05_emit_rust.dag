@@ -264,6 +264,8 @@ fn resolve_wire_serde_tag(wire_item: Node, source_indices: Map<String, NewlineIn
 // `StringVariant { naming: … }` structure is carried on `body.inferred`, not as
 // `wire_contract_item.body` being a VariantEncoding record root. Deref through
 // `Resolved` so `resolve_wire_serde_tag` sees the real encoding shape.
+// When `inferred` is absent but the initializer is an explicit `StringVariant { … }`
+// record, fall through to `resolve_wire_serde_tag` on the initializer node.
 fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indices: Map<String, NewlineIndex>) -> String {
   match wire_contract_item {
     None => rust_serde_tag_attr()
@@ -273,7 +275,7 @@ fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indice
           None => rust_serde_tag_attr()
           Some { value: init } =>
             match init.inferred {
-              None => rust_serde_tag_attr()
+              None => resolve_wire_serde_tag(wire_item: init, source_indices: source_indices)
               Some { value: inf } =>
                 match inf {
                   Resolved { node } => resolve_wire_serde_tag(wire_item: node, source_indices: source_indices)
