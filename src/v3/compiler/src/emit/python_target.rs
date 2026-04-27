@@ -666,7 +666,6 @@ pub(crate) fn emit_python_with_mode(
     let mut sections = vec![
         "from __future__ import annotations".to_string(),
         "from dataclasses import dataclass".to_string(),
-        "import enum".to_string(),
         "import types".to_string(),
         "import typing".to_string(),
         format!(
@@ -690,6 +689,7 @@ pub(crate) fn emit_python_with_mode(
     //
     // M2: gate on emitted `__v3_idiv(...)` (or equivalent) so division-free programs skip this block.
     if super::dag_uses_arithmetic_div(dag) {
+        sections.push("import enum".to_string());
         sections.push(
             "class DivError(enum.IntEnum):\n    DivideByZero = 0\n    Overflow = 1".to_string(),
         );
