@@ -159,9 +159,10 @@ pub(crate) fn decl_uses_substrate_result_or_div_error(
     }
     match &decl.connective {
         TypeConnective::Instantiation {
-            template: _,
+            template,
             arguments,
-        } => arguments
+        } => substrate_result_type_decl_suppressed_for_emit(dag, dag.declaration(*template))
+            || arguments
             .iter()
             .any(|arg| decl_uses_substrate_result_or_div_error(dag, arg.value, visited)),
         TypeConnective::Conj { children } | TypeConnective::Disj { variants: children } => children
@@ -182,6 +183,19 @@ pub(crate) fn decl_uses_substrate_result_or_div_error(
         }
         _ => false,
     }
+}
+
+fn dag_needs_go_result_prelude(
+    dag: &Dag,
+    top_level_binds: &[&BindNode],
+    function_decls: &[&Declaration],
+) -> bool {
+    top_level_binds
+        .iter()
+        .any(|bind| port_uses_substrate_result_or_div_error(dag, bind.value))
+        || function_decls
+            .iter()
+            .any(|decl| decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new()))
 }
 
 pub(crate) fn substrate_div_error_type_decl_suppressed_for_emit(decl: &Declaration) -> bool {

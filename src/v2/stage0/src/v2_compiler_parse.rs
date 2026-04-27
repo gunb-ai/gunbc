@@ -2995,6 +2995,7 @@ pub fn parse_type_after_kw(
         let type_params = type_params_result.params.clone();
         let tokens = skip_newlines(type_params_result.tokens.clone());
         let ctx = type_params_result.ctx.clone();
+        let tokens = type_body_tokens_after_modifiers(tokens.clone());
         match (*eat(&tokens, Rc::new(ExpectedToken::ExpectLBrace))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_field_list(skip_newlines(__ec.clone()), ctx.clone());
