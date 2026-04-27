@@ -386,6 +386,19 @@ fn tok_keyword_text(tok: Token?) -> String {
 fn tok_is_ident(tok: Token?) -> Bool {
   match tok { Some { value: t } => is_ident_shape(shape: t.shape)  None => false }
 }
+fn tok_is_ident_text(tok: Token?, text: String) -> Bool {
+  match tok { Some { value: t } => is_ident_shape(shape: t.shape) && t.text == text  None => false }
+}
+fn drop_leading_type_modifier(tokens: List<Token>, modifier: String) -> List<Token> {
+  if tok_is_ident_text(tok: tokens |> first, text: modifier) {
+    skip_newlines(tokens: tokens |> skip(1))
+  } else {
+    tokens
+  }
+}
+fn type_body_tokens_after_modifiers(tokens: List<Token>) -> List<Token> {
+  drop_leading_type_modifier(tokens: tokens, modifier: "nominal_opaque")
+}
 fn tok_is_newline(tok: Token?) -> Bool {
   match tok { Some { value: t } => is_newline_shape(shape: t.shape)  None => false }
 }
@@ -1302,7 +1315,7 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
   let type_params = prefix.type_params
   let ctx = prefix.ctx
   let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let tokens = skip_newlines(tokens: prefix.tokens)
+  let tokens = type_body_tokens_after_modifiers(tokens: skip_newlines(tokens: prefix.tokens))
 
   // Record type: type Name { fields }
   match eat(tokens: tokens, expected: ExpectLBrace) {
