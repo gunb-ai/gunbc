@@ -196,10 +196,11 @@ fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
         let decl = dag.declaration(current);
         match &decl.connective {
             TypeConnective::Disj { .. } => return Some(current),
-            TypeConnective::Cardinality {
-                bound: crate::dag::CardinalityBound::AtMostOne,
-                ..
-            } => return existing_optional_match_disj_decl(dag, current),
+            TypeConnective::Cardinality(payload)
+                if payload.bound() == crate::dag::CardinalityBound::AtMostOne =>
+            {
+                return existing_optional_match_disj_decl(dag, current)
+            }
             TypeConnective::Instantiation { template, .. } => {
                 current = *template;
             }
@@ -224,10 +225,11 @@ fn walk_to_optional_cardinality_decl(dag: &Dag, start: DeclarationId) -> Option<
     let mut current = start;
     for _ in 0..WALK_DEPTH_LIMIT {
         match &dag.declaration(current).connective {
-            TypeConnective::Cardinality {
-                bound: crate::dag::CardinalityBound::AtMostOne,
-                ..
-            } => return Some(current),
+            TypeConnective::Cardinality(payload)
+                if payload.bound() == crate::dag::CardinalityBound::AtMostOne =>
+            {
+                return Some(current)
+            }
             TypeConnective::Instantiation { template, .. } => current = *template,
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
@@ -245,10 +247,11 @@ fn ensure_optional_match_disj(
         return Some(existing);
     }
     let (element, span) = match dag.declaration(cardinality_decl_id).connective.clone() {
-        TypeConnective::Cardinality {
-            element,
-            bound: crate::dag::CardinalityBound::AtMostOne,
-        } => (element, dag.declaration(cardinality_decl_id).span.clone()),
+        TypeConnective::Cardinality(payload)
+            if payload.bound() == crate::dag::CardinalityBound::AtMostOne =>
+        {
+            (payload.element(), dag.declaration(cardinality_decl_id).span.clone())
+        }
         _ => return None,
     };
 
@@ -1800,7 +1803,7 @@ fn declaration_is_callable(dag: &Dag, current: DeclarationId, depth: usize) -> b
         | TypeConnective::Atom(AtomPayload::Literal(_))
         | TypeConnective::Conj { .. }
         | TypeConnective::Disj { .. }
-        | TypeConnective::Cardinality { .. } => false,
+        | TypeConnective::Cardinality(_) => false,
     }
 }
 
@@ -1831,8 +1834,8 @@ fn is_retryable_generic_decl_walk(
         TypeConnective::Instantiation { arguments, .. } => arguments
             .iter()
             .any(|arg| is_retryable_generic_decl_walk(dag, arg.value, depth + 1, visiting)),
-        TypeConnective::Cardinality { element, .. } => {
-            is_retryable_generic_decl_walk(dag, *element, depth + 1, visiting)
+        TypeConnective::Cardinality(payload) => {
+            is_retryable_generic_decl_walk(dag, payload.element(), depth + 1, visiting)
         }
         TypeConnective::Conj { children } => children
             .iter()
@@ -1984,7 +1987,7 @@ fn resolve_arrow_decl_walk(
         | TypeConnective::Atom(AtomPayload::Literal(_))
         | TypeConnective::Conj { .. }
         | TypeConnective::Disj { .. }
-        | TypeConnective::Cardinality { .. } => None,
+        | TypeConnective::Cardinality(_) => None,
     }
 }
 
@@ -2291,7 +2294,7 @@ fn bind_expected_decl_to_actual_context(
             }
             true
         }
-        TypeConnective::Cardinality { element, bound } => {
+        TypeConnective::Cardinality(payload) => {
             let actual_decl = match &dag.declaration(actual.decl).connective {
                 TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
                     let Some(bound) = actual.subst.lookup(actual.decl) else {
@@ -2323,21 +2326,18 @@ fn bind_expected_decl_to_actual_context(
                 }
                 _ => actual.decl,
             };
-            let TypeConnective::Cardinality {
-                element: actual_element,
-                bound: actual_bound,
-            } = &dag.declaration(actual_decl).connective
+            let TypeConnective::Cardinality(actual_payload) = &dag.declaration(actual_decl).connective
             else {
                 return false;
             };
-            if bound != actual_bound {
+            if bound != actual_payload.bound() {
                 return false;
             }
             bind_expected_decl_to_actual_context(
                 dag,
                 *element,
                 &PortTypeContext {
-                    decl: *actual_element,
+                    decl: actual_payload.element(),
                     subst: actual.subst.clone(),
                 },
                 arguments,
@@ -3160,10 +3160,11 @@ fn walk_to_disj_decl_with_subst(
         let decl = dag.declaration(current);
         match &decl.connective {
             TypeConnective::Disj { .. } => return Some(current),
-            TypeConnective::Cardinality {
-                bound: crate::dag::CardinalityBound::AtMostOne,
-                ..
-            } => return existing_optional_match_disj_decl(dag, current),
+            TypeConnective::Cardinality(payload)
+                if payload.bound() == crate::dag::CardinalityBound::AtMostOne =>
+            {
+                return existing_optional_match_disj_decl(dag, current)
+            }
             TypeConnective::Instantiation {
                 template,
                 arguments,
@@ -3347,32 +3348,16 @@ pub(crate) fn concretize_decl_with_subst(
             });
             id
         }
-        TypeConnective::Cardinality { element, bound } => {
-            let specialized_element = concretize_decl_with_subst(dag, element, subst, depth + 1);
+            TypeConnective::Cardinality(payload) => {
+                let specialized_element =
+                    concretize_decl_with_subst(dag, payload.element(), subst, depth + 1);
+                let bound = payload.bound();
             if let Some(existing) =
                 find_equivalent_anonymous_cardinality(dag, specialized_element, &bound)
             {
                 return existing;
             }
-            let id = dag.alloc_declaration_id();
-            dag.push_declaration(Declaration {
-                id,
-                name: None,
-                connective: TypeConnective::Cardinality {
-                    element: specialized_element,
-                    bound,
-                },
-                type_params: Vec::new(),
-                phantom_params: Vec::new(),
-                meta_tag: None,
-                specialization_parent: None,
-                inhabits: None,
-                value_body: None,
-                refinement: None,
-                nominal_opacity: None,
-                span: decl.span,
-            });
-            id
+            dag.alloc_cardinality_decl(specialized_element, bound, decl.span)
         }
         _ => current,
     }
@@ -3428,8 +3413,8 @@ fn refinement_base_walk(
         TypeConnective::Instantiation { arguments, .. } => arguments
             .iter()
             .any(|arg| refinement_base_walk(dag, arg.value, subst, depth + 1)),
-        TypeConnective::Cardinality { element, .. } => {
-            refinement_base_walk(dag, *element, subst, depth + 1)
+        TypeConnective::Cardinality(payload) => {
+            refinement_base_walk(dag, payload.element(), subst, depth + 1)
         }
         _ => false,
     }
@@ -3929,14 +3914,11 @@ fn find_equivalent_anonymous_cardinality(
         if decl.name.is_some() {
             return None;
         }
-        let TypeConnective::Cardinality {
-            element: existing_element,
-            bound: existing_bound,
-        } = &decl.connective
+        let TypeConnective::Cardinality(existing_payload) = &decl.connective
         else {
             return None;
         };
-        (element == *existing_element && existing_bound == bound).then_some(decl.id)
+        (element == existing_payload.element() && existing_payload.bound() == *bound).then_some(decl.id)
     })
 }
 
@@ -4267,7 +4249,7 @@ fn resolve_operator_arrow(
             | TypeConnective::Atom(AtomPayload::Literal(_))
             | TypeConnective::Disj { .. }
             | TypeConnective::Arrow { .. }
-            | TypeConnective::Cardinality { .. } => {
+            | TypeConnective::Cardinality(_) => {
                 if let Some(inh) = decl.inhabits {
                     current = inh;
                 } else {
@@ -4570,7 +4552,7 @@ fn resolve_arrow_walk(
         TypeConnective::Atom(AtomPayload::Literal(_)) => None,
         TypeConnective::Conj { .. } => None,
         TypeConnective::Disj { .. } => None,
-        TypeConnective::Cardinality { .. } => None,
+        TypeConnective::Cardinality(_) => None,
     }
 }
 
@@ -4634,7 +4616,7 @@ fn walk_to_type_shape(
         TypeConnective::Conj { .. } => None,
         TypeConnective::Disj { .. } => None,
         TypeConnective::Arrow { .. } => None,
-        TypeConnective::Cardinality { .. } => Some(TypeShape::new(current)),
+        TypeConnective::Cardinality(_) => Some(TypeShape::new(current)),
     }
 }
 
@@ -4702,7 +4684,7 @@ fn signature_type_shape(
         // keep the anonymous Cardinality declaration id as the port's type
         // identity. Mirrors `walk_to_type_shape`'s Cardinality case —
         // optional returns are legal throughout the substrate.
-        TypeConnective::Cardinality { .. } => Some(TypeShape::new(current)),
+        TypeConnective::Cardinality(_) => Some(TypeShape::new(current)),
     }
 }
 
@@ -4748,12 +4730,18 @@ fn resolve_decl_with_subst(
             find_equivalent_decl_instantiation(dag, *template, &specialized_arguments)
                 .or(Some(current))
         }
-        TypeConnective::Cardinality { element, bound } => {
-            let specialized_element = resolve_decl_with_subst(dag, *element, subst, depth + 1)?;
-            if specialized_element == *element {
+        TypeConnective::Cardinality(payload) => {
+            let specialized_element = resolve_decl_with_subst(
+                dag,
+                payload.element(),
+                subst,
+                depth + 1,
+            )?;
+            if specialized_element == payload.element() {
                 return Some(current);
             }
-            find_equivalent_decl_cardinality(dag, specialized_element, bound).or(Some(current))
+            find_equivalent_decl_cardinality(dag, specialized_element, &payload.bound())
+                .or(Some(current))
         }
         _ => Some(current),
     }
@@ -4788,14 +4776,12 @@ fn find_equivalent_decl_cardinality(
     bound: &crate::dag::CardinalityBound,
 ) -> Option<DeclarationId> {
     dag.declarations().iter().find_map(|decl| {
-        let TypeConnective::Cardinality {
-            element: existing_element,
-            bound: existing_bound,
-        } = &decl.connective
+        let TypeConnective::Cardinality(existing_payload) = &decl.connective
         else {
             return None;
         };
-        (element == *existing_element && existing_bound == bound).then_some(decl.id)
+        (element == existing_payload.element() && existing_payload.bound() == *bound)
+            .then_some(decl.id)
     })
 }
 
