@@ -2915,8 +2915,7 @@ impl SourceFilteringBinding {
         let fields = structural_fields_for_decl(dag, declaration)?;
         if fields.iter().any(|(label, _)| label == "internal") {
             let internal = require_field_decl_ref(fields, "internal", declaration)?;
-            let mut excluded_prefixes =
-                parse_source_filtering_excluded_prefixes(dag, internal)?;
+            let mut excluded_prefixes = parse_source_filtering_excluded_prefixes(dag, internal)?;
             let additional = fields
                 .iter()
                 .find(|(label, _)| label == "additional_excluded_prefixes")
@@ -2928,7 +2927,8 @@ impl SourceFilteringBinding {
             let FieldValue::List(extra_entries) = additional else {
                 return Err(EmitError::MalformedTargetSyntax {
                     declaration,
-                    detail: "ShapeATargetSourceFiltering.additional_excluded_prefixes must be a list",
+                    detail:
+                        "ShapeATargetSourceFiltering.additional_excluded_prefixes must be a list",
                 });
             };
             for entry in extra_entries {
