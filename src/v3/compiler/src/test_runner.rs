@@ -644,7 +644,14 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(
 ///   exec failed post-probe → `LogicalExecFailed`. Closes the P2(c) gap manager raised on
 ///   draft review: post-`exec` failure can no longer be mistaken for a logical exit (a
 ///   claim expecting 126 cannot Match an unexec'd command).
-/// - anything else → fail-closed to `NamespaceSetupFailed`.
+/// - anything else with `b"se"` prefix → user command ran (the bootstrap committed to
+///   `exec` before writing `e`) and wrote stray bytes via the inherited fd 3 →
+///   `LogicalCommandExeced`. **Must NOT trigger direct fallback** — that would be implicit
+///   re-execution of an already-run logical command, violating P2(d).
+///   (api-review codex sha 7297b04a hardening.)
+/// - anything not starting with `b"s"` or whose `s`-prefix didn't reach `e` →
+///   `NamespaceSetupFailed`. Bootstrap never committed to `exec`, so the direct fallback is
+///   the *first* logical run, not a second.
 ///
 /// **No setup-string authority** (P2(a)/(b)/(e)): wrapper stderr is `/dev/null`. The only
 /// structural channel between bootstrap and parent is the typed sentinel pipe; classification
@@ -676,10 +683,12 @@ struct UnshareReadyPipe {
     write_fd: Option<std::os::fd::RawFd>,
 }
 
-/// One byte beyond the longest valid sentinel (`b"sef"` = 3 bytes). The extra slot lets
-/// stray-byte patterns like `b"sefx"` be observed and rejected via the exact-byte
-/// classifier rather than silently absorbed by a prefix match. (api-review claude-opus-4-7
-/// non-blocking observation, sha 793a57ef.)
+/// One byte beyond the longest canonical-protocol sentinel (`b"sef"` = 3 bytes). The extra
+/// slot lets stray bytes after `se`/`sef` (from the user writing to the inherited fd 3
+/// post-`exec`) be observed by the classifier — those patterns map to
+/// `LogicalCommandExeced` rather than triggering a fallback re-run (P2(d)).
+/// (api-review claude-opus-4-7 sha 793a57ef sizing rationale; codex sha 7297b04a P2(d)
+/// hardening for the post-`se` stray-byte case.)
 #[cfg(target_os = "linux")]
 const UNSHARE_READY_PIPE_MAX: usize = 4;
 
@@ -822,14 +831,28 @@ enum UnshareBootstrapStage {
 
 #[cfg(target_os = "linux")]
 fn unshare_bootstrap_stage_from_sentinel(sentinel: &[u8]) -> UnshareBootstrapStage {
-    // Exact-byte match — no substring scan. Anything outside the documented protocol is
-    // fail-closed to setup-failed so we fall back to direct rather than trust an ambiguous
-    // wrapper exit (defensive against fd-3 leak in the unlikely event FD_CLOEXEC didn't take).
+    // **P2(d) hardening (api-review codex sha 7297b04a, REQUEST_CHANGES).**
+    // The bootstrap writes `e` only *after* the executable probe passes and is committed to
+    // `exec(2)`. So once `s` then `e` have been observed, the logical command DID start
+    // running — any sentinel bytes beyond `se` come from the user process (fd 3 is
+    // intentionally inherited; CLOEXEC at this layer is impossible in pure POSIX sh per
+    // manager STOP / #856 escalation). Re-routing those `se*` patterns to
+    // `NamespaceSetupFailed` would trigger a *second* logical run via the direct fallback —
+    // exactly the implicit-re-execution this PR is meant to close.
+    //
+    // Therefore anything whose prefix is `b"se"` is classified as the user having executed:
+    // - `b"se"`     → `LogicalCommandExeced` (canonical)
+    // - `b"sef"`    → `LogicalExecFailed`    (canonical post-`exec` failure via EXIT trap)
+    // - `b"se*"`    → `LogicalCommandExeced` (user ran + post-`exec` stray write)
+    //
+    // Patterns that did NOT reach `e` (`b""`, `b"s"`, anything not starting with `s` or `se`)
+    // are safe to fail-closed because the bootstrap never committed to `exec` — re-running
+    // via direct fallback is the *first* logical run, not a second.
     match sentinel {
         b"" => UnshareBootstrapStage::NamespaceSetupFailed,
         b"s" => UnshareBootstrapStage::LogicalCommandNotExecutable,
-        b"se" => UnshareBootstrapStage::LogicalCommandExeced,
         b"sef" => UnshareBootstrapStage::LogicalExecFailed,
+        bs if bs.starts_with(b"se") => UnshareBootstrapStage::LogicalCommandExeced,
         _ => UnshareBootstrapStage::NamespaceSetupFailed,
     }
 }
@@ -3562,10 +3585,10 @@ mod unshare_bootstrap_sentinel_tests {
     }
 
     #[test]
-    fn unexpected_pattern_fails_closed_to_setup_failed() {
-        // Anything not matching the documented protocol must fall back to direct, not be
-        // claimed as evidence of a logical exec. (Exact-byte classification: no prefix scan,
-        // so a leaked fd-3 byte appended after `se` is rejected, not silently absorbed.)
+    fn pre_se_unexpected_patterns_fail_closed_to_setup_failed() {
+        // Patterns that did NOT reach `e` (so the bootstrap never committed to `exec`) must
+        // fail-closed to `NamespaceSetupFailed`. Direct fallback in that case is the *first*
+        // logical run, not a second — safe.
         assert_eq!(
             unshare_bootstrap_stage_from_sentinel(b"x"),
             UnshareBootstrapStage::NamespaceSetupFailed
@@ -3574,13 +3597,32 @@ mod unshare_bootstrap_sentinel_tests {
             unshare_bootstrap_stage_from_sentinel(b"es"),
             UnshareBootstrapStage::NamespaceSetupFailed
         );
+    }
+
+    /// **P2(d) regression (api-review codex sha 7297b04a).** Once the sentinel reaches `se`,
+    /// the bootstrap has committed to `exec` and the user command DID run. Stray bytes after
+    /// `se` (from the user writing to the inherited fd 3 post-`exec`) must classify as
+    /// `LogicalCommandExeced`, NOT `NamespaceSetupFailed` — otherwise the runner would
+    /// implicitly re-execute the user command via the direct fallback. Both `b"sex"` (stray
+    /// after canonical `se`) and `b"sefx"` (stray after canonical `sef`-style trap-write)
+    /// are user-side post-`exec` writes; both must surface as user ran.
+    #[test]
+    fn post_se_stray_bytes_classify_as_logical_command_execed_no_rerun() {
         assert_eq!(
             unshare_bootstrap_stage_from_sentinel(b"sex"),
-            UnshareBootstrapStage::NamespaceSetupFailed
+            UnshareBootstrapStage::LogicalCommandExeced
         );
         assert_eq!(
             unshare_bootstrap_stage_from_sentinel(b"sefx"),
-            UnshareBootstrapStage::NamespaceSetupFailed
+            UnshareBootstrapStage::LogicalCommandExeced
+        );
+        assert_eq!(
+            unshare_bootstrap_stage_from_sentinel(b"se\x00"),
+            UnshareBootstrapStage::LogicalCommandExeced
+        );
+        assert_eq!(
+            unshare_bootstrap_stage_from_sentinel(b"se\xff\xff"),
+            UnshareBootstrapStage::LogicalCommandExeced
         );
     }
 }
