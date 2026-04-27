@@ -8,14 +8,16 @@
 //
 module extdeps.llm.openai
 
-import extdeps.llm.llm { StopReason, TokenUsage, llm_snake_wire_contract }
+import extdeps.llm.llm { StopReason, TokenUsage }
 import std.errors { OpenAiErrorShape }
-import std.serialization { VariantEncoding }
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, SnakeCase }
 import std.types { HttpMethod, AuthScheme }
 
 // Wire contract: OpenAI API returns enum values as snake_case strings.
-// Alias shared LLM authority (`extdeps.llm.llm`) — same encoding as Anthropic.
-data wire_contract: VariantEncoding = llm_snake_wire_contract
+// Structural `StringVariant { naming: SnakeCase }` (same wire as `llm_snake_wire_contract` in
+// `extdeps.llm.llm`) so the initializer stays an `ExprRecordLit` through infer and the emitter
+// can resolve serde without relying on cross-module `Resolved` to another `data` item.
+data wire_contract: VariantEncoding = StringVariant { naming: SnakeCase }
 
 // -- Models --------------------------------------------------------
 
