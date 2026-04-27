@@ -1832,16 +1832,24 @@ fn map_body_data_item_parses_and_lowers_to_value_body_map() {
     assert_eq!(entries.len(), expected.len());
     for ((key, value), (expected_key, expected_value_name)) in entries.iter().zip(expected.iter()) {
         assert_eq!(key, expected_key);
-        let FieldValue::Reference(value_decl) = value else {
-            panic!("expected map value for {key} to lower as FieldValue::Reference, got {value:?}");
-        };
         let expected_variant = variants
             .iter()
             .find(|variant| variant.label == *expected_value_name)
             .unwrap_or_else(|| panic!("missing AlgebraProfile variant {expected_value_name}"));
+        let FieldValue::Variant {
+            constructor,
+            payload,
+        } = value
+        else {
+            panic!("expected map value for {key} to lower as FieldValue::Variant, got {value:?}");
+        };
         assert_eq!(
-            *value_decl, expected_variant.ty,
+            *constructor, expected_variant.ty,
             "map value for {key} should reference AlgebraProfile::{expected_value_name}"
+        );
+        assert!(
+            payload.is_empty(),
+            "map value for {key} should use the zero-payload AlgebraProfile::{expected_value_name} constructor"
         );
     }
 }
