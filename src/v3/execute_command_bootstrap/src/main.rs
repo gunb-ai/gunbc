@@ -123,12 +123,10 @@ mod linux {
             libc::execvp(argv[0], argv.as_ptr());
         }
 
+        // `execvp` failure sets `errno`; snapshot before any syscall (e.g. `write`) can overwrite it.
+        let exec_errno = unsafe { *libc::__errno_location() };
         let _ = write_all(SENTINEL_FD, b"f");
-        let code = if std::io::Error::last_os_error().raw_os_error() == Some(libc::ENOENT) {
-            127
-        } else {
-            126
-        };
+        let code = if exec_errno == libc::ENOENT { 127 } else { 126 };
         exit(code);
     }
 }
