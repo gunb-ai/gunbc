@@ -459,7 +459,10 @@ mod lane2_stage_2f_dimension_test {
             "DimensionOk should carry composed only on the pass arm"
         );
         let fail_payload = dag.declaration(variants[1].ty);
-        let TypeConnective::Conj { children: fail_children } = &fail_payload.connective else {
+        let TypeConnective::Conj {
+            children: fail_children,
+        } = &fail_payload.connective
+        else {
             panic!("DimensionFail payload should be a record");
         };
         let fail_fields: Vec<_> = fail_children.iter().map(|c| c.label.as_str()).collect();
