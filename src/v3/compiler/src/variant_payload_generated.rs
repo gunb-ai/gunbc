@@ -56,10 +56,7 @@ pub fn variant_payload_shape(p0: &Dag, p1: &DeclarationId) -> VariantPayloadShap
                 output: _,
                 body: _,
             } => VariantPayloadShapeLookup::NotPayloadProduct,
-            TypeConnective::Cardinality {
-                element: _,
-                bound: _,
-            } => VariantPayloadShapeLookup::NotPayloadProduct,
+            TypeConnective::Cardinality(_) => VariantPayloadShapeLookup::NotPayloadProduct,
             TypeConnective::Instantiation {
                 template: _,
                 arguments: _,
