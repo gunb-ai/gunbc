@@ -244,7 +244,7 @@ pub fn prepend_gap(p0: &[CoverageGap], p1: Vec<CoverageGap>) -> Vec<CoverageGap>
     match p0 {
         [] => p1,
         [__list_head, __list_tail @ ..] => {
-            let mut __list = (p1).clone();
+            let mut __list = prepend_gap(__list_tail, (p1).clone());
             __list.insert(0, (__list_head).clone());
             __list
         }

@@ -11,6 +11,11 @@
 // output declaration is one of its input declarations. Non-callable transforms
 // are pure at this scope; callable signatures that cannot be inspected report
 // `CoverageGap` instead of silently fabricating an effect.
+//
+// The forward walk relies on `d.nodes` exposing producers before consumers, the
+// same ordering used by the existing cost lenses. If that substrate ordering is
+// violated, lookups degrade to `UnknownEffect`/`CoverageGap` instead of inventing
+// a concrete effect.
 
 module lenses.effect_enumeration
 
@@ -231,7 +236,7 @@ fn compute_coverage_gaps_from_facts(
 fn prepend_gap(gap: List<CoverageGap>, acc: List<CoverageGap>) -> List<CoverageGap> =
   match gap {
     Empty => acc
-    Cons(payload) => cons(payload.head, acc)
+    Cons(payload) => cons(payload.head, prepend_gap(payload.tail, acc))
   }
 
 fn coverage_gap_for(d: Dag, facts: List<EffectFact>, behavior: Behavior) -> List<CoverageGap> =
