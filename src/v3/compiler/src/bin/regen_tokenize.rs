@@ -174,7 +174,8 @@ fn emit_char_scanner_class_scaffolding(scan_order: &[String]) -> String {
     }
     out.push_str("}\n\n");
 
-    out.push_str("#[inline]\npub(crate) fn byte_matches(byte: u8, class: ScannerCharClass) -> bool {\n");
+    out.push_str("#[inline]\n");
+    out.push_str("pub(crate) fn byte_matches(byte: u8, class: ScannerCharClass) -> bool {\n");
     out.push_str("    match class {\n");
     for class in scan_order {
         let expr = ascii_scan_class_predicate(class);
