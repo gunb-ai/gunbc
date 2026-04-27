@@ -4015,6 +4015,7 @@ fn first_nominal_opaque_on_conj_walk(
     start: DeclarationId,
     subst: &SubstStack,
 ) -> Option<DeclarationId> {
+    let mut subst = subst.clone();
     let mut current = start;
     for _ in 0..WALK_DEPTH_LIMIT {
         let decl = dag.declaration(current);
@@ -4023,7 +4024,11 @@ fn first_nominal_opaque_on_conj_walk(
         }
         match &decl.connective {
             TypeConnective::Conj { .. } => return None,
-            TypeConnective::Instantiation { template, .. } => {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                subst.push(arguments.clone());
                 current = *template;
             }
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
@@ -4977,6 +4982,172 @@ mod bool_logical_operator_arrow_tests {
             matches!(dag.port(output).state(), PortState::Unresolved),
             "opacity violation must leave the projected output unresolved"
         );
+    }
+
+    #[test]
+    fn nominal_opaque_field_project_preserves_instantiation_substitution() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("<nominal-opacity-subst-test>", 0, 1);
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+
+        let payload = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: payload,
+            name: Some("SecretPayloadForSubst".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let secret = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: secret,
+            name: Some("SecretForSubst".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(payload)),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: Some(NominalOpacity {
+                permitted_accessors: Vec::new(),
+            }),
+            span: span.clone(),
+        });
+        let box_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: box_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let box_alias = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: box_alias,
+            name: Some("BoxAlias".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(box_param)),
+            type_params: vec![box_param],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let boxed_secret = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: boxed_secret,
+            name: Some("BoxedSecret".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: box_alias,
+                arguments: vec![TemplateArgument {
+                    parameter: box_param,
+                    value: secret,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let input = dag.alloc_port_with_shape(TypeShape::new(boxed_secret));
+        let output = dag.push_transform(
+            TransformTarget::FieldProject {
+                field_label: "value".to_string(),
+                field_child: None,
+            },
+            vec![input],
+            span,
+        );
+
+        infer(&mut dag);
+
+        assert!(matches!(
+            dag.diagnostics().get(output),
+            Some(Diagnostic::NominalOpacityViolation {
+                declaration,
+                accessor: None,
+                ..
+            }) if *declaration == secret
+        ));
+    }
+
+    #[test]
+    fn field_project_without_nominal_opacity_remains_structural() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("<nominal-opacity-absent-test>", 0, 1);
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+
+        let record = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: record,
+            name: Some("PlainPayload".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let input = dag.alloc_port_with_shape(TypeShape::new(record));
+        let output = dag.push_transform(
+            TransformTarget::FieldProject {
+                field_label: "value".to_string(),
+                field_child: None,
+            },
+            vec![input],
+            span,
+        );
+
+        infer(&mut dag);
+
+        assert!(
+            dag.diagnostics().get(output).is_none(),
+            "plain structural projection should not emit opacity diagnostics"
+        );
+        assert!(matches!(
+            dag.port(output).state(),
+            PortState::Resolved(shape) if shape.declaration == int
+        ));
     }
 
     #[test]
