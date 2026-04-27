@@ -540,26 +540,33 @@ data suite: TestSuite = {
             .unwrap_or_else(|| panic!("missing claim result for `{claim_name}`"))
             .result
     };
-    assert!(matches!(
-        result_for("pb_hand_rust_at_shim_floor"),
-        ClaimResult::Fail(_)
-    ));
-    assert!(matches!(
-        result_for("lens_producer_files_remaining"),
-        ClaimResult::Fail(_)
-    ));
+    let assert_fail_contains = |claim_name: &str, expected: &str| {
+        assert!(
+            matches!(result_for(claim_name), ClaimResult::Fail(reason) if reason.contains(expected)),
+            "expected `{claim_name}` to fail with `{expected}`, got {:?}",
+            result_for(claim_name)
+        );
+    };
+    assert_fail_contains(
+        "pb_hand_rust_at_shim_floor",
+        "expected_hand_authored_non_test",
+    );
+    assert_fail_contains(
+        "lens_producer_files_remaining",
+        "lens-producer subset observed",
+    );
     assert_eq!(
         result_for("pb_self_compile_fixed_point"),
         &ClaimResult::Pass
     );
-    assert!(matches!(
-        result_for("pb_compiler_std_ratchet_zero"),
-        ClaimResult::Fail(_)
-    ));
-    assert!(matches!(
-        result_for("pb_test_file_generated_from_dag"),
-        ClaimResult::Fail(_)
-    ));
+    assert_fail_contains(
+        "pb_compiler_std_ratchet_zero",
+        "compiler_std_positive_set_ratchet",
+    );
+    assert_fail_contains(
+        "pb_test_file_generated_from_dag",
+        "not in the generated-file authority",
+    );
 }
 
 #[test]
