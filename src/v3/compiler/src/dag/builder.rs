@@ -236,6 +236,7 @@ impl Dag {
         span: SourceSpan,
     ) -> DeclarationId {
         if let Some(existing) = super::cardinality_idempotent_target(self, element, bound) {
+            self.debug_assert_alloc_cardinality_result_not_nested_at_most_one(existing);
             return existing;
         }
         let id = self.alloc_declaration_id();
@@ -255,7 +256,26 @@ impl Dag {
             nominal_opacity: None,
             span,
         });
+        self.debug_assert_alloc_cardinality_result_not_nested_at_most_one(id);
         id
+    }
+
+    /// Debug-only: for a returned `AtMostOne` cardinal, the inner `element` must not
+    /// still pass `cardinality_idempotent_target` (else we would have `Option` of
+    /// `Option` without the allocator having collapsed it). The idempotent rule forbids
+    /// that shape; this rechecks it in debug builds.
+    fn debug_assert_alloc_cardinality_result_not_nested_at_most_one(&self, id: DeclarationId) {
+        if let TypeConnective::Cardinality(p) = &self.declaration(id).connective {
+            if p.bound() == CardinalityBound::AtMostOne {
+                let inner = p.element();
+                debug_assert!(
+                    super::cardinality_idempotent_target(self, inner, CardinalityBound::AtMostOne)
+                        .is_none(),
+                    "alloc_cardinality_decl: result {id:?} = AtMostOne(…, {inner:?}) but inner still \
+                     admits idempotent AtMostOne collapse (nested option stack)",
+                );
+            }
+        }
     }
 
     fn literal_shape(&self, bits: &LiteralBits) -> TypeShape {
