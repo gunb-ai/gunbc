@@ -281,6 +281,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `tests/dag/r1c_e_emit_gates.template.dag` source and runs the suite
     // through `TestRunner`. Scaffold until R1 close dissolves the wrappers.
     "src/v3/compiler/tests/integration/r1c_e_emit_gates_dag_test.rs",
+    "src/v3/compiler/tests/integration/r1c_e_emit_gates_omni_dag_test.rs",
     // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
     "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",

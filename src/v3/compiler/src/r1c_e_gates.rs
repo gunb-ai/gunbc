@@ -199,6 +199,7 @@ fn build_program_harness() -> PathBuf {
         body.push_str(&format!(
             "#[allow(warnings, clippy::all)] pub mod {name} {{ {emitted} }}\n",
             name = fixture.name,
+            emitted = emitted_pub_main,
         ));
     }
     body.push_str(
@@ -458,7 +459,6 @@ pub fn check_omni_demo_fixtures_green() -> Result<(), String> {
     for fixture in fixtures {
         let rust = omni_rust_stdout(fixture.source)
             .map_err(|e| format!("omni rust `{}`: {e}", fixture.name))?;
-        // (map_err only — omni_rust_stdout already returns Result)
         let go = omni_go_stdout(fixture.name, fixture.source)?;
         if go != rust {
             return Err(format!(
