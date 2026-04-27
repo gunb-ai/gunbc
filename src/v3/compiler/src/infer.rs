@@ -132,6 +132,51 @@ pub fn infer(dag: &mut Dag) {
                                             continue;
                                         }
                                     }
+                                } else if type_shapes_equivalent(dag, &existing, &default_int) {
+                                    // Call (and friends): the literal port is still the default
+                                    // `Int` shape while a downstream `decide(Transform)` pass proposes
+                                    // a callee's range-backed type — narrow when the value fits, or
+                                    // fail closed with the same OOB path as the transform decision.
+                                    match int_literal_fits_expected_type(
+                                        dag,
+                                        literal,
+                                        ty.declaration,
+                                    ) {
+                                        Ok(Some(true)) => {
+                                            dag.set_port_type(port, ty);
+                                            changed = true;
+                                            continue;
+                                        }
+                                        Ok(Some(false)) => {
+                                            if let IntegerRangeLookup::Found(range) =
+                                                integer_range_for_decl(dag, ty.declaration)
+                                            {
+                                                dag.mark_unresolved(
+                                                    port,
+                                                    magnitude_out_of_range(
+                                                        literal,
+                                                        ty,
+                                                        range,
+                                                        node_span_for_port(dag, port)
+                                                            .unwrap_or_else(synthetic_span),
+                                                    ),
+                                                );
+                                                changed = true;
+                                                continue;
+                                            }
+                                        }
+                                        Ok(None) => {}
+                                        Err(diag) => {
+                                            if !matches!(
+                                                dag.port(port).state(),
+                                                PortState::Unresolved
+                                            ) {
+                                                dag.mark_unresolved(port, diag);
+                                                changed = true;
+                                            }
+                                            continue;
+                                        }
+                                    }
                                 }
                             }
                             let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
