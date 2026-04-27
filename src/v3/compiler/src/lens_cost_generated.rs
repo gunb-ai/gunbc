@@ -1,6 +1,20 @@
 // AUTO-GENERATED from `src/v3/lenses/complexity.dag` via
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum DivError {
+    DivideByZero,
+    Overflow,
+}
+fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
+    if r == 0 {
+        return ::core::result::Result::Err(DivError::DivideByZero);
+    }
+    if l == i64::MIN && r == -1 {
+        return ::core::result::Result::Err(DivError::Overflow);
+    }
+    ::core::result::Result::Ok(l / r)
+}
 #[derive(Clone, Debug)]
 pub struct CostEntry {
     pub port: PortId,

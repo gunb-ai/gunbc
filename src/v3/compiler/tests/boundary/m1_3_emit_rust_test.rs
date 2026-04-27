@@ -152,6 +152,7 @@ fn roundtrip_stdout(source: &str) -> String {
         // See common::RustcHarness::compile: strip RUSTC_BOOTSTRAP so the ratchet
         // CI step's libtest unlock does not leak into child rustc invocations.
         .env_remove("RUSTC_BOOTSTRAP")
+        .arg("--edition=2021")
         .arg(&src_path)
         .arg("-o")
         .arg(&bin_path)
