@@ -2494,6 +2494,7 @@ fn diagnostic_kind(diagnostic: &Diagnostic) -> &'static str {
         Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
         Diagnostic::MagnitudeOutOfRange { .. } => "MagnitudeOutOfRange",
         Diagnostic::MalformedIntegerRangeFact { .. } => "MalformedIntegerRangeFact",
+        Diagnostic::NominalOpacityViolation { .. } => "NominalOpacityViolation",
     }
 }
 
