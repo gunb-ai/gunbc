@@ -597,7 +597,7 @@ struct RealizationIndexes {
     /// `data rust_execution_model: TargetExecutionModel`.
     execution: TargetExecutionModelBinding,
     /// Source exclusion policy loaded from
-    /// `data rust_source_filtering: SourceFiltering`.
+    /// `data rust_source_filtering: ShapeATargetSourceFiltering`.
     source_filtering: SourceFilteringBinding,
     /// The Rust clean-emission contract loaded from
     /// `data rust_clean_emission: CleanEmissionContract` (E-5 /
