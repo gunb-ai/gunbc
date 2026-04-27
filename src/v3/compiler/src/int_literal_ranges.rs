@@ -355,8 +355,17 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
         NotList,
     }
 
+    // Authority file for span when the declaration is absent (extdeps fixture).
+    const RUST_PILOT_PRIMITIVES_AUTHORITY: &str = "dsl/extdeps/languages/rust/primitives.dag";
+
     let (default_span, pilot_elements) = {
         let Some(pilot) = dag.rust_pilot_primitives() else {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "bootstrap: `rust_pilot_primitives` is missing from the extdeps fixture; \
+                 integer range authority is unavailable (expected extdeps `primitives.dag` load)"
+                    .to_string(),
+                SourceSpan::new(RUST_PILOT_PRIMITIVES_AUTHORITY, 0, 0),
+            ));
             return;
         };
         let sp = pilot.span.clone();
