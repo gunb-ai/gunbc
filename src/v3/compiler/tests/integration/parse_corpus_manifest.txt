@@ -17,9 +17,9 @@ src/v3/compiler/tests/four_fixture_pressure/id.v3	2	2452	ec8b40edc3d3c017
 src/v3/compiler/tests/four_fixture_pressure/is_empty.v3	3	6755	00117f14eb43dd20
 src/v3/compiler/tests/four_fixture_pressure/wrap.v3	4	5189	ac633b042c944480
 src/v3/compiler/tokenize.dag	27	56809	6a375f3c832b2af8
-src/v3/spec/go.dag	121	1111118	ac41344eb706147e
+src/v3/spec/go.dag	122	1126317	82d4ec71acfdd80e
 src/v3/spec/python.dag	88	579466	4d7f9bb14b85da04
-src/v3/spec/rust.dag	139	1184051	03a905f0de1e7dfc
+src/v3/spec/rust.dag	140	1199314	5bd6bf1bf8a928b5
 src/v3/spec/v3_l1.dag	8	2238	1f55d782265c3bfe
 src/v3/std/algebra.dag	39	291807	4d45a732a553142a
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
@@ -35,7 +35,7 @@ src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
 src/v3/std/lookup.dag	5	4734	f97d4e536b675b1b
 src/v3/std/parse_surface.dag	18	98962	c7e4e29300b66dbd
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
-src/v3/std/substrate.dag	53	114503	acfa5e48ad6d553e
+src/v3/std/substrate.dag	54	116421	438b971e40f25a6b
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	18	36478	d010232f0373dc99
 src/v3/std/tokenize.dag	8	38819	2e158a74f33c18cc
