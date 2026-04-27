@@ -308,6 +308,22 @@ Findings from two reflective analyses (integration loop health, `main@b014746` a
 
 OpenAI-pro meta-review: **SHIP_WITH_DEBT** — substrate staging and receipt-level tests are merge-ready; marginal review value is low without the next structural slice. Remaining work is **E-P / E-M behavioral wiring**, scaffold dissolution (`promote_to_strict` rename/delete), and a **unified numeric-refinement authority** across Peano literal bridges (see existing Peano ratchet row in P4 below). Canonical checklist (owners, triggers, what already landed): [docs/debt/pr-726-ei-carrier-debt.md](docs/debt/pr-726-ei-carrier-debt.md).
 
+### PR #825 (B4.4) — pre-merge review audit vs `main`
+
+Automated + human review threads on [PR #825](https://github.com/gunb-ai/gunbc/pull/825) are reconciled against the merged tree in [docs/debt/pr-825-pre-merge-review-audit.md](docs/debt/pr-825-pre-merge-review-audit.md). Use that doc for codex snapshot / substrate–const parity / optional dissolution-trigger follow-up.
+
+### PR #901 (merged) — remaining structural-coverage closure triggers
+
+[PR #901](https://github.com/gunb-ai/gunbc/pull/901) landed typed LLM/GitHub inputs and **named** downstream work as searchable **`closure:<identifier>`** strings in `dsl/extdeps/llm/*.dag`. The three triggers the program still tracks as **explicit closure work** (search these tokens in-repo and in issue bodies):
+
+1. **`rest_typed_response_body`** — Typed service inputs; **outputs** still use JSON-path projection until REST `response { 200 => Typed… }` (or equivalent) is implemented. Receipt rows: `structural_coverage_gap_openai_chat_completion_outputs`, `structural_coverage_gap_anthropic_messages_outputs` in `dsl/extdeps/llm/openai.dag` / `dsl/extdeps/llm/anthropic.dag`.
+
+2. **`openai_chat_message_full_coproduct`** — Narrow `OpenAiChatMessage` text row is intentional; full Chat Completions variants (tool role + `tool_call_id`, function role, multimodal `content`) remain gap-carried. Receipt: `structural_coverage_gap_openai_chat_message_full_api_surface` in `dsl/extdeps/llm/openai.dag` (first row carries `closure:openai_chat_message_full_coproduct|…`).
+
+3. **`anthropic_tool_result_full_content_surface`** — `UserToolResultBlock.content` is a deliberate narrow string slice; nested/image tool-result shapes remain gap-carried. Receipt: `structural_coverage_gap_anthropic_tool_result_full_content_surface` in `dsl/extdeps/llm/anthropic.dag`.
+
+**Related (not one of the three above).** Request/response **wire serde** residues remain under **`rest_request_wire_serde_alignment`** (`structural_coverage_gap_*_request_messages_wire` rows); track separately from the three triggers listed here.
+
 ### Debt classification — framing
 
 Items in this ledger fall into three categories. The count alone is a poor health signal; the **flow** (items arriving vs. items dissolved) is the real signal.
