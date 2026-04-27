@@ -1,14 +1,19 @@
-//! T-Ground-Engine Phase 1: Rust target primitive type-structure validation.
+//! T-Ground-Engine: Rust target primitive validation against the bootstrap Dag.
 //!
-//! This crate consumes `v3_compiler::dag::Dag::rust_pilot_primitives()` and
-//! walks the loaded `Declaration` graph for `RustPrimitive`. It deliberately
-//! does not enumerate `rust_pilot_primitives.value_body`: Phase 1 keeps the
-//! pilot crate's `RUST_PILOT_PRIMITIVES` mirror for routing until the substrate
-//! grows structured top-level list bodies.
+//! **Phase 1** walks the loaded `Declaration` graph for `RustPrimitive`
+//! type structure (sum partition, field shapes, nested tag enums).
+//!
+//! **Phase 2 (sharpened-(b), enumeration slice)** walks
+//! `rust_pilot_primitives.value_body` as [`ValueBody::List`] and checks that
+//! the first pilot row matches the authority ordering in
+//! `dsl/extdeps/languages/rust/primitives.dag` (asserted here via the pilot
+//! crate's `RUST_PILOT_PRIMITIVES` mirror until mirror retirement completes).
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use v3_compiler::dag::{Dag, Declaration, DeclarationId, Field, TypeConnective};
+use v3_compiler::dag::{
+    Dag, Declaration, DeclarationId, Field, FieldValue, LiteralBits, TypeConnective, ValueBody,
+};
 use v3_grounding_pilot::{
     IntegerAlgebra as PilotIntegerAlgebra, IntegerOverflow as PilotIntegerOverflow,
     NonIntegerAlgebra as PilotNonIntegerAlgebra, RustPrimitive as PilotRustPrimitive,
