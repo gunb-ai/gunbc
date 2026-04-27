@@ -6059,9 +6059,9 @@ fn shell_emit_cron_upsert_script() {
 }
 
 // ── RE-4b: OpenAI Chat Completions narrow row — request wire ratchet (#901) ─
-// `OpenAiChatMessageRole` uses the module `llm_snake_wire_contract` (SnakeCase
-// string variants). serde serializes System→"system", Developer→"developer",
-// etc., matching Chat Completions role strings for the modeled text-only row.
+// `wire_contract` is inlined as `StringVariant { naming: SnakeCase }` (same wire as
+// `llm_snake_wire_contract` in extdeps.llm.llm) so the emitter attaches serde
+// `rename_all = "snake_case"` to `OpenAiChatMessageRole` (System→"system", …).
 #[test]
 fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     let ws = crate::helpers::workspace_root();
@@ -6075,10 +6075,28 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     let pos = content
         .find(enum_decl)
         .unwrap_or_else(|| panic!("expected {enum_decl} in emitted openai module"));
-    let header = &content[pos.saturating_sub(280)..pos];
+    // `rename_all` is emitted on the line immediately above this enum (not within a fixed
+    // byte window — other `ToolCall` / tagged enums may appear earlier in the same file).
+    let prelude_to_enum = &content[..pos];
+    let serde_snake = "#[serde(rename_all = \"snake_case\")]";
+    let attr_pos = prelude_to_enum.rfind(serde_snake).unwrap_or_else(|| {
+        panic!(
+            "expected {serde_snake} on OpenAiChatMessageRole in emitted openai module; tail before enum:\n{}",
+            &prelude_to_enum[prelude_to_enum.len().saturating_sub(1200)..]
+        )
+    });
+    let after_attr = &content[attr_pos..];
+    let enum_kw = "pub enum ";
+    let rel = after_attr.find(enum_kw).unwrap_or_else(|| {
+        panic!(
+            "expected `pub enum` after last {serde_snake}; got suffix:\n{}",
+            after_attr.chars().take(800).collect::<String>()
+        )
+    });
     assert!(
-        header.contains("#[serde(rename_all = \"snake_case\")]"),
-        "expected module wire_contract → snake_case on OpenAiChatMessageRole; context:\n{header}"
+        after_attr[rel..].starts_with(enum_decl),
+        "expected first `pub enum` after last snake_case attr to be {enum_decl}; got:\n{}",
+        after_attr[rel..rel + 120.min(after_attr.len() - rel)].trim_end()
     );
 
     let open_brace = content[pos..]
