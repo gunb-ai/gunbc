@@ -482,7 +482,7 @@ pub(crate) fn cardinality_idempotent_target(
 /// `TypeConnective::Cardinality` for contexts that do not allocate a declaration
 /// (e.g. type-alias connective). Reuses the same
 /// [`cardinality_idempotent_target`] / nested-`AtMostOne` rule as
-/// [`crate::dag::Dag::alloc_cardinality_decl`]: if `element` is already
+/// [`Dag::alloc_cardinality_decl`]: if `element` is already
 /// `Cardinality(AtMostOne, …)` with matching `bound`, the existing connective is
 /// returned unchanged instead of minting `Cardinality(AtMostOne, that_decl)`.
 pub(crate) fn type_connective_cardinality(

@@ -2361,11 +2361,10 @@ fn type_to_connective(
                 arguments,
             }
         }
-        SurfaceType::Optional { inner, .. } => type_connective_cardinality(
-            dag,
-            type_to_declaration_id(inner, symbols, local, dag),
-            CardinalityBound::AtMostOne,
-        ),
+        SurfaceType::Optional { inner, .. } => {
+            let element = type_to_declaration_id(inner, symbols, local, dag);
+            type_connective_cardinality(dag, element, CardinalityBound::AtMostOne)
+        }
         SurfaceType::Arrow { inputs, output, .. } => TypeConnective::Arrow {
             inputs: inputs
                 .iter()
