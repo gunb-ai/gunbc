@@ -639,7 +639,7 @@ impl AtomPayload {
 /// debt with its own dissolution trigger (derivation, not the M2 parser
 /// milestone). User-range
 /// `Unparsed` stays gated (R14).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum ArrowBody {
     /// User-defined function. NodeId is the root of a sub-DAG of L1 behavior
     /// nodes in `Dag.nodes`. Inference walks the sub-DAG and checks the body

@@ -510,6 +510,7 @@ fn bootstrap_fixed_point() {
 fn gist_full_pipeline() {
     let gist_files = [
         "dsl/std/types.dag",
+        "dsl/std/error_primitives.dag",
         "dsl/std/errors.dag",
         "dsl/std/resources.dag",
         "dsl/extdeps/cloud/cloud.dag",

@@ -46,9 +46,10 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    algebra_field_for_operator_shared, parse_pattern_strategy, primitive_type_id_for_port_shared,
-    walk_to_disj, EmitMode, PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding,
-    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    algebra_field_for_operator_shared, dag_uses_arithmetic_div, parse_pattern_strategy,
+    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
+    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
@@ -2669,6 +2670,11 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         .iter()
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
+        // `type Result<ok, err> = ...` in `error_primitives.dag` is
+        // type-checking authority; Rust
+        // materializes it as `::core::result::Result<…>`. Generic `Result` is not
+        // emitted as a Rust `enum` (and would collide with the prelude if it were).
+        .filter(|decl| !super::substrate_result_type_decl_suppressed_for_emit(dag, decl))
         .filter(|decl| {
             matches!(
                 decl.connective,
@@ -2747,10 +2753,43 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         .iter()
         .map(|decl| ctx.render_function_declaration(decl))
         .collect::<Result<Vec<_>, _>>()?;
+    let needs_int_div_prelude = dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls);
+    if needs_int_div_prelude
+        && type_decls
+            .iter()
+            .any(|decl| decl.name.as_deref() == Some("DivError"))
+    {
+        return Err(EmitError::UnsupportedBehavior(
+            "Rust checked-division prelude would collide with user-defined `DivError`".to_string(),
+        ));
+    }
+
+    // `DivError` and other `dsl/std` types are excluded from `type_decls` (see
+    // `rust_source_filtering`); the division helper must still compile, so the
+    // v3 error enum + `__v3_int_div` are emitted as a small prelude. Names
+    // align with `std.error_primitives.DivError` for `Result<…, DivError>` / `rust_int_div`.
+    //
+    // Dissolution trigger (M1 scaffold): delete when `dsl/std/error_primitives` emits through
+    // the normal filtered-type path (no separate string prelude).
+    const RUST_V3_INT_OP_PRELUDE: &str = r#"#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum DivError { DivideByZero, Overflow }
+pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
+    if r == 0 {
+        return ::core::result::Result::Err(DivError::DivideByZero);
+    }
+    if l == i64::MIN && r == -1 {
+        return ::core::result::Result::Err(DivError::Overflow);
+    }
+    ::core::result::Result::Ok(l / r)
+}
+"#;
 
     let type_defs = join_rendered(&rendered_types, " ");
     let function_defs = join_rendered(&rendered_functions, " ");
-    let mut sections = Vec::new();
+    let mut sections: Vec<String> = Vec::new();
+    if needs_int_div_prelude {
+        sections.push(RUST_V3_INT_OP_PRELUDE.to_string());
+    }
     if !type_defs.is_empty() {
         sections.push(type_defs);
     }
@@ -2774,7 +2813,19 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         }
 
         let body_joined = join_rendered(&rendered_binds, " ");
-        let final_bind_name = top_level_binds.last().expect("guarded above").name.clone();
+        let final_bind = top_level_binds.last().expect("guarded above");
+        let final_bind_name = final_bind.name.clone();
+        let final_display_expr = if ctx.port_is_substrate_result(final_bind.value)? {
+            // `std.error_primitives.Result` lowers to Rust's core Result, which
+            // does not implement Display. Keep the substrate Main template
+            // unchanged and pass it a displayable String.
+            //
+            // Dissolution trigger (M1 scaffold): delete this Debug wrapper when
+            // Result has a target-owned display realization consumed by Main emission.
+            format!("format!(\"{{:?}}\", {final_bind_name})")
+        } else {
+            final_bind_name
+        };
 
         let main_template =
             indexes
@@ -2787,7 +2838,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
             main_template,
             &[
                 ("body", &body_joined),
-                ("final", &final_bind_name),
+                ("final", &final_display_expr),
                 ("quote", &indexes.syntax.literals.string_delimiter),
             ],
         );
@@ -4868,6 +4919,40 @@ impl<'a> Ctx<'a> {
             .value_type()
             .ok_or(EmitError::UntypedPort(port))?;
         self.rust_borrowed_type_name_for_decl(ty.declaration)
+    }
+
+    fn port_is_substrate_result(&self, port: PortId) -> Result<bool, EmitError> {
+        let ty = self
+            .dag
+            .port(port)
+            .value_type()
+            .ok_or(EmitError::UntypedPort(port))?;
+        let mut visited = HashSet::new();
+        Ok(self.decl_is_substrate_result_rec(ty.declaration, &mut visited))
+    }
+
+    fn decl_is_substrate_result_rec(
+        &self,
+        declaration: DeclarationId,
+        visited: &mut HashSet<DeclarationId>,
+    ) -> bool {
+        if !visited.insert(declaration) {
+            return false;
+        }
+        let decl = self.dag.declaration(declaration);
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => {
+                super::substrate_result_type_decl_suppressed_for_emit(
+                    self.dag,
+                    self.dag.declaration(*template),
+                ) || self.decl_is_substrate_result_rec(*template, visited)
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                self.decl_is_substrate_result_rec(*next, visited)
+            }
+            _ => super::substrate_result_type_decl_suppressed_for_emit(self.dag, decl),
+        }
     }
 
     /// Peel `ResolvedBy{Structure,Name}` atoms, and **zero-arity

@@ -152,6 +152,7 @@ fn roundtrip_stdout(source: &str) -> String {
         // See common::RustcHarness::compile: strip RUSTC_BOOTSTRAP so the ratchet
         // CI step's libtest unlock does not leak into child rustc invocations.
         .env_remove("RUSTC_BOOTSTRAP")
+        .arg("--edition=2021")
         .arg(&src_path)
         .arg("-o")
         .arg(&bin_path)
@@ -368,6 +369,67 @@ fn emit_rust_single_int_binding() {
     assert!(out.contains("let x: i64 = 42;"), "got: {out}");
     assert!(out.contains("fn main()"), "got: {out}");
     assert!(out.contains("println!(\"{}\", x)"), "got: {out}");
+}
+
+#[test]
+fn emit_rust_result_top_level_binding_prints_debug_string() {
+    let out = emit(
+        "import std.error_primitives { DivError, Result }\n\
+let x: Result<Int, DivError> = 6 / 2",
+    );
+    assert!(
+        out.contains("let x: ::core::result::Result<i64, DivError> = (__v3_int_div(6, 2));"),
+        "top-level division should lower to the typed Result carrier; got: {out}"
+    );
+    assert!(
+        out.contains("println!(\"{}\", format!(\"{:?}\", x))"),
+        "top-level Result should be converted to a displayable debug string before printing; got: {out}"
+    );
+}
+
+#[test]
+fn emit_rust_result_alias_top_level_binding_prints_debug_string() {
+    let out = emit(
+        "import std.error_primitives { DivError, Result }\n\
+type R = Result<Int, DivError>\n\
+let x: R = 6 / 2",
+    );
+    assert!(
+        out.contains("println!(\"{}\", format!(\"{:?}\", x))"),
+        "top-level Result aliases should use the structural Result fact, not rendered type text; got: {out}"
+    );
+}
+
+#[test]
+fn emit_rust_omits_div_prelude_without_division() {
+    let out = emit(
+        "type DivError = Bad | Worse\n\
+let x: Int = 42",
+    );
+    assert!(
+        !out.contains("__v3_int_div"),
+        "division helper should only emit when integer division is used; got: {out}"
+    );
+    assert!(
+        out.matches("pub enum DivError").count() == 1,
+        "user DivError should not collide with an unused division prelude; got: {out}"
+    );
+}
+
+#[test]
+fn emit_rust_fails_closed_on_div_prelude_diverror_collision() {
+    let dag = compile_to_dag(
+        "type DivError = Bad | Worse\n\
+let x = 6 / 2",
+        "test.v3",
+    )
+    .expect("compiles");
+    let err = emit_rust(&dag).expect_err("Rust emit must reject DivError prelude collision");
+    assert!(
+        matches!(err, v3_compiler::emit_rust::EmitError::UnsupportedBehavior(ref message)
+            if message.contains("DivError")),
+        "expected explicit DivError collision error, got {err:?}"
+    );
 }
 
 /// T-Emit / PR #650 receipt: first-class `fn(A) -> B` in **user function

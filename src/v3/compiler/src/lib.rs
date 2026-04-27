@@ -1162,7 +1162,6 @@ mod regen_parse_tables_emit;
 )]
 #[path = "tokenize_generated.rs"]
 mod tokenize;
-mod tokenize_char_class;
 
 pub use regen_parse_emit::{render_parse_generated_rs, RenderParseGeneratedError};
 pub use regen_parse_tables_emit::{
@@ -1374,59 +1373,6 @@ pub fn compile_parse_surface_std_authority_dag(
     compile_onto_parse_surface_free_bootstrap(source, file)
 }
 
-/// `emit_rust_module` pattern-matches `SurfaceItem` using the embedded bootstrap
-/// mirror, which can trail `parse_surface.dag` by one field on `TypeAlias` until
-/// `regen_bootstrap` is refreshed. Patch emitted `lower_helpers` Rust so the
-/// `TypeAlias` arm includes `refinement` when absent (DB-11 / `regen_lens` / SG-6).
-///
-/// **Dissolution:** delete this helper and the call sites in `regen_lens` and
-/// SG-6 `emit_registry_module` when `regen_lens` + rustfmt output already contains
-/// `refinement: __i_refinement` on `TypeAlias` (i.e. `emit` matches `parse_surface`
-/// and `sg6_lower_helpers_generated_module_matches_checked_in_snapshot` is green
-/// with the `patch_` call removed from those paths).
-///
-/// **Fail-closed:** if the mirror still omits `refinement` on `TypeAlias`, the
-/// pre-patch substring must be present; otherwise this panics. A silent
-/// `replace` no-op (e.g. rustfmt rewrote line breaks) would otherwise match the
-/// idempotency check while shipping a broken `lower_helpers` arm.
-pub fn patch_lower_helpers_generated_type_alias_refinement(src: &str) -> String {
-    if src.contains("refinement: __i_refinement") {
-        return src.to_string();
-    }
-    // Exact rustfmt line breaks for `regen_lens` + `lower_helpers` (see SG-6 snapshot).
-    const LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT: &str = concat!(
-        "        SurfaceItem::TypeAlias {",
-        "\n            name: __i_name,",
-        "\n            type_params: __i_type_params,",
-        "\n            target: __i_target,",
-        "\n            span: __i_span,",
-    );
-    const LOWER_HELPERS_TYPE_ALIAS_WITH_REFINEMENT: &str = concat!(
-        "        SurfaceItem::TypeAlias {",
-        "\n            name: __i_name,",
-        "\n            type_params: __i_type_params,",
-        "\n            target: __i_target,",
-        "\n            refinement: __i_refinement,",
-        "\n            span: __i_span,",
-    );
-    if !src.contains(LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT) {
-        panic!(
-            "patch_lower_helpers_generated_type_alias_refinement: pre-DB-11 `TypeAlias` \
-             emit pattern not found; rustfmt/emit shape may have changed. Update this bridge, \
-             or run `regen_bootstrap` / regen the embedded mirror so `refinement` is native."
-        );
-    }
-    let out = src.replace(
-        LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT,
-        LOWER_HELPERS_TYPE_ALIAS_WITH_REFINEMENT,
-    );
-    assert_ne!(
-        out, src,
-        "patch should have inserted `refinement: __i_refinement` on `TypeAlias`"
-    );
-    out
-}
-
 /// PB-1-a generated snapshot helper: load the committed std-fixture
 /// bootstrap snapshot without re-running tokenize/parse/lower.
 pub fn generated_std_bootstrap_dag() -> Dag {
@@ -1629,16 +1575,36 @@ fn first_differing_line(lhs: &[u8], rhs: &[u8]) -> String {
         rhs.len()
     )
 }
-
 #[cfg(test)]
-mod lower_helpers_type_alias_refinement_patch_tests {
-    use super::patch_lower_helpers_generated_type_alias_refinement;
+mod tokenize_ascii_parity_tests {
+    use super::tokenize::{byte_matches, ScannerCharClass};
 
     #[test]
-    fn is_noop_when_type_alias_arm_already_binds_refinement_placeholder() {
-        let s =
-            "match __i_item { SurfaceItem::TypeAlias { refinement: __i_refinement, .. } => {} }";
-        let out = patch_lower_helpers_generated_type_alias_refinement(s);
-        assert_eq!(out, s);
+    fn ascii_byte_class_predicates_match_std_unicode_ascii_boundary() {
+        for byte in 0u8..=127 {
+            assert_eq!(
+                byte_matches(byte, ScannerCharClass::Whitespace),
+                byte.is_ascii_whitespace(),
+                "tokenizer whitespace predicate diverged at byte {byte:#04x}"
+            );
+
+            assert_eq!(
+                byte_matches(byte, ScannerCharClass::Digit),
+                byte.is_ascii_digit(),
+                "tokenizer digit predicate diverged at byte {byte:#04x}"
+            );
+
+            assert_eq!(
+                byte_matches(byte, ScannerCharClass::IdentStart),
+                (byte.is_ascii_alphabetic() || byte == b'_'),
+                "tokenizer ident-start predicate diverged at byte {byte:#04x}"
+            );
+
+            assert_eq!(
+                byte_matches(byte, ScannerCharClass::IdentContinue),
+                (byte.is_ascii_alphanumeric() || byte == b'_'),
+                "tokenizer ident-continue predicate diverged at byte {byte:#04x}"
+            );
+        }
     }
 }

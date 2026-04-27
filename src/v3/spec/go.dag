@@ -771,7 +771,7 @@ data go_int_div: OperatorRealization = {
   language: go_language
   target: Int
   op: OrderedRing.div
-  carrier: "({lhs} / {rhs})"
+  carrier: "v3intdiv({lhs}, {rhs})"
   cost: 1
 }
 
@@ -962,6 +962,19 @@ data go_list_instantiation: TypeInstantiationRealization = {
   language: go_language
   target: List
   carrier: "[]{element}"
+  cost: 1
+}
+
+// v3 `type Result<ok, err> = ...` lives in `std.error_primitives`; Go uses this struct carrier.
+// `go_source_filtering` omits `dsl/std/`. M1: int-div prelude `v3intdiv` returns the same concrete
+// `struct{ Ok *int64; Err *DivError }` shape — structural interchange with this template is only
+// guaranteed for that specialization until a richer Go lowering exists.
+// Dissolution (tracked work, not prose-only): land parameterized Go `Result` lowering so this
+// carrier + `emit.rs` `v3intdiv` int64 prelude are no longer the authority for non-Int `T`.
+data go_result_instantiation: TypeInstantiationRealization = {
+  language: go_language
+  target: Result
+  carrier: "struct{ Ok *{key}; Err *{value} }"
   cost: 1
 }
 

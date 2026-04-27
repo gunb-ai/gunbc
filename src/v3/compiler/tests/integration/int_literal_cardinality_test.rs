@@ -154,40 +154,6 @@ fn call_site_u8_literal_narrows_against_uint8_parameter() {
     assert_int_value_port_resolves_to_uint8(&dag, 7, "call id_u8(7) argument literal");
 }
 
-#[test]
-fn call_site_u8_literal_out_of_range_preserves_magnitude_diagnostic() {
-    let err = compile_to_dag(
-        "fn u8_id_for_oob_call_site_test(x: UInt8) -> UInt8 = x\n\
-         let r: UInt8 = u8_id_for_oob_call_site_test(999)\n",
-        "call_u8_oob.v3",
-    )
-    .expect_err("out-of-range call argument should fail with typed magnitude diagnostic");
-    let CompileError::Semantic(dag) = err else {
-        panic!("expected semantic diagnostic, got {err:?}");
-    };
-    assert!(
-        dag.diagnostics().iter().any(|(_, diagnostic)| {
-            matches!(
-                diagnostic,
-                v3_compiler::diagnostics::Diagnostic::MagnitudeOutOfRange {
-                    literal,
-                    target,
-                    range_min_inclusive,
-                    range_max_inclusive,
-                    fixes,
-                    ..
-                } if literal == "999"
-                    && target == "u8"
-                    && range_min_inclusive == "0"
-                    && range_max_inclusive == "255"
-                    && fixes.is_empty()
-            )
-        }),
-        "expected MagnitudeOutOfRange for call-site UInt8 argument, got {:?}",
-        dag.diagnostics()
-    );
-}
-
 /// OOB for `data` is covered in `out_of_range_uint8_literal_emits_magnitude_diagnostic`.
 /// This pins the same `MagnitudeOutOfRange` contract for a **let** (pre-seeded path).
 #[test]

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use super::{
-    algebra_field_for_operator_shared, optional_match_variant_roles, parse_pattern_strategy,
-    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
-    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    algebra_field_for_operator_shared, dag_uses_arithmetic_div, optional_match_variant_roles,
+    parse_pattern_strategy, primitive_type_id_for_port_shared, walk_to_disj, EmitMode,
+    PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
     VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
@@ -666,6 +666,7 @@ pub(crate) fn emit_python_with_mode(
     let mut sections = vec![
         "from __future__ import annotations".to_string(),
         "from dataclasses import dataclass".to_string(),
+        "import enum".to_string(),
         "import types".to_string(),
         "import typing".to_string(),
         format!(
@@ -681,15 +682,15 @@ pub(crate) fn emit_python_with_mode(
     for decl in type_decls {
         sections.push(ctx.render_type_declaration(decl)?);
     }
-    // `std.error_primitives` is filtered out of `type_decls`; v3 `DivError` + checked `/` are
-    // prelude-only (names align with `python.dag` / `python_int_div` carrier for `__v3_idiv`).
-    //
-    // Dissolution trigger (M1 scaffold): delete when `dsl/std/error_primitives` emits through
-    // the normal type-decl path (no separate prelude strings).
-    //
-    // M2: gate on emitted `__v3_idiv(...)` (or equivalent) so division-free programs skip this block.
-    if super::dag_uses_arithmetic_div(dag) {
-        sections.push("import enum".to_string());
+    if dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls) {
+        // `std.error_primitives` is filtered out of `type_decls`; v3 `DivError` + checked `/` are
+        // prelude-only (names align with `python.dag` / `python_int_div` carrier for `__v3_idiv`).
+        //
+        // Dissolution trigger (M1 scaffold): delete when `dsl/std/error_primitives` emits through
+        // the normal type-decl path (no separate prelude strings).
+        //
+        // M2: gate on emitted `__v3_idiv(...)` (or equivalent) so division-free programs skip
+        // this block.
         sections.push(
             "class DivError(enum.IntEnum):\n    DivideByZero = 0\n    Overflow = 1".to_string(),
         );

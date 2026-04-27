@@ -102,7 +102,8 @@ fn emit_python_int_operators_use_correct_expression_templates() {
         "mul carrier must emit `*`; got:\n{out}"
     );
 
-    let src = "fn f(a: Int, b: Int) -> Int = a / b\n";
+    let src = "import std.error_primitives { DivError, Result }\n\
+fn f(a: Int, b: Int) -> Result<Int, DivError> = a / b\n";
     let out = emit_python_module_from_source(src, "int_div_py.v3");
     assert!(
         out.contains("__v3_idiv("),
@@ -979,36 +980,4 @@ let result: Int = count(6)
     );
     let stdout = String::from_utf8_lossy(&run.stdout).trim().to_string();
     assert_eq!(stdout, "6", "count(6) must print 6, got: {stdout}");
-}
-
-#[test]
-fn emit_python_division_scaffold_is_omitted_without_division() {
-    let out = emit_python_module_from_source(
-        "fn f(a: Int, b: Int) -> Int = a + b\n",
-        "python_division_scaffold_omitted.v3",
-    );
-    assert!(
-        !out.contains("__v3_idiv") && !out.contains("class DivError"),
-        "Python should omit division scaffolding for non-division programs, got:\n{out}"
-    );
-    assert!(
-        !out.contains("import enum"),
-        "Python should omit Enum import when division scaffold is absent, got:\n{out}"
-    );
-}
-
-#[test]
-fn emit_python_division_scaffold_is_added_with_division() {
-    let out = emit_python_module_from_source(
-        "fn f(a: Int, b: Int) -> Int = a / b\n",
-        "python_division_scaffold_present.v3",
-    );
-    assert!(
-        out.contains("__v3_idiv") && out.contains("class DivError"),
-        "Python should include division scaffolding for arithmetic division, got:\n{out}"
-    );
-    assert!(
-        out.contains("import enum"),
-        "Python should include Enum import when division scaffolding is emitted, got:\n{out}"
-    );
 }

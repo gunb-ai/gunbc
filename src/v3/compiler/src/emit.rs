@@ -53,12 +53,12 @@ impl<T> VariantPayloadBinding<T> {
 use self::python_target::EmitPythonError;
 use self::rust_target::{EmitError, RealizationCategory, SubstrateMarkerRole};
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, CardinalityBound, Declaration,
-    DeclarationId, Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode,
-    TransformTarget, TypeConnective, ValueBody,
+    ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, CardinalityBound,
+    Declaration, DeclarationId, Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument,
+    TransformNode, TransformTarget, TypeConnective, ValueBody,
 };
 use crate::infer::strip_refinement_to_base;
-use crate::operators::{ArithmeticOp, OperatorKind};
+use crate::operators::OperatorKind;
 use crate::variant_payload::{
     variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup,
 };
@@ -116,9 +116,6 @@ pub(crate) fn substrate_result_type_decl_suppressed_for_emit(
     let TypeConnective::Disj { variants } = &decl.connective else {
         return false;
     };
-    if variants.len() != 2 {
-        return false;
-    }
     let Some(ok_field) = variants.iter().find(|v| v.label == "Ok") else {
         return false;
     };
@@ -139,18 +136,6 @@ fn substrate_result_variant_payload_is_value_of(
         return false;
     };
     children.len() == 1 && children[0].label == "value" && children[0].ty == type_param
-}
-
-pub(crate) fn dag_uses_arithmetic_div(dag: &Dag) -> bool {
-    dag.nodes().iter().any(|behavior| {
-        matches!(
-            behavior,
-            Behavior::Transform(TransformNode {
-                target: TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
-                ..
-            }),
-        )
-    })
 }
 
 /// Structural port-liveness walk. Returns true if `target` appears as any port
@@ -1223,15 +1208,13 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     if mode == EmitMode::Program {
         sections.push("import \"fmt\"".to_string());
     }
-    // `DivError` / `Result` are under `dsl/std/`, which `go_source_filtering` omits. Emit
-    // minimal v3 hooks so `v3intdiv` and `struct{ Ok *T; Err *E }` compile.
-    //
-    // Dissolution trigger (M1 scaffold): delete this prelude when `dsl/std/error_primitives`
-    // (and friends) emit through the same type-decl path as user code — i.e. std is no
-    // longer source-filtered for these carriers.
-    //
-    // M2: gate on emitted `v3intdiv(...)` (or equivalent) so division-free programs skip this block.
-    if dag_uses_arithmetic_div(dag) {
+    if dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls) {
+        // `DivError` / `Result` are under `dsl/std/`, which `go_source_filtering` omits. Emit
+        // minimal v3 hooks so `v3intdiv` and `struct{ Ok *T; Err *E }` compile.
+        //
+        // Dissolution trigger (M1 scaffold): delete this prelude when `dsl/std/error_primitives`
+        // (and friends) emit through the same type-decl path as user code — i.e. std is no
+        // longer source-filtered for these carriers.
         sections.push(
             "type DivError int\nconst (\n  DivideByZero DivError = iota\n  Overflow\n)\n\nfunc v3intdiv(l, r int64) struct{ Ok *int64; Err *DivError } {\n  if r == 0 { e := DivideByZero; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  if l == -9223372036854775808 && r == -1 { e := Overflow; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  q := l / r; return struct{ Ok *int64; Err *DivError }{Ok: &q} }\n".to_string(),
         );
@@ -1281,6 +1264,63 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     }
 
     Ok(sections.join("\n\n"))
+}
+
+pub(crate) fn dag_uses_arithmetic_div(
+    dag: &Dag,
+    top_level_binds: &[&BindNode],
+    function_decls: &[&Declaration],
+) -> bool {
+    top_level_binds
+        .iter()
+        .any(|bind| port_depends_on_arithmetic_div(dag, bind.value))
+        || function_decls.iter().any(|decl| match &decl.connective {
+            TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(body),
+                ..
+            } => port_depends_on_arithmetic_div(dag, behavior_result_port(dag.node(*body))),
+            _ => false,
+        })
+}
+
+fn port_depends_on_arithmetic_div(dag: &Dag, root: PortId) -> bool {
+    let mut visited = HashSet::new();
+    let mut queue = vec![root];
+    while let Some(port) = queue.pop() {
+        if !visited.insert(port) {
+            continue;
+        }
+        let Some(producer) = dag.port(port).produced_by else {
+            continue;
+        };
+        match dag.node(producer) {
+            Behavior::Value(_) => {}
+            Behavior::Transform(t) => {
+                if matches!(
+                    t.target,
+                    TransformTarget::Operator(OperatorKind::Arithmetic(
+                        crate::operators::ArithmeticOp::Div
+                    ))
+                ) {
+                    return true;
+                }
+                queue.extend(t.inputs.iter().copied());
+            }
+            Behavior::Branch(b) => {
+                queue.push(b.input);
+                queue.extend(b.paths.iter().map(|path| path.output));
+            }
+            Behavior::Loop(l) => {
+                queue.push(l.source);
+                queue.push(l.init);
+                queue.push(behavior_result_port(dag.node(l.body)));
+            }
+            Behavior::Bind(b) => {
+                queue.push(b.value);
+            }
+        }
+    }
+    false
 }
 
 struct Ctx<'a> {

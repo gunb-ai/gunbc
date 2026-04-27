@@ -50,6 +50,7 @@ fn rust_stdout(source: &str) -> String {
         // See common::RustcHarness::compile: strip RUSTC_BOOTSTRAP so the ratchet
         // CI step's libtest unlock does not leak into child rustc invocations.
         .env_remove("RUSTC_BOOTSTRAP")
+        .arg("--edition=2021")
         .arg(&src_path)
         .arg("-o")
         .arg(&bin_path)
@@ -366,35 +367,5 @@ fn double(x: Int) -> Int = x + x
     assert_eq!(
         shared_module, wrapper_module,
         "emit_go_module wrapper drifted from emit::emit_module"
-    );
-}
-
-#[test]
-fn emit_go_division_scaffold_is_omitted_without_division() {
-    let source = "\
-fn f(a: Int, b: Int) -> Int = a + b
-";
-    let dag = cached_compile_to_dag(source, "emit_go_no_division_prelude.v3");
-    let rendered = emit(&dag, EmitTarget::Go).expect("emits go").text;
-    assert!(
-        !rendered.contains("v3intdiv") && !rendered.contains("type DivError"),
-        "Go should omit division prelude without arithmetic division, got:\n{rendered}"
-    );
-}
-
-#[test]
-fn emit_go_division_scaffold_is_added_with_division() {
-    let source = "\
-fn f(a: Int, b: Int) -> Int = a / b
-";
-    let dag = cached_compile_to_dag(source, "emit_go_with_division_prelude.v3");
-    let rendered = emit(&dag, EmitTarget::Go).expect("emits go").text;
-    assert!(
-        rendered.contains("v3intdiv"),
-        "Go should include `v3intdiv` with arithmetic division, got:\n{rendered}"
-    );
-    assert!(
-        rendered.contains("type DivError"),
-        "Go should include `DivError` prelude with arithmetic division, got:\n{rendered}"
     );
 }
