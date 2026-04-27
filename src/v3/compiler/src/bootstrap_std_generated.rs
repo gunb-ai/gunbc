@@ -238,7 +238,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/error_primitives.dag", 388, 448),
+                span: SourceSpan::new("dsl/std/error_primitives.dag", 597, 657),
             },
             Declaration {
                 id: DeclarationId(12),
@@ -252,7 +252,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/error_primitives.dag", 388, 448),
+                span: SourceSpan::new("dsl/std/error_primitives.dag", 597, 657),
             },
             Declaration {
                 id: DeclarationId(13),
@@ -266,7 +266,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/error_primitives.dag", 388, 448),
+                span: SourceSpan::new("dsl/std/error_primitives.dag", 597, 657),
             },
             Declaration {
                 id: DeclarationId(14),
@@ -291,7 +291,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/error_primitives.dag", 650, 689),
+                span: SourceSpan::new("dsl/std/error_primitives.dag", 920, 959),
             },
             Declaration {
                 id: DeclarationId(15),
@@ -5350,7 +5350,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/error_primitives.dag", 411, 427),
+                span: SourceSpan::new("dsl/std/error_primitives.dag", 620, 636),
             },
             Declaration {
                 id: DeclarationId(209),
@@ -5369,7 +5369,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/error_primitives.dag", 430, 448),
+                span: SourceSpan::new("dsl/std/error_primitives.dag", 639, 657),
             },
             Declaration {
                 id: DeclarationId(210),
@@ -5383,7 +5383,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/error_primitives.dag", 666, 678),
+                span: SourceSpan::new("dsl/std/error_primitives.dag", 936, 948),
             },
             Declaration {
                 id: DeclarationId(211),
@@ -5397,7 +5397,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/error_primitives.dag", 681, 689),
+                span: SourceSpan::new("dsl/std/error_primitives.dag", 951, 959),
             },
             Declaration {
                 id: DeclarationId(212),
