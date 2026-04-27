@@ -21,6 +21,21 @@ import v3.std.substrate { ComparisonOp }
 import v3.spec.v3_l1 { DeclarationRef }
 import v3.std.resources { ResourceReference }
 
+// R1C-A / T-TestGen PB-census predicate shape vocabulary. These are narrow
+// bootstrap-local carriers for R1C-D's census-as-TestClaim fixtures; the Rust
+// runner still owns evaluation against the live census authorities.
+type Symbol = String
+type Path = String
+type SnapshotRef = String
+
+type CensusSubsetPredicate {
+  name: String
+}
+
+type ConsolidationRatchet {
+  name: String
+}
+
 // **🟡 Scaffold — DiagnosticKind.** This mirrors the compiler's native
 // diagnostic taxonomy until reflected substrate diagnostic facts can be
 // consumed directly from `std.verification`.
@@ -163,6 +178,31 @@ type TestPredicate
   | AlgebraicLaw {
       law: AlgebraicLawKind
       lens_ref: DeclarationRef
+    }
+  // R1C-A / T-TestGen schema extensions for the six PB census gates.
+  // These variants scope the structural shape R1C-D fixtures consume; they
+  // intentionally do not duplicate census lists into fixture text.
+  | CensusBoundCheck {
+      authority: DeclarationRef
+      list_constant: Symbol
+      bound: Int
+    }
+  | CensusSubsetCount {
+      authority: DeclarationRef
+      list_constant: Symbol
+      subset_predicate: CensusSubsetPredicate
+    }
+  | FixedPointConverges {
+      compile_target: Path
+      expected: SnapshotRef
+    }
+  | RatchetZero {
+      authority: DeclarationRef
+      ratchet_kind: ConsolidationRatchet
+    }
+  | GeneratedFromDag {
+      authority: DeclarationRef
+      generated_paths: List<Path>
     }
 
 // Structural runner input role for predicates whose input is the compiled

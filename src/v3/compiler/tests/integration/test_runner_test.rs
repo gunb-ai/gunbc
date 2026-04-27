@@ -461,6 +461,76 @@ data suite: TestSuite = {
 }
 
 #[test]
+fn test_runner_dispatches_pb_census_predicate_shapes() {
+    let source = r#"
+data census_authority: Int = 0
+
+data census_bound_claim: TestClaim = {
+  name: "pb_hand_rust_at_shim_floor",
+  source: "let x: Int = 1",
+  file_name: "pb_hand_rust_at_shim_floor.v3",
+  predicate: CensusBoundCheck(census_authority, "EXPECTED_HAND_AUTHORED_NON_TEST", 0),
+  requires: []
+}
+
+data census_subset_claim: TestClaim = {
+  name: "lens_producer_files_remaining",
+  source: "let x: Int = 1",
+  file_name: "lens_producer_files_remaining.v3",
+  predicate: CensusSubsetCount(census_authority, "EXPECTED_HAND_AUTHORED_NON_TEST", { name: "LensProducerFiles" }),
+  requires: []
+}
+
+data fixed_point_claim: TestClaim = {
+  name: "pb_self_compile_fixed_point",
+  source: "let x: Int = 1",
+  file_name: "pb_self_compile_fixed_point.v3",
+  predicate: FixedPointConverges("src/v3/compiler/pipeline.dag", "bootstrap_generated.rs"),
+  requires: []
+}
+
+data ratchet_zero_claim: TestClaim = {
+  name: "pb_compiler_std_ratchet_zero",
+  source: "let x: Int = 1",
+  file_name: "pb_compiler_std_ratchet_zero.v3",
+  predicate: RatchetZero(census_authority, { name: "CompilerStdPositiveSet" }),
+  requires: []
+}
+
+data generated_from_dag_claim: TestClaim = {
+  name: "pb_test_file_generated_from_dag",
+  source: "let x: Int = 1",
+  file_name: "pb_test_file_generated_from_dag.v3",
+  predicate: GeneratedFromDag(census_authority, ["src/v3/compiler/tests/integration.rs"]),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "pb_census_predicate_shapes",
+  claims: [
+    census_bound_claim,
+    census_subset_claim,
+    fixed_point_claim,
+    ratchet_zero_claim,
+    generated_from_dag_claim
+  ]
+}
+"#;
+    let dag = compile_clean(source, "pb_census_predicate_shapes.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 5);
+    assert!(
+        results.iter().all(|result| matches!(
+            &result.result,
+            ClaimResult::NotYetImplemented(reason)
+                if reason.contains("R1C-A schema shape is wired")
+        )),
+        "expected every PB census predicate shape to reach its explicit dispatch arm, got {results:?}"
+    );
+}
+
+#[test]
 fn mock_backed_invariant_predicate_accepts_declaration_ref_like_lens_output_equals() {
     let source = r#"
 data claim: TestClaim = {

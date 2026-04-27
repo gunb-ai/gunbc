@@ -1432,6 +1432,11 @@ impl<'a> TestRunner<'a> {
                     "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
                     "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                     "ExecuteCommand" => self.eval_execute_command(claim, &payload),
+                    "CensusBoundCheck" => self.eval_census_bound_check_shape(claim, &payload),
+                    "CensusSubsetCount" => self.eval_census_subset_count_shape(claim, &payload),
+                    "FixedPointConverges" => self.eval_fixed_point_converges_shape(claim, &payload),
+                    "RatchetZero" => self.eval_ratchet_zero_shape(claim, &payload),
+                    "GeneratedFromDag" => self.eval_generated_from_dag_shape(claim, &payload),
                     "MockBackedInvariant" => {
                         let inner = self.eval_mock_backed_invariant(claim, &payload);
                         if claim.requires.is_empty() {
@@ -2190,6 +2195,148 @@ impl<'a> TestRunner<'a> {
         } else {
             ClaimResult::Fail(format!("cost {actual} did not satisfy bound {bound}"))
         }
+    }
+
+    fn eval_census_bound_check_shape(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [authority, FieldValue::Literal(LiteralBits::String(list_constant)), FieldValue::Literal(LiteralBits::Int(_bound))] =
+            payload
+        else {
+            return ClaimResult::Fail(
+                "CensusBoundCheck payload should be (DeclarationRef, Symbol, Int)".to_string(),
+            );
+        };
+        if let Err(reason) = self.resolve_census_authority_ref(authority, "authority") {
+            return ClaimResult::Fail(reason);
+        }
+        self.nyi_external_pb_predicate(&claim.claim_name, "CensusBoundCheck", list_constant)
+    }
+
+    fn eval_census_subset_count_shape(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [authority, FieldValue::Literal(LiteralBits::String(list_constant)), subset_predicate] =
+            payload
+        else {
+            return ClaimResult::Fail(
+                "CensusSubsetCount payload should be (DeclarationRef, Symbol, CensusSubsetPredicate)"
+                    .to_string(),
+            );
+        };
+        if let Err(reason) = self.resolve_census_authority_ref(authority, "authority") {
+            return ClaimResult::Fail(reason);
+        }
+        let subset_name = match self.named_shape_value(subset_predicate, "CensusSubsetPredicate") {
+            Ok(name) => name,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        if subset_name != "LensProducerFiles" {
+            return ClaimResult::Fail(format!(
+                "CensusSubsetCount unsupported subset_predicate `{subset_name}`"
+            ));
+        }
+        self.nyi_external_pb_predicate(&claim.claim_name, "CensusSubsetCount", list_constant)
+    }
+
+    fn eval_fixed_point_converges_shape(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [FieldValue::Literal(LiteralBits::String(compile_target)), FieldValue::Literal(LiteralBits::String(_expected))] =
+            payload
+        else {
+            return ClaimResult::Fail(
+                "FixedPointConverges payload should be (Path, SnapshotRef)".to_string(),
+            );
+        };
+        self.nyi_external_pb_predicate(&claim.claim_name, "FixedPointConverges", compile_target)
+    }
+
+    fn eval_ratchet_zero_shape(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [authority, ratchet_kind] = payload else {
+            return ClaimResult::Fail(
+                "RatchetZero payload should be (DeclarationRef, ConsolidationRatchet)".to_string(),
+            );
+        };
+        if let Err(reason) = self.resolve_census_authority_ref(authority, "authority") {
+            return ClaimResult::Fail(reason);
+        }
+        let ratchet_name = match self.named_shape_value(ratchet_kind, "ConsolidationRatchet") {
+            Ok(name) => name,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        if ratchet_name != "CompilerStdPositiveSet" {
+            return ClaimResult::Fail(format!(
+                "RatchetZero unsupported ratchet_kind `{ratchet_name}`"
+            ));
+        }
+        self.nyi_external_pb_predicate(&claim.claim_name, "RatchetZero", &ratchet_name)
+    }
+
+    fn eval_generated_from_dag_shape(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [authority, FieldValue::List(generated_paths)] = payload else {
+            return ClaimResult::Fail(
+                "GeneratedFromDag payload should be (DeclarationRef, List<Path>)".to_string(),
+            );
+        };
+        if let Err(reason) = self.resolve_census_authority_ref(authority, "authority") {
+            return ClaimResult::Fail(reason);
+        }
+        if let Some(other) = generated_paths
+            .iter()
+            .find(|value| !matches!(value, FieldValue::Literal(LiteralBits::String(_))))
+        {
+            return ClaimResult::Fail(format!(
+                "GeneratedFromDag generated_paths must contain only Path/String values, got {other:?}"
+            ));
+        }
+        self.nyi_external_pb_predicate(&claim.claim_name, "GeneratedFromDag", "generated_paths")
+    }
+
+    fn resolve_census_authority_ref(
+        &self,
+        value: &FieldValue,
+        field_label: &str,
+    ) -> Result<DeclarationId, String> {
+        match value {
+            FieldValue::Reference(id) => Ok(*id),
+            other => Err(format!(
+                "PB census predicate `{field_label}` should be a DeclarationRef edge, got {other:?}"
+            )),
+        }
+    }
+
+    fn named_shape_value(&self, value: &FieldValue, shape_name: &str) -> Result<String, String> {
+        let Some(fields) = record_fields(value) else {
+            return Err(format!("{shape_name} should be a structural record"));
+        };
+        string_field(fields, "name")
+    }
+
+    fn nyi_external_pb_predicate(
+        &self,
+        claim_name: &str,
+        predicate: &str,
+        authority_label: &str,
+    ) -> ClaimResult {
+        ClaimResult::NotYetImplemented(format!(
+            "{predicate}: R1C-A schema shape is wired for TestClaim `{claim_name}` ({authority_label}); \
+             R1C-D owns evaluation against the live PB census authority"
+        ))
     }
 
     /// Hermetic path: compile `claim.source`, then `apply_lens_declaration` for subject (0-arity)
