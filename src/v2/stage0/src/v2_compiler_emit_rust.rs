@@ -1194,14 +1194,13 @@ pub fn emit_module_full(
         } else {
             raw_filename.clone()
         };
-        let module_inner_attrs =
-            if authored_name(scope.type_env.clone(), m.clone()).as_str()
-                == "std.error_primitives".to_string().as_str()
-            {
-                "\n\n#![allow(non_camel_case_types)]\n\n".to_string()
-            } else {
-                "\n\n".to_string()
-            };
+        let module_inner_attrs = if authored_name(scope.type_env.clone(), m.clone()).as_str()
+            == "std.error_primitives".to_string().as_str()
+        {
+            "\n\n#![allow(non_camel_case_types)]\n\n".to_string()
+        } else {
+            "\n\n".to_string()
+        };
         let content = v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
