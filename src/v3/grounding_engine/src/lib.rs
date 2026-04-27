@@ -660,8 +660,10 @@ fn expect_literal_bool_at(payload: &[FieldValue], idx: usize, ctx: &str) -> Stru
     Ok(*b)
 }
 
-fn expect_nullary_variant_name(
+fn expect_nullary_variant_label(
     dag: &Dag,
+    enum_name: &str,
+    expected_variants: &[&str],
     value: &FieldValue,
     ctx: &str,
 ) -> StructureResult<String> {
@@ -683,13 +685,22 @@ fn expect_nullary_variant_name(
             actual: format!("payload len {}", payload.len()),
         });
     }
-    dag.declaration(*constructor)
-        .name
-        .clone()
+    let enum_decl = dag
+        .declaration_by_name(enum_name)
         .ok_or_else(|| StructureMismatch {
             location: ctx.to_string(),
-            expected: "constructor declaration name".to_string(),
-            actual: "<anonymous>".to_string(),
+            expected: format!("declared enum `{enum_name}`"),
+            actual: "missing".to_string(),
+        })?;
+    let variants = expect_disj_variants(enum_decl, enum_name, expected_variants)?;
+    variants
+        .iter()
+        .find(|variant| variant.ty == *constructor)
+        .map(|variant| variant.label.clone())
+        .ok_or_else(|| StructureMismatch {
+            location: ctx.to_string(),
+            expected: format!("constructor id belonging to {enum_name}"),
+            actual: "unknown constructor".to_string(),
         })
 }
 
@@ -736,9 +747,28 @@ fn assert_integer_primitive_payload_matches(
     }
     let tn = expect_literal_string_at(payload, 0, ctx)?;
     require_string_eq(&tn, target_name, "target_name")?;
-    let alg = expect_nullary_variant_name(dag, &payload[1], &format!("{ctx}.algebra"))?;
+    let alg = expect_nullary_variant_label(
+        dag,
+        "IntegerAlgebra",
+        &["OrderedRingAlgebra", "SemiringAlgebra"],
+        &payload[1],
+        &format!("{ctx}.algebra"),
+    )?;
     require_string_eq(&alg, pilot_integer_algebra_name(*algebra), "algebra")?;
-    let car = expect_nullary_variant_name(dag, &payload[2], &format!("{ctx}.carrier"))?;
+    let car = expect_nullary_variant_label(
+        dag,
+        "TargetCarrier",
+        &[
+            "BitCarrier",
+            "ByteCarrier",
+            "Word16Carrier",
+            "Word32Carrier",
+            "Word64Carrier",
+            "TerminalCarrier",
+        ],
+        &payload[2],
+        &format!("{ctx}.carrier"),
+    )?;
     require_string_eq(&car, pilot_carrier_name(*carrier), "carrier")?;
     let rmin = expect_literal_string_at(payload, 3, ctx)?;
     require_string_eq(&rmin, range_min_inclusive, "range_min_inclusive")?;
@@ -752,7 +782,13 @@ fn assert_integer_primitive_payload_matches(
             actual: format!("{ic}"),
         });
     }
-    let ov = expect_nullary_variant_name(dag, &payload[6], &format!("{ctx}.overflow"))?;
+    let ov = expect_nullary_variant_label(
+        dag,
+        "IntegerOverflow",
+        &["TwoComplementWrap", "Saturating", "Trap"],
+        &payload[6],
+        &format!("{ctx}.overflow"),
+    )?;
     require_string_eq(&ov, pilot_overflow_name(*overflow), "overflow")?;
     Ok(())
 }
@@ -785,9 +821,28 @@ fn assert_non_integer_primitive_payload_matches(
     }
     let tn = expect_literal_string_at(payload, 0, ctx)?;
     require_string_eq(&tn, target_name, "target_name")?;
-    let alg = expect_nullary_variant_name(dag, &payload[1], &format!("{ctx}.algebra"))?;
+    let alg = expect_nullary_variant_label(
+        dag,
+        "NonIntegerAlgebra",
+        &["BooleanAlgebraAlgebra", "TerminalAlgebra"],
+        &payload[1],
+        &format!("{ctx}.algebra"),
+    )?;
     require_string_eq(&alg, pilot_non_integer_algebra_name(*algebra), "algebra")?;
-    let car = expect_nullary_variant_name(dag, &payload[2], &format!("{ctx}.carrier"))?;
+    let car = expect_nullary_variant_label(
+        dag,
+        "TargetCarrier",
+        &[
+            "BitCarrier",
+            "ByteCarrier",
+            "Word16Carrier",
+            "Word32Carrier",
+            "Word64Carrier",
+            "TerminalCarrier",
+        ],
+        &payload[2],
+        &format!("{ctx}.carrier"),
+    )?;
     require_string_eq(&car, pilot_carrier_name(*carrier), "carrier")?;
     let ic = expect_literal_bool_at(payload, 3, ctx)?;
     if ic != *is_copy {
