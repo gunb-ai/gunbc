@@ -191,12 +191,12 @@ fn ascii_scan_class_predicate(class_name: &str) -> &'static str {
         "Whitespace" => {
             "matches!(byte, b'\\t' | b'\\n' | b'\\x0c' | b'\\r' | b' ')"
         }
-        "Digit" => "(b'0'..=b'9').contains(&byte)",
+        "Digit" => "byte.is_ascii_digit()",
         "IdentStart" => {
-            "(b'a'..=b'z').contains(&byte) || (b'A'..=b'Z').contains(&byte) || byte == 0x5f"
+            "byte.is_ascii_lowercase() || byte.is_ascii_uppercase() || byte == 0x5f"
         }
         "IdentContinue" => {
-            "(b'0'..=b'9').contains(&byte) || (b'a'..=b'z').contains(&byte) || (b'A'..=b'Z').contains(&byte) || byte == 0x5f"
+            "byte.is_ascii_alphanumeric() || byte == 0x5f"
         }
         _ => panic!("unsupported scanner class `{class_name}` in `ascii_scan_order`"),
     }
