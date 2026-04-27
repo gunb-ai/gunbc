@@ -13,6 +13,7 @@ use v3_compiler::dag::{
 use v3_compiler::parse_surface;
 use v3_compiler::Dag;
 use v3_compiler::Diagnostic;
+use v3_compiler::CompileError;
 use v3_compiler::{parse_for_test, tokenize_for_test};
 
 fn find_named(dag: &Dag, name: &str) -> v3_compiler::dag::DeclarationId {
@@ -82,6 +83,17 @@ fn arrow_body(dag: &Dag, name: &str) -> ArrowBody {
         TypeConnective::Arrow { body, .. } => body.clone(),
         other => panic!("expected `{name}` to lower to an Arrow, got {other:?}"),
     }
+}
+
+fn semantic_diagnostics_for(source: &str, file: &str) -> Vec<Diagnostic> {
+    let err = compile_to_dag(source, file).expect_err("source must fail semantically");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic diagnostics, got {err:?}");
+    };
+    dag.diagnostics()
+        .iter()
+        .map(|(_, diagnostic)| diagnostic.clone())
+        .collect()
 }
 
 #[test]
@@ -1910,6 +1922,41 @@ fn map_body_data_item_parses_and_lowers_to_value_body_map() {
             "map value for {key} should use the zero-payload AlgebraProfile::{expected_value_name} constructor"
         );
     }
+}
+
+#[test]
+fn map_body_duplicate_keys_fail_closed() {
+    let diagnostics = semantic_diagnostics_for(
+        "data duplicate_keys: Map<String, Bool> = {\n  \"same\": true,\n  \"same\": false\n}\n",
+        "map_duplicate_keys.v3",
+    );
+
+    assert!(
+        diagnostics.iter().any(|diagnostic| matches!(
+            diagnostic,
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("data `duplicate_keys` map body repeats key `same`")
+        )),
+        "expected duplicate-key ResolveError, got {diagnostics:?}"
+    );
+}
+
+#[test]
+fn map_body_on_non_map_type_fails_closed() {
+    let diagnostics = semantic_diagnostics_for(
+        "data not_a_map: Bool = {\n  \"x\": true\n}\n",
+        "map_body_non_map_type.v3",
+    );
+
+    assert!(
+        diagnostics.iter().any(|diagnostic| matches!(
+            diagnostic,
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("data `not_a_map` has a map body")
+                    && name.contains("declared type is not a Map<String, _>")
+        )),
+        "expected non-map-body ResolveError, got {diagnostics:?}"
+    );
 }
 
 #[test]
