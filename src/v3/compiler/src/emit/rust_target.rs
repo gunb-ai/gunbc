@@ -2756,7 +2756,10 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
     // `DivError` and other `dsl/std` types are excluded from `type_decls` (see
     // `rust_source_filtering`); the division helper must still compile, so the
     // v3 error enum + `__v3_int_div` are emitted as a small prelude. Names
-    // align with `std.errors.DivError` for `Result<…, DivError>` `rust_result_instantiation`.
+    // align with `std.error_primitives.DivError` for `Result<…, DivError>` / `rust_int_div`.
+    //
+    // Dissolution trigger (M1 scaffold): delete when `dsl/std/error_primitives` emits through
+    // the normal filtered-type path (no separate string prelude).
     const RUST_V3_INT_OP_PRELUDE: &str = r#"#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum DivError { DivideByZero, Overflow }
 fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {

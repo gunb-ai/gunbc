@@ -2,8 +2,6 @@
 
 module std.errors
 
-import std.error_primitives { DivError, Result }
-
 type HttpErrorShape {
   status: Int
   error_type: String

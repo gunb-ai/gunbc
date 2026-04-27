@@ -682,8 +682,11 @@ pub(crate) fn emit_python_with_mode(
     for decl in type_decls {
         sections.push(ctx.render_type_declaration(decl)?);
     }
-    // `std/errors` is filtered out of `type_decls`; v3 `DivError` + checked `/` are prelude-only
-    // (names align with `std.errors` for `Result<…, DivError>` and `__v3_idiv` in `python.dag`).
+    // `std.error_primitives` is filtered out of `type_decls`; v3 `DivError` + checked `/` are
+    // prelude-only (names align with `python.dag` / `python_int_div` carrier for `__v3_idiv`).
+    //
+    // Dissolution trigger (M1 scaffold): delete when `dsl/std/error_primitives` emits through
+    // the normal type-decl path (no separate prelude strings).
     sections
         .push("class DivError(enum.IntEnum):\n    DivideByZero = 0\n    Overflow = 1".to_string());
     sections.push(

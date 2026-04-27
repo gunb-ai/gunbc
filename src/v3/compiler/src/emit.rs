@@ -1206,6 +1206,10 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     }
     // `DivError` / `Result` are under `dsl/std/`, which `go_source_filtering` omits. Emit
     // minimal v3 hooks so `v3intdiv` and `struct{ Ok *T; Err *E }` compile.
+    //
+    // Dissolution trigger (M1 scaffold): delete this prelude when `dsl/std/error_primitives`
+    // (and friends) emit through the same type-decl path as user code — i.e. std is no
+    // longer source-filtered for these carriers.
     sections.push(
         "type DivError int\nconst (\n  DivideByZero DivError = iota\n  Overflow\n)\n\nfunc v3intdiv(l, r int64) struct{ Ok *int64; Err *DivError } {\n  if r == 0 { e := DivideByZero; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  if l == -9223372036854775808 && r == -1 { e := Overflow; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  q := l / r; return struct{ Ok *int64; Err *DivError }{Ok: &q} }\n".to_string(),
     );

@@ -64,7 +64,7 @@ pub fn infer(dag: &mut Dag) {
         let mut changed = false;
         let node_count = dag.nodes().len();
         for i in 0..node_count {
-            match decide(&mut *dag, i) {
+            match decide(dag, i) {
                 Decision::Set(port, ty) => {
                     if matches!(dag.port(port).state(), PortState::Unresolved) {
                         continue;
@@ -4103,6 +4103,11 @@ const WALK_DEPTH_LIMIT: usize = 32;
 /// with a `(T, T) -> T` / `(T, T) -> Bool` signature. The fallback
 /// is explicit about being a scaffold (see OperatorKind's
 /// dissolution receipt).
+///
+/// **Dedup invariant:** anonymous `Result<…, DivError>` instantiations
+/// must reuse `find_equivalent_anonymous_instantiation` on every pass;
+/// a missed structural match would mint fresh `DeclarationId`s each
+/// iteration and the fixpoint loop would not terminate.
 fn div_total_result_output_shape(dag: &mut Dag, base_lhs: TypeShape) -> Option<TypeShape> {
     let result_template = dag.declaration_by_name("Result")?.id;
     let div_error = dag.declaration_by_name("DivError")?.id;
@@ -4367,6 +4372,8 @@ fn substitute_receiver(
             if !any_change {
                 return Some(current);
             }
+            // Same dedup contract as `div_total_result_output_shape`: false negatives
+            // here allocate unbounded anonymous instantiations across fixpoint iterations.
             if let Some(existing) =
                 find_equivalent_anonymous_instantiation(dag, *template, &new_args)
             {
