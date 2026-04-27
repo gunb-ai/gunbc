@@ -387,6 +387,21 @@ let x = 6 / 2",
 }
 
 #[test]
+fn emit_go_emits_diverror_prelude_for_explicit_result_without_division() {
+    let dag = compile_to_dag(
+        "import std.error_primitives { DivError, Result }\n\
+fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
+        "go_explicit_result_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit(&dag, EmitTarget::Go).expect("emits go").text;
+    assert!(
+        out.contains("type DivError int"),
+        "explicit Result<Int, DivError> usage needs DivError prelude even without `/`; got: {out}"
+    );
+}
+
+#[test]
 fn emit_go_fails_closed_on_div_prelude_helper_collision() {
     let dag = compile_to_dag(
         "fn v3intdiv(a: Int, b: Int) -> Int = a + b\n\

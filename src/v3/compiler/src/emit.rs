@@ -179,7 +179,7 @@ pub(crate) fn decl_uses_substrate_result_or_div_error(
         TypeConnective::Arrow { inputs, output, .. } => {
             inputs
                 .iter()
-                .any(|input| decl_uses_substrate_result_or_div_error(dag, input.ty, visited))
+                .any(|input| decl_uses_substrate_result_or_div_error(dag, *input, visited))
                 || decl_uses_substrate_result_or_div_error(dag, *output, visited)
         }
         _ => false,
