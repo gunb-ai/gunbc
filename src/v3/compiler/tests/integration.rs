@@ -139,6 +139,8 @@ mod sg7_prep_variant_payload_freshness_test;
 mod t_pb_b_1_dag_runner_test;
 #[path = "integration/t_pb_b_brief_d_fixture_smoke_test.rs"]
 mod t_pb_b_brief_d_fixture_smoke_test;
+#[path = "integration/t_impossiblebugs_unenumerated_effects_test.rs"]
+mod t_impossiblebugs_unenumerated_effects_test;
 #[path = "integration/test_runner_test.rs"]
 mod test_runner_test;
 #[path = "integration/thesis_parallelism_test.rs"]

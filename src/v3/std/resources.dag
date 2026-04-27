@@ -25,3 +25,16 @@ type ResourceHandle {
 type ResourceReference {
   target: DeclarationRef
 }
+
+// Explicit read-refresh intent for the unenumerated-effects redundancy lens.
+// A repeated read of the same key is otherwise structurally redundant when no
+// intervening write-shaped operation touches that resource. This carrier gives
+// legitimate refresh/optimistic-lock paths a typed fact without adding another
+// effect taxonomy.
+type RereadIntent<key> {
+  key: key
+}
+
+fn reread<key>(key: key) -> RereadIntent<key> {
+  { key: key }
+}

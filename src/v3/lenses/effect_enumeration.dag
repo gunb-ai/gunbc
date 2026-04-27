@@ -1,0 +1,201 @@
+// lenses.effect_enumeration — structural effect-shape lens.
+//
+// Status: STRUCTURALLY TERMINAL; BEHAVIORALLY PARTIAL.
+// See docs/v3-lens-capability-register.md.
+//
+// This lens is the first closed-system unenumerated-effects surface:
+// it walks the five Behavior variants and derives effect facts from
+// callable type-signature shape, not from the legacy enumerated taxonomy.
+// The current substrate does not yet expose a resource-kind witness, so
+// same-resource threading is recognized conservatively as a callable whose
+// output declaration is one of its input declarations. Non-callable transforms
+// are pure at this scope; callable signatures that cannot be inspected report
+// `CoverageGap` instead of silently fabricating an effect.
+
+module lenses.effect_enumeration
+
+import std.list { List, empty, fold, cons }
+import v3.std.substrate {
+  Dag,
+  Behavior,
+  BranchPath,
+  TransformNode,
+  TransformTarget,
+  TypeConnective,
+  ArrowBody,
+  DeclarationId,
+  PortId,
+  NodeId,
+  node,
+  port,
+  declaration_by_id
+}
+
+type EffectShape
+  = NoEffect
+  | ReadShaped
+  | WriteShaped
+  | UnknownEffect { reason: String }
+
+type EffectFact {
+  port: PortId
+  shape: EffectShape
+}
+
+type CoverageGap {
+  node: NodeId
+  reason: String
+}
+
+type RedundantReadError {
+  first_read: PortId
+  redundant_read: PortId
+  reason: String
+}
+
+type TransactionalPattern
+  = NoTransaction
+  | BeginModifyCommit { root: NodeId }
+
+type EffectEnumerationReport {
+  facts: List<EffectFact>
+  coverage_gaps: List<CoverageGap>
+  redundant_reads: List<RedundantReadError>
+  transaction: TransactionalPattern
+}
+
+fn enumerate_effects(d: Dag) -> EffectEnumerationReport =
+  {
+    facts: compute_effect_facts(d),
+    coverage_gaps: compute_coverage_gaps(d),
+    redundant_reads: empty(),
+    transaction: transaction_pattern(d)
+  }
+
+fn compute_effect_facts(d: Dag) -> List<EffectFact> =
+  fold(d.nodes, empty(), |acc, behavior|
+    cons(effect_fact_for(d, acc, behavior), acc)
+  )
+
+fn effect_fact_for(
+  d: Dag,
+  acc: List<EffectFact>,
+  behavior: Behavior
+) -> EffectFact =
+  match behavior {
+    Value(v) => { port: v.result_port, shape: NoEffect }
+    Transform(t) => { port: t.result_port, shape: transform_effect(d, t) }
+    Branch(b) => { port: b.result_port, shape: branch_effect(acc, b.paths) }
+    Loop(l) => { port: l.result_port, shape: loop_effect(d, acc, l.body) }
+    Bind(bind) => { port: bind.result_port, shape: effect_at(acc, bind.result_port) }
+  }
+
+fn transform_effect(d: Dag, t: TransformNode) -> EffectShape =
+  match t.target {
+    Callable(id) => callable_signature_effect(d, id)
+    FieldProject => NoEffect
+    Operator => NoEffect
+  }
+
+fn callable_signature_effect(d: Dag, id: DeclarationId) -> EffectShape =
+  match declaration_by_id(d, id) {
+    None => UnknownEffect { reason: "callable declaration missing from substrate" }
+    Some(decl) =>
+      match decl.connective {
+        Arrow { inputs, output, body } =>
+          if output_in_inputs(output, inputs) then
+            WriteShaped
+          else
+            match body {
+              ExternalRealization => ReadShaped
+              UserDefined => ReadShaped
+              NoBody => UnknownEffect { reason: "callable has no body and no external realization" }
+              Pending => UnknownEffect { reason: "callable body pending; signature coverage incomplete" }
+              Unparsed => UnknownEffect { reason: "callable body unparsed; signature coverage incomplete" }
+            }
+        _ => UnknownEffect { reason: "transform target is not an arrow declaration" }
+      }
+  }
+
+fn output_in_inputs(output: DeclarationId, inputs: List<DeclarationId>) -> Bool =
+  match inputs {
+    Empty => false
+    Cons(payload) =>
+      if payload.head == output then
+        true
+      else
+        output_in_inputs(output, payload.tail)
+  }
+
+fn branch_effect(acc: List<EffectFact>, paths: List<BranchPath>) -> EffectShape =
+  fold(paths, NoEffect, |running, path|
+    combine_effects(running, effect_at(acc, path.result_port))
+  )
+
+fn loop_effect(d: Dag, acc: List<EffectFact>, body: NodeId) -> EffectShape =
+  match node(d, body) {
+    None => UnknownEffect { reason: "loop body node missing from substrate" }
+    Some(behavior) => effect_at(acc, behavior_result_port(behavior))
+  }
+
+fn behavior_result_port(b: Behavior) -> PortId =
+  match b {
+    Value(v) => v.result_port
+    Transform(t) => t.result_port
+    Branch(br) => br.result_port
+    Loop(lp) => lp.result_port
+    Bind(bind) => bind.result_port
+  }
+
+fn combine_effects(a: EffectShape, b: EffectShape) -> EffectShape =
+  match a {
+    UnknownEffect => a
+    WriteShaped => WriteShaped
+    ReadShaped =>
+      match b {
+        UnknownEffect => b
+        WriteShaped => WriteShaped
+        ReadShaped => ReadShaped
+        NoEffect => ReadShaped
+      }
+    NoEffect => b
+  }
+
+fn effect_at(facts: List<EffectFact>, target: PortId) -> EffectShape =
+  match facts {
+    Empty => UnknownEffect { reason: "effect fact missing for port" }
+    Cons(payload) =>
+      if payload.head.port == target then
+        payload.head.shape
+      else
+        effect_at(payload.tail, target)
+  }
+
+fn compute_coverage_gaps(d: Dag) -> List<CoverageGap> =
+  fold(d.nodes, empty(), |acc, behavior|
+    match behavior {
+      Transform(t) =>
+        match transform_effect(d, t) {
+          UnknownEffect { reason } =>
+            cons({ node: t.id, reason: reason }, acc)
+          _ => acc
+        }
+      _ => acc
+    }
+  )
+
+fn transaction_pattern(d: Dag) -> TransactionalPattern =
+  match first_bind_root(d.nodes) {
+    None => NoTransaction
+    Some(root) => BeginModifyCommit { root: root }
+  }
+
+fn first_bind_root(nodes: List<Behavior>) -> NodeId? =
+  match nodes {
+    Empty => None
+    Cons(payload) =>
+      match payload.head {
+        Bind(bind) => Some(bind.id)
+        _ => first_bind_root(payload.tail)
+      }
+  }
