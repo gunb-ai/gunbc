@@ -176,17 +176,18 @@ type SymbolicCost
 
 // Scan state for composite `dominates` / `drop_dominated_step`.
 //
-// 🟡 YELLOW (scaffold, `docs/modeling-discipline.md` §4): the parser rejects a
-// one-variant `Disj` with a `{ … }` payload here, and conjunctive record
-// literals like `DominateScanAcc { any, pivot }` are not yet accepted in
-// expression position (named constructors require a sum spine). The second
-// variant is therefore an exhaustiveness-only anchor with **no inhabited
-// introduction rule** — `scan_hit` / `fold_or_dominate_scan` map it only to
-// keep matches total; no lowering path constructs `ScanAccNever`.
+// Coproduct dissolution (`docs/modeling-discipline.md` §4 — GREEN / YELLOW / RED):
+// **🟡 YELLOW (scaffold).** Rationale: the parser rejects a one-variant `Disj`
+// with a `{ … }` payload here, and conjunctive record literals like
+// `DominateScanAcc { any, pivot }` are not yet accepted in expression position
+// (`ResolveError`: named constructors require a sum spine). The second variant
+// is therefore an **exhaustiveness-only** anchor — **no introduction rule**
+// constructs `ScanAccNever`; `scan_hit` / `fold_or_dominate_scan` mention it
+// only to keep `match` total (illegal state is not introduced by lowering).
 //
-// **Dissolution trigger:** remove `ScanAccNever` once the surface accepts either
-// (a) a single conjunctive nominal for this accumulator with valid construction,
-// or (b) bare record payloads on one-arm sums without lowering gaps.
+// **Dissolution trigger (named):** remove `ScanAccNever` once the surface accepts
+// either (a) a single conjunctive nominal for this accumulator with valid
+// construction, or (b) bare record payloads on one-arm sums without lowering gaps.
 type DominateScanAcc
   = ScanAcc { any: Bool, pivot: SymbolicCost }
   | ScanAccNever
