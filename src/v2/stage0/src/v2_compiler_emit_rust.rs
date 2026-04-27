@@ -244,43 +244,47 @@ pub fn resolve_wire_serde_tag(
     wire_item: Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    match wire_item.body.clone() {
-        Some(ve) => {
-            if ((ve.children.clone().len() as i64) > 0) {
-                {
-                    let naming_field = Rc::new({
-                        let mut __result = Vec::new();
-                        for fi in ve.children.clone().iter().cloned() {
-                            if (field_init_node_name_at(fi.clone(), source_indices.clone())
-                                .as_str()
-                                == "naming".to_string().as_str())
-                            {
-                                __result.push(fi);
-                            }
-                        }
-                        __result
-                    })
-                    .first()
-                    .cloned();
-                    match naming_field {
-                        Some(nf) => {
-                            let nv = field_init_node_value(&nf);
-                            if (authored_name_at(source_indices.clone(), &nv).as_str()
-                                == "SnakeCase".to_string().as_str())
-                            {
-                                "#[serde(rename_all = \"snake_case\")]".to_string()
-                            } else {
-                                "".to_string()
-                            }
-                        }
-                        None => "".to_string(),
+    let ve: Rc<Node> = match wire_item.body.clone() {
+        Some(b) => b,
+        None => match (*wire_item.expr_data.clone()).clone() {
+            ExprRecordLit { .. } => wire_item.clone(),
+            _ => {
+                return rust_serde_tag_attr();
+            }
+        },
+    };
+    if ((ve.children.clone().len() as i64) > 0) {
+        {
+            let naming_field = Rc::new({
+                let mut __result = Vec::new();
+                for fi in ve.children.clone().iter().cloned() {
+                    if (field_init_node_name_at(fi.clone(), source_indices.clone())
+                        .as_str()
+                        == "naming".to_string().as_str())
+                    {
+                        __result.push(fi);
                     }
                 }
-            } else {
-                rust_serde_tag_attr()
+                __result
+            })
+            .first()
+            .cloned();
+            match naming_field {
+                Some(nf) => {
+                    let nv = field_init_node_value(&nf);
+                    if (authored_name_at(source_indices.clone(), &nv).as_str()
+                        == "SnakeCase".to_string().as_str())
+                    {
+                        "#[serde(rename_all = \"snake_case\")]".to_string()
+                    } else {
+                        "".to_string()
+                    }
+                }
+                None => "".to_string(),
             }
         }
-        None => rust_serde_tag_attr(),
+    } else {
+        rust_serde_tag_attr()
     }
 }
 

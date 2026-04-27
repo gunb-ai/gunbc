@@ -6059,8 +6059,9 @@ fn shell_emit_cron_upsert_script() {
 }
 
 // ── RE-4b: OpenAI Chat Completions narrow row — request wire ratchet (#901) ─
-// `wire_contract` aliases `llm_snake_wire_contract` in `extdeps.llm.llm` so the emitter
-// attaches serde `rename_all = "snake_case"` to `OpenAiChatMessageRole` (System→"system", …).
+// `wire_contract` is `StringVariant { naming: SnakeCase }` (same wire as
+// `llm_snake_wire_contract` in `extdeps.llm.llm`) so the emitter attaches serde
+// `rename_all = "snake_case"` to role-like coproducts (System→"system", …).
 #[test]
 fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     let ws = crate::helpers::workspace_root();

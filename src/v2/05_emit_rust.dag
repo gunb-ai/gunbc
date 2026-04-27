@@ -231,30 +231,34 @@ fn rust_serde_tag_attr() -> String {
 //   StringVariant { naming: AsAuthored } → "" (serde default: unit variants as strings)
 //   StringVariant { naming: SnakeCase }  → #[serde(rename_all = "snake_case")]
 //   TaggedVariant                        → #[serde(tag = "_variant")] (default)
+//
+// `data wire_contract = StringVariant { … }` stores the record literal on the data item's
+// `body` expression node; field inits live on `children`, not `body.body` — so when
+// `wire_item.body` is absent, fall back to `ExprRecordLit` on `wire_item` itself.
+fn resolve_wire_serde_tag_from_encoding_node(ve: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  if ve.children |> count > 0 {
+    let naming_field = ve.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == "naming") |> first
+    match naming_field {
+      Some { value: nf } =>
+        let nv = field_init_node_value(n: nf)
+        if authored_name_at(source_indices: source_indices, node: nv) == "SnakeCase" { "#[serde(rename_all = \"snake_case\")]" }
+        else { "" }
+      None => ""
+    }
+  } else {
+    rust_serde_tag_attr()
+  }
+}
+
 fn resolve_wire_serde_tag(wire_item: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  // wire_item body is a VariantEncoding value directly (StringVariant or TaggedVariant)
   match wire_item.body {
-    Some { value: ve } =>
-      // StringVariant has children (naming field); TaggedVariant is a unit variant
-      if ve.children |> count > 0 {
-        // StringVariant { naming: ... } — check naming field
-        let naming_field = ve.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == "naming") |> first
-        match naming_field {
-          Some { value: nf } =>
-            let nv = field_init_node_value(n: nf)
-            // SnakeCase has no children (unit variant). Distinguish by checking
-            // if the naming value has a non-empty name that isn't the first variant.
-            // AsAuthored is the first variant of VariantNaming (index 0).
-            // SnakeCase is the second (index 1). Check structural identity.
-            if authored_name_at(source_indices: source_indices, node: nv) == "SnakeCase" { "#[serde(rename_all = \"snake_case\")]" }
-            else { "" }  // AsAuthored: no serde attribute needed
-          None => ""  // StringVariant without naming → AsAuthored default
-        }
-      } else {
-        // TaggedVariant (unit variant, no children) → default tag
-        rust_serde_tag_attr()
+    Some { value: ve } => resolve_wire_serde_tag_from_encoding_node(ve: ve, source_indices: source_indices)
+    None =>
+      match wire_item.expr_data {
+        ExprRecordLit { parent_enum: _ } =>
+          resolve_wire_serde_tag_from_encoding_node(ve: wire_item, source_indices: source_indices)
+        _ => rust_serde_tag_attr()
       }
-    None => rust_serde_tag_attr()
   }
 }
 
