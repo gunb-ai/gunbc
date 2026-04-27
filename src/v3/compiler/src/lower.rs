@@ -25,11 +25,11 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode, BranchEmitParticipation,
-    BranchNode, BranchPattern, CardinalityBound, Cluster, Dag, Declaration, DeclarationId, Field,
-    IntraClusterCall, LiteralBits, LoopBound, LoopNode, MemberDescent, NodeId, NonEmptyList,
-    NonSingletonList, Path, PayloadBinding, PhantomParameter, PortId, TemplateArgument,
-    TransformNode, TransformTarget, TypeConnective, ValueNode,
+    type_connective_cardinality, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
+    BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, Dag,
+    Declaration, DeclarationId, Field, IntraClusterCall, LiteralBits, LoopBound, LoopNode,
+    MemberDescent, NodeId, NonEmptyList, NonSingletonList, Path, PayloadBinding, PhantomParameter,
+    PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
@@ -2283,26 +2283,7 @@ fn type_to_declaration_id(
         }
         SurfaceType::Optional { inner, span } => {
             let element = type_to_declaration_id(inner, symbols, local, dag);
-            let id = dag.alloc_declaration_id();
-            dag.push_declaration(Declaration {
-                id,
-                name: None,
-                connective: TypeConnective::Cardinality {
-                    element,
-                    bound: CardinalityBound::AtMostOne,
-                },
-                type_params: Vec::new(),
-                phantom_params: Vec::new(),
-                meta_tag: None,
-                specialization_parent: None,
-                inhabits: None,
-
-                value_body: None,
-                refinement: None,
-                nominal_opacity: None,
-                span: span.clone(),
-            });
-            id
+            dag.alloc_cardinality_decl(element, CardinalityBound::AtMostOne, span.clone())
         }
         SurfaceType::Arrow {
             inputs,
@@ -2380,10 +2361,10 @@ fn type_to_connective(
                 arguments,
             }
         }
-        SurfaceType::Optional { inner, .. } => TypeConnective::Cardinality {
-            element: type_to_declaration_id(inner, symbols, local, dag),
-            bound: CardinalityBound::AtMostOne,
-        },
+        SurfaceType::Optional { inner, .. } => {
+            let element = type_to_declaration_id(inner, symbols, local, dag);
+            type_connective_cardinality(dag, element, CardinalityBound::AtMostOne)
+        }
         SurfaceType::Arrow { inputs, output, .. } => TypeConnective::Arrow {
             inputs: inputs
                 .iter()
@@ -2964,7 +2945,7 @@ fn resolve_decl_with_subst_lower(
             find_equivalent_decl_instantiation_lower(dag, *template, &specialized_arguments)
                 .or(Some(current))
         }
-        TypeConnective::Cardinality { .. }
+        TypeConnective::Cardinality(_)
         | TypeConnective::Arrow { .. }
         | TypeConnective::Conj { .. }
         | TypeConnective::Disj { .. }
@@ -3033,7 +3014,7 @@ fn walk_to_type_shape_lower(
         | TypeConnective::Conj { .. }
         | TypeConnective::Disj { .. }
         | TypeConnective::Arrow { .. }
-        | TypeConnective::Cardinality { .. } => None,
+        | TypeConnective::Cardinality(_) => None,
     }
 }
 
@@ -4372,7 +4353,7 @@ fn declaration_callable_inputs(
         | TypeConnective::Atom(AtomPayload::Literal(_))
         | TypeConnective::Conj { .. }
         | TypeConnective::Disj { .. }
-        | TypeConnective::Cardinality { .. } => None,
+        | TypeConnective::Cardinality(_) => None,
     }
 }
 
@@ -4409,7 +4390,7 @@ fn declaration_callable_output(
         | TypeConnective::Atom(AtomPayload::Literal(_))
         | TypeConnective::Conj { .. }
         | TypeConnective::Disj { .. }
-        | TypeConnective::Cardinality { .. } => None,
+        | TypeConnective::Cardinality(_) => None,
     }
 }
 
@@ -4861,23 +4842,24 @@ fn bind_expected_type_to_actual(
                 _ => false,
             }
         }
-        TypeConnective::Cardinality { element, bound } => {
+        TypeConnective::Cardinality(expected_payload) => {
+            let element = expected_payload.element();
+            let bound = expected_payload.bound();
             let actual_decl = dag.declaration(actual_id);
             match &actual_decl.connective {
                 TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
                 | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                     bind_expected_type_to_actual(dag, expected_id, *next, arguments, depth + 1)
                 }
-                TypeConnective::Cardinality {
-                    element: actual_element,
-                    bound: actual_bound,
-                } if bound == actual_bound => bind_expected_type_to_actual(
-                    dag,
-                    *element,
-                    *actual_element,
-                    arguments,
-                    depth + 1,
-                ),
+                TypeConnective::Cardinality(actual_payload) if bound == actual_payload.bound() => {
+                    bind_expected_type_to_actual(
+                        dag,
+                        element,
+                        actual_payload.element(),
+                        arguments,
+                        depth + 1,
+                    )
+                }
                 _ => false,
             }
         }
@@ -5086,7 +5068,7 @@ fn specialize_decl_for_lowering(
             });
             id
         }
-        TypeConnective::Cardinality { .. }
+        TypeConnective::Cardinality(_)
         | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
         | TypeConnective::Atom(AtomPayload::Literal(_)) => current,
     }
@@ -5916,7 +5898,7 @@ fn direct_invocation_input_decls(
         | TypeConnective::Atom(AtomPayload::TypeParam(_))
         | TypeConnective::Atom(AtomPayload::Literal(_))
         | TypeConnective::Disj { .. }
-        | TypeConnective::Cardinality { .. } => None,
+        | TypeConnective::Cardinality(_) => None,
     }
 }
 
