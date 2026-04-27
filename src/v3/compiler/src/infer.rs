@@ -1132,7 +1132,10 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                                 ) {
                                     return Decision::Fail(t.output, diag);
                                 }
-                                continue;
+                                // Default literal shape is `Int`; align the argument port with
+                                // the callee's narrow range-backed type (same as `let` / `data`
+                                // pre-seed + `Decision::Set` reunion for annotated literals).
+                                return Decision::Set(*input_port, *expected_ty);
                             }
                             Ok(Some(false)) | Ok(None) => {}
                             Err(diag) => return Decision::Fail(t.output, diag),
@@ -2342,6 +2345,38 @@ fn callable_instantiation_conflict(
     }
 }
 
+/// `port_type_context` reports the default `Int` type shape for integer literals, so
+/// [`bind_expected_decl_to_actual_context`] can reject a callee that expects a range-backed
+/// narrow type (`UInt8`, …). The main transform decision path already allows in-range
+/// literal narrowing; mirror that here so [`resolve_callable_target`] can succeed. Out-of-range
+/// literals surface as [`Diagnostic::MagnitudeOutOfRange`] to match
+/// `decide(Transform)`-style call checks.
+fn int_literal_implicit_bind_tolerated_for_expected(
+    dag: &Dag,
+    expected: DeclarationId,
+    input_port: PortId,
+    span: &SourceSpan,
+) -> Result<bool, Diagnostic> {
+    let Some(literal) = literal_int_at(dag, input_port) else {
+        return Ok(false);
+    };
+    match int_literal_fits_expected_type(dag, literal, expected) {
+        Ok(Some(true)) => Ok(true),
+        Ok(Some(false)) => match integer_range_for_decl(dag, expected) {
+            IntegerRangeLookup::Found(range) => Err(magnitude_out_of_range(
+                literal,
+                TypeShape::new(expected),
+                range,
+                span.clone(),
+            )),
+            IntegerRangeLookup::Invalid(diag) => Err(diag),
+            IntegerRangeLookup::Missing => Ok(false),
+        },
+        Ok(None) => Ok(false),
+        Err(diag) => Err(diag),
+    }
+}
+
 fn resolve_callable_target(
     dag: &Dag,
     target: DeclarationId,
@@ -2439,13 +2474,24 @@ fn resolve_callable_target(
                 &mut arguments,
                 0,
             ) {
-                return CallableTargetResolution::Fail(callable_instantiation_conflict(
+                match int_literal_implicit_bind_tolerated_for_expected(
                     dag,
-                    target,
                     expected_input,
-                    &actual_ctx,
+                    *input_port,
                     span,
-                ));
+                ) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return CallableTargetResolution::Fail(callable_instantiation_conflict(
+                            dag,
+                            target,
+                            expected_input,
+                            &actual_ctx,
+                            span,
+                        ));
+                    }
+                    Err(diag) => return CallableTargetResolution::Fail(diag),
+                }
             }
         }
     } else {
@@ -2509,13 +2555,24 @@ fn resolve_callable_target(
                     &mut arguments,
                     0,
                 ) {
-                    return CallableTargetResolution::Fail(callable_instantiation_conflict(
+                    match int_literal_implicit_bind_tolerated_for_expected(
                         dag,
-                        target,
                         expected_input.declaration,
-                        &actual_ctx,
+                        *input_port,
                         span,
-                    ));
+                    ) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            return CallableTargetResolution::Fail(callable_instantiation_conflict(
+                                dag,
+                                target,
+                                expected_input.declaration,
+                                &actual_ctx,
+                                span,
+                            ));
+                        }
+                        Err(diag) => return CallableTargetResolution::Fail(diag),
+                    }
                 }
                 continue;
             };
