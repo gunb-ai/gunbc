@@ -622,18 +622,24 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(
 ///    consult `PATH` for paths). Bare names use `command -v -- "$0"` (`PATH` search, matching
 ///    `execvp`). Probe fail → exit 126 immediately. Sentinel = `s`.
 /// 3. `e` — probe passed; sh is committed to `exec(2)`.
-/// 4. EXIT trap installed: `printf f >&3` if sh ever exits *after* this point. fd 3 has
-///    `FD_CLOEXEC` set in `pre_exec`, so a successful `exec` atomically closes it (no leak
-///    to the user process and no `f` write); a failed `exec` leaves fd 3 open in sh, sh
-///    exits, trap fires, `f` is written.
+/// 4. EXIT trap installed: `printf f >&3` if sh ever exits *after* this point. On a
+///    successful `exec` the sh process is replaced by the user command, so the trap (which
+///    is sh's, not the user's) is gone — no `f` is written. On a failed `exec` sh resumes,
+///    the EXIT trap fires before sh exits, and `f` is written. fd 3 is **not** marked
+///    CLOEXEC: that would cause the parent's `exec("unshare")` to close fd 3 atomically
+///    *before* the bootstrap ever runs, silently disabling the unshare containment path
+///    and forcing every run to fall back to direct (codex review on PR #1049, commit
+///    e072dce4). fd 3 therefore inherits to the user process on success — the exact-byte
+///    sentinel classifier fail-closes any unexpected bytes (a stray user write to fd 3
+///    surfaces as a fall-back to direct, not a misclassified logical exit).
 /// 5. `exec "$0" "$@"`.
 ///
 /// After wait, parent reads up to [`UNSHARE_READY_PIPE_MAX`] bytes:
 ///
 /// - `b""`    → util-linux exited before sh ran → `NamespaceSetupFailed`.
 /// - `b"s"`   → sh ran, probe rejected → `LogicalCommandNotExecutable`.
-/// - `b"se"`  → sh exec'd the user command (kernel closed fd 3 atomically) → exit is
-///   logical → `LogicalCommandExeced`.
+/// - `b"se"`  → sh exec'd the user command (sh process replaced; no further bytes written
+///   from this side) → exit is logical → `LogicalCommandExeced`.
 /// - `b"sef"` → sh's `exec` returned (TOCTOU x-bit removal, `ENOEXEC`, `ETXTBSY`, etc.) →
 ///   exec failed post-probe → `LogicalExecFailed`. Closes the P2(c) gap manager raised on
 ///   draft review: post-`exec` failure can no longer be mistaken for a logical exit (a
@@ -769,16 +775,22 @@ fn build_execute_command_unshare(
                     return Err(std::io::Error::last_os_error());
                 }
                 // Move the ready-pipe write end to fd 3. dup2 clears CLOEXEC on the target,
-                // so fd 3 survives `exec` into the bootstrap sh.
+                // so fd 3 survives the *parent's* `exec` into `unshare(1)` (and unshare's
+                // own `exec` into the bootstrap sh) and is observable when the bootstrap
+                // writes its sentinel bytes.
+                //
+                // **Do NOT re-arm FD_CLOEXEC here.** This pre_exec runs before the parent's
+                // `exec("unshare")`; setting CLOEXEC would cause that exec to atomically
+                // close fd 3, the bootstrap sh would never see it, every run would classify
+                // as `NamespaceSetupFailed`, and the unshare containment would be silently
+                // bypassed via direct fallback (codex review on PR #1049, commit e072dce4).
+                //
+                // The trade-off is that fd 3 inherits to the user process on a successful
+                // logical `exec`. The user does not advertise fd 3, and our exact-byte
+                // sentinel classifier fail-closes any unexpected pattern (e.g. `b"sex"`)
+                // back to `NamespaceSetupFailed`, so a stray write by the user surfaces as
+                // a fall-back to direct rather than a wrong logical classification.
                 if libc::dup2(write_fd, 3) < 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                // Re-arm FD_CLOEXEC on fd 3: the bootstrap sh writes to fd 3 (printf), but
-                // when sh's final `exec "$0" "$@"` succeeds, the kernel closes fd 3
-                // atomically — preventing leak to the user process AND making "no further
-                // bytes after `e`" a structural proof that `exec` succeeded. If `exec` fails,
-                // sh resumes with fd 3 still open and the EXIT trap writes the `f` sentinel.
-                if libc::fcntl(3, libc::F_SETFD, libc::FD_CLOEXEC) < 0 {
                     return Err(std::io::Error::last_os_error());
                 }
                 Ok(())
@@ -3222,6 +3234,57 @@ mod execute_command_timebound_tests {
             ClaimResult::Pass,
             "expected Pass when logical stderr > pipe; got {r:?}"
         );
+    }
+
+    /// Linux receipt that the unshare PID-namespace path is **actually engaged**, not
+    /// silently bypassed via direct fallback. `unshare -f -p` makes the bootstrap sh's
+    /// fork PID 1 in the new namespace; `exec` of the user command preserves PID 1. So
+    /// `sh -c '[ "$$" = "1" ]'` exits 0 *only* when the unshare path reached the user
+    /// command. If the bootstrap-sentinel pipe were broken (e.g. fd 3 closed by parent's
+    /// `exec("unshare")` due to a misplaced FD_CLOEXEC), the runner would fall back to
+    /// direct, the user sh would NOT be PID 1, and this assertion would fail.
+    /// (Regression for codex review on PR #1049, commit e072dce4.)
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn unshare_path_actually_engages_user_runs_as_pid_1_in_new_namespace() {
+        use super::evaluate_execute_command_host_outcome;
+        use super::ExecuteCommandHostOutcome;
+        // Skip when we cannot even spawn unshare(1) (restricted CI hosts).
+        if std::process::Command::new("unshare")
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| !s.success())
+            .unwrap_or(true)
+        {
+            eprintln!("skip: unshare(1) not runnable on this host");
+            return;
+        }
+        // If the namespace setup is permitted on this host, $$ must be 1 inside the
+        // unshare wrapper. If we silently fell back to direct, sh would have a normal PID
+        // and exit 1.
+        let r = evaluate_execute_command_host_outcome(
+            "sh",
+            &[String::from("-c"), String::from("[ \"$$\" = \"1\" ]")],
+            0,
+            Duration::from_secs(5),
+        );
+        match r {
+            ExecuteCommandHostOutcome::Matched => {
+                // PID-namespace engaged and the inner sh saw $$ == 1.
+            }
+            ExecuteCommandHostOutcome::SetupFailed { .. }
+            | ExecuteCommandHostOutcome::SpawnFailed { .. } => {
+                // Restricted CI: namespace setup or unshare spawn was blocked. Acceptable —
+                // this test only asserts that *when* the unshare path is available we
+                // actually engage it, not direct-fallback silently.
+                eprintln!("skip: unshare path unavailable on this host: {r:?}");
+            }
+            other => panic!(
+                "unshare path appears silently bypassed: expected Matched (PID 1 in new ns) or SetupFailed/SpawnFailed, got {other:?}"
+            ),
+        }
     }
 
     /// Linux receipt: a `command` containing `/` (absolute path) reaches `execvp` with the
