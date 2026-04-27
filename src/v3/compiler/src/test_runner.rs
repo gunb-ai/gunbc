@@ -1435,16 +1435,12 @@ impl<'a> TestRunner<'a> {
                         "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                         "ExecuteCommand" => self.eval_execute_command(claim, &payload),
                         "CensusBoundCheck" => self.eval_census_bound_check_shape(claim, &payload),
-                        "CensusSubsetCount" => {
-                            self.eval_census_subset_count_shape(claim, &payload)
-                        }
+                        "CensusSubsetCount" => self.eval_census_subset_count_shape(claim, &payload),
                         "FixedPointConverges" => {
                             self.eval_fixed_point_converges_shape(claim, &payload)
                         }
                         "RatchetZero" => self.eval_ratchet_zero_shape(claim, &payload),
-                        "GeneratedFromDag" => {
-                            self.eval_generated_from_dag_shape(claim, &payload)
-                        }
+                        "GeneratedFromDag" => self.eval_generated_from_dag_shape(claim, &payload),
                         "MockBackedInvariant" => {
                             if !claim.requires.is_empty() {
                                 if let Err(reason) = self.validate_resource_requirements(claim) {
