@@ -5546,6 +5546,53 @@ service test.Api {
     );
 }
 
+// RE-1j: typed `response { 200 => Wire }` deserializes with serde then projects fields.
+#[test]
+fn rest_typed_response_200_body_avoids_json_pointer() {
+    let source = r#"module re1j
+
+type WireBody {
+  a: String
+  b: Int
+}
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+  }
+  operation Get {
+    output {
+      a: String from "a"
+      b: Int from "b"
+    }
+    transport rest { method: GET, path: "/x" }
+    response {
+      200 => WireBody
+      404 => String
+    }
+    mock_response {
+      200 => { a: "ok", b: 3 } "ok"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1j.rs");
+    assert!(
+        content.contains("let __rest_wire:") && content.contains("= response.json().await?"),
+        "RE-1j: expected typed 200-body deserialize into __rest_wire, got:\n{content}"
+    );
+    assert!(
+        content.contains("( __rest_wire ).a") || content.contains("(__rest_wire).a"),
+        "RE-1j: expected struct field projection for path a, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer("),
+        "RE-1j: typed 200 body must not use JSON pointer extraction, got:\n{content}"
+    );
+}
+
 #[test]
 fn func_with_service_calls_classified_effectful() {
     let source = r#"module re2_test
