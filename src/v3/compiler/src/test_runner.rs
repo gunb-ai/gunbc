@@ -3266,18 +3266,15 @@ mod execute_command_timebound_tests {
         use super::evaluate_execute_command_host_outcome;
         use super::ExecuteCommandHostOutcome;
         use std::os::unix::fs::PermissionsExt;
-        let tmp = std::env::temp_dir().join(format!(
-            "gunbc_pb_runtime_nonexec_{}",
-            std::process::id()
-        ));
+        let tmp =
+            std::env::temp_dir().join(format!("gunbc_pb_runtime_nonexec_{}", std::process::id()));
         std::fs::write(&tmp, b"#!/bin/sh\nexit 0\n").expect("write temp");
         let mut perms = std::fs::metadata(&tmp).expect("meta").permissions();
         perms.set_mode(0o644); // explicitly NO execute bit
         std::fs::set_permissions(&tmp, perms).expect("chmod 644");
 
         let path = tmp.to_str().expect("path utf8").to_string();
-        let r =
-            evaluate_execute_command_host_outcome(&path, &[], 126, Duration::from_secs(5));
+        let r = evaluate_execute_command_host_outcome(&path, &[], 126, Duration::from_secs(5));
         let _ = std::fs::remove_file(&tmp);
 
         assert!(
