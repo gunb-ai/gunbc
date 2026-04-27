@@ -642,7 +642,7 @@ mod tests {
 
     /// Inner slice of the `go_spec_predeclared_primitives` data list (between `[` and the matching
     /// closing `]`), for text-level drift checks without involving the v3 parser.
-    fn go_spec_predeclared_list_inner<'a>(source: &'a str) -> &'a str {
+    fn go_spec_predeclared_list_inner(source: &str) -> &str {
         const HEAD: &str = "data go_spec_predeclared_primitives: List<GoPrimitive> = [";
         let start = source
             .find(HEAD)
