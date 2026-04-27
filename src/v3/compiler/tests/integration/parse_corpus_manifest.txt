@@ -17,7 +17,7 @@ src/v3/compiler/tests/four_fixture_pressure/id.v3	2	2452	ec8b40edc3d3c017
 src/v3/compiler/tests/four_fixture_pressure/is_empty.v3	3	6755	00117f14eb43dd20
 src/v3/compiler/tests/four_fixture_pressure/wrap.v3	4	5189	ac633b042c944480
 src/v3/compiler/tokenize.dag	27	56809	6a375f3c832b2af8
-src/v3/spec/go.dag	123	1130440	18b05d7fb6f104b6
+src/v3/spec/go.dag	123	1130440	5e77b26c1bec7c57
 src/v3/spec/python.dag	89	583706	9093761e6f32b7fd
 src/v3/spec/rust.dag	141	1203476	fb7d4cbfa4d0d494
 src/v3/spec/v3_l1.dag	8	2238	1f55d782265c3bfe

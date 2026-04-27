@@ -2761,8 +2761,8 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
     // Dissolution trigger (M1 scaffold): delete when `dsl/std/error_primitives` emits through
     // the normal filtered-type path (no separate string prelude).
     const RUST_V3_INT_OP_PRELUDE: &str = r#"#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum DivError { DivideByZero, Overflow }
-fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
+pub enum DivError { DivideByZero, Overflow }
+pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
     if r == 0 {
         return ::core::result::Result::Err(DivError::DivideByZero);
     }
