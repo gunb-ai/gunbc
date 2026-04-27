@@ -552,9 +552,7 @@ pub fn topological_sort(
                                 __found
                             };
                             if (((m_name.clone().as_str() != "std.types".to_string().as_str())
-                                && (m_name.clone().as_str() != "std.algebra".to_string().as_str())
-                                && (m_name.clone().as_str()
-                                    != "std.error_primitives".to_string().as_str()))
+                                && (m_name.clone().as_str() != "std.algebra".to_string().as_str()))
                                 && (imports_std_types.clone() == false))
                             {
                                 Rc::new(vec![Rc::new(DepEdge {
@@ -601,8 +599,7 @@ pub fn topological_sort(
                 };
                 let implicit_std_types_in_degree = if (((has_std_types.clone()
                     && (m_name.clone().as_str() != "std.types".to_string().as_str()))
-                    && (m_name.clone().as_str() != "std.algebra".to_string().as_str())
-                    && (m_name.clone().as_str() != "std.error_primitives".to_string().as_str()))
+                    && (m_name.clone().as_str() != "std.algebra".to_string().as_str()))
                     && (imports_std_types.clone() == false))
                 {
                     1
