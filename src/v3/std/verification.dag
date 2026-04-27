@@ -17,9 +17,34 @@
 module std.verification
 
 import std.list { List, map }
+import std.types { FilePath, NonEmptyStr }
 import v3.std.substrate { ComparisonOp }
 import v3.spec.v3_l1 { DeclarationRef }
 import v3.std.resources { ResourceReference }
+
+// R1C-A / T-TestGen PB-census predicate shape vocabulary. These are narrow
+// bootstrap-local carriers for R1C-D's census-as-TestClaim fixtures; the Rust
+// runner still owns evaluation against the live census authorities.
+type Path = FilePath
+type SnapshotRef = NonEmptyStr
+
+// Closed PB census-list constants are declared vocabulary, not string labels,
+// so fixtures can only point at typed list identities.
+type CensusListConstant {}
+
+data expected_hand_authored_non_test: CensusListConstant = {}
+data expected_hand_authored_test: CensusListConstant = {}
+
+// Closed PB subset predicates are declared values, not string labels, so
+// fixtures can only point at typed vocabulary entries.
+type LensProducerFilesSubsetPredicate {}
+
+data lens_producer_files_subset_predicate: LensProducerFilesSubsetPredicate = {}
+
+// Closed PB consolidation ratchets follow the same declaration-ref pattern.
+type CompilerStdPositiveSetRatchet {}
+
+data compiler_std_positive_set_ratchet: CompilerStdPositiveSetRatchet = {}
 
 // **🟡 Scaffold — DiagnosticKind.** This mirrors the compiler's native
 // diagnostic taxonomy until reflected substrate diagnostic facts can be
@@ -164,6 +189,31 @@ type TestPredicate
   | AlgebraicLaw {
       law: AlgebraicLawKind
       lens_ref: DeclarationRef
+    }
+  // R1C-A / T-TestGen schema extensions for the five PB census gates.
+  // These variants scope the structural shape R1C-D fixtures consume; they
+  // intentionally do not duplicate census lists into fixture text.
+  | CensusBoundCheck {
+      authority: DeclarationRef
+      list_constant: CensusListConstant
+      bound: Int
+    }
+  | CensusSubsetCount {
+      authority: DeclarationRef
+      list_constant: CensusListConstant
+      subset_predicate: DeclarationRef
+    }
+  | FixedPointConverges {
+      compile_target: Path
+      expected: SnapshotRef
+    }
+  | RatchetZero {
+      authority: DeclarationRef
+      ratchet_kind: DeclarationRef
+    }
+  | GeneratedFromDag {
+      authority: DeclarationRef
+      generated_paths: List<Path>
     }
 
 // Structural runner input role for predicates whose input is the compiled
