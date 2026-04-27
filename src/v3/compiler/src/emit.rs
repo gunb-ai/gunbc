@@ -143,6 +143,72 @@ pub(crate) fn div_prelude_reserved_name_collision<'a>(
         .then_some(helper_name)
 }
 
+pub(crate) fn decl_uses_substrate_result_or_div_error(
+    dag: &Dag,
+    declaration: DeclarationId,
+    visited: &mut HashSet<DeclarationId>,
+) -> bool {
+    if !visited.insert(declaration) {
+        return false;
+    }
+    let decl = dag.declaration(declaration);
+    if decl.name.as_deref() == Some("DivError") {
+        return true;
+    }
+    match &decl.connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            substrate_result_type_decl_suppressed_for_emit(dag, dag.declaration(*template))
+                || decl_uses_substrate_result_or_div_error(dag, *template, visited)
+                || arguments
+                    .iter()
+                    .any(|arg| decl_uses_substrate_result_or_div_error(dag, arg.value, visited))
+        }
+        TypeConnective::Conj { children } | TypeConnective::Disj { variants: children } => {
+            children
+                .iter()
+                .any(|field| decl_uses_substrate_result_or_div_error(dag, field.ty, visited))
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            decl_uses_substrate_result_or_div_error(dag, *next, visited)
+        }
+        TypeConnective::Cardinality(payload) => {
+            decl_uses_substrate_result_or_div_error(dag, payload.element(), visited)
+        }
+        TypeConnective::Arrow { inputs, output, .. } => {
+            inputs
+                .iter()
+                .any(|input| decl_uses_substrate_result_or_div_error(dag, input.ty, visited))
+                || decl_uses_substrate_result_or_div_error(dag, *output, visited)
+        }
+        _ => false,
+    }
+}
+
+pub(crate) fn port_uses_substrate_result_or_div_error(dag: &Dag, port: PortId) -> bool {
+    let Some(ty) = dag.port(port).value_type() else {
+        return false;
+    };
+    decl_uses_substrate_result_or_div_error(dag, ty.declaration, &mut HashSet::new())
+}
+
+pub(crate) fn dag_needs_div_error_prelude(
+    dag: &Dag,
+    top_level_binds: &[&BindNode],
+    function_decls: &[&Declaration],
+) -> bool {
+    dag_uses_arithmetic_div(dag, top_level_binds, function_decls)
+        || top_level_binds
+            .iter()
+            .any(|bind| port_uses_substrate_result_or_div_error(dag, bind.value))
+        || function_decls.iter().any(|decl| {
+            decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new())
+        })
+}
+
 fn substrate_result_variant_payload_is_value_of(
     dag: &Dag,
     payload_ty: DeclarationId,
@@ -1225,7 +1291,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     if mode == EmitMode::Program {
         sections.push("import \"fmt\"".to_string());
     }
-    let needs_int_div_prelude = dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls);
+    let needs_int_div_prelude = dag_needs_div_error_prelude(dag, &top_level_binds, &function_decls);
     if let (true, Some(name)) = (
         needs_int_div_prelude,
         div_prelude_reserved_name_collision(type_decls.iter(), function_decls.iter(), "v3intdiv"),

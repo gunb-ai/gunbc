@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::{
-    algebra_field_for_operator_shared, dag_uses_arithmetic_div,
+    algebra_field_for_operator_shared, dag_needs_div_error_prelude,
     div_prelude_reserved_name_collision, optional_match_variant_roles, parse_pattern_strategy,
     primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
     SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
@@ -680,7 +680,8 @@ pub(crate) fn emit_python_with_mode(
         "def __v3_unreachable(label: str) -> typing.NoReturn:\n    raise ValueError(label)".to_string(),
     ];
 
-    let needs_int_div_prelude = dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls);
+    let needs_int_div_prelude =
+        dag_needs_div_error_prelude(dag, &top_level_binds, &function_decls);
     if let (true, Some(name)) = (
         needs_int_div_prelude,
         div_prelude_reserved_name_collision(type_decls.iter(), function_decls.iter(), "__v3_idiv"),

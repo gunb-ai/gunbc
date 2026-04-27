@@ -46,7 +46,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    algebra_field_for_operator_shared, dag_uses_arithmetic_div,
+    algebra_field_for_operator_shared, dag_needs_div_error_prelude,
     div_prelude_reserved_name_collision, parse_pattern_strategy, primitive_type_id_for_port_shared,
     walk_to_disj, EmitMode, PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding,
     VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
@@ -2753,7 +2753,8 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         .iter()
         .map(|decl| ctx.render_function_declaration(decl))
         .collect::<Result<Vec<_>, _>>()?;
-    let needs_int_div_prelude = dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls);
+    let needs_int_div_prelude =
+        dag_needs_div_error_prelude(dag, &top_level_binds, &function_decls);
     if let (true, Some(name)) = (
         needs_int_div_prelude,
         div_prelude_reserved_name_collision(
