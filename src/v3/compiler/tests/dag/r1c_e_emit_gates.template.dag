@@ -27,7 +27,18 @@ data emit_generic_bounds_survive_claim: TestClaim = {
   requires: []
 }
 
+// `emit_rust_fixtures_rustc_green` — full program + reflected matrix through
+// real `rustc` (see `r1c_e_gates::check_emit_rust_fixtures_rustc_green` and
+// `m1_3_emit_rust_test::emit_rust_fixtures_rustc_green`).
+data emit_rust_fixtures_rustc_green_claim: TestClaim = {
+  name: "emit_rust_fixtures_rustc_green",
+  source: "let marker: Int = 1",
+  file_name: "r1c_e_emit_gates_smoke.v3",
+  predicate: ExecuteCommand("__R1C_E_BIN__", ["rust-fixtures"], 0),
+  requires: []
+}
+
 data r1c_e_emit_gates_suite: TestSuite = {
   name: "r1c_e_emit_gates_suite",
-  claims: [emit_generic_bounds_survive_claim]
+  claims: [emit_generic_bounds_survive_claim, emit_rust_fixtures_rustc_green_claim]
 }
