@@ -141,12 +141,20 @@ fn data_annotated_uint8_in_range_literal_narrows_against_preseed() {
 /// the callee parameter is `UInt8` (same range facts as `let` / `data`, different site).
 #[test]
 fn call_site_u8_literal_narrows_against_uint8_parameter() {
-    let dag = compile_to_dag(
-        "fn id_u8(x: UInt8) -> UInt8 = x\n\
-         let r: UInt8 = id_u8(7)\n",
+    let res = compile_to_dag(
+        "fn id8(x: UInt8) -> UInt8 = x\n\
+         let r: UInt8 = id8(7)\n",
         "call_u8_narrow.v3",
-    )
-    .expect("call with u8-sized literal at UInt8 parameter should compile");
+    );
+    let dag = res.unwrap_or_else(|e| {
+        if let CompileError::Semantic(d) = &e {
+            panic!(
+                "call-site u8 program should compile: {e:?} diags={:?}",
+                d.diagnostics()
+            );
+        }
+        panic!("call-site u8 program should compile: {e:?}");
+    });
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
     assert_int_value_port_resolves_to_uint8(&dag, 7, "call id_u8(7) argument literal");
 }
