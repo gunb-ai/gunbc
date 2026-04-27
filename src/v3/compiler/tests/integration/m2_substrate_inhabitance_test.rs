@@ -984,6 +984,7 @@ fn substrate_coproducts_match_runtime_carriers() {
             (String::from("Reference"), vec![String::from("_0")]),
             (String::from("Record"), vec![String::from("_0")]),
             (String::from("List"), vec![String::from("_0")]),
+            (String::from("Map"), vec![String::from("_0")]),
             (
                 String::from("Variant"),
                 vec![String::from("constructor"), String::from("payload")],
@@ -998,6 +999,7 @@ fn substrate_coproducts_match_runtime_carriers() {
                 String::from("ValueBodyStructural"),
                 vec![String::from("fields")]
             ),
+            (String::from("ValueBodyMap"), vec![String::from("_0")]),
         ]
     );
     assert_eq!(
@@ -1612,7 +1614,7 @@ fn parse_type_nominal_opaque_rejects_sum_rhs() {
 
 #[test]
 fn lower_type_nominal_opaque_clause_sets_declaration_carrier() {
-    let source = "type String\ntype Token nominal_opaque = String\n";
+    let source = "type Token nominal_opaque = String\n";
     let dag = compile_to_dag(source, "nominal_opaque_lower.v3").expect("compile nominal_opaque");
     let token = dag
         .declaration_by_name("Token")
