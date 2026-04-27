@@ -1,6 +1,8 @@
 //! **Layer:** integration
 
-use v3_compiler::dag::{Behavior, LiteralBits, PortState, ValueBody};
+use v3_compiler::dag::{
+    Behavior, CardinalityBound, LiteralBits, PortState, TypeConnective, ValueBody,
+};
 use v3_compiler::emit_rust;
 use v3_compiler::{compile_to_dag, CompileError};
 
@@ -486,6 +488,65 @@ fn data_bool_string_scalar_literals_do_not_bypass_refinement() {
             "expected refinement failure for {file}, got {messages:?}"
         );
     }
+}
+
+/// T-ImpossibleBugs nested-optional flatten: `AtMostOne ∧ AtMostOne = AtMostOne`
+/// must hold for every `TypeConnective::Cardinality` declaration in the DAG,
+/// regardless of whether the cardinality was minted via `alloc_cardinality_decl`,
+/// the non-allocating `type_connective_cardinality` helper, or via generic
+/// substitution that walks `resolve_decl_with_subst` on a `Cardinality` node.
+fn assert_no_nested_at_most_one(dag: &v3_compiler::dag::Dag, context: &str) {
+    for decl in dag.declarations() {
+        let TypeConnective::Cardinality(payload) = &decl.connective else {
+            continue;
+        };
+        if payload.bound() != CardinalityBound::AtMostOne {
+            continue;
+        }
+        let inner = dag.declaration(payload.element());
+        if let TypeConnective::Cardinality(inner_payload) = &inner.connective {
+            assert!(
+                inner_payload.bound() != CardinalityBound::AtMostOne,
+                "{context}: declaration#{outer} (name={outer_name:?}) wraps \
+                 declaration#{inner} (name={inner_name:?}) in AtMostOne, but the \
+                 inner declaration is itself Cardinality(AtMostOne, …) — \
+                 the idempotence rule was bypassed",
+                outer = decl.id.raw(),
+                outer_name = decl.name,
+                inner = inner.id.raw(),
+                inner_name = inner.name,
+            );
+        }
+    }
+}
+
+#[test]
+fn nested_optional_flatten_holds_in_bootstrap_dag() {
+    let dag = compile_to_dag("data probe: Int = 0\n", "nested_optional_bootstrap.v3")
+        .expect("trivial program compiles");
+    assert_no_nested_at_most_one(&dag, "bootstrap");
+}
+
+#[test]
+fn nested_optional_flatten_via_generic_specialization() {
+    // `unwrap_id` is generic over T and takes/returns `T?`. Calling it with
+    // `Int?` makes substitution ask for `Cardinality(AtMostOne, Int?-decl)`,
+    // where `Int?-decl` is itself `Cardinality(AtMostOne, Int)`. Without
+    // the idempotence rule wired into `resolve_decl_with_subst`, that walk
+    // would mint or re-use a nested `AtMostOne` declaration; with it, the
+    // walk lands on the existing single-AtMostOne declaration.
+    let src = "\
+fn unwrap_id<T>(x: T?) -> T? = x
+fn use_it(o: Int?) -> Int? = unwrap_id(o)
+";
+    let dag =
+        compile_to_dag(src, "nested_optional_generic_specialization.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "generic optional specialization should be diagnostic-free, got: {:?}",
+        dag.diagnostics()
+    );
+    assert_no_nested_at_most_one(&dag, "generic specialization");
 }
 
 #[test]

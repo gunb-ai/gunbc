@@ -4649,6 +4649,11 @@ fn resolve_decl_with_subst(
             if specialized_element == element {
                 return Some(current);
             }
+            if let Some(idempotent) =
+                crate::dag::cardinality_idempotent_target(dag, specialized_element, bound)
+            {
+                return Some(idempotent);
+            }
             find_equivalent_decl_cardinality(dag, specialized_element, &bound).or(Some(current))
         }
         _ => Some(current),

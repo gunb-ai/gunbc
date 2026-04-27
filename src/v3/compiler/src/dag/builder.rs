@@ -613,6 +613,11 @@ impl Dag {
                 if specialized_element == element {
                     return Some(current);
                 }
+                if let Some(idempotent) =
+                    super::cardinality_idempotent_target(self, specialized_element, bound)
+                {
+                    return Some(idempotent);
+                }
                 self.find_equivalent_decl_cardinality(specialized_element, bound)
                     .or(Some(current))
             }
