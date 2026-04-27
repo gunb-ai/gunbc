@@ -741,7 +741,7 @@ mod tests {
     #[test]
     fn go_integer_range_facts_match_predeclared_list() {
         let source = include_str!("../../../../dsl/extdeps/languages/go/primitives.dag");
-        let mut fact_vec: Vec<RangeFact<'_>> = source
+        let fact_vec: Vec<RangeFact<'_>> = source
             .split("data ")
             .filter(|b| b.contains(": GoIntegerRangeFact = {"))
             .map(|block| RangeFact {
