@@ -208,46 +208,52 @@ fn effect_at(facts: List<EffectFact>, target: PortId) -> StructuralEffectShape =
   }
 
 fn compute_coverage_gaps(d: Dag) -> List<CoverageGap> =
-  compute_coverage_gaps_from_facts(d, compute_effect_facts(d))
+  compute_coverage_gaps_from_facts(d, compute_effect_facts(d), d.nodes)
 
-fn compute_coverage_gaps_from_facts(d: Dag, facts: List<EffectFact>) -> List<CoverageGap> =
-  fold(d.nodes, empty(), |acc, behavior|
-    match behavior {
-      Transform(t) =>
-        match transform_effect(d, t) {
-          UnknownEffect(u) =>
-            cons({ node: t.id, reason: u.reason }, acc)
-          NoEffect => acc
-          ReadShaped => acc
-          WriteShaped => acc
-        }
-      Branch(br) =>
-        match branch_effect(facts, br.paths) {
-          UnknownEffect(u) =>
-            cons({ node: br.id, reason: u.reason }, acc)
-          NoEffect => acc
-          ReadShaped => acc
-          WriteShaped => acc
-        }
-      Loop(l) =>
-        match loop_effect(d, facts, l.body) {
-          UnknownEffect(u) =>
-            cons({ node: l.id, reason: u.reason }, acc)
-          NoEffect => acc
-          ReadShaped => acc
-          WriteShaped => acc
-        }
-      Bind(bind) =>
-        match effect_at(facts, bind.result_port) {
-          UnknownEffect(u) =>
-            cons({ node: bind.id, reason: u.reason }, acc)
-          NoEffect => acc
-          ReadShaped => acc
-          WriteShaped => acc
-        }
-      Value(_) => acc
+fn compute_coverage_gaps_from_facts(
+  d: Dag,
+  facts: List<EffectFact>,
+  nodes: List<Behavior>
+) -> List<CoverageGap> =
+  match nodes {
+    Empty => empty()
+    Cons(payload) =>
+      prepend_gap(
+        coverage_gap_for(d, facts, payload.head),
+        compute_coverage_gaps_from_facts(d, facts, payload.tail)
+      )
+  }
+
+fn prepend_gap(gap: List<CoverageGap>, acc: List<CoverageGap>) -> List<CoverageGap> =
+  match gap {
+    Empty => acc
+    Cons(payload) => cons(payload.head, acc)
+  }
+
+fn coverage_gap_for(d: Dag, facts: List<EffectFact>, behavior: Behavior) -> List<CoverageGap> =
+  match behavior {
+    Transform(t) =>
+      coverage_gap_for_effect(t.id, transform_effect(d, t))
+    Branch(br) =>
+      coverage_gap_for_effect(br.id, branch_effect(facts, br.paths))
+    Loop(l) =>
+      coverage_gap_for_effect(l.id, loop_effect(d, facts, l.body))
+    Bind(bind) =>
+      coverage_gap_for_effect(bind.id, effect_at(facts, bind.result_port))
+    Value(_) => empty()
+  }
+
+fn coverage_gap_for_effect(id: NodeId, shape: StructuralEffectShape) -> List<CoverageGap> =
+  match shape {
+    UnknownEffect(u) =>
+      cons(
+        { node: id, reason: u.reason },
+        empty()
+      )
+    NoEffect => empty()
+    ReadShaped => empty()
+    WriteShaped => empty()
     }
-  )
 
 fn transaction_pattern(d: Dag) -> TransactionalPattern =
   NoTransaction
