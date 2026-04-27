@@ -11299,6 +11299,7 @@ pub fn emit_transport_call(
     service_item: Rc<Node>,
     op_node: Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    shared_types: Rc<HashMap<String, bool>>,
 ) -> String {
     if is_rest_transport(transport.clone(), source_indices.clone()) {
         emit_rest_call(
@@ -11309,6 +11310,7 @@ pub fn emit_transport_call(
             service_item,
             op_node,
             &source_indices,
+            shared_types.clone(),
         )
     } else {
         if is_shell_transport(transport.clone()) {
@@ -11339,6 +11341,7 @@ pub fn emit_rest_call(
     service_item: Rc<Node>,
     op_node: Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    shared_types: Rc<HashMap<String, bool>>,
 ) -> String {
     {
         let client_init =
@@ -11375,8 +11378,12 @@ pub fn emit_rest_call(
             __result
         });
         let send_line = "let response = request.send().await?;".to_string();
-        let response_handling =
-            emit_response_code_handling(&op_node, transport.clone(), &source_indices);
+        let response_handling = emit_response_code_handling(
+            &op_node,
+            transport.clone(),
+            &source_indices,
+            shared_types.clone(),
+        );
         let all_lines = Rc::new({
             let mut __result = Vec::new();
             for l in v2_rt::concat(
@@ -11923,10 +11930,30 @@ pub fn emit_json_value_extract(
 pub fn emit_from_key_extraction(
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    shared_types: Rc<HashMap<String, bool>>,
 ) -> String {
     {
-        let rt = resolved_type(op_node);
+        let rt = resolved_type(op_node.clone());
         let children = rt.children.clone();
+        let wire_opt = operation_response_200_resolved_type(op_node.clone(), source_indices.clone());
+        let use_typed_wire = match wire_opt.clone() {
+            Some(tn) => !is_json_wire_declaration_type(tn.clone(), source_indices.clone()),
+            None => false,
+        };
+        let prelude = match wire_opt.clone() {
+            Some(tn) if !is_json_wire_declaration_type(tn.clone(), source_indices.clone()) => {
+                let rust_ty = render_rust_type(
+                    resolved_type(tn.clone()),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                );
+                v2_rt::concat(
+                    v2_rt::concat("let __rest_wire: ".to_string(), rust_ty),
+                    " = response.json().await?;\n".to_string(),
+                )
+            }
+            _ => "let json_body: serde_json::Value = response.json().await?;\n".to_string(),
+        };
         let extract_lines = Rc::new({
             let mut __result = Vec::new();
             for ch in children.clone().iter().cloned() {
@@ -11938,11 +11965,21 @@ pub fn emit_from_key_extraction(
                         None => ch_name.clone(),
                     };
                     match ch.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: tn, .. }) => emit_json_value_extract(
-                            field_name.clone(),
-                            &from_path,
-                            authored_name_at(source_indices.clone(), &tn),
-                        ),
+                        Some(InferredNode::Resolved { node: tn, .. }) => {
+                            if use_typed_wire {
+                                emit_typed_wire_field_extract(
+                                    field_name.clone(),
+                                    &from_path,
+                                    authored_name_at(source_indices.clone(), &tn),
+                                )
+                            } else {
+                                emit_json_value_extract(
+                                    field_name.clone(),
+                                    &from_path,
+                                    authored_name_at(source_indices.clone(), &tn),
+                                )
+                            }
+                        }
                         _ => v2_rt::concat(
                             v2_rt::concat(
                                 v2_rt::concat(
@@ -11986,10 +12023,7 @@ pub fn emit_from_key_extraction(
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
-                    v2_rt::concat(
-                        "let json_body: serde_json::Value = response.json().await?;\n".to_string(),
-                        extract_lines.join(&"\n".to_string()),
-                    ),
+                    v2_rt::concat(prelude, extract_lines.join(&"\n".to_string())),
                     "\nOk(".to_string(),
                 ),
                 tuple_body,
@@ -12024,6 +12058,7 @@ pub fn emit_response_code_handling(
     op_node: &Rc<Node>,
     transport: Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    shared_types: Rc<HashMap<String, bool>>,
 ) -> String {
     {
         let use_from_key = has_from_key_fields(op_node.clone(), source_indices.clone());
@@ -12039,7 +12074,11 @@ pub fn emit_response_code_handling(
         });
         if ((response_props.clone().len() as i64) == 0) {
             if use_from_key.clone() {
-                emit_from_key_extraction(op_node.clone(), source_indices.clone())
+                emit_from_key_extraction(
+                    op_node.clone(),
+                    source_indices.clone(),
+                    shared_types.clone(),
+                )
             } else {
                 emit_plain_response_body(op_node.clone(), transport.clone(), &source_indices)
             }
@@ -12054,6 +12093,7 @@ pub fn emit_response_code_handling(
                             use_from_key.clone(),
                             transport.clone(),
                             &source_indices,
+                            shared_types.clone(),
                         ));
                     }
                     __result
@@ -12083,6 +12123,7 @@ pub fn emit_response_arm(
     use_from_key: bool,
     transport: Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    shared_types: Rc<HashMap<String, bool>>,
 ) -> String {
     {
         let name = field_init_node_name_at(prop, source_indices.clone());
@@ -12120,7 +12161,11 @@ pub fn emit_response_arm(
                             v2_rt::concat("    ".to_string(), pattern),
                             " => { ".to_string(),
                         ),
-                        emit_from_key_extraction(op_node, source_indices.clone()),
+                        emit_from_key_extraction(
+                            op_node,
+                            source_indices.clone(),
+                            shared_types.clone(),
+                        ),
                     ),
                     " },".to_string(),
                 )
