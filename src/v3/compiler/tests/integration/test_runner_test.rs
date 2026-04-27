@@ -495,7 +495,7 @@ data fixed_point_claim: TestClaim = {
   name: "pb_self_compile_fixed_point",
   source: "let x: Int = 1",
   file_name: "pb_self_compile_fixed_point.v3",
-  predicate: FixedPointConverges("src/v3/compiler/pipeline.dag", "bootstrap_generated.rs"),
+  predicate: FixedPointConverges("default_fixed_point_source", "pipeline_stage_snapshots"),
   requires: []
 }
 
@@ -534,10 +534,17 @@ data suite: TestSuite = {
 
     assert_eq!(results.len(), 5);
     assert!(
-        results
-            .iter()
-            .all(|result| matches!(&result.result, ClaimResult::NotYetImplemented(_))),
-        "expected every PB census predicate shape to reach its explicit dispatch arm, got {results:?}"
+        matches!(&results[0].result, ClaimResult::Fail(reason) if reason.contains("expected_hand_authored_non_test"))
+    );
+    assert!(
+        matches!(&results[1].result, ClaimResult::Fail(reason) if reason.contains("lens-producer subset observed"))
+    );
+    assert_eq!(results[2].result, ClaimResult::Pass);
+    assert!(
+        matches!(&results[3].result, ClaimResult::Fail(reason) if reason.contains("compiler_std_positive_set_ratchet"))
+    );
+    assert!(
+        matches!(&results[4].result, ClaimResult::Fail(reason) if reason.contains("not in the generated-file authority"))
     );
 }
 
