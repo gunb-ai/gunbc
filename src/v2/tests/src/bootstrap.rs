@@ -735,33 +735,22 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
 static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
     let pass1 = &*CI_PASS1;
     let ws = crate::helpers::workspace_root();
-    let stage0_src = ws.join("src/v2/stage0/src");
-
-    // Copy pass1 generated .rs files into the workspace's stage0 source.
-    ci_timing("PASS2: start copy .rs files into workspace");
-    let pass1_src = pass1.output_dir.join("src");
-    for entry in std::fs::read_dir(&pass1_src).unwrap() {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if path.extension().map(|e| e == "rs").unwrap_or(false) {
-            std::fs::copy(&path, stage0_src.join(entry.file_name())).unwrap();
-        }
-    }
-    ci_timing("PASS2: copy done, start workspace rebuild");
-
-    // Rebuild workspace binary — incremental, all deps already compiled.
+    // Rebuild the pass1 crate in place. This keeps the fixed-point check
+    // hermetic: the ignored CI tests run concurrently, so copying pass1 files
+    // into the workspace can race with freshness/lint/test gates.
+    ci_timing("PASS2: start generated crate rebuild");
     let stage1_target_dir = std::env::temp_dir().join("v2-ci-pass2-target");
     let _ = std::fs::remove_dir_all(&stage1_target_dir);
     let build1 = std::process::Command::new("cargo")
         .arg("build")
-        .arg("-p")
-        .arg("v2-compiler")
+        .arg("--manifest-path")
+        .arg(pass1.output_dir.join("Cargo.toml"))
         .arg("--release")
         .env("CARGO_TARGET_DIR", &stage1_target_dir)
         .output()
         .expect("stage1 build failed");
     ci_timing(&format!(
-        "PASS2: workspace rebuild done (success={})",
+        "PASS2: generated crate rebuild done (success={})",
         build1.status.success()
     ));
     assert!(
