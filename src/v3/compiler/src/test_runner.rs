@@ -612,65 +612,43 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(
 /// Windows: no unprivileged one-shot equivalent; wall bound + pgrp signal on timeout + the
 /// `sh -c` `&` heuristic only.
 ///
-/// **Setup detection — bootstrap sentinel pipe (P2(c) realization, T-PB-B Worker 4).**
-/// The bootstrap `sh` emits up to three bytes on fd 3, classifying the run structurally with
-/// no string authority:
-///
-/// 1. `s` — sh started executing.
-/// 2. Probe: matches `execvp(3)` lookup rules to keep parity with `std::process::Command`.
-///    Path operands (containing `/`) use `[ -x "$0" ]` (direct file test; `execvp` does not
-///    consult `PATH` for paths). Bare names use `command -v -- "$0"` (`PATH` search, matching
-///    `execvp`). Probe fail → exit 126 immediately. Sentinel = `s`.
-/// 3. `e` — probe passed; sh is committed to `exec(2)`.
-/// 4. EXIT trap installed: `printf f >&3` if sh ever exits *after* this point. On a
-///    successful `exec` the sh process is replaced by the user command, so the trap (which
-///    is sh's, not the user's) is gone — no `f` is written. On a failed `exec` sh resumes,
-///    the EXIT trap fires before sh exits, and `f` is written. fd 3 is **not** marked
-///    CLOEXEC: that would cause the parent's `exec("unshare")` to close fd 3 atomically
-///    *before* the bootstrap ever runs, silently disabling the unshare containment path
-///    and forcing every run to fall back to direct (codex review on PR #1049, commit
-///    e072dce4). fd 3 therefore inherits to the user process on success — the exact-byte
-///    sentinel classifier fail-closes any unexpected bytes (a stray user write to fd 3
-///    surfaces as a fall-back to direct, not a misclassified logical exit).
-/// 5. `exec "$0" "$@"`.
+/// **Setup detection — `gunbc_execute_command_bootstrap` helper (P2(c) structural, post-#1063).**
+/// The unshare target is the helper binary from `src/v3/execute_command_bootstrap`, NOT a
+/// `sh -c` script. The helper writes the same three sentinel bytes on fd 3 — `s`, `e`, `f` —
+/// but crucially calls `fcntl(3, F_SETFD, FD_CLOEXEC)` on fd 3 immediately *before*
+/// `execvp(3)`. On successful `execvp` the kernel atomically closes fd 3 in the new image
+/// — the user command **cannot** inherit a writable sentinel fd, eliminating the
+/// `b"sef"`-spoof discriminator gap that was unreachable in pure POSIX sh (no portable
+/// `fcntl` primitive between probe and `exec`). `argv[1]` is the logical program; `argv[2..]`
+/// are its args. See `gunbc_execute_command_bootstrap` source for the exact protocol; the
+/// classifier in this file consumes the same byte vocabulary as before.
 ///
 /// After wait, parent reads up to [`UNSHARE_READY_PIPE_MAX`] bytes:
 ///
-/// - `b""`    → util-linux exited before sh ran → `NamespaceSetupFailed`.
-/// - `b"s"`   → sh ran, probe rejected → `LogicalCommandNotExecutable`.
-/// - `b"se"`  → sh exec'd the user command (sh process replaced; no further bytes written
-///   from this side) → exit is logical → `LogicalCommandExeced`.
-/// - `b"sef"` → sh's `exec` returned (TOCTOU x-bit removal, `ENOEXEC`, `ETXTBSY`, etc.) →
-///   exec failed post-probe → `LogicalExecFailed`. Closes the P2(c) gap manager raised on
-///   draft review: post-`exec` failure can no longer be mistaken for a logical exit (a
-///   claim expecting 126 cannot Match an unexec'd command).
-/// - anything else with `b"se"` prefix → user command ran (the bootstrap committed to
-///   `exec` before writing `e`) and wrote stray bytes via the inherited fd 3 →
-///   `LogicalCommandExeced`. **Must NOT trigger direct fallback** — that would be implicit
-///   re-execution of an already-run logical command, violating P2(d).
-///   (api-review codex sha 7297b04a hardening.)
+/// - `b""`    → util-linux exited before the helper ran → `NamespaceSetupFailed`.
+/// - `b"s"`   → helper ran, executable probe rejected → `LogicalCommandNotExecutable`.
+/// - `b"se"`  → helper `execvp`'d the user command (kernel atomically closed fd 3 via
+///   `FD_CLOEXEC`; user inherits no writable sentinel fd) → exit is the logical exit →
+///   `LogicalCommandExeced`.
+/// - `b"sef"` → helper's `execvp` returned (TOCTOU x-bit removal, `ENOEXEC`, `ETXTBSY`, etc.)
+///   → exec failed post-probe → `LogicalExecFailed`. **Structurally unspoofable now** that
+///   fd 3 has CLOEXEC before `execvp` — only the helper itself can produce `f` on the
+///   sentinel.
+/// - anything else with `b"se"` prefix → defensively classified as `LogicalCommandExeced`
+///   (P2(d) defense-in-depth). With the helper-binary CLOEXEC story, this branch should be
+///   unreachable in practice, but the classifier preserves the no-implicit-re-execution
+///   guarantee even under a hypothetical helper bug.
 /// - anything not starting with `b"s"` or whose `s`-prefix didn't reach `e` →
 ///   `NamespaceSetupFailed`. Bootstrap never committed to `exec`, so the direct fallback is
-///   the *first* logical run, not a second.
+///   the *first* logical run.
 ///
-/// **No setup-string authority** (P2(a)/(b)/(e)): wrapper stderr is `/dev/null`. The only
-/// structural channel between bootstrap and parent is the typed sentinel pipe; classification
-/// is by exact-byte match (no substring scan).
-/// **No implicit re-execution** (P2(d)): on `NamespaceSetupFailed` the runner falls back to a
-/// direct `Child` once — that is the *first* logical run, not a recovery re-exec of an
-/// already-run logical command. `LogicalCommandNotExecutable` and `LogicalExecFailed` both
-/// surface as `SpawnFailed` without any second logical run.
-#[cfg(target_os = "linux")]
-const UNSHARE_LOGICAL_BOOTSTRAP_SH: &str = "\
-printf s >&3 2>/dev/null; \
-case \"$0\" in \
-  */*) [ -x \"$0\" ] || exit 126;; \
-  *) command -v -- \"$0\" >/dev/null 2>&1 || exit 126;; \
-esac; \
-printf e >&3 2>/dev/null; \
-trap 'printf f >&3 2>/dev/null' EXIT; \
-exec 2>/dev/null; \
-exec \"$0\" \"$@\"";
+/// **No setup-string authority** (P2(a)/(b)/(e)): wrapper stderr is `/dev/null`; only
+/// structural channel is the typed sentinel pipe; classification is exact-byte.
+/// **No implicit re-execution** (P2(d)): on `NamespaceSetupFailed` the direct fallback is
+/// the *first* logical run, not a recovery re-exec.
+/// **No spoofable discriminator** (P2(c), structural): the helper sets `FD_CLOEXEC` on fd 3
+/// between writing `e` and calling `execvp`; successful exec atomically closes fd 3 in the
+/// new image, so the user cannot write any byte to the sentinel post-`exec`.
 
 /// Anonymous pipe used as the unshare-bootstrap setup sentinel. The child inherits the write
 /// end as fd 3 (set in `pre_exec` via `dup2`). After spawn the parent closes its copy of the
@@ -774,29 +752,79 @@ impl Drop for UnshareReadyPipe {
     }
 }
 
+/// Override env var for the helper binary path (used in tests where the workspace target
+/// layout may not match `current_exe`'s parent — e.g., when running a single-crate test in
+/// isolation). Production callers should not set this; the runtime walkup is the canonical
+/// resolution.
+#[cfg(target_os = "linux")]
+const GUNBC_EXECUTE_COMMAND_BOOTSTRAP_PATH_ENV: &str = "GUNBC_EXECUTE_COMMAND_BOOTSTRAP";
+
+/// Locates the `gunbc_execute_command_bootstrap` helper binary at runtime. The cargo
+/// workspace layout puts it at `target/<profile>/gunbc_execute_command_bootstrap`. Tests
+/// run from `target/<profile>/deps/v3_compiler-<hash>` (one level deeper) so we walk up
+/// once. An env override (`GUNBC_EXECUTE_COMMAND_BOOTSTRAP`) takes precedence for cases
+/// where the helper is installed elsewhere.
+///
+/// Returns `Err(message)` if the helper cannot be located — the caller surfaces this as a
+/// typed `SetupFailed` so a misconfigured deployment cannot silently degrade to a
+/// spoofable bootstrap path.
+#[cfg(target_os = "linux")]
+fn locate_unshare_bootstrap_helper() -> Result<std::path::PathBuf, String> {
+    use std::path::PathBuf;
+    if let Ok(p) = std::env::var(GUNBC_EXECUTE_COMMAND_BOOTSTRAP_PATH_ENV) {
+        if !p.is_empty() {
+            let path = PathBuf::from(p);
+            if path.exists() {
+                return Ok(path);
+            }
+            return Err(format!(
+                "{GUNBC_EXECUTE_COMMAND_BOOTSTRAP_PATH_ENV} points to nonexistent path: {}",
+                path.display()
+            ));
+        }
+    }
+    let exe = std::env::current_exe()
+        .map_err(|e| format!("current_exe() failed: {e}"))?;
+    let dir = exe
+        .parent()
+        .ok_or_else(|| "current_exe has no parent dir".to_string())?;
+    // target/<profile>/gunbc_execute_command_bootstrap (binary running directly).
+    let candidate = dir.join("gunbc_execute_command_bootstrap");
+    if candidate.exists() {
+        return Ok(candidate);
+    }
+    // target/<profile>/deps/<bin>-<hash> → walk up one to target/<profile>/.
+    if let Some(parent) = dir.parent() {
+        let candidate = parent.join("gunbc_execute_command_bootstrap");
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    Err(format!(
+        "gunbc_execute_command_bootstrap not found relative to current_exe ({}); \
+         build the workspace (`cargo build --workspace`) or set {} to its absolute path",
+        exe.display(),
+        GUNBC_EXECUTE_COMMAND_BOOTSTRAP_PATH_ENV
+    ))
+}
+
 #[cfg(target_os = "linux")]
 fn build_execute_command_unshare(
+    helper: &std::path::Path,
     command: &str,
     args: &[String],
     ready: &UnshareReadyPipe,
 ) -> Command {
     let mut c = Command::new("unshare");
-    c.args([
-        "-c",
-        "-f",
-        "-p",
-        "--",
-        "sh",
-        "-c",
-        UNSHARE_LOGICAL_BOOTSTRAP_SH,
-    ])
-    .arg(command)
-    .args(args)
-    .stdin(Stdio::null())
-    .stdout(Stdio::null())
-    // Wrapper stderr is /dev/null: P2(a)/(b) — no shared diagnostic channel between bootstrap
-    // and parent; the structural setup signal is the ready-pipe sentinel.
-    .stderr(Stdio::null());
+    c.args(["-c", "-f", "-p", "--"])
+        .arg(helper)
+        .arg(command)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        // Wrapper stderr is /dev/null: P2(a)/(b) — no shared diagnostic channel between
+        // helper and parent; the structural setup signal is the ready-pipe sentinel.
+        .stderr(Stdio::null());
     let write_fd = ready.write_fd_for_child();
     {
         use std::os::unix::process::CommandExt;
@@ -805,32 +833,12 @@ fn build_execute_command_unshare(
                 if libc::setpgid(0, 0) != 0 {
                     return Err(std::io::Error::last_os_error());
                 }
-                // Move the ready-pipe write end to fd 3. dup2 clears CLOEXEC on the target,
-                // so fd 3 survives the *parent's* `exec` into `unshare(1)` (and unshare's
-                // own `exec` into the bootstrap sh) and is observable when the bootstrap
-                // writes its sentinel bytes.
-                //
-                // **Do NOT re-arm FD_CLOEXEC here.** This pre_exec runs before the parent's
-                // `exec("unshare")`; setting CLOEXEC would cause that exec to atomically
-                // close fd 3, the bootstrap sh would never see it, every run would classify
-                // as `NamespaceSetupFailed`, and the unshare containment would be silently
-                // bypassed via direct fallback (codex review on PR #1049, commit e072dce4).
-                //
-                // The trade-off is that fd 3 inherits to the user process on a successful
-                // logical `exec`. The classifier handles this in two layers:
-                //   - Patterns that did NOT reach `e` (`b""`, `b"s"`, anything not starting
-                //     with `b"s"` reaching `e`) fail-closed to `NamespaceSetupFailed`. Direct
-                //     fallback in those cases is the *first* logical run, not a second.
-                //   - Patterns starting with `b"se"` (incl. stray writes like `b"sex"`,
-                //     `b"sefx"`) classify as `LogicalCommandExeced` because the bootstrap
-                //     committed to `exec` before writing `e`; the user command DID run, so
-                //     the wrapper's exit is the logical exit. **Must NOT trigger fallback** —
-                //     that would be implicit re-execution (P2(d) regression bec8bda closed
-                //     after codex sha 7297b04a).
-                // The remaining `b"sef"`-spoof discriminator gap (a logical child writing
-                // exactly `f` and being misclassified as `LogicalExecFailed`) requires
-                // atomic `FD_CLOEXEC` on fd 3 between probe and `execvp` — impossible in
-                // pure POSIX sh, addressed via the helper-binary substrate at #1063 / #856.
+                // Move the ready-pipe write end to fd 3 WITHOUT FD_CLOEXEC. dup2 clears
+                // CLOEXEC on the target, which is what we want here: fd 3 must survive the
+                // parent's `exec("unshare")` and unshare's own `exec(helper)`. The helper
+                // binary itself sets FD_CLOEXEC on fd 3 immediately before its final
+                // `execvp` of the user command — that's the structural close that prevents
+                // the user from inheriting a writable sentinel fd (P2(c) closure, #1063).
                 if libc::dup2(write_fd, 3) < 0 {
                     return Err(std::io::Error::last_os_error());
                 }
@@ -851,9 +859,12 @@ enum UnshareBootstrapStage {
     LogicalCommandNotExecutable,
     /// `b"se"` — sh exec'd the logical command; observed exit is its exit.
     LogicalCommandExeced,
-    /// `b"sef"` — sh's `exec` returned (TOCTOU, `ENOEXEC`, `ETXTBSY`, etc.); the EXIT trap
-    /// fired and emitted `f` while fd 3 was still open. The observed exit is sh's, not the
-    /// logical command's — must NOT be classified as a logical exit (P2(c)).
+    /// `b"sef"` — helper's `execvp` returned (TOCTOU, `ENOEXEC`, `ETXTBSY`, etc.); the
+    /// helper wrote `f` after the failure. The observed exit is the helper's, not the
+    /// logical command's — must NOT be classified as a logical exit (P2(c)). Structurally
+    /// unspoofable: the helper sets `FD_CLOEXEC` on fd 3 before `execvp`, so a successful
+    /// exec atomically closes fd 3 in the user image and only the helper itself can write
+    /// `f` (post-#1063).
     LogicalExecFailed,
 }
 
@@ -1180,6 +1191,20 @@ fn run_linux_unshare_then_direct(
     expect_exit_code: i64,
     wall_time: Duration,
 ) -> ExecuteCommandHostOutcome {
+    // Locate the helper binary BEFORE creating the pipe. If the helper is missing this is a
+    // configuration error — surface as a typed `SetupFailed` so a misconfigured deployment
+    // cannot silently degrade through `run_direct` (which would skip the unshare containment
+    // entirely without the operator knowing).
+    let helper = match locate_unshare_bootstrap_helper() {
+        Ok(p) => p,
+        Err(reason) => {
+            return ExecuteCommandHostOutcome::SetupFailed {
+                reason: SetupFailReason::NamespaceSetupAndDirectSpawnFailed {
+                    direct: format!("helper binary not found: {reason}"),
+                },
+            };
+        }
+    };
     let mut ready = match UnshareReadyPipe::new() {
         Ok(p) => p,
         Err(e) => {
@@ -1193,7 +1218,7 @@ fn run_linux_unshare_then_direct(
             );
         }
     };
-    let mut child = match build_execute_command_unshare(command, args, &ready).spawn() {
+    let mut child = match build_execute_command_unshare(&helper, command, args, &ready).spawn() {
         Ok(c) => c,
         Err(e_unshare) => {
             return run_direct(
@@ -3366,26 +3391,24 @@ mod execute_command_timebound_tests {
         );
     }
 
-    /// **P2(c) sef-spoof receipt — STOP-condition documentation, NOT yet enforceable.**
-    /// (api-review openai-pro/gpt-5-5-pro sha 9fea084e.)
+    /// **P2(c) sef-spoof structural-unreachability receipt** (api-review openai-pro/
+    /// gpt-5-5-pro sha 9fea084e; helper-binary AC per issuecomment-4331097029 on #856).
     ///
-    /// A logical command that successfully `exec`s and writes exactly `f` to the inherited
-    /// fd 3 currently produces sentinel `b"sef"`, which the classifier maps to
-    /// `LogicalExecFailed` → `SpawnFailed` — misclassified as wrapper exec failure, even
-    /// though the user command actually ran with exit 0. This is the documented STOP-
-    /// condition gap escalated to #856 / wired in #1063: closing it requires atomic
-    /// `FD_CLOEXEC` on fd 3 between probe and `execvp(2)`, impossible in pure POSIX sh.
+    /// A logical command that successfully `execvp`s and attempts to write exactly `f` to
+    /// fd 3 must NOT be misclassified as `LogicalExecFailed`. With the
+    /// `gunbc_execute_command_bootstrap` helper (#1063) wired in, the helper sets
+    /// `FD_CLOEXEC` on fd 3 immediately before `execvp(3)`; on successful exec the kernel
+    /// atomically closes fd 3 in the new image, the user's `printf f >&3` gets `EBADF`,
+    /// and the parent's sentinel reads exactly `b"se"` → `LogicalCommandExeced` → exit code
+    /// is the user's (0) → `Matched`.
     ///
-    /// This test is `#[ignore]`d at HEAD because the assertion (Matched + exit 0) WILL FAIL
-    /// today. Once #1063's helper binary is wired into `build_execute_command_unshare`, the
-    /// kernel will atomically close fd 3 on successful `execvp`, the user's `printf` will
-    /// receive `EBADF`, the parent's sentinel will read exactly `b"se"`, and this test
-    /// flips green. Removing the `#[ignore]` is the load-bearing receipt that the
-    /// helper-binary acceptance criterion ("sef-spoof structurally unreachable", per
-    /// issuecomment-4331097029) is met — not just "helper binary exists."
+    /// This test was `#[ignore]`d during the pure-sh era (the gap was unreachable in POSIX
+    /// sh). It is now an active load-bearing receipt that the helper's CLOEXEC-before-
+    /// `execvp` ordering actually closes the spoof window — a regression that broke the
+    /// CLOEXEC ordering would surface here as `SpawnFailed`/`LogicalExecFailed` instead of
+    /// `Matched`.
     #[test]
     #[cfg(target_os = "linux")]
-    #[ignore = "sef-spoof gap; flips to green when #1063 helper binary is wired in (issue #856)"]
     fn unshare_logical_command_writing_f_to_fd3_is_not_misclassified_after_helper_lands() {
         use super::evaluate_execute_command_host_outcome;
         use super::ExecuteCommandHostOutcome;
