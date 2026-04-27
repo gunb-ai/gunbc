@@ -35,6 +35,25 @@
 
 module extdeps.languages.go.primitives
 
+// =========================================================================
+// Practice 4 — Coproduct dissolution checkpoint
+// (`docs/modeling-discipline.md` Practice 4). Every N≥2 sum in this module is classified.
+// Dissolution patterns 1–4 were considered in parallel with
+// `rust/primitives.dag` (same pilot lane): bridge tags are not dissolvable until
+// the substrate carries first-class algebra/bit type identities as data.
+//
+// | Coproduct                 | Class | Ledger (GREEN) or named trigger (YELLOW) |
+// |---------------------------|-------|---------------------------------------------|
+// | GoIntegerAlgebra          | 🟡 YELLOW | Pattern 3 partial: tags bridge `std.algebra` witnesses; dissolve when **T-Ground-Engine** + **DB-11** close substrate-gap #2 analog (see rust `IntegerAlgebra` header). |
+// | GoFloatAlgebra            | 🟡 YELLOW | Same — width tags bridge approximate-field algebras; trigger **R2 T-Substrate** / **DB-11** when float witness can reference `std` inhabitants directly. |
+// | GoTargetCarrier           | 🟡 YELLOW | Tags bridge `std.bit` (+ terminal / UTF-8 text witnesses); trigger **DB-11** / cardinality lane when carriers collapse to typed `std.bit` refs. |
+// | GoComplexComponentWidth   | 🟢 GREEN | **Ledger:** Pattern 2 rejected (64 vs 128 components are not label-only); patterns 1/3/4 N/A. Variants are the two irreducible spec widths for `complex64` / `complex128` (go.dev/ref/spec); no richer internal source to extract. |
+// | GoDiscreteScalarKind      | 🟢 GREEN | **Ledger:** Pattern 1 rejected (bool/string/unit route through disjoint spec classes); pattern 2 rejected (payload shapes differ); pattern 3 partial (each arm’s algebra already names its std-facing role). Coproduct exists to **forbid** illegal algebra×carrier cross-wiring — dissolution would re-open the product bug; terminal as authored spec partition + paired witnesses. |
+// | GoPrimitive               | 🟢 GREEN | **Ledger:** Mirrors `RustPrimitive` pilot partition (Lesson 5). Variants are heterogeneous spec classes (int vs float vs …); not a compressible enum of same-shaped labels. External authority: Go spec predeclared / fixed-width tranche-1 set. |
+//
+// `GoIntegerOverflow` is N=1 (wrap-only) — no Practice-4 checkpoint required.
+// =========================================================================
+
 // --- Algebra tags (Go-prefixed names; avoid colliding with rust/primitives.dag
 // in the shared bootstrap Dag). ---
 
