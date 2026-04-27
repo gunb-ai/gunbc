@@ -89,6 +89,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
     const LINE_COMMENT_PREFIX: &[u8] = b"//";
     while pos < bytes.len() {
         let byte = bytes[pos];
+
         let start = pos;
 
         if byte_matches(byte, ScannerCharClass::Whitespace) {
