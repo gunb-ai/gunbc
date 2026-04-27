@@ -2290,6 +2290,10 @@ impl Dag {
     }
 
     fn mark_bootstrap_secret_nominal_opacity(&mut self) {
+        // Bridge until source-level nominal_opacity marking is lowered and
+        // regen_bootstrap carries std Secret through the generated fixtures.
+        // Delete this name-keyed stamp when Secret<T> graduation owns that
+        // fact in .dag authority.
         let secret = self
             .declarations
             .iter()
