@@ -250,7 +250,10 @@ fn ensure_optional_match_disj(
         TypeConnective::Cardinality(payload)
             if payload.bound() == crate::dag::CardinalityBound::AtMostOne =>
         {
-            (payload.element(), dag.declaration(cardinality_decl_id).span.clone())
+            (
+                payload.element(),
+                dag.declaration(cardinality_decl_id).span.clone(),
+            )
         }
         _ => return None,
     };
