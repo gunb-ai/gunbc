@@ -221,7 +221,7 @@ fn collect_ascii_scan_order(dag: &Dag) -> Vec<String> {
         panic!("`CharClass` should be a disj declaration");
     };
 
-    let ValueBody::List(values) = &scan_decl.value_body else {
+    let Some(ValueBody::List(values)) = scan_decl.value_body.as_ref() else {
         panic!("`ascii_scan_order` in `{TOKENIZE_AUTHORITY_FILE}` must be a list");
     };
 
@@ -785,7 +785,7 @@ fn emit_tokenize_fn(
     escapes: &[(u8, i64)],
     ascii_scan_order: &[String],
 ) -> String {
-    let mut ensure_classes = |required: &[&str]| {
+    let ensure_classes = |required: &[&str]| {
         for name in required {
             assert!(
                 ascii_scan_order.iter().any(|class| class == name),
