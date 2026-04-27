@@ -11785,6 +11785,27 @@ pub fn has_from_key_fields(
     }
 }
 
+/// Authoritative name text on the `response { 200 => Name }` arm (if any).
+pub fn response_200_declared_type_name(
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    for p in op_node.properties.iter().cloned() {
+        if field_init_node_name_at(p.clone(), source_indices.clone()).as_str() == "response_200" {
+            let v = field_init_node_value(&p);
+            let n = authored_name_at(
+                source_indices.clone(),
+                &normalize_access_type_node(v.clone()),
+            );
+            if n.is_empty() {
+                return None;
+            }
+            return Some(n);
+        }
+    }
+    None
+}
+
 /// Resolved type for `response { 200 => T }` on a service operation, if present.
 pub fn operation_response_200_resolved_type(
     op_node: Rc<Node>,
@@ -11810,6 +11831,10 @@ pub fn operation_response_200_resolved_type(
         }
     }
     None
+}
+
+pub fn declared_response_200_requires_typed_wire(declared: &str) -> bool {
+    !(declared == "Json" || declared.ends_with(".Json"))
 }
 
 pub fn is_json_wire_declaration_type(
@@ -11946,20 +11971,36 @@ pub fn emit_from_key_extraction(
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<HashMap<String, bool>>,
+    env: &Rc<TypeEnv>,
 ) -> String {
     {
         let rt = resolved_type(op_node.clone());
         let children = rt.children.clone();
-        let wire_opt =
-            operation_response_200_resolved_type(op_node.clone(), source_indices.clone());
+        let decl_name_opt = response_200_declared_type_name(op_node.clone(), source_indices.clone());
+        let wire_opt = operation_response_200_resolved_type(
+            op_node.clone(),
+            source_indices.clone(),
+            env,
+        );
+        if match decl_name_opt.clone() {
+            Some(ref n) => declared_response_200_requires_typed_wire(n.as_str()),
+            None => false,
+        } && wire_opt.is_none()
+        {
+            return "compile_error!(\"REST response_200: declared non-Json body type could not be resolved in TypeEnv for typed projection\");\n".to_string();
+        }
         let use_typed_wire = match wire_opt.clone() {
             Some(tn) => !is_json_wire_declaration_type(tn.clone(), source_indices.clone()),
             None => false,
         };
         let prelude = match wire_opt.clone() {
             Some(tn) if !is_json_wire_declaration_type(tn.clone(), source_indices.clone()) => {
+                let wire_ty = match tn.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => rt,
+                    _ => tn.clone(),
+                };
                 let rust_ty = render_rust_type(
-                    resolved_type(tn.clone()),
+                    wire_ty,
                     shared_types.clone(),
                     source_indices.clone(),
                 );
