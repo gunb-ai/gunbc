@@ -480,13 +480,19 @@ pub(crate) fn cardinality_idempotent_target(
 }
 
 /// `TypeConnective::Cardinality` for contexts that do not allocate a declaration
-/// (e.g. type-alias connective). Caller must not introduce a nested `AtMostOne`
-/// stack; lowering routes declaration-carrying optionals through
-/// [`Dag::alloc_cardinality_decl`].
+/// (e.g. type-alias connective). Reuses the same
+/// [`cardinality_idempotent_target`] / nested-`AtMostOne` rule as
+/// [`crate::dag::Dag::alloc_cardinality_decl`]: if `element` is already
+/// `Cardinality(AtMostOne, …)` with matching `bound`, the existing connective is
+/// returned unchanged instead of minting `Cardinality(AtMostOne, that_decl)`.
 pub(crate) fn type_connective_cardinality(
+    dag: &Dag,
     element: DeclarationId,
     bound: CardinalityBound,
 ) -> TypeConnective {
+    if let Some(keep) = cardinality_idempotent_target(dag, element, bound) {
+        return dag.declaration(keep).connective.clone();
+    }
     TypeConnective::Cardinality(CardinalityPayload::new_unchecked(element, bound))
 }
 

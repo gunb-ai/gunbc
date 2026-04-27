@@ -2362,6 +2362,7 @@ fn type_to_connective(
             }
         }
         SurfaceType::Optional { inner, .. } => type_connective_cardinality(
+            dag,
             type_to_declaration_id(inner, symbols, local, dag),
             CardinalityBound::AtMostOne,
         ),

@@ -49,6 +49,84 @@ use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
 use crate::types::TypeShape;
 
+/// Outcome of [`try_reconcile_int_literal_decision_set`].
+enum IntLiteralSetReconciliation {
+    /// Reconciled without changing the port (narrow annotation already wins over default `Int`).
+    Keep,
+    /// Applied `set_port_type` to narrow a default-`Int` literal port to `ty`.
+    SetNarrow,
+    /// `mark_unresolved` with a magnitude or other diagnostic.
+    Marked,
+}
+
+/// Reconcile `Decision::Set` for ports backed by an integer literal when the proposed
+/// and existing [`TypeShape`] would otherwise `TypeMismatch`: (a) `let`/`data`
+/// pre-seed vs default `Int`, (b) call-sites that propose a callee's narrow
+/// type over a default-`Int` argument.
+fn try_reconcile_int_literal_decision_set(
+    dag: &mut Dag,
+    port: PortId,
+    existing: TypeShape,
+    ty: TypeShape,
+) -> Option<IntLiteralSetReconciliation> {
+    let default_int = dag.int_shape()?;
+    let literal = literal_int_at(dag, port)?;
+    if type_shapes_equivalent(dag, &ty, &default_int) {
+        match int_literal_fits_expected_type(dag, literal, existing.declaration) {
+            Ok(Some(true)) => Some(IntLiteralSetReconciliation::Keep),
+            Ok(Some(false)) => {
+                if let IntegerRangeLookup::Found(range) =
+                    integer_range_for_decl(dag, existing.declaration)
+                {
+                    let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
+                    dag.mark_unresolved(
+                        port,
+                        magnitude_out_of_range(literal, existing, range, span),
+                    );
+                    Some(IntLiteralSetReconciliation::Marked)
+                } else {
+                    None
+                }
+            }
+            Ok(None) => None,
+            Err(diag) => {
+                if !matches!(dag.port(port).state(), PortState::Unresolved) {
+                    dag.mark_unresolved(port, diag);
+                }
+                Some(IntLiteralSetReconciliation::Marked)
+            }
+        }
+    } else if type_shapes_equivalent(dag, &existing, &default_int) {
+        match int_literal_fits_expected_type(dag, literal, ty.declaration) {
+            Ok(Some(true)) => {
+                dag.set_port_type(port, ty);
+                Some(IntLiteralSetReconciliation::SetNarrow)
+            }
+            Ok(Some(false)) => {
+                if let IntegerRangeLookup::Found(range) = integer_range_for_decl(dag, ty.declaration) {
+                    let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
+                    dag.mark_unresolved(
+                        port,
+                        magnitude_out_of_range(literal, ty, range, span),
+                    );
+                    Some(IntLiteralSetReconciliation::Marked)
+                } else {
+                    None
+                }
+            }
+            Ok(None) => None,
+            Err(diag) => {
+                if !matches!(dag.port(port).state(), PortState::Unresolved) {
+                    dag.mark_unresolved(port, diag);
+                }
+                Some(IntLiteralSetReconciliation::Marked)
+            }
+        }
+    } else {
+        None
+    }
+}
+
 pub fn infer(dag: &mut Dag) {
     // Fixpoint loop. Runs decide for every node, then pattern
     // resolution + exhaustiveness + uniqueness for every Branch.
