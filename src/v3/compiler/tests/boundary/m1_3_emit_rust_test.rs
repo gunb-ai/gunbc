@@ -426,7 +426,7 @@ let x = 6 / 2",
     .expect("compiles");
     let err = emit_rust(&dag).expect_err("Rust emit must reject DivError prelude collision");
     assert!(
-        matches!(err, v3_compiler::emit_rust::EmitError::UnsupportedBehavior(message)
+        matches!(err, v3_compiler::emit_rust::EmitError::UnsupportedBehavior(ref message)
             if message.contains("DivError")),
         "expected explicit DivError collision error, got {err:?}"
     );
