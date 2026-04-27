@@ -852,11 +852,11 @@ fn build_execute_command_unshare(
 #[cfg(target_os = "linux")]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum UnshareBootstrapStage {
-    /// `b""` — sh never ran; util-linux failed before fork/exec into sh.
+    /// `b""` — helper never ran; util-linux failed before fork/exec into the helper.
     NamespaceSetupFailed,
-    /// `b"s"` — sh ran, executable probe rejected the logical command.
+    /// `b"s"` — helper ran, `execvp`-equivalent probe rejected the logical command.
     LogicalCommandNotExecutable,
-    /// `b"se"` — sh exec'd the logical command; observed exit is its exit.
+    /// `b"se"` — helper `execvp`'d the logical command; observed exit is its exit.
     LogicalCommandExeced,
     /// `b"sef"` — helper's `execvp` returned (TOCTOU, `ENOEXEC`, `ETXTBSY`, etc.); the
     /// helper wrote `f` after the failure. The observed exit is the helper's, not the
@@ -1048,10 +1048,17 @@ pub enum PolicyReject {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetupFailReason {
-    /// `unshare(1)` exited before the bootstrap `sh` ran (namespace / clone / permission). The
-    /// runner attempted a direct fallback; this carrier is only produced when that fallback
-    /// also failed to spawn.
+    /// `unshare(1)` exited before the helper ran (namespace / clone / permission). The runner
+    /// attempted a direct fallback; this carrier is only produced when that fallback also
+    /// failed to spawn.
     NamespaceSetupAndDirectSpawnFailed { direct: String },
+    /// The `gunbc_execute_command_bootstrap` helper binary could not be located at runtime
+    /// (build-graph misconfiguration: `cargo test -p v3-compiler` without a prior
+    /// `cargo build -p execute-command-bootstrap`, or the `GUNBC_EXECUTE_COMMAND_BOOTSTRAP`
+    /// override pointing at a missing path). Distinct from `NamespaceSetupAndDirectSpawnFailed`
+    /// because no `unshare(1)` or direct `Child` was attempted — surfacing this as that
+    /// variant would lie about which steps failed (api-review cursor/composer-2 sha 7dd7825b).
+    HelperBinaryMissing { reason: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1090,6 +1097,9 @@ impl ExecuteCommandHostOutcome {
                         "ExecuteCommand: namespace setup failed and direct fallback spawn also failed: {direct}"
                     ))
                 }
+                SetupFailReason::HelperBinaryMissing { reason } => ClaimResult::Fail(format!(
+                    "ExecuteCommand: gunbc_execute_command_bootstrap helper not found: {reason}"
+                )),
             },
             ExecuteCommandHostOutcome::WaitFailed(w) => match w {
                 WaitFail::WallTimeout { wall_time } => ClaimResult::Fail(format!(
@@ -1198,9 +1208,7 @@ fn run_linux_unshare_then_direct(
         Ok(p) => p,
         Err(reason) => {
             return ExecuteCommandHostOutcome::SetupFailed {
-                reason: SetupFailReason::NamespaceSetupAndDirectSpawnFailed {
-                    direct: format!("helper binary not found: {reason}"),
-                },
+                reason: SetupFailReason::HelperBinaryMissing { reason },
             };
         }
     };
