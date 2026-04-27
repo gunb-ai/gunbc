@@ -875,9 +875,9 @@ fn ci_freshness() {
 #[test]
 #[ignore] // CI: cargo test -p v2-compiler-tests ci_ -- --ignored
 fn ci_fixed_point() {
+    let pass1 = &*CI_PASS1;
     let pass2 = &*CI_PASS2;
-    let ws = crate::helpers::workspace_root();
-    let pass1_src = ws.join("src/v2/stage0/src");
+    let pass1_src = pass1.output_dir.join("src");
     let pass2_src = pass2.output_dir.join("src");
     if let Err(diff) = diff_excluding_hand_maintained(&pass1_src, &pass2_src) {
         eprintln!("Fixed point NOT reached — diff:\n{}", diff);
