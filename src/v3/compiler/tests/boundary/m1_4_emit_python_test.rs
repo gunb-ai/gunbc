@@ -201,7 +201,7 @@ fn passthrough(x: DivError) -> DivError = x\n",
         "user DivError signatures should not trigger integer division prelude; got: {out}"
     );
     assert!(
-        out.matches("class DivError").count() == 1,
+        out.matches("class DivError:").count() == 1,
         "user DivError should emit once without colliding with a std prelude; got: {out}"
     );
 }
