@@ -175,14 +175,21 @@ type SymbolicCost
   | UnknownCost(String)
 
 // Scan state for composite `dominates` / `drop_dominated_step`.
-// Modeled as a conjunctive nominal (not a one-variant sum): the surface
-// parser rejects a single `Disj` arm carrying a `{ … }` payload here, and an
-// earlier two-arm sum used a phantom “never” variant for exhaustiveness — that
-// admitted an illegal substrate state (`docs/modeling-discipline.md` practice 2).
-type DominateScanAcc {
-  any: Bool
-  pivot: SymbolicCost
-}
+//
+// 🟡 YELLOW (scaffold, `docs/modeling-discipline.md` §4): the parser rejects a
+// one-variant `Disj` with a `{ … }` payload here, and conjunctive record
+// literals like `DominateScanAcc { any, pivot }` are not yet accepted in
+// expression position (named constructors require a sum spine). The second
+// variant is therefore an exhaustiveness-only anchor with **no inhabited
+// introduction rule** — `scan_hit` / `fold_or_dominate_scan` map it only to
+// keep matches total; no lowering path constructs `ScanAccNever`.
+//
+// **Dissolution trigger:** remove `ScanAccNever` once the surface accepts either
+// (a) a single conjunctive nominal for this accumulator with valid construction,
+// or (b) bare record payloads on one-arm sums without lowering gaps.
+type DominateScanAcc
+  = ScanAcc { any: Bool, pivot: SymbolicCost }
+  | ScanAccNever
 
 // SymbolicCost-monomorphized `Lookup` constructors. Same shim story
 // as `miss_int_lookup` / `hit_int_lookup` in `v3.std.lookup`: v3 infer
@@ -358,7 +365,7 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
       scan_hit(
         fold(
           nsl_to_list(terms),
-          DominateScanAcc { any: False, pivot: b },
+          ScanAcc { any: False, pivot: b },
           fold_or_dominate_scan
         )
       )
@@ -366,7 +373,7 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
       scan_hit(
         fold(
           nsl_to_list(terms),
-          DominateScanAcc { any: False, pivot: b },
+          ScanAcc { any: False, pivot: b },
           fold_or_dominate_scan
         )
       )
@@ -523,13 +530,15 @@ fn product_pair(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
 
 fn fold_or_dominate_scan(acc: DominateScanAcc, c: SymbolicCost) -> DominateScanAcc =
   match acc {
-    DominateScanAcc { any: prev, pivot: p } =>
-      DominateScanAcc { any: prev || dominates(c, p), pivot: p }
+    ScanAcc { any: prev, pivot: p } =>
+      ScanAcc { any: prev || dominates(c, p), pivot: p }
+    ScanAccNever => ScanAccNever
   }
 
 fn scan_hit(scan: DominateScanAcc) -> Bool =
   match scan {
-    DominateScanAcc { any: hit, pivot: _ } => hit
+    ScanAcc { any: hit, pivot: _ } => hit
+    ScanAccNever => False
   }
 
 fn filter_not_dominated_by(
@@ -549,7 +558,7 @@ fn drop_dominated_step(
   acc: List<SymbolicCost>,
   term: SymbolicCost
 ) -> List<SymbolicCost> =
-  if scan_hit(fold(acc, DominateScanAcc { any: False, pivot: term }, fold_or_dominate_scan)) then
+  if scan_hit(fold(acc, ScanAcc { any: False, pivot: term }, fold_or_dominate_scan)) then
     acc
   else
     cons(term, filter_not_dominated_by(acc, term))
