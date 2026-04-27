@@ -2290,13 +2290,11 @@ impl Dag {
     }
 
     fn mark_bootstrap_secret_nominal_opacity(&mut self) {
-        let Some(secret) = self
+        let secret = self
             .declarations
             .iter()
             .position(|decl| decl.name.as_deref() == Some("Secret"))
-        else {
-            return;
-        };
+            .expect("bootstrap fixture must contain std Secret for nominal-opacity seeding");
         self.declarations[secret].nominal_opacity = Some(NominalOpacity {
             permitted_accessors: Vec::new(),
         });
