@@ -172,12 +172,31 @@ fn effect_at(facts: List<EffectFact>, target: PortId) -> EffectShape =
   }
 
 fn compute_coverage_gaps(d: Dag) -> List<CoverageGap> =
+  let facts = compute_effect_facts(d) in
   fold(d.nodes, empty(), |acc, behavior|
     match behavior {
       Transform(t) =>
         match transform_effect(d, t) {
           UnknownEffect { reason } =>
             cons({ node: t.id, reason: reason }, acc)
+          _ => acc
+        }
+      Branch(br) =>
+        match branch_effect(facts, br.paths) {
+          UnknownEffect { reason } =>
+            cons({ node: br.id, reason: reason }, acc)
+          _ => acc
+        }
+      Loop(l) =>
+        match loop_effect(d, facts, l.body) {
+          UnknownEffect { reason } =>
+            cons({ node: l.id, reason: reason }, acc)
+          _ => acc
+        }
+      Bind(bind) =>
+        match effect_at(facts, bind.result_port) {
+          UnknownEffect { reason } =>
+            cons({ node: bind.id, reason: reason }, acc)
           _ => acc
         }
       _ => acc
