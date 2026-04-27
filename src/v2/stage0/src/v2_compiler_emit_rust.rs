@@ -258,8 +258,7 @@ pub fn resolve_wire_serde_tag(
             let naming_field = Rc::new({
                 let mut __result = Vec::new();
                 for fi in ve.children.clone().iter().cloned() {
-                    if (field_init_node_name_at(fi.clone(), source_indices.clone())
-                        .as_str()
+                    if (field_init_node_name_at(fi.clone(), source_indices.clone()).as_str()
                         == "naming".to_string().as_str())
                     {
                         __result.push(fi);
