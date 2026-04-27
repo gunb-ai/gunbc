@@ -174,6 +174,14 @@ type SymbolicCost
   | LogCost(SizeVariable)
   | UnknownCost(String)
 
+// Scan state for composite `dominates` / `drop_dominated_step`. The second
+// variant is an uninhabited exhaustiveness anchor: the parser rejects a
+// one-variant sum with a `{ … }` payload at this position, and a plain
+// record type would lower `scan.any` to uncovered `FieldProject` nodes.
+type DominateScanAcc
+  = ScanAcc { any: Bool, pivot: SymbolicCost }
+  | ScanAccNever
+
 // SymbolicCost-monomorphized `Lookup` constructors. Same shim story
 // as `miss_int_lookup` / `hit_int_lookup` in `v3.std.lookup`: v3 infer
 // cannot yet prove bare `Miss` / `Hit(v)` bodies against a generic
@@ -341,15 +349,25 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
       }
     // Single semantic definition (DB-7 / R2 dissolution): when `a`
     // is a composite (`ProductCost` / `SumCost`), `a` dominates `b`
-    // iff **any child** dominates `b`. The list walk is delegated to
-    // `any_dominates` (same cluster as `drop_dominated` / #519 list
-    // descent); `dominates` and `any_dominates` are mutually recursive
-    // on strictly smaller `SymbolicCost` / list-tail measures. The
-    // generated Rust in `dag_cost_generated.rs` lowers this cluster via
-    // `any_dominates` (same name as here) on `NonSingletonList` children,
-    // staying aligned with the `.dag` authority.
-    ProductCost(terms) => any_dominates(nsl_to_list(terms), b)
-    SumCost(terms) => any_dominates(nsl_to_list(terms), b)
+    // iff **any child** dominates `b`. The list walk uses `std.list.fold`
+    // with `fold_or_dominate_scan` so the surface call graph does not form
+    // an invalid mutually-recursive SCC with `dominates` (M1 checker).
+    ProductCost(terms) =>
+      scan_hit(
+        fold(
+          nsl_to_list(terms),
+          ScanAcc { any: False, pivot: b },
+          fold_or_dominate_scan
+        )
+      )
+    SumCost(terms) =>
+      scan_hit(
+        fold(
+          nsl_to_list(terms),
+          ScanAcc { any: False, pivot: b },
+          fold_or_dominate_scan
+        )
+      )
   }
 
 fn same_size_variable(a: SizeVariable, b: SizeVariable) -> Bool =
@@ -501,14 +519,17 @@ fn polynomial_square(v: SizeVariable) -> SymbolicCost {
 fn product_pair(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
   ProductCost(two_terms(a, b))
 
-fn any_dominates(candidates: List<SymbolicCost>, term: SymbolicCost) -> Bool =
-  match candidates {
-    Empty => False
-    Cons(payload) =>
-      if dominates(payload.head, term) then
-        True
-      else
-        any_dominates(payload.tail, term)
+fn fold_or_dominate_scan(acc: DominateScanAcc, c: SymbolicCost) -> DominateScanAcc =
+  match acc {
+    ScanAcc { any: prev, pivot: p } =>
+      ScanAcc { any: prev || dominates(c, p), pivot: p }
+    ScanAccNever => ScanAccNever
+  }
+
+fn scan_hit(scan: DominateScanAcc) -> Bool =
+  match scan {
+    ScanAcc { any: hit, pivot: _ } => hit
+    ScanAccNever => False
   }
 
 fn filter_not_dominated_by(
@@ -528,7 +549,7 @@ fn drop_dominated_step(
   acc: List<SymbolicCost>,
   term: SymbolicCost
 ) -> List<SymbolicCost> =
-  if any_dominates(acc, term) then
+  if scan_hit(fold(acc, ScanAcc { any: False, pivot: term }, fold_or_dominate_scan)) then
     acc
   else
     cons(term, filter_not_dominated_by(acc, term))
