@@ -604,51 +604,51 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(
     t.contains('&')
 }
 
-/// On Linux, wrap the logical `command` + `args` in a **user + PID namespace** (util-linux
-/// `unshare(1)` with `-c` = map current user, `-f` fork, `-p` new PID namespace) so the first
-/// exec'd process in the new namespace is PID 1 (init rôle for that namespace): when it exits,
-/// the kernel tears down the contained subtree, closing the "direct child matched exit,
-/// grandchildren still run" host escape **for this path** (PR #792: P3/P4). Other Unix and
-/// Windows: no unprivileged one-shot equivalent; wall bound + pgrp signal on timeout + the
-/// `sh -c` `&` heuristic only.
-///
-/// **Setup detection — `gunbc_execute_command_bootstrap` helper (P2(c) structural, post-#1063).**
-/// The unshare target is the helper binary from `src/v3/execute_command_bootstrap`, NOT a
-/// `sh -c` script. The helper writes the same three sentinel bytes on fd 3 — `s`, `e`, `f` —
-/// but crucially calls `fcntl(3, F_SETFD, FD_CLOEXEC)` on fd 3 immediately *before*
-/// `execvp(3)`. On successful `execvp` the kernel atomically closes fd 3 in the new image
-/// — the user command **cannot** inherit a writable sentinel fd, eliminating the
-/// `b"sef"`-spoof discriminator gap that was unreachable in pure POSIX sh (no portable
-/// `fcntl` primitive between probe and `exec`). `argv[1]` is the logical program; `argv[2..]`
-/// are its args. See `gunbc_execute_command_bootstrap` source for the exact protocol; the
-/// classifier in this file consumes the same byte vocabulary as before.
-///
-/// After wait, parent reads up to [`UNSHARE_READY_PIPE_MAX`] bytes:
-///
-/// - `b""`    → util-linux exited before the helper ran → `NamespaceSetupFailed`.
-/// - `b"s"`   → helper ran, executable probe rejected → `LogicalCommandNotExecutable`.
-/// - `b"se"`  → helper `execvp`'d the user command (kernel atomically closed fd 3 via
-///   `FD_CLOEXEC`; user inherits no writable sentinel fd) → exit is the logical exit →
-///   `LogicalCommandExeced`.
-/// - `b"sef"` → helper's `execvp` returned (TOCTOU x-bit removal, `ENOEXEC`, `ETXTBSY`, etc.)
-///   → exec failed post-probe → `LogicalExecFailed`. **Structurally unspoofable now** that
-///   fd 3 has CLOEXEC before `execvp` — only the helper itself can produce `f` on the
-///   sentinel.
-/// - anything else with `b"se"` prefix → defensively classified as `LogicalCommandExeced`
-///   (P2(d) defense-in-depth). With the helper-binary CLOEXEC story, this branch should be
-///   unreachable in practice, but the classifier preserves the no-implicit-re-execution
-///   guarantee even under a hypothetical helper bug.
-/// - anything not starting with `b"s"` or whose `s`-prefix didn't reach `e` →
-///   `NamespaceSetupFailed`. Bootstrap never committed to `exec`, so the direct fallback is
-///   the *first* logical run.
-///
-/// **No setup-string authority** (P2(a)/(b)/(e)): wrapper stderr is `/dev/null`; only
-/// structural channel is the typed sentinel pipe; classification is exact-byte.
-/// **No implicit re-execution** (P2(d)): on `NamespaceSetupFailed` the direct fallback is
-/// the *first* logical run, not a recovery re-exec.
-/// **No spoofable discriminator** (P2(c), structural): the helper sets `FD_CLOEXEC` on fd 3
-/// between writing `e` and calling `execvp`; successful exec atomically closes fd 3 in the
-/// new image, so the user cannot write any byte to the sentinel post-`exec`.
+// On Linux, wrap the logical `command` + `args` in a **user + PID namespace** (util-linux
+// `unshare(1)` with `-c` = map current user, `-f` fork, `-p` new PID namespace) so the first
+// exec'd process in the new namespace is PID 1 (init rôle for that namespace): when it exits,
+// the kernel tears down the contained subtree, closing the "direct child matched exit,
+// grandchildren still run" host escape **for this path** (PR #792: P3/P4). Other Unix and
+// Windows: no unprivileged one-shot equivalent; wall bound + pgrp signal on timeout + the
+// `sh -c` `&` heuristic only.
+//
+// **Setup detection — `gunbc_execute_command_bootstrap` helper (P2(c) structural, post-#1063).**
+// The unshare target is the helper binary from `src/v3/execute_command_bootstrap`, NOT a
+// `sh -c` script. The helper writes the same three sentinel bytes on fd 3 — `s`, `e`, `f` —
+// but crucially calls `fcntl(3, F_SETFD, FD_CLOEXEC)` on fd 3 immediately *before*
+// `execvp(3)`. On successful `execvp` the kernel atomically closes fd 3 in the new image
+// — the user command **cannot** inherit a writable sentinel fd, eliminating the
+// `b"sef"`-spoof discriminator gap that was unreachable in pure POSIX sh (no portable
+// `fcntl` primitive between probe and `exec`). `argv[1]` is the logical program; `argv[2..]`
+// are its args. See `gunbc_execute_command_bootstrap` source for the exact protocol; the
+// classifier in this file consumes the same byte vocabulary as before.
+//
+// After wait, parent reads up to [`UNSHARE_READY_PIPE_MAX`] bytes:
+//
+// - `b""`    → util-linux exited before the helper ran → `NamespaceSetupFailed`.
+// - `b"s"`   → helper ran, executable probe rejected → `LogicalCommandNotExecutable`.
+// - `b"se"`  → helper `execvp`'d the user command (kernel atomically closed fd 3 via
+//   `FD_CLOEXEC`; user inherits no writable sentinel fd) → exit is the logical exit →
+//   `LogicalCommandExeced`.
+// - `b"sef"` → helper's `execvp` returned (TOCTOU x-bit removal, `ENOEXEC`, `ETXTBSY`, etc.)
+//   → exec failed post-probe → `LogicalExecFailed`. **Structurally unspoofable now** that
+//   fd 3 has CLOEXEC before `execvp` — only the helper itself can produce `f` on the
+//   sentinel.
+// - anything else with `b"se"` prefix → defensively classified as `LogicalCommandExeced`
+//   (P2(d) defense-in-depth). With the helper-binary CLOEXEC story, this branch should be
+//   unreachable in practice, but the classifier preserves the no-implicit-re-execution
+//   guarantee even under a hypothetical helper bug.
+// - anything not starting with `b"s"` or whose `s`-prefix didn't reach `e` →
+//   `NamespaceSetupFailed`. Bootstrap never committed to `exec`, so the direct fallback is
+//   the *first* logical run.
+//
+// **No setup-string authority** (P2(a)/(b)/(e)): wrapper stderr is `/dev/null`; only
+// structural channel is the typed sentinel pipe; classification is exact-byte.
+// **No implicit re-execution** (P2(d)): on `NamespaceSetupFailed` the direct fallback is
+// the *first* logical run, not a recovery re-exec.
+// **No spoofable discriminator** (P2(c), structural): the helper sets `FD_CLOEXEC` on fd 3
+// between writing `e` and calling `execvp`; successful exec atomically closes fd 3 in the
+// new image, so the user cannot write any byte to the sentinel post-`exec`.
 
 /// Anonymous pipe used as the unshare-bootstrap setup sentinel. The child inherits the write
 /// end as fd 3 (set in `pre_exec` via `dup2`). After spawn the parent closes its copy of the
@@ -3440,21 +3440,19 @@ mod execute_command_timebound_tests {
         );
     }
 
-    /// **P2(d) behavior-level regression (api-review openai-pro/gpt-5-5-pro sha 7297b04a).**
-    /// A logical command that writes to the inherited fd 3 *after* `exec` must NOT trigger a
-    /// direct-fallback re-run via the catch-all sentinel arm. The bec8bda classifier fix
-    /// maps any `b"se*"` pattern to `LogicalCommandExeced` (canonical or stray); this test
-    /// proves the fix end-to-end, not just at the unit-classifier layer.
+    /// **P2(d) defense-in-depth regression** (api-review openai-pro/gpt-5-5-pro sha
+    /// 7297b04a). Even after the helper binary's structural CLOEXEC closes the typical
+    /// post-`exec` write window, the classifier's `b"se*"` → `LogicalCommandExeced`
+    /// hardening must remain in place — a future helper bug that broke CLOEXEC ordering
+    /// would let the user write stray bytes to fd 3, and we still must NOT trigger
+    /// direct-fallback re-execution.
     ///
-    /// Construction: a sh script that asserts it is PID 1 (proving the unshare path engaged
-    /// — `[ "$$" = "1" ]`), writes a stray byte `x` to fd 3, then exits 0. With the fix:
-    /// sentinel `b"sex"` → `LogicalCommandExeced` → wrapper exit (0) → `Matched`. **Without**
-    /// the fix: sentinel `b"sex"` → `NamespaceSetupFailed` → direct fallback re-runs sh,
-    /// which is no longer in the PID namespace, so `$$ != 1`, exits 99, surfacing
-    /// `Mismatch`. The test correctly distinguishes the two paths.
-    ///
-    /// Probed-skipped on hosts where `unshare -c -f -p` is not permitted (same probe as
-    /// `unshare_path_actually_engages_...`).
+    /// Construction: an sh script that asserts it is PID 1 (proving the unshare path
+    /// engaged — `[ "$$" = "1" ]`), attempts to write a stray byte `x` to fd 3 (post-
+    /// helper-binary: silently EBADFs because fd 3 is closed; pre-helper: writes through
+    /// to the parent pipe), then exits 0. Both eras: outcome must be `Matched` (single
+    /// run, exit 0). A buggy classifier that routed `b"sex"` to `NamespaceSetupFailed`
+    /// would re-run sh outside the PID namespace, `$$ != 1`, exit 99, surface `Mismatch`.
     #[test]
     #[cfg(target_os = "linux")]
     fn unshare_post_exec_fd3_write_does_not_trigger_implicit_rerun() {
@@ -3489,9 +3487,9 @@ mod execute_command_timebound_tests {
     }
 
     /// Linux receipt: a `command` containing `/` (absolute path) reaches `execvp` with the
-    /// literal path — the bootstrap probe must NOT route it through `command -v`'s `PATH`
-    /// search. With the absolute-path branch (`[ -x "$0" ]`) the run completes and Matches.
-    /// (Review fix: split path-vs-bare-name in `UNSHARE_LOGICAL_BOOTSTRAP_SH`.)
+    /// literal path. The helper binary uses `execvp(3)` directly (which doesn't consult
+    /// `PATH` for path operands), so the run completes and Matches. (Helper-binary parity
+    /// receipt for `std::process::Command` semantics; see #1063.)
     #[test]
     #[cfg(target_os = "linux")]
     fn unshare_absolute_path_command_runs_and_matches() {
@@ -3509,9 +3507,8 @@ mod execute_command_timebound_tests {
         );
     }
 
-    /// Linux receipt: a `command` with no `/` (bare name) goes through the `PATH` branch of
-    /// the bootstrap probe (`command -v`), matching `execvp`'s `PATH` search. `true` is
-    /// always on `PATH` on every supported host.
+    /// Linux receipt: a `command` with no `/` (bare name) is resolved by `execvp(3)` via
+    /// `PATH`. `true` is always on `PATH` on every supported host.
     #[test]
     #[cfg(target_os = "linux")]
     fn unshare_bare_name_command_runs_and_matches() {
