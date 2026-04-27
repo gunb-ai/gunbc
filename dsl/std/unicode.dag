@@ -6,9 +6,12 @@
 // (Bidirectional Algorithm) is NOT consulted: this file does not model
 // bidi properties. Code-point ranges below are intentionally `15.x`
 // compatible -- no minor version pin -- because every range/block listed
-// is stable across UCD 15.0/15.1 (additions in later UCD minors land
-// outside the enumerated ranges and fall to `Narrow` by default, which is
-// the documented fallback).
+// is stable across UCD 15.0/15.1. Forward-compat behavior on later UCD
+// minors: a newly assigned code point inside an already-enumerated
+// `wide_blocks` or `zero_width_blocks` range inherits that block's class
+// (`Wide` / `ZeroWidth`); only code points outside every enumerated range
+// fall through to `Narrow`. Version bumps that add ranges (not just fill
+// existing ones) require revisiting these tables.
 //
 // Follows the same modelling pattern as Encoding (std/encoding.dag) + @file_types:
 // structured types for the domain, `data` for lookup tables, `fn` for
