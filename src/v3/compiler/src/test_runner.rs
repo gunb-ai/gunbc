@@ -2643,7 +2643,9 @@ impl TestClaimValue {
 fn structural_fields(decl: &Declaration) -> Option<&[(String, FieldValue)]> {
     match decl.value_body.as_ref()? {
         ValueBody::Structural { fields } => Some(fields),
-        ValueBody::Unparsed(_) | ValueBody::Scalar(_) | ValueBody::List(_) => None,
+        ValueBody::Unparsed(_) | ValueBody::Scalar(_) | ValueBody::List(_) | ValueBody::Map(_) => {
+            None
+        }
     }
 }
 
@@ -2786,6 +2788,7 @@ fn render_value_body(dag: &Dag, value: &ValueBody) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        ValueBody::Map(entries) => render_map(dag, entries),
         ValueBody::Unparsed(span) => format!("<unparsed:{}:{}>", span.file, span.byte_start),
     }
 }
@@ -2807,6 +2810,7 @@ fn render_field_value(dag: &Dag, value: &FieldValue) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        FieldValue::Map(entries) => render_map(dag, entries),
         FieldValue::Variant {
             constructor,
             payload,
@@ -2836,6 +2840,17 @@ fn render_record(dag: &Dag, fields: &[(String, FieldValue)]) -> String {
         fields
             .iter()
             .map(|(label, value)| format!("{label}: {}", render_field_value(dag, value)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+fn render_map(dag: &Dag, entries: &[(String, FieldValue)]) -> String {
+    format!(
+        "{{ {} }}",
+        entries
+            .iter()
+            .map(|(key, value)| format!("{key:?}: {}", render_field_value(dag, value)))
             .collect::<Vec<_>>()
             .join(", ")
     )
