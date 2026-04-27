@@ -6058,6 +6058,56 @@ fn shell_emit_cron_upsert_script() {
     );
 }
 
+// ── RE-4b: OpenAI Chat Completions narrow row — request wire ratchet (#901) ─
+// `OpenAiChatMessageRole` uses the module `llm_snake_wire_contract` (SnakeCase
+// string variants). serde serializes System→"system", Developer→"developer",
+// etc., matching Chat Completions role strings for the modeled text-only row.
+#[test]
+fn openai_chat_message_role_wire_matches_llm_snake_contract() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/openai.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read openai.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/openai.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_openai.rs");
+
+    let enum_decl = "pub enum OpenAiChatMessageRole";
+    let pos = content
+        .find(enum_decl)
+        .unwrap_or_else(|| panic!("expected {enum_decl} in emitted openai module"));
+    let header = &content[pos.saturating_sub(280)..pos];
+    assert!(
+        header.contains("#[serde(rename_all = \"snake_case\")]"),
+        "expected module wire_contract → snake_case on OpenAiChatMessageRole; context:\n{header}"
+    );
+
+    let open_brace = content[pos..]
+        .find('{')
+        .map(|i| pos + i)
+        .expect("OpenAiChatMessageRole enum opening brace");
+    // Unit enum: no nested `}` inside variants — first `}` after `{` closes the enum.
+    let close_brace = content[open_brace + 1..]
+        .find('}')
+        .map(|i| open_brace + 1 + i)
+        .expect("OpenAiChatMessageRole enum closing brace");
+    let enum_body = &content[open_brace..=close_brace];
+    for needle in ["System,", "Developer,", "User,", "Assistant,"] {
+        assert!(
+            enum_body.contains(needle),
+            "expected variant {needle} in OpenAiChatMessageRole; got:\n{enum_body}"
+        );
+    }
+
+    assert!(
+        content.contains("\"messages\": messages"),
+        "expected ChatCompletion REST body to pass `messages` through serde_json::json!; excerpt missing in emitted module"
+    );
+    assert!(
+        content.contains("/v1/chat/completions"),
+        "expected ChatCompletion path in emitted module"
+    );
+}
+
 // ── RE-4: Anthropic REST API emission ────────────────────────────────────
 #[test]
 fn anthropic_response_extracts_content_text() {
