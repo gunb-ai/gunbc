@@ -23,10 +23,12 @@ This file documents the signal content + delivery discipline so that when R2 Rel
 >
 > Authority for this priority hint:
 > - [`docs/briefs/debt-paydown-synthesis-2026-04-25.md` §"Tier 2" item 7](debt-paydown-synthesis-2026-04-25.md) — names this as *"the 'first PB cleanup target' framing already in the row"* (originally PR #809).
-> - [`docs/briefs/debt-paydown-synthesis-2026-04-25.md` row at line 120](debt-paydown-synthesis-2026-04-25.md) — current row for `patch_lower_helpers_*`: dissolution trigger reads *"first PB cleanup target once generated `lower_helpers` can emit the refinement field natively."*
-> - [`docs/briefs/r2-pure-bootstrap-manager.md` §"Owned deliverables"](r2-pure-bootstrap-manager.md) (lands on PR #835 merge) — names **"Tier 2 patch_lower_helpers_* retirement (if survives R1)"** as a post-R1 owned deliverable; this signal lifts its priority within that owned-deliverable set.
+> - [`docs/briefs/debt-paydown-synthesis-2026-04-25.md` row at line 120](debt-paydown-synthesis-2026-04-25.md) — originally tracked `patch_lower_helpers_*` with the dissolution trigger *"first PB cleanup target once generated `lower_helpers` can emit the refinement field natively."* The row is now marked fired by PR #1014.
+> - [`docs/briefs/r2-pure-bootstrap-manager.md` §"Owned deliverables"](r2-pure-bootstrap-manager.md) (lands on PR #835 merge) — named **"Tier 2 patch_lower_helpers_* retirement (if survives R1)"** as a post-R1 owned deliverable; that owned-deliverable row is now closed by PR #1014.
 >
-> Suggested ordering: dispatch this retirement as one of the first R2 PB cleanup workers; the bridge it retires (`lib.rs:1143-1180` exact-string rustfmt patching) is known-fragile and the retirement is unblocked once `lower_helpers` can emit the refinement field natively (per the named dissolution trigger).
+> Historical suggested ordering: dispatch this retirement as one of the first R2 PB cleanup workers; the bridge it retired (`lib.rs:1143-1180` exact-string rustfmt patching) was known-fragile and became unblocked once `lower_helpers` could emit the refinement field natively (per the named dissolution trigger).
+
+**Fulfilled 2026-04-27:** PR #1014 retired the helper and both lower-helpers patch call sites after generated `lower_helpers` emitted the `refinement` field natively. This B7 priority hint is closed; it remains here as historical relay context.
 
 ## Pre-spawn vs post-spawn
 
