@@ -3254,15 +3254,7 @@ mod execute_command_timebound_tests {
         // back to direct and the user sh will not be PID 1. Skip the assertion in that
         // case — the test only asserts engagement when the host actually permits it.
         let probe = std::process::Command::new("unshare")
-            .args([
-                "-c",
-                "-f",
-                "-p",
-                "--",
-                "sh",
-                "-c",
-                "[ \"$$\" = \"1\" ]",
-            ])
+            .args(["-c", "-f", "-p", "--", "sh", "-c", "[ \"$$\" = \"1\" ]"])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
