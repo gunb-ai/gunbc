@@ -3119,10 +3119,25 @@ impl SourceFilteringBinding {
     }
 
     pub(crate) fn excludes(&self, file: &str) -> bool {
-        self.excluded_prefixes
-            .iter()
-            .any(|prefix| file.starts_with(prefix) || file.contains(&format!("/{prefix}")))
+        let normalized_file = normalize_source_filter_path(file);
+        self.excluded_prefixes.iter().any(|prefix| {
+            normalized_file.starts_with(prefix) || normalized_file.contains(&format!("/{prefix}"))
+        })
     }
+}
+
+fn normalize_source_filter_path(file: &str) -> String {
+    let mut parts = Vec::new();
+    for part in file.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            _ => parts.push(part),
+        }
+    }
+    parts.join("/")
 }
 
 fn named_variant_id(dag: &Dag, parent_name: &str, variant_label: &str) -> Option<DeclarationId> {
