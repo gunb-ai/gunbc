@@ -6226,6 +6226,42 @@ mod bool_logical_operator_arrow_tests {
             "anonymous instantiation interning must not collapse distinct nominal-opacity carriers"
         );
 
+        let opaque_anon_id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: opaque_anon_id,
+            name: None,
+            connective: TypeConnective::Instantiation {
+                template,
+                arguments: args.clone(),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: Some(opaque.clone()),
+            span: synthetic_span(),
+        });
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(&dag, template, &args, Some(&opaque)),
+            Some(opaque_anon_id),
+        );
+        let opaque_with_accessor = NominalOpacity {
+            permitted_accessors: vec![p0],
+        };
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(
+                &dag,
+                template,
+                &args,
+                Some(&opaque_with_accessor),
+            ),
+            None,
+            "permitted-accessor changes are part of the nominal-opacity interning key"
+        );
+
         // Self-binding normalization: a `parameter == value` entry is a
         // real structural distinction at this call site —
         // `find_equivalent_anonymous_instantiation` does not strip self
