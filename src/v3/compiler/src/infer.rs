@@ -21,13 +21,20 @@
 // and the post-invariant
 //   state != Uninferred after infer completes
 // both hold.
+//
+// **M1 extension — inference mutates `Dag.declarations`:** operator / algebra
+// resolution may `push_declaration` for anonymous `Instantiation` shapes (e.g.
+// `Result<T, DivError>` for totalizing `div`); `find_equivalent_anonymous_instantiation`
+// deduplicates so fixpoint growth stays bounded. `decide` takes `&mut Dag` and clones
+// each `Behavior` before matching so borrows stay sound — inference is not read-only
+// over the declaration table.
 
 use std::collections::HashSet;
 
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, Field,
-    LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState, TemplateArgument,
-    TransformNode, TransformTarget, TypeConnective,
+    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId,
+    Field, LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState,
+    TemplateArgument, TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -48,83 +55,6 @@ use crate::int_literal_ranges::{
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
 use crate::types::TypeShape;
-
-/// Outcome of [`try_reconcile_int_literal_decision_set`].
-enum IntLiteralSetReconciliation {
-    /// Reconciled without changing the port (narrow annotation already wins over default `Int`).
-    Keep,
-    /// Applied `set_port_type` to narrow a default-`Int` literal port to `ty`.
-    SetNarrow,
-    /// `mark_unresolved` with a magnitude or other diagnostic.
-    Marked,
-}
-
-/// Reconcile `Decision::Set` for ports backed by an integer literal when the proposed
-/// and existing [`TypeShape`] would otherwise `TypeMismatch`: (a) `let`/`data`
-/// pre-seed vs default `Int`, (b) call-sites that propose a callee's narrow
-/// type over a default-`Int` argument.
-fn try_reconcile_int_literal_decision_set(
-    dag: &mut Dag,
-    port: PortId,
-    existing: TypeShape,
-    ty: TypeShape,
-) -> Option<IntLiteralSetReconciliation> {
-    let default_int = dag.int_shape()?;
-    let literal = literal_int_at(dag, port)?;
-    if type_shapes_equivalent(dag, &ty, &default_int) {
-        match int_literal_fits_expected_type(dag, literal, existing.declaration) {
-            Ok(Some(true)) => Some(IntLiteralSetReconciliation::Keep),
-            Ok(Some(false)) => {
-                if let IntegerRangeLookup::Found(range) =
-                    integer_range_for_decl(dag, existing.declaration)
-                {
-                    let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
-                    dag.mark_unresolved(
-                        port,
-                        magnitude_out_of_range(literal, existing, range, span),
-                    );
-                    Some(IntLiteralSetReconciliation::Marked)
-                } else {
-                    None
-                }
-            }
-            Ok(None) => None,
-            Err(diag) => {
-                if !matches!(dag.port(port).state(), PortState::Unresolved) {
-                    dag.mark_unresolved(port, diag);
-                }
-                Some(IntLiteralSetReconciliation::Marked)
-            }
-        }
-    } else if type_shapes_equivalent(dag, &existing, &default_int) {
-        match int_literal_fits_expected_type(dag, literal, ty.declaration) {
-            Ok(Some(true)) => {
-                dag.set_port_type(port, ty);
-                Some(IntLiteralSetReconciliation::SetNarrow)
-            }
-            Ok(Some(false)) => {
-                if let IntegerRangeLookup::Found(range) =
-                    integer_range_for_decl(dag, ty.declaration)
-                {
-                    let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
-                    dag.mark_unresolved(port, magnitude_out_of_range(literal, ty, range, span));
-                    Some(IntLiteralSetReconciliation::Marked)
-                } else {
-                    None
-                }
-            }
-            Ok(None) => None,
-            Err(diag) => {
-                if !matches!(dag.port(port).state(), PortState::Unresolved) {
-                    dag.mark_unresolved(port, diag);
-                }
-                Some(IntLiteralSetReconciliation::Marked)
-            }
-        }
-    } else {
-        None
-    }
-}
 
 pub fn infer(dag: &mut Dag) {
     // Fixpoint loop. Runs decide for every node, then pattern
@@ -154,24 +84,17 @@ pub fn infer(dag: &mut Dag) {
                         PortState::Resolved(existing)
                             if type_shapes_equivalent(dag, &existing, &ty) => {}
                         PortState::Resolved(existing) => {
+                            if int_literal_magnitude_narrow_merge(dag, port, &existing, &ty) {
+                                dag.set_port_type(port, ty);
+                                changed = true;
+                                continue;
+                            }
                             if is_retryable_generic_decl(dag, existing.declaration)
                                 || is_retryable_generic_decl(dag, ty.declaration)
                             {
                                 dag.set_port_type(port, ty);
                                 changed = true;
                                 continue;
-                            }
-                            if let Some(outcome) =
-                                try_reconcile_int_literal_decision_set(dag, port, existing, ty)
-                            {
-                                match outcome {
-                                    IntLiteralSetReconciliation::Keep => continue,
-                                    IntLiteralSetReconciliation::SetNarrow
-                                    | IntLiteralSetReconciliation::Marked => {
-                                        changed = true;
-                                        continue;
-                                    }
-                                }
                             }
                             let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
                             let fixes = witness_correction_for_decl(
@@ -273,11 +196,10 @@ fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
         let decl = dag.declaration(current);
         match &decl.connective {
             TypeConnective::Disj { .. } => return Some(current),
-            TypeConnective::Cardinality(p)
-                if p.bound() == crate::dag::CardinalityBound::AtMostOne =>
-            {
-                return existing_optional_match_disj_decl(dag, current);
-            }
+            TypeConnective::Cardinality {
+                bound: crate::dag::CardinalityBound::AtMostOne,
+                ..
+            } => return existing_optional_match_disj_decl(dag, current),
             TypeConnective::Instantiation { template, .. } => {
                 current = *template;
             }
@@ -302,11 +224,10 @@ fn walk_to_optional_cardinality_decl(dag: &Dag, start: DeclarationId) -> Option<
     let mut current = start;
     for _ in 0..WALK_DEPTH_LIMIT {
         match &dag.declaration(current).connective {
-            TypeConnective::Cardinality(p)
-                if p.bound() == crate::dag::CardinalityBound::AtMostOne =>
-            {
-                return Some(current);
-            }
+            TypeConnective::Cardinality {
+                bound: crate::dag::CardinalityBound::AtMostOne,
+                ..
+            } => return Some(current),
             TypeConnective::Instantiation { template, .. } => current = *template,
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
@@ -324,10 +245,10 @@ fn ensure_optional_match_disj(
         return Some(existing);
     }
     let (element, span) = match dag.declaration(cardinality_decl_id).connective.clone() {
-        TypeConnective::Cardinality(p) if p.bound() == crate::dag::CardinalityBound::AtMostOne => (
-            p.element(),
-            dag.declaration(cardinality_decl_id).span.clone(),
-        ),
+        TypeConnective::Cardinality {
+            element,
+            bound: crate::dag::CardinalityBound::AtMostOne,
+        } => (element, dag.declaration(cardinality_decl_id).span.clone()),
         _ => return None,
     };
 
@@ -796,15 +717,95 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
     changed
 }
 
+/// T-Modeling int-lit / PR #806 consumer: allow `i64` default-typed int
+/// literal output ports to refine to a range-backed fixed-width `IntegerPrimitive`
+/// when the magnitude fits, without treating it as a conflicting resolution.
+fn int_literal_magnitude_narrow_merge(
+    dag: &Dag,
+    port: PortId,
+    from: &TypeShape,
+    to: &TypeShape,
+) -> bool {
+    let Some(lit) = literal_int_at(dag, port) else {
+        return false;
+    };
+    let Some(int_shape) = dag.int_shape() else {
+        return false;
+    };
+    if !type_shapes_equivalent(dag, from, &int_shape) {
+        return false;
+    }
+    matches!(
+        int_literal_fits_expected_type(dag, lit, to.declaration),
+        Ok(Some(true))
+    )
+}
+
 enum Decision {
     Set(PortId, TypeShape),
     Fail(PortId, Diagnostic),
     Retry,
 }
 
-fn decide(dag: &Dag, index: usize) -> Decision {
-    match &dag.nodes()[index] {
+fn decide(dag: &mut Dag, index: usize) -> Decision {
+    // Clone before matching so `decide_transform` can take `&mut Dag` without
+    // holding an immutable borrow of `dag.nodes()` across the call.
+    let behavior = dag.nodes()[index].clone();
+    match &behavior {
         Behavior::Value(v) => {
+            // `let x: UInt8 = 5` seeds the value port to `UInt8` after lowering;
+            // the Int literal Value node would otherwise re-stamp `Int64` here and
+            // clobber host narrowing. If the port is already a non-`Int` type, only
+            // defer (Retry) when range facts prove the literal fits that type.
+            // Otherwise fail closed with `MagnitudeOutOfRange` (same contract as
+            // call-site narrowing) or fall through so normal mismatch handling
+            // applies when there is no range-backed check.
+            if let LiteralBits::Int(literal) = &v.data {
+                if let PortState::Resolved(existing) = dag.port(v.output).state() {
+                    if let Some(int_sh) = dag.int_shape() {
+                        if !type_shapes_equivalent(dag, existing, &int_sh) {
+                            match int_literal_fits_expected_type(
+                                dag,
+                                *literal,
+                                existing.declaration,
+                            ) {
+                                Ok(Some(true)) => return Decision::Retry,
+                                Ok(Some(false)) => {
+                                    match integer_range_for_decl(dag, existing.declaration) {
+                                        IntegerRangeLookup::Found(range) => {
+                                            return Decision::Fail(
+                                                v.output,
+                                                magnitude_out_of_range(
+                                                    *literal,
+                                                    *existing,
+                                                    range,
+                                                    v.span.clone(),
+                                                ),
+                                            );
+                                        }
+                                        IntegerRangeLookup::Invalid(diag) => {
+                                            return Decision::Fail(v.output, diag);
+                                        }
+                                        IntegerRangeLookup::Missing => {
+                                            return Decision::Fail(
+                                                v.output,
+                                                Diagnostic::ResolveError {
+                                                    name: "(internal: integer literal out of range but no range fact)"
+                                                        .to_string(),
+                                                    span: v.span.clone(),
+                                                    fixes: Vec::new(),
+                                                },
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(diag) => return Decision::Fail(v.output, diag),
+                                Ok(None) => {}
+                            }
+                        }
+                    }
+                }
+            }
             let shape_and_name = match &v.data {
                 // Unconstrained integer literals keep the existing explicit
                 // default to Int64. Expected-type narrowing happens at
@@ -955,7 +956,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
     }
 }
 
-fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
+fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
     // Structural dispatch on `TransformTarget`. `Operator` carries the
     // resolved `OperatorKind` directly and produces its signature from
     // the LHS operand type (arithmetic returns operand type, comparison
@@ -1171,9 +1172,6 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                                 ) {
                                     return Decision::Fail(t.output, diag);
                                 }
-                                // Default literal shape is `Int`; align the argument port with
-                                // the callee's narrow range-backed type (same as `let` / `data`
-                                // pre-seed + `Decision::Set` reunion for annotated literals).
                                 return Decision::Set(*input_port, *expected_ty);
                             }
                             Ok(Some(false)) | Ok(None) => {}
@@ -1802,7 +1800,7 @@ fn declaration_is_callable(dag: &Dag, current: DeclarationId, depth: usize) -> b
         | TypeConnective::Atom(AtomPayload::Literal(_))
         | TypeConnective::Conj { .. }
         | TypeConnective::Disj { .. }
-        | TypeConnective::Cardinality(_) => false,
+        | TypeConnective::Cardinality { .. } => false,
     }
 }
 
@@ -1833,8 +1831,8 @@ fn is_retryable_generic_decl_walk(
         TypeConnective::Instantiation { arguments, .. } => arguments
             .iter()
             .any(|arg| is_retryable_generic_decl_walk(dag, arg.value, depth + 1, visiting)),
-        TypeConnective::Cardinality(p) => {
-            is_retryable_generic_decl_walk(dag, p.element(), depth + 1, visiting)
+        TypeConnective::Cardinality { element, .. } => {
+            is_retryable_generic_decl_walk(dag, *element, depth + 1, visiting)
         }
         TypeConnective::Conj { children } => children
             .iter()
@@ -1986,17 +1984,8 @@ fn resolve_arrow_decl_walk(
         | TypeConnective::Atom(AtomPayload::Literal(_))
         | TypeConnective::Conj { .. }
         | TypeConnective::Disj { .. }
-        | TypeConnective::Cardinality(_) => None,
+        | TypeConnective::Cardinality { .. } => None,
     }
-}
-
-fn literal_decl_id(dag: &Dag, literal: &LiteralBits) -> Option<DeclarationId> {
-    let name = match literal {
-        LiteralBits::Int(_) => "Int",
-        LiteralBits::Bool(_) => "Bool",
-        LiteralBits::String(_) => "String",
-    };
-    dag.declaration_by_name(name).map(|decl| decl.id)
 }
 
 fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
@@ -2011,8 +2000,14 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
         });
     };
     match dag.node(produced_by) {
-        Behavior::Value(v) => Some(PortTypeContext {
-            decl: literal_decl_id(dag, &v.data)?,
+        // Use the port's resolved declaration, not the literal's default
+        // substrate type (`Int` for all int literals). After range narrowing the
+        // literal port may already be `UInt8` / etc.; `literal_decl_id`-style
+        // `Int` here makes `resolve_callable_target` think the argument is still
+        // the default `Int`, producing spurious implicit-template conflicts against
+        // a `UInt8` parameter (e.g. `id_u8(7)`).
+        Behavior::Value(_) => Some(PortTypeContext {
+            decl: resolved_decl,
             subst: SubstStack::new(),
         }),
         Behavior::Transform(t) => match &t.target {
@@ -2296,9 +2291,7 @@ fn bind_expected_decl_to_actual_context(
             }
             true
         }
-        TypeConnective::Cardinality(p) => {
-            let element = p.element();
-            let bound = p.bound();
+        TypeConnective::Cardinality { element, bound } => {
             let actual_decl = match &dag.declaration(actual.decl).connective {
                 TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
                     let Some(bound) = actual.subst.lookup(actual.decl) else {
@@ -2330,18 +2323,21 @@ fn bind_expected_decl_to_actual_context(
                 }
                 _ => actual.decl,
             };
-            let TypeConnective::Cardinality(actual_p) = &dag.declaration(actual_decl).connective
+            let TypeConnective::Cardinality {
+                element: actual_element,
+                bound: actual_bound,
+            } = &dag.declaration(actual_decl).connective
             else {
                 return false;
             };
-            if bound != actual_p.bound() {
+            if bound != actual_bound {
                 return false;
             }
             bind_expected_decl_to_actual_context(
                 dag,
-                element,
+                *element,
                 &PortTypeContext {
-                    decl: actual_p.element(),
+                    decl: *actual_element,
                     subst: actual.subst.clone(),
                 },
                 arguments,
@@ -2384,36 +2380,30 @@ fn callable_instantiation_conflict(
     }
 }
 
-/// `port_type_context` reports the default `Int` type shape for integer literals, so
-/// [`bind_expected_decl_to_actual_context`] can reject a callee that expects a range-backed
-/// narrow type (`UInt8`, …). The main transform decision path already allows in-range
-/// literal narrowing; mirror that here so [`resolve_callable_target`] can succeed. Out-of-range
-/// literals surface as [`Diagnostic::MagnitudeOutOfRange`] to match
-/// `decide(Transform)`-style call checks.
-fn int_literal_implicit_bind_tolerated_for_expected(
+/// `resolve_callable_target` runs before `decide_transform`'s per-input narrowing
+/// pass can restamp a literal port. When the port is still the default `Int`
+/// literal type but the source literal is known to fit a range-backed expected
+/// parameter (via substrate range facts), treat the binding as compatible so
+/// callable resolution can proceed; narrowing + `MagnitudeOutOfRange` remain
+/// authoritative in the transform `decide_transform` path.
+fn range_compatible_default_int_literal_argument(
     dag: &Dag,
-    expected: DeclarationId,
     input_port: PortId,
-    span: &SourceSpan,
-) -> Result<bool, Diagnostic> {
-    let Some(literal) = literal_int_at(dag, input_port) else {
-        return Ok(false);
+    expected_param_decl: DeclarationId,
+) -> bool {
+    let Some(int_ty) = dag.int_shape() else {
+        return false;
     };
-    match int_literal_fits_expected_type(dag, literal, expected) {
-        Ok(Some(true)) => Ok(true),
-        Ok(Some(false)) => match integer_range_for_decl(dag, expected) {
-            IntegerRangeLookup::Found(range) => Err(magnitude_out_of_range(
-                literal,
-                TypeShape::new(expected),
-                range,
-                span.clone(),
-            )),
-            IntegerRangeLookup::Invalid(diag) => Err(diag),
-            IntegerRangeLookup::Missing => Ok(false),
-        },
-        Ok(None) => Ok(false),
-        Err(diag) => Err(diag),
+    if !matches!(dag.port(input_port).state(), PortState::Resolved(ty) if *ty == int_ty) {
+        return false;
     }
+    let Some(lit) = literal_int_at(dag, input_port) else {
+        return false;
+    };
+    matches!(
+        int_literal_fits_expected_type(dag, lit, expected_param_decl),
+        Ok(Some(true))
+    )
 }
 
 fn resolve_callable_target(
@@ -2506,31 +2496,25 @@ fn resolve_callable_target(
             let Some(actual_ctx) = port_type_context(dag, *input_port) else {
                 return CallableTargetResolution::Retry;
             };
-            if !bind_expected_decl_to_actual_context(
+            let binds = bind_expected_decl_to_actual_context(
                 dag,
                 expected_input,
                 &actual_ctx,
                 &mut arguments,
                 0,
-            ) {
-                match int_literal_implicit_bind_tolerated_for_expected(
+            ) || range_compatible_default_int_literal_argument(
+                dag,
+                *input_port,
+                expected_input,
+            );
+            if !binds {
+                return CallableTargetResolution::Fail(callable_instantiation_conflict(
                     dag,
+                    target,
                     expected_input,
-                    *input_port,
+                    &actual_ctx,
                     span,
-                ) {
-                    Ok(true) => {}
-                    Ok(false) => {
-                        return CallableTargetResolution::Fail(callable_instantiation_conflict(
-                            dag,
-                            target,
-                            expected_input,
-                            &actual_ctx,
-                            span,
-                        ));
-                    }
-                    Err(diag) => return CallableTargetResolution::Fail(diag),
-                }
+                ));
             }
         }
     } else {
@@ -2587,33 +2571,25 @@ fn resolve_callable_target(
                 let Some(actual_ctx) = port_type_context(dag, *input_port) else {
                     return CallableTargetResolution::Retry;
                 };
-                if !bind_expected_decl_to_actual_context(
+                let binds = bind_expected_decl_to_actual_context(
                     dag,
                     expected_input.declaration,
                     &actual_ctx,
                     &mut arguments,
                     0,
-                ) {
-                    match int_literal_implicit_bind_tolerated_for_expected(
+                ) || range_compatible_default_int_literal_argument(
+                    dag,
+                    *input_port,
+                    expected_input.declaration,
+                );
+                if !binds {
+                    return CallableTargetResolution::Fail(callable_instantiation_conflict(
                         dag,
+                        target,
                         expected_input.declaration,
-                        *input_port,
+                        &actual_ctx,
                         span,
-                    ) {
-                        Ok(true) => {}
-                        Ok(false) => {
-                            return CallableTargetResolution::Fail(
-                                callable_instantiation_conflict(
-                                    dag,
-                                    target,
-                                    expected_input.declaration,
-                                    &actual_ctx,
-                                    span,
-                                ),
-                            );
-                        }
-                        Err(diag) => return CallableTargetResolution::Fail(diag),
-                    }
+                    ));
                 }
                 continue;
             };
@@ -3184,11 +3160,10 @@ fn walk_to_disj_decl_with_subst(
         let decl = dag.declaration(current);
         match &decl.connective {
             TypeConnective::Disj { .. } => return Some(current),
-            TypeConnective::Cardinality(p)
-                if p.bound() == crate::dag::CardinalityBound::AtMostOne =>
-            {
-                return existing_optional_match_disj_decl(dag, current);
-            }
+            TypeConnective::Cardinality {
+                bound: crate::dag::CardinalityBound::AtMostOne,
+                ..
+            } => return existing_optional_match_disj_decl(dag, current),
             TypeConnective::Instantiation {
                 template,
                 arguments,
@@ -3372,16 +3347,32 @@ pub(crate) fn concretize_decl_with_subst(
             });
             id
         }
-        TypeConnective::Cardinality(p) => {
-            let element = p.element();
-            let bound = p.bound();
+        TypeConnective::Cardinality { element, bound } => {
             let specialized_element = concretize_decl_with_subst(dag, element, subst, depth + 1);
             if let Some(existing) =
                 find_equivalent_anonymous_cardinality(dag, specialized_element, &bound)
             {
                 return existing;
             }
-            dag.alloc_cardinality_decl(specialized_element, bound, decl.span.clone())
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Cardinality {
+                    element: specialized_element,
+                    bound,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: decl.span,
+            });
+            id
         }
         _ => current,
     }
@@ -3437,7 +3428,9 @@ fn refinement_base_walk(
         TypeConnective::Instantiation { arguments, .. } => arguments
             .iter()
             .any(|arg| refinement_base_walk(dag, arg.value, subst, depth + 1)),
-        TypeConnective::Cardinality(p) => refinement_base_walk(dag, p.element(), subst, depth + 1),
+        TypeConnective::Cardinality { element, .. } => {
+            refinement_base_walk(dag, *element, subst, depth + 1)
+        }
         _ => false,
     }
 }
@@ -3936,10 +3929,14 @@ fn find_equivalent_anonymous_cardinality(
         if decl.name.is_some() {
             return None;
         }
-        let TypeConnective::Cardinality(existing) = &decl.connective else {
+        let TypeConnective::Cardinality {
+            element: existing_element,
+            bound: existing_bound,
+        } = &decl.connective
+        else {
             return None;
         };
-        (element == existing.element() && existing.bound() == *bound).then_some(decl.id)
+        (element == *existing_element && existing_bound == bound).then_some(decl.id)
     })
 }
 
@@ -4166,8 +4163,61 @@ const WALK_DEPTH_LIMIT: usize = 32;
 /// with a `(T, T) -> T` / `(T, T) -> Bool` signature. The fallback
 /// is explicit about being a scaffold (see OperatorKind's
 /// dissolution receipt).
+///
+/// **Dedup invariant:** anonymous `Result<…, DivError>` instantiations
+/// must reuse `find_equivalent_anonymous_instantiation` on every pass;
+/// a missed structural match would mint fresh `DeclarationId`s each
+/// iteration and the fixpoint loop would not terminate.
+fn div_total_result_output_shape(dag: &mut Dag, base_lhs: TypeShape) -> Option<TypeShape> {
+    const ERROR_PRIMITIVES_FILE: &str = "dsl/std/error_primitives.dag";
+    let result_template = declaration_by_name_in_file(dag, ERROR_PRIMITIVES_FILE, "Result")?.id;
+    let div_error = declaration_by_name_in_file(dag, ERROR_PRIMITIVES_FILE, "DivError")?.id;
+    let (t_ok, t_err, span) = {
+        let rdecl = dag.declaration(result_template);
+        (
+            rdecl.type_params.first().copied()?,
+            rdecl.type_params.get(1).copied()?,
+            rdecl.span.clone(),
+        )
+    };
+    let args = vec![
+        TemplateArgument {
+            parameter: t_ok,
+            value: base_lhs.declaration,
+        },
+        TemplateArgument {
+            parameter: t_err,
+            value: div_error,
+        },
+    ];
+    if let Some(existing) =
+        find_equivalent_anonymous_instantiation(dag, result_template, &args, None)
+    {
+        return Some(TypeShape::new(existing));
+    }
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id,
+        name: None,
+        connective: TypeConnective::Instantiation {
+            template: result_template,
+            arguments: args,
+        },
+        type_params: Vec::new(),
+        phantom_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        nominal_opacity: None,
+        span,
+    });
+    Some(TypeShape::new(id))
+}
+
 fn resolve_operator_arrow(
-    dag: &Dag,
+    dag: &mut Dag,
     op_kind: OperatorKind,
     lhs_type: &TypeShape,
 ) -> Option<ResolvedArrow> {
@@ -4190,14 +4240,14 @@ fn resolve_operator_arrow(
     // comment.
     let mut current = source_id;
     for _ in 0..WALK_DEPTH_LIMIT {
-        let decl = dag.declaration(current);
+        let decl = dag.declaration(current).clone();
         match &decl.connective {
             TypeConnective::Conj { children } => {
                 // Found the algebra. Look up the operator's field by
                 // name.
                 let field_name = crate::operators::algebra_field_name(op_kind);
                 if let Some(field) = children.iter().find(|f| f.label == field_name) {
-                    return read_algebra_field(dag, decl, field.ty, source_id, op_kind, &base_lhs);
+                    return read_algebra_field(dag, &decl, field.ty, source_id, op_kind, &base_lhs);
                 }
                 // Algebra doesn't declare this operator's field —
                 // fall back to the Rust-side scaffold bridge below.
@@ -4217,7 +4267,7 @@ fn resolve_operator_arrow(
             | TypeConnective::Atom(AtomPayload::Literal(_))
             | TypeConnective::Disj { .. }
             | TypeConnective::Arrow { .. }
-            | TypeConnective::Cardinality(_) => {
+            | TypeConnective::Cardinality { .. } => {
                 if let Some(inh) = decl.inhabits {
                     current = inh;
                 } else {
@@ -4235,6 +4285,11 @@ fn resolve_operator_arrow(
     // on `&&` / `||` must surface a type mismatch, not propagate
     // through the operand slots the way Arithmetic / Comparison do.
     let (inputs, output) = match op_kind {
+        // Division leaves the class-5 scaffold: total shape matches algebra `div`.
+        OperatorKind::Arithmetic(ArithmeticOp::Div) => (
+            vec![base_lhs, base_lhs],
+            div_total_result_output_shape(dag, base_lhs)?,
+        ),
         OperatorKind::Arithmetic(_) => (vec![base_lhs, base_lhs], base_lhs),
         OperatorKind::Comparison(_) => (vec![base_lhs, base_lhs], dag.bool_shape()?),
         OperatorKind::Logical(_) => {
@@ -4292,7 +4347,7 @@ pub(crate) fn strip_refinement_to_base(dag: &Dag, decl_id: DeclarationId) -> Dec
 /// references with `source_id`; non-receiver positions walk to
 /// their named anchor via the same walk `walk_to_type_shape` does.
 fn read_algebra_field(
-    dag: &Dag,
+    dag: &mut Dag,
     algebra_decl: &crate::dag::Declaration,
     field_ty: DeclarationId,
     source_id: DeclarationId,
@@ -4320,9 +4375,10 @@ fn read_algebra_field(
     // receiver-substitution rule.
     let input_shapes: Vec<TypeShape> = arrow_inputs
         .iter()
-        .map(|id| substitute_receiver(dag, *id, receiver_param, source_id))
+        .map(|id| substitute_receiver(dag, *id, receiver_param, source_id).map(TypeShape::new))
         .collect::<Option<_>>()?;
-    let output_shape = substitute_receiver(dag, arrow_output, receiver_param, source_id)?;
+    let output_shape =
+        substitute_receiver(dag, arrow_output, receiver_param, source_id).map(TypeShape::new)?;
     // Sanity check: the arity is always 2 for binary operators.
     // If algebra.dag ever declares a field under one of our
     // operator names with a different arity, the check downstream
@@ -4345,40 +4401,90 @@ fn read_algebra_field(
 /// declaration (same model as `walk_to_type_shape` but with the
 /// receiver case short-circuited).
 fn substitute_receiver(
-    dag: &Dag,
+    dag: &mut Dag,
     current: DeclarationId,
     receiver_param: Option<DeclarationId>,
     source_id: DeclarationId,
-) -> Option<TypeShape> {
+) -> Option<DeclarationId> {
     if Some(current) == receiver_param {
-        return Some(TypeShape::new(source_id));
+        return Some(source_id);
     }
-    let decl = dag.declaration(current);
-    // Named top-level declaration (Bool, Ordering, etc.) is the
-    // anchor.
-    if decl.name.is_some() {
-        return Some(TypeShape::new(current));
-    }
+    let decl = dag.declaration(current).clone();
     match &decl.connective {
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             substitute_receiver(dag, *next, receiver_param, source_id)
         }
-        TypeConnective::Instantiation { template, .. } => {
-            substitute_receiver(dag, *template, receiver_param, source_id)
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            let mut new_args: Vec<TemplateArgument> = Vec::with_capacity(arguments.len());
+            let mut any_change = false;
+            for arg in arguments {
+                let new_val = substitute_receiver(dag, arg.value, receiver_param, source_id)?;
+                if new_val != arg.value {
+                    any_change = true;
+                }
+                new_args.push(TemplateArgument {
+                    parameter: arg.parameter,
+                    value: new_val,
+                });
+            }
+            if !any_change {
+                return Some(current);
+            }
+            // Same dedup contract as `div_total_result_output_shape`: false negatives
+            // here allocate unbounded anonymous instantiations across fixpoint iterations.
+            if let Some(existing) = find_equivalent_anonymous_instantiation(
+                dag,
+                *template,
+                &new_args,
+                decl.nominal_opacity.as_ref(),
+            ) {
+                return Some(existing);
+            }
+            let id = dag.alloc_declaration_id();
+            let span = decl.span.clone();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Instantiation {
+                    template: *template,
+                    arguments: new_args,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: decl.nominal_opacity.clone(),
+                span,
+            });
+            Some(id)
         }
-        // Non-receiver TypeParam in an algebra field (e.g., a
-        // second generic parameter) isn't resolvable at M1(2.7).
-        // Multi-parameter algebra operator dispatch is a class-5
-        // gap; M2 will refine `substitute_receiver` to cover it.
-        TypeConnective::Atom(AtomPayload::TypeParam(_)) => None,
-        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_)) => None,
-        TypeConnective::Atom(AtomPayload::Literal(_)) => None,
-        TypeConnective::Conj { .. } => None,
-        TypeConnective::Disj { .. } => None,
-        TypeConnective::Arrow { .. } => None,
-        TypeConnective::Cardinality(_) => None,
+        TypeConnective::Atom(AtomPayload::TypeParam(_))
+        | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_)) => None,
+        _ => {
+            if decl.name.is_some() {
+                Some(current)
+            } else {
+                None
+            }
+        }
     }
+}
+
+fn declaration_by_name_in_file(
+    dag: &Dag,
+    file: &str,
+    name: &str,
+) -> Option<&Declaration> {
+    dag.declarations()
+        .iter()
+        .find(|decl| decl.name.as_deref() == Some(name) && decl.span.file == file)
 }
 
 /// Dispatch-time invariant check on an `ExternalRealization` target:
@@ -4464,7 +4570,7 @@ fn resolve_arrow_walk(
         TypeConnective::Atom(AtomPayload::Literal(_)) => None,
         TypeConnective::Conj { .. } => None,
         TypeConnective::Disj { .. } => None,
-        TypeConnective::Cardinality(_) => None,
+        TypeConnective::Cardinality { .. } => None,
     }
 }
 
@@ -4528,7 +4634,7 @@ fn walk_to_type_shape(
         TypeConnective::Conj { .. } => None,
         TypeConnective::Disj { .. } => None,
         TypeConnective::Arrow { .. } => None,
-        TypeConnective::Cardinality(_) => Some(TypeShape::new(current)),
+        TypeConnective::Cardinality { .. } => Some(TypeShape::new(current)),
     }
 }
 
@@ -4596,7 +4702,7 @@ fn signature_type_shape(
         // keep the anonymous Cardinality declaration id as the port's type
         // identity. Mirrors `walk_to_type_shape`'s Cardinality case —
         // optional returns are legal throughout the substrate.
-        TypeConnective::Cardinality(_) => Some(TypeShape::new(current)),
+        TypeConnective::Cardinality { .. } => Some(TypeShape::new(current)),
     }
 }
 
@@ -4642,19 +4748,12 @@ fn resolve_decl_with_subst(
             find_equivalent_decl_instantiation(dag, *template, &specialized_arguments)
                 .or(Some(current))
         }
-        TypeConnective::Cardinality(p) => {
-            let element = p.element();
-            let bound = p.bound();
-            let specialized_element = resolve_decl_with_subst(dag, element, subst, depth + 1)?;
-            if specialized_element == element {
+        TypeConnective::Cardinality { element, bound } => {
+            let specialized_element = resolve_decl_with_subst(dag, *element, subst, depth + 1)?;
+            if specialized_element == *element {
                 return Some(current);
             }
-            if let Some(idempotent) =
-                crate::dag::cardinality_idempotent_target(dag, specialized_element, bound)
-            {
-                return Some(idempotent);
-            }
-            find_equivalent_decl_cardinality(dag, specialized_element, &bound).or(Some(current))
+            find_equivalent_decl_cardinality(dag, specialized_element, bound).or(Some(current))
         }
         _ => Some(current),
     }
@@ -4689,10 +4788,14 @@ fn find_equivalent_decl_cardinality(
     bound: &crate::dag::CardinalityBound,
 ) -> Option<DeclarationId> {
     dag.declarations().iter().find_map(|decl| {
-        let TypeConnective::Cardinality(existing) = &decl.connective else {
+        let TypeConnective::Cardinality {
+            element: existing_element,
+            bound: existing_bound,
+        } = &decl.connective
+        else {
             return None;
         };
-        (element == existing.element() && existing.bound() == *bound).then_some(decl.id)
+        (element == *existing_element && existing_bound == bound).then_some(decl.id)
     })
 }
 
@@ -4793,9 +4896,18 @@ fn declaration_shapes_equivalent(
                         declaration_shapes_equivalent(dag, lhs_arg.value, rhs_arg.value, depth + 1)
                     })
         }
-        (TypeConnective::Cardinality(lhs_p), TypeConnective::Cardinality(rhs_p)) => {
-            lhs_p.bound() == rhs_p.bound()
-                && declaration_shapes_equivalent(dag, lhs_p.element(), rhs_p.element(), depth + 1)
+        (
+            TypeConnective::Cardinality {
+                element: lhs_element,
+                bound: lhs_bound,
+            },
+            TypeConnective::Cardinality {
+                element: rhs_element,
+                bound: rhs_bound,
+            },
+        ) => {
+            lhs_bound == rhs_bound
+                && declaration_shapes_equivalent(dag, *lhs_element, *rhs_element, depth + 1)
         }
         (
             TypeConnective::Conj {
@@ -5181,10 +5293,11 @@ mod bool_logical_operator_arrow_tests {
 
     #[test]
     fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {
-        let dag = Dag::new();
+        let mut dag = Dag::new();
         let bool_shape = dag.bool_shape().expect("bootstrap Bool");
-        let sig = resolve_operator_arrow(&dag, OperatorKind::Logical(LogicalOp::And), &bool_shape)
-            .expect("&& should resolve on Bool");
+        let sig =
+            resolve_operator_arrow(&mut dag, OperatorKind::Logical(LogicalOp::And), &bool_shape)
+                .expect("&& should resolve on Bool");
         assert!(
             !matches!(sig.body, ArrowBody::Pending),
             "expected Bool && via inhabits → BooleanAlgebra.meet, not Pending scaffold; got {:?}",
@@ -5198,10 +5311,11 @@ mod bool_logical_operator_arrow_tests {
 
     #[test]
     fn bool_logical_or_resolves_via_boolean_algebra_join_not_pending_fallback() {
-        let dag = Dag::new();
+        let mut dag = Dag::new();
         let bool_shape = dag.bool_shape().expect("bootstrap Bool");
-        let sig = resolve_operator_arrow(&dag, OperatorKind::Logical(LogicalOp::Or), &bool_shape)
-            .expect("|| should resolve on Bool");
+        let sig =
+            resolve_operator_arrow(&mut dag, OperatorKind::Logical(LogicalOp::Or), &bool_shape)
+                .expect("|| should resolve on Bool");
         assert!(
             !matches!(sig.body, ArrowBody::Pending),
             "expected Bool || via inhabits → BooleanAlgebra.join, not Pending scaffold; got {:?}",
@@ -6285,5 +6399,135 @@ mod bool_logical_operator_arrow_tests {
             find_equivalent_anonymous_instantiation(&dag, template, &with_self, None),
             None,
         );
+    }
+
+    #[test]
+    fn arithmetic_division_uses_totalized_result_shape() {
+        let mut dag = Dag::new();
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+        let lhs = TypeShape::new(int);
+        let first = resolve_operator_arrow(&mut dag, OperatorKind::Arithmetic(ArithmeticOp::Div), &lhs)
+            .expect("division must resolve");
+        let after_first = dag.declarations().len();
+        let second =
+            resolve_operator_arrow(&mut dag, OperatorKind::Arithmetic(ArithmeticOp::Div), &lhs)
+                .expect("division must resolve");
+
+        assert_eq!(first.output.declaration, second.output.declaration);
+        assert_eq!(after_first, dag.declarations().len(), "div resolution should dedup anonymous instantiation");
+
+        let result_shape_decl = dag.declaration(first.output.declaration);
+        let TypeConnective::Instantiation { template, arguments } = &result_shape_decl.connective else {
+            panic!("division output must remain an instantiation");
+        };
+        let std_result = dag
+            .declaration_by_name_in_file("dsl/std/error_primitives.dag", "Result")
+            .expect("std Result")
+            .id;
+        let std_div_error = dag
+            .declaration_by_name_in_file("dsl/std/error_primitives.dag", "DivError")
+            .expect("std DivError")
+            .id;
+        assert_eq!(*template, std_result);
+        assert_eq!(arguments.len(), 2);
+        assert_eq!(arguments[0].value, int);
+        assert_eq!(arguments[1].value, std_div_error);
+    }
+
+    #[test]
+    fn read_algebra_field_fails_closed_on_unresolved_instantiation_argument() {
+        let mut dag = Dag::new();
+        let span = synthetic_span();
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+
+        let receiver_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: receiver_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("Self".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let unresolved = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: unresolved,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(
+                "Missing".to_string(),
+            )),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let arithmetic_field = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: arithmetic_field,
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![receiver_param, unresolved],
+                output: int,
+                body: ArrowBody::NoBody,
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let algebra = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: algebra,
+            name: Some("DivProbeAlgebra".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "div".to_string(),
+                    ty: arithmetic_field,
+                }],
+            },
+            type_params: vec![receiver_param],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let before = dag.declarations().len();
+        let algebra_decl = dag.declaration(algebra);
+        assert_eq!(
+            read_algebra_field(
+                &mut dag,
+                algebra_decl,
+                arithmetic_field,
+                int,
+                OperatorKind::Arithmetic(ArithmeticOp::Div),
+                &TypeShape::new(int),
+            ),
+            None
+        );
+        assert_eq!(dag.declarations().len(), before);
     }
 }

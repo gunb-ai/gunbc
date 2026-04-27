@@ -53,12 +53,12 @@ impl<T> VariantPayloadBinding<T> {
 use self::python_target::EmitPythonError;
 use self::rust_target::{EmitError, RealizationCategory, SubstrateMarkerRole};
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, CardinalityBound, DeclarationId,
-    Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
-    TypeConnective, ValueBody,
+    ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, CardinalityBound, Declaration,
+    DeclarationId, Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode,
+    TransformTarget, TypeConnective, ValueBody,
 };
 use crate::infer::strip_refinement_to_base;
-use crate::operators::OperatorKind;
+use crate::operators::{ArithmeticOp, OperatorKind};
 use crate::variant_payload::{
     variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup,
 };
@@ -74,6 +74,81 @@ pub(super) fn behavior_result_port(behavior: &Behavior) -> PortId {
         Behavior::Loop(l) => l.result_port(),
         Behavior::Bind(b) => b.result_port(),
     }
+}
+
+/// `std.error_primitives` declares canonical `Result<ok, err> = Ok { value: ok } | Err { value: err }`.
+/// Emitters lower it to a target-native `Result` / `struct { Ok; Err }` carrier and must
+/// not also emit a second substrate `type Result`.
+///
+/// Suppression keys off the **resolved structural fingerprint** of that declaration
+/// (name + type-parameter identities + `Ok`/`Err` payload wiring), not `span.file`
+/// suffixes — so unrelated modules named `errors.dag` cannot collide, and renaming
+/// the std file alone does not silently retarget suppression.
+///
+/// **Policy:** the fingerprint is **global**, not std-scoped: any other declaration
+/// named `Result` that matches this exact shape is also suppressed (intentional — the
+/// substrate owns one canonical `Result<ok, err>` carrier; a user-defined twin with
+/// the same fingerprint would not emit as a separate `type Result`).
+pub(crate) fn substrate_result_type_decl_suppressed_for_emit(
+    dag: &Dag,
+    decl: &Declaration,
+) -> bool {
+    if decl.name.as_deref() != Some("Result") {
+        return false;
+    }
+    let [ok_param, err_param] = match decl.type_params.as_slice() {
+        [a, b] => [*a, *b],
+        _ => return false,
+    };
+    let ok_decl = dag.declaration(ok_param);
+    let err_decl = dag.declaration(err_param);
+    let ok_param_ok = matches!(
+        &ok_decl.connective,
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "ok"
+    );
+    let err_param_ok = matches!(
+        &err_decl.connective,
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "err"
+    );
+    if !ok_param_ok || !err_param_ok {
+        return false;
+    }
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        return false;
+    };
+    let Some(ok_field) = variants.iter().find(|v| v.label == "Ok") else {
+        return false;
+    };
+    let Some(err_field) = variants.iter().find(|v| v.label == "Err") else {
+        return false;
+    };
+    substrate_result_variant_payload_is_value_of(dag, ok_field.ty, ok_param)
+        && substrate_result_variant_payload_is_value_of(dag, err_field.ty, err_param)
+}
+
+fn substrate_result_variant_payload_is_value_of(
+    dag: &Dag,
+    payload_ty: DeclarationId,
+    type_param: DeclarationId,
+) -> bool {
+    let payload = dag.declaration(payload_ty);
+    let TypeConnective::Conj { children } = &payload.connective else {
+        return false;
+    };
+    children.len() == 1 && children[0].label == "value" && children[0].ty == type_param
+}
+
+pub(crate) fn dag_uses_arithmetic_div(dag: &Dag) -> bool {
+    dag.nodes().iter().any(|behavior| {
+        matches!(
+            behavior,
+            Behavior::Transform(TransformNode {
+                target:
+                    TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
+                ..
+            })
+        )
+    })
 }
 
 /// Structural port-liveness walk. Returns true if `target` appears as any port
@@ -1080,6 +1155,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
         .iter()
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
+        .filter(|decl| !substrate_result_type_decl_suppressed_for_emit(dag, decl))
         .filter(|decl| {
             matches!(
                 decl.connective,
@@ -1144,6 +1220,19 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     }];
     if mode == EmitMode::Program {
         sections.push("import \"fmt\"".to_string());
+    }
+    // `DivError` / `Result` are under `dsl/std/`, which `go_source_filtering` omits. Emit
+    // minimal v3 hooks so `v3intdiv` and `struct{ Ok *T; Err *E }` compile.
+    //
+    // Dissolution trigger (M1 scaffold): delete this prelude when `dsl/std/error_primitives`
+    // (and friends) emit through the same type-decl path as user code — i.e. std is no
+    // longer source-filtered for these carriers.
+    //
+    // M2: gate on emitted `v3intdiv(...)` (or equivalent) so division-free programs skip this block.
+    if dag_uses_arithmetic_div(dag) {
+        sections.push(
+            "type DivError int\nconst (\n  DivideByZero DivError = iota\n  Overflow\n)\n\nfunc v3intdiv(l, r int64) struct{ Ok *int64; Err *DivError } {\n  if r == 0 { e := DivideByZero; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  if l == -9223372036854775808 && r == -1 { e := Overflow; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  q := l / r; return struct{ Ok *int64; Err *DivError }{Ok: &q} }\n".to_string(),
+        );
     }
 
     let rendered_types = type_decls
