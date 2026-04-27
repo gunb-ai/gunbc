@@ -308,9 +308,11 @@ dispatch in parallel. Each PR is small.
    **Closure holds**: every production Loop carries provenance traceable
    to recursive-function lowering, structurally observable as
    "loop.output is the value port of some Behavior::Bind". Receipt
-   landed as
-   `src/v3/compiler/tests/integration/loop_construction_closure_test.rs`
-   (`every_loop_node_originates_from_recursive_function_lowering`). The
+   landed in
+   `src/v3/compiler/tests/integration/m1_substrate_test.rs` as
+   `every_loop_node_originates_from_recursive_function_lowering` (folded
+   in alongside the existing substrate receipts to satisfy the SG-0
+   census ratchet on hand-authored .rs test files). The
    speculative `LoopKind` lowering-marker idea is **retired** as a
    ratchet-against-not-yet-real-violations per
    `feedback_construction_over_ratchets`.
