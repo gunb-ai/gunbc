@@ -29,9 +29,11 @@
 // product of broad sums).
 //
 // SUBSTRATE-GAP FLAGS: `overflow` on integer variants / terminal / text carriers
-// follow the Rust pilot’s *placement* (per-variant bridge tags); Go’s witness is
-// wrap-only for this spec slice (see `GoIntegerOverflow`). Post-DB-11 these
-// become refinements on carriers / algebras.
+// follow the Rust pilot’s *placement* (per-variant bridge tags). `GoIntegerOverflow`
+// carries two **Go-spec-grounded** witnesses (signed vs unsigned presentation of
+// fixed-width overflow; go.dev/ref/spec §Overflow) — not Rust’s saturating/trap
+// operator families (see `GoIntegerOverflow` header). Post-DB-11 these become
+// refinements on carriers / algebras.
 
 module extdeps.languages.go.primitives
 
@@ -50,8 +52,7 @@ module extdeps.languages.go.primitives
 // | GoComplexComponentWidth   | 🟢 GREEN | **Ledger:** Pattern 2 rejected (64 vs 128 components are not label-only); patterns 1/3/4 N/A. Variants are the two irreducible spec widths for `complex64` / `complex128` (go.dev/ref/spec); no richer internal source to extract. |
 // | GoDiscreteScalarKind      | 🟢 GREEN | **Ledger:** Pattern 1 rejected (bool/string/unit route through disjoint spec classes); pattern 2 rejected (payload shapes differ); pattern 3 partial (each arm’s algebra already names its std-facing role). Coproduct exists to **forbid** illegal algebra×carrier cross-wiring — dissolution would re-open the product bug; terminal as authored spec partition + paired witnesses. |
 // | GoPrimitive               | 🟢 GREEN | **Ledger:** Mirrors `RustPrimitive` pilot partition (Lesson 5). Variants are heterogeneous spec classes (int vs float vs …); not a compressible enum of same-shaped labels. External authority: Go spec predeclared / fixed-width tranche-1 set. |
-//
-// `GoIntegerOverflow` is N=1 (wrap-only) — no Practice-4 checkpoint required.
+// | GoIntegerOverflow         | 🟢 GREEN | **Ledger:** Two arms = spec’s two overflow presentations for fixed-width numerics (signed non-constant two’s-complement wrap vs unsigned modular reduction; go.dev/ref/spec §Overflow). Multi-arm avoids the single-alias `type X = Tag` resolution gap called out for `GoFloatAlgebra` above — without inventing ungrounded Rust-shaped saturating/trap variants (INVARIANTS P1). |
 // =========================================================================
 
 // --- Algebra tags (Go-prefixed names; avoid colliding with rust/primitives.dag
@@ -80,17 +81,18 @@ type GoTargetCarrier
   | GoUtf8TextCarrier
 
 
-// Go spec fixed-width numerics (this tranche): overflow at the type witness is
-// two’s-complement wrap for ordinary non-constant operations (go.dev/ref/spec
-// §Overflow). Rust’s `IntegerOverflow` also lists Saturating/Trap because the
-// Rust Reference names those as explicit *operator* selections (`saturating_*`,
-// `checked_*`, etc.); Go does not attach saturating/trap as alternate inhabitants
-// of the same predeclared `int8`…`uint64` names — copying that three-way sum here
-// would invent ungrounded states (INVARIANTS P1). Single-variant sum introduces
-// `GoTwoComplementWrap`; post-DB-11, per-operator refinements can return if the
-// substrate carries a named Go authority for them.
+// Go spec fixed-width numerics (this tranche): `GoIntegerOverflow` is a **two-arm**
+// sum so constructor tags resolve under the same rule as `GoFloatAlgebra` (see
+// header at `GoFloatAlgebra` — a single-arm `type X = Tag` can leave `Tag`
+// unresolved in the loader). Arms are **Go-authority-only**: signed types use the
+// spec’s two’s-complement wrap presentation for non-constant overflow; unsigned
+// types use modular reduction (go.dev/ref/spec §Overflow). Rust’s `IntegerOverflow`
+// adds Saturating/Trap because the Rust Reference names those **operator**
+// families; Go does not model those as inhabitants of the same predeclared
+// `int8`…`uint64` names — do not copy that three-way sum here (INVARIANTS P1).
 type GoIntegerOverflow
-  = GoTwoComplementWrap
+  = GoSignedFixedWidthTwoComplementWrap
+  | GoUnsignedFixedWidthModularWrap
 
 
 type GoComplexComponentWidth
@@ -252,30 +254,30 @@ data go_uint64_integer_range: GoIntegerRangeFact = {
 // floats, complex, bool, string, unit.
 data go_spec_predeclared_primitives: List<GoPrimitive> = [
   GoIntegerPrimitive { target_name: "int8", algebra: GoOrderedRingAlgebra, carrier: GoByteCarrier,
-    range_min_inclusive: "-128", range_max_inclusive: "127", overflow: GoTwoComplementWrap },
+    range_min_inclusive: "-128", range_max_inclusive: "127", overflow: GoSignedFixedWidthTwoComplementWrap },
   GoIntegerPrimitive { target_name: "int16", algebra: GoOrderedRingAlgebra, carrier: GoWord16Carrier,
-    range_min_inclusive: "-32768", range_max_inclusive: "32767", overflow: GoTwoComplementWrap },
+    range_min_inclusive: "-32768", range_max_inclusive: "32767", overflow: GoSignedFixedWidthTwoComplementWrap },
   GoIntegerPrimitive { target_name: "int32", algebra: GoOrderedRingAlgebra, carrier: GoWord32Carrier,
-    range_min_inclusive: "-2147483648", range_max_inclusive: "2147483647", overflow: GoTwoComplementWrap },
+    range_min_inclusive: "-2147483648", range_max_inclusive: "2147483647", overflow: GoSignedFixedWidthTwoComplementWrap },
   GoIntegerPrimitive { target_name: "int64", algebra: GoOrderedRingAlgebra, carrier: GoWord64Carrier,
     range_min_inclusive: "-9223372036854775808", range_max_inclusive: "9223372036854775807",
-    overflow: GoTwoComplementWrap },
+    overflow: GoSignedFixedWidthTwoComplementWrap },
 
   GoIntegerPrimitive { target_name: "uint8", algebra: GoSemiringAlgebra, carrier: GoByteCarrier,
-    range_min_inclusive: "0", range_max_inclusive: "255", overflow: GoTwoComplementWrap },
+    range_min_inclusive: "0", range_max_inclusive: "255", overflow: GoUnsignedFixedWidthModularWrap },
   GoIntegerPrimitive { target_name: "uint16", algebra: GoSemiringAlgebra, carrier: GoWord16Carrier,
-    range_min_inclusive: "0", range_max_inclusive: "65535", overflow: GoTwoComplementWrap },
+    range_min_inclusive: "0", range_max_inclusive: "65535", overflow: GoUnsignedFixedWidthModularWrap },
   GoIntegerPrimitive { target_name: "uint32", algebra: GoSemiringAlgebra, carrier: GoWord32Carrier,
-    range_min_inclusive: "0", range_max_inclusive: "4294967295", overflow: GoTwoComplementWrap },
+    range_min_inclusive: "0", range_max_inclusive: "4294967295", overflow: GoUnsignedFixedWidthModularWrap },
   GoIntegerPrimitive { target_name: "uint64", algebra: GoSemiringAlgebra, carrier: GoWord64Carrier,
-    range_min_inclusive: "0", range_max_inclusive: "18446744073709551615", overflow: GoTwoComplementWrap },
+    range_min_inclusive: "0", range_max_inclusive: "18446744073709551615", overflow: GoUnsignedFixedWidthModularWrap },
 
   GoIntegerAliasPrimitive { target_name: "byte", canon_name: "uint8", algebra: GoSemiringAlgebra,
     carrier: GoByteCarrier, range_min_inclusive: "0", range_max_inclusive: "255",
-    overflow: GoTwoComplementWrap },
+    overflow: GoUnsignedFixedWidthModularWrap },
   GoIntegerAliasPrimitive { target_name: "rune", canon_name: "int32", algebra: GoOrderedRingAlgebra,
     carrier: GoWord32Carrier, range_min_inclusive: "-2147483648", range_max_inclusive: "2147483647",
-    overflow: GoTwoComplementWrap },
+    overflow: GoSignedFixedWidthTwoComplementWrap },
 
   GoFloatPrimitive { target_name: "float32", algebra: GoApproximateField32Algebra },
   GoFloatPrimitive { target_name: "float64", algebra: GoApproximateField64Algebra },
