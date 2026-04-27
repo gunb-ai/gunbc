@@ -303,8 +303,12 @@ pub fn resolve_wire_serde_tag_for_coproduct(
                             InferredNode::Resolved { node, .. } => {
                                 resolve_wire_serde_tag(node.clone(), &source_indices)
                             }
-                            InferredNode::CompilerError { .. } => rust_serde_tag_attr(),
-                            InferredNode::TypeVariable { .. } => rust_serde_tag_attr(),
+                            InferredNode::CompilerError { .. } => {
+                                resolve_wire_serde_tag(init.clone(), &source_indices)
+                            }
+                            InferredNode::TypeVariable { .. } => {
+                                resolve_wire_serde_tag(init.clone(), &source_indices)
+                            }
                         },
                     },
                 }
