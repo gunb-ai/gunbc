@@ -3088,11 +3088,35 @@ fn walk_to_conj_decl_with_subst(
     start: DeclarationId,
     subst: &mut SubstStack,
 ) -> Option<DeclarationId> {
+    match walk_to_conj_decl_with_subst_or_opacity(dag, start, subst, false) {
+        ConjWalkResult::Conj(id) => Some(id),
+        ConjWalkResult::NoConj => None,
+        ConjWalkResult::NominalOpaque(_) => unreachable!(
+            "opacity check is disabled for ordinary Conj walks"
+        ),
+    }
+}
+
+enum ConjWalkResult {
+    Conj(DeclarationId),
+    NominalOpaque(DeclarationId),
+    NoConj,
+}
+
+fn walk_to_conj_decl_with_subst_or_opacity(
+    dag: &Dag,
+    start: DeclarationId,
+    subst: &mut SubstStack,
+    stop_at_nominal_opacity: bool,
+) -> ConjWalkResult {
     let mut current = start;
     for _ in 0..WALK_DEPTH_LIMIT {
         let decl = dag.declaration(current);
+        if stop_at_nominal_opacity && decl.nominal_opacity.is_some() {
+            return ConjWalkResult::NominalOpaque(current);
+        }
         match &decl.connective {
-            TypeConnective::Conj { .. } => return Some(current),
+            TypeConnective::Conj { .. } => return ConjWalkResult::Conj(current),
             TypeConnective::Instantiation {
                 template,
                 arguments,
@@ -3105,12 +3129,15 @@ fn walk_to_conj_decl_with_subst(
                 current = *next;
             }
             TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
-                current = subst.lookup(current)?;
+                let Some(next) = subst.lookup(current) else {
+                    return ConjWalkResult::NoConj;
+                };
+                current = next;
             }
-            _ => return None,
+            _ => return ConjWalkResult::NoConj,
         }
     }
-    None
+    ConjWalkResult::NoConj
 }
 
 fn walk_to_disj_decl_with_subst(
@@ -4021,32 +4048,10 @@ fn first_nominal_opaque_on_conj_walk(
     subst: &SubstStack,
 ) -> Option<DeclarationId> {
     let mut subst = subst.clone();
-    let mut current = start;
-    for _ in 0..WALK_DEPTH_LIMIT {
-        let decl = dag.declaration(current);
-        if decl.nominal_opacity.is_some() {
-            return Some(current);
-        }
-        match &decl.connective {
-            TypeConnective::Conj { .. } => return None,
-            TypeConnective::Instantiation {
-                template,
-                arguments,
-            } => {
-                subst.push(arguments.clone());
-                current = *template;
-            }
-            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
-                current = *next;
-            }
-            TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
-                current = subst.lookup(current)?;
-            }
-            _ => return None,
-        }
+    match walk_to_conj_decl_with_subst_or_opacity(dag, start, &mut subst, true) {
+        ConjWalkResult::NominalOpaque(id) => Some(id),
+        ConjWalkResult::Conj(_) | ConjWalkResult::NoConj => None,
     }
-    None
 }
 
 fn decide_field_project(
