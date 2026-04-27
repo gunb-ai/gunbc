@@ -1,20 +1,6 @@
 // AUTO-GENERATED from `src/v3/lenses/unused_parameters.dag` via
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum DivError {
-    DivideByZero,
-    Overflow,
-}
-pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
-    if r == 0 {
-        return ::core::result::Result::Err(DivError::DivideByZero);
-    }
-    if l == i64::MIN && r == -1 {
-        return ::core::result::Result::Err(DivError::Overflow);
-    }
-    ::core::result::Result::Ok(l / r)
-}
 #[derive(Clone, Debug)]
 pub struct UnusedParameter {
     pub function: NodeId,

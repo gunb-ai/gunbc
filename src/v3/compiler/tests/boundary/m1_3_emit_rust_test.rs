@@ -387,6 +387,35 @@ let x: Result<Int, DivError> = 6 / 2",
     );
 }
 
+#[test]
+fn emit_rust_result_alias_top_level_binding_prints_debug_string() {
+    let out = emit(
+        "import std.error_primitives { DivError, Result }\n\
+type R = Result<Int, DivError>\n\
+let x: R = 6 / 2",
+    );
+    assert!(
+        out.contains("println!(\"{}\", format!(\"{:?}\", x))"),
+        "top-level Result aliases should use the structural Result fact, not rendered type text; got: {out}"
+    );
+}
+
+#[test]
+fn emit_rust_omits_div_prelude_without_division() {
+    let out = emit(
+        "type DivError = LocalOnly\n\
+let x: Int = 42",
+    );
+    assert!(
+        !out.contains("__v3_int_div"),
+        "division helper should only emit when integer division is used; got: {out}"
+    );
+    assert!(
+        out.matches("pub enum DivError").count() == 1,
+        "user DivError should not collide with an unused division prelude; got: {out}"
+    );
+}
+
 /// T-Emit / PR #650 receipt: first-class `fn(A) -> B` in **user function
 /// parameter** position must lower to `impl Fn(A) -> B + Clone`, not
 /// `&impl Fn…` (review #676). Other positions use `std::rc::Rc<dyn Fn…>`;

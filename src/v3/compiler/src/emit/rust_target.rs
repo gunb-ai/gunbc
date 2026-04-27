@@ -51,9 +51,9 @@ use super::{
     VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
-    FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
-    TypeConnective, ValueBody, ValueNode,
+    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId,
+    Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode,
+    TransformTarget, TypeConnective, ValueBody, ValueNode,
 };
 use crate::operators::OperatorKind;
 use crate::variant_payload::{
@@ -2752,6 +2752,16 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         .iter()
         .map(|decl| ctx.render_function_declaration(decl))
         .collect::<Result<Vec<_>, _>>()?;
+    let needs_int_div_prelude = top_level_binds
+        .iter()
+        .any(|bind| port_depends_on_rust_int_div(dag, bind.value))
+        || function_decls.iter().any(|decl| match &decl.connective {
+            TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(body),
+                ..
+            } => port_depends_on_rust_int_div(dag, super::behavior_result_port(dag.node(*body))),
+            _ => false,
+        });
 
     // `DivError` and other `dsl/std` types are excluded from `type_decls` (see
     // `rust_source_filtering`); the division helper must still compile, so the
@@ -2775,7 +2785,10 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
 
     let type_defs = join_rendered(&rendered_types, " ");
     let function_defs = join_rendered(&rendered_functions, " ");
-    let mut sections: Vec<String> = vec![RUST_V3_INT_OP_PRELUDE.to_string()];
+    let mut sections: Vec<String> = Vec::new();
+    if needs_int_div_prelude {
+        sections.push(RUST_V3_INT_OP_PRELUDE.to_string());
+    }
     if !type_defs.is_empty() {
         sections.push(type_defs);
     }
@@ -2801,8 +2814,7 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
         let body_joined = join_rendered(&rendered_binds, " ");
         let final_bind = top_level_binds.last().expect("guarded above");
         let final_bind_name = final_bind.name.clone();
-        let final_ty_name = ctx.rust_type_name_for_port(final_bind.value)?;
-        let final_display_expr = if final_ty_name.starts_with("::core::result::Result<") {
+        let final_display_expr = if ctx.port_is_substrate_result(final_bind.value)? {
             // `std.error_primitives.Result` lowers to Rust's core Result, which
             // does not implement Display. Keep the substrate Main template
             // unchanged and pass it a displayable String.
@@ -2829,6 +2841,44 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
         sections.push(main_program);
     }
     Ok(join_rendered(&sections, " "))
+}
+
+fn port_depends_on_rust_int_div(dag: &Dag, root: PortId) -> bool {
+    let mut visited = HashSet::new();
+    let mut queue = vec![root];
+    while let Some(port) = queue.pop() {
+        if !visited.insert(port) {
+            continue;
+        }
+        let Some(producer) = dag.port(port).produced_by else {
+            continue;
+        };
+        match dag.node(producer) {
+            Behavior::Value(_) => {}
+            Behavior::Transform(t) => {
+                if matches!(
+                    t.target,
+                    TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div))
+                ) {
+                    return true;
+                }
+                queue.extend(t.inputs.iter().copied());
+            }
+            Behavior::Branch(b) => {
+                queue.push(b.input);
+                queue.extend(b.paths.iter().map(|path| path.output));
+            }
+            Behavior::Loop(l) => {
+                queue.push(l.source);
+                queue.push(l.init);
+                queue.push(super::behavior_result_port(dag.node(l.body)));
+            }
+            Behavior::Bind(b) => {
+                queue.push(b.value);
+            }
+        }
+    }
+    false
 }
 
 /// Bundled emission context. Carries the typed indexes, substrate
@@ -4895,6 +4945,40 @@ impl<'a> Ctx<'a> {
             .value_type()
             .ok_or(EmitError::UntypedPort(port))?;
         self.rust_borrowed_type_name_for_decl(ty.declaration)
+    }
+
+    fn port_is_substrate_result(&self, port: PortId) -> Result<bool, EmitError> {
+        let ty = self
+            .dag
+            .port(port)
+            .value_type()
+            .ok_or(EmitError::UntypedPort(port))?;
+        let mut visited = HashSet::new();
+        Ok(self.decl_is_substrate_result_rec(ty.declaration, &mut visited))
+    }
+
+    fn decl_is_substrate_result_rec(
+        &self,
+        declaration: DeclarationId,
+        visited: &mut HashSet<DeclarationId>,
+    ) -> bool {
+        if !visited.insert(declaration) {
+            return false;
+        }
+        let decl = self.dag.declaration(declaration);
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => {
+                super::substrate_result_type_decl_suppressed_for_emit(
+                    self.dag,
+                    self.dag.declaration(*template),
+                ) || self.decl_is_substrate_result_rec(*template, visited)
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                self.decl_is_substrate_result_rec(*next, visited)
+            }
+            _ => super::substrate_result_type_decl_suppressed_for_emit(self.dag, decl),
+        }
     }
 
     /// Peel `ResolvedBy{Structure,Name}` atoms, and **zero-arity
