@@ -745,6 +745,7 @@ impl<'a> Parser<'a> {
     ///
     /// Optional alias-RHS `where` (DB-11): `where <expr> [, <expr>]*` parses
     /// to `SurfaceExpr` (comma-separated parts fold as left-associated `&&`).
+    #[allow(clippy::too_many_arguments)]
     fn parse_type_rhs_after_eq(
         &mut self,
         name: String,
