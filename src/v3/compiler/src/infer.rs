@@ -3874,8 +3874,71 @@ fn substitute_receiver(
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             substitute_receiver(dag, *next, receiver_param, source_id)
         }
-        TypeConnective::Instantiation { template, .. } => {
-            substitute_receiver(dag, *template, receiver_param, source_id)
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            let mut new_args: Vec<TemplateArgument> = Vec::with_capacity(arguments.len());
+            let mut any_change = false;
+            let mut any_unresolved = false;
+            for arg in arguments {
+                let Some(new_val) = substitute_receiver(dag, arg.value, receiver_param, source_id) else {
+                    any_unresolved = true;
+                    new_args.push(*arg);
+                    continue;
+                };
+                if new_val != arg.value {
+                    any_change = true;
+                }
+                new_args.push(TemplateArgument {
+                    parameter: arg.parameter,
+                    value: new_val,
+                });
+            }
+            if any_unresolved {
+                return if any_change { None } else { Some(current) };
+            }
+            if !any_change {
+                return Some(current);
+            }
+            // Same dedup contract as `div_total_result_output_shape`: false negatives
+            // here allocate unbounded anonymous instantiations across fixpoint iterations.
+            if let Some(existing) = find_equivalent_anonymous_instantiation(
+                dag,
+                *template,
+                &new_args,
+                decl.nominal_opacity.as_ref(),
+            ) {
+                return Some(existing);
+            }
+            let id = dag.alloc_declaration_id();
+            let span = decl.span.clone();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Instantiation {
+                    template: *template,
+                    arguments: new_args,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: decl.nominal_opacity.clone(),
+                span,
+            });
+            Some(id)
+        }
+        _ => {
+            if decl.name.is_some() {
+                Some(current)
+            } else {
+                None
+            }
+        }
         }
         // Non-receiver TypeParam in an algebra field (e.g., a
         // second generic parameter) isn't resolvable at M1(2.7).

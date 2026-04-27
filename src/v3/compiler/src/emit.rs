@@ -63,6 +63,286 @@ use crate::variant_payload::{
 };
 use crate::Dag;
 
+/// Result port of a finished `behavior` subgraph — shared by Go and Rust emit
+/// paths for [`port_is_consumed_from`] (including `Behavior::Loop` body walks).
+pub(super) fn behavior_result_port(behavior: &Behavior) -> PortId {
+    match behavior {
+        Behavior::Value(v) => v.result_port(),
+        Behavior::Transform(t) => t.result_port(),
+        Behavior::Branch(b) => b.result_port(),
+        Behavior::Loop(l) => l.result_port(),
+        Behavior::Bind(b) => b.result_port(),
+    }
+}
+
+/// `std.error_primitives` declares canonical `Result<ok, err> = Ok { value: ok } | Err { value: err }`.
+/// Emitters lower it to a target-native `Result` / `struct { Ok; Err }` carrier and must
+/// not also emit a second substrate `type Result`.
+///
+/// Suppression keys off the **resolved structural fingerprint** of that declaration
+/// (name + type-parameter identities + `Ok`/`Err` payload wiring), not `span.file`
+/// suffixes — so unrelated modules named `errors.dag` cannot collide, and renaming
+/// the std file alone does not silently retarget suppression.
+///
+/// **Policy:** the fingerprint is **global**, not std-scoped: any other declaration
+/// named `Result` that matches this exact shape is also suppressed (intentional — the
+/// substrate owns one canonical `Result<ok, err>` carrier; a user-defined twin with
+/// the same fingerprint would not emit as a separate `type Result`).
+pub(crate) fn substrate_result_type_decl_suppressed_for_emit(
+    dag: &Dag,
+    decl: &Declaration,
+) -> bool {
+    if decl.name.as_deref() != Some("Result") {
+        return false;
+    }
+    let [ok_param, err_param] = match decl.type_params.as_slice() {
+        [a, b] => [*a, *b],
+        _ => return false,
+    };
+    let ok_decl = dag.declaration(ok_param);
+    let err_decl = dag.declaration(err_param);
+    let ok_param_ok = matches!(
+        &ok_decl.connective,
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "ok"
+    );
+    let err_param_ok = matches!(
+        &err_decl.connective,
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "err"
+    );
+    if !ok_param_ok || !err_param_ok {
+        return false;
+    }
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        return false;
+    };
+    if variants.len() != 2 {
+        return false;
+    }
+    let Some(ok_field) = variants.iter().find(|v| v.label == "Ok") else {
+        return false;
+    };
+    let Some(err_field) = variants.iter().find(|v| v.label == "Err") else {
+        return false;
+    };
+    if variants.iter().filter(|v| v.label == "Ok").count() != 1 {
+        return false;
+    };
+    if variants.iter().filter(|v| v.label == "Err").count() != 1 {
+        return false;
+    }
+    if variants.iter().any(|field| field.label != "Ok" && field.label != "Err") {
+        return false;
+    }
+    substrate_result_variant_payload_is_value_of(dag, ok_field.ty, ok_param)
+        && substrate_result_variant_payload_is_value_of(dag, err_field.ty, err_param)
+}
+
+fn substrate_result_variant_payload_is_value_of(
+    dag: &Dag,
+    payload_ty: DeclarationId,
+    type_param: DeclarationId,
+) -> bool {
+    let payload = dag.declaration(payload_ty);
+    let TypeConnective::Conj { children } = &payload.connective else {
+        return false;
+    };
+    children.len() == 1 && children[0].label == "value" && children[0].ty == type_param
+}
+
+pub(crate) fn dag_uses_arithmetic_div(dag: &Dag) -> bool {
+    dag.nodes().iter().any(|behavior| {
+        matches!(
+            behavior,
+            Behavior::Transform(TransformNode {
+                target: TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
+                ..
+            })
+        )
+    })
+}
+
+/// Structural port-liveness walk. Returns true if `target` appears as any port
+/// reachable from `root` via producer→input edges (each behavior visits its
+/// inputs once; cost is bounded by the body subgraph).
+///
+/// Go and Rust emit use this to answer whether an arm body actually consumes a
+/// payload binding — **without** scanning rendered source. The contract is a
+/// graph fact, so the check stays structural.
+///
+/// Ports with no producer (`produced_by = None`, as payload bindings use) are
+/// leaves: the walk either hits `target` there or skips an unrelated parameter
+/// port.
+pub(super) fn port_is_consumed_from(dag: &Dag, root: PortId, target: PortId) -> bool {
+    if root == target {
+        return true;
+    }
+    let mut visited: HashSet<PortId> = HashSet::new();
+    let mut queue: Vec<PortId> = vec![root];
+    while let Some(port) = queue.pop() {
+        if !visited.insert(port) {
+            continue;
+        }
+        if port == target {
+            return true;
+        }
+        let Some(producer) = dag.port(port).produced_by else {
+            continue;
+        };
+        match dag.node(producer) {
+            Behavior::Value(_) => {}
+            Behavior::Transform(t) => {
+                for input in t.inputs.iter().copied() {
+                    queue.push(input);
+                }
+            }
+            Behavior::Branch(b) => {
+                queue.push(b.input);
+                for path in &b.paths {
+                    queue.push(path.output);
+                }
+            }
+            Behavior::Loop(l) => {
+                queue.push(l.source);
+                queue.push(l.init);
+                if let Some(count) = l.bound.count_port() {
+                    queue.push(count);
+                }
+                queue.push(behavior_result_port(dag.node(l.body)));
+            }
+            Behavior::Bind(b) => {
+                queue.push(b.value);
+            }
+        }
+    }
+    false
+}
+
+/// Shared lookup failures for the emitter-internal type/operator walk helpers.
+///
+/// **Dissolution note — 🟢 TERMINAL (local helper error coproduct).** Two
+/// structurally distinct failure modes remain after consolidating the target
+/// walkers: either the queried port has no resolved type yet, or the walk
+/// reached a target-unsupported / malformed anchor and carries a diagnostic
+/// string. The target emitters immediately map this local coproduct into their
+/// own public error surfaces, so this enum is an implementation-layer bridge,
+/// not a second user-facing authority.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum SharedEmitLookupError {
+    UntypedPort(PortId),
+    Unsupported(String),
+}
+
+pub(super) fn primitive_type_id_for_port_shared(
+    dag: &Dag,
+    port: PortId,
+) -> Result<DeclarationId, SharedEmitLookupError> {
+    let ts = dag
+        .port(port)
+        .value_type()
+        .ok_or(SharedEmitLookupError::UntypedPort(port))?;
+    let mut current = ts.declaration;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        if decl.name.is_some() {
+            return Ok(current);
+        }
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            _ => return Ok(current),
+        }
+    }
+    Err(SharedEmitLookupError::Unsupported(
+        "port type walk exceeded depth 32 — likely a cycle".to_string(),
+    ))
+}
+
+pub(super) fn walk_to_disj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        match &dag.declaration(current).connective {
+            TypeConnective::Disj { .. } => return Some(current),
+            TypeConnective::Cardinality {
+                bound: CardinalityBound::AtMostOne,
+                ..
+            } => return dag.optional_match_disj(current),
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            _ => return None,
+        }
+    }
+    None
+}
+
+pub(super) fn algebra_field_for_operator_shared(
+    dag: &Dag,
+    operand_type_id: DeclarationId,
+    op: OperatorKind,
+) -> Result<DeclarationId, SharedEmitLookupError> {
+    let Some(algebra_conj_id) = walk_to_algebra_conj(dag, operand_type_id) else {
+        return canonical_operator_field_shared(dag, op);
+    };
+    let field_label = crate::operators::algebra_field_name(op);
+    let children = match &dag.declaration(algebra_conj_id).connective {
+        TypeConnective::Conj { children } => children,
+        _ => unreachable!("walk_to_algebra_conj returned a non-Conj"),
+    };
+    if let Some(field) = children.iter().find(|field| field.label == field_label) {
+        return Ok(field.ty);
+    }
+    canonical_operator_field_shared(dag, op)
+}
+
+fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Conj { .. } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            _ => {
+                if let Some(inh) = decl.inhabits {
+                    current = inh;
+                } else {
+                    return None;
+                }
+            }
+        }
+    }
+    None
+}
+
+fn canonical_operator_field_shared(
+    dag: &Dag,
+    op: OperatorKind,
+) -> Result<DeclarationId, SharedEmitLookupError> {
+    let ordered_ring_id = dag.ordered_ring_decl().ok_or_else(|| {
+        SharedEmitLookupError::Unsupported(
+            "bootstrap is missing the canonical `OrderedRing` declaration".to_string(),
+        )
+    })?;
+    let ordered_ring = dag.declaration(ordered_ring_id);
+    let TypeConnective::Conj { children } = &ordered_ring.connective else {
+        return Err(SharedEmitLookupError::Unsupported(
+            "`OrderedRing` does not lower to a Conj declaration".to_string(),
+        ));
+    };
+    let field_label = crate::operators::algebra_field_name(op);
+    children
+        .iter()
+        .find(|field| field.label == field_label)
+        .map(|field| field.ty)
+        .ok_or_else(|| {
+            SharedEmitLookupError::Unsupported(format!(
+                "`OrderedRing` has no canonical field labeled {field_label}"
+            ))
+        })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum GoFieldAccessBinding {
     DirectField(String),
