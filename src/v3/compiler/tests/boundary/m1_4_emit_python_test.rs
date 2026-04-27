@@ -180,7 +180,7 @@ fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
         "python_explicit_result_no_div.v3",
     )
     .expect("compiles");
-    let out = emit_python_text(&dag).expect("emits python");
+    let out = emit_python_module(&dag).expect("emits python module");
     assert!(
         out.contains("class DivError(enum.IntEnum):"),
         "explicit Result<Int, DivError> usage needs DivError prelude even without `/`; got: {out}"

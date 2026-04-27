@@ -2707,6 +2707,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         .nodes()
         .iter()
         .filter_map(Behavior::as_bind)
+        .filter(|bind| !indexes.source_filtering.excludes(&bind.span.file))
         .filter(|b| b.params.is_empty())
         .collect();
 

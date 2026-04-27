@@ -640,6 +640,7 @@ pub(crate) fn emit_python_with_mode(
         .nodes()
         .iter()
         .filter_map(Behavior::as_bind)
+        .filter(|bind| !indexes.source_filtering.excludes(&bind.span.file))
         .filter(|bind| bind.params.is_empty())
         .collect();
 

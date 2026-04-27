@@ -394,7 +394,9 @@ fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
         "go_explicit_result_no_div.v3",
     )
     .expect("compiles");
-    let out = emit(&dag, EmitTarget::Go).expect("emits go").text;
+    let out = emit_module(&dag, EmitTarget::Go)
+        .expect("emits go module")
+        .text;
     assert!(
         out.contains("type DivError int"),
         "explicit Result<Int, DivError> usage needs DivError prelude even without `/`; got: {out}"

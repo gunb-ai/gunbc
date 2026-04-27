@@ -240,7 +240,7 @@ let x: R = 6 / 2",
 
 #[test]
 fn emit_rust_emits_diverror_prelude_for_explicit_result_without_division() {
-    let out = emit(
+    let out = emit_module(
         "import std.error_primitives { DivError, Result }\n\
 fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
     );
