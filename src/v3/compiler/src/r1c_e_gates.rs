@@ -1,15 +1,22 @@
 //! R1C-E — emit-gate check functions shared by the host `#[test]` harness and
 //! the `r1c_e_emit_gates` `bin` (the `ExecuteCommand` logical child for the
-//! `.dag` `TestClaim` wrappers in `tests/dag/r1c_e_emit_gates.template.dag`).
+//! T-Emit `.dag` `TestClaim` wrappers; the `.dag` source is spliced into a
+//! `Dag` at integration-test compile time via `env!("CARGO_BIN_EXE_…")` —
+//! see the integration-test driver for the on-disk path of the template).
 //!
 //! Each `check_*` returns `Ok(())` when the gate holds, or `Err(String)` with a
 //! human-readable failure detail. The `bin` maps `Ok` → exit 0 / `Err` → exit 1
 //! (no stdout/stderr capture by `ExecuteCommand` — exit code is the receipt).
-//! `#[test]` callers `unwrap_or_else(|m| panic!(...))` to preserve the original
-//! failure message.
+//! `#[test]` callers panic with the detail to preserve the original failure
+//! message.
 //!
 //! **Single source of truth.** The `#[test]` harness and the `bin` both call
 //! these functions; do not duplicate the assertion bodies into either caller.
+//!
+//! **Public surface (R1 close scaffold).** The module is `pub` only so the
+//! single bin in this crate can call it (Cargo bins compile against the public
+//! lib API). Downstream crates must not depend on `r1c_e_gates::*`; this is a
+//! scaffold that dissolves at R1 close together with the wrappers themselves.
 
 use crate::compile_to_dag;
 use crate::emit_rust::emit_rust_module;

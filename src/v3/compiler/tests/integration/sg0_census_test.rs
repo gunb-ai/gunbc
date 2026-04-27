@@ -174,6 +174,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/bin/regen_parse.rs",
     "src/v3/compiler/src/bin/regen_parse_tables.rs",
     "src/v3/compiler/src/bin/regen_tokenize.rs",
+    "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_v3.rs",
     "src/v3/compiler/src/bin/self_host_fixed_point.rs",
     "src/v3/compiler/src/bootstrap.rs",
@@ -197,6 +198,10 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/lower.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
+    // R1C-E (T-Emit `.dag` `TestClaim` wrappers): shared `check_*` API the host
+    // `#[test]` harness and `r1c_e_emit_gates` `bin` both call. Single source of
+    // truth for the emit-gate assertions; scaffold until R1 close dissolves it.
+    "src/v3/compiler/src/r1c_e_gates.rs",
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",

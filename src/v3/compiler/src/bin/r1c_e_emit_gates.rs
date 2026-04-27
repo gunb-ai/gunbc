@@ -1,5 +1,7 @@
 //! R1C-E — `ExecuteCommand` logical child for the T-Emit `.dag` `TestClaim`
-//! wrappers (`tests/dag/r1c_e_emit_gates.template.dag`).
+//! wrappers. The on-disk `.dag` template (path resolved by the matching
+//! integration-test driver) substitutes `env!("CARGO_BIN_EXE_r1c_e_emit_gates")`
+//! at test-crate compile time so no checked-in absolute path goes stale.
 //!
 //! Each subcommand calls into `v3_compiler::r1c_e_gates::check_*`. The function
 //! returns `Ok(())` (exit 0) or `Err(detail)` (write detail to stderr, exit 1).
