@@ -252,6 +252,7 @@ impl Dag {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span,
         });
         id
