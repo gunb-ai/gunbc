@@ -53,9 +53,9 @@ impl<T> VariantPayloadBinding<T> {
 use self::python_target::EmitPythonError;
 use self::rust_target::{EmitError, RealizationCategory, SubstrateMarkerRole};
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, CardinalityBound, DeclarationId,
-    Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
-    TypeConnective, ValueBody,
+    ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, CardinalityBound, Declaration,
+    DeclarationId, Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode,
+    TransformTarget, TypeConnective, ValueBody,
 };
 use crate::infer::strip_refinement_to_base;
 use crate::operators::OperatorKind;
@@ -74,6 +74,18 @@ pub(super) fn behavior_result_port(behavior: &Behavior) -> PortId {
         Behavior::Loop(l) => l.result_port(),
         Behavior::Bind(b) => b.result_port(),
     }
+}
+
+/// `Result<ok, err>` is declared in `dsl/std/errors.dag` and `dsl/std/error_primitives.dag`.
+/// Emitters lower it to a target-native `Result` / `struct { Ok; Err }` carrier and must
+/// not also emit a second substrate `type Result`.
+///
+/// Selection is keyed on `span.file` suffixes today (filename drift risk); routing on
+/// resolved declaration identity is the intended follow-up.
+pub(crate) fn substrate_result_type_decl_suppressed_for_emit(decl: &Declaration) -> bool {
+    decl.name.as_deref() == Some("Result")
+        && (decl.span.file.ends_with("errors.dag")
+            || decl.span.file.ends_with("error_primitives.dag"))
 }
 
 /// Structural port-liveness walk. Returns true if `target` appears as any port
@@ -1081,13 +1093,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
         .iter()
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
-        .filter(|decl| {
-            !decl.name.as_deref().is_some_and(|n| {
-                n == "Result"
-                    && (decl.span.file.ends_with("errors.dag")
-                        || decl.span.file.ends_with("error_primitives.dag"))
-            })
-        })
+        .filter(|decl| !substrate_result_type_decl_suppressed_for_emit(decl))
         .filter(|decl| {
             matches!(
                 decl.connective,
@@ -1156,7 +1162,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     // `DivError` / `Result` are under `dsl/std/`, which `go_source_filtering` omits. Emit
     // minimal v3 hooks so `v3intdiv` and `struct{ Ok *T; Err *E }` compile.
     sections.push(
-        "type DivError int\nconst (\n  Div0 DivError = iota\n  Div1\n)\n\nfunc v3intdiv(l, r int64) struct{ Ok *int64; Err *DivError } {\n  if r == 0 { e := Div0; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  if l == -9223372036854775808 && r == -1 { e := Div1; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  q := l / r; return struct{ Ok *int64; Err *DivError }{Ok: &q} }\n".to_string(),
+        "type DivError int\nconst (\n  DivideByZero DivError = iota\n  Overflow\n)\n\nfunc v3intdiv(l, r int64) struct{ Ok *int64; Err *DivError } {\n  if r == 0 { e := DivideByZero; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  if l == -9223372036854775808 && r == -1 { e := Overflow; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  q := l / r; return struct{ Ok *int64; Err *DivError }{Ok: &q} }\n".to_string(),
     );
 
     let rendered_types = type_decls

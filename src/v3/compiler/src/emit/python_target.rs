@@ -606,13 +606,7 @@ pub(crate) fn emit_python_with_mode(
         .iter()
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
-        .filter(|decl| {
-            !decl.name.as_deref().is_some_and(|n| {
-                n == "Result"
-                    && (decl.span.file.ends_with("errors.dag")
-                        || decl.span.file.ends_with("error_primitives.dag"))
-            })
-        })
+        .filter(|decl| !super::substrate_result_type_decl_suppressed_for_emit(decl))
         .filter(|decl| {
             matches!(
                 decl.connective,

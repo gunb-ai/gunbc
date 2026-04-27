@@ -2673,13 +2673,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         // type-checking authority; Rust
         // materializes it as `::core::result::Result<…>`. Generic `Result` is not
         // emitted as a Rust `enum` (and would collide with the prelude if it were).
-        .filter(|decl| {
-            !decl.name.as_deref().is_some_and(|n| {
-                n == "Result"
-                    && (decl.span.file.ends_with("errors.dag")
-                        || decl.span.file.ends_with("error_primitives.dag"))
-            })
-        })
+        .filter(|decl| !super::substrate_result_type_decl_suppressed_for_emit(decl))
         .filter(|decl| {
             matches!(
                 decl.connective,
