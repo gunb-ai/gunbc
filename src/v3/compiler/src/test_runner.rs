@@ -591,39 +591,113 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(
 }
 
 /// On Linux, wrap the logical `command` + `args` in a **user + PID namespace** (util-linux
-/// `unshare(1)` with `-c` = map current user, `-f` fork, `-p` new PID namespace) so the first exec’d
-/// process in the new namespace is PID 1 (init rôle for that namespace): when it exits, the
-/// kernel tears down the contained subtree, closing the “direct child matched exit, grandchildren
-/// still run” host escape **for this path** (Codex/PR #792: P3/P4 on the `ExecuteCommand`
-/// boundary). Other Unix and Windows: no unprivileged one-shot equivalent; wall bound + pgrp
-/// signal on timeout + the `sh -c` `&` heuristic only—documented, not a full process-tree
-/// guarantee.
-/// If `unshare(1)` **spawn** returns `Err(…)` for **any** reason, *or* a **started** `unshare(1)`
-/// process prints util-linux `unshare:` lines on the captured **wrapper** stderr (namespace setup
-/// before `exec` to the logical `command` — e.g. `Operation not permitted` / `EPERM` / missing
-/// util-linux), the runner **falls back** to [`build_execute_command_process`] (direct `Child`);
-/// see [`unshare_sandbox_broken_relaunch_with_direct`] for post-start retry. Wall+null stdio+pgrp
-/// still hold on the direct path; the PID-namespace **init**-style subtree teardown is skipped.
+/// `unshare(1)` with `-c` = map current user, `-f` fork, `-p` new PID namespace) so the first
+/// exec'd process in the new namespace is PID 1 (init rôle for that namespace): when it exits,
+/// the kernel tears down the contained subtree, closing the "direct child matched exit,
+/// grandchildren still run" host escape **for this path** (PR #792: P3/P4). Other Unix and
+/// Windows: no unprivileged one-shot equivalent; wall bound + pgrp signal on timeout + the
+/// `sh -c` `&` heuristic only.
 ///
-/// The unshare path runs `unshare … -- sh -c` `UNSHARE_LOGICAL_BOOTSTRAP_SH` (on Linux: see
-/// that constant in this file), with `command`+`args` as argv (POSIX `$0`/`$@` — not
-/// shell-interpolated), so the **logical** process is `exec`’d with `stderr` → `/dev/null` while
-/// the parent’s piped `stderr` remains for util-linux and bootstrap output only (codex PR #792: split
-/// setup authority from the claim).
-//
-// **Not the same stream:** The logical child does **not** use the `Stdio::piped` read end for its
-// stderr. `UNSHARE_LOGICAL_BOOTSTRAP_SH` runs `exec 2>/dev/null` **before** `exec` of
-// `command`+`args`, so the final process replaces the bootstrap with inherited fd2=`/dev/null` — not
-// the wrapper pipe. Only util-linux / pre-reexec `sh` may write to that pipe. If the logical
-// process still shared the pipe, an exit-only claim that prints heavily to `stderr` would fill
-// the pipe and stall; **receipt:** Linux unit
-// `unshare_path_drains_piped_stderr_so_huge_logical_stderr_does_not_stall` (large `>&2` loop) passes
-// in CI (PR #792, inline review 2026-04-25).
+/// **Setup detection — bootstrap sentinel pipe (P2(c) realization, T-PB-B Worker 4).**
+/// The bootstrap `sh` writes one byte (`s`) to fd 3 as soon as it begins executing; then
+/// `command -v` probes that the user `command` is executable. If the probe fails, sh exits 126
+/// without writing the second byte. If it passes, sh writes a second byte (`e`) and `exec(2)`s
+/// the user command. After wait, the parent reads up to 2 bytes from the ready pipe:
+///
+///   * 0 bytes  → util-linux exited before sh ran → namespace setup failed.
+///   * `"s"`    → sh ran but the user command was not executable.
+///   * `"se"`   → sh exec'd the user command; observed exit is the logical exit.
+///
+/// **No setup-string authority** (P2(a)/(b)/(e)): wrapper stderr is `/dev/null`, so there is
+/// no shared diagnostic channel between bootstrap and parent — only the typed sentinel pipe.
+/// **No implicit re-execution** (P2(d)): on namespace setup failure the runner falls back to
+/// a direct `Child` once — that is the *first* logical run, not a recovery re-exec of an
+/// already-run logical command.
 #[cfg(target_os = "linux")]
-const UNSHARE_LOGICAL_BOOTSTRAP_SH: &str = "exec 2>/dev/null; exec \"$0\" \"$@\"";
+const UNSHARE_LOGICAL_BOOTSTRAP_SH: &str = "\
+printf s >&3 2>/dev/null; \
+command -v -- \"$0\" >/dev/null 2>&1 || exit 126; \
+printf e >&3 2>/dev/null; \
+exec 3>&-; \
+exec 2>/dev/null; \
+exec \"$0\" \"$@\"";
+
+/// Anonymous pipe used as the unshare-bootstrap setup sentinel. The child inherits the write
+/// end as fd 3 (set in `pre_exec` via `dup2`). After spawn the parent closes its copy of the
+/// write end so EOF becomes observable on the read end. After wait the parent reads up to
+/// [`UNSHARE_READY_PIPE_MAX`] bytes — the bytes written by the bootstrap classify the run.
+#[cfg(target_os = "linux")]
+struct UnshareReadyPipe {
+    read_fd: std::os::fd::RawFd,
+    /// `Some(_)` until [`Self::close_write_end_in_parent`] runs once after `spawn`.
+    write_fd: Option<std::os::fd::RawFd>,
+}
 
 #[cfg(target_os = "linux")]
-fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
+const UNSHARE_READY_PIPE_MAX: usize = 4;
+
+#[cfg(target_os = "linux")]
+impl UnshareReadyPipe {
+    fn new() -> std::io::Result<Self> {
+        let mut fds = [0i32; 2];
+        if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(UnshareReadyPipe {
+            read_fd: fds[0],
+            write_fd: Some(fds[1]),
+        })
+    }
+
+    fn write_fd_for_child(&self) -> std::os::fd::RawFd {
+        self.write_fd.expect("write fd consumed before spawn")
+    }
+
+    fn close_write_end_in_parent(&mut self) {
+        if let Some(fd) = self.write_fd.take() {
+            unsafe { libc::close(fd) };
+        }
+    }
+
+    /// Reads up to [`UNSHARE_READY_PIPE_MAX`] bytes after the child exits and the parent's
+    /// write end is closed. Bounded — the bootstrap writes at most 2 sentinel bytes.
+    fn read_sentinel(&self) -> Vec<u8> {
+        let mut buf = [0u8; UNSHARE_READY_PIPE_MAX];
+        let mut total = 0usize;
+        while total < buf.len() {
+            let n = unsafe {
+                libc::read(
+                    self.read_fd,
+                    buf.as_mut_ptr().add(total) as *mut libc::c_void,
+                    buf.len() - total,
+                )
+            };
+            if n > 0 {
+                total += n as usize;
+                continue;
+            }
+            break;
+        }
+        buf[..total].to_vec()
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for UnshareReadyPipe {
+    fn drop(&mut self) {
+        if let Some(fd) = self.write_fd.take() {
+            unsafe { libc::close(fd) };
+        }
+        unsafe { libc::close(self.read_fd) };
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn build_execute_command_unshare(
+    command: &str,
+    args: &[String],
+    ready: &UnshareReadyPipe,
+) -> Command {
     let mut c = Command::new("unshare");
     c.args([
         "-c",
@@ -638,18 +712,20 @@ fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
     .args(args)
     .stdin(Stdio::null())
     .stdout(Stdio::null())
-    // stderr: capture for util-linux + **pre-`exec`** child setup lines only; the **logical**
-    // process is re-exec’d with `stderr` → `/dev/null` (see
-    // [`UNSHARE_LOGICAL_BOOTSTRAP_SH`]) so exit-code-only claims are not entangled with logical
-    // `stderr` volume, pipe fill, or heuristics. [`child_wait_for_execute_command`] still
-    // **drains** this pipe during `try_wait` (O_NONBLOCK) in case a util-linux or bootstrap
-    // `sh` path is unexpectedly chatty.
-    .stderr(Stdio::piped());
+    // Wrapper stderr is /dev/null: P2(a)/(b) — no shared diagnostic channel between bootstrap
+    // and parent; the structural setup signal is the ready-pipe sentinel.
+    .stderr(Stdio::null());
+    let write_fd = ready.write_fd_for_child();
     {
         use std::os::unix::process::CommandExt;
         unsafe {
-            c.pre_exec(|| {
+            c.pre_exec(move || {
                 if libc::setpgid(0, 0) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                // Move the ready-pipe write end to fd 3. dup2 clears CLOEXEC on the target,
+                // so fd 3 survives `exec` into the bootstrap sh.
+                if libc::dup2(write_fd, 3) < 0 {
                     return Err(std::io::Error::last_os_error());
                 }
                 Ok(())
@@ -659,180 +735,28 @@ fn build_execute_command_unshare(command: &str, args: &[String]) -> Command {
     c
 }
 
-/// After `unshare(1)` exits, scan its stderr. If util-linux reported namespace setup failure (a
-/// common path is: process started, then `unshare(2)` / clone fails, **before** `exec` to the
-/// logical `command`), the exit code is **not** the program’s. **Retry once** with a direct
-/// [`build_execute_command_process`] (same as the Linux `unshare(1)` **spawn** fallback) so
-/// P3 is satisfied without turning every `ExecuteCommand("true", …, 0)` into `Fail` on restricted
-/// Linux CI. If we cannot read stderr, retry direct (conservative: avoid conflating ambiguous
-/// unshare exit with `expect_exit_code`).
-///
-/// util-linux prefixes *all* wrapper diagnostics with `unshare:` — including messages that do not
-/// contain the word `failed` (e.g. `unshare: Operation not permitted`). Treat any such line in the
-/// first 20 lines as a setup error so we don’t conflate a permission/setup failure with the
-/// logical program’s exit (PR #792).
-///
-/// **C-5 / P3:** This scan is only applied when
-/// [`unshare_post_start_stderr_may_authorize_relaunch`] is true. The logical `command` (after the
-/// Linux `UNSHARE_LOGICAL_BOOTSTRAP_SH` hop) has `stderr` to `/dev/null`, so a matching host exit
-/// from the logical `command` is not confusable with a post-hoc `unshare:` line from a chatty
-/// *user* program on the same capture (that source of false authority is gone; util-linux
-/// heuristics remain the concern).
-///
-/// **P3 (empty buffer):** A second run when merged wrapper stderr is **empty** after an exit
-/// **mismatch** is **enabled** in `#[cfg(test)]` builds of this crate, or when
-/// `GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH` is truthy (`1` or `true`); `cargo
-/// build` with that env can match `cargo test` for this *one* bounded retry. Without both, fail-closed:
-/// the first unshare(1) exit is authority. (Second-run-on-empty can still flip non-idempotent
-/// work; keep test claims to idempotent or narrow commands — PR #792.) `unshare:`-pattern, read
-/// errors, `take` failure, and non-zero host-confirmation are unchanged; the latter is
-/// independent of this buffer case.
-///
-/// **P5 (dissolution — shared target):** Retire (1) the empty-stderr test/env relaunch and
-/// (2) the **non-zero exit** direct-`Child` “host confirmation” re-exec in
-/// `evaluate_execute_command_host_outcome` when unshare(1) / namespace setup can be **typed** as
-/// “setup did not reach logical `exec`” (or as a distinct setup failure) **without** a second
-/// `Child` — e.g. namespace or util-linux state on a **separate** fd, `pidfd`/ns inspection, or a
-/// different sandbox primitive — or when the **hosted** Linux pool no longer hits the PID-1 /
-/// empty-fd / spurious-exit quirk (kernel/cap/namespace policy that makes the first `wait` match
-/// the direct `exec` result). Both branches are bounded policy today; one retirement hook.
-#[cfg(target_os = "linux")]
-const UNSHARE_STDERR_SCAN_CAP: u64 = 8 * 1024;
-
-/// Set to `1` (or `true`, case-insensitive) so the unshare post-start **empty-wrapper-stderr** retry
-/// (exit mismatch) runs in `cargo build` as well as `cargo test` — T-PB-B, explicit data over
-/// build-shape-only gating. See [`unshare_sandbox_broken_relaunch_with_direct`].
-#[cfg(target_os = "linux")]
-const GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH: &str =
-    "GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH";
-
-/// Second direct `Child` in [`evaluate_execute_command_host_outcome`] (single retry each, P2(d) seam).
+/// Classifies the [`UnshareReadyPipe`] sentinel after the unshare wrapper exits.
 #[cfg(target_os = "linux")]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum UnshareDirectRerun {
-    /// util-linux / wrapper: piped `stderr` read error, or `unshare:` in merged capture.
-    PostStartFallback,
-    /// exit mismatch, merged empty, `#[cfg(test)]` **or** this env; see
-    /// [`GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH`].
-    ExitMismatchEmptyWrapperStderr,
-    /// non-zero `expect` + code match: one host-confirmation `Child` (unshare PID-1 / namespace
-    /// quirk). **Non-idempotent** workloads can differ across the two runs — the highest-risk of the
-    /// three re-execs; same P5 retirement as post-start + empty-stderr (Claude e99b53e7).
-    NonzeroHostConfirm,
+enum UnshareBootstrapStage {
+    /// 0 sentinel bytes — sh never ran; util-linux failed before fork/exec into sh.
+    NamespaceSetupFailed,
+    /// 1 sentinel byte (`s`) — sh ran but `command -v` of the logical command failed.
+    LogicalCommandNotExecutable,
+    /// 2 sentinel bytes (`se`) — sh exec'd the logical command; observed exit is its exit.
+    LogicalCommandExeced,
 }
 
 #[cfg(target_os = "linux")]
-fn unshare_reexec_after_spawn_error_label(reason: UnshareDirectRerun) -> &'static str {
-    match reason {
-        UnshareDirectRerun::PostStartFallback
-        | UnshareDirectRerun::ExitMismatchEmptyWrapperStderr => "unshare(1) post-start fallback",
-        UnshareDirectRerun::NonzeroHostConfirm => "unshare(1) host-exit confirmation",
+fn unshare_bootstrap_stage_from_sentinel(sentinel: &[u8]) -> UnshareBootstrapStage {
+    match sentinel {
+        b"" => UnshareBootstrapStage::NamespaceSetupFailed,
+        b"s" => UnshareBootstrapStage::LogicalCommandNotExecutable,
+        bs if bs.starts_with(b"se") => UnshareBootstrapStage::LogicalCommandExeced,
+        // Unexpected pattern — fail-closed to setup-failed so we fall back to direct rather
+        // than trust an ambiguous wrapper exit.
+        _ => UnshareBootstrapStage::NamespaceSetupFailed,
     }
-}
-
-/// [`cfg!(test)`](https://doc.rust-lang.org/std/macro.cfg.html) **or** truthy
-/// `GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH` (see
-/// [`GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH`]) authorizes the empty-stderr
-/// second run on the unshare(1) path; default release builds are fail-closed without the env.
-#[cfg(target_os = "linux")]
-fn unshare_empty_stderr_relaunch_authorized() -> bool {
-    cfg!(test)
-        || std::env::var(GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH)
-            .ok()
-            .is_some_and(|s| {
-                let t = s.trim();
-                t == "1" || t.eq_ignore_ascii_case("true")
-            })
-}
-
-/// `unshare(1)` (and the thin `sh` bootstrap) may still write to the **parent** pipe before the
-/// logical `command` is `exec`’d with `stderr` off the pipe. Only when the observed **exit code
-/// already disagrees** with the claim may we treat the capture as a possible *wrapper* setup error
-/// and scan for `unshare:` to authorize a single direct-`Child` re-run.
-#[cfg(target_os = "linux")]
-fn unshare_post_start_stderr_may_authorize_relaunch(
-    from_unshare: bool,
-    status: &std::process::ExitStatus,
-    expect_exit_code: i64,
-) -> bool {
-    from_unshare && status.code().map(i64::from) != Some(expect_exit_code)
-}
-
-/// Returns true if captured stderr from the `unshare(1)` / wrapper side of the process looks like
-/// util-linux’s own error output (as opposed to logical-program noise — with
-/// `UNSHARE_LOGICAL_BOOTSTRAP_SH` the **logical** process does not use this pipe, but heuristics
-/// must stay prefix-based).
-#[cfg(target_os = "linux")]
-fn unshare_stderr_indicates_sandbox_setup_failure(stderr_text: &str) -> bool {
-    for line in stderr_text.lines().take(20) {
-        if line.trim().starts_with("unshare:") {
-            return true;
-        }
-    }
-    false
-}
-
-/// Merge bytes captured while waiting (nonblocking pipe drain) with a post-`try_wait` read, using
-/// a single `UNSHARE_STDERR_SCAN_CAP` budget (codex PR #792: `unshare:` in the pre-exit window must
-/// not be lost before the setup-failure scan).
-#[cfg(target_os = "linux")]
-fn unshare_merge_stderr_for_setup_scan(pre_wait: &[u8], post_read: &str) -> String {
-    let pre_len = (pre_wait.len() as u64).min(UNSHARE_STDERR_SCAN_CAP) as usize;
-    let pre = &pre_wait[..pre_len];
-    let mut s = String::new();
-    s.push_str(&String::from_utf8_lossy(pre));
-    s.push_str(post_read);
-    s
-}
-
-/// Merges the wait-time drain with a blocking read of the rest of the wrapper’s piped `stderr` (8
-/// KiB total cap). Clears `child.stderr` if present. `Err(())` = no read handle, read error, or empty
-/// handle; callers treat that conservatively (e.g. relaunch / confirm).
-#[cfg(target_os = "linux")]
-fn unshare_merged_wrapper_stderr_read(
-    child: &mut std::process::Child,
-    pre_wait: &[u8],
-) -> Result<String, ()> {
-    use std::io::Read;
-    let Some(h) = child.stderr.take() else {
-        return Err(());
-    };
-    let pre_len = (pre_wait.len() as u64).min(UNSHARE_STDERR_SCAN_CAP) as usize;
-    let take_remain = UNSHARE_STDERR_SCAN_CAP.saturating_sub(pre_len as u64);
-    let mut buf = String::new();
-    if h.take(take_remain).read_to_string(&mut buf).is_err() {
-        return Err(());
-    }
-    Ok(unshare_merge_stderr_for_setup_scan(pre_wait, &buf))
-}
-
-#[cfg(target_os = "linux")]
-fn unshare_sandbox_broken_relaunch_with_direct(
-    from_unshare: bool,
-    child: &mut std::process::Child,
-    pre_wait_drain: &[u8],
-) -> Option<UnshareDirectRerun> {
-    if !from_unshare {
-        return None;
-    }
-    let combined = match unshare_merged_wrapper_stderr_read(child, pre_wait_drain) {
-        Ok(s) => s,
-        // Cannot read wrapper stderr: unshare(1) exit may still be a setup artifact — retry direct.
-        Err(()) => {
-            return Some(UnshareDirectRerun::PostStartFallback);
-        }
-    };
-    if unshare_stderr_indicates_sandbox_setup_failure(&combined) {
-        return Some(UnshareDirectRerun::PostStartFallback);
-    }
-    // TODO(dissolution, P5): see module doc **P5 (shared target)** — same retirement as non-zero
-    // host-confirmation; drop `GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH` + `cfg!(test)` when
-    // that lands.
-    if combined.trim().is_empty() && unshare_empty_stderr_relaunch_authorized() {
-        // Piped stderr, read ok, no `unshare:`, empty merge: second run in test or with env.
-        return Some(UnshareDirectRerun::ExitMismatchEmptyWrapperStderr);
-    }
-    None
 }
 
 /// Configure `Command` for the host check: no capture, and on Unix a new process group for the
@@ -879,153 +803,32 @@ fn kill_process_group_on_timeout(child: &mut std::process::Child) {
     let _ = child.kill();
 }
 
-/// Linux + `unshare(1)`: the parent holds a read end to a **piped** stderr for the **wrapper** side
-/// (util-linux, thin `sh` bootstrap, and any output **before** the final `exec` to the logical
-/// `command`). The logical process is re-`exec`’d with `stderr` → `/dev/null` (see
-/// [`UNSHARE_LOGICAL_BOOTSTRAP_SH`]); that pipe does **not** carry the logical process’s
-/// `stderr` after the hop. If we only `try_wait` and never read, the **wrapper** subtree can
-/// still block when the ~64KiB default pipe buffer fills; we only fail at wall timeout.
-/// [`linux_drain_piped_child_stderr_nonblocking_once`] keeps a bounded **prefix** (up to
-/// `UNSHARE_STDERR_SCAN_CAP` bytes) for the `unshare:` post-wait scan, then discards the rest
-/// in that round to avoid a filling pipe; bytes after the cap are not preserved for the scan
-/// (same budget as a single pre-fix `read_to_string` take).
-#[cfg(target_os = "linux")]
-fn linux_piped_child_stderr_set_nonblock(
-    fd: std::os::fd::RawFd,
-    nonblock: bool,
-) -> std::io::Result<()> {
-    // Same pattern as `std` net/uds: F_GETFL / F_SETFL with O_NONBLOCK.
-    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
-    if flags < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    let new = if nonblock {
-        flags | libc::O_NONBLOCK
-    } else {
-        flags & !libc::O_NONBLOCK
-    };
-    if unsafe { libc::fcntl(fd, libc::F_SETFL, new) } < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    Ok(())
+/// Typed wait failure. Mapped to [`ExecuteCommandHostOutcome::WaitFailed`] by the caller.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ChildWaitFail {
+    WallTimeout { wall_time: Duration },
+    Io(String),
 }
 
-/// Nonblocking drain of `ChildStderr`: prevents pipe stalls (PR #792). Appends into `capture` only
-/// while `capture.len() < cap`; any further bytes in this round are discarded so the read end does
-/// not back up. (Same authority bytes must be merged into the post-`try_wait` scan — codex: do not
-/// `capture` pre-exit and drop before [`unshare_sandbox_broken_relaunch_with_direct`].)
-#[cfg(target_os = "linux")]
-fn linux_drain_piped_child_stderr_nonblocking_once(
-    stderr: &mut std::process::ChildStderr,
-    capture: &mut Vec<u8>,
-    cap: usize,
-) {
-    use std::io::ErrorKind;
-    use std::io::Read;
-    let mut buf = [0u8; 8192];
-    loop {
-        let n = match stderr.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => n,
-            Err(e) if e.kind() == ErrorKind::WouldBlock => break,
-            Err(e) if e.kind() == ErrorKind::Interrupted => continue,
-            Err(_) => break,
-        };
-        for &b in buf.iter().take(n) {
-            if capture.len() < cap {
-                capture.push(b);
-            }
-        }
-    }
-}
-
-#[cfg(target_os = "linux")]
-struct LinuxPipedChildStderrNonblockGuard {
-    fd: std::os::fd::RawFd,
-}
-
-#[cfg(target_os = "linux")]
-impl LinuxPipedChildStderrNonblockGuard {
-    /// When `must_drain` and the `Child` has a piped stderr, set O_NONBLOCK for the read end. On
-    /// drop, restore **blocking** so the post-wait `read_to_string` / `take()` path keeps its
-    /// previous contract.
-    fn try_new(
-        must_drain: bool,
-        child: &std::process::Child,
-    ) -> Option<LinuxPipedChildStderrNonblockGuard> {
-        if !must_drain {
-            return None;
-        }
-        use std::os::unix::io::AsRawFd;
-        let fd = child.stderr.as_ref()?.as_raw_fd();
-        if linux_piped_child_stderr_set_nonblock(fd, true).is_err() {
-            return None;
-        }
-        Some(LinuxPipedChildStderrNonblockGuard { fd })
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl Drop for LinuxPipedChildStderrNonblockGuard {
-    fn drop(&mut self) {
-        let _ = linux_piped_child_stderr_set_nonblock(self.fd, false);
-    }
-}
-
-/// On Linux when `must_drain_piped_child_stderr` is true (`unshare(1)` path), the wait loop
-/// nonblocking-drains the piped child stderr so it cannot fill and stall the child (PR #792), and
-/// (same cap as post-wait read) appends a bounded prefix to `unshare_stderr_drain` for the
-/// [`unshare_stderr_indicates_sandbox_setup_failure`] scan (codex: do not drain away `unshare:`
-/// lines that arrive before exit).
+/// Wall-bounded `try_wait` loop. With wrapper stderr at `/dev/null` (P2(b)) there is no pipe to
+/// drain — simple poll until the child exits or the deadline trips.
 fn child_wait_for_execute_command(
     child: &mut std::process::Child,
     wall_time: Duration,
-    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
-    must_drain_piped_child_stderr: bool,
-    #[cfg(target_os = "linux")] unshare_stderr_drain: &mut Vec<u8>,
-) -> Result<std::process::ExitStatus, ClaimResult> {
-    #[cfg(target_os = "linux")]
-    let _stderr_nonblock =
-        LinuxPipedChildStderrNonblockGuard::try_new(must_drain_piped_child_stderr, child);
-    // If we could not set nonblock, do not `read` in blocking mode (would block on an idle pipe).
-    #[cfg(target_os = "linux")]
-    let can_drain_nonblocking = _stderr_nonblock.is_some();
-
-    let wall_label = format!("{:.2}", wall_time.as_secs_f64());
+) -> Result<std::process::ExitStatus, ChildWaitFail> {
     let deadline = Instant::now() + wall_time;
     loop {
         match child.try_wait() {
             Ok(Some(status)) => return Ok(status),
             Ok(None) => {
-                #[cfg(target_os = "linux")]
-                {
-                    if must_drain_piped_child_stderr
-                        && can_drain_nonblocking
-                        && child.stderr.is_some()
-                    {
-                        if let Some(s) = child.stderr.as_mut() {
-                            linux_drain_piped_child_stderr_nonblocking_once(
-                                s,
-                                unshare_stderr_drain,
-                                UNSHARE_STDERR_SCAN_CAP as usize,
-                            );
-                        }
-                    }
-                }
                 if Instant::now() >= deadline {
                     kill_process_group_on_timeout(child);
                     let _ = child.wait();
-                    return Err(ClaimResult::Fail(format!(
-                        "ExecuteCommand: process exceeded {wall_label}s wall-clock limit (timeout — process group / child killed, fail-closed)"
-                    )));
+                    return Err(ChildWaitFail::WallTimeout { wall_time });
                 }
                 std::thread::sleep(EXECUTE_COMMAND_WAIT_POLL);
             }
-            Err(err) => {
-                return Err(ClaimResult::Fail(format!(
-                    "ExecuteCommand: wait on child failed: {err}"
-                )));
-            }
+            Err(err) => return Err(ChildWaitFail::Io(format!("{err}"))),
         }
     }
 }
@@ -1033,43 +836,18 @@ fn child_wait_for_execute_command(
 /// Spawns a host process and checks exit status. Used by the Rust `TestRunner` and the M1.5
 /// harness (single canonical path per PB-Runtime brief). Core logic is
 /// [`evaluate_execute_command_host_outcome`] ([`ExecuteCommandHostOutcome`]); this function and
-/// [`evaluate_execute_command_exit_code_with_wall_time`] map to [`ClaimResult`] at the reporting
-/// edge. [`evaluate_execute_command_m1_5`] classifies the typed outcome (C-5: no `Fail` string-prefix
-/// probing for exit mismatch; codex PR #792).
+/// [`evaluate_execute_command_exit_code_with_wall_time`] map to [`ClaimResult`] at the
+/// reporting edge.
 ///
-/// - **No stdout/stderr capture** — `stdin`/`stdout`/`stderr` are the null device so malicious or
-///   chatty children cannot exhaust memory; only the exit code is read (P3/P4: bounded, fail-closed
-///   outcomes). This path does **not** use [`std::process::Command::output`]; it uses
-///   [`std::process::Command::spawn`] and a wall-bounded `try_wait` loop (`child_wait_for_execute_command` in
-///   this file).
-/// - **Wall clock** — [`EXECUTE_COMMAND_WALL_TIMEOUT`]; on exceed, the process group is signalled
-///   (Unix) and the result is a typed failure (not a hang).
-/// - **Linux: user+PID namespace (when `unshare(1)` can be spawned)** — the usual path wraps in
-///   `unshare(1) -c -f -p` plus a small POSIX `sh` bootstrap that `exec(2)`s
-///   the user `command`+`args` with **logical** `stderr` to `/dev/null` so the parent’s piped
-///   `stderr` is for util-linux and bootstrap `sh` only, not a shared authority with exit-code
-///   semantics (PR #792 codex). On any `unshare(1)` **spawn** `Err(…)` the runner falls back to a
-///   direct `Child` (util-linux not on `PATH`, `EPERM` at `execve`, etc.); after a **start**,
-///   (only when the observed exit does **not** already match the claim) wrapper `stderr` may be
-///   scanned for namespace **setup** failure, then the runner **re-runs once** with a direct
-///   [`Command`] (see [`unshare_sandbox_broken_relaunch_with_direct`]) so setup failure never
-///   masquerades as a matching `expect_exit_code` and portable claims still `Pass` in restricted
-///   CI. The `try_wait` loop also **drains** the pipe in nonblocking mode in case a wrapper path is
-///   unexpectedly chatty: a **bounded** prefix of bytes is **retained** for the same
-///   `unshare_stderr_indicates_sandbox_setup_failure` scan, then overflow in that read round
-///   is discarded to avoid a filling pipe. A matching exit on the **logical**
-///   child is not re-run for a `unshare:`-shaped line in this capture (C-5, given logical stderr is
-///   not on the pipe). Wall+stdio+pgrp still apply. Empty wrapper stderr after an exit **mismatch**
-///   is retried (direct) in `#[cfg(test)]` **or** with `GUNBC_EXECUTE_COMMAND_UNSHARE_EMPTY_STDERR_RELAUNCH` —
-///   see [`unshare_sandbox_broken_relaunch_with_direct`].
-/// - **Heuristic on `&` in `sh`/`bash`/… `-c` scripts (all hosts, including `sh -ec` / `sh -lc`)** — a
-///   bare shell background `&`
-///   (after eliding `&&` and a few `>&` / `&>`-style token spellings) is still rejected: cheap extra
-///   catch for the obvious `sh` escape. Not a full `sh` parser. Non-Linux: no init-style subtree
-///   guarantee; Director-level full sandbox is a separate policy track.
-///
-/// Fail messages distinguish spawn error, policy reject, timeout, missing exit code (signal), and
-/// exit-code mismatch.
+/// - **No stdout/stderr capture** — `stdin`/`stdout`/`stderr` are the null device. Only the
+///   exit code is read.
+/// - **Wall clock** — [`EXECUTE_COMMAND_WALL_TIMEOUT`].
+/// - **Linux**: user+PID namespace via `unshare(1)` + a bootstrap sh that signals setup
+///   progress on a sentinel ready-pipe (fd 3). On namespace setup failure the runner falls
+///   back to a direct `Child` once as the *first* logical run (P2(d): no implicit re-exec
+///   of an already-run logical command).
+/// - **Heuristic on `&` in `sh`/`bash`/… `-c` scripts (all hosts)** — bare shell background `&`
+///   (after eliding `&&` and a few `>&`/`&>` token spellings) is rejected pre-spawn.
 pub fn evaluate_execute_command_exit_code(
     command: &str,
     args: &[String],
@@ -1083,33 +861,69 @@ pub fn evaluate_execute_command_exit_code(
     )
 }
 
-/// String form for the exit-mismatch **reporting** edge; **not** used for M1.5 or other semantic
-/// classification (C-5, codex PR #792) — that uses [`ExecuteCommandHostOutcome::Mismatch`].
+/// String form for the exit-mismatch **reporting** edge; **not** used for M1.5 or other
+/// semantic classification — that uses [`ExecuteCommandHostOutcome::Mismatch`].
 pub const EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX: &str =
     "ExecuteCommand exit code mismatch: expected ";
 
-/// [`evaluate_execute_command_host_outcome`]: single authority **before** [`ClaimResult`]
-/// rendering — M1.5 and other consumers classify exit mismatch here as data, not
-/// `Fail(String)`-prefix probes (P2 [Host-process (a)](/INVARIANTS.md#p2-host-process-boundary), C-5,
-/// DB-1).
+/// Single typed authority for the host predicate. **All** consumers branch on this enum;
+/// `Fail(String)` is rendered only at the reporting edge by [`Self::into_claim_result`].
+/// **P2(a)–(e) realization (T-PB-B Worker 4):**
+/// - (a) typed results: variants only; no `Other(ClaimResult)` partial carrier.
+/// - (b) isolated logical-child I/O: wrapper stderr is `/dev/null`; bootstrap sh redirects
+///   logical stderr to `/dev/null` before `exec`. The only structural channel between
+///   bootstrap and parent is the [`UnshareReadyPipe`] sentinel (typed bytes, not strings).
+/// - (c) setup ≠ logical exit: `SetupFailed` and `SpawnFailed` are distinct from
+///   `Matched`/`Mismatch` — they cannot be reinterpreted in one hop.
+/// - (d) no implicit re-execution: namespace setup failure → direct fallback runs as the
+///   *first* logical run (the unshare wrapper never reached `exec`). The empty-stderr
+///   relaunch and non-zero host-confirmation re-execs are deleted.
+/// - (e) drains and authority: no draining is necessary — wrapper stderr is `/dev/null`, so
+///   no parent-readable stream can be claimed as evidence by a later step.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecuteCommandHostOutcome {
-    /// Host exit code equaled the claim.
+    /// Logical exit equaled the claim.
     Matched,
-    /// Host exit code was observed and did not match the claim; M1.5 maps this alone to
-    /// propositional “false” for the exit predicate.
+    /// Logical exit observed and did not match the claim. M1.5 maps this alone to
+    /// propositional `false` for the exit predicate.
     Mismatch { expected: i64, actual: i64 },
-    /// All other `ClaimResult` needs (always `Fail` or `NotYetImplemented` in practice) —
-    /// timeout, policy, signal, spawn error, etc.
-    ///
-    /// **TODO(dissolution, T-PB-B, C-5):** if call sites need to *branch* on host-failure *kind* without
-    /// string authority, expand this into a dedicated `enum` (e.g. timeout / spawn / policy) and
-    /// reserve [`ClaimResult`] for the final reported edge only — the current `Other` is a **partial**
-    /// carrier (PR #792; api-review 994fa40d). Until then, do **not** add consumers that
-    /// pattern-match on `Other(Fail(_))` text; use [`evaluate_execute_command_m1_5`] (or this full
-    /// `enum` without string probes) for classification (api-review 837d0e59). Temptation to
-    /// string-probe `Other` in new code is a future C-5 / DB-1 foot-gun (e99b53e7).
-    Other(ClaimResult),
+    /// Pre-spawn input policy rejected the claim (e.g. shell `&` background).
+    PolicyRejected { policy: PolicyReject },
+    /// `Command::spawn` failed, or the unshare bootstrap detected the logical command was
+    /// not executable. `wrapper` is `Some(_)` only when the unshare wrapper itself failed to
+    /// spawn before falling back to direct.
+    SpawnFailed {
+        wrapper: Option<String>,
+        direct: String,
+    },
+    /// Namespace / wrapper setup failed *before* the logical command ran. Only produced when
+    /// the direct fallback also could not spawn — a successful direct fallback becomes the
+    /// authoritative run and is reported as `Matched` / `Mismatch` / etc.
+    SetupFailed { reason: SetupFailReason },
+    /// Wait-loop failure: timeout, IO, or signal-termination (no exit code).
+    WaitFailed(WaitFail),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PolicyReject {
+    /// `sh -c` script with a bare `&` not elidable as `&&` / fd redirect.
+    ShellBackgroundUnbounded,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SetupFailReason {
+    /// `unshare(1)` exited before the bootstrap `sh` ran (namespace / clone / permission). The
+    /// runner attempted a direct fallback; this carrier is only produced when that fallback
+    /// also failed to spawn.
+    NamespaceSetupAndDirectSpawnFailed { direct: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WaitFail {
+    WallTimeout { wall_time: Duration },
+    Io(String),
+    /// Child terminated by signal — `ExitStatus::code()` returned `None`.
+    TerminatedBySignal,
 }
 
 impl ExecuteCommandHostOutcome {
@@ -1121,25 +935,51 @@ impl ExecuteCommandHostOutcome {
             ExecuteCommandHostOutcome::Mismatch { expected, actual } => ClaimResult::Fail(format!(
                 "{EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX}{expected}, got {actual}"
             )),
-            ExecuteCommandHostOutcome::Other(c) => c,
+            ExecuteCommandHostOutcome::PolicyRejected { policy } => match policy {
+                PolicyReject::ShellBackgroundUnbounded => {
+                    ClaimResult::Fail(SHELL_C_BACKGROUND_UNBOUNDED_FAIL.to_string())
+                }
+            },
+            ExecuteCommandHostOutcome::SpawnFailed { wrapper, direct } => match wrapper {
+                Some(w) => ClaimResult::Fail(format!(
+                    "ExecuteCommand: unshare(1) wrapper failed to spawn: {w}; direct spawn also failed: {direct} (P3/P4 — util-linux/namespace or host binary path)"
+                )),
+                None => ClaimResult::Fail(format!("ExecuteCommand spawn error: {direct}")),
+            },
+            ExecuteCommandHostOutcome::SetupFailed { reason } => match reason {
+                SetupFailReason::NamespaceSetupAndDirectSpawnFailed { direct } => {
+                    ClaimResult::Fail(format!(
+                        "ExecuteCommand: namespace setup failed and direct fallback spawn also failed: {direct}"
+                    ))
+                }
+            },
+            ExecuteCommandHostOutcome::WaitFailed(w) => match w {
+                WaitFail::WallTimeout { wall_time } => ClaimResult::Fail(format!(
+                    "ExecuteCommand: process exceeded {:.2}s wall-clock limit (timeout — process group / child killed, fail-closed)",
+                    wall_time.as_secs_f64()
+                )),
+                WaitFail::Io(err) => ClaimResult::Fail(format!(
+                    "ExecuteCommand: wait on child failed: {err}"
+                )),
+                WaitFail::TerminatedBySignal => ClaimResult::Fail(
+                    "ExecuteCommand: child terminated by signal (no host exit code)".to_string(),
+                ),
+            },
         }
     }
 }
 
 /// M1.5 and other **boolean** predicate reads: only these outcomes map to propositional
-/// true/false; all other results are `Err(ClaimResult)` (not “`false`” for the claim).
+/// true/false; all other results are `Err(ClaimResult)` (not "false" for the claim).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecuteCommandM1_5Proposition {
-    /// Observed exit satisfied `expect_exit_code`.
     Satisfied,
-    /// The process completed with a host exit code that did not match the claim.
     UnsatisfiedExitMismatch,
 }
 
-/// Distinguish “exit ≠ expect” from timeout, spawn error, `&` policy, signal, etc. `Err` is the
-/// full untyped `ClaimResult` (use [`TestRunner`] for strings); do not map `Err` to
-/// propositional `false` (P3/DB-1; codex PR #792). This is the supported boolean exit predicate
-/// path while [`ExecuteCommandHostOutcome::Other`] remains a **partial** carrier (837d0e59).
+/// Distinguish "exit ≠ expect" from timeout, spawn error, `&` policy, signal, etc. `Err` is
+/// the rendered [`ClaimResult`] (use [`evaluate_execute_command_host_outcome`] directly when
+/// you need the typed discriminant).
 pub fn evaluate_execute_command_m1_5(
     command: &str,
     args: &[String],
@@ -1155,153 +995,150 @@ pub fn evaluate_execute_command_m1_5(
         ExecuteCommandHostOutcome::Mismatch { .. } => {
             Ok(ExecuteCommandM1_5Proposition::UnsatisfiedExitMismatch)
         }
-        ExecuteCommandHostOutcome::Other(c) => Err(c),
+        other => Err(other.into_claim_result()),
     }
 }
 
-/// Core host run: **typed** outcome. Map to [`ClaimResult`] with
-/// [`ExecuteCommandHostOutcome::into_claim_result`] for [`TestRunner`], or match directly from
-/// [`evaluate_execute_command_m1_5`].
-///
-/// **P2(d) (implicit re-execution):** On Linux, the `loop` may spawn a **second** `Child` once
-/// for (1) unshare post-start setup failure, (2) non-zero-`expect_exit_code` with a matching
-/// unshare(1) exit (always one direct-`Child` host confirmation; fail-closed: empty / no-`unshare:`
-/// merge is not proof of logical `exec`), or (3) empty piped wrapper stderr on exit **mismatch**
-/// with `unshare_empty_stderr_relaunch_authorized`. The authority is
-/// `UnshareDirectRerun`; all single-retry, documented in [`unshare_sandbox_broken_relaunch_with_direct`]
-/// and the **P3 (empty buffer)** / **P5 (dissolution — shared target)** block. The P5 “typed setup
-/// carrier” still out-of-tree dissolves the string/`Child` heuristics together.
+/// Core host run: typed outcome. See [`ExecuteCommandHostOutcome`] for the P2(a)–(e)
+/// realization. Map to [`ClaimResult`] with [`ExecuteCommandHostOutcome::into_claim_result`]
+/// for [`TestRunner`].
 pub fn evaluate_execute_command_host_outcome(
     command: &str,
     args: &[String],
     expect_exit_code: i64,
     wall_time: Duration,
 ) -> ExecuteCommandHostOutcome {
-    if let Some(r) = reject_unbounded_shell_background(command, args) {
-        return ExecuteCommandHostOutcome::Other(r);
+    if reject_unbounded_shell_background(command, args).is_some() {
+        return ExecuteCommandHostOutcome::PolicyRejected {
+            policy: PolicyReject::ShellBackgroundUnbounded,
+        };
     }
-    #[allow(unused_mut)]
-    let (mut child, mut from_unshare) = {
-        #[cfg(target_os = "linux")]
-        {
-            // Any unshare(1) spawn failure (not only EPERM) falls back: missing util-linux, wrong
-            // `PATH`, container policy, etc. must not block the logical `command` on the direct
-            // path (PR #792: PB-Runtime gap vs restricted Linux hosts).
-            match build_execute_command_unshare(command, args).spawn() {
-                Ok(c) => (c, true),
-                Err(e_unshare) => match build_execute_command_process(command, args).spawn() {
-                    Ok(c) => (c, false),
-                    Err(e2) => {
-                        return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(format!(
-                            "ExecuteCommand: could not run `{command}`: `unshare(1) -c -f -p` \
-                             wrapper failed to spawn: {e_unshare}; direct spawn also failed: {e2} \
-                             (P3/P4 — util-linux/namespace or host binary path)"
-                        )));
-                    }
+    #[cfg(target_os = "linux")]
+    {
+        run_linux_unshare_then_direct(command, args, expect_exit_code, wall_time)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        run_direct(command, args, expect_exit_code, wall_time, None)
+    }
+}
+
+/// Direct (non-unshare) host run. `wrapper_err` is `Some(_)` when this is the fallback after
+/// `unshare(1)` itself failed to spawn; it is preserved in `SpawnFailed { wrapper, direct }`
+/// if direct also fails, so the caller does not lose the wrapper-side reason.
+fn run_direct(
+    command: &str,
+    args: &[String],
+    expect_exit_code: i64,
+    wall_time: Duration,
+    wrapper_err: Option<String>,
+) -> ExecuteCommandHostOutcome {
+    let mut child = match build_execute_command_process(command, args).spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            return ExecuteCommandHostOutcome::SpawnFailed {
+                wrapper: wrapper_err,
+                direct: format!("{e}"),
+            };
+        }
+    };
+    finish_after_wait(&mut child, expect_exit_code, wall_time)
+}
+
+#[cfg(target_os = "linux")]
+fn run_linux_unshare_then_direct(
+    command: &str,
+    args: &[String],
+    expect_exit_code: i64,
+    wall_time: Duration,
+) -> ExecuteCommandHostOutcome {
+    let mut ready = match UnshareReadyPipe::new() {
+        Ok(p) => p,
+        Err(e) => {
+            // pipe2 failed — drop the unshare path entirely and try direct.
+            return run_direct(
+                command,
+                args,
+                expect_exit_code,
+                wall_time,
+                Some(format!("ready-pipe: {e}")),
+            );
+        }
+    };
+    let mut child = match build_execute_command_unshare(command, args, &ready).spawn() {
+        Ok(c) => c,
+        Err(e_unshare) => {
+            return run_direct(
+                command,
+                args,
+                expect_exit_code,
+                wall_time,
+                Some(format!("{e_unshare}")),
+            );
+        }
+    };
+    // Close parent's write end so the read end sees EOF after the child exits.
+    ready.close_write_end_in_parent();
+
+    let status = match child_wait_for_execute_command(&mut child, wall_time) {
+        Ok(s) => s,
+        Err(ChildWaitFail::WallTimeout { wall_time }) => {
+            return ExecuteCommandHostOutcome::WaitFailed(WaitFail::WallTimeout { wall_time });
+        }
+        Err(ChildWaitFail::Io(err)) => {
+            return ExecuteCommandHostOutcome::WaitFailed(WaitFail::Io(err));
+        }
+    };
+
+    match unshare_bootstrap_stage_from_sentinel(&ready.read_sentinel()) {
+        UnshareBootstrapStage::LogicalCommandExeced => {
+            classify_logical_exit(status, expect_exit_code)
+        }
+        UnshareBootstrapStage::LogicalCommandNotExecutable => {
+            ExecuteCommandHostOutcome::SpawnFailed {
+                wrapper: None,
+                direct: format!(
+                    "logical command `{command}` not executable (no such file or not in PATH)"
+                ),
+            }
+        }
+        UnshareBootstrapStage::NamespaceSetupFailed => {
+            // util-linux exited before the bootstrap sh ran. Direct fallback is the *first*
+            // logical run, not a recovery re-exec (P2(d)).
+            match build_execute_command_process(command, args).spawn() {
+                Ok(mut direct_child) => {
+                    finish_after_wait(&mut direct_child, expect_exit_code, wall_time)
+                }
+                Err(e) => ExecuteCommandHostOutcome::SetupFailed {
+                    reason: SetupFailReason::NamespaceSetupAndDirectSpawnFailed {
+                        direct: format!("{e}"),
+                    },
                 },
             }
         }
-        #[cfg(not(target_os = "linux"))]
-        {
-            match build_execute_command_process(command, args).spawn() {
-                Ok(c) => (c, false),
-                Err(err) => {
-                    return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(format!(
-                        "ExecuteCommand spawn error ({command}): {err}"
-                    )));
-                }
-            }
+    }
+}
+
+fn finish_after_wait(
+    child: &mut std::process::Child,
+    expect_exit_code: i64,
+    wall_time: Duration,
+) -> ExecuteCommandHostOutcome {
+    match child_wait_for_execute_command(child, wall_time) {
+        Ok(status) => classify_logical_exit(status, expect_exit_code),
+        Err(ChildWaitFail::WallTimeout { wall_time }) => {
+            ExecuteCommandHostOutcome::WaitFailed(WaitFail::WallTimeout { wall_time })
         }
-    };
-    // `continue` (Linux only) may re-run the logical command without `unshare(1)` if stderr
-    // shows namespace *setup* failed (not a logical exit).
-    #[cfg(target_os = "linux")]
-    let mut unshare_stderr_drain: Vec<u8> = Vec::new();
-    #[cfg_attr(
-        not(target_os = "linux"),
-        allow(clippy::never_loop) // the only `continue` is under `#[cfg(target_os = "linux")]`
-    )]
-    let status = loop {
-        // Fresh capture for this `Child` (each `continue` spins up a new process; stale bytes would
-        // poison the unshare: merge — codex PR #792).
-        #[cfg(target_os = "linux")]
-        unshare_stderr_drain.clear();
-        let s = match child_wait_for_execute_command(
-            &mut child,
-            wall_time,
-            from_unshare,
-            #[cfg(target_os = "linux")]
-            &mut unshare_stderr_drain,
-        ) {
-            Ok(s) => s,
-            Err(e) => return ExecuteCommandHostOutcome::Other(e),
-        };
-        #[cfg(target_os = "linux")]
-        {
-            if unshare_post_start_stderr_may_authorize_relaunch(from_unshare, &s, expect_exit_code)
-            {
-                if let Some(reason) = unshare_sandbox_broken_relaunch_with_direct(
-                    from_unshare,
-                    &mut child,
-                    &unshare_stderr_drain,
-                ) {
-                    child = match build_execute_command_process(command, args).spawn() {
-                        Ok(c) => c,
-                        Err(e2) => {
-                            return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(format!(
-                                "ExecuteCommand spawn error ({command}) after {}: {e2}",
-                                unshare_reexec_after_spawn_error_label(reason)
-                            )));
-                        }
-                    };
-                    from_unshare = false;
-                    continue;
-                }
-            }
-            if from_unshare {
-                let is_nonzero_match = s
-                    .code()
-                    .map(i64::from)
-                    .is_some_and(|c| c == expect_exit_code)
-                    && expect_exit_code != 0;
-                if is_nonzero_match {
-                    // Non-zero + exit already matches: the unshare(1) path can (rarely) conflate
-                    // PID-1 or namespace semantics with a **direct** `Child` (see module docs).
-                    // **Always** run one direct-`Child` “host confirmation” re-exec. A merged wrapper
-                    // `stderr` with no `unshare:` line (including **empty**) is *not* positive evidence
-                    // that `exec` reached the logical child — treating it as a skip was **fail-open**
-                    // (api-review codex 946a9918, PR #792). Merge `Err(())` (read / handle loss) is also
-                    // not authority for a different conclusion; we still re-run for confirmation.
-                    // **P5:** same retirement as post-start + empty-stderr — `UnshareDirectRerun` module doc.
-                    let _merged =
-                        unshare_merged_wrapper_stderr_read(&mut child, &unshare_stderr_drain);
-                    let reason = UnshareDirectRerun::NonzeroHostConfirm;
-                    child = match build_execute_command_process(command, args).spawn() {
-                        Ok(c) => c,
-                        Err(e2) => {
-                            return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(format!(
-                                "ExecuteCommand spawn error ({command}) after {}: {e2}",
-                                unshare_reexec_after_spawn_error_label(reason)
-                            )));
-                        }
-                    };
-                    from_unshare = false;
-                    continue;
-                } else {
-                    // P3/C-5: same fd as child stderr after exec; do not leave a piped `stderr` on
-                    // paths that skip the merge+decision above.
-                    let _ = child.stderr.take();
-                }
-            }
-        }
-        break s;
-    };
-    #[cfg(not(target_os = "linux"))]
-    let _ = from_unshare;
+        Err(ChildWaitFail::Io(err)) => ExecuteCommandHostOutcome::WaitFailed(WaitFail::Io(err)),
+    }
+}
+
+fn classify_logical_exit(
+    status: std::process::ExitStatus,
+    expect_exit_code: i64,
+) -> ExecuteCommandHostOutcome {
     let Some(actual) = status.code().map(i64::from) else {
-        return ExecuteCommandHostOutcome::Other(ClaimResult::Fail(
-            "ExecuteCommand: child terminated by signal (no host exit code)".to_string(),
-        ));
+        return ExecuteCommandHostOutcome::WaitFailed(WaitFail::TerminatedBySignal);
     };
     if actual == expect_exit_code {
         ExecuteCommandHostOutcome::Matched
@@ -3138,9 +2975,10 @@ mod execute_command_timebound_tests {
         );
     }
 
-    /// P2(c): a missing `command` can return **127** on the unshare shell path with stderr nulled
-    /// and no `unshare:` in the merge. Direct `std::process::Command` typically **fails to spawn**;
-    /// a claim that expects 127 must not `Match` the unrun-only result (PR #792 codex).
+    /// P2(c): a missing `command` must surface as `SpawnFailed` — not `Matched` — even when the
+    /// claim expects 127 and the unshare shell path would itself naturally exit 127. The
+    /// bootstrap sentinel pipe (`s` written, `e` not written) detects "logical command not
+    /// executable" structurally (T-PB-B Worker 4 typed model).
     #[test]
     #[cfg(target_os = "linux")]
     fn unshare_expect_127_missing_command_does_not_pass_without_direct_spawn() {
@@ -3152,13 +2990,17 @@ mod execute_command_timebound_tests {
             127,
             Duration::from_secs(5),
         );
-        let ExecuteCommandHostOutcome::Other(ClaimResult::Fail(msg)) = r else {
-            panic!("expected spawn/execute fail for missing command, not {r:?}");
-        };
+        // Either typed carrier is acceptable: `SpawnFailed` if unshare(1) wasn't usable here,
+        // or `SetupFailed { NamespaceSetupAndDirectSpawnFailed }` if unshare(1) ran but
+        // namespace setup failed (sentinel pipe empty) and the direct fallback also could not
+        // spawn. The contract — missing binary must NOT `Match` 127 — is satisfied by either.
         assert!(
-            msg.contains("ExecuteCommand")
-                && (msg.contains("spawn") || msg.contains("error") || msg.contains("No such file")),
-            "expected spawn-fail phrasing, got: {msg}"
+            matches!(
+                r,
+                ExecuteCommandHostOutcome::SpawnFailed { .. }
+                    | ExecuteCommandHostOutcome::SetupFailed { .. }
+            ),
+            "expected SpawnFailed or SetupFailed for missing command, got {r:?}"
         );
     }
 
@@ -3323,76 +3165,47 @@ mod execute_command_timebound_tests {
     }
 }
 
-// Linux: util-linux unshare(1) stderr heuristics for post-start direct retry (see PR #792).
+// Linux: bootstrap sentinel-pipe classification (T-PB-B Worker 4 typed model).
 #[cfg(all(test, target_os = "linux"))]
-mod unshare_stderr_scan_tests {
-    use super::unshare_merge_stderr_for_setup_scan;
-    use super::unshare_stderr_indicates_sandbox_setup_failure;
+mod unshare_bootstrap_sentinel_tests {
+    use super::unshare_bootstrap_stage_from_sentinel;
+    use super::UnshareBootstrapStage;
 
-    /// Regression: if `unshare:…` arrived only in the pre-exit (wait-loop) drain, it must not be
-    /// lost before the setup scan (codex PR #792, blocking review).
     #[test]
-    fn pre_wait_drain_merged_with_empty_post_still_triggers() {
-        let c = unshare_merge_stderr_for_setup_scan(b"unshare: Operation not permitted\n", "");
-        assert!(unshare_stderr_indicates_sandbox_setup_failure(&c));
+    fn empty_sentinel_means_namespace_setup_failed() {
+        assert_eq!(
+            unshare_bootstrap_stage_from_sentinel(b""),
+            UnshareBootstrapStage::NamespaceSetupFailed
+        );
     }
 
     #[test]
-    fn any_unshare_prefix_triggers_not_only_failed_substring() {
-        assert!(unshare_stderr_indicates_sandbox_setup_failure(
-            "unshare: Operation not permitted\n"
-        ));
+    fn s_only_means_logical_command_not_executable() {
+        assert_eq!(
+            unshare_bootstrap_stage_from_sentinel(b"s"),
+            UnshareBootstrapStage::LogicalCommandNotExecutable
+        );
     }
 
     #[test]
-    fn classic_unshare_failed_message_still_triggers() {
-        assert!(unshare_stderr_indicates_sandbox_setup_failure(
-            "unshare: unshare failed: some syscall\n"
-        ));
+    fn se_means_logical_command_execed() {
+        assert_eq!(
+            unshare_bootstrap_stage_from_sentinel(b"se"),
+            UnshareBootstrapStage::LogicalCommandExeced
+        );
     }
 
     #[test]
-    fn empty_or_unrelated_stderr_no_trigger() {
-        assert!(!unshare_stderr_indicates_sandbox_setup_failure(""));
-        assert!(!unshare_stderr_indicates_sandbox_setup_failure(
-            "hello from program\n"
-        ));
-    }
-}
-
-// P3/C-5: do not use stderr as setup authority when the exit code already matches the claim.
-#[cfg(all(test, target_os = "linux"))]
-mod unshare_post_start_stderr_relaunch_authority_tests {
-    use super::unshare_post_start_stderr_may_authorize_relaunch;
-    use std::process::Command;
-
-    #[test]
-    fn matching_exit_does_not_authorize_stderr_relaunch() {
-        let s = Command::new("true").status().expect("true");
-        assert!(!unshare_post_start_stderr_may_authorize_relaunch(
-            true, &s, 0
-        ));
-    }
-
-    #[test]
-    fn exit_mismatch_authorizes() {
-        let s = Command::new("sh")
-            .args(["-c", "exit 1"])
-            .status()
-            .expect("sh");
-        assert!(unshare_post_start_stderr_may_authorize_relaunch(
-            true, &s, 0
-        ));
-    }
-
-    #[test]
-    fn not_unshare_path_does_not_authorize() {
-        let s = Command::new("sh")
-            .args(["-c", "exit 1"])
-            .status()
-            .expect("sh");
-        assert!(!unshare_post_start_stderr_may_authorize_relaunch(
-            false, &s, 0
-        ));
+    fn unexpected_pattern_fails_closed_to_setup_failed() {
+        // Anything not matching the documented protocol must fall back to direct, not be
+        // claimed as evidence of a logical exec.
+        assert_eq!(
+            unshare_bootstrap_stage_from_sentinel(b"x"),
+            UnshareBootstrapStage::NamespaceSetupFailed
+        );
+        assert_eq!(
+            unshare_bootstrap_stage_from_sentinel(b"es"),
+            UnshareBootstrapStage::NamespaceSetupFailed
+        );
     }
 }
