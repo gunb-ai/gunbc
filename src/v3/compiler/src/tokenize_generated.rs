@@ -2,7 +2,30 @@
 // `regen_tokenize`. Regenerate instead of hand-editing.
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
-use crate::tokenize_char_class::{byte_matches, TokenizerCharClass};
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScannerCharClass {
+    Whitespace,
+    Digit,
+    IdentStart,
+    IdentContinue,
+}
+
+#[inline]
+fn byte_matches(byte: u8, class: ScannerCharClass) -> bool {
+    match class {
+        ScannerCharClass::Whitespace => matches!(byte, b'\t' | b'\n' | b'\x0c' | b'\r' | b' '),
+        ScannerCharClass::Digit => (byte >= b'0' && byte <= b'9'),
+        ScannerCharClass::IdentStart => {
+            (byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') || byte == b'_'
+        }
+        ScannerCharClass::IdentContinue => {
+            (byte >= b'0' && byte <= b'9')
+                || (byte >= b'a' && byte <= b'z')
+                || (byte >= b'A' && byte <= b'Z')
+                || byte == b'_'
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
@@ -67,7 +90,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
     while pos < bytes.len() {
         let byte = bytes[pos];
 
-        if byte_matches(byte, TokenizerCharClass::Whitespace) {
+        if byte_matches(byte, ScannerCharClass::Whitespace) {
             pos += 1;
             continue;
         }
@@ -94,9 +117,9 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             continue;
         }
 
-        if byte_matches(byte, TokenizerCharClass::Digit) {
+        if byte_matches(byte, ScannerCharClass::Digit) {
             let mut end = pos;
-            while end < bytes.len() && byte_matches(bytes[end], TokenizerCharClass::Digit) {
+            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::Digit) {
                 end += 1;
             }
             let literal = &source[start..end];
@@ -113,9 +136,9 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             continue;
         }
 
-        if byte_matches(byte, TokenizerCharClass::IdentStart) {
+        if byte_matches(byte, ScannerCharClass::IdentStart) {
             let mut end = pos;
-            while end < bytes.len() && byte_matches(bytes[end], TokenizerCharClass::IdentContinue) {
+            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::IdentContinue) {
                 end += 1;
             }
             let text = &source[start..end];

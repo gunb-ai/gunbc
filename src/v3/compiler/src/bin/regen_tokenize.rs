@@ -109,6 +109,7 @@ fn read_shared_syntax_source(manifest_dir: &std::path::Path) -> String {
 
 fn generate(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> String {
     let keywords = collect_keyword_rows(dag, shared_syntax);
+    let ascii_scan_order = collect_ascii_scan_order(dag);
     let puncts = collect_punct_rows(dag, shared_syntax);
     let line_comment_prefix = string_data_named(dag, "line_comment_prefix");
     let string_delim = string_data_named(dag, "string_literal_delimiter");
@@ -125,7 +126,7 @@ fn generate(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> String {
 
     let mut out = String::new();
     out.push_str("use crate::diagnostics::{Diagnostic, SourceSpan};\n");
-    out.push_str("use crate::tokenize_char_class::{byte_matches, TokenizerCharClass};\n\n");
+    out.push_str(&emit_char_scanner_class_scaffolding(&ascii_scan_order));
     out.push_str(&emit_token_kind_enum(dag));
     out.push_str(
         r#"#[derive(Debug, Clone)]
@@ -145,8 +146,116 @@ pub struct Token {
         &diag_int_pre,
         &diag_int_suf,
         &escapes,
+        &ascii_scan_order,
     ));
     out.push_str(&emit_punctuation_token(&puncts));
+    out
+}
+
+fn emit_char_scanner_class_scaffolding(scan_order: &[String]) -> String {
+    assert!(
+        scan_order.len() == 4,
+        "`ascii_scan_order` in `tokenize.dag` must list exactly 4 class names"
+    );
+    assert!(
+        scan_order.iter().collect::<std::collections::BTreeSet<_>>().len() == scan_order.len(),
+        "`ascii_scan_order` in `tokenize.dag` must not contain duplicates"
+    );
+
+    let mut out = String::new();
+    out.push_str("\n#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
+    out.push_str("enum ScannerCharClass {\n");
+    for class in scan_order {
+        out.push_str(&format!("    {class},\n"));
+    }
+    out.push_str("}\n\n");
+
+    out.push_str("#[inline]\nfn byte_matches(byte: u8, class: ScannerCharClass) -> bool {\n");
+    out.push_str("    match class {\n");
+    for class in scan_order {
+        let expr = ascii_scan_class_predicate(class);
+        out.push_str(&format!("        ScannerCharClass::{class} => {expr},\n"));
+    }
+    out.push_str("    }\n}\n\n");
+
+    out
+}
+
+fn ascii_scan_class_predicate(class_name: &str) -> &'static str {
+    match class_name {
+        "Whitespace" => {
+            "matches!(byte, b'\\t' | b'\\n' | b'\\x0c' | b'\\r' | b' ')"
+        }
+        "Digit" => "(byte >= b'0' && byte <= b'9')",
+        "IdentStart" => {
+            "(byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') || byte == b'_"
+        }
+        "IdentContinue" => {
+            "(byte >= b'0' && byte <= b'9') || (byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') || byte == b'_"
+        }
+        _ => panic!("unsupported scanner class `{class_name}` in `ascii_scan_order`"),
+    }
+}
+
+fn collect_ascii_scan_order(dag: &Dag) -> Vec<String> {
+    let scan_decl = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("ascii_scan_order"))
+        .unwrap_or_else(|| {
+            panic!("missing `ascii_scan_order` in `{TOKENIZE_AUTHORITY_FILE}`")
+        });
+
+    let char_class_decl = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("CharClass"))
+        .unwrap_or_else(|| panic!("missing `CharClass` in `{TOKENIZE_AUTHORITY_FILE}`"));
+
+    let TypeConnective::Disj { variants: char_class_variants } = &char_class_decl.connective else {
+        panic!("`CharClass` should be a disj declaration");
+    };
+
+    let ValueBody::List(values) = &scan_decl.value_body else {
+        panic!("`ascii_scan_order` in `{TOKENIZE_AUTHORITY_FILE}` must be a list");
+    };
+
+    let mut out = Vec::new();
+    for value in values {
+        let FieldValue::Variant {
+            constructor,
+            payload,
+        } = value
+        else {
+            panic!("`ascii_scan_order` elements must be constructor values");
+        };
+        assert!(payload.is_empty(), "`ascii_scan_order` class entries must be nullary constructors");
+        let label = char_class_variants
+            .iter()
+            .find(|field| field.ty == *constructor)
+            .map(|field| field.label.clone())
+            .unwrap_or_else(|| {
+                panic!(
+                    "`ascii_scan_order` contains constructor {:?} not owned by `CharClass`",
+                    constructor
+                )
+            });
+        out.push(label);
+    }
+
+    let expected = [
+        "Whitespace",
+        "Digit",
+        "IdentStart",
+        "IdentContinue",
+    ];
+    for class in &expected {
+        assert!(
+            out.contains(&class.to_string()),
+            "`ascii_scan_order` in `{TOKENIZE_AUTHORITY_FILE}` must include `{class}`"
+        );
+    }
+
     out
 }
 
@@ -671,7 +780,18 @@ fn emit_tokenize_fn(
     diag_int_pre: &str,
     diag_int_suf: &str,
     escapes: &[(u8, i64)],
+    ascii_scan_order: &[String],
 ) -> String {
+    let mut ensure_classes = |required: &[&str]| {
+        for name in required {
+            assert!(
+                ascii_scan_order.iter().any(|class| class == name),
+                "`ascii_scan_order` in tokenize.dag missing `{name}`"
+            );
+        }
+    };
+    ensure_classes(&["Whitespace", "Digit", "IdentStart", "IdentContinue"]);
+
     let mut arms = String::new();
     for (spelling, kind) in keywords {
         arms.push_str(&format!(
@@ -705,7 +825,7 @@ fn emit_tokenize_fn(
     ));
     s.push_str("    while pos < bytes.len() {\n");
     s.push_str("        let byte = bytes[pos];\n\n");
-    s.push_str("        if byte_matches(byte, TokenizerCharClass::Whitespace) {\n");
+    s.push_str("        if byte_matches(byte, ScannerCharClass::Whitespace) {\n");
     s.push_str("            pos += 1;\n");
     s.push_str("            continue;\n");
     s.push_str("        }\n\n");
@@ -732,10 +852,10 @@ fn emit_tokenize_fn(
     s.push_str("            pos += width;\n");
     s.push_str("            continue;\n");
     s.push_str("        }\n\n");
-    s.push_str("        if byte_matches(byte, TokenizerCharClass::Digit) {\n");
+    s.push_str("        if byte_matches(byte, ScannerCharClass::Digit) {\n");
     s.push_str("            let mut end = pos;\n");
     s.push_str(
-        "            while end < bytes.len() && byte_matches(bytes[end], TokenizerCharClass::Digit) {\n",
+        "            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::Digit) {\n",
     );
     s.push_str("                end += 1;\n");
     s.push_str("            }\n");
@@ -757,10 +877,10 @@ fn emit_tokenize_fn(
     s.push_str("            pos = end;\n");
     s.push_str("            continue;\n");
     s.push_str("        }\n\n");
-    s.push_str("        if byte_matches(byte, TokenizerCharClass::IdentStart) {\n");
+    s.push_str("        if byte_matches(byte, ScannerCharClass::IdentStart) {\n");
     s.push_str("            let mut end = pos;\n");
     s.push_str(
-        "            while end < bytes.len() && byte_matches(bytes[end], TokenizerCharClass::IdentContinue) {\n",
+        "            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::IdentContinue) {\n",
     );
     s.push_str("                end += 1;\n");
     s.push_str("            }\n");
