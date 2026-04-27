@@ -284,6 +284,7 @@ pub mod lens_unused_parameters {
 }
 
 pub mod post_emit_verifier;
+pub mod r1c_e_gates;
 pub mod test_runner;
 pub mod serialize {
     use crate::dag::{Behavior, Dag};
@@ -1162,7 +1163,6 @@ mod regen_parse_tables_emit;
 )]
 #[path = "tokenize_generated.rs"]
 mod tokenize;
-mod tokenize_char_class;
 
 pub use regen_parse_emit::{render_parse_generated_rs, RenderParseGeneratedError};
 pub use regen_parse_tables_emit::{
@@ -1575,4 +1575,37 @@ fn first_differing_line(lhs: &[u8], rhs: &[u8]) -> String {
         lhs.len(),
         rhs.len()
     )
+}
+#[cfg(test)]
+mod tokenize_ascii_parity_tests {
+    use super::tokenize::{byte_matches, ScannerCharClass};
+
+    #[test]
+    fn ascii_byte_class_predicates_match_std_unicode_ascii_boundary() {
+        for byte in 0u8..=127 {
+            assert_eq!(
+                byte_matches(byte, ScannerCharClass::Whitespace),
+                byte.is_ascii_whitespace(),
+                "tokenizer whitespace predicate diverged at byte {byte:#04x}"
+            );
+
+            assert_eq!(
+                byte_matches(byte, ScannerCharClass::Digit),
+                byte.is_ascii_digit(),
+                "tokenizer digit predicate diverged at byte {byte:#04x}"
+            );
+
+            assert_eq!(
+                byte_matches(byte, ScannerCharClass::IdentStart),
+                (byte.is_ascii_alphabetic() || byte == b'_'),
+                "tokenizer ident-start predicate diverged at byte {byte:#04x}"
+            );
+
+            assert_eq!(
+                byte_matches(byte, ScannerCharClass::IdentContinue),
+                (byte.is_ascii_alphanumeric() || byte == b'_'),
+                "tokenizer ident-continue predicate diverged at byte {byte:#04x}"
+            );
+        }
+    }
 }
