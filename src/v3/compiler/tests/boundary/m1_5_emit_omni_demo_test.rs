@@ -25,8 +25,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::common::cached_compile_to_dag;
 use crate::common::determinism_fixtures::{GO_EMIT_EXCLUDE, PROGRAM_FIXTURES, PYTHON_EMIT_EXCLUDE};
-use v3_compiler::emit::{emit, EmitTarget};
 use v3_compiler::emit_rust::emit_rust;
+use v3_compiler::r1c_e_gates;
 
 static ROUNDTRIP_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -97,69 +97,6 @@ fn rust_stdout(source: &str) -> String {
     String::from_utf8_lossy(&run.stdout).trim().to_string()
 }
 
-/// Emit `source` as a Go program, run via `go run`, and return trimmed stdout.
-/// Panics (not `None`) — callers must only invoke this when `go` is confirmed present.
-fn go_stdout(fixture_name: &str, source: &str) -> String {
-    let dag = cached_compile_to_dag(source, "omni_parity.v3");
-    let rendered = emit(&dag, EmitTarget::Go)
-        .unwrap_or_else(|e| panic!("Go emit failed for fixture `{fixture_name}`: {e:?}"))
-        .text;
-    let tmp_dir = TmpDir::new();
-    let src_path = tmp_dir.path().join("main.go");
-    std::fs::File::create(&src_path)
-        .and_then(|mut f| f.write_all(rendered.as_bytes()))
-        .expect("write go source");
-
-    let run = Command::new("go")
-        .arg("run")
-        .arg(&src_path)
-        .current_dir(tmp_dir.path())
-        .output()
-        .expect("invoke go run");
-    assert!(
-        run.status.success(),
-        "go run failed for fixture `{fixture_name}`:\nsource:\n{rendered}\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&run.stdout),
-        String::from_utf8_lossy(&run.stderr),
-    );
-    String::from_utf8_lossy(&run.stdout).trim().to_string()
-}
-
-/// Emit `source` as a Python program, run via `python3`, and return trimmed stdout.
-/// Panics (not `None`) — callers must only invoke this when `python3` is confirmed present.
-fn python_stdout(fixture_name: &str, source: &str) -> String {
-    let dag = cached_compile_to_dag(source, "omni_parity.v3");
-    let rendered = emit(&dag, EmitTarget::Python)
-        .unwrap_or_else(|e| panic!("Python emit failed for fixture `{fixture_name}`: {e:?}"))
-        .text;
-    let tmp_dir = TmpDir::new();
-    let src_path = tmp_dir.path().join("main.py");
-    std::fs::File::create(&src_path)
-        .and_then(|mut f| f.write_all(rendered.as_bytes()))
-        .expect("write python source");
-
-    let run = Command::new("python3")
-        .arg(&src_path)
-        .output()
-        .expect("invoke python3");
-    assert!(
-        run.status.success(),
-        "python3 failed for fixture `{fixture_name}`:\nsource:\n{rendered}\nstderr:\n{}",
-        String::from_utf8_lossy(&run.stderr),
-    );
-    String::from_utf8_lossy(&run.stdout).trim().to_string()
-}
-
-fn toolchain_available(cmd: &str, probe_arg: &str) -> bool {
-    Command::new(cmd)
-        .arg(probe_arg)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .ok()
-        .is_some_and(|s| s.success())
-}
-
 /// CI gate: Rust-only roundtrip over all omni fixtures.
 ///
 /// Rustc is always available; this test runs unconditionally.  It proves
@@ -186,36 +123,7 @@ fn emit_omni_demo_rust_roundtrip() {
 #[test]
 #[ignore = "requires go and python3 toolchains; run locally: cargo test ... -- --ignored --nocapture"]
 fn emit_omni_demo_fixtures_green() {
-    assert!(
-        toolchain_available("go", "version"),
-        "go toolchain not found — this test requires go to be on PATH"
-    );
-    assert!(
-        toolchain_available("python3", "--version"),
-        "python3 toolchain not found — this test requires python3 to be on PATH"
-    );
-
-    let fixtures = omni_fixtures();
-    assert!(
-        !fixtures.is_empty(),
-        "omni fixture set must not be empty — check exclude lists"
-    );
-
-    for fixture in &fixtures {
-        let rust = rust_stdout(fixture.source);
-
-        let go = go_stdout(fixture.name, fixture.source);
-        assert_eq!(
-            go, rust,
-            "Go output diverged from Rust baseline for fixture `{}`",
-            fixture.name
-        );
-
-        let py = python_stdout(fixture.name, fixture.source);
-        assert_eq!(
-            py, rust,
-            "Python output diverged from Rust baseline for fixture `{}`",
-            fixture.name
-        );
+    if let Err(detail) = r1c_e_gates::check_omni_demo_fixtures_green() {
+        panic!("emit_omni_demo_fixtures_green: {detail}");
     }
 }

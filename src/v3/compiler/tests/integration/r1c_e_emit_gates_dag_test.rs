@@ -10,12 +10,11 @@
 //! checked-in absolute path goes stale (R1 Closure decision on #973 —
 //! parallel to the `r1_gates.template.dag` splice discipline).
 //!
-//! Runs unignored: the only claim in the suite today (`generic-bounds`) is
-//! structural-only — no `rustc` / `python3` / `go` toolchain dependency — so
-//! the `.dag` wiring is exercised in normal CI. When `rust-green` / `omni-*`
-//! subcommands land, those new claims may need toolchain gating; revisit at
-//! that time (split into a separate `#[ignore]`d test if needed, rather than
-//! re-gating this one).
+//! Runs unignored: the suite's `ExecuteCommand` claims are `generic-bounds`
+//! (structural) and `rust-fixtures` (batches the same `rustc` host harness as
+//! `m1_3` — a full Rust toolchain is required on the runner image). The
+//! multi-target `emit_omni_demo_fixtures_green` claim lives in a **separate**
+//! template + `r1c_e_emit_gates_omni_dag_test` (`#[ignore]`, go + python3).
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
