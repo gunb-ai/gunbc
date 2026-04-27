@@ -1885,8 +1885,10 @@ fn map_body_data_item_parses_and_lowers_to_value_body_map() {
             decl.value_body
         );
     };
-    assert_eq!(entries.len(), expected.len());
-    for ((key, value), (expected_key, expected_value_name)) in entries.iter().zip(expected.iter()) {
+    assert_eq!(entries.entries().len(), expected.len());
+    for ((key, value), (expected_key, expected_value_name)) in
+        entries.entries().iter().zip(expected.iter())
+    {
         assert_eq!(key, expected_key);
         let expected_variant = variants
             .iter()

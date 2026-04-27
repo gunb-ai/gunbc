@@ -1314,7 +1314,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 meta_tag: Some(DeclarationId(349)),
                 specialization_parent: None,
                 inhabits: None,
-                value_body: Some(ValueBody::Map(vec![
+                value_body: Some(ValueBody::Map(FieldMap::from_entries(vec![
                     (
                         "Int".to_string(),
                         FieldValue::Variant {
@@ -1364,7 +1364,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                             payload: vec![],
                         },
                     ),
-                ])),
+                ]).expect("generated bootstrap map has unique keys"))),
                 refinement: None,
                 nominal_opacity: None,
                 span: SourceSpan::new("dsl/std/algebra.dag", 18316, 18626),
@@ -1803,7 +1803,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 meta_tag: Some(DeclarationId(463)),
                 specialization_parent: None,
                 inhabits: None,
-                value_body: Some(ValueBody::Map(vec![
+                value_body: Some(ValueBody::Map(FieldMap::from_entries(vec![
                     (
                         "String".to_string(),
                         FieldValue::Literal(LiteralBits::Bool(true)),
@@ -1836,7 +1836,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                         "Bytes".to_string(),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ),
-                ])),
+                ]).expect("generated bootstrap map has unique keys"))),
                 refinement: None,
                 nominal_opacity: None,
                 span: SourceSpan::new("dsl/std/types.dag", 3041, 3206),
@@ -1880,11 +1880,11 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 meta_tag: Some(DeclarationId(464)),
                 specialization_parent: None,
                 inhabits: None,
-                value_body: Some(ValueBody::Map(vec![
+                value_body: Some(ValueBody::Map(FieldMap::from_entries(vec![
                     ("List".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
                     ("Set".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
                     ("Map".to_string(), FieldValue::Literal(LiteralBits::Int(2))),
-                ])),
+                ]).expect("generated bootstrap map has unique keys"))),
                 refinement: None,
                 nominal_opacity: None,
                 span: SourceSpan::new("dsl/std/types.dag", 3506, 3587),
@@ -1982,10 +1982,10 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 meta_tag: Some(DeclarationId(465)),
                 specialization_parent: None,
                 inhabits: None,
-                value_body: Some(ValueBody::Map(vec![(
+                value_body: Some(ValueBody::Map(FieldMap::from_entries(vec![(
                     "List".to_string(),
                     FieldValue::Literal(LiteralBits::Bool(true)),
-                )])),
+                )]).expect("generated bootstrap map has unique keys"))),
                 refinement: None,
                 nominal_opacity: None,
                 span: SourceSpan::new("dsl/std/types.dag", 4706, 4778),
@@ -2029,7 +2029,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 meta_tag: Some(DeclarationId(466)),
                 specialization_parent: None,
                 inhabits: None,
-                value_body: Some(ValueBody::Map(vec![
+                value_body: Some(ValueBody::Map(FieldMap::from_entries(vec![
                     (
                         "List".to_string(),
                         FieldValue::Literal(LiteralBits::String("FreeMonoid".to_string())),
@@ -2078,7 +2078,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                         "partial_function".to_string(),
                         FieldValue::Literal(LiteralBits::String("PartialFunction".to_string())),
                     ),
-                ])),
+                ]).expect("generated bootstrap map has unique keys"))),
                 refinement: None,
                 nominal_opacity: None,
                 span: SourceSpan::new("dsl/std/types.dag", 5684, 6123),
