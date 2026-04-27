@@ -29,7 +29,9 @@ use v3_compiler::r1c_e_gates;
 use v3_compiler::test_runner::TestClaimValue;
 use v3_compiler::types::TypeShape;
 
-use crate::common::determinism_fixtures::{ReflectedExpected, REFLECTED_FIXTURES, PROGRAM_FIXTURES};
+use crate::common::determinism_fixtures::{
+    ReflectedExpected, PROGRAM_FIXTURES, REFLECTED_FIXTURES,
+};
 use crate::common::{HarnessLinkMode, RustcHarness};
 
 static HARNESS: OnceLock<RustcHarness> = OnceLock::new();

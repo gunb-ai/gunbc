@@ -51,7 +51,10 @@ fn r1c_e_emit_gates_omni_suite_passes() {
     };
 
     let results = TestRunner::new(&dag).run_suite("r1c_e_emit_gates_omni_suite");
-    assert!(!results.is_empty(), "suite `r1c_e_emit_gates_omni_suite` should have claims");
+    assert!(
+        !results.is_empty(),
+        "suite `r1c_e_emit_gates_omni_suite` should have claims"
+    );
     let failures: Vec<_> = results
         .iter()
         .filter(|r| r.result != ClaimResult::Pass)
