@@ -341,8 +341,8 @@ pub enum ValueBody {
     /// 4-pattern check for `Map`:
     /// - Pattern 1 (fact placement): fails. The key/value table is the
     ///   data declaration's value fact, not a type-edge or meta-tag fact.
-    /// - Pattern 2 (variant-is-data): fails. `Vec<(String, FieldValue)>`
-    ///   carries keyed entries, distinct from ordered lists, records,
+    /// - Pattern 2 (variant-is-data): fails. `FieldMap` carries
+    ///   duplicate-free keyed entries, distinct from ordered lists, records,
     ///   scalar bits, and source spans.
     /// - Pattern 3 (algebraic form): fails. Map bodies are not points in
     ///   the same algebra as records/scalars/lists; they carry string-keyed
@@ -352,8 +352,44 @@ pub enum ValueBody {
     ///
     /// Verdict: terminal at the current top-level data-body layer. Values
     /// deliberately reuse `FieldValue`, matching nested structural map
-    /// values. Non-string-key maps are a separate future carrier.
-    Map(Vec<(String, FieldValue)>),
+    /// values. `FieldMap` keeps insertion order for deterministic regen
+    /// while making duplicate keys unrepresentable. Non-string-key maps are
+    /// a separate future carrier.
+    Map(FieldMap),
+}
+
+/// Ordered string-keyed structural map entries with duplicate keys rejected at
+/// construction. The ordered storage is deliberate: `.dag` data maps preserve
+/// authored order for deterministic bootstrap/regeneration output, while the
+/// constructor enforces map key uniqueness once at the substrate boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldMap {
+    entries: Vec<(String, FieldValue)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DuplicateFieldMapKey {
+    pub key: String,
+}
+
+impl FieldMap {
+    pub fn from_entries(entries: Vec<(String, FieldValue)>) -> Result<Self, DuplicateFieldMapKey> {
+        let mut seen = HashSet::new();
+        for (key, _) in &entries {
+            if !seen.insert(key.clone()) {
+                return Err(DuplicateFieldMapKey { key: key.clone() });
+            }
+        }
+        Ok(Self { entries })
+    }
+
+    pub fn entries(&self) -> &[(String, FieldValue)] {
+        &self.entries
+    }
+
+    pub fn into_entries(self) -> Vec<(String, FieldValue)> {
+        self.entries
+    }
 }
 
 /// Per-field value payload inside a `ValueBody::Structural`.
@@ -383,7 +419,7 @@ pub enum ValueBody {
 ///   downstream readers (the realization index, the cost lens, etc).
 /// - Pattern 2 (variant-is-data): fails. `Literal(LiteralBits)`,
 ///   `Reference(DeclarationId)`, `Record(Vec<...>)`,
-///   `List(Vec<...>)`, `Map(Vec<...>)`, and `Variant { .. }` inhabit different
+///   `List(Vec<...>)`, `Map(FieldMap)`, and `Variant { .. }` inhabit different
 ///   structural spaces.
 /// - Pattern 3 (algebraic form): fails. The six variants are not
 ///   points in one algebra; they are the minimal carrier set needed
@@ -412,8 +448,9 @@ pub enum FieldValue {
     /// structural data bodies contain list-valued fields.
     List(Vec<FieldValue>),
     /// Structural string-keyed map value. Used by staged spec files whose
-    /// structural data bodies contain `Map<String, _>` fields.
-    Map(Vec<(String, FieldValue)>),
+    /// structural data bodies contain `Map<String, _>` fields. The carrier is
+    /// validated so duplicate keys are not representable after construction.
+    Map(FieldMap),
     /// Structural sum constructor with positional payload fields.
     /// The exact variant child declaration is preserved explicitly
     /// so downstream consumers can recover variant identity without
