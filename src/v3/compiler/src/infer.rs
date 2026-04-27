@@ -161,9 +161,9 @@ pub fn infer(dag: &mut Dag) {
                                 changed = true;
                                 continue;
                             }
-                            if let Some(outcome) = try_reconcile_int_literal_decision_set(
-                                dag, port, existing, ty,
-                            ) {
+                            if let Some(outcome) =
+                                try_reconcile_int_literal_decision_set(dag, port, existing, ty)
+                            {
                                 match outcome {
                                     IntLiteralSetReconciliation::Keep => continue,
                                     IntLiteralSetReconciliation::SetNarrow
