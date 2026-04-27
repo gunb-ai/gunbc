@@ -34,8 +34,7 @@ use std::collections::HashSet;
 use crate::dag::{
     ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId,
     Field, LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState,
-    TemplateArgument,
-    TransformNode, TransformTarget, TypeConnective,
+    TemplateArgument, TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -4442,8 +4441,7 @@ fn substitute_receiver(
                 *template,
                 &new_args,
                 decl.nominal_opacity.as_ref(),
-            )
-            {
+            ) {
                 return Some(existing);
             }
             let id = dag.alloc_declaration_id();
