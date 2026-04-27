@@ -104,7 +104,7 @@ fn read_shared_syntax_source(manifest_dir: &std::path::Path) -> String {
 }
 
 fn compile_shared_syntax_dag(source: &str) -> Dag {
-    match compile_to_dag(&source, SHARED_SYNTAX_FILE) {
+    match compile_to_dag(source, SHARED_SYNTAX_FILE) {
         Ok(dag) => dag,
         Err(CompileError::Semantic(dag)) => dag,
         Err(other) => panic!("compile {SHARED_SYNTAX_FILE}: {other:?}"),
