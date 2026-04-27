@@ -528,18 +528,13 @@ fn polynomial_square(v: SizeVariable) -> SymbolicCost {
 fn product_pair(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
   ProductCost(two_terms(a, b))
 
-fn fold_or_dominate_scan(acc: DominateScanAcc, c: SymbolicCost) -> DominateScanAcc =
-  match acc {
-    ScanAcc { any: prev, pivot: p } =>
-      ScanAcc { any: prev || dominates(c, p), pivot: p }
-    ScanAccNever => ScanAccNever
-  }
+fn fold_or_dominate_scan(acc: DominateScanAcc, c: SymbolicCost) -> DominateScanAcc = {
+  any: acc.any || dominates(c, acc.pivot)
+  pivot: acc.pivot
+}
 
 fn scan_hit(scan: DominateScanAcc) -> Bool =
-  match scan {
-    ScanAcc { any: hit, pivot: _ } => hit
-    ScanAccNever => False
-  }
+  scan.any
 
 fn filter_not_dominated_by(
   candidates: List<SymbolicCost>,
@@ -558,7 +553,7 @@ fn drop_dominated_step(
   acc: List<SymbolicCost>,
   term: SymbolicCost
 ) -> List<SymbolicCost> =
-  if scan_hit(fold(acc, ScanAcc { any: False, pivot: term }, fold_or_dominate_scan)) then
+  if scan_hit(fold(acc, dominate_scan_init(term), fold_or_dominate_scan)) then
     acc
   else
     cons(term, filter_not_dominated_by(acc, term))
