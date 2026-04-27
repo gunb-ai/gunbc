@@ -23,15 +23,24 @@ fn computation_model_declares_internal_source_filtering() {
 
 #[test]
 fn shape_a_target_specs_reference_canonical_internal_source_filtering() {
-    for (label, spec) in [
-        ("rust.dag", RUST_SPEC),
-        ("go.dag", GO_SPEC),
-        ("python.dag", PYTHON_SPEC),
+    for (label, row, spec) in [
+        (
+            "rust.dag",
+            "data rust_source_filtering: ShapeATargetSourceFiltering",
+            RUST_SPEC,
+        ),
+        (
+            "go.dag",
+            "data go_source_filtering: ShapeATargetSourceFiltering",
+            GO_SPEC,
+        ),
+        (
+            "python.dag",
+            "data python_source_filtering: ShapeATargetSourceFiltering",
+            PYTHON_SPEC,
+        ),
     ] {
-        assert!(
-            spec.contains("data ") && spec.contains("_source_filtering: ShapeATargetSourceFiltering"),
-            "{label}: expected `*_source_filtering: ShapeATargetSourceFiltering` row"
-        );
+        assert!(spec.contains(row), "{label}: expected `{row}`");
         assert!(
             spec.contains(CANONICAL_BINDING),
             "{label}: must bind `{CANONICAL_BINDING}` so internal/bootstrap prefixes stay canonical"
