@@ -103,11 +103,11 @@ mod linux {
             exit(124);
         }
 
-        let mut ptrs: Vec<*mut libc::c_char> = user_argv
+        let mut argv: Vec<*const libc::c_char> = user_argv
             .iter()
-            .map(|s| s.as_ptr().cast::<libc::c_char>() as *mut libc::c_char)
+            .map(|s| s.as_ptr().cast::<libc::c_char>())
             .collect();
-        ptrs.push(std::ptr::null_mut());
+        argv.push(std::ptr::null());
 
         if let Err(_) = write_all(SENTINEL_FD, b"e") {
             let _ = write_all(SENTINEL_FD, b"f");
@@ -120,7 +120,7 @@ mod linux {
         }
 
         unsafe {
-            libc::execvp(ptrs[0], ptrs.as_mut_ptr());
+            libc::execvp(argv[0], argv.as_ptr());
         }
 
         let _ = write_all(SENTINEL_FD, b"f");
