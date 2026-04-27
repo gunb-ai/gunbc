@@ -856,6 +856,7 @@ mod tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("diagnostics_test.v3", 0, 1),
         });
 
@@ -899,6 +900,7 @@ mod tests {
             inhabits: None,
             value_body: None,
             refinement: Some(bool_decl),
+            nominal_opacity: None,
             span: SourceSpan::new("diagnostics_test.v3", 0, 1),
         });
 
@@ -919,6 +921,7 @@ mod tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("diagnostics_test.v3", 0, 1),
         });
 
@@ -943,6 +946,7 @@ mod tests {
             inhabits: None,
             value_body: None,
             refinement: Some(bool_decl),
+            nominal_opacity: None,
             span: SourceSpan::new("diagnostics_test.v3", 0, 1),
         });
 
@@ -963,6 +967,7 @@ mod tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("diagnostics_test.v3", 0, 1),
         });
 
@@ -983,6 +988,7 @@ mod tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("diagnostics_test.v3", 0, 1),
         });
 
@@ -1029,6 +1035,7 @@ mod tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("diagnostics_test.v3", 0, 1),
         });
 
@@ -1049,6 +1056,7 @@ mod tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("diagnostics_test.v3", 0, 1),
         });
 
