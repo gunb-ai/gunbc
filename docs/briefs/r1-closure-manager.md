@@ -25,7 +25,7 @@ Close every R1 gate listed in `ROADMAP.md §"Lane acceptance — .dag gates"` un
 |---|---|---|---|---|
 | **R1C-A** | M-L | T-TestGen schema extensions (three coupled sub-deliverables per the worker brief): (A) M1(2.8) list-body lowering for `data` declarations (compiler work in `lower.rs`); (B) scope predicate shapes for the 6 PB-census gates (T-PB-A `pb_hand_rust_at_shim_floor`, `lens_producer_files_remaining`, `pb_self_compile_fixed_point`, `pb_compiler_std_ratchet_zero` + T-PB-B `pb_test_file_generated_from_dag`, `pb_rust_tests_outside_residual_zero`); (C) `MockBackedInvariant` minimal-demo fixture closing `testgen_mock_backed_integration_safe`. Sized M-L (was M before audit revealed Sub-deliverable A is actual compiler work). | none | WORKER BRIEF AUTHORED — [`r1c-a-t-testgen-schema-extensions-worker.md`](r1c-a-t-testgen-schema-extensions-worker.md); ready to dispatch |
 | **R1C-B** | S | T-P0 fixture authoring: 3 TestClaim fixtures (`p0_repeat_string_correct` Day-1; `p0_no_fabrication_sentinel` ext; `p0_rest_ops_aligned` ext). Features already work (oracle test for `repeat_string` is green; sentinel + ops require schema extensions from R1C-A IF they require new predicates beyond DB-15's existing surface — verify at brief authoring). | possibly R1C-A (if `[ext]` predicates need new shapes) | WORKER BRIEF AUTHORED — [`r1c-b-t-p0-fixtures-worker.md`](r1c-b-t-p0-fixtures-worker.md); dispatchable (with audit) |
-| **R1C-C** | XS | T-Sub fixture authoring: 1 TestClaim fixture for `sub_type_alias_where_lowers` (PR #703 already landed the feature). | none | WORKER BRIEF AUTHORED — [`r1c-c-t-sub-fixture-worker.md`](r1c-c-t-sub-fixture-worker.md); dispatchable Day-1 |
+| **R1C-C** | XS | T-Sub fixture authoring: 1 TestClaim fixture for `sub_type_alias_where_lowers` (PR #703 already landed the feature). | none | **R1C-C: 1/1 gates green** — PR #879 / merge `adda0eac` (`DeclarationHasRefinement("PositiveInt")` strict `.dag` receipt; `sub_type_alias_where_lowers_gate` runner green). |
 | **R1C-D** | M-L | T-PB census-as-`.dag` wiring: 6 PB census gates as `.dag` TestClaims. Merges what was previously T-PB-A and T-PB-B into one lane because both share the predicate-shape work R1C-A scopes; splitting would duplicate the schema-consumer pattern. Authoritative ratchets remain `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_FRAGMENTS` (T-PB-A subset) and `EXPECTED_HAND_AUTHORED_TEST` (T-PB-B subset) in `src/v3/compiler/tests/integration/sg0_census_test.rs`; the `.dag` TestClaims read those census values via the predicate shape R1C-A scopes. | R1C-A | WORKER BRIEF AUTHORED — [`r1c-d-t-pb-census-as-dag-worker.md`](r1c-d-t-pb-census-as-dag-worker.md); dispatch gated on R1C-A Sub-deliverable B landing |
 | **R1C-E** | S | T-Emit `.dag` TestClaim wrappers: 3 ExecuteCommand-based wrappers around the existing host harness (`emit_rust_fixtures_rustc_green` `[ext: ExecuteCommand]`; `emit_generic_bounds_survive` `[ext]`; `emit_omni_demo_fixtures_green` `[ext: ForAllTargets + ExecuteCommand]`). PB-Runtime `ExecuteCommand` runner landed PR #792, so this lane is dispatchable Day-1. Existing host harness in `tests/boundary/m1_3_emit_rust_test.rs` and `tests/boundary/m1_5_emit_omni_demo_test.rs` becomes the input to the `.dag` wrapper, not the gate authority. | none | WORKER BRIEF AUTHORED — [`r1c-e-t-emit-dag-wrappers-worker.md`](r1c-e-t-emit-dag-wrappers-worker.md); dispatchable Day-1 |
 | **R1C-F** | S | T-Demo user-authored-lens fixture: 1 TestClaim fixture for `demo_user_authored_lens_rejects_violating_program` (consumes `user_authored_lens_compiles` from T-LensAPI which is GREEN). | none | **R1C-F: 1/1 gates green** — PR #880 (`demo_user_authored_lens_rejects_violating_program_suite` Passes via `LensOutputEquals(named_function_count, …)`; demo blurb at [`docs/demos/r1c-f-user-authored-lens-rejection.md`](../demos/r1c-f-user-authored-lens-rejection.md)). |
@@ -64,7 +64,7 @@ Close every R1 gate listed in `ROADMAP.md §"Lane acceptance — .dag gates"` un
 Authored — all 6 lane worker briefs landed on PR #847:
 - R1C-A: [`r1c-a-t-testgen-schema-extensions-worker.md`](r1c-a-t-testgen-schema-extensions-worker.md) (M-L; 3 sub-deliverables; ready to dispatch)
 - R1C-B: [`r1c-b-t-p0-fixtures-worker.md`](r1c-b-t-p0-fixtures-worker.md) (S; 3 fixtures; dispatchable with audit step for `[ext]` gates)
-- R1C-C: [`r1c-c-t-sub-fixture-worker.md`](r1c-c-t-sub-fixture-worker.md) (XS; 1 fixture; dispatchable Day-1)
+- R1C-C: [`r1c-c-t-sub-fixture-worker.md`](r1c-c-t-sub-fixture-worker.md) (XS; 1 fixture; **closed by PR #879**)
 - R1C-D: [`r1c-d-t-pb-census-as-dag-worker.md`](r1c-d-t-pb-census-as-dag-worker.md) (M-L; 6 fixtures; dispatch gated on R1C-A Sub-deliverable B landing)
 - R1C-E: [`r1c-e-t-emit-dag-wrappers-worker.md`](r1c-e-t-emit-dag-wrappers-worker.md) (S; 3 wrappers; dispatchable Day-1)
 - R1C-F: [`r1c-f-t-demo-user-lens-fixture-worker.md`](r1c-f-t-demo-user-lens-fixture-worker.md) (S; 1 fixture; dispatchable Day-1)
@@ -74,6 +74,10 @@ Pending: none. The R1 Closure Manager lane queue is fully authored — manager d
 ## Working state (fill on dispatch)
 
 Lane status table refreshes here as work lands. Initial state: all 6 lane worker briefs authored; dispatch sequence: R1C-A first (critical-path enabler), then R1C-D after R1C-A Sub-deliverable B lands; R1C-B/C/E/F parallel-dispatchable Day-1.
+
+| Lane | Gates (strict `.dag` receipts) | Status |
+| --- | --- | --- |
+| R1C-C | `sub_type_alias_where_lowers` (`DeclarationHasRefinement("PositiveInt")` on the DB-11 witness; `sub_type_alias_where_lowers_gate` in `r1_gates.template.dag` + `test_runner_runs_sub_type_alias_where_lowers_gate`) | **Closed — PR #879 merged** (`adda0eac`; all CI green before squash merge) |
 
 ## Cross-refs
 

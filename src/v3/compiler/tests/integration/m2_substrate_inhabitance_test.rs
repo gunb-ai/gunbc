@@ -191,6 +191,7 @@ fn substrate_declares_expected_reflection_surface() {
             "meta_tag",
             "inhabits",
             "value_body",
+            "nominal_opacity",
             "span",
         ]
     );

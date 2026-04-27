@@ -3,12 +3,10 @@
 //! T-Ground-Engine Phase-1 unblock (Path 2): `dsl/extdeps/languages/rust/
 //! primitives.dag` is loaded into the bootstrap Dag; `Dag::rust_pilot_primitives`
 //! returns a walkable type-structure declaration. The 10-element pilot
-//! enumeration is NOT walkable as structured records until R2 T-Substrate's
-//! 4th sub-lane lands the top-level `ValueBody::List`/aggregate extension;
-//! this test pins the currently-available type-structure access and
-//! explicitly records the `ValueBody::Unparsed` boundary.
+//! enumeration is walkable as `ValueBody::List` after R2 T-Substrate's
+//! 4th sub-lane lands the top-level list extension.
 
-use v3_compiler::dag::{Dag, TypeConnective, ValueBody};
+use v3_compiler::dag::{Dag, FieldValue, TypeConnective, ValueBody};
 
 #[test]
 fn dag_new_exposes_rust_pilot_primitives_type_structure() {
@@ -100,25 +98,56 @@ fn dag_new_exposes_rust_pilot_primitives_type_structure() {
 }
 
 #[test]
-fn rust_pilot_primitives_value_body_is_unparsed_until_r2_substrate_4th_sublane() {
-    // Boundary pin: the 10-element pilot list stays unparsed at the
-    // top-level `data ... = [...]` body because v3's `ValueBody` enum
-    // lacks a top-level list/aggregate variant. When R2 T-Substrate's
-    // 4th sub-lane (top-level `ValueBody::List`/aggregate extension)
-    // lands, this assertion flips and Engine sharpened-(b) Phase 2 can
-    // re-dispatch against structured records. See
-    // `docs/r2-structure.md` 4th sub-lane scoping.
+fn rust_pilot_primitives_value_body_is_structural_list() {
     let dag = Dag::new();
     let decl = dag.rust_pilot_primitives().expect("loaded");
+    let rust_primitive_decl_id = match &decl.connective {
+        TypeConnective::Instantiation { arguments, .. } => arguments[0].value,
+        other => panic!("rust_pilot_primitives must be List<RustPrimitive>, got {other:?}"),
+    };
+    let TypeConnective::Disj { variants } = &dag.declaration(rust_primitive_decl_id).connective
+    else {
+        panic!("RustPrimitive must be a Disj");
+    };
     let body = decl
         .value_body
         .as_ref()
         .expect("data declarations carry a value_body");
+    let ValueBody::List(elements) = body else {
+        panic!("rust_pilot_primitives.value_body must lower to ValueBody::List, got {body:?}");
+    };
+    assert_eq!(elements.len(), 10);
+    let constructors: Vec<&str> = elements
+        .iter()
+        .map(|element| {
+            let FieldValue::Variant { constructor, .. } = element else {
+                panic!("rust_pilot_primitives elements must be variants, got {element:?}");
+            };
+            variants
+                .iter()
+                .find(|variant| variant.ty == *constructor)
+                .map(|variant| variant.label.as_str())
+                .expect("variant constructor belongs to RustPrimitive")
+        })
+        .collect();
+    assert_eq!(constructors.first().copied(), Some("IntegerPrimitive"));
+    assert_eq!(constructors.last().copied(), Some("NonIntegerPrimitive"));
+}
+
+#[test]
+fn dag_new_exposes_std_unicode_charclass() {
+    let dag = Dag::new();
+    let char_class = dag
+        .declaration_by_name("CharClass")
+        .expect("std.unicode::CharClass must load in Dag::new()");
+    assert_eq!(char_class.span.file, "dsl/std/unicode.dag");
+    let variants = match &char_class.connective {
+        TypeConnective::Disj { variants } => variants,
+        other => panic!("CharClass must be a Disj, got {other:?}"),
+    };
+    let labels: Vec<&str> = variants.iter().map(|field| field.label.as_str()).collect();
     assert!(
-        matches!(body, ValueBody::Unparsed(_)),
-        "rust_pilot_primitives.value_body must stay Unparsed until ValueBody grows a \
-         top-level list/aggregate variant; got {body:?}. If this test flips to failing \
-         because the body is now structured, update Engine sharpened-(b) Phase 2 \
-         consumers to walk the structured value and delete this assertion."
+        labels.contains(&"Whitespace") && labels.contains(&"Digit"),
+        "CharClass should expose tokenizer bootstrap variants, got {labels:?}"
     );
 }

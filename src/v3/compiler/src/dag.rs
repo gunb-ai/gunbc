@@ -211,6 +211,15 @@ pub struct Declaration {
     /// refined declarations for arm-local narrowing when an `if`
     /// cond is a single-parameter predicate.
     pub refinement: Option<DeclarationId>,
+    /// Nominal-opacity carrier (T-Substrate nominal-opaque-for-Secret
+    /// subset, carrier-only staging). When `Some`, the listed
+    /// `permitted_accessors` are the intended sealed-accessor boundary
+    /// for generic structural walks. The fail-closed walker consumer +
+    /// std `Secret` marking + carry-forward through specialization are
+    /// the named follow-up enforcement work; this field is staging
+    /// surface only and must either gain a real walker consumer or be
+    /// removed before T-Modeling Secret<T> graduation can dispatch.
+    pub nominal_opacity: Option<NominalOpacity>,
     pub span: SourceSpan,
 }
 
@@ -218,6 +227,15 @@ pub struct Declaration {
 pub struct PhantomParameter {
     pub parameter: DeclarationId,
     pub algebra: DeclarationId,
+}
+
+/// Sealed-accessor carrier (carrier-only staging). Lists the
+/// `DeclarationId`s intended as the only permitted descent path into
+/// a nominal-opaque declaration's interior. The fail-closed walker
+/// consumer is the named follow-up enforcement work.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NominalOpacity {
+    pub permitted_accessors: Vec<DeclarationId>,
 }
 
 /// Value-body shape for `data foo: T = { body }` declarations. Two
@@ -271,8 +289,9 @@ pub struct PhantomParameter {
 #[derive(Debug, Clone)]
 pub enum ValueBody {
     /// The body exists in source at the given span but is not yet
-    /// lowered to a value sub-DAG. The body's shape (record / map /
-    /// list / variant literal) awaits M2+ parser extension.
+    /// lowered to a value sub-DAG. Map-shaped bodies still await the
+    /// sibling `kernel_algebra_profile` substrate lane; records and
+    /// lists lower structurally.
     Unparsed(SourceSpan),
     /// The body parsed as a record literal and was inhabitance-
     /// checked against the declared type. Each field holds a
@@ -298,6 +317,25 @@ pub enum ValueBody {
     /// scalar constants; previously the parser rejected non-
     /// `{`-shaped RHS, so scalar `data` declarations could not exist.
     Scalar(LiteralBits),
+    /// Top-level structural list value: `data xs: List<T> = [...]`.
+    ///
+    /// 4-pattern check for `List`:
+    /// - Pattern 1 (fact placement): fails. The ordered element sequence
+    ///   is the data declaration's value fact, not a property of the
+    ///   declaration's type edge or meta tag.
+    /// - Pattern 2 (variant-is-data): fails. `Vec<FieldValue>` is a
+    ///   distinct structural payload from source spans, record fields, and
+    ///   scalar bits.
+    /// - Pattern 3 (algebraic form): fails. List bodies are not points in
+    ///   the same algebra as records/scalars; they carry ordered
+    ///   homogeneous element facts needed by Engine/tokenizer consumers.
+    /// - Pattern 4 (dimensional): fails. No shared coordinate space with
+    ///   `Structural` record labels or `Scalar` primitive constants.
+    ///
+    /// Verdict: terminal at the current top-level data-body layer. Elements
+    /// deliberately reuse `FieldValue`, matching nested structural list
+    /// values and preserving sum-constructor identity for list-of-sum data.
+    List(Vec<FieldValue>),
 }
 
 /// Per-field value payload inside a `ValueBody::Structural`.
@@ -2191,6 +2229,7 @@ pub struct Dag {
 
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_generated::bootstrapped_fixture_dag();
+    dag.mark_bootstrap_secret_nominal_opacity();
     assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     dag
@@ -2201,6 +2240,7 @@ static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
 // sole writer and the PB-1 equivalence tests ratchet generated == runtime.
 static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_std_generated::bootstrapped_std_fixture_dag();
+    dag.mark_bootstrap_secret_nominal_opacity();
     dag.populate_primitive_cache();
     dag
 });
@@ -2208,6 +2248,7 @@ static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
 static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag =
         bootstrap_generated_without_parse_surface::bootstrapped_fixture_without_parse_surface_dag();
+    dag.mark_bootstrap_secret_nominal_opacity();
     assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     dag
@@ -2246,6 +2287,21 @@ impl Dag {
 
     pub fn new() -> Self {
         (*BOOTSTRAPPED_DAG).clone()
+    }
+
+    fn mark_bootstrap_secret_nominal_opacity(&mut self) {
+        // Bridge until source-level nominal_opacity marking is lowered and
+        // regen_bootstrap carries std Secret through the generated fixtures.
+        // Delete this name-keyed stamp when Secret<T> graduation owns that
+        // fact in .dag authority.
+        let secret = self
+            .declarations
+            .iter()
+            .position(|decl| decl.name.as_deref() == Some("Secret"))
+            .expect("bootstrap fixture must contain std Secret for nominal-opacity seeding");
+        self.declarations[secret].nominal_opacity = Some(NominalOpacity {
+            permitted_accessors: Vec::new(),
+        });
     }
 
     /// Clone of the bootstrapped Dag used by [`crate::compile_parse_surface_std_authority_dag`]:
@@ -2814,6 +2870,9 @@ impl Dag {
     ///   - `module std.effects` (`dsl/std/effects.dag` ↔ `src/v3/std/effects.dag`)
     ///   - `module std.verification` (`dsl/std/verification.dag` ↔ `src/v3/std/verification.dag`)
     ///   - embedded `http_path` mirror inside `src/v3/std/effects.dag:118-260`
+    ///   - `module std.computation` (`dsl/std/computation.dag` ↔ `src/v3/std/computation.dag`)
+    ///   - `module std.induction` (`dsl/std/induction.dag` ↔ `src/v3/std/induction.dag`)
+    ///   - `module std.termination` (`dsl/std/termination.dag` ↔ `src/v3/std/termination.dag`)
     fn declaration_name_preference_rank(file: &str) -> usize {
         if file.starts_with("src/v3/") {
             2
@@ -2867,18 +2926,11 @@ impl Dag {
     /// IntegerPrimitive | NonIntegerPrimitive {target_name, algebra,
     /// carrier, is_copy[, overflow]}`).
     ///
-    /// **Path 2 partial Req-1 satisfaction.** The returned declaration's
-    /// `value_body` is `ValueBody::Unparsed(SourceSpan)` — v3's
-    /// `ValueBody` enum does not yet carry a top-level list/aggregate
-    /// variant, so the 10-element pilot enumeration is not yet walkable
-    /// as structured records. Consumers that only need the type shape
-    /// (sum variants, variant fields, tag enums) can walk through
-    /// `connective` immediately; consumers that need to enumerate the
-    /// concrete pilot primitives must wait for R2 T-Substrate's 4th
-    /// sub-lane to land the top-level `ValueBody::List`/aggregate
-    /// extension (same substrate gap as `kernel_algebra_profile` at
-    /// `dag.rs:1530` and tokenizer `sub_charclass_in_std_unicode`
-    /// phase-2).
+    /// **Path 2 satisfaction.** The returned declaration's `value_body`
+    /// is `ValueBody::List(_)`, so both the sum type shape and the
+    /// 10-element pilot enumeration are structurally walkable. Map-shaped
+    /// bootstrap data remains future debt for the map-shaped T-Substrate
+    /// sibling lane; today it still lowers to `ValueBody::Unparsed`.
     ///
     /// Returns `None` only when bootstrap failed to load
     /// `rust/primitives.dag`, in which case a diagnostic is already on
@@ -3652,6 +3704,7 @@ mod tests {
             inhabits: None,
             value_body: Some(binding_fields(rust_language, go_clean_emission)),
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("duplicate_binding_test.v3", 0, 1),
         });
 

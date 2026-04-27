@@ -1411,48 +1411,61 @@ impl<'a> TestRunner<'a> {
     }
 
     pub fn run_claim(&self, claim: &TestClaimValue) -> ClaimEvaluation {
-        let result = if !claim.requires.is_empty() {
-            ClaimResult::Fail(format!(
-                "TestClaim `{}` declares {} resource requirement(s), but the Rust runner cannot materialize `requires` yet",
-                claim.claim_name,
-                claim.requires.len()
-            ))
-        } else {
-            match self.variant_value(&claim.predicate) {
-                Some((label, payload)) => match label.as_str() {
-                    "Compiles" => self.eval_compiles(claim),
-                    "FailsWithDiagnostic" => self.eval_fails_with_diagnostic(claim, &payload),
-                    "OutputEquals" => self.eval_output_equals(claim, &payload),
-                    "PortHasState" => self.eval_port_has_state(claim, &payload),
-                    "CostBounded" => self.eval_cost_bounded(claim, &payload),
-                    "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
-                    "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
-                    "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
-                    "ExecuteCommand" => self.eval_execute_command(claim, &payload),
-                    "MockBackedInvariant" => {
-                        let inner = self.eval_mock_backed_invariant(claim, &payload);
-                        if claim.requires.is_empty() {
-                            match inner {
-                                ClaimResult::Pass => ClaimResult::NotYetImplemented(
-                                    "MockBackedInvariant: `TestClaim.requires` is empty — DB-15 mock \
+        let result = match self.variant_value(&claim.predicate) {
+            Some((label, payload)) => {
+                if !claim.requires.is_empty() && label != "MockBackedInvariant" {
+                    ClaimResult::Fail(format!(
+                        "TestClaim `{}` declares {} resource requirement(s), but predicate `{}` does not consume `requires`",
+                        claim.claim_name,
+                        claim.requires.len(),
+                        label
+                    ))
+                } else {
+                    match label.as_str() {
+                        "Compiles" => self.eval_compiles(claim),
+                        "FailsWithDiagnostic" => self.eval_fails_with_diagnostic(claim, &payload),
+                        "OutputEquals" => self.eval_output_equals(claim, &payload),
+                        "PortHasState" => self.eval_port_has_state(claim, &payload),
+                        "DeclarationHasRefinement" => {
+                            self.eval_declaration_has_refinement(claim, &payload)
+                        }
+                        "CostBounded" => self.eval_cost_bounded(claim, &payload),
+                        "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
+                        "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
+                        "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
+                        "ExecuteCommand" => self.eval_execute_command(claim, &payload),
+                        "MockBackedInvariant" => {
+                            if !claim.requires.is_empty() {
+                                if let Err(reason) = self.validate_resource_requirements(claim) {
+                                    return ClaimEvaluation {
+                                        claim_name: claim.claim_name.clone(),
+                                        result: ClaimResult::Fail(reason),
+                                    };
+                                }
+                            }
+                            let inner = self.eval_mock_backed_invariant(claim, &payload);
+                            if claim.requires.is_empty() {
+                                match inner {
+                                    ClaimResult::Pass => ClaimResult::NotYetImplemented(
+                                        "MockBackedInvariant: `TestClaim.requires` is empty — DB-15 mock \
                                      obligations attach only on `requires` as `ResourceReference` edges; \
                                      hermetic subject/invariant application succeeded but is not a mock-backed \
-                                     receipt until at least one obligation is declared (M1(2.8): list bodies \
-                                     in fixture `TestClaim` data are not expressible yet)."
-                                        .to_string(),
-                                ),
-                                other => other,
+                                     receipt until at least one obligation is declared."
+                                            .to_string(),
+                                    ),
+                                    other => other,
+                                }
+                            } else {
+                                inner
                             }
-                        } else {
-                            inner
                         }
+                        other => ClaimResult::NotYetImplemented(format!(
+                            "TestPredicate::{other} is not wired in the Rust runner yet"
+                        )),
                     }
-                    other => ClaimResult::NotYetImplemented(format!(
-                        "TestPredicate::{other} is not wired in the Rust runner yet"
-                    )),
-                },
-                None => ClaimResult::Fail("predicate is not a structural variant".to_string()),
+                }
             }
+            None => ClaimResult::Fail("predicate is not a structural variant".to_string()),
         };
         ClaimEvaluation {
             claim_name: claim.claim_name.clone(),
@@ -1552,6 +1565,59 @@ impl<'a> TestRunner<'a> {
             ClaimResult::Pass
         } else {
             ClaimResult::Fail(format!("bind `{bind_name}` state did not match `{label}`"))
+        }
+    }
+
+    fn eval_declaration_has_refinement(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let name = match payload {
+            [FieldValue::Literal(LiteralBits::String(name))] => name.clone(),
+            [single] => {
+                let Some(fields) = record_fields(single) else {
+                    return ClaimResult::Fail(
+                        "DeclarationHasRefinement: expected `{ declaration_name: String }` record \
+                         or a bare String payload"
+                            .to_string(),
+                    );
+                };
+                match string_field(fields, "declaration_name") {
+                    Ok(s) => s,
+                    Err(e) => return ClaimResult::Fail(e),
+                }
+            }
+            _ => {
+                return ClaimResult::Fail(format!(
+                    "DeclarationHasRefinement: expected one payload field, got {}",
+                    payload.len()
+                ));
+            }
+        };
+        let dag = match compile_to_dag(&claim.source, &claim.file_name) {
+            Ok(dag) => dag,
+            Err(CompileError::Semantic(_)) => {
+                return ClaimResult::Fail("compiled with diagnostics".to_string());
+            }
+            Err(err) => {
+                return ClaimResult::Fail(format!(
+                    "DeclarationHasRefinement: compile failed before structural check: {err:?}"
+                ));
+            }
+        };
+        let Some(decl) = dag.declaration_by_name(&name) else {
+            return ClaimResult::Fail(format!(
+                "DeclarationHasRefinement: declaration `{name}` not found in `{}`",
+                claim.file_name
+            ));
+        };
+        if decl.refinement.is_some() {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "DeclarationHasRefinement: declaration `{name}` has no lowered `refinement` edge"
+            ))
         }
     }
 
@@ -2207,6 +2273,30 @@ impl<'a> TestRunner<'a> {
         }
     }
 
+    fn validate_resource_requirements(&self, claim: &TestClaimValue) -> Result<(), String> {
+        for (idx, requirement) in claim.requires.iter().enumerate() {
+            let Some(fields) = record_fields(requirement) else {
+                return Err(format!(
+                    "MockBackedInvariant: `requires[{idx}]` must be a ResourceReference record"
+                ));
+            };
+            match field(fields, "target") {
+                Some(FieldValue::Reference(_)) => {}
+                Some(other) => {
+                    return Err(format!(
+                        "MockBackedInvariant: `requires[{idx}].target` must be a DeclarationRef edge, got {other:?}"
+                    ));
+                }
+                None => {
+                    return Err(format!(
+                        "MockBackedInvariant: `requires[{idx}]` is missing `target`"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn resolve_mock_declaration_ref_edge(
         &self,
         value: &FieldValue,
@@ -2348,7 +2438,7 @@ impl TestClaimValue {
 fn structural_fields(decl: &Declaration) -> Option<&[(String, FieldValue)]> {
     match decl.value_body.as_ref()? {
         ValueBody::Structural { fields } => Some(fields),
-        ValueBody::Unparsed(_) | ValueBody::Scalar(_) => None,
+        ValueBody::Unparsed(_) | ValueBody::Scalar(_) | ValueBody::List(_) => None,
     }
 }
 
@@ -2404,6 +2494,7 @@ fn diagnostic_kind(diagnostic: &Diagnostic) -> &'static str {
         Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
         Diagnostic::MagnitudeOutOfRange { .. } => "MagnitudeOutOfRange",
         Diagnostic::MalformedIntegerRangeFact { .. } => "MalformedIntegerRangeFact",
+        Diagnostic::NominalOpacityViolation { .. } => "NominalOpacityViolation",
     }
 }
 
@@ -2422,6 +2513,14 @@ fn render_value_body(dag: &Dag, value: &ValueBody) -> String {
     match value {
         ValueBody::Scalar(bits) => render_literal(bits),
         ValueBody::Structural { fields } => render_record(dag, fields),
+        ValueBody::List(values) => format!(
+            "[{}]",
+            values
+                .iter()
+                .map(|value| render_field_value(dag, value))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         ValueBody::Unparsed(span) => format!("<unparsed:{}:{}>", span.file, span.byte_start),
     }
 }

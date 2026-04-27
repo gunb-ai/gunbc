@@ -8,12 +8,20 @@ module extdeps.github.auth
 
 import gunbc.auth.credentials { gcp_secret_credential }
 import std.resources { Network }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Secret }
+
+// Secret Manager materializes secret bytes only — no GitHub-issued scope or
+// expiry metadata on the wire (P3: do not fabricate empty scopes / absent
+// expiry as if observed). Acquisition-path carrier lives in auth, not the
+// GitHub core provider model.
+type GitHubSecretManagerPat {
+  token: Secret
+}
 
 func github_token(
   project_id: NonEmptyStr = "gunbai-secrets",
   secret_name: NonEmptyStr = "github-token"
-) -> { token: Secret }
+) -> GitHubSecretManagerPat
   uses net: Network
 {
   cred = gcp_secret_credential(

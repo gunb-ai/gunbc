@@ -12,7 +12,9 @@
 
 ## Read first
 
-- **[`THESIS.md`](../../THESIS.md)** §"Enumerable impossible-bug classes" — `Secret<T>` is one of the R2+ Tier 1 thesis claims; structural opacity is the impossible-bug-by-construction guarantee.
+- **[`docs/r2-structure.md`](../r2-structure.md)** §Goal 2 (lines 36, 42) + §Lane structure (`Secret<T>` graduation) — locked R2 authority for the `Secret<T>` nominal-opaque graduation as a Modeling-faithfulness Tier-1 R2 commitment.
+- **[`ROADMAP.md:424`](../../ROADMAP.md)** post-merge-debt row — `Secret<T>` nominal-wrapper graduation: `dsl/std/types.dag:237` declares `Secret = String` (alias); the substrate distinction between nominal-opaque and alias is the structural delta. **Cited by R2 Goal 2.**
+- **[`docs/thesis/compositional-modeling.md` Part 4](../thesis/compositional-modeling.md)** — original thesis-doc surface; structural opacity argument. (THESIS.md §"Enumerable impossible-bug classes" lists `[R2+]` nested-optional / unenumerated-effects / unhandled-diagnostic-paths; `Secret<T>` is **not** in that list — claim authority lives in r2-structure.md + ROADMAP, not THESIS.md, until/unless THESIS.md adds the entry.)
 - **[`dsl/std/types.dag`](../../dsl/std/types.dag)** — current type system; how named types are namespaces (`feedback_naming_is_aliasing`); how `inhabits` edges work for algebra attachment.
 - **[`src/v3/std/substrate.dag`](../../src/v3/std/substrate.dag)** — live substrate authority for `TypeConnective` + Declaration shape.
 - **[`src/v3/spec/v3_l1.dag`](../../src/v3/spec/v3_l1.dag)** — sentinel meta-types; precedent for cross-cutting substrate fields like `DeclarationRef`.

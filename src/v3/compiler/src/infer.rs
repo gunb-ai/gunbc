@@ -26,8 +26,8 @@ use std::collections::HashSet;
 
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, Field,
-    LiteralBits, Lookup, PhantomParameter, PortId, PortState, TemplateArgument, TransformNode,
-    TransformTarget, TypeConnective,
+    LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState, TemplateArgument,
+    TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -77,6 +77,11 @@ pub fn infer(dag: &mut Dag) {
                         PortState::Resolved(existing)
                             if type_shapes_equivalent(dag, &existing, &ty) => {}
                         PortState::Resolved(existing) => {
+                            if int_literal_magnitude_narrow_merge(dag, port, &existing, &ty) {
+                                dag.set_port_type(port, ty);
+                                changed = true;
+                                continue;
+                            }
                             if is_retryable_generic_decl(dag, existing.declaration)
                                 || is_retryable_generic_decl(dag, ty.declaration)
                             {
@@ -257,6 +262,7 @@ fn ensure_optional_match_disj(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: span.clone(),
     });
 
@@ -274,6 +280,7 @@ fn ensure_optional_match_disj(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: span.clone(),
     });
 
@@ -300,6 +307,7 @@ fn ensure_optional_match_disj(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span,
     });
     dag.set_optional_match_disj(cardinality_decl_id, disj_id);
@@ -702,6 +710,30 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
     changed
 }
 
+/// T-Modeling int-lit / PR #806 consumer: allow `i64` default-typed int
+/// literal output ports to refine to a range-backed fixed-width `IntegerPrimitive`
+/// when the magnitude fits, without treating it as a conflicting resolution.
+fn int_literal_magnitude_narrow_merge(
+    dag: &Dag,
+    port: PortId,
+    from: &TypeShape,
+    to: &TypeShape,
+) -> bool {
+    let Some(lit) = literal_int_at(dag, port) else {
+        return false;
+    };
+    let Some(int_shape) = dag.int_shape() else {
+        return false;
+    };
+    if !type_shapes_equivalent(dag, from, &int_shape) {
+        return false;
+    }
+    matches!(
+        int_literal_fits_expected_type(dag, lit, to.declaration),
+        Ok(Some(true))
+    )
+}
+
 enum Decision {
     Set(PortId, TypeShape),
     Fail(PortId, Diagnostic),
@@ -711,6 +743,59 @@ enum Decision {
 fn decide(dag: &Dag, index: usize) -> Decision {
     match &dag.nodes()[index] {
         Behavior::Value(v) => {
+            // `let x: UInt8 = 5` seeds the value port to `UInt8` after lowering;
+            // the Int literal Value node would otherwise re-stamp `Int64` here and
+            // clobber host narrowing. If the port is already a non-`Int` type, only
+            // defer (Retry) when range facts prove the literal fits that type.
+            // Otherwise fail closed with `MagnitudeOutOfRange` (same contract as
+            // call-site narrowing) or fall through so normal mismatch handling
+            // applies when there is no range-backed check.
+            if let LiteralBits::Int(literal) = &v.data {
+                if let PortState::Resolved(existing) = dag.port(v.output).state() {
+                    if let Some(int_sh) = dag.int_shape() {
+                        if !type_shapes_equivalent(dag, existing, &int_sh) {
+                            match int_literal_fits_expected_type(
+                                dag,
+                                *literal,
+                                existing.declaration,
+                            ) {
+                                Ok(Some(true)) => return Decision::Retry,
+                                Ok(Some(false)) => {
+                                    match integer_range_for_decl(dag, existing.declaration) {
+                                        IntegerRangeLookup::Found(range) => {
+                                            return Decision::Fail(
+                                                v.output,
+                                                magnitude_out_of_range(
+                                                    *literal,
+                                                    *existing,
+                                                    range,
+                                                    v.span.clone(),
+                                                ),
+                                            );
+                                        }
+                                        IntegerRangeLookup::Invalid(diag) => {
+                                            return Decision::Fail(v.output, diag);
+                                        }
+                                        IntegerRangeLookup::Missing => {
+                                            return Decision::Fail(
+                                                v.output,
+                                                Diagnostic::ResolveError {
+                                                    name: "(internal: integer literal out of range but no range fact)"
+                                                        .to_string(),
+                                                    span: v.span.clone(),
+                                                    fixes: Vec::new(),
+                                                },
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(diag) => return Decision::Fail(v.output, diag),
+                                Ok(None) => {}
+                            }
+                        }
+                    }
+                }
+            }
             let shape_and_name = match &v.data {
                 // Unconstrained integer literals keep the existing explicit
                 // default to Int64. Expected-type narrowing happens at
@@ -1077,7 +1162,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                                 ) {
                                     return Decision::Fail(t.output, diag);
                                 }
-                                continue;
+                                return Decision::Set(*input_port, *expected_ty);
                             }
                             Ok(Some(false)) | Ok(None) => {}
                             Err(diag) => return Decision::Fail(t.output, diag),
@@ -1893,15 +1978,6 @@ fn resolve_arrow_decl_walk(
     }
 }
 
-fn literal_decl_id(dag: &Dag, literal: &LiteralBits) -> Option<DeclarationId> {
-    let name = match literal {
-        LiteralBits::Int(_) => "Int",
-        LiteralBits::Bool(_) => "Bool",
-        LiteralBits::String(_) => "String",
-    };
-    dag.declaration_by_name(name).map(|decl| decl.id)
-}
-
 fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
     let resolved_decl = match dag.port(port).state() {
         PortState::Resolved(ty) => ty.declaration,
@@ -1914,8 +1990,14 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
         });
     };
     match dag.node(produced_by) {
-        Behavior::Value(v) => Some(PortTypeContext {
-            decl: literal_decl_id(dag, &v.data)?,
+        // Use the port's resolved declaration, not the literal's default
+        // substrate type (`Int` for all int literals). After range narrowing the
+        // literal port may already be `UInt8` / etc.; `literal_decl_id`-style
+        // `Int` here makes `resolve_callable_target` think the argument is still
+        // the default `Int`, producing spurious implicit-template conflicts against
+        // a `UInt8` parameter (e.g. `id_u8(7)`).
+        Behavior::Value(_) => Some(PortTypeContext {
+            decl: resolved_decl,
             subst: SubstStack::new(),
         }),
         Behavior::Transform(t) => match &t.target {
@@ -2288,6 +2370,32 @@ fn callable_instantiation_conflict(
     }
 }
 
+/// `resolve_callable_target` runs before `decide_transform`'s per-input narrowing
+/// pass can restamp a literal port. When the port is still the default `Int`
+/// literal type but the source literal is known to fit a range-backed expected
+/// parameter (via substrate range facts), treat the binding as compatible so
+/// callable resolution can proceed; narrowing + `MagnitudeOutOfRange` remain
+/// authoritative in the transform `decide_transform` path.
+fn range_compatible_default_int_literal_argument(
+    dag: &Dag,
+    input_port: PortId,
+    expected_param_decl: DeclarationId,
+) -> bool {
+    let Some(int_ty) = dag.int_shape() else {
+        return false;
+    };
+    if !matches!(dag.port(input_port).state(), PortState::Resolved(ty) if *ty == int_ty) {
+        return false;
+    }
+    let Some(lit) = literal_int_at(dag, input_port) else {
+        return false;
+    };
+    matches!(
+        int_literal_fits_expected_type(dag, lit, expected_param_decl),
+        Ok(Some(true))
+    )
+}
+
 fn resolve_callable_target(
     dag: &Dag,
     target: DeclarationId,
@@ -2378,13 +2486,18 @@ fn resolve_callable_target(
             let Some(actual_ctx) = port_type_context(dag, *input_port) else {
                 return CallableTargetResolution::Retry;
             };
-            if !bind_expected_decl_to_actual_context(
+            let binds = bind_expected_decl_to_actual_context(
                 dag,
                 expected_input,
                 &actual_ctx,
                 &mut arguments,
                 0,
-            ) {
+            ) || range_compatible_default_int_literal_argument(
+                dag,
+                *input_port,
+                expected_input,
+            );
+            if !binds {
                 return CallableTargetResolution::Fail(callable_instantiation_conflict(
                     dag,
                     target,
@@ -2448,13 +2561,18 @@ fn resolve_callable_target(
                 let Some(actual_ctx) = port_type_context(dag, *input_port) else {
                     return CallableTargetResolution::Retry;
                 };
-                if !bind_expected_decl_to_actual_context(
+                let binds = bind_expected_decl_to_actual_context(
                     dag,
                     expected_input.declaration,
                     &actual_ctx,
                     &mut arguments,
                     0,
-                ) {
+                ) || range_compatible_default_int_literal_argument(
+                    dag,
+                    *input_port,
+                    expected_input.declaration,
+                );
+                if !binds {
                     return CallableTargetResolution::Fail(callable_instantiation_conflict(
                         dag,
                         target,
@@ -2598,6 +2716,7 @@ fn resolve_callable_targets(dag: &mut Dag) -> bool {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: synthetic_span(),
             });
             instantiation_id
@@ -2969,11 +3088,35 @@ fn walk_to_conj_decl_with_subst(
     start: DeclarationId,
     subst: &mut SubstStack,
 ) -> Option<DeclarationId> {
+    match walk_to_conj_decl_with_subst_or_opacity(dag, start, subst, false) {
+        ConjWalkResult::Conj(id) => Some(id),
+        ConjWalkResult::NoConj => None,
+        ConjWalkResult::NominalOpaque(_) => {
+            unreachable!("opacity check is disabled for ordinary Conj walks")
+        }
+    }
+}
+
+enum ConjWalkResult {
+    Conj(DeclarationId),
+    NominalOpaque(DeclarationId),
+    NoConj,
+}
+
+fn walk_to_conj_decl_with_subst_or_opacity(
+    dag: &Dag,
+    start: DeclarationId,
+    subst: &mut SubstStack,
+    stop_at_nominal_opacity: bool,
+) -> ConjWalkResult {
     let mut current = start;
     for _ in 0..WALK_DEPTH_LIMIT {
         let decl = dag.declaration(current);
+        if stop_at_nominal_opacity && decl.nominal_opacity.is_some() {
+            return ConjWalkResult::NominalOpaque(current);
+        }
         match &decl.connective {
-            TypeConnective::Conj { .. } => return Some(current),
+            TypeConnective::Conj { .. } => return ConjWalkResult::Conj(current),
             TypeConnective::Instantiation {
                 template,
                 arguments,
@@ -2986,12 +3129,15 @@ fn walk_to_conj_decl_with_subst(
                 current = *next;
             }
             TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
-                current = subst.lookup(current)?;
+                let Some(next) = subst.lookup(current) else {
+                    return ConjWalkResult::NoConj;
+                };
+                current = next;
             }
-            _ => return None,
+            _ => return ConjWalkResult::NoConj,
         }
     }
-    None
+    ConjWalkResult::NoConj
 }
 
 fn walk_to_disj_decl_with_subst(
@@ -3121,6 +3267,7 @@ fn materialize_specialized_payload_record(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: variant_decl.span,
     });
     TypeShape::new(id)
@@ -3162,9 +3309,12 @@ pub(crate) fn concretize_decl_with_subst(
                     value: concretize_decl_with_subst(dag, arg.value, subst, depth + 1),
                 })
                 .collect();
-            if let Some(existing) =
-                find_equivalent_anonymous_instantiation(dag, template, &specialized_arguments)
-            {
+            if let Some(existing) = find_equivalent_anonymous_instantiation(
+                dag,
+                template,
+                &specialized_arguments,
+                decl.nominal_opacity.as_ref(),
+            ) {
                 return existing;
             }
             let id = dag.alloc_declaration_id();
@@ -3182,6 +3332,7 @@ pub(crate) fn concretize_decl_with_subst(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: decl.nominal_opacity.clone(),
                 span: decl.span,
             });
             id
@@ -3208,6 +3359,7 @@ pub(crate) fn concretize_decl_with_subst(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: decl.span,
             });
             id
@@ -3420,6 +3572,7 @@ fn materialize_substituted_refined_decl(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: template_span.clone(),
     });
 
@@ -3436,6 +3589,7 @@ fn materialize_substituted_refined_decl(
         inhabits: None,
         value_body: None,
         refinement: Some(fresh_pred_decl_id),
+        nominal_opacity: None,
         span: template_span,
     });
 
@@ -3733,6 +3887,7 @@ fn find_equivalent_anonymous_instantiation(
     dag: &Dag,
     template: DeclarationId,
     arguments: &[TemplateArgument],
+    nominal_opacity: Option<&NominalOpacity>,
 ) -> Option<DeclarationId> {
     dag.declarations().iter().find_map(|decl| {
         if decl.name.is_some() {
@@ -3746,6 +3901,7 @@ fn find_equivalent_anonymous_instantiation(
             return None;
         };
         (template == *existing_template
+            && decl.nominal_opacity.as_ref() == nominal_opacity
             && matches!(
                 generated_template_arguments_match(existing_arguments, arguments),
                 TemplateArgumentsMatch::Match,
@@ -3811,6 +3967,15 @@ fn resolve_field_project(
     };
 
     let mut subst = SubstStack::new();
+    if let Some(opaque_decl) = first_nominal_opaque_on_conj_walk(dag, input_ty.declaration, &subst)
+    {
+        return FieldProjectResolution::Fail(Diagnostic::NominalOpacityViolation {
+            declaration: opaque_decl,
+            accessor: None,
+            span: t.span.clone(),
+            fixes: Vec::new(),
+        });
+    }
     let Some(actual_conj_id) = walk_to_conj_decl_with_subst(dag, input_ty.declaration, &mut subst)
     else {
         return FieldProjectResolution::Fail(Diagnostic::ResolveError {
@@ -3874,6 +4039,18 @@ fn resolve_field_project(
     FieldProjectResolution::Resolved {
         field_child: field_decl_id,
         output_ty,
+    }
+}
+
+fn first_nominal_opaque_on_conj_walk(
+    dag: &Dag,
+    start: DeclarationId,
+    subst: &SubstStack,
+) -> Option<DeclarationId> {
+    let mut subst = subst.clone();
+    match walk_to_conj_decl_with_subst_or_opacity(dag, start, &mut subst, true) {
+        ConjWalkResult::NominalOpaque(id) => Some(id),
+        ConjWalkResult::Conj(_) | ConjWalkResult::NoConj => None,
     }
 }
 
@@ -4747,6 +4924,255 @@ mod bool_logical_operator_arrow_tests {
     use crate::operators::ArithmeticOp;
 
     #[test]
+    fn nominal_opaque_field_project_fails_closed_before_structural_descent() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("<nominal-opacity-test>", 0, 1);
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+
+        let payload = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: payload,
+            name: Some("OpaquePayload".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let opaque = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: opaque,
+            name: Some("OpaqueWrapper".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(payload)),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: Some(NominalOpacity {
+                permitted_accessors: Vec::new(),
+            }),
+            span: span.clone(),
+        });
+
+        let input = dag.alloc_port_with_shape(TypeShape::new(opaque));
+        let output = dag.push_transform(
+            TransformTarget::FieldProject {
+                field_label: "value".to_string(),
+                field_child: None,
+            },
+            vec![input],
+            span,
+        );
+
+        infer(&mut dag);
+
+        assert!(matches!(
+            dag.diagnostics().get(output),
+            Some(Diagnostic::NominalOpacityViolation {
+                declaration,
+                accessor: None,
+                ..
+            }) if *declaration == opaque
+        ));
+        assert!(
+            matches!(dag.port(output).state(), PortState::Unresolved),
+            "opacity violation must leave the projected output unresolved"
+        );
+    }
+
+    #[test]
+    fn nominal_opaque_field_project_preserves_instantiation_substitution() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("<nominal-opacity-subst-test>", 0, 1);
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+
+        let payload = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: payload,
+            name: Some("SecretPayloadForSubst".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let secret = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: secret,
+            name: Some("SecretForSubst".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(payload)),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: Some(NominalOpacity {
+                permitted_accessors: Vec::new(),
+            }),
+            span: span.clone(),
+        });
+        let box_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: box_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let box_alias = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: box_alias,
+            name: Some("BoxAlias".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(box_param)),
+            type_params: vec![box_param],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let boxed_secret = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: boxed_secret,
+            name: Some("BoxedSecret".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: box_alias,
+                arguments: vec![TemplateArgument {
+                    parameter: box_param,
+                    value: secret,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let input = dag.alloc_port_with_shape(TypeShape::new(boxed_secret));
+        let output = dag.push_transform(
+            TransformTarget::FieldProject {
+                field_label: "value".to_string(),
+                field_child: None,
+            },
+            vec![input],
+            span,
+        );
+
+        infer(&mut dag);
+
+        assert!(matches!(
+            dag.diagnostics().get(output),
+            Some(Diagnostic::NominalOpacityViolation {
+                declaration,
+                accessor: None,
+                ..
+            }) if *declaration == secret
+        ));
+    }
+
+    #[test]
+    fn field_project_without_nominal_opacity_remains_structural() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("<nominal-opacity-absent-test>", 0, 1);
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+
+        let record = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: record,
+            name: Some("PlainPayload".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let input = dag.alloc_port_with_shape(TypeShape::new(record));
+        let output = dag.push_transform(
+            TransformTarget::FieldProject {
+                field_label: "value".to_string(),
+                field_child: None,
+            },
+            vec![input],
+            span,
+        );
+
+        infer(&mut dag);
+
+        assert!(
+            dag.diagnostics().get(output).is_none(),
+            "plain structural projection should not emit opacity diagnostics"
+        );
+        assert!(matches!(
+            dag.port(output).state(),
+            PortState::Resolved(shape) if shape.declaration == int
+        ));
+    }
+
+    #[test]
+    fn bootstrapped_secret_is_marked_nominal_opaque() {
+        let dag = Dag::new();
+        let secret = dag
+            .declaration_by_name("Secret")
+            .expect("bootstrap Secret declaration");
+        assert!(
+            secret.nominal_opacity.is_some(),
+            "Secret must consume the nominal-opacity carrier before Modeling dispatch"
+        );
+    }
+
+    #[test]
     fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {
         let dag = Dag::new();
         let bool_shape = dag.bool_shape().expect("bootstrap Bool");
@@ -4802,6 +5228,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let usd = dag.alloc_declaration_id();
@@ -4819,6 +5246,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let eur = dag.alloc_declaration_id();
@@ -4836,6 +5264,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let currency_abelian_group = dag.alloc_declaration_id();
@@ -4862,6 +5291,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let int_abelian_group = dag.alloc_declaration_id();
@@ -4882,6 +5312,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let money = dag.alloc_declaration_id();
@@ -4905,6 +5336,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         dag.push_declaration(Declaration {
@@ -4918,6 +5350,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
 
@@ -4939,6 +5372,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let money_eur = dag.alloc_declaration_id();
@@ -4959,6 +5393,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let money_c = dag.alloc_declaration_id();
@@ -4979,6 +5414,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let alt_c_param = dag.alloc_declaration_id();
@@ -4993,6 +5429,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let alt_money = dag.alloc_declaration_id();
@@ -5015,6 +5452,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let alt_money_usd = dag.alloc_declaration_id();
@@ -5035,6 +5473,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let alt_money_eur = dag.alloc_declaration_id();
@@ -5055,6 +5494,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let other_algebra_money = dag.alloc_declaration_id();
@@ -5077,6 +5517,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let other_algebra_money_usd = dag.alloc_declaration_id();
@@ -5097,6 +5538,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
 
@@ -5150,6 +5592,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let malformed_lhs = dag.alloc_port_with_shape(TypeShape::new(money_missing_arg));
@@ -5171,6 +5614,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let bad_money = dag.alloc_declaration_id();
@@ -5193,6 +5637,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let bad_money_usd = dag.alloc_declaration_id();
@@ -5213,6 +5658,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span,
         });
         let invalid_lhs = dag.alloc_port_with_shape(TypeShape::new(bad_money_usd));
@@ -5234,6 +5680,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 2, 3),
         });
         let unsupported_money = dag.alloc_declaration_id();
@@ -5256,6 +5703,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 2, 3),
         });
         let unsupported_money_usd = dag.alloc_declaration_id();
@@ -5276,6 +5724,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 2, 3),
         });
         let unsupported_lhs = dag.alloc_port_with_shape(TypeShape::new(unsupported_money_usd));
@@ -5297,6 +5746,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 3, 4),
         });
         let fake_algebra_money = dag.alloc_declaration_id();
@@ -5319,6 +5769,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 3, 4),
         });
         let fake_algebra_money_usd = dag.alloc_declaration_id();
@@ -5339,6 +5790,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 3, 4),
         });
         let fake_lhs = dag.alloc_port_with_shape(TypeShape::new(fake_algebra_money_usd));
@@ -5364,6 +5816,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 3, 4),
         });
         let callable_lhs = dag.alloc_port_with_shape(TypeShape::new(money_usd));
@@ -5388,6 +5841,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 4, 5),
         });
         let generic_callable_lhs = dag.alloc_port_with_shape(TypeShape::new(money_usd));
@@ -5408,6 +5862,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 4, 5),
         });
         let untracked_money = dag.alloc_declaration_id();
@@ -5427,6 +5882,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 4, 5),
         });
         let untracked_money_usd = dag.alloc_declaration_id();
@@ -5447,6 +5903,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 4, 5),
         });
         let untracked_callable_lhs = dag.alloc_port_with_shape(TypeShape::new(untracked_money_usd));
@@ -5736,12 +6193,13 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: synthetic_span(),
         });
 
         // Exact arguments match → dedup hit.
         assert_eq!(
-            find_equivalent_anonymous_instantiation(&dag, template, &args),
+            find_equivalent_anonymous_instantiation(&dag, template, &args, None),
             Some(anon_id),
         );
 
@@ -5749,14 +6207,59 @@ mod bool_logical_operator_arrow_tests {
         let mut value_diff = args.clone();
         value_diff[1].value = v0;
         assert_eq!(
-            find_equivalent_anonymous_instantiation(&dag, template, &value_diff),
+            find_equivalent_anonymous_instantiation(&dag, template, &value_diff, None),
             None,
         );
 
         // Length differs → no hit.
         assert_eq!(
-            find_equivalent_anonymous_instantiation(&dag, template, &args[..1]),
+            find_equivalent_anonymous_instantiation(&dag, template, &args[..1], None),
             None,
+        );
+
+        let opaque = NominalOpacity {
+            permitted_accessors: Vec::new(),
+        };
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(&dag, template, &args, Some(&opaque)),
+            None,
+            "anonymous instantiation interning must not collapse distinct nominal-opacity carriers"
+        );
+
+        let opaque_anon_id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: opaque_anon_id,
+            name: None,
+            connective: TypeConnective::Instantiation {
+                template,
+                arguments: args.clone(),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: Some(opaque.clone()),
+            span: synthetic_span(),
+        });
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(&dag, template, &args, Some(&opaque)),
+            Some(opaque_anon_id),
+        );
+        let opaque_with_accessor = NominalOpacity {
+            permitted_accessors: vec![p0],
+        };
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(
+                &dag,
+                template,
+                &args,
+                Some(&opaque_with_accessor),
+            ),
+            None,
+            "permitted-accessor changes are part of the nominal-opacity interning key"
         );
 
         // Self-binding normalization: a `parameter == value` entry is a
@@ -5772,7 +6275,7 @@ mod bool_logical_operator_arrow_tests {
             value: p0,
         });
         assert_eq!(
-            find_equivalent_anonymous_instantiation(&dag, template, &with_self),
+            find_equivalent_anonymous_instantiation(&dag, template, &with_self, None),
             None,
         );
     }

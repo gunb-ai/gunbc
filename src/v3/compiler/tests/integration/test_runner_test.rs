@@ -114,8 +114,8 @@ data suite: TestSuite = {
 fn test_runner_data_bodies_reject_requires_empty_call_today() {
     // Checklist item (2) in `docs/briefs/r1-testgen-manager.md` — `requires: []`
     // vs `requires: empty()`: in a `data` body, only the `[]` list literal lowers
-    // today. `empty()` trips the M1(2.8) class-5 gap ("data bodies cannot yet use
-    // record / list / map literals inside data bodies"), so the runner path on
+    // today. `empty()` trips the M1(2.8) class-5 gap (the data body cannot be
+    // structurally validated), so the runner path on
     // `src/v3/compiler/tests/dag/*.dag` **must** stay with `[]`. `empty()` remains
     // valid in `let` bindings (Brief D `.v3` fixtures under
     // `tests/fixtures/t_pb_b_brief_d/` use it), but those bindings are not
@@ -487,15 +487,7 @@ fn test_runner_dispatches_mock_backed_invariant_claim() {
         results[0].claim_name,
         "testgen_mock_backed_integration_safe"
     );
-    assert!(
-        matches!(
-            &results[0].result,
-            ClaimResult::NotYetImplemented(msg)
-                if msg.contains("MockBackedInvariant") && msg.contains("requires")
-        ),
-        "expected NYI for empty `requires` mock-backed receipt, got {:?}",
-        results[0].result
-    );
+    assert_eq!(results[0].result, ClaimResult::Pass);
 }
 
 #[test]
@@ -729,6 +721,18 @@ fn test_runner_runs_sub_match_over_user_sum_gate() {
         std::fs::read_to_string(&gate).unwrap_or_else(|err| panic!("read {gate:?}: {err}"));
     let dag = compile_clean(&source, "src/v3/compiler/tests/fixtures/r1_gates.dag");
     let results = TestRunner::new(&dag).run_suite("sub_match_over_user_sum_gate");
+
+    assert_all_pass(&results);
+}
+
+#[test]
+fn test_runner_runs_sub_type_alias_where_lowers_gate() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let gate = manifest_dir.join("tests/fixtures/r1_gates.dag");
+    let source =
+        std::fs::read_to_string(&gate).unwrap_or_else(|err| panic!("read {gate:?}: {err}"));
+    let dag = compile_clean(&source, "src/v3/compiler/tests/fixtures/r1_gates.dag");
+    let results = TestRunner::new(&dag).run_suite("sub_type_alias_where_lowers_gate");
 
     assert_all_pass(&results);
 }
