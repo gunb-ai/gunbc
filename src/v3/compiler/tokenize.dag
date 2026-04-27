@@ -52,8 +52,10 @@
 //
 // **CharClass — tokenizer half (bounded interim, not full lane closure).**
 // `std.unicode` declares `CharClass` + `char_in_class` (canonical `.dag`
-// authority). `ascii_scan_order` above is now the tokenizer's structural
-// bridge into those classes and is consumed directly by `regen_tokenize`.
+// authority). `ascii_scan_order` makes tokenizer scanner precedence a
+// structural `List<CharClass>` consumed directly by `regen_tokenize`; ASCII
+// predicate bodies remain a bounded generator bridge until `char_in_class`
+// semantics are structurally consumed.
 //
 // **Framing.** Phase 1 was a consumption gap: the character-level modeling was
 // already present, but tokenize.dag and syntax.dag encoded the same activity
@@ -93,9 +95,9 @@ import v3.std.unicode {
   CharClass
 }
 
-// Scanner rows are now structurally owned by tokenizer authority.
-// The order matters for scanner precedence, and `ascii_scan_order` is consumed
-// structurally by `regen_tokenize`.
+// Scanner order is now structurally owned by tokenizer authority. Predicate
+// bodies still live in `regen_tokenize` until `char_in_class` is structurally
+// executable for this path.
 data ascii_scan_order: List<CharClass> = [Whitespace, Digit, IdentStart, IdentContinue]
 
 // Fixed diagnostic message bodies for tokenizer failures (C-8: errors only).

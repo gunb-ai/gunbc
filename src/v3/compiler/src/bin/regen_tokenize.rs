@@ -187,17 +187,14 @@ fn emit_char_scanner_class_scaffolding(scan_order: &[String]) -> String {
 }
 
 fn ascii_scan_class_predicate(class_name: &str) -> &'static str {
+    // Interim bridge: `ascii_scan_order` supplies structural scanner order, but
+    // class predicate bodies remain here until `std.unicode::char_in_class` is
+    // structurally consumable by the tokenizer generator.
     match class_name {
-        "Whitespace" => {
-            "matches!(byte, b'\\t' | b'\\n' | b'\\x0c' | b'\\r' | b' ')"
-        }
+        "Whitespace" => "matches!(byte, b'\\t' | b'\\n' | b'\\x0c' | b'\\r' | b' ')",
         "Digit" => "byte.is_ascii_digit()",
-        "IdentStart" => {
-            "byte.is_ascii_lowercase() || byte.is_ascii_uppercase() || byte == 0x5f"
-        }
-        "IdentContinue" => {
-            "byte.is_ascii_alphanumeric() || byte == 0x5f"
-        }
+        "IdentStart" => "byte.is_ascii_lowercase() || byte.is_ascii_uppercase() || byte == 0x5f",
+        "IdentContinue" => "byte.is_ascii_alphanumeric() || byte == 0x5f",
         _ => panic!("unsupported scanner class `{class_name}` in `ascii_scan_order`"),
     }
 }

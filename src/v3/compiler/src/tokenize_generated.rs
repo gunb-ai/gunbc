@@ -19,9 +19,7 @@ pub(crate) fn byte_matches(byte: u8, class: ScannerCharClass) -> bool {
         ScannerCharClass::IdentStart => {
             byte.is_ascii_lowercase() || byte.is_ascii_uppercase() || byte == 0x5f
         }
-        ScannerCharClass::IdentContinue => {
-            byte.is_ascii_alphanumeric() || byte == 0x5f
-        }
+        ScannerCharClass::IdentContinue => byte.is_ascii_alphanumeric() || byte == 0x5f,
     }
 }
 
